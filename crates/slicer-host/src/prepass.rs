@@ -95,9 +95,79 @@ impl std::error::Error for PrepassExecutionError {}
 
 /// Executes the sequential Tier 1 prepass pipeline.
 pub fn execute_prepass(
-    _plan: &ExecutionPlan,
-    _blackboard: &mut Blackboard,
-    _runner: &dyn PrepassStageRunner,
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
 ) -> Result<(), PrepassExecutionError> {
-    todo!("TASK-027: implement deterministic prepass executor")
+    for stage in &plan.prepass_stages {
+        ensure_stage_prerequisites(&stage.stage_id, blackboard)?;
+
+        for module in &stage.modules {
+            let output = runner.run_stage(&stage.stage_id, module, blackboard)?;
+            commit_stage_output(&stage.stage_id, &module.module_id, blackboard, output)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn ensure_stage_prerequisites(
+    stage_id: &StageId,
+    blackboard: &Blackboard,
+) -> Result<(), PrepassExecutionError> {
+    for &slot in required_slots(stage_id) {
+        let present = match slot {
+            BlackboardPrepassSlot::SurfaceClassification => {
+                blackboard.surface_classification().is_some()
+            }
+            BlackboardPrepassSlot::LayerPlan => blackboard.layer_plan().is_some(),
+            BlackboardPrepassSlot::PaintRegions => blackboard.paint_regions().is_some(),
+            BlackboardPrepassSlot::RegionMap => blackboard.region_map().is_some(),
+        };
+
+        if !present {
+            return Err(PrepassExecutionError::MissingRequiredPrepass {
+                stage_id: stage_id.clone(),
+                slot,
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
+    match stage_id.as_str() {
+        "PrePass::MeshAnalysis" => &[],
+        "PrePass::LayerPlanning" => &[BlackboardPrepassSlot::SurfaceClassification],
+        "PrePass::PaintSegmentation" => &[
+            BlackboardPrepassSlot::SurfaceClassification,
+            BlackboardPrepassSlot::LayerPlan,
+        ],
+        "PrePass::RegionMapping" => &[BlackboardPrepassSlot::LayerPlan],
+        _ => &[],
+    }
+}
+
+fn commit_stage_output(
+    stage_id: &StageId,
+    module_id: &ModuleId,
+    blackboard: &mut Blackboard,
+    output: PrepassStageOutput,
+) -> Result<(), PrepassExecutionError> {
+    let result = match output {
+        PrepassStageOutput::None => Ok(()),
+        PrepassStageOutput::SurfaceClassification(ir) => {
+            blackboard.commit_surface_classification(ir)
+        }
+        PrepassStageOutput::LayerPlan(ir) => blackboard.commit_layer_plan(ir),
+        PrepassStageOutput::PaintRegions(ir) => blackboard.commit_paint_regions(ir),
+        PrepassStageOutput::RegionMap(ir) => blackboard.commit_region_map(ir),
+    };
+
+    result.map_err(|source| PrepassExecutionError::Blackboard {
+        stage_id: stage_id.clone(),
+        module_id: module_id.clone(),
+        source,
+    })
 }
