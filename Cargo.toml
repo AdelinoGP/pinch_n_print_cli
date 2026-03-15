@@ -2,6 +2,7 @@
 members = [
     "crates/slicer-ir",
     "crates/slicer-macros",
+    "crates/slicer-test",
 ]
 
 [workspace.package]

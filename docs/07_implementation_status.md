@@ -15,7 +15,7 @@ Last updated: 2026-03-15
 - [x] TASK-002 crates/slicer-ir/ — all IR structs
 - [x] TASK-003 wit/ directory — all WIT files
 - [x] TASK-004 crates/slicer-macros/ — proc-macro crate skeleton
-- [ ] TASK-005 crates/slicer-test/ — mock host + fixture builders
+- [x] TASK-005 crates/slicer-test/ — mock host + fixture builders
 - [ ] TASK-006 crates/slicer-sdk/ — re-exports + host service wrappers
 
 ## Phase B — Core Algorithms

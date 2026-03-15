@@ -1,0 +1,13 @@
+[package]
+name = "slicer-test"
+version = "0.1.0"
+edition = "2021"
+authors = ["ModularSlicer Team"]
+
+[dependencies]
+slicer-ir = { path = "../slicer-ir" }
+
+[lints.rust]
+missing_docs = "warn"
+unused_imports = "warn"
+unused_must_use = "warn"
