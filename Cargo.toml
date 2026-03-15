@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/slicer-ir",
+    "crates/slicer-macros",
 ]
 
 [workspace.package]
