@@ -12,6 +12,7 @@ pub mod manifest;
 pub mod mesh_segmentation;
 pub mod paint_segmentation;
 pub mod prepass;
+pub mod slice_postprocess;
 pub mod topology;
 pub mod validation;
 
@@ -36,6 +37,11 @@ pub use mesh_segmentation::{
 };
 pub use paint_segmentation::{execute_paint_segmentation, PaintSegmentationError};
 pub use prepass::{execute_prepass, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner};
+pub use slice_postprocess::{
+    execute_slice_postprocess_paint_annotation, SlicePostProcessPaintAnnotationError,
+    SlicePostProcessPaintAnnotationRequest, SlicePostProcessPaintAnnotationResult,
+    SlicePostProcessPaintAnnotationWarning, SlicePostProcessPaintAnnotationWarningReason,
+};
 pub use topology::topological_sort;
 pub use validation::{
     validate_startup_dag, AccessKind, ClaimHolder, ConflictScope, DagValidationDiagnostic,
