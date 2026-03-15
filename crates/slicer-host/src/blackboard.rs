@@ -1,8 +1,7 @@
 //! Host-owned blackboard and per-layer arena contracts.
 //!
-//! This module defines the TASK-026 public API surface only. The runtime
-//! behavior is intentionally left as a red-contract stub for later
-//! implementation.
+//! This module defines the TASK-026 public API surface and minimal runtime
+//! behavior for blackboard and layer-arena ownership.
 
 use std::fmt;
 use std::sync::Arc;
@@ -13,9 +12,14 @@ use slicer_ir::{
 };
 
 /// Host-owned immutable global IR store plus write-once per-layer output slots.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Blackboard {
-    _private: (),
+    mesh_ir: Arc<MeshIR>,
+    surface_classification: Option<Arc<SurfaceClassificationIR>>,
+    layer_plan: Option<Arc<LayerPlanIR>>,
+    paint_regions: Option<Arc<PaintRegionIR>>,
+    region_map: Option<Arc<RegionMapIR>>,
+    layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
 }
 
 /// Structured blackboard contract failures.
@@ -113,82 +117,142 @@ impl fmt::Display for BlackboardPrepassSlot {
 impl Blackboard {
     /// Create a blackboard around a host-owned mesh and fixed per-layer slot count.
     #[must_use]
-    pub fn new(_mesh_ir: Arc<MeshIR>, _layer_count: usize) -> Self {
-        task_026_todo()
+    pub fn new(mesh_ir: Arc<MeshIR>, layer_count: usize) -> Self {
+        Self {
+            mesh_ir,
+            surface_classification: None,
+            layer_plan: None,
+            paint_regions: None,
+            region_map: None,
+            layer_outputs: Some((0..layer_count).map(|_| None).collect()),
+        }
     }
 
     /// Return the host-owned mesh as an `Arc`-backed shared reference.
     #[must_use]
     pub fn mesh(&self) -> &Arc<MeshIR> {
-        task_026_todo()
+        &self.mesh_ir
     }
 
     /// Commit `SurfaceClassificationIR` exactly once.
     pub fn commit_surface_classification(
         &mut self,
-        _ir: Arc<SurfaceClassificationIR>,
+        ir: Arc<SurfaceClassificationIR>,
     ) -> Result<(), BlackboardError> {
-        task_026_todo()
+        commit_prepass(
+            &mut self.surface_classification,
+            ir,
+            BlackboardPrepassSlot::SurfaceClassification,
+        )
     }
 
     /// Return the committed surface classification, if available.
     #[must_use]
     pub fn surface_classification(&self) -> Option<&Arc<SurfaceClassificationIR>> {
-        task_026_todo()
+        self.surface_classification.as_ref()
     }
 
     /// Commit `LayerPlanIR` exactly once.
-    pub fn commit_layer_plan(&mut self, _ir: Arc<LayerPlanIR>) -> Result<(), BlackboardError> {
-        task_026_todo()
+    pub fn commit_layer_plan(&mut self, ir: Arc<LayerPlanIR>) -> Result<(), BlackboardError> {
+        commit_prepass(&mut self.layer_plan, ir, BlackboardPrepassSlot::LayerPlan)
     }
 
     /// Return the committed layer plan, if available.
     #[must_use]
     pub fn layer_plan(&self) -> Option<&Arc<LayerPlanIR>> {
-        task_026_todo()
+        self.layer_plan.as_ref()
     }
 
     /// Commit `PaintRegionIR` exactly once.
-    pub fn commit_paint_regions(&mut self, _ir: Arc<PaintRegionIR>) -> Result<(), BlackboardError> {
-        task_026_todo()
+    pub fn commit_paint_regions(&mut self, ir: Arc<PaintRegionIR>) -> Result<(), BlackboardError> {
+        commit_prepass(
+            &mut self.paint_regions,
+            ir,
+            BlackboardPrepassSlot::PaintRegions,
+        )
     }
 
     /// Return the committed paint regions, if available.
     #[must_use]
     pub fn paint_regions(&self) -> Option<&Arc<PaintRegionIR>> {
-        task_026_todo()
+        self.paint_regions.as_ref()
     }
 
     /// Commit `RegionMapIR` exactly once.
-    pub fn commit_region_map(&mut self, _ir: Arc<RegionMapIR>) -> Result<(), BlackboardError> {
-        task_026_todo()
+    pub fn commit_region_map(&mut self, ir: Arc<RegionMapIR>) -> Result<(), BlackboardError> {
+        commit_prepass(&mut self.region_map, ir, BlackboardPrepassSlot::RegionMap)
     }
 
     /// Return the committed region map, if available.
     #[must_use]
     pub fn region_map(&self) -> Option<&Arc<RegionMapIR>> {
-        task_026_todo()
+        self.region_map.as_ref()
     }
 
     /// Commit one `LayerCollectionIR` into its write-once layer slot.
     pub fn commit_layer_output(
         &mut self,
-        _layer_index: usize,
-        _ir: LayerCollectionIR,
+        layer_index: usize,
+        ir: LayerCollectionIR,
     ) -> Result<(), BlackboardError> {
-        task_026_todo()
+        let layer_outputs = match self.layer_outputs.as_mut() {
+            Some(layer_outputs) => layer_outputs,
+            None => return Err(BlackboardError::LayerOutputsAlreadyDrained),
+        };
+
+        if layer_index >= layer_outputs.len() {
+            return Err(BlackboardError::LayerSlotOutOfRange {
+                layer_index,
+                layer_count: layer_outputs.len(),
+            });
+        }
+
+        let slot = &mut layer_outputs[layer_index];
+        if slot.is_some() {
+            return Err(BlackboardError::DuplicateLayerCommit { layer_index });
+        }
+
+        *slot = Some(ir);
+        Ok(())
     }
 
     /// Drain all committed layer outputs exactly once after the layer loop.
     pub fn drain_layer_outputs(&mut self) -> Result<Vec<LayerCollectionIR>, BlackboardError> {
-        task_026_todo()
+        let layer_outputs = match self.layer_outputs.take() {
+            Some(layer_outputs) => layer_outputs,
+            None => return Err(BlackboardError::LayerOutputsAlreadyDrained),
+        };
+
+        let missing_indices: Vec<usize> = layer_outputs
+            .iter()
+            .enumerate()
+            .filter_map(|(index, slot)| slot.is_none().then_some(index))
+            .collect();
+
+        if !missing_indices.is_empty() {
+            self.layer_outputs = Some(layer_outputs);
+            return Err(BlackboardError::IncompleteLayerDrain { missing_indices });
+        }
+
+        let drained = layer_outputs
+            .into_iter()
+            .map(|slot| match slot {
+                Some(ir) => ir,
+                None => unreachable!("checked for missing layer outputs before draining"),
+            })
+            .collect();
+
+        Ok(drained)
     }
 }
 
 /// Ephemeral per-layer intermediate IR ownership used during one layer worker run.
 #[derive(Debug, Default)]
 pub struct LayerArena {
-    _private: (),
+    slice: Option<SliceIR>,
+    perimeter: Option<PerimeterIR>,
+    infill: Option<InfillIR>,
+    support: Option<SupportIR>,
 }
 
 /// Structured layer-arena contract failures.
@@ -243,79 +307,104 @@ impl LayerArena {
     /// Create a fresh empty per-layer arena.
     #[must_use]
     pub fn new() -> Self {
-        task_026_todo()
+        Self::default()
     }
 
     /// Stage `SliceIR` in the arena.
-    pub fn set_slice(&mut self, _ir: SliceIR) -> Result<(), LayerArenaError> {
-        task_026_todo()
+    pub fn set_slice(&mut self, ir: SliceIR) -> Result<(), LayerArenaError> {
+        set_arena_slot(&mut self.slice, ir, LayerArenaSlot::Slice)
     }
 
     /// Borrow the staged `SliceIR`, if present.
     #[must_use]
     pub fn slice(&self) -> Option<&SliceIR> {
-        task_026_todo()
+        self.slice.as_ref()
     }
 
     /// Take ownership of the staged `SliceIR`, if present.
     pub fn take_slice(&mut self) -> Option<SliceIR> {
-        task_026_todo()
+        self.slice.take()
     }
 
     /// Stage `PerimeterIR` in the arena.
-    pub fn set_perimeter(&mut self, _ir: PerimeterIR) -> Result<(), LayerArenaError> {
-        task_026_todo()
+    pub fn set_perimeter(&mut self, ir: PerimeterIR) -> Result<(), LayerArenaError> {
+        set_arena_slot(&mut self.perimeter, ir, LayerArenaSlot::Perimeter)
     }
 
     /// Borrow the staged `PerimeterIR`, if present.
     #[must_use]
     pub fn perimeter(&self) -> Option<&PerimeterIR> {
-        task_026_todo()
+        self.perimeter.as_ref()
     }
 
     /// Take ownership of the staged `PerimeterIR`, if present.
     pub fn take_perimeter(&mut self) -> Option<PerimeterIR> {
-        task_026_todo()
+        self.perimeter.take()
     }
 
     /// Stage `InfillIR` in the arena.
-    pub fn set_infill(&mut self, _ir: InfillIR) -> Result<(), LayerArenaError> {
-        task_026_todo()
+    pub fn set_infill(&mut self, ir: InfillIR) -> Result<(), LayerArenaError> {
+        set_arena_slot(&mut self.infill, ir, LayerArenaSlot::Infill)
     }
 
     /// Borrow the staged `InfillIR`, if present.
     #[must_use]
     pub fn infill(&self) -> Option<&InfillIR> {
-        task_026_todo()
+        self.infill.as_ref()
     }
 
     /// Take ownership of the staged `InfillIR`, if present.
     pub fn take_infill(&mut self) -> Option<InfillIR> {
-        task_026_todo()
+        self.infill.take()
     }
 
     /// Stage `SupportIR` in the arena.
-    pub fn set_support(&mut self, _ir: SupportIR) -> Result<(), LayerArenaError> {
-        task_026_todo()
+    pub fn set_support(&mut self, ir: SupportIR) -> Result<(), LayerArenaError> {
+        set_arena_slot(&mut self.support, ir, LayerArenaSlot::Support)
     }
 
     /// Borrow the staged `SupportIR`, if present.
     #[must_use]
     pub fn support(&self) -> Option<&SupportIR> {
-        task_026_todo()
+        self.support.as_ref()
     }
 
     /// Take ownership of the staged `SupportIR`, if present.
     pub fn take_support(&mut self) -> Option<SupportIR> {
-        task_026_todo()
+        self.support.take()
     }
 
     /// Drop all staged per-layer intermediates before finalization/postpass.
     pub fn reset(&mut self) {
-        task_026_todo()
+        self.slice = None;
+        self.perimeter = None;
+        self.infill = None;
+        self.support = None;
     }
 }
 
-fn task_026_todo<T>() -> T {
-    todo!("TASK-026: implement Blackboard + LayerArena")
+fn commit_prepass<T>(
+    slot: &mut Option<Arc<T>>,
+    ir: Arc<T>,
+    slot_name: BlackboardPrepassSlot,
+) -> Result<(), BlackboardError> {
+    if slot.is_some() {
+        return Err(BlackboardError::DuplicatePrepassCommit { slot: slot_name });
+    }
+
+    *slot = Some(ir);
+    Ok(())
+}
+
+fn set_arena_slot<T>(
+    slot: &mut Option<T>,
+    ir: T,
+    slot_name: LayerArenaSlot,
+) -> Result<(), LayerArenaError> {
+    if slot.is_some() {
+        return Err(LayerArenaError::SlotAlreadyOccupied { slot: slot_name });
+    }
+
+    *slot = Some(ir);
+    Ok(())
 }
