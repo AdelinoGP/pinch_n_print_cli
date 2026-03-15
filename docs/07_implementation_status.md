@@ -22,7 +22,7 @@ Last updated: 2026-03-15
 - [x] TASK-010 Clipper2-Rust + polygon operations
 - [x] TASK-011 TriangleMeshSlicer (slice_mesh_ex)
 - [x] TASK-012 Loop chaining (chain_lines_by_triangle_connectivity)
-- [ ] TASK-013 Geometry helpers
+- [x] TASK-013 Geometry helpers
 - [ ] TASK-014 AABB tree for mesh queries
 - [ ] TASK-015 Point-in-polygon for paint region queries
 
