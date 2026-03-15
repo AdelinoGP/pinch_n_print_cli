@@ -117,7 +117,82 @@ pub enum ExecutionPlanError {
 
 /// Builds the immutable runtime execution plan for TASK-025.
 pub fn build_execution_plan(
-    _request: &ExecutionPlanRequest,
+    request: &ExecutionPlanRequest,
 ) -> Result<ExecutionPlan, ExecutionPlanError> {
-    todo!("TASK-025: freeze validated DAG order into an immutable execution plan")
+    let mut bindings_by_module_id = HashMap::with_capacity(request.module_bindings.len());
+    for binding in &request.module_bindings {
+        let module_id = binding.module.id.clone();
+        if bindings_by_module_id
+            .insert(module_id.clone(), binding)
+            .is_some()
+        {
+            return Err(ExecutionPlanError::DuplicateModuleBinding { module_id });
+        }
+    }
+
+    let mut prepass_stages = Vec::new();
+    let mut per_layer_stages = Vec::new();
+    let mut layer_finalization_stage = None;
+    let mut postpass_stages = Vec::new();
+
+    for sorted_stage in &request.sorted_stages {
+        let mut modules = Vec::with_capacity(sorted_stage.module_ids.len());
+
+        for module_id in &sorted_stage.module_ids {
+            let binding = bindings_by_module_id.get(module_id).ok_or_else(|| {
+                ExecutionPlanError::MissingModuleBinding {
+                    stage_id: sorted_stage.stage_id.clone(),
+                    module_id: module_id.clone(),
+                }
+            })?;
+
+            if binding.module.stage != sorted_stage.stage_id {
+                return Err(ExecutionPlanError::StageMismatch {
+                    module_id: binding.module.id.clone(),
+                    expected_stage: sorted_stage.stage_id.clone(),
+                    actual_stage: binding.module.stage.clone(),
+                });
+            }
+
+            modules.push(CompiledModule {
+                module_id: binding.module.id.clone(),
+                instance_pool: Arc::clone(&binding.instance_pool),
+                ir_read_mask: IrAccessMask {
+                    paths: binding.module.ir_reads.clone(),
+                },
+                ir_write_mask: IrAccessMask {
+                    paths: binding.module.ir_writes.clone(),
+                },
+                config_view: Arc::clone(&binding.config_view),
+            });
+        }
+
+        if modules.is_empty() {
+            continue;
+        }
+
+        let compiled_stage = CompiledStage {
+            stage_id: sorted_stage.stage_id.clone(),
+            modules,
+        };
+
+        if sorted_stage.stage_id.starts_with("PrePass::") {
+            prepass_stages.push(compiled_stage);
+        } else if sorted_stage.stage_id.starts_with("Layer::") {
+            per_layer_stages.push(compiled_stage);
+        } else if sorted_stage.stage_id == "PostPass::LayerFinalization" {
+            layer_finalization_stage = Some(compiled_stage);
+        } else if sorted_stage.stage_id.starts_with("PostPass::") {
+            postpass_stages.push(compiled_stage);
+        }
+    }
+
+    Ok(ExecutionPlan {
+        prepass_stages,
+        per_layer_stages,
+        layer_finalization_stage,
+        postpass_stages,
+        global_layers: Arc::clone(&request.global_layers),
+        region_plans: Arc::clone(&request.region_plans),
+    })
 }
