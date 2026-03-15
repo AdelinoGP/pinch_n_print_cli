@@ -25,7 +25,10 @@ pub fn build_intra_stage_dag(
     stage: StageId,
     modules: &[LoadedModule],
 ) -> Result<Vec<ModuleNode>, SchedulerError> {
-    let stage_modules: Vec<&LoadedModule> = modules.iter().filter(|module| module.stage == stage).collect();
+    let stage_modules: Vec<&LoadedModule> = modules
+        .iter()
+        .filter(|module| module.stage == stage)
+        .collect();
 
     let mut nodes = BTreeMap::new();
     for module in &stage_modules {
@@ -88,7 +91,7 @@ mod tests {
 
     use slicer_ir::SemVer;
 
-    use super::{ModuleNode, build_intra_stage_dag};
+    use super::{build_intra_stage_dag, ModuleNode};
     use crate::manifest::{ConfigSchema, LoadedModule};
 
     #[test]

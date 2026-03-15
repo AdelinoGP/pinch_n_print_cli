@@ -61,6 +61,18 @@ Tests should verify: struct construction, serde round-trip, schema_version prese
 3. Resume from the first unchecked `[ ]` task
 4. If a task is marked `[~]` (in-progress), treat it as incomplete and restart it from scratch
 
+### EVENT NOTIFICATION & TELEGRAM REPORTING
+You are required to maintain strict observability over the orchestration loop. Every time you delegate work to a sub-agent, or a task/sub-task reaches completion, you MUST broadcast this state change immediately.
+
+1. **Telegram Bot Notification (Non-Blocking):**
+   To send a direct message to the Telegram Bot without pausing the execution loop, you must execute the following command:
+   `ralph tools interact progress "[Sub-Agent/Task Name]: <Brief status update>"`
+
+2. **Internal Event List Registration:**
+   To formally register the completion in the orchestrator's event list, emit a custom JSON event. Use the `--json` flag with the positional payload:
+   `ralph emit --json '{"type": "planner.task_update", "payload": {"task": "<task_id>", "status": "completed"}}'`
+
+**CRITICAL CONSTRAINT:** Do NOT emit a `human.interact` event for routine agent calls or task completions unless you explicitly need human approval or a decision to proceed. Using `human.interact` blocks the event loop and degrades system throughput.
 
 ## Your current goal
 

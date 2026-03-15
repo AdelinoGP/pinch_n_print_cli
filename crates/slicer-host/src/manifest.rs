@@ -119,7 +119,10 @@ pub struct LoadModulesReport {
 }
 
 /// Loads a single manifest and its paired `.wasm` path.
-pub fn load_module_from_paths(manifest_path: &Path, wasm_path: &Path) -> Result<LoadedModule, LoadError> {
+pub fn load_module_from_paths(
+    manifest_path: &Path,
+    wasm_path: &Path,
+) -> Result<LoadedModule, LoadError> {
     ingest_manifest(manifest_path, wasm_path).map(|result| result.module)
 }
 
@@ -208,8 +211,16 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
                 manifest_path,
                 "compatibility.incompatible-with",
             )?,
-            requires_modules: required_string_array(&root, manifest_path, "compatibility.requires")?,
-            min_host_version: required_semver(&root, manifest_path, "compatibility.min-host-version")?,
+            requires_modules: required_string_array(
+                &root,
+                manifest_path,
+                "compatibility.requires",
+            )?,
+            min_host_version: required_semver(
+                &root,
+                manifest_path,
+                "compatibility.min-host-version",
+            )?,
             min_ir_schema: required_semver(&root, manifest_path, "compatibility.min-ir-schema")?,
             max_ir_schema: required_semver(&root, manifest_path, "compatibility.max-ir-schema")?,
             config_schema,
@@ -272,7 +283,11 @@ fn ensure_same_stem_wasm_exists(manifest_path: &Path, wasm_path: &Path) -> Resul
     })
 }
 
-fn required_stage(root: &Value, manifest_path: &Path, field: &'static str) -> Result<StageId, LoadError> {
+fn required_stage(
+    root: &Value,
+    manifest_path: &Path,
+    field: &'static str,
+) -> Result<StageId, LoadError> {
     let stage = required_string(root, manifest_path, field)?;
     if known_stage_ids().contains(&stage.as_str()) {
         Ok(stage)
@@ -329,14 +344,27 @@ fn read_config_schema(root: &Value, manifest_path: &Path) -> Result<ConfigSchema
     Ok(ConfigSchema { entries })
 }
 
-fn required_string(root: &Value, manifest_path: &Path, field: &'static str) -> Result<String, LoadError> {
+fn required_string(
+    root: &Value,
+    manifest_path: &Path,
+    field: &'static str,
+) -> Result<String, LoadError> {
     let value = get_value(root, field).ok_or_else(|| missing_field_error(manifest_path, field))?;
-    value.as_str().map(ToOwned::to_owned).ok_or_else(|| type_error(manifest_path, field, "string"))
+    value
+        .as_str()
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| type_error(manifest_path, field, "string"))
 }
 
-fn required_bool(root: &Value, manifest_path: &Path, field: &'static str) -> Result<bool, LoadError> {
+fn required_bool(
+    root: &Value,
+    manifest_path: &Path,
+    field: &'static str,
+) -> Result<bool, LoadError> {
     let value = get_value(root, field).ok_or_else(|| missing_field_error(manifest_path, field))?;
-    value.as_bool().ok_or_else(|| type_error(manifest_path, field, "bool"))
+    value
+        .as_bool()
+        .ok_or_else(|| type_error(manifest_path, field, "bool"))
 }
 
 fn required_string_array(
@@ -345,7 +373,9 @@ fn required_string_array(
     field: &'static str,
 ) -> Result<Vec<String>, LoadError> {
     let value = get_value(root, field).ok_or_else(|| missing_field_error(manifest_path, field))?;
-    let items = value.as_array().ok_or_else(|| type_error(manifest_path, field, "array of strings"))?;
+    let items = value
+        .as_array()
+        .ok_or_else(|| type_error(manifest_path, field, "array of strings"))?;
 
     let mut values = Vec::with_capacity(items.len());
     for item in items {
@@ -358,13 +388,19 @@ fn required_string_array(
     Ok(values)
 }
 
-fn required_semver(root: &Value, manifest_path: &Path, field: &'static str) -> Result<SemVer, LoadError> {
+fn required_semver(
+    root: &Value,
+    manifest_path: &Path,
+    field: &'static str,
+) -> Result<SemVer, LoadError> {
     let text = required_string(root, manifest_path, field)?;
     parse_semver(&text).ok_or_else(|| LoadError {
         path: manifest_path.to_path_buf(),
         field: Some(String::from(field)),
         kind: LoadErrorKind::Schema,
-        message: format!("manifest field '{field}' must be a semver string like '1.2.3'; got '{text}'"),
+        message: format!(
+            "manifest field '{field}' must be a semver string like '1.2.3'; got '{text}'"
+        ),
     })
 }
 
@@ -377,7 +413,11 @@ fn parse_semver(text: &str) -> Option<SemVer> {
         return None;
     }
 
-    Some(SemVer { major, minor, patch })
+    Some(SemVer {
+        major,
+        minor,
+        patch,
+    })
 }
 
 fn get_value<'a>(root: &'a Value, field: &str) -> Option<&'a Value> {

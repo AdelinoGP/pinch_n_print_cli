@@ -5,9 +5,11 @@
 [2m2026-03-15T06:44:31.4791022026-03-15T06:44:31.480284Z DEBUG hyper_util::client::legacy::connect::http: connecting to 4.228.31.149:443
 2026-03-15T06:44:31.502442Z DEBUG hyper_util::client::legacy::connect::http: connected to 4.228.31.149:443
 2026-03-15T06:44:31.788189Z DEBUG hyper_util::client::legacy::pool: pooling idle connection for ("https", api.github.com)
-06:44:31.479120Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Read prompt from file [3mpath[0m[2m=[0mPROMPT.md [3mlen[0m[2m=[0m3613
-[2m2026-03-15T06:44:31.479178Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Wrote loop ID marker file [3mloop_id[0m[2m=[0mprimary-20260315-064431 [3mmarker[0m[2m=[0m"/home/admin/slicerProject/pinch_n_print/.ralph/current-loop-id"
-[2m2026-03-15T06:44:31.479210Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Created events file for this run: .ralph/events-20260315-064431.jsonl
+2026-03-15T07:05:51.988348Z  INFO ralph_tui::app: Ctrl+C detected, signaling abort
+2026-03-15T07:05:51.988459Z DEBUG ralph_tui::rpc_writer: Sending RPC command command={"type":"abort","id":null,"reason":"User requested abort"}
+2026-03-15T07:05:51.988557Z DEBUG ralph_tui::rpc_writer: Sending RPC command command={"type":"abort","id":null,"reason":"User requested abort"}
+2026-03-15T07:05:51.988585Z DEBUG ralph_tui::rpc_source: RPC event reader cancelled
+alph::loop_runner[0m[2m:[0m Created events file for this run: .ralph/events-20260315-064431.jsonl
 [2m2026-03-15T06:44:31.479231Z[0m [34mDEBUG[0m [2mralph_core::event_loop[0m[2m:[0m Solo mode: Ralph is the only coordinator
 [2m2026-03-15T06:44:31.479334Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service starting [3mbot_token[0m[2m=[0m8414...bo2k [3mworkspace[0m[2m=[0m/home/admin/slicerProject/pinch_n_print [3mtimeout_secs[0m[2m=[0m300
 [2m2026-03-15T06:44:31.479388Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service started — polling for incoming messages
@@ -3635,3 +3637,10 @@ You MUST NOT declare completion until this objective is fully satisfied.
 [2m2026-03-15T07:04:23.108209Z[0m [34mDEBUG[0m [1mConnection[0m[1m{[0m[3mpeer[0m[2m=[0mClient[1m}[0m[2m:[0m [2mrustls::common_state[0m[2m:[0m Sending warning alert CloseNotify
 [2m2026-03-15T07:04:23.109662Z[0m [32m INFO[0m [2mralph_core::landing[0m[2m:[0m Beginning landing sequence [3mloop_id[0m[2m=[0mprimary
 [2m2026-03-15T07:04:23.109709Z[0m [33m WARN[0m [2mralph_core::landing[0m[2m:[0m Landing with 3 open tasks [3mloop_id[0m[2m=[0mprimary [3mopen_tasks[0m[2m=[0m["task-1773557175-1297", "task-1773557175-1db4", "task-1773557494-9233"]
+[2m2026-03-15T07:04:23.128399Z[0m [32m INFO[0m [2mralph_core::landing[0m[2m:[0m Auto-committed changes during landing [3mloop_id[0m[2m=[0mprimary [3mcommit[0m[2m=[0mSome("9cc09f2ce15c5d730c736558ad28963bc6ae4317") [3mfiles[0m[2m=[0m32
+[2m2026-03-15T07:04:23.134855Z[0m [32m INFO[0m [2mralph_core::landing[0m[2m:[0m Generated handoff file [3mloop_id[0m[2m=[0mprimary [3mpath[0m[2m=[0m/home/admin/slicerProject/pinch_n_print/.ralph/agent/handoff.md [3mcompleted[0m[2m=[0m12 [3mopen[0m[2m=[0m3
+[2m2026-03-15T07:04:23.136848Z[0m [32m INFO[0m [2mralph_core::loop_completion[0m[2m:[0m Landing completed with auto-commit [3mcommit[0m[2m=[0mSome("9cc09f2ce15c5d730c736558ad28963bc6ae4317") [3mhandoff[0m[2m=[0m/home/admin/slicerProject/pinch_n_print/.ralph/agent/handoff.md
+[2m2026-03-15T07:04:23.136864Z[0m [34mDEBUG[0m [2mralph_core::loop_completion[0m[2m:[0m Primary loop completed with landing
+[2m2026-03-15T07:04:23.136872Z[0m [32m INFO[0m [2mralph::loop_runner[0m[2m:[0m Primary loop landed successfully [3mcommitted[0m[2m=[0mtrue [3mhandoff[0m[2m=[0m/home/admin/slicerProject/pinch_n_print/.ralph/agent/handoff.md [3mopen_tasks[0m[2m=[0m3
+[2m2026-03-15T07:04:23.136896Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m No pending merges in queue
+[2m2026-03-15T07:04:23.137975Z[0m [34mDEBUG[0m [2mralph_core::loop_lock[0m[2m:[0m Releasing loop lock at /home/admin/slicerProject/pinch_n_print/.ralph/loop.lock

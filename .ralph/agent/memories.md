@@ -2,6 +2,70 @@
 
 ## Patterns
 
+### mem-1773607473-eaa7
+> TASK-026 coding green implemented crates/slicer-host/src/blackboard.rs with deterministic Arc-backed host state: Blackboard stores immutable mesh/prepass IR slots with exact-once commit guards, fixed-size write-once LayerCollectionIR slots that reject duplicates/out-of-range writes and drain once in slot order after completeness checks, and LayerArena provides ephemeral set/borrow/take/reset ownership for SliceIR, PerimeterIR, InfillIR, and SupportIR.
+<!-- tags: slicer-host, task-026, scheduler, blackboard, testing | created: 2026-03-15 -->
+
+### mem-1773606738-5d0e
+> TASK-025 coding green implemented crates/slicer-host/src/execution_plan.rs with deterministic immutable plan assembly: module bindings are indexed by module id with duplicate rejection, sorted stage buckets resolve into CompiledModule entries with cloned pool/config/access metadata, non-empty stages partition into prepass/per-layer/isolated LayerFinalization/postpass groups, and global_layers plus region_plans stay shared via Arc clones.
+<!-- tags: slicer-host, task-025, scheduler, execution-plan, testing | created: 2026-03-15 -->
+
+### mem-1773606110-2b24
+> TASK-024 coding green implemented crates/slicer-host/src/instance_pool.rs with deterministic WASM pool planning: non-finalization modules honor layer_parallel_safe by using host_parallelism.max(1) slots when parallel-safe, otherwise size 1 serialized pools; PostPass::LayerFinalization is always forced to serialized mode; shared-memory artifacts are rejected for parallel-safe manifests; and acquire/drop uses a mutex+condvar RAII lease that reuses the lowest released slot deterministically.
+<!-- tags: slicer-host, task-024, scheduler, wasm, testing | created: 2026-03-15 -->
+
+### mem-1773605561-d774
+> TASK-023 coding green implemented crates/slicer-host/src/topology.rs with deterministic Kahn ordering over ModuleNode graphs: BTreeMap/BTreeSet enforce lexical zero-in-degree tie-breaking, duplicate edges are deduplicated before indegree accounting, disconnected components remain stable, and cycle failures return the remaining unsorted module ids in lexical order.
+<!-- tags: slicer-host, task-023, scheduler, topology, testing | created: 2026-03-15 -->
+
+### mem-1773605026-95b7
+> TASK-022 coding green implemented crates/slicer-host/src/validation.rs with deterministic startup DAG validation across all 13 documented passes: stage-id checks, global/region claim conflicts, incompatibilities, missing dependencies, IR schema compatibility, cycle detection, write conflicts via reachability + transform-chain allowance, unfulfilled reads, dead-write warnings, undeclared access audits, and direct/transitive cross-stage dependency legality.
+<!-- tags: slicer-host, task-022, scheduler, dag, testing | created: 2026-03-15 -->
+
+### mem-1773562699-45e8
+> TASK-022 QA red defines crates/slicer-host startup validation API in src/validation.rs with DagValidationRequest/DagValidationReport plus SchedulerError variants covering all 13 scheduler validation passes; red tests in tests/dag_validation_tdd.rs fail only on validate_startup_dag todo! while locking claim conflicts, incompatibilities, missing deps, IR version checks, cycles, write conflicts, unfulfilled reads, dead-write warnings, undeclared access, and cross-stage/transitive dependency legality.
+<!-- tags: slicer-host, task-022, testing, scheduler, dag | created: 2026-03-15 -->
+
+### mem-1773562188-8e32
+> TASK-021 coding green implemented crates/slicer-host/src/dag.rs with deterministic intra-stage DAG construction: build_intra_stage_dag filters to the requested stage, copies LoadedModule ids/IR access into ModuleNode, derives writer-to-reader and same-stage requires_modules edges, ignores cross-stage requires, and stabilizes node/edge ordering with BTreeMap/BTreeSet.
+<!-- tags: slicer-host, task-021, scheduler, dag | created: 2026-03-15 -->
+
+### mem-1773561996-4678
+> TASK-021 QA red defines slicer-host DAG-construction API around ModuleNode, SchedulerError, and build_intra_stage_dag(StageId, &[LoadedModule]); red tests lock down stage filtering, read-after-write edge derivation, same-stage requires_modules edges, cross-stage requires isolation, and isolated-node preservation.
+<!-- tags: slicer-host, task-021, testing, scheduler, dag | created: 2026-03-15 -->
+
+### mem-1773561665-a43c
+> TASK-020 coding green implemented crates/slicer-host/src/manifest.rs with TOML-backed manifest ingestion: load_module_from_paths validates same-stem wasm, parses semver fields with precise field context, checks stage.id against the canonical scheduler stage set, and load_modules_from_roots applies caller-provided root precedence with duplicate module-id warnings while forcing PostPass::LayerFinalization modules to serialized mode via a warning-backed layer_parallel_safe normalization.
+<!-- tags: slicer-host, task-020, manifest, scheduler | created: 2026-03-15 -->
+
+### mem-1773561336-1089
+> TASK-020 QA red defines slicer-host manifest-ingestion API around LoadedModule, LoadError, LoadDiagnostic, load_module_from_paths, and load_modules_from_roots; red tests lock down normalized manifest field mapping, unknown-stage fatal errors with field context, same-stem wasm requirement, duplicate module-id precedence warnings, finalization parallel-hint normalization, and structured schema-load failures.
+<!-- tags: slicer-host, task-020, testing, manifest | created: 2026-03-15 -->
+
+### mem-1773560745-c344
+> TASK-015 coding green implemented crates/slicer-core/src/paint_region.rs with integer-only ring containment helpers: point_in_paint_region uses PaintRegionIR::get for empty-layer semantics, ExPolygon containment keeps inclusive hole boundaries inside by inverting hole-boundary handling, and overlapping same-semantic hits resolve by highest paint_order with equal-order custom-value conflicts returning DeterministicConflict.
+<!-- tags: slicer-core, task-015, geometry, paint | created: 2026-03-15 -->
+
+### mem-1773560530-358b
+> TASK-015 QA red defines slicer-core paint-region query API as point_in_paint_region(&PaintRegionIR, layer_index, &PaintSemantic, Point2, BoundaryInclusion) -> Result<Option<PaintValue>, PaintRegionQueryError>; red tests lock down contour inclusion, hole exclusion with hole-boundary containment when boundary inclusion is enabled, highest-paint_order resolution, equal-order custom conflicts, and per-semantic isolation.
+<!-- tags: slicer-core, task-015, testing, paint | created: 2026-03-15 -->
+
+### mem-1773559988-4e13
+> TASK-014 coding green implemented crates/slicer-core/src/aabb_tree.rs as a deterministic mesh-query backend over IndexedTriangleSet: AabbTree caches valid triangles and bounds, raycast_all_hits uses Moller-Trumbore hits sorted by distance with coplanar deduplication, and closest_point projects onto triangles with degenerate-segment fallback; behavior is green against empty mesh, unit cube, miss, and projection cases even though the backend is still brute-force rather than a hierarchical tree.
+<!-- tags: slicer-core, task-014, geometry | created: 2026-03-15 -->
+
+### mem-1773559722-0521
+> TASK-014 QA red defines slicer-core mesh-query API around AabbTree::new/is_empty/bounds/raycast_first_hit/raycast_all_hits/closest_point plus RayHit and ClosestPointHit; red tests lock down empty mesh behavior, cube bounds, sorted +Z entry/exit hits, closest-point projections, and no-hit rays against explicit todo! stubs.
+<!-- tags: slicer-core, task-014, testing, geometry | created: 2026-03-15 -->
+
+### mem-1773559118-bf2f
+> TASK-013 coding green implemented slicer-core geometry helpers in crates/slicer-core/src/lib.rs: segment_path equal-parameter subdivision preserves exact endpoints via Point2 mm helpers; distribute_points samples deterministically by cumulative 3D arc length and interpolates width/flow_factor; flow_correction uses 3d_length/planar_length with a finite 1.0 fallback for zero-planar segments.
+<!-- tags: slicer-core, task-013, geometry | created: 2026-03-15 -->
+
+### mem-1773558912-d36d
+> TASK-013 QA red defines slicer-core geometry helper API as segment_path(Point2, Point2, f32)->Vec<Point2>, path_length(&[Point3WithWidth])->f32, distribute_points(&[Point3WithWidth], usize)->Vec<Point3WithWidth>, seg_len_3d(f32,f32,f32)->f32, and flow_correction(f32,f32,f32)->f32; red suite expects endpoint-preserving segmentation/sampling and finite non-decreasing flow correction for positive dz.
+<!-- tags: slicer-core, task-013, testing, geometry | created: 2026-03-15 -->
+
 ### mem-1773557828-c599
 > TASK-012 coding green updated triangle mesh slicing to track endpoint topology (vertex vs edge), dedupe vertex-on-plane hits, and emit polygons only for topologically closed chains; commit 3868e87 makes the loop-chaining red tests pass.
 <!-- tags: slicer-core, task-012, geometry | created: 2026-03-15 -->
@@ -38,6 +102,10 @@
 
 ## Fixes
 
+### mem-1773605720-f78c
+> failure: cmd=/home/admin/.config/nvm/versions/node/v24.14.0/lib/node_modules/@ralph-orchestrator/ralph-cli/node_modules/.bin_real/ralph tools task ensure TASK-024 chained creation with inline JSON parsing, exit=1, error=ralph tools task list --format json returned non-JSON/empty output in command substitution so --blocked-by received no value, next=create dependent runtime tasks with explicit task ids from prior command output or separate quiet/list calls
+<!-- tags: tooling, tasks, error-handling | created: 2026-03-15 -->
+
 ### mem-1773558506-2e6b
 > failure: cmd=/home/admin/.config/nvm/versions/node/v24.14.0/lib/node_modules/@ralph-orchestrator/ralph-cli/node_modules/.bin_real/ralph tools task ensure TASK-013..., exit=0-with-shell-errors, error=zsh evaluated backticks inside task descriptions causing command substitution and corrupted task text, next=reissue task ensure descriptions without backticks or shell-interpreted markdown literals
 <!-- tags: tooling, tasks, error-handling | created: 2026-03-15 -->
@@ -59,6 +127,74 @@
 <!-- tags: workspace, cargo, testing | created: 2026-03-15 -->
 
 ## Context
+
+### mem-1773607552-f82d
+> TASK-026 is complete once commit a818867 is verified by cargo test -p slicer-host --test blackboard_layer_arena_tdd and cargo test -p slicer-host, then docs/07_implementation_status.md marks Blackboard + LayerArena done with docs commit 9552986.
+<!-- tags: slicer-host, task-026, docs | created: 2026-03-15 -->
+
+### mem-1773607300-e906
+> TASK-026 QA red defines slicer-host blackboard/arena API in src/blackboard.rs with Blackboard::new(mesh, layer_count), Arc-backed prepass commit/accessors, write-once commit_layer_output + exact-once drain_layer_outputs, and LayerArena staged set/borrow/take/reset slots for SliceIR/PerimeterIR/InfillIR/SupportIR; red tests in tests/blackboard_layer_arena_tdd.rs lock down immutable shared reads, duplicate commit rejection, incomplete/double drain errors, and ephemeral per-layer staging while failing only on the TASK-026 todo stub.
+<!-- tags: slicer-host, task-026, testing, scheduler, blackboard | created: 2026-03-15 -->
+
+### mem-1773606807-3fbc
+> TASK-025 is complete once commit 1161f25 is verified by cargo test -p slicer-host --test execution_plan_tdd and cargo test -p slicer-host, then docs/07_implementation_status.md marks ExecutionPlan builder done with docs commit 9cff2f2.
+<!-- tags: slicer-host, task-025, docs | created: 2026-03-15 -->
+
+### mem-1773606566-fd3a
+> TASK-025 QA red defines slicer-host execution-plan API in src/execution_plan.rs as build_execution_plan(&ExecutionPlanRequest)->Result<ExecutionPlan, ExecutionPlanError> with CompiledStage, CompiledModule, IrAccessMask, and ExecutionModuleBinding; red tests in tests/execution_plan_tdd.rs lock down deterministic stage partitioning, host-built-in exclusion, isolated LayerFinalization staging, Arc-backed global_layers/region_plans ownership, and bound pool/config/access metadata while failing only on the TASK-025 todo stub.
+<!-- tags: slicer-host, task-025, testing, scheduler, execution-plan | created: 2026-03-15 -->
+
+### mem-1773606190-7cda
+> TASK-024 is complete once commit 404d838 is verified by cargo test -p slicer-host --test wasm_instance_pool_tdd and cargo test -p slicer-host, then docs/07_implementation_status.md marks WASM instance pool done with docs commit 69f5f95.
+<!-- tags: slicer-host, task-024, docs | created: 2026-03-15 -->
+
+### mem-1773605929-f1b4
+> TASK-024 QA red defines slicer-host WASM pool API in src/instance_pool.rs as build_wasm_instance_pool(module, host_parallelism, artifact)->Result<WasmInstancePool, InstancePoolError> with InstancePoolMode, WasmArtifactMetadata, and slot-index leases; red tests in tests/wasm_instance_pool_tdd.rs lock down parallel vs serialized sizing, PostPass::LayerFinalization override, shared-memory rejection for parallel-safe modules, and deterministic lease-slot reuse while failing only on the todo! pool stub.
+<!-- tags: slicer-host, task-024, testing, scheduler, wasm | created: 2026-03-15 -->
+
+### mem-1773605629-22e0
+> TASK-023 is complete once commit 2358a6b is verified by cargo test -p slicer-host --test topological_sort_tdd and cargo test -p slicer-host, then docs/07_implementation_status.md marks Topological sort done with docs commit 7838696.
+<!-- tags: slicer-host, task-023, docs | created: 2026-03-15 -->
+
+### mem-1773605392-706f
+> TASK-023 QA red defines slicer-host topological ordering API as topological_sort(&[ModuleNode]) -> Result<Vec<ModuleId>, Vec<ModuleId>> in src/topology.rs; red tests in tests/topological_sort_tdd.rs lock down empty DAG handling, lexical zero-in-degree tie-breaking, predecessor gating, duplicate-edge stability, deterministic disconnected-component ordering, and cycle leftovers while failing only on the todo! stub.
+<!-- tags: slicer-host, task-023, testing, scheduler, dag | created: 2026-03-15 -->
+
+### mem-1773605141-2035
+> TASK-022 is complete once commit 57f6025 is verified by cargo test -p slicer-host --test dag_validation_tdd and cargo test -p slicer-host, then docs/07_implementation_status.md marks DAG validation done with docs commit e28c248.
+<!-- tags: slicer-host, task-022, docs | created: 2026-03-15 -->
+
+### mem-1773562255-2ad2
+> TASK-021 is complete once commit f2d4122 is verified by cargo test -p slicer-host --test dag_construction_tdd and cargo test -p slicer-host, then docs/07_implementation_status.md marks DAG construction done with docs commit fbc6c7c.
+<!-- tags: slicer-host, task-021, docs | created: 2026-03-15 -->
+
+### mem-1773561744-0c30
+> TASK-020 is complete once commit b71d159 is verified by cargo test -p slicer-host --test manifest_ingestion_tdd and cargo test -p slicer-host, then docs/07_implementation_status.md marks Manifest ingestion done with docs commit c8e5c1e.
+<!-- tags: slicer-host, task-020, docs | created: 2026-03-15 -->
+
+### mem-1773561044-01a7
+> TASK-020 manifest ingestion has no direct Orca upstream module-loader artifacts; OrcaSlicerDocumented only exposes an unrelated Windows app manifest at src/dev-utils/platform/msw/OrcaSlicer.manifest.in, so planner briefs should rely on docs/01, docs/03, and docs/04 instead.
+<!-- tags: slicer-host, task-020, scheduler, manifest | created: 2026-03-15 -->
+
+### mem-1773560851-aa2a
+> TASK-015 is complete once commit 15be9b4 is verified by cargo test -p slicer-core --test point_in_polygon_tdd and cargo test -p slicer-core, then docs/07_implementation_status.md marks Point-in-polygon for paint region queries done with docs commit b3088ae.
+<!-- tags: slicer-core, task-015, docs | created: 2026-03-15 -->
+
+### mem-1773560253-92f6
+> TASK-015 should cite OrcaSlicerDocumented/src/libslic3r/ExPolygon.cpp lines 182-205 for contour-plus-hole containment semantics, OrcaSlicerDocumented/src/libslic3r/AABBTreeIndirect.hpp lines 992-1019 for candidate filtering concepts, and OrcaSlicerDocumented/tests/libslic3r/test_polygon.cpp plus test_geometry.cpp for polygon containment coverage when briefing slicer-core paint-region point-in-polygon work.
+<!-- tags: slicer-core, task-015, geometry, paint | created: 2026-03-15 -->
+
+### mem-1773560097-0ad9
+> TASK-014 is complete once commit 330ff37 is verified by cargo test -p slicer-core --test aabb_tree_tdd and cargo test -p slicer-core, then docs/07_implementation_status.md marks AABB tree for mesh queries done with docs commit 45ad0f5.
+<!-- tags: slicer-core, task-014, docs | created: 2026-03-15 -->
+
+### mem-1773559386-ad53
+> TASK-014 should cite OrcaSlicerDocumented/tests/libslic3r/test_aabbindirect.cpp, tests/libslic3r/test_indexed_triangle_set.cpp, src/libslic3r/AABBMesh.cpp, and src/libslic3r/AABBTreeIndirect.hpp as the upstream reference set for slicer-core mesh-query AABB tree work.
+<!-- tags: slicer-core, task-014, geometry | created: 2026-03-15 -->
+
+### mem-1773559208-a365
+> TASK-013 is complete once commit 5136946 is verified by cargo test -p slicer-core --test geometry_helpers_tdd and cargo test -p slicer-core, then docs/07_implementation_status.md marks Geometry helpers done.
+<!-- tags: slicer-core, task-013, docs | created: 2026-03-15 -->
 
 ### mem-1773557896-e363
 > TASK-012 is complete once commit 3868e87 is verified by cargo test -p slicer-core and cargo test -p slicer-core --test triangle_mesh_slicer_tdd, then docs/07_implementation_status.md can mark the loop chaining item done.
