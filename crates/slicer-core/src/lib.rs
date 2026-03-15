@@ -5,12 +5,18 @@
 #![warn(unused_must_use)]
 
 pub mod aabb_tree;
+pub mod paint_region;
 pub mod polygon_ops;
 pub mod triangle_mesh_slicer;
 
 use slicer_ir::{Point2, Point3WithWidth};
 
 pub use aabb_tree::{AabbTree, ClosestPointHit, RayHit};
+pub use paint_region::{
+    point_in_paint_region,
+    BoundaryInclusion,
+    PaintRegionQueryError,
+};
 pub use polygon_ops::{
     clip_polygons,
     difference,
