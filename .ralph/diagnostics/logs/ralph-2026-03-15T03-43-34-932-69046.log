@@ -1,0 +1,30 @@
+[2m2026-03-15T06:43:34.937873Z[0m [34mDEBUG[0m [2mralph_core::loop_lock[0m[2m:[0m Acquired loop lock at /home/admin/slicerProject/pinch_n_print/.ralph/loop.lock
+[2m2026-03-15T06:43:34.937894Z[0m [34mDEBUG[0m [2mralph[0m[2m:[0m Acquired loop lock, running as primary loop
+[2m2026-03-15T06:43:34.937929Z[0m [34mDEBUG[0m [2mralph::process_management[0m[2m:[0m Process group initialized: PID 69053
+[2m2026-03-15T06:43:34.937938Z[0m [33m WARN[0m [2mralph::loop_runner[0m[2m:[0m Interactive mode requested but stdout is not a TTY, falling back to autonomous
+[2m2026-03-15T06:43:34.937945Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Resolving prompt content [3minline_prompt[0m[2m=[0mNone [3mprompt_file[0m[2m=[0mPROMPT.md
+[2m2026-03-15T06:43:34.937954Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Checking prompt file [3mpath[0m[2m=[0mPROMPT.md [3mexists[0m[2m=[0mtrue
+[2m2026-03-15T06:43:34.937967Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Read prompt from file [3mpath[0m[2m=[0mPROMPT.md [3mlen[0m[2m=[0m3613
+[2m2026-03-15T06:43:34.938008Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Wrote loop ID marker file [3mloop_id[0m[2m=[0mprimary-20260315-064334 [3mmarker[0m[2m=[0m"/home/admin/slicerProject/pinch_n_print/.ralph/current-loop-id"
+[2m2026-03-15T06:43:34.938038Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Created events file for this run: .ralph/events-20260315-064334.jsonl
+[2m2026-03-15T06:43:34.938091Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Cleared scratchpad for fresh objective: "/home/admin/slicerProject/pinch_n_print/.ralph/agent/scratchpad.md"
+[2m2026-03-15T06:43:34.938116Z[0m [34mDEBUG[0m [2mralph_core::event_loop[0m[2m:[0m Solo mode: Ralph is the only coordinator
+[2m2026-03-15T06:43:34.938271Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service starting [3mbot_token[0m[2m=[0m8414...bo2k [3mworkspace[0m[2m=[0m/home/admin/slicerProject/pinch_n_print [3mtimeout_secs[0m[2m=[0m300
+[2m2026-03-15T06:43:34.938344Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service started — polling for incoming messages
+[2m2026-03-15T06:43:34.938353Z[0m [32m INFO[0m [2mralph::loop_runner[0m[2m:[0m Robot human-in-the-loop service active [3mbot_token[0m[2m=[0m8414...bo2k [3mtimeout_secs[0m[2m=[0m300
+[2m2026-03-15T06:43:34.938370Z[0m [34mDEBUG[0m [2mralph_core::event_loop[0m[2m:[0m Published task.start event [3mtopic[0m[2m=[0m"task.start"
+[2m2026-03-15T06:43:34.938426Z[0m [34mDEBUG[0m [2mralph_core::event_logger[0m[2m:[0m Event logged [3mtopic[0m[2m=[0mtask.start [3miteration[0m[2m=[0m0
+[2m2026-03-15T06:43:34.938471Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Execution mode configured [3mexecution_mode[0m[2m=[0mautonomous
+[2m2026-03-15T06:43:34.938482Z[0m [34mDEBUG[0m [2mreqwest::connect[0m[2m:[0m starting new connection: https://api.telegram.org/
+[2m2026-03-15T06:43:34.938532Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service stopped [3mworkspace[0m[2m=[0m/home/admin/slicerProject/pinch_n_print
+[2m2026-03-15T06:43:34.938549Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Wrapping up: restart_requested. 0 iterations in 0s. [3mreason[0m[2m=[0mrestart_requested [3miterations[0m[2m=[0m0 [3mduration[0m[2m=[0m0s
+[2m2026-03-15T06:43:34.938561Z[0m [34mDEBUG[0m [2mralph_core::event_logger[0m[2m:[0m Event logged [3mtopic[0m[2m=[0mloop.terminate [3miteration[0m[2m=[0m0
+[2m2026-03-15T06:43:34.938718Z[0m [34mDEBUG[0m [2mhyper::client::connect::dns[0m[2m:[0m resolving host="api.telegram.org"
+[2m2026-03-15T06:43:34.941204Z[0m [32m INFO[0m [2mralph[0m[2m:[0m Restart requested — launching single-command restart: kill 69053 && RALPH_DIAGNOSTICS=1 cargo run --bin ralph -- resume -c ralph.test.yml
+[2m2026-03-15T06:43:34.941360Z[0m [34mDEBUG[0m [2mralph_core::loop_lock[0m[2m:[0m Releasing loop lock at /home/admin/slicerProject/pinch_n_print/.ralph/loop.lock
+warning: virtual workspace defaulting to `resolver = "1"` despite one or more workspace members being on edition 2021 which implies `resolver = "2"`
+  |
+  = note: to keep the current resolver, specify `workspace.resolver = "1"` in the workspace root's manifest
+  = note: to use the edition 2021 resolver, specify `workspace.resolver = "2"` in the workspace root's manifest
+  = note: for more details see https://doc.rust-lang.org/cargo/reference/resolver.html#resolver-versions
+error: no bin target named `ralph` in default-run packages

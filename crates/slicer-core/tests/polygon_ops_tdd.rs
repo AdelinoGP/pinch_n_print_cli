@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use slicer_core::{difference, intersection, offset, union, xor, OffsetJoinType};
 use slicer_ir::{ExPolygon, Point2, Polygon};
 

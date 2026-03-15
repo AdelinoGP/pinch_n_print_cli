@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/slicer-core",
     "crates/slicer-ir",
     "crates/slicer-macros",
     "crates/slicer-sdk",
@@ -19,7 +20,7 @@ wit-bindgen = "0.24"
 rayon = "1.10"
 geo = "0.28"
 nalgebra = "0.32"
-clipper2-rust = "1.3"
+clipper2-rust = "1.0.1"
 serde = { version = "1.0", features = ["derive"] }
 bincode = "1.3"
 

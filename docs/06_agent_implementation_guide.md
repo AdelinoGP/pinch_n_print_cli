@@ -327,7 +327,7 @@ TASK-021  crates/slicer-host/: DAG construction (build_intra_stage_dag)
     Depends on: TASK-020
     
 
-TASK-022  crates/slicer-host/: DAG validation (all 8 passes from 04_host_scheduler.md)
+TASK-022  crates/slicer-host/: DAG validation (all 13 passes from 04_host_scheduler.md)
     Stage: Core Infrastructure
     Purpose: Enforce claim uniqueness, cycle freedom, read/write legality, and compatibility constraints so runtime execution is deterministic.
     Depends on: TASK-021

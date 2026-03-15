@@ -24,11 +24,11 @@ mod tests {
         let point = Point2::from_mm(1.0, 1.0);
         assert_eq!(point.x, 10_000);
         assert_eq!(point.y, 10_000);
-        
+
         let point2 = Point2::from_mm(0.4, 0.4); // nozzle diameter
         assert_eq!(point2.x, 4_000);
         assert_eq!(point2.y, 4_000);
-        
+
         // Round-trip
         let (mm_x, mm_y) = point.to_mm();
         assert!((mm_x - 1.0).abs() < 0.0001);
@@ -38,19 +38,31 @@ mod tests {
     #[test]
     fn test_point3_types() {
         // Point3 uses f32 in millimeters
-        let point = Point3 { x: 1.5, y: 2.5, z: 3.5 };
+        let point = Point3 {
+            x: 1.5,
+            y: 2.5,
+            z: 3.5,
+        };
         assert!((point.x - 1.5).abs() < 0.0001);
-        
+
         test_serde_roundtrip!(point);
     }
 
     #[test]
     fn test_bounding_box3() {
         let bbox = BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 100.0, y: 100.0, z: 100.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 100.0,
+                y: 100.0,
+                z: 100.0,
+            },
         };
-        
+
         test_serde_roundtrip!(bbox);
     }
 
@@ -59,13 +71,10 @@ mod tests {
         // Column-major 4x4 matrix
         let transform = Transform3d {
             matrix: [
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, 0.0,
-                0.0, 0.0, 0.0, 1.0,
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
             ],
         };
-        
+
         test_serde_roundtrip!(transform);
     }
 
@@ -73,13 +82,25 @@ mod tests {
     fn test_indexed_triangle_set() {
         let triangles = IndexedTriangleSet {
             vertices: vec![
-                Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                Point3 { x: 0.0, y: 1.0, z: 0.0 },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
             ],
             indices: vec![0, 1, 2],
         };
-        
+
         test_serde_roundtrip!(triangles);
     }
 
@@ -90,7 +111,7 @@ mod tests {
             minor: 0,
             patch: 0,
         };
-        
+
         assert_eq!(version.to_string(), "1.0.0");
         test_serde_roundtrip!(version);
     }
@@ -98,14 +119,26 @@ mod tests {
     #[test]
     fn test_mesh_ir() {
         let mesh_ir = MeshIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             objects: vec![],
             build_volume: BoundingBox3 {
-                min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+                min: Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                max: Point3 {
+                    x: 200.0,
+                    y: 200.0,
+                    z: 200.0,
+                },
             },
         };
-        
+
         test_serde_roundtrip!(mesh_ir);
     }
 
@@ -114,17 +147,21 @@ mod tests {
         let obj_mesh = ObjectMesh {
             id: "test-uuid-1234".to_string(),
             mesh: IndexedTriangleSet {
-                vertices: vec![Point3 { x: 0.0, y: 0.0, z: 0.0 }],
+                vertices: vec![Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                }],
                 indices: vec![0, 1, 2],
             },
-            transform: Transform3d {
-                matrix: [1.0; 16],
+            transform: Transform3d { matrix: [1.0; 16] },
+            config: ObjectConfig {
+                data: HashMap::new(),
             },
-            config: ObjectConfig { data: HashMap::new() },
             modifier_volumes: vec![],
             paint_data: None,
         };
-        
+
         test_serde_roundtrip!(obj_mesh);
     }
 
@@ -137,7 +174,7 @@ mod tests {
                 strokes: vec![],
             }],
         };
-        
+
         test_serde_roundtrip!(paint_data);
     }
 
@@ -148,7 +185,7 @@ mod tests {
         let enforcer = PaintSemantic::SupportEnforcer;
         let blocker = PaintSemantic::SupportBlocker;
         let custom = PaintSemantic::Custom("com.example/test@1".to_string());
-        
+
         test_serde_roundtrip!(material);
         test_serde_roundtrip!(fuzzy);
         test_serde_roundtrip!(enforcer);
@@ -161,7 +198,7 @@ mod tests {
         let flag = PaintValue::Flag(true);
         let scalar = PaintValue::Scalar(0.5);
         let tool = PaintValue::ToolIndex(2);
-        
+
         test_serde_roundtrip!(flag);
         test_serde_roundtrip!(scalar);
         test_serde_roundtrip!(tool);
@@ -170,17 +207,27 @@ mod tests {
     #[test]
     fn test_paint_stroke() {
         let stroke = PaintStroke {
-            triangles: vec![
-                [
-                    Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 0.0, y: 1.0, z: 0.0 },
-                ],
-            ],
+            triangles: vec![[
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+            ]],
             semantic: PaintSemantic::Material,
             value: PaintValue::ToolIndex(1),
         };
-        
+
         test_serde_roundtrip!(stroke);
     }
 
@@ -192,11 +239,13 @@ mod tests {
                 vertices: vec![],
                 indices: vec![],
             },
-            config_delta: ConfigDelta { fields: std::collections::HashMap::new() },
+            config_delta: ConfigDelta {
+                fields: std::collections::HashMap::new(),
+            },
             priority: 10,
             applies_to: ModifierScope::Perimeters,
         };
-        
+
         test_serde_roundtrip!(modifier);
     }
 
@@ -212,17 +261,23 @@ mod tests {
     #[test]
     fn test_surface_classification_ir() {
         let surf_ir = SurfaceClassificationIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             per_object: std::collections::HashMap::new(),
         };
-        
+
         test_serde_roundtrip!(surf_ir);
     }
 
     #[test]
     fn test_facet_class() {
         test_serde_roundtrip!(FacetClass::Normal);
-        test_serde_roundtrip!(FacetClass::NearHorizontal { slope_angle_deg: 5.0 });
+        test_serde_roundtrip!(FacetClass::NearHorizontal {
+            slope_angle_deg: 5.0
+        });
         test_serde_roundtrip!(FacetClass::Overhang { angle_deg: 45.0 });
         test_serde_roundtrip!(FacetClass::Bridge);
         test_serde_roundtrip!(FacetClass::TopSurface);
@@ -240,7 +295,7 @@ mod tests {
             printable: true,
             shell_count: 3,
         };
-        
+
         test_serde_roundtrip!(group);
     }
 
@@ -251,7 +306,7 @@ mod tests {
             facet_indices: vec![0, 1, 2],
             bridge_direction_deg: 90.0,
         };
-        
+
         test_serde_roundtrip!(region);
     }
 
@@ -263,18 +318,22 @@ mod tests {
             max_angle_deg: 60.0,
             needs_support: true,
         };
-        
+
         test_serde_roundtrip!(region);
     }
 
     #[test]
     fn test_layer_plan_ir() {
         let plan = LayerPlanIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             global_layers: vec![],
             object_participation: std::collections::HashMap::new(),
         };
-        
+
         test_serde_roundtrip!(plan);
     }
 
@@ -287,7 +346,7 @@ mod tests {
             has_nonplanar: false,
             is_sync_layer: false,
         };
-        
+
         test_serde_roundtrip!(layer);
     }
 
@@ -303,17 +362,21 @@ mod tests {
             catchup_z_bottom: 0.0,
             tool_index: 0,
         };
-        
+
         test_serde_roundtrip!(region);
     }
 
     #[test]
     fn test_paint_region_ir() {
         let paint_ir = PaintRegionIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             per_layer: std::collections::HashMap::new(),
         };
-        
+
         test_serde_roundtrip!(paint_ir);
     }
 
@@ -326,17 +389,21 @@ mod tests {
             value: PaintValue::Flag(true),
             paint_order: 1,
         };
-        
+
         test_serde_roundtrip!(region);
     }
 
     #[test]
     fn test_region_map_ir() {
         let map = RegionMapIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             entries: std::collections::HashMap::new(),
         };
-        
+
         test_serde_roundtrip!(map);
     }
 
@@ -347,19 +414,23 @@ mod tests {
             object_id: "obj-1".to_string(),
             region_id: 1,
         };
-        
+
         test_serde_roundtrip!(key);
     }
 
     #[test]
     fn test_slice_ir() {
         let slice = SliceIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             global_layer_index: 0,
             z: 0.2,
             regions: vec![],
         };
-        
+
         test_serde_roundtrip!(slice);
     }
 
@@ -374,7 +445,7 @@ mod tests {
             effective_layer_height: 0.2,
             boundary_paint: std::collections::HashMap::new(),
         };
-        
+
         test_serde_roundtrip!(region);
     }
 
@@ -391,14 +462,18 @@ mod tests {
             },
             holes: vec![],
         };
-        
+
         test_serde_roundtrip!(poly);
     }
 
     #[test]
     fn test_gcode_ir() {
         let gcode = GCodeIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             commands: vec![],
             metadata: PrintMetadata {
                 estimated_print_time_s: 3600,
@@ -407,7 +482,7 @@ mod tests {
                 slicer_version: "0.1.0".to_string(),
             },
         };
-        
+
         test_serde_roundtrip!(gcode);
     }
 
@@ -421,11 +496,16 @@ mod tests {
             f: Some(3000.0),
             role: ExtrusionRole::OuterWall,
         });
-        
-        test_serde_roundtrip!(GCodeCommand::Retract { length: 1.0, speed: 30.0 });
+
+        test_serde_roundtrip!(GCodeCommand::Retract {
+            length: 1.0,
+            speed: 30.0
+        });
         test_serde_roundtrip!(GCodeCommand::FanSpeed { value: 255 });
         test_serde_roundtrip!(GCodeCommand::ToolChange { from: 0, to: 1 });
-        test_serde_roundtrip!(GCodeCommand::Comment { text: "test".to_string() });
+        test_serde_roundtrip!(GCodeCommand::Comment {
+            text: "test".to_string()
+        });
     }
 
     #[test]
@@ -446,7 +526,7 @@ mod tests {
             skip_ironing: false,
             custom: std::collections::HashMap::new(),
         };
-        
+
         test_serde_roundtrip!(flags);
     }
 
