@@ -30,7 +30,7 @@ Last updated: 2026-03-15
 - [x] TASK-020 Manifest ingestion
 - [x] TASK-021 DAG construction
 - [x] TASK-022 DAG validation (all 13 passes)
-- [ ] TASK-023 Topological sort
+- [x] TASK-023 Topological sort
 - [ ] TASK-024 WASM instance pool
 - [ ] TASK-025 ExecutionPlan builder
 - [ ] TASK-026 Blackboard + LayerArena
