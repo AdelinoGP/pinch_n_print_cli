@@ -9,6 +9,7 @@ pub mod dag;
 pub mod execution_plan;
 pub mod instance_pool;
 pub mod manifest;
+pub mod prepass;
 pub mod topology;
 pub mod validation;
 
@@ -28,6 +29,7 @@ pub use manifest::{
     load_module_from_paths, load_modules_from_roots, ConfigSchema, DiagnosticLevel, LoadDiagnostic,
     LoadError, LoadErrorKind, LoadModulesReport, LoadedModule,
 };
+pub use prepass::{execute_prepass, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner};
 pub use topology::topological_sort;
 pub use validation::{
     validate_startup_dag, AccessKind, ClaimHolder, ConflictScope, DagValidationDiagnostic,
