@@ -4,13 +4,34 @@
 
 use slicer_ir::{ExPolygon, IndexedTriangleSet, Point2, Point3, Polygon};
 
+use std::collections::HashMap;
+
 /// Represents a line segment intersection with a slicing plane.
 #[derive(Debug, Clone)]
 struct IntersectionLine {
     a: Point2,
     b: Point2,
-    a_edge_key: u64,
-    b_edge_key: u64,
+    a_topology: EndpointTopology,
+    b_topology: EndpointTopology,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum EndpointTopology {
+    Vertex(i32),
+    Edge(u64),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct IntersectionPoint {
+    point: Point2,
+    topology: EndpointTopology,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VertexPlaneRelation {
+    Below,
+    On,
+    Above,
 }
 
 /// Converts a 3D triangle mesh into 2D ExPolygon layers at specified Z heights.
@@ -94,30 +115,20 @@ fn slice_make_lines(mesh: &IndexedTriangleSet, zs: &[f32]) -> Vec<Vec<Intersecti
                 continue;
             }
 
-            // Find intersection points
-            let mut points = Vec::new();
-
-            // Edge 0: v0 -> v1
-            if let Some(point) = intersect_edge(v0, v1, idx0 as i32, idx1 as i32, z_plane) {
-                points.push(point);
-            }
-            // Edge 1: v1 -> v2
-            if let Some(point) = intersect_edge(v1, v2, idx1 as i32, idx2 as i32, z_plane) {
-                points.push(point);
-            }
-            // Edge 2: v2 -> v0
-            if let Some(point) = intersect_edge(v2, v0, idx2 as i32, idx0 as i32, z_plane) {
-                points.push(point);
-            }
+            let points = triangle_intersections(
+                [v0, v1, v2],
+                [idx0 as i32, idx1 as i32, idx2 as i32],
+                z_plane,
+            );
 
             // Should have exactly 2 intersection points for a valid slice
             if points.len() == 2 {
                 // Order points to ensure consistent winding (external on right)
                 let line = IntersectionLine {
-                    a: points[1].0,
-                    b: points[0].0,
-                    a_edge_key: points[1].1,
-                    b_edge_key: points[0].1,
+                    a: points[1].point,
+                    b: points[0].point,
+                    a_topology: points[1].topology,
+                    b_topology: points[0].topology,
                 };
                 layers_lines[layer_idx].push(line);
             }
@@ -127,43 +138,109 @@ fn slice_make_lines(mesh: &IndexedTriangleSet, zs: &[f32]) -> Vec<Vec<Intersecti
     layers_lines
 }
 
-/// Compute intersection of an edge with a Z plane
-/// Returns Some((point, edge_key)) if intersection exists
-/// edge_key is a unique identifier for the mesh edge (min_vertex << 32 | max_vertex)
+fn triangle_intersections(
+    vertices: [&Point3; 3],
+    vertex_ids: [i32; 3],
+    z_plane: f32,
+) -> Vec<IntersectionPoint> {
+    let relations = vertices.map(|vertex| classify_vertex(vertex.z, z_plane));
+    let on_plane = relations
+        .iter()
+        .filter(|relation| **relation == VertexPlaneRelation::On)
+        .count();
+    let above_plane = relations
+        .iter()
+        .filter(|relation| **relation == VertexPlaneRelation::Above)
+        .count();
+    let below_plane = relations
+        .iter()
+        .filter(|relation| **relation == VertexPlaneRelation::Below)
+        .count();
+
+    if on_plane == 3 || on_plane == 2 || above_plane == 0 || below_plane == 0 {
+        return Vec::new();
+    }
+
+    let mut intersections = Vec::new();
+    for (start, end) in [(0usize, 1usize), (1, 2), (2, 0)] {
+        if let Some(point) = intersect_edge(
+            vertices[start],
+            vertices[end],
+            vertex_ids[start],
+            vertex_ids[end],
+            relations[start],
+            relations[end],
+            z_plane,
+        ) {
+            push_unique_intersection(&mut intersections, point);
+        }
+    }
+
+    intersections
+}
+
+fn classify_vertex(z: f32, z_plane: f32) -> VertexPlaneRelation {
+    const EPSILON: f32 = 1e-6;
+
+    if (z - z_plane).abs() < EPSILON {
+        VertexPlaneRelation::On
+    } else if z < z_plane {
+        VertexPlaneRelation::Below
+    } else {
+        VertexPlaneRelation::Above
+    }
+}
+
+fn push_unique_intersection(
+    intersections: &mut Vec<IntersectionPoint>,
+    candidate: IntersectionPoint,
+) {
+    if intersections.iter().any(|existing| {
+        existing.topology == candidate.topology || existing.point == candidate.point
+    }) {
+        return;
+    }
+
+    intersections.push(candidate);
+}
+
 fn intersect_edge(
     v1: &Point3,
     v2: &Point3,
     id1: i32,
     id2: i32,
+    relation1: VertexPlaneRelation,
+    relation2: VertexPlaneRelation,
     z_plane: f32,
-) -> Option<(Point2, u64)> {
-    let z1 = v1.z;
-    let z2 = v2.z;
+) -> Option<IntersectionPoint> {
+    match (relation1, relation2) {
+        (VertexPlaneRelation::On, VertexPlaneRelation::Above)
+        | (VertexPlaneRelation::On, VertexPlaneRelation::Below) => Some(IntersectionPoint {
+            point: Point2::from_mm(v1.x, v1.y),
+            topology: EndpointTopology::Vertex(id1),
+        }),
+        (VertexPlaneRelation::Above, VertexPlaneRelation::On)
+        | (VertexPlaneRelation::Below, VertexPlaneRelation::On) => Some(IntersectionPoint {
+            point: Point2::from_mm(v2.x, v2.y),
+            topology: EndpointTopology::Vertex(id2),
+        }),
+        (VertexPlaneRelation::Above, VertexPlaneRelation::Below)
+        | (VertexPlaneRelation::Below, VertexPlaneRelation::Above) => {
+            let t = (z_plane - v1.z) / (v2.z - v1.z);
+            let x = v1.x + t * (v2.x - v1.x);
+            let y = v1.y + t * (v2.y - v1.y);
 
-    // Create unique edge key (order-independent)
-    let edge_key = ((id1.min(id2) as u64) << 32) | (id1.max(id2) as u64);
-
-    // Check if edge crosses the plane
-    if (z1 - z_plane).abs() < 1e-6 {
-        // Vertex is exactly on plane
-        return Some((Point2::from_mm(v1.x, v1.y), edge_key));
+            Some(IntersectionPoint {
+                point: Point2::from_mm(x, y),
+                topology: EndpointTopology::Edge(edge_key(id1, id2)),
+            })
+        }
+        _ => None,
     }
-    if (z2 - z_plane).abs() < 1e-6 {
-        // Vertex is exactly on plane
-        return Some((Point2::from_mm(v2.x, v2.y), edge_key));
-    }
+}
 
-    // Check if edge straddles the plane
-    if (z1 < z_plane && z2 > z_plane) || (z1 > z_plane && z2 < z_plane) {
-        // Linear interpolation
-        let t = (z_plane - z1) / (z2 - z1);
-        let x = v1.x + t * (v2.x - v1.x);
-        let y = v1.y + t * (v2.y - v1.y);
-
-        return Some((Point2::from_mm(x, y), edge_key));
-    }
-
-    None
+fn edge_key(id1: i32, id2: i32) -> u64 {
+    ((id1.min(id2) as u64) << 32) | (id1.max(id2) as u64)
 }
 
 /// Phase 2: Chain intersection lines into polygons and convert to ExPolygons
@@ -172,20 +249,7 @@ fn chain_lines_to_expolygons(lines: Vec<IntersectionLine>) -> Vec<ExPolygon> {
         return Vec::new();
     }
 
-    // Chain lines into polylines using vertex IDs
-        let polylines = chain_lines(lines);
-
-    // Convert polylines to Polygons (closed loops)
-    let polygons: Vec<Polygon> = polylines
-        .into_iter()
-        .filter_map(|polyline| {
-            if polyline.len() >= 3 {
-                Some(Polygon { points: polyline })
-            } else {
-                None
-            }
-        })
-        .collect();
+    let polygons = chain_lines(lines);
 
     // Convert Polygons to ExPolygons using boolean union
     // For simple cases (no holes), this just wraps each polygon
@@ -193,143 +257,98 @@ fn chain_lines_to_expolygons(lines: Vec<IntersectionLine>) -> Vec<ExPolygon> {
     polygons_to_expolygons(&polygons)
 }
 
-/// Chain lines into polylines based on edge connectivity
-/// Also merges collinear segments to simplify the polygon
-fn chain_lines(lines: Vec<IntersectionLine>) -> Vec<Vec<Point2>> {
-    use std::collections::HashMap;
-
-    // Build adjacency map: edge_key -> list of (other_edge_key, line_index)
-    let mut adjacency: HashMap<u64, Vec<(u64, usize)>> = HashMap::new();
+/// Chain lines into closed polygons based on triangle connectivity.
+fn chain_lines(lines: Vec<IntersectionLine>) -> Vec<Polygon> {
+    let mut by_edge_a: HashMap<u64, Vec<usize>> = HashMap::new();
+    let mut by_vertex_a: HashMap<i32, Vec<usize>> = HashMap::new();
     for (idx, line) in lines.iter().enumerate() {
-        adjacency.entry(line.a_edge_key).or_default().push((line.b_edge_key, idx));
-        adjacency.entry(line.b_edge_key).or_default().push((line.a_edge_key, idx));
+        match line.a_topology {
+            EndpointTopology::Edge(id) => by_edge_a.entry(id).or_default().push(idx),
+            EndpointTopology::Vertex(id) => by_vertex_a.entry(id).or_default().push(idx),
+        }
     }
 
     let mut used = vec![false; lines.len()];
-    let mut polylines = Vec::new();
+    let mut polygons = Vec::new();
 
-    for (start_idx, line) in lines.iter().enumerate() {
+    for start_idx in 0..lines.len() {
         if used[start_idx] {
             continue;
         }
 
-        // Start a new polyline from this line
-        let mut polyline = vec![line.a, line.b];
         used[start_idx] = true;
+        let mut loop_points = vec![lines[start_idx].a];
+        let mut last_idx = start_idx;
 
-        // Extend forward from b_edge_key
-        let mut current_edge = line.b_edge_key;
-        while let Some(neighbors) = adjacency.get(&current_edge) {
-            // Find a neighbor that isn't the current line and hasn't been used
-            let next = neighbors.iter().find(|(neighbor_edge, line_idx)| {
-                !used[*line_idx] && *neighbor_edge != line.a_edge_key
-            });
-
-            if let Some((_next_edge, next_idx)) = next {
-                let next_line = &lines[*next_idx];
-                // Determine direction: if next_line.a_edge_key matches current_edge, use next_line.b
-                // else use next_line.a
-                let next_point = if next_line.a_edge_key == current_edge {
-                    next_line.b
-                } else {
-                    next_line.a
-                };
-
-                // Check if the new point is collinear with the last two points in polyline
-                if let Some(&last) = polyline.last() {
-                    if let Some(&second_last) = polyline.get(polyline.len() - 2) {
-                        // Check collinearity: cross product of (last - second_last) and (next_point - last) == 0
-                        let dx1 = last.x - second_last.x;
-                        let dy1 = last.y - second_last.y;
-                        let dx2 = next_point.x - last.x;
-                        let dy2 = next_point.y - last.y;
-                        let cross = dx1 * dy2 - dy1 * dx2;
-                        if cross == 0 {
-                            // Collinear: replace the last point with the new point
-                            *polyline.last_mut().unwrap() = next_point;
-                        } else {
-                            polyline.push(next_point);
-                        }
-                    } else {
-                        polyline.push(next_point);
-                    }
-                } else {
-                    polyline.push(next_point);
+        loop {
+            let next_idx = match lines[last_idx].b_topology {
+                EndpointTopology::Edge(id) => {
+                    find_unused_line(by_edge_a.get(&id), &used)
                 }
-
-                if next_line.a_edge_key == current_edge {
-                    current_edge = next_line.b_edge_key;
-                } else {
-                    current_edge = next_line.a_edge_key;
+                EndpointTopology::Vertex(id) => {
+                    find_unused_line(by_vertex_a.get(&id), &used)
                 }
-                used[*next_idx] = true;
-            } else {
+            };
+
+            let Some(next_idx) = next_idx else {
+                if lines[start_idx].a_topology == lines[last_idx].b_topology && loop_points.len() >= 3 {
+                    debug_assert_eq!(lines[start_idx].a, lines[last_idx].b);
+                    polygons.push(Polygon {
+                        points: simplify_polygon_points(loop_points),
+                    });
+                }
                 break;
-            }
-        }
+            };
 
-        // Extend backward from a_edge_key
-        let mut current_edge = line.a_edge_key;
-        while let Some(neighbors) = adjacency.get(&current_edge) {
-            let next = neighbors.iter().find(|(neighbor_edge, line_idx)| {
-                !used[*line_idx] && *neighbor_edge != line.b_edge_key
-            });
-
-            if let Some((_next_edge, next_idx)) = next {
-                let next_line = &lines[*next_idx];
-                let next_point = if next_line.a_edge_key == current_edge {
-                    next_line.b
-                } else {
-                    next_line.a
-                };
-
-                // Check collinearity with the first two points
-                if let Some(&first) = polyline.first() {
-                    if let Some(&second) = polyline.get(1) {
-                        let dx1 = second.x - first.x;
-                        let dy1 = second.y - first.y;
-                        let dx2 = next_point.x - first.x;
-                        let dy2 = next_point.y - first.y;
-                        let cross = dx1 * dy2 - dy1 * dx2;
-                        if cross == 0 {
-                            // Collinear: replace the first point with the new point
-                            polyline[0] = next_point;
-                        } else {
-                            polyline.insert(0, next_point);
-                        }
-                    } else {
-                        polyline.insert(0, next_point);
-                    }
-                } else {
-                    polyline.insert(0, next_point);
-                }
-
-                if next_line.a_edge_key == current_edge {
-                    current_edge = next_line.b_edge_key;
-                } else {
-                    current_edge = next_line.a_edge_key;
-                }
-                used[*next_idx] = true;
-            } else {
-                break;
-            }
-        }
-
-        // Check if polyline is closed (first and last point are the same geometrically or close enough)
-        if polyline.len() >= 3 {
-            // Remove the last point if it's the same as the first (closing point)
-            if let Some(first) = polyline.first() {
-                if let Some(last) = polyline.last() {
-                    if first == last {
-                        polyline.pop();
-                    }
-                }
-            }
-            polylines.push(polyline);
+            debug_assert_eq!(lines[last_idx].b, lines[next_idx].a);
+            loop_points.push(lines[next_idx].a);
+            used[next_idx] = true;
+            last_idx = next_idx;
         }
     }
 
-    polylines
+    polygons
+}
+
+fn find_unused_line(candidates: Option<&Vec<usize>>, used: &[bool]) -> Option<usize> {
+    candidates?
+        .iter()
+        .copied()
+        .find(|candidate_idx| !used[*candidate_idx])
+}
+
+fn simplify_polygon_points(mut points: Vec<Point2>) -> Vec<Point2> {
+    loop {
+        if points.len() < 3 {
+            return points;
+        }
+
+        let mut changed = false;
+        let len = points.len();
+        for idx in 0..len {
+            let prev = points[(idx + len - 1) % len];
+            let current = points[idx];
+            let next = points[(idx + 1) % len];
+
+            if is_collinear(prev, current, next) {
+                points.remove(idx);
+                changed = true;
+                break;
+            }
+        }
+
+        if !changed {
+            return points;
+        }
+    }
+}
+
+fn is_collinear(a: Point2, b: Point2, c: Point2) -> bool {
+    let abx = b.x - a.x;
+    let aby = b.y - a.y;
+    let bcx = c.x - b.x;
+    let bcy = c.y - b.y;
+    abx * bcy - aby * bcx == 0
 }
 
 /// Convert polygons to ExPolygons using boolean union
