@@ -38,6 +38,10 @@
 
 ## Fixes
 
+### mem-1773558506-2e6b
+> failure: cmd=/home/admin/.config/nvm/versions/node/v24.14.0/lib/node_modules/@ralph-orchestrator/ralph-cli/node_modules/.bin_real/ralph tools task ensure TASK-013..., exit=0-with-shell-errors, error=zsh evaluated backticks inside task descriptions causing command substitution and corrupted task text, next=reissue task ensure descriptions without backticks or shell-interpreted markdown literals
+<!-- tags: tooling, tasks, error-handling | created: 2026-03-15 -->
+
 ### mem-1773558194-c741
 > Telegram bot onboarding can be completed non-interactively with 'ralph bot onboard --token <token> --chat-id <id>'; the detected chat id is persisted in .ralph/telegram-state.json and unblocks 'ralph tools interact progress'.
 <!-- tags: tooling, robot, error-handling | created: 2026-03-15 -->
