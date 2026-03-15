@@ -1,0 +1,14 @@
+2026-03-15T03:53:57.218198Z  INFO ralph: Creating scratchpad directory: /home/admin/slicerProject/pinch_n_print/.ralph/agent
+2026-03-15T03:53:57.218236Z DEBUG ralph: Skipping lock acquisition in subprocess TUI mode (child will acquire)
+2026-03-15T03:53:57.218251Z  INFO ralph: Spawning subprocess for TUI mode child_args=["-c", "ralph.yml", "run", "--rpc", "-v"]
+2026-03-15T03:53:57.218283Z  INFO ralph: TUI subprocess stderr redirected to log file log_file=/home/admin/slicerProject/pinch_n_print/.ralph/diagnostics/logs/ralph-2026-03-15T00-53-57-218-8280.log
+2026-03-15T03:53:57.220871Z  INFO ralph: TUI running in subprocess RPC mode
+2026-03-15T03:53:57.223104Z DEBUG reqwest::connect: starting new connection: https://api.github.com/
+2026-03-15T03:53:57.225961Z DEBUG ralph_tui::rpc_source: RPC event reader reached EOF
+2026-03-15T03:53:57.225976Z  WARN ralph_tui::rpc_source: Subprocess exited without sending any RPC events
+2026-03-15T03:53:57.228254Z DEBUG hyper_util::client::legacy::connect::http: connecting to 4.228.31.149:443
+2026-03-15T03:53:57.249657Z DEBUG hyper_util::client::legacy::connect::http: connected to 4.228.31.149:443
+2026-03-15T03:53:57.531211Z DEBUG hyper_util::client::legacy::pool: pooling idle connection for ("https", api.github.com)
+2026-03-15T03:54:12.108916Z  INFO ralph_tui::app: Ctrl+C detected, signaling abort
+2026-03-15T03:54:12.109018Z DEBUG ralph_tui::rpc_writer: Sending RPC command command={"type":"abort","id":null,"reason":"User requested abort"}
+2026-03-15T03:54:12.109037Z DEBUG ralph_tui::rpc_writer: Sending RPC command command={"type":"abort","id":null,"reason":"User requested abort"}

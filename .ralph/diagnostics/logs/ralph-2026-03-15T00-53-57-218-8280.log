@@ -1,0 +1,8 @@
+[2m2026-03-15T03:53:57.224941Z[0m [34mDEBUG[0m [2mralph_core::loop_lock[0m[2m:[0m Acquired loop lock at /home/admin/slicerProject/pinch_n_print/.ralph/loop.lock
+[2m2026-03-15T03:53:57.224958Z[0m [34mDEBUG[0m [2mralph[0m[2m:[0m Acquired loop lock, running as primary loop
+[2m2026-03-15T03:53:57.224995Z[0m [34mDEBUG[0m [2mralph::process_management[0m[2m:[0m Process group initialized: PID 8287
+[2m2026-03-15T03:53:57.225004Z[0m [33m WARN[0m [2mralph::loop_runner[0m[2m:[0m Interactive mode requested but stdout is not a TTY, falling back to autonomous
+[2m2026-03-15T03:53:57.225020Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Resolving prompt content [3minline_prompt[0m[2m=[0mNone [3mprompt_file[0m[2m=[0mPROMPT.md
+[2m2026-03-15T03:53:57.225035Z[0m [34mDEBUG[0m [2mralph::loop_runner[0m[2m:[0m Checking prompt file [3mpath[0m[2m=[0mPROMPT.md [3mexists[0m[2m=[0mfalse
+[2m2026-03-15T03:53:57.225485Z[0m [34mDEBUG[0m [2mralph_core::loop_lock[0m[2m:[0m Releasing loop lock at /home/admin/slicerProject/pinch_n_print/.ralph/loop.lock
+Error: Prompt file 'PROMPT.md' not found. Check the path or use -p "text" for inline prompt.
