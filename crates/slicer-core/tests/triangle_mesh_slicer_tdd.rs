@@ -4,6 +4,76 @@
 use slicer_core::slice_mesh_ex;
 use slicer_ir::{IndexedTriangleSet, Point2, Point3};
 
+fn assert_single_contour_matches_points(layer: &[slicer_ir::ExPolygon], expected: &[Point2]) {
+    assert_eq!(layer.len(), 1, "expected exactly one contour, got {layer:?}");
+
+    let contour = &layer[0].contour.points;
+    assert_eq!(
+        contour.len(),
+        expected.len(),
+        "unexpected contour length for contour {contour:?}"
+    );
+
+    for point in expected {
+        assert!(
+            contour.contains(point),
+            "missing expected point {point:?} in contour {contour:?}"
+        );
+    }
+}
+
+fn build_open_strip_mesh(polyline_xy: &[(f32, f32)]) -> IndexedTriangleSet {
+    let mut vertices = Vec::with_capacity(polyline_xy.len() * 2);
+    for &(x, y) in polyline_xy {
+        vertices.push(Point3 { x, y, z: 0.0 });
+    }
+    for &(x, y) in polyline_xy {
+        vertices.push(Point3 { x, y, z: 1.0 });
+    }
+
+    let mut indices = Vec::with_capacity((polyline_xy.len().saturating_sub(1)) * 6);
+    let top_offset = polyline_xy.len() as u32;
+    for i in 0..polyline_xy.len().saturating_sub(1) as u32 {
+        let next = i + 1;
+        indices.extend_from_slice(&[i, next, top_offset + next, i, top_offset + next, top_offset + i]);
+    }
+
+    IndexedTriangleSet { vertices, indices }
+}
+
+fn build_vertex_touching_tetrahedron() -> IndexedTriangleSet {
+    IndexedTriangleSet {
+        vertices: vec![
+            Point3 {
+                x: -1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 2.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.5,
+            },
+        ],
+        indices: vec![
+            0, 1, 2,
+            0, 3, 1,
+            0, 2, 3,
+            1, 3, 2,
+        ],
+    }
+}
+
 #[test]
 fn test_empty_mesh_produces_empty_layers() {
     let mesh = IndexedTriangleSet {
@@ -193,4 +263,80 @@ fn test_cube_multiple_layers() {
         assert_eq!(expolygon.contour.points.len(), 4);
         assert!(expolygon.holes.is_empty());
     }
+}
+
+#[test]
+fn test_unordered_cube_segments_still_chain_to_one_closed_loop() {
+    let vertices = vec![
+        Point3 { x: 0.0, y: 0.0, z: 0.0 },
+        Point3 { x: 1.0, y: 0.0, z: 0.0 },
+        Point3 { x: 1.0, y: 1.0, z: 0.0 },
+        Point3 { x: 0.0, y: 1.0, z: 0.0 },
+        Point3 { x: 0.0, y: 0.0, z: 1.0 },
+        Point3 { x: 1.0, y: 0.0, z: 1.0 },
+        Point3 { x: 1.0, y: 1.0, z: 1.0 },
+        Point3 { x: 0.0, y: 1.0, z: 1.0 },
+    ];
+
+    // Same cube topology as the existing happy-path test, but deliberately shuffled so the
+    // slice segments arrive out of contour order.
+    let indices = vec![
+        1, 6, 5,
+        3, 0, 4,
+        0, 5, 4,
+        2, 3, 7,
+        1, 2, 6,
+        2, 7, 6,
+        0, 1, 5,
+        3, 4, 7,
+        0, 2, 1,
+        4, 5, 6,
+        0, 3, 2,
+        4, 6, 7,
+    ];
+
+    let mesh = IndexedTriangleSet { vertices, indices };
+    let result = slice_mesh_ex(&mesh, &[0.5]);
+
+    assert_eq!(result.len(), 1);
+    assert_single_contour_matches_points(
+        &result[0],
+        &[
+            Point2::from_mm(0.0, 0.0),
+            Point2::from_mm(1.0, 0.0),
+            Point2::from_mm(1.0, 1.0),
+            Point2::from_mm(0.0, 1.0),
+        ],
+    );
+}
+
+#[test]
+fn test_open_strip_slice_is_not_silently_emitted_as_closed_polygon() {
+    let mesh = build_open_strip_mesh(&[(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (2.0, 1.0)]);
+
+    let result = slice_mesh_ex(&mesh, &[0.5]);
+
+    assert_eq!(result.len(), 1);
+    assert!(
+        result[0].is_empty(),
+        "expected no closed polygons for an open chain, got {:?}",
+        result[0]
+    );
+}
+
+#[test]
+fn test_slice_through_mesh_vertex_still_forms_closed_triangle() {
+    let mesh = build_vertex_touching_tetrahedron();
+
+    let result = slice_mesh_ex(&mesh, &[0.5]);
+
+    assert_eq!(result.len(), 1);
+    assert_single_contour_matches_points(
+        &result[0],
+        &[
+            Point2::from_mm(0.0, 0.0),
+            Point2::from_mm(-0.5, 1.0),
+            Point2::from_mm(0.5, 1.0),
+        ],
+    );
 }
