@@ -1,0 +1,31 @@
+package slicer:types@1.0.0;
+
+interface geometry {
+    // Scaled integer coordinates. 1 unit = 100 nanometer (1e-4 mm).
+    record point2 { x: s64, y: s64 }
+    record point3 { x: f32, y: f32, z: f32 }
+    record point3-with-width {
+        x: f32, y: f32, z: f32,
+        width: f32,         // local extrusion width in mm
+        flow-factor: f32,   // multiplier on base extrusion volume
+    }
+    record bounding-box2 { min: point2, max: point2 }
+    record bounding-box3 { min: point3, max: point3 }
+    record polygon       { points: list<point2> }
+    record ex-polygon    { contour: polygon, holes: list<polygon> }
+
+    record extrusion-path-3d {
+        points: list<point3-with-width>,
+        role: extrusion-role,
+        speed-factor: f32,
+    }
+
+    enum extrusion-role {
+        outer-wall, inner-wall, thin-wall,
+        top-solid-infill, bottom-solid-infill, sparse-infill,
+        support-material, support-interface,
+        ironing, bridge-infill, wipe-tower, custom,
+    }
+
+    record semver { major: u32, minor: u32, patch: u32 }
+}

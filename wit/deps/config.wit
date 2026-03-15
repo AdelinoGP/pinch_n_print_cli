@@ -1,0 +1,22 @@
+package slicer:config@1.0.0;
+
+interface config-types {
+    variant config-value {
+        bool-val(bool),
+        int-val(s64),
+        float-val(f64),
+        string-val(string),
+        float-list(list<f64>),
+        string-list(list<string>),
+    }
+
+    // Read-only, pre-filtered to declared reads only.
+    resource config-view {
+        get:        func(key: string) -> option<config-value>;
+        get-bool:   func(key: string) -> option<bool>;
+        get-float:  func(key: string) -> option<f64>;
+        get-int:    func(key: string) -> option<s64>;
+        get-string: func(key: string) -> option<string>;
+        keys:       func() -> list<string>;
+    }
+}

@@ -1,0 +1,43 @@
+package slicer:world-prepass@1.0.0;
+
+world prepass-module {
+    import slicer:host-api/host-services;
+    import slicer:config/config-types.{config-view};
+    use slicer:ir-types/ir-handles.{object-id, region-id};
+
+    record module-error { code: u32, message: string, fatal: bool }
+
+    // MeshAnalysis stage
+    enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
+    record facet-annotation { facet-index: u32, slope-angle-deg: f32, classification: facet-class }
+    record surface-group-proposal { facet-indices: list<u32>, z-min: f32, z-max: f32, shell-count: u32 }
+
+    resource mesh-analysis-output {
+        push-facet-annotation: func(obj: object-id, ann: facet-annotation) -> result<_, string>;
+        push-surface-group:    func(obj: object-id, grp: surface-group-proposal) -> result<_, string>;
+    }
+
+    export run-mesh-analysis: func(
+        objects: list<object-id>,
+        output: mesh-analysis-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+
+    // LayerPlanning stage
+    record region-layer-proposal {
+        object-id: object-id, region-id: region-id,
+        effective-layer-height: f32,
+        is-catchup: bool, catchup-z-bottom: f32,
+    }
+    record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
+
+    resource layer-plan-output {
+        push-layer: func(proposal: layer-proposal) -> result<_, string>;
+    }
+
+    export run-layer-planning: func(
+        objects: list<object-id>,
+        output: layer-plan-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+}

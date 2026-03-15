@@ -1,0 +1,49 @@
+package slicer:world-finalization@1.0.0;
+
+world finalization-module {
+    import slicer:host-api/host-services;
+    import slicer:config/config-types.{config-view};
+    use slicer:ir-types/ir-handles.{
+        layer-idx, extrusion-path-3d, region-key,
+    };
+
+    record module-error { code: u32, message: string, fatal: bool }
+
+    record tool-change-view {
+        after-entity-index: u32,
+        from-tool: u32,
+        to-tool: u32,
+    }
+
+    // Read-only view of one completed layer.
+    resource layer-collection-view {
+        layer-index:  func() -> layer-idx;
+        z:            func() -> f32;
+        entity-count: func() -> u32;
+        tool-changes: func() -> list<tool-change-view>;
+    }
+
+    // Output builder — may append to existing layers or insert synthetic ones.
+    resource finalization-output-builder {
+        // Append extrusion paths to an existing layer.
+        push-entity-to-layer: func(
+            layer-index: layer-idx,
+            path: extrusion-path-3d,
+            region-key: region-key,
+        ) -> result<_, string>;
+
+        // Insert a new synthetic layer at an arbitrary Z.
+        // The host merges synthetic layers into the final sequence
+        // sorted by Z before PostPass::GCodeEmit runs.
+        insert-synthetic-layer: func(
+            z: f32,
+            paths: list<extrusion-path-3d>,
+        ) -> result<_, string>;
+    }
+
+    export run-finalization: func(
+        layers: list<layer-collection-view>,
+        output: finalization-output-builder,
+        config: config-view,
+    ) -> result<_, module-error>;
+}

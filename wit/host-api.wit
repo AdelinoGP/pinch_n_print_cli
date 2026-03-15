@@ -1,0 +1,26 @@
+package slicer:host-api@1.0.0;
+
+interface host-services {
+    use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon};
+    use slicer:ir-types/ir-handles.{object-id};
+
+    enum log-level { trace, debug, info, warn, error }
+    log: func(level: log-level, message: string);
+
+    // Mesh queries — no mesh data crosses the WASM boundary.
+    raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
+    surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
+    object-bounds:      func(object-id: object-id) -> bounding-box3;
+
+    // Geometry utilities — delegate to host-side Clipper2.
+    // Modules should not bundle their own Clipper instance.
+    enum clip-operation   { union, intersection, difference, xor }
+    enum offset-join-type { miter, round, square }
+
+    clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
+    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
+    simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
+
+    // Monotonic timestamp in microseconds for profiling.
+    now-us: func() -> u64;
+}

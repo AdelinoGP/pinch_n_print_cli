@@ -1,0 +1,126 @@
+package slicer:ir-types@1.0.0;
+
+interface ir-handles {
+    use slicer:types/geometry.{ex-polygon, extrusion-path-3d, point3, semver};
+
+    type object-id = string;
+    type region-id = string;
+    type layer-idx = u32;
+
+    record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
+
+    record wall-feature-flag {
+        tool-index: option<u32>,
+        fuzzy-skin: bool,
+        is-bridge: bool,
+        is-thin-wall: bool,
+        skip-ironing: bool,
+    }
+
+    record wall-loop-view {
+        perimeter-index: u32,
+        loop-type: wall-loop-type,
+        path: extrusion-path-3d,
+        /// Parallel to path.points. Segment i -> i+1 uses feature-flags[i].
+        feature-flags: list<wall-feature-flag>,
+    }
+    enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell }
+
+    // ── Read-only IR view resources ──────────────────────────────────────
+    // Host constructs these. Modules cannot construct them.
+
+    resource slice-region-view {
+        object-id:              func() -> object-id;
+        region-id:              func() -> region-id;
+        polygons:               func() -> list<ex-polygon>;
+        infill-areas:           func() -> list<ex-polygon>;
+        effective-layer-height: func() -> f32;
+        z:                      func() -> f32;
+        has-nonplanar:          func() -> bool;
+    }
+
+    resource perimeter-region-view {
+        object-id:    func() -> object-id;
+        region-id:    func() -> region-id;
+        wall-loops:   func() -> list<wall-loop-view>;
+        infill-areas: func() -> list<ex-polygon>;
+    }
+
+    // ── Mutable output builder resources ────────────────────────────────
+    // Host validates all writes against declared ir-access.writes at call time.
+
+    resource infill-output-builder {
+        push-sparse-path:  func(path: extrusion-path-3d) -> result<_, string>;
+        push-solid-path:   func(path: extrusion-path-3d) -> result<_, string>;
+        push-ironing-path: func(path: extrusion-path-3d) -> result<_, string>;
+    }
+
+    resource perimeter-output-builder {
+        push-wall-loop:      func(loop-: wall-loop-view) -> result<_, string>;
+        set-infill-areas:    func(areas: list<ex-polygon>) -> result<_, string>;
+        push-seam-candidate: func(pos: point3, score: f32) -> result<_, string>;
+    }
+
+    resource slice-postprocess-builder {
+        set-polygons: func(region: region-key, polys: list<ex-polygon>) -> result<_, string>;
+        set-path-z:   func(region: region-key, path-idx: u32, vertex-idx: u32, z: f32) -> result<_, string>;
+    }
+
+    resource gcode-output-builder {
+        push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
+        push-retract:     func(length: f32, speed: f32) -> result<_, string>;
+        push-fan-speed:   func(value: u8) -> result<_, string>;
+        push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
+        push-tool-change: func(from: u32, to: u32) -> result<_, string>;
+        push-comment:     func(text: string) -> result<_, string>;
+        push-raw:         func(text: string) -> result<_, string>;
+    }
+
+    use slicer:types/geometry.{extrusion-role};
+    record gcode-move-cmd {
+        x: option<f32>, y: option<f32>, z: option<f32>,
+        e: option<f32>, f: option<f32>,
+        role: extrusion-role,
+    }
+
+    resource support-output-builder {
+        push-support-path:   func(path: extrusion-path-3d) -> result<_, string>;
+        push-interface-path: func(path: extrusion-path-3d, is-top-interface: bool) -> result<_, string>;
+        push-raft-path:      func(path: extrusion-path-3d) -> result<_, string>;
+    }
+
+    // ── Paint region views (read-only) ──────────────────────────────────────
+    // Modules query these by semantic. The host returns only regions for
+    // semantics the module declared in its ir-access.reads.
+
+    enum paint-semantic {
+        material,
+        fuzzy-skin,
+        support-enforcer,
+        support-blocker,
+        custom,             // module queries by custom-id string separately
+    }
+
+    variant paint-value {
+        flag(bool),
+        scalar(f32),
+        tool-index(u32),
+    }
+
+    record semantic-region {
+        object-id: object-id,
+        polygons:  list<ex-polygon>,
+        value:     paint-value,
+    }
+
+    resource paint-region-layer-view {
+        /// Returns all regions for the given semantic at this layer.
+        /// Empty list if no paint of this semantic exists at this layer.
+        get-regions: func(semantic: paint-semantic) -> list<semantic-region>;
+
+        /// For Custom semantics — query by the registering module ID string.
+        get-custom-regions: func(module-id: string) -> list<semantic-region>;
+
+        layer-index: func() -> layer-idx;
+    } 
+}

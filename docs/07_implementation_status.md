@@ -13,7 +13,7 @@ Last updated: 2026-03-14
 ## Phase A — Foundation
 - [x] TASK-001 Workspace Cargo.toml with all crate members
 - [x] TASK-002 crates/slicer-ir/ — all IR structs
-- [ ] TASK-003 wit/ directory — all WIT files
+- [x] TASK-003 wit/ directory — all WIT files
 - [ ] TASK-004 crates/slicer-macros/ — proc-macro crate skeleton
 - [ ] TASK-005 crates/slicer-test/ — mock host + fixture builders
 - [ ] TASK-006 crates/slicer-sdk/ — re-exports + host service wrappers

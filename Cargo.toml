@@ -1,12 +1,6 @@
 [workspace]
 members = [
-    "crates/slicer-host",
-    "crates/slicer-core",
     "crates/slicer-ir",
-    "crates/slicer-sdk",
-    "crates/slicer-test",
-    "crates/slicer-macros",
-    "cli/slicer-cli",
 ]
 
 [workspace.package]

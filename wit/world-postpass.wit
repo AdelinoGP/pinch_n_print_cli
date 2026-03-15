@@ -1,0 +1,24 @@
+package slicer:world-postpass@1.0.0;
+
+world postpass-module {
+    import slicer:host-api/host-services;
+    import slicer:config/config-types.{config-view};
+    import slicer:ir-types/ir-handles.{gcode-output-builder, gcode-move-cmd};
+
+    record module-error { code: u32, message: string, fatal: bool }
+
+    enum gcode-command-kind { move_, retract, fan-speed, temperature, tool-change, comment, raw }
+    record gcode-command-view { index: u32, kind: gcode-command-kind }
+
+    export run-gcode-postprocess: func(
+        commands: list<gcode-command-view>,
+        output: gcode-output-builder,
+        config: config-view,
+    ) -> result<_, module-error>;
+
+    // Last-resort text mutation. Single-threaded. Use only when GCodeIR is insufficient.
+    export run-text-postprocess: func(
+        gcode-text: string,
+        config: config-view,
+    ) -> result<string, module-error>;
+}
