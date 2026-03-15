@@ -32,7 +32,7 @@ Last updated: 2026-03-15
 - [x] TASK-022 DAG validation (all 13 passes)
 - [x] TASK-023 Topological sort
 - [x] TASK-024 WASM instance pool
-- [ ] TASK-025 ExecutionPlan builder
+- [x] TASK-025 ExecutionPlan builder
 - [ ] TASK-026 Blackboard + LayerArena
 - [ ] TASK-027 PrePass executor
 - [ ] TASK-028 MeshSegmentation stage executor
