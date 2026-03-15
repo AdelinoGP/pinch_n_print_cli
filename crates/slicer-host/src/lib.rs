@@ -6,9 +6,15 @@
 
 pub mod manifest;
 pub mod dag;
+pub mod validation;
 
-pub use dag::{ModuleNode, SchedulerError, build_intra_stage_dag};
+pub use dag::{ModuleNode, build_intra_stage_dag};
 pub use manifest::{
     ConfigSchema, DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport,
     LoadedModule, load_module_from_paths, load_modules_from_roots,
+};
+pub use validation::{
+    AccessKind, ClaimHolder, ConflictScope, DagValidationDiagnostic, DagValidationPass,
+    DagValidationReport, DagValidationRequest, ModuleAccessAudit, SchedulerError, StageDag,
+    validate_startup_dag,
 };
