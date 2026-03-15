@@ -10,6 +10,7 @@ pub mod execution_plan;
 pub mod instance_pool;
 pub mod manifest;
 pub mod mesh_segmentation;
+pub mod paint_segmentation;
 pub mod prepass;
 pub mod topology;
 pub mod validation;
@@ -33,6 +34,7 @@ pub use manifest::{
 pub use mesh_segmentation::{
     execute_mesh_segmentation, DegenerateStrokeReason, MeshSegmentationError,
 };
+pub use paint_segmentation::{execute_paint_segmentation, PaintSegmentationError};
 pub use prepass::{execute_prepass, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner};
 pub use topology::topological_sort;
 pub use validation::{
