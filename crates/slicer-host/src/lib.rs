@@ -5,11 +5,16 @@
 #![warn(unused_must_use)]
 
 pub mod dag;
+pub mod instance_pool;
 pub mod manifest;
 pub mod topology;
 pub mod validation;
 
 pub use dag::{build_intra_stage_dag, ModuleNode};
+pub use instance_pool::{
+    build_wasm_instance_pool, InstancePoolError, InstancePoolMode, WasmArtifactMetadata,
+    WasmInstanceLease, WasmInstancePool,
+};
 pub use manifest::{
     load_module_from_paths, load_modules_from_roots, ConfigSchema, DiagnosticLevel, LoadDiagnostic,
     LoadError, LoadErrorKind, LoadModulesReport, LoadedModule,
