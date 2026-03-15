@@ -1,0 +1,577 @@
+# ModularSlicer — System Architecture
+
+## High-Level Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    FRONTEND (separate process)                   │
+│              Communicates via CLI args / Unix socket             │
+│         Reads config schema API  |  Displays progress events     │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │ stdin/stdout or socket
+┌─────────────────────────▼───────────────────────────────────────┐
+│                     SLICER HOST (Rust binary)                    │
+│                                                                  │
+│  ┌─────────────────┐  ┌──────────────────────────────────────┐  │
+│  │ Module Registry │  │           Execution Scheduler         │  │
+│  │                 │  │                                       │  │
+│  │  .wasm files    │  │  1. Ingest manifests                  │  │
+│  │  .toml manifests│  │  2. Build + validate DAG              │  │
+│  │  Python scripts │  │  3. Freeze ExecutionPlan              │  │
+│  │  Config schemas │  │  4. Execute (pre / parallel / post)   │  │
+│  └─────────────────┘  └──────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                      BLACKBOARD                          │    │
+│  │  MeshIR │ SurfaceClassIR │ LayerPlanIR │ RegionMapIR    │    │
+│  │  (host-owned, modules receive scoped read/write views)  │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │               ECS LAYER WORLD (per-layer)                │    │
+│  │  Entity: GlobalLayer(z)                                  │    │
+│  │  Components: SlicePolygons │ PerimeterLoops │ InfillPaths│    │
+│  │             SupportPaths │ NonPlanarFlag │ RegionOverride │   │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                  │
+│  ┌──────────────────┐  ┌──────────────────────────────────┐    │
+│  │   Host Services   │  │      Per-Layer Arena Allocator    │    │
+│  │  - Mesh raycasts  │  │  Allocated per layer, freed after │    │
+│  │  - Clipper ops    │  │  layer completes. No cross-layer  │    │
+│  │  - Logging        │  │  pointer aliasing possible.       │    │
+│  │  - Timing         │  └──────────────────────────────────┘    │
+│  └──────────────────┘                                            │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                  WASM INSTANCE POOLS                     │    │
+│  │  parallel-safe modules: N instances (N = rayon threads)  │    │
+│  │  sequential modules:    1 instance  (serialized access)  │    │
+│  └─────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
+          │                                │
+    Core Modules                    Community Modules
+    (built-in .wasm)                (.wasm + .toml manifest)
+```
+
+---
+
+## Pipeline Tiers
+
+Normative terminology and end-to-end edge-case traces are maintained in:
+- `./docs/10_glossary_and_scenario_traces.md`
+
+### Tier 1 — PrePass (Sequential, Whole-Model)
+
+Runs once before any layer is sliced. Results are written to the Blackboard and become immutable during per-layer processing.
+
+```
+PrePass::MeshSegmentation  [new — runs first]
+  Input:  MeshIR (raw, may contain sub-facet paint strokes)
+  Output: MeshIR (modified — triangles clipped at sub-facet stroke boundaries;
+          every triangle has exactly one paint value per semantic after this stage)
+  Purpose: Convert sub-facet brush strokes into whole-triangle paint assignments
+           so all downstream stages see a uniformly tagged mesh.
+           If no sub-facet strokes are present, this stage is a no-op.
+
+PrePass::MeshAnalysis
+  Input:  MeshIR (loaded STL/3MF/OBJ)
+  Output: SurfaceClassificationIR
+  Purpose: Classify facets (slope angle, overhang, bridge, top/bottom surface).
+           Identify non-planar candidate surface groups.
+           Detect bridge regions.
+
+PrePass::LayerPlanning
+  Input:  MeshIR + SurfaceClassificationIR + GlobalConfig
+  Output: LayerPlanIR
+  Purpose: Compute global Z-plane sequence.
+           Resolve per-object / per-region layer heights (including modifiers).
+           Handle multi-object LCM synchronization layers.
+           Assign non-planar shells to surface groups.
+           Handle catch-up layers for regions with different heights.
+
+PrePass::PaintSegmentation 
+  Input:  MeshIR (with whole-triangle paint assignments from MeshSegmentation)
+          SurfaceClassificationIR
+          LayerPlanIR (authoritative global Z sequence)
+  Output: PaintRegionIR
+  Purpose: For every layer Z and every paint semantic present in the scene,
+           compute the 2D polygon regions that carry that semantic's paint value.
+           A single pass handles all semantics:
+             Material       → per-region tool index (drives tool changes)
+             FuzzySkin      → per-region fuzzy skin flag (consumed by PerimetersPostProcess)
+             SupportEnforcer → enforced support regions (consumed by Layer::Support)
+             SupportBlocker  → blocked support regions (consumed by Layer::Support)
+             Custom(id)     → passed through for the registering module to consume
+
+PrePass::RegionMapping  [host-built-in, not a module stage]
+  Input:  LayerPlanIR + LoadedModules + ResolvedConfig
+  Output: RegionMapIR
+  Purpose: For every (layer, object, region) triple, determine:
+           - Which modules run and in what order
+           - What config each module receives (pre-filtered view)
+           - Which claims are active
+           Pre-computed so per-layer hot path has zero config resolution work.
+```
+
+#### Catch-Up Layer Semantics (Authoritative)
+
+When objects have different layer heights, global layer planning uses sync points so all
+objects align on common Z planes.
+
+Example:
+- Object A: 0.2mm layer height
+- Object B: 0.3mm layer height
+- Sync interval: LCM(0.2, 0.3) = 0.6mm
+
+At `Z=0.6`, Object B may execute a catch-up layer spanning `Z ∈ [0.3, 0.6]`.
+At that region-layer:
+- `is_catchup_layer = true`
+- `catchup_z_bottom = 0.3`
+- `effective_layer_height = 0.3` (or wider if configured by region-specific planning)
+
+Catch-up behavior is computed in `PrePass::LayerPlanning` and is never recomputed in Tier 2.
+
+### Tier 2 — Per-Layer (Parallel via rayon)
+
+Each layer runs independently. Layers share no mutable state. The Blackboard is read-only during this tier.
+
+```
+Layer::Slice
+  Input:  MeshIR (immutable), LayerPlanIR (immutable)
+  Output: SliceIR
+  Purpose: Triangle/plane intersection. Loop chaining. Clipper union.
+
+Layer::SlicePostProcess
+  Input:  SliceIR
+          PaintRegionIR (read-only, from Blackboard)
+  Output: SliceIR (modified)
+  Purpose: Non-planar surface projection onto layer polygons.
+           Sub-layer anti-aliasing vertex Z deformation.
+           Modifier region polygon subtraction/addition.
+           PaintRegionAnnotator — performs point-in-polygon tests against
+           PaintRegionIR and writes boundary_paint onto SlicedRegion polygon
+           contour points. Runs last within this stage so all polygon
+           modifications are complete before annotation occurs.
+
+Layer::Perimeters
+  Input:  SliceIR (including boundary_paint from SlicePostProcess)
+          PaintRegionIR (read-only, for material boundary detection)
+  Output: PerimeterIR
+  Purpose: Wall generation (Arachne variable-width or classic fixed-width).
+           Seam candidate collection.
+           Thin-wall detection.
+           Propagates boundary_paint from SlicedRegion polygon contour
+           points onto WallLoop.feature_flags for each generated wall segment.
+           Sets WallLoop.boundary_type to MaterialBoundary where adjacent
+           material regions are detected via PaintRegionIR.
+
+Layer::PerimetersPostProcess
+  Input:  PerimeterIR (including feature_flags and boundary_type on WallLoops)
+  Output: PerimeterIR (modified)
+  Purpose: Seam placement and optimization.
+           Bricklayer Z-shifting.
+           Interlocking wall zigzag generation.
+           Phase-alternated non-planar wall modulation.
+           Smoothificator multi-pass outer wall expansion.
+           FuzzySkin — reads WallLoop.feature_flags.fuzzy_skin per segment
+           and applies Z perturbation only to flagged segments. Unflagged
+           segments on the same loop are printed flat.
+
+Layer::Infill
+  Input:  SliceIR (infill areas from PerimeterIR)
+  Output: InfillIR
+  Purpose: Infill pattern generation (rectilinear, gyroid, TPMS, lightning, etc.).
+
+Layer::InfillPostProcess
+  Input:  InfillIR
+  Output: InfillIR (modified)
+  Purpose: Non-planar sine-wave infill modulation.
+           Infill-wall interlocking.
+
+Layer::Support
+  Input:  SliceIR
+          SurfaceClassificationIR
+          PaintRegionIR (read-only — SupportEnforcer and SupportBlocker semantics)
+  Output: SupportIR
+  Purpose: Traditional or tree support geometry generation.
+           Enforcer/blocker priority rules (applied in this order):
+             1. SupportBlocker region → no support regardless of overhang angle
+             2. SupportEnforcer region → support regardless of overhang angle
+             3. Otherwise → support if overhang angle exceeds config threshold
+
+Layer::SupportPostProcess
+  Input:  SupportIR
+  Output: SupportIR (modified)
+  Purpose: Support top surface ironing.
+           Support interface density variation.
+           Any future support geometry post-processing.
+
+Layer::PathOptimization
+  Input:  PerimeterIR + InfillIR + SupportIR
+  Output: LayerCollectionIR
+  Purpose: Travel minimization.
+           Retraction decision.
+           Pressure advance smoothing.
+           Sub-layer anti-aliasing DAG topological sort (collision-aware ordering).
+```
+
+#### Paint Propagation Contract (Authoritative)
+
+Paint-dependent behavior follows this strict sequence:
+1. `Layer::SlicePostProcess` writes `SlicedRegion.boundary_paint` (runs after all polygon edits).
+2. `Layer::Perimeters` maps boundary paint into `WallLoop.feature_flags` and boundary metadata.
+3. `Layer::PerimetersPostProcess` consumes `feature_flags` (for example `fuzzy_skin`) for selective effects.
+
+If step 1 is skipped or fails non-fatally, later steps continue with empty/default paint annotations,
+which is a correctness degradation. Modules should return fatal errors for unrecoverable paint annotation failures.
+
+#### Paint Annotation Failure Semantics (Normative)
+
+Failure classes:
+- Fatal:
+  - `PaintRegionIR` is unavailable for a layer that declares paint-dependent semantics.
+  - Annotation cardinality cannot be made parallel to contour points.
+  - Overlap resolution encounters equal-precedence conflicting paint values.
+- Non-fatal (degraded allowed):
+  - A point cannot be classified after all polygon edits due to numerical edge ambiguity.
+
+Required fallback behavior for non-fatal cases:
+- `boundary_paint` must still be present and cardinality-aligned with contour points.
+- Unresolved points must use deterministic defaults:
+  - `tool_index = 0`
+  - `fuzzy_skin = false`
+  - `support_enforcer = false`
+  - `support_blocker = false`
+- Host must emit a structured warning event and mark slice result as `degraded=true`.
+
+Recommended error codes:
+- `501` = `PAINT_REGION_MISSING`
+- `502` = `PAINT_ANNOTATION_CARDINALITY_MISMATCH`
+- `503` = `PAINT_PRECEDENCE_CONFLICT`
+- `504` = `PAINT_POINT_UNRESOLVED_FALLBACK`
+
+#### Non-Planar Z Envelope Rules
+
+For any module that writes path Z in Tier 2:
+- Lower bound: `layer.z`
+- Upper bound: `layer.z + effective_layer_height`
+
+Stages may not emit Z outside this envelope. Violations are treated as fatal contract errors.
+
+#### Per-Layer Error Handling Rules
+
+- `fatal = true`: abort entire slice immediately.
+- `fatal = false`: continue with last valid IR state for that layer and stage.
+
+Non-fatal mode is only for graceful degradation, never for contract or geometry-integrity failures.
+
+#### Module Access Contract (Normative)
+
+All modules must declare complete IR access contracts in manifest `[ir-access].reads` / `[ir-access].writes`.
+
+Rules:
+- Undeclared reads are forbidden. Host must deny access and return a fatal contract error.
+- Undeclared writes are forbidden. Host must reject commit and return a fatal contract error.
+- Modules may only read fields available from upstream stages in `STAGE_ORDER`.
+- Blackboard access is least-privilege: each module receives a read/write mask derived strictly from manifest declarations.
+
+Rationale:
+- Prevents hidden coupling through implicit Blackboard reads.
+- Makes DAG validation and compatibility analysis deterministic.
+
+### Tier 3 — PostPass (Sequential, Whole-Print)
+
+All PostPass stages run after all per-layer processing is complete.
+The full `Vec<LayerCollectionIR>` is visible to every stage in this tier.
+None of these stages may be parallelized.
+```
+PostPass::LayerFinalization
+  Input:  Vec<LayerCollectionIR> (all layers, mutable — may append entities or insert synthetic layers)
+          Blackboard (immutable)
+  Output: Vec<LayerCollectionIR> (modified in place)
+  Purpose: Cross-layer features that require visibility of the full print
+           before G-code can be emitted.
+  Built-in modules:  WipeTower, Skirt/Brim
+  Optional modules:  SequentialPrintOrder, MinLayerTimeEnforcer,
+                     FlushVolumeCalculator, PrimeTower
+
+PostPass::GCodeEmit  [host-built-in]
+  Input:  Vec<LayerCollectionIR> (after LayerFinalization)
+  Output: GCodeIR
+  Purpose: Serialize ordered extrusion entities to structured G-code commands.
+           Tool change / wipe tower sequencing.
+           Fan speed and temperature scheduling.
+
+PostPass::GCodePostProcess
+  Input:  GCodeIR
+  Output: GCodeIR (modified)
+  Purpose: Structured mutation of G-code commands.
+
+PostPass::TextPostProcess  [last resort only]
+  Input:  serialized G-code string
+  Output: serialized G-code string (modified)
+  Purpose: Raw text mutation for features that cannot be expressed in GCodeIR.
+           Single-threaded. Use sparingly.
+```
+
+---
+
+## Data Dependency Matrix
+
+This section is authoritative for stage-level IR contracts. If a module manifest
+declares reads/writes that contradict this table, the manifest is incorrect.
+
+### Stage I/O Contract (Reads and Writes)
+
+| Stage | Reads | Writes |
+|---|---|---|
+| `PrePass::MeshSegmentation` | `MeshIR` | `MeshIR` (paint-assignment normalization) |
+| `PrePass::MeshAnalysis` | `MeshIR` | `SurfaceClassificationIR` |
+| `PrePass::LayerPlanning` | `MeshIR`, `SurfaceClassificationIR`, global/object/modifier config | `LayerPlanIR` |
+| `PrePass::PaintSegmentation` | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR` | `PaintRegionIR` |
+| `PrePass::RegionMapping` (host-built-in) | `LayerPlanIR`, loaded modules, resolved config | `RegionMapIR` |
+| `Layer::Slice` | `MeshIR`, `LayerPlanIR` | `SliceIR` |
+| `Layer::SlicePostProcess` | `SliceIR`, `PaintRegionIR` | `SliceIR` (polygon edits, `boundary_paint`) |
+| `Layer::Perimeters` | `SliceIR`, `PaintRegionIR` | `PerimeterIR` (`feature_flags`, seam candidates, boundary metadata) |
+| `Layer::PerimetersPostProcess` | `PerimeterIR` | `PerimeterIR` (seam/geometry refinements) |
+| `Layer::Infill` | `SliceIR` (infill areas and context) | `InfillIR` |
+| `Layer::InfillPostProcess` | `InfillIR` | `InfillIR` |
+| `Layer::Support` | `SliceIR`, `SurfaceClassificationIR`, `PaintRegionIR` | `SupportIR` |
+| `Layer::SupportPostProcess` | `SupportIR` | `SupportIR` |
+| `Layer::PathOptimization` | `PerimeterIR`, `InfillIR`, `SupportIR` | `LayerCollectionIR` |
+| `PostPass::LayerFinalization` | `Vec<LayerCollectionIR>`, Blackboard IRs | `Vec<LayerCollectionIR>` (may insert synthetic layers) |
+| `PostPass::GCodeEmit` (host-built-in) | `Vec<LayerCollectionIR>` | `GCodeIR` |
+| `PostPass::GCodePostProcess` | `GCodeIR` | `GCodeIR` |
+| `PostPass::TextPostProcess` | serialized G-code text | serialized g-code text |
+
+### Cross-Stage Dependency Matrix (Scheduler-Relevant)
+
+`✓` indicates the consumer stage depends on data written by the producer stage.
+
+| Producer \ Consumer | MeshAnalysis | LayerPlanning | PaintSegmentation | RegionMapping | Slice | SlicePostProcess | Perimeters | Infill | Support | PathOptimization | LayerFinalization | GCodeEmit |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| MeshSegmentation |  | `✓` | `✓` |  | `✓` |  |  |  |  |  |  |  |
+| MeshAnalysis |  | `✓` | `✓` |  |  |  |  |  | `✓` |  |  |  |
+| LayerPlanning |  |  | `✓` | `✓` | `✓` |  |  |  |  |  |  |  |
+| PaintSegmentation |  |  |  |  |  | `✓` | `✓` |  | `✓` |  |  |  |
+| RegionMapping |  |  |  |  | `✓` | `✓` | `✓` | `✓` | `✓` | `✓` |  |  |
+| Slice |  |  |  |  |  | `✓` | `✓` | `✓` | `✓` |  |  |  |
+| SlicePostProcess |  |  |  |  |  |  | `✓` |  |  |  |  |  |
+| Perimeters |  |  |  |  |  |  |  |  |  | `✓` |  |  |
+| PerimetersPostProcess |  |  |  |  |  |  |  |  |  | `✓` |  |  |
+| Infill |  |  |  |  |  |  |  |  |  | `✓` |  |  |
+| InfillPostProcess |  |  |  |  |  |  |  |  |  | `✓` |  |  |
+| Support |  |  |  |  |  |  |  |  |  | `✓` |  |  |
+| SupportPostProcess |  |  |  |  |  |  |  |  |  | `✓` |  |  |
+| PathOptimization |  |  |  |  |  |  |  |  |  |  | `✓` |  |
+| LayerFinalization |  |  |  |  |  |  |  |  |  |  |  | `✓` |
+
+Notes:
+- `RegionMapping` dependencies are execution-context dependencies (module selection and config views), not geometry mutation.
+- `Layer::Infill` may consume `SliceIR` areas derived after perimeter planning; scheduler treats this as a read dependency on current-layer staged state.
+- `PostPass::TextPostProcess` intentionally bypasses structured IR and should not be used by modules that can express behavior through `GCodeIR`.
+
+---
+
+## Data Ownership Rules
+
+These rules are enforced by the host at runtime. Violations trap the WASM module.
+
+| Data | Owner | Module Access |
+|---|---|---|
+| `MeshIR` | Host (permanent) | Query-only via host-services API (raycasts, normals, bounds) |
+| `SurfaceClassificationIR` | Host Blackboard | Read-only view |
+| `LayerPlanIR` | Host Blackboard | Read-only view |
+| `RegionMapIR` | Host Blackboard | Read-only view (own region only) |
+| Per-layer IR (Slice, Perimeter, Infill, etc.) | Per-layer arena | Read view of previous stages; write builder for declared output |
+| `LayerCollectionIR` | Per-layer arena → Host after join | Read-only in PostPass |
+| `GCodeIR` | Host PostPass buffer | Write builder (GCodePostProcess only) |
+
+---
+
+## Memory Model
+
+```
+Host process memory layout:
+
+┌─────────────────────────────────────┐
+│ Static allocations (program lifetime)│
+│  - MeshIR (loaded once)              │
+│  - ExecutionPlan (frozen at startup) │
+│  - WasmInstancePools                 │
+│  - Blackboard (PrePass outputs)      │
+└─────────────────────────────────────┘
+
+┌─────────────────────────────────────┐  ← allocated before layer loop
+│ LayerCollectionIR slots             │
+│  Vec<Option<LayerCollectionIR>>     │
+│  Size: N_layers * ~avg_layer_size   │
+│  Written once per slot (no mutex)   │
+└─────────────────────────────────────┘
+
+Per rayon thread (N threads, N ≤ CPU cores):
+┌─────────────────────────────────────┐  ← allocated per layer, freed after
+│ LayerArena (bump allocator)         │
+│  SliceIR, PerimeterIR, InfillIR,    │
+│  SupportIR (intermediate, discarded │
+│  once LayerCollectionIR is built)   │
+└─────────────────────────────────────┘
+
+Per WASM instance:
+┌─────────────────────────────────────┐
+│ WASM linear memory (4MB default)    │
+│  Module's own working memory        │
+│  No shared memory with host         │
+│  IR data crosses boundary as        │
+│  serialized structs, not pointers   │
+└─────────────────────────────────────┘
+```
+
+---
+
+## Inter-Process Communication (Host ↔ Frontend)
+
+The host exposes a simple line-delimited JSON protocol on stdout (or a Unix socket for persistent sessions).
+
+```jsonc
+// Progress event
+{"event": "progress", "stage": "Layer::Perimeters", "module":"com.community.tpms-infill" , "layer": 42, "total": 200}
+
+// Layer complete
+{"event": "layer_done", "layer": 42, "elapsed_ms": 14}
+
+// Warning
+{"event": "warning", "source": "com.community.tpms-infill", "message": "..."}
+
+// Error
+{"event": "error", "fatal": true, "source": "scheduler", "message": "..."}
+
+// Done
+{"event": "done", "output_path": "/tmp/model.gcode", "elapsed_ms": 1842}
+```
+
+Config schema query (frontend asks, host responds):
+
+```jsonc
+// Request
+{"query": "config_schema"}
+
+// Response — one entry per module, per field
+{"schema": [
+  {
+    "module": "com.community.tpms-infill",
+    "fields": [
+      {"key": "pattern", "type": "enum", "values": ["schwartz-d", "fischer-koch-s"],
+       "default": "schwartz-d", "display": "TPMS Pattern", "group": "Pattern"}
+    ]
+  }
+]}
+```
+
+---
+
+## Claim System
+
+Claims are named exclusive resource slots. They prevent two modules from both trying to generate perimeters (or infill, or supports) for the same region simultaneously.
+
+```
+Built-in claim names:
+  perimeter-generator     — generates wall loops for a region
+  infill-generator        — generates infill paths for a region
+  support-generator       — generates support structures
+  seam-placer             — resolves seam position
+  layer-planner           — contributes to Z-plane sequence
+  mesh-analyzer           — contributes to surface classification
+  gcode-emitter           — serializes GCodeIR to text (host-built-in, non-claimable)
+```
+
+A module may declare `holds = ["infill-generator"]`. Only one module per region may hold a given claim. If two modules both hold the same claim globally and no region override resolves the conflict, the host rejects the configuration at startup with a precise error.
+
+Region overrides allow different infill generators per region:
+
+```toml
+# In print config:
+[[region_override]]
+modifier_mesh = "vase_top_modifier.stl"
+module_overrides = { "infill-generator" = "com.community.gyroid-infill" }
+```
+
+### Claim Conflict Resolution (Normative)
+
+Resolution order:
+1. Apply global enable/disable rules.
+2. Apply object-level overrides.
+3. Apply region-level overrides.
+4. Validate uniqueness for every `(layer, object, region, claim)`.
+
+Determinism constraints:
+- A claim holder must be stable across layers for the same `(object, claim)` unless the stage explicitly supports temporal transitions.
+- If two overrides of equal precedence select different holders for the same key, startup validation fails.
+- If no holder remains for a required claim, startup validation fails.
+
+Worked example — valid:
+- Object A uses `com.core.gyroid` for `infill-generator` globally.
+- Region override on object top selects `com.community.tpms`.
+- Result: deterministic because each region resolves to one holder and the holder does not change across layers.
+
+Worked example — invalid:
+- Layer-range override selects `com.core.gyroid` for layers `0..49` and `com.community.tpms` for `47..99` on same object claim.
+- Result: rejected unless stage contract explicitly allows per-layer claim transitions.
+
+##### Allowed Claim Transition Matrix
+
+Unless explicitly listed as transition-capable below, the claim holder must remain stable across all layers for one `(object_id, claim)`.
+
+| Claim | Allowed per-layer transition | Notes |
+|---|---|---|
+| `infill-generator` | Yes | Region-local transitions allowed when layer-range overrides do not overlap ambiguously. |
+| `support-generator` | Yes | Allowed for planned support strategy shifts across geometry phases. |
+| `perimeter-generator` | No | Must remain stable to preserve wall continuity assumptions. |
+| `seam-placer` | No | Must remain stable for seam scoring consistency. |
+| `layer-planner` | No | PrePass global planner must be unique and stable. |
+| `mesh-analyzer` | No | Classification baseline must not vary across layers. |
+
+Validation rule:
+- If a claim is marked non-transitionable, any layer-varying holder selection is a startup validation error.
+
+---
+
+## Module Search Path
+
+The host searches for modules in this order:
+
+1. `{executable_dir}/modules/` — bundled core modules
+2. `{config_dir}/modules/` — user-installed community modules
+   - Linux: `~/.config/modular-slicer/modules/`
+   - macOS: `~/Library/Application Support/modular-slicer/modules/`
+   - Windows: `%APPDATA%\modular-slicer\modules\`
+3. Paths specified via `--module-path` CLI argument (can be repeated)
+
+Within one search root:
+- Host discovers modules by `*.toml` manifests.
+- A manifest is loadable only if `<stem>.wasm` exists in the same directory.
+- Duplicate `module.id` across roots resolves by root precedence (earlier root wins, later duplicate emits warning).
+
+Explicit precedence (highest first):
+1. `--module-path` entries, in CLI order
+2. `{config_dir}/modules/`
+3. `{executable_dir}/modules/`
+
+Environment override:
+- `SLICER_MODULE_PATH` (path-list) is inserted after CLI paths and before `{config_dir}/modules/`.
+- If both CLI and environment provide the same path, host de-duplicates by canonical absolute path.
+
+Each module directory must contain:
+- `{module-name}.wasm` — compiled WASM component
+- `{module-name}.toml` — manifest
+- (Optional) `{module-name}.py` — Python bridge script (TextPostProcess tier only)
+
+# `PostPass::LayerFinalization` Module Constraint
+
+Modules declaring `stage = "PostPass::LayerFinalization"` must set:
+```toml
+[hints]
+layer-parallel-safe = false   # enforced — the host emits a warning if true is set
+```
+
+The host instantiates exactly one WASM instance for finalization modules regardless of CPU count. These modules are never pooled.
