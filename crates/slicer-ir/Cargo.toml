@@ -1,0 +1,22 @@
+[package]
+name = "slicer-ir"
+version = "0.1.0"
+edition = "2021"
+authors = ["ModularSlicer Team"]
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+thiserror = "1.0"
+bincode = { workspace = true, optional = true }
+
+[dev-dependencies]
+bincode = { workspace = true }
+
+[features]
+default = []
+std = []
+
+[lints.rust]
+missing_docs = "warn"
+unused_imports = "warn"
+unused_must_use = "warn"
