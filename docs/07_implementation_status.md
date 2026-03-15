@@ -33,7 +33,7 @@ Last updated: 2026-03-15
 - [x] TASK-023 Topological sort
 - [x] TASK-024 WASM instance pool
 - [x] TASK-025 ExecutionPlan builder
-- [ ] TASK-026 Blackboard + LayerArena
+- [x] TASK-026 Blackboard + LayerArena
 - [ ] TASK-027 PrePass executor
 - [ ] TASK-028 MeshSegmentation stage executor
 - [ ] TASK-029 PaintSegmentation stage executor
