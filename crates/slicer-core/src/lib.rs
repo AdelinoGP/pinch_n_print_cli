@@ -5,6 +5,7 @@
 #![warn(unused_must_use)]
 
 pub mod polygon_ops;
+pub mod triangle_mesh_slicer;
 
 pub use polygon_ops::{
     clip_polygons,
@@ -16,3 +17,4 @@ pub use polygon_ops::{
     ClipOperation,
     OffsetJoinType,
 };
+pub use triangle_mesh_slicer::slice_mesh_ex;

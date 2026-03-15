@@ -20,7 +20,7 @@ Last updated: 2026-03-15
 
 ## Phase B — Core Algorithms
 - [x] TASK-010 Clipper2-Rust + polygon operations
-- [ ] TASK-011 TriangleMeshSlicer (slice_mesh_ex)
+- [x] TASK-011 TriangleMeshSlicer (slice_mesh_ex)
 - [ ] TASK-012 Loop chaining (chain_lines_by_triangle_connectivity)
 - [ ] TASK-013 Geometry helpers
 - [ ] TASK-014 AABB tree for mesh queries

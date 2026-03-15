@@ -10,64 +10,120 @@
 pub mod slice_ir;
 
 pub use slice_ir::{
-    // Basic types
-    Point2, Point3, BoundingBox3, Transform3d, SemVer,
-    IndexedTriangleSet, ObjectMesh, MeshIR,
-    
-    // Paint types
-    FacetPaintData, PaintLayer, PaintSemantic, PaintValue, PaintStroke,
-    
-    // Modifier types
-    ModifierVolume, ModifierScope, ConfigDelta,
-    
+    ActiveRegion,
+    BoundingBox3,
+    BridgeRegion,
+    BridgeRegionId,
+    ConfigDelta,
+
     // Config types
-    ConfigKey, ConfigValue, ResolvedConfig, ObjectConfig, ConfigView,
-    
-    // Surface classification types
-    SurfaceClassificationIR, ObjectSurfaceData, FacetClass, SurfaceGroup,
-    BridgeRegion, OverhangRegion,
-    
-    // Layer planning types
-    LayerPlanIR, GlobalLayer, ActiveRegion, NonPlanarShellRef, ObjectLayerRef,
-    
-    // Paint region types
-    PaintRegionIR, LayerPaintMap, SemanticRegion,
-    
-    // Region map types
-    RegionMapIR, RegionKey, RegionPlan, ModuleInvocation,
-    
-    // Slice types
-    SliceIR, SlicedRegion, ExPolygon, Polygon,
-    
-    // Perimeter types
-    PerimeterIR, PerimeterRegion, WallLoop, WallFeatureFlags, WallBoundaryType,
-    LoopType, WidthProfile, ExtrusionPath3D, Point3WithWidth, SeamCandidate,
-    SeamReason, SeamPosition,
-    
-    // Infill types
-    InfillIR, InfillRegion,
-    
-    // Support types
-    SupportIR, SupportType,
-    
-    // Layer collection types
-    LayerCollectionIR, PrintEntity, ToolChange, ZHop, ExtrusionRole,
-    
+    ConfigKey,
+    ConfigValue,
+    ConfigView,
+
+    ExPolygon,
+    ExtrusionPath3D,
+    ExtrusionRole,
+
+    FacetClass,
+    // Paint types
+    FacetPaintData,
+    GCodeCommand,
     // GCode types
-    GCodeIR, GCodeCommand, PrintMetadata,
-    
-    // Wall generator
-    WallGenerator,
-    
+    GCodeIR,
+    GlobalLayer,
+    IndexedTriangleSet,
+    // Infill types
+    InfillIR,
+    InfillRegion,
+
     // Infill type
     InfillType,
-    
+
+    // Layer collection types
+    LayerCollectionIR,
+    LayerPaintMap,
+    // Layer planning types
+    LayerPlanIR,
+    LoopType,
+    MeshIR,
+
+    ModifierId,
+    ModifierScope,
+    // Modifier types
+    ModifierVolume,
+    ModuleId,
+    ModuleInvocation,
+
+    NonPlanarShellRef,
+    ObjectConfig,
     // ID types
-    ObjectId, ModifierId, ModuleId, SurfaceGroupId, BridgeRegionId,
-    OverhangRegionId, RegionId, StageId,
+    ObjectId,
+    ObjectLayerRef,
+
+    ObjectMesh,
+    ObjectSurfaceData,
+    OverhangRegion,
+
+    OverhangRegionId,
+    PaintLayer,
+    // Paint region types
+    PaintRegionIR,
+    PaintSemantic,
+    PaintStroke,
+
+    PaintValue,
+    // Perimeter types
+    PerimeterIR,
+    PerimeterRegion,
+    // Basic types
+    Point2,
+    Point3,
+    Point3WithWidth,
+    Polygon,
+
+    PrintEntity,
+    PrintMetadata,
+
+    RegionId,
+    RegionKey,
+    // Region map types
+    RegionMapIR,
+    RegionPlan,
+    ResolvedConfig,
+    SeamCandidate,
+    SeamPosition,
+
+    SeamReason,
+    SemVer,
+    SemanticRegion,
+
+    // Slice types
+    SliceIR,
+    SlicedRegion,
+    StageId,
+    // Support types
+    SupportIR,
+    SupportType,
+
+    // Surface classification types
+    SurfaceClassificationIR,
+    SurfaceGroup,
+    SurfaceGroupId,
+    ToolChange,
+    Transform3d,
+    WallBoundaryType,
+    WallFeatureFlags,
+    // Wall generator
+    WallGenerator,
+
+    WallLoop,
+    WidthProfile,
+    ZHop,
 };
 
 pub use slice_ir::{
     // Helper functions for Point2 coordinate conversion
-    mm_to_units, units_to_mm,
+    mm_to_units,
+    units_to_mm,
 };

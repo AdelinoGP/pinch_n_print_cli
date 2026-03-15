@@ -40,10 +40,10 @@ pub type StageId = String;
 // ============================================================================
 
 /// Convert millimeters to scaled integer units
-/// 
+///
 /// # Arguments
 /// * `mm` - Value in millimeters
-/// 
+///
 /// # Returns
 /// Scaled integer units (1 unit = 100 nm = 10^-4 mm)
 #[inline]
@@ -52,10 +52,10 @@ pub fn mm_to_units(mm: f32) -> i64 {
 }
 
 /// Convert scaled integer units to millimeters
-/// 
+///
 /// # Arguments
 /// * `units` - Scaled integer units
-/// 
+///
 /// # Returns
 /// Value in millimeters
 #[inline]
@@ -64,11 +64,13 @@ pub fn units_to_mm(units: i64) -> f32 {
 }
 
 /// 2D point using scaled integer coordinates
-/// 
+///
 /// Coordinate system: 1 unit = 100 nm = 10^-4 mm
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Point2 {
+    /// X coordinate in scaled integer units (1 unit = 100 nm)
     pub x: i64,
+    /// Y coordinate in scaled integer units (1 unit = 100 nm)
     pub y: i64,
 }
 
@@ -80,7 +82,7 @@ impl Point2 {
             y: mm_to_units(y),
         }
     }
-    
+
     /// Convert to millimeter values
     pub fn to_mm(&self) -> (f32, f32) {
         (units_to_mm(self.x), units_to_mm(self.y))
@@ -90,36 +92,47 @@ impl Point2 {
 /// 3D point using floating-point millimeter coordinates
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Point3 {
+    /// X coordinate in millimeters
     pub x: f32,
+    /// Y coordinate in millimeters
     pub y: f32,
+    /// Z coordinate in millimeters
     pub z: f32,
 }
 
 /// 3D bounding box
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BoundingBox3 {
+    /// Minimum corner of the bounding box
     pub min: Point3,
+    /// Maximum corner of the bounding box
     pub max: Point3,
 }
 
 /// 3D transformation (column-major 4x4 matrix)
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Transform3d {
+    /// 4x4 transformation matrix in column-major order
     pub matrix: [f64; 16],
 }
 
 /// Indexed triangle set (vertices + indices)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IndexedTriangleSet {
+    /// List of 3D vertices
     pub vertices: Vec<Point3>,
+    /// List of indices into vertices, 3 per triangle
     pub indices: Vec<u32>,
 }
 
 /// Semantic versioning
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SemVer {
+    /// Major version number
     pub major: u32,
+    /// Minor version number
     pub minor: u32,
+    /// Patch version number
     pub patch: u32,
 }
 
@@ -136,8 +149,7 @@ impl std::fmt::Display for SemVer {
 /// Raw user config (not yet resolved)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObjectConfig {
-    // This is a placeholder - actual config fields would be populated
-    // during config resolution
+    /// Configuration data key-value map
     pub data: HashMap<String, ConfigValue>,
 }
 
@@ -170,14 +182,18 @@ pub enum PaintValue {
 /// Paint stroke (3D triangles defining painted region)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PaintStroke {
+    /// 3D triangles on the mesh surface defining the painted region
     pub triangles: Vec<[Point3; 3]>,
+    /// The semantic type of this paint stroke
     pub semantic: PaintSemantic,
+    /// The value associated with this paint stroke
     pub value: PaintValue,
 }
 
 /// Paint layer (all paint with same semantic on one object)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PaintLayer {
+    /// The semantic type of this paint layer
     pub semantic: PaintSemantic,
     /// One entry per mesh triangle, parallel to mesh.triangles
     pub facet_values: Vec<Option<PaintValue>>,
@@ -188,42 +204,59 @@ pub struct PaintLayer {
 /// All paint layers on one object
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FacetPaintData {
+    /// List of paint layers on this object
     pub layers: Vec<PaintLayer>,
 }
 
 /// Config delta (only explicitly set fields)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConfigDelta {
+    /// Configuration fields that are explicitly set
     pub fields: HashMap<ConfigKey, ConfigValue>,
 }
 
 /// Modifier scope
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ModifierScope {
+    /// Applies to all features
     AllFeatures,
+    /// Applies only to infill
     Infill,
+    /// Applies only to perimeters
     Perimeters,
+    /// Applies only to support
     Support,
+    /// Applies to layer height
     LayerHeight,
 }
 
 /// Modifier volume
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModifierVolume {
+    /// Unique identifier for the modifier
     pub id: ModifierId,
+    /// Geometry of the modifier
     pub mesh: IndexedTriangleSet,
+    /// Configuration changes applied by this modifier
     pub config_delta: ConfigDelta,
+    /// Priority of the modifier (higher wins)
     pub priority: u32,
+    /// Scope of the modifier application
     pub applies_to: ModifierScope,
 }
 
 /// Object mesh
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObjectMesh {
+    /// Unique identifier for the object
     pub id: ObjectId,
+    /// Geometry of the object
     pub mesh: IndexedTriangleSet,
+    /// World-space placement of the object
     pub transform: Transform3d,
+    /// Raw user config for the object
     pub config: ObjectConfig,
+    /// Modifier volumes affecting this object
     pub modifier_volumes: Vec<ModifierVolume>,
     /// All user-painted data for this object
     pub paint_data: Option<FacetPaintData>,
@@ -232,8 +265,11 @@ pub struct ObjectMesh {
 /// Mesh IR (produced by host mesh loader)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MeshIR {
+    /// Schema version of this IR
     pub schema_version: SemVer,
+    /// List of objects in the mesh
     pub objects: Vec<ObjectMesh>,
+    /// Build volume bounding box
     pub build_volume: BoundingBox3,
 }
 
@@ -244,56 +280,88 @@ pub struct MeshIR {
 /// Facet classification
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum FacetClass {
+    /// Normal facet
     Normal,
-    NearHorizontal { slope_angle_deg: f32 },
-    Overhang { angle_deg: f32 },
+    /// Near horizontal facet
+    NearHorizontal {
+        /// Slope angle in degrees
+        slope_angle_deg: f32,
+    },
+    /// Overhang facet
+    Overhang {
+        /// Angle in degrees
+        angle_deg: f32,
+    },
+    /// Bridge facet
     Bridge,
+    /// Top surface facet
     TopSurface,
+    /// Bottom surface facet
     BottomSurface,
 }
 
 /// Surface group
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SurfaceGroup {
+    /// Unique identifier for the surface group
     pub id: SurfaceGroupId,
+    /// Indices of facets in this group
     pub facet_indices: Vec<u32>,
+    /// Minimum Z height of the group
     pub z_min: f32,
+    /// Maximum Z height of the group
     pub z_max: f32,
+    /// Area of the group in mm^2
     pub area_mm2: f32,
+    /// Whether the group is printable
     pub printable: bool,
+    /// Shell count for the group
     pub shell_count: u32,
 }
 
 /// Bridge region
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BridgeRegion {
+    /// Unique identifier for the bridge region
     pub id: BridgeRegionId,
+    /// Indices of facets in this region
     pub facet_indices: Vec<u32>,
+    /// Optimal bridge angle in degrees
     pub bridge_direction_deg: f32,
 }
 
 /// Overhang region
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct OverhangRegion {
+    /// Unique identifier for the overhang region
     pub id: OverhangRegionId,
+    /// Indices of facets in this region
     pub facet_indices: Vec<u32>,
+    /// Maximum overhang angle in degrees
     pub max_angle_deg: f32,
+    /// Whether this region needs support
     pub needs_support: bool,
 }
 
 /// Object surface data
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObjectSurfaceData {
+    /// Facet classifications for each triangle
     pub facet_classes: Vec<FacetClass>,
+    /// Surface groups in the object
     pub surface_groups: Vec<SurfaceGroup>,
+    /// Bridge regions in the object
     pub bridge_regions: Vec<BridgeRegion>,
+    /// Overhang regions in the object
     pub overhang_regions: Vec<OverhangRegion>,
 }
 
 /// Surface classification IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SurfaceClassificationIR {
+    /// Schema version of this IR
     pub schema_version: SemVer,
+    /// Per-object surface data
     pub per_object: HashMap<ObjectId, ObjectSurfaceData>,
 }
 
@@ -307,23 +375,31 @@ pub type ConfigKey = String;
 /// Config value type
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ConfigValue {
+    /// Boolean value
     Bool(bool),
+    /// Integer value
     Int(i64),
+    /// Floating-point value
     Float(f64),
+    /// String value
     String(String),
+    /// List of config values
     List(Vec<ConfigValue>),
 }
 
 /// Config view (pre-filtered for specific module)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConfigView {
+    /// Configuration fields visible to the module
     pub fields: HashMap<ConfigKey, ConfigValue>,
 }
 
 /// Non-planar shell reference
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct NonPlanarShellRef {
+    /// ID of the surface group this shell belongs to
     pub surface_group_id: SurfaceGroupId,
+    /// Index of the shell (0 = top surface, 1..N = internal shells)
     pub shell_index: u32,
 }
 
@@ -331,41 +407,65 @@ pub struct NonPlanarShellRef {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ResolvedConfig {
     // Geometry
+    /// Layer height in millimeters
     pub layer_height: f32,
+    /// Line width in millimeters
     pub line_width: f32,
+    /// First layer height in millimeters
     pub first_layer_height: f32,
+    /// First layer line width in millimeters
     pub first_layer_line_width: f32,
-    
+
     // Walls
+    /// Number of walls (perimeters)
     pub wall_count: u32,
+    /// Outer wall speed in mm/s
     pub outer_wall_speed: f32,
+    /// Inner wall speed in mm/s
     pub inner_wall_speed: f32,
+    /// Wall generator algorithm
     pub wall_generator: WallGenerator,
+    /// Minimum feature size for Arachne (optional)
     pub arachne_min_feature_size: Option<f32>,
-    
+
     // Infill
+    /// Infill type
     pub infill_type: InfillType,
+    /// Infill density (0.0 to 1.0)
     pub infill_density: f32,
+    /// Infill angle in degrees
     pub infill_angle: f32,
+    /// Infill speed in mm/s
     pub infill_speed: f32,
+    /// Solid infill speed in mm/s
     pub solid_infill_speed: f32,
+    /// Number of top shell layers
     pub top_shell_layers: u32,
+    /// Number of bottom shell layers
     pub bottom_shell_layers: u32,
-    
+
     // Support
+    /// Whether support is enabled
     pub support_enabled: bool,
+    /// Support generation type
     pub support_type: SupportType,
+    /// Support overhang angle threshold in degrees
     pub support_overhang_angle: f32,
-    
+
     // Non-planar (module-contributed)
+    /// Maximum non-planar angle in degrees (optional)
     pub nonplanar_max_angle_deg: Option<f32>,
+    /// Number of non-planar shells (optional)
     pub nonplanar_shell_count: Option<u32>,
+    /// Non-planar amplitude in millimeters (optional)
     pub nonplanar_amplitude: Option<f32>,
-    
+
     // Smoothificator (module-contributed)
+    /// Smoothificator target height in millimeters (optional)
     pub smoothificator_target_height: Option<f32>,
+    /// Smoothificator adaptive mode (optional)
     pub smoothificator_adaptive: Option<bool>,
-    
+
     /// Overflow bucket for unknown module configs
     pub extensions: HashMap<String, ConfigValue>,
 }
@@ -405,39 +505,58 @@ impl Default for ResolvedConfig {
 /// Active region in a global layer
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ActiveRegion {
+    /// Object ID this region belongs to
     pub object_id: ObjectId,
+    /// Region ID
     pub region_id: RegionId,
+    /// Fully resolved config for this region
     pub resolved_config: ResolvedConfig,
+    /// Effective layer height for this region
     pub effective_layer_height: f32,
+    /// Non-planar shell reference (optional)
     pub nonplanar_shell: Option<NonPlanarShellRef>,
+    /// True if this region skipped the previous global Z and is catching up
     pub is_catchup_layer: bool,
+    /// Bottom Z of the catchup layer
     pub catchup_z_bottom: f32,
+    /// Tool/filament index for this region
     pub tool_index: u32,
 }
 
 /// Global layer
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GlobalLayer {
+    /// Index of the global layer
     pub index: u32,
+    /// Z height of the layer
     pub z: f32,
+    /// Active regions in this layer
     pub active_regions: Vec<ActiveRegion>,
+    /// True if the layer contains non-planar features
     pub has_nonplanar: bool,
+    /// True if multiple objects with different layer heights align at this Z
     pub is_sync_layer: bool,
 }
 
 /// Object layer reference
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ObjectLayerRef {
+    /// Local layer index within the object
     pub local_layer_index: u32,
+    /// Global layer index in the scene
     pub global_layer_index: u32,
+    /// Effective layer height for this layer
     pub effective_layer_height: f32,
 }
 
 /// Layer plan IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LayerPlanIR {
+    /// Schema version of this IR
     pub schema_version: SemVer,
+    /// Global layers in the plan
     pub global_layers: Vec<GlobalLayer>,
+    /// Per-object layer participation mapping
     pub object_participation: HashMap<ObjectId, Vec<ObjectLayerRef>>,
 }
 
@@ -448,23 +567,31 @@ pub struct LayerPlanIR {
 /// Semantic region
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SemanticRegion {
+    /// Object ID this region belongs to
     pub object_id: ObjectId,
+    /// Polygons defining this region
     pub polygons: Vec<ExPolygon>,
+    /// Paint value for this region
     pub value: PaintValue,
+    /// Paint order (higher means painted later)
     pub paint_order: u64,
 }
 
 /// Layer paint map
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LayerPaintMap {
+    /// Global layer index
     pub global_layer_index: u32,
+    /// Paint regions keyed by semantic
     pub semantic_regions: HashMap<PaintSemantic, Vec<SemanticRegion>>,
 }
 
 /// Paint region IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PaintRegionIR {
+    /// Schema version of this IR
     pub schema_version: SemVer,
+    /// Per-layer paint maps
     pub per_layer: HashMap<u32, LayerPaintMap>,
 }
 
@@ -486,29 +613,38 @@ impl PaintRegionIR {
 /// Region key (unique identifier for a region in a layer)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RegionKey {
+    /// Global layer index
     pub global_layer_index: u32,
+    /// Object ID
     pub object_id: ObjectId,
+    /// Region ID
     pub region_id: RegionId,
 }
 
 /// Module invocation
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModuleInvocation {
+    /// ID of the module to invoke
     pub module_id: ModuleId,
+    /// Configuration view for the module
     pub config_view: ConfigView,
 }
 
 /// Region plan
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegionPlan {
+    /// Resolved config for the region
     pub config: ResolvedConfig,
+    /// Module invocations per stage
     pub stage_modules: HashMap<StageId, Vec<ModuleInvocation>>,
 }
 
 /// Region map IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegionMapIR {
+    /// Schema version of this IR
     pub schema_version: SemVer,
+    /// Region plans keyed by region key
     pub entries: HashMap<RegionKey, RegionPlan>,
 }
 
@@ -519,34 +655,48 @@ pub struct RegionMapIR {
 /// Polygon
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Polygon {
+    /// List of points defining the polygon
     pub points: Vec<Point2>,
 }
 
 /// Polygon with holes
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExPolygon {
+    /// Outer contour (CCW)
     pub contour: Polygon,
+    /// Inner holes (CW)
     pub holes: Vec<Polygon>,
 }
 
 /// Sliced region
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SlicedRegion {
+    /// Object ID this region belongs to
     pub object_id: ObjectId,
+    /// Region ID
     pub region_id: RegionId,
+    /// Closed polygon islands
     pub polygons: Vec<ExPolygon>,
+    /// Inset polygons available for infill
     pub infill_areas: Vec<ExPolygon>,
+    /// Non-planar surface group (optional)
     pub nonplanar_surface: Option<SurfaceGroupId>,
+    /// Effective layer height
     pub effective_layer_height: f32,
+    /// Paint region membership for points on polygon contour boundaries
     pub boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
 }
 
 /// Slice IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SliceIR {
+    /// Schema version of this IR
     pub schema_version: SemVer,
+    /// Global layer index
     pub global_layer_index: u32,
+    /// Z height of the layer
     pub z: f32,
+    /// Sliced regions in this layer
     pub regions: Vec<SlicedRegion>,
 }
 
@@ -557,150 +707,223 @@ pub struct SliceIR {
 /// Wall generator type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WallGenerator {
+    /// Classic wall generator
     Classic,
+    /// Arachne variable-width wall generator
     Arachne,
 }
 
 /// Infill type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InfillType {
+    /// Grid infill
     Grid,
+    /// Triangles infill
     Triangles,
+    /// Honeycomb infill
     Honeycomb,
+    /// Gyroid infill
     Gyroid,
+    /// Lightning infill
     Lightning,
+    /// Line infill
     Line,
+    /// Concentric infill
     Concentric,
 }
 
 /// Support type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SupportType {
+    /// Traditional support generation
     Traditional,
+    /// Tree support generation
     Tree,
 }
 
 /// Wall boundary type
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum WallBoundaryType {
+    /// Outer wall facing air or a gap
     ExteriorSurface,
-    MaterialBoundary { adjacent_tool: u32 },
+    /// Wall adjacent to a different material region
+    MaterialBoundary {
+        /// Tool index of the neighboring region
+        adjacent_tool: u32,
+    },
+    /// Inner wall — no special boundary handling
     Interior,
 }
 
 /// Loop type
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LoopType {
+    /// Outer loop
     Outer,
+    /// Inner loop
     Inner,
+    /// Thin wall loop
     ThinWall,
+    /// Non-planar shell loop
     NonPlanarShell,
 }
 
 /// Wall feature flags
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WallFeatureFlags {
+    /// Tool override for this segment
     pub tool_index: Option<u32>,
+    /// Enables fuzzy skin modulation
     pub fuzzy_skin: bool,
+    /// Segment is bridge-like
     pub is_bridge: bool,
+    /// Segment belongs to thin-wall logic
     pub is_thin_wall: bool,
+    /// If true, force skip of ironing behavior
     pub skip_ironing: bool,
+    /// Custom paint values keyed by PaintSemantic::Custom module ID
     pub custom: HashMap<String, PaintValue>,
 }
 
 /// Width profile (for variable-width extrusion)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WidthProfile {
+    /// One width per vertex in path.points
     pub widths: Vec<f32>,
 }
 
 /// Point with width (for extrusion paths)
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Point3WithWidth {
+    /// X coordinate in millimeters
     pub x: f32,
+    /// Y coordinate in millimeters
     pub y: f32,
+    /// Z coordinate in millimeters
     pub z: f32,
+    /// Local extrusion width in millimeters
     pub width: f32,
+    /// Multiplier on base extrusion volume
     pub flow_factor: f32,
 }
 
 /// Extrusion role
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ExtrusionRole {
+    /// Outer wall
     OuterWall,
+    /// Inner wall
     InnerWall,
+    /// Thin wall
     ThinWall,
+    /// Top solid infill
     TopSolidInfill,
+    /// Bottom solid infill
     BottomSolidInfill,
+    /// Sparse infill
     SparseInfill,
+    /// Support material
     SupportMaterial,
+    /// Support interface
     SupportInterface,
+    /// Wipe tower
     WipeTower,
+    /// Prime tower
     PrimeTower,
+    /// Ironing
     Ironing,
+    /// Bridge infill
     BridgeInfill,
+    /// Custom role
     Custom(String),
 }
 
 /// 3D extrusion path
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExtrusionPath3D {
+    /// List of 3D points with width
     pub points: Vec<Point3WithWidth>,
+    /// Role of this extrusion path
     pub role: ExtrusionRole,
+    /// Speed factor multiplier
     pub speed_factor: f32,
 }
 
 /// Wall loop
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WallLoop {
+    /// 0 = outermost
     pub perimeter_index: u32,
+    /// Type of loop
     pub loop_type: LoopType,
+    /// 3D extrusion path
     pub path: ExtrusionPath3D,
+    /// Variable-width profile
     pub width_profile: WidthProfile,
+    /// Per-vertex feature flags
     pub feature_flags: Vec<WallFeatureFlags>,
+    /// Boundary type
     pub boundary_type: WallBoundaryType,
 }
 
 /// Seam reason
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SeamReason {
+    /// Concave corner
     Concave,
+    /// Aligned edge
     Aligned,
+    /// User forced
     UserForced,
+    /// Sharp corner
     Sharp,
 }
 
 /// Seam candidate
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SeamCandidate {
+    /// Position of the candidate
     pub position: Point3WithWidth,
+    /// Score of the candidate
     pub score: f32,
+    /// Reason for the candidate
     pub reason: SeamReason,
 }
 
 /// Seam position
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SeamPosition {
+    /// Position of the seam
     pub point: Point3WithWidth,
+    /// Index of the wall
     pub wall_index: u32,
 }
 
 /// Perimeter region
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PerimeterRegion {
+    /// Object ID this region belongs to
     pub object_id: ObjectId,
+    /// Region ID
     pub region_id: RegionId,
+    /// Wall loops in this region
     pub walls: Vec<WallLoop>,
+    /// Remaining area after wall insets
     pub infill_areas: Vec<ExPolygon>,
+    /// Seam candidates
     pub seam_candidates: Vec<SeamCandidate>,
+    /// Resolved seam position
     pub resolved_seam: Option<SeamPosition>,
 }
 
 /// Perimeter IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PerimeterIR {
+    /// Schema version of this IR
     pub schema_version: SemVer,
+    /// Global layer index
     pub global_layer_index: u32,
+    /// Perimeter regions in this layer
     pub regions: Vec<PerimeterRegion>,
 }
 
@@ -711,18 +934,26 @@ pub struct PerimeterIR {
 /// Infill region
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InfillRegion {
+    /// Object ID this region belongs to
     pub object_id: ObjectId,
+    /// Region ID
     pub region_id: RegionId,
+    /// Sparse infill paths
     pub sparse_infill: Vec<ExtrusionPath3D>,
+    /// Solid infill paths
     pub solid_infill: Vec<ExtrusionPath3D>,
+    /// Ironing paths
     pub ironing: Vec<ExtrusionPath3D>,
 }
 
 /// Infill IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct InfillIR {
+    /// Schema version of this IR
     pub schema_version: SemVer,
+    /// Global layer index
     pub global_layer_index: u32,
+    /// Infill regions in this layer
     pub regions: Vec<InfillRegion>,
 }
 
@@ -733,11 +964,17 @@ pub struct InfillIR {
 /// Support IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SupportIR {
+    /// Schema version of this IR
     pub schema_version: SemVer,
+    /// Global layer index
     pub global_layer_index: u32,
+    /// Support paths
     pub support_paths: Vec<ExtrusionPath3D>,
+    /// Interface paths
     pub interface_paths: Vec<ExtrusionPath3D>,
+    /// Raft paths
     pub raft_paths: Vec<ExtrusionPath3D>,
+    /// Ironing paths
     pub ironing_paths: Vec<ExtrusionPath3D>,
 }
 
@@ -748,35 +985,50 @@ pub struct SupportIR {
 /// Tool change
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolChange {
+    /// Index of the entity after which the tool change occurs
     pub after_entity_index: u32,
+    /// Tool index to change from
     pub from_tool: u32,
+    /// Tool index to change to
     pub to_tool: u32,
 }
 
 /// Z hop
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ZHop {
+    /// Index of the entity after which the Z hop occurs
     pub after_entity_index: u32,
+    /// Height of the Z hop in millimeters
     pub hop_height: f32,
 }
 
 /// Print entity
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrintEntity {
+    /// Extrusion path
     pub path: ExtrusionPath3D,
+    /// Role of the entity
     pub role: ExtrusionRole,
+    /// Region key
     pub region_key: RegionKey,
+    /// Topological order
     pub topo_order: u32,
 }
 
 /// Layer collection IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LayerCollectionIR {
+    /// Schema version of this IR
     pub schema_version: SemVer,
+    /// Global layer index
     pub global_layer_index: u32,
+    /// Z height of the layer
     pub z: f32,
+    /// Ordered, ready-to-emit extrusion entities
     pub ordered_entities: Vec<PrintEntity>,
+    /// Tool changes in this layer
     pub tool_changes: Vec<ToolChange>,
+    /// Z hops in this layer
     pub z_hops: Vec<ZHop>,
 }
 
@@ -787,38 +1039,64 @@ pub struct LayerCollectionIR {
 /// GCode command
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GCodeCommand {
+    /// Move command
     Move {
+        /// X coordinate
         x: Option<f32>,
+        /// Y coordinate
         y: Option<f32>,
+        /// Z coordinate
         z: Option<f32>,
+        /// Extrusion amount
         e: Option<f32>,
+        /// Feed rate
         f: Option<f32>,
+        /// Role of the move
         role: ExtrusionRole,
     },
+    /// Retract command
     Retract {
+        /// Retraction length
         length: f32,
+        /// Retraction speed
         speed: f32,
     },
+    /// Unretract command
     Unretract {
+        /// Unretraction length
         length: f32,
+        /// Unretraction speed
         speed: f32,
     },
+    /// Fan speed command
     FanSpeed {
+        /// Fan speed value (0-255)
         value: u8,
     },
+    /// Temperature command
     Temperature {
+        /// Tool index
         tool: u32,
+        /// Temperature in Celsius
         celsius: f32,
+        /// Whether to wait for temperature
         wait: bool,
     },
+    /// Tool change command
     ToolChange {
+        /// Tool index to change from
         from: u32,
+        /// Tool index to change to
         to: u32,
     },
+    /// Comment command
     Comment {
+        /// Comment text
         text: String,
     },
+    /// Raw GCode command
     Raw {
+        /// Raw text
         text: String,
     },
 }
@@ -826,16 +1104,23 @@ pub enum GCodeCommand {
 /// Print metadata
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrintMetadata {
+    /// Estimated print time in seconds
     pub estimated_print_time_s: u32,
+    /// Filament used per tool in millimeters
     pub filament_used_mm: Vec<f32>,
+    /// Total layer count
     pub layer_count: u32,
+    /// Slicer version string
     pub slicer_version: String,
 }
 
 /// GCode IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GCodeIR {
+    /// Schema version of this IR
     pub schema_version: SemVer,
+    /// List of GCode commands
     pub commands: Vec<GCodeCommand>,
+    /// Print metadata
     pub metadata: PrintMetadata,
 }
