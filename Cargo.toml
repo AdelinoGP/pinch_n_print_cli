@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/slicer-host",
     "crates/slicer-core",
     "crates/slicer-ir",
     "crates/slicer-macros",
