@@ -27,7 +27,7 @@ Last updated: 2026-03-15
 - [x] TASK-015 Point-in-polygon for paint region queries
 
 ## Phase C — Host Scheduler
-- [ ] TASK-020 Manifest ingestion
+- [x] TASK-020 Manifest ingestion
 - [ ] TASK-021 DAG construction
 - [ ] TASK-022 DAG validation (all 13 passes)
 - [ ] TASK-023 Topological sort
