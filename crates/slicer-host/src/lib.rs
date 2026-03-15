@@ -5,12 +5,17 @@
 #![warn(unused_must_use)]
 
 pub mod dag;
+pub mod execution_plan;
 pub mod instance_pool;
 pub mod manifest;
 pub mod topology;
 pub mod validation;
 
 pub use dag::{build_intra_stage_dag, ModuleNode};
+pub use execution_plan::{
+    build_execution_plan, CompiledModule, CompiledStage, ExecutionModuleBinding, ExecutionPlan,
+    ExecutionPlanError, ExecutionPlanRequest, IrAccessMask, SortedStageModules,
+};
 pub use instance_pool::{
     build_wasm_instance_pool, InstancePoolError, InstancePoolMode, WasmArtifactMetadata,
     WasmInstanceLease, WasmInstancePool,
