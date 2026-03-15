@@ -16,7 +16,7 @@ Last updated: 2026-03-15
 - [x] TASK-003 wit/ directory — all WIT files
 - [x] TASK-004 crates/slicer-macros/ — proc-macro crate skeleton
 - [x] TASK-005 crates/slicer-test/ — mock host + fixture builders
-- [ ] TASK-006 crates/slicer-sdk/ — re-exports + host service wrappers
+- [x] TASK-006 crates/slicer-sdk/ — re-exports + host service wrappers
 
 ## Phase B — Core Algorithms
 - [ ] TASK-010 Clipper2-Rust + polygon operations

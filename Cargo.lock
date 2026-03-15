@@ -73,6 +73,13 @@ name = "slicer-macros"
 version = "0.1.0"
 
 [[package]]
+name = "slicer-sdk"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+]
+
+[[package]]
 name = "slicer-test"
 version = "0.1.0"
 dependencies = [
