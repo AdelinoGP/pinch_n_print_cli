@@ -28,7 +28,7 @@ Last updated: 2026-03-15
 
 ## Phase C — Host Scheduler
 - [x] TASK-020 Manifest ingestion
-- [ ] TASK-021 DAG construction
+- [x] TASK-021 DAG construction
 - [ ] TASK-022 DAG validation (all 13 passes)
 - [ ] TASK-023 Topological sort
 - [ ] TASK-024 WASM instance pool
