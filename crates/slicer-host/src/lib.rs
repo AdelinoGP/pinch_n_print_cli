@@ -4,6 +4,7 @@
 #![warn(unused_imports)]
 #![warn(unused_must_use)]
 
+pub mod blackboard;
 pub mod dag;
 pub mod execution_plan;
 pub mod instance_pool;
@@ -11,6 +12,9 @@ pub mod manifest;
 pub mod topology;
 pub mod validation;
 
+pub use blackboard::{
+    Blackboard, BlackboardError, BlackboardPrepassSlot, LayerArena, LayerArenaError, LayerArenaSlot,
+};
 pub use dag::{build_intra_stage_dag, ModuleNode};
 pub use execution_plan::{
     build_execution_plan, CompiledModule, CompiledStage, ExecutionModuleBinding, ExecutionPlan,
