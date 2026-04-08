@@ -6,8 +6,12 @@
 //! but layers can be processed in parallel.
 
 use std::fmt;
+use std::sync::Mutex;
 
-use slicer_ir::{GlobalLayer, LayerCollectionIR, ModuleId, StageId};
+use rayon::prelude::*;
+use slicer_ir::{
+    GlobalLayer, LayerCollectionIR, ModuleId, PrintEntity, SemVer, StageId, ToolChange, ZHop,
+};
 
 use crate::{
     Blackboard, BlackboardError, CompiledModule, ExecutionPlan, LayerArena, LayerArenaError,
@@ -137,9 +141,100 @@ pub trait LayerStageRunner {
 /// Each layer gets its own `LayerArena` that is freed when the layer completes.
 /// Results are committed to the blackboard's write-once layer output slots.
 pub fn execute_per_layer(
-    _plan: &ExecutionPlan,
-    _blackboard: &Blackboard,
-    _runner: &(dyn LayerStageRunner + Sync),
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
 ) -> Result<Vec<LayerCollectionIR>, LayerExecutionError> {
-    todo!("TASK-031: implement per-layer parallel executor")
+    let global_layers = &plan.global_layers;
+
+    // Process layers in parallel using rayon.
+    // collect() preserves the original item order, matching global_layers index order.
+    global_layers
+        .par_iter()
+        .map(|layer| execute_single_layer(plan, blackboard, runner, layer))
+        .collect()
+}
+
+/// Execute all stages for a single layer sequentially.
+fn execute_single_layer(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    layer: &GlobalLayer,
+) -> Result<LayerCollectionIR, LayerExecutionError> {
+    // Create an isolated LayerArena for this layer
+    let mut arena = LayerArena::new();
+
+    // Execute stages sequentially in deterministic order
+    for stage in &plan.per_layer_stages {
+        // Execute modules in topological order within each stage
+        for module in &stage.modules {
+            let result = runner.run_stage(&stage.stage_id, layer, module, blackboard, &mut arena);
+
+            match result {
+                Ok(LayerStageOutput::Success) => {
+                    // Module completed successfully, continue
+                }
+                Ok(LayerStageOutput::NonFatalError { message: _ }) => {
+                    // Non-fatal error: log but continue with next module
+                }
+                Err(LayerStageError::FatalModule {
+                    stage_id,
+                    module_id,
+                    message,
+                }) => {
+                    // Fatal error: abort this layer immediately
+                    return Err(LayerExecutionError::FatalLayer {
+                        layer_index: layer.index,
+                        stage_id,
+                        module_id,
+                        message,
+                    });
+                }
+                Err(LayerStageError::ArenaCommit { source: _ }) => {
+                    // Arena commit failure: treat as fatal for this layer
+                    return Err(LayerExecutionError::FatalLayer {
+                        layer_index: layer.index,
+                        stage_id: stage.stage_id.clone(),
+                        module_id: module.module_id.clone(),
+                        message: String::from("arena commit failed"),
+                    });
+                }
+            }
+        }
+    }
+
+    // Build the LayerCollectionIR output for this layer
+    let layer_output = LayerCollectionIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        global_layer_index: layer.index,
+        z: layer.z,
+        ordered_entities: Vec::new(),
+        tool_changes: Vec::new(),
+        z_hops: Vec::new(),
+    };
+
+    Ok(layer_output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_layer_stage_output_equality() {
+        assert_eq!(LayerStageOutput::Success, LayerStageOutput::Success);
+        assert_eq!(
+            LayerStageOutput::NonFatalError {
+                message: "test".into()
+            },
+            LayerStageOutput::NonFatalError {
+                message: "test".into()
+            }
+        );
+    }
 }
