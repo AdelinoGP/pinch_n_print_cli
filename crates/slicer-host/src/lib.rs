@@ -8,6 +8,7 @@ pub mod blackboard;
 pub mod dag;
 pub mod execution_plan;
 pub mod instance_pool;
+pub mod layer_executor;
 pub mod manifest;
 pub mod mesh_segmentation;
 pub mod paint_segmentation;
@@ -27,6 +28,9 @@ pub use execution_plan::{
 pub use instance_pool::{
     build_wasm_instance_pool, InstancePoolError, InstancePoolMode, WasmArtifactMetadata,
     WasmInstanceLease, WasmInstancePool,
+};
+pub use layer_executor::{
+    execute_per_layer, LayerExecutionError, LayerStageError, LayerStageOutput, LayerStageRunner,
 };
 pub use manifest::{
     load_module_from_paths, load_modules_from_roots, ConfigSchema, DiagnosticLevel, LoadDiagnostic,
