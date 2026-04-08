@@ -9,6 +9,7 @@ pub mod dag;
 pub mod execution_plan;
 pub mod instance_pool;
 pub mod layer_executor;
+pub mod layer_finalization;
 pub mod manifest;
 pub mod mesh_segmentation;
 pub mod paint_segmentation;
@@ -31,6 +32,10 @@ pub use instance_pool::{
 };
 pub use layer_executor::{
     execute_per_layer, LayerExecutionError, LayerStageError, LayerStageOutput, LayerStageRunner,
+};
+pub use layer_finalization::{
+    execute_layer_finalization, FinalizationError, FinalizationOutput, FinalizationOutputBuilder,
+    FinalizationStageRunner,
 };
 pub use manifest::{
     load_module_from_paths, load_modules_from_roots, ConfigSchema, DiagnosticLevel, LoadDiagnostic,
