@@ -3,9 +3,14 @@ cli:
 event_loop:
   prompt_file: PROMPT.md
   completion_promise: RALPH_TASK_COMPLETE
+  idle_timeout_secs: 600
   max_iterations: 200
-  max_runtime: 28800
+  max_runtime_seconds: 28800
   verbose: true
+tasks:
+  enabled: true    
 RObot:
   enabled: true
   timeout_seconds: 120
+  telegram:
+    bot_token: 8414074086:AAEcwSci_u4Z2zyv3m1JhdnmR99QPZjbo2k

@@ -61,17 +61,28 @@ Tests should verify: struct construction, serde round-trip, schema_version prese
 3. Resume from the first unchecked `[ ]` task
 4. If a task is marked `[~]` (in-progress), treat it as incomplete and restart it from scratch
 
-### EVENT NOTIFICATION & TELEGRAM REPORTING
-You are required to maintain strict observability over the orchestration loop. Every time you delegate work to a sub-agent, or a task/sub-task reaches completion, you MUST broadcast this state change immediately.
-
-1. **Telegram Bot Notification (Non-Blocking):**
-   To send a direct message to the Telegram Bot without pausing the execution loop, you must execute the following command:
-   `ralph tools interact progress "[Sub-Agent/Task Name]: <Brief status update>"`
-
-2. **Internal Event List Registration:**
-   To formally register the completion in the orchestrator's event list, emit a custom JSON event. Use the `--json` flag with the positional payload:
-   `ralph emit --json '{"type": "planner.task_update", "payload": {"task": "<task_id>", "status": "completed"}}'`
-
+### EVENT NOTIFICATION & TELEGRAM REPORTING
+
+You are required to maintain strict observability over the orchestration loop. Every time you delegate work to a sub-agent, or a task/sub-task reaches completion, you MUST broadcast this state change immediately.
+
+
+
+1. **Telegram Bot Notification (Non-Blocking):**
+
+   To send a direct message to the Telegram Bot without pausing the execution loop, you must execute the following command:
+
+   `ralph tools interact progress "[Sub-Agent/Task Name]: <Brief status update>"`
+
+
+
+2. **Internal Event List Registration:**
+
+   To formally register the completion in the orchestrator's event list, emit a custom JSON event. Use the `--json` flag with the positional payload:
+
+   `ralph emit --json '{"type": "planner.task_update", "payload": {"task": "<task_id>", "status": "completed"}}'`
+
+
+
 **CRITICAL CONSTRAINT:** Do NOT emit a `human.interact` event for routine agent calls or task completions unless you explicitly need human approval or a decision to proceed. Using `human.interact` blocks the event loop and degrades system throughput.
 
 ## Your current goal
@@ -83,9 +94,14 @@ For each task:
 - Do not proceed to the next task until the current one passes its acceptance criteria.
 - Update ./docs/07_implementation_status.md after each completed task.
 
-## Completion
-
-When ALL phases are complete and all quality gates pass, write the following
-line to ./docs/07_implementation_status.md and stop:
-
+## Task Evaluation & Project Completion Protocol
+
+You are operating in a continuous loop. Completing a single task does NOT mean the project is complete. After completing ANY task or sub-task, you MUST strictly follow this verification protocol:
+
+1. **RE-READ STATE:** You must explicitly read the current version of `./docs/07_implementation_status.md`. Do not rely on your memory of the file's previous state.
+2. **AUDIT:** Scan the entire document for pending tasks, uncompleted phases, or failing quality gates. 
+3. **CONTINUE:** If there is EVEN ONE task incomplete or pending, you must identify it, assign it, and continue the orchestration loop. **Do NOT emit "tasks.done".**
+4. **VERIFY COMPLETION:** You may only consider the overarching project completed if your audit confirms that 100% of the tasks in `./docs/07_implementation_status.md` are explicitly marked as complete AND all quality gates have successfully passed.
+5. **HALT & FINALIZE:** Only after Phase F is fully satisfied and all Acceptance Gates are passing, write the following exact line to the bottom of `./docs/07_implementation_status.md` and stop execution:
+
 RALPH_TASK_COMPLETE

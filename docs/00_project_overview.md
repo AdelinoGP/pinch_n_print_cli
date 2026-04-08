@@ -84,6 +84,7 @@ Use this table as the first-hop index when answering architecture or implementat
 | Canonical terms and scenario traces | `./docs/10_glossary_and_scenario_traces.md` |
 | Governance and acceptance gate policy | `./docs/11_operational_governance_and_acceptance_gate.md` |
 | Numeric acceptance thresholds | `./docs/12_architecture_gate_metrics.md` |
+| slicer-helpers crate (repair, decimate, STEP import) | `./docs/13_slicer_helpers_crate.md` |
 | Active architecture deviations | `./docs/DEVIATION_LOG.md` |
 
 Precedence rule for conflicts:
