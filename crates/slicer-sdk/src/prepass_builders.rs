@@ -200,3 +200,76 @@ impl std::fmt::Debug for MeshSegmentationOutput {
             .finish()
     }
 }
+
+/// A single paint region entry produced by paint segmentation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PaintRegionEntry {
+    /// Global layer index for this region.
+    pub layer_index: u32,
+    /// The paint semantic (e.g. "support_enforcer", "fuzzy_skin").
+    pub semantic: String,
+    /// Object this region belongs to.
+    pub object_id: String,
+    /// The paint value for this region.
+    pub value: PaintValueView,
+    /// Order of the paint layer (used for precedence).
+    pub paint_order: u64,
+    /// 2D projected contour points (scaled i64 as f64).
+    pub contour_points: Vec<[f64; 2]>,
+}
+
+/// Output builder for paint segmentation stage.
+///
+/// Collects per-layer paint region entries produced by `PrepassModule::run_paint_segmentation`.
+pub struct PaintSegmentationOutput {
+    regions: Vec<PaintRegionEntry>,
+}
+
+impl PaintSegmentationOutput {
+    /// Create a new empty output.
+    pub fn new() -> Self {
+        Self {
+            regions: Vec::new(),
+        }
+    }
+
+    /// Push a paint region entry.
+    pub fn push_paint_region(
+        &mut self,
+        layer_index: u32,
+        semantic: String,
+        object_id: String,
+        value: PaintValueView,
+        paint_order: u64,
+        contour_points: Vec<[f64; 2]>,
+    ) {
+        self.regions.push(PaintRegionEntry {
+            layer_index,
+            semantic,
+            object_id,
+            value,
+            paint_order,
+            contour_points,
+        });
+    }
+
+    /// Get all regions (for testing).
+    #[doc(hidden)]
+    pub fn regions(&self) -> &[PaintRegionEntry] {
+        &self.regions
+    }
+}
+
+impl Default for PaintSegmentationOutput {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for PaintSegmentationOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PaintSegmentationOutput")
+            .field("regions", &self.regions.len())
+            .finish()
+    }
+}

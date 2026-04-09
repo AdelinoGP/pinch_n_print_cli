@@ -11,8 +11,10 @@ use crate::builders::{
 use crate::error::ModuleError;
 use crate::postpass_builders::GcodeOutputBuilder;
 use crate::postpass_types::GcodeCommandView;
-use crate::prepass_builders::{LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput};
-use crate::prepass_types::{MeshObjectView, ObjectId};
+use crate::prepass_builders::{
+    LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput, PaintSegmentationOutput,
+};
+use crate::prepass_types::{MeshObjectView, ObjectId, PaintSegmentationObjectView};
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::ConfigView;
 
@@ -274,6 +276,20 @@ pub trait PrepassModule: Sized {
         &self,
         _objects: &[MeshObjectView],
         _output: &mut MeshSegmentationOutput,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run paint segmentation to project 3D painted facets into 2D per-layer regions.
+    ///
+    /// Receives objects with paint layers, transform matrices, and participating
+    /// layer indices. Produces 2D polygon regions grouped by layer, semantic,
+    /// object, value, and paint order. Default implementation does nothing.
+    fn run_paint_segmentation(
+        &self,
+        _objects: &[PaintSegmentationObjectView],
+        _output: &mut PaintSegmentationOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())

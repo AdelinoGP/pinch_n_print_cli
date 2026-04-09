@@ -1,0 +1,12 @@
+[package]
+name = "paint-segmentation"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Paint segmentation prepass module that projects 3D painted facets into 2D per-layer regions"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+[dev-dependencies]

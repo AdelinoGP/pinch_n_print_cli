@@ -184,6 +184,77 @@ pub struct PaintStrokeView {
     pub value: PaintValueView,
 }
 
+/// View of an object for paint segmentation, with transform and layer participation.
+///
+/// Used by `PrepassModule::run_paint_segmentation` to provide mesh geometry,
+/// paint layer data, transform, and participating layer indices.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PaintSegmentationObjectView {
+    /// Unique identifier of the object.
+    pub object_id: String,
+    /// Mesh vertices as `[x, y, z]` coordinates.
+    pub vertices: Vec<[f32; 3]>,
+    /// Triangle indices (each triple indexes into `vertices`).
+    pub triangles: Vec<[u32; 3]>,
+    /// Paint layers associated with this object's mesh.
+    pub paint_layers: Vec<PaintLayerView>,
+    /// 4x4 column-major transform matrix.
+    pub transform_matrix: [f64; 16],
+    /// Global layer indices this object participates in.
+    pub participating_layer_indices: Vec<u32>,
+}
+
+impl PaintSegmentationObjectView {
+    /// Create a new PaintSegmentationObjectView.
+    pub fn new(
+        object_id: String,
+        vertices: Vec<[f32; 3]>,
+        triangles: Vec<[u32; 3]>,
+        paint_layers: Vec<PaintLayerView>,
+        transform_matrix: [f64; 16],
+        participating_layer_indices: Vec<u32>,
+    ) -> Self {
+        Self {
+            object_id,
+            vertices,
+            triangles,
+            paint_layers,
+            transform_matrix,
+            participating_layer_indices,
+        }
+    }
+
+    /// Returns the object ID.
+    pub fn object_id(&self) -> &str {
+        &self.object_id
+    }
+
+    /// Returns the vertices.
+    pub fn vertices(&self) -> &[[f32; 3]] {
+        &self.vertices
+    }
+
+    /// Returns the triangles.
+    pub fn triangles(&self) -> &[[u32; 3]] {
+        &self.triangles
+    }
+
+    /// Returns the paint layers.
+    pub fn paint_layers(&self) -> &[PaintLayerView] {
+        &self.paint_layers
+    }
+
+    /// Returns the transform matrix.
+    pub fn transform_matrix(&self) -> &[f64; 16] {
+        &self.transform_matrix
+    }
+
+    /// Returns the participating layer indices.
+    pub fn participating_layer_indices(&self) -> &[u32] {
+        &self.participating_layer_indices
+    }
+}
+
 /// Proposal for a complete layer in the slice plan.
 ///
 /// Per docs/03_wit_and_manifest.md (world-prepass.wit):
