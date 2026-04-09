@@ -1,6 +1,8 @@
 //! Paint-region point query helpers.
 
-use slicer_ir::{ExPolygon, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon, SemanticRegion};
+use slicer_ir::{
+    ExPolygon, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon, SemanticRegion,
+};
 
 /// Boundary handling mode for point-in-polygon paint queries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

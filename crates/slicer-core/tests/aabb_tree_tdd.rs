@@ -31,19 +31,51 @@ fn empty_mesh() -> IndexedTriangleSet {
 
 fn unit_cube_mesh() -> IndexedTriangleSet {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 0.0 },
-        Point3 { x: 1.0, y: 0.0, z: 0.0 },
-        Point3 { x: 1.0, y: 1.0, z: 0.0 },
-        Point3 { x: 0.0, y: 1.0, z: 0.0 },
-        Point3 { x: 0.0, y: 0.0, z: 1.0 },
-        Point3 { x: 1.0, y: 0.0, z: 1.0 },
-        Point3 { x: 1.0, y: 1.0, z: 1.0 },
-        Point3 { x: 0.0, y: 1.0, z: 1.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 1.0,
+            y: 1.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 1.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 1.0,
+        },
+        Point3 {
+            x: 1.0,
+            y: 0.0,
+            z: 1.0,
+        },
+        Point3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 1.0,
+            z: 1.0,
+        },
     ];
 
     let indices = vec![
-        0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2,
-        7, 6, 3, 0, 4, 3, 4, 7,
+        0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6,
+        3, 0, 4, 3, 4, 7,
     ];
 
     IndexedTriangleSet { vertices, indices }
@@ -75,8 +107,8 @@ fn empty_mesh_reports_no_bounds_hits_or_closest_point() {
         ),
         None
     );
-    assert!(
-        tree.raycast_all_hits(
+    assert!(tree
+        .raycast_all_hits(
             Point3 {
                 x: 0.0,
                 y: 0.0,
@@ -88,8 +120,7 @@ fn empty_mesh_reports_no_bounds_hits_or_closest_point() {
                 z: 1.0,
             },
         )
-        .is_empty()
-    );
+        .is_empty());
     assert_eq!(
         tree.closest_point(Point3 {
             x: 0.0,
@@ -150,8 +181,14 @@ fn raycast_all_hits_returns_sorted_entry_and_exit_intersections() {
     );
 
     assert_eq!(hits.len(), 2, "expected entry and exit hits, got {hits:?}");
-    assert!(hits[0].distance.is_finite(), "distance must be finite: {hits:?}");
-    assert!(hits[1].distance.is_finite(), "distance must be finite: {hits:?}");
+    assert!(
+        hits[0].distance.is_finite(),
+        "distance must be finite: {hits:?}"
+    );
+    assert!(
+        hits[1].distance.is_finite(),
+        "distance must be finite: {hits:?}"
+    );
     assert!(
         hits[0].distance <= hits[1].distance,
         "hits must be sorted by distance: {hits:?}"
@@ -214,8 +251,8 @@ fn ray_miss_returns_no_intersections() {
         ),
         None
     );
-    assert!(
-        tree.raycast_all_hits(
+    assert!(tree
+        .raycast_all_hits(
             Point3 {
                 x: 2.0,
                 y: 2.0,
@@ -227,6 +264,5 @@ fn ray_miss_returns_no_intersections() {
                 z: 1.0,
             },
         )
-        .is_empty()
-    );
+        .is_empty());
 }

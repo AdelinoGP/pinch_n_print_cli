@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use slicer_host::{ConfigSchema, LoadedModule, ModuleNode, build_intra_stage_dag};
+use slicer_host::{build_intra_stage_dag, ConfigSchema, LoadedModule, ModuleNode};
 use slicer_ir::SemVer;
 
 #[test]
@@ -12,7 +12,13 @@ fn requested_stage_filters_the_node_set() {
     let nodes = build_intra_stage_dag(
         stage.clone(),
         &[
-            loaded_module("com.example.alpha", &stage, &["SliceIR.regions"], &["PerimeterIR.regions"], &[]),
+            loaded_module(
+                "com.example.alpha",
+                &stage,
+                &["SliceIR.regions"],
+                &["PerimeterIR.regions"],
+                &[],
+            ),
             loaded_module(
                 "com.example.other-stage",
                 "Layer::Support",
@@ -32,7 +38,11 @@ fn requested_stage_filters_the_node_set() {
     .expect("DAG construction should succeed for same-stage node selection");
 
     let by_id = nodes_by_id(&nodes);
-    assert_eq!(by_id.len(), 2, "only modules in the requested stage become nodes");
+    assert_eq!(
+        by_id.len(),
+        2,
+        "only modules in the requested stage become nodes"
+    );
     assert!(by_id.contains_key("com.example.alpha"));
     assert!(by_id.contains_key("com.example.beta"));
     assert!(!by_id.contains_key("com.example.other-stage"));
@@ -63,7 +73,10 @@ fn read_after_write_access_derives_an_edge_from_writer_to_reader() {
     .expect("DAG construction should succeed for auto-derived edges");
 
     let by_id = nodes_by_id(&nodes);
-    assert_eq!(by_id["com.example.writer"].edges_to, vec![String::from("com.example.reader")]);
+    assert_eq!(
+        by_id["com.example.writer"].edges_to,
+        vec![String::from("com.example.reader")]
+    );
     assert!(by_id["com.example.reader"].edges_to.is_empty());
 }
 
@@ -149,13 +162,7 @@ fn modules_without_dependencies_remain_as_isolated_nodes() {
                 &["SliceIR.regions.boundary_paint"],
                 &[],
             ),
-            loaded_module(
-                "com.example.noop",
-                &stage,
-                &[],
-                &[],
-                &[],
-            ),
+            loaded_module("com.example.noop", &stage, &[], &[], &[]),
         ],
     )
     .expect("DAG construction should keep isolated modules in the graph");
@@ -197,7 +204,10 @@ fn node_identity_is_loaded_module_id_even_when_other_fields_match() {
 }
 
 fn nodes_by_id(nodes: &[ModuleNode]) -> BTreeMap<&str, &ModuleNode> {
-    nodes.iter().map(|node| (node.module_id.as_str(), node)).collect()
+    nodes
+        .iter()
+        .map(|node| (node.module_id.as_str(), node))
+        .collect()
 }
 
 fn loaded_module(

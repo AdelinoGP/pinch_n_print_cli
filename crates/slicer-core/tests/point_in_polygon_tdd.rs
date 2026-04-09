@@ -4,8 +4,8 @@ use std::collections::HashMap;
 
 use slicer_core::{point_in_paint_region, BoundaryInclusion, PaintRegionQueryError};
 use slicer_ir::{
-    ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon,
-    SemVer, SemanticRegion,
+    ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon, SemVer,
+    SemanticRegion,
 };
 
 fn schema_version() -> SemVer {
@@ -66,7 +66,11 @@ fn semantic_region(
     }
 }
 
-fn paint_region_ir(layer_index: u32, semantic: PaintSemantic, regions: Vec<SemanticRegion>) -> PaintRegionIR {
+fn paint_region_ir(
+    layer_index: u32,
+    semantic: PaintSemantic,
+    regions: Vec<SemanticRegion>,
+) -> PaintRegionIR {
     PaintRegionIR {
         schema_version: schema_version(),
         per_layer: HashMap::from([(
@@ -247,8 +251,16 @@ fn overlapping_regions_of_same_semantic_choose_highest_paint_order() {
         1,
         PaintSemantic::Material,
         vec![
-            semantic_region(vec![square(0.0, 0.0, 10.0, 10.0)], PaintValue::ToolIndex(1), 3),
-            semantic_region(vec![square(2.0, 2.0, 8.0, 8.0)], PaintValue::ToolIndex(4), 8),
+            semantic_region(
+                vec![square(0.0, 0.0, 10.0, 10.0)],
+                PaintValue::ToolIndex(1),
+                3,
+            ),
+            semantic_region(
+                vec![square(2.0, 2.0, 8.0, 8.0)],
+                PaintValue::ToolIndex(4),
+                8,
+            ),
         ],
     );
 
@@ -272,8 +284,16 @@ fn equal_paint_order_conflicting_custom_values_report_deterministic_conflict() {
         2,
         semantic.clone(),
         vec![
-            semantic_region(vec![square(0.0, 0.0, 10.0, 10.0)], PaintValue::Scalar(0.2), 11),
-            semantic_region(vec![square(2.0, 2.0, 8.0, 8.0)], PaintValue::Scalar(0.8), 11),
+            semantic_region(
+                vec![square(0.0, 0.0, 10.0, 10.0)],
+                PaintValue::Scalar(0.2),
+                11,
+            ),
+            semantic_region(
+                vec![square(2.0, 2.0, 8.0, 8.0)],
+                PaintValue::Scalar(0.8),
+                11,
+            ),
         ],
     );
 

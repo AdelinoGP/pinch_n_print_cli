@@ -116,7 +116,9 @@ fn build_triangles(mesh: &IndexedTriangleSet) -> Vec<Triangle> {
 }
 
 fn mesh_bounds(triangles: &[Triangle]) -> Option<BoundingBox3> {
-    let mut points = triangles.iter().flat_map(|triangle| [triangle.a, triangle.b, triangle.c]);
+    let mut points = triangles
+        .iter()
+        .flat_map(|triangle| [triangle.a, triangle.b, triangle.c]);
     let first = points.next()?;
     let mut min = first;
     let mut max = first;
@@ -230,7 +232,8 @@ fn closest_point_on_degenerate_triangle(point: Point3, triangle: &Triangle) -> P
     ]
     .into_iter()
     .min_by(|left, right| {
-        let distance_cmp = squared_distance(point, *left).total_cmp(&squared_distance(point, *right));
+        let distance_cmp =
+            squared_distance(point, *left).total_cmp(&squared_distance(point, *right));
         if distance_cmp.is_eq() {
             point_cmp(*left, *right)
         } else {
@@ -301,7 +304,8 @@ fn squared_norm(point: Point3) -> f32 {
 }
 
 fn dot(left: Point3, right: Point3) -> f32 {
-    left.x.mul_add(right.x, left.y.mul_add(right.y, left.z * right.z))
+    left.x
+        .mul_add(right.x, left.y.mul_add(right.y, left.z * right.z))
 }
 
 fn cross(left: Point3, right: Point3) -> Point3 {
@@ -353,21 +357,52 @@ mod tests {
     fn raycast_all_hits_deduplicates_coplanar_face_hits() {
         let mesh = IndexedTriangleSet {
             vertices: vec![
-                Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                Point3 { x: 1.0, y: 1.0, z: 0.0 },
-                Point3 { x: 0.0, y: 1.0, z: 0.0 },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
             ],
             indices: vec![0, 1, 2, 0, 2, 3],
         };
 
         let tree = AabbTree::new(mesh);
         let hits = tree.raycast_all_hits(
-            Point3 { x: 0.5, y: 0.5, z: -1.0 },
-            Point3 { x: 0.0, y: 0.0, z: 1.0 },
+            Point3 {
+                x: 0.5,
+                y: 0.5,
+                z: -1.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
         );
 
         assert_eq!(hits.len(), 1);
-        assert_eq!(hits[0].point, Point3 { x: 0.5, y: 0.5, z: 0.0 });
+        assert_eq!(
+            hits[0].point,
+            Point3 {
+                x: 0.5,
+                y: 0.5,
+                z: 0.0
+            }
+        );
     }
 }

@@ -110,14 +110,22 @@ pub fn object_bounds(object_id: &str) -> BoundingBox3 {
 
 /// Applies host-side polygon clipping.
 #[must_use]
-pub fn clip_polygons(subject: &[ExPolygon], clip: &[ExPolygon], op: ClipOperation) -> Vec<ExPolygon> {
+pub fn clip_polygons(
+    subject: &[ExPolygon],
+    clip: &[ExPolygon],
+    op: ClipOperation,
+) -> Vec<ExPolygon> {
     let _ = (subject, clip, op);
     Vec::new()
 }
 
 /// Applies host-side polygon offsetting.
 #[must_use]
-pub fn offset_polygons(polygons: &[ExPolygon], delta_mm: f32, join: OffsetJoinType) -> Vec<ExPolygon> {
+pub fn offset_polygons(
+    polygons: &[ExPolygon],
+    delta_mm: f32,
+    join: OffsetJoinType,
+) -> Vec<ExPolygon> {
     let _ = (polygons, delta_mm, join);
     Vec::new()
 }

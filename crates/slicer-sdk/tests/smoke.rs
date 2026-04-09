@@ -46,9 +46,7 @@ fn host_wrappers_have_placeholder_behavior() {
     assert_eq!(bounds.max.z, 0.0);
 
     assert!(host::clip_polygons(&subject, &subject, host::ClipOperation::Union).is_empty());
-    assert!(
-        host::offset_polygons(&subject, 0.2, host::OffsetJoinType::Miter).is_empty()
-    );
+    assert!(host::offset_polygons(&subject, 0.2, host::OffsetJoinType::Miter).is_empty());
 
     let simplified = host::simplify_polygon(&subject[0].contour, 0.05);
     assert_eq!(simplified.points.len(), 0);

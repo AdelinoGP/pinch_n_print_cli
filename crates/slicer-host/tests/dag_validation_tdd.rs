@@ -3,8 +3,9 @@
 use std::path::PathBuf;
 
 use slicer_host::{
-    AccessKind, ClaimHolder, ConfigSchema, ConflictScope, DagValidationPass, DagValidationRequest,
-    ModuleAccessAudit, SchedulerError, StageDag, build_intra_stage_dag, validate_startup_dag,
+    build_intra_stage_dag, validate_startup_dag, AccessKind, ClaimHolder, ConfigSchema,
+    ConflictScope, DagValidationPass, DagValidationRequest, ModuleAccessAudit, SchedulerError,
+    StageDag,
 };
 use slicer_ir::SemVer;
 
@@ -104,9 +105,14 @@ fn validates_incompatibilities_missing_dependencies_and_ir_version_compatibility
         .with_incompatible_with(&["com.example.beta"])
         .with_requires_modules(&["com.example.missing"]);
     let beta = loaded_module("com.example.beta", stage);
-    let gamma = loaded_module("com.example.gamma", stage).with_ir_range(semver(9, 0, 0), semver(10, 0, 0));
+    let gamma =
+        loaded_module("com.example.gamma", stage).with_ir_range(semver(9, 0, 0), semver(10, 0, 0));
     let request = DagValidationRequest {
-        modules: vec![alpha.clone().build(), beta.clone().build(), gamma.clone().build()],
+        modules: vec![
+            alpha.clone().build(),
+            beta.clone().build(),
+            gamma.clone().build(),
+        ],
         stage_dags: vec![stage_dag(stage, &[alpha, beta, gamma])],
         host_ir_schema_version: semver(1, 0, 0),
         claim_holders: Vec::new(),
@@ -117,7 +123,10 @@ fn validates_incompatibilities_missing_dependencies_and_ir_version_compatibility
 
     assert!(report.errors.iter().any(|diagnostic| {
         diagnostic.pass == DagValidationPass::IncompatibilityDeclarations
-            && matches!(diagnostic.detail, SchedulerError::IncompatibleModules { .. })
+            && matches!(
+                diagnostic.detail,
+                SchedulerError::IncompatibleModules { .. }
+            )
     }));
     assert!(report.errors.iter().any(|diagnostic| {
         diagnostic.pass == DagValidationPass::MissingDependencies
@@ -125,7 +134,10 @@ fn validates_incompatibilities_missing_dependencies_and_ir_version_compatibility
     }));
     assert!(report.errors.iter().any(|diagnostic| {
         diagnostic.pass == DagValidationPass::IrVersionCompatibility
-            && matches!(diagnostic.detail, SchedulerError::IrVersionIncompatible { .. })
+            && matches!(
+                diagnostic.detail,
+                SchedulerError::IrVersionIncompatible { .. }
+            )
     }));
 }
 
@@ -186,7 +198,10 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
     let later = loaded_module("com.example.later", "Layer::Support");
     let request = DagValidationRequest {
         modules: vec![earlier.clone().build(), later.clone().build()],
-        stage_dags: vec![stage_dag("Layer::SlicePostProcess", &[earlier.clone()]), stage_dag("Layer::Support", &[later])],
+        stage_dags: vec![
+            stage_dag("Layer::SlicePostProcess", &[earlier.clone()]),
+            stage_dag("Layer::Support", &[later]),
+        ],
         host_ir_schema_version: semver(1, 0, 0),
         claim_holders: Vec::new(),
         access_audits: vec![ModuleAccessAudit {
@@ -220,7 +235,10 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
     }));
     assert!(report.errors.iter().any(|diagnostic| {
         diagnostic.pass == DagValidationPass::CrossStageDependencyLegality
-            && matches!(diagnostic.detail, SchedulerError::CrossStageDependency { .. })
+            && matches!(
+                diagnostic.detail,
+                SchedulerError::CrossStageDependency { .. }
+            )
     }));
 }
 
@@ -232,7 +250,11 @@ fn validates_transitive_dependencies_that_reach_later_stages() {
         .with_requires_modules(&["com.example.gamma"]);
     let gamma = loaded_module("com.example.gamma", "Layer::Support");
     let request = DagValidationRequest {
-        modules: vec![alpha.clone().build(), beta.clone().build(), gamma.clone().build()],
+        modules: vec![
+            alpha.clone().build(),
+            beta.clone().build(),
+            gamma.clone().build(),
+        ],
         stage_dags: vec![
             stage_dag("Layer::SlicePostProcess", &[alpha]),
             stage_dag("PrePass::LayerPlanning", &[beta]),
@@ -247,15 +269,23 @@ fn validates_transitive_dependencies_that_reach_later_stages() {
 
     assert!(report.errors.iter().any(|diagnostic| {
         diagnostic.pass == DagValidationPass::TransitiveDependencyLegality
-            && matches!(diagnostic.detail, SchedulerError::TransitiveStageDependency { .. })
+            && matches!(
+                diagnostic.detail,
+                SchedulerError::TransitiveStageDependency { .. }
+            )
     }));
 }
 
 fn stage_dag(stage: &str, modules: &[LoadedModuleBuilder]) -> StageDag {
-    let loaded: Vec<_> = modules.iter().cloned().map(LoadedModuleBuilder::build).collect();
+    let loaded: Vec<_> = modules
+        .iter()
+        .cloned()
+        .map(LoadedModuleBuilder::build)
+        .collect();
     StageDag {
         stage: String::from(stage),
-        nodes: build_intra_stage_dag(String::from(stage), &loaded).expect("fixture DAG should build"),
+        nodes: build_intra_stage_dag(String::from(stage), &loaded)
+            .expect("fixture DAG should build"),
     }
 }
 

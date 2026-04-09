@@ -1,6 +1,6 @@
 //! Common imports for module authoring.
 
-pub use crate::coords::{SCALING_FACTOR, mm_to_units, units_to_mm};
+pub use crate::coords::{mm_to_units, units_to_mm, SCALING_FACTOR};
 pub use crate::host;
 pub use crate::host::{ClipOperation, LogLevel, OffsetJoinType};
 

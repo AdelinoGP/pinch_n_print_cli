@@ -282,16 +282,14 @@ fn chain_lines(lines: Vec<IntersectionLine>) -> Vec<Polygon> {
 
         loop {
             let next_idx = match lines[last_idx].b_topology {
-                EndpointTopology::Edge(id) => {
-                    find_unused_line(by_edge_a.get(&id), &used)
-                }
-                EndpointTopology::Vertex(id) => {
-                    find_unused_line(by_vertex_a.get(&id), &used)
-                }
+                EndpointTopology::Edge(id) => find_unused_line(by_edge_a.get(&id), &used),
+                EndpointTopology::Vertex(id) => find_unused_line(by_vertex_a.get(&id), &used),
             };
 
             let Some(next_idx) = next_idx else {
-                if lines[start_idx].a_topology == lines[last_idx].b_topology && loop_points.len() >= 3 {
+                if lines[start_idx].a_topology == lines[last_idx].b_topology
+                    && loop_points.len() >= 3
+                {
                     debug_assert_eq!(lines[start_idx].a, lines[last_idx].b);
                     polygons.push(Polygon {
                         points: simplify_polygon_points(loop_points),
@@ -357,7 +355,7 @@ fn polygons_to_expolygons(polygons: &[Polygon]) -> Vec<ExPolygon> {
         return Vec::new();
     }
 
-    use clipper2_rust::{Point64, FillRule};
+    use clipper2_rust::{FillRule, Point64};
 
     // Convert polygons to clipper paths
     let paths: Vec<Vec<Point64>> = polygons
@@ -426,15 +424,47 @@ mod tests {
         // Create a unit cube from (0,0,0) to (1,1,1)
         let vertices = vec![
             // Bottom face (z=0)
-            Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            Point3 { x: 1.0, y: 0.0, z: 0.0 },
-            Point3 { x: 1.0, y: 1.0, z: 0.0 },
-            Point3 { x: 0.0, y: 1.0, z: 0.0 },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
             // Top face (z=1)
-            Point3 { x: 0.0, y: 0.0, z: 1.0 },
-            Point3 { x: 1.0, y: 0.0, z: 1.0 },
-            Point3 { x: 1.0, y: 1.0, z: 1.0 },
-            Point3 { x: 0.0, y: 1.0, z: 1.0 },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 1.0,
+                z: 1.0,
+            },
         ];
 
         // 12 triangles (2 per face)

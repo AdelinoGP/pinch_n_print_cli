@@ -116,7 +116,11 @@ fn path_length_handles_empty_single_point_and_cornered_polyline() {
     assert_close(path_length(&[]), 0.0);
     assert_close(path_length(&[point(1.0, 2.0, 3.0)]), 0.0);
 
-    let path = vec![point(0.0, 0.0, 0.2), point(3.0, 0.0, 0.2), point(3.0, 4.0, 0.2)];
+    let path = vec![
+        point(0.0, 0.0, 0.2),
+        point(3.0, 0.0, 0.2),
+        point(3.0, 4.0, 0.2),
+    ];
     assert_close(path_length(&path), 7.0);
 }
 
@@ -136,7 +140,11 @@ fn distribute_points_preserves_endpoints_and_even_spacing_on_a_straight_path() {
 
 #[test]
 fn distribute_points_follows_corners_deterministically() {
-    let path = vec![point(0.0, 0.0, 0.2), point(4.0, 0.0, 0.2), point(4.0, 3.0, 0.2)];
+    let path = vec![
+        point(0.0, 0.0, 0.2),
+        point(4.0, 0.0, 0.2),
+        point(4.0, 3.0, 0.2),
+    ];
 
     let samples = distribute_points(&path, 5);
 
@@ -168,7 +176,10 @@ fn flow_correction_is_finite_and_monotonic_for_positive_z_deviation() {
     let non_planar = flow_correction(5.0, 0.0, 2.0);
 
     assert!(planar.is_finite(), "planar correction should stay finite");
-    assert!(non_planar.is_finite(), "non-planar correction should stay finite");
+    assert!(
+        non_planar.is_finite(),
+        "non-planar correction should stay finite"
+    );
     assert!(planar > 0.0, "planar correction should remain positive");
     assert!(
         non_planar >= planar,

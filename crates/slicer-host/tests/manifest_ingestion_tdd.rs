@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use slicer_host::{
-    DiagnosticLevel, LoadErrorKind, LoadedModule, load_module_from_paths, load_modules_from_roots,
+    load_module_from_paths, load_modules_from_roots, DiagnosticLevel, LoadErrorKind, LoadedModule,
 };
 use slicer_ir::SemVer;
 use tempfile::TempDir;
@@ -28,15 +28,27 @@ fn valid_manifest_is_normalized_into_loaded_module_runtime_fields() {
         .expect("valid manifest + paired wasm should load into a runtime record");
 
     assert_loaded_module_basics(&module, &wasm_path);
-    assert_eq!(module.ir_reads, vec![
-        String::from("SliceIR.regions.infill_areas"),
-        String::from("RegionMapIR"),
-    ]);
-    assert_eq!(module.ir_writes, vec![String::from("InfillIR.regions.sparse_infill")]);
+    assert_eq!(
+        module.ir_reads,
+        vec![
+            String::from("SliceIR.regions.infill_areas"),
+            String::from("RegionMapIR"),
+        ]
+    );
+    assert_eq!(
+        module.ir_writes,
+        vec![String::from("InfillIR.regions.sparse_infill")]
+    );
     assert_eq!(module.claims, vec![String::from("infill-generator")]);
     assert_eq!(module.requires_claims, vec![String::from("region-map")]);
-    assert_eq!(module.incompatible_with, vec![String::from("com.community.lines-*")]);
-    assert_eq!(module.requires_modules, vec![String::from("com.community.support-prep")]);
+    assert_eq!(
+        module.incompatible_with,
+        vec![String::from("com.community.lines-*")]
+    );
+    assert_eq!(
+        module.requires_modules,
+        vec![String::from("com.community.support-prep")]
+    );
     assert_eq!(module.overridable_per_region, vec![String::from("density")]);
     assert_eq!(module.overridable_per_layer, vec![String::from("density")]);
     assert_eq!(module.min_host_version, semver(0, 5, 0));
@@ -130,7 +142,11 @@ fn higher_precedence_root_wins_duplicate_module_ids_and_emits_warning() {
     let report = load_modules_from_roots(&[high.clone(), low.clone()])
         .expect("duplicate ids across roots should warn, not abort the full scan");
 
-    assert_eq!(report.modules.len(), 1, "earlier root should win duplicate resolution");
+    assert_eq!(
+        report.modules.len(),
+        1,
+        "earlier root should win duplicate resolution"
+    );
     assert_eq!(report.modules[0].id, "com.community.duplicate");
     assert_eq!(report.modules[0].stage, "Layer::Infill");
 
@@ -266,7 +282,12 @@ fn write_module_in(root: &Path, stem: &str, manifest: &str, with_wasm: bool) -> 
     manifest_path
 }
 
-fn valid_manifest_toml(id: &str, stage: &str, wit_world: &str, layer_parallel_safe: bool) -> String {
+fn valid_manifest_toml(
+    id: &str,
+    stage: &str,
+    wit_world: &str,
+    layer_parallel_safe: bool,
+) -> String {
     format!(
         r#"
 [module]

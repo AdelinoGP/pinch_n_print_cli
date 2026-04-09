@@ -111,8 +111,8 @@ pub fn xor(subject: &[ExPolygon], clip: &[ExPolygon]) -> Vec<ExPolygon> {
 
 /// Offsets polygons by `delta_mm` millimeters.
 pub fn offset(polygons: &[ExPolygon], delta_mm: f32, join: OffsetJoinType) -> Vec<ExPolygon> {
-    use clipper2_rust::{EndType, JoinType};
     use clipper2_rust::inflate_paths_64;
+    use clipper2_rust::{EndType, JoinType};
 
     // Convert polygons to paths
     let paths: Vec<Vec<Point64>> = polygons.iter().flat_map(expolygon_to_paths).collect();
