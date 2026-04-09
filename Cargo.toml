@@ -11,6 +11,7 @@ members = [
     "modules/core-modules/layer-planner-default",
     "modules/core-modules/classic-perimeters",
     "modules/core-modules/rectilinear-infill",
+    "modules/core-modules/traditional-support",
 ]
 
 [workspace.package]
