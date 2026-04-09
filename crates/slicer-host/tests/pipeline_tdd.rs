@@ -17,7 +17,10 @@ use slicer_host::{
     LayerStageRunner, LoadedModule, PostpassError, PostpassOutput, PostpassStageRunner,
     PrepassExecutionError, PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
 };
-use slicer_ir::{ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, PrintMetadata, SemVer, StageId};
+use slicer_ir::{
+    BoundingBox3, ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, MeshIR, Point3,
+    PrintMetadata, SemVer, StageId,
+};
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -25,6 +28,17 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
         minor,
         patch,
     }
+}
+
+fn empty_mesh_ir() -> Arc<MeshIR> {
+    Arc::new(MeshIR {
+        schema_version: semver(1, 0, 0),
+        objects: Vec::new(),
+        build_volume: BoundingBox3 {
+            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
+            max: Point3 { x: 0.0, y: 0.0, z: 0.0 },
+        },
+    })
 }
 
 fn empty_execution_plan() -> ExecutionPlan {
@@ -199,6 +213,7 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
 #[test]
 fn run_pipeline_empty_modules() {
     let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
         plan: empty_execution_plan(),
         runners: noop_runners(),
     };
@@ -224,6 +239,7 @@ fn run_pipeline_returns_gcode_string() {
     }
 
     let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
         plan: empty_execution_plan(),
         runners: PipelineStageRunners {
             prepass: Box::new(NoopPrepassRunner),
@@ -271,6 +287,7 @@ fn run_pipeline_propagates_prepass_error() {
     }
 
     let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
         plan,
         runners: PipelineStageRunners {
             prepass: Box::new(FailingPrepass),
@@ -324,6 +341,7 @@ fn run_pipeline_propagates_layer_error() {
     }
 
     let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
         plan,
         runners: PipelineStageRunners {
             prepass: Box::new(NoopPrepassRunner),
@@ -360,6 +378,7 @@ fn run_pipeline_propagates_postpass_error() {
     }
 
     let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
         plan: empty_execution_plan(),
         runners: PipelineStageRunners {
             prepass: Box::new(NoopPrepassRunner),
@@ -460,6 +479,7 @@ fn run_pipeline_calls_stages_in_order() {
     };
 
     let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
         plan,
         runners: PipelineStageRunners {
             prepass: Box::new(OrderTrackingPrepass(call_log.clone())),
@@ -518,6 +538,7 @@ fn run_pipeline_propagates_finalization_error() {
     }
 
     let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
         plan,
         runners: PipelineStageRunners {
             prepass: Box::new(NoopPrepassRunner),
@@ -574,6 +595,7 @@ fn run_pipeline_with_layers_produces_output() {
     };
 
     let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
         plan,
         runners: PipelineStageRunners {
             prepass: Box::new(NoopPrepassRunner),

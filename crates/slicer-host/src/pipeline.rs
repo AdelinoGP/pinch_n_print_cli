@@ -7,7 +7,7 @@
 use std::fmt;
 use std::sync::Arc;
 
-use slicer_ir::{BoundingBox3, MeshIR, Point3, SemVer};
+use slicer_ir::MeshIR;
 
 use crate::{
     execute_layer_finalization, execute_per_layer, execute_postpass, execute_prepass, Blackboard,
@@ -34,6 +34,8 @@ pub struct PipelineStageRunners {
 
 /// Configuration for the pipeline orchestration function.
 pub struct PipelineConfig {
+    /// Loaded mesh to slice.
+    pub mesh_ir: Arc<MeshIR>,
     /// Frozen execution plan from the scheduler.
     pub plan: ExecutionPlan,
     /// Injectable stage runners.
@@ -50,6 +52,8 @@ pub struct PipelineOutput {
 /// Structured pipeline orchestration failures.
 #[derive(Debug)]
 pub enum PipelineError {
+    /// Model loading failed.
+    ModelLoad(String),
     /// PrePass stage execution failed.
     Prepass(PrepassExecutionError),
     /// Per-layer execution failed.
@@ -63,6 +67,7 @@ pub enum PipelineError {
 impl fmt::Display for PipelineError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ModelLoad(msg) => write!(f, "model load failed: {msg}"),
             Self::Prepass(e) => write!(f, "prepass failed: {e}"),
             Self::LayerExecution(e) => write!(f, "layer execution failed: {e}"),
             Self::Finalization(e) => write!(f, "finalization failed: {e}"),
@@ -100,55 +105,36 @@ impl From<PostpassError> for PipelineError {
 /// Execute the full slicing pipeline.
 ///
 /// Orchestration sequence:
-/// 1. Create a minimal stub MeshIR (actual model loading is TASK-076)
-/// 2. Create blackboard with layer count from the execution plan
-/// 3. Execute prepass stages sequentially
-/// 4. Execute per-layer stages in parallel via rayon
-/// 5. Execute layer finalization (if present)
-/// 6. Execute postpass (emit + serialize gcode)
+/// 1. Create blackboard with loaded mesh and layer count from the execution plan
+/// 2. Execute prepass stages sequentially
+/// 3. Execute per-layer stages in parallel via rayon
+/// 4. Execute layer finalization (if present)
+/// 5. Execute postpass (emit + serialize gcode)
 ///
 /// # Errors
 ///
 /// Returns [`PipelineError`] if any stage fails fatally.
 pub fn run_pipeline(config: PipelineConfig) -> Result<PipelineOutput, PipelineError> {
-    let PipelineConfig { plan, runners } = config;
+    let PipelineConfig {
+        mesh_ir,
+        plan,
+        runners,
+    } = config;
 
-    // Step 1: Create a minimal stub MeshIR (actual model loading is TASK-076)
-    let mesh_ir = Arc::new(MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        objects: Vec::new(),
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-        },
-    });
-
-    // Step 2: Create blackboard with layer count from the execution plan
+    // Step 1: Create blackboard with loaded mesh and layer count
     let layer_count = plan.global_layers.len();
     let mut blackboard = Blackboard::new(mesh_ir, layer_count);
 
-    // Step 3: Execute prepass stages sequentially
+    // Step 2: Execute prepass stages sequentially
     execute_prepass(&plan, &mut blackboard, runners.prepass.as_ref())?;
 
-    // Step 4: Execute per-layer stages in parallel via rayon
+    // Step 3: Execute per-layer stages in parallel via rayon
     let mut layer_irs = execute_per_layer(&plan, &blackboard, runners.layer.as_ref())?;
 
-    // Step 5: Execute layer finalization (if present)
+    // Step 4: Execute layer finalization (if present)
     execute_layer_finalization(&plan, &blackboard, runners.finalization.as_ref(), &mut layer_irs)?;
 
-    // Step 6: Execute postpass (emit + serialize gcode)
+    // Step 5: Execute postpass (emit + serialize gcode)
     let gcode_text = execute_postpass(
         &plan,
         &layer_irs,
