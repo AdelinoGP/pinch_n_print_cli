@@ -1,0 +1,19 @@
+[package]
+name = "slicer-helpers"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+slicer-ir = { path = "../slicer-ir" }
+nalgebra = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+thiserror = "1.0"
+meshopt = { workspace = true }
+truck-stepio = { workspace = true }
+truck-meshalgo = { workspace = true }
+
+[lints.rust]
+missing_docs = "warn"
+unused_imports = "warn"
+unused_must_use = "warn"
