@@ -1,5 +1,6 @@
 //! `slicer` — developer CLI for the ModularSlicer module SDK.
 
+use slicer_cli::cmd_build;
 use slicer_cli::cmd_new;
 
 use clap::{Parser, Subcommand};
@@ -61,9 +62,11 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Build { .. } => {
-            eprintln!("slicer build: not yet implemented");
-            std::process::exit(1);
+        Commands::Build { release } => {
+            if let Err(e) = cmd_build::execute(release) {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
         }
         Commands::Test { .. } => {
             eprintln!("slicer test: not yet implemented");
