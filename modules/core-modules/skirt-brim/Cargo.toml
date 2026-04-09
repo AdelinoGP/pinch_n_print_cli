@@ -1,0 +1,12 @@
+[package]
+name = "skirt-brim"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Skirt and brim path generator for LayerFinalization stage"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+[dev-dependencies]

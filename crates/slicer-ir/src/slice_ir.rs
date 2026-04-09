@@ -834,6 +834,8 @@ pub enum ExtrusionRole {
     Ironing,
     /// Bridge infill
     BridgeInfill,
+    /// Skirt / brim
+    Skirt,
     /// Custom role
     Custom(String),
 }

@@ -1330,6 +1330,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "703d5c7ef118737c72f1af64ad2f6f8c5e1921f818cdcb97b8fe6fc69bf66214"
 
 [[package]]
+name = "skirt-brim"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-sdk",
+]
+
+[[package]]
 name = "slicer-cli"
 version = "0.1.0"
 dependencies = [
@@ -1998,6 +2006,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df79d97927682d2fd8adb29682d1140b343be4ac0f08fd68b7765d9c059d3945"
 dependencies = [
  "memchr 2.8.0",
+]
+
+[[package]]
+name = "wipe-tower"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
+ "slicer-sdk",
 ]
 
 [[package]]
