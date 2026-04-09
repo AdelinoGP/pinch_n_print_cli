@@ -5,6 +5,7 @@
 #![warn(unused_must_use)]
 
 pub mod blackboard;
+pub mod config_schema;
 pub mod dag;
 pub mod execution_plan;
 pub mod gcode_emit;
@@ -22,6 +23,13 @@ pub mod validation;
 
 pub use blackboard::{
     Blackboard, BlackboardError, BlackboardPrepassSlot, LayerArena, LayerArenaError, LayerArenaSlot,
+};
+pub use config_schema::{
+    get_advanced_fields, get_basic_fields, get_field_schema, group_fields_by_ui_group,
+    parse_config_schema, query_config_schema, validate_config, validate_field_value,
+    ConfigFieldSchema, ConfigFieldType, ConfigSchemaParseError, ConfigSchemaParseErrorKind,
+    ConfigUnit, ConfigValidationError, ConfigValidationErrorKind, ConfigValue, CrossValidateRule,
+    CrossValidateSeverity, FullConfigSchema,
 };
 pub use dag::{build_intra_stage_dag, ModuleNode};
 pub use execution_plan::{
