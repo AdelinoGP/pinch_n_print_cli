@@ -72,7 +72,7 @@ Last updated: 2026-04-09
 - [x] TASK-071 classic-perimeters
 - [x] TASK-072 rectilinear-infill
 - [x] TASK-073 traditional-support
-- [ ] TASK-074 CLI argument parsing
+- [x] TASK-074 CLI argument parsing
 - [ ] TASK-075 Main entry point
 - [ ] TASK-076 File format loaders (STL/OBJ/3MF) — mesh repair component superseded by TASK-017 (slicer-helpers)
 - [ ] TASK-077 Integration test: benchy.stl end-to-end
