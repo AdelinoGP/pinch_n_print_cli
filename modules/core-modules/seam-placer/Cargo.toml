@@ -1,0 +1,12 @@
+[package]
+name = "seam-placer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Seam placement module implementing LayerModule for Layer::WallPostProcess stage"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+[dev-dependencies]

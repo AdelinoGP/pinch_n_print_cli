@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use slicer_ir::{
     mm_to_units, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType,
-    Point3WithWidth, Polygon, WallBoundaryType, WallLoop, WidthProfile,
+    Point3WithWidth, Polygon, SeamCandidate, WallBoundaryType, WallLoop, WidthProfile,
 };
 use slicer_sdk::views::{PerimeterRegionView, SliceRegionView};
 
@@ -396,6 +396,7 @@ pub struct PerimeterRegionViewBuilder {
     region_id: u64,
     wall_loops: Vec<WallLoop>,
     infill_areas: Vec<ExPolygon>,
+    seam_candidates: Vec<SeamCandidate>,
     next_inner_index: u32,
 }
 
@@ -416,6 +417,7 @@ impl PerimeterRegionViewBuilder {
             region_id: 0,
             wall_loops: Vec::new(),
             infill_areas: Vec::new(),
+            seam_candidates: Vec::new(),
             next_inner_index: 1,
         }
     }
@@ -557,6 +559,13 @@ impl PerimeterRegionViewBuilder {
         self
     }
 
+    /// Add a seam candidate.
+    #[must_use]
+    pub fn add_seam_candidate(mut self, candidate: SeamCandidate) -> Self {
+        self.seam_candidates.push(candidate);
+        self
+    }
+
     /// Build a [`PerimeterRegionView`].
     #[must_use]
     pub fn build(self) -> PerimeterRegionView {
@@ -565,6 +574,7 @@ impl PerimeterRegionViewBuilder {
             self.region_id,
             self.wall_loops,
             self.infill_areas,
+            self.seam_candidates,
         )
     }
 }

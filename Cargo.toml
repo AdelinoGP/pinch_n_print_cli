@@ -15,6 +15,7 @@ members = [
     "modules/core-modules/arachne-perimeters",
     "modules/core-modules/gyroid-infill",
     "modules/core-modules/lightning-infill",
+    "modules/core-modules/seam-placer",
 ]
 
 [workspace.package]

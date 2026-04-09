@@ -4,7 +4,7 @@
 //! Per docs/03_wit_and_manifest.md, the host validates all writes against
 //! declared ir-access.writes at call time.
 
-use slicer_ir::{ExPolygon, ExtrusionPath3D, Point3, WallLoop};
+use slicer_ir::{ExPolygon, ExtrusionPath3D, Point3, Point3WithWidth, SeamPosition, WallLoop};
 
 /// Builder for infill output.
 ///
@@ -27,18 +27,21 @@ impl InfillOutputBuilder {
     }
 
     /// Push a sparse infill path.
-    pub fn push_sparse_path(&mut self, _path: ExtrusionPath3D) -> Result<(), String> {
-        todo!("TASK-042: implement InfillOutputBuilder::push_sparse_path")
+    pub fn push_sparse_path(&mut self, path: ExtrusionPath3D) -> Result<(), String> {
+        self.sparse_paths.push(path);
+        Ok(())
     }
 
     /// Push a solid infill path.
-    pub fn push_solid_path(&mut self, _path: ExtrusionPath3D) -> Result<(), String> {
-        todo!("TASK-042: implement InfillOutputBuilder::push_solid_path")
+    pub fn push_solid_path(&mut self, path: ExtrusionPath3D) -> Result<(), String> {
+        self.solid_paths.push(path);
+        Ok(())
     }
 
     /// Push an ironing path.
-    pub fn push_ironing_path(&mut self, _path: ExtrusionPath3D) -> Result<(), String> {
-        todo!("TASK-042: implement InfillOutputBuilder::push_ironing_path")
+    pub fn push_ironing_path(&mut self, path: ExtrusionPath3D) -> Result<(), String> {
+        self.ironing_paths.push(path);
+        Ok(())
     }
 
     /// Get all sparse paths (for testing).
@@ -84,6 +87,7 @@ pub struct PerimeterOutputBuilder {
     wall_loops: Vec<WallLoop>,
     infill_areas: Vec<ExPolygon>,
     seam_candidates: Vec<(Point3, f32)>,
+    resolved_seam: Option<SeamPosition>,
 }
 
 impl PerimeterOutputBuilder {
@@ -93,22 +97,32 @@ impl PerimeterOutputBuilder {
             wall_loops: Vec::new(),
             infill_areas: Vec::new(),
             seam_candidates: Vec::new(),
+            resolved_seam: None,
         }
     }
 
     /// Push a wall loop.
-    pub fn push_wall_loop(&mut self, _loop_: WallLoop) -> Result<(), String> {
-        todo!("TASK-042: implement PerimeterOutputBuilder::push_wall_loop")
+    pub fn push_wall_loop(&mut self, loop_: WallLoop) -> Result<(), String> {
+        self.wall_loops.push(loop_);
+        Ok(())
     }
 
     /// Set the infill areas.
-    pub fn set_infill_areas(&mut self, _areas: Vec<ExPolygon>) -> Result<(), String> {
-        todo!("TASK-042: implement PerimeterOutputBuilder::set_infill_areas")
+    pub fn set_infill_areas(&mut self, areas: Vec<ExPolygon>) -> Result<(), String> {
+        self.infill_areas = areas;
+        Ok(())
     }
 
     /// Push a seam candidate.
-    pub fn push_seam_candidate(&mut self, _pos: Point3, _score: f32) -> Result<(), String> {
-        todo!("TASK-042: implement PerimeterOutputBuilder::push_seam_candidate")
+    pub fn push_seam_candidate(&mut self, pos: Point3, score: f32) -> Result<(), String> {
+        self.seam_candidates.push((pos, score));
+        Ok(())
+    }
+
+    /// Set the resolved seam position.
+    pub fn set_resolved_seam(&mut self, point: Point3WithWidth, wall_index: u32) -> Result<(), String> {
+        self.resolved_seam = Some(SeamPosition { point, wall_index });
+        Ok(())
     }
 
     /// Get all wall loops (for testing).
@@ -128,6 +142,12 @@ impl PerimeterOutputBuilder {
     pub fn seam_candidates(&self) -> &[(Point3, f32)] {
         &self.seam_candidates
     }
+
+    /// Get the resolved seam (for testing).
+    #[doc(hidden)]
+    pub fn resolved_seam(&self) -> Option<&SeamPosition> {
+        self.resolved_seam.as_ref()
+    }
 }
 
 impl Default for PerimeterOutputBuilder {
@@ -142,6 +162,7 @@ impl std::fmt::Debug for PerimeterOutputBuilder {
             .field("wall_loops", &self.wall_loops.len())
             .field("infill_areas", &self.infill_areas.len())
             .field("seam_candidates", &self.seam_candidates.len())
+            .field("resolved_seam", &self.resolved_seam.is_some())
             .finish()
     }
 }
@@ -167,22 +188,25 @@ impl SupportOutputBuilder {
     }
 
     /// Push a support path.
-    pub fn push_support_path(&mut self, _path: ExtrusionPath3D) -> Result<(), String> {
-        todo!("TASK-042: implement SupportOutputBuilder::push_support_path")
+    pub fn push_support_path(&mut self, path: ExtrusionPath3D) -> Result<(), String> {
+        self.support_paths.push(path);
+        Ok(())
     }
 
     /// Push an interface path.
     pub fn push_interface_path(
         &mut self,
-        _path: ExtrusionPath3D,
-        _is_top_interface: bool,
+        path: ExtrusionPath3D,
+        is_top_interface: bool,
     ) -> Result<(), String> {
-        todo!("TASK-042: implement SupportOutputBuilder::push_interface_path")
+        self.interface_paths.push((path, is_top_interface));
+        Ok(())
     }
 
     /// Push a raft path.
-    pub fn push_raft_path(&mut self, _path: ExtrusionPath3D) -> Result<(), String> {
-        todo!("TASK-042: implement SupportOutputBuilder::push_raft_path")
+    pub fn push_raft_path(&mut self, path: ExtrusionPath3D) -> Result<(), String> {
+        self.raft_paths.push(path);
+        Ok(())
     }
 
     /// Get all support paths (for testing).
@@ -240,21 +264,23 @@ impl SlicePostprocessBuilder {
     /// Set polygons for a region.
     pub fn set_polygons(
         &mut self,
-        _region: slicer_ir::RegionKey,
-        _polys: Vec<ExPolygon>,
+        region: slicer_ir::RegionKey,
+        polys: Vec<ExPolygon>,
     ) -> Result<(), String> {
-        todo!("TASK-042: implement SlicePostprocessBuilder::set_polygons")
+        self.polygon_updates.push((region, polys));
+        Ok(())
     }
 
     /// Set path Z for a specific vertex.
     pub fn set_path_z(
         &mut self,
-        _region: slicer_ir::RegionKey,
-        _path_idx: u32,
-        _vertex_idx: u32,
-        _z: f32,
+        region: slicer_ir::RegionKey,
+        path_idx: u32,
+        vertex_idx: u32,
+        z: f32,
     ) -> Result<(), String> {
-        todo!("TASK-042: implement SlicePostprocessBuilder::set_path_z")
+        self.path_z_updates.push((region, path_idx, vertex_idx, z));
+        Ok(())
     }
 }
 
