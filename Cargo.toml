@@ -6,6 +6,7 @@ members = [
     "crates/slicer-macros",
     "crates/slicer-sdk",
     "crates/slicer-test",
+    "cli/slicer-cli",
 ]
 
 [workspace.package]
