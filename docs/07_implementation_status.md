@@ -82,7 +82,7 @@ Last updated: 2026-04-09
 - [x] TASK-082 gyroid-infill
 - [x] TASK-083 lightning-infill
 - [x] TASK-084 seam-placer
-- [ ] TASK-085 tree-support
+- [x] TASK-085 tree-support
 - [ ] TASK-086 support-surface-ironing
 - [ ] TASK-087 mesh-segmentation
 - [ ] TASK-088 paint-segmentation
