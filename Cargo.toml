@@ -9,6 +9,7 @@ members = [
     "cli/slicer-cli",
     "crates/slicer-helpers",
     "modules/core-modules/layer-planner-default",
+    "modules/core-modules/classic-perimeters",
 ]
 
 [workspace.package]

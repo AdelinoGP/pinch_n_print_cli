@@ -1,0 +1,13 @@
+[package]
+name = "classic-perimeters"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Classic perimeter generator implementing LayerModule for Layer::Perimeters stage"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+slicer-core = { path = "../../../crates/slicer-core" }
+
+[dev-dependencies]
