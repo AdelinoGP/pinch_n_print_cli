@@ -8,6 +8,7 @@ members = [
     "crates/slicer-test",
     "cli/slicer-cli",
     "crates/slicer-helpers",
+    "modules/core-modules/layer-planner-default",
 ]
 
 [workspace.package]
