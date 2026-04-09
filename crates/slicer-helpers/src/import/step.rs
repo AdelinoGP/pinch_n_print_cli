@@ -2,9 +2,21 @@
 
 use std::path::{Path, PathBuf};
 
-use slicer_ir::MeshIR;
+use slicer_ir::{
+    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer,
+    Transform3d,
+};
+use truck_meshalgo::prelude::*;
+use truck_stepio::r#in::*;
 
-use crate::repair::RepairStats;
+use crate::repair::{self, RepairStats};
+
+/// Tessellation tolerance in the STEP file's native coordinate space.
+/// This is refined per-shell using the bounding box diagonal.
+const INITIAL_TESSELLATION_TOL: f64 = 0.01;
+
+/// Relative tessellation tolerance (fraction of bounding box diagonal).
+const RELATIVE_TOL: f64 = 0.001;
 
 /// Result of importing a STEP file.
 #[derive(Debug, Clone)]
@@ -85,6 +97,266 @@ pub enum StepImportError {
 /// Import a STEP file. Returns one [`MeshIR`] per solid found in the file.
 ///
 /// Repair (Phase 1 + Phase 2) is applied automatically to each component.
-pub fn import_step(_path: &Path) -> Result<StepImportResult, StepImportError> {
-    todo!("TASK-058: implement STEP import")
+pub fn import_step(path: &Path) -> Result<StepImportResult, StepImportError> {
+    // 1. Read file.
+    if !path.exists() {
+        return Err(StepImportError::FileNotFound(path.to_path_buf()));
+    }
+    let step_string = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+            return Err(StepImportError::ParseError(
+                "file is not valid UTF-8 text".to_string(),
+            ));
+        }
+        Err(e) => return Err(StepImportError::IoError(e)),
+    };
+
+    // 2. Parse STEP into Table.
+    let table = Table::from_step(&step_string)
+        .ok_or_else(|| StepImportError::ParseError("failed to parse STEP data".to_string()))?;
+
+    // 3. Detect length unit from the raw STEP text.
+    let mut warnings: Vec<StepWarning> = Vec::new();
+    let source_unit = detect_unit(&step_string);
+    if source_unit == StepLengthUnit::Unknown {
+        warnings.push(StepWarning::UnknownUnit);
+    }
+
+    // Unit conversion factor: STEP native units → f32 mm for Point3.
+    let unit_to_mm = match &source_unit {
+        StepLengthUnit::Millimetre => 1.0_f64,
+        StepLengthUnit::Metre => 1000.0,
+        StepLengthUnit::Inch => 25.4,
+        StepLengthUnit::Micrometre => 0.001,
+        StepLengthUnit::Unknown => 1.0, // default to mm
+    };
+
+    // 4. Tessellate each shell.
+    let shell_count = table.shell.len();
+    if shell_count == 0 {
+        return Err(StepImportError::NoGeometry);
+    }
+
+    if shell_count > 1 {
+        warnings.push(StepWarning::MultipleComponents { count: shell_count });
+    }
+
+    let mut meshes: Vec<NamedMesh> = Vec::with_capacity(shell_count);
+
+    for (_idx, step_shell) in table.shell.iter() {
+        let compressed = match table.to_compressed_shell(step_shell) {
+            Ok(c) => c,
+            Err(e) => {
+                return Err(StepImportError::ParseError(format!(
+                    "failed to convert shell: {e:?}"
+                )));
+            }
+        };
+
+        // Two-pass tessellation: coarse for bounding box, then refined.
+        let coarse_poly = compressed
+            .robust_triangulation(INITIAL_TESSELLATION_TOL)
+            .to_polygon();
+        let bdd = coarse_poly.bounding_box();
+        let diag = bdd.diameter();
+        let tol = (diag * RELATIVE_TOL).max(1e-9);
+
+        let tessellated = compressed.robust_triangulation(tol);
+        let mut poly = tessellated.to_polygon();
+        poly.put_together_same_attrs(TOLERANCE * 50.0)
+            .remove_degenerate_faces()
+            .remove_unused_attrs();
+
+        // 5. Convert PolygonMesh to our IndexedTriangleSet.
+        let mesh_ir = polygon_to_mesh_ir(&poly, unit_to_mm);
+
+        meshes.push(NamedMesh {
+            name: None,
+            mesh: mesh_ir,
+        });
+    }
+
+    // 6. Apply repair (Phase 1 + Phase 2) to each component.
+    for (comp_idx, named) in meshes.iter_mut().enumerate() {
+        match repair::repair(named.mesh.clone()) {
+            Ok(repair_result) => {
+                let did_repair = repair_result.stats.degenerate_removed > 0
+                    || repair_result.stats.faces_reoriented > 0
+                    || repair_result.stats.open_edges_closed > 0;
+                if did_repair {
+                    warnings.push(StepWarning::RepairApplied {
+                        component_index: comp_idx,
+                        stats: repair_result.stats,
+                    });
+                }
+                named.mesh = repair_result.mesh;
+            }
+            Err(_) => {
+                // Repair failed — keep the original mesh, no warning needed.
+            }
+        }
+    }
+
+    Ok(StepImportResult {
+        meshes,
+        source_unit,
+        warnings,
+    })
 }
+
+/// Merge all meshes in a [`StepImportResult`] into a single mesh.
+///
+/// Vertices are concatenated and indices are offset accordingly. The resulting
+/// mesh name is `None`. Warnings and source unit are preserved.
+pub fn merge_step_meshes(mut result: StepImportResult) -> StepImportResult {
+    if result.meshes.len() <= 1 {
+        return result;
+    }
+
+    let mut all_objects = Vec::new();
+    for named in result.meshes.drain(..) {
+        all_objects.extend(named.mesh.objects);
+    }
+
+    let merged_mesh = MeshIR {
+        schema_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        objects: all_objects,
+        build_volume: BoundingBox3 {
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        },
+    };
+
+    result.meshes.push(NamedMesh {
+        name: None,
+        mesh: merged_mesh,
+    });
+    result
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/// Detect the length unit from raw STEP text by scanning for SI_UNIT / LENGTH_UNIT entities.
+fn detect_unit(step_text: &str) -> StepLengthUnit {
+    // Look for SI_UNIT patterns with LENGTH_UNIT.
+    // Patterns: SI_UNIT(.MILLI.,.METRE.), SI_UNIT($,.METRE.), etc.
+    let upper = step_text.to_uppercase();
+
+    // Check for LENGTH_UNIT presence — if absent, no unit declaration.
+    if !upper.contains("LENGTH_UNIT") {
+        return StepLengthUnit::Unknown;
+    }
+
+    // Check for CONVERSION_BASED_UNIT with INCH.
+    if upper.contains("CONVERSION_BASED_UNIT") && upper.contains("INCH") {
+        return StepLengthUnit::Inch;
+    }
+
+    // Check SI_UNIT prefix for LENGTH_UNIT.
+    // The pattern is typically: ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(<prefix>,.<base>.) )
+    if upper.contains("SI_UNIT") {
+        if upper.contains(".MILLI.") {
+            return StepLengthUnit::Millimetre;
+        }
+        if upper.contains(".MICRO.") {
+            return StepLengthUnit::Micrometre;
+        }
+        // SI_UNIT($,.METRE.) — no prefix means base unit (metre).
+        if upper.contains(".METRE.") {
+            return StepLengthUnit::Metre;
+        }
+    }
+
+    StepLengthUnit::Unknown
+}
+
+/// Convert a truck `PolygonMesh` to our `MeshIR`.
+fn polygon_to_mesh_ir(poly: &PolygonMesh, unit_to_mm: f64) -> MeshIR {
+    let positions = poly.positions();
+    let vertices: Vec<Point3> = positions
+        .iter()
+        .map(|p| {
+            // truck Point3 is f64 in STEP native units → convert to f32 mm.
+            Point3 {
+                x: (p.x * unit_to_mm) as f32,
+                y: (p.y * unit_to_mm) as f32,
+                z: (p.z * unit_to_mm) as f32,
+            }
+        })
+        .collect();
+
+    // Collect all faces as triangles (auto-triangulates quads and n-gons).
+    let mut indices: Vec<u32> = Vec::new();
+    for tri in poly.faces().triangle_iter() {
+        indices.push(tri[0].pos as u32);
+        indices.push(tri[1].pos as u32);
+        indices.push(tri[2].pos as u32);
+    }
+
+    let its = IndexedTriangleSet { vertices, indices };
+
+    let object = ObjectMesh {
+        id: uuid_v4(),
+        mesh: its,
+        transform: Transform3d {
+            matrix: IDENTITY_MATRIX,
+        },
+        config: ObjectConfig {
+            data: std::collections::HashMap::new(),
+        },
+        modifier_volumes: Vec::new(),
+        paint_data: None,
+    };
+
+    MeshIR {
+        schema_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        objects: vec![object],
+        build_volume: BoundingBox3 {
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        },
+    }
+}
+
+/// Generate a simple UUID-like string for object IDs.
+fn uuid_v4() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("step-import-{n:016x}")
+}
+
+/// Identity 4×4 matrix in column-major order.
+const IDENTITY_MATRIX: [f64; 16] = [
+    1.0, 0.0, 0.0, 0.0, //
+    0.0, 1.0, 0.0, 0.0, //
+    0.0, 0.0, 1.0, 0.0, //
+    0.0, 0.0, 0.0, 1.0, //
+];

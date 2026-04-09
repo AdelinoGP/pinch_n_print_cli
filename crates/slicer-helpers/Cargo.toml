@@ -13,6 +13,10 @@ meshopt = { workspace = true }
 truck-stepio = { workspace = true }
 truck-meshalgo = { workspace = true }
 
+[dev-dependencies]
+truck-modeling = { workspace = true }
+truck-topology = "0.6"
+
 [lints.rust]
 missing_docs = "warn"
 unused_imports = "warn"

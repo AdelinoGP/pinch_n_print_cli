@@ -21,7 +21,7 @@ pub use repair::{RepairError, RepairResult, RepairStats, RepairWarning, MAX_REPA
 
 // Re-export public functions.
 pub use decimate::decimate;
-pub use import::step::import_step;
+pub use import::step::{import_step, merge_step_meshes};
 pub use repair::repair;
 
 #[cfg(test)]
