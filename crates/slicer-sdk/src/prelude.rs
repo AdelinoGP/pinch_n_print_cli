@@ -17,9 +17,12 @@ pub use crate::postpass_builders::{GcodeMoveCmd, GcodeOutputBuilder};
 pub use crate::postpass_types::{GcodeCommandKind, GcodeCommandView};
 
 // Prepass types and builders
-pub use crate::prepass_builders::{LayerPlanOutput, MeshAnalysisOutput};
+pub use crate::prepass_builders::{
+    LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput, ObjectMeshModification,
+};
 pub use crate::prepass_types::{
-    FacetAnnotation, FacetClass, LayerProposal, ObjectId, RegionId as PrepassRegionId,
+    FacetAnnotation, FacetClass, LayerProposal, MeshObjectView, ObjectId,
+    PaintLayerView, PaintStrokeView, PaintValueView, RegionId as PrepassRegionId,
     RegionLayerProposal, SurfaceGroupProposal,
 };
 

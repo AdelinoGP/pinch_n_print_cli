@@ -1,0 +1,12 @@
+[package]
+name = "mesh-segmentation"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Mesh segmentation prepass module that normalizes sub-facet paint strokes into whole-triangle assignments"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+[dev-dependencies]

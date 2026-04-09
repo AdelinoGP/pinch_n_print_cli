@@ -11,8 +11,8 @@ use crate::builders::{
 use crate::error::ModuleError;
 use crate::postpass_builders::GcodeOutputBuilder;
 use crate::postpass_types::GcodeCommandView;
-use crate::prepass_builders::{LayerPlanOutput, MeshAnalysisOutput};
-use crate::prepass_types::ObjectId;
+use crate::prepass_builders::{LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput};
+use crate::prepass_types::{MeshObjectView, ObjectId};
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::ConfigView;
 
@@ -261,6 +261,19 @@ pub trait PrepassModule: Sized {
         &self,
         _objects: &[ObjectId],
         _output: &mut LayerPlanOutput,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run mesh segmentation to normalize sub-facet paint strokes.
+    ///
+    /// Clips triangles at paint stroke boundaries so each triangle carries
+    /// exactly one paint value per semantic. Default implementation does nothing.
+    fn run_mesh_segmentation(
+        &self,
+        _objects: &[MeshObjectView],
+        _output: &mut MeshSegmentationOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())
