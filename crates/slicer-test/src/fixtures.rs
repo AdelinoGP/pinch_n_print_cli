@@ -59,6 +59,21 @@ impl ConfigViewBuilder {
         self
     }
 
+    /// Add a boolean key/value pair.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_test::fixtures::ConfigViewBuilder;
+    ///
+    /// let _config = ConfigViewBuilder::new().bool("enabled", true).build();
+    /// ```
+    #[must_use]
+    pub fn bool(mut self, key: impl Into<String>, value: bool) -> Self {
+        self.fields.insert(key.into(), ConfigValue::Bool(value));
+        self
+    }
+
     /// Add a string key/value pair.
     ///
     /// # Examples
@@ -72,6 +87,24 @@ impl ConfigViewBuilder {
     pub fn string(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.fields
             .insert(key.into(), ConfigValue::String(value.into()));
+        self
+    }
+
+    /// Add a list key/value pair.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_ir::ConfigValue;
+    /// use slicer_test::fixtures::ConfigViewBuilder;
+    ///
+    /// let _config = ConfigViewBuilder::new()
+    ///     .list("speeds", vec![ConfigValue::Float(1.0), ConfigValue::Float(2.0)])
+    ///     .build();
+    /// ```
+    #[must_use]
+    pub fn list(mut self, key: impl Into<String>, values: Vec<ConfigValue>) -> Self {
+        self.fields.insert(key.into(), ConfigValue::List(values));
         self
     }
 
