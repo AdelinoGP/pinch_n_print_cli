@@ -1,12 +1,18 @@
 //! Module traits for SDK.
 //!
-//! The `LayerModule` trait is the core trait that module authors implement.
-//! Per docs/05_module_sdk.md and docs/03_wit_and_manifest.md (world-layer.wit).
+//! The `LayerModule` trait is the core trait that per-layer module authors implement.
+//! The `PrepassModule` trait is for prepass module authors (mesh analysis, layer planning).
+//! The `PostpassModule` trait is for postpass module authors (gcode and text postprocessing).
+//! Per docs/05_module_sdk.md and docs/03_wit_and_manifest.md (world-layer.wit, world-prepass.wit, world-postpass.wit).
 
 use crate::builders::{
     InfillOutputBuilder, PerimeterOutputBuilder, SlicePostprocessBuilder, SupportOutputBuilder,
 };
 use crate::error::ModuleError;
+use crate::postpass_builders::GcodeOutputBuilder;
+use crate::postpass_types::GcodeCommandView;
+use crate::prepass_builders::{LayerPlanOutput, MeshAnalysisOutput};
+use crate::prepass_types::ObjectId;
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::ConfigView;
 
@@ -189,5 +195,141 @@ pub trait LayerModule: Sized {
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         todo!("TASK-042: implement LayerModule::run_support default")
+    }
+}
+
+/// The trait for prepass modules.
+///
+/// Module authors implement this trait for mesh analysis and layer planning stages.
+/// Per docs/05_module_sdk.md and docs/03_wit_and_manifest.md (world-prepass.wit):
+/// - `on_print_start` is called once before prepass stages
+/// - `on_print_end` is called after prepass stages complete
+/// - `run_mesh_analysis` is for MeshAnalysis stage modules
+/// - `run_layer_planning` is for LayerPlanning stage modules
+///
+/// Per docs/03_wit_and_manifest.md (world-prepass.wit), this maps to:
+/// - `export run-mesh-analysis: func(objects, output, config) -> result<_, module-error>;`
+/// - `export run-layer-planning: func(objects, output, config) -> result<_, module-error>;`
+pub trait PrepassModule: Sized {
+    /// Called once before prepass stages start.
+    ///
+    /// Use this to validate config and initialize expensive resources.
+    /// Returns Self on success, or a fatal ModuleError on failure.
+    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError>;
+
+    /// Called once after prepass stages complete.
+    ///
+    /// Use this for cleanup. Default implementation does nothing.
+    fn on_print_end(&self) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run mesh analysis for the given objects.
+    ///
+    /// Per docs/03_wit_and_manifest.md (world-prepass.wit):
+    /// ```wit
+    /// export run-mesh-analysis: func(
+    ///     objects: list<object-id>,
+    ///     output: mesh-analysis-output,
+    ///     config: config-view,
+    /// ) -> result<_, module-error>;
+    /// ```
+    ///
+    /// Default implementation does nothing. Override if your module targets MeshAnalysis stage.
+    fn run_mesh_analysis(
+        &self,
+        _objects: &[ObjectId],
+        _output: &mut MeshAnalysisOutput,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run layer planning for the given objects.
+    ///
+    /// Per docs/03_wit_and_manifest.md (world-prepass.wit):
+    /// ```wit
+    /// export run-layer-planning: func(
+    ///     objects: list<object-id>,
+    ///     output: layer-plan-output,
+    ///     config: config-view,
+    /// ) -> result<_, module-error>;
+    /// ```
+    ///
+    /// Default implementation does nothing. Override if your module targets LayerPlanning stage.
+    fn run_layer_planning(
+        &self,
+        _objects: &[ObjectId],
+        _output: &mut LayerPlanOutput,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+}
+
+/// The trait for postpass modules.
+///
+/// Module authors implement this trait for gcode and text postprocessing stages.
+/// Per docs/05_module_sdk.md and docs/03_wit_and_manifest.md (world-postpass.wit):
+/// - `on_print_start` is called once before postpass stages
+/// - `on_print_end` is called after postpass stages complete
+/// - `run_gcode_postprocess` is for GcodePostprocess stage modules
+/// - `run_text_postprocess` is for TextPostprocess stage modules
+///
+/// Per docs/03_wit_and_manifest.md (world-postpass.wit), this maps to:
+/// - `export run-gcode-postprocess: func(commands, output, config) -> result<_, module-error>;`
+/// - `export run-text-postprocess: func(gcode-text, config) -> result<string, module-error>;`
+pub trait PostpassModule: Sized {
+    /// Called once before postpass stages start.
+    ///
+    /// Use this to validate config and initialize expensive resources.
+    /// Returns Self on success, or a fatal ModuleError on failure.
+    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError>;
+
+    /// Called once after postpass stages complete.
+    ///
+    /// Use this for cleanup. Default implementation does nothing.
+    fn on_print_end(&self) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run GCode postprocessing on the command list.
+    ///
+    /// Per docs/03_wit_and_manifest.md (world-postpass.wit):
+    /// ```wit
+    /// export run-gcode-postprocess: func(
+    ///     commands: list<gcode-command-view>,
+    ///     output: gcode-output-builder,
+    ///     config: config-view,
+    /// ) -> result<_, module-error>;
+    /// ```
+    ///
+    /// Default implementation does nothing. Override if your module targets GcodePostprocess stage.
+    fn run_gcode_postprocess(
+        &self,
+        _commands: &[GcodeCommandView],
+        _output: &mut GcodeOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run text postprocessing on the final GCode text.
+    ///
+    /// Per docs/03_wit_and_manifest.md (world-postpass.wit):
+    /// ```wit
+    /// export run-text-postprocess: func(
+    ///     gcode-text: string,
+    ///     config: config-view,
+    /// ) -> result<string, module-error>;
+    /// ```
+    ///
+    /// Default implementation returns the input unchanged. Override if your module targets TextPostprocess stage.
+    fn run_text_postprocess(
+        &self,
+        gcode_text: &str,
+        _config: &ConfigView,
+    ) -> Result<String, ModuleError> {
+        Ok(gcode_text.to_string())
     }
 }

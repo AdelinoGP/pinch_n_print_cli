@@ -9,8 +9,19 @@ pub use crate::builders::{
     InfillOutputBuilder, PerimeterOutputBuilder, SlicePostprocessBuilder, SupportOutputBuilder,
 };
 pub use crate::error::ModuleError;
-pub use crate::traits::{LayerModule, PaintRegionLayerView};
+pub use crate::traits::{LayerModule, PaintRegionLayerView, PostpassModule, PrepassModule};
 pub use crate::views::{PerimeterRegionView, SliceRegionView};
+
+// Postpass types and builders
+pub use crate::postpass_builders::{GcodeMoveCmd, GcodeOutputBuilder};
+pub use crate::postpass_types::{GcodeCommandKind, GcodeCommandView};
+
+// Prepass types and builders
+pub use crate::prepass_builders::{LayerPlanOutput, MeshAnalysisOutput};
+pub use crate::prepass_types::{
+    FacetAnnotation, FacetClass, LayerProposal, ObjectId, RegionId as PrepassRegionId,
+    RegionLayerProposal, SurfaceGroupProposal,
+};
 
 // IR re-exports
 pub use slicer_ir::{
