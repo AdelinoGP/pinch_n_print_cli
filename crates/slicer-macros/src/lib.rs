@@ -7,7 +7,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::{parse_macro_input, ItemImpl};
+use syn::{parse_macro_input, ItemFn, ItemImpl, ReturnType};
 
 /// The `#[slicer_module]` attribute macro.
 ///
@@ -101,10 +101,23 @@ fn generate_slicer_module_impl(input: &ItemImpl, self_ty: &syn::Type) -> TokenSt
     }
 }
 
-/// Placeholder for the `#[module_test]` attribute macro.
+/// The `#[module_test]` attribute macro.
 ///
 /// Wrapper around `#[test]` that automatically sets up the mock host,
 /// installs the SDK's test panic handler, and resets global state between tests.
+///
+/// This macro transforms a test function to:
+/// 1. Add the `#[test]` attribute
+/// 2. Call `__slicer_test_reset_global_state()` at the start
+/// 3. Call `__slicer_test_install_panic_handler()` at the start
+/// 4. Call `__slicer_test_mock_host_setup()` at the start
+/// 5. Execute the original function body
+/// 6. Call `__slicer_test_mock_host_teardown()` at the end (via drop guard)
+///
+/// # Constraints
+/// - Only parameterless functions are supported (matching `#[test]` behavior)
+/// - Async functions are not supported
+/// - Supports `Result<(), E>` return types
 ///
 /// # Example
 ///
@@ -116,6 +129,75 @@ fn generate_slicer_module_impl(input: &ItemImpl, self_ty: &syn::Type) -> TokenSt
 /// ```
 #[proc_macro_attribute]
 pub fn module_test(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    // For now, just pass through - the full implementation will come in a later task
-    item
+    let input = parse_macro_input!(item as ItemFn);
+    let expanded = generate_module_test_impl(&input);
+    TokenStream::from(expanded)
+}
+
+/// Generate the expanded implementation for #[module_test]
+fn generate_module_test_impl(input: &ItemFn) -> TokenStream2 {
+    let fn_name = &input.sig.ident;
+    let fn_vis = &input.vis;
+    let fn_attrs = &input.attrs;
+    let fn_block = &input.block;
+    let fn_output = &input.sig.output;
+
+    // Determine if the function returns a Result or ()
+    let has_return_type = !matches!(fn_output, ReturnType::Default);
+
+    // Generate the wrapper code with setup/teardown
+    // We use a guard struct to ensure teardown is called even on panic
+    if has_return_type {
+        // For functions returning Result<(), E>
+        quote! {
+            #(#fn_attrs)*
+            #[test]
+            #fn_vis fn #fn_name() #fn_output {
+                // Teardown guard - ensures teardown is called on drop
+                struct __SlicerTestGuard;
+                impl Drop for __SlicerTestGuard {
+                    fn drop(&mut self) {
+                        __slicer_test_mock_host_teardown();
+                    }
+                }
+
+                // Setup sequence (order matters per docs/05_module_sdk.md)
+                __slicer_test_reset_global_state();
+                __slicer_test_install_panic_handler();
+                __slicer_test_mock_host_setup();
+
+                // Create guard for teardown on drop
+                let _guard = __SlicerTestGuard;
+
+                // Execute original function body
+                #fn_block
+            }
+        }
+    } else {
+        // For functions returning ()
+        quote! {
+            #(#fn_attrs)*
+            #[test]
+            #fn_vis fn #fn_name() {
+                // Teardown guard - ensures teardown is called on drop
+                struct __SlicerTestGuard;
+                impl Drop for __SlicerTestGuard {
+                    fn drop(&mut self) {
+                        __slicer_test_mock_host_teardown();
+                    }
+                }
+
+                // Setup sequence (order matters per docs/05_module_sdk.md)
+                __slicer_test_reset_global_state();
+                __slicer_test_install_panic_handler();
+                __slicer_test_mock_host_setup();
+
+                // Create guard for teardown on drop
+                let _guard = __SlicerTestGuard;
+
+                // Execute original function body
+                #fn_block
+            }
+        }
+    }
 }
