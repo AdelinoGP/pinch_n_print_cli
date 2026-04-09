@@ -14,6 +14,7 @@ members = [
     "modules/core-modules/traditional-support",
     "modules/core-modules/arachne-perimeters",
     "modules/core-modules/gyroid-infill",
+    "modules/core-modules/lightning-infill",
 ]
 
 [workspace.package]
