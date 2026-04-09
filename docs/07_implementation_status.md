@@ -58,8 +58,8 @@ Last updated: 2026-04-09
 - [x] TASK-049 assert_paths helpers
 - [x] TASK-050 `slicer new` command
 - [x] TASK-051 `slicer build` command
-- [ ] TASK-052 `slicer test` command
-- [ ] TASK-053 `slicer validate` command
+- [x] TASK-052 `slicer test` command
+- [x] TASK-053 `slicer validate` command
 - [ ] TASK-054 `slicer run` command
 - [ ] TASK-055 Create crates/slicer-helpers/ workspace member; add meshopt, truck-stepio, truck-meshing to root Cargo.toml
 - [ ] TASK-056 Write failing tests in repair_tdd.rs; implement repair.rs (degenerate removal, orientation normalization, open-edge closure); all tests pass
