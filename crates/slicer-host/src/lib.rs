@@ -4,6 +4,7 @@
 #![warn(unused_imports)]
 #![warn(unused_must_use)]
 
+pub mod cli;
 pub mod blackboard;
 pub mod config_schema;
 pub mod dag;
@@ -17,10 +18,12 @@ pub mod mesh_segmentation;
 pub mod paint_segmentation;
 pub mod postpass;
 pub mod prepass;
+pub mod progress_events;
 pub mod slice_postprocess;
 pub mod topology;
 pub mod validation;
 
+pub use cli::{validate_run_options, CliError, HostCli, HostCommands, HostRunOptions};
 pub use blackboard::{
     Blackboard, BlackboardError, BlackboardPrepassSlot, LayerArena, LayerArenaError, LayerArenaSlot,
 };
