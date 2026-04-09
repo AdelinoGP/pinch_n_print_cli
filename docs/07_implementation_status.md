@@ -64,14 +64,14 @@ Last updated: 2026-04-09
 - [x] TASK-055 Create crates/slicer-helpers/ workspace member; add meshopt, truck-stepio, truck-meshing to root Cargo.toml
 - [x] TASK-056 Write failing tests in repair_tdd.rs; implement repair.rs (degenerate removal, orientation normalization, open-edge closure); all tests pass
 - [x] TASK-057 Write failing tests in decimate_tdd.rs; implement decimate.rs via meshopt; all tests pass
-- [ ] TASK-058 Create STEP test fixtures; write failing tests in import_step_tdd.rs; implement import/step.rs via truck; all tests pass
+- [x] TASK-058 Create STEP test fixtures; write failing tests in import_step_tdd.rs; implement import/step.rs via truck; all tests pass
 
 ## Phase E — MVP Core Modules & CLI
 
-- [ ] TASK-070 layer-planner-default
-- [ ] TASK-071 classic-perimeters
-- [ ] TASK-072 rectilinear-infill
-- [ ] TASK-073 traditional-support
+- [x] TASK-070 layer-planner-default
+- [x] TASK-071 classic-perimeters
+- [x] TASK-072 rectilinear-infill
+- [x] TASK-073 traditional-support
 - [ ] TASK-074 CLI argument parsing
 - [ ] TASK-075 Main entry point
 - [ ] TASK-076 File format loaders (STL/OBJ/3MF) — mesh repair component superseded by TASK-017 (slicer-helpers)
