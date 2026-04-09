@@ -2,6 +2,7 @@
 
 use slicer_cli::cmd_build;
 use slicer_cli::cmd_new;
+use slicer_cli::cmd_run;
 use slicer_cli::cmd_test;
 use slicer_cli::cmd_validate;
 
@@ -83,9 +84,11 @@ fn main() {
             }
             println!("Manifest is valid.");
         }
-        Commands::Run { .. } => {
-            eprintln!("slicer run: not yet implemented");
-            std::process::exit(1);
+        Commands::Run { model, config, output } => {
+            if let Err(e) = cmd_run::execute(&model, config.as_deref(), output.as_deref()) {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
         }
     }
 }
