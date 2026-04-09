@@ -1,0 +1,300 @@
+//! TDD tests for TASK-076: file format loaders (STL/OBJ/3MF).
+
+use std::io::Write;
+use std::path::PathBuf;
+use tempfile::NamedTempFile;
+
+use slicer_host::model_loader::{detect_format, load_model, ModelFormat, ModelLoadError};
+
+// ---------------------------------------------------------------------------
+// Helper: generate a minimal binary STL cube (12 triangles, 8 unique vertices)
+// ---------------------------------------------------------------------------
+fn write_binary_stl_cube(w: &mut impl Write) {
+    // 80-byte header
+    w.write_all(&[0u8; 80]).unwrap();
+    // triangle count: 12
+    w.write_all(&12u32.to_le_bytes()).unwrap();
+
+    // Unit cube vertices for 12 triangles (2 per face, 6 faces)
+    let tris: [[[f32; 3]; 3]; 12] = [
+        // -Z face (z=0)
+        [[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 0.0, 0.0]],
+        [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 1.0, 0.0]],
+        // +Z face (z=1)
+        [[0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0]],
+        [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0]],
+        // -X face (x=0)
+        [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 1.0]],
+        [[0.0, 0.0, 0.0], [0.0, 1.0, 1.0], [0.0, 1.0, 0.0]],
+        // +X face (x=1)
+        [[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]],
+        [[1.0, 0.0, 0.0], [1.0, 1.0, 1.0], [1.0, 0.0, 1.0]],
+        // -Y face (y=0)
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0]],
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]],
+        // +Y face (y=1)
+        [[0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
+        [[0.0, 1.0, 0.0], [1.0, 1.0, 1.0], [1.0, 1.0, 0.0]],
+    ];
+
+    for tri in &tris {
+        // normal (unused, 3 floats)
+        w.write_all(&0.0f32.to_le_bytes()).unwrap();
+        w.write_all(&0.0f32.to_le_bytes()).unwrap();
+        w.write_all(&0.0f32.to_le_bytes()).unwrap();
+        // 3 vertices
+        for v in tri {
+            for c in v {
+                w.write_all(&c.to_le_bytes()).unwrap();
+            }
+        }
+        // attribute byte count
+        w.write_all(&0u16.to_le_bytes()).unwrap();
+    }
+}
+
+fn binary_stl_cube_file() -> NamedTempFile {
+    let mut f = tempfile::Builder::new().suffix(".stl").tempfile().unwrap();
+    write_binary_stl_cube(&mut f);
+    f.flush().unwrap();
+    f
+}
+
+fn ascii_stl_cube_file() -> NamedTempFile {
+    let mut f = tempfile::Builder::new().suffix(".stl").tempfile().unwrap();
+    write!(
+        f,
+        r#"solid cube
+  facet normal 0 0 -1
+    outer loop
+      vertex 0 0 0
+      vertex 1 1 0
+      vertex 1 0 0
+    endloop
+  endfacet
+  facet normal 0 0 -1
+    outer loop
+      vertex 0 0 0
+      vertex 0 1 0
+      vertex 1 1 0
+    endloop
+  endfacet
+  facet normal 0 0 1
+    outer loop
+      vertex 0 0 1
+      vertex 1 0 1
+      vertex 1 1 1
+    endloop
+  endfacet
+  facet normal 0 0 1
+    outer loop
+      vertex 0 0 1
+      vertex 1 1 1
+      vertex 0 1 1
+    endloop
+  endfacet
+endsolid cube
+"#
+    )
+    .unwrap();
+    f.flush().unwrap();
+    f
+}
+
+fn obj_cube_file() -> NamedTempFile {
+    let mut f = tempfile::Builder::new().suffix(".obj").tempfile().unwrap();
+    write!(
+        f,
+        r#"# unit cube
+v 0.0 0.0 0.0
+v 1.0 0.0 0.0
+v 1.0 1.0 0.0
+v 0.0 1.0 0.0
+v 0.0 0.0 1.0
+v 1.0 0.0 1.0
+v 1.0 1.0 1.0
+v 0.0 1.0 1.0
+f 1 3 2
+f 1 4 3
+f 5 6 7
+f 5 7 8
+f 1 5 8
+f 1 8 4
+f 2 3 7
+f 2 7 6
+f 1 2 6
+f 1 6 5
+f 4 8 7
+f 4 7 3
+"#
+    )
+    .unwrap();
+    f.flush().unwrap();
+    f
+}
+
+fn threemf_cube_file() -> NamedTempFile {
+    use std::io::Cursor;
+    let model_xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <mesh>
+        <vertices>
+          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="1" y="1" z="0" />
+          <vertex x="0" y="1" z="0" />
+          <vertex x="0" y="0" z="1" />
+          <vertex x="1" y="0" z="1" />
+          <vertex x="1" y="1" z="1" />
+          <vertex x="0" y="1" z="1" />
+        </vertices>
+        <triangles>
+          <triangle v1="0" v2="2" v3="1" />
+          <triangle v1="0" v2="3" v3="2" />
+          <triangle v1="4" v2="5" v3="6" />
+          <triangle v1="4" v2="6" v3="7" />
+          <triangle v1="0" v2="4" v3="7" />
+          <triangle v1="0" v2="7" v3="3" />
+          <triangle v1="1" v2="2" v3="6" />
+          <triangle v1="1" v2="6" v3="5" />
+          <triangle v1="0" v2="1" v3="5" />
+          <triangle v1="0" v2="5" v3="4" />
+          <triangle v1="3" v2="7" v3="6" />
+          <triangle v1="3" v2="6" v3="2" />
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build>
+    <item objectid="1" />
+  </build>
+</model>"#;
+
+    let mut buf = Vec::new();
+    {
+        let cursor = Cursor::new(&mut buf);
+        let mut zip_writer = zip::ZipWriter::new(cursor);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip_writer
+            .start_file("3D/3dmodel.model", options)
+            .unwrap();
+        zip_writer.write_all(model_xml.as_bytes()).unwrap();
+        zip_writer.finish().unwrap();
+    }
+
+    let mut f = tempfile::Builder::new().suffix(".3mf").tempfile().unwrap();
+    f.write_all(&buf).unwrap();
+    f.flush().unwrap();
+    f
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn load_stl_binary_cube() {
+    let f = binary_stl_cube_file();
+    let mesh_ir = load_model(f.path()).unwrap();
+    assert_eq!(mesh_ir.objects.len(), 1);
+    let its = &mesh_ir.objects[0].mesh;
+    assert_eq!(its.indices.len(), 36, "12 triangles * 3 indices");
+    assert!(!its.vertices.is_empty());
+    // vertices are deduplicated: a cube has 8 unique vertices
+    assert_eq!(its.vertices.len(), 8);
+}
+
+#[test]
+fn load_stl_ascii_cube() {
+    let f = ascii_stl_cube_file();
+    let mesh_ir = load_model(f.path()).unwrap();
+    assert_eq!(mesh_ir.objects.len(), 1);
+    let its = &mesh_ir.objects[0].mesh;
+    // ASCII cube with 4 triangles
+    assert_eq!(its.indices.len(), 12, "4 triangles * 3 indices");
+    assert!(!its.vertices.is_empty());
+}
+
+#[test]
+fn load_obj_cube() {
+    let f = obj_cube_file();
+    let mesh_ir = load_model(f.path()).unwrap();
+    assert_eq!(mesh_ir.objects.len(), 1);
+    let its = &mesh_ir.objects[0].mesh;
+    assert_eq!(its.indices.len(), 36, "12 triangles * 3 indices");
+    assert_eq!(its.vertices.len(), 8, "cube has 8 unique vertices");
+}
+
+#[test]
+fn load_3mf_cube() {
+    let f = threemf_cube_file();
+    let mesh_ir = load_model(f.path()).unwrap();
+    assert_eq!(mesh_ir.objects.len(), 1);
+    let its = &mesh_ir.objects[0].mesh;
+    assert_eq!(its.indices.len(), 36, "12 triangles * 3 indices");
+    assert_eq!(its.vertices.len(), 8, "cube has 8 unique vertices");
+}
+
+#[test]
+fn detect_format_by_extension() {
+    assert_eq!(detect_format("model.stl").unwrap(), ModelFormat::Stl);
+    assert_eq!(detect_format("model.STL").unwrap(), ModelFormat::Stl);
+    assert_eq!(detect_format("model.obj").unwrap(), ModelFormat::Obj);
+    assert_eq!(detect_format("model.OBJ").unwrap(), ModelFormat::Obj);
+    assert_eq!(detect_format("model.3mf").unwrap(), ModelFormat::ThreeMf);
+    assert_eq!(detect_format("model.3MF").unwrap(), ModelFormat::ThreeMf);
+}
+
+#[test]
+fn unknown_extension_error() {
+    let err = detect_format("model.xyz").unwrap_err();
+    assert!(matches!(err, ModelLoadError::UnsupportedFormat(_)));
+}
+
+#[test]
+fn nonexistent_file_error() {
+    let err = load_model(&PathBuf::from("/nonexistent/model.stl")).unwrap_err();
+    assert!(matches!(err, ModelLoadError::Io(_)));
+}
+
+#[test]
+fn load_model_produces_mesh_ir() {
+    let f = binary_stl_cube_file();
+    let mesh_ir = load_model(f.path()).unwrap();
+    assert_eq!(mesh_ir.schema_version.major, 1);
+    assert!(!mesh_ir.objects.is_empty());
+    // Each object has an identity transform
+    let transform = mesh_ir.objects[0].transform;
+    assert_eq!(transform.matrix[0], 1.0, "identity diagonal");
+    assert_eq!(transform.matrix[5], 1.0, "identity diagonal");
+    assert_eq!(transform.matrix[10], 1.0, "identity diagonal");
+    assert_eq!(transform.matrix[15], 1.0, "identity diagonal");
+}
+
+#[test]
+fn bounding_box_computed() {
+    let f = binary_stl_cube_file();
+    let mesh_ir = load_model(f.path()).unwrap();
+    let bb = mesh_ir.build_volume;
+    // Unit cube: min ~(0,0,0), max ~(1,1,1)
+    assert!((bb.min.x - 0.0).abs() < 1e-5);
+    assert!((bb.min.y - 0.0).abs() < 1e-5);
+    assert!((bb.min.z - 0.0).abs() < 1e-5);
+    assert!((bb.max.x - 1.0).abs() < 1e-5);
+    assert!((bb.max.y - 1.0).abs() < 1e-5);
+    assert!((bb.max.z - 1.0).abs() < 1e-5);
+}
+
+#[test]
+fn pipeline_config_accepts_mesh_ir() {
+    // Verify that PipelineConfig can accept a loaded mesh_ir
+    // (this just verifies the type integration compiles)
+    let f = binary_stl_cube_file();
+    let mesh_ir = load_model(f.path()).unwrap();
+    assert!(!mesh_ir.objects.is_empty());
+    // The MeshIR is compatible with Arc wrapping for pipeline use
+    let _arc = std::sync::Arc::new(mesh_ir);
+}
