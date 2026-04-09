@@ -12,6 +12,7 @@ members = [
     "modules/core-modules/classic-perimeters",
     "modules/core-modules/rectilinear-infill",
     "modules/core-modules/traditional-support",
+    "modules/core-modules/arachne-perimeters",
 ]
 
 [workspace.package]
