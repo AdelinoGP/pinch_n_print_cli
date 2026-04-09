@@ -5,6 +5,7 @@
 #![warn(unused_must_use)]
 
 pub mod cli;
+pub mod pipeline;
 pub mod blackboard;
 pub mod config_schema;
 pub mod dag;

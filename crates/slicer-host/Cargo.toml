@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 authors = ["ModularSlicer Team"]
 
+[[bin]]
+name = "slicer-host"
+path = "src/main.rs"
+
 [dependencies]
 slicer-ir = { path = "../slicer-ir" }
 slicer-core = { path = "../slicer-core" }
