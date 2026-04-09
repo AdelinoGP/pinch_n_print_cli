@@ -2,8 +2,11 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::{mm_to_units, ConfigValue, ConfigView, ExPolygon, Polygon};
-use slicer_sdk::views::SliceRegionView;
+use slicer_ir::{
+    mm_to_units, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType,
+    Point3WithWidth, Polygon, WallBoundaryType, WallLoop, WidthProfile,
+};
+use slicer_sdk::views::{PerimeterRegionView, SliceRegionView};
 
 /// Builder for creating [`ConfigView`] fixtures.
 #[derive(Debug, Default)]
@@ -305,5 +308,230 @@ pub fn square_polygon(cx_mm: f32, cy_mm: f32, side_mm: f32) -> ExPolygon {
             ],
         },
         holes: Vec::new(),
+    }
+}
+
+/// Build a rectangular [`ExtrusionPath3D`] in millimeters.
+///
+/// Creates a 4-point rectangle centered at `(cx_mm, cy_mm)` with the given
+/// `side_mm` and extrusion `width_mm`. Z is set to 0, role to
+/// [`ExtrusionRole::OuterWall`], and speed factor to 1.0.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_test::fixtures::rect_path;
+///
+/// let path = rect_path(0.0, 0.0, 10.0, 0.4);
+/// assert_eq!(path.points.len(), 4);
+/// ```
+#[must_use]
+pub fn rect_path(cx_mm: f32, cy_mm: f32, side_mm: f32, width_mm: f32) -> ExtrusionPath3D {
+    let half = side_mm / 2.0;
+    let corners = [
+        (cx_mm - half, cy_mm - half),
+        (cx_mm + half, cy_mm - half),
+        (cx_mm + half, cy_mm + half),
+        (cx_mm - half, cy_mm + half),
+    ];
+    let points = corners
+        .iter()
+        .map(|&(x, y)| Point3WithWidth {
+            x,
+            y,
+            z: 0.0,
+            width: width_mm,
+            flow_factor: 1.0,
+        })
+        .collect();
+    ExtrusionPath3D {
+        points,
+        role: ExtrusionRole::OuterWall,
+        speed_factor: 1.0,
+    }
+}
+
+/// Builder for creating [`PerimeterRegionView`] fixtures.
+///
+/// Produces a read-only `PerimeterRegionView` (from slicer-sdk) suitable for
+/// module testing. Outer walls get [`LoopType::Outer`] with `perimeter_index=0`.
+/// Inner walls get [`LoopType::Inner`] with auto-incrementing `perimeter_index`
+/// starting at 1.
+#[derive(Debug, Default)]
+pub struct PerimeterRegionViewBuilder {
+    object_id: String,
+    region_id: u64,
+    wall_loops: Vec<WallLoop>,
+    infill_areas: Vec<ExPolygon>,
+    next_inner_index: u32,
+}
+
+impl PerimeterRegionViewBuilder {
+    /// Create a new perimeter region view builder with sensible defaults.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_test::fixtures::PerimeterRegionViewBuilder;
+    ///
+    /// let _builder = PerimeterRegionViewBuilder::new();
+    /// ```
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            object_id: "obj-0".to_string(),
+            region_id: 0,
+            wall_loops: Vec::new(),
+            infill_areas: Vec::new(),
+            next_inner_index: 1,
+        }
+    }
+
+    /// Set object id.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_test::fixtures::PerimeterRegionViewBuilder;
+    ///
+    /// let _builder = PerimeterRegionViewBuilder::new().object_id("obj-1");
+    /// ```
+    #[must_use]
+    pub fn object_id(mut self, object_id: impl Into<String>) -> Self {
+        self.object_id = object_id.into();
+        self
+    }
+
+    /// Set region id.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_test::fixtures::PerimeterRegionViewBuilder;
+    ///
+    /// let _builder = PerimeterRegionViewBuilder::new().region_id(5);
+    /// ```
+    #[must_use]
+    pub fn region_id(mut self, region_id: u64) -> Self {
+        self.region_id = region_id;
+        self
+    }
+
+    /// Add an outer wall from an [`ExtrusionPath3D`].
+    ///
+    /// Creates a [`WallLoop`] with [`LoopType::Outer`], `perimeter_index=0`,
+    /// [`WallBoundaryType::Interior`], and a uniform [`WidthProfile`] derived
+    /// from the first point's width.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_test::fixtures::{rect_path, PerimeterRegionViewBuilder};
+    ///
+    /// let view = PerimeterRegionViewBuilder::new()
+    ///     .add_outer_wall(rect_path(0.0, 0.0, 10.0, 0.4))
+    ///     .build();
+    /// assert_eq!(view.wall_loops().len(), 1);
+    /// ```
+    #[must_use]
+    pub fn add_outer_wall(mut self, path: ExtrusionPath3D) -> Self {
+        let width = path.points.first().map_or(0.4, |p| p.width);
+        let widths = vec![width; path.points.len()];
+        self.wall_loops.push(WallLoop {
+            perimeter_index: 0,
+            loop_type: LoopType::Outer,
+            path,
+            width_profile: WidthProfile { widths },
+            feature_flags: vec![],
+            boundary_type: WallBoundaryType::Interior,
+        });
+        self
+    }
+
+    /// Add an inner wall from an [`ExtrusionPath3D`].
+    ///
+    /// Creates a [`WallLoop`] with [`LoopType::Inner`] and an auto-incrementing
+    /// `perimeter_index` starting at 1.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_test::fixtures::{rect_path, PerimeterRegionViewBuilder};
+    ///
+    /// let view = PerimeterRegionViewBuilder::new()
+    ///     .add_inner_wall(rect_path(0.0, 0.0, 8.0, 0.4))
+    ///     .build();
+    /// assert_eq!(view.wall_loops().len(), 1);
+    /// ```
+    #[must_use]
+    pub fn add_inner_wall(mut self, path: ExtrusionPath3D) -> Self {
+        let width = path.points.first().map_or(0.4, |p| p.width);
+        let widths = vec![width; path.points.len()];
+        let index = self.next_inner_index;
+        self.next_inner_index += 1;
+        self.wall_loops.push(WallLoop {
+            perimeter_index: index,
+            loop_type: LoopType::Inner,
+            path,
+            width_profile: WidthProfile { widths },
+            feature_flags: vec![],
+            boundary_type: WallBoundaryType::Interior,
+        });
+        self
+    }
+
+    /// Add a custom [`WallLoop`] directly.
+    ///
+    /// The loop is added as-is with no modifications.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_ir::{WallLoop, LoopType, WallBoundaryType, WidthProfile};
+    /// use slicer_test::fixtures::{rect_path, PerimeterRegionViewBuilder};
+    ///
+    /// let wl = WallLoop {
+    ///     perimeter_index: 0,
+    ///     loop_type: LoopType::ThinWall,
+    ///     path: rect_path(0.0, 0.0, 4.0, 0.3),
+    ///     width_profile: WidthProfile { widths: vec![0.3; 4] },
+    ///     feature_flags: vec![],
+    ///     boundary_type: WallBoundaryType::Interior,
+    /// };
+    /// let _view = PerimeterRegionViewBuilder::new().add_wall_loop(wl).build();
+    /// ```
+    #[must_use]
+    pub fn add_wall_loop(mut self, wall_loop: WallLoop) -> Self {
+        self.wall_loops.push(wall_loop);
+        self
+    }
+
+    /// Add an infill area polygon.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_test::fixtures::{square_polygon, PerimeterRegionViewBuilder};
+    ///
+    /// let view = PerimeterRegionViewBuilder::new()
+    ///     .add_infill_area(square_polygon(0.0, 0.0, 10.0))
+    ///     .build();
+    /// assert_eq!(view.infill_areas().len(), 1);
+    /// ```
+    #[must_use]
+    pub fn add_infill_area(mut self, polygon: ExPolygon) -> Self {
+        self.infill_areas.push(polygon);
+        self
+    }
+
+    /// Build a [`PerimeterRegionView`].
+    #[must_use]
+    pub fn build(self) -> PerimeterRegionView {
+        PerimeterRegionView::new(
+            self.object_id,
+            self.region_id,
+            self.wall_loops,
+            self.infill_areas,
+        )
     }
 }
