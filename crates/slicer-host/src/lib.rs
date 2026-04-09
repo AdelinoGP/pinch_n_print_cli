@@ -7,6 +7,7 @@
 pub mod blackboard;
 pub mod dag;
 pub mod execution_plan;
+pub mod gcode_emit;
 pub mod instance_pool;
 pub mod layer_executor;
 pub mod layer_finalization;
@@ -27,6 +28,7 @@ pub use execution_plan::{
     build_execution_plan, CompiledModule, CompiledStage, ExecutionModuleBinding, ExecutionPlan,
     ExecutionPlanError, ExecutionPlanRequest, IrAccessMask, SortedStageModules,
 };
+pub use gcode_emit::{DefaultGCodeEmitter, DefaultGCodeSerializer};
 pub use instance_pool::{
     build_wasm_instance_pool, InstancePoolError, InstancePoolMode, WasmArtifactMetadata,
     WasmInstanceLease, WasmInstancePool,
