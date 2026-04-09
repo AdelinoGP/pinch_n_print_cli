@@ -712,6 +712,84 @@ TASK-095 modules/core-modules/tree-support/ (UPDATE existing task)
     Same additions as TASK-069i for the tree support generator.
 ```
 
+### Phase G — Pipeline Wiring & WASM Integration (depends on Phase F)
+
+```
+TASK-100  crates/slicer-host/: Wasmtime dependencies & instance setup
+    Stage: Core Infrastructure
+    Purpose: Add `wasmtime` and `wit-bindgen` to dependencies. Implement `WasmInstance` wrapper mapping WASM components to internal API.
+    Depends on: TASK-024, TASK-040
+    
+TASK-101  crates/slicer-host/: Concrete WASM stage runners
+    Stage: Core Infrastructure
+    Purpose: Implement `WasmPrepassRunner`, `WasmLayerRunner`, `WasmFinalizationRunner`, and `WasmPostpassRunner` that invoke exports via `wasmtime`.
+    Depends on: TASK-100, TASK-027, TASK-031, TASK-032, TASK-033
+
+TASK-102  crates/slicer-host/: WASM module compilation in ExecutionPlan
+    Stage: Core Infrastructure
+    Purpose: Update the `ExecutionPlan` builder (TASK-025) to actually load, compile and instantiate WASM modules into `wasmtime::component::Component`.
+    Depends on: TASK-100, TASK-025
+
+TASK-103  crates/slicer-host/: Python Post-Processing Bridge
+    Stage: PostPass
+    Purpose: Implement python script execution using `pyo3` and `wasmtime-py` for text post-processing.
+    Depends on: TASK-101
+
+TASK-104  crates/slicer-host/: PrePassMeshAnalysis Built-in Stage
+    Stage: PrePass::MeshAnalysis
+    Purpose: Implement host-built-in logic to analyze mesh and produce `SurfaceClassificationIR`.
+    Depends on: TASK-027
+    
+TASK-105  crates/slicer-host/: PrePassRegionMapping Built-in Stage
+    Stage: PrePass::RegionMapping
+    Purpose: Implement `build_region_map` to populate `RegionMapIR` and execute it at the end of the prepass.
+    Depends on: TASK-027
+
+TASK-106  crates/slicer-host/: LayerSlice Pipeline Wiring
+    Stage: Layer::Slice
+    Purpose: Wire the `LayerSlice` host-built-in stage into `execute_single_layer`, calling `slice_mesh_ex` to produce `SliceIR` for each layer.
+    Depends on: TASK-031
+
+TASK-107  crates/slicer-host/: SlicePostProcess Paint Annotator Wiring
+    Stage: Layer::SlicePostProcess
+    Purpose: Wire the `execute_slice_postprocess_paint_annotation` logic to run at the end of the `LayerSlicePostProcess` stage.
+    Depends on: TASK-030, TASK-031
+
+TASK-108  crates/slicer-macros/: Implement WIT WASM bindings in #[slicer_module]
+    Stage: Core Infrastructure
+    Purpose: Update `slicer_module` proc-macro to generate actual `wit_bindgen::generate!` calls and proper export implementations, making modules valid WASM components.
+    Depends on: TASK-040
+
+TASK-109  modules/core-modules/: Add `.toml` manifests
+    Stage: Core Infrastructure
+    Purpose: Write proper `.toml` manifest files for all core modules required by the architecture.
+    Depends on: None
+
+TASK-110  modules/core-modules/: Apply #[slicer_module] macro
+    Stage: Core Infrastructure
+    Purpose: Update all core modules to use the `#[slicer_module]` macro so they export valid WIT interfaces.
+    Depends on: TASK-108, TASK-109
+
+TASK-111  crates/slicer-host/: Implement ConfigSchema CLI output
+    Stage: Core Infrastructure
+    Purpose: Update `main.rs` `HostCommands::ConfigSchema` to read loaded module manifests and output their JSON schemas.
+    Depends on: TASK-109, TASK-035
+
+TASK-112  crates/slicer-host/: Main binary integration
+    Stage: Core Infrastructure
+    Purpose: Update `main.rs` to ingest manifests, validate the DAG, and replace `Noop` runners with concrete WASM runners, enabling true end-to-end execution.
+    Depends on: TASK-101, TASK-102, TASK-103, TASK-075, TASK-111
+```
+
+### Phase H — End-to-End Integration & Review (depends on Phase G)
+
+```
+TASK-120  tests/: Benchy End-to-End Slice Test
+    Stage: End-to-End
+    Purpose: Produce a fully sliced `.gcode` of the Benchy STL as a form of End-to-End Integration testing to ensure the MVP is functional.
+    Depends on: TASK-112
+```
+
 ---
 
 ## Implementation Status Template
@@ -745,6 +823,12 @@ Last updated: [DATE]
 
 ## Phase F — Post-MVP & Advanced Features
 - [ ] TASK-061, TASK-063 through TASK-065, TASK-067 through TASK-079
+
+## Phase G — Pipeline Wiring & WASM Integration
+- [ ] TASK-100 through TASK-112
+
+## Phase H — End-to-End Integration & Review
+- [ ] TASK-120
 
 ## Known Deviations from Architecture Docs
 [List any intentional deviations with justification]
@@ -797,4 +881,13 @@ Before any Phase can be considered complete, all gates must pass:
 - Advanced paint/annotation propagation and post-processing behaviors match architecture contracts
 - Benchy.stl slices in < 2 seconds on reference machine
 - Progress events conform to `./docs/09_progress_events.md`
+
+**Phase G gate:**
+- `slicer run` successfully executes end-to-end using real compiled WASM modules
+- Wasmtime instance pooling parallel execution completes without errors on complex models
+- Python text post-processing operates securely with WASM module outputs
+
+**Phase H gate:**
+- A fully sliced `.gcode` of the Benchy STL is produced successfully without errors.
+- Visual inspection or G-code analysis of the Benchy output confirms that all enabled modules (perimeters, infill, supports) functioned correctly end-to-end.
 - Architecture acceptance gate result is recorded in implementation status

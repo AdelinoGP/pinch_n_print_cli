@@ -8,7 +8,9 @@ Last updated: 2026-04-09
 - Phase D depends on Phases A and C.
 - Phase E (MVP) depends on Phases A, B, C, and D.
 - Phase F (Post-MVP) depends on Phase E.
-- Architecture Acceptance Gate requires evidence from completed Phases B-F.
+- Phase G (Pipeline Wiring & WASM Integration) depends on Phase F.
+- Phase H (End-to-End Integration & Review) depends on Phase G.
+- Architecture Acceptance Gate requires evidence from completed Phases B-H.
 
 ## Phase A — Foundation
 - [x] TASK-001 Workspace Cargo.toml with all crate members
@@ -85,15 +87,34 @@ Last updated: 2026-04-09
 - [x] TASK-085 tree-support
 - [x] TASK-086 support-surface-ironing
 - [x] TASK-087 mesh-segmentation
-- [ ] TASK-088 paint-segmentation
-- [ ] TASK-089 wipe-tower
-- [ ] TASK-090 skirt-brim
+- [x] TASK-088 paint-segmentation
+- [x] TASK-089 wipe-tower
+- [x] TASK-090 skirt-brim
 - [ ] TASK-091 paint-region-annotator
 - [ ] TASK-092 fuzzy-skin
 - [ ] TASK-093 classic-perimeters (boundary_paint propagation)
 - [ ] TASK-094 arachne-perimeters (boundary_paint propagation)
 - [ ] TASK-095 traditional-support (enforcer/blocker)
 - [ ] TASK-096 tree-support (enforcer/blocker)
+
+## Phase G — Pipeline Wiring & WASM Integration
+- [ ] TASK-100 Add `wasmtime` and `wit-bindgen` dependencies to `slicer-host`
+- [ ] TASK-101 Implement `WasmInstance` wrapper for compiled `wasmtime::component::Instance`
+- [ ] TASK-102 Implement concrete WASM trait runners (`WasmPrepassRunner`, `WasmLayerRunner`, `WasmFinalizationRunner`, `WasmPostpassRunner`)
+- [ ] TASK-103 Implement WASM module compilation and linking in `ExecutionPlan` builder
+- [ ] TASK-104 Integrate Python bridge (`pyo3`, `wasmtime-py`) for text post-processing
+- [ ] TASK-105 Implement `PrePassMeshAnalysis` built-in stage
+- [ ] TASK-106 Implement `PrePassRegionMapping` built-in stage
+- [ ] TASK-107 Wire `LayerSlice` into the pipeline (`slice_mesh_ex`)
+- [ ] TASK-108 Wire `SlicePostProcess` paint annotator into the pipeline
+- [ ] TASK-109 Implement `wit_bindgen::generate!` WASM export logic in `#[slicer_module]` macro
+- [ ] TASK-110 Add `.toml` manifests for all MVP core modules
+- [ ] TASK-111 Apply `#[slicer_module]` macro to all MVP core modules
+- [ ] TASK-112 Implement `ConfigSchema` CLI output in `slicer-host`'s `main.rs`
+- [ ] TASK-113 Wire real WASM runners and DAG validation into `slicer-host/src/main.rs` (replacing `Noop` mocks) and update `slicer run`
+
+## Phase H — End-to-End Integration & Review
+- [ ] TASK-120 Produce a fully sliced `.gcode` of the Benchy STL as an E2E integration test
 
 ## Known Deviations from Architecture Docs
 - None recorded.
