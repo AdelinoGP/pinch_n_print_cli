@@ -7,7 +7,7 @@ event_loop:
   verbose: true
 
 cli:
-  backend: claude
+  backend: opencode
 
 core:
   specs_dir: ./docs/
