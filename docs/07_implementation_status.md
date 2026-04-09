@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-04-08
+Last updated: 2026-04-09
 
 ## Phase Dependencies (Normative Planning View)
 - Phase B depends on Phase A.
@@ -39,8 +39,8 @@ Last updated: 2026-04-08
 - [x] TASK-029 PaintSegmentation stage executor
 - [x] TASK-030 SlicePostProcess paint annotation executor (PaintRegionAnnotator)
 - [x] TASK-031 Per-layer parallel executor
-- [ ] TASK-032 LayerFinalization executor
-- [ ] TASK-033 PostPass executor
+- [x] TASK-032 LayerFinalization executor
+- [x] TASK-033 PostPass executor
 - [ ] TASK-034 GCodeEmit built-in serializer
 - [ ] TASK-035 Config schema query API
 - [ ] TASK-036 Progress event emitter
