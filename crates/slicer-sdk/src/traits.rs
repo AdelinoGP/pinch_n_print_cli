@@ -5,6 +5,8 @@
 //! The `PostpassModule` trait is for postpass module authors (gcode and text postprocessing).
 //! Per docs/05_module_sdk.md and docs/03_wit_and_manifest.md (world-layer.wit, world-prepass.wit, world-postpass.wit).
 
+use std::sync::Arc;
+
 use crate::builders::{
     InfillOutputBuilder, PerimeterOutputBuilder, SlicePostprocessBuilder, SupportOutputBuilder,
 };
@@ -16,26 +18,69 @@ use crate::prepass_builders::{
 };
 use crate::prepass_types::{MeshObjectView, ObjectId, PaintSegmentationObjectView};
 use crate::views::{PerimeterRegionView, SliceRegionView};
-use slicer_ir::ConfigView;
+use slicer_ir::{ConfigView, PaintRegionIR, PaintSemantic, SemVer, SemanticRegion};
 
 /// Paint region layer view for accessing painted regions.
 ///
-/// This is a placeholder type that will be connected to PaintRegionIR.
+/// Wraps `PaintRegionIR` data for a specific layer, providing read-only
+/// access to paint region queries. Host constructs this; modules use it
+/// to look up paint semantics for contour points.
 #[derive(Debug, Clone)]
 pub struct PaintRegionLayerView {
     layer_index: u32,
+    paint_regions: Arc<PaintRegionIR>,
 }
 
 impl PaintRegionLayerView {
-    /// Create a new PaintRegionLayerView (host-only).
+    /// Create a new PaintRegionLayerView with empty paint regions (host-only, for testing).
     #[doc(hidden)]
     pub fn new(layer_index: u32) -> Self {
-        Self { layer_index }
+        Self {
+            layer_index,
+            paint_regions: Arc::new(PaintRegionIR {
+                schema_version: SemVer {
+                    major: 0,
+                    minor: 1,
+                    patch: 0,
+                },
+                per_layer: std::collections::HashMap::new(),
+            }),
+        }
+    }
+
+    /// Create a new PaintRegionLayerView wrapping paint region data (host-only).
+    #[doc(hidden)]
+    pub fn with_paint_regions(layer_index: u32, paint_regions: Arc<PaintRegionIR>) -> Self {
+        Self {
+            layer_index,
+            paint_regions,
+        }
     }
 
     /// Returns the layer index.
     pub fn layer_index(&self) -> u32 {
         self.layer_index
+    }
+
+    /// Returns the paint regions for this layer and semantic.
+    ///
+    /// Returns an empty slice if no paint regions exist for the given semantic.
+    pub fn get_regions(&self, semantic: &PaintSemantic) -> &[SemanticRegion] {
+        self.paint_regions.get(self.layer_index, semantic)
+    }
+
+    /// Returns the underlying paint region IR (for direct query use).
+    pub fn paint_regions(&self) -> &PaintRegionIR {
+        &self.paint_regions
+    }
+
+    /// Returns all semantics that have paint data on this layer.
+    pub fn semantics_on_layer(&self) -> Vec<PaintSemantic> {
+        self.paint_regions
+            .per_layer
+            .get(&self.layer_index)
+            .map(|lpm| lpm.semantic_regions.keys().cloned().collect())
+            .unwrap_or_default()
     }
 }
 

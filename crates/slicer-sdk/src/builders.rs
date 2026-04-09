@@ -4,7 +4,15 @@
 //! Per docs/03_wit_and_manifest.md, the host validates all writes against
 //! declared ir-access.writes at call time.
 
-use slicer_ir::{ExPolygon, ExtrusionPath3D, Point3, Point3WithWidth, SeamPosition, WallLoop};
+use std::collections::HashMap;
+
+use slicer_ir::{
+    ExPolygon, ExtrusionPath3D, PaintSemantic, PaintValue, Point3, Point3WithWidth, RegionKey,
+    SeamPosition, WallLoop,
+};
+
+/// Boundary paint map for a region: semantic -> per-polygon -> per-point paint values.
+pub type BoundaryPaintMap = HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>;
 
 /// Builder for infill output.
 ///
@@ -248,8 +256,9 @@ impl std::fmt::Debug for SupportOutputBuilder {
 ///
 /// Matches WIT `resource slice-postprocess-builder` from ir-types.wit.
 pub struct SlicePostprocessBuilder {
-    polygon_updates: Vec<(slicer_ir::RegionKey, Vec<ExPolygon>)>,
-    path_z_updates: Vec<(slicer_ir::RegionKey, u32, u32, f32)>,
+    polygon_updates: Vec<(RegionKey, Vec<ExPolygon>)>,
+    path_z_updates: Vec<(RegionKey, u32, u32, f32)>,
+    boundary_paint_updates: Vec<(RegionKey, BoundaryPaintMap)>,
 }
 
 impl SlicePostprocessBuilder {
@@ -258,13 +267,14 @@ impl SlicePostprocessBuilder {
         Self {
             polygon_updates: Vec::new(),
             path_z_updates: Vec::new(),
+            boundary_paint_updates: Vec::new(),
         }
     }
 
     /// Set polygons for a region.
     pub fn set_polygons(
         &mut self,
-        region: slicer_ir::RegionKey,
+        region: RegionKey,
         polys: Vec<ExPolygon>,
     ) -> Result<(), String> {
         self.polygon_updates.push((region, polys));
@@ -274,13 +284,37 @@ impl SlicePostprocessBuilder {
     /// Set path Z for a specific vertex.
     pub fn set_path_z(
         &mut self,
-        region: slicer_ir::RegionKey,
+        region: RegionKey,
         path_idx: u32,
         vertex_idx: u32,
         z: f32,
     ) -> Result<(), String> {
         self.path_z_updates.push((region, path_idx, vertex_idx, z));
         Ok(())
+    }
+
+    /// Set boundary paint for a region.
+    ///
+    /// The boundary_paint map is keyed by `PaintSemantic`. For each semantic,
+    /// the outer Vec has one entry per polygon in the region's `polygons`,
+    /// and the inner Vec has one entry per contour point in that polygon's
+    /// outer contour. Each entry is `Some(PaintValue)` if the point is inside
+    /// a painted region, or `None` if unpainted.
+    pub fn set_boundary_paint(
+        &mut self,
+        region: RegionKey,
+        boundary_paint: BoundaryPaintMap,
+    ) -> Result<(), String> {
+        self.boundary_paint_updates.push((region, boundary_paint));
+        Ok(())
+    }
+
+    /// Get all boundary paint updates (for testing).
+    #[doc(hidden)]
+    pub fn boundary_paint_updates(
+        &self,
+    ) -> &[(RegionKey, BoundaryPaintMap)] {
+        &self.boundary_paint_updates
     }
 }
 
@@ -295,6 +329,7 @@ impl std::fmt::Debug for SlicePostprocessBuilder {
         f.debug_struct("SlicePostprocessBuilder")
             .field("polygon_updates", &self.polygon_updates.len())
             .field("path_z_updates", &self.path_z_updates.len())
+            .field("boundary_paint_updates", &self.boundary_paint_updates.len())
             .finish()
     }
 }

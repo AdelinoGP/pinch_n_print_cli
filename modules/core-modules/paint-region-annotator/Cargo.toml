@@ -1,0 +1,13 @@
+[package]
+name = "paint-region-annotator"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Paint region annotator module implementing LayerModule::run_slice_postprocess to write contour-parallel boundary_paint annotations"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+slicer-core = { path = "../../../crates/slicer-core" }
+
+[dev-dependencies]

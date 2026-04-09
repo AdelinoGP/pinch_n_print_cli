@@ -22,6 +22,7 @@ members = [
     "modules/core-modules/paint-segmentation",
     "modules/core-modules/wipe-tower",
     "modules/core-modules/skirt-brim",
+    "modules/core-modules/paint-region-annotator",
 ]
 
 [workspace.package]
