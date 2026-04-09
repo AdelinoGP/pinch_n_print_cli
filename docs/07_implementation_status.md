@@ -79,8 +79,8 @@ Last updated: 2026-04-09
 
 ## Phase F — Post-MVP & Advanced Features
 - [x] TASK-081 arachne-perimeters
-- [ ] TASK-082 gyroid-infill
-- [ ] TASK-083 lightning-infill
+- [x] TASK-082 gyroid-infill
+- [x] TASK-083 lightning-infill
 - [ ] TASK-084 seam-placer
 - [ ] TASK-085 tree-support
 - [ ] TASK-086 support-surface-ironing
