@@ -84,10 +84,10 @@ fn slice_region_fixture_builder_uses_scaled_coordinates() {
 #[test]
 fn infill_capture_collects_paths() {
     let mut capture = InfillOutputCapture::new();
-    capture.push_path(sample_path(0.2));
-    capture.push_path(sample_path(0.2));
+    capture.push_sparse_path(sample_path(0.2));
+    capture.push_sparse_path(sample_path(0.2));
 
-    assert_eq!(capture.paths().len(), 2);
+    assert_eq!(capture.sparse_paths().len(), 2);
 }
 
 #[test]
