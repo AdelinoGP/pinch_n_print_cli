@@ -6,6 +6,7 @@ authors = ["ModularSlicer Team"]
 
 [dependencies]
 slicer-ir = { path = "../slicer-ir" }
+slicer-sdk = { path = "../slicer-sdk" }
 
 [lints.rust]
 missing_docs = "warn"

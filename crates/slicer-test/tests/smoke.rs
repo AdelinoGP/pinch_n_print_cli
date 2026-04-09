@@ -74,11 +74,11 @@ fn slice_region_fixture_builder_uses_scaled_coordinates() {
         .add_polygon(square_polygon(0.0, 0.0, 2.0))
         .build();
 
-    assert_eq!(region.object_id, "obj-1");
-    assert_eq!(region.region_id, 7);
-    assert!((region.effective_layer_height - 0.24).abs() < f32::EPSILON);
-    assert_eq!(region.polygons.len(), 1);
-    assert_eq!(region.polygons[0].contour.points[0].x, mm_to_units(-1.0));
+    assert_eq!(region.object_id(), "obj-1");
+    assert_eq!(*region.region_id(), 7);
+    assert!((region.effective_layer_height() - 0.24).abs() < f32::EPSILON);
+    assert_eq!(region.polygons().len(), 1);
+    assert_eq!(region.polygons()[0].contour.points[0].x, mm_to_units(-1.0));
 }
 
 #[test]

@@ -51,7 +51,7 @@ Last updated: 2026-04-09
 - [x] TASK-042 LayerModule trait + WIT bindings
 - [x] TASK-043 PrepassModule trait + WIT bindings
 - [x] TASK-044 PostpassModule trait + WIT bindings
-- [ ] TASK-045 SliceRegionViewBuilder
+- [x] TASK-045 SliceRegionViewBuilder
 - [ ] TASK-046 PerimeterRegionViewBuilder
 - [ ] TASK-047 ConfigViewBuilder
 - [ ] TASK-048 Output capture types

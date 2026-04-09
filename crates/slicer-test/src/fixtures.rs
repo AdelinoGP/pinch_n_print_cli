@@ -2,7 +2,8 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::{mm_to_units, ConfigValue, ConfigView, ExPolygon, Polygon, SlicedRegion};
+use slicer_ir::{mm_to_units, ConfigValue, ConfigView, ExPolygon, Polygon};
+use slicer_sdk::views::SliceRegionView;
 
 /// Builder for creating [`ConfigView`] fixtures.
 #[derive(Debug, Default)]
@@ -89,17 +90,25 @@ impl ConfigViewBuilder {
     }
 }
 
-/// Minimal builder for [`SlicedRegion`] fixtures.
+/// Builder for creating [`SliceRegionView`] fixtures.
+///
+/// Produces a read-only `SliceRegionView` (from slicer-sdk) suitable for
+/// module testing. When no explicit infill areas are added, the builder
+/// auto-clones polygons into infill areas for convenience.
 #[derive(Debug, Default)]
 pub struct SliceRegionViewBuilder {
     object_id: String,
     region_id: u64,
+    z: f32,
     effective_layer_height: f32,
+    has_nonplanar: bool,
     polygons: Vec<ExPolygon>,
+    infill_areas: Vec<ExPolygon>,
+    infill_areas_explicit: bool,
 }
 
 impl SliceRegionViewBuilder {
-    /// Create a new slice region builder.
+    /// Create a new slice region view builder with sensible defaults.
     ///
     /// # Examples
     ///
@@ -113,8 +122,12 @@ impl SliceRegionViewBuilder {
         Self {
             object_id: "obj-0".to_string(),
             region_id: 0,
+            z: 0.0,
             effective_layer_height: 0.2,
+            has_nonplanar: false,
             polygons: Vec::new(),
+            infill_areas: Vec::new(),
+            infill_areas_explicit: false,
         }
     }
 
@@ -148,6 +161,22 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the Z height in millimeters.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_test::fixtures::SliceRegionViewBuilder;
+    ///
+    /// let view = SliceRegionViewBuilder::new().z(1.2).build();
+    /// assert!((view.z() - 1.2).abs() < f32::EPSILON);
+    /// ```
+    #[must_use]
+    pub fn z(mut self, z_mm: f32) -> Self {
+        self.z = z_mm;
+        self
+    }
+
     /// Set the effective layer height in millimeters.
     ///
     /// # Examples
@@ -163,16 +192,36 @@ impl SliceRegionViewBuilder {
         self
     }
 
-    /// Add one polygon to both region polygon collections.
+    /// Set whether this region has non-planar surfaces.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_test::fixtures::SliceRegionViewBuilder;
+    ///
+    /// let view = SliceRegionViewBuilder::new().has_nonplanar(true).build();
+    /// assert!(view.has_nonplanar());
+    /// ```
+    #[must_use]
+    pub fn has_nonplanar(mut self, value: bool) -> Self {
+        self.has_nonplanar = value;
+        self
+    }
+
+    /// Add a polygon to the region's polygon collection.
+    ///
+    /// When no explicit infill areas are added via [`add_infill_area`](Self::add_infill_area),
+    /// polygons are auto-cloned into infill areas on build.
     ///
     /// # Examples
     ///
     /// ```rust
     /// use slicer_test::fixtures::{square_polygon, SliceRegionViewBuilder};
     ///
-    /// let _region = SliceRegionViewBuilder::new()
+    /// let view = SliceRegionViewBuilder::new()
     ///     .add_polygon(square_polygon(0.0, 0.0, 10.0))
     ///     .build();
+    /// assert_eq!(view.polygons().len(), 1);
     /// ```
     #[must_use]
     pub fn add_polygon(mut self, polygon: ExPolygon) -> Self {
@@ -180,30 +229,49 @@ impl SliceRegionViewBuilder {
         self
     }
 
-    /// Build a [`SlicedRegion`].
+    /// Add an infill area independently from polygons.
+    ///
+    /// Once called, the auto-clone from polygons is disabled.
     ///
     /// # Examples
     ///
     /// ```rust
     /// use slicer_test::fixtures::{square_polygon, SliceRegionViewBuilder};
     ///
-    /// let region = SliceRegionViewBuilder::new()
-    ///     .add_polygon(square_polygon(0.0, 0.0, 4.0))
+    /// let view = SliceRegionViewBuilder::new()
+    ///     .add_polygon(square_polygon(0.0, 0.0, 20.0))
+    ///     .add_infill_area(square_polygon(5.0, 5.0, 10.0))
     ///     .build();
-    /// assert_eq!(region.polygons.len(), 1);
+    /// assert_eq!(view.polygons().len(), 1);
+    /// assert_eq!(view.infill_areas().len(), 1);
     /// ```
     #[must_use]
-    pub fn build(self) -> SlicedRegion {
-        let polygons = self.polygons;
-        SlicedRegion {
-            object_id: self.object_id,
-            region_id: self.region_id,
-            polygons: polygons.clone(),
-            infill_areas: polygons,
-            nonplanar_surface: None,
-            effective_layer_height: self.effective_layer_height,
-            boundary_paint: HashMap::new(),
-        }
+    pub fn add_infill_area(mut self, polygon: ExPolygon) -> Self {
+        self.infill_areas.push(polygon);
+        self.infill_areas_explicit = true;
+        self
+    }
+
+    /// Build a [`SliceRegionView`].
+    ///
+    /// If no infill areas were explicitly added, polygons are cloned
+    /// into infill areas for convenience.
+    #[must_use]
+    pub fn build(self) -> SliceRegionView {
+        let infill_areas = if self.infill_areas_explicit {
+            self.infill_areas
+        } else {
+            self.polygons.clone()
+        };
+        SliceRegionView::new(
+            self.object_id,
+            self.region_id,
+            self.polygons,
+            infill_areas,
+            self.effective_layer_height,
+            self.z,
+            self.has_nonplanar,
+        )
     }
 }
 
