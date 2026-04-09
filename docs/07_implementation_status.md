@@ -78,7 +78,7 @@ Last updated: 2026-04-09
 - [x] TASK-077 Integration test: end-to-end STL pipeline with model loading
 
 ## Phase F — Post-MVP & Advanced Features
-- [ ] TASK-081 arachne-perimeters
+- [x] TASK-081 arachne-perimeters
 - [ ] TASK-082 gyroid-infill
 - [ ] TASK-083 lightning-infill
 - [ ] TASK-084 seam-placer
