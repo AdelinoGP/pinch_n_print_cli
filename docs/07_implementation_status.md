@@ -54,7 +54,7 @@ Last updated: 2026-04-09
 - [x] TASK-045 SliceRegionViewBuilder
 - [x] TASK-046 PerimeterRegionViewBuilder
 - [x] TASK-047 ConfigViewBuilder
-- [ ] TASK-048 Output capture types
+- [x] TASK-048 Output capture types
 - [ ] TASK-049 assert_paths helpers
 - [ ] TASK-050 `slicer new` command
 - [ ] TASK-051 `slicer build` command
