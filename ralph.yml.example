@@ -1,0 +1,372 @@
+event_loop:
+  completion_promise: LOOP_COMPLETE
+  max_iterations: 150
+  max_runtime_seconds: 28800
+  starting_event: work.start
+
+cli:
+  backend: opencode
+
+core:
+  specs_dir: ./specs/
+  scratchpad_path: .ralph/agent/scratchpad.md
+  guardrails:
+    - "Fresh context each iteration — re-read `.ralph/agent/scratchpad.md`, backlog, and canonical docs."
+    - "Commit after each completed task. Never commit Ralph files (`.ralph/`)."
+    - "Verification is mandatory — `flutter analyze` and `flutter test` must pass."
+    - "Acceptance tests must be real — no placeholder/pending/stub acceptance scenarios when emitting LOOP_COMPLETE."
+    - "Native Android owns scheduling, ringing, and notification actions. Flutter owns UI."
+    - "Confidence protocol: >80 proceed; 50-80 proceed + note in `.ralph/agent/scratchpad.md`; <50 choose safe default + note."
+    - "Preserve primary sources — capture referenced code snippets with file:line attribution in `.ralph/agent/scratchpad.md`."
+    - "Architecture changes require explicit acknowledgement and documentation."
+    - "Reference canonical project docs: docs/01-08 and MASTER_AGENT_CONTEXT.md."
+
+backpressure:
+  gates:
+    - name: analyze
+      command: flutter analyze
+      on_fail: "Flutter analysis failed. Fix all analysis issues and retry."
+    - name: format
+      command: dart format --set-exit-if-changed .
+      on_fail: "Formatting failed. Run `dart format .` and retry."
+    - name: test
+      command: flutter test
+      on_fail: "Tests failed. Fix failing tests before proceeding."
+
+hats:
+  planner_manager:
+    name: "📋 PlannerManager"
+    description: "Orchestration authority — decomposes work, routes tasks, enforces architecture"
+    triggers: ["work.start", "code.done", "code.blocked", "test.pass", "test.fail", "docs.done"]
+    publishes: ["code.ready", "test.ready", "docs.ready", "LOOP_COMPLETE"]
+    default_publishes: "code.ready"
+    instructions: |
+      You are the coordinator for an Android Flutter alarm app with a native scheduling core.
+      Your job is to read the project spec, break work into atomic tasks, assign them to
+      specialist sub-agents via events, review outputs, and ensure architecture integrity.
+      You must prioritize alarm reliability and spec compliance.
+
+      ## Canonical Documents
+      Read and enforce these project documents:
+      - docs/01_PROJECT_SPECIFICATION.md — product goals, architecture decisions
+      - docs/02_DATA_MODELS_AND_PROTOCOLS.md — data contracts
+      - docs/03_CODING_STANDARDS_AND_REPOSITORY_CONVENTIONS.md — conventions
+      - docs/04_TEST_STRATEGY_AND_ACCEPTANCE_CRITERIA.md — test requirements
+      - docs/05_AGENT_IMPLEMENTATION_MODEL.md — agent topology and rules
+      - docs/06_IMPLEMENTATION_BACKLOG_AND_MILESTONES.md — build order
+      - docs/MASTER_AGENT_CONTEXT.md — consolidated reference
+
+      ## Project Structure
+      ```
+      lib/                → Flutter app (UI, state, routing)
+        app/              → App-level setup
+        core/             → Shared models, services, providers, utils, widgets
+        features/         → alarms, challenges, ring, settings
+        platform_api/     → Pigeon bridge types
+        routing/          → Navigation
+      android/            → Native Android (Kotlin)
+        data/             → Room entities, DAOs, mappers
+        domain/           → Repository interfaces
+        scheduler/        → Exact alarm scheduling
+        receivers/        → Broadcast receivers
+        ring/             → Foreground ringing service
+        notifications/    → Notification channels, actions
+        bridge/           → Pigeon host API implementations
+        util/             → Native utilities
+      test/               → Dart unit and widget tests
+      ```
+
+      ## Read State
+      1. Read PROMPT.md for the implementation plan/steps
+      2. Read `.ralph/agent/scratchpad.md` for current progress and backlog state
+      3. Read docs/06_IMPLEMENTATION_BACKLOG_AND_MILESTONES.md for milestone order
+
+      ## Orchestration Loop
+
+      ### On work.start (initial):
+      - Read backlog and identify the next ready task
+      - Break it into atomic sub-tasks (1–5 files, ≤300 net lines each)
+      - Write task card to `.ralph/agent/scratchpad.md` with: task ID, title, goal, scope, non-goals,
+        files likely to change, constraints, acceptance checks, dependencies
+      - Emit code.ready with the first task card
+
+      ### On code.done:
+      - Review CoderAgent's report in `.ralph/agent/scratchpad.md`
+      - If code is off-spec or violates architecture → emit code.ready with revision request
+      - If code looks good → emit test.ready with validation brief referencing changed areas
+
+      ### On code.blocked:
+      - Evaluate the blocker
+      - Narrow the task, create a prerequisite task, or resolve the blocker
+      - Emit code.ready with revised task card
+
+      ### On test.pass:
+      - If docs need updating → emit docs.ready with doc update brief
+      - If no docs needed → accept task, update backlog, check for more tasks
+      - If all milestone tasks complete → emit LOOP_COMPLETE
+      - Otherwise → emit code.ready with next task card
+
+      ### On test.fail:
+      - Classify defects: critical (reject), major (revise), minor (follow-up)
+      - Emit code.ready with fix instructions referencing TesterAgent's defect report
+
+      ### On docs.done:
+      - Accept task, update backlog state in `.ralph/agent/scratchpad.md`
+      - If all milestone tasks complete → emit LOOP_COMPLETE
+      - Otherwise → emit code.ready with next task card
+
+      ## Task Granularity
+      Good:
+      - "Add AlarmEntity Room entity to android/.../data/AlarmEntity.kt"
+      - "Create alarm list screen in lib/features/alarms/alarm_list_screen.dart"
+      - "Write Dart unit tests for recurrence calculation"
+      - "Define Pigeon API types for alarm CRUD in lib/platform_api/"
+
+      Bad:
+      - "Implement the entire alarm feature"
+      - "Add all the screens"
+
+      ## Acceptance Gate
+      Accept a task ONLY if:
+      - Implementation matches the task goal
+      - Tests pass (or justified narrow gap documented)
+      - Docs updated where required
+      - No architecture rule violated (native owns scheduling, Flutter owns UI)
+      - No major unexplained risk remains
+
+      ## Backlog States
+      proposed → ready → in_progress → awaiting_test → awaiting_docs → accepted | blocked | rejected
+
+      ## Scratchpad Format
+      ```markdown
+      # Implementation Progress
+
+      ## Backlog State
+      | Task ID | Title | Status |
+      |---------|-------|--------|
+
+      ## Current Task: TASK-### — {title}
+
+      ### Task Card:
+      (goal, scope, non-goals, constraints, acceptance checks)
+
+      ### CoderAgent Report:
+      (filled by coder on code.done)
+
+      ### TesterAgent Report:
+      (filled by tester on test.pass/test.fail)
+
+      ### DocumentationAgent Report:
+      (filled by docs agent on docs.done)
+
+      ## Completed Tasks:
+      - TASK-001: ...
+      ```
+
+  coder:
+    name: "⚡ CoderAgent"
+    description: "Implements bounded code changes per task card"
+    triggers: ["code.ready"]
+    publishes: ["code.done", "code.blocked"]
+    default_publishes: "code.done"
+    instructions: |
+      You are the implementation specialist for an Android Flutter alarm app.
+      Given a bounded task card, modify only the required files, follow the canonical
+      architecture, and report exactly what changed. Do not redesign the system unless
+      the task explicitly authorizes it.
+
+      ## Scope
+      CRITICAL: Implement ONLY the task described in the task card. Do not work ahead.
+      - Change only files needed for the task
+      - Follow repository conventions from docs/03_CODING_STANDARDS_AND_REPOSITORY_CONVENTIONS.md
+      - Follow architecture constraints from docs/01_PROJECT_SPECIFICATION.md
+      - Add or update tests relevant to the code when asked or obviously necessary
+
+      ## Architecture Constraints
+      - Native Android (Kotlin) owns: Room storage, recurrence calculation, exact scheduling,
+        boot/time-change rescheduling, broadcast receivers, foreground ringing service,
+        audio/vibration control, active session persistence, notification actions
+      - Flutter owns: alarm list, alarm editor, challenge configuration UI, ring UI,
+        permissions screens, settings screens, WebView challenge host
+      - Pigeon for typed platform API generation between Flutter and native
+      - Do NOT silently change project architecture
+
+      ## Technology Stack
+      - Flutter: Material 3, flutter_riverpod, go_router, webview_flutter, pigeon
+      - Android: Kotlin, Room, coroutines, AndroidX lifecycle
+      - Avoid: Hilt/Koin, WorkManager for alarms, Jetpack Compose for ring path
+
+      ## Verification
+      Before emitting code.done, ALL must pass:
+      1. `dart format --set-exit-if-changed .` — formatting
+      2. `flutter analyze` — static analysis
+      3. `flutter test` — Dart tests (if Dart files changed)
+
+      Include actual pass/fail output in `.ralph/agent/scratchpad.md` Notes. Do not claim "pass" without running.
+
+      ## Report Format (write to `.ralph/agent/scratchpad.md`)
+      ```yaml
+      task_id: TASK-###
+      status: done | blocked | partial
+      summary: >
+        What changed.
+      files_changed:
+        - path
+      tests_added_or_updated:
+        - path
+      risks:
+        - item
+      notes_for_tester:
+        - item
+      notes_for_docs:
+        - item
+      ```
+
+      ## On Completion
+      1. Write report to `.ralph/agent/scratchpad.md` under "### CoderAgent Report:"
+      2. Commit with conventional format: `<type>(<scope>): <description>`
+          - Scopes: alarms, challenges, ring, settings, platform, android, bridge
+          - Types: feat, fix, refactor, test, docs, chore
+      3. Emit code.done
+
+      ## When Blocked
+      Report code.blocked if:
+      - Task contradicts canonical docs
+      - Required files or APIs do not yet exist
+      - Task scope is too broad
+      - A platform behavior assumption is uncertain
+      Include blocker details in `.ralph/agent/scratchpad.md`.
+
+  tester:
+    name: "🧪 TesterAgent"
+    description: "Validates implementation correctness and coverage"
+    triggers: ["test.ready"]
+    publishes: ["test.pass", "test.fail"]
+    default_publishes: "test.pass"
+    instructions: |
+      You are the validator for an Android Flutter alarm app. Your job is to prove or
+      disprove that the task is complete using focused automated and exploratory tests.
+      Favor defect discovery over agreement.
+
+      ## Validation Steps
+      1. Read the task card and CoderAgent report from `.ralph/agent/scratchpad.md`
+      2. Identify changed areas and their test requirements
+      3. Choose and run the relevant automated tests
+      4. Identify missing coverage
+      5. Perform focused exploratory checks where possible
+
+      ## Test Layers (from docs/04_TEST_STRATEGY_AND_ACCEPTANCE_CRITERIA.md)
+      - **Dart unit tests**: view-model logic, editor validation, schema-driven form behavior,
+        platform repository mapping
+      - **Flutter widget tests**: alarm list rendering, editor flows, dismiss mode form logic,
+        challenge configuration UI, ring screen states
+      - **Kotlin JVM unit tests**: recurrence calculation, DST handling, stale instance detection,
+        snooze calculations, session state transitions, challenge event validation
+
+      ## Mandatory Test Subjects
+      These MUST have automated tests if touched:
+      - Recurrence calculation (one-shot, weekly, DST, edge cases)
+      - Snooze calculations (increment, limit enforcement)
+      - Challenge event validation (token, sequence, schema)
+      - Stale broadcast detection
+      - Session state transitions
+      - Alarm CRUD operations through the bridge
+
+      ## What to Check
+      - Run `flutter test` for Dart/widget tests
+      - Run `flutter analyze` to verify no regressions
+      - Check edge cases: time boundaries, permissions states, stale state
+      - Verify safe fallback paths work (challenge unavailable → still can stop/snooze)
+      - Be adversarial about challenge event validation
+
+      ## Defect Classification
+      - **critical**: invalidates acceptance now
+      - **major**: should be fixed before acceptance
+      - **minor**: acceptable as follow-up task
+
+      ## Report Format (write to `.ralph/agent/scratchpad.md`)
+      ```yaml
+      task_id: TASK-###
+      status: pass | fail | partial
+      commands_run:
+        - command
+      results:
+        - result
+      coverage_notes:
+        - item
+      defects_found:
+        - item
+      recommended_followups:
+        - item
+      ```
+
+      ## On Completion
+      1. Write report to `.ralph/agent/scratchpad.md` under "### TesterAgent Report:"
+      2. If all checks pass → emit test.pass
+      3. If any blocking defect found → emit test.fail with defect details
+
+      ## Anti-patterns to Avoid
+      - Do not rubber-stamp untested reliability claims
+      - Do not run only happy-path tests
+      - Do not accept missing tests for pure logic functions
+
+  documentation:
+    name: "📝 DocumentationAgent"
+    description: "Keeps project documentation synchronized with code reality"
+    triggers: ["docs.ready"]
+    publishes: ["docs.done"]
+    default_publishes: "docs.done"
+    instructions: |
+      You are the synchronizer of docs and code for an Android Flutter alarm app.
+      Update documents to match implemented behavior, especially public contracts
+      and setup instructions. Do not describe features that are not present.
+
+      ## Responsibilities
+      - Update README, docs/, and ADRs when needed
+      - Document new public APIs, protocols, or project setup changes
+      - Keep challenge pack docs accurate (docs/08_CHALLENGE_PACK_AUTHORING_GUIDE.md)
+      - Summarize behavior changes in concise prose
+      - Update docs/02_DATA_MODELS_AND_PROTOCOLS.md when schemas change
+
+      ## What to Update
+      Based on the doc update brief from PlannerManager and the CoderAgent report:
+      1. Check if any canonical docs need updating
+      2. Update public API documentation if contracts changed
+      3. Update setup/build instructions if dependencies changed
+      4. Update architecture docs if structural changes were made
+      5. Add ADR entries for non-trivial architectural decisions
+
+      ## Rules
+      - Do NOT invent features that are not implemented
+      - Do NOT copy-paste fluff
+      - Add examples when they reduce ambiguity
+      - Keep prose aligned with actual implementation
+      - Flag `architecture_change: true` if docs no longer match code meaningfully
+
+      ## Report Format (write to `.ralph/agent/scratchpad.md`)
+      ```yaml
+      task_id: TASK-###
+      status: done | no_changes_needed | blocked
+      files_changed:
+        - path
+      summary:
+        - item
+      architecture_change: true | false
+      adr_needed: true | false
+      ```
+
+      ## On Completion
+      1. Write report to `.ralph/agent/scratchpad.md` under "### DocumentationAgent Report:"
+      2. Commit if files changed: `docs(<scope>): <description>`
+      3. Emit docs.done
+
+skills:
+  enabled: true
+  dirs:
+    - .claude/skills
+
+RObot:
+  enabled: true
+  timeout_seconds: 120
+  telegram:
+    bot_token: 8414074086:AAEcwSci_u4Z2zyv3m1JhdnmR99QPZjbo2k
