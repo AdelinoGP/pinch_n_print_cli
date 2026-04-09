@@ -13,6 +13,7 @@ pub mod layer_finalization;
 pub mod manifest;
 pub mod mesh_segmentation;
 pub mod paint_segmentation;
+pub mod postpass;
 pub mod prepass;
 pub mod slice_postprocess;
 pub mod topology;
@@ -45,6 +46,10 @@ pub use mesh_segmentation::{
     execute_mesh_segmentation, DegenerateStrokeReason, MeshSegmentationError,
 };
 pub use paint_segmentation::{execute_paint_segmentation, PaintSegmentationError};
+pub use postpass::{
+    execute_postpass, GCodeEmitter, GCodeSerializer, PostpassError, PostpassOutput,
+    PostpassStageRunner,
+};
 pub use prepass::{execute_prepass, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner};
 pub use slice_postprocess::{
     execute_slice_postprocess_paint_annotation, SlicePostProcessPaintAnnotationError,
