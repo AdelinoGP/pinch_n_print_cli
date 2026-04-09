@@ -1,0 +1,12 @@
+[package]
+name = "gyroid-infill"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Gyroid TPMS sparse infill generator implementing LayerModule for Layer::Infill stage"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+[dev-dependencies]
