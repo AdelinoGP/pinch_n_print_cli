@@ -10,6 +10,7 @@ members = [
     "crates/slicer-helpers",
     "modules/core-modules/layer-planner-default",
     "modules/core-modules/classic-perimeters",
+    "modules/core-modules/rectilinear-infill",
 ]
 
 [workspace.package]
