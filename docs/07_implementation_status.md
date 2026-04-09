@@ -41,16 +41,16 @@ Last updated: 2026-04-09
 - [x] TASK-031 Per-layer parallel executor
 - [x] TASK-032 LayerFinalization executor
 - [x] TASK-033 PostPass executor
-- [ ] TASK-034 GCodeEmit built-in serializer
-- [ ] TASK-035 Config schema query API
-- [ ] TASK-036 Progress event emitter
+- [x] TASK-034 GCodeEmit built-in serializer
+- [x] TASK-035 Config schema query API
+- [x] TASK-036 Progress event emitter
 
 ## Phase D — SDK Tooling
-- [ ] TASK-040 #[slicer_module] proc-macro
-- [ ] TASK-041 #[module_test] proc-macro
-- [ ] TASK-042 LayerModule trait + WIT bindings
-- [ ] TASK-043 PrepassModule trait + WIT bindings
-- [ ] TASK-044 PostpassModule trait + WIT bindings
+- [x] TASK-040 #[slicer_module] proc-macro
+- [x] TASK-041 #[module_test] proc-macro
+- [x] TASK-042 LayerModule trait + WIT bindings
+- [x] TASK-043 PrepassModule trait + WIT bindings
+- [x] TASK-044 PostpassModule trait + WIT bindings
 - [ ] TASK-045 SliceRegionViewBuilder
 - [ ] TASK-046 PerimeterRegionViewBuilder
 - [ ] TASK-047 ConfigViewBuilder
