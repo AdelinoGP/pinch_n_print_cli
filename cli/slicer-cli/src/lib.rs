@@ -2,3 +2,4 @@
 
 pub mod cmd_build;
 pub mod cmd_new;
+pub mod cmd_test;

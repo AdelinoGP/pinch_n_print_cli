@@ -2,6 +2,7 @@
 
 use slicer_cli::cmd_build;
 use slicer_cli::cmd_new;
+use slicer_cli::cmd_test;
 
 use clap::{Parser, Subcommand};
 
@@ -68,9 +69,11 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Test { .. } => {
-            eprintln!("slicer test: not yet implemented");
-            std::process::exit(1);
+        Commands::Test { args } => {
+            if let Err(e) = cmd_test::execute(&args) {
+                eprintln!("Error: {e}");
+                std::process::exit(1);
+            }
         }
         Commands::Validate => {
             eprintln!("slicer validate: not yet implemented");
