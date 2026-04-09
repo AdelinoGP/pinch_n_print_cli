@@ -6,12 +6,9 @@
 //! but layers can be processed in parallel.
 
 use std::fmt;
-use std::sync::Mutex;
 
 use rayon::prelude::*;
-use slicer_ir::{
-    GlobalLayer, LayerCollectionIR, ModuleId, PrintEntity, SemVer, StageId, ToolChange, ZHop,
-};
+use slicer_ir::{GlobalLayer, LayerCollectionIR, ModuleId, SemVer, StageId};
 
 use crate::{
     Blackboard, BlackboardError, CompiledModule, ExecutionPlan, LayerArena, LayerArenaError,

@@ -81,10 +81,28 @@ pub struct FinalizationOutputBuilder;
 /// Modules run sequentially with a forced pool size of 1.
 /// Output layers are validated to maintain monotonic indices.
 pub fn execute_layer_finalization(
-    _plan: &ExecutionPlan,
-    _blackboard: &Blackboard,
-    _runner: &dyn FinalizationStageRunner,
-    _layers: &mut Vec<LayerCollectionIR>,
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &dyn FinalizationStageRunner,
+    layers: &mut Vec<LayerCollectionIR>,
 ) -> Result<(), FinalizationError> {
-    todo!("implement execute_layer_finalization")
+    if let Some(stage) = &plan.layer_finalization_stage {
+        for module in &stage.modules {
+            runner.run_stage(&stage.stage_id, module, blackboard, layers)?;
+
+            // Validate that the layer indices remain strictly monotonic
+            for window in layers.windows(2) {
+                if window[0].global_layer_index >= window[1].global_layer_index {
+                    return Err(FinalizationError::Validation {
+                        message: format!(
+                            "layer indices must be strictly monotonic, found {} followed by {}",
+                            window[0].global_layer_index, window[1].global_layer_index
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(())
 }

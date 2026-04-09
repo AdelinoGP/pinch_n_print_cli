@@ -6,7 +6,9 @@ authors = ["ModularSlicer Team"]
 
 [dependencies]
 slicer-ir = { path = "../slicer-ir" }
+slicer-core = { path = "../slicer-core" }
 toml = "0.8"
+rayon = "1.10"
 
 [dev-dependencies]
 tempfile = "3"
