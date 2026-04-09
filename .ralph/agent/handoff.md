@@ -1,11 +1,11 @@
 # Session Handoff
 
-_Generated: 2026-03-15 07:04:23 UTC_
+_Generated: 2026-03-15 20:46:58 UTC_
 
 ## Git Context
 
 - **Branch:** `master`
-- **HEAD:** 9cc09f2: chore: auto-commit before merge (loop primary)
+- **HEAD:** 22ac3cc: chore: auto-commit before merge (loop primary)
 
 ## Tasks
 
@@ -23,6 +23,37 @@ _Generated: 2026-03-15 07:04:23 UTC_
 - [x] TASK-012 coding green
 - [x] TASK-012 docs/status
 - [x] Fix bot onboarding
+- [x] TASK-013 QA red
+- [x] TASK-013 coding green
+- [x] TASK-013 docs/status
+- [x] Prepare TASK-013 task chain
+- [x] TASK-014 QA red
+- [x] TASK-014 coding green
+- [x] TASK-014 docs/status
+- [x] TASK-015 QA red
+- [x] TASK-015 coding green
+- [x] TASK-015 docs/status
+- [x] TASK-020 QA red
+- [x] TASK-020 coding green
+- [x] TASK-020 docs/status
+- [x] TASK-021 QA red
+- [x] TASK-021 coding green
+- [x] TASK-021 docs/status
+- [x] TASK-022 QA red
+- [x] TASK-022 coding green
+- [x] TASK-022 docs/status
+- [x] TASK-023 QA red
+- [x] TASK-023 coding green
+- [x] TASK-023 docs/status
+- [x] TASK-024 QA red
+- [x] TASK-024 coding green
+- [x] TASK-024 docs/status
+- [x] TASK-025 QA red
+- [x] TASK-025 coding green
+- [x] TASK-025 docs/status
+- [x] TASK-026 QA red
+- [x] TASK-026 coding green
+- [x] TASK-026 docs/status
 
 ### Remaining
 
@@ -34,6 +65,7 @@ _Generated: 2026-03-15 07:04:23 UTC_
 
 Recently modified:
 
+- `.ralph/agent/decisions.md`
 - `.ralph/agent/handoff.md`
 - `.ralph/agent/memories.md`
 - `.ralph/agent/scratchpad.md`
@@ -41,9 +73,8 @@ Recently modified:
 - `.ralph/agent/tasks.jsonl`
 - `.ralph/current-events`
 - `.ralph/current-loop-id`
-- `.ralph/diagnostics/logs/ralph-2026-03-15T01-22-37-236-21971.log`
-- `.ralph/diagnostics/logs/ralph-2026-03-15T01-23-48-491-22340.log`
-- `.ralph/diagnostics/logs/ralph-2026-03-15T01-23-48-492-22340.log`
+- `.ralph/diagnostics/logs/ralph-2026-03-15T03-20-21-785-56755.log`
+- `.ralph/diagnostics/logs/ralph-2026-03-15T03-43-34-931-69046.log`
 
 ## Next Session
 

@@ -1,8 +1,8 @@
 # Loop Summary
 
-**Status:** Completed successfully
-**Iterations:** 15
-**Duration:** 50m 20s
+**Status:** Interrupted by signal
+**Iterations:** 40
+**Duration:** 4m 58s
 
 ## Tasks
 
@@ -14,4 +14,4 @@ _No events recorded._
 
 ## Final Commit
 
-9552986: docs: mark TASK-026 blackboard arena complete
+8d5c214: test: define TASK-031 per-layer parallel executor contract

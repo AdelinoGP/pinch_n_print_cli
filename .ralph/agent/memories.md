@@ -2,6 +2,46 @@
 
 ## Patterns
 
+### mem-1775628886-fd0a
+> TASK-032 QA red defines crates/slicer-host layer-finalization API in src/layer_finalization.rs around execute_layer_finalization(plan, layer_irs, blackboard) -> Result<(), SlicerError>, FinalizationStageRunner trait, and FinalizationError enum; red tests in tests/layer_finalization_tdd.rs lock down sequential execution, pool size 1, synthetic layer validation, and deterministic custom conflicts while failing only on the explicit todo stub.
+<!-- tags: slicer-host, task-032, testing, scheduler, layer-finalization | created: 2026-04-08 -->
+
+### mem-1775621246-acf9
+> TASK-031 QA red defines crates/slicer-host per-layer parallel executor API in src/layer_executor.rs around execute_per_layer(plan, blackboard) -> Result<Vec<LayerCollectionIR>, LayerExecutionError>, LayerStageRunner trait, LayerStageOutput/Error/ExecutionError enums; red tests in tests/layer_executor_tdd.rs lock down parallel layer processing with sequential stage ordering, topological module ordering, isolated LayerArena per layer, write-once Blackboard slot commits, fatal/non-fatal error handling, and drain behavior while failing only on the explicit todo stub.
+<!-- tags: slicer-host, task-031, testing, scheduler, layer-executor | created: 2026-04-08 -->
+
+### mem-1775619129-c585
+> TASK-030 coding green implemented crates/slicer-host/src/slice_postprocess.rs with execute_slice_postprocess_paint_annotation: validates required semantics have paint region data, detects stale boundary_paint cardinality mismatches, builds contour-parallel boundary_paint via point_in_paint_region queries, handles numerical edge ambiguity with deterministic fallbacks and degraded warnings, and propagates equal-precedence custom conflicts fatally.
+<!-- tags: slicer-host, task-030, scheduler, slice-postprocess, paint-annotation | created: 2026-04-08 -->
+
+### mem-1773610870-9a5a
+> TASK-030 QA red defines crates/slicer-host slice-postprocess API in src/slice_postprocess.rs around execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest) -> Result<SlicePostProcessPaintAnnotationResult, SlicePostProcessPaintAnnotationError>; red tests in tests/slice_postprocess_paint_annotation_tdd.rs lock down empty boundary_paint preservation, contour-parallel semantic annotation, stale-cardinality fatal errors, deterministic custom conflicts, degraded unresolved-point defaults with warning payloads, and missing-required-semantic fatal validation while failing only on the explicit todo stub.
+<!-- tags: slicer-host, task-030, testing, slice-postprocess, paint-annotation | created: 2026-03-15 -->
+
+### mem-1773610371-66f5
+> TASK-029 coding green implemented crates/slicer-host/src/paint_segmentation.rs with a deterministic PaintSegmentation executor: execute_paint_segmentation seeds authoritative empty layer maps, validates upstream SurfaceClassificationIR and LayerPlanIR participation, projects whole painted triangles through object transforms into per-layer ExPolygons, preserves semantic/value/paint_order grouping, and raises stable DeterministicConflict errors for equal-precedence overlapping custom paint.
+<!-- tags: slicer-host, task-029, scheduler, paint-segmentation, testing | created: 2026-03-15 -->
+
+### mem-1773610074-69d0
+> TASK-029 QA red defines crates/slicer-host paint-segmentation API in src/paint_segmentation.rs around execute_paint_segmentation(Arc<MeshIR>, Arc<SurfaceClassificationIR>, Arc<LayerPlanIR>) -> Result<Arc<PaintRegionIR>, PaintSegmentationError>; red tests in tests/paint_segmentation_executor_tdd.rs lock down material tool-index preservation by authoritative layers, support/fuzzy/custom semantic emission, empty LayerPaintMap presence, deterministic custom conflicts, and missing-upstream-object fatal validation while failing only on the explicit todo stub.
+<!-- tags: slicer-host, task-029, testing, paint-segmentation, prepass | created: 2026-03-15 -->
+
+### mem-1773609491-1a5c
+> TASK-028 coding green implemented crates/slicer-host/src/mesh_segmentation.rs with a conservative deterministic MeshSegmentation executor: execute_mesh_segmentation returns the original Arc for meshes with no sub-facet strokes, clones and normalizes stroked meshes by splitting a single matching facet into painted/unpainted child triangles, clears strokes after commit, preserves facet_values alignment across paint layers, and rejects zero-area, tangent, or vertex-touching strokes with stable MeshSegmentationError reasons.
+<!-- tags: slicer-host, task-028, scheduler, mesh-segmentation, testing | created: 2026-03-15 -->
+
+### mem-1773609108-cdb9
+> TASK-028 QA red defines crates/slicer-host mesh-segmentation API in src/mesh_segmentation.rs around execute_mesh_segmentation(Arc<MeshIR>) -> Result<Arc<MeshIR>, MeshSegmentationError> plus DegenerateStrokeReason; red tests in tests/mesh_segmentation_executor_tdd.rs lock down no-stroke passthrough, deterministic single-triangle split normalization, stable degenerate-stroke errors, and idempotent cleared-stroke output suitable for blackboard handoff while failing only on the explicit todo stub.
+<!-- tags: slicer-host, task-028, testing, mesh-segmentation, prepass | created: 2026-03-15 -->
+
+### mem-1773608642-c2e0
+> TASK-027 coding green implemented crates/slicer-host/src/prepass.rs with a deterministic sequential execute_prepass: it walks plan.prepass_stages in fixed order, enforces authoritative prerequisites for LayerPlanning/PaintSegmentation/RegionMapping before stage entry, commits Arc-backed SurfaceClassificationIR/LayerPlanIR/PaintRegionIR/RegionMapIR through exact-once Blackboard slots, wraps duplicate-slot failures as PrepassExecutionError::Blackboard, and aborts immediately on FatalModule without running later stages.
+<!-- tags: slicer-host, task-027, scheduler, prepass, testing | created: 2026-03-15 -->
+
+### mem-1773608457-9956
+> TASK-027 QA red defines crates/slicer-host prepass execution API in src/prepass.rs around execute_prepass(plan, blackboard, runner), PrepassStageRunner, PrepassStageOutput, and PrepassExecutionError; red tests in tests/prepass_executor_tdd.rs lock down fixed prepass stage order, authoritative prerequisite checks, exactly-once blackboard commits for SurfaceClassificationIR/LayerPlanIR/PaintRegionIR/RegionMapIR, fatal abort behavior, and immutable Arc-backed mesh reuse while failing only on the TASK-027 todo stub.
+<!-- tags: slicer-host, task-027, testing, scheduler, prepass | created: 2026-03-15 -->
+
 ### mem-1773607473-eaa7
 > TASK-026 coding green implemented crates/slicer-host/src/blackboard.rs with deterministic Arc-backed host state: Blackboard stores immutable mesh/prepass IR slots with exact-once commit guards, fixed-size write-once LayerCollectionIR slots that reject duplicates/out-of-range writes and drain once in slot order after completeness checks, and LayerArena provides ephemeral set/borrow/take/reset ownership for SliceIR, PerimeterIR, InfillIR, and SupportIR.
 <!-- tags: slicer-host, task-026, scheduler, blackboard, testing | created: 2026-03-15 -->
@@ -127,6 +167,18 @@
 <!-- tags: workspace, cargo, testing | created: 2026-03-15 -->
 
 ## Context
+
+### mem-1773610472-7a98
+> TASK-029 is complete once commit 7134e91 is verified by cargo test -p slicer-host --test paint_segmentation_executor_tdd and cargo test -p slicer-host, then docs/07_implementation_status.md marks PaintSegmentation stage executor done with docs commit 8155287.
+<!-- tags: slicer-host, task-029, docs | created: 2026-03-15 -->
+
+### mem-1773609622-4076
+> TASK-028 is complete once commit 56b02e0 is verified by cargo test -p slicer-host --test mesh_segmentation_executor_tdd and cargo test -p slicer-host, then docs/07_implementation_status.md marks MeshSegmentation stage executor done with docs commit ce911c5.
+<!-- tags: slicer-host, task-028, docs | created: 2026-03-15 -->
+
+### mem-1773608766-39ee
+> TASK-027 is complete once commit a1d882c is verified by cargo test -p slicer-host --test prepass_executor_tdd and cargo test -p slicer-host, then docs/07_implementation_status.md marks PrePass executor done with docs commit 59e0c51.
+<!-- tags: slicer-host, task-027, docs | created: 2026-03-15 -->
 
 ### mem-1773607552-f82d
 > TASK-026 is complete once commit a818867 is verified by cargo test -p slicer-host --test blackboard_layer_arena_tdd and cargo test -p slicer-host, then docs/07_implementation_status.md marks Blackboard + LayerArena done with docs commit 9552986.
