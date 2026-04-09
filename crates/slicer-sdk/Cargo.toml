@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["ModularSlicer Team"]
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 slicer-ir = { path = "../slicer-ir" }
 
 [lints.rust]
