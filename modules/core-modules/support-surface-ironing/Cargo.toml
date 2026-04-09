@@ -1,0 +1,12 @@
+[package]
+name = "support-surface-ironing"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Surface ironing module implementing LayerModule for Layer::InfillPostProcess stage"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+[dev-dependencies]

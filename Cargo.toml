@@ -17,6 +17,7 @@ members = [
     "modules/core-modules/lightning-infill",
     "modules/core-modules/seam-placer",
     "modules/core-modules/tree-support",
+    "modules/core-modules/support-surface-ironing",
 ]
 
 [workspace.package]
