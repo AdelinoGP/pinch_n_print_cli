@@ -9,6 +9,9 @@ event_loop:
 cli:
   backend: opencode
 
+features:
+  parallel: false
+  
 core:
   specs_dir: ./docs/
   scratchpad_path: .ralph/agent/scratchpad.md
@@ -42,6 +45,7 @@ backpressure:
 hats:
   planner_manager:
     name: "Planner Agent"
+    model: "anthropic/claude-opus-4-20250514"
     description: "Orchestration authority — decomposes work, routes tasks, enforces architecture, maintains implementation status"
     triggers: ["work.start", "code.done", "code.blocked", "test.pass", "test.fail", "docs.done"]
     publishes: ["code.ready", "test.ready", "docs.ready", "RALPH_TASK_COMPLETE"]
@@ -209,6 +213,7 @@ hats:
 
   coder:
     name: "Coding Agent"
+    model: "anthropic/claude-opus-4-20250514"
     description: "Implements bounded code changes per task card following TDD and architecture constraints"
     triggers: ["code.ready"]
     publishes: ["code.done", "code.blocked"]
@@ -312,6 +317,7 @@ hats:
 
   tester:
     name: "QA Agent"
+    model: "anthropic/claude-sonnet-4-20250514"
     description: "Validates implementation correctness, coverage, and edge cases"
     triggers: ["test.ready"]
     publishes: ["test.pass", "test.fail"]
@@ -404,6 +410,7 @@ hats:
 
   documentation:
     name: "Docs Agent"
+    model: "anthropic/claude-haiku-4-20250514"
     description: "Keeps project documentation synchronized with implemented code"
     triggers: ["docs.ready"]
     publishes: ["docs.done"]
