@@ -52,8 +52,8 @@ Last updated: 2026-04-09
 - [x] TASK-043 PrepassModule trait + WIT bindings
 - [x] TASK-044 PostpassModule trait + WIT bindings
 - [x] TASK-045 SliceRegionViewBuilder
-- [ ] TASK-046 PerimeterRegionViewBuilder
-- [ ] TASK-047 ConfigViewBuilder
+- [x] TASK-046 PerimeterRegionViewBuilder
+- [x] TASK-047 ConfigViewBuilder
 - [ ] TASK-048 Output capture types
 - [ ] TASK-049 assert_paths helpers
 - [ ] TASK-050 `slicer new` command
