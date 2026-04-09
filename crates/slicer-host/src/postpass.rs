@@ -153,6 +153,68 @@ pub fn execute_postpass(
     serializer: &dyn GCodeSerializer,
     runner: &dyn PostpassStageRunner,
 ) -> Result<String, PostpassError> {
-    // TASK-033 QA red stub: implementation in a future green task
-    todo!("TASK-033: implement execute_postpass")
+    // Step 1: Emit initial GCodeIR from layers
+    let mut gcode_ir = emitter.emit_gcode(layer_irs, blackboard)?;
+
+    // Step 2: Run all GCodePostProcess modules sequentially
+    for stage in &plan.postpass_stages {
+        if stage.stage_id.contains("GCodePostProcess") {
+            for module in &stage.modules {
+                match runner.run_gcode_postprocess(
+                    &stage.stage_id,
+                    module,
+                    blackboard,
+                    &mut gcode_ir,
+                )? {
+                    PostpassOutput::GCodeSuccess => {
+                        // Continue to next module
+                    }
+                    PostpassOutput::NonFatalError { message: _ } => {
+                        // Log warning but continue to next module
+                    }
+                    PostpassOutput::TextSuccess { text: _ } => {
+                        // Unexpected from GCodePostProcess, but not fatal - continue
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 3: Check if any TextPostProcess modules exist
+    let text_postprocess_stages: Vec<_> = plan
+        .postpass_stages
+        .iter()
+        .filter(|s| s.stage_id.contains("TextPostProcess"))
+        .collect();
+
+    if text_postprocess_stages.is_empty() {
+        // No TextPostProcess modules - serialize directly
+        return serializer.serialize_gcode(&gcode_ir);
+    }
+
+    // Step 4: Serialize GCodeIR to text for TextPostProcess modules
+    let mut text = serializer.serialize_gcode(&gcode_ir)?;
+
+    // Step 5: Run all TextPostProcess modules sequentially
+    for stage in text_postprocess_stages {
+        for module in &stage.modules {
+            match runner.run_text_postprocess(&stage.stage_id, module, blackboard, text)? {
+                PostpassOutput::TextSuccess { text: new_text } => {
+                    text = new_text;
+                }
+                PostpassOutput::NonFatalError { message: _ } => {
+                    // Log warning but continue - text remains unchanged from serialization
+                    // Since we consumed `text` we need to re-serialize for the next module
+                    text = serializer.serialize_gcode(&gcode_ir)?;
+                }
+                PostpassOutput::GCodeSuccess => {
+                    // Unexpected from TextPostProcess, but not fatal
+                    // Re-serialize since we consumed text
+                    text = serializer.serialize_gcode(&gcode_ir)?;
+                }
+            }
+        }
+    }
+
+    Ok(text)
 }
