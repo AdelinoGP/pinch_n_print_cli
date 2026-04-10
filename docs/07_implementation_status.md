@@ -93,9 +93,9 @@ Last updated: 2026-04-09
 - [x] TASK-091 paint-region-annotator
 - [x] TASK-092 fuzzy-skin
 - [x] TASK-093 classic-perimeters (boundary_paint propagation)
-- [ ] TASK-094 arachne-perimeters (boundary_paint propagation)
-- [ ] TASK-095 traditional-support (enforcer/blocker)
-- [ ] TASK-096 tree-support (enforcer/blocker)
+- [x] TASK-094 arachne-perimeters (boundary_paint propagation)
+- [x] TASK-095 traditional-support (enforcer/blocker)
+- [x] TASK-096 tree-support (enforcer/blocker)
 - [ ] TASK-097 verify paint-region-annotator implementation (possibly incomplete)
 
 ## Phase G — Pipeline Wiring & WASM Integration
