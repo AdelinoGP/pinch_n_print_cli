@@ -4,7 +4,9 @@
 //! Per docs/03_wit_and_manifest.md (ir-types.wit), view resources cannot be
 //! constructed by modules.
 
-use slicer_ir::{ExPolygon, ObjectId, RegionId, SeamCandidate, WallLoop};
+use std::collections::HashMap;
+
+use slicer_ir::{ExPolygon, ObjectId, PaintSemantic, PaintValue, RegionId, SeamCandidate, WallLoop};
 
 /// Read-only view of a slice region.
 ///
@@ -19,6 +21,7 @@ pub struct SliceRegionView {
     effective_layer_height: f32,
     z: f32,
     has_nonplanar: bool,
+    boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
 }
 
 impl SliceRegionView {
@@ -41,6 +44,32 @@ impl SliceRegionView {
             effective_layer_height,
             z,
             has_nonplanar,
+            boundary_paint: HashMap::new(),
+        }
+    }
+
+    /// Create a new SliceRegionView with boundary paint data (host-only, for testing).
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_boundary_paint(
+        object_id: ObjectId,
+        region_id: RegionId,
+        polygons: Vec<ExPolygon>,
+        infill_areas: Vec<ExPolygon>,
+        effective_layer_height: f32,
+        z: f32,
+        has_nonplanar: bool,
+        boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    ) -> Self {
+        Self {
+            object_id,
+            region_id,
+            polygons,
+            infill_areas,
+            effective_layer_height,
+            z,
+            has_nonplanar,
+            boundary_paint,
         }
     }
 
@@ -77,6 +106,15 @@ impl SliceRegionView {
     /// Returns true if this region has non-planar surfaces.
     pub fn has_nonplanar(&self) -> bool {
         self.has_nonplanar
+    }
+
+    /// Returns the boundary paint data for this region.
+    ///
+    /// Per-semantic, per-polygon, per-point paint values annotated by
+    /// the paint-region-annotator (SlicePostProcess stage). Empty map
+    /// if no paint data applies to this region.
+    pub fn boundary_paint(&self) -> &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> {
+        &self.boundary_paint
     }
 }
 

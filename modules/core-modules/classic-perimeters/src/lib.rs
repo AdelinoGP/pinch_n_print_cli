@@ -13,8 +13,8 @@ use std::collections::HashMap;
 
 use slicer_core::polygon_ops::{offset, OffsetJoinType};
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType, Point3,
-    Point3WithWidth, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
+    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType, PaintSemantic,
+    PaintValue, Point3, Point3WithWidth, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
 };
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -128,27 +128,36 @@ impl LayerModule for ClassicPerimeters {
                 } else {
                     ExtrusionRole::InnerWall
                 };
-                let boundary_type = if is_outer {
-                    WallBoundaryType::ExteriorSurface
-                } else {
-                    WallBoundaryType::Interior
-                };
                 let speed_factor = if is_outer {
                     self.outer_speed_factor
                 } else {
                     self.inner_speed_factor
                 };
 
-                for poly in wall_polys {
+                for (poly_idx, poly) in wall_polys.iter().enumerate() {
                     let points = expolygon_to_path3d(&poly.contour, z, self.line_width);
                     if points.is_empty() {
                         continue;
                     }
                     let num_points = points.len();
 
+                    // Propagate boundary_paint into feature flags for outer walls only
+                    let (feature_flags, boundary_type) = if is_outer {
+                        build_outer_wall_flags(
+                            num_points,
+                            poly_idx,
+                            region.boundary_paint(),
+                        )
+                    } else {
+                        (
+                            vec![default_feature_flags(); num_points],
+                            WallBoundaryType::Interior,
+                        )
+                    };
+
                     let wall = WallLoop {
                         perimeter_index: *perimeter_index,
-                        loop_type: loop_type.clone(),
+                        loop_type,
                         path: ExtrusionPath3D {
                             points,
                             role: role.clone(),
@@ -157,8 +166,8 @@ impl LayerModule for ClassicPerimeters {
                         width_profile: WidthProfile {
                             widths: vec![self.line_width; num_points],
                         },
-                        feature_flags: vec![default_feature_flags(); num_points],
-                        boundary_type: boundary_type.clone(),
+                        feature_flags,
+                        boundary_type,
                     };
                     let _ = output.push_wall_loop(wall);
                 }
@@ -185,6 +194,105 @@ impl LayerModule for ClassicPerimeters {
         }
 
         Ok(())
+    }
+}
+
+/// Build feature flags for outer wall points by propagating boundary_paint.
+///
+/// Reads Material and FuzzySkin semantics from `boundary_paint` for the given
+/// polygon index. Sets `tool_index` from Material ToolIndex values, `fuzzy_skin`
+/// from FuzzySkin Flag values. Detects adjacent material changes and returns
+/// `WallBoundaryType::MaterialBoundary` when different tool indices are adjacent.
+fn build_outer_wall_flags(
+    num_points: usize,
+    poly_idx: usize,
+    boundary_paint: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+) -> (Vec<WallFeatureFlags>, WallBoundaryType) {
+    let mut flags = vec![default_feature_flags(); num_points];
+
+    // Extract per-point Material paint values for this polygon
+    let material_values: Option<&Vec<Option<PaintValue>>> = boundary_paint
+        .get(&PaintSemantic::Material)
+        .and_then(|per_poly| per_poly.get(poly_idx));
+
+    // Extract per-point FuzzySkin paint values for this polygon
+    let fuzzy_values: Option<&Vec<Option<PaintValue>>> = boundary_paint
+        .get(&PaintSemantic::FuzzySkin)
+        .and_then(|per_poly| per_poly.get(poly_idx));
+
+    // Propagate Material -> tool_index
+    if let Some(mat_vals) = material_values {
+        for (i, flag) in flags.iter_mut().enumerate() {
+            if let Some(Some(PaintValue::ToolIndex(tool))) = mat_vals.get(i) {
+                flag.tool_index = Some(*tool);
+            }
+        }
+    }
+
+    // Propagate FuzzySkin -> fuzzy_skin
+    if let Some(fuzzy_vals) = fuzzy_values {
+        for (i, flag) in flags.iter_mut().enumerate() {
+            if let Some(Some(PaintValue::Flag(true))) = fuzzy_vals.get(i) {
+                flag.fuzzy_skin = true;
+            }
+        }
+    }
+
+    // Detect material boundary: adjacent points with different tool_index
+    let has_material_boundary = if let Some(mat_vals) = material_values {
+        has_adjacent_material_change(mat_vals)
+    } else {
+        false
+    };
+
+    let boundary_type = if has_material_boundary {
+        // Find the first adjacent tool index that differs for the boundary metadata
+        let adjacent_tool = find_adjacent_tool(material_values.unwrap());
+        WallBoundaryType::MaterialBoundary { adjacent_tool }
+    } else {
+        WallBoundaryType::ExteriorSurface
+    };
+
+    (flags, boundary_type)
+}
+
+/// Check if adjacent points in a material paint list have different tool indices.
+fn has_adjacent_material_change(mat_vals: &[Option<PaintValue>]) -> bool {
+    let n = mat_vals.len();
+    if n < 2 {
+        return false;
+    }
+    for i in 0..n {
+        let next = (i + 1) % n;
+        let tool_a = extract_tool_index(&mat_vals[i]);
+        let tool_b = extract_tool_index(&mat_vals[next]);
+        if tool_a != tool_b {
+            return true;
+        }
+    }
+    false
+}
+
+/// Find the adjacent tool index from the first material boundary transition.
+fn find_adjacent_tool(mat_vals: &[Option<PaintValue>]) -> u32 {
+    let n = mat_vals.len();
+    for i in 0..n {
+        let next = (i + 1) % n;
+        let tool_a = extract_tool_index(&mat_vals[i]);
+        let tool_b = extract_tool_index(&mat_vals[next]);
+        if tool_a != tool_b {
+            // Return the "other" tool — prefer the non-None one
+            return tool_b.or(tool_a).unwrap_or(0);
+        }
+    }
+    0
+}
+
+/// Extract tool index from a PaintValue, if it is a ToolIndex variant.
+fn extract_tool_index(val: &Option<PaintValue>) -> Option<u32> {
+    match val {
+        Some(PaintValue::ToolIndex(t)) => Some(*t),
+        _ => None,
     }
 }
 
