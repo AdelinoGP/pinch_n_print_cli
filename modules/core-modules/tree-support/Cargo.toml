@@ -8,5 +8,6 @@ description = "Tree-style branching support generator implementing LayerModule f
 [dependencies]
 slicer-sdk = { path = "../../../crates/slicer-sdk" }
 slicer-ir = { path = "../../../crates/slicer-ir" }
+slicer-core = { path = "../../../crates/slicer-core" }
 
 [dev-dependencies]
