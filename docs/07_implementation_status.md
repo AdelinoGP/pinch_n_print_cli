@@ -91,8 +91,8 @@ Last updated: 2026-04-09
 - [x] TASK-089 wipe-tower
 - [x] TASK-090 skirt-brim
 - [x] TASK-091 paint-region-annotator
-- [ ] TASK-092 fuzzy-skin
-- [ ] TASK-093 classic-perimeters (boundary_paint propagation)
+- [x] TASK-092 fuzzy-skin
+- [x] TASK-093 classic-perimeters (boundary_paint propagation)
 - [ ] TASK-094 arachne-perimeters (boundary_paint propagation)
 - [ ] TASK-095 traditional-support (enforcer/blocker)
 - [ ] TASK-096 tree-support (enforcer/blocker)
@@ -115,7 +115,7 @@ Last updated: 2026-04-09
 - [ ] TASK-113 Wire real WASM runners and DAG validation into `slicer-host/src/main.rs` (replacing `Noop` mocks) and update `slicer run`
 
 ## Phase H — End-to-End Integration & Review
-- [ ] TASK-120 Produce a fully sliced `.gcode` of the Benchy STL as an E2E integration test
+- [ ] TASK-120 Produce a fully sliced `.gcode` of the Benchy STL with tree supports enabled as an E2E integration test
 
 ## Known Deviations from Architecture Docs
 - None recorded.
