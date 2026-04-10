@@ -7,8 +7,10 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
+use slicer_core::paint_region::{point_in_paint_region, BoundaryInclusion};
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth,
+    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, PaintSemantic,
+    Point2, Point3WithWidth,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -77,7 +79,7 @@ impl LayerModule for TraditionalSupport {
         &self,
         layer_index: u32,
         regions: &[SliceRegionView],
-        _paint: &PaintRegionLayerView,
+        paint: &PaintRegionLayerView,
         output: &mut SupportOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -102,6 +104,8 @@ impl LayerModule for TraditionalSupport {
 
         let speed_factor = self.support_speed / BASE_SPEED;
 
+        let paint_ir = paint.paint_regions();
+
         for region in regions {
             let polygons = region.polygons();
             if polygons.is_empty() {
@@ -111,6 +115,27 @@ impl LayerModule for TraditionalSupport {
             let z = region.z();
 
             for expoly in polygons {
+                // Compute centroid of the ExPolygon contour for paint queries.
+                let centroid = expolygon_centroid(expoly);
+
+                // Priority: SupportBlocker > SupportEnforcer > default.
+                // Check blocker first — if blocked, skip entirely.
+                let is_blocked = point_in_paint_region(
+                    paint_ir,
+                    layer_index,
+                    &PaintSemantic::SupportBlocker,
+                    centroid,
+                    BoundaryInclusion::Include,
+                )
+                .ok()
+                .flatten()
+                .is_some();
+
+                if is_blocked {
+                    continue;
+                }
+
+                // Not blocked — generate fill (enforced or default both produce fill).
                 let paths =
                     self.fill_expolygon(expoly, line_spacing, cos_a, sin_a, z, speed_factor);
                 for path in paths {
@@ -225,6 +250,21 @@ impl TraditionalSupport {
         }
 
         paths
+    }
+}
+
+/// Compute the centroid of an ExPolygon's contour as the average of its vertices.
+fn expolygon_centroid(expoly: &ExPolygon) -> Point2 {
+    let pts = &expoly.contour.points;
+    if pts.is_empty() {
+        return Point2 { x: 0, y: 0 };
+    }
+    let n = pts.len() as i64;
+    let sum_x: i64 = pts.iter().map(|p| p.x).sum();
+    let sum_y: i64 = pts.iter().map(|p| p.y).sum();
+    Point2 {
+        x: sum_x / n,
+        y: sum_y / n,
     }
 }
 
