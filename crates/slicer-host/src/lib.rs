@@ -24,6 +24,7 @@ pub mod progress_events;
 pub mod slice_postprocess;
 pub mod topology;
 pub mod validation;
+pub mod wasm_instance;
 
 pub use cli::{validate_run_options, CliError, HostCli, HostCommands, HostRunOptions};
 pub use blackboard::{

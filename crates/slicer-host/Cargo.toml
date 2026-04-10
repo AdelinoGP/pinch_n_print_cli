@@ -21,8 +21,10 @@ tobj = "4.0"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 quick-xml = "0.39"
 uuid = { version = "1", features = ["v4"] }
+wasmtime = { workspace = true }
 
 [dev-dependencies]
+wat = "1.0"
 tempfile = "3"
 serde_json = "1.0"
 
