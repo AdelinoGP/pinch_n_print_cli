@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-04-09
+Last updated: 2026-04-10
 
 ## Phase Dependencies (Normative Planning View)
 - Phase B depends on Phase A.
@@ -96,11 +96,11 @@ Last updated: 2026-04-09
 - [x] TASK-094 arachne-perimeters (boundary_paint propagation)
 - [x] TASK-095 traditional-support (enforcer/blocker)
 - [x] TASK-096 tree-support (enforcer/blocker)
-- [ ] TASK-097 verify paint-region-annotator implementation (possibly incomplete)
+- [x] TASK-097 verify paint-region-annotator implementation (verified: 9 tests pass)
 
 ## Phase G — Pipeline Wiring & WASM Integration
-- [ ] TASK-100 Add `wasmtime` and `wit-bindgen` dependencies to `slicer-host`
-- [ ] TASK-101 Implement `WasmInstance` wrapper for compiled `wasmtime::component::Instance`
+- [x] TASK-100 Add `wasmtime` and `wit-bindgen` dependencies to `slicer-host`
+- [x] TASK-101 Implement `WasmInstance` wrapper for compiled `wasmtime::component::Instance`
 - [ ] TASK-102 Implement concrete WASM trait runners (`WasmPrepassRunner`, `WasmLayerRunner`, `WasmFinalizationRunner`, `WasmPostpassRunner`)
 - [ ] TASK-103 Implement WASM module compilation and linking in `ExecutionPlan` builder
 - [ ] TASK-104 Integrate Python bridge (`pyo3`, `wasmtime-py`) for text post-processing
