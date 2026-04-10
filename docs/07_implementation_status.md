@@ -90,12 +90,13 @@ Last updated: 2026-04-09
 - [x] TASK-088 paint-segmentation
 - [x] TASK-089 wipe-tower
 - [x] TASK-090 skirt-brim
-- [ ] TASK-091 paint-region-annotator
+- [x] TASK-091 paint-region-annotator
 - [ ] TASK-092 fuzzy-skin
 - [ ] TASK-093 classic-perimeters (boundary_paint propagation)
 - [ ] TASK-094 arachne-perimeters (boundary_paint propagation)
 - [ ] TASK-095 traditional-support (enforcer/blocker)
 - [ ] TASK-096 tree-support (enforcer/blocker)
+- [ ] TASK-097 verify paint-region-annotator implementation (possibly incomplete)
 
 ## Phase G — Pipeline Wiring & WASM Integration
 - [ ] TASK-100 Add `wasmtime` and `wit-bindgen` dependencies to `slicer-host`
