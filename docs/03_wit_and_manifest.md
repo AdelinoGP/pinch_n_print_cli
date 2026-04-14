@@ -68,7 +68,6 @@ WIT and IR versions are independently versioned, but module load is allowed only
 | Host WIT world | Module `wit-world` | Host IR schema | Module IR range | Load result |
 |---|---|---|---|---|
 | `slicer:world-layer@1.0.x` | `slicer:world-layer@1.0.x` | `1.4.0` | `>=1.2.0, <2.0.0` | Allowed |
-| `slicer:world-layer@1.1.x` | `slicer:world-layer@1.0.x` | `1.4.0` | `>=1.2.0, <2.0.0` | Allowed only if host exposes compatibility shim for removed/renamed WIT items; otherwise reject |
 | `slicer:world-layer@2.0.0` | `slicer:world-layer@1.x` | `2.0.0` | `>=1.2.0, <2.0.0` | Rejected (WIT major mismatch) |
 | `slicer:world-layer@1.0.x` | `slicer:world-layer@1.0.x` | `2.0.0` | `>=1.2.0, <2.0.0` | Rejected (IR major out of range) |
 
@@ -177,6 +176,29 @@ interface ir-handles {
     }
     enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell }
 
+    enum paint-semantic {
+        material,
+        fuzzy-skin,
+        support-enforcer,
+        support-blocker,
+        custom,             // module queries by custom-id string separately
+    }
+
+    variant paint-value {
+        flag(bool),
+        scalar(f32),
+        tool-index(u32),
+    }
+
+    record boundary-paint-polygon {
+        values: list<option<paint-value>>,
+    }
+
+    record boundary-paint-entry {
+        semantic: paint-semantic,
+        polygons: list<boundary-paint-polygon>,
+    }
+
     // ── Read-only IR view resources ──────────────────────────────────────
     // Host constructs these. Modules cannot construct them.
 
@@ -188,6 +210,7 @@ interface ir-handles {
         effective-layer-height: func() -> f32;
         z:                      func() -> f32;
         has-nonplanar:          func() -> bool;
+        boundary-paint:         func() -> list<boundary-paint-entry>;
     }
 
     resource perimeter-region-view {
@@ -243,20 +266,6 @@ interface ir-handles {
     // ── Paint region views (read-only) ──────────────────────────────────────
     // Modules query these by semantic. The host returns only regions for
     // semantics the module declared in its ir-access.reads.
-
-    enum paint-semantic {
-        material,
-        fuzzy-skin,
-        support-enforcer,
-        support-blocker,
-        custom,             // module queries by custom-id string separately
-    }
-
-    variant paint-value {
-        flag(bool),
-        scalar(f32),
-        tool-index(u32),
-    }
 
     record semantic-region {
         object-id: object-id,
@@ -652,6 +661,122 @@ estimated-ms-per-layer = 12    # for ETA estimation
 # All other stages: true allows the host to run multiple layers simultaneously.
 layer-parallel-safe    = true  
 ```
+
+## Path Optimization Output Contract (Normative)
+
+This section pins down what `Layer::PathOptimization` guests are allowed to
+emit through `gcode-output-builder` and how the host commits that output into
+`LayerCollectionIR` (see `docs/02_ir_schemas.md` § IR 10).
+
+### Inputs
+- `regions: list<perimeter-region-view>` — read-only view of the layer.
+- `output: gcode-output-builder` — same WIT resource used by post-pass, but
+  the accepted method set is restricted by stage as described below.
+
+### Pre-staged ordered_entities
+- The host assembles `LayerCollectionIR.ordered_entities` deterministically
+  from the committed per-layer arena (`PerimeterIR`, `InfillIR`, `SupportIR`)
+  immediately *before* `Layer::PathOptimization` runs.
+- In WIT v1.0.x guests **cannot** reorder, append to, or remove
+  entries from `ordered_entities`. The pre-staged sequence is final for the
+  lifetime of the layer. `topo_order` indices are stable and used as the
+  `after_entity_index` keying domain for tool-changes and annotations.
+- Reordering / mutation of `ordered_entities` is reserved for a future
+  `layer-collection-builder` resource. Until that resource lands, any guest
+  that needs deterministic reordering must do it earlier (during `Layer::Perimeters`
+  / `Layer::Infill` commit ordering) — not in `Layer::PathOptimization`.
+
+### Accepted `gcode-output-builder` methods at PathOptimization
+
+| Method | Accepted? | Commit destination |
+|---|---|---|
+| `push-tool-change(from, to)` | yes | Appended to `LayerCollectionIR.tool_changes` with `after_entity_index = ordered_entities.len() - 1` (or 0 if empty) |
+| `push-comment(text)` | yes | Appended to `LayerCollectionIR.annotations` as `Comment(text)` with the same anchor rule |
+| `push-raw(text)` | yes | Appended to `LayerCollectionIR.annotations` as `Raw(text)` with the same anchor rule |
+| `push-move(cmd)` | rejected | Fatal `FatalModule` diagnostic — no documented `LayerCollectionIR` mapping |
+| `push-retract(length, speed)` | rejected | Fatal `FatalModule` diagnostic |
+| `push-fan-speed(value)` | rejected | Fatal `FatalModule` diagnostic |
+| `push-temperature(...)` | rejected | Fatal `FatalModule` diagnostic |
+
+The `LayerAnnotation { after_entity_index, kind: Comment(..)|Raw(..) }` IR
+record is the host-side carrier for guest comment/raw output. The default
+`PostPass::GCodeEmit` emitter inserts each annotation as
+`GCodeCommand::Comment` or `GCodeCommand::Raw` immediately after the entity
+identified by its `after_entity_index`. Annotations whose anchor lies past
+the last entity are emitted in declaration order at the end of the layer
+(this covers empty-layer comments). Declaration order is preserved both
+within an anchor and across the layer.
+
+### z-hops
+
+`gcode-output-builder` exposes one z-hop method available *only* at
+`Layer::PathOptimization`:
+
+```wit
+push-z-hop: func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
+```
+
+This is the single, minimal z-hop output channel. Reordering of
+`ordered_entities` and a generalised `layer-collection-builder` resource
+remain reserved for a later step.
+
+#### Commit destination
+- Each accepted call appends one `ZHop { after_entity_index, hop_height }`
+  entry onto `LayerCollectionIR.z_hops`.
+- Guests that never call `push-z-hop` leave `z_hops` empty.
+
+#### Validation (host, normative)
+
+The host validates each `push-z-hop` call at commit time. A failed call
+aborts the layer with `LayerStageError::FatalModule` (no partial commit).
+
+| Rule | Reject condition |
+|---|---|
+| `after-entity-index` in bounds | `after_entity_index >= ordered_entities.len()` (and `ordered_entities` is non-empty) |
+| `after-entity-index` for empty layers | any value other than `0` when `ordered_entities.len() == 0` |
+| `hop-height` finite | `!hop_height.is_finite()` |
+| `hop-height` strictly positive | `hop_height <= 0.0` |
+
+Required diagnostic fields on rejection:
+- stage id (`Layer::PathOptimization`)
+- module id
+- the rejected method (`push-z-hop`)
+- the index of the rejected call in the guest's emit sequence
+- the failing field (`after-entity-index` or `hop-height`) and its value
+
+#### Deterministic insertion semantics
+- The host commit step preserves the guest's emit order across all
+  `push-z-hop` calls within a single invocation.
+- When multiple z-hops share the same `after-entity-index`, they appear in
+  `LayerCollectionIR.z_hops` in the order the guest emitted them.
+- Repeated runs over identical input produce bit-identical `z_hops` vectors.
+
+#### Downstream emission
+- `DefaultGCodeEmitter` consumes `LayerCollectionIR.z_hops` deterministically
+  by `after_entity_index`, lifting to `layer.z + hop_height` and returning to
+  `layer.z` immediately after the entity at that index. An empty `z_hops`
+  vector emits no hop commands.
+
+#### Out of contract
+- `push-move`, `push-retract`, `push-fan-speed`, and `push-temperature`
+  remain rejected at `Layer::PathOptimization`.
+- Reordering, appending to, or removing entries from `ordered_entities` is
+  still rejected and is reserved for a future step.
+
+### Determinism & identity
+- For a fixed input layer arena, repeated runs of `Layer::PathOptimization`
+  must produce the same `tool_changes`, `annotations`, and (since the host
+  forbids reorder) the same `ordered_entities` and `topo_order`.
+- The host commit step is order-preserving with respect to the guest's call
+  sequence on the builder.
+
+### Out-of-contract rejection
+- The diagnostic produced for any rejected method must include: stage id,
+  module id, the rejected method name (or `GcodeCommandCollected` discriminant),
+  and the index of the rejected call in the guest's emit sequence.
+- Rejection aborts the layer (per the existing `LayerStageError::FatalModule`
+  contract). The pre-staged `LayerCollectionIR` is *not* surfaced to
+  downstream stages when commit fails.
 
 ## Builder Lifecycle Contract (Normative)
 

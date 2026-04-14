@@ -164,6 +164,49 @@ fn higher_precedence_root_wins_duplicate_module_ids_and_emits_warning() {
 }
 
 #[test]
+fn lexical_order_within_one_root_deterministically_breaks_duplicate_ids() {
+    let fixture = ModuleFixture::new("duplicate-same-root");
+
+    write_module_in(
+        fixture.root(),
+        "00-first",
+        &valid_manifest_toml(
+            "com.community.same-root-duplicate",
+            "Layer::Infill",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
+        true,
+    );
+    let losing_manifest = write_module_in(
+        fixture.root(),
+        "99-second",
+        &valid_manifest_toml(
+            "com.community.same-root-duplicate",
+            "Layer::Support",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
+        true,
+    );
+
+    let report = load_modules_from_roots(&[fixture.root().to_path_buf()])
+        .expect("duplicate ids in one root should resolve deterministically");
+
+    assert_eq!(report.modules.len(), 1);
+    assert_eq!(report.modules[0].id, "com.community.same-root-duplicate");
+    assert_eq!(report.modules[0].stage, "Layer::Infill");
+
+    let warning = report
+        .diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.level == DiagnosticLevel::Warning)
+        .expect("later duplicate in lexical order should emit a warning");
+    assert_eq!(warning.path, losing_manifest);
+    assert_eq!(warning.field.as_deref(), Some("module.id"));
+}
+
+#[test]
 fn finalization_manifest_true_parallel_hint_warns_and_normalizes_to_serialized_runtime_mode() {
     let fixture = ModuleFixture::new("finalization-hint");
     let manifest_path = fixture.write_module(
@@ -352,4 +395,416 @@ impl ModuleFixture {
     fn write_module(&self, stem: &str, manifest: String, with_wasm: bool) -> PathBuf {
         write_module_in(self.root(), stem, &manifest, with_wasm)
     }
+}
+
+// ── Subdirectory discovery ──────────────────────────────────────────────
+
+fn write_module_in_subdir(root: &Path, dir_name: &str, stem: &str, manifest: &str, with_wasm: bool) -> PathBuf {
+    let subdir = root.join(dir_name);
+    fs::create_dir_all(&subdir).expect("create module subdirectory");
+    write_module_in(&subdir, stem, manifest, with_wasm)
+}
+
+#[test]
+fn discovery_finds_manifests_in_immediate_subdirectories() {
+    let fixture = ModuleFixture::new("subdir-discovery");
+
+    // Module A in a subdirectory
+    write_module_in_subdir(
+        fixture.root(),
+        "my-infill",
+        "my-infill",
+        &valid_manifest_toml(
+            "com.core.my-infill",
+            "Layer::Infill",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
+        true,
+    );
+
+    // Module B in a different subdirectory
+    write_module_in_subdir(
+        fixture.root(),
+        "my-support",
+        "my-support",
+        &valid_manifest_toml(
+            "com.core.my-support",
+            "Layer::Support",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
+        true,
+    );
+
+    let report = load_modules_from_roots(&[fixture.root().to_path_buf()])
+        .expect("subdirectory modules should be discoverable");
+
+    assert_eq!(
+        report.modules.len(),
+        2,
+        "should discover both modules in subdirectories"
+    );
+
+    let ids: Vec<&str> = report.modules.iter().map(|m| m.id.as_str()).collect();
+    assert!(ids.contains(&"com.core.my-infill"));
+    assert!(ids.contains(&"com.core.my-support"));
+}
+
+#[test]
+fn discovery_excludes_cargo_toml_in_subdirectories() {
+    let fixture = ModuleFixture::new("cargo-exclusion");
+
+    let subdir = fixture.root().join("my-module");
+    fs::create_dir_all(&subdir).expect("create module subdir");
+
+    // Write Cargo.toml (should be ignored)
+    fs::write(subdir.join("Cargo.toml"), "[package]\nname = \"my-module\"")
+        .expect("write Cargo.toml");
+
+    // Write the actual module manifest
+    write_module_in(
+        &subdir,
+        "my-module",
+        &valid_manifest_toml(
+            "com.core.my-module",
+            "Layer::Infill",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
+        true,
+    );
+
+    let report = load_modules_from_roots(&[fixture.root().to_path_buf()])
+        .expect("discovery should load module but skip Cargo.toml");
+
+    assert_eq!(report.modules.len(), 1);
+    assert_eq!(report.modules[0].id, "com.core.my-module");
+}
+
+#[test]
+fn discovery_mixes_flat_and_subdirectory_manifests() {
+    let fixture = ModuleFixture::new("mixed-layout");
+
+    // Flat manifest in root
+    write_module_in(
+        fixture.root(),
+        "flat-module",
+        &valid_manifest_toml(
+            "com.community.flat",
+            "Layer::Infill",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
+        true,
+    );
+
+    // Subdirectory manifest
+    write_module_in_subdir(
+        fixture.root(),
+        "subdir-module",
+        "subdir-module",
+        &valid_manifest_toml(
+            "com.core.subdir",
+            "Layer::Perimeters",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
+        true,
+    );
+
+    let report = load_modules_from_roots(&[fixture.root().to_path_buf()])
+        .expect("should discover both flat and subdirectory modules");
+
+    assert_eq!(report.modules.len(), 2);
+    let ids: Vec<&str> = report.modules.iter().map(|m| m.id.as_str()).collect();
+    assert!(ids.contains(&"com.community.flat"));
+    assert!(ids.contains(&"com.core.subdir"));
+}
+
+#[test]
+fn core_modules_directory_is_discoverable_and_all_load() {
+    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../modules/core-modules");
+
+    if !core_modules_root.is_dir() {
+        // Skip if running from a different context
+        return;
+    }
+
+    let report = load_modules_from_roots(&[core_modules_root])
+        .expect("all core module manifests should load without errors");
+
+    // We expect exactly 16 core modules
+    assert_eq!(
+        report.modules.len(),
+        16,
+        "expected 16 core modules, got {}: {:?}",
+        report.modules.len(),
+        report.modules.iter().map(|m| &m.id).collect::<Vec<_>>()
+    );
+
+    // Verify no errors in diagnostics (warnings are ok)
+    let errors: Vec<_> = report
+        .diagnostics
+        .iter()
+        .filter(|d| d.level == DiagnosticLevel::Error)
+        .collect();
+    assert!(
+        errors.is_empty(),
+        "core module discovery should produce no errors: {errors:?}"
+    );
+
+    // Verify all modules have valid stages
+    for module in &report.modules {
+        assert!(
+            !module.stage.is_empty(),
+            "module {} must have a stage",
+            module.id
+        );
+        assert!(
+            !module.wit_world.is_empty(),
+            "module {} must have a wit_world",
+            module.id
+        );
+    }
+
+    // Verify we have modules covering key stages
+    let stages: Vec<&str> = report.modules.iter().map(|m| m.stage.as_str()).collect();
+    assert!(stages.contains(&"Layer::Infill"), "should have infill modules");
+    assert!(stages.contains(&"Layer::Perimeters"), "should have perimeter modules");
+    assert!(stages.contains(&"Layer::Support"), "should have support modules");
+    assert!(stages.contains(&"PrePass::MeshSegmentation"), "should have mesh segmentation");
+    assert!(stages.contains(&"PrePass::LayerPlanning"), "should have layer planner");
+    assert!(stages.contains(&"PostPass::LayerFinalization"), "should have finalization modules");
+}
+
+#[test]
+fn core_module_ids_are_unique() {
+    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../modules/core-modules");
+
+    if !core_modules_root.is_dir() {
+        return;
+    }
+
+    let report = load_modules_from_roots(&[core_modules_root])
+        .expect("core modules should load");
+
+    // No duplicate warnings should appear (all IDs are unique)
+    let dup_warnings: Vec<_> = report
+        .diagnostics
+        .iter()
+        .filter(|d| d.level == DiagnosticLevel::Warning && d.message.contains("duplicate"))
+        .collect();
+    assert!(
+        dup_warnings.is_empty(),
+        "core modules should have unique IDs, but found duplicate warnings: {dup_warnings:?}"
+    );
+}
+
+#[test]
+fn core_finalization_modules_have_parallel_safe_false() {
+    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../modules/core-modules");
+
+    if !core_modules_root.is_dir() {
+        return;
+    }
+
+    let report = load_modules_from_roots(&[core_modules_root])
+        .expect("core modules should load");
+
+    for module in &report.modules {
+        if module.stage == "PostPass::LayerFinalization" {
+            assert!(
+                !module.layer_parallel_safe,
+                "finalization module {} must have layer_parallel_safe=false",
+                module.id
+            );
+        }
+    }
+}
+
+// ── Placeholder .wasm detection ───────────────────────────────────────
+
+#[test]
+fn placeholder_wasm_is_detected_during_ingestion() {
+    let fixture = ModuleFixture::new("placeholder-detect");
+    let manifest_path = fixture.write_module(
+        "placeholder-mod",
+        valid_manifest_toml(
+            "com.test.placeholder",
+            "Layer::Infill",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
+        true,
+    );
+
+    // Overwrite with the 8-byte WASM magic (the real placeholder pattern)
+    fs::write(
+        manifest_path.with_extension("wasm"),
+        b"\x00asm\x01\x00\x00\x00",
+    )
+    .unwrap();
+
+    let report = load_modules_from_roots(&[fixture.root().to_path_buf()])
+        .expect("placeholder wasm should be discoverable");
+
+    assert_eq!(report.modules.len(), 1);
+    assert!(
+        report.modules[0].placeholder_wasm,
+        "module with 8-byte stub should have placeholder_wasm=true"
+    );
+
+    let warning = report
+        .diagnostics
+        .iter()
+        .find(|d| d.level == DiagnosticLevel::Warning && d.message.contains("placeholder"))
+        .expect("placeholder wasm should emit a warning diagnostic");
+    assert!(
+        warning.message.contains("com.test.placeholder"),
+        "warning should name the module: {}",
+        warning.message
+    );
+    assert!(
+        warning.message.contains("8 bytes"),
+        "warning should state the file size: {}",
+        warning.message
+    );
+}
+
+#[test]
+fn real_wasm_is_not_flagged_as_placeholder() {
+    let fixture = ModuleFixture::new("real-wasm");
+    let manifest_path = fixture.write_module(
+        "real-mod",
+        valid_manifest_toml(
+            "com.test.real",
+            "Layer::Infill",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
+        true,
+    );
+
+    // Overwrite with something larger than 8 bytes
+    fs::write(
+        manifest_path.with_extension("wasm"),
+        b"\x00asm\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00",
+    )
+    .unwrap();
+
+    let report = load_modules_from_roots(&[fixture.root().to_path_buf()]).unwrap();
+    assert_eq!(report.modules.len(), 1);
+    assert!(
+        !report.modules[0].placeholder_wasm,
+        "module with >8 byte wasm should not be a placeholder"
+    );
+}
+
+#[test]
+fn core_modules_all_have_placeholder_wasm_flag_set() {
+    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../modules/core-modules");
+
+    if !core_modules_root.is_dir() {
+        return;
+    }
+
+    let report = load_modules_from_roots(&[core_modules_root]).unwrap();
+
+    for module in &report.modules {
+        assert!(
+            module.placeholder_wasm,
+            "core module {} should have placeholder_wasm=true (its .wasm is an 8-byte stub)",
+            module.id
+        );
+    }
+}
+
+#[test]
+fn core_module_placeholder_warnings_include_module_ids() {
+    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../modules/core-modules");
+
+    if !core_modules_root.is_dir() {
+        return;
+    }
+
+    let report = load_modules_from_roots(&[core_modules_root]).unwrap();
+
+    let placeholder_warnings: Vec<_> = report
+        .diagnostics
+        .iter()
+        .filter(|d| d.level == DiagnosticLevel::Warning && d.message.contains("placeholder"))
+        .collect();
+
+    assert_eq!(
+        placeholder_warnings.len(),
+        16,
+        "each core module should emit a placeholder warning, got {}",
+        placeholder_warnings.len()
+    );
+}
+
+// ── Deterministic discovery order ─────────────────────────────────────
+
+#[test]
+fn discovery_order_is_deterministic_across_repeated_scans() {
+    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../modules/core-modules");
+
+    if !core_modules_root.is_dir() {
+        return;
+    }
+
+    let ids_a: Vec<String> = load_modules_from_roots(&[core_modules_root.clone()])
+        .unwrap()
+        .modules
+        .iter()
+        .map(|m| m.id.clone())
+        .collect();
+
+    let ids_b: Vec<String> = load_modules_from_roots(&[core_modules_root])
+        .unwrap()
+        .modules
+        .iter()
+        .map(|m| m.id.clone())
+        .collect();
+
+    assert_eq!(ids_a, ids_b, "module discovery order must be deterministic");
+}
+
+#[test]
+fn discovery_order_is_lexicographic_by_manifest_path() {
+    let fixture = ModuleFixture::new("lex-order");
+
+    write_module_in_subdir(
+        fixture.root(),
+        "zzz-module",
+        "zzz-module",
+        &valid_manifest_toml("com.test.zzz", "Layer::Support", "slicer:world-layer@1.0.0", true),
+        true,
+    );
+    write_module_in_subdir(
+        fixture.root(),
+        "aaa-module",
+        "aaa-module",
+        &valid_manifest_toml("com.test.aaa", "Layer::Infill", "slicer:world-layer@1.0.0", true),
+        true,
+    );
+    write_module_in_subdir(
+        fixture.root(),
+        "mmm-module",
+        "mmm-module",
+        &valid_manifest_toml("com.test.mmm", "Layer::Perimeters", "slicer:world-layer@1.0.0", true),
+        true,
+    );
+
+    let report = load_modules_from_roots(&[fixture.root().to_path_buf()]).unwrap();
+    let ids: Vec<&str> = report.modules.iter().map(|m| m.id.as_str()).collect();
+
+    assert_eq!(ids, vec!["com.test.aaa", "com.test.mmm", "com.test.zzz"]);
 }

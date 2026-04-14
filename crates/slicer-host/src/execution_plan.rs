@@ -7,6 +7,7 @@ use slicer_ir::{ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageI
 
 use crate::instance_pool::WasmInstancePool;
 use crate::manifest::LoadedModule;
+use crate::wasm_instance::WasmComponent;
 
 /// Frozen runtime scheduling state shared read-only across worker threads.
 #[derive(Debug, Clone)]
@@ -47,6 +48,9 @@ pub struct CompiledModule {
     pub ir_write_mask: IrAccessMask,
     /// Frozen module-specific config view.
     pub config_view: Arc<ConfigView>,
+    /// Compiled WASM component for runtime instantiation.
+    /// `None` only during test fixtures that don't exercise real WASM dispatch.
+    pub wasm_component: Option<Arc<WasmComponent>>,
 }
 
 /// Minimal immutable IR access-mask representation for runtime planning.
@@ -74,6 +78,8 @@ pub struct ExecutionModuleBinding {
     pub instance_pool: Arc<WasmInstancePool>,
     /// Frozen config view bound for runtime execution.
     pub config_view: Arc<ConfigView>,
+    /// Compiled WASM component for runtime instantiation.
+    pub wasm_component: Option<Arc<WasmComponent>>,
 }
 
 /// Immutable planning input assembled after validation and module loading.
@@ -88,6 +94,13 @@ pub struct ExecutionPlanRequest {
     /// Frozen per-region execution plans.
     pub region_plans: Arc<HashMap<RegionKey, RegionPlan>>,
 }
+
+/// Maximum allowed `GlobalLayer.index` value. Plans with layers at or above
+/// this index are rejected per docs/02_ir_schemas.md and docs/12_architecture_gate_metrics.md.
+pub const MAX_LAYER_INDEX: u32 = 100_000;
+
+/// Default cap on `RegionMapIR` entry count per docs/04_host_scheduler.md.
+pub const DEFAULT_REGION_MAP_CAP: usize = 1_000;
 
 /// Structured planning failure for immutable execution-plan assembly.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,12 +126,81 @@ pub enum ExecutionPlanError {
         /// Duplicate module identifier.
         module_id: ModuleId,
     },
+    /// A `GlobalLayer.index` exceeds the documented budget (>= 100_000).
+    LayerIndexBudgetExceeded {
+        /// The offending layer index.
+        layer_index: u32,
+        /// The configured budget cap.
+        budget: u32,
+    },
+    /// The `RegionMapIR` entry count exceeds the configured cap.
+    RegionMapCapExceeded {
+        /// Computed entry count.
+        entry_count: usize,
+        /// Configured cap.
+        cap: usize,
+    },
 }
 
-/// Builds the immutable runtime execution plan for TASK-025.
+impl std::fmt::Display for ExecutionPlanError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingModuleBinding { stage_id, module_id } => {
+                write!(f, "stage '{stage_id}' references unknown module '{module_id}'")
+            }
+            Self::StageMismatch { module_id, expected_stage, actual_stage } => {
+                write!(f, "module '{module_id}' declared stage '{actual_stage}' but was placed in '{expected_stage}'")
+            }
+            Self::DuplicateModuleBinding { module_id } => {
+                write!(f, "duplicate runtime binding for module '{module_id}'")
+            }
+            Self::LayerIndexBudgetExceeded { layer_index, budget } => {
+                write!(
+                    f,
+                    "layer index {layer_index} exceeds budget (must be < {budget}); \
+                     reduce layer count or increase layer height"
+                )
+            }
+            Self::RegionMapCapExceeded { entry_count, cap } => {
+                write!(
+                    f,
+                    "region map has {entry_count} entries, exceeding cap of {cap}; \
+                     reduce region granularity, raise cap, or split job"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for ExecutionPlanError {}
+
+/// Builds the immutable runtime execution plan.
+///
+/// Validates documented resource-bound contracts before assembling the plan:
+/// - Every `GlobalLayer.index` must be `< 100_000` (docs/02_ir_schemas.md).
+/// - `RegionMapIR` entry count must not exceed `DEFAULT_REGION_MAP_CAP` (docs/04_host_scheduler.md).
 pub fn build_execution_plan(
     request: &ExecutionPlanRequest,
 ) -> Result<ExecutionPlan, ExecutionPlanError> {
+    // ── Layer budget check ──────────────────────────────────────────
+    for layer in request.global_layers.iter() {
+        if layer.index >= MAX_LAYER_INDEX {
+            return Err(ExecutionPlanError::LayerIndexBudgetExceeded {
+                layer_index: layer.index,
+                budget: MAX_LAYER_INDEX,
+            });
+        }
+    }
+
+    // ── Region map cap check ────────────────────────────────────────
+    let region_count = request.region_plans.len();
+    if region_count > DEFAULT_REGION_MAP_CAP {
+        return Err(ExecutionPlanError::RegionMapCapExceeded {
+            entry_count: region_count,
+            cap: DEFAULT_REGION_MAP_CAP,
+        });
+    }
+
     let mut bindings_by_module_id = HashMap::with_capacity(request.module_bindings.len());
     for binding in &request.module_bindings {
         let module_id = binding.module.id.clone();
@@ -164,6 +246,7 @@ pub fn build_execution_plan(
                     paths: binding.module.ir_writes.clone(),
                 },
                 config_view: Arc::clone(&binding.config_view),
+                wasm_component: binding.wasm_component.clone(),
             });
         }
 

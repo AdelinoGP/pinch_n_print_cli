@@ -1,4 +1,4 @@
-package slicer:ir-types@1.0.0;
+package slicer:ir-types@1.1.0;
 
 interface ir-handles {
     use slicer:types/geometry.{ex-polygon, extrusion-path-3d, point3, semver};
@@ -26,6 +26,29 @@ interface ir-handles {
     }
     enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell }
 
+    enum paint-semantic {
+        material,
+        fuzzy-skin,
+        support-enforcer,
+        support-blocker,
+        custom,             // module queries by custom-id string separately
+    }
+
+    variant paint-value {
+        flag(bool),
+        scalar(f32),
+        tool-index(u32),
+    }
+
+    record boundary-paint-polygon {
+        values: list<option<paint-value>>,
+    }
+
+    record boundary-paint-entry {
+        semantic: paint-semantic,
+        polygons: list<boundary-paint-polygon>,
+    }
+
     // ── Read-only IR view resources ──────────────────────────────────────
     // Host constructs these. Modules cannot construct them.
 
@@ -37,6 +60,11 @@ interface ir-handles {
         effective-layer-height: func() -> f32;
         z:                      func() -> f32;
         has-nonplanar:          func() -> bool;
+        boundary-paint:         func() -> list<boundary-paint-entry>;
+        // SurfaceClassificationIR.needs_support projected per region. Layer::Support
+        // modules consult this as the default-eligibility predicate when neither
+        // SupportEnforcer nor SupportBlocker paint applies.
+        needs-support:          func() -> bool;
     }
 
     resource perimeter-region-view {
@@ -74,6 +102,9 @@ interface ir-handles {
         push-tool-change: func(from: u32, to: u32) -> result<_, string>;
         push-comment:     func(text: string) -> result<_, string>;
         push-raw:         func(text: string) -> result<_, string>;
+        // Accepted only at Layer::PathOptimization; commits onto
+        // LayerCollectionIR.z_hops.
+        push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
     }
 
     use slicer:types/geometry.{extrusion-role};
@@ -92,20 +123,6 @@ interface ir-handles {
     // ── Paint region views (read-only) ──────────────────────────────────────
     // Modules query these by semantic. The host returns only regions for
     // semantics the module declared in its ir-access.reads.
-
-    enum paint-semantic {
-        material,
-        fuzzy-skin,
-        support-enforcer,
-        support-blocker,
-        custom,             // module queries by custom-id string separately
-    }
-
-    variant paint-value {
-        flag(bool),
-        scalar(f32),
-        tool-index(u32),
-    }
 
     record semantic-region {
         object-id: object-id,

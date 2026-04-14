@@ -15,6 +15,9 @@ pub mod gcode_emit;
 pub mod instance_pool;
 pub mod layer_executor;
 pub mod layer_finalization;
+pub mod layer_slice;
+pub mod mesh_analysis;
+pub mod region_mapping;
 pub mod manifest;
 pub mod mesh_segmentation;
 pub mod paint_segmentation;
@@ -50,6 +53,7 @@ pub use instance_pool::{
 pub use layer_executor::{
     execute_per_layer, LayerExecutionError, LayerStageError, LayerStageOutput, LayerStageRunner,
 };
+pub use layer_slice::{execute_layer_slice, LayerSliceError};
 pub use layer_finalization::{
     execute_layer_finalization, FinalizationError, FinalizationOutput, FinalizationOutputBuilder,
     FinalizationStageRunner,
@@ -66,7 +70,14 @@ pub use postpass::{
     execute_postpass, GCodeEmitter, GCodeSerializer, PostpassError, PostpassOutput,
     PostpassStageRunner,
 };
-pub use prepass::{execute_prepass, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner};
+pub use prepass::{
+    execute_prepass, execute_prepass_with_builtins, PrepassExecutionError, PrepassStageOutput,
+    PrepassStageRunner,
+};
+pub use mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
+pub use region_mapping::{
+    commit_region_mapping_builtin, execute_region_mapping, RegionMappingBuiltinError,
+};
 pub use slice_postprocess::{
     execute_slice_postprocess_paint_annotation, SlicePostProcessPaintAnnotationError,
     SlicePostProcessPaintAnnotationRequest, SlicePostProcessPaintAnnotationResult,

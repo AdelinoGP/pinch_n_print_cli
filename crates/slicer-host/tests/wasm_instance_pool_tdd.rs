@@ -1,6 +1,9 @@
 //! Red tests for TASK-024 WASM instance pool planning and leasing.
 
 use std::path::PathBuf;
+use std::sync::{mpsc, Arc};
+use std::thread;
+use std::time::Duration;
 
 use slicer_host::{
     build_wasm_instance_pool, ConfigSchema, InstancePoolError, InstancePoolMode, LoadedModule,
@@ -121,6 +124,46 @@ fn serialized_pools_only_ever_hand_out_slot_zero() {
     assert_eq!(second.slot_index(), 0);
 }
 
+#[test]
+fn serialized_pools_block_other_leasers_until_release() {
+    let module = loaded_module(
+        "com.example.serial-contention",
+        "Layer::PerimetersPostProcess",
+        false,
+        "slicer:world-layer@1.0.0",
+    );
+
+    let pool = Arc::new(
+        build_wasm_instance_pool(&module, 8, artifact(false))
+            .expect("serialized modules should still build a pool"),
+    );
+    let first = pool.acquire();
+    let (tx, rx) = mpsc::channel();
+    let pool_for_thread = Arc::clone(&pool);
+
+    let handle = thread::spawn(move || {
+        let lease = pool_for_thread.acquire();
+        tx.send(lease.slot_index())
+            .expect("blocked acquire should eventually succeed");
+    });
+
+    assert!(
+        rx.recv_timeout(Duration::from_millis(100)).is_err(),
+        "second acquire should remain blocked while the only serialized slot is leased"
+    );
+
+    drop(first);
+
+    assert_eq!(
+        rx.recv_timeout(Duration::from_secs(1))
+            .expect("second acquire should unblock after release"),
+        0
+    );
+    handle
+        .join()
+        .expect("contention thread should exit cleanly");
+}
+
 fn artifact(uses_shared_memory: bool) -> WasmArtifactMetadata {
     WasmArtifactMetadata { uses_shared_memory }
 }
@@ -150,6 +193,7 @@ fn loaded_module(
         overridable_per_layer: Vec::new(),
         layer_parallel_safe,
         wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
+        placeholder_wasm: false,
     }
 }
 

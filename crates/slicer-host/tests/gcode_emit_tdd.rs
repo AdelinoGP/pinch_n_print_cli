@@ -142,6 +142,7 @@ fn layer_collection_fixture(index: u32, z: f32) -> LayerCollectionIR {
         ordered_entities: vec![],
         tool_changes: vec![],
         z_hops: vec![],
+        annotations: vec![],
     }
 }
 
@@ -153,6 +154,7 @@ fn layer_with_entity(index: u32, z: f32, entity: PrintEntity) -> LayerCollection
         ordered_entities: vec![entity],
         tool_changes: vec![],
         z_hops: vec![],
+        annotations: vec![],
     }
 }
 
@@ -757,4 +759,90 @@ fn serialize_retract_unretract_commands() {
         text.contains("E0.8") || text.contains("E0.80"),
         "should contain E0.8 for unretract"
     );
+}
+
+#[test]
+fn emit_inserts_comment_and_raw_annotations_after_anchor_entity() {
+    use slicer_ir::{LayerAnnotation, LayerAnnotationKind};
+    let entity = print_entity_fixture(
+        vec![point3_with_width(0.0, 0.0, 0.2), point3_with_width(1.0, 0.0, 0.2)],
+        ExtrusionRole::OuterWall,
+    );
+    let mut layer = layer_with_entity(0, 0.2, entity);
+    layer.annotations = vec![
+        LayerAnnotation { after_entity_index: 0, kind: LayerAnnotationKind::Comment("hello".into()) },
+        LayerAnnotation { after_entity_index: 0, kind: LayerAnnotationKind::Raw("M117 hi".into()) },
+    ];
+
+    let emitter = DefaultGCodeEmitter::new("test".into());
+    let bb = blackboard_fixture();
+    let ir = emitter.emit_gcode(&[layer], &bb).unwrap();
+
+    // Find the indices of Comment and Raw — they must come AFTER all Move
+    // commands for entity 0 (declaration order preserved).
+    let last_move = ir.commands.iter().rposition(|c| matches!(c, GCodeCommand::Move { .. })).unwrap();
+    let comment_idx = ir.commands.iter().position(|c| matches!(c, GCodeCommand::Comment { text } if text == "hello")).expect("comment emitted");
+    let raw_idx = ir.commands.iter().position(|c| matches!(c, GCodeCommand::Raw { text } if text == "M117 hi")).expect("raw emitted");
+    assert!(comment_idx > last_move, "comment must appear after the entity's moves");
+    assert!(raw_idx > comment_idx, "raw must appear after comment (declaration order)");
+}
+
+#[test]
+fn emit_preserves_tool_change_path_with_annotations_present() {
+    use slicer_ir::{LayerAnnotation, LayerAnnotationKind};
+    let entity = print_entity_fixture(
+        vec![point3_with_width(0.0, 0.0, 0.2), point3_with_width(1.0, 0.0, 0.2)],
+        ExtrusionRole::OuterWall,
+    );
+    let mut layer = layer_with_entity(0, 0.2, entity);
+    layer.tool_changes = vec![ToolChange { after_entity_index: 0, from_tool: 0, to_tool: 1 }];
+    layer.annotations = vec![LayerAnnotation {
+        after_entity_index: 0,
+        kind: LayerAnnotationKind::Comment("post-tc".into()),
+    }];
+
+    let emitter = DefaultGCodeEmitter::new("test".into());
+    let bb = blackboard_fixture();
+    let ir = emitter.emit_gcode(&[layer], &bb).unwrap();
+
+    let tc_idx = ir.commands.iter().position(|c| matches!(c, GCodeCommand::ToolChange { .. })).expect("tool change emitted");
+    let comment_idx = ir.commands.iter().position(|c| matches!(c, GCodeCommand::Comment { .. })).expect("comment emitted");
+    assert!(tc_idx < comment_idx, "tool-change comes before comment at same anchor");
+}
+
+#[test]
+fn emit_is_deterministic_with_annotations() {
+    use slicer_ir::{LayerAnnotation, LayerAnnotationKind};
+    let mk = || {
+        let entity = print_entity_fixture(
+            vec![point3_with_width(0.0, 0.0, 0.2), point3_with_width(1.0, 0.0, 0.2)],
+            ExtrusionRole::OuterWall,
+        );
+        let mut layer = layer_with_entity(0, 0.2, entity);
+        layer.annotations = vec![
+            LayerAnnotation { after_entity_index: 0, kind: LayerAnnotationKind::Comment("a".into()) },
+            LayerAnnotation { after_entity_index: 0, kind: LayerAnnotationKind::Raw("b".into()) },
+        ];
+        layer
+    };
+    let emitter = DefaultGCodeEmitter::new("test".into());
+    let bb = blackboard_fixture();
+    let r1 = emitter.emit_gcode(&[mk()], &bb).unwrap();
+    let r2 = emitter.emit_gcode(&[mk()], &bb).unwrap();
+    assert_eq!(r1.commands.len(), r2.commands.len());
+    assert_eq!(r1, r2);
+}
+
+#[test]
+fn emit_emits_trailing_annotations_on_empty_layer() {
+    use slicer_ir::{LayerAnnotation, LayerAnnotationKind};
+    let mut layer = layer_collection_fixture(0, 0.0);
+    layer.annotations = vec![LayerAnnotation {
+        after_entity_index: 0,
+        kind: LayerAnnotationKind::Comment("only".into()),
+    }];
+    let emitter = DefaultGCodeEmitter::new("test".into());
+    let bb = blackboard_fixture();
+    let ir = emitter.emit_gcode(&[layer], &bb).unwrap();
+    assert!(ir.commands.iter().any(|c| matches!(c, GCodeCommand::Comment { text } if text == "only")));
 }

@@ -41,6 +41,8 @@ pub use slice_ir::{
     InfillType,
 
     // Layer collection types
+    LayerAnnotation,
+    LayerAnnotationKind,
     LayerCollectionIR,
     LayerPaintMap,
     // Layer planning types

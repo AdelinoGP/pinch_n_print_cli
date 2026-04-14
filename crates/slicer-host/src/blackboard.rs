@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     InfillIR, LayerCollectionIR, LayerPlanIR, MeshIR, PaintRegionIR, PerimeterIR, RegionMapIR,
-    SliceIR, SupportIR, SurfaceClassificationIR,
+    LayerAnnotation, SliceIR, SupportIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
 /// Host-owned immutable global IR store plus write-once per-layer output slots.
@@ -253,6 +253,20 @@ pub struct LayerArena {
     perimeter: Option<PerimeterIR>,
     infill: Option<InfillIR>,
     support: Option<SupportIR>,
+    /// Pre-assembled `LayerCollectionIR` staged by the executor immediately
+    /// before `Layer::PathOptimization` runs. Once present, any subsequent
+    /// `commit_layer_outputs` call for that stage consumes
+    /// guest-emitted GCode overrides and appends them onto this staged IR.
+    layer_collection: Option<LayerCollectionIR>,
+    /// Tool-change entries collected from `Layer::PathOptimization` guest
+    /// output and destined for the final `LayerCollectionIR.tool_changes`.
+    deferred_tool_changes: Vec<ToolChange>,
+    /// Comment/Raw annotations collected from `Layer::PathOptimization` guest
+    /// output and destined for the final `LayerCollectionIR.annotations`.
+    deferred_annotations: Vec<LayerAnnotation>,
+    /// Z-hops collected from `Layer::PathOptimization` guest output
+    /// destined for `LayerCollectionIR.z_hops`.
+    deferred_z_hops: Vec<ZHop>,
 }
 
 /// Structured layer-arena contract failures.
@@ -374,12 +388,62 @@ impl LayerArena {
         self.support.take()
     }
 
+    /// Stage a pre-assembled `LayerCollectionIR` (idempotent replace).
+    pub fn set_layer_collection(&mut self, ir: LayerCollectionIR) {
+        self.layer_collection = Some(ir);
+    }
+
+    /// Borrow the staged `LayerCollectionIR`, if present.
+    #[must_use]
+    pub fn layer_collection(&self) -> Option<&LayerCollectionIR> {
+        self.layer_collection.as_ref()
+    }
+
+    /// Take ownership of the staged `LayerCollectionIR`, if present.
+    pub fn take_layer_collection(&mut self) -> Option<LayerCollectionIR> {
+        self.layer_collection.take()
+    }
+
+    /// Append a guest-emitted `ToolChange` onto the per-layer deferred queue.
+    pub fn push_deferred_tool_change(&mut self, tc: ToolChange) {
+        self.deferred_tool_changes.push(tc);
+    }
+
+    /// Take all accumulated deferred tool-changes.
+    pub fn take_deferred_tool_changes(&mut self) -> Vec<ToolChange> {
+        std::mem::take(&mut self.deferred_tool_changes)
+    }
+
+    /// Append a guest-emitted `LayerAnnotation` onto the per-layer queue.
+    pub fn push_deferred_annotation(&mut self, ann: LayerAnnotation) {
+        self.deferred_annotations.push(ann);
+    }
+
+    /// Take all accumulated deferred annotations.
+    pub fn take_deferred_annotations(&mut self) -> Vec<LayerAnnotation> {
+        std::mem::take(&mut self.deferred_annotations)
+    }
+
+    /// Append a guest-emitted `ZHop` onto the per-layer deferred queue.
+    pub fn push_deferred_z_hop(&mut self, zh: ZHop) {
+        self.deferred_z_hops.push(zh);
+    }
+
+    /// Take all accumulated deferred z-hops.
+    pub fn take_deferred_z_hops(&mut self) -> Vec<ZHop> {
+        std::mem::take(&mut self.deferred_z_hops)
+    }
+
     /// Drop all staged per-layer intermediates before finalization/postpass.
     pub fn reset(&mut self) {
         self.slice = None;
         self.perimeter = None;
         self.infill = None;
         self.support = None;
+        self.layer_collection = None;
+        self.deferred_tool_changes.clear();
+        self.deferred_annotations.clear();
+        self.deferred_z_hops.clear();
     }
 }
 

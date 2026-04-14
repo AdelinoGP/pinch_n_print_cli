@@ -34,7 +34,11 @@ fn compile_minimal_component_succeeds() {
     let wat = r#"(component)"#;
     let wasm_bytes = wat::parse_str(wat).expect("WAT parse failed");
     let component = engine.compile_component(&wasm_bytes);
-    assert!(component.is_ok(), "valid component should compile: {:?}", component.err());
+    assert!(
+        component.is_ok(),
+        "valid component should compile: {:?}",
+        component.err()
+    );
 }
 
 /// HostState preserves module_id through construction.
@@ -50,10 +54,32 @@ fn instantiate_preserves_module_id() {
     let engine = WasmEngine::new();
     let wat = r#"(component)"#;
     let wasm_bytes = wat::parse_str(wat).expect("WAT parse failed");
-    let component = engine.compile_component(&wasm_bytes).expect("compile failed");
+    let component = engine
+        .compile_component(&wasm_bytes)
+        .expect("compile failed");
     let state = HostState::new("instance-mod".to_string());
-    let instance = component.instantiate(&engine, state).expect("instantiate failed");
+    let instance = component
+        .instantiate(&engine, state)
+        .expect("instantiate failed");
     assert_eq!(instance.module_id(), "instance-mod");
+}
+
+/// Instantiation can use an explicit linker so future host imports are not
+/// hard-coded behind the default path.
+#[test]
+fn instantiate_with_explicit_linker_preserves_module_id() {
+    let engine = WasmEngine::new();
+    let linker = engine.new_linker();
+    let wat = r#"(component)"#;
+    let wasm_bytes = wat::parse_str(wat).expect("WAT parse failed");
+    let component = engine
+        .compile_component(&wasm_bytes)
+        .expect("compile failed");
+    let state = HostState::new("linked-mod".to_string());
+    let instance = component
+        .instantiate_with_linker(&engine, state, &linker)
+        .expect("instantiate failed");
+    assert_eq!(instance.module_id(), "linked-mod");
 }
 
 /// WasmLoadError variants have meaningful Display output.
@@ -93,4 +119,81 @@ fn compile_empty_bytes_returns_error() {
         WasmLoadError::CompilationFailed { .. } => {}
         other => panic!("expected CompilationFailed, got: {other}"),
     }
+}
+
+/// call_void_export invokes a real WASM function and returns Ok.
+#[test]
+fn call_void_export_invokes_real_function() {
+    let engine = WasmEngine::new();
+    let wat = r#"
+        (component
+            (core module $m
+                (func $f (export "run-infill"))
+            )
+            (core instance $i (instantiate $m))
+            (func (export "run-infill") (canon lift (core func $i "run-infill")))
+        )
+    "#;
+    let bytes = wat::parse_str(wat).expect("WAT parse failed");
+    let component = engine.compile_component(&bytes).expect("compile failed");
+    let state = HostState::new("call-test".to_string());
+    let mut instance = component.instantiate(&engine, state).expect("instantiate failed");
+
+    let result = instance.call_void_export("run-infill");
+    assert!(result.is_ok(), "call_void_export should succeed: {:?}", result.err());
+}
+
+/// call_void_export on a missing export returns ExportNotFound.
+#[test]
+fn call_void_export_missing_export_returns_error() {
+    let engine = WasmEngine::new();
+    let wat = r#"(component)"#;
+    let bytes = wat::parse_str(wat).expect("WAT parse failed");
+    let component = engine.compile_component(&bytes).expect("compile failed");
+    let state = HostState::new("missing-export".to_string());
+    let mut instance = component.instantiate(&engine, state).expect("instantiate failed");
+
+    let result = instance.call_void_export("run-nonexistent");
+    assert!(result.is_err());
+    match result.unwrap_err() {
+        slicer_host::WasmCallError::ExportNotFound { module_id, export_name, .. } => {
+            assert_eq!(module_id, "missing-export");
+            assert_eq!(export_name, "run-nonexistent");
+        }
+        other => panic!("expected ExportNotFound, got: {other}"),
+    }
+}
+
+/// call_text_transform invokes a string→string WASM function.
+#[test]
+fn call_text_transform_invokes_real_function() {
+    let engine = WasmEngine::new();
+    let wat = r#"
+        (component
+            (core module $m
+                (memory (export "memory") 1)
+                (func $realloc (param i32 i32 i32 i32) (result i32) i32.const 16)
+                (export "cabi_realloc" (func $realloc))
+                (func $transform (param i32 i32) (result i32)
+                    i32.const 0 i32.const 16 i32.store
+                    i32.const 4 i32.const 0 i32.store
+                    i32.const 0
+                )
+                (export "run-text-postprocess" (func $transform))
+            )
+            (core instance $i (instantiate $m))
+            (alias core export $i "memory" (core memory $mem))
+            (alias core export $i "cabi_realloc" (core func $realloc))
+            (func (export "run-text-postprocess") (param "text" string) (result string)
+                (canon lift (core func $i "run-text-postprocess") (memory $mem) (realloc (func $realloc)))
+            )
+        )
+    "#;
+    let bytes = wat::parse_str(wat).expect("WAT parse failed");
+    let component = engine.compile_component(&bytes).expect("compile failed");
+    let state = HostState::new("text-test".to_string());
+    let mut instance = component.instantiate(&engine, state).expect("instantiate failed");
+
+    let result = instance.call_text_transform("run-text-postprocess", "; some gcode\n");
+    assert!(result.is_ok(), "call_text_transform should succeed: {:?}", result.err());
 }

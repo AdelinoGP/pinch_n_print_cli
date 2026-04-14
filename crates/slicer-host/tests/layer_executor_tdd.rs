@@ -550,6 +550,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView {
             fields: HashMap::from([(String::from("fixture.enabled"), ConfigValue::Bool(true))]),
         }),
+        wasm_component: None,
     };
 
     CompiledModule {
@@ -562,6 +563,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
             paths: binding.module.ir_writes.clone(),
         },
         config_view: Arc::clone(&binding.config_view),
+        wasm_component: None,
     }
 }
 
@@ -596,6 +598,7 @@ fn loaded_module(id: &str, stage: &str) -> slicer_host::LoadedModule {
         overridable_per_layer: Vec::new(),
         layer_parallel_safe: true,
         wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
+        placeholder_wasm: false,
     }
 }
 
@@ -660,4 +663,226 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
         minor,
         patch,
     }
+}
+
+// ============================================================================
+// ordered_entities assembly from committed arena slots
+// ============================================================================
+
+/// Runner that stages pre-made IR into the arena so the executor can assemble
+/// `LayerCollectionIR.ordered_entities` from it.
+struct StagingRunner {
+    perimeter: Mutex<Option<slicer_ir::PerimeterIR>>,
+    infill: Mutex<Option<slicer_ir::InfillIR>>,
+    support: Mutex<Option<slicer_ir::SupportIR>>,
+}
+
+impl StagingRunner {
+    fn new(
+        p: Option<slicer_ir::PerimeterIR>,
+        i: Option<slicer_ir::InfillIR>,
+        s: Option<slicer_ir::SupportIR>,
+    ) -> Self {
+        Self {
+            perimeter: Mutex::new(p),
+            infill: Mutex::new(i),
+            support: Mutex::new(s),
+        }
+    }
+}
+
+impl LayerStageRunner for StagingRunner {
+    fn run_stage(
+        &self,
+        _stage_id: &StageId,
+        _layer: &GlobalLayer,
+        _module: &CompiledModule,
+        _blackboard: &Blackboard,
+        arena: &mut LayerArena,
+    ) -> Result<LayerStageOutput, LayerStageError> {
+        if let Some(p) = self.perimeter.lock().unwrap().take() {
+            arena.set_perimeter(p).unwrap();
+        }
+        if let Some(i) = self.infill.lock().unwrap().take() {
+            arena.set_infill(i).unwrap();
+        }
+        if let Some(s) = self.support.lock().unwrap().take() {
+            arena.set_support(s).unwrap();
+        }
+        Ok(LayerStageOutput::Success)
+    }
+}
+
+fn mk_path(x: f32) -> slicer_ir::ExtrusionPath3D {
+    slicer_ir::ExtrusionPath3D {
+        points: vec![slicer_ir::Point3WithWidth {
+            x,
+            y: 0.0,
+            z: 0.0,
+            width: 0.4,
+            flow_factor: 1.0,
+        }],
+        role: slicer_ir::ExtrusionRole::OuterWall,
+        speed_factor: 1.0,
+    }
+}
+
+fn mk_path_role(x: f32, role: slicer_ir::ExtrusionRole) -> slicer_ir::ExtrusionPath3D {
+    slicer_ir::ExtrusionPath3D {
+        points: vec![slicer_ir::Point3WithWidth {
+            x, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0,
+        }],
+        role,
+        speed_factor: 1.0,
+    }
+}
+
+fn perim_ir_two_regions() -> slicer_ir::PerimeterIR {
+    slicer_ir::PerimeterIR {
+        schema_version: semver(1, 0, 0),
+        global_layer_index: 0,
+        regions: vec![
+            slicer_ir::PerimeterRegion {
+                object_id: "obj-A".into(),
+                region_id: 1,
+                walls: vec![slicer_ir::WallLoop {
+                    perimeter_index: 0,
+                    loop_type: slicer_ir::LoopType::Outer,
+                    path: mk_path(1.0),
+                    width_profile: slicer_ir::WidthProfile { widths: vec![0.4] },
+                    feature_flags: Vec::new(),
+                    boundary_type: slicer_ir::WallBoundaryType::Interior,
+                }],
+                infill_areas: Vec::new(),
+                seam_candidates: Vec::new(),
+                resolved_seam: None,
+            },
+            slicer_ir::PerimeterRegion {
+                object_id: "obj-B".into(),
+                region_id: 2,
+                walls: vec![slicer_ir::WallLoop {
+                    perimeter_index: 0,
+                    loop_type: slicer_ir::LoopType::Inner,
+                    path: mk_path_role(2.0, slicer_ir::ExtrusionRole::InnerWall),
+                    width_profile: slicer_ir::WidthProfile { widths: vec![0.4] },
+                    feature_flags: Vec::new(),
+                    boundary_type: slicer_ir::WallBoundaryType::Interior,
+                }],
+                infill_areas: Vec::new(),
+                seam_candidates: Vec::new(),
+                resolved_seam: None,
+            },
+        ],
+    }
+}
+
+fn infill_ir_two_regions() -> slicer_ir::InfillIR {
+    slicer_ir::InfillIR {
+        schema_version: semver(1, 0, 0),
+        global_layer_index: 0,
+        regions: vec![
+            slicer_ir::InfillRegion {
+                object_id: "obj-A".into(),
+                region_id: 1,
+                sparse_infill: vec![mk_path_role(10.0, slicer_ir::ExtrusionRole::SparseInfill)],
+                solid_infill: vec![mk_path_role(11.0, slicer_ir::ExtrusionRole::TopSolidInfill)],
+                ironing: Vec::new(),
+            },
+            slicer_ir::InfillRegion {
+                object_id: "obj-B".into(),
+                region_id: 2,
+                sparse_infill: vec![mk_path_role(20.0, slicer_ir::ExtrusionRole::SparseInfill)],
+                solid_infill: Vec::new(),
+                ironing: Vec::new(),
+            },
+        ],
+    }
+}
+
+fn support_ir_simple() -> slicer_ir::SupportIR {
+    slicer_ir::SupportIR {
+        schema_version: semver(1, 0, 0),
+        global_layer_index: 0,
+        support_paths: vec![mk_path_role(100.0, slicer_ir::ExtrusionRole::SupportMaterial)],
+        interface_paths: vec![mk_path_role(101.0, slicer_ir::ExtrusionRole::SupportInterface)],
+        raft_paths: Vec::new(),
+        ironing_paths: Vec::new(),
+    }
+}
+
+#[test]
+fn ordered_entities_assembled_with_preserved_region_identity() {
+    let mesh = Arc::new(mesh_fixture());
+    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let plan = execution_plan_fixture(
+        vec![compiled_stage("Layer::Perimeters", &["com.example.stage"])],
+        1,
+    );
+    let runner = StagingRunner::new(
+        Some(perim_ir_two_regions()),
+        Some(infill_ir_two_regions()),
+        Some(support_ir_simple()),
+    );
+
+    let layers = execute_per_layer(&plan, &blackboard, &runner).expect("layer exec");
+    assert_eq!(layers.len(), 1);
+    let l = &layers[0];
+    // 2 walls + (1 sparse + 1 solid) + 1 sparse + 1 support + 1 interface = 7
+    assert_eq!(l.ordered_entities.len(), 7, "all committed paths drained");
+
+    let keys: Vec<(String, u64)> = l.ordered_entities.iter()
+        .map(|e| (e.region_key.object_id.clone(), e.region_key.region_id))
+        .collect();
+    // Perimeter region order, then infill region order, then support (flat: "", 0).
+    assert_eq!(keys, vec![
+        ("obj-A".into(), 1), // perim region A wall
+        ("obj-B".into(), 2), // perim region B wall
+        ("obj-A".into(), 1), // infill A sparse
+        ("obj-A".into(), 1), // infill A solid
+        ("obj-B".into(), 2), // infill B sparse
+        ("".into(), 0),      // support
+        ("".into(), 0),      // interface
+    ]);
+    // topo_order is 0..N
+    for (i, e) in l.ordered_entities.iter().enumerate() {
+        assert_eq!(e.topo_order, i as u32, "topo_order is emit position");
+        assert_eq!(e.region_key.global_layer_index, 0);
+    }
+}
+
+#[test]
+fn ordered_entities_empty_when_arena_has_no_committed_content() {
+    let mesh = Arc::new(mesh_fixture());
+    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let plan = execution_plan_fixture(
+        vec![compiled_stage("Layer::Perimeters", &["com.example.stage"])],
+        1,
+    );
+    let runner = StagingRunner::new(None, None, None);
+    let layers = execute_per_layer(&plan, &blackboard, &runner).expect("layer exec");
+    assert_eq!(layers.len(), 1);
+    assert!(layers[0].ordered_entities.is_empty(), "empty-input -> empty ordered_entities");
+}
+
+#[test]
+fn ordered_entities_assembly_is_deterministic_across_repeated_runs() {
+    let mesh = Arc::new(mesh_fixture());
+    let plan = execution_plan_fixture(
+        vec![compiled_stage("Layer::Perimeters", &["com.example.stage"])],
+        1,
+    );
+
+    let mut results = Vec::new();
+    for _ in 0..3 {
+        let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+        let runner = StagingRunner::new(
+            Some(perim_ir_two_regions()),
+            Some(infill_ir_two_regions()),
+            Some(support_ir_simple()),
+        );
+        let layers = execute_per_layer(&plan, &blackboard, &runner).expect("layer exec");
+        results.push(layers);
+    }
+    assert_eq!(results[0], results[1]);
+    assert_eq!(results[1], results[2]);
 }

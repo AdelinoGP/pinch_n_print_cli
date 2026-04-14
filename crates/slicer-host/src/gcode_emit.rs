@@ -24,7 +24,10 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR, LayerCollectionIR, PrintMetadata, SemVer};
+use slicer_ir::{
+    ExtrusionRole, GCodeCommand, GCodeIR, LayerAnnotationKind, LayerCollectionIR, PrintMetadata,
+    SemVer,
+};
 
 use crate::{Blackboard, GCodeEmitter, GCodeSerializer, PostpassError};
 
@@ -131,6 +134,23 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     current_tool = tc.to_tool;
                 }
 
+                // Emit Comment/Raw annotations attached to this entity index,
+                // in the deterministic order they appear in `annotations`.
+                for ann in layer
+                    .annotations
+                    .iter()
+                    .filter(|a| a.after_entity_index == entity_idx)
+                {
+                    match &ann.kind {
+                        LayerAnnotationKind::Comment(text) => {
+                            commands.push(GCodeCommand::Comment { text: text.clone() });
+                        }
+                        LayerAnnotationKind::Raw(text) => {
+                            commands.push(GCodeCommand::Raw { text: text.clone() });
+                        }
+                    }
+                }
+
                 // Check for Z-hop after this entity
                 if let Some(zh) = z_hops.get(&entity_idx) {
                     let hop_z = layer_z + zh.hop_height;
@@ -152,6 +172,26 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         f: None,
                         role: ExtrusionRole::Custom("Travel".to_string()),
                     });
+                }
+            }
+
+            // Trailing annotations whose anchor lies past the last entity
+            // (e.g. layer with no ordered_entities) are still emitted in
+            // declaration order so guest-emitted comments/raw lines are not
+            // silently dropped.
+            let entity_count = layer.ordered_entities.len() as u32;
+            for ann in layer
+                .annotations
+                .iter()
+                .filter(|a| a.after_entity_index >= entity_count)
+            {
+                match &ann.kind {
+                    LayerAnnotationKind::Comment(text) => {
+                        commands.push(GCodeCommand::Comment { text: text.clone() });
+                    }
+                    LayerAnnotationKind::Raw(text) => {
+                        commands.push(GCodeCommand::Raw { text: text.clone() });
+                    }
                 }
             }
         }

@@ -7,6 +7,19 @@ world prepass-module {
 
     record module-error { code: u32, message: string, fatal: bool }
 
+    // MeshSegmentation stage
+    // Clips triangles at sub-facet stroke boundaries so every triangle has
+    // exactly one paint value per semantic.  No-op if no sub-facet strokes.
+    resource mesh-segmentation-output {
+        mark-triangle-paint: func(obj: object-id, facet-index: u32, semantic: string, value: string) -> result<_, string>;
+    }
+
+    export run-mesh-segmentation: func(
+        objects: list<object-id>,
+        output: mesh-segmentation-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+
     // MeshAnalysis stage
     enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
     record facet-annotation { facet-index: u32, slope-angle-deg: f32, classification: facet-class }
@@ -38,6 +51,30 @@ world prepass-module {
     export run-layer-planning: func(
         objects: list<object-id>,
         output: layer-plan-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+
+    // PaintSegmentation stage
+    // For every layer Z and paint semantic, computes 2D polygon regions
+    // carrying that semantic's paint value.
+    use slicer:ir-types/ir-handles.{layer-idx};
+    use slicer:types/geometry.{ex-polygon};
+
+    record paint-region-entry {
+        object-id: object-id,
+        layer-index: layer-idx,
+        semantic: string,
+        polygons: list<ex-polygon>,
+        value: string,
+    }
+
+    resource paint-segmentation-output {
+        push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
+    }
+
+    export run-paint-segmentation: func(
+        objects: list<object-id>,
+        output: paint-segmentation-output,
         config: config-view,
     ) -> result<_, module-error>;
 }

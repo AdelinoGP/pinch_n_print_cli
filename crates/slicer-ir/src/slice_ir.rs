@@ -1017,6 +1017,25 @@ pub struct PrintEntity {
     pub topo_order: u32,
 }
 
+/// Kind of a guest-emitted layer annotation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LayerAnnotationKind {
+    /// A GCode comment (prefixed with `;`).
+    Comment(String),
+    /// A raw GCode line to emit verbatim.
+    Raw(String),
+}
+
+/// Guest-emitted annotation (comment / raw line) to splice into the emitted
+/// GCode at `after_entity_index`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LayerAnnotation {
+    /// Insert the annotation after the entity with this 0-based `topo_order`.
+    pub after_entity_index: u32,
+    /// The annotation body.
+    pub kind: LayerAnnotationKind,
+}
+
 /// Layer collection IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LayerCollectionIR {
@@ -1032,6 +1051,8 @@ pub struct LayerCollectionIR {
     pub tool_changes: Vec<ToolChange>,
     /// Z hops in this layer
     pub z_hops: Vec<ZHop>,
+    /// Guest-emitted per-layer annotations (comments / raw lines).
+    pub annotations: Vec<LayerAnnotation>,
 }
 
 // ============================================================================

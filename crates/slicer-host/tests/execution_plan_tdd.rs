@@ -186,6 +186,7 @@ fn bound_module(
         module,
         instance_pool,
         config_view: Arc::new(config_view),
+        wasm_component: None,
     }
 }
 
@@ -232,6 +233,7 @@ fn loaded_module(
         overridable_per_layer: Vec::new(),
         layer_parallel_safe,
         wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
+        placeholder_wasm: false,
     }
 }
 
@@ -244,5 +246,364 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
         major,
         minor,
         patch,
+    }
+}
+
+// ── Layer index budget tests ──────────────────────────────────────────
+
+#[test]
+fn layer_index_at_budget_boundary_is_rejected() {
+    use slicer_host::{ExecutionPlanError, MAX_LAYER_INDEX};
+
+    let request = ExecutionPlanRequest {
+        sorted_stages: Vec::new(),
+        module_bindings: Vec::new(),
+        global_layers: Arc::new(vec![GlobalLayer {
+            index: MAX_LAYER_INDEX, // exactly at boundary
+            z: 20_000.0,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: false,
+        }]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    let err = build_execution_plan(&request)
+        .expect_err("layer index at budget boundary should be rejected");
+    match err {
+        ExecutionPlanError::LayerIndexBudgetExceeded { layer_index, budget } => {
+            assert_eq!(layer_index, MAX_LAYER_INDEX);
+            assert_eq!(budget, MAX_LAYER_INDEX);
+        }
+        other => panic!("expected LayerIndexBudgetExceeded, got {other:?}"),
+    }
+}
+
+#[test]
+fn layer_index_just_below_budget_is_accepted() {
+    use slicer_host::MAX_LAYER_INDEX;
+
+    let request = ExecutionPlanRequest {
+        sorted_stages: Vec::new(),
+        module_bindings: Vec::new(),
+        global_layers: Arc::new(vec![GlobalLayer {
+            index: MAX_LAYER_INDEX - 1,
+            z: 19_999.8,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: false,
+        }]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    build_execution_plan(&request).expect("layer index just below budget should be accepted");
+}
+
+#[test]
+fn layer_index_zero_is_accepted() {
+    let request = ExecutionPlanRequest {
+        sorted_stages: Vec::new(),
+        module_bindings: Vec::new(),
+        global_layers: Arc::new(vec![GlobalLayer {
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: false,
+        }]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    build_execution_plan(&request).expect("layer index 0 should be accepted");
+}
+
+#[test]
+fn error_display_includes_layer_budget_remediation() {
+    use slicer_host::ExecutionPlanError;
+
+    let err = ExecutionPlanError::LayerIndexBudgetExceeded {
+        layer_index: 200_000,
+        budget: 100_000,
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("200000"), "should include actual index: {msg}");
+    assert!(msg.contains("100000"), "should include budget: {msg}");
+    assert!(
+        msg.contains("reduce") || msg.contains("increase"),
+        "should include remediation hint: {msg}"
+    );
+}
+
+// ── Region map cap tests ──────────────────────────────────────────────
+
+#[test]
+fn region_map_exceeding_cap_is_rejected() {
+    use slicer_host::{ExecutionPlanError, DEFAULT_REGION_MAP_CAP};
+
+    let mut entries = HashMap::new();
+    for i in 0..=DEFAULT_REGION_MAP_CAP {
+        entries.insert(
+            RegionKey {
+                global_layer_index: (i / 10) as u32,
+                object_id: format!("obj-{}", i % 3),
+                region_id: i as u64,
+            },
+            RegionPlan {
+                config: ResolvedConfig::default(),
+                stage_modules: HashMap::new(),
+            },
+        );
+    }
+
+    let request = ExecutionPlanRequest {
+        sorted_stages: Vec::new(),
+        module_bindings: Vec::new(),
+        global_layers: Arc::new(Vec::new()),
+        region_plans: Arc::new(entries),
+    };
+
+    let err = build_execution_plan(&request)
+        .expect_err("region map exceeding cap should be rejected");
+    match err {
+        ExecutionPlanError::RegionMapCapExceeded { entry_count, cap } => {
+            assert!(entry_count > DEFAULT_REGION_MAP_CAP);
+            assert_eq!(cap, DEFAULT_REGION_MAP_CAP);
+        }
+        other => panic!("expected RegionMapCapExceeded, got {other:?}"),
+    }
+}
+
+#[test]
+fn region_map_at_cap_is_accepted() {
+    use slicer_host::DEFAULT_REGION_MAP_CAP;
+
+    let mut entries = HashMap::new();
+    for i in 0..DEFAULT_REGION_MAP_CAP {
+        entries.insert(
+            RegionKey {
+                global_layer_index: (i / 10) as u32,
+                object_id: format!("obj-{}", i % 3),
+                region_id: i as u64,
+            },
+            RegionPlan {
+                config: ResolvedConfig::default(),
+                stage_modules: HashMap::new(),
+            },
+        );
+    }
+
+    let request = ExecutionPlanRequest {
+        sorted_stages: Vec::new(),
+        module_bindings: Vec::new(),
+        global_layers: Arc::new(Vec::new()),
+        region_plans: Arc::new(entries),
+    };
+
+    build_execution_plan(&request).expect("region map at exactly the cap should be accepted");
+}
+
+#[test]
+fn error_display_includes_region_map_remediation() {
+    use slicer_host::ExecutionPlanError;
+
+    let err = ExecutionPlanError::RegionMapCapExceeded {
+        entry_count: 2000,
+        cap: 1000,
+    };
+    let msg = err.to_string();
+    assert!(msg.contains("2000"), "should include entry count: {msg}");
+    assert!(msg.contains("1000"), "should include cap: {msg}");
+    assert!(
+        msg.contains("reduce") || msg.contains("raise") || msg.contains("split"),
+        "should include remediation hint: {msg}"
+    );
+}
+
+// ── Deterministic plan construction ───────────────────────────────────
+
+#[test]
+fn plan_construction_is_deterministic_across_repeated_calls() {
+    let mk_request = || {
+        let module = bound_module(
+            loaded_module(
+                "com.test.infill",
+                "Layer::Infill",
+                &[],
+                &[],
+                true,
+                "slicer:world-layer@1.0.0",
+            ),
+            ConfigView { fields: HashMap::new() },
+            4,
+        );
+        ExecutionPlanRequest {
+            sorted_stages: vec![sorted_stage("Layer::Infill", &["com.test.infill"])],
+            module_bindings: vec![module],
+            global_layers: Arc::new(vec![
+                GlobalLayer { index: 0, z: 0.2, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false },
+                GlobalLayer { index: 1, z: 0.4, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false },
+            ]),
+            region_plans: Arc::new(HashMap::new()),
+        }
+    };
+
+    let plan_a = build_execution_plan(&mk_request()).unwrap();
+    let plan_b = build_execution_plan(&mk_request()).unwrap();
+
+    assert_eq!(plan_a.per_layer_stages.len(), plan_b.per_layer_stages.len());
+    assert_eq!(
+        plan_a.per_layer_stages[0].modules[0].module_id,
+        plan_b.per_layer_stages[0].modules[0].module_id,
+    );
+    assert_eq!(plan_a.global_layers.len(), plan_b.global_layers.len());
+}
+
+// ── Resource-bound enforcement / bounded-failure contracts ────────────
+
+#[test]
+fn layer_index_u32_max_is_rejected_with_budget_error() {
+    use slicer_host::{ExecutionPlanError, MAX_LAYER_INDEX};
+
+    let request = ExecutionPlanRequest {
+        sorted_stages: Vec::new(),
+        module_bindings: Vec::new(),
+        global_layers: Arc::new(vec![GlobalLayer {
+            index: u32::MAX,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: false,
+        }]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    match build_execution_plan(&request).expect_err("u32::MAX must be rejected") {
+        ExecutionPlanError::LayerIndexBudgetExceeded { layer_index, budget } => {
+            assert_eq!(layer_index, u32::MAX);
+            assert_eq!(budget, MAX_LAYER_INDEX);
+        }
+        other => panic!("expected LayerIndexBudgetExceeded, got {other:?}"),
+    }
+}
+
+#[test]
+fn layer_budget_check_preempts_module_binding_errors() {
+    // Resource-bound failures must fire before coupling/binding failures so the
+    // operator gets the actionable budget diagnostic per docs/12 §Resource Bounds.
+    use slicer_host::{ExecutionPlanError, MAX_LAYER_INDEX};
+
+    let request = ExecutionPlanRequest {
+        // Reference an unbound module — would normally surface MissingModuleBinding.
+        sorted_stages: vec![sorted_stage("Layer::Infill", &["com.test.absent"])],
+        module_bindings: Vec::new(),
+        global_layers: Arc::new(vec![GlobalLayer {
+            index: MAX_LAYER_INDEX,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: false,
+        }]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    match build_execution_plan(&request).expect_err("budget should preempt binding error") {
+        ExecutionPlanError::LayerIndexBudgetExceeded { .. } => {}
+        other => panic!("expected LayerIndexBudgetExceeded to preempt, got {other:?}"),
+    }
+}
+
+#[test]
+fn layer_budget_reports_first_offending_layer_deterministically() {
+    use slicer_host::{ExecutionPlanError, MAX_LAYER_INDEX};
+
+    let request = ExecutionPlanRequest {
+        sorted_stages: Vec::new(),
+        module_bindings: Vec::new(),
+        global_layers: Arc::new(vec![
+            GlobalLayer { index: MAX_LAYER_INDEX,     z: 0.0, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false },
+            GlobalLayer { index: MAX_LAYER_INDEX + 1, z: 0.2, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false },
+            GlobalLayer { index: u32::MAX,           z: 0.4, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false },
+        ]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    for _ in 0..5 {
+        match build_execution_plan(&request).expect_err("must reject") {
+            ExecutionPlanError::LayerIndexBudgetExceeded { layer_index, .. } => {
+                assert_eq!(
+                    layer_index, MAX_LAYER_INDEX,
+                    "must report first offending layer in vector order, deterministically"
+                );
+            }
+            other => panic!("expected LayerIndexBudgetExceeded, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn region_map_cap_reports_exact_computed_entry_count() {
+    use slicer_host::{ExecutionPlanError, DEFAULT_REGION_MAP_CAP};
+
+    let mut entries = HashMap::new();
+    let overflow = DEFAULT_REGION_MAP_CAP + 7;
+    for i in 0..overflow {
+        entries.insert(
+            RegionKey {
+                global_layer_index: 0,
+                object_id: format!("obj-{i}"),
+                region_id: i as u64,
+            },
+            RegionPlan {
+                config: ResolvedConfig::default(),
+                stage_modules: HashMap::new(),
+            },
+        );
+    }
+    let request = ExecutionPlanRequest {
+        sorted_stages: Vec::new(),
+        module_bindings: Vec::new(),
+        global_layers: Arc::new(vec![]),
+        region_plans: Arc::new(entries),
+    };
+
+    match build_execution_plan(&request).expect_err("must reject overflow") {
+        ExecutionPlanError::RegionMapCapExceeded { entry_count, cap } => {
+            assert_eq!(entry_count, overflow);
+            assert_eq!(cap, DEFAULT_REGION_MAP_CAP);
+        }
+        other => panic!("expected RegionMapCapExceeded, got {other:?}"),
+    }
+}
+
+#[test]
+fn duplicate_module_binding_rejected_with_stable_diagnostic() {
+    use slicer_host::ExecutionPlanError;
+
+    let mk_binding = || bound_module(
+        loaded_module(
+            "com.test.dup",
+            "Layer::Infill",
+            &[],
+            &[],
+            true,
+            "slicer:world-layer@1.0.0",
+        ),
+        ConfigView { fields: HashMap::new() },
+        2,
+    );
+    let request = ExecutionPlanRequest {
+        sorted_stages: vec![sorted_stage("Layer::Infill", &["com.test.dup"])],
+        module_bindings: vec![mk_binding(), mk_binding()],
+        global_layers: Arc::new(vec![]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    for _ in 0..3 {
+        match build_execution_plan(&request).expect_err("duplicate binding must be rejected") {
+            ExecutionPlanError::DuplicateModuleBinding { module_id } => {
+                assert_eq!(module_id.as_str(), "com.test.dup");
+            }
+            other => panic!("expected DuplicateModuleBinding, got {other:?}"),
+        }
     }
 }

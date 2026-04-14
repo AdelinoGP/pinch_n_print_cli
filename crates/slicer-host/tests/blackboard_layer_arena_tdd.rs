@@ -389,6 +389,7 @@ fn layer_collection_fixture(global_layer_index: u32, z: f32) -> LayerCollectionI
             after_entity_index: 0,
             hop_height: 0.6,
         }],
+        annotations: vec![],
     }
 }
 

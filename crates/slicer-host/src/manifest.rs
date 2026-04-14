@@ -46,6 +46,12 @@ pub struct LoadedModule {
     pub layer_parallel_safe: bool,
     /// Companion `.wasm` path for this manifest.
     pub wasm_path: PathBuf,
+    /// True when the companion `.wasm` is a known placeholder (not a valid
+    /// component-model binary). Modules with placeholder binaries are
+    /// discoverable for manifest validation and plan construction, but
+    /// runtime dispatch will skip them with a diagnostic rather than
+    /// attempting component compilation.
+    pub placeholder_wasm: bool,
 }
 
 /// Minimal placeholder for manifest-defined config schema entries.
@@ -165,6 +171,17 @@ struct IngestedManifest {
     diagnostics: Vec<LoadDiagnostic>,
 }
 
+/// A .wasm file is considered a placeholder if it contains only the 8-byte
+/// WASM magic header (`\0asm\x01\x00\x00\x00`) with no sections.
+/// These are produced by the repo scaffolding and cannot be compiled as
+/// component-model binaries.
+fn is_placeholder_wasm(wasm_path: &Path) -> bool {
+    match fs::metadata(wasm_path) {
+        Ok(meta) => meta.len() <= 8,
+        Err(_) => false,
+    }
+}
+
 fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedManifest, LoadError> {
     ensure_same_stem_wasm_exists(manifest_path, wasm_path)?;
 
@@ -195,6 +212,20 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
     );
 
     let config_schema = read_config_schema(&root, manifest_path)?;
+    let placeholder_wasm = is_placeholder_wasm(wasm_path);
+    if placeholder_wasm {
+        diagnostics.push(LoadDiagnostic {
+            level: DiagnosticLevel::Warning,
+            path: wasm_path.to_path_buf(),
+            field: None,
+            message: format!(
+                "companion .wasm for '{}' is a placeholder ({} bytes); \
+                 module will be skipped at runtime until a valid component is built",
+                module_id,
+                fs::metadata(wasm_path).map(|m| m.len()).unwrap_or(0)
+            ),
+        });
+    }
 
     Ok(IngestedManifest {
         module: LoadedModule {
@@ -236,6 +267,7 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
             )?,
             layer_parallel_safe,
             wasm_path: wasm_path.to_path_buf(),
+            placeholder_wasm,
         },
         diagnostics,
     })
@@ -260,6 +292,23 @@ fn discover_manifest_paths(root: &Path) -> Result<Vec<PathBuf>, LoadError> {
         let path = entry.path();
         if path.extension().and_then(|value| value.to_str()) == Some("toml") {
             manifests.push(path);
+        } else if path.is_dir() {
+            // Scan one level of subdirectories for module manifests.
+            // This supports the core-module layout where each module is a
+            // subdirectory containing {stem}.toml + {stem}.wasm.
+            if let Ok(sub_dir) = fs::read_dir(&path) {
+                for sub_entry in sub_dir.flatten() {
+                    let sub_path = sub_entry.path();
+                    if sub_path.extension().and_then(|v| v.to_str()) == Some("toml")
+                        && sub_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .map_or(true, |n| n != "Cargo.toml")
+                    {
+                        manifests.push(sub_path);
+                    }
+                }
+            }
         }
     }
 
