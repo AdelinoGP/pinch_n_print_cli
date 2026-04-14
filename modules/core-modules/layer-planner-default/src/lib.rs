@@ -59,7 +59,10 @@ impl PrepassModule for DefaultLayerPlanner {
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
         if objects.is_empty() {
-            return Err(ModuleError::fatal(1, "no objects provided for layer planning"));
+            return Err(ModuleError::fatal(
+                1,
+                "no objects provided for layer planning",
+            ));
         }
 
         if self.layer_height <= 0.0 {
@@ -167,10 +170,7 @@ fn generate_object_layers(plan: &ObjectPlan) -> Vec<f32> {
 ///
 /// For objects with different layer heights, this inserts sync layers at LCM intervals
 /// and catch-up layers where needed.
-fn merge_layer_sequences(
-    plans: &[ObjectPlan],
-    _first_layer_height: f32,
-) -> Vec<MergedLayer> {
+fn merge_layer_sequences(plans: &[ObjectPlan], _first_layer_height: f32) -> Vec<MergedLayer> {
     if plans.is_empty() {
         return Vec::new();
     }
@@ -190,10 +190,7 @@ fn merge_layer_sequences(
 /// Merge layers for objects that all share the same layer height.
 fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
     // Find max height across all objects
-    let max_height = plans
-        .iter()
-        .map(|p| p.height)
-        .fold(0.0f32, f32::max);
+    let max_height = plans.iter().map(|p| p.height).fold(0.0f32, f32::max);
 
     let first = &plans[0];
     let mut layers = Vec::new();
@@ -255,9 +252,7 @@ fn merge_different_heights(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
             }
 
             // Check if this object has a native layer at this Z
-            let is_native = object_zs[i]
-                .iter()
-                .any(|oz| (*oz - z).abs() < 1e-6);
+            let is_native = object_zs[i].iter().any(|oz| (*oz - z).abs() < 1e-6);
 
             if is_native {
                 // Regular layer for this object

@@ -187,10 +187,9 @@ impl std::fmt::Display for RegionMappingBuiltinError {
                 "built-in PrePass::RegionMapping requires a committed LayerPlanIR"
             ),
             Self::Mapping(e) => write!(f, "built-in PrePass::RegionMapping failed: {e}"),
-            Self::Blackboard { source } => write!(
-                f,
-                "built-in PrePass::RegionMapping commit failed: {source}"
-            ),
+            Self::Blackboard { source } => {
+                write!(f, "built-in PrePass::RegionMapping commit failed: {source}")
+            }
         }
     }
 }

@@ -6,8 +6,7 @@
 
 use slicer_helpers::{repair, RepairResult, RepairWarning};
 use slicer_ir::{
-    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer,
-    Transform3d,
+    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
 };
 use std::collections::HashMap;
 
@@ -64,14 +63,46 @@ fn single_object_mesh(its: IndexedTriangleSet) -> MeshIR {
 /// The cube spans from (0,0,0) to (10,10,10) mm.
 fn valid_cube() -> IndexedTriangleSet {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 0.0 }, // 0: left  bottom back
-        Point3 { x: 10.0, y: 0.0, z: 0.0 }, // 1: right bottom back
-        Point3 { x: 10.0, y: 10.0, z: 0.0 }, // 2: right top    back
-        Point3 { x: 0.0, y: 10.0, z: 0.0 }, // 3: left  top    back
-        Point3 { x: 0.0, y: 0.0, z: 10.0 }, // 4: left  bottom front
-        Point3 { x: 10.0, y: 0.0, z: 10.0 }, // 5: right bottom front
-        Point3 { x: 10.0, y: 10.0, z: 10.0 }, // 6: right top    front
-        Point3 { x: 0.0, y: 10.0, z: 10.0 }, // 7: left  top    front
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        }, // 0: left  bottom back
+        Point3 {
+            x: 10.0,
+            y: 0.0,
+            z: 0.0,
+        }, // 1: right bottom back
+        Point3 {
+            x: 10.0,
+            y: 10.0,
+            z: 0.0,
+        }, // 2: right top    back
+        Point3 {
+            x: 0.0,
+            y: 10.0,
+            z: 0.0,
+        }, // 3: left  top    back
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 10.0,
+        }, // 4: left  bottom front
+        Point3 {
+            x: 10.0,
+            y: 0.0,
+            z: 10.0,
+        }, // 5: right bottom front
+        Point3 {
+            x: 10.0,
+            y: 10.0,
+            z: 10.0,
+        }, // 6: right top    front
+        Point3 {
+            x: 0.0,
+            y: 10.0,
+            z: 10.0,
+        }, // 7: left  top    front
     ];
 
     // Outward-facing winding (CCW when viewed from outside).
@@ -114,24 +145,62 @@ fn repair_removes_degenerate_triangles() {
     // Add 3 degenerate triangles (collinear vertices → zero area).
     let base = its.vertices.len() as u32;
     // Degenerate 1: three collinear points along X.
-    its.vertices.push(Point3 { x: 0.0, y: 0.0, z: 20.0 });
-    its.vertices.push(Point3 { x: 5.0, y: 0.0, z: 20.0 });
-    its.vertices.push(Point3 { x: 10.0, y: 0.0, z: 20.0 });
+    its.vertices.push(Point3 {
+        x: 0.0,
+        y: 0.0,
+        z: 20.0,
+    });
+    its.vertices.push(Point3 {
+        x: 5.0,
+        y: 0.0,
+        z: 20.0,
+    });
+    its.vertices.push(Point3 {
+        x: 10.0,
+        y: 0.0,
+        z: 20.0,
+    });
     its.indices.extend_from_slice(&[base, base + 1, base + 2]);
 
     // Degenerate 2: three identical points.
     let base2 = its.vertices.len() as u32;
-    its.vertices.push(Point3 { x: 1.0, y: 1.0, z: 1.0 });
-    its.vertices.push(Point3 { x: 1.0, y: 1.0, z: 1.0 });
-    its.vertices.push(Point3 { x: 1.0, y: 1.0, z: 1.0 });
-    its.indices.extend_from_slice(&[base2, base2 + 1, base2 + 2]);
+    its.vertices.push(Point3 {
+        x: 1.0,
+        y: 1.0,
+        z: 1.0,
+    });
+    its.vertices.push(Point3 {
+        x: 1.0,
+        y: 1.0,
+        z: 1.0,
+    });
+    its.vertices.push(Point3 {
+        x: 1.0,
+        y: 1.0,
+        z: 1.0,
+    });
+    its.indices
+        .extend_from_slice(&[base2, base2 + 1, base2 + 2]);
 
     // Degenerate 3: two vertices the same, third different but still collinear.
     let base3 = its.vertices.len() as u32;
-    its.vertices.push(Point3 { x: 3.0, y: 3.0, z: 3.0 });
-    its.vertices.push(Point3 { x: 3.0, y: 3.0, z: 3.0 });
-    its.vertices.push(Point3 { x: 6.0, y: 6.0, z: 6.0 });
-    its.indices.extend_from_slice(&[base3, base3 + 1, base3 + 2]);
+    its.vertices.push(Point3 {
+        x: 3.0,
+        y: 3.0,
+        z: 3.0,
+    });
+    its.vertices.push(Point3 {
+        x: 3.0,
+        y: 3.0,
+        z: 3.0,
+    });
+    its.vertices.push(Point3 {
+        x: 6.0,
+        y: 6.0,
+        z: 6.0,
+    });
+    its.indices
+        .extend_from_slice(&[base3, base3 + 1, base3 + 2]);
 
     let mesh = single_object_mesh(its);
     let result: RepairResult = repair(mesh).expect("repair should not error");

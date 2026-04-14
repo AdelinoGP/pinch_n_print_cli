@@ -6,8 +6,7 @@
 
 use slicer_helpers::{decimate, DecimateConfig, DecimateError};
 use slicer_ir::{
-    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer,
-    Transform3d,
+    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
 };
 use std::collections::HashMap;
 
@@ -116,7 +115,10 @@ fn decimate_by_ratio() {
     let its = sphere_2000();
     let mesh = single_object_mesh(its);
     let original_count = mesh.objects[0].mesh.indices.len() / 3;
-    assert!(original_count >= 1800, "sphere should have ~2000 tris, got {original_count}");
+    assert!(
+        original_count >= 1800,
+        "sphere should have ~2000 tris, got {original_count}"
+    );
 
     let config = DecimateConfig {
         target_ratio: Some(0.5),

@@ -87,11 +87,7 @@ pub fn decimate(mut mesh: MeshIR, config: DecimateConfig) -> Result<DecimateResu
     }
 
     // Check for empty mesh.
-    let total_tris: usize = mesh
-        .objects
-        .iter()
-        .map(|o| o.mesh.indices.len() / 3)
-        .sum();
+    let total_tris: usize = mesh.objects.iter().map(|o| o.mesh.indices.len() / 3).sum();
     if total_tris == 0 {
         return Err(DecimateError::EmptyMesh);
     }

@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon,
-};
+use slicer_ir::{ConfigValue, ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::SliceRegionView;

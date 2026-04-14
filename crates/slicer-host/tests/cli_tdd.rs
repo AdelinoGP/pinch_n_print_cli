@@ -7,7 +7,10 @@ use std::io::Write;
 #[test]
 fn run_requires_module_and_model() {
     let result = HostCli::try_parse_from(["slicer-host", "run"]);
-    assert!(result.is_err(), "run without --module and --model should fail");
+    assert!(
+        result.is_err(),
+        "run without --module and --model should fail"
+    );
 }
 
 #[test]
@@ -88,13 +91,8 @@ fn config_schema_default_dir() {
 
 #[test]
 fn config_schema_custom_dir() {
-    let cli = HostCli::try_parse_from([
-        "slicer-host",
-        "config-schema",
-        "--module-dir",
-        "/foo",
-    ])
-    .expect("config-schema with --module-dir should parse");
+    let cli = HostCli::try_parse_from(["slicer-host", "config-schema", "--module-dir", "/foo"])
+        .expect("config-schema with --module-dir should parse");
 
     match cli.command {
         HostCommands::ConfigSchema { module_dir } => {

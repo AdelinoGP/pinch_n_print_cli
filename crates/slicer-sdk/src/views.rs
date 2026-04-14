@@ -6,7 +6,9 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::{ExPolygon, ObjectId, PaintSemantic, PaintValue, RegionId, SeamCandidate, WallLoop};
+use slicer_ir::{
+    ExPolygon, ObjectId, PaintSemantic, PaintValue, RegionId, SeamCandidate, WallLoop,
+};
 
 /// Read-only view of a slice region.
 ///
@@ -22,6 +24,11 @@ pub struct SliceRegionView {
     z: f32,
     has_nonplanar: bool,
     boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    /// SurfaceClassificationIR-derived eligibility flag. Surfaces the documented
+    /// `needs_support` signal (docs/02_ir_schemas.md §IR 2 line 231) into the
+    /// support stage so generators can apply default eligibility per
+    /// docs/06_agent_implementation_guide.md §387.
+    needs_support: bool,
 }
 
 impl SliceRegionView {
@@ -45,6 +52,7 @@ impl SliceRegionView {
             z,
             has_nonplanar,
             boundary_paint: HashMap::new(),
+            needs_support: true,
         }
     }
 
@@ -70,7 +78,29 @@ impl SliceRegionView {
             z,
             has_nonplanar,
             boundary_paint,
+            needs_support: true,
         }
+    }
+
+    /// Override the `needs_support` eligibility flag (host-only, for testing).
+    ///
+    /// Per docs/02_ir_schemas.md §IR 2, the host populates this from
+    /// `SurfaceClassificationIR.needs_support` for the region's object.
+    /// Default constructors leave the flag `true` so callsites that predate the
+    /// SurfaceClassificationIR wiring observe the prior "all candidates eligible"
+    /// behavior.
+    #[doc(hidden)]
+    pub fn set_needs_support(&mut self, needs_support: bool) {
+        self.needs_support = needs_support;
+    }
+
+    /// Returns the SurfaceClassificationIR-derived support eligibility flag.
+    ///
+    /// Used by `Layer::Support` modules as the default-eligibility predicate when
+    /// neither `SupportEnforcer` nor `SupportBlocker` paint applies (see
+    /// docs/06_agent_implementation_guide.md §387 and docs/02 §412).
+    pub fn needs_support(&self) -> bool {
+        self.needs_support
     }
 
     /// Returns the object ID this region belongs to.

@@ -228,6 +228,17 @@ pub fn validate_field_value(
             });
         }
         (ConfigFieldType::Float, ConfigValue::Float(v)) => {
+            if !v.is_finite() {
+                return Err(ConfigValidationError {
+                    field: Some(field.key.clone()),
+                    message: format!(
+                        "non-finite float '{}' is invalid for field '{}'",
+                        v, field.key
+                    ),
+                    kind: ConfigValidationErrorKind::ValidationFailed,
+                });
+            }
+
             // Range validation for float
             if let Some(min) = field.min {
                 if *v < min {
@@ -308,6 +319,17 @@ pub fn validate_field_value(
             });
         }
         (ConfigFieldType::FloatList, ConfigValue::FloatList(list)) => {
+            if let Some(value) = list.iter().find(|value| !value.is_finite()) {
+                return Err(ConfigValidationError {
+                    field: Some(field.key.clone()),
+                    message: format!(
+                        "non-finite float '{}' is invalid for field '{}'",
+                        value, field.key
+                    ),
+                    kind: ConfigValidationErrorKind::ValidationFailed,
+                });
+            }
+
             // List length validation
             if let Some(min_len) = field.min_list_length {
                 if list.len() < min_len {
@@ -517,15 +539,9 @@ fn parse_field_schema(
         .map(|v| parse_config_value(v, &field_type));
 
     // Parse numeric constraints
-    let min = table
-        .get("min")
-        .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)));
-    let max = table
-        .get("max")
-        .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)));
-    let step = table
-        .get("step")
-        .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)));
+    let min = table.get("min").and_then(parse_numeric_value);
+    let max = table.get("max").and_then(parse_numeric_value);
+    let step = table.get("step").and_then(parse_numeric_value);
 
     // Parse string constraints
     let max_length = table
@@ -607,10 +623,7 @@ fn parse_config_value(value: &toml::Value, field_type: &ConfigFieldType) -> Conf
         ConfigFieldType::Int => ConfigValue::Int(value.as_integer().unwrap_or(0)),
         ConfigFieldType::Float => {
             // Handle both float and integer as float
-            let f = value
-                .as_float()
-                .or_else(|| value.as_integer().map(|i| i as f64))
-                .unwrap_or(0.0);
+            let f = parse_numeric_value(value).unwrap_or(0.0);
             ConfigValue::Float(f)
         }
         ConfigFieldType::String | ConfigFieldType::Enum => {
@@ -619,11 +632,7 @@ fn parse_config_value(value: &toml::Value, field_type: &ConfigFieldType) -> Conf
         ConfigFieldType::FloatList => {
             let list = value
                 .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
-                        .collect()
-                })
+                .map(|arr| arr.iter().filter_map(parse_numeric_value).collect())
                 .unwrap_or_default();
             ConfigValue::FloatList(list)
         }
@@ -638,6 +647,21 @@ fn parse_config_value(value: &toml::Value, field_type: &ConfigFieldType) -> Conf
                 .unwrap_or_default();
             ConfigValue::StringList(list)
         }
+    }
+}
+
+fn parse_numeric_value(value: &toml::Value) -> Option<f64> {
+    value
+        .as_float()
+        .or_else(|| value.as_integer().map(|i| i as f64))
+        .map(normalize_subnormal)
+}
+
+fn normalize_subnormal(value: f64) -> f64 {
+    if value.is_subnormal() {
+        0.0
+    } else {
+        value
     }
 }
 
@@ -705,4 +729,43 @@ pub fn get_advanced_fields(schema: &FullConfigSchema) -> Vec<&ConfigFieldSchema>
 /// Returns only the non-advanced (basic) fields from the schema.
 pub fn get_basic_fields(schema: &FullConfigSchema) -> Vec<&ConfigFieldSchema> {
     schema.fields.values().filter(|f| !f.advanced).collect()
+}
+
+/// Build the documented config-schema JSON response from loaded modules.
+///
+/// Per docs/01_system_architecture.md, the config-schema query response format is:
+/// ```jsonc
+/// {"schema": [
+///   {
+///     "module": "com.community.tpms-infill",
+///     "fields": [
+///       {"key": "pattern", "type": "enum", "values": [...], "default": "...", "display": "...", "group": "..."}
+///     ]
+///   }
+/// ]}
+/// ```
+pub fn build_config_schema_json(modules: &[crate::manifest::LoadedModule]) -> serde_json::Value {
+    let schema_entries: Vec<serde_json::Value> = modules
+        .iter()
+        .filter(|m| !m.config_schema.entries.is_empty())
+        .map(|m| {
+            let fields: Vec<serde_json::Value> = m
+                .config_schema
+                .entries
+                .iter()
+                .map(|(key, type_str)| {
+                    serde_json::json!({
+                        "key": key,
+                        "type": type_str,
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "module": m.id,
+                "fields": fields,
+            })
+        })
+        .collect();
+
+    serde_json::json!({ "schema": schema_entries })
 }

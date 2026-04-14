@@ -7,8 +7,8 @@ use std::collections::HashMap;
 
 use classic_perimeters::ClassicPerimeters;
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, LoopType, Point2, Polygon, WallBoundaryType,
-    ExtrusionRole, mm_to_units,
+    mm_to_units, ConfigValue, ConfigView, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon,
+    WallBoundaryType,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -20,10 +20,22 @@ fn make_square(side_mm: f32) -> ExPolygon {
     ExPolygon {
         contour: Polygon {
             points: vec![
-                Point2 { x: mm_to_units(-half), y: mm_to_units(-half) },
-                Point2 { x: mm_to_units(half), y: mm_to_units(-half) },
-                Point2 { x: mm_to_units(half), y: mm_to_units(half) },
-                Point2 { x: mm_to_units(-half), y: mm_to_units(half) },
+                Point2 {
+                    x: mm_to_units(-half),
+                    y: mm_to_units(-half),
+                },
+                Point2 {
+                    x: mm_to_units(half),
+                    y: mm_to_units(-half),
+                },
+                Point2 {
+                    x: mm_to_units(half),
+                    y: mm_to_units(half),
+                },
+                Point2 {
+                    x: mm_to_units(-half),
+                    y: mm_to_units(half),
+                },
             ],
         },
         holes: Vec::new(),
@@ -33,7 +45,10 @@ fn make_square(side_mm: f32) -> ExPolygon {
 /// Create a config with specified wall_count and line_width.
 fn make_config(wall_count: u32, line_width: f64) -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("wall_count".to_string(), ConfigValue::Int(wall_count as i64));
+    fields.insert(
+        "wall_count".to_string(),
+        ConfigValue::Int(wall_count as i64),
+    );
     fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
     ConfigView { fields }
 }
@@ -46,10 +61,19 @@ fn make_config_with_speeds(
     inner_speed: f64,
 ) -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("wall_count".to_string(), ConfigValue::Int(wall_count as i64));
+    fields.insert(
+        "wall_count".to_string(),
+        ConfigValue::Int(wall_count as i64),
+    );
     fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    fields.insert("outer_wall_speed".to_string(), ConfigValue::Float(outer_speed));
-    fields.insert("inner_wall_speed".to_string(), ConfigValue::Float(inner_speed));
+    fields.insert(
+        "outer_wall_speed".to_string(),
+        ConfigValue::Float(outer_speed),
+    );
+    fields.insert(
+        "inner_wall_speed".to_string(),
+        ConfigValue::Float(inner_speed),
+    );
     ConfigView { fields }
 }
 
@@ -101,7 +125,11 @@ fn outer_wall_is_index_zero() {
     let walls = output.wall_loops();
     assert!(!walls.is_empty());
     assert_eq!(walls[0].perimeter_index, 0, "Outer wall should be index 0");
-    assert_eq!(walls[0].loop_type, LoopType::Outer, "First wall should be Outer");
+    assert_eq!(
+        walls[0].loop_type,
+        LoopType::Outer,
+        "First wall should be Outer"
+    );
 }
 
 #[test]
@@ -151,19 +179,13 @@ fn infill_area_computed() {
 
     // Infill area should be smaller than original polygon
     // Original is 10x10=100mm^2, after 2 walls + half width inset, much smaller
-    let infill_area: f64 = infill
-        .iter()
-        .map(|p| polygon_area_mm(&p.contour))
-        .sum();
+    let infill_area: f64 = infill.iter().map(|p| polygon_area_mm(&p.contour)).sum();
     assert!(
         infill_area < 100.0,
         "Infill area ({}) should be smaller than input (100mm^2)",
         infill_area
     );
-    assert!(
-        infill_area > 0.0,
-        "Infill area should be positive"
-    );
+    assert!(infill_area > 0.0, "Infill area should be positive");
 }
 
 #[test]
@@ -187,7 +209,11 @@ fn empty_polygon_no_output() {
         .run_perimeters(0, &regions, &paint, &mut output, &config)
         .unwrap();
 
-    assert_eq!(output.wall_loops().len(), 0, "No wall loops for empty input");
+    assert_eq!(
+        output.wall_loops().len(),
+        0,
+        "No wall loops for empty input"
+    );
     assert_eq!(output.infill_areas().len(), 0, "No infill for empty input");
 }
 
@@ -203,9 +229,16 @@ fn wall_count_zero() {
         .run_perimeters(0, &regions, &paint, &mut output, &config)
         .unwrap();
 
-    assert_eq!(output.wall_loops().len(), 0, "No wall loops with wall_count=0");
+    assert_eq!(
+        output.wall_loops().len(),
+        0,
+        "No wall loops with wall_count=0"
+    );
     // Infill areas should be the input polygons themselves
-    assert!(!output.infill_areas().is_empty(), "Infill should be input polygons");
+    assert!(
+        !output.infill_areas().is_empty(),
+        "Infill should be input polygons"
+    );
 }
 
 #[test]

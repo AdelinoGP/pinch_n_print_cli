@@ -96,11 +96,7 @@ pub fn assert_max_segment_length(paths: &[ExtrusionPath3D], max_len_mm: f32) {
 /// };
 /// assert_extrusion_width_range(&[path], 0.3, 0.5);
 /// ```
-pub fn assert_extrusion_width_range(
-    paths: &[ExtrusionPath3D],
-    min_width: f32,
-    max_width: f32,
-) {
+pub fn assert_extrusion_width_range(paths: &[ExtrusionPath3D], min_width: f32, max_width: f32) {
     for (path_index, path) in paths.iter().enumerate() {
         for (point_index, point) in path.points.iter().enumerate() {
             assert!(
@@ -302,8 +298,14 @@ pub fn assert_no_path_intersections(paths: &[ExtrusionPath3D]) {
 /// Test if two segments properly intersect (cross each other, not just share endpoints).
 #[allow(clippy::too_many_arguments)]
 fn segments_intersect_proper(
-    ax1: f32, ay1: f32, ax2: f32, ay2: f32,
-    bx1: f32, by1: f32, bx2: f32, by2: f32,
+    ax1: f32,
+    ay1: f32,
+    ax2: f32,
+    ay2: f32,
+    bx1: f32,
+    by1: f32,
+    bx2: f32,
+    by2: f32,
 ) -> bool {
     let d1 = cross_2d(bx1, by1, bx2, by2, ax1, ay1);
     let d2 = cross_2d(bx1, by1, bx2, by2, ax2, ay2);

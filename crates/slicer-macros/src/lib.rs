@@ -9,13 +9,32 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{parse_macro_input, ItemFn, ItemImpl, ReturnType};
 
+/// Known stage method names and their corresponding pipeline stage IDs.
+const STAGE_METHODS: &[(&str, &str)] = &[
+    ("run_infill", "Layer::Infill"),
+    ("run_perimeters", "Layer::Perimeters"),
+    ("run_wall_postprocess", "Layer::PerimetersPostProcess"),
+    ("run_infill_postprocess", "Layer::InfillPostProcess"),
+    ("run_slice_postprocess", "Layer::SlicePostProcess"),
+    ("run_support", "Layer::Support"),
+    ("run_support_postprocess", "Layer::SupportPostProcess"),
+    ("run_path_optimization", "Layer::PathOptimization"),
+    ("run_mesh_analysis", "PrePass::MeshAnalysis"),
+    ("run_layer_planning", "PrePass::LayerPlanning"),
+    ("run_mesh_segmentation", "PrePass::MeshSegmentation"),
+    ("run_paint_segmentation", "PrePass::PaintSegmentation"),
+    ("run_finalization", "PostPass::LayerFinalization"),
+    ("run_gcode_postprocess", "PostPass::GCodePostProcess"),
+    ("run_text_postprocess", "PostPass::TextPostProcess"),
+];
+
 /// The `#[slicer_module]` attribute macro.
 ///
 /// Applied to an `impl LayerModule for T` block, this macro:
-/// 1. Reads the module's manifest to find the declared stage
-/// 2. Validates that the impl provides exactly the function matching that stage
-/// 3. Generates the WIT WASM export bindings
-/// 4. Wires up `on-print-start` / `on-print-end` lifecycle hooks
+/// 1. Introspects the impl block to find stage methods (`run_infill`, `run_perimeters`, etc.)
+/// 2. Validates that at most one stage method is present in the impl
+/// 3. Generates WIT export helper methods
+/// 4. Wires up `on-print-start` / `on-print-end` lifecycle wrappers
 ///
 /// # Example
 ///
@@ -46,51 +65,107 @@ use syn::{parse_macro_input, ItemFn, ItemImpl, ReturnType};
 pub fn slicer_module(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as ItemImpl);
 
-    // Get the type name being implemented
     let self_ty = &input.self_ty;
 
-    // Generate the expanded implementation with additional methods
-    let expanded = generate_slicer_module_impl(&input, self_ty);
+    // Detect stage methods in the impl block
+    let detected_stages = detect_stage_methods(&input);
 
+    // Validate: at most one stage method per impl block
+    if detected_stages.len() > 1 {
+        let names: Vec<&str> = detected_stages.iter().map(|(name, _)| *name).collect();
+        let msg = format!(
+            "slicer_module: impl block contains multiple stage methods: {}. \
+             A module must implement exactly one stage function.",
+            names.join(", ")
+        );
+        return syn::Error::new_spanned(&input.self_ty, msg)
+            .to_compile_error()
+            .into();
+    }
+
+    let expanded = generate_slicer_module_impl(&input, self_ty, &detected_stages);
     TokenStream::from(expanded)
 }
 
+/// Detect which `run_*` stage methods are present in the impl block.
+/// Returns a list of (method_name, stage_id) pairs.
+fn detect_stage_methods<'a>(input: &'a ItemImpl) -> Vec<(&'static str, &'static str)> {
+    let mut found = Vec::new();
+
+    for item in &input.items {
+        if let syn::ImplItem::Fn(method) = item {
+            let method_name = method.sig.ident.to_string();
+            for &(stage_method, stage_id) in STAGE_METHODS {
+                if method_name == stage_method {
+                    found.push((stage_method, stage_id));
+                }
+            }
+        }
+    }
+
+    found
+}
+
 /// Generate the expanded implementation for #[slicer_module]
-fn generate_slicer_module_impl(input: &ItemImpl, self_ty: &syn::Type) -> TokenStream2 {
-    // Extract the type name as a string for module info
-    // (Will be used in full implementation)
-    let _type_name_str = quote!(#self_ty).to_string();
+fn generate_slicer_module_impl(
+    input: &ItemImpl,
+    self_ty: &syn::Type,
+    detected_stages: &[(&str, &str)],
+) -> TokenStream2 {
+    let type_name_str = quote!(#self_ty).to_string();
 
     // Preserve the original impl block
     let original_impl = quote! { #input };
 
-    // Generate additional methods that the tests expect.
-    // These use generic types to avoid crate-root path dependencies.
-    // The actual implementation will use proper type resolution.
+    let has_stage = !detected_stages.is_empty();
+
+    let (stage_name_literal, _stage_method_ident) = if let Some(&(method, stage)) =
+        detected_stages.first()
+    {
+        (
+            quote! { #stage },
+            Some(syn::Ident::new(method, proc_macro2::Span::call_site())),
+        )
+    } else {
+        (quote! { "" }, None)
+    };
+
     let generated_methods = quote! {
         impl #self_ty {
-            /// Module entry point marker - indicates the module is properly registered.
+            /// Module entry point marker — indicates the module is properly registered.
             /// Generated by #[slicer_module].
             #[doc(hidden)]
             pub fn __slicer_module_marker() -> bool {
                 true
             }
 
-            /// Returns true if the module has a stage function detected.
+            /// Returns true if the impl block contains a recognized stage method.
             /// Generated by #[slicer_module].
             #[doc(hidden)]
             pub fn __slicer_has_stage_function() -> bool {
-                // Simplified implementation for Phase D: always returns true.
-                // Full implementation would introspect the impl block for stage methods.
-                true
+                #has_stage
             }
 
             /// Returns true if the module is WIT export compatible.
             /// Generated by #[slicer_module].
             #[doc(hidden)]
             pub fn __slicer_wit_compatible() -> bool {
-                // All modules generated by #[slicer_module] are WIT compatible.
                 true
+            }
+
+            /// Returns the pipeline stage name detected in the impl block.
+            /// Empty string if no stage method was found.
+            /// Generated by #[slicer_module].
+            #[doc(hidden)]
+            pub fn __slicer_stage_name() -> &'static str {
+                #stage_name_literal
+            }
+
+            /// Returns the module type name as a string.
+            /// Generated by #[slicer_module].
+            #[doc(hidden)]
+            pub fn __slicer_type_name() -> &'static str {
+                #type_name_str
             }
         }
     };

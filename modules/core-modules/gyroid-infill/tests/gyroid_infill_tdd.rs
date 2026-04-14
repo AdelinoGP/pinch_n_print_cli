@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon,
-};
+use slicer_ir::{ConfigValue, ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::SliceRegionView;
@@ -208,8 +206,7 @@ fn wave_pattern_varies_by_layer() {
     // Compare first path's first point y coordinates — they should differ.
     let y1 = paths1[0].points[0].y;
     let y2 = paths2[0].points[0].y;
-    let differs = (y1 - y2).abs() > 0.01
-        || paths1.len() != paths2.len();
+    let differs = (y1 - y2).abs() > 0.01 || paths1.len() != paths2.len();
     assert!(
         differs,
         "different z heights should produce different wave patterns"
@@ -283,7 +280,13 @@ fn asin_nan_protection() {
     let module = GyroidInfill::on_print_start(&config).unwrap();
 
     // Test at z values where sin(z) or cos(z) are at extremes
-    for z in [0.0_f32, std::f32::consts::FRAC_PI_2, std::f32::consts::PI, 100.0, 0.001] {
+    for z in [
+        0.0_f32,
+        std::f32::consts::FRAC_PI_2,
+        std::f32::consts::PI,
+        100.0,
+        0.001,
+    ] {
         let region = make_square_region(10.0, z);
         let mut output = InfillOutputBuilder::new();
 

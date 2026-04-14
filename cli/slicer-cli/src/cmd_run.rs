@@ -96,9 +96,8 @@ pub fn check_model_exists(path: &Path) -> Result<(), RunError> {
 ///
 /// Returns [`RunError::ConfigParseError`] if the file cannot be read or parsed as JSON.
 pub fn parse_config_file(path: &Path) -> Result<serde_json::Value, RunError> {
-    let content = fs::read_to_string(path).map_err(|e| {
-        RunError::ConfigParseError(format!("cannot read {}: {e}", path.display()))
-    })?;
+    let content = fs::read_to_string(path)
+        .map_err(|e| RunError::ConfigParseError(format!("cannot read {}: {e}", path.display())))?;
     serde_json::from_str(&content)
         .map_err(|e| RunError::ConfigParseError(format!("invalid JSON in {}: {e}", path.display())))
 }
@@ -325,7 +324,8 @@ layer-parallel-safe = true
 
         let path = find_wasm_binary(dir.path()).unwrap();
         assert!(
-            path.to_string_lossy().contains("target/slicer/cool-perimeters.wasm"),
+            path.to_string_lossy()
+                .contains("target/slicer/cool-perimeters.wasm"),
             "path should use module name with hyphens preserved: {path:?}"
         );
     }
@@ -363,7 +363,11 @@ layer-parallel-safe = true
     #[test]
     fn parse_config_valid_json() {
         let dir = tempfile::tempdir().unwrap();
-        write_config_file(dir.path(), "config.json", r#"{"density": 0.15, "enabled": true}"#);
+        write_config_file(
+            dir.path(),
+            "config.json",
+            r#"{"density": 0.15, "enabled": true}"#,
+        );
 
         let result = parse_config_file(&dir.path().join("config.json"));
         assert!(result.is_ok());
@@ -410,7 +414,13 @@ layer-parallel-safe = true
         );
         assert_eq!(
             args,
-            vec!["run", "--module", "target/slicer/my-infill.wasm", "--model", "cube.stl"]
+            vec![
+                "run",
+                "--module",
+                "target/slicer/my-infill.wasm",
+                "--model",
+                "cube.stl"
+            ]
         );
     }
 
@@ -509,7 +519,10 @@ layer-parallel-safe = true
     fn error_display_missing_host() {
         let err = RunError::MissingHostBinary;
         let msg = err.to_string();
-        assert!(msg.contains("slicer-host"), "should mention slicer-host: {msg}");
+        assert!(
+            msg.contains("slicer-host"),
+            "should mention slicer-host: {msg}"
+        );
     }
 
     #[test]
@@ -603,7 +616,12 @@ id = "Layer::Bogus"
         write_model_file(dir.path(), "cube.stl");
         // No WASM binary
 
-        let result = execute_in(dir.path(), &dir.path().join("cube.stl").to_string_lossy(), None, None);
+        let result = execute_in(
+            dir.path(),
+            &dir.path().join("cube.stl").to_string_lossy(),
+            None,
+            None,
+        );
         assert!(matches!(result, Err(RunError::MissingWasm(_))));
     }
 

@@ -127,7 +127,10 @@ fn picks_lowest_score() {
         .unwrap();
 
     let seam = output.resolved_seam().expect("should have resolved seam");
-    assert!((seam.point.x - 2.0).abs() < 0.001, "should pick x=2.0 (score 0.2)");
+    assert!(
+        (seam.point.x - 2.0).abs() < 0.001,
+        "should pick x=2.0 (score 0.2)"
+    );
 }
 
 // ============================================================================
@@ -153,7 +156,10 @@ fn concave_preferred() {
         .unwrap();
 
     let seam = output.resolved_seam().expect("should have resolved seam");
-    assert!((seam.point.x - 2.0).abs() < 0.001, "concave should win over aligned at same score");
+    assert!(
+        (seam.point.x - 2.0).abs() < 0.001,
+        "concave should win over aligned at same score"
+    );
 }
 
 // ============================================================================
@@ -204,7 +210,10 @@ fn rear_mode_prefers_back() {
         .unwrap();
 
     let seam = output.resolved_seam().expect("should have resolved seam");
-    assert!((seam.point.y - 5.0).abs() < 0.001, "rear mode should select max-Y");
+    assert!(
+        (seam.point.y - 5.0).abs() < 0.001,
+        "rear mode should select max-Y"
+    );
 }
 
 // ============================================================================
@@ -232,7 +241,10 @@ fn random_mode_produces_seam() {
         .run_wall_postprocess(0, &regions, &mut output, &config)
         .unwrap();
 
-    assert!(output.resolved_seam().is_some(), "random mode should produce a seam");
+    assert!(
+        output.resolved_seam().is_some(),
+        "random mode should produce a seam"
+    );
 }
 
 // ============================================================================
@@ -274,10 +286,7 @@ fn multiple_regions() {
             vec![candidate(1.0, 0.0, 1.0, 0.3, SeamReason::Concave)],
             1.0,
         ),
-        region_with_candidates(
-            vec![candidate(2.0, 0.0, 1.0, 0.4, SeamReason::Sharp)],
-            1.0,
-        ),
+        region_with_candidates(vec![candidate(2.0, 0.0, 1.0, 0.4, SeamReason::Sharp)], 1.0),
     ];
     let mut output = PerimeterOutputBuilder::new();
 
@@ -287,7 +296,10 @@ fn multiple_regions() {
 
     // With multiple regions, the last region's resolved seam wins
     // (or the module processes all and keeps the best overall)
-    assert!(output.resolved_seam().is_some(), "should have resolved seam from regions");
+    assert!(
+        output.resolved_seam().is_some(),
+        "should have resolved seam from regions"
+    );
 }
 
 // ============================================================================

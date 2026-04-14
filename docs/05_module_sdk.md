@@ -139,6 +139,10 @@ pub use slicer_sdk::geometry::*;   // convenience geometry helpers
 pub use slicer_sdk::host;          // host service wrappers (log, raycast, clip_polygons, etc.)
 ```
 
+For native host-side tests, `SliceRegionView` also exposes a convenience
+`boundary_paint()` accessor over the documented WIT `boundary-paint` data so
+perimeter generators can consume contour-parallel annotations ergonomically.
+
 ### Host Service Wrappers
 
 Direct calls to host services are ergonomic:
@@ -677,8 +681,8 @@ fn apply_fuzzy_skin(
     point_dist: f32,
 ) -> ExtrusionPath3D {
     // For each segment: if apply_to_all OR flags[i].fuzzy_skin,
-    // subdivide the segment and add random Z/XY perturbation.
-    // Otherwise copy segment unchanged.
+    // subdivide the segment and add random perpendicular XY perturbation.
+    // Otherwise copy the segment geometry through unchanged.
     // Pure geometry — no host calls needed.
     todo!()
 }

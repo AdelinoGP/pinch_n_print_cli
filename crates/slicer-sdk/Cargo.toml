@@ -7,6 +7,7 @@ authors = ["ModularSlicer Team"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 slicer-ir = { path = "../slicer-ir" }
+slicer-core = { path = "../slicer-core" }
 
 [lints.rust]
 missing_docs = "warn"

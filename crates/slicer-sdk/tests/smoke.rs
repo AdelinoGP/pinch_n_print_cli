@@ -28,26 +28,26 @@ fn coords_round_trip() {
 }
 
 #[test]
-fn host_wrappers_have_placeholder_behavior() {
+fn host_wrappers_have_real_behavior() {
     let object_id = String::from("obj-1");
-    let subject = vec![ExPolygon {
+    let degenerate = vec![ExPolygon {
         contour: Polygon { points: vec![] },
         holes: vec![],
     }];
 
-    host::log_info("hello from test");
-    host::log_warn("warning from test");
-
+    // Mesh queries with no source installed: ray/normal return None
+    // (documented "no surface" signal); object_bounds returns an
+    // explicit error rather than a meaningless zero box.
+    host::test_support::clear_mesh_source();
     assert_eq!(host::raycast_z_down(&object_id, 10.0, 20.0, 5.0), None);
     assert_eq!(host::surface_normal_at(&object_id, 10.0, 20.0, 5.0), None);
+    assert!(host::object_bounds(&object_id).is_err());
 
-    let bounds = host::object_bounds(&object_id);
-    assert_eq!(bounds.min.x, 0.0);
-    assert_eq!(bounds.max.z, 0.0);
+    // Clipping/offsetting degenerate empty input still yields empty
+    // output, but via real Clipper2 — no longer a silent no-op.
+    assert!(host::clip_polygons(&degenerate, &degenerate, host::ClipOperation::Union).is_empty());
+    assert!(host::offset_polygons(&degenerate, 0.2, host::OffsetJoinType::Miter).is_empty());
 
-    assert!(host::clip_polygons(&subject, &subject, host::ClipOperation::Union).is_empty());
-    assert!(host::offset_polygons(&subject, 0.2, host::OffsetJoinType::Miter).is_empty());
-
-    let simplified = host::simplify_polygon(&subject[0].contour, 0.05);
+    let simplified = host::simplify_polygon(&degenerate[0].contour, 0.05);
     assert_eq!(simplified.points.len(), 0);
 }

@@ -3,8 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use slicer_ir::{
-    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer,
-    Transform3d,
+    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
 };
 use truck_meshalgo::prelude::*;
 use truck_stepio::r#in::*;

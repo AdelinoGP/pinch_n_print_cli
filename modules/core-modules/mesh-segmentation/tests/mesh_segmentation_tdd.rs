@@ -205,10 +205,7 @@ fn multiple_paint_layers() {
     let m = &output.modifications()[0];
     assert_eq!(m.updated_facet_values.len(), 2);
     // Layer 0: flag
-    assert_eq!(
-        m.updated_facet_values[0][0].as_ref().unwrap().kind,
-        "flag"
-    );
+    assert_eq!(m.updated_facet_values[0][0].as_ref().unwrap().kind, "flag");
     // Layer 1: tool_index
     assert_eq!(
         m.updated_facet_values[1][0].as_ref().unwrap().kind,
@@ -271,7 +268,10 @@ fn preserves_unstroked_facets() {
         .unwrap();
     let m = &output.modifications()[0];
     // First facet should be updated
-    assert_eq!(m.updated_facet_values[0][0].as_ref().unwrap().flag, Some(true));
+    assert_eq!(
+        m.updated_facet_values[0][0].as_ref().unwrap().flag,
+        Some(true)
+    );
     // Second facet should preserve its original value
     assert_eq!(
         m.updated_facet_values[0][1].as_ref().unwrap().flag,
@@ -331,6 +331,12 @@ fn large_stroke_assigns_multiple() {
     assert_eq!(output.modifications().len(), 1);
     let m = &output.modifications()[0];
     // Both facets should be updated
-    assert!(m.updated_facet_values[0][0].is_some(), "facet 0 should be painted");
-    assert!(m.updated_facet_values[0][1].is_some(), "facet 1 should be painted");
+    assert!(
+        m.updated_facet_values[0][0].is_some(),
+        "facet 0 should be painted"
+    );
+    assert!(
+        m.updated_facet_values[0][1].is_some(),
+        "facet 1 should be painted"
+    );
 }

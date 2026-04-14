@@ -174,8 +174,8 @@ Layer::PerimetersPostProcess
            Phase-alternated non-planar wall modulation.
            Smoothificator multi-pass outer wall expansion.
            FuzzySkin — reads WallLoop.feature_flags.fuzzy_skin per segment
-           and applies Z perturbation only to flagged segments. Unflagged
-           segments on the same loop are printed flat.
+           and applies perpendicular XY perturbation only to flagged segments.
+           Unflagged segments on the same loop retain their original XY path.
 
 Layer::Infill
   Input:  SliceIR (infill areas from PerimeterIR)
@@ -482,6 +482,9 @@ Built-in claim names:
   seam-placer             — resolves seam position
   layer-planner           — contributes to Z-plane sequence
   mesh-analyzer           — contributes to surface classification
+  slice-postprocessor     — post-processes slice polygons / paint annotation
+  gcode-postprocessor     — post-processes structured GCode commands
+  text-postprocessor      — post-processes serialized GCode text
   gcode-emitter           — serializes GCodeIR to text (host-built-in, non-claimable)
 ```
 

@@ -79,7 +79,10 @@ fn unpainted_region_produces_default_flags() {
 
     for wall in walls {
         for flags in &wall.feature_flags {
-            assert_eq!(flags.tool_index, None, "unpainted should have no tool_index");
+            assert_eq!(
+                flags.tool_index, None,
+                "unpainted should have no tool_index"
+            );
             assert!(!flags.fuzzy_skin, "unpainted should have fuzzy_skin=false");
         }
     }
@@ -121,10 +124,7 @@ fn material_paint_sets_tool_index_on_outer_wall() {
     assert!(!walls.is_empty(), "should produce wall loops");
 
     // Find outer walls
-    let outer_walls: Vec<_> = walls
-        .iter()
-        .filter(|w| w.perimeter_index == 0)
-        .collect();
+    let outer_walls: Vec<_> = walls.iter().filter(|w| w.perimeter_index == 0).collect();
     assert!(!outer_walls.is_empty(), "should have outer walls");
 
     for wall in &outer_walls {
@@ -170,10 +170,7 @@ fn fuzzy_skin_paint_sets_flag_on_outer_wall() {
         .unwrap();
 
     let walls = output.wall_loops();
-    let outer_walls: Vec<_> = walls
-        .iter()
-        .filter(|w| w.perimeter_index == 0)
-        .collect();
+    let outer_walls: Vec<_> = walls.iter().filter(|w| w.perimeter_index == 0).collect();
     assert!(!outer_walls.is_empty(), "should have outer walls");
 
     for wall in &outer_walls {
@@ -218,10 +215,7 @@ fn inner_walls_get_no_paint_propagation() {
         .unwrap();
 
     let walls = output.wall_loops();
-    let inner_walls: Vec<_> = walls
-        .iter()
-        .filter(|w| w.perimeter_index > 0)
-        .collect();
+    let inner_walls: Vec<_> = walls.iter().filter(|w| w.perimeter_index > 0).collect();
 
     for wall in &inner_walls {
         for flags in &wall.feature_flags {
@@ -274,16 +268,13 @@ fn adjacent_material_change_sets_material_boundary() {
         .unwrap();
 
     let walls = output.wall_loops();
-    let outer_walls: Vec<_> = walls
-        .iter()
-        .filter(|w| w.perimeter_index == 0)
-        .collect();
+    let outer_walls: Vec<_> = walls.iter().filter(|w| w.perimeter_index == 0).collect();
     assert!(!outer_walls.is_empty(), "should have outer walls");
 
     // At least one outer wall should have MaterialBoundary type
-    let has_material_boundary = outer_walls.iter().any(|w| {
-        matches!(w.boundary_type, WallBoundaryType::MaterialBoundary { .. })
-    });
+    let has_material_boundary = outer_walls
+        .iter()
+        .any(|w| matches!(w.boundary_type, WallBoundaryType::MaterialBoundary { .. }));
     assert!(
         has_material_boundary,
         "adjacent material change should produce MaterialBoundary"
@@ -327,10 +318,7 @@ fn mixed_painted_unpainted_preserves_none_as_default() {
         .unwrap();
 
     let walls = output.wall_loops();
-    let outer_walls: Vec<_> = walls
-        .iter()
-        .filter(|w| w.perimeter_index == 0)
-        .collect();
+    let outer_walls: Vec<_> = walls.iter().filter(|w| w.perimeter_index == 0).collect();
     assert!(!outer_walls.is_empty(), "should have outer walls");
 
     // Check that we have a mix: some with tool_index, some without

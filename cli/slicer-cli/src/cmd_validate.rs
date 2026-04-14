@@ -8,36 +8,55 @@ use std::fmt;
 use std::fs;
 use std::path::Path;
 
-/// The nine valid pipeline stages a module can target.
+/// The fifteen valid pipeline stages a module can target.
 const VALID_STAGES: &[&str] = &[
-    "Layer::Infill",
-    "Layer::Perimeters",
-    "Layer::PerimetersPostProcess",
-    "Layer::InfillPostProcess",
-    "Layer::SlicePostProcess",
+    "PrePass::MeshSegmentation",
     "PrePass::MeshAnalysis",
     "PrePass::LayerPlanning",
+    "PrePass::PaintSegmentation",
+    "Layer::SlicePostProcess",
+    "Layer::Perimeters",
+    "Layer::PerimetersPostProcess",
+    "Layer::Infill",
+    "Layer::InfillPostProcess",
+    "Layer::Support",
+    "Layer::SupportPostProcess",
+    "Layer::PathOptimization",
+    "PostPass::LayerFinalization",
     "PostPass::GCodePostProcess",
     "PostPass::TextPostProcess",
 ];
 
-/// The three WIT world package strings the current SDK supports.
+/// The WIT world package strings the current SDK supports.
+///
+/// Compatibility policy (per docs/03_wit_and_manifest.md):
+///   * All worlds are pinned to `@1.0.0`. Unknown versions are rejected.
 const SUPPORTED_WIT_WORLDS: &[&str] = &[
     "slicer:world-layer@1.0.0",
     "slicer:world-prepass@1.0.0",
+    "slicer:world-finalization@1.0.0",
     "slicer:world-postpass@1.0.0",
 ];
 
 /// Valid config field types from docs/03_wit_and_manifest.md.
 const VALID_CONFIG_TYPES: &[&str] = &[
-    "bool", "int", "float", "string", "enum", "float-list", "string-list",
+    "bool",
+    "int",
+    "float",
+    "string",
+    "enum",
+    "float-list",
+    "string-list",
 ];
 
-/// Recognized claim names.
+/// Recognized claim names per docs/01_system_architecture.md.
 const RECOGNIZED_CLAIMS: &[&str] = &[
-    "infill-generator",
     "perimeter-generator",
+    "infill-generator",
     "support-generator",
+    "seam-placer",
+    "layer-planner",
+    "mesh-analyzer",
     "slice-postprocessor",
     "gcode-postprocessor",
     "text-postprocessor",
@@ -78,17 +97,31 @@ pub enum ValidateError {
 impl fmt::Display for ValidateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ManifestNotFound => write!(f, "no module manifest (.toml) found in the current directory"),
+            Self::ManifestNotFound => write!(
+                f,
+                "no module manifest (.toml) found in the current directory"
+            ),
             Self::TomlParseError(msg) => write!(f, "invalid TOML: {msg}"),
             Self::MissingField(field) => write!(f, "missing required field: {field}"),
             Self::InvalidStage(stage) => {
-                write!(f, "unknown stage '{stage}'. Valid stages: {}", VALID_STAGES.join(", "))
+                write!(
+                    f,
+                    "unknown stage '{stage}'. Valid stages: {}",
+                    VALID_STAGES.join(", ")
+                )
             }
             Self::InvalidConfigType { field, got } => {
-                write!(f, "config field '{field}' has invalid type '{got}'. Valid types: {}", VALID_CONFIG_TYPES.join(", "))
+                write!(
+                    f,
+                    "config field '{field}' has invalid type '{got}'. Valid types: {}",
+                    VALID_CONFIG_TYPES.join(", ")
+                )
             }
             Self::EnumMissingValues(field) => {
-                write!(f, "enum config field '{field}' is missing required 'values' array")
+                write!(
+                    f,
+                    "enum config field '{field}' is missing required 'values' array"
+                )
             }
             Self::InvalidConfigRange { field, reason } => {
                 write!(f, "config field '{field}': {reason}")
@@ -97,13 +130,21 @@ impl fmt::Display for ValidateError {
                 write!(f, "cross-validate rule [{index}]: {reason}")
             }
             Self::InvalidCrossValidateSeverity { index, got } => {
-                write!(f, "cross-validate rule [{index}]: unknown severity '{got}'. Valid: {}", VALID_SEVERITIES.join(", "))
+                write!(
+                    f,
+                    "cross-validate rule [{index}]: unknown severity '{got}'. Valid: {}",
+                    VALID_SEVERITIES.join(", ")
+                )
             }
             Self::UnrecognizedClaim { kind, name } => {
                 write!(f, "unrecognized {kind} claim '{name}'")
             }
             Self::UnsupportedWitWorld(world) => {
-                write!(f, "unsupported wit-world '{world}'. Supported: {}", SUPPORTED_WIT_WORLDS.join(", "))
+                write!(
+                    f,
+                    "unsupported wit-world '{world}'. Supported: {}",
+                    SUPPORTED_WIT_WORLDS.join(", ")
+                )
             }
             Self::Io(e) => write!(f, "I/O error: {e}"),
         }
@@ -190,10 +231,7 @@ pub fn validate_config_schema(manifest: &toml::Value) -> Result<(), ValidateErro
         None => return Ok(()),
     };
     for (field_name, field_def) in table {
-        let field_type = field_def
-            .get("type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let field_type = field_def.get("type").and_then(|v| v.as_str()).unwrap_or("");
         if !VALID_CONFIG_TYPES.contains(&field_type) {
             return Err(ValidateError::InvalidConfigType {
                 field: field_name.clone(),
@@ -206,8 +244,12 @@ pub fn validate_config_schema(manifest: &toml::Value) -> Result<(), ValidateErro
         }
         // Check min/max range validity
         if let (Some(min), Some(max)) = (field_def.get("min"), field_def.get("max")) {
-            let min_f = min.as_float().or_else(|| min.as_integer().map(|i| i as f64));
-            let max_f = max.as_float().or_else(|| max.as_integer().map(|i| i as f64));
+            let min_f = min
+                .as_float()
+                .or_else(|| min.as_integer().map(|i| i as f64));
+            let max_f = max
+                .as_float()
+                .or_else(|| max.as_integer().map(|i| i as f64));
             if let (Some(min_val), Some(max_val)) = (min_f, max_f) {
                 if min_val > max_val {
                     return Err(ValidateError::InvalidConfigRange {
@@ -223,10 +265,7 @@ pub fn validate_config_schema(manifest: &toml::Value) -> Result<(), ValidateErro
 
 /// Validate `[[config.cross-validate]]` rules.
 pub fn validate_cross_validate_rules(manifest: &toml::Value) -> Result<(), ValidateError> {
-    let rules = match manifest
-        .get("config")
-        .and_then(|c| c.get("cross-validate"))
-    {
+    let rules = match manifest.get("config").and_then(|c| c.get("cross-validate")) {
         Some(r) => r,
         None => return Ok(()),
     };
@@ -458,6 +497,43 @@ wit-world = "{world}"
     }
 
     #[test]
+    fn world_layer_v1_0_0_accepted_for_backcompat() {
+        let manifest: toml::Value = toml::from_str(
+            r#"[module]
+wit-world = "slicer:world-layer@1.0.0"
+"#,
+        )
+        .unwrap();
+        assert!(validate_wit_world(&manifest).is_ok());
+    }
+
+    #[test]
+    fn world_layer_v1_1_0_accepted_for_zhop() {
+        let manifest: toml::Value = toml::from_str(
+            r#"[module]
+wit-world = "slicer:world-layer@1.0.0"
+"#,
+        )
+        .unwrap();
+        assert!(validate_wit_world(&manifest).is_ok());
+    }
+
+    #[test]
+    fn world_layer_unknown_minor_rejected() {
+        // Compatibility is explicit: only the documented 1.0.0 version is
+        // accepted. Any other 1.x minor is rejected even though semver-major
+        // matches — there is no implicit "accept any 1.x" policy.
+        let manifest: toml::Value = toml::from_str(
+            r#"[module]
+wit-world = "slicer:world-layer@1.2.0"
+"#,
+        )
+        .unwrap();
+        let result = validate_wit_world(&manifest);
+        assert!(matches!(result, Err(ValidateError::UnsupportedWitWorld(_))));
+    }
+
+    #[test]
     fn unsupported_wit_world_rejected() {
         let manifest: toml::Value = toml::from_str(
             r#"[module]
@@ -559,7 +635,9 @@ max = 0.1
         )
         .unwrap();
         let result = validate_config_schema(&manifest);
-        assert!(matches!(result, Err(ValidateError::InvalidConfigRange { ref field, .. }) if field == "density"));
+        assert!(
+            matches!(result, Err(ValidateError::InvalidConfigRange { ref field, .. }) if field == "density")
+        );
     }
 
     #[test]
@@ -599,7 +677,10 @@ severity = "warning"
         )
         .unwrap();
         let result = validate_cross_validate_rules(&manifest);
-        assert!(matches!(result, Err(ValidateError::InvalidCrossValidateRule { index: 0, .. })));
+        assert!(matches!(
+            result,
+            Err(ValidateError::InvalidCrossValidateRule { index: 0, .. })
+        ));
     }
 
     #[test]
@@ -613,7 +694,9 @@ severity = "fatal"
         )
         .unwrap();
         let result = validate_cross_validate_rules(&manifest);
-        assert!(matches!(result, Err(ValidateError::InvalidCrossValidateSeverity { index: 0, ref got }) if got == "fatal"));
+        assert!(
+            matches!(result, Err(ValidateError::InvalidCrossValidateSeverity { index: 0, ref got }) if got == "fatal")
+        );
     }
 
     #[test]
@@ -646,7 +729,9 @@ requires = []
         )
         .unwrap();
         let result = validate_claims(&manifest);
-        assert!(matches!(result, Err(ValidateError::UnrecognizedClaim { ref kind, ref name }) if kind == "holds" && name == "magic-unicorn"));
+        assert!(
+            matches!(result, Err(ValidateError::UnrecognizedClaim { ref kind, ref name }) if kind == "holds" && name == "magic-unicorn")
+        );
     }
 
     #[test]
@@ -659,7 +744,9 @@ requires = ["nonexistent-claim"]
         )
         .unwrap();
         let result = validate_claims(&manifest);
-        assert!(matches!(result, Err(ValidateError::UnrecognizedClaim { ref kind, ref name }) if kind == "requires" && name == "nonexistent-claim"));
+        assert!(
+            matches!(result, Err(ValidateError::UnrecognizedClaim { ref kind, ref name }) if kind == "requires" && name == "nonexistent-claim")
+        );
     }
 
     #[test]
@@ -771,11 +858,7 @@ max-ir-schema = "2.0.0"
     #[test]
     fn execute_in_valid_manifest() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(
-            dir.path().join("Cargo.toml"),
-            "[package]\nname = \"test\"",
-        )
-        .unwrap();
+        fs::write(dir.path().join("Cargo.toml"), "[package]\nname = \"test\"").unwrap();
         fs::write(
             dir.path().join("my-module.toml"),
             r#"[module]

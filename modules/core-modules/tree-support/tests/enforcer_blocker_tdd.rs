@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue,
-    Point2, Polygon, SemanticRegion, SemVer,
+    Point2, Polygon, SemVer, SemanticRegion,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -173,8 +173,7 @@ fn fully_enforced_region_generates_support_at_zero_overhang() {
     let module = TreeSupport::on_print_start(&config).unwrap();
     let region = square_region(0.3);
 
-    let paint_ir =
-        paint_ir_with_semantic(PaintSemantic::SupportEnforcer, PaintValue::Flag(true));
+    let paint_ir = paint_ir_with_semantic(PaintSemantic::SupportEnforcer, PaintValue::Flag(true));
     let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
 
     let mut output = SupportOutputBuilder::new();
@@ -236,5 +235,92 @@ fn unpainted_region_keeps_existing_behaviour() {
     assert!(
         !output.support_paths().is_empty(),
         "unpainted region should still generate support (existing behaviour)"
+    );
+}
+
+// ── SurfaceClassificationIR-driven default eligibility ────────────────────
+// docs/02_ir_schemas.md §IR 2 line 231; docs/06 §387.
+
+#[test]
+fn default_ineligible_region_generates_zero_support() {
+    let config = enabled_config();
+    let module = TreeSupport::on_print_start(&config).unwrap();
+    let mut region = square_region(0.3);
+    region.set_needs_support(false);
+
+    let paint = PaintRegionLayerView::new(0);
+
+    let mut output = SupportOutputBuilder::new();
+    module
+        .run_support(0, &[region], &paint, &mut output, &config)
+        .unwrap();
+
+    assert_eq!(
+        output.support_paths().len(),
+        0,
+        "needs_support=false with no paint must yield zero support paths",
+    );
+}
+
+#[test]
+fn default_eligible_region_generates_support() {
+    let config = enabled_config();
+    let module = TreeSupport::on_print_start(&config).unwrap();
+    let mut region = square_region(0.3);
+    region.set_needs_support(true);
+
+    let paint = PaintRegionLayerView::new(0);
+
+    let mut output = SupportOutputBuilder::new();
+    module
+        .run_support(0, &[region], &paint, &mut output, &config)
+        .unwrap();
+
+    assert!(
+        !output.support_paths().is_empty(),
+        "needs_support=true with no paint must yield support paths",
+    );
+}
+
+#[test]
+fn enforcer_overrides_needs_support_false() {
+    let config = enabled_config();
+    let module = TreeSupport::on_print_start(&config).unwrap();
+    let mut region = square_region(0.3);
+    region.set_needs_support(false);
+
+    let paint_ir = paint_ir_with_semantic(PaintSemantic::SupportEnforcer, PaintValue::Flag(true));
+    let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
+
+    let mut output = SupportOutputBuilder::new();
+    module
+        .run_support(0, &[region], &paint, &mut output, &config)
+        .unwrap();
+
+    assert!(
+        !output.support_paths().is_empty(),
+        "enforcer must override needs_support=false",
+    );
+}
+
+#[test]
+fn blocker_overrides_needs_support_true() {
+    let config = enabled_config();
+    let module = TreeSupport::on_print_start(&config).unwrap();
+    let mut region = square_region(0.3);
+    region.set_needs_support(true);
+
+    let paint_ir = paint_ir_with_semantic(PaintSemantic::SupportBlocker, PaintValue::Flag(true));
+    let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
+
+    let mut output = SupportOutputBuilder::new();
+    module
+        .run_support(0, &[region], &paint, &mut output, &config)
+        .unwrap();
+
+    assert_eq!(
+        output.support_paths().len(),
+        0,
+        "blocker must win regardless of needs_support",
     );
 }

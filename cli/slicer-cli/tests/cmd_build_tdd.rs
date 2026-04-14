@@ -125,10 +125,7 @@ fn detect_cdylib_no_lib_section() {
 fn wasm_output_path_debug() {
     let p = cmd_build::core_wasm_output_path("my-infill", false);
     assert!(p.ends_with("debug/my_infill.wasm"), "got: {}", p.display());
-    assert!(p
-        .to_str()
-        .unwrap()
-        .contains("wasm32-unknown-unknown/debug"));
+    assert!(p.to_str().unwrap().contains("wasm32-unknown-unknown/debug"));
 }
 
 #[test]
@@ -148,10 +145,7 @@ fn wasm_output_path_release() {
 #[test]
 fn final_output_path() {
     let p = cmd_build::final_output_path("my-infill");
-    assert_eq!(
-        p,
-        std::path::PathBuf::from("target/slicer/my-infill.wasm")
-    );
+    assert_eq!(p, std::path::PathBuf::from("target/slicer/my-infill.wasm"));
 }
 
 // --- Cargo build command assembly ---
@@ -159,10 +153,7 @@ fn final_output_path() {
 #[test]
 fn cargo_build_args_debug() {
     let args = cmd_build::cargo_build_args(false);
-    assert_eq!(
-        args,
-        vec!["build", "--target", "wasm32-unknown-unknown"]
-    );
+    assert_eq!(args, vec!["build", "--target", "wasm32-unknown-unknown"]);
 }
 
 #[test]

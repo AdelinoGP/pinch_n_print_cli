@@ -307,6 +307,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView {
             fields: HashMap::new(),
         }),
+        wasm_component: None,
     };
 
     CompiledModule {
@@ -319,6 +320,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
             paths: binding.module.ir_writes.clone(),
         },
         config_view: Arc::clone(&binding.config_view),
+        wasm_component: None,
     }
 }
 
@@ -342,6 +344,7 @@ fn loaded_module(id: &str, stage: &str) -> slicer_host::LoadedModule {
         overridable_per_layer: Vec::new(),
         layer_parallel_safe: false,
         wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
+        placeholder_wasm: false,
     }
 }
 
@@ -388,6 +391,7 @@ fn layer_collection_fixture(index: u32, z: f32) -> LayerCollectionIR {
         ordered_entities: Vec::new(),
         tool_changes: Vec::new(),
         z_hops: Vec::new(),
+        annotations: Vec::new(),
     }
 }
 

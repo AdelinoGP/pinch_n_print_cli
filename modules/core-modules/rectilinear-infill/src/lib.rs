@@ -78,7 +78,11 @@ impl LayerModule for RectilinearInfill {
         let line_spacing = slicer_ir::mm_to_units(line_spacing_mm);
 
         // Compute angle: base + 90 degree alternation per layer
-        let layer_rotation = if layer_index.is_multiple_of(2) { 0.0_f64 } else { 90.0_f64 };
+        let layer_rotation = if layer_index.is_multiple_of(2) {
+            0.0_f64
+        } else {
+            90.0_f64
+        };
         let angle_deg = self.base_angle as f64 + layer_rotation;
         let angle_rad = angle_deg.to_radians();
 
@@ -96,14 +100,8 @@ impl LayerModule for RectilinearInfill {
             let z = region.z();
 
             for expoly in infill_areas {
-                let paths = self.fill_expolygon(
-                    expoly,
-                    line_spacing,
-                    cos_a,
-                    sin_a,
-                    z,
-                    speed_factor,
-                );
+                let paths =
+                    self.fill_expolygon(expoly, line_spacing, cos_a, sin_a, z, speed_factor);
                 for path in paths {
                     let _ = output.push_sparse_path(path);
                 }
@@ -162,11 +160,7 @@ impl RectilinearInfill {
             let mut x_intersections: Vec<i64> = Vec::new();
 
             for &(rx1, ry1, rx2, ry2) in &rotated_edges {
-                let (edge_min_y, edge_max_y) = if ry1 < ry2 {
-                    (ry1, ry2)
-                } else {
-                    (ry2, ry1)
-                };
+                let (edge_min_y, edge_max_y) = if ry1 < ry2 { (ry1, ry2) } else { (ry2, ry1) };
 
                 // Strictly between
                 if scan_y > edge_min_y && scan_y < edge_max_y {

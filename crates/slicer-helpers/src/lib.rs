@@ -14,9 +14,7 @@ pub mod repair;
 
 // Re-export all public types for convenient access.
 pub use decimate::{DecimateConfig, DecimateError, DecimateResult};
-pub use import::step::{
-    NamedMesh, StepImportError, StepImportResult, StepLengthUnit, StepWarning,
-};
+pub use import::step::{NamedMesh, StepImportError, StepImportResult, StepLengthUnit, StepWarning};
 pub use repair::{RepairError, RepairResult, RepairStats, RepairWarning, MAX_REPAIR_CAP_VERTICES};
 
 // Re-export public functions.
@@ -32,7 +30,10 @@ mod tests {
     fn smoke_all_types_accessible() {
         // Verify RepairWarning variants can be constructed.
         let w = RepairWarning::LargeCapLoop { vertex_count: 300 };
-        assert!(matches!(w, RepairWarning::LargeCapLoop { vertex_count: 300 }));
+        assert!(matches!(
+            w,
+            RepairWarning::LargeCapLoop { vertex_count: 300 }
+        ));
 
         let w2 = RepairWarning::MultipleComponents { count: 3 };
         assert!(matches!(w2, RepairWarning::MultipleComponents { count: 3 }));
@@ -97,8 +98,16 @@ mod tests {
             },
             objects: vec![],
             build_volume: BoundingBox3 {
-                min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                max: Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                min: Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                max: Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
             },
         };
 
@@ -108,10 +117,7 @@ mod tests {
         };
         assert_eq!(named.name.as_deref(), Some("test_solid"));
 
-        let unnamed = NamedMesh {
-            name: None,
-            mesh,
-        };
+        let unnamed = NamedMesh { name: None, mesh };
         assert!(unnamed.name.is_none());
     }
 

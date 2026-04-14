@@ -17,25 +17,19 @@ fn default_builder_produces_valid_view() {
 
 #[test]
 fn builder_sets_object_id() {
-    let view = SliceRegionViewBuilder::new()
-        .object_id("test-obj")
-        .build();
+    let view = SliceRegionViewBuilder::new().object_id("test-obj").build();
     assert_eq!(view.object_id(), "test-obj");
 }
 
 #[test]
 fn builder_sets_region_id() {
-    let view = SliceRegionViewBuilder::new()
-        .region_id(42)
-        .build();
+    let view = SliceRegionViewBuilder::new().region_id(42).build();
     assert_eq!(*view.region_id(), 42);
 }
 
 #[test]
 fn builder_sets_z() {
-    let view = SliceRegionViewBuilder::new()
-        .z(1.2)
-        .build();
+    let view = SliceRegionViewBuilder::new().z(1.2).build();
     assert!((view.z() - 1.2).abs() < f32::EPSILON);
 }
 
@@ -68,9 +62,7 @@ fn builder_add_infill_area_adds_independently() {
 
 #[test]
 fn builder_sets_has_nonplanar() {
-    let view = SliceRegionViewBuilder::new()
-        .has_nonplanar(true)
-        .build();
+    let view = SliceRegionViewBuilder::new().has_nonplanar(true).build();
     assert!(view.has_nonplanar());
 }
 

@@ -128,7 +128,11 @@ impl PerimeterOutputBuilder {
     }
 
     /// Set the resolved seam position.
-    pub fn set_resolved_seam(&mut self, point: Point3WithWidth, wall_index: u32) -> Result<(), String> {
+    pub fn set_resolved_seam(
+        &mut self,
+        point: Point3WithWidth,
+        wall_index: u32,
+    ) -> Result<(), String> {
         self.resolved_seam = Some(SeamPosition { point, wall_index });
         Ok(())
     }
@@ -272,11 +276,7 @@ impl SlicePostprocessBuilder {
     }
 
     /// Set polygons for a region.
-    pub fn set_polygons(
-        &mut self,
-        region: RegionKey,
-        polys: Vec<ExPolygon>,
-    ) -> Result<(), String> {
+    pub fn set_polygons(&mut self, region: RegionKey, polys: Vec<ExPolygon>) -> Result<(), String> {
         self.polygon_updates.push((region, polys));
         Ok(())
     }
@@ -311,9 +311,7 @@ impl SlicePostprocessBuilder {
 
     /// Get all boundary paint updates (for testing).
     #[doc(hidden)]
-    pub fn boundary_paint_updates(
-        &self,
-    ) -> &[(RegionKey, BoundaryPaintMap)] {
+    pub fn boundary_paint_updates(&self) -> &[(RegionKey, BoundaryPaintMap)] {
         &self.boundary_paint_updates
     }
 }

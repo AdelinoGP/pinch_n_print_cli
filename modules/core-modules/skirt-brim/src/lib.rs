@@ -8,8 +8,8 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR,
-    Point3WithWidth, PrintEntity, RegionKey,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
+    PrintEntity, RegionKey,
 };
 use slicer_sdk::error::ModuleError;
 
@@ -99,8 +99,7 @@ impl SkirtBrim {
         if self.brim_width > 0.0 {
             let z = layers[0].z;
             let global_layer_index = layers[0].global_layer_index;
-            let brim_entities =
-                self.generate_brim_entities(&bbox, z, global_layer_index);
+            let brim_entities = self.generate_brim_entities(&bbox, z, global_layer_index);
             // Prepend brim entities (before skirt which is already prepended)
             let mut new_entities = brim_entities;
             new_entities.append(&mut layers[0].ordered_entities);
@@ -111,11 +110,7 @@ impl SkirtBrim {
     }
 
     /// Compute bounding box of all entities across the first `max_layer` layers.
-    fn compute_bbox(
-        &self,
-        layers: &[LayerCollectionIR],
-        max_layer: usize,
-    ) -> Option<BBox2D> {
+    fn compute_bbox(&self, layers: &[LayerCollectionIR], max_layer: usize) -> Option<BBox2D> {
         let mut bbox: Option<BBox2D> = None;
 
         for layer in layers.iter().take(max_layer) {

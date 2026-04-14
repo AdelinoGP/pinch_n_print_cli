@@ -356,6 +356,7 @@ impl LoadedModuleBuilder {
             overridable_per_layer: Vec::new(),
             layer_parallel_safe: true,
             wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
+        placeholder_wasm: false,
         }
     }
 }

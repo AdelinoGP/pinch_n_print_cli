@@ -14,11 +14,12 @@ use std::collections::HashMap;
 use slicer_core::polygon_ops::{offset, OffsetJoinType};
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType, PaintSemantic,
-    PaintValue, Point3, Point3WithWidth, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
+    PaintValue, Point3, Point3WithWidth, WallBoundaryType, WallFeatureFlags, WallLoop,
+    WidthProfile,
 };
+use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
-use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::views::SliceRegionView;
 
 /// Default base speed used for normalizing speed factors (mm/s).
@@ -143,11 +144,7 @@ impl LayerModule for ClassicPerimeters {
 
                     // Propagate boundary_paint into feature flags for outer walls only
                     let (feature_flags, boundary_type) = if is_outer {
-                        build_outer_wall_flags(
-                            num_points,
-                            poly_idx,
-                            region.boundary_paint(),
-                        )
+                        build_outer_wall_flags(num_points, poly_idx, region.boundary_paint())
                     } else {
                         (
                             vec![default_feature_flags(); num_points],
@@ -299,11 +296,7 @@ fn extract_tool_index(val: &Option<PaintValue>) -> Option<u32> {
 /// Convert an ExPolygon contour to a Vec<Point3WithWidth> at the given Z and width.
 ///
 /// Converts from scaled i64 coordinates to f32 mm.
-fn expolygon_to_path3d(
-    contour: &slicer_ir::Polygon,
-    z: f32,
-    width: f32,
-) -> Vec<Point3WithWidth> {
+fn expolygon_to_path3d(contour: &slicer_ir::Polygon, z: f32, width: f32) -> Vec<Point3WithWidth> {
     contour
         .points
         .iter()

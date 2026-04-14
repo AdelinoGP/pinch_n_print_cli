@@ -168,8 +168,8 @@ fn load_stl(reader: &mut (impl Read + Seek)) -> Result<IndexedTriangleSet, Model
 
 /// Load OBJ and return IndexedTriangleSet.
 fn load_obj(path: &Path) -> Result<IndexedTriangleSet, ModelLoadError> {
-    let (models, _materials) =
-        tobj::load_obj(path, &tobj::GPU_LOAD_OPTIONS).map_err(|e| ModelLoadError::ObjParse(e.to_string()))?;
+    let (models, _materials) = tobj::load_obj(path, &tobj::GPU_LOAD_OPTIONS)
+        .map_err(|e| ModelLoadError::ObjParse(e.to_string()))?;
 
     let mut vertices = Vec::new();
     let mut indices = Vec::new();

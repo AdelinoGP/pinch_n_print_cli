@@ -1,0 +1,38 @@
+[module]
+id           = "com.core.classic-perimeters"
+version      = "0.1.0"
+display-name = "Classic Perimeters"
+description  = "Core classic perimeters module"
+author       = "modular-slicer"
+license      = "MIT"
+wit-world    = "slicer:world-layer@1.0.0"
+
+[stage]
+id = "Layer::Perimeters"
+
+[ir-access]
+reads  = []
+writes = []
+
+[claims]
+holds    = ["perimeter-generator"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "2.0.0"
+
+[config.schema]
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 10
+layer-parallel-safe    = true

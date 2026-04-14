@@ -218,9 +218,17 @@ fn multiple_semantics() {
     module
         .run_paint_segmentation(&objects, &mut output, &config)
         .unwrap();
-    assert_eq!(output.regions().len(), 2, "should produce 2 regions for 2 semantics");
+    assert_eq!(
+        output.regions().len(),
+        2,
+        "should produce 2 regions for 2 semantics"
+    );
 
-    let semantics: Vec<&str> = output.regions().iter().map(|r| r.semantic.as_str()).collect();
+    let semantics: Vec<&str> = output
+        .regions()
+        .iter()
+        .map(|r| r.semantic.as_str())
+        .collect();
     assert!(semantics.contains(&"material"));
     assert!(semantics.contains(&"fuzzy_skin"));
 }
@@ -290,7 +298,10 @@ fn groups_same_value() {
     assert_eq!(output.regions().len(), 2);
     assert_eq!(output.regions()[0].semantic, output.regions()[1].semantic);
     assert_eq!(output.regions()[0].value, output.regions()[1].value);
-    assert_eq!(output.regions()[0].paint_order, output.regions()[1].paint_order);
+    assert_eq!(
+        output.regions()[0].paint_order,
+        output.regions()[1].paint_order
+    );
     assert_eq!(output.regions()[0].object_id, output.regions()[1].object_id);
 }
 
@@ -384,5 +395,8 @@ fn facet_values_length_mismatch() {
     )];
     let mut output = PaintSegmentationOutput::new();
     let result = module.run_paint_segmentation(&objects, &mut output, &config);
-    assert!(result.is_err(), "should return error on facet_values length mismatch");
+    assert!(
+        result.is_err(),
+        "should return error on facet_values length mismatch"
+    );
 }

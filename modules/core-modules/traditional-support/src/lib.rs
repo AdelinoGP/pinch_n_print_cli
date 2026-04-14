@@ -9,8 +9,8 @@
 
 use slicer_core::paint_region::{point_in_paint_region, BoundaryInclusion};
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, PaintSemantic,
-    Point2, Point3WithWidth,
+    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, PaintRegionIR,
+    PaintSemantic, Point2, Point3WithWidth,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -115,27 +115,20 @@ impl LayerModule for TraditionalSupport {
             let z = region.z();
 
             for expoly in polygons {
-                // Compute centroid of the ExPolygon contour for paint queries.
-                let centroid = expolygon_centroid(expoly);
-
-                // Priority: SupportBlocker > SupportEnforcer > default.
-                // Check blocker first — if blocked, skip entirely.
-                let is_blocked = point_in_paint_region(
-                    paint_ir,
-                    layer_index,
-                    &PaintSemantic::SupportBlocker,
-                    centroid,
-                    BoundaryInclusion::Include,
-                )
-                .ok()
-                .flatten()
-                .is_some();
-
-                if is_blocked {
-                    continue;
+                // Eligibility precedence (docs/02 §412, docs/06 §387):
+                //   blocker → skip (always wins)
+                //   enforcer → generate (overrides needs_support)
+                //   default → consult SurfaceClassificationIR.needs_support
+                match support_paint_policy(paint_ir, layer_index, expoly) {
+                    SupportPaintPolicy::Blocked => continue,
+                    SupportPaintPolicy::Enforced => {}
+                    SupportPaintPolicy::DefaultEligible => {
+                        if !region.needs_support() {
+                            continue;
+                        }
+                    }
                 }
 
-                // Not blocked — generate fill (enforced or default both produce fill).
                 let paths =
                     self.fill_expolygon(expoly, line_spacing, cos_a, sin_a, z, speed_factor);
                 for path in paths {
@@ -145,6 +138,53 @@ impl LayerModule for TraditionalSupport {
         }
 
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SupportPaintPolicy {
+    Blocked,
+    Enforced,
+    DefaultEligible,
+}
+
+fn support_paint_policy(
+    paint_ir: &PaintRegionIR,
+    layer_index: u32,
+    expoly: &ExPolygon,
+) -> SupportPaintPolicy {
+    let centroid = expolygon_centroid(expoly);
+
+    let is_blocked = point_in_paint_region(
+        paint_ir,
+        layer_index,
+        &PaintSemantic::SupportBlocker,
+        centroid,
+        BoundaryInclusion::Include,
+    )
+    .ok()
+    .flatten()
+    .is_some();
+
+    if is_blocked {
+        return SupportPaintPolicy::Blocked;
+    }
+
+    let is_enforced = point_in_paint_region(
+        paint_ir,
+        layer_index,
+        &PaintSemantic::SupportEnforcer,
+        centroid,
+        BoundaryInclusion::Include,
+    )
+    .ok()
+    .flatten()
+    .is_some();
+
+    if is_enforced {
+        SupportPaintPolicy::Enforced
+    } else {
+        SupportPaintPolicy::DefaultEligible
     }
 }
 
@@ -196,11 +236,7 @@ impl TraditionalSupport {
             let mut x_intersections: Vec<i64> = Vec::new();
 
             for &(rx1, ry1, rx2, ry2) in &rotated_edges {
-                let (edge_min_y, edge_max_y) = if ry1 < ry2 {
-                    (ry1, ry2)
-                } else {
-                    (ry2, ry1)
-                };
+                let (edge_min_y, edge_max_y) = if ry1 < ry2 { (ry1, ry2) } else { (ry2, ry1) };
 
                 // Strictly between
                 if scan_y > edge_min_y && scan_y < edge_max_y {

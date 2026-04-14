@@ -16,8 +16,7 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2,
-    Point3WithWidth,
+    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -529,10 +528,7 @@ fn point_in_polygon(x: f64, y: f64, points: &[Point2]) -> bool {
 /// Clip a polyline (series of mm points) to an ExPolygon.
 ///
 /// Returns a list of segments (sub-polylines) that are inside the polygon.
-fn clip_polyline_to_expolygon(
-    points: &[(f64, f64)],
-    expoly: &ExPolygon,
-) -> Vec<Vec<(f64, f64)>> {
+fn clip_polyline_to_expolygon(points: &[(f64, f64)], expoly: &ExPolygon) -> Vec<Vec<(f64, f64)>> {
     if points.len() < 2 {
         return Vec::new();
     }

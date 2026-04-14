@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR,
-    Point3WithWidth, PrintEntity, RegionKey, SemVer, ToolChange,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
+    PrintEntity, RegionKey, SemVer, ToolChange,
 };
 use wipe_tower::WipeTower;
 
@@ -45,6 +45,7 @@ fn make_layer(index: u32, z: f32, tool_changes: Vec<ToolChange>) -> LayerCollect
         ordered_entities: vec![dummy_entity(z, index)],
         tool_changes,
         z_hops: vec![],
+        annotations: vec![],
     }
 }
 
@@ -56,10 +57,7 @@ fn empty_config() -> ConfigView {
 
 fn enabled_config() -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert(
-        "wipe_tower_enabled".to_string(),
-        ConfigValue::Bool(true),
-    );
+    fields.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
     ConfigView { fields }
 }
 
@@ -68,7 +66,10 @@ fn custom_config(x: f32, y: f32, width: f32, purge_vol: f32, line_w: f32) -> Con
     fields.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
     fields.insert("wipe_tower_x".to_string(), ConfigValue::Float(x as f64));
     fields.insert("wipe_tower_y".to_string(), ConfigValue::Float(y as f64));
-    fields.insert("wipe_tower_width".to_string(), ConfigValue::Float(width as f64));
+    fields.insert(
+        "wipe_tower_width".to_string(),
+        ConfigValue::Float(width as f64),
+    );
     fields.insert(
         "wipe_tower_purge_volume".to_string(),
         ConfigValue::Float(purge_vol as f64),
@@ -167,11 +168,7 @@ fn tower_at_configured_position() {
                 "x={} out of tower range [100, 160]",
                 pt.x
             );
-            assert!(
-                pt.y >= 200.0 - 0.01,
-                "y={} below tower_y=200",
-                pt.y
-            );
+            assert!(pt.y >= 200.0 - 0.01, "y={} below tower_y=200", pt.y);
         }
     }
 }

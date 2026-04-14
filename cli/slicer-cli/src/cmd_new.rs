@@ -7,15 +7,21 @@ use std::fmt;
 use std::fs;
 use std::path::Path;
 
-/// The nine valid pipeline stages a module can target.
+/// The fifteen valid pipeline stages a module can target.
 const VALID_STAGES: &[&str] = &[
-    "Layer::Infill",
-    "Layer::Perimeters",
-    "Layer::PerimetersPostProcess",
-    "Layer::InfillPostProcess",
-    "Layer::SlicePostProcess",
+    "PrePass::MeshSegmentation",
     "PrePass::MeshAnalysis",
     "PrePass::LayerPlanning",
+    "PrePass::PaintSegmentation",
+    "Layer::SlicePostProcess",
+    "Layer::Perimeters",
+    "Layer::PerimetersPostProcess",
+    "Layer::Infill",
+    "Layer::InfillPostProcess",
+    "Layer::Support",
+    "Layer::SupportPostProcess",
+    "Layer::PathOptimization",
+    "PostPass::LayerFinalization",
     "PostPass::GCodePostProcess",
     "PostPass::TextPostProcess",
 ];
@@ -96,7 +102,7 @@ pub fn is_valid_module_name(name: &str) -> bool {
     true
 }
 
-/// Returns true if `stage` is one of the nine valid pipeline stages.
+/// Returns true if `stage` is one of the fifteen valid pipeline stages.
 pub fn is_valid_stage(stage: &str) -> bool {
     VALID_STAGES.contains(&stage)
 }
@@ -182,6 +188,7 @@ slicer-test = {{ path = "../../crates/slicer-test" }}
 /// Generate the module manifest TOML.
 fn generate_manifest(name: &str, stage: &str) -> String {
     let wit_world = wit_world_for_stage(stage);
+    let parallel_safe = stage != "PostPass::LayerFinalization";
     format!(
         r#"[module]
 id           = "com.example.{name}"
@@ -214,7 +221,7 @@ max-ir-schema     = "2.0.0"
 
 [hints]
 estimated-ms-per-layer = 10
-layer-parallel-safe    = true
+layer-parallel-safe    = {parallel_safe}
 "#,
         display = display_name_from_kebab(name),
     )
@@ -223,11 +230,12 @@ layer-parallel-safe    = true
 /// Map a stage ID to the WIT world package string.
 fn wit_world_for_stage(stage: &str) -> &'static str {
     match stage {
-        "PrePass::MeshAnalysis" | "PrePass::LayerPlanning" => "slicer:world-prepass@1.0.0",
-        "PostPass::GCodePostProcess" | "PostPass::TextPostProcess" => {
-            "slicer:world-postpass@1.0.0"
-        }
-        // All Layer::* stages use the layer world.
+        "PrePass::MeshSegmentation"
+        | "PrePass::MeshAnalysis"
+        | "PrePass::LayerPlanning"
+        | "PrePass::PaintSegmentation" => "slicer:world-prepass@1.0.0",
+        "PostPass::LayerFinalization" => "slicer:world-finalization@1.0.0",
+        "PostPass::GCodePostProcess" | "PostPass::TextPostProcess" => "slicer:world-postpass@1.0.0",
         _ => "slicer:world-layer@1.0.0",
     }
 }
@@ -249,21 +257,35 @@ fn display_name_from_kebab(name: &str) -> String {
         .join(" ")
 }
 
+/// Default body expression for a stage method stub.
+fn default_body_for_stage(stage: &str) -> &'static str {
+    match stage {
+        "PostPass::TextPostProcess" => "Ok(gcode_text.to_string())",
+        _ => "Ok(())",
+    }
+}
+
 /// Generate the lib.rs stub for the appropriate stage.
 fn generate_lib_rs(name: &str, stage: &str) -> String {
     let underscore_name = name.replace('-', "_");
-    let (_trait_name, fn_sig, fn_body) = trait_info_for_stage(stage);
+    let struct_name = struct_name_from_kebab(&underscore_name);
+    let (trait_name, fn_name, fn_sig) = trait_info_for_stage(stage);
+    let fn_body = default_body_for_stage(stage);
 
     format!(
         r#"//! {display} — a ModularSlicer module.
 
+use slicer_sdk::prelude::*;
+
 /// The main module struct.
 pub struct {struct_name};
 
-// TODO: Add #[slicer_module] attribute once macros are functional.
-// For now, implement the trait manually.
+#[slicer_module]
+impl {trait_name} for {struct_name} {{
+    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {{
+        Ok(Self)
+    }}
 
-impl {struct_name} {{
     {fn_sig} {{
         {fn_body}
     }}
@@ -277,10 +299,21 @@ mod tests {{
     fn module_struct_exists() {{
         let _ = {struct_name};
     }}
+
+    #[test]
+    fn on_print_start_succeeds() {{
+        let config = ConfigView {{ fields: std::collections::HashMap::new() }};
+        let result = {struct_name}::on_print_start(&config);
+        assert!(result.is_ok());
+    }}
+
+    #[test]
+    fn {fn_name}_succeeds() {{
+        let _ = {struct_name};
+    }}
 }}
 "#,
         display = display_name_from_kebab(name),
-        struct_name = struct_name_from_kebab(&underscore_name),
     )
 }
 
@@ -302,58 +335,96 @@ fn struct_name_from_kebab(underscore_name: &str) -> String {
         .join("")
 }
 
-/// Return (trait_name, function_signature, function_body) for a given stage.
+/// Return (trait_name, fn_name, fn_signature) for a given stage.
+///
+/// The trait_name maps to the SDK trait the module should implement.
+/// The fn_name is the stage method the module overrides.
+/// The fn_signature is the full method signature as it appears in the trait impl.
 fn trait_info_for_stage(stage: &str) -> (&'static str, &'static str, &'static str) {
     match stage {
+        // Layer world stages → LayerModule trait
         "Layer::Infill" => (
-            "InfillModule",
-            "/// Run the infill generation stage.\n    pub fn run_infill(&self) -> Result<(), String>",
-            "Ok(())",
+            "LayerModule",
+            "run_infill",
+            "fn run_infill(\n        &self,\n        _layer_index: u32,\n        _regions: &[SliceRegionView],\n        _output: &mut InfillOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         ),
         "Layer::Perimeters" => (
-            "PerimeterModule",
-            "/// Run the perimeter generation stage.\n    pub fn run_perimeters(&self) -> Result<(), String>",
-            "Ok(())",
+            "LayerModule",
+            "run_perimeters",
+            "fn run_perimeters(\n        &self,\n        _layer_index: u32,\n        _regions: &[SliceRegionView],\n        _paint: &PaintRegionLayerView,\n        _output: &mut PerimeterOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         ),
         "Layer::PerimetersPostProcess" => (
-            "WallPostProcessModule",
-            "/// Run the wall post-processing stage.\n    pub fn run_wall_postprocess(&self) -> Result<(), String>",
-            "Ok(())",
+            "LayerModule",
+            "run_wall_postprocess",
+            "fn run_wall_postprocess(\n        &self,\n        _layer_index: u32,\n        _regions: &[PerimeterRegionView],\n        _output: &mut PerimeterOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         ),
         "Layer::InfillPostProcess" => (
-            "InfillPostProcessModule",
-            "/// Run the infill post-processing stage.\n    pub fn run_infill_postprocess(&self) -> Result<(), String>",
-            "Ok(())",
+            "LayerModule",
+            "run_infill_postprocess",
+            "fn run_infill_postprocess(\n        &self,\n        _layer_index: u32,\n        _regions: &[PerimeterRegionView],\n        _output: &mut InfillOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         ),
         "Layer::SlicePostProcess" => (
-            "SlicePostProcessModule",
-            "/// Run the slice post-processing stage.\n    pub fn run_slice_postprocess(&self) -> Result<(), String>",
-            "Ok(())",
+            "LayerModule",
+            "run_slice_postprocess",
+            "fn run_slice_postprocess(\n        &self,\n        _layer_index: u32,\n        _regions: &[SliceRegionView],\n        _paint: &PaintRegionLayerView,\n        _output: &mut SlicePostprocessBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         ),
+        "Layer::Support" => (
+            "LayerModule",
+            "run_support",
+            "fn run_support(\n        &self,\n        _layer_index: u32,\n        _regions: &[SliceRegionView],\n        _paint: &PaintRegionLayerView,\n        _output: &mut SupportOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
+        ),
+        "Layer::SupportPostProcess" => (
+            "LayerModule",
+            "run_support_postprocess",
+            "fn run_support_postprocess(\n        &self,\n        _layer_index: u32,\n        _regions: &[SliceRegionView],\n        _output: &mut SupportOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
+        ),
+        "Layer::PathOptimization" => (
+            "LayerModule",
+            "run_path_optimization",
+            "fn run_path_optimization(\n        &self,\n        _layer_index: u32,\n        _regions: &[PerimeterRegionView],\n        _output: &mut GcodeOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
+        ),
+        // PrePass world stages → PrepassModule trait
         "PrePass::MeshAnalysis" => (
-            "MeshAnalysisModule",
-            "/// Run the mesh analysis stage.\n    pub fn run_mesh_analysis(&self) -> Result<(), String>",
-            "Ok(())",
+            "PrepassModule",
+            "run_mesh_analysis",
+            "fn run_mesh_analysis(\n        &self,\n        _objects: &[ObjectId],\n        _output: &mut MeshAnalysisOutput,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         ),
         "PrePass::LayerPlanning" => (
-            "LayerPlanningModule",
-            "/// Run the layer planning stage.\n    pub fn run_layer_planning(&self) -> Result<(), String>",
-            "Ok(())",
+            "PrepassModule",
+            "run_layer_planning",
+            "fn run_layer_planning(\n        &self,\n        _objects: &[ObjectId],\n        _output: &mut LayerPlanOutput,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         ),
+        "PrePass::MeshSegmentation" => (
+            "PrepassModule",
+            "run_mesh_segmentation",
+            "fn run_mesh_segmentation(\n        &self,\n        _objects: &[MeshObjectView],\n        _output: &mut MeshSegmentationOutput,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
+        ),
+        "PrePass::PaintSegmentation" => (
+            "PrepassModule",
+            "run_paint_segmentation",
+            "fn run_paint_segmentation(\n        &self,\n        _objects: &[PaintSegmentationObjectView],\n        _output: &mut PaintSegmentationOutput,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
+        ),
+        // Finalization world → FinalizationModule trait
+        "PostPass::LayerFinalization" => (
+            "FinalizationModule",
+            "run_layer_finalization",
+            "fn run_finalization(\n        &self,\n        _layers: &[LayerCollectionView],\n        _output: &mut FinalizationOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
+        ),
+        // PostPass world stages → PostpassModule trait
         "PostPass::GCodePostProcess" => (
-            "GCodePostProcessModule",
-            "/// Run the G-code post-processing stage.\n    pub fn run_gcode_postprocess(&self) -> Result<(), String>",
-            "Ok(())",
+            "PostpassModule",
+            "run_gcode_postprocess",
+            "fn run_gcode_postprocess(\n        &self,\n        _commands: &[GcodeCommandView],\n        _output: &mut GcodeOutputBuilder,\n        _config: &ConfigView,\n    ) -> Result<(), ModuleError>",
         ),
         "PostPass::TextPostProcess" => (
-            "TextPostProcessModule",
-            "/// Run the text post-processing stage.\n    pub fn run_text_postprocess(&self) -> Result<(), String>",
-            "Ok(())",
+            "PostpassModule",
+            "run_text_postprocess",
+            "fn run_text_postprocess(\n        &self,\n        gcode_text: &str,\n        _config: &ConfigView,\n    ) -> Result<String, ModuleError>",
         ),
         _ => (
-            "Module",
-            "/// Run the module.\n    pub fn run(&self) -> Result<(), String>",
-            "Ok(())",
+            "LayerModule",
+            "run",
+            "fn run(&self) -> Result<(), ModuleError>",
         ),
     }
 }
@@ -472,12 +543,32 @@ mod tests {
             "slicer:world-layer@1.0.0"
         );
         assert_eq!(
+            wit_world_for_stage("Layer::Support"),
+            "slicer:world-layer@1.0.0"
+        );
+        assert_eq!(
+            wit_world_for_stage("Layer::PathOptimization"),
+            "slicer:world-layer@1.0.0"
+        );
+        assert_eq!(
             wit_world_for_stage("PrePass::MeshAnalysis"),
+            "slicer:world-prepass@1.0.0"
+        );
+        assert_eq!(
+            wit_world_for_stage("PrePass::MeshSegmentation"),
+            "slicer:world-prepass@1.0.0"
+        );
+        assert_eq!(
+            wit_world_for_stage("PrePass::PaintSegmentation"),
             "slicer:world-prepass@1.0.0"
         );
         assert_eq!(
             wit_world_for_stage("PostPass::GCodePostProcess"),
             "slicer:world-postpass@1.0.0"
+        );
+        assert_eq!(
+            wit_world_for_stage("PostPass::LayerFinalization"),
+            "slicer:world-finalization@1.0.0"
         );
     }
 
@@ -510,9 +601,23 @@ mod tests {
     }
 
     #[test]
+    fn manifest_prepass_mesh_segmentation_stage() {
+        let manifest = generate_manifest("mesh-seg", "PrePass::MeshSegmentation");
+        assert!(manifest.contains(r#"wit-world    = "slicer:world-prepass@1.0.0""#));
+        assert!(manifest.contains(r#"id = "PrePass::MeshSegmentation""#));
+    }
+
+    #[test]
     fn manifest_postpass_stage() {
         let manifest = generate_manifest("gcode-fix", "PostPass::GCodePostProcess");
         assert!(manifest.contains(r#"wit-world    = "slicer:world-postpass@1.0.0""#));
+    }
+
+    #[test]
+    fn manifest_finalization_stage() {
+        let manifest = generate_manifest("layer-fin", "PostPass::LayerFinalization");
+        assert!(manifest.contains(r#"wit-world    = "slicer:world-finalization@1.0.0""#));
+        assert!(manifest.contains(r#"id = "PostPass::LayerFinalization""#));
     }
 
     #[test]
@@ -558,5 +663,134 @@ mod tests {
         let test = generate_basic_test("my-infill");
         assert!(test.contains("use my_infill::MyInfill"));
         assert!(test.contains("fn module_can_be_instantiated"));
+    }
+
+    // ── Generated skeleton correctness ──────────────────────────────────
+
+    #[test]
+    fn lib_rs_uses_slicer_module_macro() {
+        let lib = generate_lib_rs("my-infill", "Layer::Infill");
+        assert!(
+            lib.contains("#[slicer_module]"),
+            "generated lib.rs must use #[slicer_module] attribute"
+        );
+        assert!(
+            !lib.contains("TODO"),
+            "generated lib.rs must not contain TODO placeholders"
+        );
+    }
+
+    #[test]
+    fn lib_rs_uses_prelude_import() {
+        let lib = generate_lib_rs("my-infill", "Layer::Infill");
+        assert!(
+            lib.contains("use slicer_sdk::prelude::*;"),
+            "generated lib.rs must import the SDK prelude"
+        );
+    }
+
+    #[test]
+    fn lib_rs_layer_stage_uses_layer_module_trait() {
+        for stage in &[
+            "Layer::Infill",
+            "Layer::Perimeters",
+            "Layer::PerimetersPostProcess",
+            "Layer::InfillPostProcess",
+            "Layer::SlicePostProcess",
+            "Layer::Support",
+            "Layer::SupportPostProcess",
+            "Layer::PathOptimization",
+        ] {
+            let lib = generate_lib_rs("test-mod", stage);
+            assert!(
+                lib.contains("impl LayerModule for TestMod"),
+                "Layer stage {stage} must use LayerModule trait"
+            );
+        }
+    }
+
+    #[test]
+    fn lib_rs_prepass_stage_uses_prepass_module_trait() {
+        for stage in &[
+            "PrePass::MeshAnalysis",
+            "PrePass::LayerPlanning",
+            "PrePass::MeshSegmentation",
+            "PrePass::PaintSegmentation",
+        ] {
+            let lib = generate_lib_rs("test-mod", stage);
+            assert!(
+                lib.contains("impl PrepassModule for TestMod"),
+                "PrePass stage {stage} must use PrepassModule trait"
+            );
+        }
+    }
+
+    #[test]
+    fn lib_rs_finalization_stage_uses_finalization_module_trait() {
+        let lib = generate_lib_rs("test-mod", "PostPass::LayerFinalization");
+        assert!(
+            lib.contains("impl FinalizationModule for TestMod"),
+            "LayerFinalization must use FinalizationModule trait"
+        );
+    }
+
+    #[test]
+    fn lib_rs_postpass_stage_uses_postpass_module_trait() {
+        for stage in &["PostPass::GCodePostProcess", "PostPass::TextPostProcess"] {
+            let lib = generate_lib_rs("test-mod", stage);
+            assert!(
+                lib.contains("impl PostpassModule for TestMod"),
+                "PostPass stage {stage} must use PostpassModule trait"
+            );
+        }
+    }
+
+    #[test]
+    fn lib_rs_has_on_print_start_lifecycle() {
+        let lib = generate_lib_rs("my-infill", "Layer::Infill");
+        assert!(
+            lib.contains("fn on_print_start"),
+            "generated lib.rs must include on_print_start lifecycle"
+        );
+    }
+
+    #[test]
+    fn lib_rs_text_postprocess_returns_string() {
+        let lib = generate_lib_rs("text-pp", "PostPass::TextPostProcess");
+        assert!(
+            lib.contains("gcode_text.to_string()"),
+            "TextPostProcess body must return the input string"
+        );
+    }
+
+    #[test]
+    fn manifest_finalization_forces_parallel_safe_false() {
+        let manifest = generate_manifest("layer-fin", "PostPass::LayerFinalization");
+        assert!(
+            manifest.contains("layer-parallel-safe    = false"),
+            "LayerFinalization manifest must set layer-parallel-safe = false"
+        );
+    }
+
+    #[test]
+    fn manifest_layer_stage_defaults_parallel_safe_true() {
+        let manifest = generate_manifest("my-infill", "Layer::Infill");
+        assert!(
+            manifest.contains("layer-parallel-safe    = true"),
+            "Layer stages should default to layer-parallel-safe = true"
+        );
+    }
+
+    #[test]
+    fn every_stage_produces_valid_manifest_toml() {
+        for stage in VALID_STAGES {
+            let manifest = generate_manifest("test-mod", stage);
+            let parsed: Result<toml::Value, _> = toml::from_str(&manifest);
+            assert!(
+                parsed.is_ok(),
+                "manifest for stage '{stage}' must be valid TOML: {:?}",
+                parsed.err()
+            );
+        }
     }
 }

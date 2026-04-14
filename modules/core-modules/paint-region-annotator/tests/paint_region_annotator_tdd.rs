@@ -87,11 +87,7 @@ fn empty_paint_ir() -> PaintRegionIR {
 }
 
 /// Helper: create a SliceRegionView from an ExPolygon.
-fn region_view(
-    object_id: &str,
-    region_id: u32,
-    polygons: Vec<ExPolygon>,
-) -> SliceRegionView {
+fn region_view(object_id: &str, region_id: u32, polygons: Vec<ExPolygon>) -> SliceRegionView {
     SliceRegionView::new(
         object_id.to_string(),
         region_id as RegionId,
@@ -533,8 +529,7 @@ fn deterministic_conflict_fatal_for_custom_semantics() {
     let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
     let mut output = SlicePostprocessBuilder::new();
 
-    let result =
-        annotator.run_slice_postprocess(0, &regions, &paint, &mut output, &config);
+    let result = annotator.run_slice_postprocess(0, &regions, &paint, &mut output, &config);
 
     assert!(result.is_err());
     let err = result.unwrap_err();

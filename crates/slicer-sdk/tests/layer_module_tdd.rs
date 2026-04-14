@@ -416,6 +416,29 @@ fn test_18_slice_region_view_has_nonplanar() {
 }
 
 // =============================================================================
+// SurfaceClassificationIR-derived needs_support flag
+// (docs/02_ir_schemas.md §IR 2 line 231; docs/06 §387)
+// =============================================================================
+
+#[test]
+fn slice_region_view_needs_support_defaults_true() {
+    let view = SliceRegionView::new("obj-1".to_string(), 0, vec![], vec![], 0.2, 1.0, false);
+    assert!(
+        view.needs_support(),
+        "default constructor must keep needs_support=true to preserve pre-classification eligibility"
+    );
+}
+
+#[test]
+fn slice_region_view_set_needs_support_overrides() {
+    let mut view = SliceRegionView::new("obj-1".to_string(), 0, vec![], vec![], 0.2, 1.0, false);
+    view.set_needs_support(false);
+    assert!(!view.needs_support());
+    view.set_needs_support(true);
+    assert!(view.needs_support());
+}
+
+// =============================================================================
 // Test 11: PerimeterRegionView methods per docs/03_wit_and_manifest.md
 // =============================================================================
 
@@ -642,7 +665,144 @@ fn test_31_default_on_print_end_implementation() {
 }
 
 // =============================================================================
-// Test 17: Multiple LayerModule implementations can coexist
+// Test 17: run_support_postprocess signature matches WIT
+// =============================================================================
+
+struct SupportPostprocessTestModule;
+
+impl LayerModule for SupportPostprocessTestModule {
+    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+        Ok(Self)
+    }
+
+    fn run_support_postprocess(
+        &self,
+        layer_index: u32,
+        regions: &[SliceRegionView],
+        output: &mut SupportOutputBuilder,
+        config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        let _ = layer_index;
+        let _ = regions.len();
+        let _ = output;
+        let _ = config.fields.len();
+        Ok(())
+    }
+}
+
+#[test]
+fn test_33_run_support_postprocess_signature_matches_wit() {
+    let config = ConfigView {
+        fields: HashMap::new(),
+    };
+    let module = SupportPostprocessTestModule::on_print_start(&config).unwrap();
+    let regions: Vec<SliceRegionView> = vec![];
+    let mut output = SupportOutputBuilder::new();
+
+    let result = module.run_support_postprocess(0, &regions, &mut output, &config);
+    assert!(result.is_ok());
+}
+
+// =============================================================================
+// Test 18: run_path_optimization signature matches WIT
+// =============================================================================
+
+struct PathOptimizationTestModule;
+
+impl LayerModule for PathOptimizationTestModule {
+    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+        Ok(Self)
+    }
+
+    fn run_path_optimization(
+        &self,
+        layer_index: u32,
+        regions: &[PerimeterRegionView],
+        output: &mut GcodeOutputBuilder,
+        config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        let _ = layer_index;
+        let _ = regions.len();
+        let _ = output;
+        let _ = config.fields.len();
+        Ok(())
+    }
+}
+
+#[test]
+fn test_34_run_path_optimization_signature_matches_wit() {
+    let config = ConfigView {
+        fields: HashMap::new(),
+    };
+    let module = PathOptimizationTestModule::on_print_start(&config).unwrap();
+    let regions: Vec<PerimeterRegionView> = vec![];
+    let mut output = GcodeOutputBuilder::new();
+
+    let result = module.run_path_optimization(0, &regions, &mut output, &config);
+    assert!(result.is_ok());
+}
+
+// =============================================================================
+// Test 19: LayerModule defaults are non-panicking Ok(())
+// =============================================================================
+
+#[test]
+fn test_35_layer_module_defaults_do_not_panic() {
+    let config = ConfigView {
+        fields: HashMap::new(),
+    };
+    let module = MinimalModule::on_print_start(&config).unwrap();
+    let slice_regions: Vec<SliceRegionView> = vec![];
+    let perim_regions: Vec<PerimeterRegionView> = vec![];
+    let paint = PaintRegionLayerView::new(0);
+
+    // All default methods should return Ok(()) without panicking
+    assert!(module
+        .run_infill(0, &slice_regions, &mut InfillOutputBuilder::new(), &config)
+        .is_ok());
+    assert!(module
+        .run_perimeters(
+            0,
+            &slice_regions,
+            &paint,
+            &mut PerimeterOutputBuilder::new(),
+            &config
+        )
+        .is_ok());
+    assert!(module
+        .run_wall_postprocess(0, &perim_regions, &mut PerimeterOutputBuilder::new(), &config)
+        .is_ok());
+    assert!(module
+        .run_infill_postprocess(0, &perim_regions, &mut InfillOutputBuilder::new(), &config)
+        .is_ok());
+    assert!(module
+        .run_slice_postprocess(
+            0,
+            &slice_regions,
+            &paint,
+            &mut SlicePostprocessBuilder::new(),
+            &config
+        )
+        .is_ok());
+    assert!(module
+        .run_support(
+            0,
+            &slice_regions,
+            &paint,
+            &mut SupportOutputBuilder::new(),
+            &config
+        )
+        .is_ok());
+    assert!(module
+        .run_support_postprocess(0, &slice_regions, &mut SupportOutputBuilder::new(), &config)
+        .is_ok());
+    assert!(module
+        .run_path_optimization(0, &perim_regions, &mut GcodeOutputBuilder::new(), &config)
+        .is_ok());
+}
+
+// =============================================================================
+// Test 20: Multiple LayerModule implementations can coexist
 // =============================================================================
 
 struct ModuleA;

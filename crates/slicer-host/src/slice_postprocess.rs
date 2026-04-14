@@ -5,6 +5,8 @@ use std::sync::Arc;
 use slicer_core::paint_region::{point_in_paint_region, BoundaryInclusion, PaintRegionQueryError};
 use slicer_ir::{PaintRegionIR, PaintSemantic, PaintValue, SliceIR};
 
+use crate::progress_events::{ProgressError, ProgressEvent, ProgressPhase};
+
 /// One per-layer paint annotation invocation.
 #[derive(Debug, Clone)]
 pub struct SlicePostProcessPaintAnnotationRequest {
@@ -114,6 +116,55 @@ pub enum SlicePostProcessPaintAnnotationError {
         /// Contour-point index that triggered the conflict.
         contour_point_index: usize,
     },
+}
+
+/// Convert a paint-annotation fallback warning into a non-fatal
+/// `ProgressEvent::module_error` so it propagates through the documented
+/// progress-events chain (docs/04 §Recoverability and docs/11 §73-75).
+///
+/// The emitted event carries `fatal=false`, `phase=PerLayer`,
+/// `stage="Layer::SlicePostProcess"`, and the warning's stable code so
+/// that `SliceEventCollector` flips `degraded=true` on ingestion. The
+/// `module_id` defaults to the host built-in id but callers may override
+/// it when a guest module triggered the fallback.
+pub fn paint_annotation_warning_to_progress_event(
+    warning: &SlicePostProcessPaintAnnotationWarning,
+    slice_id: String,
+    module_id: String,
+    timestamp_ms: u64,
+) -> ProgressEvent {
+    let reason_label = match warning.reason {
+        SlicePostProcessPaintAnnotationWarningReason::NumericalEdgeAmbiguity => {
+            "numerical-edge-ambiguity"
+        }
+    };
+    let message = format!(
+        "paint annotation fell back to deterministic default ({reason}) on layer {layer} \
+         object='{obj}' region={rid} semantic={sem:?} polygon={pi} contour_point={cpi}",
+        reason = reason_label,
+        layer = warning.global_layer_index,
+        obj = warning.object_id,
+        rid = warning.region_id,
+        sem = warning.semantic,
+        pi = warning.polygon_index,
+        cpi = warning.contour_point_index,
+    );
+    ProgressEvent::module_error(
+        slice_id,
+        ProgressPhase::PerLayer,
+        String::from("Layer::SlicePostProcess"),
+        warning.global_layer_index,
+        module_id,
+        timestamp_ms,
+        ProgressError {
+            code: warning.code as u32,
+            message,
+            fatal: false,
+            suggestion: Some(String::from(
+                "regenerate paint regions with denser sampling, or accept the deterministic default",
+            )),
+        },
+    )
 }
 
 /// Annotate one final `SliceIR` layer with contour-parallel `boundary_paint`.

@@ -38,7 +38,10 @@ fn square_10mm() -> ExPolygon {
             points: vec![
                 Point2 { x: 0, y: 0 },
                 Point2 { x: 100_000, y: 0 },
-                Point2 { x: 100_000, y: 100_000 },
+                Point2 {
+                    x: 100_000,
+                    y: 100_000,
+                },
                 Point2 { x: 0, y: 100_000 },
             ],
         },
@@ -194,11 +197,7 @@ fn paths_at_correct_z() {
     assert!(!output.ironing_paths().is_empty());
     for path in output.ironing_paths() {
         for pt in &path.points {
-            assert!(
-                (pt.z - z).abs() < 0.001,
-                "expected z={z}, got z={}",
-                pt.z
-            );
+            assert!((pt.z - z).abs() < 0.001, "expected z={z}, got z={}", pt.z);
         }
     }
 }

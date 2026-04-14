@@ -18,8 +18,7 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2,
-    Point3WithWidth,
+    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -418,14 +417,7 @@ fn nearest_point_on_polygon(
 }
 
 /// Find the closest point on a line segment to a given point.
-fn closest_point_on_segment(
-    px: f64,
-    py: f64,
-    ax: f64,
-    ay: f64,
-    bx: f64,
-    by: f64,
-) -> (f64, f64) {
+fn closest_point_on_segment(px: f64, py: f64, ax: f64, ay: f64, bx: f64, by: f64) -> (f64, f64) {
     let dx = bx - ax;
     let dy = by - ay;
     let len_sq = dx * dx + dy * dy;

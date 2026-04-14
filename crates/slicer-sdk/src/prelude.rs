@@ -9,7 +9,10 @@ pub use crate::builders::{
     InfillOutputBuilder, PerimeterOutputBuilder, SlicePostprocessBuilder, SupportOutputBuilder,
 };
 pub use crate::error::ModuleError;
-pub use crate::traits::{LayerModule, PaintRegionLayerView, PostpassModule, PrepassModule};
+pub use crate::traits::{
+    FinalizationModule, FinalizationOutputBuilder, LayerCollectionView, LayerModule,
+    PaintRegionLayerView, PostpassModule, PrepassModule,
+};
 pub use crate::views::{PerimeterRegionView, SliceRegionView};
 
 // Postpass types and builders
@@ -22,9 +25,9 @@ pub use crate::prepass_builders::{
     PaintRegionEntry, PaintSegmentationOutput,
 };
 pub use crate::prepass_types::{
-    FacetAnnotation, FacetClass, LayerProposal, MeshObjectView, ObjectId,
-    PaintLayerView, PaintSegmentationObjectView, PaintStrokeView, PaintValueView,
-    RegionId as PrepassRegionId, RegionLayerProposal, SurfaceGroupProposal,
+    FacetAnnotation, FacetClass, LayerProposal, MeshObjectView, ObjectId, PaintLayerView,
+    PaintSegmentationObjectView, PaintStrokeView, PaintValueView, RegionId as PrepassRegionId,
+    RegionLayerProposal, SurfaceGroupProposal,
 };
 
 // IR re-exports

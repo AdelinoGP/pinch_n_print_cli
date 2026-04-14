@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
-use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon,
-};
+use slicer_ir::{ConfigValue, ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::SliceRegionView;
@@ -69,11 +67,7 @@ fn single_square_sparse_fill() {
     for path in paths {
         assert_eq!(path.points.len(), 2);
         let dy = (path.points[0].y - path.points[1].y).abs();
-        assert!(
-            dy < 0.01,
-            "expected horizontal line, got dy={}",
-            dy
-        );
+        assert!(dy < 0.01, "expected horizontal line, got dy={}", dy);
     }
 }
 

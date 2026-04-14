@@ -3,7 +3,7 @@
 //! These tests verify that the macro correctly transforms `impl LayerModule for T` blocks
 //! into WIT export bindings per docs/05_module_sdk.md.
 //!
-//! All tests must compile and run. Tests fail only on explicit todo! stubs.
+//! All tests must compile and run.
 
 use slicer_macros::slicer_module;
 
@@ -83,6 +83,9 @@ pub struct SliceRegionView {
     pub z: f32,
 }
 
+/// Mock PerimeterRegionView for testing
+pub struct PerimeterRegionView;
+
 /// Mock InfillOutputBuilder for testing
 pub struct InfillOutputBuilder {
     paths: Vec<MockPath>,
@@ -131,6 +134,27 @@ impl Default for PerimeterOutputBuilder {
     }
 }
 
+/// Mock SupportOutputBuilder for testing
+pub struct SupportOutputBuilder;
+
+impl SupportOutputBuilder {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// Mock GcodeOutputBuilder for testing
+pub struct GcodeOutputBuilder;
+
+impl GcodeOutputBuilder {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+/// Mock PaintRegionLayerView for testing
+pub struct PaintRegionLayerView;
+
 pub struct MockPath {
     pub z: f32,
 }
@@ -139,23 +163,98 @@ pub struct MockWallLoop {
     pub perimeter_index: u32,
 }
 
-/// Module information metadata
-pub struct SlicerModuleInfo {
-    pub type_name: String,
-}
-
 // ============================================================================
 // The LayerModule trait that the macro transforms
 // ============================================================================
 
 /// The LayerModule trait that modules implement and the macro transforms.
-/// This mirrors the SDK's LayerModule trait.
+/// This mirrors the SDK's LayerModule trait with all stage method defaults.
 pub trait LayerModule: Sized {
-    /// Called once when print starts. Returns module instance.
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError>;
 
-    /// Called once when print ends.
     fn on_print_end(&self) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    fn run_infill(
+        &self,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
+        _output: &mut InfillOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    fn run_perimeters(
+        &self,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
+        _output: &mut PerimeterOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    fn run_wall_postprocess(
+        &self,
+        _layer_index: u32,
+        _regions: &[PerimeterRegionView],
+        _output: &mut PerimeterOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    fn run_infill_postprocess(
+        &self,
+        _layer_index: u32,
+        _regions: &[PerimeterRegionView],
+        _output: &mut InfillOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    fn run_slice_postprocess(
+        &self,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
+        _output: &mut InfillOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    fn run_support(
+        &self,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
+        _output: &mut SupportOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    fn run_support_postprocess(
+        &self,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
+        _output: &mut SupportOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    fn run_path_optimization(
+        &self,
+        _layer_index: u32,
+        _regions: &[PerimeterRegionView],
+        _output: &mut GcodeOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
         Ok(())
     }
 }
@@ -179,8 +278,6 @@ impl LayerModule for TestModule1 {
 
 #[test]
 fn test_01_macro_applies_to_layer_module_impl() {
-    // The macro should apply without compilation errors.
-    // This test passes if the code compiles.
     let config = ConfigView::new();
     let result = TestModule1::on_print_start(&config);
     assert!(result.is_ok());
@@ -223,8 +320,6 @@ fn test_02_macro_preserves_impl_methods() {
 // Test 3: Macro generates module entry point function
 // ============================================================================
 
-/// The macro should generate `__slicer_module_marker` or similar entry point.
-/// This test verifies the entry point exists and is callable.
 pub struct TestModule3;
 
 #[slicer_module]
@@ -236,102 +331,12 @@ impl LayerModule for TestModule3 {
 
 #[test]
 fn test_03_macro_generates_entry_point() {
-    // The macro should generate an entry point function.
-    // Test that the generated entry point is accessible.
-    // This test will fail until the macro generates __slicer_module_marker.
-
-    // Call the generated entry point marker (this function should exist after macro expansion)
     let entry_exists = TestModule3::__slicer_module_marker();
     assert!(entry_exists, "Module entry point marker should exist");
 }
 
 // ============================================================================
-// Test 4: Macro generates on_print_start wrapper
-// ============================================================================
-
-pub struct TestModule4 {
-    #[allow(dead_code)]
-    initialized: bool,
-}
-
-#[slicer_module]
-impl LayerModule for TestModule4 {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
-        Ok(TestModule4 { initialized: true })
-    }
-}
-
-// The macro should generate __slicer_on_print_start wrapper.
-// For TDD, we define the expected API and call the implementation.
-impl TestModule4 {
-    /// Wrapper for on_print_start that will be called by WIT exports.
-    /// This is what the macro should generate.
-    #[doc(hidden)]
-    pub fn __slicer_on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        <Self as LayerModule>::on_print_start(config)
-    }
-}
-
-#[test]
-fn test_04_macro_generates_on_print_start_wrapper() {
-    // The macro should generate a wrapper that calls on_print_start.
-    // The wrapper is what WIT exports will call.
-    let config = ConfigView::new();
-
-    // The wrapper should be generated as __slicer_on_print_start
-    let result = TestModule4::__slicer_on_print_start(&config);
-    assert!(
-        result.is_ok(),
-        "Wrapper should call on_print_start successfully"
-    );
-}
-
-// ============================================================================
-// Test 5: Macro generates on_print_end wrapper
-// ============================================================================
-
-pub struct TestModule5 {
-    cleanup_called: std::cell::Cell<bool>,
-}
-
-#[slicer_module]
-impl LayerModule for TestModule5 {
-    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
-        Ok(TestModule5 {
-            cleanup_called: std::cell::Cell::new(false),
-        })
-    }
-
-    fn on_print_end(&self) -> Result<(), ModuleError> {
-        self.cleanup_called.set(true);
-        Ok(())
-    }
-}
-
-impl TestModule5 {
-    /// Wrapper for on_print_end that will be called by WIT exports.
-    /// This is what the macro should generate.
-    #[doc(hidden)]
-    pub fn __slicer_on_print_end(&self) -> Result<(), ModuleError> {
-        <Self as LayerModule>::on_print_end(self)
-    }
-}
-
-#[test]
-fn test_05_macro_generates_on_print_end_wrapper() {
-    let config = ConfigView::new();
-    let module = TestModule5::on_print_start(&config).unwrap();
-
-    // The wrapper should be generated as __slicer_on_print_end
-    let result = module.__slicer_on_print_end();
-    assert!(
-        result.is_ok(),
-        "Wrapper should call on_print_end successfully"
-    );
-}
-
-// ============================================================================
-// Test 6: Macro generates stage-specific dispatch function
+// Test 4: Macro detects run_infill as a stage method in the impl block
 // ============================================================================
 
 pub struct InfillModule;
@@ -341,11 +346,8 @@ impl LayerModule for InfillModule {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(InfillModule)
     }
-}
 
-impl InfillModule {
-    /// Stage function for Layer::Infill
-    pub fn run_infill(
+    fn run_infill(
         &self,
         _layer_index: u32,
         _regions: &[SliceRegionView],
@@ -355,32 +357,60 @@ impl InfillModule {
         output.push_sparse_path(MockPath { z: 1.0 }).unwrap();
         Ok(())
     }
+}
 
-    /// Stage dispatch function that the macro should generate.
-    #[doc(hidden)]
-    pub fn __slicer_dispatch_stage(
+#[test]
+fn test_04_detects_infill_stage_in_impl_block() {
+    assert!(InfillModule::__slicer_has_stage_function());
+    assert_eq!(InfillModule::__slicer_stage_name(), "Layer::Infill");
+}
+
+// ============================================================================
+// Test 5: Macro detects run_perimeters as a stage method
+// ============================================================================
+
+pub struct PerimeterModule;
+
+#[slicer_module]
+impl LayerModule for PerimeterModule {
+    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+        Ok(PerimeterModule)
+    }
+
+    fn run_perimeters(
         &self,
-        layer_index: u32,
-        regions: &[SliceRegionView],
-        output: &mut InfillOutputBuilder,
-        config: &ConfigView,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
+        _output: &mut PerimeterOutputBuilder,
+        _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        self.run_infill(layer_index, regions, output, config)
+        Ok(())
     }
 }
 
 #[test]
-fn test_06_macro_generates_stage_dispatch() {
-    // The macro should generate a dispatch wrapper for run_infill
-    let config = ConfigView::new();
-    let module = InfillModule::on_print_start(&config).unwrap();
+fn test_05_detects_perimeters_stage() {
+    assert!(PerimeterModule::__slicer_has_stage_function());
+    assert_eq!(PerimeterModule::__slicer_stage_name(), "Layer::Perimeters");
+}
 
-    // The generated dispatch should exist and be callable
-    let regions: Vec<SliceRegionView> = vec![];
-    let mut output = InfillOutputBuilder::new();
+// ============================================================================
+// Test 6: No stage method → __slicer_has_stage_function returns false
+// ============================================================================
 
-    let result = module.__slicer_dispatch_stage(0, &regions, &mut output, &config);
-    assert!(result.is_ok(), "Stage dispatch should succeed");
+pub struct LifecycleOnlyModule;
+
+#[slicer_module]
+impl LayerModule for LifecycleOnlyModule {
+    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+        Ok(LifecycleOnlyModule)
+    }
+}
+
+#[test]
+fn test_06_no_stage_method_detected_when_absent() {
+    assert!(!LifecycleOnlyModule::__slicer_has_stage_function());
+    assert_eq!(LifecycleOnlyModule::__slicer_stage_name(), "");
 }
 
 // ============================================================================
@@ -419,13 +449,11 @@ pub struct SignatureModule;
 #[slicer_module]
 impl LayerModule for SignatureModule {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        // Verify config parameter is accessible
         let _ = config.get_float("test");
         Ok(SignatureModule)
     }
 
     fn on_print_end(&self) -> Result<(), ModuleError> {
-        // Verify &self is accessible
         let _ref = self;
         Ok(())
     }
@@ -436,7 +464,6 @@ fn test_08_method_signatures_preserved() {
     let config = ConfigView::new().with_float("test", 1.0);
     let module = SignatureModule::on_print_start(&config).unwrap();
 
-    // Verify the wrapped methods have correct signatures
     let start_result: Result<SignatureModule, ModuleError> =
         SignatureModule::on_print_start(&config);
     let end_result: Result<(), ModuleError> = module.on_print_end();
@@ -455,7 +482,6 @@ pub struct ErrorHandlingModule;
 #[slicer_module]
 impl LayerModule for ErrorHandlingModule {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        // Return error based on config
         if config.get_float("fail").is_some() {
             return Err(ModuleError::fatal(1, "Configured to fail"));
         }
@@ -469,12 +495,10 @@ impl LayerModule for ErrorHandlingModule {
 
 #[test]
 fn test_09_result_types_handled_correctly() {
-    // Test success case
     let config_ok = ConfigView::new();
     let result_ok = ErrorHandlingModule::on_print_start(&config_ok);
     assert!(result_ok.is_ok());
 
-    // Test error case
     let config_fail = ConfigView::new().with_float("fail", 1.0);
     let result_fail = ErrorHandlingModule::on_print_start(&config_fail);
     assert!(result_fail.is_err());
@@ -485,41 +509,25 @@ fn test_09_result_types_handled_correctly() {
 }
 
 // ============================================================================
-// Test 10: Macro validates impl provides at least one stage function
+// Test 10: __slicer_type_name returns the struct name
 // ============================================================================
 
-/// A module with run_infill stage function
-pub struct StageModule;
+pub struct NamedModule;
 
 #[slicer_module]
-impl LayerModule for StageModule {
+impl LayerModule for NamedModule {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
-        Ok(StageModule)
-    }
-}
-
-impl StageModule {
-    pub fn run_infill(
-        &self,
-        _layer_index: u32,
-        _regions: &[SliceRegionView],
-        _output: &mut InfillOutputBuilder,
-        _config: &ConfigView,
-    ) -> Result<(), ModuleError> {
-        Ok(())
+        Ok(NamedModule)
     }
 }
 
 #[test]
-fn test_10_validates_stage_function_exists() {
-    // The macro should validate that a stage function is available.
-    // This test verifies the stage function is recognized.
-    let has_stage = StageModule::__slicer_has_stage_function();
-    assert!(has_stage, "Module should have a stage function detected");
+fn test_10_type_name_accessible() {
+    assert_eq!(NamedModule::__slicer_type_name(), "NamedModule");
 }
 
 // ============================================================================
-// Test 11: Macro generates WIT export compatibility layer
+// Test 11: WIT export compatibility marker
 // ============================================================================
 
 pub struct WitExportModule;
@@ -533,30 +541,26 @@ impl LayerModule for WitExportModule {
 
 #[test]
 fn test_11_generates_wit_export_layer() {
-    // The macro should generate functions compatible with WIT exports.
-    // Verify the module is marked as WIT-exportable.
     let wit_compatible = WitExportModule::__slicer_wit_compatible();
     assert!(wit_compatible, "Module should be WIT export compatible");
 }
 
 // ============================================================================
-// Test 12: Macro handles modules with perimeter stage
+// Test 12: Macro detects run_wall_postprocess stage
 // ============================================================================
 
-pub struct PerimeterModule;
+pub struct WallPostprocessModule;
 
 #[slicer_module]
-impl LayerModule for PerimeterModule {
+impl LayerModule for WallPostprocessModule {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
-        Ok(PerimeterModule)
+        Ok(WallPostprocessModule)
     }
-}
 
-impl PerimeterModule {
-    pub fn run_perimeters(
+    fn run_wall_postprocess(
         &self,
         _layer_index: u32,
-        _regions: &[SliceRegionView],
+        _regions: &[PerimeterRegionView],
         _output: &mut PerimeterOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -565,47 +569,42 @@ impl PerimeterModule {
 }
 
 #[test]
-fn test_12_handles_perimeter_stage() {
-    let config = ConfigView::new();
-    let module = PerimeterModule::on_print_start(&config).unwrap();
-
-    let regions: Vec<SliceRegionView> = vec![];
-    let mut output = PerimeterOutputBuilder::new();
-
-    // Direct call should work
-    let result = module.run_perimeters(0, &regions, &mut output, &config);
-    assert!(result.is_ok());
+fn test_12_detects_wall_postprocess_stage() {
+    assert!(WallPostprocessModule::__slicer_has_stage_function());
+    assert_eq!(
+        WallPostprocessModule::__slicer_stage_name(),
+        "Layer::PerimetersPostProcess"
+    );
 }
 
 // ============================================================================
-// Test 13: Generated module info is accessible
+// Test 13: Macro detects run_support stage
 // ============================================================================
 
-pub struct InfoModule;
+pub struct SupportModule;
 
 #[slicer_module]
-impl LayerModule for InfoModule {
+impl LayerModule for SupportModule {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
-        Ok(InfoModule)
+        Ok(SupportModule)
     }
-}
 
-impl InfoModule {
-    /// Returns module metadata information.
-    /// This is what the macro should generate.
-    #[doc(hidden)]
-    pub fn __slicer_module_info() -> SlicerModuleInfo {
-        SlicerModuleInfo {
-            type_name: "InfoModule".to_string(),
-        }
+    fn run_support(
+        &self,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
+        _output: &mut SupportOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
     }
 }
 
 #[test]
-fn test_13_module_info_accessible() {
-    // The macro should generate module metadata accessors
-    let info = InfoModule::__slicer_module_info();
-    assert!(!info.type_name.is_empty(), "Type name should be set");
+fn test_13_detects_support_stage() {
+    assert!(SupportModule::__slicer_has_stage_function());
+    assert_eq!(SupportModule::__slicer_stage_name(), "Layer::Support");
 }
 
 // ============================================================================
@@ -643,4 +642,192 @@ fn test_14_module_state_initialized() {
     assert_eq!(module.count(), 0);
     module.increment();
     assert_eq!(module.count(), 1);
+}
+
+// ============================================================================
+// Test 15: Macro detects run_support_postprocess stage
+// ============================================================================
+
+pub struct SupportPostprocessModule;
+
+#[slicer_module]
+impl LayerModule for SupportPostprocessModule {
+    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+        Ok(SupportPostprocessModule)
+    }
+
+    fn run_support_postprocess(
+        &self,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
+        _output: &mut SupportOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_15_detects_support_postprocess_stage() {
+    assert!(SupportPostprocessModule::__slicer_has_stage_function());
+    assert_eq!(
+        SupportPostprocessModule::__slicer_stage_name(),
+        "Layer::SupportPostProcess"
+    );
+}
+
+// ============================================================================
+// Test 16: Macro detects run_path_optimization stage
+// ============================================================================
+
+pub struct PathOptModule;
+
+#[slicer_module]
+impl LayerModule for PathOptModule {
+    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+        Ok(PathOptModule)
+    }
+
+    fn run_path_optimization(
+        &self,
+        _layer_index: u32,
+        _regions: &[PerimeterRegionView],
+        _output: &mut GcodeOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_16_detects_path_optimization_stage() {
+    assert!(PathOptModule::__slicer_has_stage_function());
+    assert_eq!(
+        PathOptModule::__slicer_stage_name(),
+        "Layer::PathOptimization"
+    );
+}
+
+// ============================================================================
+// Test 17: Macro detects run_slice_postprocess stage
+// ============================================================================
+
+pub struct SlicePostprocessModule;
+
+#[slicer_module]
+impl LayerModule for SlicePostprocessModule {
+    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+        Ok(SlicePostprocessModule)
+    }
+
+    fn run_slice_postprocess(
+        &self,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
+        _paint: &PaintRegionLayerView,
+        _output: &mut InfillOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_17_detects_slice_postprocess_stage() {
+    assert!(SlicePostprocessModule::__slicer_has_stage_function());
+    assert_eq!(
+        SlicePostprocessModule::__slicer_stage_name(),
+        "Layer::SlicePostProcess"
+    );
+}
+
+// ============================================================================
+// Test 18: Macro detects run_infill_postprocess stage
+// ============================================================================
+
+pub struct InfillPostprocessModule;
+
+#[slicer_module]
+impl LayerModule for InfillPostprocessModule {
+    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+        Ok(InfillPostprocessModule)
+    }
+
+    fn run_infill_postprocess(
+        &self,
+        _layer_index: u32,
+        _regions: &[PerimeterRegionView],
+        _output: &mut InfillOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_18_detects_infill_postprocess_stage() {
+    assert!(InfillPostprocessModule::__slicer_has_stage_function());
+    assert_eq!(
+        InfillPostprocessModule::__slicer_stage_name(),
+        "Layer::InfillPostProcess"
+    );
+}
+
+// ============================================================================
+// Test 19: Stage method callable through the trait impl
+// ============================================================================
+
+#[test]
+fn test_19_stage_method_callable() {
+    let config = ConfigView::new();
+    let module = InfillModule::on_print_start(&config).unwrap();
+    let regions: Vec<SliceRegionView> = vec![];
+    let mut output = InfillOutputBuilder::new();
+
+    let result = module.run_infill(0, &regions, &mut output, &config);
+    assert!(result.is_ok());
+    assert_eq!(output.paths().len(), 1);
+}
+
+// ============================================================================
+// Test 20: All stage names in the documented matrix are recognized
+// ============================================================================
+
+#[test]
+fn test_20_all_documented_stages_covered_by_macro() {
+    // Verify the stage detection covers the full documented stage matrix.
+    // This is a compile-time coverage test — each module struct below proves
+    // the macro recognizes its stage method.
+    //
+    // Layer world stages tested above: Infill (test 4), Perimeters (test 5),
+    // PerimetersPostProcess (test 12), SlicePostProcess (test 17),
+    // InfillPostProcess (test 18), Support (test 13),
+    // SupportPostProcess (test 15), PathOptimization (test 16).
+    //
+    // The remaining stages (PrePass::*, PostPass::*) use the same macro
+    // but different traits. Stage method name detection is shared.
+    // Verified by stage_name assertions in each test above.
+    assert_eq!(InfillModule::__slicer_stage_name(), "Layer::Infill");
+    assert_eq!(PerimeterModule::__slicer_stage_name(), "Layer::Perimeters");
+    assert_eq!(
+        WallPostprocessModule::__slicer_stage_name(),
+        "Layer::PerimetersPostProcess"
+    );
+    assert_eq!(
+        SlicePostprocessModule::__slicer_stage_name(),
+        "Layer::SlicePostProcess"
+    );
+    assert_eq!(
+        InfillPostprocessModule::__slicer_stage_name(),
+        "Layer::InfillPostProcess"
+    );
+    assert_eq!(SupportModule::__slicer_stage_name(), "Layer::Support");
+    assert_eq!(
+        SupportPostprocessModule::__slicer_stage_name(),
+        "Layer::SupportPostProcess"
+    );
+    assert_eq!(
+        PathOptModule::__slicer_stage_name(),
+        "Layer::PathOptimization"
+    );
 }

@@ -11,9 +11,8 @@ use slicer_ir::MeshIR;
 
 use crate::{
     execute_layer_finalization, execute_per_layer, execute_postpass, execute_prepass_with_builtins,
-    Blackboard,
-    ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
-    LayerExecutionError, LayerStageRunner, PostpassError, PostpassStageRunner,
+    Blackboard, ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter,
+    GCodeSerializer, LayerExecutionError, LayerStageRunner, PostpassError, PostpassStageRunner,
     PrepassExecutionError, PrepassStageRunner,
 };
 

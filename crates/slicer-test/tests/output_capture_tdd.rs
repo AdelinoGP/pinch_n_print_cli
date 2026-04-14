@@ -32,9 +32,7 @@ fn dummy_wall_loop(loop_type: LoopType) -> WallLoop {
         perimeter_index: 0,
         loop_type,
         path: dummy_path(ExtrusionRole::OuterWall),
-        width_profile: WidthProfile {
-            widths: vec![0.4],
-        },
+        width_profile: WidthProfile { widths: vec![0.4] },
         feature_flags: vec![],
         boundary_type: WallBoundaryType::ExteriorSurface,
     }
@@ -42,9 +40,7 @@ fn dummy_wall_loop(loop_type: LoopType) -> WallLoop {
 
 fn dummy_expolygon() -> ExPolygon {
     ExPolygon {
-        contour: Polygon {
-            points: vec![],
-        },
+        contour: Polygon { points: vec![] },
         holes: vec![],
     }
 }
@@ -144,7 +140,11 @@ fn perimeter_capture_set_infill_areas_replaces() {
 #[test]
 fn perimeter_capture_push_seam_candidate() {
     let mut cap = PerimeterOutputCapture::new();
-    let pt = Point3 { x: 1.0, y: 2.0, z: 3.0 };
+    let pt = Point3 {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    };
     cap.push_seam_candidate(pt, 0.75);
     assert_eq!(cap.seam_candidates().len(), 1);
     assert_eq!(cap.seam_candidates()[0].0, pt);

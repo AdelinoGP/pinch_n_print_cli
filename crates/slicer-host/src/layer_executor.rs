@@ -182,12 +182,13 @@ fn execute_single_layer(
     // Layer::SlicePostProcess module runs. Skipped if a caller has already
     // pre-seeded a slice (e.g. integration tests).
     if arena.slice().is_none() {
-        let slice_ir = execute_layer_slice(blackboard.mesh().as_ref(), layer).map_err(
-            |source| LayerExecutionError::LayerSlice {
-                layer_index: layer.index,
-                source,
-            },
-        )?;
+        let slice_ir =
+            execute_layer_slice(blackboard.mesh().as_ref(), layer).map_err(|source| {
+                LayerExecutionError::LayerSlice {
+                    layer_index: layer.index,
+                    source,
+                }
+            })?;
         arena
             .set_slice(slice_ir)
             .map_err(|_| LayerExecutionError::FatalLayer {
@@ -212,7 +213,11 @@ fn execute_single_layer(
                 arena.support(),
             );
             arena.set_layer_collection(LayerCollectionIR {
-                schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+                schema_version: SemVer {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
                 global_layer_index: layer.index,
                 z: layer.z,
                 ordered_entities,
@@ -270,7 +275,11 @@ fn execute_single_layer(
             arena.support(),
         );
         LayerCollectionIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             global_layer_index: layer.index,
             z: layer.z,
             ordered_entities,
@@ -279,8 +288,12 @@ fn execute_single_layer(
             annotations: Vec::new(),
         }
     });
-    layer_output.tool_changes.extend(arena.take_deferred_tool_changes());
-    layer_output.annotations.extend(arena.take_deferred_annotations());
+    layer_output
+        .tool_changes
+        .extend(arena.take_deferred_tool_changes());
+    layer_output
+        .annotations
+        .extend(arena.take_deferred_annotations());
     layer_output.z_hops.extend(arena.take_deferred_z_hops());
     Ok(layer_output)
 }
@@ -304,9 +317,17 @@ pub(crate) fn assemble_ordered_entities(
     support: Option<&SupportIR>,
 ) -> Vec<PrintEntity> {
     let mut out: Vec<PrintEntity> = Vec::new();
-    let push = |path: slicer_ir::ExtrusionPath3D, role: slicer_ir::ExtrusionRole, key: RegionKey, acc: &mut Vec<PrintEntity>| {
+    let push = |path: slicer_ir::ExtrusionPath3D,
+                role: slicer_ir::ExtrusionRole,
+                key: RegionKey,
+                acc: &mut Vec<PrintEntity>| {
         let topo_order = acc.len() as u32;
-        acc.push(PrintEntity { path, role, region_key: key, topo_order });
+        acc.push(PrintEntity {
+            path,
+            role,
+            region_key: key,
+            topo_order,
+        });
     };
 
     if let Some(perim) = perimeter {

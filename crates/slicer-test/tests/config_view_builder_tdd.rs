@@ -63,10 +63,7 @@ fn list_of_floats() {
 #[test]
 fn list_empty() {
     let config = ConfigViewBuilder::new().list("empty", vec![]).build();
-    assert_eq!(
-        config.fields.get("empty"),
-        Some(&ConfigValue::List(vec![]))
-    );
+    assert_eq!(config.fields.get("empty"), Some(&ConfigValue::List(vec![])));
 }
 
 #[test]
@@ -79,10 +76,7 @@ fn list_of_mixed_types() {
     let config = ConfigViewBuilder::new()
         .list("mixed", values.clone())
         .build();
-    assert_eq!(
-        config.fields.get("mixed"),
-        Some(&ConfigValue::List(values))
-    );
+    assert_eq!(config.fields.get("mixed"), Some(&ConfigValue::List(values)));
 }
 
 #[test]
@@ -110,10 +104,7 @@ fn chaining_all_variants() {
 
 #[test]
 fn overwrite_same_key() {
-    let config = ConfigViewBuilder::new()
-        .int("x", 1)
-        .float("x", 2.0)
-        .build();
+    let config = ConfigViewBuilder::new().int("x", 1).float("x", 2.0).build();
     // Last write wins
     assert_eq!(config.fields.get("x"), Some(&ConfigValue::Float(2.0)));
     assert_eq!(config.fields.len(), 1);

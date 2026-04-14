@@ -30,10 +30,34 @@ fn flags(fuzzy: bool) -> WallFeatureFlags {
 /// Helper: create a simple outer wall loop with 4 points forming a square.
 fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
     let points = vec![
-        Point3WithWidth { x: 0.0, y: 0.0, z, width: 0.4, flow_factor: 1.0 },
-        Point3WithWidth { x: 10.0, y: 0.0, z, width: 0.4, flow_factor: 1.0 },
-        Point3WithWidth { x: 10.0, y: 10.0, z, width: 0.4, flow_factor: 1.0 },
-        Point3WithWidth { x: 0.0, y: 10.0, z, width: 0.4, flow_factor: 1.0 },
+        Point3WithWidth {
+            x: 0.0,
+            y: 0.0,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+        },
+        Point3WithWidth {
+            x: 10.0,
+            y: 0.0,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+        },
+        Point3WithWidth {
+            x: 10.0,
+            y: 10.0,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+        },
+        Point3WithWidth {
+            x: 0.0,
+            y: 10.0,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+        },
     ];
     let feature_flags: Vec<WallFeatureFlags> = fuzzy_flags.iter().map(|f| flags(*f)).collect();
     let widths = vec![0.4; points.len()];
@@ -54,10 +78,34 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
 /// Helper: create an inner wall loop.
 fn inner_wall(z: f32) -> WallLoop {
     let points = vec![
-        Point3WithWidth { x: 1.0, y: 1.0, z, width: 0.4, flow_factor: 1.0 },
-        Point3WithWidth { x: 9.0, y: 1.0, z, width: 0.4, flow_factor: 1.0 },
-        Point3WithWidth { x: 9.0, y: 9.0, z, width: 0.4, flow_factor: 1.0 },
-        Point3WithWidth { x: 1.0, y: 9.0, z, width: 0.4, flow_factor: 1.0 },
+        Point3WithWidth {
+            x: 1.0,
+            y: 1.0,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+        },
+        Point3WithWidth {
+            x: 9.0,
+            y: 1.0,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+        },
+        Point3WithWidth {
+            x: 9.0,
+            y: 9.0,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+        },
+        Point3WithWidth {
+            x: 1.0,
+            y: 9.0,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+        },
     ];
     WallLoop {
         perimeter_index: 1,
@@ -67,7 +115,9 @@ fn inner_wall(z: f32) -> WallLoop {
             role: ExtrusionRole::InnerWall,
             speed_factor: 1.0,
         },
-        width_profile: WidthProfile { widths: vec![0.4; points.len()] },
+        width_profile: WidthProfile {
+            widths: vec![0.4; points.len()],
+        },
         feature_flags: vec![flags(false); 4],
         boundary_type: WallBoundaryType::ExteriorSurface,
     }
@@ -75,18 +125,14 @@ fn inner_wall(z: f32) -> WallLoop {
 
 /// Helper: create a PerimeterRegionView with given wall loops.
 fn region_with_walls(walls: Vec<WallLoop>) -> PerimeterRegionView {
-    PerimeterRegionView::new(
-        "obj-0".to_string(),
-        0,
-        walls,
-        vec![],
-        vec![],
-    )
+    PerimeterRegionView::new("obj-0".to_string(), 0, walls, vec![], vec![])
 }
 
 /// Helper: default config (no overrides).
 fn default_config() -> ConfigView {
-    ConfigView { fields: HashMap::new() }
+    ConfigView {
+        fields: HashMap::new(),
+    }
 }
 
 /// Helper: config with apply-to-all = true.
@@ -107,7 +153,9 @@ fn fuzzy_flagged_segments_are_perturbed() {
     let regions = vec![region_with_walls(vec![wall.clone()])];
     let mut output = PerimeterOutputBuilder::new();
 
-    module.run_wall_postprocess(0, &regions, &mut output, &default_config()).unwrap();
+    module
+        .run_wall_postprocess(0, &regions, &mut output, &default_config())
+        .unwrap();
 
     let out_walls = output.wall_loops();
     assert_eq!(out_walls.len(), 1, "should produce one wall loop");
@@ -129,7 +177,9 @@ fn non_fuzzy_segments_unchanged() {
     let regions = vec![region_with_walls(vec![wall.clone()])];
     let mut output = PerimeterOutputBuilder::new();
 
-    module.run_wall_postprocess(0, &regions, &mut output, &default_config()).unwrap();
+    module
+        .run_wall_postprocess(0, &regions, &mut output, &default_config())
+        .unwrap();
 
     let out_walls = output.wall_loops();
     assert_eq!(out_walls.len(), 1);
@@ -152,7 +202,9 @@ fn apply_to_all_perturbs_all_outer() {
     let regions = vec![region_with_walls(vec![wall.clone()])];
     let mut output = PerimeterOutputBuilder::new();
 
-    module.run_wall_postprocess(0, &regions, &mut output, &config).unwrap();
+    module
+        .run_wall_postprocess(0, &regions, &mut output, &config)
+        .unwrap();
 
     let out_walls = output.wall_loops();
     assert_eq!(out_walls.len(), 1);
@@ -173,7 +225,9 @@ fn inner_walls_not_perturbed() {
     let regions = vec![region_with_walls(vec![inner.clone()])];
     let mut output = PerimeterOutputBuilder::new();
 
-    module.run_wall_postprocess(0, &regions, &mut output, &default_config()).unwrap();
+    module
+        .run_wall_postprocess(0, &regions, &mut output, &default_config())
+        .unwrap();
 
     let out_walls = output.wall_loops();
     assert_eq!(out_walls.len(), 1);
@@ -194,7 +248,9 @@ fn feature_flags_parallel_with_points() {
     let regions = vec![region_with_walls(vec![wall])];
     let mut output = PerimeterOutputBuilder::new();
 
-    module.run_wall_postprocess(0, &regions, &mut output, &default_config()).unwrap();
+    module
+        .run_wall_postprocess(0, &regions, &mut output, &default_config())
+        .unwrap();
 
     let out_walls = output.wall_loops();
     assert_eq!(out_walls.len(), 1);
@@ -223,7 +279,9 @@ fn all_output_points_finite() {
     let regions = vec![region_with_walls(vec![wall])];
     let mut output = PerimeterOutputBuilder::new();
 
-    module.run_wall_postprocess(0, &regions, &mut output, &default_config()).unwrap();
+    module
+        .run_wall_postprocess(0, &regions, &mut output, &default_config())
+        .unwrap();
 
     for w in output.wall_loops() {
         for pt in &w.path.points {
@@ -271,9 +329,14 @@ fn empty_regions_no_output() {
     let regions: Vec<PerimeterRegionView> = vec![];
     let mut output = PerimeterOutputBuilder::new();
 
-    module.run_wall_postprocess(0, &regions, &mut output, &default_config()).unwrap();
+    module
+        .run_wall_postprocess(0, &regions, &mut output, &default_config())
+        .unwrap();
 
-    assert!(output.wall_loops().is_empty(), "empty regions should produce no wall loops");
+    assert!(
+        output.wall_loops().is_empty(),
+        "empty regions should produce no wall loops"
+    );
 }
 
 // ============================================================================
@@ -287,14 +350,42 @@ fn deterministic_output() {
     let regions = vec![region_with_walls(vec![wall])];
 
     let mut output1 = PerimeterOutputBuilder::new();
-    module.run_wall_postprocess(0, &regions, &mut output1, &default_config()).unwrap();
+    module
+        .run_wall_postprocess(0, &regions, &mut output1, &default_config())
+        .unwrap();
 
     let mut output2 = PerimeterOutputBuilder::new();
-    module.run_wall_postprocess(0, &regions, &mut output2, &default_config()).unwrap();
+    module
+        .run_wall_postprocess(0, &regions, &mut output2, &default_config())
+        .unwrap();
 
     assert_eq!(
         output1.wall_loops()[0].path.points,
         output2.wall_loops()[0].path.points,
         "same inputs must produce identical outputs (seeded RNG)"
+    );
+}
+
+#[test]
+fn mixed_fuzzy_loops_keep_unflagged_tail_vertices() {
+    let module = FuzzySkinModule::on_print_start(&default_config()).unwrap();
+    let wall = outer_wall(0.3, &[true, false, false, false]);
+    let regions = vec![region_with_walls(vec![wall.clone()])];
+    let mut output = PerimeterOutputBuilder::new();
+
+    module
+        .run_wall_postprocess(0, &regions, &mut output, &default_config())
+        .unwrap();
+
+    let points = &output.wall_loops()[0].path.points;
+    let last = points.last().expect("mixed fuzzy loop should keep points");
+
+    assert_eq!(
+        *last, wall.path.points[3],
+        "unflagged tail segments should retain the original final vertex"
+    );
+    assert!(
+        points.contains(&wall.path.points[2]),
+        "unflagged vertices must remain present on mixed loops"
     );
 }

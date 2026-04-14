@@ -67,7 +67,7 @@ This document is normative for term definitions and end-to-end behavior traces u
 2. `PrePass::PaintSegmentation` emits `PaintRegionIR` per semantic per layer with `paint_order`.
 3. `Layer::SlicePostProcess` annotates `SlicedRegion.boundary_paint` after polygon edits.
 4. `Layer::Perimeters` maps boundary paint to `WallLoop.feature_flags` and material boundaries.
-5. `Layer::PerimetersPostProcess` applies fuzzy perturbation only where `feature_flags.fuzzy_skin=true`.
+5. `Layer::PerimetersPostProcess` applies perpendicular XY fuzzy perturbation only where `feature_flags.fuzzy_skin=true`.
 6. `Layer::Support` applies support precedence: blocker over enforcer.
 
 ### Expected outcomes

@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR,
-    Point3WithWidth, PrintEntity, RegionKey, SemVer,
-};
 use skirt_brim::SkirtBrim;
+use slicer_ir::{
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
+    PrintEntity, RegionKey, SemVer,
+};
 
 // ---- Helpers ----
 
@@ -39,11 +39,7 @@ fn make_entity_at(x: f32, y: f32, z: f32) -> PrintEntity {
     }
 }
 
-fn make_layer_with_entities(
-    index: u32,
-    z: f32,
-    entities: Vec<PrintEntity>,
-) -> LayerCollectionIR {
+fn make_layer_with_entities(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollectionIR {
     LayerCollectionIR {
         schema_version: semver(),
         global_layer_index: index,
@@ -51,6 +47,7 @@ fn make_layer_with_entities(
         ordered_entities: entities,
         tool_changes: vec![],
         z_hops: vec![],
+        annotations: vec![],
     }
 }
 
@@ -69,10 +66,7 @@ fn custom_config(
     enabled: bool,
 ) -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert(
-        "skirt_brim_enabled".to_string(),
-        ConfigValue::Bool(enabled),
-    );
+    fields.insert("skirt_brim_enabled".to_string(), ConfigValue::Bool(enabled));
     fields.insert("skirt_loops".to_string(), ConfigValue::Int(loops as i64));
     fields.insert(
         "skirt_distance".to_string(),
@@ -239,7 +233,10 @@ fn multiple_skirt_loops() {
         .iter()
         .filter(|e| e.role == ExtrusionRole::Skirt)
         .count();
-    assert_eq!(skirt_count, 3, "expected 3 skirt entities, got {skirt_count}");
+    assert_eq!(
+        skirt_count, 3,
+        "expected 3 skirt entities, got {skirt_count}"
+    );
 }
 
 #[test]
@@ -304,10 +301,7 @@ fn brim_generates_paths() {
         .ordered_entities
         .iter()
         .any(|e| e.region_key.object_id == "__brim__");
-    assert!(
-        !brim_on_layer1,
-        "layer 1 should NOT have brim entities"
-    );
+    assert!(!brim_on_layer1, "layer 1 should NOT have brim entities");
 }
 
 #[test]

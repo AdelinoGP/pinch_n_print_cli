@@ -494,3 +494,179 @@ fn schema_version() -> SemVer {
         patch: 0,
     }
 }
+
+// ── Step 15: degraded-warning determinism + propagation ─────────────────
+// docs/02 §Paint Region Resolution Contract; docs/04 §770-775 (degraded
+// success); docs/10 §Degraded success row; docs/11 §73-75.
+
+#[test]
+fn paint_annotation_repeated_runs_emit_byte_identical_warnings() {
+    use slicer_host::execute_slice_postprocess_paint_annotation;
+
+    let mk_request = || SlicePostProcessPaintAnnotationRequest {
+        slice_ir: slice_fixture(
+            42,
+            vec![region_fixture(
+                "ambiguous-object",
+                6,
+                vec![polygon(vec![(0.0, 0.0), (10.0, 0.0), (10.0, 0.0001), (0.0, 10.0)])],
+            )],
+        ),
+        paint_regions: Arc::new(partially_resolved_builtin_regions(42)),
+        required_semantics: vec![
+            PaintSemantic::Material,
+            PaintSemantic::FuzzySkin,
+            PaintSemantic::SupportEnforcer,
+            PaintSemantic::SupportBlocker,
+        ],
+    };
+
+    let a = execute_slice_postprocess_paint_annotation(mk_request()).unwrap();
+    let b = execute_slice_postprocess_paint_annotation(mk_request()).unwrap();
+    let c = execute_slice_postprocess_paint_annotation(mk_request()).unwrap();
+    assert!(a.degraded && b.degraded && c.degraded);
+    assert_eq!(
+        a.warnings, b.warnings,
+        "warning sequence must be deterministic across repeated calls"
+    );
+    assert_eq!(b.warnings, c.warnings);
+    assert_eq!(a.slice_ir, b.slice_ir);
+}
+
+#[test]
+fn paint_annotation_warnings_ordered_region_then_semantic_then_polygon_then_point() {
+    use slicer_host::execute_slice_postprocess_paint_annotation;
+
+    let result = execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
+        slice_ir: slice_fixture(
+            42,
+            vec![region_fixture(
+                "ambiguous-object",
+                6,
+                vec![polygon(vec![(0.0, 0.0), (10.0, 0.0), (10.0, 0.0001), (0.0, 10.0)])],
+            )],
+        ),
+        paint_regions: Arc::new(partially_resolved_builtin_regions(42)),
+        required_semantics: vec![
+            PaintSemantic::Material,
+            PaintSemantic::FuzzySkin,
+            PaintSemantic::SupportEnforcer,
+            PaintSemantic::SupportBlocker,
+        ],
+    })
+    .unwrap();
+
+    // Same (region, polygon, contour_point) — warnings must follow the input
+    // semantic order, not arbitrary HashMap iteration.
+    let semantics: Vec<&PaintSemantic> = result.warnings.iter().map(|w| &w.semantic).collect();
+    assert_eq!(
+        semantics,
+        vec![
+            &PaintSemantic::Material,
+            &PaintSemantic::FuzzySkin,
+            &PaintSemantic::SupportEnforcer,
+            &PaintSemantic::SupportBlocker,
+        ]
+    );
+    for w in &result.warnings {
+        assert_eq!(w.contour_point_index, 2, "only the ambiguous point yields a warning");
+        assert_eq!(w.polygon_index, 0);
+        assert_eq!(w.global_layer_index, 42);
+        assert_eq!(w.code, 504);
+    }
+}
+
+#[test]
+fn paint_annotation_warnings_propagate_to_slice_event_collector_as_degraded() {
+    use slicer_host::progress_events::SliceEventCollector;
+    use slicer_host::{
+        execute_slice_postprocess_paint_annotation, paint_annotation_warning_to_progress_event,
+    };
+
+    let result = execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
+        slice_ir: slice_fixture(
+            42,
+            vec![region_fixture(
+                "ambiguous-object",
+                6,
+                vec![polygon(vec![(0.0, 0.0), (10.0, 0.0), (10.0, 0.0001), (0.0, 10.0)])],
+            )],
+        ),
+        paint_regions: Arc::new(partially_resolved_builtin_regions(42)),
+        required_semantics: vec![PaintSemantic::Material],
+    })
+    .unwrap();
+
+    assert!(result.degraded);
+    assert_eq!(result.warnings.len(), 1);
+
+    let mut collector = SliceEventCollector::new();
+    for (i, w) in result.warnings.iter().enumerate() {
+        let evt = paint_annotation_warning_to_progress_event(
+            w,
+            String::from("slice-test"),
+            String::from("com.host.slice-postprocess-paint-annotator"),
+            1_000 + i as u64,
+        );
+        // Bridge contract: the bridge MUST stamp fatal=false so the
+        // collector marks the slice degraded rather than aborting.
+        let err = evt.error.as_ref().expect("module_error must carry error");
+        assert!(!err.fatal);
+        assert_eq!(err.code, 504);
+        assert!(err.suggestion.is_some());
+        collector.record(evt);
+    }
+
+    assert!(
+        collector.is_degraded(),
+        "non-fatal paint fallback must propagate degraded=true to the slice-level collector"
+    );
+    assert_eq!(collector.non_fatal_count(), 1);
+    assert_eq!(collector.fatal_count(), 0);
+}
+
+#[test]
+fn paint_annotation_fallback_value_is_deterministic_for_each_semantic() {
+    use slicer_host::SlicePostProcessPaintAnnotationWarning as W;
+    use slicer_host::SlicePostProcessPaintAnnotationWarningReason as R;
+    use slicer_host::execute_slice_postprocess_paint_annotation;
+
+    // Build a request that yields one warning per built-in semantic, then
+    // assert each fallback value matches the doc-required deterministic
+    // default (Material→ToolIndex(0); flag-typed semantics→Flag(false)).
+    let result = execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
+        slice_ir: slice_fixture(
+            7,
+            vec![region_fixture(
+                "obj",
+                1,
+                vec![polygon(vec![(0.0, 0.0), (10.0, 0.0), (10.0, 0.0001), (0.0, 10.0)])],
+            )],
+        ),
+        paint_regions: Arc::new(partially_resolved_builtin_regions(7)),
+        required_semantics: vec![
+            PaintSemantic::Material,
+            PaintSemantic::FuzzySkin,
+            PaintSemantic::SupportEnforcer,
+            PaintSemantic::SupportBlocker,
+        ],
+    })
+    .unwrap();
+
+    let by_semantic: HashMap<PaintSemantic, &W> =
+        result.warnings.iter().map(|w| (w.semantic.clone(), w)).collect();
+
+    let m = by_semantic.get(&PaintSemantic::Material).expect("Material warning");
+    assert_eq!(m.fallback_value, PaintValue::ToolIndex(0));
+    assert_eq!(m.reason, R::NumericalEdgeAmbiguity);
+
+    for sem in [
+        PaintSemantic::FuzzySkin,
+        PaintSemantic::SupportEnforcer,
+        PaintSemantic::SupportBlocker,
+    ] {
+        let w = by_semantic.get(&sem).unwrap_or_else(|| panic!("{sem:?} warning"));
+        assert_eq!(w.fallback_value, PaintValue::Flag(false));
+        assert_eq!(w.reason, R::NumericalEdgeAmbiguity);
+    }
+}

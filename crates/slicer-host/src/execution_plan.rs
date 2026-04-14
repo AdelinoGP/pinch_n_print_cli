@@ -145,16 +145,29 @@ pub enum ExecutionPlanError {
 impl std::fmt::Display for ExecutionPlanError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::MissingModuleBinding { stage_id, module_id } => {
-                write!(f, "stage '{stage_id}' references unknown module '{module_id}'")
+            Self::MissingModuleBinding {
+                stage_id,
+                module_id,
+            } => {
+                write!(
+                    f,
+                    "stage '{stage_id}' references unknown module '{module_id}'"
+                )
             }
-            Self::StageMismatch { module_id, expected_stage, actual_stage } => {
+            Self::StageMismatch {
+                module_id,
+                expected_stage,
+                actual_stage,
+            } => {
                 write!(f, "module '{module_id}' declared stage '{actual_stage}' but was placed in '{expected_stage}'")
             }
             Self::DuplicateModuleBinding { module_id } => {
                 write!(f, "duplicate runtime binding for module '{module_id}'")
             }
-            Self::LayerIndexBudgetExceeded { layer_index, budget } => {
+            Self::LayerIndexBudgetExceeded {
+                layer_index,
+                budget,
+            } => {
                 write!(
                     f,
                     "layer index {layer_index} exceeds budget (must be < {budget}); \

@@ -2,8 +2,9 @@
 //!
 //! The `LayerModule` trait is the core trait that per-layer module authors implement.
 //! The `PrepassModule` trait is for prepass module authors (mesh analysis, layer planning).
+//! The `FinalizationModule` trait is for layer finalization modules.
 //! The `PostpassModule` trait is for postpass module authors (gcode and text postprocessing).
-//! Per docs/05_module_sdk.md and docs/03_wit_and_manifest.md (world-layer.wit, world-prepass.wit, world-postpass.wit).
+//! Per docs/05_module_sdk.md and docs/03_wit_and_manifest.md (world-layer.wit, world-prepass.wit, world-finalization.wit, world-postpass.wit).
 
 use std::sync::Arc;
 
@@ -18,7 +19,10 @@ use crate::prepass_builders::{
 };
 use crate::prepass_types::{MeshObjectView, ObjectId, PaintSegmentationObjectView};
 use crate::views::{PerimeterRegionView, SliceRegionView};
-use slicer_ir::{ConfigView, PaintRegionIR, PaintSemantic, SemVer, SemanticRegion};
+use slicer_ir::{
+    ConfigView, ExtrusionPath3D, LayerCollectionIR, PaintRegionIR, PaintSemantic, RegionKey,
+    SemVer, SemanticRegion,
+};
 
 /// Paint region layer view for accessing painted regions.
 ///
@@ -130,7 +134,7 @@ pub trait LayerModule: Sized {
         _output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        todo!("TASK-042: implement LayerModule::run_infill default")
+        Ok(())
     }
 
     /// Run perimeter generation for a layer.
@@ -153,7 +157,7 @@ pub trait LayerModule: Sized {
         _output: &mut PerimeterOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        todo!("TASK-042: implement LayerModule::run_perimeters default")
+        Ok(())
     }
 
     /// Run wall post-processing for a layer.
@@ -174,7 +178,7 @@ pub trait LayerModule: Sized {
         _output: &mut PerimeterOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        todo!("TASK-042: implement LayerModule::run_wall_postprocess default")
+        Ok(())
     }
 
     /// Run infill post-processing for a layer.
@@ -195,7 +199,7 @@ pub trait LayerModule: Sized {
         _output: &mut InfillOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        todo!("TASK-042: implement LayerModule::run_infill_postprocess default")
+        Ok(())
     }
 
     /// Run slice post-processing for a layer.
@@ -218,7 +222,7 @@ pub trait LayerModule: Sized {
         _output: &mut SlicePostprocessBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        todo!("TASK-042: implement LayerModule::run_slice_postprocess default")
+        Ok(())
     }
 
     /// Run support generation for a layer.
@@ -233,6 +237,14 @@ pub trait LayerModule: Sized {
     ///     config: config-view,
     /// ) -> result<_, module-error>;
     /// ```
+    ///
+    /// Documented eligibility precedence (docs/02 §412, docs/06 §387, §702-704):
+    /// 1. `PaintSemantic::SupportBlocker` → no support, even with enforcer.
+    /// 2. `PaintSemantic::SupportEnforcer` → support generated regardless of
+    ///    overhang and regardless of `needs_support`.
+    /// 3. Default (no paint) → generate support iff
+    ///    `SliceRegionView::needs_support()` is true (the
+    ///    `SurfaceClassificationIR`-derived eligibility flag).
     fn run_support(
         &self,
         _layer_index: u32,
@@ -241,7 +253,49 @@ pub trait LayerModule: Sized {
         _output: &mut SupportOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        todo!("TASK-042: implement LayerModule::run_support default")
+        Ok(())
+    }
+
+    /// Run support post-processing for a layer.
+    ///
+    /// Per docs/03_wit_and_manifest.md (world-layer.wit):
+    /// ```wit
+    /// export run-support-postprocess: func(
+    ///     layer-index: layer-idx,
+    ///     regions: list<slice-region-view>,
+    ///     output: support-output-builder,
+    ///     config: config-view,
+    /// ) -> result<_, module-error>;
+    /// ```
+    fn run_support_postprocess(
+        &self,
+        _layer_index: u32,
+        _regions: &[SliceRegionView],
+        _output: &mut SupportOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run path optimization for a layer.
+    ///
+    /// Per docs/03_wit_and_manifest.md (world-layer.wit):
+    /// ```wit
+    /// export run-path-optimization: func(
+    ///     layer-index: layer-idx,
+    ///     regions: list<perimeter-region-view>,
+    ///     output: gcode-output-builder,
+    ///     config: config-view,
+    /// ) -> result<_, module-error>;
+    /// ```
+    fn run_path_optimization(
+        &self,
+        _layer_index: u32,
+        _regions: &[PerimeterRegionView],
+        _output: &mut GcodeOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
     }
 }
 
@@ -405,5 +459,161 @@ pub trait PostpassModule: Sized {
         _config: &ConfigView,
     ) -> Result<String, ModuleError> {
         Ok(gcode_text.to_string())
+    }
+}
+
+/// Read-only view of a completed layer for finalization modules.
+///
+/// Per docs/03_wit_and_manifest.md (world-finalization.wit):
+/// ```wit
+/// resource layer-collection-view {
+///     layer-index:  func() -> layer-idx;
+///     z:            func() -> f32;
+///     entity-count: func() -> u32;
+///     tool-changes: func() -> list<tool-change-view>;
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct LayerCollectionView {
+    layer: LayerCollectionIR,
+}
+
+impl LayerCollectionView {
+    /// Create a new LayerCollectionView wrapping a completed layer.
+    #[doc(hidden)]
+    pub fn new(layer: LayerCollectionIR) -> Self {
+        Self { layer }
+    }
+
+    /// Returns the global layer index.
+    pub fn layer_index(&self) -> u32 {
+        self.layer.global_layer_index
+    }
+
+    /// Returns the Z height of this layer.
+    pub fn z(&self) -> f32 {
+        self.layer.z
+    }
+
+    /// Returns the number of extrusion entities in this layer.
+    pub fn entity_count(&self) -> u32 {
+        self.layer.ordered_entities.len() as u32
+    }
+
+    /// Returns tool changes in this layer as (after_entity_index, from_tool, to_tool).
+    pub fn tool_changes(&self) -> &[slicer_ir::ToolChange] {
+        &self.layer.tool_changes
+    }
+}
+
+/// Output builder for the finalization stage.
+///
+/// Per docs/03_wit_and_manifest.md (world-finalization.wit):
+/// ```wit
+/// resource finalization-output-builder {
+///     push-entity-to-layer: func(layer-index, path, region-key) -> result<_, string>;
+///     insert-synthetic-layer: func(z, paths) -> result<_, string>;
+/// }
+/// ```
+pub struct FinalizationOutputBuilder {
+    entity_pushes: Vec<(u32, ExtrusionPath3D, RegionKey)>,
+    synthetic_layers: Vec<(f32, Vec<ExtrusionPath3D>)>,
+}
+
+impl FinalizationOutputBuilder {
+    /// Create a new FinalizationOutputBuilder.
+    pub fn new() -> Self {
+        Self {
+            entity_pushes: Vec::new(),
+            synthetic_layers: Vec::new(),
+        }
+    }
+
+    /// Append an extrusion path to an existing layer.
+    pub fn push_entity_to_layer(
+        &mut self,
+        layer_index: u32,
+        path: ExtrusionPath3D,
+        region_key: RegionKey,
+    ) -> Result<(), String> {
+        self.entity_pushes.push((layer_index, path, region_key));
+        Ok(())
+    }
+
+    /// Insert a new synthetic layer at an arbitrary Z.
+    pub fn insert_synthetic_layer(
+        &mut self,
+        z: f32,
+        paths: Vec<ExtrusionPath3D>,
+    ) -> Result<(), String> {
+        self.synthetic_layers.push((z, paths));
+        Ok(())
+    }
+
+    /// Get all entity pushes (for testing).
+    #[doc(hidden)]
+    pub fn entity_pushes(&self) -> &[(u32, ExtrusionPath3D, RegionKey)] {
+        &self.entity_pushes
+    }
+
+    /// Get all synthetic layers (for testing).
+    #[doc(hidden)]
+    pub fn synthetic_layers(&self) -> &[(f32, Vec<ExtrusionPath3D>)] {
+        &self.synthetic_layers
+    }
+}
+
+impl Default for FinalizationOutputBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for FinalizationOutputBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FinalizationOutputBuilder")
+            .field("entity_pushes", &self.entity_pushes.len())
+            .field("synthetic_layers", &self.synthetic_layers.len())
+            .finish()
+    }
+}
+
+/// The trait for finalization modules.
+///
+/// Module authors implement this trait for PostPass::LayerFinalization stage.
+/// Per docs/03_wit_and_manifest.md (world-finalization.wit):
+/// - Modules receive read-only views of all completed layers
+/// - Modules may append entities to existing layers or insert synthetic layers
+/// - Modules are always serialized (never parallel)
+///
+/// Per docs/01_system_architecture.md:
+/// - Modules must set `layer-parallel-safe = false` in hints
+/// - Host instantiates exactly one WASM instance for finalization modules
+pub trait FinalizationModule: Sized {
+    /// Called once before finalization begins.
+    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError>;
+
+    /// Called once after finalization completes.
+    fn on_print_end(&self) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run layer finalization across all completed layers.
+    ///
+    /// Per docs/03_wit_and_manifest.md (world-finalization.wit):
+    /// ```wit
+    /// export run-finalization: func(
+    ///     layers: list<layer-collection-view>,
+    ///     output: finalization-output-builder,
+    ///     config: config-view,
+    /// ) -> result<_, module-error>;
+    /// ```
+    fn run_finalization(
+        &self,
+        _layers: &[LayerCollectionView],
+        _output: &mut FinalizationOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
     }
 }

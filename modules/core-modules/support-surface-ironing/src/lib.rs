@@ -95,8 +95,7 @@ impl SupportSurfaceIroning {
 
                 // Strictly between
                 if scan_y > edge_min_y && scan_y < edge_max_y {
-                    let x = x1 as f64
-                        + (scan_y - y1) as f64 * (x2 - x1) as f64 / (y2 - y1) as f64;
+                    let x = x1 as f64 + (scan_y - y1) as f64 * (x2 - x1) as f64 / (y2 - y1) as f64;
                     x_intersections.push(x.round() as i64);
                 }
             }

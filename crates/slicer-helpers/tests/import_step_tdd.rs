@@ -38,10 +38,7 @@ fn import_step_single_solid() {
         "mesh should have at least one object"
     );
     let obj = &mesh.objects[0];
-    assert!(
-        !obj.mesh.vertices.is_empty(),
-        "object should have vertices"
-    );
+    assert!(!obj.mesh.vertices.is_empty(), "object should have vertices");
     assert!(
         !obj.mesh.indices.is_empty(),
         "object should have triangle indices"
@@ -131,9 +128,10 @@ fn import_step_repair_applied() {
     let path = resources_dir().join("step_open_face.step");
     let result = import_step(&path).expect("open face import");
 
-    let has_repair_warning = result.warnings.iter().any(|w| {
-        matches!(w, StepWarning::RepairApplied { .. })
-    });
+    let has_repair_warning = result
+        .warnings
+        .iter()
+        .any(|w| matches!(w, StepWarning::RepairApplied { .. }));
     assert!(
         has_repair_warning,
         "expected StepWarning::RepairApplied for open-face STEP"

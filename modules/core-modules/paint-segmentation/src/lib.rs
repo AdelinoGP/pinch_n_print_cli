@@ -88,11 +88,7 @@ impl PrepassModule for PaintSegmentation {
 ///
 /// Uses the same projection formula as the host executor at
 /// `crates/slicer-host/src/paint_segmentation.rs`.
-fn project_facet(
-    vertices: &[[f32; 3]],
-    triangle: &[u32; 3],
-    matrix: &[f64; 16],
-) -> Vec<[f64; 2]> {
+fn project_facet(vertices: &[[f32; 3]], triangle: &[u32; 3], matrix: &[f64; 16]) -> Vec<[f64; 2]> {
     triangle
         .iter()
         .map(|&vertex_index| {

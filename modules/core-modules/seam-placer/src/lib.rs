@@ -65,10 +65,7 @@ impl LayerModule for SeamPlacer {
                 "rear" => SeamMode::Rear,
                 "random" => SeamMode::Random,
                 other => {
-                    return Err(ModuleError::fatal(
-                        1,
-                        format!("unknown seam_mode: {other}"),
-                    ));
+                    return Err(ModuleError::fatal(1, format!("unknown seam_mode: {other}")));
                 }
             },
             _ => SeamMode::Nearest,

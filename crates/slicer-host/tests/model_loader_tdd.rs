@@ -178,9 +178,7 @@ fn threemf_cube_file() -> NamedTempFile {
         let mut zip_writer = zip::ZipWriter::new(cursor);
         let options = zip::write::SimpleFileOptions::default()
             .compression_method(zip::CompressionMethod::Deflated);
-        zip_writer
-            .start_file("3D/3dmodel.model", options)
-            .unwrap();
+        zip_writer.start_file("3D/3dmodel.model", options).unwrap();
         zip_writer.write_all(model_xml.as_bytes()).unwrap();
         zip_writer.finish().unwrap();
     }

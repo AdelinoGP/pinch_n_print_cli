@@ -4,7 +4,7 @@
 //! - stable re-exports for shared IR types,
 //! - host service wrapper functions,
 //! - coordinate conversion helpers,
-//! - module traits (LayerModule, PrepassModule),
+//! - module traits (LayerModule, PrepassModule, FinalizationModule, PostpassModule),
 //! - error types (ModuleError),
 //! - view types (SliceRegionView, PerimeterRegionView),
 //! - output builders (InfillOutputBuilder, PerimeterOutputBuilder, etc.),
@@ -21,9 +21,9 @@ pub mod builders;
 pub mod coords;
 pub mod error;
 pub mod host;
-pub mod prelude;
 pub mod postpass_builders;
 pub mod postpass_types;
+pub mod prelude;
 pub mod prepass_builders;
 pub mod prepass_types;
 pub mod traits;

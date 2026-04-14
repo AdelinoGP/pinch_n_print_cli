@@ -20,19 +20,31 @@ pub struct ModuleError {
 
 impl ModuleError {
     /// Create a fatal error that will abort the slice.
-    pub fn fatal(_code: u32, _message: impl Into<String>) -> Self {
-        todo!("TASK-042: implement ModuleError::fatal constructor")
+    pub fn fatal(code: u32, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            fatal: true,
+        }
     }
 
     /// Create a non-fatal error that allows the host to continue.
-    pub fn non_fatal(_code: u32, _message: impl Into<String>) -> Self {
-        todo!("TASK-042: implement ModuleError::non_fatal constructor")
+    pub fn non_fatal(code: u32, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+            fatal: false,
+        }
     }
 
     /// Convenience constructor from a string error (non-fatal).
     #[allow(clippy::should_implement_trait)]
-    pub fn from_str(_message: impl Into<String>) -> Self {
-        todo!("TASK-042: implement ModuleError::from_str constructor")
+    pub fn from_str(message: impl Into<String>) -> Self {
+        Self {
+            code: 0,
+            message: message.into(),
+            fatal: false,
+        }
     }
 }
 

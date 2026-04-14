@@ -7,8 +7,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use slicer_ir::{
-    InfillIR, LayerCollectionIR, LayerPlanIR, MeshIR, PaintRegionIR, PerimeterIR, RegionMapIR,
-    LayerAnnotation, SliceIR, SupportIR, SurfaceClassificationIR, ToolChange, ZHop,
+    InfillIR, LayerAnnotation, LayerCollectionIR, LayerPlanIR, MeshIR, PaintRegionIR, PerimeterIR,
+    RegionMapIR, SliceIR, SupportIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
 /// Host-owned immutable global IR store plus write-once per-layer output slots.

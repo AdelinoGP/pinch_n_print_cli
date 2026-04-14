@@ -75,9 +75,7 @@ impl std::error::Error for MeshAnalysisError {}
 /// Iteration order is stable (`mesh.objects` is a `Vec`, triangles are
 /// visited in index order) and the classifier is pure, so repeated
 /// invocations on the same mesh yield byte-identical output.
-pub fn execute_mesh_analysis(
-    mesh: &MeshIR,
-) -> Result<SurfaceClassificationIR, MeshAnalysisError> {
+pub fn execute_mesh_analysis(mesh: &MeshIR) -> Result<SurfaceClassificationIR, MeshAnalysisError> {
     execute_mesh_analysis_with(mesh, DEFAULT_OVERHANG_THRESHOLD_DEG)
 }
 

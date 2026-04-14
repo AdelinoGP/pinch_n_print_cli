@@ -20,10 +20,7 @@ fn make_config(
         ConfigValue::Float(first_layer_height),
     );
     for (id, height) in objects {
-        fields.insert(
-            format!("object_height:{}", id),
-            ConfigValue::Float(*height),
-        );
+        fields.insert(format!("object_height:{}", id), ConfigValue::Float(*height));
     }
     ConfigView { fields }
 }
@@ -44,14 +41,8 @@ fn make_config_with_per_object_lh(
         ConfigValue::Float(first_layer_height),
     );
     for (id, height, lh) in objects {
-        fields.insert(
-            format!("object_height:{}", id),
-            ConfigValue::Float(*height),
-        );
-        fields.insert(
-            format!("layer_height:{}", id),
-            ConfigValue::Float(*lh),
-        );
+        fields.insert(format!("object_height:{}", id), ConfigValue::Float(*height));
+        fields.insert(format!("layer_height:{}", id), ConfigValue::Float(*lh));
     }
     ConfigView { fields }
 }
@@ -220,11 +211,8 @@ fn test_multi_object_same_height() {
 fn test_multi_object_lcm_sync() {
     // Object A at 0.2mm, Object B at 0.3mm → LCM sync at 0.6mm multiples
     // Both objects 1.2mm tall to get clean layer counts
-    let config = make_config_with_per_object_lh(
-        0.2,
-        0.2,
-        &[("obj-A", 1.2, 0.2), ("obj-B", 1.2, 0.3)],
-    );
+    let config =
+        make_config_with_per_object_lh(0.2, 0.2, &[("obj-A", 1.2, 0.2), ("obj-B", 1.2, 0.3)]);
     let module = DefaultLayerPlanner::on_print_start(&config).unwrap();
 
     let objects: Vec<ObjectId> = vec!["obj-A".to_string(), "obj-B".to_string()];
@@ -254,9 +242,9 @@ fn test_multi_object_lcm_sync() {
     );
 
     // There should be at least one catch-up layer somewhere
-    let has_catchup = layers.iter().any(|l| {
-        l.active_regions.iter().any(|r| r.is_catchup)
-    });
+    let has_catchup = layers
+        .iter()
+        .any(|l| l.active_regions.iter().any(|r| r.is_catchup));
     assert!(has_catchup, "LCM sync should produce catch-up layers");
 }
 
@@ -267,11 +255,8 @@ fn test_multi_object_lcm_sync() {
 #[test]
 fn test_catch_up_layer_fields() {
     // Object A at 0.2mm, Object B at 0.3mm — catch-up layers need correct fields
-    let config = make_config_with_per_object_lh(
-        0.2,
-        0.2,
-        &[("obj-A", 1.2, 0.2), ("obj-B", 1.2, 0.3)],
-    );
+    let config =
+        make_config_with_per_object_lh(0.2, 0.2, &[("obj-A", 1.2, 0.2), ("obj-B", 1.2, 0.3)]);
     let module = DefaultLayerPlanner::on_print_start(&config).unwrap();
 
     let objects: Vec<ObjectId> = vec!["obj-A".to_string(), "obj-B".to_string()];

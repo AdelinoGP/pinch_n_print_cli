@@ -7,30 +7,12 @@ use slicer_sdk::views::SliceRegionView;
 
 use tree_support::TreeSupport;
 
-fn make_config(
-    enabled: bool,
-    density: f64,
-    angle: f64,
-    speed: f64,
-    line_width: f64,
-) -> ConfigView {
+fn make_config(enabled: bool, density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert(
-        "support_enabled".to_string(),
-        ConfigValue::Bool(enabled),
-    );
-    fields.insert(
-        "support_density".to_string(),
-        ConfigValue::Float(density),
-    );
-    fields.insert(
-        "support_angle".to_string(),
-        ConfigValue::Float(angle),
-    );
-    fields.insert(
-        "support_speed".to_string(),
-        ConfigValue::Float(speed),
-    );
+    fields.insert("support_enabled".to_string(), ConfigValue::Bool(enabled));
+    fields.insert("support_density".to_string(), ConfigValue::Float(density));
+    fields.insert("support_angle".to_string(), ConfigValue::Float(angle));
+    fields.insert("support_speed".to_string(), ConfigValue::Float(speed));
     fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
     ConfigView { fields }
 }

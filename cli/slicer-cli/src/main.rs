@@ -10,7 +10,11 @@ use clap::{Parser, Subcommand};
 
 /// ModularSlicer developer CLI.
 #[derive(Parser, Debug)]
-#[command(name = "slicer", version, about = "ModularSlicer module development CLI")]
+#[command(
+    name = "slicer",
+    version,
+    about = "ModularSlicer module development CLI"
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -84,7 +88,11 @@ fn main() {
             }
             println!("Manifest is valid.");
         }
-        Commands::Run { model, config, output } => {
+        Commands::Run {
+            model,
+            config,
+            output,
+        } => {
             if let Err(e) = cmd_run::execute(&model, config.as_deref(), output.as_deref()) {
                 eprintln!("Error: {e}");
                 std::process::exit(1);

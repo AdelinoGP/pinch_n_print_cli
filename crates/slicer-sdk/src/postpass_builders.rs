@@ -41,7 +41,14 @@ impl GcodeMoveCmd {
         f: Option<f32>,
         role: ExtrusionRole,
     ) -> Self {
-        Self { x, y, z, e, f, role }
+        Self {
+            x,
+            y,
+            z,
+            e,
+            f,
+            role,
+        }
     }
 }
 

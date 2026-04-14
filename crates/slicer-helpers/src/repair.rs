@@ -179,17 +179,17 @@ fn phase2_normalize_orientation(its: &mut IndexedTriangleSet, stats: &mut Repair
     // Process all components.
     loop {
         // Find the unvisited triangle with the most-negative Z centroid.
-        let seed = (0..tri_count)
-            .filter(|&t| !visited[t])
-            .min_by(|&a, &b| {
-                let centroid_z = |t: usize| -> f32 {
-                    let v0 = &its.vertices[its.indices[t * 3] as usize];
-                    let v1 = &its.vertices[its.indices[t * 3 + 1] as usize];
-                    let v2 = &its.vertices[its.indices[t * 3 + 2] as usize];
-                    (v0.z + v1.z + v2.z) / 3.0
-                };
-                centroid_z(a).partial_cmp(&centroid_z(b)).unwrap_or(std::cmp::Ordering::Equal)
-            });
+        let seed = (0..tri_count).filter(|&t| !visited[t]).min_by(|&a, &b| {
+            let centroid_z = |t: usize| -> f32 {
+                let v0 = &its.vertices[its.indices[t * 3] as usize];
+                let v1 = &its.vertices[its.indices[t * 3 + 1] as usize];
+                let v2 = &its.vertices[its.indices[t * 3 + 2] as usize];
+                (v0.z + v1.z + v2.z) / 3.0
+            };
+            centroid_z(a)
+                .partial_cmp(&centroid_z(b))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let seed = match seed {
             Some(s) => s,
@@ -237,7 +237,9 @@ fn phase2_normalize_orientation(its: &mut IndexedTriangleSet, stats: &mut Repair
 
     stats.components = components;
     if components > 1 {
-        stats.warnings.push(RepairWarning::MultipleComponents { count: components });
+        stats
+            .warnings
+            .push(RepairWarning::MultipleComponents { count: components });
     }
 }
 

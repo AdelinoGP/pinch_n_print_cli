@@ -63,8 +63,9 @@ pub fn parse_module_name(dir: &Path) -> Result<String, BuildError> {
     }
 
     let content = fs::read_to_string(&cargo_path)?;
-    let table: toml::Table =
-        content.parse().map_err(|e: toml::de::Error| BuildError::CargoTomlParseError(e.to_string()))?;
+    let table: toml::Table = content
+        .parse()
+        .map_err(|e: toml::de::Error| BuildError::CargoTomlParseError(e.to_string()))?;
 
     table
         .get("package")
@@ -84,8 +85,9 @@ pub fn parse_module_name(dir: &Path) -> Result<String, BuildError> {
 pub fn has_cdylib(dir: &Path) -> Result<bool, BuildError> {
     let cargo_path = dir.join("Cargo.toml");
     let content = fs::read_to_string(&cargo_path)?;
-    let table: toml::Table =
-        content.parse().map_err(|e: toml::de::Error| BuildError::CargoTomlParseError(e.to_string()))?;
+    let table: toml::Table = content
+        .parse()
+        .map_err(|e: toml::de::Error| BuildError::CargoTomlParseError(e.to_string()))?;
 
     let has = table
         .get("lib")
@@ -133,7 +135,9 @@ pub fn wasm_tools_args<'a>(core_path: &'a Path, output_path: &'a Path) -> Vec<&'
         "new",
         core_path.to_str().expect("core path must be valid UTF-8"),
         "-o",
-        output_path.to_str().expect("output path must be valid UTF-8"),
+        output_path
+            .to_str()
+            .expect("output path must be valid UTF-8"),
     ]
 }
 

@@ -22,9 +22,7 @@ fn builder_sets_object_id() {
 
 #[test]
 fn builder_sets_region_id() {
-    let view = PerimeterRegionViewBuilder::new()
-        .region_id(42)
-        .build();
+    let view = PerimeterRegionViewBuilder::new().region_id(42).build();
     assert_eq!(*view.region_id(), 42);
 }
 
@@ -76,7 +74,9 @@ fn add_wall_loop_preserves_custom_wall() {
         perimeter_index: 5,
         loop_type: LoopType::ThinWall,
         path: rect_path(0.0, 0.0, 4.0, 0.3),
-        width_profile: WidthProfile { widths: vec![0.3; 4] },
+        width_profile: WidthProfile {
+            widths: vec![0.3; 4],
+        },
         feature_flags: vec![],
         boundary_type: WallBoundaryType::ExteriorSurface,
     };
@@ -86,7 +86,10 @@ fn add_wall_loop_preserves_custom_wall() {
     assert_eq!(view.wall_loops().len(), 1);
     assert_eq!(view.wall_loops()[0].loop_type, LoopType::ThinWall);
     assert_eq!(view.wall_loops()[0].perimeter_index, 5);
-    assert_eq!(view.wall_loops()[0].boundary_type, WallBoundaryType::ExteriorSurface);
+    assert_eq!(
+        view.wall_loops()[0].boundary_type,
+        WallBoundaryType::ExteriorSurface
+    );
 }
 
 #[test]
@@ -103,7 +106,10 @@ fn default_boundary_type_is_interior() {
     let view = PerimeterRegionViewBuilder::new()
         .add_outer_wall(rect_path(0.0, 0.0, 10.0, 0.4))
         .build();
-    assert_eq!(view.wall_loops()[0].boundary_type, WallBoundaryType::Interior);
+    assert_eq!(
+        view.wall_loops()[0].boundary_type,
+        WallBoundaryType::Interior
+    );
 }
 
 #[test]

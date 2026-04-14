@@ -9,8 +9,8 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR,
-    Point3WithWidth, PrintEntity, RegionKey,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
+    PrintEntity, RegionKey,
 };
 use slicer_sdk::error::ModuleError;
 
@@ -93,7 +93,11 @@ impl WipeTower {
             // Estimate layer height from adjacent layers
             let layer_height = if layer_idx > 0 {
                 let dz = z - layers[layer_idx - 1].z;
-                if dz > 0.0 { dz } else { DEFAULT_LAYER_HEIGHT }
+                if dz > 0.0 {
+                    dz
+                } else {
+                    DEFAULT_LAYER_HEIGHT
+                }
             } else {
                 DEFAULT_LAYER_HEIGHT
             };
@@ -102,7 +106,8 @@ impl WipeTower {
             let tool_changes = layers[layer_idx].tool_changes.clone();
 
             for tc in &tool_changes {
-                let entities = self.generate_purge_entities(z, layer_height, &layers[layer_idx], tc);
+                let entities =
+                    self.generate_purge_entities(z, layer_height, &layers[layer_idx], tc);
                 layers[layer_idx].ordered_entities.extend(entities);
             }
         }

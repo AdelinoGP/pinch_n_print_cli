@@ -110,7 +110,11 @@ fn cargo_test_args_no_extra() {
 
 #[test]
 fn cargo_test_args_with_forwarded() {
-    let args = cmd_test::cargo_test_args(&["--lib".to_string(), "--".to_string(), "--nocapture".to_string()]);
+    let args = cmd_test::cargo_test_args(&[
+        "--lib".to_string(),
+        "--".to_string(),
+        "--nocapture".to_string(),
+    ]);
     assert_eq!(args, vec!["test", "--lib", "--", "--nocapture"]);
 }
 
@@ -154,7 +158,10 @@ fn test_error_display_missing_cargo_toml() {
 fn test_error_display_parse_error() {
     let err = cmd_test::TestError::CargoTomlParseError("bad field".to_string());
     let msg = format!("{err}");
-    assert!(msg.contains("Cargo.toml") || msg.contains("parse"), "got: {msg}");
+    assert!(
+        msg.contains("Cargo.toml") || msg.contains("parse"),
+        "got: {msg}"
+    );
 }
 
 #[test]
@@ -168,12 +175,21 @@ fn test_error_display_test_failed() {
 fn test_error_display_coverage_failed() {
     let err = cmd_test::TestError::CoverageFailed("cov error".to_string());
     let msg = format!("{err}");
-    assert!(msg.contains("coverage") || msg.contains("cov"), "got: {msg}");
+    assert!(
+        msg.contains("coverage") || msg.contains("cov"),
+        "got: {msg}"
+    );
 }
 
 #[test]
 fn test_error_display_io() {
-    let err = cmd_test::TestError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "file gone"));
+    let err = cmd_test::TestError::Io(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "file gone",
+    ));
     let msg = format!("{err}");
-    assert!(msg.contains("I/O") || msg.contains("file gone"), "got: {msg}");
+    assert!(
+        msg.contains("I/O") || msg.contains("file gone"),
+        "got: {msg}"
+    );
 }

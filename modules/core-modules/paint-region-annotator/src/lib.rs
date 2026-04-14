@@ -60,8 +60,7 @@ impl LayerModule for PaintRegionAnnotator {
                 let mut per_polygon = Vec::with_capacity(region.polygons().len());
 
                 for polygon in region.polygons() {
-                    let mut per_point =
-                        Vec::with_capacity(polygon.contour.points.len());
+                    let mut per_point = Vec::with_capacity(polygon.contour.points.len());
 
                     for &point in &polygon.contour.points {
                         match point_in_paint_region(

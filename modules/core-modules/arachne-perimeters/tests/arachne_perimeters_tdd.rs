@@ -11,8 +11,8 @@ use std::collections::HashMap;
 
 use arachne_perimeters::ArachnePerimeters;
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon,
-    WallBoundaryType, mm_to_units,
+    mm_to_units, ConfigValue, ConfigView, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon,
+    WallBoundaryType,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -24,10 +24,22 @@ fn make_square(side_mm: f32) -> ExPolygon {
     ExPolygon {
         contour: Polygon {
             points: vec![
-                Point2 { x: mm_to_units(-half), y: mm_to_units(-half) },
-                Point2 { x: mm_to_units(half), y: mm_to_units(-half) },
-                Point2 { x: mm_to_units(half), y: mm_to_units(half) },
-                Point2 { x: mm_to_units(-half), y: mm_to_units(half) },
+                Point2 {
+                    x: mm_to_units(-half),
+                    y: mm_to_units(-half),
+                },
+                Point2 {
+                    x: mm_to_units(half),
+                    y: mm_to_units(-half),
+                },
+                Point2 {
+                    x: mm_to_units(half),
+                    y: mm_to_units(half),
+                },
+                Point2 {
+                    x: mm_to_units(-half),
+                    y: mm_to_units(half),
+                },
             ],
         },
         holes: Vec::new(),
@@ -42,10 +54,22 @@ fn make_narrow_rect(width_mm: f32, height_mm: f32) -> ExPolygon {
     ExPolygon {
         contour: Polygon {
             points: vec![
-                Point2 { x: mm_to_units(-half_w), y: mm_to_units(-half_h) },
-                Point2 { x: mm_to_units(half_w), y: mm_to_units(-half_h) },
-                Point2 { x: mm_to_units(half_w), y: mm_to_units(half_h) },
-                Point2 { x: mm_to_units(-half_w), y: mm_to_units(half_h) },
+                Point2 {
+                    x: mm_to_units(-half_w),
+                    y: mm_to_units(-half_h),
+                },
+                Point2 {
+                    x: mm_to_units(half_w),
+                    y: mm_to_units(-half_h),
+                },
+                Point2 {
+                    x: mm_to_units(half_w),
+                    y: mm_to_units(half_h),
+                },
+                Point2 {
+                    x: mm_to_units(-half_w),
+                    y: mm_to_units(half_h),
+                },
             ],
         },
         holes: Vec::new(),
@@ -55,7 +79,10 @@ fn make_narrow_rect(width_mm: f32, height_mm: f32) -> ExPolygon {
 /// Create a config with specified wall_count and line_width.
 fn make_config(wall_count: u32, line_width: f64) -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("wall_count".to_string(), ConfigValue::Int(wall_count as i64));
+    fields.insert(
+        "wall_count".to_string(),
+        ConfigValue::Int(wall_count as i64),
+    );
     fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
     ConfigView { fields }
 }
@@ -68,10 +95,19 @@ fn make_config_full(
     inner_speed: f64,
 ) -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("wall_count".to_string(), ConfigValue::Int(wall_count as i64));
+    fields.insert(
+        "wall_count".to_string(),
+        ConfigValue::Int(wall_count as i64),
+    );
     fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    fields.insert("outer_wall_speed".to_string(), ConfigValue::Float(outer_speed));
-    fields.insert("inner_wall_speed".to_string(), ConfigValue::Float(inner_speed));
+    fields.insert(
+        "outer_wall_speed".to_string(),
+        ConfigValue::Float(outer_speed),
+    );
+    fields.insert(
+        "inner_wall_speed".to_string(),
+        ConfigValue::Float(inner_speed),
+    );
     ConfigView { fields }
 }
 
@@ -180,7 +216,10 @@ fn variable_width_profile() {
 
     // At least one wall should have a width_profile with a width != line_width (variable)
     let has_variable = walls.iter().any(|w| {
-        w.width_profile.widths.iter().any(|&width| (width - 0.4).abs() > 0.01)
+        w.width_profile
+            .widths
+            .iter()
+            .any(|&width| (width - 0.4).abs() > 0.01)
     });
     assert!(
         has_variable,
@@ -276,7 +315,10 @@ fn outer_wall_role() {
     let walls = output.wall_loops();
     assert!(!walls.is_empty());
     let outer = &walls[0];
-    assert_eq!(outer.perimeter_index, 0, "First wall should be outer (index 0)");
+    assert_eq!(
+        outer.perimeter_index, 0,
+        "First wall should be outer (index 0)"
+    );
     assert_eq!(outer.loop_type, LoopType::Outer);
     assert_eq!(outer.path.role, ExtrusionRole::OuterWall);
     assert_eq!(outer.boundary_type, WallBoundaryType::ExteriorSurface);
@@ -317,11 +359,17 @@ fn infill_areas_set() {
         .unwrap();
 
     let infill = output.infill_areas();
-    assert!(!infill.is_empty(), "10mm square with 2 walls should have infill area");
+    assert!(
+        !infill.is_empty(),
+        "10mm square with 2 walls should have infill area"
+    );
 
     let infill_area: f64 = infill.iter().map(|p| polygon_area_mm(&p.contour)).sum();
     assert!(infill_area > 0.0, "Infill area should be positive");
-    assert!(infill_area < 100.0, "Infill area should be smaller than input 10x10mm");
+    assert!(
+        infill_area < 100.0,
+        "Infill area should be smaller than input 10x10mm"
+    );
 }
 
 #[test]
