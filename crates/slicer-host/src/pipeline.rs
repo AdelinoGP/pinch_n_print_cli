@@ -10,10 +10,11 @@ use std::sync::Arc;
 use slicer_ir::MeshIR;
 
 use crate::{
-    execute_layer_finalization, execute_per_layer, execute_postpass, execute_prepass, Blackboard,
-    FinalizationError, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
+    execute_layer_finalization, execute_per_layer, execute_postpass, execute_prepass_with_builtins,
+    Blackboard,
+    ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
     LayerExecutionError, LayerStageRunner, PostpassError, PostpassStageRunner,
-    PrepassExecutionError, PrepassStageRunner, ExecutionPlan,
+    PrepassExecutionError, PrepassStageRunner,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -126,13 +127,18 @@ pub fn run_pipeline(config: PipelineConfig) -> Result<PipelineOutput, PipelineEr
     let mut blackboard = Blackboard::new(mesh_ir, layer_count);
 
     // Step 2: Execute prepass stages sequentially
-    execute_prepass(&plan, &mut blackboard, runners.prepass.as_ref())?;
+    execute_prepass_with_builtins(&plan, &mut blackboard, runners.prepass.as_ref())?;
 
     // Step 3: Execute per-layer stages in parallel via rayon
     let mut layer_irs = execute_per_layer(&plan, &blackboard, runners.layer.as_ref())?;
 
     // Step 4: Execute layer finalization (if present)
-    execute_layer_finalization(&plan, &blackboard, runners.finalization.as_ref(), &mut layer_irs)?;
+    execute_layer_finalization(
+        &plan,
+        &blackboard,
+        runners.finalization.as_ref(),
+        &mut layer_irs,
+    )?;
 
     // Step 5: Execute postpass (emit + serialize gcode)
     let gcode_text = execute_postpass(

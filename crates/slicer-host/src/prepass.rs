@@ -7,6 +7,8 @@ use slicer_ir::{
     LayerPlanIR, ModuleId, PaintRegionIR, RegionMapIR, StageId, SurfaceClassificationIR,
 };
 
+use crate::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
+use crate::region_mapping::{commit_region_mapping_builtin, RegionMappingBuiltinError};
 use crate::{Blackboard, BlackboardError, BlackboardPrepassSlot, CompiledModule, ExecutionPlan};
 
 /// One committed output produced by a prepass stage invocation.
@@ -63,6 +65,16 @@ pub enum PrepassExecutionError {
         /// Underlying blackboard failure.
         source: BlackboardError,
     },
+    /// The host-built-in `PrePass::MeshAnalysis` stage failed.
+    MeshAnalysis {
+        /// Underlying mesh-analysis failure.
+        source: MeshAnalysisError,
+    },
+    /// The host-built-in `PrePass::RegionMapping` stage failed.
+    RegionMapping {
+        /// Underlying region-mapping failure.
+        source: RegionMappingBuiltinError,
+    },
 }
 
 impl fmt::Display for PrepassExecutionError {
@@ -87,6 +99,12 @@ impl fmt::Display for PrepassExecutionError {
                 f,
                 "blackboard commit failed in {stage_id} for {module_id}: {source}"
             ),
+            Self::MeshAnalysis { source } => {
+                write!(f, "built-in PrePass::MeshAnalysis failed: {source}")
+            }
+            Self::RegionMapping { source } => {
+                write!(f, "built-in PrePass::RegionMapping failed: {source}")
+            }
         }
     }
 }
@@ -108,6 +126,45 @@ pub fn execute_prepass(
         }
     }
 
+    Ok(())
+}
+
+/// Run the host-built-in [`PrePass::MeshAnalysis`](execute_mesh_analysis)
+/// stage and then [`execute_prepass`].
+///
+/// This is the prepass entry-point used by the real pipeline (docs/04
+/// §Full Lifecycle — prepass block): the built-in commits
+/// `SurfaceClassificationIR` into the blackboard before any user prepass
+/// module runs. If a caller has already committed a surface
+/// classification (e.g. an earlier integration test pre-seeded one) the
+/// built-in step is skipped so commits remain exactly-once.
+pub fn execute_prepass_with_builtins(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+) -> Result<(), PrepassExecutionError> {
+    if blackboard.surface_classification().is_none() {
+        let ir = execute_mesh_analysis(blackboard.mesh().as_ref())
+            .map_err(|source| PrepassExecutionError::MeshAnalysis { source })?;
+        blackboard
+            .commit_surface_classification(std::sync::Arc::new(ir))
+            .map_err(|source| PrepassExecutionError::Blackboard {
+                stage_id: "PrePass::MeshAnalysis".to_string(),
+                module_id: "<host-built-in>".to_string(),
+                source,
+            })?;
+    }
+    execute_prepass(plan, blackboard, runner)?;
+
+    // Host-built-in PrePass::RegionMapping runs last (docs/04 §Full
+    // Lifecycle), after any user PrePass::LayerPlanning module has
+    // committed the layer plan. Skipped if a LayerPlanIR was never
+    // committed (e.g. empty prepass in unit tests) or if region_map is
+    // already present.
+    if blackboard.layer_plan().is_some() && blackboard.region_map().is_none() {
+        commit_region_mapping_builtin(plan, blackboard)
+            .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
+    }
     Ok(())
 }
 

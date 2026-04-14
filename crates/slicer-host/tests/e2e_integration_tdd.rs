@@ -177,7 +177,10 @@ fn default_runners() -> PipelineStageRunners {
 #[test]
 fn e2e_load_stl_empty_plan() {
     let mesh_ir = load_model(&stl_fixture_path()).expect("fixture STL should load");
-    assert!(!mesh_ir.objects.is_empty(), "loaded mesh should have objects");
+    assert!(
+        !mesh_ir.objects.is_empty(),
+        "loaded mesh should have objects"
+    );
 
     let config = PipelineConfig {
         mesh_ir: Arc::new(mesh_ir),
@@ -186,7 +189,10 @@ fn e2e_load_stl_empty_plan() {
     };
 
     let result = run_pipeline(config);
-    assert!(result.is_ok(), "empty-plan pipeline should succeed: {result:?}");
+    assert!(
+        result.is_ok(),
+        "empty-plan pipeline should succeed: {result:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------

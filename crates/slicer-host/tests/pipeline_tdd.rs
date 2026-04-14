@@ -7,15 +7,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use slicer_host::pipeline::{
-    run_pipeline, PipelineConfig, PipelineError, PipelineStageRunners,
-};
+use slicer_host::pipeline::{run_pipeline, PipelineConfig, PipelineError, PipelineStageRunners};
 use slicer_host::{
     build_wasm_instance_pool, Blackboard, CompiledModule, CompiledStage, ConfigSchema,
     ExecutionPlan, FinalizationError, FinalizationOutput, FinalizationStageRunner, GCodeEmitter,
-    GCodeSerializer, IrAccessMask, LayerArena, LayerStageError, LayerStageOutput,
-    LayerStageRunner, LoadedModule, PostpassError, PostpassOutput, PostpassStageRunner,
-    PrepassExecutionError, PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
+    GCodeSerializer, IrAccessMask, LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner,
+    LoadedModule, PostpassError, PostpassOutput, PostpassStageRunner, PrepassExecutionError,
+    PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
 };
 use slicer_ir::{
     BoundingBox3, ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, MeshIR, Point3,
@@ -35,8 +33,16 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
         schema_version: semver(1, 0, 0),
         objects: Vec::new(),
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 0.0, y: 0.0, z: 0.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
         },
     })
 }
@@ -187,6 +193,7 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
         overridable_per_layer: Vec::new(),
         layer_parallel_safe: false,
         wasm_path: PathBuf::from(format!("fixtures/{module_id}.wasm")),
+        placeholder_wasm: false,
     };
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -206,6 +213,7 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView {
             fields: HashMap::new(),
         }),
+        wasm_component: None,
     }
 }
 

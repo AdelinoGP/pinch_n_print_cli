@@ -305,6 +305,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView {
             fields: HashMap::from([(String::from("fixture.enabled"), ConfigValue::Bool(true))]),
         }),
+        wasm_component: None,
     };
 
     CompiledModule {
@@ -317,6 +318,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
             paths: binding.module.ir_writes.clone(),
         },
         config_view: Arc::clone(&binding.config_view),
+        wasm_component: None,
     }
 }
 
@@ -362,6 +364,7 @@ fn loaded_module(id: &str, stage: &str) -> slicer_host::LoadedModule {
         overridable_per_layer: Vec::new(),
         layer_parallel_safe: false,
         wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
+        placeholder_wasm: false,
     }
 }
 
