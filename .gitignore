@@ -2,6 +2,9 @@
 /target/
 test-guests/*/target/
 
+# Compiled WASM module/component artifacts
+*.wasm
+
 # Backup files
 **/*.rs.bk
 
