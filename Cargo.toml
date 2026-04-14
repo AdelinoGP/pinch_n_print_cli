@@ -50,9 +50,12 @@ truck-modeling = "0.6"
 # CLI dependencies
 clap = "4"
 
-# Python bridge
-pyo3 = { version = "0.20", features = ["extension-module"] }
-wasmtime-py = "20.0"
+# Python bridge (embedded interpreter for TextPostProcess modules; see
+# crates/slicer-host/src/python_bridge.rs). `auto-initialize` causes pyo3 to
+# call Py_Initialize on first `Python::with_gil`; `extension-module` is
+# intentionally NOT set because the host embeds the interpreter rather
+# than being loaded as a Python extension.
+pyo3 = { version = "0.28.3", features = ["auto-initialize"] }
 
 [workspace.lints.rust]
 unused_imports = "warn"

@@ -4,10 +4,8 @@
 #![warn(unused_imports)]
 #![warn(unused_must_use)]
 
-pub mod cli;
-pub mod model_loader;
-pub mod pipeline;
 pub mod blackboard;
+pub mod cli;
 pub mod config_schema;
 pub mod dag;
 pub mod execution_plan;
@@ -16,23 +14,26 @@ pub mod instance_pool;
 pub mod layer_executor;
 pub mod layer_finalization;
 pub mod layer_slice;
-pub mod mesh_analysis;
-pub mod region_mapping;
 pub mod manifest;
+pub mod mesh_analysis;
 pub mod mesh_segmentation;
+pub mod model_loader;
 pub mod paint_segmentation;
+pub mod pipeline;
 pub mod postpass;
 pub mod prepass;
 pub mod progress_events;
+pub mod python_bridge;
+pub mod region_mapping;
 pub mod slice_postprocess;
 pub mod topology;
 pub mod validation;
 pub mod wasm_instance;
 
-pub use cli::{validate_run_options, CliError, HostCli, HostCommands, HostRunOptions};
 pub use blackboard::{
     Blackboard, BlackboardError, BlackboardPrepassSlot, LayerArena, LayerArenaError, LayerArenaSlot,
 };
+pub use cli::{validate_run_options, CliError, HostCli, HostCommands, HostRunOptions};
 pub use config_schema::{
     get_advanced_fields, get_basic_fields, get_field_schema, group_fields_by_ui_group,
     parse_config_schema, query_config_schema, validate_config, validate_field_value,
@@ -53,15 +54,16 @@ pub use instance_pool::{
 pub use layer_executor::{
     execute_per_layer, LayerExecutionError, LayerStageError, LayerStageOutput, LayerStageRunner,
 };
-pub use layer_slice::{execute_layer_slice, LayerSliceError};
 pub use layer_finalization::{
     execute_layer_finalization, FinalizationError, FinalizationOutput, FinalizationOutputBuilder,
     FinalizationStageRunner,
 };
+pub use layer_slice::{execute_layer_slice, LayerSliceError};
 pub use manifest::{
     load_module_from_paths, load_modules_from_roots, ConfigSchema, DiagnosticLevel, LoadDiagnostic,
     LoadError, LoadErrorKind, LoadModulesReport, LoadedModule,
 };
+pub use mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
 pub use mesh_segmentation::{
     execute_mesh_segmentation, DegenerateStrokeReason, MeshSegmentationError,
 };
@@ -74,7 +76,9 @@ pub use prepass::{
     execute_prepass, execute_prepass_with_builtins, PrepassExecutionError, PrepassStageOutput,
     PrepassStageRunner,
 };
-pub use mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
+pub use python_bridge::{
+    PythonBinding, PythonBridge, PythonBridgeError, PythonBridgePhase, PythonPostpassRunner,
+};
 pub use region_mapping::{
     commit_region_mapping_builtin, execute_region_mapping, RegionMappingBuiltinError,
 };
