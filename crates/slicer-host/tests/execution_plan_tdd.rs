@@ -167,10 +167,22 @@ fn assert_module(
 }
 
 fn bound_module(
-    module: slicer_host::LoadedModule,
+    mut module: slicer_host::LoadedModule,
     config_view: ConfigView,
     host_parallelism: usize,
 ) -> ExecutionModuleBinding {
+    // Ensure the module's declared `[config.schema]` covers every key the
+    // fixture-built `ConfigView` exposes, so the plan-build declared-read
+    // guardrail (`ExecutionPlanError::UndeclaredConfigKey`) doesn't reject
+    // the synthetic fixture. This mirrors the production contract where
+    // live views come from `bind_module_config_view(module, source)`.
+    for key in config_view.keys() {
+        module
+            .config_schema
+            .entries
+            .insert(key.clone(), String::from("bool"));
+    }
+
     let instance_pool = Arc::new(
         build_wasm_instance_pool(
             &module,
@@ -198,12 +210,10 @@ fn sorted_stage(stage_id: &str, module_ids: &[&str]) -> SortedStageModules {
 }
 
 fn config_view(entries: &[(&str, ConfigValue)]) -> ConfigView {
-    ConfigView {
-        fields: entries
+    ConfigView::from_map(entries
             .iter()
             .map(|(key, value)| (String::from(*key), value.clone()))
-            .collect(),
-    }
+            .collect(),)
 }
 
 fn loaded_module(
@@ -433,7 +443,7 @@ fn plan_construction_is_deterministic_across_repeated_calls() {
                 true,
                 "slicer:world-layer@1.0.0",
             ),
-            ConfigView { fields: HashMap::new() },
+            ConfigView::from_map(HashMap::new()),
             4,
         );
         ExecutionPlanRequest {
@@ -588,7 +598,7 @@ fn duplicate_module_binding_rejected_with_stable_diagnostic() {
             true,
             "slicer:world-layer@1.0.0",
         ),
-        ConfigView { fields: HashMap::new() },
+        ConfigView::from_map(HashMap::new()),
         2,
     );
     let request = ExecutionPlanRequest {

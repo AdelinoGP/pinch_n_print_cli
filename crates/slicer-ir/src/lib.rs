@@ -26,6 +26,7 @@ pub use slice_ir::{
     ExtrusionRole,
 
     FacetClass,
+    FacetPaintMark,
     // Paint types
     FacetPaintData,
     GCodeCommand,
@@ -49,6 +50,7 @@ pub use slice_ir::{
     LayerPlanIR,
     LoopType,
     MeshIR,
+    MeshSegmentationIR,
 
     ModifierId,
     ModifierScope,

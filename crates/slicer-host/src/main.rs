@@ -3,14 +3,19 @@
 //! Parses CLI arguments via clap and dispatches to the pipeline orchestration
 //! or config-schema query functions.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use clap::Parser;
-use slicer_host::model_loader::load_model;
-use slicer_host::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
+use slicer_host::model_loader::{load_model, object_world_z_extent};
+use slicer_host::pipeline::{run_pipeline_with_events, PipelineConfig, PipelineStageRunners};
+use slicer_host::progress_events::{
+    JsonLinesEmitter, ProgressEventEmitter, RuntimeProgressSink, SliceEventCollector,
+};
 use slicer_host::{
+    build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
     DefaultGCodeEmitter, DefaultGCodeSerializer, HostCli, HostCommands,
 };
+use slicer_host::dispatch::WasmRuntimeDispatcher;
 
 /// No-op prepass runner for MVP (no WASM modules loaded yet).
 struct NoopPrepassRunner;
@@ -78,15 +83,25 @@ impl slicer_host::PostpassStageRunner for NoopPostpassRunner {
     }
 }
 
+/// Conservative default for host parallelism when building instance pools
+/// for `layer-parallel-safe` modules. The scheduler clamps to `>= 1`, so
+/// keeping this at the process's logical-core count (falling back to 1)
+/// is safe without pulling in a `num_cpus` dependency.
+fn num_cpus_guess() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1)
+}
+
 fn main() {
     let cli = HostCli::parse();
     match cli.command {
         HostCommands::Run {
             module: _,
             model,
-            config: _,
+            config,
             output,
-            module_dir: _,
+            module_dir,
         } => {
             // Load model
             let model_path = std::path::Path::new(&model);
@@ -98,30 +113,126 @@ fn main() {
                 }
             };
 
-            // MVP: empty execution plan (no WASM modules)
-            let plan = slicer_host::ExecutionPlan {
-                prepass_stages: Vec::new(),
-                per_layer_stages: Vec::new(),
-                layer_finalization_stage: None,
-                postpass_stages: Vec::new(),
-                global_layers: Arc::new(Vec::new()),
-                region_plans: Arc::new(std::collections::HashMap::new()),
+            // Parse the user-facing JSON config (if supplied) into the raw
+            // `HashMap<ConfigKey, ConfigValue>` that every per-module
+            // `Arc<ConfigView>` will be filtered from via
+            // `bind_module_config_view` inside `build_live_execution_plan`.
+            // Passing an empty source here is explicitly NOT a placeholder:
+            // it's the real config source when the user doesn't supply one.
+            let mut config_source = match config.as_deref() {
+                Some(path) => match std::fs::read_to_string(path) {
+                    Ok(text) => match parse_cli_config_source(&text) {
+                        Ok(map) => map,
+                        Err(e) => {
+                            eprintln!("error: failed to parse --config: {e}");
+                            std::process::exit(1);
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("error: failed to read --config file: {e}");
+                        std::process::exit(1);
+                    }
+                },
+                None => std::collections::HashMap::new(),
             };
 
+            // Inject per-object Z extents from the loaded mesh as
+            // `object_height:<id>` config keys so the layer planner
+            // module (which otherwise falls back to a single first-
+            // layer proposal when no height is known) sees real per-
+            // object geometry. Extents are computed in world space by
+            // applying each object's `Transform3d` so transformed
+            // multi-object scenes (scale/rotation/translation) yield a
+            // correct planner height. User-supplied values on
+            // `--config` win over host-derived defaults.
+            for object in &mesh_ir.objects {
+                let key = format!("object_height:{}", object.id);
+                if config_source.contains_key(&key) {
+                    continue;
+                }
+                if let Some((z_min, z_max)) = object_world_z_extent(object) {
+                    config_source.insert(
+                        key,
+                        slicer_ir::ConfigValue::Float((z_max - z_min) as f64),
+                    );
+                }
+            }
+
+            // Discover and plan every module under --module-dir. Modules
+            // are topologically sorted within each stage and laid out in
+            // the canonical STAGE_ORDER. Non-fatal discovery diagnostics
+            // are surfaced on stderr; fatal failures terminate with a
+            // structured message (docs/04 §Fixed Stage Order).
+            let module_dir_path = std::path::PathBuf::from(&module_dir);
+            let loaded = match load_live_modules_for_plan(
+                std::slice::from_ref(&module_dir_path),
+                num_cpus_guess(),
+            ) {
+                Ok(out) => out,
+                Err(e) => {
+                    eprintln!("error: failed to load modules from '{module_dir}': {e}");
+                    std::process::exit(1);
+                }
+            };
+            for diag in &loaded.diagnostics {
+                eprintln!(
+                    "{level:?}: {path}: {msg}",
+                    level = diag.level,
+                    path = diag.path.display(),
+                    msg = diag.message,
+                );
+            }
+
+            // The live plan/build path. Every per-module ConfigView is
+            // synthesised through `bind_module_config_view` inside this
+            // helper; the plan-build guardrail
+            // (`ExecutionPlanError::UndeclaredConfigKey`) fails closed if
+            // a module's declared-read invariant is ever violated (docs/03
+            // §host-boundary enforcement; docs/02 §pre-filtered config).
+            let plan = match build_live_execution_plan(
+                loaded.sorted_stages,
+                loaded.bindings,
+                &config_source,
+                Arc::new(Vec::new()),
+                Arc::new(std::collections::HashMap::new()),
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("error: failed to build execution plan: {e}");
+                    std::process::exit(1);
+                }
+            };
+
+            // Build WasmRuntimeDispatcher instances backed by the same engine
+            // that compiled the module components.  Using the same engine is
+            // required: wasmtime ties compiled Components to the Engine instance
+            // that produced them, and creating a second Engine would cause
+            // component instantiation to fail at dispatch time.
+            let engine = Arc::clone(&loaded.engine);
             let config = PipelineConfig {
                 mesh_ir,
                 plan,
                 runners: PipelineStageRunners {
-                    prepass: Box::new(NoopPrepassRunner),
-                    layer: Box::new(NoopLayerRunner),
-                    finalization: Box::new(NoopFinalizationRunner),
-                    postpass: Box::new(NoopPostpassRunner),
+                    prepass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                    layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                    finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
+                    postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
                     emitter: Box::new(DefaultGCodeEmitter::new("slicer-host 0.1.0".into())),
                     serializer: Box::new(DefaultGCodeSerializer::new()),
                 },
             };
 
-            match run_pipeline(config) {
+            // Route per-layer progress events (including host-built-in
+            // paint-annotation degraded-success warnings) through the real
+            // JSONL emitter on stderr and aggregate them into a
+            // `SliceEventCollector`. G-code continues to go to stdout, so
+            // the JSONL transport targets stderr to avoid interleaving.
+            let emitter: Arc<dyn ProgressEventEmitter> =
+                Arc::new(JsonLinesEmitter::new(std::io::stderr()));
+            let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
+            let sink = RuntimeProgressSink::new(emitter, Arc::clone(&collector));
+
+            match run_pipeline_with_events(config, &sink) {
                 Ok(result) => {
                     if let Some(out_path) = output {
                         if let Err(e) = std::fs::write(&out_path, &result.gcode_text) {
@@ -227,9 +338,7 @@ mod _stale_build_plan {
                          ir_write_mask: IrAccessMask {                                                                                                                                                                      
                              paths: m.ir_writes.clone(),                                                                                                                                                                    
                        },                                                                                                                                                                                                 
-                      config_view: Arc::new(ConfigView {                                                                                                                                                                 
-                        fields: HashMap::new(),                                                                                                                                                                        
-                     }),                                                                                                                                                                                                
+                      config_view: Arc::new(ConfigView::new()),                                                                                                                                                                                                
                      wasm_component,                                                                                                                                                                                    
                   }                                                                                                                                                                                                      
               })                                                                                                                                                                                                         

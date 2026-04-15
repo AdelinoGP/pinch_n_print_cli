@@ -62,9 +62,8 @@ pub fn normalize_subnormal_boundary(value: f64) -> f64 {
 pub fn config_view_to_data(ir: &slicer_ir::ConfigView) -> ConfigViewData {
     ConfigViewData {
         fields: ir
-            .fields
-            .iter()
-            .map(|(k, v)| (k.clone(), config_value_to_storage(v)))
+            .iter_entries()
+            .map(|(k, v)| (k.to_string(), config_value_to_storage(v)))
             .collect(),
     }
 }
@@ -353,7 +352,26 @@ pub use layer::ModuleError;
 /// Backing data for prepass `mesh-analysis-output` resource.
 pub struct MeshAnalysisOutputData;
 /// Backing data for prepass `layer-plan-output` resource.
+///
+/// Proposals collected by `push_layer` calls during a WIT prepass invocation
+/// are stored on `HostExecutionContext::layer_plan_proposals`.  This struct is
+/// just a table entry so the resource-handle lifecycle works; the actual data
+/// lives on the context.
 pub struct LayerPlanOutputData;
+/// Backing data for prepass `mesh-segmentation-output` resource.
+///
+/// Triangle paint marks emitted by `mark-triangle-paint` during a WIT prepass
+/// invocation are stored on `HostExecutionContext::mesh_segmentation_marks`.
+/// This struct is just a table-entry tag so the resource-handle lifecycle
+/// works; the actual data lives on the context.
+pub struct MeshSegmentationOutputData;
+/// Backing data for prepass `paint-segmentation-output` resource.
+///
+/// Paint-region entries emitted by `push-paint-region` during a WIT prepass
+/// invocation are stored on `HostExecutionContext::paint_region_entries`.
+/// This struct is just a table-entry tag so the resource-handle lifecycle
+/// works; the actual data lives on the context.
+pub struct PaintSegmentationOutputData;
 
 pub mod prepass {
     wasmtime::component::bindgen!({
@@ -423,6 +441,35 @@ pub mod prepass {
                     config: config-view,
                 ) -> result<_, module-error>;
 
+                resource mesh-segmentation-output {
+                    mark-triangle-paint: func(obj: object-id, facet-index: u32, semantic: string, value: string) -> result<_, string>;
+                }
+
+                export run-mesh-segmentation: func(
+                    objects: list<object-id>,
+                    output: mesh-segmentation-output,
+                    config: config-view,
+                ) -> result<_, module-error>;
+
+                use geometry.{ex-polygon};
+
+                record paint-region-entry {
+                    object-id: object-id,
+                    layer-index: u32,
+                    semantic: string,
+                    polygons: list<ex-polygon>,
+                    value: string,
+                }
+                resource paint-segmentation-output {
+                    push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
+                }
+
+                export run-paint-segmentation: func(
+                    objects: list<object-id>,
+                    output: paint-segmentation-output,
+                    config: config-view,
+                ) -> result<_, module-error>;
+
                 record region-layer-proposal {
                     object-id: object-id, region-id: region-id,
                     effective-layer-height: f32,
@@ -460,9 +507,65 @@ pub struct LayerCollectionViewData {
     pub z: f32,
     /// Entity count.
     pub entity_count: u32,
+    /// Tool changes observable by the guest through `tool-changes()`
+    /// (docs/03 world-finalization.wit). Carried on the resource so
+    /// the guest can consume real per-layer metadata rather than the
+    /// previous empty-shell stub.
+    pub tool_changes: Vec<(u32, u32, u32)>,
 }
+
+impl LayerCollectionViewData {
+    /// Build from a completed `LayerCollectionIR`. Tool-change triples
+    /// are stored as `(after_entity_index, from_tool, to_tool)`.
+    pub fn from_ir(ir: &slicer_ir::LayerCollectionIR) -> Self {
+        Self {
+            layer_index: ir.global_layer_index,
+            z: ir.z,
+            entity_count: ir.ordered_entities.len() as u32,
+            tool_changes: ir
+                .tool_changes
+                .iter()
+                .map(|t| (t.after_entity_index, t.from_tool, t.to_tool))
+                .collect(),
+        }
+    }
+}
+
+/// Captured `finalization-output-builder` side effect emitted by a
+/// guest during `run-finalization`. Stored by resource rep so the
+/// post-call drain in `FinalizationStageRunner` can apply them.
+#[derive(Clone, Debug)]
+pub enum FinalizationBuilderPush {
+    /// Guest requested `push-entity-to-layer(layer_index, path, region_key)`.
+    EntityToLayer {
+        /// Layer index the entity was pushed to.
+        layer_index: u32,
+        /// Extrusion path content.
+        path: slicer_ir::ExtrusionPath3D,
+        /// Region key for ordering / provenance.
+        region_key: slicer_ir::RegionKey,
+    },
+    /// Guest requested `insert-synthetic-layer(z, paths)`.
+    SyntheticLayer {
+        /// Z height of the inserted synthetic layer.
+        z: f32,
+        /// Extrusion paths belonging to the synthetic layer.
+        paths: Vec<slicer_ir::ExtrusionPath3D>,
+    },
+}
+
 /// Backing data for finalization `finalization-output-builder` resource.
-pub struct FinalizationOutputBuilderData;
+///
+/// Captures every guest-side `push_entity_to_layer` /
+/// `insert_synthetic_layer` call so the host can drain the recorded
+/// effects after the typed `run-finalization` export returns (docs/03
+/// world-finalization.wit). Order-preserving: entries are pushed in
+/// the order the guest emitted them.
+#[derive(Default)]
+pub struct FinalizationOutputBuilderData {
+    /// Captured push stream in guest-emission order.
+    pub pushes: Vec<FinalizationBuilderPush>,
+}
 
 pub mod finalization {
     wasmtime::component::bindgen!({
@@ -808,6 +911,51 @@ pub struct HostExecutionContext {
     /// preserve per-region identity (grouping + structured diagnostic on
     /// untagged pushes) rather than silently flattening.
     pub current_slice_region: Option<SliceRegionOrigin>,
+
+    /// Layer proposals collected from `push_layer` calls during a prepass
+    /// `run-layer-planning` invocation.  Empty for all non-prepass stages.
+    /// Drained by the prepass dispatch path after the WIT call returns.
+    pub layer_plan_proposals: Vec<prepass::LayerProposal>,
+
+    /// Per-object facet annotations collected from `push-facet-annotation`
+    /// calls during a prepass `run-mesh-analysis` invocation. Tuple is
+    /// `(object_id, FacetAnnotation)`. Insertion order is preserved so
+    /// a downstream harvest can build deterministic output. Empty for
+    /// all non-MeshAnalysis stages and when the guest declines to emit
+    /// annotations (e.g. the current production path where
+    /// `SurfaceClassificationIR` is still produced by the host built-in;
+    /// see `mesh_analysis::execute_mesh_analysis`).
+    pub mesh_analysis_annotations: Vec<(String, prepass::FacetAnnotation)>,
+
+    /// Per-object surface groups collected from `push-surface-group`
+    /// calls during a prepass `run-mesh-analysis` invocation. Tuple is
+    /// `(object_id, SurfaceGroupProposal)`; insertion order preserved.
+    /// Empty for all non-MeshAnalysis stages.
+    pub mesh_analysis_surface_groups: Vec<(String, prepass::SurfaceGroupProposal)>,
+
+    /// Triangle paint marks collected from `mark-triangle-paint` calls
+    /// during a prepass `run-mesh-segmentation` invocation. Tuple layout
+    /// mirrors the WIT method signature exactly:
+    /// `(object_id, facet_index, semantic, value)`. Insertion order is
+    /// preserved so `harvest_mesh_segmentation_ir` can build a
+    /// deterministic `MeshSegmentationIR.marks` sequence.
+    pub mesh_segmentation_marks: Vec<(String, u32, String, String)>,
+
+    /// Paint-region entries collected from `push-paint-region` calls
+    /// during a prepass `run-paint-segmentation` invocation. Stored as
+    /// raw `prepass::PaintRegionEntry` records so the harvest helper
+    /// can convert them to `PaintRegionIR` without losing any field.
+    /// Empty for all non-prepass stages.
+    pub paint_region_entries: Vec<prepass::PaintRegionEntry>,
+
+    /// Finalization builder pushes collected during a finalization
+    /// `run-finalization` invocation. The host-side
+    /// `HostFinalizationOutputBuilder::drop` moves the resource's
+    /// captured `pushes` here just before the resource is released,
+    /// so `FinalizationStageRunner` can drain them even after the
+    /// guest has dropped the builder handle (docs/03
+    /// world-finalization.wit §finalization-output-builder).
+    pub finalization_pushes: Vec<FinalizationBuilderPush>,
 }
 
 impl HostExecutionContext {
@@ -825,6 +973,12 @@ impl HostExecutionContext {
             slice_postprocess_output: SlicePostprocessCollected::default(),
             current_perimeter_region: None,
             current_slice_region: None,
+            layer_plan_proposals: Vec::new(),
+            mesh_analysis_annotations: Vec::new(),
+            mesh_analysis_surface_groups: Vec::new(),
+            mesh_segmentation_marks: Vec::new(),
+            paint_region_entries: Vec::new(),
+            finalization_pushes: Vec::new(),
         }
     }
 
@@ -913,14 +1067,60 @@ impl HostExecutionContext {
         Ok(Resource::new_own(rep.rep()))
     }
 
+    /// Push a mesh-segmentation-output resource (prepass world). The
+    /// returned handle is what the host passes into
+    /// `run-mesh-segmentation`; guest calls to `mark-triangle-paint` go
+    /// through `HostMeshSegmentationOutput::mark_triangle_paint` below,
+    /// which appends tuples to `mesh_segmentation_marks`.
+    pub fn push_mesh_segmentation_output(
+        &mut self,
+    ) -> wasmtime::Result<Resource<prepass::MeshSegmentationOutput>> {
+        let rep = self.table.push(MeshSegmentationOutputData)?;
+        Ok(Resource::new_own(rep.rep()))
+    }
+
+    /// Push a paint-segmentation-output resource (prepass world). The
+    /// returned handle is what the host passes into
+    /// `run-paint-segmentation`; guest calls to `push-paint-region` go
+    /// through `HostPaintSegmentationOutput::push_paint_region` below,
+    /// which appends entries to `paint_region_entries`.
+    pub fn push_paint_segmentation_output(
+        &mut self,
+    ) -> wasmtime::Result<Resource<prepass::PaintSegmentationOutput>> {
+        let rep = self.table.push(PaintSegmentationOutputData)?;
+        Ok(Resource::new_own(rep.rep()))
+    }
+
     // ── Finalization world resource pushers ─────────────────────────
 
     /// Push a finalization-output-builder resource (finalization world).
     pub fn push_finalization_output_builder(
         &mut self,
     ) -> wasmtime::Result<Resource<finalization::FinalizationOutputBuilder>> {
-        let rep = self.table.push(FinalizationOutputBuilderData)?;
+        let rep = self.table.push(FinalizationOutputBuilderData::default())?;
         Ok(Resource::new_own(rep.rep()))
+    }
+
+    /// Push one `LayerCollectionView` resource built from a completed
+    /// `LayerCollectionIR`. Returns the typed wit-bindgen handle so it
+    /// can be forwarded into `call_run_finalization` as part of the
+    /// `list<layer-collection-view>` parameter.
+    pub fn push_finalization_layer_view(
+        &mut self,
+        ir: &slicer_ir::LayerCollectionIR,
+    ) -> wasmtime::Result<Resource<finalization::LayerCollectionView>> {
+        let rep = self.table.push(LayerCollectionViewData::from_ir(ir))?;
+        Ok(Resource::new_own(rep.rep()))
+    }
+
+    /// Drain captured pushes collected by the finalization output
+    /// builder. Reads from `finalization_pushes` (populated by the
+    /// builder's `drop` handler) rather than from the builder's
+    /// resource-table entry, which wit-bindgen has already reclaimed
+    /// by the time this function is called (guest owns the resource
+    /// handle; dropping it moves captured data onto the context).
+    pub fn drain_finalization_output_builder(&mut self) -> Vec<FinalizationBuilderPush> {
+        std::mem::take(&mut self.finalization_pushes)
     }
 
     // ── Postpass world resource pushers ─────────────────────────────
@@ -1768,8 +1968,52 @@ mod prepass_impls {
     use super::prepass as pm;
 
     impl pm::HostMeshAnalysisOutput for HostExecutionContext {
-        fn push_facet_annotation(&mut self, _: Resource<pm::MeshAnalysisOutput>, _: String, _: pm::FacetAnnotation) -> wasmtime::Result<Result<(), String>> { Ok(Ok(())) }
-        fn push_surface_group(&mut self, _: Resource<pm::MeshAnalysisOutput>, _: String, _: pm::SurfaceGroupProposal) -> wasmtime::Result<Result<(), String>> { Ok(Ok(())) }
+        fn push_facet_annotation(
+            &mut self,
+            _handle: Resource<pm::MeshAnalysisOutput>,
+            object_id: String,
+            annotation: pm::FacetAnnotation,
+        ) -> wasmtime::Result<Result<(), String>> {
+            if object_id.is_empty() {
+                return Ok(Err(String::from(
+                    "mesh-analysis-output: object-id must be non-empty",
+                )));
+            }
+            if !annotation.slope_angle_deg.is_finite() {
+                return Ok(Err(format!(
+                    "mesh-analysis-output: object '{}' facet {} has non-finite slope_angle_deg={}",
+                    object_id, annotation.facet_index, annotation.slope_angle_deg
+                )));
+            }
+            self.mesh_analysis_annotations.push((object_id, annotation));
+            Ok(Ok(()))
+        }
+        fn push_surface_group(
+            &mut self,
+            _handle: Resource<pm::MeshAnalysisOutput>,
+            object_id: String,
+            group: pm::SurfaceGroupProposal,
+        ) -> wasmtime::Result<Result<(), String>> {
+            if object_id.is_empty() {
+                return Ok(Err(String::from(
+                    "mesh-analysis-output: object-id must be non-empty",
+                )));
+            }
+            if !group.z_min.is_finite() || !group.z_max.is_finite() {
+                return Ok(Err(format!(
+                    "mesh-analysis-output: object '{}' surface group has non-finite z bounds (z_min={}, z_max={})",
+                    object_id, group.z_min, group.z_max
+                )));
+            }
+            if group.z_max < group.z_min {
+                return Ok(Err(format!(
+                    "mesh-analysis-output: object '{}' surface group has z_max={} < z_min={}",
+                    object_id, group.z_max, group.z_min
+                )));
+            }
+            self.mesh_analysis_surface_groups.push((object_id, group));
+            Ok(Ok(()))
+        }
         fn drop(&mut self, rep: Resource<pm::MeshAnalysisOutput>) -> wasmtime::Result<()> {
             let typed: Resource<MeshAnalysisOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?; Ok(())
@@ -1777,10 +2021,107 @@ mod prepass_impls {
     }
 
     impl pm::HostLayerPlanOutput for HostExecutionContext {
-        fn push_layer(&mut self, _: Resource<pm::LayerPlanOutput>, _: pm::LayerProposal) -> wasmtime::Result<Result<(), String>> { Ok(Ok(())) }
+        fn push_layer(
+            &mut self,
+            _handle: Resource<pm::LayerPlanOutput>,
+            proposal: pm::LayerProposal,
+        ) -> wasmtime::Result<Result<(), String>> {
+            // Validate the proposal before collecting it.
+            if !proposal.z.is_finite() || proposal.z < 0.0 {
+                return Ok(Err(format!(
+                    "layer-plan-output: invalid z={} (must be finite and non-negative)",
+                    proposal.z
+                )));
+            }
+            for r in &proposal.active_regions {
+                if !r.effective_layer_height.is_finite() || r.effective_layer_height <= 0.0 {
+                    return Ok(Err(format!(
+                        "layer-plan-output: region '{}'/'{}'  has invalid effective_layer_height={} \
+                         (must be finite and positive)",
+                        r.object_id, r.region_id, r.effective_layer_height
+                    )));
+                }
+            }
+            self.layer_plan_proposals.push(proposal);
+            Ok(Ok(()))
+        }
         fn drop(&mut self, rep: Resource<pm::LayerPlanOutput>) -> wasmtime::Result<()> {
             let typed: Resource<LayerPlanOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?; Ok(())
+        }
+    }
+
+    impl pm::HostPaintSegmentationOutput for HostExecutionContext {
+        fn push_paint_region(
+            &mut self,
+            _handle: Resource<pm::PaintSegmentationOutput>,
+            entry: pm::PaintRegionEntry,
+        ) -> wasmtime::Result<Result<(), String>> {
+            // Validate before collecting. Empty object_id / semantic
+            // would corrupt the per-layer keying in PaintRegionIR; an
+            // empty polygon list is a no-op and is similarly rejected
+            // because the guest is required to emit one region entry
+            // per (layer, semantic, object, value) group — zero-polygon
+            // entries are never correct per docs/02 §Paint Region IR.
+            if entry.object_id.is_empty() {
+                return Ok(Err(String::from(
+                    "paint-segmentation-output: object-id must be non-empty",
+                )));
+            }
+            if entry.semantic.is_empty() {
+                return Ok(Err(String::from(
+                    "paint-segmentation-output: semantic must be non-empty",
+                )));
+            }
+            if entry.polygons.is_empty() {
+                return Ok(Err(String::from(
+                    "paint-segmentation-output: polygons list must not be empty",
+                )));
+            }
+            self.paint_region_entries.push(entry);
+            Ok(Ok(()))
+        }
+        fn drop(&mut self, rep: Resource<pm::PaintSegmentationOutput>) -> wasmtime::Result<()> {
+            let typed: Resource<PaintSegmentationOutputData> = Resource::new_own(rep.rep());
+            self.table.delete(typed)?;
+            Ok(())
+        }
+    }
+
+    impl pm::HostMeshSegmentationOutput for HostExecutionContext {
+        fn mark_triangle_paint(
+            &mut self,
+            _handle: Resource<pm::MeshSegmentationOutput>,
+            obj: String,
+            facet_index: u32,
+            semantic: String,
+            value: String,
+        ) -> wasmtime::Result<Result<(), String>> {
+            // Validate the mark before collecting. `semantic` must be
+            // non-empty (the consumer keys on it); `obj` must be a real
+            // object id. `value` may be empty to mean "clear" — that's
+            // the caller's prerogative. We accept any finite facet_index
+            // because the host can't cheaply reach mesh topology from
+            // this resource impl; downstream consumers validate against
+            // real triangle counts.
+            if obj.is_empty() {
+                return Ok(Err(String::from(
+                    "mesh-segmentation-output: obj must be a non-empty object id",
+                )));
+            }
+            if semantic.is_empty() {
+                return Ok(Err(String::from(
+                    "mesh-segmentation-output: semantic must be a non-empty string",
+                )));
+            }
+            self.mesh_segmentation_marks
+                .push((obj, facet_index, semantic, value));
+            Ok(Ok(()))
+        }
+        fn drop(&mut self, rep: Resource<pm::MeshSegmentationOutput>) -> wasmtime::Result<()> {
+            let typed: Resource<MeshSegmentationOutputData> = Resource::new_own(rep.rep());
+            self.table.delete(typed)?;
+            Ok(())
         }
     }
 
@@ -1879,11 +2220,72 @@ mod finalization_impls {
         fn drop(&mut self, rep: Resource<ConfigViewData>) -> wasmtime::Result<()> { self.table.delete(rep)?; Ok(()) }
     }
 
+    /// Convert a wit-bindgen finalization-world `ExtrusionPath3d` record
+    /// into the documented `slicer_ir::ExtrusionPath3D`.
+    fn finalization_path_wit_to_ir(p: &fgeo::ExtrusionPath3d) -> slicer_ir::ExtrusionPath3D {
+        slicer_ir::ExtrusionPath3D {
+            points: p
+                .points
+                .iter()
+                .map(|pt| slicer_ir::Point3WithWidth {
+                    x: pt.x,
+                    y: pt.y,
+                    z: pt.z,
+                    width: pt.width,
+                    flow_factor: pt.flow_factor,
+                })
+                .collect(),
+            role: finalization_role_wit_to_ir(p.role),
+            speed_factor: p.speed_factor,
+        }
+    }
+
+    fn finalization_role_wit_to_ir(r: fgeo::ExtrusionRole) -> slicer_ir::ExtrusionRole {
+        match r {
+            fgeo::ExtrusionRole::OuterWall => slicer_ir::ExtrusionRole::OuterWall,
+            fgeo::ExtrusionRole::InnerWall => slicer_ir::ExtrusionRole::InnerWall,
+            fgeo::ExtrusionRole::ThinWall => slicer_ir::ExtrusionRole::ThinWall,
+            fgeo::ExtrusionRole::TopSolidInfill => slicer_ir::ExtrusionRole::TopSolidInfill,
+            fgeo::ExtrusionRole::BottomSolidInfill => slicer_ir::ExtrusionRole::BottomSolidInfill,
+            fgeo::ExtrusionRole::SparseInfill => slicer_ir::ExtrusionRole::SparseInfill,
+            fgeo::ExtrusionRole::SupportMaterial => slicer_ir::ExtrusionRole::SupportMaterial,
+            fgeo::ExtrusionRole::SupportInterface => slicer_ir::ExtrusionRole::SupportInterface,
+            fgeo::ExtrusionRole::Ironing => slicer_ir::ExtrusionRole::Ironing,
+            fgeo::ExtrusionRole::BridgeInfill => slicer_ir::ExtrusionRole::BridgeInfill,
+            fgeo::ExtrusionRole::WipeTower => slicer_ir::ExtrusionRole::WipeTower,
+            fgeo::ExtrusionRole::Custom => slicer_ir::ExtrusionRole::Custom(String::new()),
+        }
+    }
+
     impl fm::HostLayerCollectionView for HostExecutionContext {
-        fn layer_index(&mut self, _: Resource<fm::LayerCollectionView>) -> wasmtime::Result<u32> { Ok(0) }
-        fn z(&mut self, _: Resource<fm::LayerCollectionView>) -> wasmtime::Result<f32> { Ok(0.0) }
-        fn entity_count(&mut self, _: Resource<fm::LayerCollectionView>) -> wasmtime::Result<u32> { Ok(0) }
-        fn tool_changes(&mut self, _: Resource<fm::LayerCollectionView>) -> wasmtime::Result<Vec<fm::ToolChangeView>> { Ok(Vec::new()) }
+        fn layer_index(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<u32> {
+            let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get(&typed)?;
+            Ok(data.layer_index)
+        }
+        fn z(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<f32> {
+            let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get(&typed)?;
+            Ok(data.z)
+        }
+        fn entity_count(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<u32> {
+            let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get(&typed)?;
+            Ok(data.entity_count)
+        }
+        fn tool_changes(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<Vec<fm::ToolChangeView>> {
+            let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get(&typed)?;
+            Ok(data
+                .tool_changes
+                .iter()
+                .map(|(after_entity_index, from_tool, to_tool)| fm::ToolChangeView {
+                    after_entity_index: *after_entity_index,
+                    from_tool: *from_tool,
+                    to_tool: *to_tool,
+                })
+                .collect())
+        }
         fn drop(&mut self, rep: Resource<fm::LayerCollectionView>) -> wasmtime::Result<()> {
             let typed: Resource<LayerCollectionViewData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?; Ok(())
@@ -1891,11 +2293,49 @@ mod finalization_impls {
     }
 
     impl fm::HostFinalizationOutputBuilder for HostExecutionContext {
-        fn push_entity_to_layer(&mut self, _: Resource<fm::FinalizationOutputBuilder>, _: u32, _: fgeo::ExtrusionPath3d, _: fm::RegionKey) -> wasmtime::Result<Result<(), String>> { Ok(Ok(())) }
-        fn insert_synthetic_layer(&mut self, _: Resource<fm::FinalizationOutputBuilder>, _: f32, _: Vec<fgeo::ExtrusionPath3d>) -> wasmtime::Result<Result<(), String>> { Ok(Ok(())) }
+        fn push_entity_to_layer(
+            &mut self,
+            self_: Resource<fm::FinalizationOutputBuilder>,
+            layer_index: u32,
+            path: fgeo::ExtrusionPath3d,
+            region_key: fm::RegionKey,
+        ) -> wasmtime::Result<Result<(), String>> {
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get_mut(&typed)?;
+            let ir_region_key = slicer_ir::RegionKey {
+                global_layer_index: region_key.layer_index,
+                object_id: region_key.object_id,
+                region_id: region_key.region_id.parse::<u64>().unwrap_or(0),
+            };
+            data.pushes.push(FinalizationBuilderPush::EntityToLayer {
+                layer_index,
+                path: finalization_path_wit_to_ir(&path),
+                region_key: ir_region_key,
+            });
+            Ok(Ok(()))
+        }
+        fn insert_synthetic_layer(
+            &mut self,
+            self_: Resource<fm::FinalizationOutputBuilder>,
+            z: f32,
+            paths: Vec<fgeo::ExtrusionPath3d>,
+        ) -> wasmtime::Result<Result<(), String>> {
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get_mut(&typed)?;
+            data.pushes.push(FinalizationBuilderPush::SyntheticLayer {
+                z,
+                paths: paths.iter().map(finalization_path_wit_to_ir).collect(),
+            });
+            Ok(Ok(()))
+        }
         fn drop(&mut self, rep: Resource<fm::FinalizationOutputBuilder>) -> wasmtime::Result<()> {
+            // Move captured pushes onto the HostExecutionContext before
+            // the resource's storage is reclaimed, so the dispatch path
+            // can drain them even after the guest drops its handle.
             let typed: Resource<FinalizationOutputBuilderData> = Resource::new_own(rep.rep());
-            self.table.delete(typed)?; Ok(())
+            let mut data = self.table.delete(typed)?;
+            self.finalization_pushes.append(&mut data.pushes);
+            Ok(())
         }
     }
 

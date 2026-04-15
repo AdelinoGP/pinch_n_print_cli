@@ -116,13 +116,11 @@ impl ConfigViewBuilder {
     /// use slicer_test::fixtures::ConfigViewBuilder;
     ///
     /// let config = ConfigViewBuilder::new().int("count", 1).build();
-    /// assert_eq!(config.fields.len(), 1);
+    /// assert_eq!(config.len(), 1);
     /// ```
     #[must_use]
     pub fn build(self) -> ConfigView {
-        ConfigView {
-            fields: self.fields,
-        }
+        ConfigView::from_map(self.fields,)
     }
 }
 

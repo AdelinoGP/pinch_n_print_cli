@@ -387,11 +387,168 @@ pub enum ConfigValue {
     List(Vec<ConfigValue>),
 }
 
-/// Config view (pre-filtered for specific module)
+/// Config view (pre-filtered for specific module).
+///
+/// # Contract
+///
+/// Mirrors the `config-view` WIT resource (`wit/deps/config.wit`):
+/// read-only and pre-filtered to a module's declared reads only. The
+/// Rust side enforces this by keeping the backing `HashMap` private — all
+/// consumers (host built-ins, guest modules, and tests) go through the
+/// typed accessors (`get`, `get_bool`, `get_int`, `get_float`,
+/// `get_string`, `get_float_list`, `get_string_list`, `keys`,
+/// `iter_entries`) rather than touching the map directly (docs/03
+/// §host-boundary access enforcement; docs/05 §module SDK).
+///
+/// # Construction
+///
+/// The only binding path allowed by the docs is pre-filtering to the
+/// module's declared config keys. Use [`ConfigView::from_declared`] when
+/// the host wires a config view for a compiled module; use
+/// [`ConfigView::new`] or [`ConfigView::from_map`] for test fixtures that
+/// simulate an already-filtered view.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ConfigView {
-    /// Configuration fields visible to the module
-    pub fields: HashMap<ConfigKey, ConfigValue>,
+    // Private map. External construction goes through `from_map` /
+    // `from_declared`; reads go through the typed accessors below. This
+    // enforces the WIT `resource config-view { ... }` read-only
+    // contract at the Rust boundary, so consumers cannot mutate a
+    // view after the host synthesises it.
+    fields: HashMap<ConfigKey, ConfigValue>,
+}
+
+impl ConfigView {
+    /// Create an empty, already-frozen config view.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            fields: HashMap::new(),
+        }
+    }
+
+    /// Wrap an existing `HashMap` as a config view without filtering.
+    /// Intended for test fixtures only; live-path host code must use
+    /// [`ConfigView::from_declared`].
+    #[must_use]
+    pub fn from_map(fields: HashMap<ConfigKey, ConfigValue>) -> Self {
+        Self { fields }
+    }
+
+    /// Build a config view pre-filtered to `declared` keys — the only
+    /// contract-compliant constructor for the live host/runtime path
+    /// (docs/03 §host-boundary access enforcement; docs/02 §Pre-filtered
+    /// config).
+    ///
+    /// Keys in `source` that are not in `declared` are dropped. Keys in
+    /// `declared` that are not in `source` produce no entry (the typed
+    /// accessors will return `None`, matching the undeclared/missing
+    /// semantics modules already observe).
+    #[must_use]
+    pub fn from_declared<'a, I>(
+        source: &HashMap<ConfigKey, ConfigValue>,
+        declared: I,
+    ) -> Self
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        let mut fields = HashMap::new();
+        for key in declared {
+            if let Some(value) = source.get(key) {
+                fields.insert(key.to_string(), value.clone());
+            }
+        }
+        Self { fields }
+    }
+
+    /// Typed read: return the raw `ConfigValue` for `key`, if present.
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&ConfigValue> {
+        self.fields.get(key)
+    }
+
+    /// Typed read: `bool` value, or `None` if missing/other type.
+    #[must_use]
+    pub fn get_bool(&self, key: &str) -> Option<bool> {
+        match self.fields.get(key)? {
+            ConfigValue::Bool(b) => Some(*b),
+            _ => None,
+        }
+    }
+
+    /// Typed read: `i64` value, or `None` if missing/other type.
+    #[must_use]
+    pub fn get_int(&self, key: &str) -> Option<i64> {
+        match self.fields.get(key)? {
+            ConfigValue::Int(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    /// Typed read: `f64` value with subnormal normalization
+    /// (subnormals are coerced to `0.0`), matching the WIT boundary
+    /// behavior in `slicer-host::wit_host::normalize_subnormal_boundary`
+    /// and the schema parser's `normalize_subnormal`.
+    /// Returns `None` if missing/other type.
+    #[must_use]
+    pub fn get_float(&self, key: &str) -> Option<f64> {
+        match self.fields.get(key)? {
+            ConfigValue::Float(f) => Some(if f.is_subnormal() { 0.0 } else { *f }),
+            _ => None,
+        }
+    }
+
+    /// Typed read: `String` value, or `None` if missing/other type.
+    #[must_use]
+    pub fn get_string(&self, key: &str) -> Option<&str> {
+        match self.fields.get(key)? {
+            ConfigValue::String(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
+    /// Return all keys visible to the module, sorted for deterministic
+    /// iteration (mirrors the WIT `keys()` contract).
+    #[must_use]
+    pub fn keys(&self) -> Vec<String> {
+        let mut out: Vec<String> = self.fields.keys().cloned().collect();
+        out.sort();
+        out
+    }
+
+    /// True if `key` is visible to the module.
+    #[must_use]
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.fields.contains_key(key)
+    }
+
+    /// Number of declared keys visible to the module.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.fields.len()
+    }
+
+    /// True when no keys are visible.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.fields.is_empty()
+    }
+
+    /// Deterministically iterate all `(key, value)` pairs visible to the
+    /// module, ordered by key. Used by non-typed consumers (e.g. the
+    /// Python postpass bridge) that need to ship every declared value
+    /// to a foreign runtime without additional round-trip host calls.
+    pub fn iter_entries(&self) -> impl Iterator<Item = (&str, &ConfigValue)> {
+        let mut keys: Vec<&str> = self.fields.keys().map(String::as_str).collect();
+        keys.sort();
+        keys.into_iter()
+            .map(move |k| (k, self.fields.get(k).expect("iter_entries: key vanished")))
+    }
+}
+
+impl Default for ConfigView {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Non-planar shell reference
@@ -604,6 +761,45 @@ impl PaintRegionIR {
             .map(|v| v.as_slice())
             .unwrap_or(&[])
     }
+}
+
+// ============================================================================
+// Mesh Segmentation IR Types
+// ============================================================================
+
+/// One whole-triangle paint mark emitted by a `PrePass::MeshSegmentation`
+/// module via `mark-triangle-paint`.
+///
+/// Matches `world-prepass.wit::mesh-segmentation-output::mark-triangle-paint`:
+/// the guest normalizes sub-facet strokes into per-triangle paint values and
+/// reports `(semantic, value)` for a specific `(object_id, facet_index)`.
+/// Semantic and value are free-form strings at this layer — the consumer
+/// decides how to parse `value` (tool index, boolean flag, named material).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FacetPaintMark {
+    /// Object the mark applies to.
+    pub object_id: ObjectId,
+    /// Zero-based facet index into the object's triangle list.
+    pub facet_index: u32,
+    /// Paint semantic (e.g. `"material"`, `"fuzzy_skin"`, `"support_enforcer"`).
+    pub semantic: String,
+    /// Paint value associated with the semantic.
+    pub value: String,
+}
+
+/// Mesh segmentation IR produced by `PrePass::MeshSegmentation`.
+///
+/// Commits a deterministic, ordered list of per-facet paint marks covering
+/// every object. Downstream stages (today: none in the routed topology)
+/// can read this to understand which facets carry which paint semantic at
+/// whole-triangle granularity after stroke normalization. The invariant
+/// is "exactly one value per `(object_id, facet_index, semantic)` triple".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeshSegmentationIR {
+    /// Schema version of this IR.
+    pub schema_version: SemVer,
+    /// Deterministic, insertion-ordered list of paint marks.
+    pub marks: Vec<FacetPaintMark>,
 }
 
 // ============================================================================

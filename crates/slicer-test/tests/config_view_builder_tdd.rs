@@ -6,20 +6,20 @@ use slicer_test::fixtures::ConfigViewBuilder;
 #[test]
 fn empty_builder_produces_empty_config() {
     let config = ConfigViewBuilder::new().build();
-    assert!(config.fields.is_empty());
+    assert!(config.is_empty());
 }
 
 #[test]
 fn bool_true_value() {
     let config = ConfigViewBuilder::new().bool("enabled", true).build();
-    assert_eq!(config.fields.get("enabled"), Some(&ConfigValue::Bool(true)));
+    assert_eq!(config.get("enabled"), Some(&ConfigValue::Bool(true)));
 }
 
 #[test]
 fn bool_false_value() {
     let config = ConfigViewBuilder::new().bool("enabled", false).build();
     assert_eq!(
-        config.fields.get("enabled"),
+        config.get("enabled"),
         Some(&ConfigValue::Bool(false))
     );
 }
@@ -27,14 +27,14 @@ fn bool_false_value() {
 #[test]
 fn int_value() {
     let config = ConfigViewBuilder::new().int("count", 42).build();
-    assert_eq!(config.fields.get("count"), Some(&ConfigValue::Int(42)));
+    assert_eq!(config.get("count"), Some(&ConfigValue::Int(42)));
 }
 
 #[test]
 fn float_value() {
     let config = ConfigViewBuilder::new().float("density", 0.15).build();
     assert_eq!(
-        config.fields.get("density"),
+        config.get("density"),
         Some(&ConfigValue::Float(0.15))
     );
 }
@@ -43,7 +43,7 @@ fn float_value() {
 fn string_value() {
     let config = ConfigViewBuilder::new().string("pattern", "grid").build();
     assert_eq!(
-        config.fields.get("pattern"),
+        config.get("pattern"),
         Some(&ConfigValue::String("grid".to_string()))
     );
 }
@@ -55,7 +55,7 @@ fn list_of_floats() {
         .list("speeds", values.clone())
         .build();
     assert_eq!(
-        config.fields.get("speeds"),
+        config.get("speeds"),
         Some(&ConfigValue::List(values))
     );
 }
@@ -63,7 +63,7 @@ fn list_of_floats() {
 #[test]
 fn list_empty() {
     let config = ConfigViewBuilder::new().list("empty", vec![]).build();
-    assert_eq!(config.fields.get("empty"), Some(&ConfigValue::List(vec![])));
+    assert_eq!(config.get("empty"), Some(&ConfigValue::List(vec![])));
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn list_of_mixed_types() {
     let config = ConfigViewBuilder::new()
         .list("mixed", values.clone())
         .build();
-    assert_eq!(config.fields.get("mixed"), Some(&ConfigValue::List(values)));
+    assert_eq!(config.get("mixed"), Some(&ConfigValue::List(values)));
 }
 
 #[test]
@@ -88,16 +88,16 @@ fn chaining_all_variants() {
         .string("name", "test")
         .list("items", vec![ConfigValue::Int(1)])
         .build();
-    assert_eq!(config.fields.len(), 5);
-    assert_eq!(config.fields.get("flag"), Some(&ConfigValue::Bool(true)));
-    assert_eq!(config.fields.get("count"), Some(&ConfigValue::Int(5)));
-    assert_eq!(config.fields.get("ratio"), Some(&ConfigValue::Float(0.5)));
+    assert_eq!(config.len(), 5);
+    assert_eq!(config.get("flag"), Some(&ConfigValue::Bool(true)));
+    assert_eq!(config.get("count"), Some(&ConfigValue::Int(5)));
+    assert_eq!(config.get("ratio"), Some(&ConfigValue::Float(0.5)));
     assert_eq!(
-        config.fields.get("name"),
+        config.get("name"),
         Some(&ConfigValue::String("test".to_string()))
     );
     assert_eq!(
-        config.fields.get("items"),
+        config.get("items"),
         Some(&ConfigValue::List(vec![ConfigValue::Int(1)]))
     );
 }
@@ -106,8 +106,8 @@ fn chaining_all_variants() {
 fn overwrite_same_key() {
     let config = ConfigViewBuilder::new().int("x", 1).float("x", 2.0).build();
     // Last write wins
-    assert_eq!(config.fields.get("x"), Some(&ConfigValue::Float(2.0)));
-    assert_eq!(config.fields.len(), 1);
+    assert_eq!(config.get("x"), Some(&ConfigValue::Float(2.0)));
+    assert_eq!(config.len(), 1);
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn overwrite_bool_with_string() {
         .string("x", "hello")
         .build();
     assert_eq!(
-        config.fields.get("x"),
+        config.get("x"),
         Some(&ConfigValue::String("hello".to_string()))
     );
 }

@@ -52,15 +52,15 @@ fn config_builder_creates_key_value_view() {
         .build();
 
     assert!(matches!(
-        config.fields.get("density"),
+        config.get("density"),
         Some(ConfigValue::Float(v)) if (*v - 0.2).abs() < f64::EPSILON
     ));
     assert!(matches!(
-        config.fields.get("pattern"),
+        config.get("pattern"),
         Some(ConfigValue::String(v)) if v == "grid"
     ));
     assert!(matches!(
-        config.fields.get("multiline-count"),
+        config.get("multiline-count"),
         Some(ConfigValue::Int(2))
     ));
 }
