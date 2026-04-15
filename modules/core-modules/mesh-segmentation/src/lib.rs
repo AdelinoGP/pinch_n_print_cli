@@ -1,27 +1,53 @@
 //! Mesh segmentation prepass module for ModularSlicer.
 //!
-//! Normalizes sub-facet paint strokes into whole-triangle assignments so that
-//! downstream stages consume a uniformly tagged mesh where each triangle has
-//! exactly one paint value per semantic.
+//! Emits whole-triangle paint marks through the WIT
+//! `mesh-segmentation-output::mark-triangle-paint` drain. The macro
+//! path (`#[slicer_module]`) owns the SDK→WIT bridge after STEP H; no
+//! hand-authored wit-guest duplicate is needed.
 //!
-//! # Algorithm (MVP — centroid assignment)
+//! # Mark source
 //!
-//! For each object with paint strokes:
-//! 1. Clone the original vertices, triangles, and facet values.
-//! 2. For each paint layer that has strokes:
-//!    - For each stroke, compute the centroid of each stroke triangle.
-//!    - Find which mesh facet the centroid falls inside (barycentric point-in-triangle test).
-//!    - Assign that facet the stroke's paint value.
-//! 3. Mark strokes as cleared and push the modification to output.
+//! Marks are driven by host-supplied config keys of the form:
+//!
+//!   `mesh_seg_mark:<object_id>:<facet_index>:<semantic>` = `<value>`
+//!
+//! That key shape mirrors the canonical segmentation contract from
+//! docs/03_wit_and_manifest.md: the WIT `run-mesh-segmentation` export
+//! provides only `list<object-id>` + the config view, so the only
+//! deterministic mark source a macro-authored module can rely on is
+//! the declared config. Unpainted meshes (including Benchy) carry no
+//! `mesh_seg_mark:*` keys and the module is a deterministic zero-mark
+//! no-op, which is the correct semantic.
+//!
+//! # Ordering
+//!
+//! Marks are emitted in the deterministic order:
+//!   1. objects in the order supplied by the host,
+//!   2. within each object, marks keyed by `(facet_index asc, semantic asc)`,
+//!   3. ties broken by key-string order.
+//!
+//! `MeshSegmentationIR.marks` preserves the host's mark-push order so
+//! tests can rely on a stable byte image for determinism checks.
+//!
+//! # Why the SDK path replaced the hand-written wit-guest
+//!
+//! Before STEP H the canonical `mesh-segmentation` component was a
+//! hand-written `wit_bindgen::generate!` duplicate because the SDK
+//! `MeshSegmentationOutput` builder exposed `push_modification` /
+//! `ObjectMeshModification` (full mesh rebuild) — a shape with no
+//! representation on the WIT surface. STEP H added
+//! `MeshSegmentationOutput::mark_triangle_paint(...)` that matches
+//! the WIT `mark-triangle-paint` method one-to-one and let the macro
+//! arm drain it, so the canonical module can now follow the same
+//! `#[slicer_module]` + 2-line `pub use` wit-guest pattern as the
+//! other core modules (docs/05 §Authoring, STEP F precedent).
 
 use slicer_sdk::prelude::*;
 
-/// Mesh segmentation prepass module.
-///
-/// Implements `PrepassModule::run_mesh_segmentation` to normalize sub-facet paint
-/// strokes into whole-triangle facet value assignments.
+/// Mesh segmentation prepass module (config-driven marks).
 pub struct MeshSegmentation;
 
+#[slicer_module]
 impl PrepassModule for MeshSegmentation {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(MeshSegmentation)
@@ -31,16 +57,41 @@ impl PrepassModule for MeshSegmentation {
         &self,
         objects: &[MeshObjectView],
         output: &mut MeshSegmentationOutput,
-        _config: &ConfigView,
+        config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        for object in objects {
-            if !object_has_strokes(object) {
-                continue;
+        let mut parsed: Vec<ParsedMark> = Vec::new();
+        for key in config.keys() {
+            if let Some(value) = config.get(&key) {
+                if let Some(mark) = parse_mark(&key, value) {
+                    parsed.push(mark);
+                }
             }
+        }
 
-            let modification = process_object(object)?;
+        let known_object_ids: Vec<&str> =
+            objects.iter().map(|o| o.object_id.as_str()).collect();
+        let object_rank = |id: &str| -> usize {
+            known_object_ids
+                .iter()
+                .position(|o| *o == id)
+                .unwrap_or(known_object_ids.len())
+        };
+        parsed.sort_by(|a, b| {
+            object_rank(&a.object_id)
+                .cmp(&object_rank(&b.object_id))
+                .then_with(|| a.object_id.cmp(&b.object_id))
+                .then_with(|| a.facet_index.cmp(&b.facet_index))
+                .then_with(|| a.semantic.cmp(&b.semantic))
+        });
+
+        for mark in parsed {
             output
-                .push_modification(modification)
+                .mark_triangle_paint(
+                    mark.object_id,
+                    mark.facet_index,
+                    mark.semantic,
+                    mark.value,
+                )
                 .map_err(|e| ModuleError::fatal(1, e))?;
         }
 
@@ -48,114 +99,50 @@ impl PrepassModule for MeshSegmentation {
     }
 }
 
-/// Check whether any paint layer on the object has non-empty strokes.
-fn object_has_strokes(object: &MeshObjectView) -> bool {
-    object
-        .paint_layers
-        .iter()
-        .any(|layer| !layer.strokes.is_empty())
+/// Parsed `mesh_seg_mark:<object_id>:<facet_index>:<semantic> = <value>` entry.
+#[derive(Debug, Clone)]
+pub struct ParsedMark {
+    /// Target object id.
+    pub object_id: String,
+    /// Target triangle index within the object's mesh.
+    pub facet_index: u32,
+    /// Paint semantic (e.g. "support_enforcer").
+    pub semantic: String,
+    /// Paint value, serialized to a string for WIT transport.
+    pub value: String,
 }
 
-/// Process a single object: resolve strokes into facet values.
-fn process_object(object: &MeshObjectView) -> Result<ObjectMeshModification, ModuleError> {
-    let new_vertices = object.vertices.clone();
-    let new_triangles = object.triangles.clone();
-
-    // Clone facet values from each paint layer
-    let mut updated_facet_values: Vec<Vec<Option<PaintValueView>>> = object
-        .paint_layers
-        .iter()
-        .map(|layer| layer.facet_values.clone())
-        .collect();
-
-    // For each paint layer, resolve strokes into facet values
-    for (layer_idx, paint_layer) in object.paint_layers.iter().enumerate() {
-        for stroke in &paint_layer.strokes {
-            for stroke_tri in &stroke.triangles {
-                let centroid = triangle_centroid(stroke_tri);
-
-                if let Some(facet_idx) =
-                    locate_facet_by_centroid(&object.vertices, &object.triangles, &centroid)
-                {
-                    updated_facet_values[layer_idx][facet_idx] = Some(stroke.value.clone());
-                }
-            }
-        }
+/// Parse one `mesh_seg_mark:*` config entry. Returns `None` if the key
+/// does not match the canonical shape or if any field is malformed.
+///
+/// Accepts the same `ConfigValue` variants the hand-written wit-guest
+/// accepted before STEP H (`String`, `Int`, `Float`, `Bool`) so
+/// existing `mesh_seg_mark:*` configs continue to work verbatim
+/// through the macro path.
+pub fn parse_mark(key: &str, value: &ConfigValue) -> Option<ParsedMark> {
+    const PREFIX: &str = "mesh_seg_mark:";
+    let rest = key.strip_prefix(PREFIX)?;
+    let mut parts = rest.splitn(3, ':');
+    let object_id = parts.next()?.to_string();
+    let facet_str = parts.next()?;
+    let semantic = parts.next()?.to_string();
+    if object_id.is_empty() || semantic.is_empty() {
+        return None;
     }
-
-    Ok(ObjectMeshModification {
-        object_id: object.object_id.clone(),
-        new_vertices,
-        new_triangles,
-        updated_facet_values,
-        strokes_cleared: true,
+    let facet_index: u32 = facet_str.parse().ok()?;
+    let value_str = match value {
+        ConfigValue::String(s) => s.clone(),
+        ConfigValue::Int(i) => i.to_string(),
+        ConfigValue::Float(f) => f.to_string(),
+        ConfigValue::Bool(b) => b.to_string(),
+        _ => return None,
+    };
+    Some(ParsedMark {
+        object_id,
+        facet_index,
+        semantic,
+        value: value_str,
     })
-}
-
-/// Compute the centroid of a triangle given as three `[f32; 3]` vertices.
-fn triangle_centroid(tri: &[[f32; 3]; 3]) -> [f32; 3] {
-    [
-        (tri[0][0] + tri[1][0] + tri[2][0]) / 3.0,
-        (tri[0][1] + tri[1][1] + tri[2][1]) / 3.0,
-        (tri[0][2] + tri[1][2] + tri[2][2]) / 3.0,
-    ]
-}
-
-/// Find which mesh facet (by index) contains the given point using barycentric coordinates.
-///
-/// Returns `None` if no facet contains the point.
-fn locate_facet_by_centroid(
-    vertices: &[[f32; 3]],
-    triangles: &[[u32; 3]],
-    point: &[f32; 3],
-) -> Option<usize> {
-    for (facet_idx, tri) in triangles.iter().enumerate() {
-        let a = &vertices[tri[0] as usize];
-        let b = &vertices[tri[1] as usize];
-        let c = &vertices[tri[2] as usize];
-
-        if point_in_triangle(point, a, b, c) {
-            return Some(facet_idx);
-        }
-    }
-    None
-}
-
-/// Barycentric coordinate point-in-triangle test (2.5D — projects onto the dominant plane).
-///
-/// Uses the same approach as the host executor: compute barycentric coordinates
-/// and check that all are non-negative (within epsilon).
-fn point_in_triangle(p: &[f32; 3], a: &[f32; 3], b: &[f32; 3], c: &[f32; 3]) -> bool {
-    const EPSILON: f32 = 1.0e-6;
-
-    let v0 = sub3(b, a);
-    let v1 = sub3(c, a);
-    let v2 = sub3(p, a);
-
-    let d00 = dot3(&v0, &v0);
-    let d01 = dot3(&v0, &v1);
-    let d11 = dot3(&v1, &v1);
-    let d20 = dot3(&v2, &v0);
-    let d21 = dot3(&v2, &v1);
-
-    let denom = d00 * d11 - d01 * d01;
-    if denom.abs() <= EPSILON {
-        return false;
-    }
-
-    let v = (d11 * d20 - d01 * d21) / denom;
-    let w = (d00 * d21 - d01 * d20) / denom;
-    let u = 1.0 - v - w;
-
-    u >= -EPSILON && v >= -EPSILON && w >= -EPSILON
-}
-
-fn sub3(a: &[f32; 3], b: &[f32; 3]) -> [f32; 3] {
-    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-
-fn dot3(a: &[f32; 3], b: &[f32; 3]) -> f32 {
-    a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
 }
 
 #[cfg(test)]
@@ -163,36 +150,64 @@ mod tests {
     use super::*;
 
     #[test]
-    fn centroid_computation() {
-        let tri = [[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [0.0, 3.0, 0.0]];
-        let c = triangle_centroid(&tri);
-        assert!((c[0] - 1.0).abs() < 1e-6);
-        assert!((c[1] - 1.0).abs() < 1e-6);
-        assert!((c[2] - 0.0).abs() < 1e-6);
+    fn parse_mark_accepts_canonical_shape() {
+        let pm = parse_mark(
+            "mesh_seg_mark:obj-1:42:support_enforcer",
+            &ConfigValue::String("enabled".into()),
+        )
+        .expect("well-formed key must parse");
+        assert_eq!(pm.object_id, "obj-1");
+        assert_eq!(pm.facet_index, 42);
+        assert_eq!(pm.semantic, "support_enforcer");
+        assert_eq!(pm.value, "enabled");
     }
 
     #[test]
-    fn point_in_triangle_inside() {
-        let a = [0.0, 0.0, 0.0];
-        let b = [1.0, 0.0, 0.0];
-        let c = [0.0, 1.0, 0.0];
-        assert!(point_in_triangle(&[0.2, 0.2, 0.0], &a, &b, &c));
+    fn parse_mark_coerces_non_string_values() {
+        let pm = parse_mark(
+            "mesh_seg_mark:obj:0:tool",
+            &ConfigValue::Int(3),
+        )
+        .unwrap();
+        assert_eq!(pm.value, "3");
+        let pm = parse_mark(
+            "mesh_seg_mark:obj:0:flag",
+            &ConfigValue::Bool(true),
+        )
+        .unwrap();
+        assert_eq!(pm.value, "true");
     }
 
     #[test]
-    fn point_in_triangle_outside() {
-        let a = [0.0, 0.0, 0.0];
-        let b = [1.0, 0.0, 0.0];
-        let c = [0.0, 1.0, 0.0];
-        assert!(!point_in_triangle(&[5.0, 5.0, 0.0], &a, &b, &c));
+    fn parse_mark_rejects_non_prefix_keys() {
+        assert!(parse_mark("layer_height", &ConfigValue::Float(0.2)).is_none());
     }
 
     #[test]
-    fn point_in_triangle_on_edge() {
-        let a = [0.0, 0.0, 0.0];
-        let b = [1.0, 0.0, 0.0];
-        let c = [0.0, 1.0, 0.0];
-        // Point on edge AB at midpoint
-        assert!(point_in_triangle(&[0.5, 0.0, 0.0], &a, &b, &c));
+    fn parse_mark_rejects_malformed_shape() {
+        // Missing semantic segment.
+        assert!(parse_mark(
+            "mesh_seg_mark:obj:5",
+            &ConfigValue::String("x".into())
+        )
+        .is_none());
+        // Empty object id.
+        assert!(parse_mark(
+            "mesh_seg_mark::5:sem",
+            &ConfigValue::String("x".into())
+        )
+        .is_none());
+        // Non-numeric facet index.
+        assert!(parse_mark(
+            "mesh_seg_mark:obj:not-a-number:sem",
+            &ConfigValue::String("x".into())
+        )
+        .is_none());
+        // Unsupported value kind (a list).
+        assert!(parse_mark(
+            "mesh_seg_mark:obj:0:sem",
+            &ConfigValue::List(vec![])
+        )
+        .is_none());
     }
 }

@@ -156,11 +156,40 @@ pub struct ObjectMeshModification {
     pub strokes_cleared: bool,
 }
 
+/// A single per-triangle paint mark emitted by
+/// `MeshSegmentationOutput::mark_triangle_paint`. Mirrors the WIT
+/// `mesh-segmentation-output::mark-triangle-paint` method signature
+/// from docs/03_wit_and_manifest.md (world-prepass.wit).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrianglePaintMark {
+    /// Object this mark applies to.
+    pub object_id: String,
+    /// Triangle index inside the object's mesh.
+    pub facet_index: u32,
+    /// Paint semantic (e.g. `"support_enforcer"`, `"seam"`).
+    pub semantic: String,
+    /// Paint value, serialized as a string. Empty means "clear".
+    pub value: String,
+}
+
 /// Output builder for mesh segmentation stage.
 ///
-/// Collects per-object mesh modifications produced by `PrepassModule::run_mesh_segmentation`.
+/// The canonical drain target is [`Self::mark_triangle_paint`] —
+/// it matches the WIT `mesh-segmentation-output::mark-triangle-paint`
+/// method one-to-one (docs/03_wit_and_manifest.md world-prepass.wit),
+/// which is the only data the WIT boundary surfaces back to the host.
+///
+/// The legacy [`Self::push_modification`] API ships an
+/// [`ObjectMeshModification`] carrying full mesh geometry + per-layer
+/// facet values; that shape has no representation on the current WIT
+/// surface (the host can't reconstruct vertices/triangles from per-
+/// triangle marks). It remains available for native-mode module
+/// authoring where the SDK can observe `modifications()` directly, but
+/// the `#[slicer_module]` macro path drains only the
+/// [`triangle_paint_marks`](Self::triangle_paint_marks) stream.
 pub struct MeshSegmentationOutput {
     modifications: Vec<ObjectMeshModification>,
+    triangle_paint_marks: Vec<TrianglePaintMark>,
 }
 
 impl MeshSegmentationOutput {
@@ -168,10 +197,16 @@ impl MeshSegmentationOutput {
     pub fn new() -> Self {
         Self {
             modifications: Vec::new(),
+            triangle_paint_marks: Vec::new(),
         }
     }
 
     /// Push a mesh modification for an object.
+    ///
+    /// Legacy API — see the struct-level docs. The `#[slicer_module]`
+    /// macro path does not drain `modifications()` back through the
+    /// WIT boundary because the current `world-prepass` surface
+    /// carries per-triangle marks only.
     pub fn push_modification(
         &mut self,
         modification: ObjectMeshModification,
@@ -180,10 +215,40 @@ impl MeshSegmentationOutput {
         Ok(())
     }
 
+    /// Record a per-triangle paint assignment. Mirrors the WIT
+    /// `mesh-segmentation-output::mark-triangle-paint` method.
+    ///
+    /// Push order is preserved; the host-side harvest is deterministic.
+    /// Validation happens at the host boundary (empty `object_id`,
+    /// empty `semantic` are rejected there with a structured error).
+    pub fn mark_triangle_paint(
+        &mut self,
+        object_id: String,
+        facet_index: u32,
+        semantic: String,
+        value: String,
+    ) -> Result<(), String> {
+        self.triangle_paint_marks.push(TrianglePaintMark {
+            object_id,
+            facet_index,
+            semantic,
+            value,
+        });
+        Ok(())
+    }
+
     /// Get all modifications (for testing).
     #[doc(hidden)]
     pub fn modifications(&self) -> &[ObjectMeshModification] {
         &self.modifications
+    }
+
+    /// Get all triangle paint marks in push order. The
+    /// `#[slicer_module]` macro drains this slice into the WIT
+    /// `mesh-segmentation-output.mark-triangle-paint` resource on the
+    /// host after the trait body returns.
+    pub fn triangle_paint_marks(&self) -> &[TrianglePaintMark] {
+        &self.triangle_paint_marks
     }
 }
 
@@ -197,6 +262,7 @@ impl std::fmt::Debug for MeshSegmentationOutput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MeshSegmentationOutput")
             .field("modifications", &self.modifications.len())
+            .field("triangle_paint_marks", &self.triangle_paint_marks.len())
             .finish()
     }
 }

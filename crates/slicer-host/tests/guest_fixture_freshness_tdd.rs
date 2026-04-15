@@ -13,6 +13,12 @@ const GUESTS: &[(&str, &str)] = &[
     ("prepass-guest", "prepass-guest.component.wasm"),
     ("finalization-guest", "finalization-guest.component.wasm"),
     ("postpass-guest", "postpass-guest.component.wasm"),
+    // TASK-109 round-trip witnesses — guests authored purely via the
+    // macro-emitted wit_bindgen glue (no hand-rolled `wit_bindgen::generate!`).
+    ("sdk-postpass-text-guest", "sdk-postpass-text-guest.component.wasm"),
+    ("sdk-finalization-guest", "sdk-finalization-guest.component.wasm"),
+    ("sdk-prepass-guest", "sdk-prepass-guest.component.wasm"),
+    ("sdk-layer-infill-guest", "sdk-layer-infill-guest.component.wasm"),
 ];
 
 fn test_guests_dir() -> PathBuf {

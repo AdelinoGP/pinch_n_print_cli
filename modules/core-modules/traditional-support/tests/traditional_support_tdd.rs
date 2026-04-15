@@ -14,7 +14,7 @@ fn make_config(enabled: bool, density: f64, angle: f64, speed: f64, line_width: 
     fields.insert("support_angle".to_string(), ConfigValue::Float(angle));
     fields.insert("support_speed".to_string(), ConfigValue::Float(speed));
     fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {

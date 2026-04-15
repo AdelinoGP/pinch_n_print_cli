@@ -19,6 +19,7 @@ use slicer_ir::{
     WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
+use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
@@ -36,17 +37,18 @@ pub struct FuzzySkinModule {
     apply_to_all: bool,
 }
 
+#[slicer_module]
 impl LayerModule for FuzzySkinModule {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        let thickness = match config.fields.get("thickness") {
+        let thickness = match config.get("thickness") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 0.3,
         };
-        let point_distance = match config.fields.get("point-distance") {
+        let point_distance = match config.get("point-distance") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 0.8,
         };
-        let apply_to_all = match config.fields.get("apply-to-all") {
+        let apply_to_all = match config.get("apply-to-all") {
             Some(ConfigValue::Bool(v)) => *v,
             _ => false,
         };

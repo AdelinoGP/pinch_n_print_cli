@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use slicer_core::paint_region::{point_in_paint_region, BoundaryInclusion, PaintRegionQueryError};
 use slicer_ir::{ConfigView, PaintSemantic, PaintValue, RegionKey};
 use slicer_sdk::builders::SlicePostprocessBuilder;
+use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
@@ -30,6 +31,7 @@ use slicer_sdk::views::SliceRegionView;
 /// Runs last in the `Layer::SlicePostProcess` stage.
 pub struct PaintRegionAnnotator;
 
+#[slicer_module]
 impl LayerModule for PaintRegionAnnotator {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(PaintRegionAnnotator)
@@ -108,9 +110,7 @@ mod tests {
 
     #[test]
     fn module_creates_successfully() {
-        let config = ConfigView {
-            fields: HashMap::new(),
-        };
+        let config = ConfigView::new();
         let annotator = PaintRegionAnnotator::on_print_start(&config);
         assert!(annotator.is_ok());
     }

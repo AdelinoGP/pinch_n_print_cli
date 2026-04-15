@@ -50,7 +50,7 @@ fn make_config(wall_count: u32, line_width: f64) -> ConfigView {
         ConfigValue::Int(wall_count as i64),
     );
     fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 /// Create a config with speed settings too.
@@ -74,7 +74,7 @@ fn make_config_with_speeds(
         "inner_wall_speed".to_string(),
         ConfigValue::Float(inner_speed),
     );
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 /// Create a SliceRegionView with a single square polygon.

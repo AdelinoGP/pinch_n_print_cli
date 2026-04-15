@@ -35,7 +35,7 @@ fn enabled_config() -> ConfigView {
     fields.insert("support_angle".to_string(), ConfigValue::Float(0.0));
     fields.insert("support_speed".to_string(), ConfigValue::Float(50.0));
     fields.insert("line_width".to_string(), ConfigValue::Float(0.4));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 /// Helper: create a 10mm square ExPolygon centered at origin.

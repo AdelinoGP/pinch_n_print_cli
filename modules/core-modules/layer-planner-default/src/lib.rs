@@ -26,10 +26,10 @@ pub struct DefaultLayerPlanner {
     first_layer_height: f32,
 }
 
+#[slicer_module]
 impl PrepassModule for DefaultLayerPlanner {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
         let layer_height = config
-            .fields
             .get("layer_height")
             .and_then(|v| match v {
                 ConfigValue::Float(f) => Some(*f as f32),
@@ -38,7 +38,6 @@ impl PrepassModule for DefaultLayerPlanner {
             .unwrap_or(0.2);
 
         let first_layer_height = config
-            .fields
             .get("first_layer_height")
             .and_then(|v| match v {
                 ConfigValue::Float(f) => Some(*f as f32),
@@ -113,7 +112,6 @@ impl PrepassModule for DefaultLayerPlanner {
 pub fn object_layer_height(config: &ConfigView, object_id: &str, default: f32) -> f32 {
     let key = format!("layer_height:{}", object_id);
     config
-        .fields
         .get(&key)
         .and_then(|v| match v {
             ConfigValue::Float(f) => Some(*f as f32),
@@ -127,7 +125,7 @@ pub fn object_layer_height(config: &ConfigView, object_id: &str, default: f32) -
 /// Looks for config key `"object_height:<object_id>"`. Returns `None` if not found.
 pub fn object_height(config: &ConfigView, object_id: &str) -> Option<f32> {
     let key = format!("object_height:{}", object_id);
-    config.fields.get(&key).and_then(|v| match v {
+    config.get(&key).and_then(|v| match v {
         ConfigValue::Float(f) => Some(*f as f32),
         _ => None,
     })
@@ -300,9 +298,7 @@ mod tests {
 
     #[test]
     fn on_print_start_defaults() {
-        let config = ConfigView {
-            fields: HashMap::new(),
-        };
+        let config = ConfigView::from_map(HashMap::new(),);
         let planner = DefaultLayerPlanner::on_print_start(&config).unwrap();
         assert!((planner.layer_height - 0.2).abs() < 1e-6);
         assert!((planner.first_layer_height - 0.2).abs() < 1e-6);

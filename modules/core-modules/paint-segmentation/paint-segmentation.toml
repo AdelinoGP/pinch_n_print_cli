@@ -26,6 +26,10 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "2.0.0"
 
 [config.schema]
+# paint_region:<object_id>:<layer_index>:<semantic>:<value> = "x0,y0;x1,y1;..."
+# Host-supplied per-region painted polygons; drained through
+# paint-segmentation-output::push-paint-region (docs/03 world-prepass.wit).
+"paint_region:*" = "string"
 
 [config.overridable-per-region]
 keys = []

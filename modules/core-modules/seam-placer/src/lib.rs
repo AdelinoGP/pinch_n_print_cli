@@ -11,6 +11,7 @@
 
 use slicer_ir::{ConfigValue, ConfigView, SeamReason};
 use slicer_sdk::builders::PerimeterOutputBuilder;
+use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
@@ -57,9 +58,10 @@ fn reason_bonus(reason: SeamReason) -> f32 {
     }
 }
 
+#[slicer_module]
 impl LayerModule for SeamPlacer {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        let mode = match config.fields.get("seam_mode") {
+        let mode = match config.get("seam_mode") {
             Some(ConfigValue::String(s)) => match s.as_str() {
                 "nearest" => SeamMode::Nearest,
                 "rear" => SeamMode::Rear,

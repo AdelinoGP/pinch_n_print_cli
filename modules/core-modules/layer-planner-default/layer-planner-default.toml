@@ -26,6 +26,10 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "2.0.0"
 
 [config.schema]
+layer_height = "float"
+first_layer_height = "float"
+"object_height:*" = "float"
+"layer_height:*" = "float"
 
 [config.overridable-per-region]
 keys = []

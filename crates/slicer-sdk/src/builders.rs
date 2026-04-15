@@ -314,6 +314,18 @@ impl SlicePostprocessBuilder {
     pub fn boundary_paint_updates(&self) -> &[(RegionKey, BoundaryPaintMap)] {
         &self.boundary_paint_updates
     }
+
+    /// Get all polygon updates (for testing and macro drain-back).
+    #[doc(hidden)]
+    pub fn polygon_updates(&self) -> &[(RegionKey, Vec<ExPolygon>)] {
+        &self.polygon_updates
+    }
+
+    /// Get all path-z updates (for testing and macro drain-back).
+    #[doc(hidden)]
+    pub fn path_z_updates(&self) -> &[(RegionKey, u32, u32, f32)] {
+        &self.path_z_updates
+    }
 }
 
 impl Default for SlicePostprocessBuilder {

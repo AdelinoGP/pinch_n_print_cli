@@ -8,6 +8,8 @@ authors = ["ModularSlicer Team"]
 serde = { version = "1", features = ["derive"] }
 slicer-ir = { path = "../slicer-ir" }
 slicer-core = { path = "../slicer-core" }
+slicer-macros = { path = "../slicer-macros" }
+slicer-schema = { path = "../slicer-schema" }
 
 [lints.rust]
 missing_docs = "warn"

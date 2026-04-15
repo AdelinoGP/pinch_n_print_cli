@@ -1,0 +1,42 @@
+[module]
+id           = "com.core.path-optimization-default"
+version      = "0.1.0"
+display-name = "Default Path Optimization"
+description  = "Core default path-optimization module"
+author       = "modular-slicer"
+license      = "MIT"
+wit-world    = "slicer:world-layer@1.0.0"
+
+[stage]
+id = "Layer::PathOptimization"
+
+[ir-access]
+reads  = []
+writes = []
+
+[claims]
+holds    = ["path-optimizer"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "2.0.0"
+
+[config.schema]
+# Emit one `; path-optimization layer <n> regions=<count> entities=<e>`
+# comment per layer. Defaults to true so the stage is observable end-
+# to-end; can be disabled for byte-size-sensitive preset profiles.
+path_optimization_emit_layer_markers = "boolean"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 1
+layer-parallel-safe    = true

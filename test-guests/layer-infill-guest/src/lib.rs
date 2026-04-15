@@ -348,7 +348,7 @@ impl Guest for Component {
         for i in 0..region_count as u32 {
             output.push_tool_change(i, i + 1).expect("push tool_change failed");
         }
-        // Emit one z-hop per region (slicer:world-layer@1.1.x), all anchored
+        // Emit one z-hop per region, all anchored
         // at entity index 0. Using a fixed anchor keeps direct-dispatch tests
         // (which don't pre-stage LayerCollectionIR) within the empty-layer
         // validation rule (after-entity-index must be 0 when entity_count==0)

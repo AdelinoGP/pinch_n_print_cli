@@ -26,6 +26,10 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "2.0.0"
 
 [config.schema]
+# mesh_seg_mark:<object_id>:<facet_index>:<semantic> = <value>
+# Host-supplied per-facet paint marks; drained through
+# mesh-segmentation-output::mark-triangle-paint (docs/03 world-prepass.wit).
+"mesh_seg_mark:*" = "string"
 
 [config.overridable-per-region]
 keys = []

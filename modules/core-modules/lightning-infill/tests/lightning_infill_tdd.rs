@@ -12,7 +12,7 @@ fn make_config(density: f64, speed: f64, line_width: f64) -> ConfigView {
     fields.insert("infill_density".to_string(), ConfigValue::Float(density));
     fields.insert("infill_speed".to_string(), ConfigValue::Float(speed));
     fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
@@ -42,9 +42,7 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
 /// Test 1: Default config values when no fields provided.
 #[test]
 fn on_print_start_defaults() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
     let module = LightningInfill::on_print_start(&config).unwrap();
     assert!((module.density() - 0.2).abs() < 0.001);
     assert!((module.line_width() - 0.4).abs() < 0.001);

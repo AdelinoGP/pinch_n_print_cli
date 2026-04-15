@@ -18,6 +18,7 @@ use slicer_ir::{
     WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
+use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
@@ -40,25 +41,26 @@ pub struct ClassicPerimeters {
     inner_speed_factor: f32,
 }
 
+#[slicer_module]
 impl LayerModule for ClassicPerimeters {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        let wall_count = match config.fields.get("wall_count") {
+        let wall_count = match config.get("wall_count") {
             Some(ConfigValue::Int(n)) => *n as u32,
             _ => 2, // default
         };
 
-        let line_width = match config.fields.get("line_width") {
+        let line_width = match config.get("line_width") {
             Some(ConfigValue::Float(w)) => *w as f32,
             _ => 0.4, // default
         };
 
-        let outer_wall_speed = match config.fields.get("outer_wall_speed") {
+        let outer_wall_speed = match config.get("outer_wall_speed") {
             Some(ConfigValue::Float(s)) => *s as f32,
             Some(ConfigValue::Int(s)) => *s as f32,
             _ => BASE_SPEED,
         };
 
-        let inner_wall_speed = match config.fields.get("inner_wall_speed") {
+        let inner_wall_speed = match config.get("inner_wall_speed") {
             Some(ConfigValue::Float(s)) => *s as f32,
             Some(ConfigValue::Int(s)) => *s as f32,
             _ => BASE_SPEED,
@@ -393,9 +395,7 @@ mod tests {
 
     #[test]
     fn on_print_start_defaults() {
-        let config = ConfigView {
-            fields: HashMap::new(),
-        };
+        let config = ConfigView::from_map(HashMap::new(),);
         let module = ClassicPerimeters::on_print_start(&config).unwrap();
         assert_eq!(module.wall_count, 2);
         assert!((module.line_width - 0.4).abs() < 0.001);

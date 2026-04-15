@@ -21,6 +21,7 @@ use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
+use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::SliceRegionView;
@@ -56,20 +57,21 @@ impl LightningInfill {
     }
 }
 
+#[slicer_module]
 impl LayerModule for LightningInfill {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        let density = match config.fields.get("infill_density") {
+        let density = match config.get("infill_density") {
             Some(ConfigValue::Float(d)) => *d as f32,
             _ => 0.2,
         };
 
-        let infill_speed = match config.fields.get("infill_speed") {
+        let infill_speed = match config.get("infill_speed") {
             Some(ConfigValue::Float(s)) => *s as f32,
             Some(ConfigValue::Int(s)) => *s as f32,
             _ => BASE_SPEED,
         };
 
-        let line_width = match config.fields.get("line_width") {
+        let line_width = match config.get("line_width") {
             Some(ConfigValue::Float(w)) => *w as f32,
             _ => 0.4,
         };
@@ -438,9 +440,7 @@ mod tests {
 
     #[test]
     fn on_print_start_defaults() {
-        let config = ConfigView {
-            fields: std::collections::HashMap::new(),
-        };
+        let config = ConfigView::from_map(std::collections::HashMap::new(),);
         let module = LightningInfill::on_print_start(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);

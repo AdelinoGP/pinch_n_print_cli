@@ -23,6 +23,7 @@ use slicer_sdk::prelude::*;
 /// facets into 2D per-layer regions.
 pub struct PaintSegmentation;
 
+#[slicer_module]
 impl PrepassModule for PaintSegmentation {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(PaintSegmentation)

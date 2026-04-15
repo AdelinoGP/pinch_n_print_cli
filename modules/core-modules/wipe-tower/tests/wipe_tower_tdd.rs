@@ -50,15 +50,13 @@ fn make_layer(index: u32, z: f32, tool_changes: Vec<ToolChange>) -> LayerCollect
 }
 
 fn empty_config() -> ConfigView {
-    ConfigView {
-        fields: HashMap::new(),
-    }
+    ConfigView::from_map(HashMap::new(),)
 }
 
 fn enabled_config() -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 fn custom_config(x: f32, y: f32, width: f32, purge_vol: f32, line_w: f32) -> ConfigView {
@@ -75,7 +73,7 @@ fn custom_config(x: f32, y: f32, width: f32, purge_vol: f32, line_w: f32) -> Con
         ConfigValue::Float(purge_vol as f64),
     );
     fields.insert("line_width".to_string(), ConfigValue::Float(line_w as f64));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 fn tc(after: u32, from: u32, to: u32) -> ToolChange {

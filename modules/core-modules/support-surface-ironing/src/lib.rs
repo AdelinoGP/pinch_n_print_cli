@@ -10,6 +10,7 @@ use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
+use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
@@ -139,30 +140,31 @@ impl SupportSurfaceIroning {
     }
 }
 
+#[slicer_module]
 impl LayerModule for SupportSurfaceIroning {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.fields.get("ironing_enabled") {
+        let enabled = match config.get("ironing_enabled") {
             Some(ConfigValue::Bool(b)) => *b,
             _ => false,
         };
 
-        let ironing_speed = match config.fields.get("ironing_speed") {
+        let ironing_speed = match config.get("ironing_speed") {
             Some(ConfigValue::Float(s)) => *s as f32,
             Some(ConfigValue::Int(s)) => *s as f32,
             _ => 15.0,
         };
 
-        let ironing_flow_rate = match config.fields.get("ironing_flow_rate") {
+        let ironing_flow_rate = match config.get("ironing_flow_rate") {
             Some(ConfigValue::Float(f)) => *f as f32,
             _ => 0.1,
         };
 
-        let ironing_spacing = match config.fields.get("ironing_spacing") {
+        let ironing_spacing = match config.get("ironing_spacing") {
             Some(ConfigValue::Float(s)) => *s as f32,
             _ => 0.1,
         };
 
-        let line_width = match config.fields.get("line_width") {
+        let line_width = match config.get("line_width") {
             Some(ConfigValue::Float(w)) => *w as f32,
             _ => 0.4,
         };
@@ -234,9 +236,7 @@ mod tests {
 
     #[test]
     fn on_print_start_defaults() {
-        let config = ConfigView {
-            fields: std::collections::HashMap::new(),
-        };
+        let config = ConfigView::from_map(std::collections::HashMap::new(),);
         let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
         assert!(!module.enabled);
         assert!((module.ironing_speed - 15.0).abs() < 0.001);

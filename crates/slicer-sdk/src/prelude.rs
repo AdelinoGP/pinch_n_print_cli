@@ -1,5 +1,9 @@
 //! Common imports for module authoring.
 
+// Authoring macros re-exported so `use slicer_sdk::prelude::*;` brings
+// `#[slicer_module]` / `#[module_test]` into scope (docs/05 §module SDK).
+pub use slicer_macros::{module_test, slicer_module};
+
 pub use crate::coords::{mm_to_units, units_to_mm, SCALING_FACTOR};
 pub use crate::host;
 pub use crate::host::{ClipOperation, LogLevel, OffsetJoinType};
@@ -22,7 +26,7 @@ pub use crate::postpass_types::{GcodeCommandKind, GcodeCommandView};
 // Prepass types and builders
 pub use crate::prepass_builders::{
     LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput, ObjectMeshModification,
-    PaintRegionEntry, PaintSegmentationOutput,
+    PaintRegionEntry, PaintSegmentationOutput, TrianglePaintMark,
 };
 pub use crate::prepass_types::{
     FacetAnnotation, FacetClass, LayerProposal, MeshObjectView, ObjectId, PaintLayerView,

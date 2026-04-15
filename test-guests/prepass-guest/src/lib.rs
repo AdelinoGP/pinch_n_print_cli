@@ -65,6 +65,35 @@ wit_bindgen::generate!({
                 config: config-view,
             ) -> result<_, module-error>;
 
+            resource mesh-segmentation-output {
+                mark-triangle-paint: func(obj: object-id, facet-index: u32, semantic: string, value: string) -> result<_, string>;
+            }
+
+            export run-mesh-segmentation: func(
+                objects: list<object-id>,
+                output: mesh-segmentation-output,
+                config: config-view,
+            ) -> result<_, module-error>;
+
+            use geometry.{ex-polygon};
+
+            record paint-region-entry {
+                object-id: object-id,
+                layer-index: u32,
+                semantic: string,
+                polygons: list<ex-polygon>,
+                value: string,
+            }
+            resource paint-segmentation-output {
+                push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
+            }
+
+            export run-paint-segmentation: func(
+                objects: list<object-id>,
+                output: paint-segmentation-output,
+                config: config-view,
+            ) -> result<_, module-error>;
+
             record region-layer-proposal {
                 object-id: object-id, region-id: region-id,
                 effective-layer-height: f32,
@@ -97,6 +126,12 @@ impl Guest for Component {
         Ok(())
     }
     fn run_layer_planning(_objects: Vec<ObjectId>, _output: LayerPlanOutput, _config: ConfigView) -> Result<(), ModuleError> {
+        Ok(())
+    }
+    fn run_mesh_segmentation(_objects: Vec<ObjectId>, _output: MeshSegmentationOutput, _config: ConfigView) -> Result<(), ModuleError> {
+        Ok(())
+    }
+    fn run_paint_segmentation(_objects: Vec<ObjectId>, _output: PaintSegmentationOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
     }
 }

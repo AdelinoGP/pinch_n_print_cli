@@ -22,7 +22,7 @@ fn make_config(
     for (id, height) in objects {
         fields.insert(format!("object_height:{}", id), ConfigValue::Float(*height));
     }
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 /// Helper: build config with per-object layer height overrides.
@@ -44,7 +44,7 @@ fn make_config_with_per_object_lh(
         fields.insert(format!("object_height:{}", id), ConfigValue::Float(*height));
         fields.insert(format!("layer_height:{}", id), ConfigValue::Float(*lh));
     }
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 // =============================================================================

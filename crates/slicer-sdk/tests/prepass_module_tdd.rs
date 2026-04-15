@@ -18,7 +18,7 @@ struct TestPrepassModule {
 impl PrepassModule for TestPrepassModule {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
         // Verify ConfigView is accessible
-        let _ = config.fields.len();
+        let _ = config.len();
         Ok(Self { initialized: true })
     }
 
@@ -30,9 +30,7 @@ impl PrepassModule for TestPrepassModule {
 #[test]
 fn test_01_prepass_module_trait_exists_with_lifecycle() {
     // Test that PrepassModule trait can be implemented with on_print_start/on_print_end
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
 
     let module = TestPrepassModule::on_print_start(&config).expect("on_print_start should succeed");
     assert!(module.initialized, "module should be initialized");
@@ -271,16 +269,14 @@ impl PrepassModule for MeshAnalysisTestModule {
         // This tests that the signature compiles correctly
         let _ = objects.len();
         let _ = output;
-        let _ = config.fields.len();
+        let _ = config.len();
         Ok(())
     }
 }
 
 #[test]
 fn test_10_run_mesh_analysis_signature_matches_wit() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
     let module = MeshAnalysisTestModule::on_print_start(&config).unwrap();
     let objects: Vec<ObjectId> = vec!["obj-1".to_string()];
     let mut output = MeshAnalysisOutput::new();
@@ -309,16 +305,14 @@ impl PrepassModule for LayerPlanningTestModule {
         // This tests that the signature compiles correctly
         let _ = objects.len();
         let _ = output;
-        let _ = config.fields.len();
+        let _ = config.len();
         Ok(())
     }
 }
 
 #[test]
 fn test_11_run_layer_planning_signature_matches_wit() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
     let module = LayerPlanningTestModule::on_print_start(&config).unwrap();
     let objects: Vec<ObjectId> = vec!["obj-1".to_string()];
     let mut output = LayerPlanOutput::new();
@@ -342,9 +336,7 @@ impl PrepassModule for MinimalPrepassModule {
 
 #[test]
 fn test_12_default_implementations_exist() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
     let module = MinimalPrepassModule::on_print_start(&config).unwrap();
     let objects: Vec<ObjectId> = vec![];
     let mut mesh_output = MeshAnalysisOutput::new();
@@ -369,7 +361,6 @@ struct CustomPrepassModule {
 impl PrepassModule for CustomPrepassModule {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
         let threshold = config
-            .fields
             .get("overhang_threshold_deg")
             .and_then(|v| match v {
                 ConfigValue::Float(f) => Some(*f as f32),
@@ -404,7 +395,7 @@ fn test_13_custom_module_implementation() {
         "overhang_threshold_deg".to_string(),
         ConfigValue::Float(60.0),
     );
-    let config = ConfigView { fields };
+    let config = ConfigView::from_map(fields);
 
     let module = CustomPrepassModule::on_print_start(&config).expect("should create module");
     assert!((module.overhang_threshold_deg - 60.0).abs() < 1e-6);
@@ -443,4 +434,59 @@ fn test_14b_prelude_types_are_constructible() {
     let _mesh_output = MeshAnalysisOutput::new();
     let _layer_output = LayerPlanOutput::new();
     let _object_id: ObjectId = "test".to_string();
+}
+
+// =============================================================================
+// STEP H: MeshSegmentationOutput::mark_triangle_paint
+// =============================================================================
+//
+// Locks down the narrow SDK drain target added in STEP H. The helper
+// mirrors the WIT `mesh-segmentation-output::mark-triangle-paint`
+// method one-to-one and is what the `#[slicer_module]` macro arm
+// drains on the wasm path. Its contract: pushes are preserved in call
+// order and exposed through `triangle_paint_marks()`.
+
+#[test]
+fn mark_triangle_paint_preserves_push_order() {
+    let mut out = MeshSegmentationOutput::new();
+    out.mark_triangle_paint("obj-B".into(), 2, "seam".into(), "true".into())
+        .unwrap();
+    out.mark_triangle_paint("obj-A".into(), 0, "material".into(), "5".into())
+        .unwrap();
+    out.mark_triangle_paint("obj-A".into(), 1, "material".into(), "5".into())
+        .unwrap();
+
+    let marks: &[TrianglePaintMark] = out.triangle_paint_marks();
+    assert_eq!(marks.len(), 3);
+    // Exactly the call order — no sorting, no deduping at the SDK layer.
+    assert_eq!(marks[0].object_id, "obj-B");
+    assert_eq!(marks[0].facet_index, 2);
+    assert_eq!(marks[0].semantic, "seam");
+    assert_eq!(marks[0].value, "true");
+    assert_eq!(marks[1].object_id, "obj-A");
+    assert_eq!(marks[1].facet_index, 0);
+    assert_eq!(marks[2].object_id, "obj-A");
+    assert_eq!(marks[2].facet_index, 1);
+}
+
+#[test]
+fn mark_triangle_paint_is_independent_of_legacy_push_modification() {
+    // The legacy `push_modification` API still exists for native-mode
+    // authoring but does not feed `triangle_paint_marks()`. This test
+    // documents the independence so a future refactor doesn't conflate
+    // the two streams.
+    let mut out = MeshSegmentationOutput::new();
+    out.push_modification(ObjectMeshModification {
+        object_id: "obj-1".into(),
+        new_vertices: vec![],
+        new_triangles: vec![],
+        updated_facet_values: vec![],
+        strokes_cleared: false,
+    })
+    .unwrap();
+    out.mark_triangle_paint("obj-1".into(), 0, "sem".into(), "val".into())
+        .unwrap();
+    assert_eq!(out.modifications().len(), 1);
+    assert_eq!(out.triangle_paint_marks().len(), 1);
+    // Different streams, both observable.
 }

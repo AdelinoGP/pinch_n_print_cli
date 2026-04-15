@@ -84,7 +84,7 @@ fn make_config(wall_count: u32, line_width: f64) -> ConfigView {
         ConfigValue::Int(wall_count as i64),
     );
     fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 /// Create a config with speed settings and optional min_feature_size.
@@ -108,7 +108,7 @@ fn make_config_full(
         "inner_wall_speed".to_string(),
         ConfigValue::Float(inner_speed),
     );
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 /// Create a SliceRegionView with a single polygon.
@@ -149,9 +149,7 @@ fn polygon_area_mm(poly: &Polygon) -> f64 {
 
 #[test]
 fn on_print_start_defaults() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
     // Default: wall_count=2, line_width=0.4mm
     assert_eq!(module.wall_count(), 2);

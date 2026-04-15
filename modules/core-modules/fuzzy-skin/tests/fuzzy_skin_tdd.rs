@@ -130,16 +130,14 @@ fn region_with_walls(walls: Vec<WallLoop>) -> PerimeterRegionView {
 
 /// Helper: default config (no overrides).
 fn default_config() -> ConfigView {
-    ConfigView {
-        fields: HashMap::new(),
-    }
+    ConfigView::from_map(HashMap::new(),)
 }
 
 /// Helper: config with apply-to-all = true.
 fn apply_to_all_config() -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert("apply-to-all".to_string(), ConfigValue::Bool(true));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 // ============================================================================
@@ -314,7 +312,7 @@ fn on_print_start_custom_config() {
     fields.insert("thickness".to_string(), ConfigValue::Float(1.0));
     fields.insert("point-distance".to_string(), ConfigValue::Float(0.5));
     fields.insert("apply-to-all".to_string(), ConfigValue::Bool(true));
-    let config = ConfigView { fields };
+    let config = ConfigView::from_map(fields);
     let module = FuzzySkinModule::on_print_start(&config);
     assert!(module.is_ok());
 }

@@ -14,7 +14,7 @@ fn make_config(enabled: bool, density: f64, angle: f64, speed: f64, line_width: 
     fields.insert("support_angle".to_string(), ConfigValue::Float(angle));
     fields.insert("support_speed".to_string(), ConfigValue::Float(speed));
     fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
@@ -44,9 +44,7 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
 /// Test 1: on_print_start with empty config uses defaults.
 #[test]
 fn on_print_start_defaults() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
     let module = TreeSupport::on_print_start(&config).unwrap();
     assert!(!module.enabled());
     assert!((module.density() - 0.2).abs() < 0.001);

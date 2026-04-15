@@ -18,7 +18,7 @@ struct TestPostpassModule {
 impl PostpassModule for TestPostpassModule {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
         // Verify ConfigView is accessible
-        let _ = config.fields.len();
+        let _ = config.len();
         Ok(Self { initialized: true })
     }
 
@@ -30,9 +30,7 @@ impl PostpassModule for TestPostpassModule {
 #[test]
 fn test_01_postpass_module_trait_exists_with_lifecycle() {
     // Test that PostpassModule trait can be implemented with on_print_start/on_print_end
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
 
     let module =
         TestPostpassModule::on_print_start(&config).expect("on_print_start should succeed");
@@ -253,16 +251,14 @@ impl PostpassModule for GcodePostprocessTestModule {
         // This tests that the signature compiles correctly
         let _ = commands.len();
         let _ = output;
-        let _ = config.fields.len();
+        let _ = config.len();
         Ok(())
     }
 }
 
 #[test]
 fn test_12_run_gcode_postprocess_signature_matches_wit() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
     let module = GcodePostprocessTestModule::on_print_start(&config).unwrap();
     let commands = vec![
         GcodeCommandView::new(0, GcodeCommandKind::Move),
@@ -291,16 +287,14 @@ impl PostpassModule for TextPostprocessTestModule {
         config: &ConfigView,
     ) -> Result<String, ModuleError> {
         // This tests that the signature compiles correctly
-        let _ = config.fields.len();
+        let _ = config.len();
         Ok(format!("; postprocessed\n{}", gcode_text))
     }
 }
 
 #[test]
 fn test_13_run_text_postprocess_signature_matches_wit() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
     let module = TextPostprocessTestModule::on_print_start(&config).unwrap();
     let input = "G28\nG1 X10 Y20\n";
 
@@ -326,9 +320,7 @@ impl PostpassModule for MinimalPostpassModule {
 
 #[test]
 fn test_14_default_implementations_exist() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
     let module = MinimalPostpassModule::on_print_start(&config).unwrap();
     let commands = vec![GcodeCommandView::new(0, GcodeCommandKind::Raw)];
     let mut gcode_output = GcodeOutputBuilder::new();

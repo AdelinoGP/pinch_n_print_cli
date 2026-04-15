@@ -6,9 +6,7 @@ use std::collections::HashMap;
 use paint_segmentation::PaintSegmentation;
 
 fn empty_config() -> ConfigView {
-    ConfigView {
-        fields: HashMap::new(),
-    }
+    ConfigView::new()
 }
 
 /// Identity 4x4 column-major matrix.

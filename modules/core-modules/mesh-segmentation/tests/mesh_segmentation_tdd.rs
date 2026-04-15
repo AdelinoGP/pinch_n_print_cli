@@ -1,342 +1,207 @@
-//! TDD tests for mesh-segmentation prepass module.
+//! TDD tests for the `mesh-segmentation` prepass module after STEP H.
+//!
+//! The module is now config-driven: it parses `mesh_seg_mark:*` entries
+//! from the declared `ConfigView` and emits one per-triangle paint mark
+//! for each, then drains them through the SDK
+//! `MeshSegmentationOutput::mark_triangle_paint` API (matched one-to-one
+//! to the WIT `mesh-segmentation-output::mark-triangle-paint` method by
+//! the `#[slicer_module]` macro arm). The previous stroke-based
+//! barycentric resolution algorithm was removed because its access
+//! pattern (`MeshObjectView.paint_layers.strokes`) has no route through
+//! the current `run-mesh-segmentation` WIT surface, which carries only
+//! `list<object-id>` + `config-view`.
 
-use slicer_sdk::prelude::*;
 use std::collections::HashMap;
 
 use mesh_segmentation::MeshSegmentation;
+use slicer_sdk::prelude::*;
 
-fn empty_config() -> ConfigView {
-    ConfigView {
-        fields: HashMap::new(),
+fn config_with(entries: &[(&str, ConfigValue)]) -> ConfigView {
+    let mut m: HashMap<String, ConfigValue> = HashMap::new();
+    for (k, v) in entries {
+        m.insert((*k).to_string(), v.clone());
     }
+    ConfigView::from_map(m)
 }
 
-/// Helper: single triangle at z=0 with vertices (0,0,0), (1,0,0), (0,1,0).
-fn single_triangle_object(object_id: &str) -> MeshObjectView {
+fn object_view(object_id: &str) -> MeshObjectView {
     MeshObjectView {
         object_id: object_id.to_string(),
-        vertices: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-        triangles: vec![[0, 1, 2]],
-        paint_layers: vec![],
-    }
-}
-
-/// Helper: single triangle with one paint layer that has no strokes.
-fn single_triangle_no_strokes(object_id: &str) -> MeshObjectView {
-    MeshObjectView {
-        object_id: object_id.to_string(),
-        vertices: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-        triangles: vec![[0, 1, 2]],
-        paint_layers: vec![PaintLayerView {
-            semantic: "support_enforcer".to_string(),
-            facet_values: vec![None],
-            strokes: vec![],
-        }],
-    }
-}
-
-/// Helper: make a PaintValueView with kind="flag" and flag=true.
-fn flag_value(val: bool) -> PaintValueView {
-    PaintValueView {
-        kind: "flag".to_string(),
-        flag: Some(val),
-        scalar: None,
-        tool_index: None,
-    }
-}
-
-/// Helper: make a PaintValueView with kind="tool_index".
-fn tool_index_value(idx: u32) -> PaintValueView {
-    PaintValueView {
-        kind: "tool_index".to_string(),
-        flag: None,
-        scalar: None,
-        tool_index: Some(idx),
-    }
-}
-
-/// Helper: make a stroke whose centroid lies inside the single triangle.
-fn stroke_inside_triangle(value: PaintValueView) -> PaintStrokeView {
-    // Centroid of this stroke triangle is roughly (0.2, 0.2, 0.0), inside the mesh triangle.
-    PaintStrokeView {
-        triangles: vec![[[0.1, 0.1, 0.0], [0.3, 0.1, 0.0], [0.2, 0.4, 0.0]]],
-        semantic: "support_enforcer".to_string(),
-        value,
-    }
-}
-
-/// Helper: make a stroke whose centroid is outside all mesh triangles.
-fn stroke_outside_triangle(value: PaintValueView) -> PaintStrokeView {
-    // Centroid of this stroke is at roughly (5.0, 5.0, 0.0), well outside the mesh triangle.
-    PaintStrokeView {
-        triangles: vec![[[4.5, 4.5, 0.0], [5.5, 4.5, 0.0], [5.0, 5.5, 0.0]]],
-        semantic: "support_enforcer".to_string(),
-        value,
-    }
-}
-
-/// Two-triangle mesh: (0,0,0)-(1,0,0)-(0,1,0) and (1,0,0)-(1,1,0)-(0,1,0).
-fn two_triangle_object(object_id: &str) -> MeshObjectView {
-    MeshObjectView {
-        object_id: object_id.to_string(),
-        vertices: vec![
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [1.0, 1.0, 0.0],
-        ],
-        triangles: vec![[0, 1, 2], [1, 3, 2]],
-        paint_layers: vec![],
+        vertices: Vec::new(),
+        triangles: Vec::new(),
+        paint_layers: Vec::new(),
     }
 }
 
 #[test]
 fn on_print_start_defaults() {
-    let config = empty_config();
-    let module = MeshSegmentation::on_print_start(&config);
+    let cfg = config_with(&[]);
+    let module = MeshSegmentation::on_print_start(&cfg);
     assert!(module.is_ok());
 }
 
 #[test]
-fn no_strokes_passthrough() {
-    let config = empty_config();
-    let module = MeshSegmentation::on_print_start(&config).unwrap();
-    let objects = vec![single_triangle_no_strokes("obj1")];
+fn empty_config_emits_no_marks() {
+    let cfg = config_with(&[]);
+    let module = MeshSegmentation::on_print_start(&cfg).unwrap();
+    let objects = vec![object_view("obj-1")];
     let mut output = MeshSegmentationOutput::new();
     module
-        .run_mesh_segmentation(&objects, &mut output, &config)
+        .run_mesh_segmentation(&objects, &mut output, &cfg)
         .unwrap();
     assert!(
-        output.modifications().is_empty(),
-        "no modifications should be pushed when there are no strokes"
+        output.triangle_paint_marks().is_empty(),
+        "no mesh_seg_mark:* keys → zero drained marks"
     );
 }
 
 #[test]
-fn single_stroke_assigns_facet() {
-    let config = empty_config();
-    let module = MeshSegmentation::on_print_start(&config).unwrap();
-    let mut obj = single_triangle_object("obj1");
-    obj.paint_layers.push(PaintLayerView {
-        semantic: "support_enforcer".to_string(),
-        facet_values: vec![None],
-        strokes: vec![stroke_inside_triangle(flag_value(true))],
-    });
-    let objects = vec![obj];
+fn single_mark_reaches_output_verbatim() {
+    let cfg = config_with(&[(
+        "mesh_seg_mark:obj-1:3:support_enforcer",
+        ConfigValue::String("enabled".into()),
+    )]);
+    let module = MeshSegmentation::on_print_start(&cfg).unwrap();
+    let objects = vec![object_view("obj-1")];
     let mut output = MeshSegmentationOutput::new();
     module
-        .run_mesh_segmentation(&objects, &mut output, &config)
+        .run_mesh_segmentation(&objects, &mut output, &cfg)
         .unwrap();
-    assert_eq!(output.modifications().len(), 1);
-    let m = &output.modifications()[0];
-    assert_eq!(m.object_id, "obj1");
-    // The facet should now have a paint value assigned
-    assert!(
-        m.updated_facet_values[0][0].is_some(),
-        "facet 0 should have paint value after stroke normalization"
-    );
-    let pv = m.updated_facet_values[0][0].as_ref().unwrap();
-    assert_eq!(pv.kind, "flag");
-    assert_eq!(pv.flag, Some(true));
+    let marks = output.triangle_paint_marks();
+    assert_eq!(marks.len(), 1);
+    assert_eq!(marks[0].object_id, "obj-1");
+    assert_eq!(marks[0].facet_index, 3);
+    assert_eq!(marks[0].semantic, "support_enforcer");
+    assert_eq!(marks[0].value, "enabled");
 }
 
 #[test]
-fn facet_values_updated_tool_index() {
-    let config = empty_config();
-    let module = MeshSegmentation::on_print_start(&config).unwrap();
-    let mut obj = single_triangle_object("obj1");
-    obj.paint_layers.push(PaintLayerView {
-        semantic: "tool".to_string(),
-        facet_values: vec![None],
-        strokes: vec![stroke_inside_triangle(tool_index_value(1))],
-    });
-    let objects = vec![obj];
+fn marks_are_sorted_by_object_then_facet_then_semantic() {
+    // Two objects, marks intentionally shuffled; sort must be:
+    //   obj-A first (host order), facet asc, semantic asc,
+    //   then obj-B.
+    let cfg = config_with(&[
+        (
+            "mesh_seg_mark:obj-B:0:tool",
+            ConfigValue::Int(1),
+        ),
+        (
+            "mesh_seg_mark:obj-A:1:seam",
+            ConfigValue::String("x".into()),
+        ),
+        (
+            "mesh_seg_mark:obj-A:0:seam",
+            ConfigValue::String("y".into()),
+        ),
+        (
+            "mesh_seg_mark:obj-A:0:fuzzy_skin",
+            ConfigValue::Bool(true),
+        ),
+    ]);
+    let module = MeshSegmentation::on_print_start(&cfg).unwrap();
+    let objects = vec![object_view("obj-A"), object_view("obj-B")];
     let mut output = MeshSegmentationOutput::new();
     module
-        .run_mesh_segmentation(&objects, &mut output, &config)
+        .run_mesh_segmentation(&objects, &mut output, &cfg)
         .unwrap();
-    assert_eq!(output.modifications().len(), 1);
-    let pv = output.modifications()[0].updated_facet_values[0][0]
-        .as_ref()
-        .unwrap();
-    assert_eq!(pv.kind, "tool_index");
-    assert_eq!(pv.tool_index, Some(1));
-}
 
-#[test]
-fn strokes_cleared_after_process() {
-    let config = empty_config();
-    let module = MeshSegmentation::on_print_start(&config).unwrap();
-    let mut obj = single_triangle_object("obj1");
-    obj.paint_layers.push(PaintLayerView {
-        semantic: "support_enforcer".to_string(),
-        facet_values: vec![None],
-        strokes: vec![stroke_inside_triangle(flag_value(true))],
-    });
-    let objects = vec![obj];
-    let mut output = MeshSegmentationOutput::new();
-    module
-        .run_mesh_segmentation(&objects, &mut output, &config)
-        .unwrap();
-    assert!(output.modifications()[0].strokes_cleared);
-}
+    let keys: Vec<(String, u32, String)> = output
+        .triangle_paint_marks()
+        .iter()
+        .map(|m| (m.object_id.clone(), m.facet_index, m.semantic.clone()))
+        .collect();
 
-#[test]
-fn multiple_paint_layers() {
-    let config = empty_config();
-    let module = MeshSegmentation::on_print_start(&config).unwrap();
-    let mut obj = single_triangle_object("obj1");
-    obj.paint_layers.push(PaintLayerView {
-        semantic: "support_enforcer".to_string(),
-        facet_values: vec![None],
-        strokes: vec![stroke_inside_triangle(flag_value(true))],
-    });
-    obj.paint_layers.push(PaintLayerView {
-        semantic: "tool".to_string(),
-        facet_values: vec![None],
-        strokes: vec![stroke_inside_triangle(tool_index_value(2))],
-    });
-    let objects = vec![obj];
-    let mut output = MeshSegmentationOutput::new();
-    module
-        .run_mesh_segmentation(&objects, &mut output, &config)
-        .unwrap();
-    assert_eq!(output.modifications().len(), 1);
-    let m = &output.modifications()[0];
-    assert_eq!(m.updated_facet_values.len(), 2);
-    // Layer 0: flag
-    assert_eq!(m.updated_facet_values[0][0].as_ref().unwrap().kind, "flag");
-    // Layer 1: tool_index
     assert_eq!(
-        m.updated_facet_values[1][0].as_ref().unwrap().kind,
-        "tool_index"
-    );
-}
-
-#[test]
-fn no_matching_facet_skipped() {
-    let config = empty_config();
-    let module = MeshSegmentation::on_print_start(&config).unwrap();
-    let mut obj = single_triangle_object("obj1");
-    obj.paint_layers.push(PaintLayerView {
-        semantic: "support_enforcer".to_string(),
-        facet_values: vec![None],
-        strokes: vec![stroke_outside_triangle(flag_value(true))],
-    });
-    let objects = vec![obj];
-    let mut output = MeshSegmentationOutput::new();
-    module
-        .run_mesh_segmentation(&objects, &mut output, &config)
-        .unwrap();
-    // The module still produces a modification (strokes were present), but facet values stay None
-    assert_eq!(output.modifications().len(), 1);
-    let m = &output.modifications()[0];
-    assert!(
-        m.updated_facet_values[0][0].is_none(),
-        "facet value should remain None when stroke doesn't match any facet"
-    );
-}
-
-#[test]
-fn empty_objects_no_output() {
-    let config = empty_config();
-    let module = MeshSegmentation::on_print_start(&config).unwrap();
-    let objects: Vec<MeshObjectView> = vec![];
-    let mut output = MeshSegmentationOutput::new();
-    module
-        .run_mesh_segmentation(&objects, &mut output, &config)
-        .unwrap();
-    assert!(output.modifications().is_empty());
-}
-
-#[test]
-fn preserves_unstroked_facets() {
-    let config = empty_config();
-    let module = MeshSegmentation::on_print_start(&config).unwrap();
-    let mut obj = two_triangle_object("obj1");
-    let existing_val = Some(flag_value(false));
-    obj.paint_layers.push(PaintLayerView {
-        semantic: "support_enforcer".to_string(),
-        facet_values: vec![existing_val.clone(), existing_val.clone()],
-        // Stroke covers only the first triangle (centroid ~(0.2,0.2) is in tri 0)
-        strokes: vec![stroke_inside_triangle(flag_value(true))],
-    });
-    let objects = vec![obj];
-    let mut output = MeshSegmentationOutput::new();
-    module
-        .run_mesh_segmentation(&objects, &mut output, &config)
-        .unwrap();
-    let m = &output.modifications()[0];
-    // First facet should be updated
-    assert_eq!(
-        m.updated_facet_values[0][0].as_ref().unwrap().flag,
-        Some(true)
-    );
-    // Second facet should preserve its original value
-    assert_eq!(
-        m.updated_facet_values[0][1].as_ref().unwrap().flag,
-        Some(false),
-        "unstroked facet should preserve original paint value"
-    );
-}
-
-#[test]
-fn multiple_objects() {
-    let config = empty_config();
-    let module = MeshSegmentation::on_print_start(&config).unwrap();
-    let obj1 = single_triangle_no_strokes("obj1");
-    let mut obj2 = single_triangle_object("obj2");
-    obj2.paint_layers.push(PaintLayerView {
-        semantic: "support_enforcer".to_string(),
-        facet_values: vec![None],
-        strokes: vec![stroke_inside_triangle(flag_value(true))],
-    });
-    let objects = vec![obj1, obj2];
-    let mut output = MeshSegmentationOutput::new();
-    module
-        .run_mesh_segmentation(&objects, &mut output, &config)
-        .unwrap();
-    // Only obj2 has strokes, so only 1 modification
-    assert_eq!(output.modifications().len(), 1);
-    assert_eq!(output.modifications()[0].object_id, "obj2");
-}
-
-#[test]
-fn large_stroke_assigns_multiple() {
-    let config = empty_config();
-    let module = MeshSegmentation::on_print_start(&config).unwrap();
-    let mut obj = two_triangle_object("obj1");
-    // A large stroke that covers the centroids of both triangles
-    // Tri 0 centroid: (0.33, 0.33, 0), Tri 1 centroid: (0.67, 0.67, 0)
-    let big_stroke = PaintStrokeView {
-        triangles: vec![
-            // Stroke tri covering first mesh tri centroid
-            [[0.1, 0.1, 0.0], [0.5, 0.1, 0.0], [0.2, 0.5, 0.0]],
-            // Stroke tri covering second mesh tri centroid
-            [[0.5, 0.5, 0.0], [0.9, 0.5, 0.0], [0.7, 0.9, 0.0]],
+        keys,
+        vec![
+            ("obj-A".to_string(), 0, "fuzzy_skin".to_string()),
+            ("obj-A".to_string(), 0, "seam".to_string()),
+            ("obj-A".to_string(), 1, "seam".to_string()),
+            ("obj-B".to_string(), 0, "tool".to_string()),
         ],
-        semantic: "support_enforcer".to_string(),
-        value: flag_value(true),
-    };
-    obj.paint_layers.push(PaintLayerView {
-        semantic: "support_enforcer".to_string(),
-        facet_values: vec![None, None],
-        strokes: vec![big_stroke],
-    });
-    let objects = vec![obj];
+    );
+}
+
+#[test]
+fn non_string_values_are_coerced_to_strings() {
+    let cfg = config_with(&[
+        (
+            "mesh_seg_mark:obj-1:0:tool",
+            ConfigValue::Int(7),
+        ),
+        (
+            "mesh_seg_mark:obj-1:1:flag",
+            ConfigValue::Bool(false),
+        ),
+        (
+            "mesh_seg_mark:obj-1:2:scalar",
+            ConfigValue::Float(1.5),
+        ),
+    ]);
+    let module = MeshSegmentation::on_print_start(&cfg).unwrap();
+    let objects = vec![object_view("obj-1")];
     let mut output = MeshSegmentationOutput::new();
     module
-        .run_mesh_segmentation(&objects, &mut output, &config)
+        .run_mesh_segmentation(&objects, &mut output, &cfg)
         .unwrap();
-    assert_eq!(output.modifications().len(), 1);
-    let m = &output.modifications()[0];
-    // Both facets should be updated
-    assert!(
-        m.updated_facet_values[0][0].is_some(),
-        "facet 0 should be painted"
-    );
-    assert!(
-        m.updated_facet_values[0][1].is_some(),
-        "facet 1 should be painted"
-    );
+    let marks = output.triangle_paint_marks();
+    let values: Vec<&str> = marks.iter().map(|m| m.value.as_str()).collect();
+    assert_eq!(values, vec!["7", "false", "1.5"]);
+}
+
+#[test]
+fn malformed_marks_are_silently_skipped() {
+    // Unrelated keys, missing segments, empty fields, list values.
+    let cfg = config_with(&[
+        ("layer_height", ConfigValue::Float(0.2)),
+        (
+            "mesh_seg_mark:obj:5", // missing semantic
+            ConfigValue::String("x".into()),
+        ),
+        (
+            "mesh_seg_mark::5:sem", // empty object id
+            ConfigValue::String("x".into()),
+        ),
+        (
+            "mesh_seg_mark:obj:not-a-number:sem",
+            ConfigValue::String("x".into()),
+        ),
+        (
+            "mesh_seg_mark:obj:0:sem",
+            ConfigValue::List(vec![]), // unsupported value kind
+        ),
+    ]);
+    let module = MeshSegmentation::on_print_start(&cfg).unwrap();
+    let objects = vec![object_view("obj")];
+    let mut output = MeshSegmentationOutput::new();
+    module
+        .run_mesh_segmentation(&objects, &mut output, &cfg)
+        .unwrap();
+    assert!(output.triangle_paint_marks().is_empty());
+}
+
+#[test]
+fn unknown_object_ids_still_emit_but_sort_after_known_ones() {
+    let cfg = config_with(&[
+        (
+            "mesh_seg_mark:unknown:0:sem",
+            ConfigValue::String("x".into()),
+        ),
+        (
+            "mesh_seg_mark:obj-1:0:sem",
+            ConfigValue::String("y".into()),
+        ),
+    ]);
+    let module = MeshSegmentation::on_print_start(&cfg).unwrap();
+    let objects = vec![object_view("obj-1")];
+    let mut output = MeshSegmentationOutput::new();
+    module
+        .run_mesh_segmentation(&objects, &mut output, &cfg)
+        .unwrap();
+    let ids: Vec<&str> = output
+        .triangle_paint_marks()
+        .iter()
+        .map(|m| m.object_id.as_str())
+        .collect();
+    assert_eq!(ids, vec!["obj-1", "unknown"]);
 }

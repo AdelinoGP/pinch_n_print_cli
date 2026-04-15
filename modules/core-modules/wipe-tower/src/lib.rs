@@ -13,6 +13,8 @@ use slicer_ir::{
     PrintEntity, RegionKey,
 };
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::slicer_module;
+use slicer_sdk::traits::FinalizationModule;
 
 /// Default layer height used when layer height cannot be inferred from
 /// adjacent layers.
@@ -34,32 +36,32 @@ pub struct WipeTower {
 impl WipeTower {
     /// Construct from a config view, reading wipe tower settings with defaults.
     pub fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.fields.get("wipe_tower_enabled") {
+        let enabled = match config.get("wipe_tower_enabled") {
             Some(ConfigValue::Bool(b)) => *b,
             _ => false,
         };
 
-        let tower_x = match config.fields.get("wipe_tower_x") {
+        let tower_x = match config.get("wipe_tower_x") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 0.0,
         };
 
-        let tower_y = match config.fields.get("wipe_tower_y") {
+        let tower_y = match config.get("wipe_tower_y") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 0.0,
         };
 
-        let tower_width = match config.fields.get("wipe_tower_width") {
+        let tower_width = match config.get("wipe_tower_width") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 60.0,
         };
 
-        let purge_volume = match config.fields.get("wipe_tower_purge_volume") {
+        let purge_volume = match config.get("wipe_tower_purge_volume") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 70.0,
         };
 
-        let line_width = match config.fields.get("line_width") {
+        let line_width = match config.get("line_width") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 0.4,
         };
@@ -218,5 +220,22 @@ impl WipeTower {
     /// Line width in mm.
     pub fn line_width(&self) -> f32 {
         self.line_width
+    }
+}
+
+// ── SDK authoring-path adoption (TASK-111) ─────────────────────────────
+//
+// Aligns `WipeTower` with the documented `#[slicer_module]` authoring
+// surface (docs/05 §Module Entry Point). `on_print_start` delegates to
+// the existing `from_config` constructor so lifecycle semantics are
+// byte-identical to the legacy direct API. The `run_finalization`
+// default (`Ok(())`) is retained at the trait boundary — the real
+// geometry pipeline continues to consume `WipeTower::process` on the
+// legacy `&mut Vec<LayerCollectionIR>` surface until the host is
+// ported off that API, so runtime behaviour is preserved here.
+#[slicer_module]
+impl FinalizationModule for WipeTower {
+    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+        Self::from_config(config)
     }
 }

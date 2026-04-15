@@ -16,7 +16,7 @@ struct TestFinalizationModule {
 
 impl FinalizationModule for TestFinalizationModule {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
-        let _ = config.fields.len();
+        let _ = config.len();
         Ok(Self { initialized: true })
     }
 
@@ -27,9 +27,7 @@ impl FinalizationModule for TestFinalizationModule {
 
 #[test]
 fn test_01_finalization_module_trait_exists_with_lifecycle() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
 
     let module =
         TestFinalizationModule::on_print_start(&config).expect("on_print_start should succeed");
@@ -57,16 +55,14 @@ impl FinalizationModule for FinalizationTestModule {
     ) -> Result<(), ModuleError> {
         let _ = layers.len();
         let _ = output;
-        let _ = config.fields.len();
+        let _ = config.len();
         Ok(())
     }
 }
 
 #[test]
 fn test_02_run_finalization_signature_matches_wit() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
     let module = FinalizationTestModule::on_print_start(&config).unwrap();
     let layers: Vec<LayerCollectionView> = vec![];
     let mut output = FinalizationOutputBuilder::new();
@@ -160,9 +156,7 @@ impl FinalizationModule for MinimalFinalizationModule {
 
 #[test]
 fn test_06_default_run_finalization_does_not_panic() {
-    let config = ConfigView {
-        fields: HashMap::new(),
-    };
+    let config = ConfigView::from_map(HashMap::new(),);
     let module = MinimalFinalizationModule::on_print_start(&config).unwrap();
     let layers: Vec<LayerCollectionView> = vec![];
     let mut output = FinalizationOutputBuilder::new();

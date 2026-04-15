@@ -1,0 +1,22 @@
+[package]
+name = "path-optimization-default"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Default path-optimization core module implementing LayerModule for the Layer::PathOptimization stage"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-schema = { path = "../../../crates/slicer-schema" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+# Required by the `#[slicer_module]` macro's wasm32-only component export
+# glue. On native builds the emitted `wit_bindgen::generate!` call is
+# gated behind `#[cfg(target_arch = "wasm32")]` and never expanded, so
+# wit-bindgen is only pulled into the dependency graph when compiling
+# this crate for the `wasm32-unknown-unknown` target via the companion
+# `wit-guest/` subcrate.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wit-bindgen = "0.24"
+
+[dev-dependencies]

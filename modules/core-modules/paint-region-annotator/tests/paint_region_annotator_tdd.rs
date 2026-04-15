@@ -69,9 +69,7 @@ fn large_paint_region() -> ExPolygon {
 
 /// Helper: create a ConfigView with no fields.
 fn empty_config() -> ConfigView {
-    ConfigView {
-        fields: HashMap::new(),
-    }
+    ConfigView::new()
 }
 
 /// Helper: create an empty PaintRegionIR.

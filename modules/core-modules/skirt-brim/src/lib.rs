@@ -12,6 +12,8 @@ use slicer_ir::{
     PrintEntity, RegionKey,
 };
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::slicer_module;
+use slicer_sdk::traits::FinalizationModule;
 
 /// Skirt and brim path generator.
 ///
@@ -29,32 +31,32 @@ pub struct SkirtBrim {
 impl SkirtBrim {
     /// Construct from a config view, reading skirt/brim settings with defaults.
     pub fn from_config(config: &ConfigView) -> Result<Self, ModuleError> {
-        let enabled = match config.fields.get("skirt_brim_enabled") {
+        let enabled = match config.get("skirt_brim_enabled") {
             Some(ConfigValue::Bool(b)) => *b,
             _ => true,
         };
 
-        let skirt_loops = match config.fields.get("skirt_loops") {
+        let skirt_loops = match config.get("skirt_loops") {
             Some(ConfigValue::Int(v)) => *v as u32,
             _ => 1,
         };
 
-        let skirt_distance = match config.fields.get("skirt_distance") {
+        let skirt_distance = match config.get("skirt_distance") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 6.0,
         };
 
-        let skirt_height = match config.fields.get("skirt_height") {
+        let skirt_height = match config.get("skirt_height") {
             Some(ConfigValue::Int(v)) => *v as u32,
             _ => 1,
         };
 
-        let brim_width = match config.fields.get("brim_width") {
+        let brim_width = match config.get("brim_width") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 0.0,
         };
 
-        let line_width = match config.fields.get("line_width") {
+        let line_width = match config.get("line_width") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 0.4,
         };
@@ -283,4 +285,21 @@ struct BBox2D {
     y_min: f32,
     x_max: f32,
     y_max: f32,
+}
+
+// ── SDK authoring-path adoption (TASK-111) ─────────────────────────────
+//
+// Aligns `SkirtBrim` with the documented `#[slicer_module]` authoring
+// surface (docs/05 §Module Entry Point). `on_print_start` delegates to
+// the existing `from_config` constructor so lifecycle semantics are
+// byte-identical to the legacy direct API. The `run_finalization`
+// default (`Ok(())`) is retained at the trait boundary — the real
+// geometry pipeline continues to consume `SkirtBrim::process` on the
+// legacy `&mut Vec<LayerCollectionIR>` surface until the host is ported
+// off that API, so runtime behaviour is preserved here.
+#[slicer_module]
+impl FinalizationModule for SkirtBrim {
+    fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
+        Self::from_config(config)
+    }
 }

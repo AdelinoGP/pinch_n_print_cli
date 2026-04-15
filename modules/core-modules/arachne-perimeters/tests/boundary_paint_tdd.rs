@@ -40,7 +40,7 @@ fn config_1_wall() -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert("wall_count".to_string(), ConfigValue::Int(1));
     fields.insert("line_width".to_string(), ConfigValue::Float(0.4));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 /// Helper: default config with wall_count=2 for inner wall tests.
@@ -48,7 +48,7 @@ fn config_2_walls() -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert("wall_count".to_string(), ConfigValue::Int(2));
     fields.insert("line_width".to_string(), ConfigValue::Float(0.4));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 #[test]

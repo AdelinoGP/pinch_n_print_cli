@@ -19,6 +19,10 @@ GUESTS=(
     "prepass-guest:prepass_guest"
     "finalization-guest:finalization_guest"
     "postpass-guest:postpass_guest"
+    "sdk-postpass-text-guest:sdk_postpass_text_guest"
+    "sdk-finalization-guest:sdk_finalization_guest"
+    "sdk-prepass-guest:sdk_prepass_guest"
+    "sdk-layer-infill-guest:sdk_layer_infill_guest"
 )
 
 check_only=false

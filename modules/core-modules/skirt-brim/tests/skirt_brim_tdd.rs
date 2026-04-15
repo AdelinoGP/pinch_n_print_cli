@@ -52,9 +52,7 @@ fn make_layer_with_entities(index: u32, z: f32, entities: Vec<PrintEntity>) -> L
 }
 
 fn empty_config() -> ConfigView {
-    ConfigView {
-        fields: HashMap::new(),
-    }
+    ConfigView::from_map(HashMap::new(),)
 }
 
 fn custom_config(
@@ -75,7 +73,7 @@ fn custom_config(
     fields.insert("skirt_height".to_string(), ConfigValue::Int(height as i64));
     fields.insert("brim_width".to_string(), ConfigValue::Float(brim as f64));
     fields.insert("line_width".to_string(), ConfigValue::Float(line_w as f64));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 // ---- Tests ----

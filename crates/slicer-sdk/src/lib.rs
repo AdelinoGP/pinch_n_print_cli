@@ -31,3 +31,12 @@ pub mod views;
 
 /// Re-export of the shared IR crate used by host and modules.
 pub use slicer_ir as ir;
+
+/// Re-export the authoring macros so modules can write
+/// `use slicer_sdk::{slicer_module, module_test};` directly.
+pub use slicer_macros::{module_test, slicer_module};
+
+/// Re-export of the shared binding-schema crate. The `#[slicer_module]`
+/// macro emits `::slicer_schema::SlicerModuleSchema` values, so any
+/// crate that uses the macro transitively needs this name resolvable.
+pub use slicer_schema;
