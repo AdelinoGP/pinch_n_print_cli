@@ -199,7 +199,10 @@ fn stage_layer_finalization_uses_finalization_world() {
         fs::read_to_string(tmp.path().join("layer-finalizer/layer-finalizer.toml")).unwrap();
     assert!(manifest.contains("slicer:world-finalization@1.0.0"));
     let lib = fs::read_to_string(tmp.path().join("layer-finalizer/src/lib.rs")).unwrap();
-    assert!(lib.contains("run_layer_finalization"));
+    // The schema's canonical method name for
+    // `PostPass::LayerFinalization` is `run_finalization` (matching
+    // the WIT export `run-finalization` in world-finalization.wit).
+    assert!(lib.contains("run_finalization"));
 }
 
 // ── Error cases ──────────────────────────────────────────────────────────────

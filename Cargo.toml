@@ -4,6 +4,7 @@ members = [
     "crates/slicer-core",
     "crates/slicer-ir",
     "crates/slicer-macros",
+    "crates/slicer-schema",
     "crates/slicer-sdk",
     "crates/slicer-test",
     "cli/slicer-cli",
@@ -24,6 +25,7 @@ members = [
     "modules/core-modules/skirt-brim",
     "modules/core-modules/paint-region-annotator",
     "modules/core-modules/fuzzy-skin",
+    "modules/core-modules/path-optimization-default",
 ]
 
 [workspace.package]
