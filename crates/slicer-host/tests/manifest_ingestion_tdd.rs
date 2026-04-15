@@ -535,11 +535,12 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 16 core modules
+    // We expect exactly 17 core modules (16 historical + Step D
+    // adding `path-optimization-default` on 2026-04-15).
     assert_eq!(
         report.modules.len(),
-        16,
-        "expected 16 core modules, got {}: {:?}",
+        17,
+        "expected 17 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| &m.id).collect::<Vec<_>>()
     );
@@ -715,11 +716,38 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
 
     let report = load_modules_from_roots(&[core_modules_root]).unwrap();
 
+    // Modules with a real component-model .wasm produced by
+    // `modules/core-modules/build-core-modules.sh`. They must not be
+    // flagged as placeholders; every other core module still is.
+    // Every documented prepass stage is now routed: `mesh-segmentation`
+    // landed in Step B (2026-04-14) and `paint-segmentation` in Step C
+    // (2026-04-15). Every core module should be a real component.
+    const NON_PLACEHOLDER: &[&str] = &[
+        "com.core.layer-planner-default",
+        "com.core.mesh-segmentation",
+        "com.core.paint-segmentation",
+        "com.core.path-optimization-default",
+        "com.core.classic-perimeters",
+        "com.core.arachne-perimeters",
+        "com.core.rectilinear-infill",
+        "com.core.gyroid-infill",
+        "com.core.lightning-infill",
+        "com.core.traditional-support",
+        "com.core.tree-support",
+        "com.core.paint-region-annotator",
+        "com.core.seam-placer",
+        "com.core.fuzzy-skin",
+        "com.core.support-surface-ironing",
+        "com.core.skirt-brim",
+        "com.core.wipe-tower",
+    ];
+
     for module in &report.modules {
-        assert!(
-            module.placeholder_wasm,
-            "core module {} should have placeholder_wasm=true (its .wasm is an 8-byte stub)",
-            module.id
+        let expected_placeholder = !NON_PLACEHOLDER.contains(&module.id.as_str());
+        assert_eq!(
+            module.placeholder_wasm, expected_placeholder,
+            "core module {} placeholder_wasm mismatch (expected {}, got {})",
+            module.id, expected_placeholder, module.placeholder_wasm
         );
     }
 }
@@ -741,10 +769,23 @@ fn core_module_placeholder_warnings_include_module_ids() {
         .filter(|d| d.level == DiagnosticLevel::Warning && d.message.contains("placeholder"))
         .collect();
 
+    // One placeholder warning per core module whose companion .wasm is
+    // still an 8-byte stub. Modules built by
+    // `modules/core-modules/build-core-modules.sh` do not produce a
+    // placeholder warning. Today: `com.core.layer-planner-default` is
+    // real; the remaining 15 core modules are still placeholders.
+    let total_modules = report.modules.len();
+    let real_count = report
+        .modules
+        .iter()
+        .filter(|m| !m.placeholder_wasm)
+        .count();
+    let expected_placeholder_warnings = total_modules - real_count;
     assert_eq!(
         placeholder_warnings.len(),
-        16,
-        "each core module should emit a placeholder warning, got {}",
+        expected_placeholder_warnings,
+        "each placeholder core module should emit one placeholder warning \
+         (total_modules={total_modules}, real={real_count}, got {})",
         placeholder_warnings.len()
     );
 }

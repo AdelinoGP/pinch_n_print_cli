@@ -409,11 +409,22 @@ impl WasmRuntimeDispatcher {
     // ── Typed prepass-world dispatch ──────────────────────────────────
 
     /// Dispatch a prepass-stage call through the typed prepass-module boundary.
+    ///
+    /// `object_ids` are the canonical object identifiers from the host mesh IR
+    /// (docs/02 §Canonical ID Types).  They are forwarded to the guest's
+    /// `run-mesh-analysis` / `run-layer-planning` exports so that the module
+    /// can iterate over real objects rather than receiving an empty list.
+    ///
+    /// Returns the [`HostExecutionContext`] so the caller can harvest
+    /// any collected output (e.g. `layer_plan_proposals` for
+    /// `PrePass::LayerPlanning`).  The store is consumed and its data
+    /// moved out; no further WASM access is needed after this returns.
     fn dispatch_prepass_call(
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
-    ) -> Result<(), DispatchError> {
+        object_ids: &[String],
+    ) -> Result<wit_host::HostExecutionContext, DispatchError> {
         let export_name = export_name_for_stage(stage_id).unwrap_or("unknown");
         let component = module.wasm_component.as_ref().ok_or_else(|| DispatchError {
             module_id: module.module_id.clone(), stage_id: stage_id.clone(),
@@ -424,7 +435,7 @@ impl WasmRuntimeDispatcher {
         let _lease = module.instance_pool.acquire();
         let engine = self.engine.wasmtime_engine();
 
-        let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
+        let mut linker = wasmtime::component::Linker::<wit_host::HostExecutionContext>::new(engine);
         wit_host::PrepassModule::add_to_linker(&mut linker, |ctx| ctx)
             .map_err(|e| DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),
@@ -432,7 +443,7 @@ impl WasmRuntimeDispatcher {
                 reason: e.to_string(),
             })?;
 
-        let ctx = HostExecutionContext::new(module.module_id.clone());
+        let ctx = wit_host::HostExecutionContext::new(module.module_id.clone());
         let mut store = wasmtime::Store::new(engine, ctx);
 
         let config_handle = store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view))
@@ -463,11 +474,19 @@ impl WasmRuntimeDispatcher {
         let call_result = match stage_id.as_str() {
             "PrePass::MeshAnalysis" => {
                 let output = store.data_mut().push_mesh_analysis_output().map_err(mk_ctx_err)?;
-                bindings.call_run_mesh_analysis(&mut store, &[], own(output), own(config_handle)).map_err(mk_call_err)
+                bindings.call_run_mesh_analysis(&mut store, object_ids, own(output), own(config_handle)).map_err(mk_call_err)
             }
             "PrePass::LayerPlanning" => {
                 let output = store.data_mut().push_layer_plan_output().map_err(mk_ctx_err)?;
-                bindings.call_run_layer_planning(&mut store, &[], own(output), own(config_handle)).map_err(mk_call_err)
+                bindings.call_run_layer_planning(&mut store, object_ids, own(output), own(config_handle)).map_err(mk_call_err)
+            }
+            "PrePass::MeshSegmentation" => {
+                let output = store.data_mut().push_mesh_segmentation_output().map_err(mk_ctx_err)?;
+                bindings.call_run_mesh_segmentation(&mut store, object_ids, own(output), own(config_handle)).map_err(mk_call_err)
+            }
+            "PrePass::PaintSegmentation" => {
+                let output = store.data_mut().push_paint_segmentation_output().map_err(mk_ctx_err)?;
+                bindings.call_run_paint_segmentation(&mut store, object_ids, own(output), own(config_handle)).map_err(mk_call_err)
             }
             _ => Err(DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),
@@ -480,17 +499,27 @@ impl WasmRuntimeDispatcher {
             module_id: module.module_id.clone(), stage_id: stage_id.clone(),
             export_name: export_name.to_string(), phase: DispatchPhase::TypedExportCall,
             reason: format!("module error (code={}, fatal={}): {}", module_err.code, module_err.fatal, module_err.message),
-        })
+        })?;
+
+        // Move the execution context out of the store so the caller can harvest
+        // any collected output (layer proposals, log messages, etc.).
+        Ok(store.into_data())
     }
 
     // ── Typed finalization-world dispatch ──────────────────────────────
 
     /// Dispatch a finalization-stage call through the typed finalization-module boundary.
+    ///
+    /// Returns the captured `FinalizationBuilderPush` stream the guest
+    /// emitted through `push-entity-to-layer` / `insert-synthetic-layer`.
+    /// `layers` is deep-copied into one `LayerCollectionView` resource
+    /// per completed IR so the guest observes real per-layer metadata.
     fn dispatch_finalization_call(
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
-    ) -> Result<(), DispatchError> {
+        layers: &[slicer_ir::LayerCollectionIR],
+    ) -> Result<Vec<wit_host::FinalizationBuilderPush>, DispatchError> {
         let export_name = export_name_for_stage(stage_id).unwrap_or("unknown");
         let component = module.wasm_component.as_ref().ok_or_else(|| DispatchError {
             module_id: module.module_id.clone(), stage_id: stage_id.clone(),
@@ -526,6 +555,20 @@ impl WasmRuntimeDispatcher {
                 reason: format!("failed to push finalization output resource: {e}"),
             })?;
 
+        // Deep-copy each completed layer into a wit-bindgen
+        // LayerCollectionView handle so the guest sees real metadata
+        // rather than the previous empty-shell stub (docs/03
+        // world-finalization.wit `resource layer-collection-view`).
+        let mut layer_handles = Vec::with_capacity(layers.len());
+        for layer in layers {
+            let h = store.data_mut().push_finalization_layer_view(layer).map_err(|e| DispatchError {
+                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
+                export_name: export_name.to_string(), phase: DispatchPhase::ContextCreation,
+                reason: format!("failed to push layer-collection-view resource: {e}"),
+            })?;
+            layer_handles.push(own(h));
+        }
+
         let (bindings, _) = wit_host::FinalizationModule::instantiate(&mut store, component.wasmtime_component(), &linker)
             .map_err(|e| DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),
@@ -533,7 +576,8 @@ impl WasmRuntimeDispatcher {
                 reason: e.to_string(),
             })?;
 
-        let call_result = bindings.call_run_finalization(&mut store, &[], own(output_handle), own(config_handle))
+        let call_result = bindings
+            .call_run_finalization(&mut store, &layer_handles, own(output_handle), own(config_handle))
             .map_err(|e| DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),
                 export_name: export_name.to_string(), phase: DispatchPhase::TypedExportCall,
@@ -544,7 +588,13 @@ impl WasmRuntimeDispatcher {
             module_id: module.module_id.clone(), stage_id: stage_id.clone(),
             export_name: export_name.to_string(), phase: DispatchPhase::TypedExportCall,
             reason: format!("module error (code={}, fatal={}): {}", module_err.code, module_err.fatal, module_err.message),
-        })
+        })?;
+
+        // Drain the builder's captured pushes so the caller can apply
+        // them to the downstream layer collection. The resource has
+        // already been dropped by the guest at this point; the drop
+        // handler moved its pushes onto the HostExecutionContext.
+        Ok(store.data_mut().drain_finalization_output_builder())
     }
 
     // ── Typed postpass-world dispatch ──────────────────────────────────
@@ -733,6 +783,265 @@ fn push_perimeter_regions(
     Ok(handles)
 }
 
+// ── Layer-plan harvest ────────────────────────────────────────────────────
+
+/// Convert WIT `LayerProposal` records collected by a `PrePass::LayerPlanning`
+/// call into a host-side [`slicer_ir::LayerPlanIR`].
+///
+/// # Region-ID canonicalization
+///
+/// WIT `region-id` is declared as a string (docs/02 §Canonical ID Types).
+/// The canonical host form is a decimal `u64` string with no leading zeros.
+/// Modules that emit non-canonical IDs (e.g. `"default"`) receive a
+/// deterministic stable hash so the pipeline can proceed; the non-canonical
+/// value is logged as a diagnostic warning.  This matches the "harvest what
+/// the component actually returns" contract while avoiding a fatal error on
+/// the known `layer-planner-default` fallback case.
+///
+/// # Validation
+///
+/// - `z` must be finite and non-negative (enforced in `push_layer`).
+/// - `effective_layer_height` must be finite and positive (enforced in `push_layer`).
+/// - `GlobalLayer.index` must be `< 100_000` (docs/02 §Bounds).
+fn harvest_layer_plan_ir(
+    _stage_id: &str,
+    _module_id: &str,
+    ctx: wit_host::HostExecutionContext,
+) -> Result<slicer_ir::LayerPlanIR, String> {
+    use slicer_ir::{ActiveRegion, GlobalLayer, LayerPlanIR, ObjectLayerRef, ResolvedConfig, SemVer};
+    use std::collections::HashMap;
+
+    let proposals = ctx.layer_plan_proposals;
+
+    const MAX_LAYERS: u32 = 100_000;
+
+    let mut global_layers: Vec<GlobalLayer> = Vec::with_capacity(proposals.len());
+    // object_id → Vec<ObjectLayerRef>
+    let mut object_participation: HashMap<String, Vec<ObjectLayerRef>> = HashMap::new();
+
+    for (idx, proposal) in proposals.into_iter().enumerate() {
+        let index = idx as u32;
+        if index >= MAX_LAYERS {
+            return Err(format!(
+                "layer-plan-output: layer count exceeded maximum budget of {MAX_LAYERS}"
+            ));
+        }
+
+        let mut active_regions: Vec<ActiveRegion> = Vec::new();
+
+        for region_prop in proposal.active_regions {
+            // Parse region_id: canonical = decimal u64, no leading zeros.
+            // Non-canonical strings get a stable FNV-1a hash as a fallback.
+            let region_id: u64 = match region_prop.region_id.parse::<u64>() {
+                Ok(id) => id,
+                Err(_) => {
+                    // Stable hash for determinism across identical runs.
+                    fnv1a_string_to_u64(&region_prop.region_id)
+                }
+            };
+
+            active_regions.push(ActiveRegion {
+                object_id: region_prop.object_id.clone(),
+                region_id,
+                resolved_config: ResolvedConfig::default(),
+                effective_layer_height: region_prop.effective_layer_height,
+                nonplanar_shell: None,
+                is_catchup_layer: region_prop.is_catchup,
+                catchup_z_bottom: region_prop.catchup_z_bottom,
+                tool_index: 0,
+            });
+
+            // Track per-object layer participation.
+            let obj_refs = object_participation
+                .entry(region_prop.object_id.clone())
+                .or_default();
+
+            // Avoid duplicate entries for the same (object, global_layer) pair
+            // when multiple regions from the same object appear in one layer.
+            let already_referenced = obj_refs
+                .iter()
+                .any(|r| r.global_layer_index == index);
+            if !already_referenced {
+                obj_refs.push(ObjectLayerRef {
+                    local_layer_index: obj_refs.len() as u32,
+                    global_layer_index: index,
+                    effective_layer_height: region_prop.effective_layer_height,
+                });
+            }
+        }
+
+        global_layers.push(GlobalLayer {
+            index,
+            z: proposal.z,
+            active_regions,
+            has_nonplanar: false,
+            is_sync_layer: false,
+        });
+    }
+
+    Ok(LayerPlanIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        global_layers,
+        object_participation,
+    })
+}
+
+/// Harvest `push-paint-region` entries collected by a prepass
+/// `run-paint-segmentation` invocation into a `PaintRegionIR`.
+///
+/// Reshapes each flat WIT `paint-region-entry` into the blackboard's
+/// structured form: entries are grouped by `(layer_index,
+/// paint_semantic)` and appended to
+/// `PaintRegionIR.per_layer[layer].semantic_regions[semantic]` in
+/// insertion order. `paint_order` is derived from that insertion index
+/// so every `SemanticRegion` carries a deterministic rank within its
+/// semantic bucket (docs/02 §Paint Region IR — `paint_order` stability).
+/// `PaintValue` is parsed from the WIT `value: string` field with the
+/// following conventions:
+///   - `"true"`/`"false"`                    → `PaintValue::Flag(bool)`
+///   - parseable as `u32` (e.g. `"0"`, `"3"`) → `PaintValue::ToolIndex(u32)`
+///   - anything else                          → `PaintValue::Named(String)`
+///
+/// Unknown semantic strings map to `PaintSemantic::Custom(name)` so
+/// guests can introduce new semantics without host-side changes.
+fn harvest_paint_segmentation_ir(
+    ctx: wit_host::HostExecutionContext,
+) -> slicer_ir::PaintRegionIR {
+    use std::collections::HashMap;
+    use slicer_ir::{
+        ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon,
+        SemanticRegion, SemVer,
+    };
+
+    let parse_semantic = |s: &str| -> PaintSemantic {
+        match s {
+            "material" | "Material" => PaintSemantic::Material,
+            "fuzzy_skin" | "FuzzySkin" => PaintSemantic::FuzzySkin,
+            "support_enforcer" | "SupportEnforcer" => PaintSemantic::SupportEnforcer,
+            "support_blocker" | "SupportBlocker" => PaintSemantic::SupportBlocker,
+            other => PaintSemantic::Custom(other.to_string()),
+        }
+    };
+    // WIT value → IR PaintValue. The IR enum has `Flag(bool)`,
+    // `Scalar(f32)`, `ToolIndex(u32)` — no free-form string variant.
+    // Guests that need named values should emit them as ToolIndex or
+    // Scalar; unrecognized strings degrade to ToolIndex(0) so the
+    // channel stays observable.
+    let parse_value = |s: &str| -> PaintValue {
+        if s.eq_ignore_ascii_case("true") {
+            PaintValue::Flag(true)
+        } else if s.eq_ignore_ascii_case("false") {
+            PaintValue::Flag(false)
+        } else if let Ok(n) = s.parse::<u32>() {
+            PaintValue::ToolIndex(n)
+        } else if let Ok(f) = s.parse::<f32>() {
+            PaintValue::Scalar(f)
+        } else {
+            PaintValue::ToolIndex(0)
+        }
+    };
+
+    let mut per_layer: HashMap<u32, LayerPaintMap> = HashMap::new();
+    for (idx, entry) in ctx.paint_region_entries.into_iter().enumerate() {
+        let layer_index = entry.layer_index;
+        let layer = per_layer
+            .entry(layer_index)
+            .or_insert_with(|| LayerPaintMap {
+                global_layer_index: layer_index,
+                semantic_regions: HashMap::new(),
+            });
+        let semantic = parse_semantic(&entry.semantic);
+        let polygons: Vec<ExPolygon> = entry
+            .polygons
+            .iter()
+            .map(|ep| ExPolygon {
+                contour: Polygon {
+                    points: ep
+                        .contour
+                        .points
+                        .iter()
+                        .map(|pt| Point2 { x: pt.x, y: pt.y })
+                        .collect(),
+                },
+                holes: ep
+                    .holes
+                    .iter()
+                    .map(|h| Polygon {
+                        points: h
+                            .points
+                            .iter()
+                            .map(|pt| Point2 { x: pt.x, y: pt.y })
+                            .collect(),
+                    })
+                    .collect(),
+            })
+            .collect();
+        let value = parse_value(&entry.value);
+        layer
+            .semantic_regions
+            .entry(semantic)
+            .or_default()
+            .push(SemanticRegion {
+                object_id: entry.object_id,
+                polygons,
+                value,
+                paint_order: idx as u64,
+            });
+    }
+
+    PaintRegionIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        per_layer,
+    }
+}
+
+/// Harvest `mark-triangle-paint` tuples collected by a prepass
+/// `run-mesh-segmentation` invocation into a `MeshSegmentationIR`.
+///
+/// Ordering follows the guest's insertion order (deterministic for any
+/// single guest implementation). Values pass through verbatim — this
+/// helper only reshapes the tuples into `FacetPaintMark` records;
+/// per-field validation is done at the resource-push site in
+/// `HostMeshSegmentationOutput::mark_triangle_paint`.
+fn harvest_mesh_segmentation_ir(
+    ctx: wit_host::HostExecutionContext,
+) -> slicer_ir::MeshSegmentationIR {
+    use slicer_ir::{FacetPaintMark, MeshSegmentationIR, SemVer};
+
+    let marks: Vec<FacetPaintMark> = ctx
+        .mesh_segmentation_marks
+        .into_iter()
+        .map(|(object_id, facet_index, semantic, value)| FacetPaintMark {
+            object_id,
+            facet_index,
+            semantic,
+            value,
+        })
+        .collect();
+
+    MeshSegmentationIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        marks,
+    }
+}
+
+/// Stable FNV-1a 64-bit hash of a string.
+///
+/// Used to derive a deterministic `RegionId` from non-canonical WIT
+/// `region-id` strings (e.g., `"default"` emitted by the layer-planner
+/// fallback path).  Identical strings always produce identical hashes
+/// across runs, satisfying the determinism contract.
+fn fnv1a_string_to_u64(s: &str) -> u64 {
+    const FNV_OFFSET: u64 = 14695981039346656037;
+    const FNV_PRIME: u64 = 1099511628211;
+    let mut hash: u64 = FNV_OFFSET;
+    for byte in s.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
 // ── Stage runner trait implementations ──────────────────────────────────
 
 impl PrepassStageRunner for WasmRuntimeDispatcher {
@@ -740,16 +1049,132 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
-        _blackboard: &Blackboard,
+        blackboard: &Blackboard,
     ) -> Result<PrepassStageOutput, PrepassExecutionError> {
-        self.dispatch_prepass_call(stage_id, module)
-            .map_err(|e| PrepassExecutionError::FatalModule {
-                stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
-                message: e.to_string(),
-            })?;
+        // Extract canonical object IDs from the blackboard's mesh IR so that
+        // the guest export receives the real object list (docs/02 §MeshIR).
+        // An empty list is valid (no-op for the module) but must never be
+        // hard-coded; the mesh is the authoritative source.
+        let object_ids: Vec<String> = blackboard
+            .mesh()
+            .objects
+            .iter()
+            .map(|o| o.id.clone())
+            .collect();
+
+        let ctx = match self.dispatch_prepass_call(stage_id, module, &object_ids) {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                // A `MissingComponent` error means the module's `.wasm` was a
+                // placeholder or could not be compiled.  The load path already
+                // emitted a structured warning for it.  Treat it as a graceful
+                // skip — return `None` so the prepass continues without this
+                // module's output.  Any other error is genuinely fatal.
+                if e.phase == DispatchPhase::MissingComponent {
+                    return Ok(PrepassStageOutput::None);
+                }
+                return Err(PrepassExecutionError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e.to_string(),
+                });
+            }
+        };
+
+        // For the LayerPlanning stage, convert collected proposals to LayerPlanIR.
+        if stage_id == "PrePass::LayerPlanning" {
+            let ir = harvest_layer_plan_ir(stage_id, &module.module_id, ctx)
+                .map_err(|e| PrepassExecutionError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e,
+                })?;
+            return Ok(PrepassStageOutput::LayerPlan(Arc::new(ir)));
+        }
+
+        // For the MeshSegmentation stage, convert collected triangle paint
+        // marks to MeshSegmentationIR.
+        if stage_id == "PrePass::MeshSegmentation" {
+            let ir = harvest_mesh_segmentation_ir(ctx);
+            return Ok(PrepassStageOutput::MeshSegmentation(Arc::new(ir)));
+        }
+
+        // For the PaintSegmentation stage, convert collected paint-region
+        // entries to PaintRegionIR.
+        if stage_id == "PrePass::PaintSegmentation" {
+            let ir = harvest_paint_segmentation_ir(ctx);
+            return Ok(PrepassStageOutput::PaintRegions(Arc::new(ir)));
+        }
+
+        // For the MeshAnalysis stage, surface any guest-emitted
+        // annotations / surface groups via `MeshAnalysisAuxiliary` when
+        // the drain is non-empty. A guest that pushed nothing still
+        // returns `None` so the existing empty-drain contract (and its
+        // regression tests) are preserved — the new variant is only
+        // raised when there is real output to observe.
+        if stage_id == "PrePass::MeshAnalysis" {
+            let aux = harvest_mesh_analysis_auxiliary(ctx);
+            if aux.facet_annotations.is_empty() && aux.surface_groups.is_empty() {
+                return Ok(PrepassStageOutput::None);
+            }
+            return Ok(PrepassStageOutput::MeshAnalysisAuxiliary(Arc::new(aux)));
+        }
 
         Ok(PrepassStageOutput::None)
+    }
+}
+
+/// Convert the `(object_id, FacetAnnotation)` / `(object_id, SurfaceGroupProposal)`
+/// pushes collected on the `HostExecutionContext` into the host-local
+/// `MeshAnalysisAuxiliary` record. Order matches guest push order.
+fn harvest_mesh_analysis_auxiliary(
+    ctx: wit_host::HostExecutionContext,
+) -> crate::prepass::MeshAnalysisAuxiliary {
+    use crate::prepass::{FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, SurfaceGroupRecord};
+    use crate::wit_host::prepass as pm;
+
+    let facet_annotations = ctx
+        .mesh_analysis_annotations
+        .into_iter()
+        .map(|(obj, ann)| {
+            let classification = match ann.classification {
+                pm::FacetClass::Normal => FacetClassRecord::Normal,
+                pm::FacetClass::NearHorizontal => FacetClassRecord::NearHorizontal,
+                pm::FacetClass::Overhang => FacetClassRecord::Overhang,
+                pm::FacetClass::Bridge => FacetClassRecord::Bridge,
+                pm::FacetClass::TopSurface => FacetClassRecord::TopSurface,
+                pm::FacetClass::BottomSurface => FacetClassRecord::BottomSurface,
+            };
+            (
+                obj,
+                FacetAnnotationRecord {
+                    facet_index: ann.facet_index,
+                    slope_angle_deg: ann.slope_angle_deg,
+                    classification,
+                },
+            )
+        })
+        .collect();
+
+    let surface_groups = ctx
+        .mesh_analysis_surface_groups
+        .into_iter()
+        .map(|(obj, grp)| {
+            (
+                obj,
+                SurfaceGroupRecord {
+                    facet_indices: grp.facet_indices,
+                    z_min: grp.z_min,
+                    z_max: grp.z_max,
+                    shell_count: grp.shell_count,
+                },
+            )
+        })
+        .collect();
+
+    MeshAnalysisAuxiliary {
+        facet_annotations,
+        surface_groups,
     }
 }
 
@@ -767,13 +1192,20 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         let paint_ref = paint_ir.map(|arc| arc.as_ref());
 
         // Layer stages always use the typed component-model boundary.
-        let ctx = self
-            .dispatch_layer_call(stage_id, module, layer.index, layer.z, paint_ref, arena)
-            .map_err(|e| LayerStageError::FatalModule {
-                stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
-                message: e.to_string(),
-            })?;
+        let ctx = match self.dispatch_layer_call(stage_id, module, layer.index, layer.z, paint_ref, arena) {
+            Ok(ctx) => ctx,
+            Err(e) if e.phase == DispatchPhase::MissingComponent => {
+                // Placeholder/uncompiled module — skip gracefully.
+                return Ok(LayerStageOutput::Success);
+            }
+            Err(e) => {
+                return Err(LayerStageError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e.to_string(),
+                });
+            }
+        };
 
         // Commit collected outputs into the layer arena based on stage.
         commit_layer_outputs(stage_id, &module.module_id, layer.index, &ctx, arena)?;
@@ -1014,14 +1446,75 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
         stage_id: &StageId,
         module: &CompiledModule,
         _blackboard: &Blackboard,
-        _layers: &mut Vec<LayerCollectionIR>,
+        layers: &mut Vec<LayerCollectionIR>,
     ) -> Result<FinalizationOutput, FinalizationError> {
-        self.dispatch_finalization_call(stage_id, module)
-            .map_err(|e| FinalizationError::FatalModule {
-                stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
-                message: e.to_string(),
-            })?;
+        let pushes = match self.dispatch_finalization_call(stage_id, module, layers) {
+            Ok(p) => p,
+            Err(e) if e.phase == DispatchPhase::MissingComponent => {
+                // Placeholder/uncompiled modules are gracefully skipped.
+                return Ok(FinalizationOutput::Success);
+            }
+            Err(e) => {
+                return Err(FinalizationError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e.to_string(),
+                });
+            }
+        };
+
+        // Apply guest-emitted pushes to the downstream layer collection.
+        // `push-entity-to-layer` appends ordered extrusion entities to
+        // the targeted existing layer; `insert-synthetic-layer` creates
+        // a new layer at the requested Z with the supplied extrusion
+        // paths (docs/03 world-finalization.wit §finalization-output-builder).
+        // Ordering is preserved: pushes run in guest-emission order,
+        // which — for a deterministic guest — gives byte-stable output.
+        for push in pushes {
+            match push {
+                wit_host::FinalizationBuilderPush::EntityToLayer { layer_index, path, region_key } => {
+                    if let Some(target) = layers.iter_mut().find(|l| l.global_layer_index == layer_index) {
+                        let role = path.role.clone();
+                        let topo_order = target.ordered_entities.len() as u32;
+                        target.ordered_entities.push(slicer_ir::PrintEntity {
+                            path,
+                            role,
+                            region_key,
+                            topo_order,
+                        });
+                    }
+                }
+                wit_host::FinalizationBuilderPush::SyntheticLayer { z, paths } => {
+                    let new_index = layers.len() as u32;
+                    let entities: Vec<_> = paths
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, path)| {
+                            let role = path.role.clone();
+                            slicer_ir::PrintEntity {
+                                path,
+                                role,
+                                region_key: slicer_ir::RegionKey {
+                                    global_layer_index: new_index,
+                                    object_id: String::new(),
+                                    region_id: 0,
+                                },
+                                topo_order: i as u32,
+                            }
+                        })
+                        .collect();
+                    layers.push(LayerCollectionIR {
+                        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+                        global_layer_index: new_index,
+                        z,
+                        ordered_entities: entities,
+                        tool_changes: Vec::new(),
+                        z_hops: Vec::new(),
+                        annotations: Vec::new(),
+                    });
+                }
+            }
+        }
 
         Ok(FinalizationOutput::Success)
     }
@@ -1035,12 +1528,19 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         _blackboard: &Blackboard,
         _gcode_ir: &mut GCodeIR,
     ) -> Result<PostpassOutput, PostpassError> {
-        self.dispatch_postpass_gcode_call(stage_id, module)
-            .map_err(|e| PostpassError::FatalModule {
-                stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
-                message: e.to_string(),
-            })?;
+        match self.dispatch_postpass_gcode_call(stage_id, module) {
+            Ok(()) => {}
+            Err(e) if e.phase == DispatchPhase::MissingComponent => {
+                return Ok(PostpassOutput::GCodeSuccess);
+            }
+            Err(e) => {
+                return Err(PostpassError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e.to_string(),
+                });
+            }
+        }
 
         Ok(PostpassOutput::GCodeSuccess)
     }
@@ -1054,6 +1554,10 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
     ) -> Result<PostpassOutput, PostpassError> {
         match self.dispatch_postpass_text_call(stage_id, module, &text) {
             Ok(result_text) => Ok(PostpassOutput::TextSuccess { text: result_text }),
+            Err(e) if e.phase == DispatchPhase::MissingComponent => {
+                // Placeholder module: pass text through unchanged.
+                Ok(PostpassOutput::TextSuccess { text })
+            }
             Err(e) => Err(PostpassError::FatalModule {
                 stage_id: stage_id.clone(),
                 module_id: module.module_id.clone(),

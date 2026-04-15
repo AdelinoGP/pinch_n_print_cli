@@ -391,6 +391,44 @@ fn identity_transform() -> Transform3d {
     Transform3d { matrix }
 }
 
+/// Compute the world-space Z extent `(z_min, z_max)` of an [`ObjectMesh`] by
+/// applying its `transform` to each vertex and reducing.
+///
+/// Returns `None` when the mesh has no vertices or when the resulting extent
+/// is non-finite or degenerate (`z_max <= z_min`).
+///
+/// A zero matrix is treated as identity to stay robust against fixtures that
+/// leave `Transform3d::matrix` unset — the same convention used elsewhere in
+/// the host when applying transforms (see `mesh_analysis::apply_transform`).
+#[must_use]
+pub fn object_world_z_extent(object: &ObjectMesh) -> Option<(f32, f32)> {
+    let m = &object.transform.matrix;
+    let identity = m.iter().all(|v| *v == 0.0);
+    let mut z_min = f32::INFINITY;
+    let mut z_max = f32::NEG_INFINITY;
+    for v in &object.mesh.vertices {
+        let z = if identity {
+            v.z
+        } else {
+            let x = v.x as f64;
+            let y = v.y as f64;
+            let z = v.z as f64;
+            (m[2] * x + m[6] * y + m[10] * z + m[14]) as f32
+        };
+        if z < z_min {
+            z_min = z;
+        }
+        if z > z_max {
+            z_max = z;
+        }
+    }
+    if z_min.is_finite() && z_max.is_finite() && z_max > z_min {
+        Some((z_min, z_max))
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,5 +451,122 @@ mod tests {
         let bb = compute_bounding_box(&its);
         assert_eq!(bb.min.x, 0.0);
         assert_eq!(bb.max.x, 0.0);
+    }
+
+    fn make_object(
+        id: &str,
+        vertices: Vec<Point3>,
+        transform: Transform3d,
+    ) -> ObjectMesh {
+        ObjectMesh {
+            id: id.to_string(),
+            mesh: IndexedTriangleSet {
+                vertices,
+                indices: vec![],
+            },
+            transform,
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
+            modifier_volumes: Vec::new(),
+            paint_data: None,
+        }
+    }
+
+    #[test]
+    fn object_world_z_extent_identity_matches_raw_vertices() {
+        let object = make_object(
+            "benchy",
+            vec![
+                Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                Point3 { x: 1.0, y: 2.0, z: 48.0 },
+            ],
+            identity_transform(),
+        );
+        let extent = object_world_z_extent(&object).expect("extent should exist");
+        assert!((extent.0 - 0.0).abs() < 1e-5);
+        assert!((extent.1 - 48.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn object_world_z_extent_applies_translation() {
+        let mut t = identity_transform();
+        // Column-major: translation is in column 3 (index 12,13,14).
+        t.matrix[14] = 10.0; // +10 on Z
+        let object = make_object(
+            "translated",
+            vec![
+                Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                Point3 { x: 0.0, y: 0.0, z: 5.0 },
+            ],
+            t,
+        );
+        let (z_min, z_max) = object_world_z_extent(&object).unwrap();
+        assert!((z_min - 10.0).abs() < 1e-5);
+        assert!((z_max - 15.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn object_world_z_extent_applies_rotation_about_x() {
+        // 90° rotation about X axis: (x, y, z) -> (x, -z, y).
+        // So a vertical rod of height 10 along +Z becomes a horizontal rod
+        // along -Y, and the world-space Z extent collapses to {0}.
+        // Column-major storage: m[col*4 + row].
+        let mut t = [0.0f64; 16];
+        t[0] = 1.0; // col 0 row 0 — X stays X
+        t[6] = 1.0; // col 1 row 2 — +Y becomes +Z
+        t[9] = -1.0; // col 2 row 1 — +Z becomes -Y
+        t[15] = 1.0;
+        let transform = Transform3d { matrix: t };
+        let object = make_object(
+            "rotated",
+            vec![
+                Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                Point3 { x: 0.0, y: 0.0, z: 10.0 },
+            ],
+            transform,
+        );
+        // Post-rotation world Z values: 0 and 0 → degenerate (z_max == z_min).
+        assert!(object_world_z_extent(&object).is_none());
+    }
+
+    #[test]
+    fn object_world_z_extent_applies_scale() {
+        let mut t = identity_transform();
+        t.matrix[10] = 2.0; // scale Z by 2
+        let object = make_object(
+            "scaled",
+            vec![
+                Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                Point3 { x: 0.0, y: 0.0, z: 20.0 },
+            ],
+            t,
+        );
+        let (z_min, z_max) = object_world_z_extent(&object).unwrap();
+        assert!((z_min - 0.0).abs() < 1e-5);
+        assert!((z_max - 40.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn object_world_z_extent_zero_matrix_treated_as_identity() {
+        // Fixtures that leave `Transform3d::matrix` all-zero must not
+        // collapse the mesh to a degenerate point.
+        let object = make_object(
+            "zero-matrix",
+            vec![
+                Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                Point3 { x: 0.0, y: 0.0, z: 7.0 },
+            ],
+            Transform3d { matrix: [0.0; 16] },
+        );
+        let (z_min, z_max) = object_world_z_extent(&object).unwrap();
+        assert!((z_min - 0.0).abs() < 1e-5);
+        assert!((z_max - 7.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn object_world_z_extent_empty_mesh_is_none() {
+        let object = make_object("empty", vec![], identity_transform());
+        assert!(object_world_z_extent(&object).is_none());
     }
 }

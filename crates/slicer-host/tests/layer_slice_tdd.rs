@@ -230,6 +230,123 @@ fn per_layer_executor_produces_deterministic_slice_across_runs() {
     assert_eq!(a, b, "layer-loop output must be deterministic");
 }
 
+/// Regression guard for the Benchy slice-stage gap.
+///
+/// Prior to the undirected `chain_lines` rewrite, the host-built-in
+/// `Layer::Slice` returned zero polygons for the real 3DBenchy mesh at
+/// every low-Z layer — adjacent triangles sharing an edge emitted lines
+/// in opposite orientation, so the old directed `a → b` walker
+/// fragmented the hull into hundreds of open chains and discarded
+/// everything. This test drives `execute_layer_slice` against the real
+/// mesh that the live binary loads and asserts the slicer now produces
+/// non-empty contour geometry at representative Z values.
+///
+/// If this test starts failing with "expected non-empty polygons", the
+/// slice stage has regressed into the pre-fix state (the pipeline would
+/// silently emit empty G-code with no diagnostic).
+#[test]
+fn layer_slice_builtin_produces_real_polygons_for_benchy_mesh() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .canonicalize()
+        .expect("repo root")
+        .join("resources/benchy.stl");
+    if !path.exists() {
+        // Fixture not present in this environment — skip silently so the
+        // rest of the suite keeps running. The live-path binary test
+        // `benchy_e2e_real_pipeline_produces_gcode` covers the same
+        // fixture presence check.
+        return;
+    }
+
+    let mesh =
+        slicer_host::model_loader::load_model(&path).expect("load 3dbenchy STL");
+    assert_eq!(mesh.objects.len(), 1, "benchy STL must load as one object");
+    let object_id = mesh.objects[0].id.clone();
+
+    // Slice at representative Zs: close to bottom, mid-hull, and higher.
+    // The Benchy mesh occupies roughly z ∈ [0, 48]; these Zs all intersect
+    // real hull geometry and must produce at least one closed contour.
+    for z in [0.2_f32, 1.0, 5.0, 10.0] {
+        let layer = GlobalLayer {
+            index: 0,
+            z,
+            active_regions: vec![ActiveRegion {
+                object_id: object_id.clone(),
+                region_id: 0,
+                resolved_config: default_resolved(),
+                effective_layer_height: 0.2,
+                nonplanar_shell: None,
+                is_catchup_layer: false,
+                catchup_z_bottom: 0.0,
+                tool_index: 0,
+            }],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        };
+        let slice = execute_layer_slice(&mesh, &layer).expect("slice ok");
+        assert_eq!(slice.z, z);
+        assert_eq!(slice.regions.len(), 1);
+        let region = &slice.regions[0];
+        assert_eq!(region.object_id, object_id);
+        assert!(
+            !region.polygons.is_empty(),
+            "expected non-empty polygons at z={z}, got 0; slice stage has regressed"
+        );
+        let total_points: usize = region
+            .polygons
+            .iter()
+            .map(|p| p.contour.points.len())
+            .sum();
+        assert!(
+            total_points >= 20,
+            "expected a real hull contour at z={z} (>= 20 points), got {total_points}"
+        );
+    }
+}
+
+/// Determinism guard specifically against the Benchy mesh. The live
+/// pipeline runs the slice stage from rayon threads, so bitwise
+/// reproducibility here is a prerequisite for cross-run determinism of
+/// the full G-code output.
+#[test]
+fn layer_slice_builtin_is_deterministic_for_benchy_mesh() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .canonicalize()
+        .expect("repo root")
+        .join("resources/benchy.stl");
+    if !path.exists() {
+        return;
+    }
+    let mesh = slicer_host::model_loader::load_model(&path).expect("load benchy");
+    let object_id = mesh.objects[0].id.clone();
+    let layer = GlobalLayer {
+        index: 7,
+        z: 7.0,
+        active_regions: vec![ActiveRegion {
+            object_id,
+            region_id: 0,
+            resolved_config: default_resolved(),
+            effective_layer_height: 0.2,
+            nonplanar_shell: None,
+            is_catchup_layer: false,
+            catchup_z_bottom: 0.0,
+            tool_index: 0,
+        }],
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+    let a = execute_layer_slice(&mesh, &layer).expect("slice a");
+    let b = execute_layer_slice(&mesh, &layer).expect("slice b");
+    assert_eq!(
+        a, b,
+        "two slices of the same mesh at the same Z must be byte-identical"
+    );
+}
+
 #[test]
 fn per_layer_executor_surfaces_layer_slice_failure_structured() {
     let mesh = Arc::new(tetra_mesh_ir("obj-a"));

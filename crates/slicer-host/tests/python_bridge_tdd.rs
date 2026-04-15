@@ -244,13 +244,13 @@ fn write_file(path: &std::path::Path, body: &str) {
 }
 
 fn empty_config() -> ConfigView {
-    ConfigView { fields: HashMap::new() }
+    ConfigView::from_map(HashMap::new())
 }
 
 fn config_with_amplitude(v: f64) -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert("amplitude".to_string(), ConfigValue::Float(v));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 fn plan_with_postpass(stages: Vec<CompiledStage>) -> ExecutionPlan {

@@ -258,7 +258,7 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
             ExecutionModuleBinding {
                 module: m.clone(),
                 instance_pool: pool,
-                config_view: Arc::new(ConfigView { fields: HashMap::new() }),
+                config_view: Arc::new(ConfigView::from_map(HashMap::new())),
                 wasm_component: None,
             }
         })
@@ -311,7 +311,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
         instance_pool: pool,
         ir_read_mask: IrAccessMask { paths: m.ir_reads.clone() },
         ir_write_mask: IrAccessMask { paths: m.ir_writes.clone() },
-        config_view: Arc::new(ConfigView { fields: HashMap::new() }),
+        config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         wasm_component: None,
     };
 
@@ -497,7 +497,7 @@ fn core_modules_build_a_multi_tier_execution_plan() {
             ExecutionModuleBinding {
                 module: m.clone(),
                 instance_pool: pool,
-                config_view: Arc::new(ConfigView { fields: HashMap::new() }),
+                config_view: Arc::new(ConfigView::from_map(HashMap::new())),
                 wasm_component: None,
             }
         })

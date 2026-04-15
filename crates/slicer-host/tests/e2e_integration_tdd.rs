@@ -23,7 +23,7 @@ use slicer_ir::{GCodeIR, GlobalLayer, LayerCollectionIR, PrintMetadata, SemVer, 
 
 fn stl_fixture_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/resources/test_stl/ASCII/20mmbox-LF.stl")
+        .join("../../resources/test_stl/ASCII/20mmbox-LF.stl")
 }
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {

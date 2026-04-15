@@ -29,30 +29,41 @@ pub mod slice_postprocess;
 pub mod topology;
 pub mod validation;
 pub mod wasm_instance;
+pub mod wit_host;
+pub mod dispatch;
 
 pub use blackboard::{
     Blackboard, BlackboardError, BlackboardPrepassSlot, LayerArena, LayerArenaError, LayerArenaSlot,
 };
 pub use cli::{validate_run_options, CliError, HostCli, HostCommands, HostRunOptions};
 pub use config_schema::{
-    get_advanced_fields, get_basic_fields, get_field_schema, group_fields_by_ui_group,
-    parse_config_schema, query_config_schema, validate_config, validate_field_value,
-    ConfigFieldSchema, ConfigFieldType, ConfigSchemaParseError, ConfigSchemaParseErrorKind,
-    ConfigUnit, ConfigValidationError, ConfigValidationErrorKind, ConfigValue, CrossValidateRule,
-    CrossValidateSeverity, FullConfigSchema,
+    build_config_schema_json, get_advanced_fields, get_basic_fields, get_field_schema,
+    group_fields_by_ui_group, parse_config_schema, query_config_schema, validate_config,
+    validate_field_value, ConfigFieldSchema, ConfigFieldType, ConfigSchemaParseError,
+    ConfigSchemaParseErrorKind, ConfigUnit, ConfigValidationError, ConfigValidationErrorKind,
+    ConfigValue, CrossValidateRule, CrossValidateSeverity, FullConfigSchema,
 };
 pub use dag::{build_intra_stage_dag, ModuleNode};
 pub use execution_plan::{
-    build_execution_plan, CompiledModule, CompiledStage, ExecutionModuleBinding, ExecutionPlan,
-    ExecutionPlanError, ExecutionPlanRequest, IrAccessMask, SortedStageModules,
+    bind_module_config_view, build_execution_plan, build_live_execution_plan,
+    load_live_modules_for_plan, parse_cli_config_source, CompiledModule, CompiledStage,
+    ConfigSourceParseError, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError,
+    ExecutionPlanRequest, IrAccessMask, LiveModuleBinding, LiveModuleLoadError,
+    LiveModuleLoadOutput, SortedStageModules, DEFAULT_REGION_MAP_CAP, MAX_LAYER_INDEX, STAGE_ORDER,
 };
 pub use gcode_emit::{DefaultGCodeEmitter, DefaultGCodeSerializer};
 pub use instance_pool::{
     build_wasm_instance_pool, InstancePoolError, InstancePoolMode, WasmArtifactMetadata,
     WasmInstanceLease, WasmInstancePool,
 };
+pub use wasm_instance::{WasmCallError, WasmComponent, WasmEngine, WasmInstance, WasmLoadError};
+pub use dispatch::{
+    commit_layer_outputs_for_test, export_name_for_stage, DispatchError, DispatchPhase,
+    WasmRuntimeDispatcher,
+};
 pub use layer_executor::{
-    execute_per_layer, LayerExecutionError, LayerStageError, LayerStageOutput, LayerStageRunner,
+    execute_per_layer, execute_per_layer_with_events, LayerExecutionError, LayerProgressSink,
+    LayerStageError, LayerStageOutput, LayerStageRunner, NoopLayerProgressSink,
 };
 pub use layer_finalization::{
     execute_layer_finalization, FinalizationError, FinalizationOutput, FinalizationOutputBuilder,
@@ -73,19 +84,22 @@ pub use postpass::{
     PostpassStageRunner,
 };
 pub use prepass::{
-    execute_prepass, execute_prepass_with_builtins, PrepassExecutionError, PrepassStageOutput,
-    PrepassStageRunner,
+    execute_prepass, execute_prepass_with_builtins, FacetAnnotationRecord, FacetClassRecord,
+    MeshAnalysisAuxiliary, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
+    SurfaceGroupRecord,
 };
 pub use python_bridge::{
     PythonBinding, PythonBridge, PythonBridgeError, PythonBridgePhase, PythonPostpassRunner,
 };
 pub use region_mapping::{
-    commit_region_mapping_builtin, execute_region_mapping, RegionMappingBuiltinError,
+    commit_region_mapping_builtin, execute_region_mapping, execute_region_mapping_with_cap,
+    RegionMappingBuiltinError, RegionMappingError,
 };
 pub use slice_postprocess::{
-    execute_slice_postprocess_paint_annotation, SlicePostProcessPaintAnnotationError,
-    SlicePostProcessPaintAnnotationRequest, SlicePostProcessPaintAnnotationResult,
-    SlicePostProcessPaintAnnotationWarning, SlicePostProcessPaintAnnotationWarningReason,
+    execute_slice_postprocess_paint_annotation, paint_annotation_warning_to_progress_event,
+    SlicePostProcessPaintAnnotationError, SlicePostProcessPaintAnnotationRequest,
+    SlicePostProcessPaintAnnotationResult, SlicePostProcessPaintAnnotationWarning,
+    SlicePostProcessPaintAnnotationWarningReason,
 };
 pub use topology::topological_sort;
 pub use validation::{

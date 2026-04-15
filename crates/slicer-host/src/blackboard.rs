@@ -7,8 +7,9 @@ use std::fmt;
 use std::sync::Arc;
 
 use slicer_ir::{
-    InfillIR, LayerAnnotation, LayerCollectionIR, LayerPlanIR, MeshIR, PaintRegionIR, PerimeterIR,
-    RegionMapIR, SliceIR, SupportIR, SurfaceClassificationIR, ToolChange, ZHop,
+    InfillIR, LayerAnnotation, LayerCollectionIR, LayerPlanIR, MeshIR, MeshSegmentationIR,
+    PaintRegionIR, PerimeterIR, RegionMapIR, SliceIR, SupportIR, SurfaceClassificationIR,
+    ToolChange, ZHop,
 };
 
 /// Host-owned immutable global IR store plus write-once per-layer output slots.
@@ -16,6 +17,7 @@ use slicer_ir::{
 pub struct Blackboard {
     mesh_ir: Arc<MeshIR>,
     surface_classification: Option<Arc<SurfaceClassificationIR>>,
+    mesh_segmentation: Option<Arc<MeshSegmentationIR>>,
     layer_plan: Option<Arc<LayerPlanIR>>,
     paint_regions: Option<Arc<PaintRegionIR>>,
     region_map: Option<Arc<RegionMapIR>>,
@@ -93,6 +95,8 @@ impl std::error::Error for BlackboardError {}
 pub enum BlackboardPrepassSlot {
     /// Surface classification produced by `PrePass::MeshAnalysis`.
     SurfaceClassification,
+    /// Mesh segmentation marks produced by `PrePass::MeshSegmentation`.
+    MeshSegmentation,
     /// Layer plan produced by `PrePass::LayerPlanning`.
     LayerPlan,
     /// Paint regions produced by `PrePass::PaintSegmentation`.
@@ -105,6 +109,7 @@ impl fmt::Display for BlackboardPrepassSlot {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
             Self::SurfaceClassification => "surface-classification",
+            Self::MeshSegmentation => "mesh-segmentation",
             Self::LayerPlan => "layer-plan",
             Self::PaintRegions => "paint-regions",
             Self::RegionMap => "region-map",
@@ -121,6 +126,7 @@ impl Blackboard {
         Self {
             mesh_ir,
             surface_classification: None,
+            mesh_segmentation: None,
             layer_plan: None,
             paint_regions: None,
             region_map: None,
@@ -150,6 +156,24 @@ impl Blackboard {
     #[must_use]
     pub fn surface_classification(&self) -> Option<&Arc<SurfaceClassificationIR>> {
         self.surface_classification.as_ref()
+    }
+
+    /// Commit `MeshSegmentationIR` exactly once.
+    pub fn commit_mesh_segmentation(
+        &mut self,
+        ir: Arc<MeshSegmentationIR>,
+    ) -> Result<(), BlackboardError> {
+        commit_prepass(
+            &mut self.mesh_segmentation,
+            ir,
+            BlackboardPrepassSlot::MeshSegmentation,
+        )
+    }
+
+    /// Return the committed mesh-segmentation IR, if available.
+    #[must_use]
+    pub fn mesh_segmentation(&self) -> Option<&Arc<MeshSegmentationIR>> {
+        self.mesh_segmentation.as_ref()
     }
 
     /// Commit `LayerPlanIR` exactly once.

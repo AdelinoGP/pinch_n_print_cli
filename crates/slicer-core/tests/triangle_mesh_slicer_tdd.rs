@@ -496,3 +496,55 @@ fn test_slice_through_mesh_vertex_still_forms_closed_triangle() {
         ],
     );
 }
+
+/// Regression guard: adjacent triangles sharing an edge must produce
+/// bitwise-identical intersection points regardless of winding order.
+///
+/// Before the `intersect_edge` canonicalization, the shared edge between
+/// the two side triangles of a tall prism was interpolated in opposite
+/// directions, producing `Point2` values that differed by one integer
+/// unit. The downstream chainer then saw the shared edge as two
+/// disconnected points and fragmented the contour. This test walks two
+/// triangles sharing an edge oriented once each way and asserts the
+/// slicer still produces a single closed loop.
+#[test]
+fn test_shared_edge_with_opposite_windings_produces_closed_loop() {
+    // A tetrahedron rotated so that every edge connecting the apex to
+    // the base crosses the slicing plane. Two neighbor triangles
+    // share each apex-edge with opposite local windings — the
+    // interpolation order will differ if `intersect_edge` isn't
+    // canonicalized by vertex ID.
+    let mesh = IndexedTriangleSet {
+        vertices: vec![
+            Point3 { x: 0.0, y: 0.0, z: 1.0 },  // apex
+            Point3 { x: 1.0, y: 0.0, z: -1.0 }, // base 0
+            Point3 { x: 0.0, y: 1.0, z: -1.0 }, // base 1
+            Point3 { x: -1.0, y: 0.0, z: -1.0 },// base 2
+            Point3 { x: 0.0, y: -1.0, z: -1.0 },// base 3
+        ],
+        indices: vec![
+            // Side triangles — each one shares an edge with its neighbor
+            // but local winding alternates.
+            0, 1, 2,
+            0, 2, 3,
+            0, 3, 4,
+            0, 4, 1,
+            // Base (irrelevant for this slice).
+            1, 3, 2,
+            1, 4, 3,
+        ],
+    };
+    let result = slice_mesh_ex(&mesh, &[0.0]);
+    assert_eq!(result.len(), 1);
+    assert!(
+        !result[0].is_empty(),
+        "shared-edge rounding bug regressed — got zero polygons"
+    );
+    // Apex at z=1, base at z=-1, slicing at z=0 ⇒ square at half-way.
+    let contour = &result[0][0].contour.points;
+    assert_eq!(
+        contour.len(),
+        4,
+        "expected a 4-sided contour for a square slice, got {contour:?}"
+    );
+}

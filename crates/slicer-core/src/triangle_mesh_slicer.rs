@@ -226,9 +226,18 @@ fn intersect_edge(
         }),
         (VertexPlaneRelation::Above, VertexPlaneRelation::Below)
         | (VertexPlaneRelation::Below, VertexPlaneRelation::Above) => {
-            let t = (z_plane - v1.z) / (v2.z - v1.z);
-            let x = v1.x + t * (v2.x - v1.x);
-            let y = v1.y + t * (v2.y - v1.y);
+            // Canonicalize interpolation by vertex ID. Two triangles sharing
+            // an edge traverse it in opposite winding orders, which makes the
+            // naive `v1 + t*(v2-v1)` formula produce slightly different
+            // results after f32 rounding on each triangle. That desyncs the
+            // downstream chain walker (points on the same physical edge no
+            // longer compare equal across adjacent triangles). Always
+            // interpolate from the lower-id endpoint to the higher-id
+            // endpoint so both neighbors produce bitwise-identical points.
+            let (a, b) = if id1 < id2 { (v1, v2) } else { (v2, v1) };
+            let t = (z_plane - a.z) / (b.z - a.z);
+            let x = a.x + t * (b.x - a.x);
+            let y = a.y + t * (b.y - a.y);
 
             Some(IntersectionPoint {
                 point: Point2::from_mm(x, y),
@@ -257,15 +266,33 @@ fn chain_lines_to_expolygons(lines: Vec<IntersectionLine>) -> Vec<ExPolygon> {
     polygons_to_expolygons(&polygons)
 }
 
-/// Chain lines into closed polygons based on triangle connectivity.
+/// Chain intersection lines into closed polygons using undirected
+/// point connectivity.
+///
+/// Each physical intersection point lies on a unique mesh edge (or at a
+/// mesh vertex on the slicing plane). For a 2-manifold mesh, a clean
+/// slice produces a closed loop per island, where each point is shared
+/// by exactly two lines. The per-line `a`/`b` ordering depends on
+/// triangle winding and edge-iteration order, and is not consistent
+/// across adjacent triangles — a directed `a → b` walk fragments chains
+/// and leaves shared edges orphaned. Treating the connection as
+/// undirected recovers the full loop regardless of the emitted
+/// orientation on each side of each shared edge.
+///
+/// The canonical edge-interpolation in `intersect_edge` gives bitwise-
+/// identical endpoint coordinates on both triangles of a shared edge,
+/// so point equality is reliable here.
 fn chain_lines(lines: Vec<IntersectionLine>) -> Vec<Polygon> {
-    let mut by_edge_a: HashMap<u64, Vec<usize>> = HashMap::new();
-    let mut by_vertex_a: HashMap<i32, Vec<usize>> = HashMap::new();
+    if lines.is_empty() {
+        return Vec::new();
+    }
+
+    // Undirected endpoint index: each point maps to the list of line
+    // indices touching it at either end.
+    let mut by_point: HashMap<Point2, Vec<usize>> = HashMap::new();
     for (idx, line) in lines.iter().enumerate() {
-        match line.a_topology {
-            EndpointTopology::Edge(id) => by_edge_a.entry(id).or_default().push(idx),
-            EndpointTopology::Vertex(id) => by_vertex_a.entry(id).or_default().push(idx),
-        }
+        by_point.entry(line.a).or_default().push(idx);
+        by_point.entry(line.b).or_default().push(idx);
     }
 
     let mut used = vec![false; lines.len()];
@@ -277,31 +304,37 @@ fn chain_lines(lines: Vec<IntersectionLine>) -> Vec<Polygon> {
         }
 
         used[start_idx] = true;
-        let mut loop_points = vec![lines[start_idx].a];
-        let mut last_idx = start_idx;
-
-        loop {
-            let next_idx = match lines[last_idx].b_topology {
-                EndpointTopology::Edge(id) => find_unused_line(by_edge_a.get(&id), &used),
-                EndpointTopology::Vertex(id) => find_unused_line(by_vertex_a.get(&id), &used),
+        let start_line = &lines[start_idx];
+        let mut loop_points: Vec<Point2> = vec![start_line.a, start_line.b];
+        let mut current_point = start_line.b;
+        let loop_closed = loop {
+            let Some(&next_idx) = by_point
+                .get(&current_point)
+                .and_then(|candidates| candidates.iter().find(|&&i| !used[i]))
+            else {
+                break false;
             };
-
-            let Some(next_idx) = next_idx else {
-                if lines[start_idx].a_topology == lines[last_idx].b_topology
-                    && loop_points.len() >= 3
-                {
-                    debug_assert_eq!(lines[start_idx].a, lines[last_idx].b);
-                    polygons.push(Polygon {
-                        points: simplify_polygon_points(loop_points),
-                    });
-                }
-                break;
-            };
-
-            debug_assert_eq!(lines[last_idx].b, lines[next_idx].a);
-            loop_points.push(lines[next_idx].a);
             used[next_idx] = true;
-            last_idx = next_idx;
+            let next_line = &lines[next_idx];
+            // Step to the endpoint of `next_line` that is NOT the point
+            // we arrived at; that's the walker's new frontier.
+            let next_point = if next_line.a == current_point {
+                next_line.b
+            } else {
+                next_line.a
+            };
+            if next_point == start_line.a {
+                // Closed the loop; don't re-push the start point.
+                break true;
+            }
+            loop_points.push(next_point);
+            current_point = next_point;
+        };
+
+        if loop_closed && loop_points.len() >= 3 {
+            polygons.push(Polygon {
+                points: simplify_polygon_points(loop_points),
+            });
         }
     }
 

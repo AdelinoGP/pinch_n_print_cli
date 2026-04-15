@@ -334,7 +334,7 @@ fn plan_two_layers_two_regions() -> LayerPlanIR {
 fn amp_cfg(amp: f64) -> ConfigView {
     let mut fields = HashMap::new();
     fields.insert("amplitude".to_string(), slicer_ir::ConfigValue::Float(amp));
-    ConfigView { fields }
+    ConfigView::from_map(fields)
 }
 
 fn user_stage(stage: &str, modules: &[(&str, ConfigView)]) -> CompiledStage {
@@ -348,7 +348,7 @@ fn user_stage(stage: &str, modules: &[(&str, ConfigView)]) -> CompiledStage {
 }
 
 fn layer_planning_stage_with_module(module_id: &str) -> CompiledStage {
-    user_stage("PrePass::LayerPlanning", &[(module_id, ConfigView { fields: HashMap::new() })])
+    user_stage("PrePass::LayerPlanning", &[(module_id, ConfigView::from_map(HashMap::new()))])
 }
 
 fn compiled_module(stage: &str, module_id: &str, config: ConfigView) -> CompiledModule {

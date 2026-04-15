@@ -26,7 +26,7 @@ use slicer_host::{
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExPolygon, GCodeIR, GlobalLayer, LayerCollectionIR,
     LayerPaintMap, MeshIR, PaintRegionIR, PaintSemantic, PaintValue, Point2, Point3, Polygon,
-    PrintMetadata, SemVer, SemanticRegion, SliceIR, SlicedRegion, StageId,
+    PrintMetadata, SemVer, SemanticRegion, SliceIR, SlicedRegion, StageId, SurfaceClassificationIR,
 };
 
 // ── WAT Fixtures (for non-layer stages on the legacy path) ──────────────
@@ -203,7 +203,7 @@ fn make_compiled_module_with(
     stage: &str,
     component: Arc<slicer_host::WasmComponent>,
 ) -> CompiledModule {
-    make_compiled_module_with_config(id, stage, component, ConfigView { fields: HashMap::new() })
+    make_compiled_module_with_config(id, stage, component, ConfigView::from_map(HashMap::new()))
 }
 
 fn make_compiled_module_with_config(
@@ -238,7 +238,7 @@ fn make_compiled_module_no_wasm(id: &str, stage: &str) -> CompiledModule {
         instance_pool: pool,
         ir_read_mask: IrAccessMask { paths: Vec::new() },
         ir_write_mask: IrAccessMask { paths: Vec::new() },
-        config_view: Arc::new(ConfigView { fields: HashMap::new() }),
+        config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         wasm_component: None,
     }
 }
@@ -462,7 +462,11 @@ fn typed_instantiation_failure_produces_structured_error() {
 }
 
 #[test]
-fn missing_component_produces_structured_error() {
+fn missing_component_gracefully_skipped() {
+    // MissingComponent (placeholder .wasm, `wasm_component = None`) must NOT
+    // be a fatal error — the pipeline should skip the module silently so that
+    // placeholder modules do not block the run.  The load path emits a
+    // structured diagnostic; dispatch-time skips gracefully.
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let module = make_compiled_module_no_wasm("com.test.nowasm", "Layer::Infill");
@@ -486,12 +490,17 @@ fn missing_component_produces_structured_error() {
         &mut arena,
     );
 
-    assert!(result.is_err(), "should fail when no WASM component is available");
-    let msg = format!("{}", result.unwrap_err());
-    assert!(msg.contains("com.test.nowasm"), "error should name the module: {msg}");
+    // Graceful skip: the module is missing its compiled component; the
+    // dispatcher returns Ok and leaves the arena untouched.
     assert!(
-        msg.contains("no compiled WASM component") || msg.contains("MissingComponent"),
-        "error should indicate missing component: {msg}"
+        result.is_ok(),
+        "missing component should be gracefully skipped, not fatal: {:?}",
+        result.err()
+    );
+    // No output committed — the module was skipped entirely.
+    assert!(
+        arena.take_infill().is_none(),
+        "arena must be empty after skipping a module with no compiled component"
     );
 }
 
@@ -1313,9 +1322,9 @@ fn real_config_visible_through_production_layer_dispatch() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
-    let mut fields = HashMap::new();
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
     fields.insert("infill-spacing".into(), ConfigValue::Float(5.0));
-    let config = ConfigView { fields };
+    let config = ConfigView::from_map(fields);
 
     let module = make_compiled_module_with_config(
         "com.test.infill", "Layer::Infill", component, config,
@@ -1363,9 +1372,7 @@ fn different_configs_produce_different_output() {
     };
 
     // Config A: spacing=3.0 → x=30.0
-    let config_a = ConfigView {
-        fields: [("infill-spacing".into(), ConfigValue::Float(3.0))].into(),
-    };
+    let config_a = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(3.0))].into(),);
     let mod_a = make_compiled_module_with_config(
         "com.test.infill-a", "Layer::Infill", Arc::clone(&component), config_a,
     );
@@ -1381,9 +1388,7 @@ fn different_configs_produce_different_output() {
     .expect("dispatch A should succeed");
 
     // Config B: spacing=7.0 → x=70.0
-    let config_b = ConfigView {
-        fields: [("infill-spacing".into(), ConfigValue::Float(7.0))].into(),
-    };
+    let config_b = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(7.0))].into(),);
     let mod_b = make_compiled_module_with_config(
         "com.test.infill-b", "Layer::Infill", Arc::clone(&component), config_b,
     );
@@ -1419,9 +1424,7 @@ fn repeated_identical_config_produces_deterministic_output() {
     };
 
     let mk_module = || {
-        let config = ConfigView {
-            fields: [("infill-spacing".into(), ConfigValue::Float(4.0))].into(),
-        };
+        let config = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(4.0))].into(),);
         make_compiled_module_with_config(
             "com.test.infill", "Layer::Infill", Arc::clone(&component), config,
         )
@@ -1462,9 +1465,7 @@ fn config_isolation_across_sequential_calls() {
     };
 
     // First call: spacing=6.0
-    let config1 = ConfigView {
-        fields: [("infill-spacing".into(), ConfigValue::Float(6.0))].into(),
-    };
+    let config1 = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(6.0))].into(),);
     let mod1 = make_compiled_module_with_config(
         "com.test.infill", "Layer::Infill", Arc::clone(&component), config1,
     );
@@ -1480,9 +1481,7 @@ fn config_isolation_across_sequential_calls() {
     .unwrap();
 
     // Second call: spacing=2.0 (must not see 6.0)
-    let config2 = ConfigView {
-        fields: [("infill-spacing".into(), ConfigValue::Float(2.0))].into(),
-    };
+    let config2 = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(2.0))].into(),);
     let mod2 = make_compiled_module_with_config(
         "com.test.infill2", "Layer::Infill", Arc::clone(&component), config2,
     );
@@ -2179,13 +2178,13 @@ fn infill_output_correct_when_slice_regions_present() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
-    let mut fields = HashMap::new();
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
     fields.insert("infill-spacing".into(), ConfigValue::Float(3.0));
     let module = make_compiled_module_with_config(
         "com.test.infill",
         "Layer::Infill",
         Arc::clone(&component),
-        ConfigView { fields },
+        ConfigView::from_map(fields),
     );
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
@@ -3402,4 +3401,2016 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
         }
     }
     assert!(hop_lifts >= 1, "default emitter must lift to layer.z + hop_height for committed z_hops");
+}
+
+// ── R. Layer-plan harvest tests ────────────────────────────────────────────
+//
+// These tests prove the prepass dispatch harvest gap is closed:
+// `dispatch_prepass_call` returns `HostExecutionContext` (not ()),
+// `harvest_layer_plan_ir` converts proposals to `LayerPlanIR`, and
+// `PrepassStageRunner::run_stage` returns `PrepassStageOutput::LayerPlan`.
+//
+// The prepass-guest component is used: its `run_layer_planning` returns
+// Ok(()) with ZERO proposals, so the harvested `LayerPlanIR` has an empty
+// `global_layers` list.  That is the expected intermediate state while
+// TASK-107 is not yet wired — an empty plan is structurally valid, and
+// the dispatcher must return `LayerPlan(empty_ir)` NOT `None`.
+
+const LAYER_PLANNER_DEFAULT_PATH: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../modules/core-modules/layer-planner-default/layer-planner-default.wasm");
+
+/// Load the real `layer-planner-default.wasm` component using the same engine
+/// that the dispatcher will use.  Returns `None` and skips via `#[test]`
+/// if the file is missing (optional build artifact).
+fn load_layer_planner_default(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmComponent>> {
+    let path = std::path::Path::new(LAYER_PLANNER_DEFAULT_PATH);
+    if !path.exists() {
+        return None;
+    }
+    let bytes = std::fs::read(path).expect("read layer-planner-default.wasm");
+    match engine.compile_component(&bytes) {
+        Ok(c) => Some(Arc::new(c)),
+        Err(_) => None,
+    }
+}
+
+#[test]
+fn layer_planning_dispatch_returns_layer_plan_variant() {
+    // The prepass-guest returns Ok(()) with no proposals; the dispatcher must
+    // still return `PrepassStageOutput::LayerPlan(ir)` (not None) because
+    // the stage ID is `PrePass::LayerPlanning`.  An empty LayerPlanIR is the
+    // correct intermediate state.
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = load_prepass_guest(&engine);
+    let module = make_compiled_module_with(
+        "com.test.layer-plan-harvest",
+        "PrePass::LayerPlanning",
+        component,
+    );
+
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    let result = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::LayerPlanning".to_string(),
+        &module,
+        &blackboard,
+    );
+
+    assert!(
+        result.is_ok(),
+        "PrePass::LayerPlanning dispatch must succeed: {:?}",
+        result.err()
+    );
+
+    // Must return LayerPlan(...) variant, not None.
+    match result.unwrap() {
+        PrepassStageOutput::LayerPlan(ir) => {
+            // The prepass-guest returns no proposals, so the plan has zero
+            // global layers.  This is valid until a real planning module
+            // with object data is wired.
+            assert_eq!(
+                ir.schema_version,
+                SemVer { major: 1, minor: 0, patch: 0 },
+                "harvested LayerPlanIR must carry schema_version 1.0.0"
+            );
+            // Zero proposals → zero global layers (not a failure).
+            // Object participation map must be empty too.
+            assert!(
+                ir.object_participation.is_empty(),
+                "empty proposal list must produce empty object_participation"
+            );
+        }
+        other => {
+            panic!(
+                "expected PrepassStageOutput::LayerPlan, got {:?} — \
+                 dispatch harvest gap not closed",
+                std::mem::discriminant(&other)
+            );
+        }
+    }
+}
+
+#[test]
+fn layer_plan_committed_to_blackboard_after_execute_prepass() {
+    // Full prepass path: `execute_prepass` with a real WASM module for
+    // `PrePass::LayerPlanning` must commit `LayerPlanIR` into the blackboard
+    // so that downstream stages (`PaintSegmentation`, `RegionMapping`) can
+    // read it via `blackboard.layer_plan()`.
+    use slicer_host::{execute_prepass, PrepassStageOutput};
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = load_prepass_guest(&engine);
+    let module = make_compiled_module_with(
+        "com.test.lp-commit",
+        "PrePass::LayerPlanning",
+        Arc::clone(&component),
+    );
+
+    let plan = ExecutionPlan {
+        prepass_stages: vec![CompiledStage {
+            stage_id: "PrePass::LayerPlanning".into(),
+            modules: vec![module],
+        }],
+        per_layer_stages: Vec::new(),
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
+        global_layers: Arc::new(Vec::new()),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    let mut blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    // PrePass::LayerPlanning requires SurfaceClassification to be present
+    // (see prepass::required_slots). Pre-seed a stub so execute_prepass can
+    // proceed to the LayerPlanning stage without hitting a missing-prerequisite
+    // error.
+    blackboard
+        .commit_surface_classification(Arc::new(SurfaceClassificationIR {
+            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            per_object: HashMap::new(),
+        }))
+        .expect("pre-seed SurfaceClassificationIR");
+
+    let result = execute_prepass(&plan, &mut blackboard, &dispatcher);
+
+    assert!(
+        result.is_ok(),
+        "execute_prepass with LayerPlanning module must succeed: {:?}",
+        result.err()
+    );
+
+    // LayerPlanIR must be committed — not None.
+    assert!(
+        blackboard.layer_plan().is_some(),
+        "blackboard.layer_plan() must be Some after execute_prepass with LayerPlanning; \
+         prepass dispatch harvest gap is NOT closed if this fails"
+    );
+
+    let ir = blackboard.layer_plan().unwrap();
+    assert_eq!(
+        ir.schema_version,
+        SemVer { major: 1, minor: 0, patch: 0 },
+        "committed LayerPlanIR must carry schema_version 1.0.0"
+    );
+}
+
+#[test]
+fn layer_plan_harvest_deterministic_across_repeated_calls() {
+    // Two independent dispatch calls over the same prepass-guest module must
+    // produce byte-identical `LayerPlanIR` structures.  This proves the
+    // harvest path has no non-deterministic state (timestamps, pointers, etc.).
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = load_prepass_guest(&engine);
+
+    let make_module = || {
+        make_compiled_module_with(
+            "com.test.lp-det",
+            "PrePass::LayerPlanning",
+            Arc::clone(&component),
+        )
+    };
+
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+
+    let run_once = || {
+        let module = make_module();
+        match PrepassStageRunner::run_stage(
+            &dispatcher,
+            &"PrePass::LayerPlanning".to_string(),
+            &module,
+            &blackboard,
+        ) {
+            Ok(PrepassStageOutput::LayerPlan(ir)) => ir,
+            Ok(other) => panic!(
+                "expected LayerPlan variant, got discriminant {:?}",
+                std::mem::discriminant(&other)
+            ),
+            Err(e) => panic!("dispatch failed: {e}"),
+        }
+    };
+
+    let ir_a = run_once();
+    let ir_b = run_once();
+
+    assert_eq!(
+        ir_a.schema_version, ir_b.schema_version,
+        "schema_version must be identical across runs"
+    );
+    assert_eq!(
+        ir_a.global_layers.len(),
+        ir_b.global_layers.len(),
+        "global_layers length must be identical across runs"
+    );
+    assert_eq!(
+        ir_a.object_participation.len(),
+        ir_b.object_participation.len(),
+        "object_participation length must be identical across runs"
+    );
+    // Full structural equality of the IR (LayerPlanIR derives PartialEq).
+    assert_eq!(
+        *ir_a, *ir_b,
+        "two identical dispatch calls must produce byte-identical LayerPlanIR"
+    );
+}
+
+#[test]
+fn layer_planning_module_error_propagates_as_fatal_prepass_error() {
+    // When a `PrePass::LayerPlanning` module returns a module-level error the
+    // dispatcher must NOT silently swallow it — it must surface as
+    // `PrepassExecutionError::FatalModule`.
+    //
+    // The real `layer-planner-default.wasm` is used with a config view that
+    // contains `layer_height = -1.0`.  The module validates this on entry and
+    // returns `ModuleError { code: 2, message: "layer_height must be positive",
+    // fatal: true }`.  This guards against accidental silent promotion of
+    // module errors to skips.
+    //
+    // If the .wasm artifact is absent (build artifact, not committed), the
+    // test is skipped with a note.
+    use slicer_host::PrepassExecutionError;
+
+    let engine = Arc::new(WasmEngine::new());
+    let component = match load_layer_planner_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!(
+                "note: layer-planner-default.wasm not found; \
+                 skipping layer_planning_module_error_propagates_as_fatal_prepass_error"
+            );
+            return;
+        }
+    };
+
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    // Inject layer_height=-1.0 so the module returns a fatal ModuleError
+    // (code 2: "layer_height must be positive") regardless of the object list.
+    let bad_config = ConfigView::from_map({
+        let mut m = HashMap::new();
+        m.insert("layer_height".to_string(), ConfigValue::Float(-1.0));
+        m
+    });
+    let module = make_compiled_module_with_config(
+        "com.core.layer-planner-default",
+        "PrePass::LayerPlanning",
+        component,
+        bad_config,
+    );
+
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    let result = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::LayerPlanning".to_string(),
+        &module,
+        &blackboard,
+    );
+
+    // The module must propagate as Err, not be silently swallowed as Ok(None).
+    assert!(
+        result.is_err(),
+        "module error from layer-planner-default must propagate as Err, not be swallowed"
+    );
+
+    match result.unwrap_err() {
+        PrepassExecutionError::FatalModule { stage_id, module_id, message } => {
+            assert_eq!(stage_id, "PrePass::LayerPlanning");
+            assert!(
+                module_id.contains("layer-planner-default"),
+                "error must name the failing module: {module_id}"
+            );
+            assert!(
+                message.contains("layer_height") || message.contains("positive") || message.contains("module error"),
+                "error message must describe the root cause: {message}"
+            );
+        }
+        other => {
+            panic!(
+                "expected FatalModule error variant, got: {other}"
+            );
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Step B regression tests: PrePass::MeshSegmentation routing
+// ---------------------------------------------------------------------------
+
+const MESH_SEG_DEFAULT_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../modules/core-modules/mesh-segmentation/mesh-segmentation.wasm"
+);
+
+fn load_mesh_segmentation_default(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmComponent>> {
+    let path = std::path::Path::new(MESH_SEG_DEFAULT_PATH);
+    if !path.exists() {
+        return None;
+    }
+    let bytes = std::fs::read(path).expect("read mesh-segmentation.wasm");
+    match engine.compile_component(&bytes) {
+        Ok(c) => Some(Arc::new(c)),
+        Err(_) => None,
+    }
+}
+
+/// Dispatch the real `mesh-segmentation.wasm` with an empty config: the
+/// guest must run, emit zero marks (unpainted mesh), and the host must
+/// harvest a `MeshSegmentationIR` variant with an empty `marks` vec.
+#[test]
+fn mesh_segmentation_dispatch_returns_empty_ir_for_unpainted_mesh() {
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_mesh_segmentation_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: mesh-segmentation.wasm missing — rebuild core modules");
+            return;
+        }
+    };
+    let module = make_compiled_module_with(
+        "com.test.mesh-seg-dispatch",
+        "PrePass::MeshSegmentation",
+        component,
+    );
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+
+    let result = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::MeshSegmentation".to_string(),
+        &module,
+        &blackboard,
+    )
+    .expect("mesh-segmentation dispatch must succeed");
+
+    match result {
+        PrepassStageOutput::MeshSegmentation(ir) => {
+            assert_eq!(ir.schema_version, SemVer { major: 1, minor: 0, patch: 0 });
+            assert!(
+                ir.marks.is_empty(),
+                "unpainted mesh must produce zero marks, got {}",
+                ir.marks.len()
+            );
+        }
+        other => panic!(
+            "expected MeshSegmentation variant, got {:?}",
+            std::mem::discriminant(&other)
+        ),
+    }
+}
+
+/// Dispatch the real `mesh-segmentation.wasm` with `mesh_seg_mark:*`
+/// config entries: the guest must parse the keys, call `mark-triangle-
+/// paint` on the WIT output resource, and the host must collect the
+/// marks into `MeshSegmentationIR.marks` with deterministic ordering.
+#[test]
+fn mesh_segmentation_collects_config_driven_marks() {
+    use slicer_host::PrepassStageOutput;
+    use slicer_ir::ConfigValue;
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_mesh_segmentation_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: mesh-segmentation.wasm missing — rebuild core modules");
+            return;
+        }
+    };
+
+    // Two objects, three marks spanning semantics and facet indices.
+    // We seed via config; the canonical guest parses these and emits
+    // mark-triangle-paint calls in sorted order.
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+    fields.insert(
+        "mesh_seg_mark:benchy:5:material".into(),
+        ConfigValue::String("tool-2".into()),
+    );
+    fields.insert(
+        "mesh_seg_mark:benchy:2:fuzzy_skin".into(),
+        ConfigValue::String("true".into()),
+    );
+    fields.insert(
+        "mesh_seg_mark:other-obj:0:material".into(),
+        ConfigValue::String("tool-0".into()),
+    );
+
+    let module = make_compiled_module_with_config(
+        "com.test.mesh-seg-marks",
+        "PrePass::MeshSegmentation",
+        component,
+        ConfigView::from_declared(
+            &fields,
+            fields.keys().map(|s| s.as_str()),
+        ),
+    );
+
+    // Pre-seed mesh with two object ids matching the config keys so the
+    // guest's `object_index` sort key finds them.
+    let mesh = Arc::new(slicer_ir::MeshIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        objects: vec![
+            make_object("benchy"),
+            make_object("other-obj"),
+        ],
+        build_volume: slicer_ir::BoundingBox3 {
+            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
+            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+        },
+    });
+    let blackboard = Blackboard::new(mesh, 0);
+
+    let result = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::MeshSegmentation".to_string(),
+        &module,
+        &blackboard,
+    )
+    .expect("mesh-segmentation dispatch must succeed");
+
+    let ir = match result {
+        PrepassStageOutput::MeshSegmentation(ir) => ir,
+        other => panic!(
+            "expected MeshSegmentation variant, got {:?}",
+            std::mem::discriminant(&other)
+        ),
+    };
+
+    // Deterministic ordering: (object_index_in_objects, facet asc, semantic asc).
+    // benchy comes first (index 0): fuzzy_skin@facet 2, material@facet 5.
+    // other-obj (index 1): material@facet 0.
+    assert_eq!(ir.marks.len(), 3, "expected 3 marks, got {}", ir.marks.len());
+    assert_eq!(ir.marks[0].object_id, "benchy");
+    assert_eq!(ir.marks[0].facet_index, 2);
+    assert_eq!(ir.marks[0].semantic, "fuzzy_skin");
+    assert_eq!(ir.marks[0].value, "true");
+    assert_eq!(ir.marks[1].object_id, "benchy");
+    assert_eq!(ir.marks[1].facet_index, 5);
+    assert_eq!(ir.marks[1].semantic, "material");
+    assert_eq!(ir.marks[1].value, "tool-2");
+    assert_eq!(ir.marks[2].object_id, "other-obj");
+    assert_eq!(ir.marks[2].facet_index, 0);
+    assert_eq!(ir.marks[2].semantic, "material");
+    assert_eq!(ir.marks[2].value, "tool-0");
+}
+
+/// Two back-to-back dispatches with the same inputs must produce
+/// byte-identical `MeshSegmentationIR` — determinism holds even when
+/// the guest pushes through the WIT resource.
+#[test]
+fn mesh_segmentation_dispatch_is_deterministic() {
+    use slicer_host::PrepassStageOutput;
+    use slicer_ir::ConfigValue;
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_mesh_segmentation_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: mesh-segmentation.wasm missing — rebuild core modules");
+            return;
+        }
+    };
+
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+    fields.insert(
+        "mesh_seg_mark:obj-a:7:material".into(),
+        ConfigValue::String("tool-1".into()),
+    );
+    fields.insert(
+        "mesh_seg_mark:obj-a:3:material".into(),
+        ConfigValue::String("tool-3".into()),
+    );
+    let cfg = ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str()));
+    let mesh = Arc::new(slicer_ir::MeshIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        objects: vec![make_object("obj-a")],
+        build_volume: slicer_ir::BoundingBox3 {
+            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
+            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+        },
+    });
+    let blackboard = Blackboard::new(mesh, 0);
+
+    let run = || -> Vec<slicer_ir::FacetPaintMark> {
+        let module = make_compiled_module_with_config(
+            "com.test.mesh-seg-det",
+            "PrePass::MeshSegmentation",
+            Arc::clone(&component),
+            cfg.clone(),
+        );
+        let result = PrepassStageRunner::run_stage(
+            &dispatcher,
+            &"PrePass::MeshSegmentation".to_string(),
+            &module,
+            &blackboard,
+        )
+        .expect("dispatch succeeds");
+        match result {
+            PrepassStageOutput::MeshSegmentation(ir) => ir.marks.clone(),
+            _ => panic!("wrong variant"),
+        }
+    };
+    let a = run();
+    let b = run();
+    assert_eq!(a, b, "two identical dispatches must produce identical marks");
+}
+
+/// The `HostMeshSegmentationOutput::mark_triangle_paint` validation
+/// rejects an empty `obj` or `semantic` with a precise structured
+/// diagnostic. This is the invariant every routed guest relies on.
+#[test]
+fn mesh_segmentation_output_rejects_invalid_marks() {
+    use slicer_host::wit_host::HostExecutionContext;
+    use slicer_host::wit_host::prepass::{self as pm, HostMeshSegmentationOutput};
+    use wasmtime::component::Resource;
+
+    let mut ctx = HostExecutionContext::new("com.test.mesh-seg-validate".into());
+    let handle = ctx.push_mesh_segmentation_output().expect("push resource");
+
+    // obj empty
+    let r = HostMeshSegmentationOutput::mark_triangle_paint(
+        &mut ctx,
+        Resource::<pm::MeshSegmentationOutput>::new_own(handle.rep()),
+        String::new(),
+        0,
+        "material".into(),
+        "0".into(),
+    )
+    .expect("wasmtime call");
+    assert!(
+        matches!(r, Err(ref msg) if msg.contains("obj")),
+        "empty obj must be rejected with diagnostic, got {r:?}"
+    );
+
+    // semantic empty
+    let r = HostMeshSegmentationOutput::mark_triangle_paint(
+        &mut ctx,
+        Resource::<pm::MeshSegmentationOutput>::new_own(handle.rep()),
+        "benchy".into(),
+        0,
+        String::new(),
+        "0".into(),
+    )
+    .expect("wasmtime call");
+    assert!(
+        matches!(r, Err(ref msg) if msg.contains("semantic")),
+        "empty semantic must be rejected with diagnostic, got {r:?}"
+    );
+
+    // valid mark collects into ctx
+    let r = HostMeshSegmentationOutput::mark_triangle_paint(
+        &mut ctx,
+        Resource::<pm::MeshSegmentationOutput>::new_own(handle.rep()),
+        "benchy".into(),
+        42,
+        "material".into(),
+        "tool-1".into(),
+    )
+    .expect("wasmtime call");
+    assert!(r.is_ok(), "valid mark must succeed: {r:?}");
+    assert_eq!(ctx.mesh_segmentation_marks.len(), 1);
+    assert_eq!(ctx.mesh_segmentation_marks[0].0, "benchy");
+    assert_eq!(ctx.mesh_segmentation_marks[0].1, 42);
+    assert_eq!(ctx.mesh_segmentation_marks[0].2, "material");
+    assert_eq!(ctx.mesh_segmentation_marks[0].3, "tool-1");
+}
+
+/// Mesh segmentation IR, once committed, survives through
+/// `execute_prepass` onto the blackboard and is readable via
+/// `Blackboard::mesh_segmentation()`.
+#[test]
+fn mesh_segmentation_commits_through_execute_prepass() {
+    use slicer_host::execute_prepass;
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_mesh_segmentation_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: mesh-segmentation.wasm missing");
+            return;
+        }
+    };
+    let module = make_compiled_module_with(
+        "com.test.mesh-seg-commit",
+        "PrePass::MeshSegmentation",
+        component,
+    );
+    let plan = ExecutionPlan {
+        prepass_stages: vec![CompiledStage {
+            stage_id: "PrePass::MeshSegmentation".into(),
+            modules: vec![module],
+        }],
+        per_layer_stages: Vec::new(),
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
+        global_layers: Arc::new(Vec::new()),
+        region_plans: Arc::new(HashMap::new()),
+    };
+    let mut blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    execute_prepass(&plan, &mut blackboard, &dispatcher).expect("prepass succeeds");
+
+    let ir = blackboard
+        .mesh_segmentation()
+        .expect("mesh-segmentation IR must be committed after execute_prepass");
+    assert_eq!(
+        ir.schema_version,
+        SemVer { major: 1, minor: 0, patch: 0 }
+    );
+    assert!(ir.marks.is_empty(), "empty mesh → zero marks");
+}
+
+// ---------------------------------------------------------------------------
+// Step C regression tests: PrePass::PaintSegmentation routing
+// ---------------------------------------------------------------------------
+
+const PAINT_SEG_DEFAULT_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../modules/core-modules/paint-segmentation/paint-segmentation.wasm"
+);
+
+fn load_paint_segmentation_default(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmComponent>> {
+    let path = std::path::Path::new(PAINT_SEG_DEFAULT_PATH);
+    if !path.exists() {
+        return None;
+    }
+    let bytes = std::fs::read(path).expect("read paint-segmentation.wasm");
+    match engine.compile_component(&bytes) {
+        Ok(c) => Some(Arc::new(c)),
+        Err(_) => None,
+    }
+}
+
+#[test]
+fn paint_segmentation_dispatch_returns_empty_paint_regions_for_unpainted_mesh() {
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_paint_segmentation_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: paint-segmentation.wasm missing — rebuild core modules");
+            return;
+        }
+    };
+    let module = make_compiled_module_with(
+        "com.test.paint-seg-dispatch",
+        "PrePass::PaintSegmentation",
+        component,
+    );
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+
+    let result = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::PaintSegmentation".to_string(),
+        &module,
+        &blackboard,
+    )
+    .expect("paint-segmentation dispatch must succeed");
+
+    match result {
+        PrepassStageOutput::PaintRegions(ir) => {
+            assert_eq!(ir.schema_version, SemVer { major: 1, minor: 0, patch: 0 });
+            assert!(
+                ir.per_layer.is_empty(),
+                "unpainted mesh must produce zero per-layer entries"
+            );
+        }
+        other => panic!(
+            "expected PaintRegions variant, got {:?}",
+            std::mem::discriminant(&other)
+        ),
+    }
+}
+
+/// Dispatch the real `paint-segmentation.wasm` with `paint_region:*`
+/// config entries: the guest parses them, calls `push-paint-region`
+/// on the WIT resource, and the host reshapes into `PaintRegionIR`
+/// with per-layer keying, deterministic `paint_order`, and the
+/// documented PaintSemantic/PaintValue parsing rules.
+#[test]
+fn paint_segmentation_collects_config_driven_regions() {
+    use slicer_host::PrepassStageOutput;
+    use slicer_ir::{ConfigValue, PaintSemantic, PaintValue};
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_paint_segmentation_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: paint-segmentation.wasm missing");
+            return;
+        }
+    };
+
+    // Two entries on layer 3 (material tool-2, fuzzy_skin true) +
+    // one entry on layer 5 (support_enforcer 1) — triangle polygons
+    // in scaled integer coordinates.
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+    fields.insert(
+        "paint_region:benchy:3:material:2".into(),
+        ConfigValue::String("0,0;100,0;50,100".into()),
+    );
+    fields.insert(
+        "paint_region:benchy:3:fuzzy_skin:true".into(),
+        ConfigValue::String("10,10;90,10;50,90".into()),
+    );
+    fields.insert(
+        "paint_region:benchy:5:support_enforcer:1".into(),
+        ConfigValue::String("0,0;50,0;25,50".into()),
+    );
+
+    let module = make_compiled_module_with_config(
+        "com.test.paint-seg-marks",
+        "PrePass::PaintSegmentation",
+        component,
+        ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str())),
+    );
+
+    let mesh = Arc::new(slicer_ir::MeshIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        objects: vec![make_object("benchy")],
+        build_volume: slicer_ir::BoundingBox3 {
+            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
+            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+        },
+    });
+    let blackboard = Blackboard::new(mesh, 0);
+
+    let result = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::PaintSegmentation".to_string(),
+        &module,
+        &blackboard,
+    )
+    .expect("paint-segmentation dispatch must succeed");
+
+    let ir = match result {
+        PrepassStageOutput::PaintRegions(ir) => ir,
+        other => panic!("wrong variant: {:?}", std::mem::discriminant(&other)),
+    };
+
+    // Layer 3 must hold the two semantics; layer 5 holds the third.
+    assert_eq!(ir.per_layer.len(), 2, "two distinct layers expected");
+    let l3 = ir
+        .per_layer
+        .get(&3)
+        .expect("layer 3 must be present");
+    assert_eq!(l3.global_layer_index, 3);
+    assert_eq!(
+        l3.semantic_regions.get(&PaintSemantic::Material).map(|v| v.len()),
+        Some(1),
+        "material region on layer 3 missing"
+    );
+    assert_eq!(
+        l3.semantic_regions
+            .get(&PaintSemantic::FuzzySkin)
+            .map(|v| v.len()),
+        Some(1),
+        "fuzzy_skin region on layer 3 missing"
+    );
+    // Value parsing: "2" → ToolIndex(2); "true" → Flag(true).
+    let mat = &l3.semantic_regions[&PaintSemantic::Material][0];
+    assert_eq!(mat.value, PaintValue::ToolIndex(2));
+    assert_eq!(mat.object_id, "benchy");
+    let fuzzy = &l3.semantic_regions[&PaintSemantic::FuzzySkin][0];
+    assert_eq!(fuzzy.value, PaintValue::Flag(true));
+
+    let l5 = ir.per_layer.get(&5).expect("layer 5 must be present");
+    assert_eq!(
+        l5.semantic_regions
+            .get(&PaintSemantic::SupportEnforcer)
+            .map(|v| v.len()),
+        Some(1)
+    );
+
+    // paint_order must be unique across all three regions (the flat
+    // insertion-index assigned by harvest_paint_segmentation_ir).
+    let mut orders: Vec<u64> = Vec::new();
+    for layer in ir.per_layer.values() {
+        for regions in layer.semantic_regions.values() {
+            for r in regions {
+                orders.push(r.paint_order);
+            }
+        }
+    }
+    orders.sort();
+    assert_eq!(orders, vec![0, 1, 2], "paint_order must be dense and unique");
+}
+
+#[test]
+fn paint_segmentation_dispatch_is_deterministic() {
+    use slicer_host::PrepassStageOutput;
+    use slicer_ir::ConfigValue;
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_paint_segmentation_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: paint-segmentation.wasm missing");
+            return;
+        }
+    };
+
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+    fields.insert(
+        "paint_region:obj:7:material:3".into(),
+        ConfigValue::String("0,0;10,0;5,10".into()),
+    );
+    fields.insert(
+        "paint_region:obj:7:material:1".into(),
+        ConfigValue::String("0,0;20,0;10,20".into()),
+    );
+    let cfg = ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str()));
+    let mesh = Arc::new(slicer_ir::MeshIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        objects: vec![make_object("obj")],
+        build_volume: slicer_ir::BoundingBox3 {
+            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
+            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+        },
+    });
+    let blackboard = Blackboard::new(mesh, 0);
+
+    let run = || {
+        let module = make_compiled_module_with_config(
+            "com.test.paint-seg-det",
+            "PrePass::PaintSegmentation",
+            Arc::clone(&component),
+            cfg.clone(),
+        );
+        let result = PrepassStageRunner::run_stage(
+            &dispatcher,
+            &"PrePass::PaintSegmentation".to_string(),
+            &module,
+            &blackboard,
+        )
+        .expect("dispatch succeeds");
+        match result {
+            PrepassStageOutput::PaintRegions(ir) => ir,
+            _ => panic!("wrong variant"),
+        }
+    };
+    let a = run();
+    let b = run();
+    assert_eq!(
+        format!("{a:?}"),
+        format!("{b:?}"),
+        "two identical dispatches must produce identical PaintRegionIR"
+    );
+}
+
+/// A malformed `paint_region:*` config key (e.g. non-numeric layer)
+/// must surface as a structured FatalModule diagnostic naming the
+/// offending key — precision matters: operators need to fix the key,
+/// not debug the guest.
+#[test]
+fn paint_segmentation_malformed_config_emits_structured_diagnostic() {
+    use slicer_host::{PrepassExecutionError, PrepassStageRunner};
+    use slicer_ir::ConfigValue;
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_paint_segmentation_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: paint-segmentation.wasm missing");
+            return;
+        }
+    };
+
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+    // Malformed: layer index is not a u32.
+    fields.insert(
+        "paint_region:benchy:notalayer:material:1".into(),
+        ConfigValue::String("0,0;1,0;0,1".into()),
+    );
+    let module = make_compiled_module_with_config(
+        "com.test.paint-seg-malformed",
+        "PrePass::PaintSegmentation",
+        component,
+        ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str())),
+    );
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+
+    let err = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::PaintSegmentation".to_string(),
+        &module,
+        &blackboard,
+    )
+    .expect_err("malformed config must produce a dispatch error");
+
+    match err {
+        PrepassExecutionError::FatalModule { stage_id, message, .. } => {
+            assert_eq!(stage_id, "PrePass::PaintSegmentation");
+            assert!(
+                message.contains("notalayer") || message.contains("layer_index"),
+                "diagnostic must name the offending layer_index token: {message}"
+            );
+        }
+        other => panic!("expected FatalModule, got: {other}"),
+    }
+}
+
+#[test]
+fn paint_segmentation_output_rejects_invalid_entries() {
+    use slicer_host::wit_host::HostExecutionContext;
+    use slicer_host::wit_host::prepass::{self as pm, HostPaintSegmentationOutput};
+    use slicer_host::wit_host::prepass::slicer::prepass_world::geometry as geo;
+    use wasmtime::component::Resource;
+
+    let mut ctx = HostExecutionContext::new("com.test.paint-seg-validate".into());
+    let handle = ctx.push_paint_segmentation_output().expect("push resource");
+
+    let valid_poly = vec![geo::ExPolygon {
+        contour: geo::Polygon {
+            points: vec![
+                geo::Point2 { x: 0, y: 0 },
+                geo::Point2 { x: 10, y: 0 },
+                geo::Point2 { x: 5, y: 10 },
+            ],
+        },
+        holes: vec![],
+    }];
+
+    // empty object_id
+    let r = HostPaintSegmentationOutput::push_paint_region(
+        &mut ctx,
+        Resource::<pm::PaintSegmentationOutput>::new_own(handle.rep()),
+        pm::PaintRegionEntry {
+            object_id: String::new(),
+            layer_index: 0,
+            semantic: "material".into(),
+            polygons: valid_poly.clone(),
+            value: "1".into(),
+        },
+    )
+    .expect("wasmtime call");
+    assert!(
+        matches!(r, Err(ref msg) if msg.contains("object-id")),
+        "empty object-id must be rejected: {r:?}"
+    );
+
+    // empty semantic
+    let r = HostPaintSegmentationOutput::push_paint_region(
+        &mut ctx,
+        Resource::<pm::PaintSegmentationOutput>::new_own(handle.rep()),
+        pm::PaintRegionEntry {
+            object_id: "obj".into(),
+            layer_index: 0,
+            semantic: String::new(),
+            polygons: valid_poly.clone(),
+            value: "1".into(),
+        },
+    )
+    .expect("wasmtime call");
+    assert!(
+        matches!(r, Err(ref msg) if msg.contains("semantic")),
+        "empty semantic must be rejected: {r:?}"
+    );
+
+    // empty polygons
+    let r = HostPaintSegmentationOutput::push_paint_region(
+        &mut ctx,
+        Resource::<pm::PaintSegmentationOutput>::new_own(handle.rep()),
+        pm::PaintRegionEntry {
+            object_id: "obj".into(),
+            layer_index: 0,
+            semantic: "material".into(),
+            polygons: vec![],
+            value: "1".into(),
+        },
+    )
+    .expect("wasmtime call");
+    assert!(
+        matches!(r, Err(ref msg) if msg.contains("polygons")),
+        "empty polygons must be rejected: {r:?}"
+    );
+
+    // valid entry collects into ctx
+    let r = HostPaintSegmentationOutput::push_paint_region(
+        &mut ctx,
+        Resource::<pm::PaintSegmentationOutput>::new_own(handle.rep()),
+        pm::PaintRegionEntry {
+            object_id: "obj".into(),
+            layer_index: 7,
+            semantic: "material".into(),
+            polygons: valid_poly,
+            value: "3".into(),
+        },
+    )
+    .expect("wasmtime call");
+    assert!(r.is_ok(), "valid entry must succeed: {r:?}");
+    assert_eq!(ctx.paint_region_entries.len(), 1);
+    assert_eq!(ctx.paint_region_entries[0].object_id, "obj");
+    assert_eq!(ctx.paint_region_entries[0].layer_index, 7);
+}
+
+#[test]
+fn paint_segmentation_commits_through_execute_prepass() {
+    use slicer_host::execute_prepass;
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_paint_segmentation_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: paint-segmentation.wasm missing");
+            return;
+        }
+    };
+    let module = make_compiled_module_with(
+        "com.test.paint-seg-commit",
+        "PrePass::PaintSegmentation",
+        component,
+    );
+    let plan = ExecutionPlan {
+        prepass_stages: vec![CompiledStage {
+            stage_id: "PrePass::PaintSegmentation".into(),
+            modules: vec![module],
+        }],
+        per_layer_stages: Vec::new(),
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
+        global_layers: Arc::new(Vec::new()),
+        region_plans: Arc::new(HashMap::new()),
+    };
+    let mut blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    // PrePass::PaintSegmentation requires SurfaceClassification and
+    // LayerPlan to be present (see prepass::required_slots). Pre-seed
+    // both so execute_prepass can proceed to the PaintSegmentation
+    // stage without hitting a missing-prerequisite error.
+    blackboard
+        .commit_surface_classification(Arc::new(slicer_ir::SurfaceClassificationIR {
+            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            per_object: HashMap::new(),
+        }))
+        .unwrap();
+    blackboard
+        .commit_layer_plan(Arc::new(slicer_ir::LayerPlanIR {
+            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            global_layers: Vec::new(),
+            object_participation: HashMap::new(),
+        }))
+        .unwrap();
+    execute_prepass(&plan, &mut blackboard, &dispatcher).expect("prepass succeeds");
+    let ir = blackboard
+        .paint_regions()
+        .expect("paint_regions must be committed after execute_prepass");
+    assert_eq!(ir.schema_version, SemVer { major: 1, minor: 0, patch: 0 });
+    assert!(ir.per_layer.is_empty(), "unpainted mesh → empty per_layer");
+}
+
+// ---------------------------------------------------------------------------
+// Step D regression tests: Layer::PathOptimization canonical module
+// ---------------------------------------------------------------------------
+
+const PATH_OPT_DEFAULT_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../modules/core-modules/path-optimization-default/path-optimization-default.wasm"
+);
+
+fn load_path_optimization_default(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmComponent>> {
+    let path = std::path::Path::new(PATH_OPT_DEFAULT_PATH);
+    if !path.exists() {
+        return None;
+    }
+    let bytes = std::fs::read(path).expect("read path-optimization-default.wasm");
+    match engine.compile_component(&bytes) {
+        Ok(c) => Some(Arc::new(c)),
+        Err(_) => None,
+    }
+}
+
+/// End-to-end guard: the canonical `Layer::PathOptimization` module
+/// runs on the real per-layer path against a real Benchy-equivalent
+/// set-up — the arena already carries a committed `PerimeterIR` (via
+/// the `Layer::Perimeters` stage) and a pre-staged `LayerCollectionIR`
+/// with `ordered_entities`. The guest's `push_comment` output
+/// survives through to `LayerCollectionIR.annotations`, which the
+/// default G-code emitter renders as a `; path-optimization layer X
+/// regions=Y entities=Z` line (see benchy_end_to_end_tdd.rs for the
+/// observed 239-marker count on the real Benchy run).
+#[test]
+fn path_optimization_dispatch_emits_per_layer_marker() {
+    use slicer_host::{Blackboard, LayerArena, LayerStageOutput};
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_path_optimization_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: path-optimization-default.wasm missing");
+            return;
+        }
+    };
+    let module = make_compiled_module_with(
+        "com.test.path-opt-dispatch",
+        "Layer::PathOptimization",
+        component,
+    );
+
+    // Pre-seed the arena with a perimeter commit so the guest sees a
+    // non-empty region list (region_count=1, entity_count=1 on the
+    // guest side). A PerimeterRegion with one wall loop.
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    let mut arena = LayerArena::new();
+    let wall = slicer_ir::WallLoop {
+        perimeter_index: 0,
+        loop_type: slicer_ir::LoopType::Outer,
+        path: slicer_ir::ExtrusionPath3D {
+            points: vec![
+                slicer_ir::Point3WithWidth { x: 0.0, y: 0.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
+                slicer_ir::Point3WithWidth { x: 1.0, y: 0.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
+                slicer_ir::Point3WithWidth { x: 0.0, y: 1.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
+            ],
+            role: slicer_ir::ExtrusionRole::OuterWall,
+            speed_factor: 1.0,
+        },
+        width_profile: slicer_ir::WidthProfile { widths: vec![0.4; 3] },
+        feature_flags: vec![
+            slicer_ir::WallFeatureFlags {
+                tool_index: None,
+                fuzzy_skin: false,
+                is_bridge: false,
+                is_thin_wall: false,
+                skip_ironing: false,
+                custom: HashMap::new(),
+            };
+            3
+        ],
+        boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
+    };
+    let perim = slicer_ir::PerimeterIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        global_layer_index: 7,
+        regions: vec![slicer_ir::PerimeterRegion {
+            object_id: "obj".into(),
+            region_id: 0,
+            walls: vec![wall],
+            seam_candidates: Vec::new(),
+            infill_areas: Vec::new(),
+            resolved_seam: None,
+        }],
+    };
+    arena.set_perimeter(perim).expect("seed perimeter");
+
+    let layer = slicer_ir::GlobalLayer {
+        index: 7,
+        z: 1.4,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    let result = LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::PathOptimization".to_string(),
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .expect("path-optimization dispatch must succeed");
+    assert_eq!(result, LayerStageOutput::Success);
+
+    // Dispatch already ran commit_layer_outputs internally; the comment
+    // is now in the arena as a deferred annotation. Verify it.
+    let annotations = arena.take_deferred_annotations();
+    assert_eq!(
+        annotations.len(),
+        1,
+        "exactly one path-optimization marker expected, got {}",
+        annotations.len()
+    );
+    match &annotations[0].kind {
+        slicer_ir::LayerAnnotationKind::Comment(text) => {
+            assert!(
+                text.contains("path-optimization layer 7"),
+                "expected 'path-optimization layer 7' in annotation text, got: {text}"
+            );
+            assert!(
+                text.contains("regions=1"),
+                "expected 'regions=1' in annotation text, got: {text}"
+            );
+            assert!(
+                text.contains("entities=1"),
+                "expected 'entities=1' (one wall loop) in annotation text, got: {text}"
+            );
+        }
+        other => panic!("expected Comment annotation, got {other:?}"),
+    }
+
+}
+
+/// Two back-to-back dispatches with the same arena seed produce
+/// byte-identical annotation output.
+#[test]
+fn path_optimization_dispatch_is_deterministic() {
+    use slicer_host::{Blackboard, LayerArena};
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_path_optimization_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: path-optimization-default.wasm missing");
+            return;
+        }
+    };
+    let layer = slicer_ir::GlobalLayer {
+        index: 3,
+        z: 0.6,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+
+    let run_once = || -> Vec<slicer_ir::LayerAnnotation> {
+        let module = make_compiled_module_with(
+            "com.test.path-opt-det",
+            "Layer::PathOptimization",
+            Arc::clone(&component),
+        );
+        let mut arena = LayerArena::new();
+        LayerStageRunner::run_stage(
+            &dispatcher,
+            &"Layer::PathOptimization".to_string(),
+            &layer,
+            &module,
+            &blackboard,
+            &mut arena,
+        )
+        .expect("dispatch succeeds");
+        arena.take_deferred_annotations()
+    };
+    let a = run_once();
+    let b = run_once();
+    assert_eq!(a.len(), b.len());
+    for (x, y) in a.iter().zip(b.iter()) {
+        assert_eq!(x.after_entity_index, y.after_entity_index);
+        assert_eq!(format!("{:?}", x.kind), format!("{:?}", y.kind));
+    }
+}
+
+/// Operator override: when `path_optimization_emit_layer_markers =
+/// false` is declared in config, the module must emit zero
+/// annotations (byte-size-sensitive preset path). Proves the config
+/// schema's declared-read filter survives through to the module.
+#[test]
+fn path_optimization_emit_layer_markers_false_suppresses_output() {
+    use slicer_host::{Blackboard, LayerArena};
+    use slicer_ir::ConfigValue;
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_path_optimization_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: path-optimization-default.wasm missing");
+            return;
+        }
+    };
+
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+    fields.insert(
+        "path_optimization_emit_layer_markers".into(),
+        ConfigValue::Bool(false),
+    );
+    let module = make_compiled_module_with_config(
+        "com.test.path-opt-silent",
+        "Layer::PathOptimization",
+        component,
+        ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str())),
+    );
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    let mut arena = LayerArena::new();
+    let layer = slicer_ir::GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+    LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::PathOptimization".to_string(),
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .expect("dispatch succeeds");
+
+    let annotations = arena.take_deferred_annotations();
+    assert!(
+        annotations.is_empty(),
+        "emit_layer_markers=false must suppress output, got {} annotations",
+        annotations.len()
+    );
+}
+
+/// End-to-end: the Benchy MVP run emits one `; path-optimization
+/// layer <n> regions=<r> entities=<e>` line per layer. The count must
+/// match the distinct-layer-Z count — every layer that reaches
+/// G-code MUST have seen Layer::PathOptimization on the real path.
+#[test]
+fn path_optimization_markers_appear_in_benchy_gcode() {
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .canonicalize()
+        .expect("repo root");
+    let model = repo_root.join("resources/benchy.stl");
+    let modules = repo_root.join("modules/core-modules");
+    if !model.exists() {
+        eprintln!("SKIP: benchy fixture missing");
+        return;
+    }
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let out = tmp.path().join("benchy_path_opt.gcode");
+    let bin = env!("CARGO_BIN_EXE_slicer-host");
+    let result = Command::new(bin)
+        .args([
+            "run",
+            "--module",
+            model.to_str().unwrap(),
+            "--model",
+            model.to_str().unwrap(),
+            "--module-dir",
+            modules.to_str().unwrap(),
+            "--output",
+            out.to_str().unwrap(),
+        ])
+        .output()
+        .expect("slicer-host binary");
+    assert!(
+        result.status.success(),
+        "benchy run must succeed: {}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let gcode = std::fs::read_to_string(&out).expect("read gcode");
+    let marker_count = gcode
+        .lines()
+        .filter(|l| l.starts_with("; path-optimization layer"))
+        .count();
+    assert!(
+        marker_count >= 100,
+        "expected at least 100 path-optimization markers in Benchy gcode, \
+         got {marker_count} (one should appear per layer; Benchy is ~240 layers)"
+    );
+    // Sanity: the first marker should be for layer 0.
+    let first = gcode
+        .lines()
+        .find(|l| l.starts_with("; path-optimization layer"))
+        .expect("at least one marker");
+    assert!(
+        first.starts_with("; path-optimization layer 0 "),
+        "first marker should be for layer 0, got: {first}"
+    );
+}
+
+fn make_object(id: &str) -> slicer_ir::ObjectMesh {
+    slicer_ir::ObjectMesh {
+        id: id.to_string(),
+        mesh: slicer_ir::IndexedTriangleSet {
+            vertices: vec![
+                slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                slicer_ir::Point3 { x: 1.0, y: 0.0, z: 0.0 },
+                slicer_ir::Point3 { x: 0.0, y: 1.0, z: 0.0 },
+            ],
+            indices: vec![0, 1, 2],
+        },
+        transform: slicer_ir::Transform3d {
+            matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+        },
+        config: slicer_ir::ObjectConfig { data: HashMap::new() },
+        modifier_volumes: Vec::new(),
+        paint_data: None,
+    }
+}
+
+// ── STEP F: layer-planner-default macro-path drain regression ───────────
+//
+// These tests prove that the rebuilt `layer-planner-default.wasm` reaches
+// the host through the normal `#[slicer_module]` macro path (its
+// `wit-guest/` shim is now a two-line `pub use` re-export, with no
+// hand-written `wit_bindgen::generate!`). The macro's prepass-world arm
+// forwards `objects` into the SDK trait call and drains the SDK
+// `LayerPlanOutput` back through `layer-plan-output.push-layer`, so the
+// host harvests a non-empty `LayerPlanIR` whose proposal sequence comes
+// straight from the SDK planner (not from a duplicate planner embedded
+// in the wit-guest).
+
+/// Build a Blackboard whose mesh carries `object_ids` so the prepass
+/// runner forwards them to the guest's `run-layer-planning` export.
+fn blackboard_with_objects(object_ids: &[&str]) -> Blackboard {
+    let objects: Vec<slicer_ir::ObjectMesh> =
+        object_ids.iter().map(|id| make_object(id)).collect();
+    let mesh = Arc::new(MeshIR {
+        schema_version: semver(1, 0, 0),
+        objects,
+        build_volume: BoundingBox3 {
+            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
+            max: Point3 { x: 1.0, y: 1.0, z: 1.0 },
+        },
+    });
+    Blackboard::new(mesh, 0)
+}
+
+fn layer_planner_config(
+    layer_height: f64,
+    first_layer_height: f64,
+    object_heights: &[(&str, f64)],
+) -> ConfigView {
+    let mut m = HashMap::new();
+    m.insert("layer_height".to_string(), ConfigValue::Float(layer_height));
+    m.insert(
+        "first_layer_height".to_string(),
+        ConfigValue::Float(first_layer_height),
+    );
+    for (id, h) in object_heights {
+        m.insert(
+            format!("object_height:{}", id),
+            ConfigValue::Float(*h),
+        );
+    }
+    ConfigView::from_map(m)
+}
+
+/// The rebuilt layer-planner-default.wasm (built from the macro path —
+/// see `wit-guest/src/lib.rs` reduced to a `pub use` shim) must emit the
+/// SDK planner's real proposal sequence via the macro-authored drain
+/// bridge. A 2mm object at 0.2mm layer height must harvest as 10 global
+/// layers with strictly ascending Z.
+#[test]
+fn layer_planner_default_macro_path_emits_real_proposals() {
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let component = match load_layer_planner_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!(
+                "SKIP: layer-planner-default.wasm not found — rebuild core modules"
+            );
+            return;
+        }
+    };
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let config = layer_planner_config(0.2, 0.2, &[("obj-1", 2.0)]);
+    let module = make_compiled_module_with_config(
+        "com.core.layer-planner-default",
+        "PrePass::LayerPlanning",
+        component,
+        config,
+    );
+    let blackboard = blackboard_with_objects(&["obj-1"]);
+
+    let result = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::LayerPlanning".to_string(),
+        &module,
+        &blackboard,
+    );
+
+    let ir = match result {
+        Ok(PrepassStageOutput::LayerPlan(ir)) => ir,
+        Ok(other) => panic!(
+            "expected PrepassStageOutput::LayerPlan, got {:?}",
+            std::mem::discriminant(&other)
+        ),
+        Err(e) => panic!("dispatch failed: {e}"),
+    };
+
+    // 2mm object / 0.2mm layer height = 10 layers.
+    assert_eq!(
+        ir.global_layers.len(),
+        10,
+        "macro-path drain must deliver all SDK proposals to the host harvest \
+         (expected 10, got {})",
+        ir.global_layers.len()
+    );
+
+    // Strictly ascending Z, first layer at first_layer_height.
+    assert!(
+        (ir.global_layers[0].z - 0.2).abs() < 1e-4,
+        "first harvested layer z must equal first_layer_height=0.2, got {}",
+        ir.global_layers[0].z
+    );
+    for i in 1..ir.global_layers.len() {
+        assert!(
+            ir.global_layers[i].z > ir.global_layers[i - 1].z,
+            "harvested proposals must preserve SDK push order (ascending Z) — \
+             layer {} z={} vs layer {} z={}",
+            i - 1,
+            ir.global_layers[i - 1].z,
+            i,
+            ir.global_layers[i].z
+        );
+    }
+
+    // object_participation must reach downstream scheduling: the planner
+    // emitted one region per layer for obj-1.
+    let participation = ir
+        .object_participation
+        .get("obj-1")
+        .expect("object_participation must carry obj-1 after drain");
+    assert_eq!(
+        participation.len(),
+        ir.global_layers.len(),
+        "obj-1 must participate in every layer it fits in"
+    );
+}
+
+/// Two independent dispatch calls through the rebuilt
+/// layer-planner-default.wasm must produce byte-identical `LayerPlanIR`.
+/// The macro-authored drain has no hidden state (no timestamps, no
+/// pointer-derived ordering), so determinism holds end-to-end.
+#[test]
+fn layer_planner_default_macro_path_is_deterministic() {
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let component = match load_layer_planner_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!(
+                "SKIP: layer-planner-default.wasm not found — rebuild core modules"
+            );
+            return;
+        }
+    };
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+
+    let run_once = || {
+        let config = layer_planner_config(0.2, 0.2, &[("obj-1", 2.0)]);
+        let module = make_compiled_module_with_config(
+            "com.core.layer-planner-default",
+            "PrePass::LayerPlanning",
+            Arc::clone(&component),
+            config,
+        );
+        let blackboard = blackboard_with_objects(&["obj-1"]);
+        match PrepassStageRunner::run_stage(
+            &dispatcher,
+            &"PrePass::LayerPlanning".to_string(),
+            &module,
+            &blackboard,
+        ) {
+            Ok(PrepassStageOutput::LayerPlan(ir)) => ir,
+            Ok(other) => panic!(
+                "expected LayerPlan, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+            Err(e) => panic!("dispatch failed: {e}"),
+        }
+    };
+
+    let a = run_once();
+    let b = run_once();
+    assert_eq!(
+        *a, *b,
+        "macro-path layer-planner-default must be deterministic \
+         across repeated dispatches"
+    );
+}
+
+// ── STEP G: PrePass::MeshAnalysis macro-path drain regression ───────────
+//
+// These tests prove the macro-authored `PrePass::MeshAnalysis` arm
+// forwards the real `objects` list into the SDK trait call AND drains
+// the SDK `MeshAnalysisOutput` back through the WIT
+// `mesh-analysis-output` resource to the host. The driver is the
+// existing `sdk-prepass-guest` which now emits deterministic facet
+// annotations + surface-group proposals when the config carries
+// `emit_mesh_analysis = N`.
+
+const SDK_PREPASS_GUEST_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../test-guests/sdk-prepass-guest.component.wasm"
+);
+
+fn load_sdk_prepass_guest(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmComponent>> {
+    let path = std::path::Path::new(SDK_PREPASS_GUEST_PATH);
+    if !path.exists() {
+        return None;
+    }
+    let bytes = std::fs::read(path).expect("read sdk-prepass-guest.component.wasm");
+    match engine.compile_component(&bytes) {
+        Ok(c) => Some(Arc::new(c)),
+        Err(_) => None,
+    }
+}
+
+fn mesh_analysis_emit_config(n: i64) -> ConfigView {
+    let mut m = HashMap::new();
+    m.insert("emit_mesh_analysis".to_string(), ConfigValue::Int(n));
+    ConfigView::from_map(m)
+}
+
+/// Forwarding + drain proof: with two objects and `emit_mesh_analysis=3`,
+/// the SDK trait body emits 3 facet annotations + 1 surface group per
+/// object (6 + 2 = 8 pushes total). These must reach the host as a
+/// `MeshAnalysisAuxiliary` variant, preserving push order and per-object
+/// id. Proves `_objects` forwarding (not empty Vec) AND the drain.
+#[test]
+fn mesh_analysis_macro_path_forwards_objects_and_drains_output() {
+    use slicer_host::{FacetClassRecord, PrepassStageOutput};
+
+    let engine = Arc::new(WasmEngine::new());
+    let component = match load_sdk_prepass_guest(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!(
+                "SKIP: sdk-prepass-guest.component.wasm missing — \
+                 rebuild test guests"
+            );
+            return;
+        }
+    };
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let module = make_compiled_module_with_config(
+        "com.test.sdk-prepass-emit",
+        "PrePass::MeshAnalysis",
+        component,
+        mesh_analysis_emit_config(3),
+    );
+    let blackboard = blackboard_with_objects(&["obj-A", "obj-B"]);
+
+    let result = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::MeshAnalysis".to_string(),
+        &module,
+        &blackboard,
+    );
+
+    let aux = match result {
+        Ok(PrepassStageOutput::MeshAnalysisAuxiliary(a)) => a,
+        Ok(other) => panic!(
+            "expected PrepassStageOutput::MeshAnalysisAuxiliary, got {:?}",
+            std::mem::discriminant(&other)
+        ),
+        Err(e) => panic!("dispatch failed: {e}"),
+    };
+
+    // 2 objects × 3 facet annotations = 6 pushes, preserving per-object grouping.
+    assert_eq!(
+        aux.facet_annotations.len(),
+        6,
+        "macro-path drain must forward every SDK-pushed annotation (expected 6, got {})",
+        aux.facet_annotations.len()
+    );
+    let obj_ids: Vec<&str> = aux
+        .facet_annotations
+        .iter()
+        .map(|(id, _)| id.as_str())
+        .collect();
+    assert_eq!(
+        obj_ids,
+        vec!["obj-A", "obj-A", "obj-A", "obj-B", "obj-B", "obj-B"],
+        "objects forwarding + drain must preserve per-object push order"
+    );
+
+    // Verify field round-trip including the FacetClass mapping path.
+    let (_, first) = &aux.facet_annotations[0];
+    assert_eq!(first.facet_index, 0);
+    assert!((first.slope_angle_deg - 0.0).abs() < 1e-6);
+    assert_eq!(first.classification, FacetClassRecord::Normal);
+    let (_, second) = &aux.facet_annotations[1];
+    assert_eq!(second.facet_index, 1);
+    assert!((second.slope_angle_deg - 10.0).abs() < 1e-6);
+    assert_eq!(second.classification, FacetClassRecord::NearHorizontal);
+    let (_, third) = &aux.facet_annotations[2];
+    assert_eq!(third.facet_index, 2);
+    assert_eq!(third.classification, FacetClassRecord::Overhang);
+
+    // One surface group per object, in object push order.
+    assert_eq!(aux.surface_groups.len(), 2);
+    assert_eq!(aux.surface_groups[0].0, "obj-A");
+    assert_eq!(aux.surface_groups[1].0, "obj-B");
+    let grp = &aux.surface_groups[0].1;
+    assert_eq!(grp.facet_indices, vec![0u32, 1, 2]);
+    assert!((grp.z_min - 0.0).abs() < 1e-6);
+    assert!((grp.z_max - 0.6).abs() < 1e-5);
+    assert_eq!(grp.shell_count, 2);
+}
+
+/// Two independent dispatches through the rebuilt sdk-prepass-guest
+/// must produce byte-identical `MeshAnalysisAuxiliary` payloads. The
+/// drain has no hidden state (no timestamps / hashmap iteration order
+/// / pointer-derived ordering), so determinism holds end to end.
+#[test]
+fn mesh_analysis_macro_path_drain_is_deterministic() {
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let component = match load_sdk_prepass_guest(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!(
+                "SKIP: sdk-prepass-guest.component.wasm missing — \
+                 rebuild test guests"
+            );
+            return;
+        }
+    };
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+
+    let run_once = || {
+        let module = make_compiled_module_with_config(
+            "com.test.sdk-prepass-det-emit",
+            "PrePass::MeshAnalysis",
+            Arc::clone(&component),
+            mesh_analysis_emit_config(2),
+        );
+        let blackboard = blackboard_with_objects(&["obj-1", "obj-2"]);
+        match PrepassStageRunner::run_stage(
+            &dispatcher,
+            &"PrePass::MeshAnalysis".to_string(),
+            &module,
+            &blackboard,
+        ) {
+            Ok(PrepassStageOutput::MeshAnalysisAuxiliary(a)) => a,
+            Ok(other) => panic!(
+                "expected MeshAnalysisAuxiliary, got {:?}",
+                std::mem::discriminant(&other)
+            ),
+            Err(e) => panic!("dispatch failed: {e}"),
+        }
+    };
+    let a = run_once();
+    let b = run_once();
+    assert_eq!(
+        *a, *b,
+        "macro-path MeshAnalysis drain must be byte-identical across runs"
+    );
+}
+
+/// When a guest pushes no output, the dispatcher must return
+/// `PrepassStageOutput::None` — preserves the existing empty-drain
+/// contract that the round-trip regression tests rely on.
+#[test]
+fn mesh_analysis_macro_path_empty_drain_returns_none() {
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let component = match load_sdk_prepass_guest(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!(
+                "SKIP: sdk-prepass-guest.component.wasm missing — \
+                 rebuild test guests"
+            );
+            return;
+        }
+    };
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let module = make_compiled_module_with_config(
+        "com.test.sdk-prepass-empty",
+        "PrePass::MeshAnalysis",
+        component,
+        ConfigView::from_map(HashMap::new()),
+    );
+    let blackboard = blackboard_with_objects(&["obj-1"]);
+    let out = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::MeshAnalysis".to_string(),
+        &module,
+        &blackboard,
+    )
+    .expect("empty-config path must succeed");
+    assert!(matches!(out, PrepassStageOutput::None));
+}
+
+/// Host-side validation: a malformed push (empty object-id,
+/// non-finite slope, inverted z range) must surface as a structured
+/// error string on the `result<_, string>` WIT return. Unit-testing
+/// the validator here covers the "push failure surfaces a precise
+/// structured error" contract without requiring a malicious guest.
+#[test]
+fn mesh_analysis_output_push_validates_and_rejects_malformed() {
+    use slicer_host::wit_host::prepass as pm;
+    use slicer_host::wit_host::HostExecutionContext;
+    use wasmtime::component::Resource;
+
+    let mut ctx = HostExecutionContext::new("com.test.validator".to_string());
+    // Get a handle for the mesh-analysis-output resource.
+    let handle = ctx
+        .push_mesh_analysis_output()
+        .expect("push mesh-analysis-output resource");
+
+    // Empty object_id → Err(...)
+    let empty_obj = String::new();
+    let res = <HostExecutionContext as pm::HostMeshAnalysisOutput>::push_facet_annotation(
+        &mut ctx,
+        Resource::new_own(handle.rep()),
+        empty_obj,
+        pm::FacetAnnotation {
+            facet_index: 0,
+            slope_angle_deg: 30.0,
+            classification: pm::FacetClass::Normal,
+        },
+    )
+    .expect("host call must not fail at the wasmtime layer");
+    match res {
+        Err(msg) => assert!(
+            msg.contains("object-id") && msg.contains("non-empty"),
+            "empty object-id must surface a precise error: {msg}"
+        ),
+        Ok(()) => panic!("empty object-id should have been rejected"),
+    }
+
+    // Non-finite slope_angle_deg → Err(...)
+    let res = <HostExecutionContext as pm::HostMeshAnalysisOutput>::push_facet_annotation(
+        &mut ctx,
+        Resource::new_own(handle.rep()),
+        "obj-1".to_string(),
+        pm::FacetAnnotation {
+            facet_index: 7,
+            slope_angle_deg: f32::NAN,
+            classification: pm::FacetClass::Normal,
+        },
+    )
+    .expect("host call must not fail at the wasmtime layer");
+    match res {
+        Err(msg) => assert!(
+            msg.contains("non-finite") && msg.contains("slope_angle_deg"),
+            "non-finite slope must surface a precise error: {msg}"
+        ),
+        Ok(()) => panic!("non-finite slope should have been rejected"),
+    }
+
+    // Inverted z range → Err(...)
+    let res = <HostExecutionContext as pm::HostMeshAnalysisOutput>::push_surface_group(
+        &mut ctx,
+        Resource::new_own(handle.rep()),
+        "obj-1".to_string(),
+        pm::SurfaceGroupProposal {
+            facet_indices: vec![1, 2, 3],
+            z_min: 10.0,
+            z_max: 5.0,
+            shell_count: 1,
+        },
+    )
+    .expect("host call must not fail at the wasmtime layer");
+    match res {
+        Err(msg) => assert!(
+            msg.contains("z_max") && msg.contains("z_min"),
+            "inverted z range must surface a precise error: {msg}"
+        ),
+        Ok(()) => panic!("inverted z range should have been rejected"),
+    }
+
+    // A well-formed push succeeds and is stored in push order.
+    let res = <HostExecutionContext as pm::HostMeshAnalysisOutput>::push_facet_annotation(
+        &mut ctx,
+        Resource::new_own(handle.rep()),
+        "obj-1".to_string(),
+        pm::FacetAnnotation {
+            facet_index: 0,
+            slope_angle_deg: 45.0,
+            classification: pm::FacetClass::Overhang,
+        },
+    )
+    .expect("host call must not fail at the wasmtime layer");
+    assert!(res.is_ok());
+    assert_eq!(ctx.mesh_analysis_annotations.len(), 1);
+    assert_eq!(ctx.mesh_analysis_annotations[0].0, "obj-1");
+}
+
+// ── STEP H: PrePass::MeshSegmentation macro-path regression ─────────────
+//
+// STEP H moved `mesh-segmentation` off its hand-written
+// `wit_bindgen::generate!` duplicate onto the standard `#[slicer_module]`
+// macro path. The macro now (a) forwards the real `_objects` list as
+// skeletal `MeshObjectView`s and (b) drains
+// `MeshSegmentationOutput::triangle_paint_marks()` back through the
+// WIT `mesh-segmentation-output::mark-triangle-paint` resource method.
+//
+// The canonical end-to-end proof is that the pre-existing tests
+// `mesh_segmentation_dispatch_returns_empty_ir_for_unpainted_mesh`,
+// `mesh_segmentation_collects_config_driven_marks`, and
+// `mesh_segmentation_dispatch_is_deterministic` (above) — which were
+// written against the old wit-guest — keep passing verbatim with the
+// rebuilt macro-path wasm. STEP H explicitly guarantees this contract
+// shift: same WIT output, same host harvest, different authoring shape
+// on the guest side.
+//
+// The test below adds a narrow regression specific to the drain path:
+// it proves that the macro arm actually invokes
+// `mark-triangle-paint` in push order (not some other ordering derived
+// from the SDK builder) by replaying the canonical drain through the
+// rebuilt wasm and spot-checking the first and last marks against the
+// known-deterministic sort the module uses.
+
+/// Regression guard for STEP H: after retiring the hand-written
+/// wit-guest, the macro-path wasm must still emit `mark-triangle-paint`
+/// calls in the module's declared sort order — `(object_index_in_host_list,
+/// facet_index asc, semantic asc)`. If the drain were accidentally
+/// reordered (e.g. by a HashMap-iteration detour through
+/// `MeshSegmentationOutput`), this test surfaces it.
+#[test]
+fn mesh_segmentation_macro_path_drain_preserves_push_order() {
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let component = match load_mesh_segmentation_default(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!(
+                "SKIP: mesh-segmentation.wasm missing — rebuild core modules"
+            );
+            return;
+        }
+    };
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+
+    // Host object order: obj-B first, then obj-A. The module's sort
+    // key is `object_index_in_host_list`, so all obj-B marks must
+    // appear before any obj-A mark in the harvested IR even though
+    // obj-A sorts lexically earlier.
+    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+    fields.insert(
+        "mesh_seg_mark:obj-A:1:seam".into(),
+        ConfigValue::String("x".into()),
+    );
+    fields.insert(
+        "mesh_seg_mark:obj-B:0:material".into(),
+        ConfigValue::Int(5),
+    );
+    fields.insert(
+        "mesh_seg_mark:obj-B:2:seam".into(),
+        ConfigValue::Bool(true),
+    );
+    let module = make_compiled_module_with_config(
+        "com.test.mesh-seg-step-h",
+        "PrePass::MeshSegmentation",
+        component,
+        ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str())),
+    );
+    let mesh = Arc::new(slicer_ir::MeshIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        objects: vec![make_object("obj-B"), make_object("obj-A")],
+        build_volume: slicer_ir::BoundingBox3 {
+            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
+            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+        },
+    });
+    let blackboard = Blackboard::new(mesh, 0);
+
+    let out = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::MeshSegmentation".to_string(),
+        &module,
+        &blackboard,
+    )
+    .expect("mesh-segmentation dispatch must succeed");
+
+    let ir = match out {
+        PrepassStageOutput::MeshSegmentation(ir) => ir,
+        other => panic!(
+            "expected MeshSegmentation variant, got {:?}",
+            std::mem::discriminant(&other)
+        ),
+    };
+
+    let keys: Vec<(String, u32, String, String)> = ir
+        .marks
+        .iter()
+        .map(|m| {
+            (
+                m.object_id.clone(),
+                m.facet_index,
+                m.semantic.clone(),
+                m.value.clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        keys,
+        vec![
+            // obj-B (host index 0) first, ordered by (facet asc, semantic asc):
+            ("obj-B".to_string(), 0, "material".to_string(), "5".to_string()),
+            ("obj-B".to_string(), 2, "seam".to_string(), "true".to_string()),
+            // obj-A (host index 1) last:
+            ("obj-A".to_string(), 1, "seam".to_string(), "x".to_string()),
+        ],
+        "macro-path drain must preserve the module's push order \
+         (object_index_in_host_list, facet asc, semantic asc)"
+    );
 }

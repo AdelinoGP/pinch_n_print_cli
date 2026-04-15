@@ -9,14 +9,34 @@ use std::fmt;
 
 use rayon::prelude::*;
 use slicer_ir::{
-    GlobalLayer, InfillIR, LayerCollectionIR, ModuleId, PerimeterIR, PrintEntity, RegionKey,
-    SemVer, StageId, SupportIR,
+    GlobalLayer, InfillIR, LayerCollectionIR, ModuleId, PaintRegionIR, PaintSemantic, PerimeterIR,
+    PrintEntity, RegionKey, SemVer, StageId, SupportIR,
 };
 
 use crate::layer_slice::{execute_layer_slice, LayerSliceError};
+use crate::progress_events::ProgressEvent;
+use crate::slice_postprocess::{
+    execute_slice_postprocess_paint_annotation, paint_annotation_warning_to_progress_event,
+    SlicePostProcessPaintAnnotationError, SlicePostProcessPaintAnnotationRequest,
+};
 use crate::{
     Blackboard, BlackboardError, CompiledModule, ExecutionPlan, LayerArena, LayerArenaError,
 };
+
+/// Sink for per-layer progress events (e.g. host-built-in paint-annotation
+/// fallback warnings). Must be `Sync` because the per-layer executor fans out
+/// across rayon worker threads.
+pub trait LayerProgressSink {
+    /// Record one progress event. Implementations must be thread-safe.
+    fn record(&self, event: ProgressEvent);
+}
+
+/// A no-op `LayerProgressSink` used when callers don't want events.
+pub struct NoopLayerProgressSink;
+
+impl LayerProgressSink for NoopLayerProgressSink {
+    fn record(&self, _event: ProgressEvent) {}
+}
 
 /// Output produced by a single layer stage module invocation.
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +120,15 @@ pub enum LayerExecutionError {
         /// Underlying layer-slice failure.
         source: LayerSliceError,
     },
+    /// The host-built-in paint-annotation step failed with a structured
+    /// fatal error (missing paint region data, stale boundary_paint
+    /// cardinality, or a deterministic custom-semantic conflict).
+    PaintAnnotation {
+        /// Layer that failed.
+        layer_index: u32,
+        /// Underlying paint-annotation failure.
+        source: SlicePostProcessPaintAnnotationError,
+    },
 }
 
 impl fmt::Display for LayerExecutionError {
@@ -127,6 +156,10 @@ impl fmt::Display for LayerExecutionError {
             Self::LayerSlice { layer_index, source } => write!(
                 f,
                 "built-in Layer::Slice failed at layer {layer_index}: {source}"
+            ),
+            Self::PaintAnnotation { layer_index, source } => write!(
+                f,
+                "built-in paint-annotation failed at layer {layer_index}: {source:?}"
             ),
         }
     }
@@ -157,14 +190,54 @@ pub fn execute_per_layer(
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
 ) -> Result<Vec<LayerCollectionIR>, LayerExecutionError> {
-    let global_layers = &plan.global_layers;
+    execute_per_layer_with_events(plan, blackboard, runner, &NoopLayerProgressSink)
+}
 
-    // Process layers in parallel using rayon.
-    // collect() preserves the original item order, matching global_layers index order.
+/// Like [`execute_per_layer`] but additionally routes per-layer progress
+/// events (including host-built-in paint-annotation fallback warnings)
+/// to `sink`.
+pub fn execute_per_layer_with_events(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+) -> Result<Vec<LayerCollectionIR>, LayerExecutionError> {
+    let global_layers = &plan.global_layers;
+    let required_semantics = blackboard
+        .paint_regions()
+        .map(|pr| collect_required_semantics(pr))
+        .unwrap_or_default();
+
     global_layers
         .par_iter()
-        .map(|layer| execute_single_layer(plan, blackboard, runner, layer))
+        .map(|layer| execute_single_layer(plan, blackboard, runner, sink, &required_semantics, layer))
         .collect()
+}
+
+/// Deterministically collect the union of all paint semantics present in
+/// `paint_regions` across all layers, ordered: Material, FuzzySkin,
+/// SupportEnforcer, SupportBlocker, then `Custom` entries sorted by name.
+fn collect_required_semantics(paint_regions: &PaintRegionIR) -> Vec<PaintSemantic> {
+    let mut out: Vec<PaintSemantic> = Vec::new();
+    for layer_map in paint_regions.per_layer.values() {
+        for sem in layer_map.semantic_regions.keys() {
+            if !out.contains(sem) {
+                out.push(sem.clone());
+            }
+        }
+    }
+    out.sort_by(|a, b| semantic_sort_key(a).cmp(&semantic_sort_key(b)));
+    out
+}
+
+fn semantic_sort_key(s: &PaintSemantic) -> (u8, String) {
+    match s {
+        PaintSemantic::Material => (0, String::new()),
+        PaintSemantic::FuzzySkin => (1, String::new()),
+        PaintSemantic::SupportEnforcer => (2, String::new()),
+        PaintSemantic::SupportBlocker => (3, String::new()),
+        PaintSemantic::Custom(n) => (4, n.clone()),
+    }
 }
 
 /// Execute all stages for a single layer sequentially.
@@ -172,6 +245,8 @@ fn execute_single_layer(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+    required_semantics: &[PaintSemantic],
     layer: &GlobalLayer,
 ) -> Result<LayerCollectionIR, LayerExecutionError> {
     // Create an isolated LayerArena for this layer
@@ -204,6 +279,7 @@ fn execute_single_layer(
     // `LayerCollectionIR.ordered_entities` into the arena so the path-
     // optimization commit path (and any downstream per-layer stage) can see
     // the same entity sequence that the host emitter will consume.
+    let mut paint_annotation_ran = false;
     for stage in &plan.per_layer_stages {
         if stage.stage_id == "Layer::PathOptimization" && arena.layer_collection().is_none() {
             let ordered_entities = assemble_ordered_entities(
@@ -250,17 +326,37 @@ fn execute_single_layer(
                         message,
                     });
                 }
-                Err(LayerStageError::ArenaCommit { source: _ }) => {
-                    // Arena commit failure: treat as fatal for this layer
+                Err(LayerStageError::ArenaCommit { source }) => {
+                    // Arena commit failure: treat as fatal for this layer.
+                    // Include the underlying `LayerArenaError` variant so the
+                    // operator can tell `SlotAlreadyOccupied` (two modules
+                    // competing for the same slot) apart from any future
+                    // arena invariant violations.
                     return Err(LayerExecutionError::FatalLayer {
                         layer_index: layer.index,
                         stage_id: stage.stage_id.clone(),
                         module_id: module.module_id.clone(),
-                        message: String::from("arena commit failed"),
+                        message: format!("arena commit failed: {source}"),
                     });
                 }
             }
         }
+
+        // Host-built-in paint annotation runs once, at the end of the
+        // `Layer::SlicePostProcess` stage (docs/04 §Full Lifecycle and
+        // docs/10 §Paint Region Resolution). This must happen before any
+        // downstream stage consumes `SlicedRegion.boundary_paint`.
+        if !paint_annotation_ran && stage.stage_id == "Layer::SlicePostProcess" {
+            run_paint_annotation(blackboard, required_semantics, sink, &mut arena, layer)?;
+            paint_annotation_ran = true;
+        }
+    }
+
+    // Fallback: if no `Layer::SlicePostProcess` stage was scheduled but paint
+    // data is committed, still run the built-in annotator so boundary_paint
+    // is populated before finalization.
+    if !paint_annotation_ran {
+        run_paint_annotation(blackboard, required_semantics, sink, &mut arena, layer)?;
     }
 
     // If `Layer::PathOptimization` pre-staged a LayerCollectionIR, take it and
@@ -296,6 +392,67 @@ fn execute_single_layer(
         .extend(arena.take_deferred_annotations());
     layer_output.z_hops.extend(arena.take_deferred_z_hops());
     Ok(layer_output)
+}
+
+/// Run the host-built-in paint-annotation step on the layer's staged
+/// `SliceIR`. Returns early with no work if the blackboard has no paint
+/// regions committed or if no required semantics were derived. Warnings are
+/// converted through `paint_annotation_warning_to_progress_event` and pushed
+/// to `sink`. Fatal annotation errors become `LayerExecutionError::PaintAnnotation`.
+fn run_paint_annotation(
+    blackboard: &Blackboard,
+    required_semantics: &[PaintSemantic],
+    sink: &(dyn LayerProgressSink + Sync),
+    arena: &mut LayerArena,
+    layer: &GlobalLayer,
+) -> Result<(), LayerExecutionError> {
+    if required_semantics.is_empty() {
+        return Ok(());
+    }
+    let paint_regions = match blackboard.paint_regions() {
+        Some(pr) => std::sync::Arc::clone(pr),
+        None => return Ok(()),
+    };
+    let slice_ir = match arena.take_slice() {
+        Some(s) => s,
+        None => return Ok(()),
+    };
+
+    let request = SlicePostProcessPaintAnnotationRequest {
+        slice_ir,
+        paint_regions,
+        required_semantics: required_semantics.to_vec(),
+    };
+    let result = execute_slice_postprocess_paint_annotation(request).map_err(|source| {
+        LayerExecutionError::PaintAnnotation {
+            layer_index: layer.index,
+            source,
+        }
+    })?;
+
+    // Surface deterministic, non-fatal fallback warnings through the
+    // existing progress-event adapter (docs/09 §ModuleError; docs/11 §73-75).
+    for (i, warning) in result.warnings.iter().enumerate() {
+        let event = paint_annotation_warning_to_progress_event(
+            warning,
+            String::new(),
+            String::from("com.host.slice-postprocess-paint-annotator"),
+            i as u64,
+        );
+        sink.record(event);
+    }
+
+    // Put the (possibly annotated) SliceIR back so downstream per-layer
+    // stages can still read it via `arena.slice()`.
+    arena
+        .set_slice(result.slice_ir)
+        .map_err(|_| LayerExecutionError::FatalLayer {
+            layer_index: layer.index,
+            stage_id: "Layer::SlicePostProcess".to_string(),
+            module_id: "<host-built-in-paint-annotator>".to_string(),
+            message: "slice arena slot unexpectedly occupied after take_slice".to_string(),
+        })?;
+    Ok(())
 }
 
 /// Thin identity-preserving drain from committed arena IR into `PrintEntity`s.

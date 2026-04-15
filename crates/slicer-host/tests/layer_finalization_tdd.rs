@@ -304,9 +304,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let binding = ExecutionModuleBinding {
         module: loaded_module,
         instance_pool,
-        config_view: Arc::new(ConfigView {
-            fields: HashMap::new(),
-        }),
+        config_view: Arc::new(ConfigView::new()),
         wasm_component: None,
     };
 

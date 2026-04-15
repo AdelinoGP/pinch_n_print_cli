@@ -309,9 +309,7 @@ fn region_map_fixture() -> RegionMapIR {
                     String::from("Layer::Perimeters"),
                     vec![ModuleInvocation {
                         module_id: String::from("com.example.perimeters"),
-                        config_view: slicer_ir::ConfigView {
-                            fields: HashMap::new(),
-                        },
+                        config_view: slicer_ir::ConfigView::new(),
                     }],
                 )]),
             },

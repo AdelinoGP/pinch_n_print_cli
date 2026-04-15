@@ -139,7 +139,7 @@ impl PythonBridge {
         Python::attach(|py| -> Result<String, PythonBridgeError> {
             // --- Build the config dict from ConfigView. -----------------
             let config_dict = PyDict::new(py);
-            for (key, value) in &config.fields {
+            for (key, value) in config.iter_entries() {
                 let pv = config_value_to_py(py, value)
                     .map_err(|e| mk(PythonBridgePhase::ConfigEncoding, format_pyerr(py, e)))?;
                 config_dict

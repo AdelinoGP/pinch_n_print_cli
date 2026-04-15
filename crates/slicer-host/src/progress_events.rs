@@ -16,6 +16,9 @@
 
 use serde::{Deserialize, Serialize};
 use std::io::Write;
+use std::sync::{Arc, Mutex};
+
+use crate::layer_executor::LayerProgressSink;
 
 /// Schema version for progress events.
 pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.0.0";
@@ -432,6 +435,48 @@ impl SliceEventCollector {
     /// Drain all recorded events.
     pub fn drain(&mut self) -> Vec<ProgressEvent> {
         std::mem::take(&mut self.events)
+    }
+}
+
+/// Production `LayerProgressSink` that forwards each recorded event to both
+/// a `ProgressEventEmitter` (e.g. the JSONL transport on stderr/stdout) and
+/// a shared `SliceEventCollector` so aggregate degraded/fatal counts remain
+/// visible to the slice driver (docs/09 progress events; docs/11 §73-75).
+///
+/// Recording is deterministic per call: the collector is updated before the
+/// event is handed to the emitter so the collector's view of the slice state
+/// is consistent with any observer reading the JSONL stream after a given
+/// event has been written.
+pub struct RuntimeProgressSink {
+    emitter: Arc<dyn ProgressEventEmitter>,
+    collector: Arc<Mutex<SliceEventCollector>>,
+}
+
+impl RuntimeProgressSink {
+    /// Construct a sink that fans out events to `emitter` and `collector`.
+    #[must_use]
+    pub fn new(
+        emitter: Arc<dyn ProgressEventEmitter>,
+        collector: Arc<Mutex<SliceEventCollector>>,
+    ) -> Self {
+        Self { emitter, collector }
+    }
+
+    /// Access the shared `SliceEventCollector` (e.g. to read final counts
+    /// after the pipeline completes).
+    #[must_use]
+    pub fn collector(&self) -> Arc<Mutex<SliceEventCollector>> {
+        Arc::clone(&self.collector)
+    }
+}
+
+impl LayerProgressSink for RuntimeProgressSink {
+    fn record(&self, event: ProgressEvent) {
+        self.collector
+            .lock()
+            .expect("slice event collector mutex poisoned")
+            .record(event.clone());
+        self.emitter.emit(event);
     }
 }
 

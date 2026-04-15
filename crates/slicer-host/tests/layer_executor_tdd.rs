@@ -547,9 +547,10 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let binding = ExecutionModuleBinding {
         module: loaded_module,
         instance_pool,
-        config_view: Arc::new(ConfigView {
-            fields: HashMap::from([(String::from("fixture.enabled"), ConfigValue::Bool(true))]),
-        }),
+        config_view: Arc::new(ConfigView::from_map(HashMap::from([(
+            String::from("fixture.enabled"),
+            ConfigValue::Bool(true),
+        )]))),
         wasm_component: None,
     };
 

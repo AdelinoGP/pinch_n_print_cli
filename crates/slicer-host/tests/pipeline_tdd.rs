@@ -16,7 +16,7 @@ use slicer_host::{
     PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, MeshIR, Point3,
+    BoundingBox3, ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR, MeshIR, Point3,
     PrintMetadata, SemVer, StageId,
 };
 
@@ -210,9 +210,7 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
         instance_pool: pool,
         ir_read_mask: IrAccessMask { paths: Vec::new() },
         ir_write_mask: IrAccessMask { paths: Vec::new() },
-        config_view: Arc::new(ConfigView {
-            fields: HashMap::new(),
-        }),
+        config_view: Arc::new(ConfigView::new()),
         wasm_component: None,
     }
 }
@@ -617,4 +615,89 @@ fn run_pipeline_with_layers_produces_output() {
 
     let output = run_pipeline(config).unwrap();
     assert_eq!(output.gcode_text, "layers:3");
+}
+
+// ---------- Test 9: prepass LayerPlanIR is promoted into global_layers ----------
+/// Regression guard: `run_pipeline_with_events` must promote the `LayerPlanIR`
+/// committed by a prepass runner into `plan.global_layers` before the per-layer
+/// loop runs. This is the real production scenario: the execution plan is built
+/// before prepass runs (global_layers = []), so the pipeline must read the layer
+/// schedule from the blackboard after prepass and update the plan accordingly.
+#[test]
+fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
+    struct LayerPlanPrepass;
+    impl PrepassStageRunner for LayerPlanPrepass {
+        fn run_stage(
+            &self,
+            _stage_id: &StageId,
+            _module: &CompiledModule,
+            _blackboard: &Blackboard,
+        ) -> Result<PrepassStageOutput, PrepassExecutionError> {
+            Ok(PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+                schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+                global_layers: vec![
+                    make_global_layer(0, 0.2),
+                    make_global_layer(1, 0.4),
+                ],
+                object_participation: HashMap::new(),
+            })))
+        }
+    }
+
+    let layer_call_count: Arc<Mutex<u32>> = Arc::new(Mutex::new(0));
+
+    struct CountingLayerRunner(Arc<Mutex<u32>>);
+    impl LayerStageRunner for CountingLayerRunner {
+        fn run_stage(
+            &self,
+            _stage_id: &StageId,
+            _layer: &GlobalLayer,
+            _module: &CompiledModule,
+            _blackboard: &Blackboard,
+            _arena: &mut LayerArena,
+        ) -> Result<LayerStageOutput, LayerStageError> {
+            *self.0.lock().unwrap() += 1;
+            Ok(LayerStageOutput::Success)
+        }
+    }
+
+    // plan.global_layers starts empty — simulates the real production path where
+    // main.rs builds the plan before prepass runs.
+    let plan = ExecutionPlan {
+        prepass_stages: vec![CompiledStage {
+            stage_id: "PrePass::LayerPlanning".into(),
+            modules: vec![make_dummy_module("PrePass::LayerPlanning", "layer-planner")],
+        }],
+        per_layer_stages: vec![CompiledStage {
+            stage_id: "Layer::Slice".into(),
+            modules: vec![make_dummy_module("Layer::Slice", "slice-mod")],
+        }],
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
+        global_layers: Arc::new(Vec::new()), // empty — must be filled by promotion
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
+        plan,
+        runners: PipelineStageRunners {
+            prepass: Box::new(LayerPlanPrepass),
+            layer: Box::new(CountingLayerRunner(layer_call_count.clone())),
+            finalization: Box::new(NoopFinalizationRunner),
+            postpass: Box::new(NoopPostpassRunner),
+            emitter: Box::new(MinimalEmitter),
+            serializer: Box::new(MinimalSerializer),
+        },
+    };
+
+    let result = run_pipeline(config);
+    assert!(result.is_ok(), "pipeline must succeed after LayerPlanIR promotion: {:?}", result);
+
+    // 2 layers × 1 module in Layer::Slice = 2 runner calls
+    assert_eq!(
+        *layer_call_count.lock().unwrap(),
+        2,
+        "per-layer runner must be called once per promoted layer (2 layers × 1 module)"
+    );
 }

@@ -10,9 +10,10 @@ use std::sync::Arc;
 use slicer_ir::MeshIR;
 
 use crate::{
-    execute_layer_finalization, execute_per_layer, execute_postpass, execute_prepass_with_builtins,
-    Blackboard, ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter,
-    GCodeSerializer, LayerExecutionError, LayerStageRunner, PostpassError, PostpassStageRunner,
+    execute_layer_finalization, execute_per_layer_with_events, execute_postpass,
+    execute_prepass_with_builtins, Blackboard, ExecutionPlan, FinalizationError,
+    FinalizationStageRunner, GCodeEmitter, GCodeSerializer, LayerExecutionError,
+    LayerProgressSink, LayerStageRunner, NoopLayerProgressSink, PostpassError, PostpassStageRunner,
     PrepassExecutionError, PrepassStageRunner,
 };
 
@@ -115,21 +116,42 @@ impl From<PostpassError> for PipelineError {
 ///
 /// Returns [`PipelineError`] if any stage fails fatally.
 pub fn run_pipeline(config: PipelineConfig) -> Result<PipelineOutput, PipelineError> {
+    run_pipeline_with_events(config, &NoopLayerProgressSink)
+}
+
+/// Execute the full slicing pipeline, routing per-layer progress events
+/// (including host-built-in paint-annotation fallback warnings) to `sink`.
+pub fn run_pipeline_with_events(
+    config: PipelineConfig,
+    sink: &(dyn LayerProgressSink + Sync),
+) -> Result<PipelineOutput, PipelineError> {
     let PipelineConfig {
         mesh_ir,
-        plan,
+        mut plan,
         runners,
     } = config;
 
-    // Step 1: Create blackboard with loaded mesh and layer count
-    let layer_count = plan.global_layers.len();
-    let mut blackboard = Blackboard::new(mesh_ir, layer_count);
+    // Step 1: Create blackboard with the loaded mesh. Layer count is not known
+    // yet — the execution plan is built before prepass runs, so global_layers
+    // is always empty at this point. We pass 0 here; the blackboard's
+    // layer_outputs slot-vec is not in the per-layer critical path (the layer
+    // loop returns a Vec<LayerCollectionIR> directly), so this is safe.
+    let mut blackboard = Blackboard::new(mesh_ir, 0);
 
     // Step 2: Execute prepass stages sequentially
     execute_prepass_with_builtins(&plan, &mut blackboard, runners.prepass.as_ref())?;
 
+    // Step 2b: Promote the LayerPlanIR committed by prepass into the execution
+    // plan so that the per-layer loop iterates real layers. The plan is built
+    // before prepass runs (global_layers = []) because the layer schedule is
+    // determined by modules such as layer-planner-default during prepass itself.
+    if let Some(layer_plan) = blackboard.layer_plan() {
+        plan.global_layers = Arc::new(layer_plan.global_layers.clone());
+    }
+
     // Step 3: Execute per-layer stages in parallel via rayon
-    let mut layer_irs = execute_per_layer(&plan, &blackboard, runners.layer.as_ref())?;
+    let mut layer_irs =
+        execute_per_layer_with_events(&plan, &blackboard, runners.layer.as_ref(), sink)?;
 
     // Step 4: Execute layer finalization (if present)
     execute_layer_finalization(
