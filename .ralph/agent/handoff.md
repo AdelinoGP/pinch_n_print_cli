@@ -1,11 +1,11 @@
 # Session Handoff
 
-_Generated: 2026-04-17 18:27:12 UTC_
+_Generated: 2026-04-17 21:14:16 UTC_
 
 ## Git Context
 
 - **Branch:** `master`
-- **HEAD:** 49fb7f7: chore: auto-commit before merge (loop primary)
+- **HEAD:** 9668852: chore: auto-commit before merge (loop primary)
 
 ## Tasks
 
@@ -15,16 +15,16 @@ _No tasks tracked in this session._
 
 Recently modified:
 
-- `.claude/skills/review/SKILL.md`
-- `.gitignore`
-- `.ralph/agent/memories.md`
-- `.ralph/agent/memories.md.lock`
+- `.claude/skills/spec-review/SKILL.md`
+- `.ralph/agent/handoff.md`
 - `.ralph/agent/scratchpad.md`
 - `.ralph/agent/summary.md`
-- `.ralph/agent/tasks.jsonl.lock`
 - `.ralph/current-events`
 - `.ralph/current-loop-id`
-- `.ralph/diagnostics/logs/ralph-2026-04-17T04-15-33-491-8109.log`
+- `.ralph/events-20260417-210525.jsonl`
+- `.ralph/history.jsonl`
+- `.ralph/loop.lock`
+- `.ralph/loops.json`
 
 ## Next Session
 
