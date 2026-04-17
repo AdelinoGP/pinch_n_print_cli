@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: manifest-ir-access-and-config-schema
 task_ids:
   - TASK-121

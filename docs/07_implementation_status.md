@@ -40,8 +40,8 @@ Last updated: 2026-04-16
 
 ### Workstream 1 — Manifest and contract conformance
 
-- [ ] TASK-121 Populate `[ir-access]` for all 17 core-module manifests per docs/01 Stage I/O Contract. Covers DEV-002. Must turn `core_module_ir_access_contract_tdd.rs` green.
-- [ ] TASK-122 Populate `[config.schema]` for all 17 core-module manifests so the `config-schema` CLI returns real per-module schemas. Covers DEV-008.
+- [x] TASK-121 Populate `[ir-access]` for all 17 core-module manifests per docs/01 Stage I/O Contract. Covers DEV-002. Must turn `core_module_ir_access_contract_tdd.rs` green.
+- [x] TASK-122 Populate `[config.schema]` for all 17 core-module manifests so the `config-schema` CLI returns real per-module schemas. Covers DEV-008.
 - [~] TASK-123 Feed `ModuleAccessAudit` from every live execution path and pass populated `access_audits` into validation. Covers DEV-003.
 - [ ] TASK-123a Record prepass execution audits and plumb them into `DagValidationRequest.access_audits`. Covers DEV-003.
 - [ ] TASK-123b Record per-layer execution audits and plumb them into `DagValidationRequest.access_audits`. Covers DEV-003.
