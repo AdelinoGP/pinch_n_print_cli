@@ -11,8 +11,8 @@ wit-world    = "slicer:world-layer@1.0.0"
 id = "Layer::PathOptimization"
 
 [ir-access]
-reads  = []
-writes = []
+reads  = ["PerimeterIR", "InfillIR", "SupportIR"]
+writes = ["LayerCollectionIR"]
 
 [claims]
 holds    = ["path-optimizer"]

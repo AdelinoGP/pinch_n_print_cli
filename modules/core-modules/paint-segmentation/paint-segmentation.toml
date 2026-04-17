@@ -11,8 +11,8 @@ wit-world    = "slicer:world-prepass@1.0.0"
 id = "PrePass::PaintSegmentation"
 
 [ir-access]
-reads  = []
-writes = []
+reads  = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"]
+writes = ["PaintRegionIR"]
 
 [claims]
 holds    = []

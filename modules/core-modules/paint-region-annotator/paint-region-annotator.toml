@@ -11,8 +11,8 @@ wit-world    = "slicer:world-layer@1.0.0"
 id = "Layer::SlicePostProcess"
 
 [ir-access]
-reads  = []
-writes = []
+reads  = ["SliceIR", "PaintRegionIR"]
+writes = ["SliceIR"]
 
 [claims]
 holds    = []

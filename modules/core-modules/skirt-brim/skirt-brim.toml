@@ -11,8 +11,8 @@ wit-world    = "slicer:world-finalization@1.0.0"
 id = "PostPass::LayerFinalization"
 
 [ir-access]
-reads  = []
-writes = []
+reads  = ["LayerCollectionIR"]
+writes = ["LayerCollectionIR"]
 
 [claims]
 holds    = []

@@ -11,8 +11,8 @@ wit-world    = "slicer:world-layer@1.0.0"
 id = "Layer::PerimetersPostProcess"
 
 [ir-access]
-reads  = []
-writes = []
+reads  = ["PerimeterIR"]
+writes = ["PerimeterIR"]
 
 [claims]
 holds    = ["seam-placer"]
