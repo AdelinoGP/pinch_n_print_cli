@@ -753,10 +753,15 @@ pub fn build_config_schema_json(modules: &[crate::manifest::LoadedModule]) -> se
                 .config_schema
                 .entries
                 .iter()
-                .map(|(key, type_str)| {
+                .map(|(key, entry)| {
                     serde_json::json!({
                         "key": key,
-                        "type": type_str,
+                        "type": entry.field_type,
+                        "default": entry.default,
+                        "min": entry.min,
+                        "max": entry.max,
+                        "display": entry.display,
+                        "group": entry.group,
                     })
                 })
                 .collect();

@@ -71,8 +71,8 @@ pub use layer_finalization::{
 };
 pub use layer_slice::{execute_layer_slice, LayerSliceError};
 pub use manifest::{
-    load_module_from_paths, load_modules_from_roots, ConfigSchema, DiagnosticLevel, LoadDiagnostic,
-    LoadError, LoadErrorKind, LoadModulesReport, LoadedModule,
+    load_module_from_paths, load_modules_from_roots, ConfigFieldEntry, ConfigSchema,
+    DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport, LoadedModule,
 };
 pub use mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
 pub use mesh_segmentation::{

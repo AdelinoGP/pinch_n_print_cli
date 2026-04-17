@@ -190,7 +190,7 @@ pub struct ModuleAccessAudit {
 }
 
 /// Startup validation input spanning all 13 documented passes.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DagValidationRequest {
     /// Loaded modules to validate.
     pub modules: Vec<LoadedModule>,

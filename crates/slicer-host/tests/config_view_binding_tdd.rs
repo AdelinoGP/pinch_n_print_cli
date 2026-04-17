@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_host::{bind_module_config_view, ConfigSchema, LoadedModule};
+use slicer_host::{bind_module_config_view, ConfigFieldEntry, ConfigSchema, LoadedModule};
 use slicer_ir::{ConfigValue, ConfigView, SemVer};
 
 fn sem() -> SemVer {
@@ -23,7 +23,7 @@ fn sem() -> SemVer {
 fn module_with_config_keys(id: &str, keys: &[&str]) -> LoadedModule {
     let mut entries = BTreeMap::new();
     for k in keys {
-        entries.insert((*k).to_string(), "float".to_string());
+        entries.insert((*k).to_string(), ConfigFieldEntry { field_type: "float".to_string(), ..Default::default() });
     }
     LoadedModule {
         id: id.to_string(),

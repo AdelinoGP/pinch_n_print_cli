@@ -9,7 +9,7 @@ use slicer_ir::{ConfigKey, ConfigValue, ConfigView, GlobalLayer, ModuleId, Regio
 
 use crate::dag::build_intra_stage_dag;
 use crate::instance_pool::{build_wasm_instance_pool, InstancePoolError, WasmArtifactMetadata, WasmInstancePool};
-use crate::manifest::{load_modules_from_roots, LoadDiagnostic, LoadError, LoadedModule};
+use crate::manifest::{load_modules_from_roots, LoadDiagnostic, LoadError, LoadedModule, ConfigFieldEntry};
 use crate::topology::topological_sort;
 use crate::validation::SchedulerError;
 use crate::manifest::DiagnosticLevel;
@@ -366,7 +366,7 @@ pub fn load_live_modules_for_plan(
 /// [`bind_module_config_view`] also accepts. See that helper for the
 /// full rationale (docs/03 §host-boundary enforcement).
 fn config_key_declared(
-    declared: &std::collections::BTreeMap<String, String>,
+    declared: &std::collections::BTreeMap<String, crate::manifest::ConfigFieldEntry>,
     key: &str,
 ) -> bool {
     if declared.contains_key(key) {
@@ -848,7 +848,7 @@ mod dedup_tests {
     use slicer_ir::SemVer;
 
     use super::dedup_same_claim_modules;
-    use crate::manifest::{ConfigSchema, LoadDiagnostic, LoadedModule};
+    use crate::manifest::{ConfigSchema, ConfigFieldEntry, LoadDiagnostic, LoadedModule};
 
     fn loaded(id: &str, stage: &str, holds: &[&str]) -> LoadedModule {
         LoadedModule {
@@ -936,11 +936,11 @@ mod dedup_tests {
         let mut module = loaded("planner", "PrePass::LayerPlanning", &[]);
         module.config_schema.entries.insert(
             "object_height:*".to_string(),
-            "float".to_string(),
+            ConfigFieldEntry { field_type: "float".to_string(), ..Default::default() },
         );
         module.config_schema.entries.insert(
             "layer_height".to_string(),
-            "float".to_string(),
+            ConfigFieldEntry { field_type: "float".to_string(), ..Default::default() },
         );
 
         let mut source: HashMap<String, ConfigValue> = HashMap::new();
@@ -966,9 +966,9 @@ mod dedup_tests {
     #[test]
     fn config_key_declared_accepts_exact_and_wildcard() {
         use std::collections::BTreeMap;
-        let mut declared: BTreeMap<String, String> = BTreeMap::new();
-        declared.insert("layer_height".into(), "float".into());
-        declared.insert("object_height:*".into(), "float".into());
+        let mut declared: BTreeMap<String, ConfigFieldEntry> = BTreeMap::new();
+        declared.insert("layer_height".into(), ConfigFieldEntry { field_type: "float".to_string(), ..Default::default() });
+        declared.insert("object_height:*".into(), ConfigFieldEntry { field_type: "float".to_string(), ..Default::default() });
 
         assert!(super::config_key_declared(&declared, "layer_height"));
         assert!(super::config_key_declared(&declared, "object_height:a"));

@@ -29,13 +29,13 @@ Populate `[ir-access]` declarations and `[config.schema]` for all 17 core-module
 ## Acceptance Criteria
 
 - **Given** the 17 core-module manifests, **when** each manifest's `[ir-access]` is populated from the Stage I/O Contract table, **then** `core_module_ir_access_contract_tdd.rs` passes for every module.
-- **Given** a module manifest with config fields, **when** `config-schema` CLI is called, **then** it returns a real per-module JSON schema with type, min, max, default, display, and group fields.
+- **Given** a module manifest with config fields, **when** `config-schema` CLI is called, **then** it returns a per-module JSON schema with `type`, `min`, `max`, `default`, `display`, and `group` fields. Fields are populated from the manifest `[config.schema]` table entries; absent optional fields serialize as `null`.
 - **Given** `docs/01_system_architecture.md` Stage I/O Contract rows, **when** manifests are checked against it, **then** no module declares reads/writes that contradict the Stage I/O Contract for its stage.
 
 ## Verification
 
 - `cargo test --package slicer-host --test core_module_ir_access_contract_tdd -- --nocapture`
-- `cargo run --package slicer-host -- config-schema --module-path modules/core-modules` (once implemented)
+- `cargo run --package slicer-host -- config-schema --module-dir modules/core-modules`
 
 ## Authoritative Docs
 

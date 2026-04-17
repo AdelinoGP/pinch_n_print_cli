@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_host::{
-    build_execution_plan, build_wasm_instance_pool, CompiledModule, ConfigSchema,
-    ExecutionModuleBinding, ExecutionPlanRequest, SortedStageModules, WasmArtifactMetadata,
+    build_execution_plan, build_wasm_instance_pool, CompiledModule, ConfigFieldEntry,
+    ConfigSchema, ExecutionModuleBinding, ExecutionPlanRequest, SortedStageModules,
+    WasmArtifactMetadata,
 };
 use slicer_ir::{
     ConfigValue, ConfigView, GlobalLayer, RegionKey, RegionPlan, ResolvedConfig, SemVer,
@@ -180,7 +181,7 @@ fn bound_module(
         module
             .config_schema
             .entries
-            .insert(key.clone(), String::from("bool"));
+            .insert(key.clone(), ConfigFieldEntry { field_type: "bool".to_string(), ..Default::default() });
     }
 
     let instance_pool = Arc::new(

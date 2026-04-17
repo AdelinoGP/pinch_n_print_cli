@@ -7,8 +7,13 @@ use std::path::{Path, PathBuf};
 use slicer_ir::{ModuleId, SemVer, StageId};
 use toml::Value;
 
+/// Helper for serde skip_serializing_if on bool.
+fn is_false(b: &bool) -> bool {
+    !*b
+}
+
 /// Runtime module record produced by manifest ingestion.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct LoadedModule {
     /// Reverse-domain module identifier.
     pub id: ModuleId,
@@ -54,11 +59,61 @@ pub struct LoadedModule {
     pub placeholder_wasm: bool,
 }
 
-/// Minimal placeholder for manifest-defined config schema entries.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// A single config field entry parsed from a module manifest `[config.schema]`
+/// table entry.
+///
+/// Mirrors the fields defined in `docs/03_wit_and_manifest.md` § Config Field
+/// Types Reference.  The `type` field is required; all others are optional and
+/// serialize as `null` when absent.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
+pub struct ConfigFieldEntry {
+    /// Field type string — must be one of: `"bool"`, `"int"`, `"float"`,
+    /// `"string"`, `"enum"`, `"float-list"`, `"string-list"`.
+    pub field_type: String,
+    /// Default value as a string representation.
+    pub default: Option<String>,
+    /// Minimum for int/float fields.
+    pub min: Option<f64>,
+    /// Maximum for int/float fields.
+    pub max: Option<f64>,
+    /// Step for int/float fields.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub step: Option<f64>,
+    /// UI display name.
+    pub display: Option<String>,
+    /// UI tooltip / description.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// UI grouping hint.
+    pub group: Option<String>,
+    /// Unit hint (`"mm"`, `"ratio"`, `"degrees"`, `"mm/s"`, `"ms"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unit: Option<String>,
+    /// Whether this is an advanced setting (hidden by default).
+    #[serde(skip_serializing_if = "is_false")]
+    pub advanced: bool,
+    /// Allowed values for `"enum"` fields.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub values: Option<Vec<String>>,
+    /// Max length for `"string"` fields.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_length: Option<usize>,
+    /// Min list length for list fields.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_list_length: Option<usize>,
+    /// Max list length for list fields.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_list_length: Option<usize>,
+    /// Single-field validation expression.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validate: Option<String>,
+}
+
+/// Full config schema for a module, holding all field entries.
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize)]
 pub struct ConfigSchema {
-    /// Raw keyed schema entries.
-    pub entries: BTreeMap<String, String>,
+    /// Parsed field entries keyed by field name.
+    pub entries: BTreeMap<String, ConfigFieldEntry>,
 }
 
 /// Diagnostic severity emitted during module discovery and ingestion.
@@ -116,7 +171,7 @@ pub enum LoadErrorKind {
 }
 
 /// Result of scanning one or more module roots.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct LoadModulesReport {
     /// Successfully loaded modules.
     pub modules: Vec<LoadedModule>,
@@ -387,17 +442,105 @@ fn read_config_schema(root: &Value, manifest_path: &Path) -> Result<ConfigSchema
 
     let mut entries = BTreeMap::new();
     for (key, value) in table {
-        // Schema entry values are TOML strings like "float", "int", "bool", etc.
-        // Use the string value directly; fall back to TOML type string for
-        // structured entries (e.g., if someone writes density = { type = "float" }).
-        let type_str = value
-            .as_str()
-            .map(String::from)
-            .unwrap_or_else(|| value.type_str().to_string());
-        entries.insert(key.clone(), type_str);
+        let entry = parse_config_field_entry(key, value, manifest_path)?;
+        entries.insert(key.clone(), entry);
     }
 
     Ok(ConfigSchema { entries })
+}
+
+/// Parses a single `[config.schema.<key>]` entry from a TOML value.
+///
+/// Handles both the shorthand string form:
+///   `wall_count = "int"`
+/// and the full table form:
+///   `[config.schema.wall_count]`
+///   `type = "int"`
+///   `default = 3`
+///   `min = 1`
+///   `max = 10`
+///   `display = "Wall Count"`
+///   `group = "Walls"`
+fn parse_config_field_entry(
+    field_key: &str,
+    value: &toml::Value,
+    manifest_path: &Path,
+) -> Result<ConfigFieldEntry, LoadError> {
+    // Handle shorthand: value is just a string like "int" or "float"
+    if let Some(type_str) = value.as_str() {
+        return Ok(ConfigFieldEntry {
+            field_type: type_str.to_string(),
+            ..Default::default()
+        });
+    }
+
+    // Full table form
+    let table = value.as_table().ok_or_else(|| LoadError {
+        path: manifest_path.to_path_buf(),
+        field: Some(format!("config.schema.{field_key}")),
+        kind: LoadErrorKind::Schema,
+        message: format!(
+            "config.schema.{} must be a string (e.g. '\"int\"') or a table",
+            field_key
+        ),
+    })?;
+
+    let field_type = get_string(table, manifest_path, &format!("config.schema.{field_key}.type"), "type")?;
+    let default = table.get("default").map(|v| v.to_string());
+    let min = get_float_opt(table, "min");
+    let max = get_float_opt(table, "max");
+    let step = get_float_opt(table, "step");
+    let display = get_string_opt(table, "display");
+    let description = get_string_opt(table, "description");
+    let group = get_string_opt(table, "group");
+    let unit = get_string_opt(table, "unit");
+    let advanced = table.get("advanced").and_then(|v| v.as_bool()).unwrap_or(false);
+    let values = table.get("values").and_then(|v| {
+        v.as_array().map(|arr| {
+            arr.iter().filter_map(|item| item.as_str().map(String::from)).collect()
+        })
+    });
+    let max_length = table.get("max_length").and_then(|v| v.as_integer().map(|i| i as usize));
+    let min_list_length = table.get("min_list_length").and_then(|v| v.as_integer().map(|i| i as usize));
+    let max_list_length = table.get("max_list_length").and_then(|v| v.as_integer().map(|i| i as usize));
+    let validate = get_string_opt(table, "validate");
+
+    Ok(ConfigFieldEntry {
+        field_type,
+        default,
+        min,
+        max,
+        step,
+        display,
+        description,
+        group,
+        unit,
+        advanced,
+        values,
+        max_length,
+        min_list_length,
+        max_list_length,
+        validate,
+    })
+}
+
+fn get_string(table: &toml::map::Map<String, toml::Value>, manifest_path: &Path, field: &str, key: &str) -> Result<String, LoadError> {
+    get_string_opt(table, key).ok_or_else(|| LoadError {
+        path: manifest_path.to_path_buf(),
+        field: Some(field.to_string()),
+        kind: LoadErrorKind::Schema,
+        message: format!("config.schema.{key} is required", ),
+    })
+}
+
+fn get_string_opt(table: &toml::map::Map<String, toml::Value>, key: &str) -> Option<String> {
+    table.get(key).and_then(|v| v.as_str().map(String::from))
+}
+
+fn get_float_opt(table: &toml::map::Map<String, toml::Value>, key: &str) -> Option<f64> {
+    table.get(key).and_then(|v| {
+        v.as_float().or_else(|| v.as_integer().map(|i| i as f64))
+    })
 }
 
 fn required_string(
