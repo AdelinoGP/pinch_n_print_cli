@@ -31,16 +31,19 @@ This document is normative for term definitions and end-to-end behavior traces u
 ## Scenario Trace 1 — Mixed Layer Heights + Catch-Up
 
 ### Inputs
+
 - Object A layer height: `0.20 mm`
 - Object B layer height: `0.30 mm`
 - Shared claim: `infill-generator`
 - Region overrides: none
 
 ### Planned global layers
+
 - `Z = [0.20, 0.30, 0.40, 0.60, 0.80, 0.90, ...]`
 - Sync at `0.60 mm` and `1.20 mm`
 
 ### Execution trace (first sync window)
+
 1. `PrePass::LayerPlanning` emits sync at `0.60`.
 2. At global layer `0.40`, Object A has normal local layer; Object B is inactive.
 3. At global layer `0.60`, Object A has normal local layer; Object B emits catch-up layer with `catchup_z_bottom=0.30`, `effective_layer_height=0.30`.
@@ -48,6 +51,7 @@ This document is normative for term definitions and end-to-end behavior traces u
 5. `PrePass::RegionMapping` resolves one infill claim holder per active region.
 
 ### Expected outcomes
+
 - No claim transitions across layers for same object.
 - Catch-up metadata is present only where required.
 - No per-layer recomputation of layer planning or claim resolution.
@@ -57,12 +61,14 @@ This document is normative for term definitions and end-to-end behavior traces u
 ## Scenario Trace 2 — Paint-Heavy Multi-Material + Overlaps
 
 ### Inputs
+
 - Two tools (`T0`, `T1`) with `Material` paint.
 - `FuzzySkin=true` on subset of outer perimeter segments.
 - Overlapping `SupportEnforcer=true` and `SupportBlocker=true` in one zone.
 - Custom semantic: `Custom(com.example.texture/roughness@1)`.
 
 ### Execution trace
+
 1. `PrePass::MeshSegmentation` normalizes sub-facet strokes to deterministic triangle assignments.
 2. `PrePass::PaintSegmentation` emits `PaintRegionIR` per semantic per layer with `paint_order`.
 3. `Layer::SlicePostProcess` annotates `SlicedRegion.boundary_paint` after polygon edits.
@@ -71,6 +77,7 @@ This document is normative for term definitions and end-to-end behavior traces u
 6. `Layer::Support` applies support precedence: blocker over enforcer.
 
 ### Expected outcomes
+
 - At overlap points, support is blocked (`SupportBlocker` wins).
 - Material boundary segments include `WallBoundaryType::MaterialBoundary` where adjacent tool differs.
 - Custom paint overlap uses highest `paint_order`; equal-order conflicting values are fatal.
@@ -80,21 +87,25 @@ This document is normative for term definitions and end-to-end behavior traces u
 ## Scenario Trace 3 — Mid-Layer Module Failure
 
 ### Inputs
+
 - `com.community.fuzzy-skin` in `Layer::PerimetersPostProcess`.
 - Layer `42` contains malformed module output (`feature_flags` cardinality mismatch).
 
 ### Execution trace (non-fatal path)
+
 1. Module returns `module-error { fatal=false, code=..., message=... }`.
 2. Host emits `module_error` event with `status=non_fatal_error` for layer `42`.
 3. Host keeps pre-stage `PerimeterIR` for this module invocation and continues downstream stages.
 4. Slice completes with `degraded=true` in `slice_complete` summary.
 
 ### Execution trace (fatal path)
+
 1. Module returns `fatal=true` or host contract validation fails.
 2. Host emits `module_error` event with `status=fatal_error`.
 3. Slice command aborts immediately; no further layer processing.
 
 ### Expected outcomes
+
 - Non-fatal failures are never silent.
 - Fatal failures never continue execution.
 - Frontend can distinguish successful vs degraded vs aborted from emitted events.
@@ -104,6 +115,7 @@ This document is normative for term definitions and end-to-end behavior traces u
 ## Compliance Checklist
 
 A documentation or implementation update is compliant with this spec only if all are true:
+
 - Uses glossary terms exactly as defined above.
 - Preserves deterministic claim-holder and overlap behavior.
 - Preserves explicit degraded/fatal error semantics and event visibility.
@@ -112,11 +124,13 @@ A documentation or implementation update is compliant with this spec only if all
 ## Scenario Validation Artifacts
 
 Each scenario should be mapped to a runnable validation artifact:
+
 - Scenario 1 → catch-up planning fixture + assertion on sync/catch-up metadata.
 - Scenario 2 → paint overlap fixture + assertion on precedence and fuzzy/material propagation.
 - Scenario 3 → failure-injection fixture + assertion on degraded/fatal event behavior.
 
 Evidence files should be stored under:
+
 - `./docs/evidence/<release-id>/scenario-1-*`
 - `./docs/evidence/<release-id>/scenario-2-*`
 - `./docs/evidence/<release-id>/scenario-3-*`

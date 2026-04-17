@@ -27,15 +27,15 @@ This applies to **every** `Point2`, `Polygon`, `ExPolygon`, and any other 2D int
 
 ## Quick Reference
 
-| Real-world value | In ModularSlicer units |
-|---|---|
-| 1 mm | 10_000 |
-| 0.4 mm (nozzle diameter) | 4_000 |
-| 0.2 mm (layer height) | 2_000 |
-| 0.1 mm (min feature size) | 1_000 |
-| 0.01 mm (hardware step) | 100 |
-| 220 mm (typical build plate X) | 2_200_000 |
-| 1 nm (resolution floor) | 0.01 → rounds to 0 |
+| Real-world value               | In ModularSlicer units |
+| ------------------------------ | ---------------------- |
+| 1 mm                           | 10_000                 |
+| 0.4 mm (nozzle diameter)       | 4_000                  |
+| 0.2 mm (layer height)          | 2_000                  |
+| 0.1 mm (min feature size)      | 1_000                  |
+| 0.01 mm (hardware step)        | 100                    |
+| 220 mm (typical build plate X) | 2_200_000              |
+| 1 nm (resolution floor)        | 0.01 → rounds to 0     |
 
 The smallest representable move is 100 nm. No FDM printer can position a nozzle more precisely than ~10,000 nm (10 µm), so this gives 100× more precision than any hardware can use — intentionally.
 
@@ -74,14 +74,14 @@ OrcaSlicer_units = ModularSlicer_units * 100
 
 ### Common Constants
 
-| OrcaSlicer constant | OrcaSlicer value | ModularSlicer value |
-|---|---|---|
-| `SCALED_EPSILON` | 1 | — (do not port; see below) |
-| `scale_(1.0)` (1mm) | 1_000_000 | 10_000 |
-| `scale_(0.4)` (0.4mm) | 400_000 | 4_000 |
-| `scale_(0.05)` (0.05mm) | 50_000 | 500 |
-| `scale_(0.01)` (0.01mm) | 10_000 | 100 |
-| `CLIPPER_OFFSET_SCALE` | 100_000 | 1_000 |
+| OrcaSlicer constant     | OrcaSlicer value | ModularSlicer value        |
+| ----------------------- | ---------------- | -------------------------- |
+| `SCALED_EPSILON`        | 1                | — (do not port; see below) |
+| `scale_(1.0)` (1mm)     | 1_000_000        | 10_000                     |
+| `scale_(0.4)` (0.4mm)   | 400_000          | 4_000                      |
+| `scale_(0.05)` (0.05mm) | 50_000           | 500                        |
+| `scale_(0.01)` (0.01mm) | 10_000           | 100                        |
+| `CLIPPER_OFFSET_SCALE`  | 100_000          | 1_000                      |
 
 ### `SCALED_EPSILON` Warning
 
@@ -192,13 +192,13 @@ The Clipper2 documentation recommends keeping values below 4.6 × 10¹⁸ (max i
 
 `SCALED_EPSILON` itself ports correctly (OrcaSlicer value 1 → ModularSlicer value 1, meaning 1nm → 100nm, still well below hardware resolution). The danger is every place OrcaSlicer writes `SCALED_EPSILON * N`:
 
-| OrcaSlicer expression | OrcaSlicer meaning | Naive ModularSlicer port | Correct ModularSlicer value |
-|---|---|---|---|
-| `SCALED_EPSILON * 1` | 1nm | 100nm ✓ | `POINT_COINCIDENCE_EPSILON = 1` |
-| `SCALED_EPSILON * 10` | 10nm | 1µm ✓ | `MIN_SEGMENT_LENGTH = 10` |
-| `SCALED_EPSILON * 100` | 100nm | 10µm ⚠️ hardware boundary | use named constant |
-| `SCALED_EPSILON * 1000` | 1µm | 100µm ✗ quarter nozzle width | use named constant |
-| `SCALED_EPSILON²` | 1nm² | 10,000nm² ✓ coincidentally correct | `MIN_POLYGON_AREA` |
+| OrcaSlicer expression   | OrcaSlicer meaning | Naive ModularSlicer port           | Correct ModularSlicer value     |
+| ----------------------- | ------------------ | ---------------------------------- | ------------------------------- |
+| `SCALED_EPSILON * 1`    | 1nm                | 100nm ✓                            | `POINT_COINCIDENCE_EPSILON = 1` |
+| `SCALED_EPSILON * 10`   | 10nm               | 1µm ✓                              | `MIN_SEGMENT_LENGTH = 10`       |
+| `SCALED_EPSILON * 100`  | 100nm              | 10µm ⚠️ hardware boundary          | use named constant              |
+| `SCALED_EPSILON * 1000` | 1µm                | 100µm ✗ quarter nozzle width       | use named constant              |
+| `SCALED_EPSILON²`       | 1nm²               | 10,000nm² ✓ coincidentally correct | `MIN_POLYGON_AREA`              |
 
 **Rule: Never port `SCALED_EPSILON * N` directly.**
 
@@ -232,4 +232,4 @@ When porting any file from `OrcaSlicer_Documented/`:
       `// Coordinate constants divided by 100 (OrcaSlicer: 1nm, ModularSlicer: 100nm)`
 - [ ] Write a unit test that cross-checks a known OrcaSlicer output value against the ported function with coordinates divided by 100
 - [ ] Add a round-trip assertion for representative values:
-    `units_to_mm(mm_to_units(v)) ~= v` for each critical constant `v`
+      `units_to_mm(mm_to_units(v)) ~= v` for each critical constant `v`
