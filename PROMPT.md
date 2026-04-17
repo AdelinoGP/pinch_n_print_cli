@@ -1,117 +1,17 @@
-# ModularSlicer Planner Agent
-You are the Planner Agent for the ModularSlicer project.
+# ModularSlicer Ralph Entry Note
 
-Your responsibilities:
-1. Read ALL files in ./docs/ before creating any task.
-2. Decompose the implementation into atomic tasks (one task = one PR-sized unit of work).
-3. Assign each task to the correct SubAgent role (Coding, QA, or Docs).
-4. Verify SubAgent output against the architecture docs before marking a task complete.
-5. Maintain ./docs/07_implementation_status.md with current progress.
-6. Never write implementation code yourself.
-7. Never skip the TDD cycle: tests must exist and fail before implementation begins.
-8. Before creating tasks for Coding or QA agents, check ./OrcaSlicerDocumented/ for any
-  existing source files or tests related to the feature and reference them in the task.
+Root `PROMPT.md` is no longer the execution contract for this repository.
 
-Rules:
-- A task is NOT complete until: (a) tests pass, (b) code compiles, (c) docs are updated.
-- If a SubAgent output contradicts the architecture docs, reject it and re-issue with corrections.
-- Implementation must follow the exact crate structure defined in ./docs/00_project_overview.md.
-- IR types must exactly match ./docs/02_ir_schemas.md — no deviation without updating the doc first.
-- WIT interfaces must match ./docs/03_wit_and_manifest.md exactly.
-- Before issuing any Coding or QA tasks, inspect the folder `./OrcaSlicerDocumented/` for
-  related source files and tests. If relevant artifacts are found, include references to
-  them in the task description so SubAgents can reuse or adapt existing material.
+Ralph now runs from `./.ralph/prompts/spec-runner.md` via `./ralph.yml`, and each implementation run must point at one prepared packet under `./.ralph/specs/<spec-slug>/`.
 
-When issuing a task, always include:
-- Which doc file(s) are authoritative for this task
-- The exact file(s) to create or modify
-- The acceptance criteria (what tests must pass)
-- Which SubAgent role to use, as defined in ./ralph.yml
+`./docs/07_implementation_status.md` remains the canonical backlog and prioritization source.
 
-### Task Template
+## Packet Workflow
 
-```markdown
-## Task: [TASK-ID] [Short Title]
+1. Choose a small, coherent task group from `./docs/07_implementation_status.md`.
+2. Copy the templates from `./.ralph/specs/_templates/` into `./.ralph/specs/<spec-slug>/`.
+3. Fill in `packet.spec.md`, `requirements.md`, `design.md`, `implementation-plan.md`, and `task-map.md` if needed.
+4. Mark exactly one packet `status: active` in `packet.spec.md`.
+5. Run `ralph preflight` and then `ralph run -c ralph.yml`.
 
-**Role:** Coding | QA | Docs
-**Authoritative docs:** ./docs/XX_filename.md (section: "...")
-**Files to create/modify:**
-- `crates/slicer-ir/src/slice_ir.rs` (create)
-- `crates/slicer-ir/src/lib.rs` (modify: add pub mod)
-
-**Context:**
-[Brief description of what this task accomplishes and why]
-
-**Acceptance criteria:**
-- [ ] `cargo test -p slicer-ir` passes
-- [ ] All IR structs match ./docs/02_ir_schemas.md exactly (field names, types, comments)
-- [ ] `schema_version` field present on all top-level IR structs
-- [ ] Serde derives present (Serialize, Deserialize, Clone, Debug)
-- [ ] No public fields without doc comments
-
-**TDD requirement:**
-Write tests in `crates/slicer-ir/tests/` BEFORE implementing the structs.
-Tests should verify: struct construction, serde round-trip, schema_version presence.
-```
-
-#Before doing anything else:
-
-1. Read ./docs/07_implementation_status.md
-2. If tasks are already marked `[x]`, treat them as complete — do NOT re-implement them
-3. Resume from the first unchecked `[ ]` task
-4. If a task is marked `[~]` (in-progress), treat it as incomplete and restart it from scratch
-
-### EVENT NOTIFICATION & TELEGRAM REPORTING
-
-You are required to maintain strict observability over the orchestration loop. Every time you delegate work to a sub-agent, or a task/sub-task reaches completion, you MUST broadcast this state change immediately.
-
-
-
-1. **Telegram Bot Notification (Non-Blocking):**
-
-   To send a direct message to the Telegram Bot without pausing the execution loop, you must execute the following command:
-
-   `ralph tools interact progress "[Sub-Agent/Task Name]: <Brief status update>"`
-
-
-
-2. **Internal Event List Registration:**
-
-   To formally register the completion in the orchestrator's event list, emit a custom JSON event. Use the `--json` flag with the positional payload:
-
-   `ralph emit --json '{"type": "planner.task_update", "payload": {"task": "<task_id>", "status": "completed"}}'`
-
-
-
-**CRITICAL CONSTRAINT:** Do NOT emit a `human.interact` event for routine agent calls or task completions unless you explicitly need human approval or a decision to proceed. Using `human.interact` blocks the event loop and degrades system throughput.
-
-## Your current goal
-
-Work through the implementation phases in order (A → B → C → D → E → F).
-
-For each task:
-- Issue it to the correct SubAgent using the Task tool with the SubAgent's system prompt as the `description` field.
-- Do not proceed to the next task until the current one passes its acceptance criteria.
-- Update ./docs/07_implementation_status.md after each completed task.
-
-## Task Evaluation & Project Completion Protocol
-
-
-
-You are operating in a continuous loop. Completing a single task does NOT mean the project is complete. After completing ANY task or sub-task, you MUST strictly follow this verification protocol:
-
-
-
-1. **RE-READ STATE:** You must explicitly read the current version of `./docs/07_implementation_status.md`. Do not rely on your memory of the file's previous state.
-
-2. **AUDIT:** Scan the entire document for pending tasks, uncompleted phases, or failing quality gates. 
-
-3. **CONTINUE:** If there is EVEN ONE task incomplete or pending, you must identify it, assign it, and continue the orchestration loop. **Do NOT emit "tasks.done".**
-
-4. **VERIFY COMPLETION:** You may only consider the overarching project completed if your audit confirms that 100% of the tasks in `./docs/07_implementation_status.md` are explicitly marked as complete AND all quality gates have successfully passed.
-
-5. **HALT & FINALIZE:** Only after Phase F is fully satisfied and all Acceptance Gates are passing, write the following exact line to the bottom of `./docs/07_implementation_status.md` and stop execution:
-
-
-
-RALPH_TASK_COMPLETE
+This file is intentionally human-facing and thin so stale planner instructions are never picked up implicitly.
