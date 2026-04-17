@@ -14,3 +14,4 @@ modules/core-modules/*/wit-guest/target/
 
 # OrcaSlicer src and documentation
 /OrcaSlicerDocumented/
+.worktrees/
