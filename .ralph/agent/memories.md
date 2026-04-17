@@ -2,6 +2,22 @@
 
 ## Patterns
 
+### mem-1775704618-eaf4
+> TASK-035 QA red defines crates/slicer-host config schema query API in src/config_schema.rs around query_config_schema, get_field_schema, validate_field_value, validate_config, parse_config_schema, group_fields_by_ui_group, get_advanced_fields, get_basic_fields functions with FullConfigSchema, ConfigFieldSchema, ConfigFieldType, ConfigUnit, ConfigValue, CrossValidateRule, CrossValidateSeverity, ConfigValidationError, ConfigValidationErrorKind, ConfigSchemaParseError, ConfigSchemaParseErrorKind types; red tests in tests/config_schema_tdd.rs lock down field type preservation, range validation, enum value checking, list length bounds, cross-validate rule execution, TOML parsing, and UI grouping while failing only on the TASK-035 todo stubs.
+<!-- tags: slicer-host, task-035, testing, config-schema | created: 2026-04-09 -->
+
+### mem-1775704340-73ec
+> TASK-034 coding green implemented crates/slicer-host/src/gcode_emit.rs with DefaultGCodeEmitter and DefaultGCodeSerializer: emit_gcode walks LayerCollectionIR converting PrintEntity paths to GCodeCommand::Move with X/Y/Z/E, inserts ToolChange at after_entity_index, generates Z-hop travel sequences (lift then return), accumulates filament_used_mm per tool via distance*width*flow_factor; serialize_gcode converts GCodeIR to text with G1 for moves/retract/unretract, M106 for FanSpeed, M104/M109 for Temperature, T# for ToolChange, semicolon prefix for Comment, and passthrough for Raw.
+<!-- tags: slicer-host, task-034, gcode, emit, serialize | created: 2026-04-09 -->
+
+### mem-1775703464-70bc
+> TASK-033 QA red defines crates/slicer-host postpass executor API in src/postpass.rs around execute_postpass(plan, layer_irs, blackboard, emitter, serializer, runner) -> Result<String, PostpassError>, PostpassStageRunner trait with run_gcode_postprocess and run_text_postprocess, GCodeEmitter and GCodeSerializer traits, PostpassOutput and PostpassError enums; red tests in tests/postpass_executor_tdd.rs lock down stage ordering (GCodePostProcess -> TextPostProcess), sequential module execution, immutable layer_irs access, emitter-first invocation, direct serialization fallback, fatal/non-fatal error handling, and error propagation while failing only on the explicit todo stub.
+<!-- tags: slicer-host, task-033, testing, scheduler, postpass | created: 2026-04-09 -->
+
+### mem-1775702605-aacd
+> TASK-032 coding green implemented crates/slicer-host/src/layer_finalization.rs with execute_layer_finalization: enforces pool_size=1 for serialized execution, validates that layer indices remain strictly monotonic after each module runs, aborts immediately on FatalModule errors, continues on NonFatalError, and exposes FinalizationStageRunner trait for test injection.
+<!-- tags: slicer-host, task-032, scheduler, layer-finalization | created: 2026-04-09 -->
+
 ### mem-1775628886-fd0a
 > TASK-032 QA red defines crates/slicer-host layer-finalization API in src/layer_finalization.rs around execute_layer_finalization(plan, layer_irs, blackboard) -> Result<(), SlicerError>, FinalizationStageRunner trait, and FinalizationError enum; red tests in tests/layer_finalization_tdd.rs lock down sequential execution, pool size 1, synthetic layer validation, and deterministic custom conflicts while failing only on the explicit todo stub.
 <!-- tags: slicer-host, task-032, testing, scheduler, layer-finalization | created: 2026-04-08 -->

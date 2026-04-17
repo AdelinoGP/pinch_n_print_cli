@@ -1,55 +1,61 @@
 event_loop:
   completion_promise: RALPH_TASK_COMPLETE
-  max_iterations: 200
+  max_iterations: 75
   max_runtime_seconds: 28800
   idle_timeout_secs: 600
   starting_event: work.start
   verbose: true
-
 cli:
-  backend: opencode
-
+  backend: claude
 features:
   parallel: false
-  
 core:
   specs_dir: ./docs/
   scratchpad_path: .ralph/agent/scratchpad.md
   guardrails:
-    - "Fresh context each iteration — re-read `.ralph/agent/scratchpad.md`, backlog, and canonical docs."
-    - "Commit after each completed task. Never commit Ralph files (`.ralph/`)."
-    - "Verification is mandatory — `cargo build --workspace` and `cargo test --workspace` must pass."
-    - "Acceptance tests must be real — no placeholder/pending/stub acceptance scenarios when emitting RALPH_TASK_COMPLETE."
-    - "TDD is non-negotiable: tests must exist and fail before implementation begins."
-    - "Confidence protocol: >80 proceed; 50-80 proceed + note in `.ralph/agent/scratchpad.md`; <50 choose safe default + note."
-    - "Preserve primary sources — capture referenced code snippets with file:line attribution in `.ralph/agent/scratchpad.md`."
-    - "Architecture changes require explicit acknowledgement and documentation in docs/DEVIATION_LOG.md."
-    - "Reference canonical project docs: docs/00-13 and implementation_status.md."
-    - "IR types must exactly match docs/02_ir_schemas.md — no deviation without updating the doc first."
-    - "WIT interfaces must match docs/03_wit_and_manifest.md exactly."
-    - "Coordinate system: i64 scaled integers (100nm units, factor 10_000). If you see SCALING_FACTOR = 1_000_000, that is a bug."
-    - "Before issuing Coding or QA tasks, inspect ./OrcaSlicerDocumented/ for related source files and reference them."
-
+  - Fresh context each iteration — re-read `.ralph/agent/scratchpad.md`, backlog, and canonical docs.
+  - Commit after each completed task. Never commit Ralph files (`.ralph/`).
+  - Verification is mandatory — `cargo build --workspace` and `cargo test --workspace` must pass.
+  - Acceptance tests must be real — no placeholder/pending/stub acceptance scenarios when emitting RALPH_TASK_COMPLETE.
+  - 'TDD is non-negotiable: tests must exist and fail before implementation begins.'
+  - 'Confidence protocol: >80 proceed; 50-80 proceed + note in `.ralph/agent/scratchpad.md`; <50 choose safe default + note.'
+  - Preserve primary sources — capture referenced code snippets with file:line attribution in `.ralph/agent/scratchpad.md`.
+  - Architecture changes require explicit acknowledgement and documentation in docs/DEVIATION_LOG.md.
+  - 'Reference canonical project docs: docs/00-13 and implementation_status.md.'
+  - IR types must exactly match docs/02_ir_schemas.md — no deviation without updating the doc first.
+  - WIT interfaces must match docs/03_wit_and_manifest.md exactly.
+  - 'Coordinate system: i64 scaled integers (100nm units, factor 10_000). If you see SCALING_FACTOR = 1_000_000, that is a bug.'
+  - Before issuing Coding or QA tasks, inspect ./OrcaSlicerDocumented/ for related source files and reference them.
 backpressure:
   gates:
-    - name: build
-      command: cargo build --workspace
-      on_fail: "Workspace build failed. Fix all build errors and retry."
-    - name: test
-      command: cargo test --workspace
-      on_fail: "Tests failed. Fix failing tests before proceeding."
-    - name: clippy
-      command: cargo clippy --workspace -- -D warnings
-      on_fail: "Clippy warnings found. Fix all lint issues and retry."
-
+  - name: build
+    command: cargo build --workspace
+    on_fail: Workspace build failed. Fix all build errors and retry.
+  - name: test
+    command: cargo test --workspace
+    on_fail: Tests failed. Fix failing tests before proceeding.
+  - name: clippy
+    command: cargo clippy --workspace -- -D warnings
+    on_fail: Clippy warnings found. Fix all lint issues and retry.
 hats:
   planner_manager:
-    name: "Planner Agent"
-    model: "anthropic/claude-opus-4-20250514"
-    description: "Orchestration authority — decomposes work, routes tasks, enforces architecture, maintains implementation status"
-    triggers: ["work.start", "code.done", "code.blocked", "test.pass", "test.fail", "docs.done"]
-    publishes: ["code.ready", "test.ready", "docs.ready", "RALPH_TASK_COMPLETE"]
-    default_publishes: "code.ready"
+    name: Planner Agent
+    model: claude-opus-4-6
+    variant: max
+    description: Orchestration authority — decomposes work, routes tasks, enforces architecture, maintains implementation status
+    triggers:
+    - work.start
+    - code.done
+    - code.blocked
+    - test.pass
+    - test.fail
+    - docs.done
+    publishes:
+    - code.ready
+    - test.ready
+    - docs.ready
+    - RALPH_TASK_COMPLETE
+    default_publishes: code.ready
     instructions: |
       You are the Planner Agent for the ModularSlicer project — a modular Rust/WASM 3D printer
       slicing engine. You coordinate all implementation work across Coding, QA, and Docs sub-agents.
@@ -210,14 +216,17 @@ hats:
       ## Completed Tasks:
       - TASK-001: ...
       ```
-
   coder:
-    name: "Coding Agent"
-    model: "anthropic/claude-opus-4-20250514"
-    description: "Implements bounded code changes per task card following TDD and architecture constraints"
-    triggers: ["code.ready"]
-    publishes: ["code.done", "code.blocked"]
-    default_publishes: "code.done"
+    name: Coding Agent
+    model: claude-opus-4-6
+    variant: high
+    description: Implements bounded code changes per task card following TDD and architecture constraints
+    triggers:
+    - code.ready
+    publishes:
+    - code.done
+    - code.blocked
+    default_publishes: code.done
     instructions: |
       You are the Coding SubAgent for the ModularSlicer project — a modular Rust/WASM 3D printer
       slicing engine. Given a bounded task card, implement exactly what is specified.
@@ -314,14 +323,17 @@ hats:
       - A platform behavior assumption is uncertain
       - SCALING_FACTOR = 1_000_000 found anywhere
       Include blocker details in `.ralph/agent/scratchpad.md`.
-
   tester:
-    name: "QA Agent"
-    model: "anthropic/claude-sonnet-4-20250514"
-    description: "Validates implementation correctness, coverage, and edge cases"
-    triggers: ["test.ready"]
-    publishes: ["test.pass", "test.fail"]
-    default_publishes: "test.pass"
+    name: QA Agent
+    model: claude-sonnet-4-6
+    variant: high
+    description: Validates implementation correctness, coverage, and edge cases
+    triggers:
+    - test.ready
+    publishes:
+    - test.pass
+    - test.fail
+    default_publishes: test.pass
     instructions: |
       You are the QA SubAgent for the ModularSlicer project. Your job is to prove or disprove
       that a task is complete using automated and exploratory tests. Favor defect discovery
@@ -407,14 +419,15 @@ hats:
       - Do not run only happy-path tests
       - Do not accept missing tests for pure logic functions
       - Do not skip NaN/Inf guards on geometry outputs
-
   documentation:
-    name: "Docs Agent"
-    model: "anthropic/claude-haiku-4-20250514"
-    description: "Keeps project documentation synchronized with implemented code"
-    triggers: ["docs.ready"]
-    publishes: ["docs.done"]
-    default_publishes: "docs.done"
+    name: Docs Agent
+    model: claude-haiku-4-5
+    description: Keeps project documentation synchronized with implemented code
+    triggers:
+    - docs.ready
+    publishes:
+    - docs.done
+    default_publishes: docs.done
     instructions: |
       You are the Docs SubAgent for the ModularSlicer project. Keep documentation in sync
       with implemented code. Do not describe features that are not present.
@@ -460,12 +473,8 @@ hats:
       1. Write report to `.ralph/agent/scratchpad.md` under "### DocsAgent Report:"
       2. Commit if files changed: `docs(<scope>): <description>`
       3. Emit docs.done
-
 tasks:
   enabled: true
-
 RObot:
   enabled: true
   timeout_seconds: 120
-  telegram:
-    bot_token: 8414074086:AAEcwSci_u4Z2zyv3m1JhdnmR99QPZjbo2k
