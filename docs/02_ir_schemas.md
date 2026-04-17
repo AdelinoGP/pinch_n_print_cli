@@ -4,8 +4,8 @@ All IRs are defined in `crates/slicer-ir/src/`. They are the shared contract bet
 
 Every IR struct carries `schema_version: SemVer`. The host enforces compatibility at module load time.
 
-# ⚠️ **Coordinate System**
- 
+## ⚠️ **Coordinate System**
+
 All `Point2` integer coordinates use **1 scaled integer unit = 100 nm (10⁻⁴ mm)**. The scaling factor is **10_000** (multiply mm by 10_000 to get units). `f32` fields are in millimeters unless annotated otherwise.
 Never construct `Point2` with raw integer literals. Use `Point2::from_mm(x, y)` or `mm_to_units()`.
 **This is NOT the same as OrcaSlicer**, which uses 1 unit = 1 nm factor 1_000_000). When porting any OrcaSlicer coordinate constant, divide it by 100. See `./docs/08_coordinate_system.md` for the full reference including a conversion table and porting checklist.
@@ -13,15 +13,18 @@ Never construct `Point2` with raw integer literals. Use `Point2::from_mm(x, y)` 
 ## Coordinate Precision & Determinism (Normative)
 
 Canonical conversion rules:
+
 - mm → units: `units = round(mm * 10_000.0)` (round half away from zero).
 - units → mm: `mm = units / 10_000.0`.
 
 Determinism bounds:
+
 - One conversion round-trip (`units -> mm -> units`) must be identity.
 - One float round-trip (`mm -> units -> mm`) has bounded error `<= 0.00005 mm`.
 - Any pipeline step that accumulates more than `0.001 mm` absolute error in one axis across one layer is a contract violation.
 
 Invalid numeric values:
+
 - `NaN` and `±Inf` in any config or IR numeric field are fatal validation errors.
 - Denormal/subnormal values must be normalized to zero at parse time.
 
@@ -41,13 +44,15 @@ pub type RegionId = u64;
 ```
 
 WIT bridge rule:
+
 - WIT represents `object-id`/`region-id` as strings.
 - Canonical host mapping is:
-    - `ObjectId`: UUID string, passed through unchanged.
-    - `RegionId`: decimal string serialization of `u64` with no leading zeros.
+  - `ObjectId`: UUID string, passed through unchanged.
+  - `RegionId`: decimal string serialization of `u64` with no leading zeros.
 - Any non-canonical region-id string from a module is rejected as fatal contract error.
 
 Bounds and overflow policy:
+
 - `GlobalLayer.index` must be `< 100_000`; host rejects plans above this budget.
 - Region/group IDs are allocated from monotonic counters and must never be reused for different geometry within a single slice.
 - ID collisions are fatal contract errors.
@@ -155,6 +160,7 @@ pub struct ConfigDelta {
 ### Modifier Resolution Contract
 
 Modifier deltas are merged deterministically during planning:
+
 1. Start with global defaults.
 2. Apply object config.
 3. Apply matching modifiers sorted by `(priority desc, load_order asc)`.
@@ -164,6 +170,7 @@ For the same key, the last applied value wins. If a later layer-range override o
 the previously resolved value remains unchanged (no implicit reset).
 
 Worked example (deterministic):
+
 - Global `infill_density = 0.20`
 - Object config `infill_density = 0.25`
 - Modifier A (`priority=20`) sets `infill_density = 0.30`
@@ -172,10 +179,12 @@ Worked example (deterministic):
 - Effective result: layers outside `40..60` use `0.30`; layers inside `40..60` use `0.35`.
 
 Worked example (invalid):
+
 - Two overlapping modifiers with equal `priority` and equal `load_order` assign different values to the same key.
 - Result: planning rejects configuration as non-deterministic modifier precedence.
 
 `load_order` assignment (normative):
+
 - `load_order` is assigned by stable sort on manifest `module.id` (ascending UTF-8 byte order).
 - Filesystem traversal order must never influence `load_order`.
 - Ties on identical `module.id` are fatal manifest-identity errors.
@@ -338,6 +347,7 @@ pub enum SupportType   { Traditional, Tree }
 ### Config Precedence Rules
 
 When two sources assign the same key:
+
 - `layer-range override` > `modifier` > `object config` > `global default`
 - Between overlapping modifiers, higher `priority` wins
 - On equal modifier priority, first-loaded modifier wins
@@ -347,11 +357,13 @@ These rules are the single source of truth for runtime-free config resolution in
 ### Config Float Handling (Normative)
 
 Numeric config requirements:
+
 - Host parses and stores config floats as finite `f64`.
 - When consumed by `ResolvedConfig` `f32` fields, conversion must be explicit and clamped only by declared schema bounds.
 - If a value cannot be represented without exceeding declared min/max after conversion, startup validation fails.
 
 Reproducibility requirements:
+
 - Config serialization/deserialization must preserve deterministic value selection for all keys affecting geometry.
 - Equality for deterministic checks is done on the quantized scaled-int form where applicable, not raw JSON textual formatting.
 
@@ -361,6 +373,7 @@ Reproducibility requirements:
 
 **Stage:** Output of `PrePass::PaintSegmentation` (runs after `PrePass::LayerPlanning`)
 **Lifetime:** Blackboard (immutable after PrePass)
+
 ```rust
 /// Per-layer, per-semantic 2D polygon regions derived from 3D facet paint.
 /// All downstream stages query this IR by semantic rather than receiving
@@ -414,10 +427,12 @@ impl PaintRegionIR {
 - For overlapping `PaintSemantic::Custom` values at the same point, highest `paint_order` wins; equal `paint_order` is a fatal deterministic conflict.
 
 Worked example (support overlap):
+
 - Region R has both `SupportEnforcer=true` and `SupportBlocker=true` at one point.
 - Effective result: no support generated at that point (`SupportBlocker` precedence).
 
 Worked example (custom overlap):
+
 - `Custom(com.example.texture/roughness@1)` has two overlapping polygons.
 - If `paint_order` is `12` and `19`, value from `19` is used.
 - If both are `19` with different values, host raises a fatal deterministic conflict.
@@ -758,12 +773,12 @@ pub struct PrintMetadata {
 
 ## IR Versioning Contract
 
-| Change Type | Version Bump | Backward Compatible |
-|---|---|---|
-| New optional field added | Minor (1.0 → 1.1) | Yes — old modules ignore it |
-| Field renamed | Major (1.x → 2.0) | No — requires compatibility shim |
-| Field type changed | Major (1.x → 2.0) | No — requires compatibility shim |
-| Field removed | Major (1.x → 2.0) | No — requires compatibility shim |
-| New enum variant | Minor (1.0 → 1.1) | Yes — old modules treat as unknown |
+| Change Type              | Version Bump      | Backward Compatible                |
+|--------------------------|-------------------|------------------------------------|
+| New optional field added | Minor (1.0 → 1.1) | Yes — old modules ignore it        |
+| Field renamed            | Major (1.x → 2.0) | No — requires compatibility shim   |
+| Field type changed       | Major (1.x → 2.0) | No — requires compatibility shim   |
+| Field removed            | Major (1.x → 2.0) | No — requires compatibility shim   |
+| New enum variant         | Minor (1.0 → 1.1) | Yes — old modules treat as unknown |
 
 The `extensions: HashMap<String, ConfigValue>` field on `ResolvedConfig` is the soft landing zone for config keys contributed by modules not present in the host's schema snapshot. Keys always round-trip safely.

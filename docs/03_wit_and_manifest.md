@@ -18,6 +18,7 @@ wit/
 ```
 
 Three rules govern all WIT design decisions:
+
 1. The host never trusts module declarations at runtime. Access control is enforced per-call.
 2. Modules never receive more data than declared in their manifest `ir-access.reads`.
 3. WIT versions are independent from IR schema versions.
@@ -27,15 +28,16 @@ Three rules govern all WIT design decisions:
 Access control is enforced at the host WIT boundary, not only in SDK helpers.
 Modules that bypass SDK wrappers must still be constrained identically.
 
-| Operation class | Manifest declaration required | Host behavior when undeclared |
-|---|---|---|
-| Read structured IR view field | `[ir-access].reads` path | Return fatal contract error (no implicit empty fallback for undeclared paths) |
-| Read paint semantic regions | `[ir-access].reads` includes semantic-specific path | Return fatal contract error |
-| Read custom paint regions | `[ir-access].reads` includes `PaintRegionIR.custom:<module-id>` | Return fatal contract error |
-| Write structured IR field | `[ir-access].writes` path | Reject commit with fatal contract error |
-| Write via output builders | `[ir-access].writes` path mapped to builder operation | Reject operation and keep pre-stage IR |
+| Operation class               | Manifest declaration required                                   | Host behavior when undeclared                                                 |
+|-------------------------------|-----------------------------------------------------------------|-------------------------------------------------------------------------------|
+| Read structured IR view field | `[ir-access].reads` path                                        | Return fatal contract error (no implicit empty fallback for undeclared paths) |
+| Read paint semantic regions   | `[ir-access].reads` includes semantic-specific path             | Return fatal contract error                                                   |
+| Read custom paint regions     | `[ir-access].reads` includes `PaintRegionIR.custom:<module-id>` | Return fatal contract error                                                   |
+| Write structured IR field     | `[ir-access].writes` path                                       | Reject commit with fatal contract error                                       |
+| Write via output builders     | `[ir-access].writes` path mapped to builder operation           | Reject operation and keep pre-stage IR                                        |
 
 Required diagnostics on undeclared access:
+
 - module id
 - stage id
 - attempted operation (`read|write`)
@@ -43,20 +45,24 @@ Required diagnostics on undeclared access:
 - manifest path set used for comparison
 
 Determinism rule:
+
 - Access-denied outcomes are deterministic and must not depend on invocation order or thread scheduling.
 
 ## Concurrency & Instance Isolation (Normative)
 
 `layer-parallel-safe` contract:
+
 - `true`: host may execute the module concurrently across multiple layers/regions by using an instance pool.
 - `false`: host must serialize invocations for the module.
 
 Runtime model:
+
 - Each WASM instance owns isolated linear memory.
 - No module may rely on cross-instance mutable shared state for correctness.
 - Host-owned IR/resources are the only allowed communication channel.
 
 Host validation requirements:
+
 - If manifest sets `layer-parallel-safe = true` and component imports/declares shared WASM memory, host rejects module load as fatal.
 - For `PostPass::LayerFinalization`, effective parallel safety is always treated as `false` regardless of manifest hint.
 - Host emits startup diagnostics showing final pool mode (`parallel` or `serialized`) per module.
@@ -65,13 +71,14 @@ Host validation requirements:
 
 WIT and IR versions are independently versioned, but module load is allowed only when both compatibility checks pass.
 
-| Host WIT world | Module `wit-world` | Host IR schema | Module IR range | Load result |
-|---|---|---|---|---|
-| `slicer:world-layer@1.0.x` | `slicer:world-layer@1.0.x` | `1.4.0` | `>=1.2.0, <2.0.0` | Allowed |
-| `slicer:world-layer@2.0.0` | `slicer:world-layer@1.x` | `2.0.0` | `>=1.2.0, <2.0.0` | Rejected (WIT major mismatch) |
-| `slicer:world-layer@1.0.x` | `slicer:world-layer@1.0.x` | `2.0.0` | `>=1.2.0, <2.0.0` | Rejected (IR major out of range) |
+| Host WIT world             | Module `wit-world`         | Host IR schema | Module IR range   | Load result                      |
+|----------------------------|----------------------------|----------------|-------------------|----------------------------------|
+| `slicer:world-layer@1.0.x` | `slicer:world-layer@1.0.x` | `1.4.0`        | `>=1.2.0, <2.0.0` | Allowed                          |
+| `slicer:world-layer@2.0.0` | `slicer:world-layer@1.x`   | `2.0.0`        | `>=1.2.0, <2.0.0` | Rejected (WIT major mismatch)    |
+| `slicer:world-layer@1.0.x` | `slicer:world-layer@1.0.x` | `2.0.0`        | `>=1.2.0, <2.0.0` | Rejected (IR major out of range) |
 
 Startup checks:
+
 1. Validate `wit-world` package name and major version compatibility.
 2. Validate host IR schema is within module-declared IR range.
 3. Emit explicit diagnostics with expected/actual versions and blocking symbol names when incompatible.
@@ -287,6 +294,7 @@ interface ir-handles {
 ```
 
 ID canonicalization note:
+
 - `region-id` string must carry canonical decimal `u64` representation from host IR.
 - Modules must treat IDs as opaque tokens and must not derive ordering from lexical string comparison.
 
@@ -492,6 +500,7 @@ world postpass-module {
 ---
 
 ## `world-finalization.wit`
+
 ```wit
 package slicer:world-finalization@1.0.0;
 
@@ -669,11 +678,13 @@ emit through `gcode-output-builder` and how the host commits that output into
 `LayerCollectionIR` (see `docs/02_ir_schemas.md` § IR 10).
 
 ### Inputs
+
 - `regions: list<perimeter-region-view>` — read-only view of the layer.
 - `output: gcode-output-builder` — same WIT resource used by post-pass, but
   the accepted method set is restricted by stage as described below.
 
 ### Pre-staged ordered_entities
+
 - The host assembles `LayerCollectionIR.ordered_entities` deterministically
   from the committed per-layer arena (`PerimeterIR`, `InfillIR`, `SupportIR`)
   immediately *before* `Layer::PathOptimization` runs.
@@ -688,18 +699,18 @@ emit through `gcode-output-builder` and how the host commits that output into
 
 ### Accepted `gcode-output-builder` methods at PathOptimization
 
-| Method | Accepted? | Commit destination |
-|---|---|---|
-| `push-tool-change(from, to)` | yes | Appended to `LayerCollectionIR.tool_changes` with `after_entity_index = ordered_entities.len() - 1` (or 0 if empty) |
-| `push-comment(text)` | yes | Appended to `LayerCollectionIR.annotations` as `Comment(text)` with the same anchor rule |
-| `push-raw(text)` | yes | Appended to `LayerCollectionIR.annotations` as `Raw(text)` with the same anchor rule |
-| `push-move(cmd)` | rejected | Fatal `FatalModule` diagnostic — no documented `LayerCollectionIR` mapping |
-| `push-retract(length, speed)` | rejected | Fatal `FatalModule` diagnostic |
-| `push-fan-speed(value)` | rejected | Fatal `FatalModule` diagnostic |
-| `push-temperature(...)` | rejected | Fatal `FatalModule` diagnostic |
+| Method                        | Accepted? | Commit destination                                                                                                  |
+|-------------------------------|-----------|---------------------------------------------------------------------------------------------------------------------|
+| `push-tool-change(from, to)`  | yes       | Appended to `LayerCollectionIR.tool_changes` with `after_entity_index = ordered_entities.len() - 1` (or 0 if empty) |
+| `push-comment(text)`          | yes       | Appended to `LayerCollectionIR.annotations` as `Comment(text)` with the same anchor rule                            |
+| `push-raw(text)`              | yes       | Appended to `LayerCollectionIR.annotations` as `Raw(text)` with the same anchor rule                                |
+| `push-move(cmd)`              | rejected  | Fatal `FatalModule` diagnostic — no documented `LayerCollectionIR` mapping                                          |
+| `push-retract(length, speed)` | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
+| `push-fan-speed(value)`       | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
+| `push-temperature(...)`       | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
 
 The `LayerAnnotation { after_entity_index, kind: Comment(..)|Raw(..) }` IR
-record is the host-side carrier for guest comment/raw output. The default
+record is the host-side carrier for guest comment/raw oustput. The default
 `PostPass::GCodeEmit` emitter inserts each annotation as
 `GCodeCommand::Comment` or `GCodeCommand::Raw` immediately after the entity
 identified by its `after_entity_index`. Annotations whose anchor lies past
@@ -721,6 +732,7 @@ This is the single, minimal z-hop output channel. Reordering of
 remain reserved for a later step.
 
 #### Commit destination
+
 - Each accepted call appends one `ZHop { after_entity_index, hop_height }`
   entry onto `LayerCollectionIR.z_hops`.
 - Guests that never call `push-z-hop` leave `z_hops` empty.
@@ -730,14 +742,15 @@ remain reserved for a later step.
 The host validates each `push-z-hop` call at commit time. A failed call
 aborts the layer with `LayerStageError::FatalModule` (no partial commit).
 
-| Rule | Reject condition |
-|---|---|
-| `after-entity-index` in bounds | `after_entity_index >= ordered_entities.len()` (and `ordered_entities` is non-empty) |
-| `after-entity-index` for empty layers | any value other than `0` when `ordered_entities.len() == 0` |
-| `hop-height` finite | `!hop_height.is_finite()` |
-| `hop-height` strictly positive | `hop_height <= 0.0` |
+| Rule                                  | Reject condition                                                                     |
+|---------------------------------------|--------------------------------------------------------------------------------------|
+| `after-entity-index` in bounds        | `after_entity_index >= ordered_entities.len()` (and `ordered_entities` is non-empty) |
+| `after-entity-index` for empty layers | any value other than `0` when `ordered_entities.len() == 0`                          |
+| `hop-height` finite                   | `!hop_height.is_finite()`                                                            |
+| `hop-height` strictly positive        | `hop_height <= 0.0`                                                                  |
 
 Required diagnostic fields on rejection:
+
 - stage id (`Layer::PathOptimization`)
 - module id
 - the rejected method (`push-z-hop`)
@@ -745,6 +758,7 @@ Required diagnostic fields on rejection:
 - the failing field (`after-entity-index` or `hop-height`) and its value
 
 #### Deterministic insertion semantics
+
 - The host commit step preserves the guest's emit order across all
   `push-z-hop` calls within a single invocation.
 - When multiple z-hops share the same `after-entity-index`, they appear in
@@ -752,18 +766,21 @@ Required diagnostic fields on rejection:
 - Repeated runs over identical input produce bit-identical `z_hops` vectors.
 
 #### Downstream emission
+
 - `DefaultGCodeEmitter` consumes `LayerCollectionIR.z_hops` deterministically
   by `after_entity_index`, lifting to `layer.z + hop_height` and returning to
   `layer.z` immediately after the entity at that index. An empty `z_hops`
   vector emits no hop commands.
 
 #### Out of contract
+
 - `push-move`, `push-retract`, `push-fan-speed`, and `push-temperature`
   remain rejected at `Layer::PathOptimization`.
 - Reordering, appending to, or removing entries from `ordered_entities` is
   still rejected and is reserved for a future step.
 
 ### Determinism & identity
+
 - For a fixed input layer arena, repeated runs of `Layer::PathOptimization`
   must produce the same `tool_changes`, `annotations`, and (since the host
   forbids reorder) the same `ordered_entities` and `topo_order`.
@@ -771,6 +788,7 @@ Required diagnostic fields on rejection:
   sequence on the builder.
 
 ### Out-of-contract rejection
+
 - The diagnostic produced for any rejected method must include: stage id,
   module id, the rejected method name (or `GcodeCommandCollected` discriminant),
   and the index of the rejected call in the guest's emit sequence.
@@ -781,6 +799,7 @@ Required diagnostic fields on rejection:
 ## Builder Lifecycle Contract (Normative)
 
 Output builder resources (`*-output-builder`) are invocation-scoped:
+
 - Valid only during the active exported function call.
 - Must not be cached across calls by the module.
 - Host invalidates/drops builders immediately after return.
@@ -789,7 +808,8 @@ Attempting to reuse an invalidated builder is a fatal contract error.
 
 ## Valid Reads/Writes
 
-# Paint region reads (declare the semantics your module needs):
+### Paint region reads (declare the semantics your module needs)
+
 reads = [
     "PaintRegionIR.FuzzySkin",          # fuzzy skin module
     "PaintRegionIR.SupportEnforcer",    # support generator
@@ -798,10 +818,12 @@ reads = [
     "PaintRegionIR.Custom.com.example.my-semantic",  # custom semantic
 ]
 
-# Boundary paint on slice regions:
+### Boundary paint on slice regions
+
 reads = ["SliceIR.regions.boundary_paint"]
 
-# Wall feature flags:
+### Wall feature flags
+
 reads  = ["PerimeterIR.regions.walls.feature_flags"]   # fuzzy skin post-processor
 writes = ["PerimeterIR.regions.walls.feature_flags"]   # if modifying flags
 
@@ -809,25 +831,25 @@ writes = ["PerimeterIR.regions.walls.feature_flags"]   # if modifying flags
 
 ## Config Field Types Reference
 
-| Type | Description | Extra keys |
-|---|---|---|
-| `"bool"` | Boolean checkbox | — |
-| `"int"` | Integer | `min`, `max`, `step` |
-| `"float"` | Floating point | `min`, `max`, `step`, `unit` |
-| `"string"` | Free text | `max-length` |
-| `"enum"` | Fixed set of string values | `values` (required) |
-| `"float-list"` | List of floats | `min-length`, `max-length` |
-| `"string-list"` | List of strings | `min-length`, `max-length` |
+| Type            | Description                | Extra keys                   |
+|-----------------|----------------------------|------------------------------|
+| `"bool"`        | Boolean checkbox           | —                            |
+| `"int"`         | Integer                    | `min`, `max`, `step`         |
+| `"float"`       | Floating point             | `min`, `max`, `step`, `unit` |
+| `"string"`      | Free text                  | `max-length`                 |
+| `"enum"`        | Fixed set of string values | `values` (required)          |
+| `"float-list"`  | List of floats             | `min-length`, `max-length`   |
+| `"string-list"` | List of strings            | `min-length`, `max-length`   |
 
 ### Unit Values (for UI rendering)
 
-| Unit | Renders as |
-|---|---|
-| `"mm"` | `X mm` |
+| Unit      | Renders as         |
+|-----------|--------------------|
+| `"mm"`    | `X mm`             |
 | `"ratio"` | `X%` (value × 100) |
-| `"deg"` | `X°` |
-| `"mm/s"` | `X mm/s` |
-| `"ms"` | `X ms` |
+| `"deg"`   | `X°`               |
+| `"mm/s"`  | `X mm/s`           |
+| `"ms"`    | `X ms`             |
 
 ---
 
@@ -843,6 +865,7 @@ Functions:  min(a,b)  max(a,b)  abs(x)  floor(x)  ceil(x)
 ```
 
 Examples:
+
 ```
 validate = "value >= 0.01 && value <= 10.0"
 rule     = "outer_wall_speed <= inner_wall_speed * 1.5"

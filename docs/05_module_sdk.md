@@ -195,6 +195,7 @@ let flags: Vec<bool> = host::segment_in_paint_region(
 - For geometry transforms, aggregate polygon sets and invoke clipping/offset in fewer larger calls.
 
 Recommended budgeting:
+
 - Target host-service call count per module invocation should scale with region count, not vertex count.
 - Module benchmarks should report boundary-crossing counts alongside elapsed time.
 
@@ -368,6 +369,7 @@ assert_no_path_intersections(&sparse);
 ### `#[slicer_module]`
 
 Applied to an `impl LayerModule for T` block. At compile time it:
+
 - Reads the module's `Cargo.toml` to find the manifest path
 - Parses the manifest's `[stage]` field
 - Verifies the impl contains exactly the function matching that stage
@@ -567,6 +569,7 @@ The host invokes the Python interpreter (embedded via PyO3), calls `process_gcod
 ---
 
 ## Worked Example: Fuzzy Skin as a Native Module
+
 ```toml
 # fuzzy-skin.toml
 [module]
@@ -622,6 +625,7 @@ keys = ["thickness", "point-distance", "apply-to-all"]
 [hints]
 layer-parallel-safe = true
 ```
+
 ```rust
 // src/lib.rs
 use slicer_sdk::prelude::*;
@@ -693,6 +697,7 @@ fn apply_fuzzy_skin(
 ## SDK Versioning
 
 The SDK crate version tracks the WIT world version it targets:
+
 - `slicer-sdk 1.x` → targets `slicer:world-layer@1.x`
 - `slicer-sdk 2.x` → targets `slicer:world-layer@2.x` (breaking change)
 

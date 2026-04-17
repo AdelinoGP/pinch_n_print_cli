@@ -849,21 +849,25 @@ Last updated: [DATE]
 Before any Phase can be considered complete, all gates must pass:
 
 **Architecture acceptance gate (release blocking):**
+
 - Must pass rubric in `./docs/11_operational_governance_and_acceptance_gate.md`
 - Categories required: determinism, recoverability, resource bounds, coupling control, compatibility, operability
 - Any critical deviation requires explicit waiver by architecture owner and is release-blocking by default
 
 **Phase A gate:**
+
 - `cargo build --workspace` succeeds with zero warnings
 - `cargo test --workspace` passes
 - All IR structs have serde round-trip tests
 
 **Phase B gate:**
+
 - Slice of a known STL produces known polygon count (golden test)
 - Loop chaining produces closed polygons for a manifold mesh
 - All geometry helpers have property tests passing
 
 **Phase C gate:**
+
 - Scheduler rejects: claim conflicts, cycles, unfulfilled reads, version mismatches
 - Per-layer parallel executor produces identical output to sequential for same input
 - Blackboard is not mutated during per-layer execution (verified by Arc + read-only API)
@@ -871,28 +875,33 @@ Before any Phase can be considered complete, all gates must pass:
 - Synthetic layers inserted by finalization modules appear in correct Z-sorted position in GCodeEmit output
 
 **Phase D gate:**
+
 - `slicer new` + `slicer build` + `slicer test` pipeline works end-to-end
 - A scaffolded module compiles to valid WASM component
 - Mock host captures all host service calls correctly
 
 **Phase E gate:**
+
 - TASK-080 through TASK-082 execute successfully in one end-to-end CLI run
 - File import supports STL/OBJ/3MF and applies admesh-based mesh repair without fatal errors on standard fixtures
 - TASK-060, TASK-062, and TASK-066 each pass module-level tests and produce valid staged outputs
 - TASK-083 end-to-end benchy slice passes and emits valid G-code
 
 **Phase F gate:**
+
 - All remaining advanced modules/tasks (TASK-061, TASK-063 through TASK-065, TASK-067 through TASK-079) pass their test suites
 - Advanced paint/annotation propagation and post-processing behaviors match architecture contracts
 - Benchy.stl slices in < 2 seconds on reference machine
 - Progress events conform to `./docs/09_progress_events.md`
 
 **Phase G gate:**
+
 - `slicer run` successfully executes end-to-end using real compiled WASM modules
 - Wasmtime instance pooling parallel execution completes without errors on complex models
 - Python text post-processing operates securely with WASM module outputs
 
 **Phase H gate:**
+
 - A fully sliced `.gcode` of the Benchy STL is produced successfully without errors.
 - Visual inspection or G-code analysis of the Benchy output confirms that all enabled modules (perimeters, infill, supports) functioned correctly end-to-end.
 - Architecture acceptance gate result is recorded in implementation status

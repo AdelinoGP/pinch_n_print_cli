@@ -37,16 +37,16 @@ pub struct LoadedModule {
 
 Manifest keys are kebab-case and table-scoped. `LoadedModule` stores normalized snake_case fields for runtime processing.
 
-| Manifest key | Runtime field |
-|---|---|
-| `[ir-access].reads` | `ir_reads` |
-| `[ir-access].writes` | `ir_writes` |
-| `[claims].holds` | `claims` |
-| `[claims].requires` | `requires_claims` |
-| `[compatibility].incompatible-with` | `incompatible_with` |
-| `[compatibility].requires` | `requires_modules` |
+| Manifest key                           | Runtime field            |
+|----------------------------------------|--------------------------|
+| `[ir-access].reads`                    | `ir_reads`               |
+| `[ir-access].writes`                   | `ir_writes`              |
+| `[claims].holds`                       | `claims`                 |
+| `[claims].requires`                    | `requires_claims`        |
+| `[compatibility].incompatible-with`    | `incompatible_with`      |
+| `[compatibility].requires`             | `requires_modules`       |
 | `[config.overridable-per-region].keys` | `overridable_per_region` |
-| `[config.overridable-per-layer].keys` | `overridable_per_layer` |
+| `[config.overridable-per-layer].keys`  | `overridable_per_layer`  |
 
 The manifest naming is canonical for author-facing docs and examples. Runtime field names are internal and must not appear in user-facing manifest examples.
 
@@ -228,6 +228,7 @@ pub enum SchedulerError {
 Validation pass 11 verifies declared masks statically. Runtime calls are still revalidated at the WIT boundary.
 
 Runtime enforcement requirements:
+
 - Every host read call checks requested path/semantic against `module.ir_reads`.
 - Every output-builder commit checks written path against `module.ir_writes`.
 - Violations are fatal contract errors and are emitted as `module_error(status=fatal_error)`.
@@ -254,6 +255,7 @@ fn effective_claim_holders(
 ```
 
 Rules:
+
 - Global validation fails only if `effective_claim_holders(claim).len() > 1`.
 - A disabled module does not participate in claim conflicts.
 - Region overrides may disable one holder and enable another; the region-level result must still be unique.
@@ -262,6 +264,7 @@ Rules:
 - If region overrides produce claim holder transitions across layers for the same object, validation fails as non-deterministic.
 
 Cross-stage transitive rule:
+
 - If module `A` requires `B`, and `B` (directly or transitively) requires `C`, then `stage(C) <= stage(A)` must hold.
 - Any violation is fatal even when the direct dependency appears legal.
 
@@ -270,14 +273,14 @@ Cross-stage transitive rule:
 These two mechanisms are complementary, not redundant. Understanding the
 difference is important when designing modules that share IR fields.
 
-| | Claim Conflict | Write Conflict |
-|---|---|---|
-| **What it detects** | Two modules both intend to be the primary generator of a feature | Two modules both write the same IR field with no ordering between them |
-| **Granularity** | One claim name per feature category (coarse) | Per IR access path (fine) |
-| **Caught at** | Startup, validation pass 1–2 | Startup, validation pass 6b |
-| **Typical cause** | User enables two infill modules simultaneously | Developer adds a new PostProcess module that overwrites a field another module already modifies |
-| **Resolution** | Region overrides; disable one module | Declare `incompatible-with`, OR have one module read the field it will overwrite (establishing ordering), OR use a claim |
-| **Runtime fallback** | None — fatal startup error | None — fatal startup error |
+|                      | Claim Conflict                                                   | Write Conflict                                                                                                           |
+|----------------------|------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| **What it detects**  | Two modules both intend to be the primary generator of a feature | Two modules both write the same IR field with no ordering between them                                                   |
+| **Granularity**      | One claim name per feature category (coarse)                     | Per IR access path (fine)                                                                                                |
+| **Caught at**        | Startup, validation pass 1–2                                     | Startup, validation pass 6b                                                                                              |
+| **Typical cause**    | User enables two infill modules simultaneously                   | Developer adds a new PostProcess module that overwrites a field another module already modifies                          |
+| **Resolution**       | Region overrides; disable one module                             | Declare `incompatible-with`, OR have one module read the field it will overwrite (establishing ordering), OR use a claim |
+| **Runtime fallback** | None — fatal startup error                                       | None — fatal startup error                                                                                               |
 
 A claim conflict always implies a write conflict on the claim's primary output
 field. A write conflict does not always imply a claim conflict — two
@@ -287,6 +290,7 @@ legitimately run, but only if one reads the other's output first.
 ### Composable Multi-Writer Patterns (Normative)
 
 To avoid tight coupling while keeping determinism:
+
 - Prefer **transform chains** over exclusivity when modules are semantically additive.
 - Use claims only for true single-owner generators (for example infill generator).
 - A valid transform chain is: module A writes `F`, module B declares read `F` and write `F`, producing deterministic `A → B` ordering.
@@ -508,15 +512,18 @@ Any implementation with per-call filtering over all regions (`O(n_regions)`) is 
 ### RegionMapIR Memory Budget Contract (Normative)
 
 Required bounds:
+
 - Host must enforce a configurable cap on RegionMapIR entry count.
 - Default cap: `1_000` entries.
 - Exceeding cap is a fatal planning error with actionable diagnostics.
 
 Required representation guidance:
+
 - `RegionPlan.config` should be shared (`Arc`/interned) when identical across entries.
 - Implementations should avoid full config cloning per entry when equivalent views can be reused.
 
 Minimum diagnostics on overflow:
+
 - computed entry count
 - configured cap
 - top contributing `(object_id, region_count, layer_count)` tuples
@@ -525,17 +532,20 @@ Minimum diagnostics on overflow:
 ### LayerCollectionIR Lifecycle & Memory Strategy (Normative)
 
 Required lifecycle:
+
 1. Per-layer worker builds intermediate IRs in `LayerArena`.
 2. Worker commits exactly one `LayerCollectionIR` into slot storage.
 3. After rayon join, slot storage is drained into `Vec<LayerCollectionIR>`.
 4. `LayerArena` memory is released before PostPass starts.
 
 Memory policy requirements:
+
 - Implementations must support a bounded in-memory mode and a spill-capable mode.
 - In bounded mode, if projected peak memory exceeds configured limit, host must fail early with diagnostics.
 - In spill-capable mode, completed layer outputs may be persisted to temporary storage and reloaded before PostPass.
 
 Projection minimum inputs:
+
 - `global_layer_count`
 - `active_region_count`
 - `configured parallel worker count`
@@ -544,11 +554,13 @@ Projection minimum inputs:
 ### WASM Host-Call Batching Contract (Normative)
 
 To keep boundary overhead proportional to region complexity:
+
 - Host services must provide batch operations for geometry and paint queries.
 - Module guidance is normative for hot paths: prefer one batched call per region over per-vertex calls.
 - Scheduler diagnostics should include per-module host-call counts per stage.
 
 Default soft budgets:
+
 - target host-call count per module invocation: `<= 16`
 - warning threshold: `> 64`
 - error threshold (contract breach for performance gate fixtures): `> 256`
@@ -556,6 +568,7 @@ Default soft budgets:
 ### Proactive Validation Points (Normative)
 
 Validation must happen before expensive stage work whenever possible:
+
 - Catch-up Z envelope compatibility checks at stage entry for Z-writing modules.
 - Config type/range validation at planning time (not first failing layer).
 - Coordinate precision guardrails on output commit for geometry-writing modules.
@@ -768,6 +781,7 @@ fn handle_module_error(
 ```
 
 Normative behavior:
+
 - `fatal=true` aborts the slice command immediately.
 - `fatal=false` continues with pre-stage IR for that module only; downstream stages process degraded state.
 - Every non-fatal or fatal module error must emit a structured progress event (`module_error`).
