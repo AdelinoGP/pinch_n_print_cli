@@ -45,3 +45,8 @@
 ### mem-1773559386-ad53
 > OrcaSlicer references for AABB tree / mesh-query work: OrcaSlicerDocumented/tests/libslic3r/test_aabbindirect.cpp, tests/libslic3r/test_indexed_triangle_set.cpp, src/libslic3r/AABBMesh.cpp, and src/libslic3r/AABBTreeIndirect.hpp.
 <!-- tags: slicer-core, geometry, orca-reference | created: 2026-03-15 -->
+## Context
+
+### mem-1776412341-b749
+> Packet 01_manifest-ir-access-and-config-schema: TASK-121 (ir-access, all 17 modules) and TASK-122 (config.schema) complete. TDD test core_module_ir_access_contract_tdd.rs passes all 3 tests. docs/07_implementation_status.md updated.
+<!-- tags: manifest, ir-access, config-schema, TASK-121, TASK-122 | created: 2026-04-17 -->
