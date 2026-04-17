@@ -68,8 +68,7 @@ hats:
       - docs/03_wit_and_manifest.md — WIT worlds and manifests (exact signature match required)
       - docs/04_host_scheduler.md — scheduler validation and DAG execution
       - docs/05_module_sdk.md — SDK usage and testing
-      - docs/06_agent_implementation_guide.md — agent topology, TDD cycle, implementation order
-      - docs/07_implementation_status.md — current task progress
+      - docs/07_implementation_status.md — current backlog order, progress, and gate state
       - docs/08_coordinate_system.md — coordinate scaling rules (10_000 factor)
       - docs/09_progress_events.md — runtime event schema
       - docs/11_operational_governance_and_acceptance_gate.md — governance rubric
@@ -98,12 +97,11 @@ hats:
       - Before creating tasks for Coding or QA agents, check ./OrcaSlicerDocumented/ for related files.
 
       ## Read State
-      1. Read docs/07_implementation_status.md for current progress
+      1. Read docs/07_implementation_status.md for current backlog order, progress, and phase state
       2. Read `.ralph/agent/scratchpad.md` for current task state and backlog
-      3. Read docs/06_agent_implementation_guide.md for implementation order and phase dependencies
-      4. If tasks are already marked `[x]`, treat them as complete — do NOT re-implement them
-      5. Resume from the first unchecked `[ ]` task
-      6. If a task is marked `[~]` (in-progress), treat it as incomplete and restart from scratch
+      3. If tasks are already marked `[x]`, treat them as complete — do NOT re-implement them
+      4. Resume from the first unchecked `[ ]` task
+      5. If a task is marked `[~]` (in-progress), treat it as incomplete and restart from scratch
 
       ## Orchestration Loop
 
@@ -346,7 +344,7 @@ hats:
       4. Identify missing coverage
       5. Perform focused exploratory checks
 
-      ## Test Categories (per docs/06_agent_implementation_guide.md)
+      ## Test Categories
 
       ### Unit tests (in src/ or tests/ of the crate):
       - Correct output for a known input (golden test)

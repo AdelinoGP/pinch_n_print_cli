@@ -83,8 +83,8 @@ Use this table as the first-hop index when answering architecture or implementat
 | WIT worlds, manifest contracts, module compatibility      | `./docs/03_wit_and_manifest.md`                           |
 | Scheduler validation, DAG execution, RegionMapIR behavior | `./docs/04_host_scheduler.md`                             |
 | SDK usage, host service wrappers, test workflow           | `./docs/05_module_sdk.md`                                 |
-| Implementation sequencing and tasking model               | `./docs/06_agent_implementation_guide.md`                 |
-| Current task progress and gate status                     | `./docs/07_implementation_status.md`                      |
+| Live agent orchestration and role instructions            | `../ralph.yml`                                            |
+| Current sequencing, progress, and gate status             | `./docs/07_implementation_status.md`                      |
 | Coordinate scaling and porting rules                      | `./docs/08_coordinate_system.md`                          |
 | Runtime event schema and ordering guarantees              | `./docs/09_progress_events.md`                            |
 | Canonical terms and scenario traces                       | `./docs/10_glossary_and_scenario_traces.md`               |
@@ -94,11 +94,14 @@ Use this table as the first-hop index when answering architecture or implementat
 | Active architecture deviations                            | `./docs/DEVIATION_LOG.md`                                 |
 | Audit provenance and retired XML crosswalk                | `./docs/14_deviation_audit_history.md`                    |
 
+Operational agent orchestration and validation gates live in `../ralph.yml`; architecture
+conflicts are still resolved by the precedence order below.
+
 Precedence rule for conflicts:
 
 1. `01_system_architecture.md`, `02_ir_schemas.md`, `03_wit_and_manifest.md`
 2. `04_host_scheduler.md`, `09_progress_events.md`
-3. `05_module_sdk.md`, `06_agent_implementation_guide.md`
+3. `05_module_sdk.md`
 4. `00_project_overview.md` and status/governance summaries
 
 ---

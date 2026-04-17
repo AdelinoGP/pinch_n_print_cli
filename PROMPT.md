@@ -26,7 +26,7 @@ When issuing a task, always include:
 - Which doc file(s) are authoritative for this task
 - The exact file(s) to create or modify
 - The acceptance criteria (what tests must pass)
-- Which SubAgent role to use, there are described in ./docs/06_agent_implementation_guide.md
+- Which SubAgent role to use, as defined in ./ralph.yml
 
 ### Task Template
 
@@ -94,14 +94,24 @@ For each task:
 - Do not proceed to the next task until the current one passes its acceptance criteria.
 - Update ./docs/07_implementation_status.md after each completed task.
 
-## Task Evaluation & Project Completion Protocol
-
-You are operating in a continuous loop. Completing a single task does NOT mean the project is complete. After completing ANY task or sub-task, you MUST strictly follow this verification protocol:
-
-1. **RE-READ STATE:** You must explicitly read the current version of `./docs/07_implementation_status.md`. Do not rely on your memory of the file's previous state.
-2. **AUDIT:** Scan the entire document for pending tasks, uncompleted phases, or failing quality gates. 
-3. **CONTINUE:** If there is EVEN ONE task incomplete or pending, you must identify it, assign it, and continue the orchestration loop. **Do NOT emit "tasks.done".**
-4. **VERIFY COMPLETION:** You may only consider the overarching project completed if your audit confirms that 100% of the tasks in `./docs/07_implementation_status.md` are explicitly marked as complete AND all quality gates have successfully passed.
-5. **HALT & FINALIZE:** Only after Phase F is fully satisfied and all Acceptance Gates are passing, write the following exact line to the bottom of `./docs/07_implementation_status.md` and stop execution:
-
+## Task Evaluation & Project Completion Protocol
+
+
+
+You are operating in a continuous loop. Completing a single task does NOT mean the project is complete. After completing ANY task or sub-task, you MUST strictly follow this verification protocol:
+
+
+
+1. **RE-READ STATE:** You must explicitly read the current version of `./docs/07_implementation_status.md`. Do not rely on your memory of the file's previous state.
+
+2. **AUDIT:** Scan the entire document for pending tasks, uncompleted phases, or failing quality gates. 
+
+3. **CONTINUE:** If there is EVEN ONE task incomplete or pending, you must identify it, assign it, and continue the orchestration loop. **Do NOT emit "tasks.done".**
+
+4. **VERIFY COMPLETION:** You may only consider the overarching project completed if your audit confirms that 100% of the tasks in `./docs/07_implementation_status.md` are explicitly marked as complete AND all quality gates have successfully passed.
+
+5. **HALT & FINALIZE:** Only after Phase F is fully satisfied and all Acceptance Gates are passing, write the following exact line to the bottom of `./docs/07_implementation_status.md` and stop execution:
+
+
+
 RALPH_TASK_COMPLETE
