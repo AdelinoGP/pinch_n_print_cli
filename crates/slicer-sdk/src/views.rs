@@ -25,9 +25,9 @@ pub struct SliceRegionView {
     has_nonplanar: bool,
     boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
     /// SurfaceClassificationIR-derived eligibility flag. Surfaces the documented
-    /// `needs_support` signal (docs/02_ir_schemas.md §IR 2 line 231) into the
-    /// support stage so generators can apply default eligibility per
-    /// docs/06_agent_implementation_guide.md §387.
+    /// `needs_support` signal from docs/02_ir_schemas.md into the support stage
+    /// so generators can apply the default eligibility rules from
+    /// docs/01_system_architecture.md when no support paint override applies.
     needs_support: bool,
 }
 
@@ -97,8 +97,8 @@ impl SliceRegionView {
     /// Returns the SurfaceClassificationIR-derived support eligibility flag.
     ///
     /// Used by `Layer::Support` modules as the default-eligibility predicate when
-    /// neither `SupportEnforcer` nor `SupportBlocker` paint applies (see
-    /// docs/06_agent_implementation_guide.md §387 and docs/02 §412).
+    /// neither `SupportEnforcer` nor `SupportBlocker` paint applies; see
+    /// docs/01_system_architecture.md and docs/02_ir_schemas.md.
     pub fn needs_support(&self) -> bool {
         self.needs_support
     }

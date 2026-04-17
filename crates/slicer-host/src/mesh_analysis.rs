@@ -7,8 +7,9 @@
 //! and printability heuristics are out of scope for this step; those
 //! belong to later MeshAnalysis-tier modules that consume this IR.
 //!
-//! Reference: docs/04_host_scheduler.md §"Full Lifecycle" (prepass),
-//! docs/06_agent_implementation_guide.md TASK-105.
+//! Reference: docs/01_system_architecture.md §"PrePass::MeshAnalysis",
+//! docs/02_ir_schemas.md §"IR 2 — SurfaceClassificationIR",
+//! docs/04_host_scheduler.md §"Full Lifecycle" (prepass).
 
 use std::collections::HashMap;
 

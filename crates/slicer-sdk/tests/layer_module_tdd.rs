@@ -403,7 +403,7 @@ fn test_18_slice_region_view_has_nonplanar() {
 
 // =============================================================================
 // SurfaceClassificationIR-derived needs_support flag
-// (docs/02_ir_schemas.md §IR 2 line 231; docs/06 §387)
+// (docs/02_ir_schemas.md and docs/01_system_architecture.md §"Layer::Support")
 // =============================================================================
 
 #[test]

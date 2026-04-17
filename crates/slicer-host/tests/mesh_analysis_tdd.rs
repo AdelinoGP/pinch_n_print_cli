@@ -11,8 +11,9 @@
 //!   with a structured `PrepassExecutionError::MeshAnalysis` diagnostic,
 //! - repeated invocations on the same mesh are byte-identical.
 //!
-//! Reference: docs/04_host_scheduler.md §"Full Lifecycle" (prepass),
-//! docs/06_agent_implementation_guide.md TASK-105.
+//! Reference: docs/01_system_architecture.md §"PrePass::MeshAnalysis",
+//! docs/02_ir_schemas.md §"IR 2 — SurfaceClassificationIR",
+//! docs/04_host_scheduler.md §"Full Lifecycle" (prepass).
 
 use std::collections::HashMap;
 use std::sync::Arc;

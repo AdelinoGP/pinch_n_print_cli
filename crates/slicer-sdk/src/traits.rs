@@ -238,7 +238,8 @@ pub trait LayerModule: Sized {
     /// ) -> result<_, module-error>;
     /// ```
     ///
-    /// Documented eligibility precedence (docs/02 §412, docs/06 §387, §702-704):
+    /// Documented eligibility precedence (docs/01_system_architecture.md
+    /// §"Layer::Support" and docs/02_ir_schemas.md support precedence rules):
     /// 1. `PaintSemantic::SupportBlocker` → no support, even with enforcer.
     /// 2. `PaintSemantic::SupportEnforcer` → support generated regardless of
     ///    overhang and regardless of `needs_support`.
