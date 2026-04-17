@@ -10,24 +10,19 @@ cli:
   backend: claude
 features:
   parallel: false
-  preflight:
-    enabled: true
-    strict: false
-    skip:
-      - telegram
 core:
   specs_dir: ./.ralph/specs/
   guardrails:
-    - The only run-scoped requirements are the files in the single active packet under ./.ralph/specs/.
-    - docs/07_implementation_status.md is the canonical backlog and prioritization source; use it to confirm packet task IDs and to update completion state, not to expand scope mid-run.
-    - If zero or multiple packet.spec.md files are marked status: active, stop and report blocked instead of guessing.
-    - Follow the authority order from docs/00_project_overview.md: docs/01-03 first, then docs/04 and docs/09, then docs/05, then docs/00 plus status and governance docs.
-    - Only tasks listed in the active packet are in scope. Do not pull new work from the rest of the backlog during the run.
-    - TDD is required: add or expose failing tests first, then implement, then rerun the narrowest relevant validation before widening scope.
-    - Before mirroring OrcaSlicer behavior, inspect ./OrcaSlicerDocumented/ and carry forward the specific reference paths used for the packet.
-    - Backpressure is law: cargo build --workspace, cargo test --workspace, and cargo clippy --workspace -- -D warnings must pass before packet completion unless the packet requires stricter checks.
-    - Use .ralph/agent/tasks.jsonl as the active execution queue and .ralph/agent/memories.md as learned context. Scratchpad files are not the task ledger.
-    - Update docs/07_implementation_status.md only for the task IDs owned by the active packet and only after the packet acceptance evidence is green.
+    - "The only run-scoped requirements are the files in the single active packet under ./.ralph/specs/."
+    - "docs/07_implementation_status.md is the canonical backlog and prioritization source; use it to confirm packet task IDs and to update completion state, not to expand scope mid-run."
+    - "If zero or multiple packet.spec.md files are marked status: active, stop and report blocked instead of guessing."
+    - "Follow the authority order from docs/00_project_overview.md: docs/01-03 first, then docs/04 and docs/09, then docs/05, then docs/00 plus status and governance docs."
+    - "Only tasks listed in the active packet are in scope. Do not pull new work from the rest of the backlog during the run."
+    - "TDD is required: add or expose failing tests first, then implement, then rerun the narrowest relevant validation before widening scope."
+    - "Before mirroring OrcaSlicer behavior, inspect ./OrcaSlicerDocumented/ and carry forward the specific reference paths used for the packet."
+    - "Backpressure is law: cargo build --workspace, cargo test --workspace, and cargo clippy --workspace -- -D warnings must pass before packet completion unless the packet requires stricter checks."
+    - "Use .ralph/agent/tasks.jsonl as the active execution queue and .ralph/agent/memories.md as learned context. Scratchpad files are not the task ledger."
+    - "Update docs/07_implementation_status.md only for the task IDs owned by the active packet and only after the packet acceptance evidence is green."
 backpressure:
   gates:
     - name: build
@@ -183,7 +178,7 @@ memories:
   enabled: true
   inject: auto
 tasks:
-  enabled: true
+  enabled: false
 RObot:
   enabled: true
   timeout_seconds: 120
