@@ -13,27 +13,27 @@ features:
 core:
   specs_dir: ./.ralph/specs/
   guardrails:
-    - "The only run-scoped requirements are the files in the single active packet under ./.ralph/specs/."
-    - "docs/07_implementation_status.md is the canonical backlog and prioritization source; use it to confirm packet task IDs and to update completion state, not to expand scope mid-run."
-    - "If zero or multiple packet.spec.md files are marked status: active, stop and report blocked instead of guessing."
-    - "Follow the authority order from docs/00_project_overview.md: docs/01-03 first, then docs/04 and docs/09, then docs/05, then docs/00 plus status and governance docs."
-    - "Only tasks listed in the active packet are in scope. Do not pull new work from the rest of the backlog during the run."
-    - "TDD is required: add or expose failing tests first, then implement, then rerun the narrowest relevant validation before widening scope."
-    - "Before mirroring OrcaSlicer behavior, inspect ./OrcaSlicerDocumented/ and carry forward the specific reference paths used for the packet."
-    - "Backpressure is law: cargo build --workspace, cargo test --workspace, and cargo clippy --workspace -- -D warnings must pass before packet completion unless the packet requires stricter checks."
-    - "Use .ralph/agent/tasks.jsonl as the active execution queue and .ralph/agent/memories.md as learned context. Scratchpad files are not the task ledger."
-    - "Update docs/07_implementation_status.md only for the task IDs owned by the active packet and only after the packet acceptance evidence is green."
+  - The only run-scoped requirements are the files in the single active packet under ./.ralph/specs/.
+  - docs/07_implementation_status.md is the canonical backlog and prioritization source; use it to confirm packet task IDs and to update completion state, not to expand scope mid-run.
+  - 'If zero or multiple packet.spec.md files are marked status: active, stop and report blocked instead of guessing.'
+  - 'Follow the authority order from docs/00_project_overview.md: docs/01-03 first, then docs/04 and docs/09, then docs/05, then docs/00 plus status and governance docs.'
+  - Only tasks listed in the active packet are in scope. Do not pull new work from the rest of the backlog during the run.
+  - 'TDD is required: add or expose failing tests first, then implement, then rerun the narrowest relevant validation before widening scope.'
+  - Before mirroring OrcaSlicer behavior, inspect ./OrcaSlicerDocumented/ and carry forward the specific reference paths used for the packet.
+  - 'Backpressure is law: cargo build --workspace, cargo test --workspace, and cargo clippy --workspace -- -D warnings must pass before packet completion unless the packet requires stricter checks.'
+  - Use .ralph/agent/tasks.jsonl as the active execution queue and .ralph/agent/memories.md as learned context. Scratchpad files are not the task ledger.
+  - Update docs/07_implementation_status.md only for the task IDs owned by the active packet and only after the packet acceptance evidence is green.
 backpressure:
   gates:
-    - name: build
-      command: cargo build --workspace
-      on_fail: Workspace build failed. Fix all build errors and retry.
-    - name: test
-      command: cargo test --workspace
-      on_fail: Tests failed. Fix failing tests before proceeding.
-    - name: clippy
-      command: cargo clippy --workspace -- -D warnings
-      on_fail: Clippy warnings found. Fix all lint issues and retry.
+  - name: build
+    command: cargo build --workspace
+    on_fail: Workspace build failed. Fix all build errors and retry.
+  - name: test
+    command: cargo test --workspace
+    on_fail: Tests failed. Fix failing tests before proceeding.
+  - name: clippy
+    command: cargo clippy --workspace -- -D warnings
+    on_fail: Clippy warnings found. Fix all lint issues and retry.
 hats:
   spec_executor:
     name: Spec Executor
@@ -41,15 +41,15 @@ hats:
     variant: high
     description: Drives one prepared ModularSlicer packet from scope check to verified completion
     triggers:
-      - work.start
-      - implementation.done
-      - implementation.blocked
-      - verification.pass
-      - verification.fail
+    - work.start
+    - implementation.done
+    - implementation.blocked
+    - verification.pass
+    - verification.fail
     publishes:
-      - implementation.ready
-      - verification.ready
-      - SPEC_PACKET_COMPLETE
+    - implementation.ready
+    - verification.ready
+    - SPEC_PACKET_COMPLETE
     default_publishes: implementation.ready
     instructions: |
       You execute exactly one prepared spec packet at a time. You are not a project-wide planner.
@@ -110,10 +110,10 @@ hats:
     variant: high
     description: Implements one active packet step with repo-specific architecture and validation rules
     triggers:
-      - implementation.ready
+    - implementation.ready
     publishes:
-      - implementation.done
-      - implementation.blocked
+    - implementation.done
+    - implementation.blocked
     default_publishes: implementation.done
     instructions: |
       You implement exactly the active packet step carried by `implementation.ready`.
@@ -150,10 +150,10 @@ hats:
     variant: high
     description: Validates one packet step against the active spec contract and required repo gates
     triggers:
-      - verification.ready
+    - verification.ready
     publishes:
-      - verification.pass
-      - verification.fail
+    - verification.pass
+    - verification.fail
     default_publishes: verification.pass
     instructions: |
       You validate one active packet step against the packet contract.
