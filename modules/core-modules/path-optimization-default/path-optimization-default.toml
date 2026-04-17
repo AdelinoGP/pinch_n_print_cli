@@ -29,7 +29,11 @@ max-ir-schema     = "2.0.0"
 # Emit one `; path-optimization layer <n> regions=<count> entities=<e>`
 # comment per layer. Defaults to true so the stage is observable end-
 # to-end; can be disabled for byte-size-sensitive preset profiles.
-path_optimization_emit_layer_markers = "bool"
+[config.schema.path_optimization_emit_layer_markers]
+type    = "bool"
+default = true
+display = "Emit Layer Markers"
+group   = "Path Optimization"
 
 [config.overridable-per-region]
 keys = []

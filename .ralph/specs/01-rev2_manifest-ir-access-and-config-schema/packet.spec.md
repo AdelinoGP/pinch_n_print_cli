@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 01_rev2_manifest-ir-access-and-config-schema
 task_ids:
   - TASK-122
@@ -30,7 +30,7 @@ Convert all 17 core-module manifests to the full `[config.schema]` table format,
 
 ## Acceptance Criteria
 
-- **Given** a core-module manifest with a shorthand config field (e.g., `wall_count = "int"`), **when** `config-schema` CLI is called, **then** the field appears in the JSON output with `"type": "int"` and all five remaining AC-2 fields (`min`, `max`, `default`, `display`, `group`) serialized as `null`.
+- **Given** a core-module manifest with a shorthand config field (e.g., `wall_count = "int"`), **when** `config-schema` CLI is called, **then** the field appears in the JSON output with `"type": "int"` and all five remaining AC-2 fields (`min`, `max`, `default`, `display`, `group`) always returned — absent optional fields are serialized as `null`.
 - **Given** a core-module manifest with a full-format config field (e.g., `wall_count = { type = "int", default = 3, min = 1, max = 10, display = "Wall Count", group = "Walls" }`), **when** `config-schema` CLI is called, **then** the field appears in the JSON output with all six AC-2 fields populated from the manifest.
 - **Given** `paint-region-annotator.toml` (no config fields), **when** `config-schema` CLI is called, **then** it does not appear in the schema output (empty entries filtered out, per existing behavior).
 - **Given** `mesh-segmentation.toml` and `paint-segmentation.toml` (wildcard string keys), **when** `config-schema` CLI is called, **then** those entries appear with `"type": "string"` and other fields as `null`.

@@ -26,9 +26,27 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "2.0.0"
 
 [config.schema]
-thickness       = "float"
-point_distance  = "float"
-apply_to_all   = "bool"
+[config.schema.thickness]
+type    = "float"
+default = 0.3
+min     = 0.0
+max     = 2.0
+display = "Fuzzy Skin Thickness"
+group   = "Fuzzy Skin"
+
+[config.schema.point_distance]
+type    = "float"
+default = 0.5
+min     = 0.01
+max     = 5.0
+display = "Point Distance"
+group   = "Fuzzy Skin"
+
+[config.schema.apply_to_all]
+type    = "bool"
+default = false
+display = "Apply to All Walls"
+group   = "Fuzzy Skin"
 
 [config.overridable-per-region]
 keys = []
