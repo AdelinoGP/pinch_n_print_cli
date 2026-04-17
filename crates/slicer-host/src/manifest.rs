@@ -387,7 +387,14 @@ fn read_config_schema(root: &Value, manifest_path: &Path) -> Result<ConfigSchema
 
     let mut entries = BTreeMap::new();
     for (key, value) in table {
-        entries.insert(key.clone(), value.type_str().to_string());
+        // Schema entry values are TOML strings like "float", "int", "bool", etc.
+        // Use the string value directly; fall back to TOML type string for
+        // structured entries (e.g., if someone writes density = { type = "float" }).
+        let type_str = value
+            .as_str()
+            .map(String::from)
+            .unwrap_or_else(|| value.type_str().to_string());
+        entries.insert(key.clone(), type_str);
     }
 
     Ok(ConfigSchema { entries })

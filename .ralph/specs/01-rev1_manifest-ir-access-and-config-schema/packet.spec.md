@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 01-rev1_manifest-ir-access-and-config-schema
 task_ids:
   - TASK-122

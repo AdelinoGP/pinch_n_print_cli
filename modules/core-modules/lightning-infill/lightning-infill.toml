@@ -26,6 +26,9 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "2.0.0"
 
 [config.schema]
+infill_density  = "float"
+infill_speed    = "float"
+line_width      = "float"
 
 [config.overridable-per-region]
 keys = []

@@ -26,6 +26,12 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "2.0.0"
 
 [config.schema]
+wipe_tower_enabled    = "bool"
+wipe_tower_x          = "float"
+wipe_tower_y          = "float"
+wipe_tower_width      = "float"
+wipe_tower_purge_volume = "float"
+line_width            = "float"
 
 [config.overridable-per-region]
 keys = []

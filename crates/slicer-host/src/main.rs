@@ -12,8 +12,9 @@ use slicer_host::progress_events::{
     JsonLinesEmitter, ProgressEventEmitter, RuntimeProgressSink, SliceEventCollector,
 };
 use slicer_host::{
-    build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
-    DefaultGCodeEmitter, DefaultGCodeSerializer, HostCli, HostCommands,
+    build_config_schema_json, build_live_execution_plan, load_live_modules_for_plan,
+    load_modules_from_roots, parse_cli_config_source, DefaultGCodeEmitter, DefaultGCodeSerializer,
+    HostCli, HostCommands,
 };
 use slicer_host::dispatch::WasmRuntimeDispatcher;
 
@@ -249,9 +250,17 @@ fn main() {
                 }
             }
         }
-        HostCommands::ConfigSchema { module_dir: _ } => {
-            // MVP: emit empty JSON object (no modules loaded)
-            println!("{{}}");
+        HostCommands::ConfigSchema { module_dir } => {
+            let path = std::path::PathBuf::from(module_dir);
+            let report = match load_modules_from_roots(&[path]) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("error loading modules: {e:?}");
+                    std::process::exit(1);
+                }
+            };
+            let json = build_config_schema_json(&report.modules);
+            println!("{}", json);
         }
     }
 }
