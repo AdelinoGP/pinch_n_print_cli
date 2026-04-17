@@ -12,21 +12,21 @@ These operations are hosted here because they require native libraries or algori
 
 **In scope:**
 
-| Feature | CLI subcommand | Description |
-|---|---|---|
-| Mesh repair | `pnp repair` | Manifold fixing: degenerate removal, orientation normalization, open-edge closure |
-| Mesh decimation | `pnp decimate` | QEM triangle-count reduction with configurable error budget |
-| STEP import | `pnp import` | STEP/STP → triangulated `MeshIR`, including unit normalization |
+| Feature         | CLI subcommand | Description                                                                       |
+|-----------------|----------------|-----------------------------------------------------------------------------------|
+| Mesh repair     | `pnp repair`   | Manifold fixing: degenerate removal, orientation normalization, open-edge closure |
+| Mesh decimation | `pnp decimate` | QEM triangle-count reduction with configurable error budget                       |
+| STEP import     | `pnp import`   | STEP/STP → triangulated `MeshIR`, including unit normalization                    |
 
 **Out of scope:**
 
-| Item | Reason |
-|---|---|
-| STL / OBJ / 3MF import | Handled by the host's existing format loaders in `slicer-host` |
-| Per-layer geometry operations | Pipeline module concerns using `slicer-core` and Clipper |
-| WASM module execution | Owned by `slicer-host` scheduler |
+| Item                              | Reason                                                          |
+|-----------------------------------|-----------------------------------------------------------------|
+| STL / OBJ / 3MF import            | Handled by the host's existing format loaders in `slicer-host`  |
+| Per-layer geometry operations     | Pipeline module concerns using `slicer-core` and Clipper        |
+| WASM module execution             | Owned by `slicer-host` scheduler                                |
 | Boolean modifier volume execution | Handled per-layer by `slicer-core` Clipper ops (pipeline stage) |
-| Any rendering or preview code | Frontend (Unity) concern |
+| Any rendering or preview code     | Frontend (Unity) concern                                        |
 
 ---
 
@@ -60,17 +60,17 @@ crates/slicer-helpers/
 
 `slicer-helpers` must obey the following dependency constraints:
 
-| Dependency | Allowed | Reason |
-|---|---|---|
-| `slicer-ir` | Yes | Reads and writes `MeshIR` |
-| `nalgebra` | Yes | Geometry math for repair and decimation |
-| `meshopt` | Yes | QEM decimation (see §Decimation) |
-| `truck-stepio` | Yes | STEP parser (see §STEP Import) |
-| `truck-meshing` | Yes | BRep triangulation (see §STEP Import) |
-| `slicer-core` | No | Core is a peer crate; helpers must not create circular dependencies |
-| `slicer-host` | No | Host depends on helpers, not the reverse |
-| `wasmtime` | No | No WASM runtime in this crate |
-| Any GUI crate | No | Zero UI code |
+| Dependency      | Allowed | Reason                                                              |
+|-----------------|---------|---------------------------------------------------------------------|
+| `slicer-ir`     | Yes     | Reads and writes `MeshIR`                                           |
+| `nalgebra`      | Yes     | Geometry math for repair and decimation                             |
+| `meshopt`       | Yes     | QEM decimation (see §Decimation)                                    |
+| `truck-stepio`  | Yes     | STEP parser (see §STEP Import)                                      |
+| `truck-meshing` | Yes     | BRep triangulation (see §STEP Import)                               |
+| `slicer-core`   | No      | Core is a peer crate; helpers must not create circular dependencies |
+| `slicer-host`   | No      | Host depends on helpers, not the reverse                            |
+| `wasmtime`      | No      | No WASM runtime in this crate                                       |
+| Any GUI crate   | No      | Zero UI code                                                        |
 
 New workspace dependencies required in root `Cargo.toml`:
 
@@ -96,12 +96,12 @@ Reference: `./docs/08_coordinate_system.md` — normative unit definitions.
 
 Unit conversion table for STEP import:
 
-| STEP declared unit | Factor to internal units |
-|---|---|
-| Millimetre (most common) | × 10,000 |
-| Metre | × 10,000,000 |
-| Inch | × 254,000 |
-| Micrometre | × 10 |
+| STEP declared unit       | Factor to internal units |
+|--------------------------|--------------------------|
+| Millimetre (most common) | × 10,000                 |
+| Metre                    | × 10,000,000             |
+| Inch                     | × 254,000                |
+| Micrometre               | × 10                     |
 
 If the STEP file declares no unit, the importer must default to millimetres and emit a structured warning.
 
@@ -178,12 +178,12 @@ Options:
 
 Exit codes:
 
-| Code | Meaning |
-|---|---|
-| 0 | Repair succeeded; mesh is fully manifold |
-| 1 | Repair partially succeeded; some loops were skipped (warnings present) |
-| 2 | Input file not found or unreadable |
-| 3 | Input mesh is empty |
+| Code | Meaning                                                                |
+|------|------------------------------------------------------------------------|
+| 0    | Repair succeeded; mesh is fully manifold                               |
+| 1    | Repair partially succeeded; some loops were skipped (warnings present) |
+| 2    | Input file not found or unreadable                                     |
+| 3    | Input mesh is empty                                                    |
 
 ---
 
@@ -213,12 +213,12 @@ Coordinates are converted to `f32` for meshopt processing and back to `i64` (int
 
 ### Configuration
 
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `target_count` | `usize` | — | Absolute target triangle count. Mutually exclusive with `target_ratio`. |
-| `target_ratio` | `f32` | — | Fraction of original count to retain (0.0–1.0). Mutually exclusive with `target_count`. |
-| `max_error` | `f32` | `0.01` | Maximum allowed quadric error in internal units. Decimation stops early if this would be exceeded. |
-| `aggressive` | `bool` | `false` | Use `simplify_sloppy` instead of `simplify`. Faster but may produce lower-quality results near boundaries. |
+| Parameter      | Type    | Default | Description                                                                                                |
+|----------------|---------|---------|------------------------------------------------------------------------------------------------------------|
+| `target_count` | `usize` | —       | Absolute target triangle count. Mutually exclusive with `target_ratio`.                                    |
+| `target_ratio` | `f32`   | —       | Fraction of original count to retain (0.0–1.0). Mutually exclusive with `target_count`.                    |
+| `max_error`    | `f32`   | `0.01`  | Maximum allowed quadric error in internal units. Decimation stops early if this would be exceeded.         |
+| `aggressive`   | `bool`  | `false` | Use `simplify_sloppy` instead of `simplify`. Faster but may produce lower-quality results near boundaries. |
 
 Exactly one of `target_count` or `target_ratio` must be specified.
 
@@ -260,12 +260,12 @@ Options:
 
 Exit codes:
 
-| Code | Meaning |
-|---|---|
-| 0 | Decimation succeeded; target was reached |
-| 1 | Decimation stopped early (max_error budget exhausted before target count reached) |
-| 2 | Input file not found or unreadable |
-| 3 | Input mesh is empty or has fewer triangles than target |
+| Code | Meaning                                                                           |
+|------|-----------------------------------------------------------------------------------|
+| 0    | Decimation succeeded; target was reached                                          |
+| 1    | Decimation stopped early (max_error budget exhausted before target count reached) |
+| 2    | Input file not found or unreadable                                                |
+| 3    | Input mesh is empty or has fewer triangles than target                            |
 
 ---
 
@@ -283,6 +283,7 @@ STEP import is implemented using the `truck` crate ecosystem (pure Rust CAD kern
 - `truck-meshing`: triangulates B-Rep shells into indexed triangle meshes
 
 `truck` was chosen over an OpenCASCADE FFI binding because:
+
 - Pure Rust — no C++ build dependency, cross-compiles cleanly to all target platforms
 - AP203 and AP214 coverage is sufficient for mechanical FDM print use cases
 - Maintained actively as of 2026
@@ -380,13 +381,13 @@ Options:
 
 Exit codes:
 
-| Code | Meaning |
-|---|---|
-| 0 | Import succeeded; all solids converted |
-| 1 | Import partially succeeded; some solids had warnings |
-| 2 | Input file not found or unreadable |
-| 3 | STEP file contains no recognisable geometry |
-| 4 | Parse error — file is not valid STEP |
+| Code | Meaning                                              |
+|------|------------------------------------------------------|
+| 0    | Import succeeded; all solids converted               |
+| 1    | Import partially succeeded; some solids had warnings |
+| 2    | Input file not found or unreadable                   |
+| 3    | STEP file contains no recognisable geometry          |
+| 4    | Parse error — file is not valid STEP                 |
 
 ---
 
@@ -446,37 +447,37 @@ Tests must be written and confirmed failing before any implementation begins. Ea
 
 ### `tests/repair_tdd.rs`
 
-| Test | Input | Expected |
-|---|---|---|
-| `repair_removes_degenerate_triangles` | Mesh with 3 zero-area triangles | `stats.degenerate_removed == 3` |
-| `repair_normalizes_flipped_face` | Cube with one face winding reversed | `stats.faces_reoriented >= 1`, output is manifold |
-| `repair_closes_open_edge` | Cube with one face removed | `stats.open_edges_closed > 0`, output is closed |
-| `repair_noop_on_clean_mesh` | Valid cube mesh | All stats == 0, output identical to input |
-| `repair_large_cap_loop_warning` | Mesh with 300-vertex open boundary | `RepairWarning::LargeCapLoop` present, `repaired == false` on component |
+| Test                                  | Input                               | Expected                                                                |
+|---------------------------------------|-------------------------------------|-------------------------------------------------------------------------|
+| `repair_removes_degenerate_triangles` | Mesh with 3 zero-area triangles     | `stats.degenerate_removed == 3`                                         |
+| `repair_normalizes_flipped_face`      | Cube with one face winding reversed | `stats.faces_reoriented >= 1`, output is manifold                       |
+| `repair_closes_open_edge`             | Cube with one face removed          | `stats.open_edges_closed > 0`, output is closed                         |
+| `repair_noop_on_clean_mesh`           | Valid cube mesh                     | All stats == 0, output identical to input                               |
+| `repair_large_cap_loop_warning`       | Mesh with 300-vertex open boundary  | `RepairWarning::LargeCapLoop` present, `repaired == false` on component |
 
 ### `tests/decimate_tdd.rs`
 
-| Test | Input | Expected |
-|---|---|---|
-| `decimate_by_ratio` | Sphere with 2000 triangles, `target_ratio = 0.5` | Output has ≤ 1000 triangles |
-| `decimate_by_count` | Sphere with 2000 triangles, `target_count = 400` | Output has ≤ 400 triangles |
-| `decimate_respects_error_budget` | Sphere, tight `max_error = 0.001` | `achieved_error ≤ 0.001` |
-| `decimate_stops_early` | Sphere, `target_ratio = 0.01`, `max_error = 0.001` | Exit code 1 (budget hit before target) |
-| `decimate_empty_mesh_error` | Empty `MeshIR` | `Err(DecimateError::EmptyMesh)` |
-| `decimate_conflict_config_error` | Both `target_count` and `target_ratio` set | `Err(DecimateError::InvalidConfig(_))` |
+| Test                             | Input                                              | Expected                               |
+|----------------------------------|----------------------------------------------------|----------------------------------------|
+| `decimate_by_ratio`              | Sphere with 2000 triangles, `target_ratio = 0.5`   | Output has ≤ 1000 triangles            |
+| `decimate_by_count`              | Sphere with 2000 triangles, `target_count = 400`   | Output has ≤ 400 triangles             |
+| `decimate_respects_error_budget` | Sphere, tight `max_error = 0.001`                  | `achieved_error ≤ 0.001`               |
+| `decimate_stops_early`           | Sphere, `target_ratio = 0.01`, `max_error = 0.001` | Exit code 1 (budget hit before target) |
+| `decimate_empty_mesh_error`      | Empty `MeshIR`                                     | `Err(DecimateError::EmptyMesh)`        |
+| `decimate_conflict_config_error` | Both `target_count` and `target_ratio` set         | `Err(DecimateError::InvalidConfig(_))` |
 
 ### `tests/import_step_tdd.rs`
 
-| Test | Input | Expected |
-|---|---|---|
-| `import_step_single_solid` | `tests/resources/cube.step` (mm units) | 1 mesh, vertices scaled to internal units |
-| `import_step_unit_metre` | `tests/resources/cube_metres.step` | Vertices × 10,000,000 vs mm equivalent |
-| `import_step_multi_solid` | `tests/resources/assembly.step` (2 solids) | `result.meshes.len() == 2` |
-| `import_step_merge_components` | `tests/resources/assembly.step`, `merge = true` | 1 mesh, combined vertex count |
-| `import_step_repair_applied` | `tests/resources/step_open_face.step` | `StepWarning::RepairApplied` present |
-| `import_step_unknown_unit_warning` | STEP file with no unit declaration | `StepWarning::UnknownUnit` present, defaults to mm |
-| `import_step_not_found_error` | Non-existent path | `Err(StepImportError::FileNotFound(_))` |
-| `import_step_invalid_file_error` | Binary garbage file | `Err(StepImportError::ParseError(_))` |
+| Test                               | Input                                           | Expected                                           |
+|------------------------------------|-------------------------------------------------|----------------------------------------------------|
+| `import_step_single_solid`         | `tests/resources/cube.step` (mm units)          | 1 mesh, vertices scaled to internal units          |
+| `import_step_unit_metre`           | `tests/resources/cube_metres.step`              | Vertices × 10,000,000 vs mm equivalent             |
+| `import_step_multi_solid`          | `tests/resources/assembly.step` (2 solids)      | `result.meshes.len() == 2`                         |
+| `import_step_merge_components`     | `tests/resources/assembly.step`, `merge = true` | 1 mesh, combined vertex count                      |
+| `import_step_repair_applied`       | `tests/resources/step_open_face.step`           | `StepWarning::RepairApplied` present               |
+| `import_step_unknown_unit_warning` | STEP file with no unit declaration              | `StepWarning::UnknownUnit` present, defaults to mm |
+| `import_step_not_found_error`      | Non-existent path                               | `Err(StepImportError::FileNotFound(_))`            |
+| `import_step_invalid_file_error`   | Binary garbage file                             | `Err(StepImportError::ParseError(_))`              |
 
 Test fixture files required in `tests/resources/`:
 
@@ -491,11 +492,11 @@ Test fixture files required in `tests/resources/`:
 
 These tasks extend the Phase B sequence in `./docs/07_implementation_status.md`.
 
-| Task ID | Description | Phase |
-|---|---|---|
-| TASK-055 | Create `crates/slicer-helpers/` workspace member; add `meshopt`, `truck-stepio`, `truck-meshing` to root `Cargo.toml` | D |
-| TASK-056 | Write failing tests in `repair_tdd.rs`; implement `repair.rs` (all three phases); all tests pass | D |
-| TASK-057 | Write failing tests in `decimate_tdd.rs`; implement `decimate.rs` via meshopt; all tests pass | D |
-| TASK-058 | Create STEP test fixtures; write failing tests in `import_step_tdd.rs`; implement `import/step.rs` via truck; all tests pass | D |
+| Task ID  | Description                                                                                                                  | Phase |
+|----------|------------------------------------------------------------------------------------------------------------------------------|-------|
+| TASK-055 | Create `crates/slicer-helpers/` workspace member; add `meshopt`, `truck-stepio`, `truck-meshing` to root `Cargo.toml`        | D     |
+| TASK-056 | Write failing tests in `repair_tdd.rs`; implement `repair.rs` (all three phases); all tests pass                             | D     |
+| TASK-057 | Write failing tests in `decimate_tdd.rs`; implement `decimate.rs` via meshopt; all tests pass                                | D     |
+| TASK-058 | Create STEP test fixtures; write failing tests in `import_step_tdd.rs`; implement `import/step.rs` via truck; all tests pass | D     |
 
 TASK-076 in Phase E ("File format loaders + admesh-based mesh repair integration") is superseded by TASK-056 for the repair component. TASK-076 retains responsibility for STL/OBJ/3MF host-side loaders only.
