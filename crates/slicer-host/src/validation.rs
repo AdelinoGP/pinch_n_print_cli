@@ -358,6 +358,15 @@ fn validate_claim_conflicts(
     global_only: bool,
     report: &mut DagValidationReport,
 ) {
+    let non_transitionable_claims: BTreeSet<&'static str> = [
+        "perimeter-generator",
+        "seam-placer",
+        "layer-planner",
+        "mesh-analyzer",
+    ]
+    .into_iter()
+    .collect();
+
     let mut holders_by_claim: BTreeMap<(String, String), Vec<ModuleId>> = BTreeMap::new();
 
     for holder in &request.claim_holders {
@@ -366,8 +375,16 @@ fn validate_claim_conflicts(
             continue;
         }
 
+        let use_scope_key = if global_only {
+            scope_key(&holder.scope)
+        } else if non_transitionable_claims.contains(holder.claim.as_str()) {
+            scope_key_without_layer(&holder.scope)
+        } else {
+            scope_key(&holder.scope)
+        };
+
         holders_by_claim
-            .entry((holder.claim.clone(), scope_key(&holder.scope)))
+            .entry((holder.claim.clone(), use_scope_key))
             .or_default()
             .push(holder.module_id.clone());
     }
@@ -513,6 +530,10 @@ fn validate_write_conflicts(request: &DagValidationRequest, report: &mut DagVali
                         continue;
                     }
 
+                    // Neither module's read establishes an ordering over this field.
+                    // Ordering cannot resolve this write-write conflict.
+                    let orderable = right.ir_reads.contains(&field)
+                        || left.ir_reads.contains(&field);
                     report.push_error(
                         DagValidationPass::WriteConflicts,
                         SchedulerError::WriteConflict {
@@ -520,7 +541,7 @@ fn validate_write_conflicts(request: &DagValidationRequest, report: &mut DagVali
                             module_a: left.module_id.clone(),
                             module_b: right.module_id.clone(),
                             stage: stage_dag.stage.clone(),
-                            orderable: true,
+                            orderable,
                         },
                     );
                 }
@@ -809,6 +830,17 @@ fn scope_key(scope: &ConflictScope) -> String {
             "region:{object_id}:{region_id}:{}",
             global_layer_index.map_or_else(|| String::from("none"), |value| value.to_string())
         ),
+    }
+}
+
+fn scope_key_without_layer(scope: &ConflictScope) -> String {
+    match scope {
+        ConflictScope::Global => String::from("global"),
+        ConflictScope::Region {
+            object_id,
+            region_id,
+            global_layer_index: _,
+        } => format!("region:{object_id}:{region_id}:_"),
     }
 }
 

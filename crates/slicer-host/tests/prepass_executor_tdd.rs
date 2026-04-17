@@ -67,7 +67,7 @@ fn prepass_executor_locks_down_stage_order_full_commit_set_and_shared_mesh_input
         Arc::as_ptr(&mesh) as usize,
     );
 
-    execute_prepass(&plan, &mut blackboard, &runner)
+    let _audits = execute_prepass(&plan, &mut blackboard, &runner)
         .expect("prepass executor should run fixed stage order and commit each output once");
 
     assert_eq!(

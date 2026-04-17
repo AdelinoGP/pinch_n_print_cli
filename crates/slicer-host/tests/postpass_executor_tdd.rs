@@ -284,7 +284,7 @@ fn postpass_executor_serializes_directly_when_no_text_postprocess() {
         serializer.was_called(),
         "serializer must be called when no TextPostProcess"
     );
-    assert_eq!(result.unwrap(), "G28 ; home\nG1 X10 Y10");
+    assert_eq!(result.unwrap().0, "G28 ; home\nG1 X10 Y10");
 }
 
 // ============================================================================
@@ -315,7 +315,7 @@ fn postpass_executor_returns_text_from_last_text_postprocess() {
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
-    assert_eq!(result.unwrap(), "FINAL OUTPUT FROM MODULE");
+    assert_eq!(result.unwrap().0, "FINAL OUTPUT FROM MODULE");
 }
 
 // ============================================================================
@@ -557,7 +557,7 @@ fn postpass_executor_handles_empty_stages() {
     );
 
     assert!(serializer.was_called(), "serializer must be called");
-    assert_eq!(result.unwrap(), "G28\nG1 Z10");
+    assert_eq!(result.unwrap().0, "G28\nG1 Z10");
 }
 
 // ============================================================================

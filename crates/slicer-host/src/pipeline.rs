@@ -13,8 +13,8 @@ use crate::{
     execute_layer_finalization, execute_per_layer_with_events, execute_postpass,
     execute_prepass_with_builtins, Blackboard, ExecutionPlan, FinalizationError,
     FinalizationStageRunner, GCodeEmitter, GCodeSerializer, LayerExecutionError,
-    LayerProgressSink, LayerStageRunner, NoopLayerProgressSink, PostpassError, PostpassStageRunner,
-    PrepassExecutionError, PrepassStageRunner,
+    LayerProgressSink, LayerStageRunner, ModuleAccessAudit, NoopLayerProgressSink,
+    PostpassError, PostpassStageRunner, PrepassExecutionError, PrepassStageRunner,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -48,6 +48,12 @@ pub struct PipelineConfig {
 pub struct PipelineOutput {
     /// The final G-code text.
     pub gcode_text: String,
+    /// Runtime access audits collected during prepass execution.
+    pub prepass_audits: Vec<ModuleAccessAudit>,
+    /// Runtime access audits collected during per-layer execution (TASK-123b).
+    pub layer_audits: Vec<ModuleAccessAudit>,
+    /// Runtime access audits collected during postpass execution (TASK-123c).
+    pub postpass_audits: Vec<ModuleAccessAudit>,
 }
 
 /// Structured pipeline orchestration failures.
@@ -138,8 +144,8 @@ pub fn run_pipeline_with_events(
     // loop returns a Vec<LayerCollectionIR> directly), so this is safe.
     let mut blackboard = Blackboard::new(mesh_ir, 0);
 
-    // Step 2: Execute prepass stages sequentially
-    execute_prepass_with_builtins(&plan, &mut blackboard, runners.prepass.as_ref())?;
+    // Step 2: Execute prepass stages sequentially, collecting runtime audits.
+    let prepass_audits = execute_prepass_with_builtins(&plan, &mut blackboard, runners.prepass.as_ref())?;
 
     // Step 2b: Promote the LayerPlanIR committed by prepass into the execution
     // plan so that the per-layer loop iterates real layers. The plan is built
@@ -150,7 +156,7 @@ pub fn run_pipeline_with_events(
     }
 
     // Step 3: Execute per-layer stages in parallel via rayon
-    let mut layer_irs =
+    let (mut layer_irs, layer_audits) =
         execute_per_layer_with_events(&plan, &blackboard, runners.layer.as_ref(), sink)?;
 
     // Step 4: Execute layer finalization (if present)
@@ -162,7 +168,7 @@ pub fn run_pipeline_with_events(
     )?;
 
     // Step 5: Execute postpass (emit + serialize gcode)
-    let gcode_text = execute_postpass(
+    let (gcode_text, postpass_audits) = execute_postpass(
         &plan,
         &layer_irs,
         &blackboard,
@@ -171,7 +177,7 @@ pub fn run_pipeline_with_events(
         runners.postpass.as_ref(),
     )?;
 
-    Ok(PipelineOutput { gcode_text })
+    Ok(PipelineOutput { gcode_text, prepass_audits, layer_audits, postpass_audits })
 }
 
 #[cfg(test)]

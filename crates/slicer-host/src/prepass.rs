@@ -10,6 +10,7 @@ use slicer_ir::{
 
 use crate::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
 use crate::region_mapping::{commit_region_mapping_builtin, RegionMappingBuiltinError};
+use crate::validation::ModuleAccessAudit;
 use crate::{Blackboard, BlackboardError, BlackboardPrepassSlot, CompiledModule, ExecutionPlan};
 
 /// One committed output produced by a prepass stage invocation.
@@ -180,21 +181,56 @@ impl fmt::Display for PrepassExecutionError {
 impl std::error::Error for PrepassExecutionError {}
 
 /// Executes the sequential Tier 1 prepass pipeline.
+///
+/// Returns collected runtime access audits for all user modules that executed.
+/// Host built-ins (MeshAnalysis, RegionMapping) are not audited as they are
+/// not subject to the module access contract.
 pub fn execute_prepass(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
-) -> Result<(), PrepassExecutionError> {
+) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
+    let mut audits = Vec::new();
+
     for stage in &plan.prepass_stages {
         ensure_stage_prerequisites(&stage.stage_id, blackboard)?;
 
         for module in &stage.modules {
             let output = runner.run_stage(&stage.stage_id, module, blackboard)?;
+
+            // Determine IR path before committing (output is moved into commit).
+            let ir_path = ir_path_for_prepass_output(&output);
+
             commit_stage_output(&stage.stage_id, &module.module_id, blackboard, output)?;
+
+            // Record runtime write audit if the module produced output.
+            if let Some(path) = ir_path {
+                audits.push(ModuleAccessAudit {
+                    module_id: module.module_id.clone(),
+                    runtime_reads: Vec::new(),
+                    runtime_writes: vec![path],
+                });
+            }
         }
     }
 
-    Ok(())
+    Ok(audits)
+}
+
+/// Maps a prepass stage output variant to the canonical IR field path written.
+fn ir_path_for_prepass_output(output: &PrepassStageOutput) -> Option<String> {
+    match output {
+        PrepassStageOutput::None => None,
+        PrepassStageOutput::SurfaceClassification(_) => {
+            Some(String::from("SurfaceClassificationIR"))
+        }
+        PrepassStageOutput::MeshSegmentation(_) => Some(String::from("MeshSegmentationIR")),
+        PrepassStageOutput::LayerPlan(_) => Some(String::from("LayerPlanIR")),
+        PrepassStageOutput::PaintRegions(_) => Some(String::from("PaintRegionIR")),
+        PrepassStageOutput::RegionMap(_) => Some(String::from("RegionMapIR")),
+        // MeshAnalysisAuxiliary is auxiliary data, not a primary IR commit.
+        PrepassStageOutput::MeshAnalysisAuxiliary(_) => None,
+    }
 }
 
 /// Run the host-built-in [`PrePass::MeshAnalysis`](execute_mesh_analysis)
@@ -206,11 +242,15 @@ pub fn execute_prepass(
 /// module runs. If a caller has already committed a surface
 /// classification (e.g. an earlier integration test pre-seeded one) the
 /// built-in step is skipped so commits remain exactly-once.
+///
+/// Returns collected runtime access audits from user prepass modules.
+/// Host built-ins (MeshAnalysis, RegionMapping) are not audited as they are
+/// not subject to the module access contract.
 pub fn execute_prepass_with_builtins(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
-) -> Result<(), PrepassExecutionError> {
+) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     if blackboard.surface_classification().is_none() {
         let ir = execute_mesh_analysis(blackboard.mesh().as_ref())
             .map_err(|source| PrepassExecutionError::MeshAnalysis { source })?;
@@ -222,7 +262,7 @@ pub fn execute_prepass_with_builtins(
                 source,
             })?;
     }
-    execute_prepass(plan, blackboard, runner)?;
+    let audits = execute_prepass(plan, blackboard, runner)?;
 
     // Host-built-in PrePass::RegionMapping runs last (docs/04 §Full
     // Lifecycle), after any user PrePass::LayerPlanning module has
@@ -233,7 +273,7 @@ pub fn execute_prepass_with_builtins(
         commit_region_mapping_builtin(plan, blackboard)
             .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
     }
-    Ok(())
+    Ok(audits)
 }
 
 fn ensure_stage_prerequisites(

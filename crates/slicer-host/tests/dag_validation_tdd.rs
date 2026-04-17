@@ -192,6 +192,45 @@ fn validates_cycles_write_conflicts_unfulfilled_reads_and_dead_write_warnings() 
 }
 
 #[test]
+fn write_conflict_orderable_is_false_when_neither_module_reads_conflicting_field() {
+    // Two modules write the same field but neither reads it.
+    // Ordering cannot resolve this — neither can be ordered to transform the other.
+    let stage = "Layer::PerimetersPostProcess";
+    let alpha = loaded_module("com.example.alpha", stage)
+        .with_writes(&["PerimeterIR.regions.walls.shared"]);
+    let beta = loaded_module("com.example.beta", stage)
+        .with_writes(&["PerimeterIR.regions.walls.shared"]);
+    let request = DagValidationRequest {
+        modules: vec![alpha.clone().build(), beta.clone().build()],
+        stage_dags: vec![stage_dag(stage, &[alpha, beta])],
+        host_ir_schema_version: semver(1, 0, 0),
+        claim_holders: Vec::new(),
+        access_audits: Vec::new(),
+    };
+
+    let report = validate_startup_dag(&request);
+
+    assert!(report.errors.iter().any(|diagnostic| {
+        match &diagnostic.detail {
+            SchedulerError::WriteConflict {
+                field,
+                module_a,
+                module_b,
+                stage: s,
+                orderable,
+            } => {
+                field.as_str() == "PerimeterIR.regions.walls.shared"
+                    && (*module_a == "com.example.alpha" || *module_b == "com.example.alpha")
+                    && (*module_a == "com.example.beta" || *module_b == "com.example.beta")
+                    && s == stage
+                    && *orderable == false
+            }
+            _ => false,
+        }
+    }));
+}
+
+#[test]
 fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
     let earlier = loaded_module("com.example.earlier", "Layer::SlicePostProcess")
         .with_requires_modules(&["com.example.later"]);

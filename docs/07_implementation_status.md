@@ -42,13 +42,13 @@ Last updated: 2026-04-16
 
 - [x] TASK-121 Populate `[ir-access]` for all 17 core-module manifests per docs/01 Stage I/O Contract. Covers DEV-002. Must turn `core_module_ir_access_contract_tdd.rs` green.
 - [x] TASK-122 Populate `[config.schema]` for all 17 core-module manifests so the `config-schema` CLI returns real per-module schemas. Covers DEV-008.
-- [~] TASK-123 Feed `ModuleAccessAudit` from every live execution path and pass populated `access_audits` into validation. Covers DEV-003.
-- [ ] TASK-123a Record prepass execution audits and plumb them into `DagValidationRequest.access_audits`. Covers DEV-003.
-- [ ] TASK-123b Record per-layer execution audits and plumb them into `DagValidationRequest.access_audits`. Covers DEV-003.
-- [ ] TASK-123c Record postpass execution audits and add a live-path regression proving populated audits reach validation. Covers DEV-003.
-- [ ] TASK-124 Enforce undeclared runtime read/write faults at the WIT boundary and add a negative harness for layer-time undeclared access. Continues DEV-003 after TASK-123 lands.
-- [ ] TASK-125 Enforce the docs/01 Claim Transition Matrix for non-transitionable claims (`perimeter-generator`, `seam-placer`, `layer-planner`, `mesh-analyzer`). Covers DEV-004 and must turn `claim_transition_matrix_tdd.rs` green.
-- [ ] TASK-126 Fix `WriteConflict.orderable` so it reports `true` only when ordering can actually resolve the pair; add both positive and negative semantics tests. Scheduler conflict-ordering cleanup required for the docs/04 contract.
+- [x] TASK-123 Feed `ModuleAccessAudit` from every live execution path and pass populated `access_audits` into validation. Covers DEV-003.
+- [x] TASK-123a Record prepass execution audits and plumb them into `DagValidationRequest.access_audits`. Covers DEV-003.
+- [x] TASK-123b Record per-layer execution audits and plumb them into `DagValidationRequest.access_audits`. Covers DEV-003.
+- [x] TASK-123c Record postpass execution audits and add a live-path regression proving populated audits reach validation. Covers DEV-003.
+- [x] TASK-124 Enforce undeclared runtime read/write faults at the WIT boundary and add a negative harness for layer-time undeclared access. Continues DEV-003 after TASK-123 lands.
+- [x] TASK-125 Enforce the docs/01 Claim Transition Matrix for non-transitionable claims (`perimeter-generator`, `seam-placer`, `layer-planner`, `mesh-analyzer`). Covers DEV-004 and must turn `claim_transition_matrix_tdd.rs` green.
+- [x] TASK-126 Fix `WriteConflict.orderable` so it reports `true` only when ordering can actually resolve the pair; add both positive and negative semantics tests. Scheduler conflict-ordering cleanup required for the docs/04 contract.
 - [ ] TASK-144 Consolidate host, macro, and guest codegen onto one canonical shared WIT source rooted in `wit/`. Covers DEV-014.
 - [ ] TASK-145 Normalize WIT package/version identifiers and restore missing members across the canonical WIT surface, generated bindings, schema constants, and test guests; add drift-detection regression coverage. Continues DEV-014.
 - [ ] TASK-146 Add host-side `wit_world` allowlist validation using the canonical identifiers and reject mismatched manifests at startup. Covers the validation slice of DEV-014 and DEV-026.
@@ -154,7 +154,7 @@ Use `docs/14_deviation_audit_history.md` only for retired XML-era numbering and 
 ## Architecture Acceptance Gate
 
 - Status: BLOCKED BY OPEN REMEDIATION TASKS
-- Blocking tasks: TASK-120a, TASK-120b, TASK-120c, TASK-120d1, TASK-120d2, TASK-121, TASK-123a, TASK-123b, TASK-123c, TASK-125, TASK-127, TASK-128a, TASK-128b, TASK-129a, TASK-129b, TASK-129c, TASK-130a, TASK-130b, TASK-136, TASK-140, TASK-144, TASK-145, TASK-146, TASK-149, TASK-150, TASK-154, TASK-155, TASK-156
+- Blocking tasks: TASK-120a, TASK-120b, TASK-120c, TASK-120d1, TASK-120d2, TASK-125, TASK-126, TASK-127, TASK-128a, TASK-128b, TASK-129a, TASK-129b, TASK-129c, TASK-130a, TASK-130b, TASK-136, TASK-140, TASK-144, TASK-145, TASK-146, TASK-149, TASK-150, TASK-154, TASK-155, TASK-156
 
 ### Evidence Links
 

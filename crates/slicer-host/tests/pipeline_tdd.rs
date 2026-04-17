@@ -701,3 +701,81 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
         "per-layer runner must be called once per promoted layer (2 layers × 1 module)"
     );
 }
+
+// ---------- Test 10: live-path postpass audits reach PipelineOutput ----------
+/// Regression guard for TASK-123c: postpass audit collection must populate
+/// `PipelineOutput.postpass_audits` with `ModuleAccessAudit` entries for every
+/// postpass module that executes successfully. This proves the full pipeline
+/// wires audits from `execute_postpass` all the way to `run_pipeline` output.
+#[test]
+fn access_audits_live_path() {
+    // Set up an execution plan with postpass stages containing modules.
+    // When these modules succeed, they should produce audit entries.
+    let plan = ExecutionPlan {
+        prepass_stages: Vec::new(),
+        per_layer_stages: Vec::new(),
+        layer_finalization_stage: None,
+        postpass_stages: vec![
+            CompiledStage {
+                stage_id: "PostPass::GCodePostProcess".into(),
+                modules: vec![
+                    make_dummy_module("PostPass::GCodePostProcess", "gcode-pp-a"),
+                    make_dummy_module("PostPass::GCodePostProcess", "gcode-pp-b"),
+                ],
+            },
+            CompiledStage {
+                stage_id: "PostPass::TextPostProcess".into(),
+                modules: vec![make_dummy_module("PostPass::TextPostProcess", "text-pp")],
+            },
+        ],
+        global_layers: Arc::new(vec![make_global_layer(0, 0.2)]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
+        plan,
+        runners: PipelineStageRunners {
+            prepass: Box::new(NoopPrepassRunner),
+            layer: Box::new(NoopLayerRunner),
+            finalization: Box::new(NoopFinalizationRunner),
+            postpass: Box::new(NoopPostpassRunner),
+            emitter: Box::new(MinimalEmitter),
+            serializer: Box::new(MinimalSerializer),
+        },
+    };
+
+    let output = run_pipeline(config).expect("pipeline must succeed");
+
+    // Assert that postpass audits were collected for all 3 modules that ran:
+    // - 2 GCodePostProcess modules (gcode-pp-a, gcode-pp-b)
+    // - 1 TextPostProcess module (text-pp)
+    assert!(
+        !output.postpass_audits.is_empty(),
+        "postpass_audits must be non-empty; expected 3 entries for 3 postpass modules"
+    );
+    assert_eq!(
+        output.postpass_audits.len(),
+        3,
+        "expected 3 postpass audit entries (2 GCodePostProcess + 1 TextPostProcess)"
+    );
+
+    // Verify the module IDs in the audits match what we configured
+    let audit_module_ids: Vec<_> = output
+        .postpass_audits
+        .iter()
+        .map(|a| a.module_id.as_str())
+        .collect();
+    assert!(
+        audit_module_ids.contains(&"gcode-pp-a"),
+        "expected audit for gcode-pp-a"
+    );
+    assert!(
+        audit_module_ids.contains(&"gcode-pp-b"),
+        "expected audit for gcode-pp-b"
+    );
+    assert!(
+        audit_module_ids.contains(&"text-pp"),
+        "expected audit for text-pp"
+    );
+}

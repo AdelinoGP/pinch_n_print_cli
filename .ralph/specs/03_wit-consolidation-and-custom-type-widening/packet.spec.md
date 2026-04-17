@@ -1,5 +1,5 @@
 ---
-status: draft
+status: pending
 packet: wit-consolidation-and-custom-type-widening
 task_ids:
   - TASK-144

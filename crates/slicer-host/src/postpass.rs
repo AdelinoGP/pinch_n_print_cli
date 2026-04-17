@@ -15,7 +15,7 @@ use std::fmt;
 
 use slicer_ir::{GCodeIR, LayerCollectionIR, ModuleId, StageId};
 
-use crate::{Blackboard, CompiledModule, ExecutionPlan};
+use crate::{Blackboard, CompiledModule, ExecutionPlan, ModuleAccessAudit};
 
 /// Output produced by a single postpass module invocation.
 #[derive(Debug, Clone, PartialEq)]
@@ -144,7 +144,8 @@ pub trait GCodeSerializer {
 ///
 /// # Returns
 ///
-/// The final G-code string, or an error if any stage fails fatally.
+/// The final G-code string and collected runtime access audits, or an error if
+/// any stage fails fatally.
 pub fn execute_postpass(
     plan: &ExecutionPlan,
     layer_irs: &[LayerCollectionIR],
@@ -152,9 +153,10 @@ pub fn execute_postpass(
     emitter: &dyn GCodeEmitter,
     serializer: &dyn GCodeSerializer,
     runner: &dyn PostpassStageRunner,
-) -> Result<String, PostpassError> {
+) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
     // Step 1: Emit initial GCodeIR from layers
     let mut gcode_ir = emitter.emit_gcode(layer_irs, blackboard)?;
+    let mut audits = Vec::new();
 
     // Step 2: Run all GCodePostProcess modules sequentially
     for stage in &plan.postpass_stages {
@@ -167,7 +169,15 @@ pub fn execute_postpass(
                     &mut gcode_ir,
                 )? {
                     PostpassOutput::GCodeSuccess => {
-                        // Continue to next module
+                        // Record runtime write audit for GCodePostProcess modules.
+                        // The GCodeIR is a single host-owned output, not a guest-writable
+                        // field path. GCodePostProcess modules are audited as writes
+                        // to the GCodeIR field.
+                        audits.push(ModuleAccessAudit {
+                            module_id: module.module_id.clone(),
+                            runtime_reads: Vec::new(),
+                            runtime_writes: vec![String::from("GCodeIR")],
+                        });
                     }
                     PostpassOutput::NonFatalError { message: _ } => {
                         // Log warning but continue to next module
@@ -189,7 +199,8 @@ pub fn execute_postpass(
 
     if text_postprocess_stages.is_empty() {
         // No TextPostProcess modules - serialize directly
-        return serializer.serialize_gcode(&gcode_ir);
+        let text = serializer.serialize_gcode(&gcode_ir)?;
+        return Ok((text, audits));
     }
 
     // Step 4: Serialize GCodeIR to text for TextPostProcess modules
@@ -200,6 +211,13 @@ pub fn execute_postpass(
         for module in &stage.modules {
             match runner.run_text_postprocess(&stage.stage_id, module, blackboard, text)? {
                 PostpassOutput::TextSuccess { text: new_text } => {
+                    // Record runtime write audit for TextPostProcess modules.
+                    // TextPostProcess modules produce final text output.
+                    audits.push(ModuleAccessAudit {
+                        module_id: module.module_id.clone(),
+                        runtime_reads: Vec::new(),
+                        runtime_writes: vec![String::from("GCodeIR")],
+                    });
                     text = new_text;
                 }
                 PostpassOutput::NonFatalError { message: _ } => {
@@ -216,5 +234,5 @@ pub fn execute_postpass(
         }
     }
 
-    Ok(text)
+    Ok((text, audits))
 }

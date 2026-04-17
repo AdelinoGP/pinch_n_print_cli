@@ -66,10 +66,10 @@ def process_gcode(text, config):
     let emitter = StubEmitter;
     let serializer = StubSerializer { text: "g1 x1\ng1 x2".to_string() };
 
-    let result = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner)
+    let (text, _audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner)
         .expect("postpass should succeed");
 
-    assert_eq!(result, "; amp=0.5\nG1 X1\nG1 X2");
+    assert_eq!(text, "; amp=0.5\nG1 X1\nG1 X2");
 }
 
 // ----------------------------------------------------------------------
@@ -163,14 +163,14 @@ def process_gcode(text, config):
     let emitter = StubEmitter;
     let serializer = StubSerializer { text: input.to_string() };
 
-    let a = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner).unwrap();
-    let b = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner).unwrap();
-    let c = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner).unwrap();
+    let (a_text, _a_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner).unwrap();
+    let (b_text, _b_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner).unwrap();
+    let (c_text, _c_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner).unwrap();
 
-    assert_eq!(a, b, "run 1 vs 2 must be identical");
-    assert_eq!(b, c, "run 2 vs 3 must be identical");
-    assert!(a.starts_with("; cfg=amplitude=0.25\n"), "unexpected: {a}");
-    assert!(a.contains("G1 Z5"));
+    assert_eq!(a_text, b_text, "run 1 vs 2 must be identical");
+    assert_eq!(b_text, c_text, "run 2 vs 3 must be identical");
+    assert!(a_text.starts_with("; cfg=amplitude=0.25\n"), "unexpected: {a_text}");
+    assert!(a_text.contains("G1 Z5"));
 }
 
 // ----------------------------------------------------------------------

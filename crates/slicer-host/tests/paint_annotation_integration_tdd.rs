@@ -210,7 +210,7 @@ fn paint_annotation_is_invoked_on_real_per_layer_path_and_warnings_reach_sink() 
         .unwrap();
 
     let sink = VecSink(Mutex::new(Vec::new()));
-    let layer_irs = execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink).expect("ok");
+    let (layer_irs, _layer_audits) = execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink).expect("ok");
     assert_eq!(layer_irs.len(), 1);
 
     let events = sink.0.lock().unwrap().clone();
@@ -238,8 +238,8 @@ fn paint_annotation_degraded_fallback_is_deterministic_across_repeated_runs() {
 
     let sink_a = VecSink(Mutex::new(Vec::new()));
     let sink_b = VecSink(Mutex::new(Vec::new()));
-    execute_per_layer_with_events(&plan1, &bb1, &NoopRunner, &sink_a).unwrap();
-    execute_per_layer_with_events(&plan2, &bb2, &NoopRunner, &sink_b).unwrap();
+    let (_layer_irs_a, _audits_a) = execute_per_layer_with_events(&plan1, &bb1, &NoopRunner, &sink_a).unwrap();
+    let (_layer_irs_b, _audits_b) = execute_per_layer_with_events(&plan2, &bb2, &NoopRunner, &sink_b).unwrap();
 
     let a = sink_a.0.lock().unwrap().clone();
     let b = sink_b.0.lock().unwrap().clone();

@@ -21,6 +21,7 @@ use crate::slice_postprocess::{
 };
 use crate::{
     Blackboard, BlackboardError, CompiledModule, ExecutionPlan, LayerArena, LayerArenaError,
+    ModuleAccessAudit,
 };
 
 /// Sink for per-layer progress events (e.g. host-built-in paint-annotation
@@ -190,28 +191,56 @@ pub fn execute_per_layer(
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
 ) -> Result<Vec<LayerCollectionIR>, LayerExecutionError> {
-    execute_per_layer_with_events(plan, blackboard, runner, &NoopLayerProgressSink)
+    let (layers, _audits) = execute_per_layer_with_events(plan, blackboard, runner, &NoopLayerProgressSink)?;
+    Ok(layers)
 }
 
 /// Like [`execute_per_layer`] but additionally routes per-layer progress
 /// events (including host-built-in paint-annotation fallback warnings)
 /// to `sink`.
+///
+/// Returns both the collected layer IRs and the runtime access audits from
+/// all per-layer module executions (TASK-123b).
 pub fn execute_per_layer_with_events(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
     sink: &(dyn LayerProgressSink + Sync),
-) -> Result<Vec<LayerCollectionIR>, LayerExecutionError> {
+) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
     let global_layers = &plan.global_layers;
     let required_semantics = blackboard
         .paint_regions()
         .map(|pr| collect_required_semantics(pr))
         .unwrap_or_default();
 
-    global_layers
-        .par_iter()
-        .map(|layer| execute_single_layer(plan, blackboard, runner, sink, &required_semantics, layer))
-        .collect()
+    use rayon::iter::ParallelIterator;
+    let results: Result<Vec<(LayerCollectionIR, Vec<ModuleAccessAudit>)>, LayerExecutionError> =
+        global_layers
+            .par_iter()
+            .map(|layer| {
+                execute_single_layer(
+                    plan,
+                    blackboard,
+                    runner,
+                    sink,
+                    &required_semantics,
+                    layer,
+                )
+            })
+            .collect();
+
+    match results {
+        Ok(layer_results) => {
+            let mut layer_irs = Vec::with_capacity(layer_results.len());
+            let mut all_audits = Vec::new();
+            for (layer_ir, audits) in layer_results {
+                all_audits.extend(audits);
+                layer_irs.push(layer_ir);
+            }
+            Ok((layer_irs, all_audits))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Deterministically collect the union of all paint semantics present in
@@ -240,7 +269,11 @@ fn semantic_sort_key(s: &PaintSemantic) -> (u8, String) {
     }
 }
 
-/// Execute all stages for a single layer sequentially.
+/// Execute all stages for a single layer sequentially, collecting runtime
+/// access audits for each user module that produces output.
+///
+/// Returns both the finalized `LayerCollectionIR` and the `ModuleAccessAudit`
+/// entries for all modules that committed output during this layer's execution.
 fn execute_single_layer(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
@@ -248,7 +281,9 @@ fn execute_single_layer(
     sink: &(dyn LayerProgressSink + Sync),
     required_semantics: &[PaintSemantic],
     layer: &GlobalLayer,
-) -> Result<LayerCollectionIR, LayerExecutionError> {
+) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
+    let mut audits = Vec::new();
+
     // Create an isolated LayerArena for this layer
     let mut arena = LayerArena::new();
 
@@ -308,7 +343,15 @@ fn execute_single_layer(
 
             match result {
                 Ok(LayerStageOutput::Success) => {
-                    // Module completed successfully, continue
+                    // Record runtime write audit for this module.
+                    // Host-built-in stages (Slice) are not audited.
+                    if let Some(path) = ir_path_for_layer_stage(&stage.stage_id) {
+                        audits.push(ModuleAccessAudit {
+                            module_id: module.module_id.clone(),
+                            runtime_reads: Vec::new(),
+                            runtime_writes: vec![path],
+                        });
+                    }
                 }
                 Ok(LayerStageOutput::NonFatalError { message: _ }) => {
                     // Non-fatal error: log but continue with next module
@@ -391,7 +434,27 @@ fn execute_single_layer(
         .annotations
         .extend(arena.take_deferred_annotations());
     layer_output.z_hops.extend(arena.take_deferred_z_hops());
-    Ok(layer_output)
+    Ok((layer_output, audits))
+}
+
+/// Maps a per-layer stage ID to the canonical IR field path it writes.
+///
+/// This mirrors the `ir_path_for_prepass_output` pattern: each stage
+/// produces exactly one primary IR type, and this mapping records that
+/// write in the runtime audit. `Layer::Slice` is a host-built-in and
+/// is excluded (no audit). `Layer::SlicePostProcess` only merges into the
+/// existing `SliceIR` without creating a primary IR object; it is also
+/// excluded.
+fn ir_path_for_layer_stage(stage_id: &StageId) -> Option<String> {
+    match stage_id.as_str() {
+        "Layer::Slice" => None, // host-built-in, not audited
+        "Layer::SlicePostProcess" => None, // merges into existing SliceIR, not a primary commit
+        "Layer::Perimeters" | "Layer::PerimetersPostProcess" => Some(String::from("PerimeterIR")),
+        "Layer::Infill" | "Layer::InfillPostProcess" => Some(String::from("InfillIR")),
+        "Layer::Support" | "Layer::SupportPostProcess" => Some(String::from("SupportIR")),
+        "Layer::PathOptimization" => Some(String::from("LayerCollectionIR")),
+        _ => None,
+    }
 }
 
 /// Run the host-built-in paint-annotation step on the layer's staged
