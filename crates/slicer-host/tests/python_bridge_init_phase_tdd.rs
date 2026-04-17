@@ -1,8 +1,7 @@
 #![allow(missing_docs)]
 
 //! Gap-bridging tests for the Python bridge failure phases documented in
-//! docs/05_module_sdk.md §"Python Bridge (TextPostProcess tier)" and
-//! referenced in docs/07_implementation_status.md TASK-104:
+//! docs/05_module_sdk.md §"Python Bridge (TextPostProcess tier)":
 //!
 //!   "Failures surface as `PostpassError::FatalModule` wrapping
 //!    `PythonBridgeError { phase, message }` with phases `MissingScript`,

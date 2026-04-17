@@ -24,19 +24,15 @@
 //!    tree, and assert that the emitted G-code contains real printable
 //!    content (non-zero extrusion moves, multi-layer Z progression,
 //!    monotonic Z, sane layer count). They are expected to fail today
-//!    because of the known MVP blockers documented in docs/07:123 and
-//!    the 2026-04-14 audit:
-//!      - 15 of 16 core-module `.wasm` files are 8-byte placeholder
-//!        stubs, so `Layer::Perimeters` / `Layer::Infill` /
-//!        `Layer::PathOptimization` never actually run and no
-//!        extrusion entities are produced;
-//!      - `#[slicer_module]`-emitted layer-world resource deep copy is
-//!        not yet implemented, so even if real component binaries
-//!        existed their `Guest` bodies would receive empty-but-typed
-//!        SDK views/builders.
-//!    The failure messages in those assertions point at these causes
-//!    explicitly so the blocker is unambiguous when the test fails in
-//!    CI.
+//!    because the live Benchy path still has unresolved acceptance-gate
+//!    and content-production blockers. Older placeholder-artifact and
+//!    layer-world deep-copy regressions are guarded separately below,
+//!    so failures here should be read as current live-path content or
+//!    output-validation gaps rather than a return to those earlier
+//!    failure modes.
+//!
+//!    The failure messages in these assertions point at the remaining
+//!    live-path/content gaps directly so the CI failure is actionable.
 //!
 //! Fixture: the real 3DBenchy STL staged at
 //! `resources/benchy.stl` (a binary STL — the only form the
@@ -204,17 +200,17 @@ fn benchy_e2e_is_deterministic() {
 }
 
 /// Capstone-progress canary for the real `modules/core-modules/`
-/// tree. Now that the core-module .wasm artifacts are real components
-/// (docs/07 TASK-120 blocker #1 closed), this test accepts either:
+/// tree. With real core-module component artifacts in place, this
+/// test accepts either:
 ///   a) a successful run (the canonical green state — once downstream
 ///      content issues are fixed), or
-///   b) a fatal pipeline failure whose stderr makes the new blocker
-///      obvious (e.g. `arena commit failed` for a perimeter/infill
-///      output-validation gap). The one thing it rejects is regression
-///      back to the old "placeholder .wasm binary → zero extrusion
-///      entities → empty G-code" skip path: if `Layer::Perimeters` /
-///      `Layer::Infill` / `Layer::PathOptimization` ever re-appear in
-///      the placeholder-skip warnings on stderr, the test fails
+///   b) a fatal pipeline failure whose stderr makes the remaining live
+///      path/content blocker obvious (for example `arena commit failed`
+///      for a perimeter/infill output-validation gap). The one thing
+///      it rejects is regression back to the old "canonical modules
+///      silently fall back to placeholder artifacts and emit empty
+///      G-code" path: if `Layer::Perimeters` / `Layer::Infill` / `Layer::PathOptimization`
+///      ever re-appear in the placeholder-skip warnings on stderr, the test fails
 ///      loudly so we notice the regression.
 #[test]
 fn benchy_e2e_against_real_core_modules_is_diagnosable() {
@@ -230,10 +226,10 @@ fn benchy_e2e_against_real_core_modules_is_diagnosable() {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     // Regression guard: the canonical Benchy-path core modules must NOT
-    // revert to placeholder .wasm. The two documented un-routed prepass
-    // stages (mesh-segmentation, paint-segmentation) are allowed to
-    // remain placeholders while the host dispatcher has not been
-    // extended to route them.
+    // revert to placeholder .wasm. This loop is intentionally scoped to
+    // the modules that must produce or preserve printable Benchy-path
+    // content; prepass-component routing is covered by the dedicated
+    // guards below.
     for canonical in [
         "classic-perimeters",
         "rectilinear-infill",
@@ -403,12 +399,11 @@ fn benchy_mvp_gcode_has_real_extrusion_content() {
     let extrusion_moves = count_extrusion_moves(&gcode);
     assert!(
         extrusion_moves > 0,
-        "MVP blocker: no `G1 ... E` extrusion moves in Benchy output. Likely \
-         cause: Layer::Perimeters / Layer::Infill / Layer::PathOptimization \
-         core-modules are placeholder .wasm stubs OR layer-world resource \
-         deep copy is missing in #[slicer_module] so the guest receives \
-         empty-but-typed SDK views/builders (docs/07:121,123; 2026-04-14 \
-         audit blockers #1, #2). G-code preview (first 30 lines):\n{}",
+        "MVP blocker: no `G1 ... E` extrusion moves in Benchy output. The \
+         live Benchy path is still completing without printable toolpaths, \
+         which points to a downstream content/output-validation or other \
+         live-path feature gap rather than the older placeholder/deep-copy \
+         regressions. G-code preview (first 30 lines):\n{}",
         preview(&gcode, 30)
     );
 

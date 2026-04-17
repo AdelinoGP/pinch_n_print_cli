@@ -2,7 +2,7 @@
 //! adopt the documented `#[slicer_module]` authoring path so that the
 //! macro-emitted binding surface (lifecycle + stage export, typed
 //! `SlicerModuleSchema`, wasm32 `#[export_name]` shims) is applied
-//! uniformly (docs/05 §Module Entry Point; docs/07 §TASK-111).
+//! uniformly (docs/05 §Module Entry Point).
 //!
 //! This is a source-level guard rather than a link-time reflection
 //! test because pulling all 16 core-module crates in as `slicer-host`
