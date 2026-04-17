@@ -1,149 +1,136 @@
 # Implementation Status
 
-Last updated: 2026-04-14
+Last updated: 2026-04-16
 
-## Phase Dependencies (Normative Planning View)
-- Phase B depends on Phase A.
-- Phase C depends on Phases A and B.
-- Phase D depends on Phases A and C.
-- Phase E (MVP) depends on Phases A, B, C, and D.
-- Phase F (Post-MVP) depends on Phase E.
-- Phase G (Pipeline Wiring & WASM Integration) depends on Phase F.
-- Phase H (End-to-End Integration & Review) depends on Phase G.
-- Architecture Acceptance Gate requires evidence from completed Phases B-H.
+## Status Markers
 
-## Phase A — Foundation
-- [x] TASK-001 Workspace Cargo.toml with all crate members
-- [x] TASK-002 crates/slicer-ir/ — all IR structs
-- [x] TASK-003 wit/ directory — all WIT files
-- [x] TASK-004 crates/slicer-macros/ — proc-macro crate skeleton
-- [x] TASK-005 crates/slicer-test/ — mock host + fixture builders
-- [x] TASK-006 crates/slicer-sdk/ — re-exports + host service wrappers
+- `[x]` complete
+- `[~]` partially complete / in progress
+- `[ ]` not started
 
-## Phase B — Core Algorithms
-- [x] TASK-010 Clipper2-Rust + polygon operations
-- [x] TASK-011 TriangleMeshSlicer (slice_mesh_ex)
-- [x] TASK-012 Loop chaining (chain_lines_by_triangle_connectivity)
-- [x] TASK-013 Geometry helpers
-- [x] TASK-014 AABB tree for mesh queries
-- [x] TASK-015 Point-in-polygon for paint region queries
+## Program Status
 
-## Phase C — Host Scheduler
-- [x] TASK-020 Manifest ingestion
-- [x] TASK-021 DAG construction
-- [x] TASK-022 DAG validation (all 13 passes)
-- [x] TASK-023 Topological sort
-- [x] TASK-024 WASM instance pool
-- [x] TASK-025 ExecutionPlan builder
-- [x] TASK-026 Blackboard + LayerArena
-- [x] TASK-027 PrePass executor
-- [x] TASK-028 MeshSegmentation stage executor
-- [x] TASK-029 PaintSegmentation stage executor
-- [x] TASK-030 SlicePostProcess paint annotation executor (PaintRegionAnnotator)
-- [x] TASK-031 Per-layer parallel executor
-- [x] TASK-032 LayerFinalization executor
-- [x] TASK-033 PostPass executor
-- [x] TASK-034 GCodeEmit built-in serializer
-- [x] TASK-035 Config schema query API
-- [x] TASK-036 Progress event emitter
+- MVP status: COMPLETE.
+- Historical implementation phases A through G are complete.
+- This document now tracks the remaining work: OrcaSlicer feature parity, architecture-conformance cleanup, and acceptance-gate evidence.
+- Phase H remains open because the live Benchy run is not yet acceptance-grade.
 
-## Phase D — SDK Tooling
-- [x] TASK-040 #[slicer_module] proc-macro
-- [x] TASK-041 #[module_test] proc-macro
-- [x] TASK-042 LayerModule trait + WIT bindings
-- [x] TASK-043 PrepassModule trait + WIT bindings
-- [x] TASK-044 PostpassModule trait + WIT bindings
-- [x] TASK-045 SliceRegionViewBuilder
-- [x] TASK-046 PerimeterRegionViewBuilder
-- [x] TASK-047 ConfigViewBuilder
-- [x] TASK-048 Output capture types
-- [x] TASK-049 assert_paths helpers
-- [x] TASK-050 `slicer new` command
-- [x] TASK-051 `slicer build` command
-- [x] TASK-052 `slicer test` command
-- [x] TASK-053 `slicer validate` command
-- [x] TASK-054 `slicer run` command
-- [x] TASK-055 Create crates/slicer-helpers/ workspace member; add meshopt, truck-stepio, truck-meshing to root Cargo.toml
-- [x] TASK-056 Write failing tests in repair_tdd.rs; implement repair.rs (degenerate removal, orientation normalization, open-edge closure); all tests pass
-- [x] TASK-057 Write failing tests in decimate_tdd.rs; implement decimate.rs via meshopt; all tests pass
-- [x] TASK-058 Create STEP test fixtures; write failing tests in import_step_tdd.rs; implement import/step.rs via truck; all tests pass
+## Milestone Summary
 
-## Phase E — MVP Core Modules & CLI
+- [x] Phase A — Foundation (TASK-001 to TASK-006)
+- [x] Phase B — Core Algorithms (TASK-010 to TASK-015)
+- [x] Phase C — Host Scheduler (TASK-020 to TASK-036)
+- [x] Phase D — SDK Tooling (TASK-040 to TASK-058)
+- [x] Phase E — MVP Core Modules & CLI (TASK-070 to TASK-077)
+- [x] Phase F — Post-MVP & Advanced Features (TASK-081 to TASK-097)
+- [x] Phase G — Pipeline Wiring & WASM Integration (TASK-100 to TASK-113)
+- [~] Phase H — End-to-End Integration & Review
 
-- [x] TASK-070 layer-planner-default
-- [x] TASK-071 classic-perimeters
-- [x] TASK-072 rectilinear-infill
-- [x] TASK-073 traditional-support
-- [x] TASK-074 CLI argument parsing
-- [x] TASK-075 Main entry point
-- [x] TASK-076 File format loaders (STL/OBJ/3MF) — mesh repair component superseded by TASK-017 (slicer-helpers)
-- [x] TASK-077 Integration test: end-to-end STL pipeline with model loading
+## Current Acceptance Snapshot
 
-## Phase F — Post-MVP & Advanced Features
-- [x] TASK-081 arachne-perimeters
-- [x] TASK-082 gyroid-infill
-- [x] TASK-083 lightning-infill
-- [x] TASK-084 seam-placer
-- [x] TASK-085 tree-support
-- [x] TASK-086 support-surface-ironing
-- [x] TASK-087 mesh-segmentation
-- [x] TASK-088 paint-segmentation
-- [x] TASK-089 wipe-tower
-- [x] TASK-090 skirt-brim
-- [x] TASK-091 paint-region-annotator
-- [x] TASK-092 fuzzy-skin
-- [x] TASK-093 classic-perimeters (boundary_paint propagation)
-- [x] TASK-094 arachne-perimeters (boundary_paint propagation)
-- [x] TASK-095 traditional-support (enforcer/blocker)
-- [x] TASK-096 tree-support (enforcer/blocker)
-- [x] TASK-097 verify paint-region-annotator implementation (verified: 9 tests pass)
+- The live pipeline now produces `.gcode` for the Benchy STL.
+- The output is still below the Phase H acceptance bar.
+- Known live-output gaps on the Benchy path: top/bottom surface infill, support structures, seam placement on real wall loops, and travel retraction / unretraction behavior.
+- Architecture Acceptance Gate is blocked on the remediation backlog below.
 
-## Phase G — Pipeline Wiring & WASM Integration
-- [x] TASK-100 Add `wasmtime` and `wit-bindgen` dependencies to `slicer-host`
-- [x] TASK-101 Implement `WasmInstance` wrapper for compiled `wasmtime::component::Instance`
-- [x] TASK-102 Implement concrete WASM trait runners — consolidated into a single `WasmRuntimeDispatcher` in `crates/slicer-host/src/dispatch.rs` that implements `PrepassStageRunner`, `LayerStageRunner`, `FinalizationStageRunner`, and `PostpassStageRunner`
-- [x] TASK-103 Implement WASM module compilation and linking in `ExecutionPlan` builder — `main.rs::build_plan_from_loaded_modules` compiles each `.wasm` via `WasmEngine::compile_component` and attaches the resulting component to `CompiledModule`
-- [x] TASK-104 Integrate Python bridge for text post-processing — `crates/slicer-host/src/python_bridge.rs` implements `PythonBinding`, `PythonBridge`, and `PythonPostpassRunner` on the real `execute_postpass` path. Backend is embedded PyO3 (`pyo3 = "0.28.3"`, feature `auto-initialize`); scripts are loaded via `importlib.util.spec_from_file_location` and the declared entry is called as `entry(text, config_dict)`. Failures surface as `PostpassError::FatalModule` wrapping `PythonBridgeError { phase, message }` with phases `MissingScript`, `ConfigEncoding`, `Init`, `ScriptError`, `OutputEncoding`. DEV-001 is closed.
-- [x] TASK-105 Implement `PrePassMeshAnalysis` built-in stage — `crates/slicer-host/src/mesh_analysis.rs` classifies triangle facets (`TopSurface` / `BottomSurface` / `Overhang{angle_deg}` / `Normal`) from per-object normals, emits one baseline `SurfaceGroup` per object and an `OverhangRegion` aggregating overhang facets. Wired into the real prepass path via `execute_prepass_with_builtins` (used by `pipeline.rs`); `execute_prepass` itself is unchanged so existing runner-driven tests keep their module-commit contracts. Failures surface as `PrepassExecutionError::MeshAnalysis { source: MeshAnalysisError }`.
-- [x] TASK-106 Implement `PrePassRegionMapping` built-in stage — `crates/slicer-host/src/region_mapping.rs` compiles `RegionMapIR` from the committed `LayerPlanIR` + scheduler-bound `ExecutionPlan`, one `RegionPlan` per `(layer, object, region)`. Invoked at the end of `execute_prepass_with_builtins` (after any user `PrePass::LayerPlanning` module); idempotent if a caller pre-committed the map. Enforces `DEFAULT_REGION_MAP_CAP`; structured `RegionMappingError { CapExceeded, DuplicateRegionKey }` plus wrapper `RegionMappingBuiltinError { MissingLayerPlan, Mapping, Blackboard }` surfaced through `PrepassExecutionError::RegionMapping`.
-- [x] TASK-107 Wire `LayerSlice` into the pipeline (`slice_mesh_ex`) — `crates/slicer-host/src/layer_slice.rs::execute_layer_slice` runs inside `execute_single_layer` (see `layer_executor.rs`), slices each `GlobalLayer.active_regions` entry via `slice_mesh_ex` and commits the resulting `SliceIR` into the per-layer arena before any user `Layer::Slice` / `Layer::SlicePostProcess` module. The slicer-core `chain_lines` was rewritten to undirected point connectivity and `intersect_edge` now canonicalizes interpolation by vertex ID, so the real 3DBenchy mesh now produces non-empty hull contours at low-Z layers (previously every Benchy slice returned 0 polygons due to opposite-winding adjacent triangles fragmenting the directed chain walker). Regression tests: `layer_slice_builtin_produces_real_polygons_for_benchy_mesh`, `layer_slice_builtin_is_deterministic_for_benchy_mesh` (slicer-host), `test_shared_edge_with_opposite_windings_produces_closed_loop` (slicer-core).
-- [x] TASK-108 Wire `SlicePostProcess` paint annotator into the pipeline — `execute_slice_postprocess_paint_annotation` runs on the production per-layer path via `layer_executor.rs::run_paint_annotation`, invoked at the end of the `Layer::SlicePostProcess` stage (or as a fallback when no such stage was scheduled). Fallback warnings flow through `paint_annotation_warning_to_progress_event` to the `LayerProgressSink` wired by `pipeline.rs::run_pipeline_with_events`; the slicer-host binary's `Run` arm constructs a `RuntimeProgressSink` backed by `JsonLinesEmitter` + `SliceEventCollector` so non-fatal fallbacks raise `degraded=true` and emit stable-code JSONL records. Fatal contract violations surface as `LayerExecutionError::PaintAnnotation { source: SlicePostProcessPaintAnnotationError }`. Covered by `slicer-host/tests/paint_annotation_integration_tdd.rs` (8 tests, incl. determinism, fatal-missing-semantic, runtime-sink fan-out, and main.rs wiring guard).
-- [x] TASK-109 Implement real export/binding glue in `#[slicer_module]` macro — the macro now emits real `wit_bindgen::generate!`-backed typed component exports for every supported WIT world: `postpass-module` (gcode + text postprocess), `finalization-module` (layer finalization), `prepass-module` (mesh-analysis + layer-planning), and `layer-module` (all 8 stage exports + `on-print-start` / `on-print-end` lifecycle). A shared `emit_world_preamble` helper emits the inline-WIT `wit_bindgen::generate!` expansion plus a typed `ConfigView` adapter (every `ConfigValue` variant preserved) and a `ModuleError` cross-boundary mapper. A per-world `impl Guest for __Slicer<World>Component` routes the detected stage into the corresponding SDK trait method (`PostpassModule` / `FinalizationModule` / `PrepassModule` / `LayerModule`), and the `placeholder extern "C" fn ... -> i32 { 0 }` shims are suppressed for every supported world so they do not collide with or contaminate the real component exports. Four round-trip guests authored purely via `#[slicer_module]` (no hand-rolled `wit_bindgen::generate!` / `export!`) compile to real component-model `.wasm` artifacts and round-trip typed config + typed `Result<_, ModuleError>` through `WasmRuntimeDispatcher`. The two currently un-routed prepass stages (`MeshSegmentation`, `PaintSegmentation`) deliberately remain on the placeholder path because the host-side dispatcher does not yet invoke them. Covered by `crates/slicer-macros/tests/all_worlds_glue_tdd.rs` (10 source guards), `crates/slicer-macros/tests/postpass_text_glue_tdd.rs` (5 tests, carried forward), `crates/slicer-host/tests/macro_postpass_text_roundtrip_tdd.rs` (3 postpass round-trip tests), and `crates/slicer-host/tests/macro_all_worlds_roundtrip_tdd.rs` (9 end-to-end round-trip tests for finalization, prepass, and layer worlds).
-- [x] TASK-110 Add `.toml` manifests for all MVP core modules — all 16 core modules under `modules/core-modules/` have matching-stem manifests
-- [x] TASK-111 Apply `#[slicer_module]` macro to all MVP core modules — all 16 core modules under `modules/core-modules/` now carry a `#[slicer_module]` impl and depend directly on `slicer-schema` so the macro's emitted `::slicer_schema::SlicerModuleSchema` path resolves. 14 modules already implemented an SDK trait (Layer / Prepass / Postpass); the two legacy finalization modules (`skirt-brim`, `wipe-tower`) additionally gained an additive `impl FinalizationModule` adapter whose `on_print_start` delegates to the existing `from_config` constructor and whose `run_finalization` retains the trait default — preserving the legacy `process(&mut Vec<LayerCollectionIR>)` runtime path unchanged (no pipeline caller for the trait boundary exists yet). Covered by `slicer-host/tests/core_module_macro_adoption_tdd.rs` (macro adoption, slicer-schema dep, matching-stem manifest).
-- [x] TASK-112 Implement `ConfigSchema` CLI output in `slicer-host`'s `main.rs` — emits pretty-printed JSON via `build_config_schema_json(&load_report.modules)`
-- [x] TASK-113 Wire real WASM runners and DAG validation into `slicer-host/src/main.rs` (replacing `Noop` mocks) and update `slicer run` — `Noop*Runner` removed; `WasmRuntimeDispatcher` wired for all four stage runners
+## Active Remediation Backlog
 
-## Phase H — End-to-End Integration & Review
-- [ ] TASK-120 Produce a fully sliced `.gcode` of the Benchy STL with tree supports enabled as an E2E integration test
+### Workstream 1 — Manifest and contract conformance
 
-## Known Deviations from Architecture Docs
-- **TASK-109 closed (TASK-111 closed)** — `#[slicer_module]` emits typed `SlicerModuleSchema` reflection for every world AND real `wit_bindgen::generate!`-backed typed dispatch for every supported world (postpass, finalization, prepass, layer). For `world-finalization` specifically the typed path now does **real resource-level deep copy**: `Vec<LayerCollectionView>` inputs are forwarded from host `LayerCollectionViewData` (carrying `layer_index`, `z`, `entity_count`, `tool_changes`) through wit-bindgen resource accessors into SDK `LayerCollectionView` values inside the macro-emitted `impl Guest`; and `FinalizationOutputBuilder` pushes emitted by the guest are captured (via the resource's `drop` handler moving entries onto `HostExecutionContext::finalization_pushes`), drained by `FinalizationStageRunner`, and applied to the downstream `&mut Vec<LayerCollectionIR>` as ordered extrusion appends / synthetic layers. Remaining narrow gap: resource-level deep copy is not yet implemented for the prepass and layer worlds (trait methods there still receive empty-but-typed SDK views/builders), and the two un-routed prepass stages (`MeshSegmentation`, `PaintSegmentation`) stay on the placeholder path because the host dispatcher does not yet invoke them. All 16 core modules have adopted `#[slicer_module]` (TASK-111 closed).
-- **TASK-108 closed** — paint-annotation helper now runs on the real per-layer pipeline path (`layer_executor.rs::run_paint_annotation` → `execute_slice_postprocess_paint_annotation`) and its warnings reach the documented progress-event transport via `run_pipeline_with_events` + `RuntimeProgressSink` (JSONL emitter + `SliceEventCollector`). Verified by `slicer-host/tests/paint_annotation_integration_tdd.rs`.
-- **TASK-107 closed** — `execute_layer_slice` now runs on the production per-layer path and commits a real `SliceIR` before any user `Layer::Slice` / `Layer::SlicePostProcess` module. The real 3DBenchy STL passes through `slice_mesh_ex` and produces non-empty hull contours at representative Z values (≥20 contour points at z ∈ {0.2, 1.0, 5.0, 10.0}). The end-to-end `benchy_e2e_against_real_core_modules_is_diagnosable` run still produces empty G-code, but that is now downstream of slicing — the current blocker is that `Layer::Perimeters`, `Layer::Infill`, and `Layer::PathOptimization` core-modules are still 8-byte placeholder .wasm binaries (TASK-109/TASK-111 drift below), so no `PerimeterIR` / `InfillIR` entities are generated to feed `DefaultGCodeEmitter`.
-- **Support ABI (deviation #7)** — resolved. `SliceRegionView::needs_support()` in `crates/slicer-sdk/src/views.rs` surfaces the `SurfaceClassificationIR.needs_support` flag (docs/02 §IR 2 line 231). Both `traditional-support` and `tree-support` apply the documented precedence (blocker → no; enforcer → yes; default → `needs_support()`), matching docs/02 §412 and docs/06 §702–704.
-- **ConfigView typed access (deviation #8)** — resolved. `ConfigView.fields` is now private in `crates/slicer-ir/src/slice_ir.rs`; every external-crate construction goes through `ConfigView::new`, `ConfigView::from_map`, or `ConfigView::from_declared`, and every read goes through the typed accessors (`get`, `get_bool`, `get_int`, `get_float`, `get_string`, `keys`, `iter_entries`) — mirroring the read-only `resource config-view` in `wit/deps/config.wit`. The live host path (`main.rs` → `build_live_execution_plan` → `bind_module_config_view` → `ConfigView::from_declared`) pre-filters every per-module view to the module's declared `[config.schema]` keys, and the plan builder's `ExecutionPlanError::UndeclaredConfigKey` guardrail still fails closed if any caller bypasses the helper. Covered by `crates/slicer-ir/tests/config_view_encapsulation_tdd.rs` (8 external-crate contract tests) and `crates/slicer-host/tests/config_view_encapsulation_source_tdd.rs` (2 source-level regression guards on the `pub` field and the main.rs wiring).
-- **SDK host-service wrappers (deviation #9)** — resolved. `crates/slicer-sdk/src/host.rs` is no longer placeholder: logging routes through an installable thread-local sink (fallback to stderr), mesh queries use a thread-local `MeshSource` with an explicit `HostUnavailable` error for `object_bounds` (replacing the silent zero-box), geometry helpers delegate to `slicer_core::polygon_ops` (same backend the host uses), `simplify_polygon` actually drops collinear vertices, and `now_us()` is monotonic relative to a process-start `Instant` (not wall-clock).
-- **Paint annotation degraded/fallback semantics (deviation #10)** — resolved. `execute_slice_postprocess_paint_annotation` in `crates/slicer-host/src/slice_postprocess.rs` emits structured `SlicePostProcessPaintAnnotationWarning` records with stable codes, `degraded: bool`, deterministic `fallback_value`, and a `paint_annotation_warning_to_progress_event` adapter; missing-paint conditions produce typed fatal errors. Pipeline wiring is now closed via TASK-108 above — the annotator runs on the live per-layer path and its warnings reach the JSONL transport and `SliceEventCollector` through `RuntimeProgressSink`.
-- If additional deviations are introduced, add them to `./docs/DEVIATION_LOG.md` and link their IDs here.
+- [ ] TASK-121 Populate `[ir-access]` for all 17 core-module manifests per docs/01 Stage I/O Contract. Covers DEV-002. Must turn `core_module_ir_access_contract_tdd.rs` green.
+- [ ] TASK-122 Populate `[config.schema]` for all 17 core-module manifests so the `config-schema` CLI returns real per-module schemas. Covers DEV-008.
+- [ ] TASK-123 Feed `ModuleAccessAudit` from live prepass / layer / postpass execution paths and pass populated `access_audits` into validation. Covers DEV-003.
+- [ ] TASK-124 Enforce undeclared runtime read/write faults at the WIT boundary and add a negative harness for layer-time undeclared access. Continues DEV-003 after TASK-123 lands.
+- [ ] TASK-125 Enforce the docs/01 Claim Transition Matrix for non-transitionable claims (`perimeter-generator`, `seam-placer`, `layer-planner`, `mesh-analyzer`). Covers DEV-004 and must turn `claim_transition_matrix_tdd.rs` green.
+- [ ] TASK-126 Fix `WriteConflict.orderable` so it reports `true` only when ordering can actually resolve the pair; add both positive and negative semantics tests. Scheduler conflict-ordering cleanup required for the docs/04 contract.
+
+### Workstream 2 — Runtime correctness and scheduler guarantees
+
+- [ ] TASK-127 Enforce the non-planar Z envelope `[layer.z, layer.z + effective_layer_height]` at output-commit boundaries. Covers DEV-005.
+- [ ] TASK-128 Implement the remaining prepass-side boundary fixes so segmentation-capable modules stop receiving hollow SDK inputs. Covers DEV-006 and DEV-025.
+- [ ] TASK-129 Add live-path boundary coverage for layer and finalization WIT deep-copy behavior so the closed data-copy paths stay regression-locked outside native fallback code. Covers the remaining coverage portion of DEV-006.
+- [ ] TASK-130 Finish the `#[slicer_module]` prepass segmentation bridge so `MeshSegmentation` receives usable inputs and `PaintSegmentation` drains output back through WIT. Covers DEV-025.
+- [ ] TASK-131 Add a regression guard for the documented `resolve_active_regions` O(1) contract. Scheduler performance guard needed for runtime-budget evidence.
+- [ ] TASK-132 Add structured RegionMap overflow coverage for the 1000-entry cap, including top-contributor and remediation messaging. Hardens the existing bounds path needed for DEV-026 evidence.
+- [ ] TASK-133 Add a pool-behavior test proving `layer_parallel_safe = false` serializes concurrent WASM acquisition. Scheduler concurrency guard for the docs/04 instance-pool contract.
+- [ ] TASK-134 Add a catch-up-layer propagation test that verifies `is_catchup_layer`, `catchup_z_bottom`, and `effective_layer_height` survive every per-layer stage. Guards the documented catch-up-layer propagation contract across every per-layer stage.
+
+### Workstream 3 — Benchy parity and missing OrcaSlicer behavior
+
+- [~] TASK-120 Produce a fully sliced Benchy `.gcode` with tree supports enabled as the Phase H end-to-end acceptance run.
+- [ ] TASK-120a Restore top/bottom surface fill generation on the live Benchy path. Covers DEV-009.
+- [ ] TASK-120b Restore support generation on the live Benchy path. Covers DEV-009.
+- [ ] TASK-120c Restore seam placement on real wall-loop seam candidates. Covers DEV-009.
+- [ ] TASK-120d Implement travel retraction / unretraction decisions in the live path-optimization or emit path. Covers DEV-009 and the live travel-behavior gap in DEV-023.
+- [ ] TASK-135 Add Benchy regression assertions for supports, top/bottom fills, seams, and retract/unretract pairs. Supports DEV-009 acceptance evidence.
+
+### Workstream 4 — Progress events and Python bridge coverage
+
+- [ ] TASK-136 Add end-to-end progress-event coverage proving paint-annotation failure codes 501-504 reach the JSONL emitter on the live pipeline path. Supports DEV-010 acceptance evidence and guards the live path after DEV-019 closure.
+- [ ] TASK-137 Resolve the Python `ConfigEncoding` phase gap: either add an injectable failure path and test it, or document the phase as unreachable in docs/05. Supports DEV-024 by either closing the remaining Python live-path gap or marking the phase intentionally unreachable.
+- [x] TASK-138 Close the Python `Init` phase coverage gap. `crates/slicer-host/tests/python_bridge_init_phase_tdd.rs` is green.
+
+### Workstream 5 — Governance and closure drift
+
+- [ ] TASK-139 Remove dead `Noop*Runner` remnants or correct the Phase G closure notes so docs and source agree. Covers DEV-020.
+- [ ] TASK-140 Evaluate the Architecture Acceptance Gate using docs/11 and docs/12 once TASK-120 and its subtasks are complete. Covers DEV-010 and the evidence gaps in DEV-026.
+- [ ] TASK-141 Keep `docs/DEVIATION_LOG.md` synchronized with every open architectural deviation and close rows as fixes land. Supports DEV-030 and live-registry hygiene for the acceptance gate.
+
+## Open Deviation Map
+
+Use `docs/14_deviation_audit_history.md` only for retired XML-era numbering and audit provenance. The list below is the current live map.
+
+- DEV-002 — Core-module `ir-access` declarations are incomplete.
+- DEV-003 — Runtime IR-access enforcement is dormant because access audits are not fed from live execution.
+- DEV-004 — Claim Transition Matrix is not enforced for non-transitionable claims.
+- DEV-005 — Non-planar Z envelope enforcement is missing.
+- DEV-006 — Postpass GCode command content and executable WIT-boundary coverage still have live gaps.
+- DEV-008 — Core-module `config.schema` declarations are empty.
+- DEV-009 — Benchy Phase H output is only partially correct on the live path.
+- DEV-010 — Acceptance-gate evidence and governance closure are still open.
+- DEV-013 — Finalization core modules still keep live behavior in legacy `process()` instead of `run_finalization()`.
+- DEV-014 — WIT compatibility is split across multiple sources and still drifts.
+- DEV-015 — Mesh-query host services remain stubs.
+- DEV-016 — Custom string payloads are dropped at the WIT boundary.
+- DEV-020 — Phase G still overstates completion because dead `Noop*Runner` code remains.
+- DEV-023 — PathOptimization remains an MVP slot-filler rather than a real optimization stage.
+- DEV-024 — Python postpass support exists but is not on the live path.
+- DEV-025 — Prepass segmentation SDK↔WIT shapes are still misaligned.
+- DEV-026 — Host semver, manifest-schema validation, and runtime budget evidence remain incomplete.
+- DEV-027 — Transform-aware world-space Z lacks fixture-level integration coverage and a first-class IR surface.
+- DEV-030 — Planning and remediation docs still lag the real dependency graph.
+
+## Tests Added as Gap Locks
+
+- [x] `crates/slicer-host/tests/core_module_ir_access_contract_tdd.rs` — enumerates missing manifest IR contracts and guards the Stage I/O Contract.
+- [x] `crates/slicer-host/tests/claim_transition_matrix_tdd.rs` — guards the non-transitionable claim matrix and transitionable-claim sanity cases.
+- [x] `crates/slicer-host/tests/python_bridge_init_phase_tdd.rs` — closes the Python `Init` phase classification gap.
 
 ## Architecture Acceptance Gate
-- Status: NOT YET EVALUATED
-- Evidence links:
-	- Determinism: (pending)
-	- Recoverability: (pending)
-	- Resource bounds: (pending)
-	- Coupling control: (pending)
-	- Compatibility: (pending)
-	- Operability: (pending)
-- Notes:
-	- Use `./docs/11_operational_governance_and_acceptance_gate.md` rubric.
-	- Metric thresholds are defined in `./docs/12_architecture_gate_metrics.md`.
+
+- Status: BLOCKED BY OPEN REMEDIATION TASKS
+- Blocking tasks: TASK-120a, TASK-120b, TASK-120c, TASK-120d, TASK-121, TASK-123, TASK-125, TASK-127, TASK-128, TASK-129, TASK-130, TASK-136, TASK-140
+
+### Evidence Links
+
+- Determinism: pending Phase H parity closure
+- Recoverability: pending runtime access enforcement and progress-event coverage
+- Resource bounds: pending RegionMap overflow and `resolve_active_regions` guards
+- Coupling control: pending manifest contract cleanup and claim transition enforcement
+- Compatibility: pending acceptance-gate evaluation
+- Operability: pending Benchy acceptance run and progress-event validation
+
+### Notes
+
+- Use `./docs/11_operational_governance_and_acceptance_gate.md` as the rubric.
+- Metric thresholds are defined in `./docs/12_architecture_gate_metrics.md`.
 
 ## Blocked Tasks
-- None currently.
+
+- None. The remaining work is prioritized, not externally blocked.
 
 ## Governance Checklist Status
-- Module/claim rollout checklist: [NOT STARTED | IN PROGRESS | COMPLETE]
-- Compatibility policy checks: [NOT STARTED | IN PROGRESS | COMPLETE]
-- Release checklist: [NOT STARTED | IN PROGRESS | COMPLETE]
+
+- Module/claim rollout checklist: IN PROGRESS
+- Compatibility policy checks: NOT STARTED
+- Release checklist: NOT STARTED
