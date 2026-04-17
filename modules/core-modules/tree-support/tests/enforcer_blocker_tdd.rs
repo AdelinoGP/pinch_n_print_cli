@@ -5,9 +5,9 @@
 //! tree support generation.
 //!
 //! Authoritative docs:
-//! - docs/06_agent_implementation_guide.md lines 707-712
+//! - docs/01_system_architecture.md §"Layer::Support"
 //! - docs/02_ir_schemas.md lines 412-418
-//! - docs/01_system_architecture.md lines 192-200
+//! - docs/10_glossary_and_scenario_traces.md §"Support paint conflict"
 //!
 //! OrcaSlicer ref:
 //! - OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp:1100-1104 (enforcer/blocker slicing)
@@ -239,7 +239,7 @@ fn unpainted_region_keeps_existing_behaviour() {
 }
 
 // ── SurfaceClassificationIR-driven default eligibility ────────────────────
-// docs/02_ir_schemas.md §IR 2 line 231; docs/06 §387.
+// docs/02_ir_schemas.md and docs/01_system_architecture.md §"Layer::Support".
 
 #[test]
 fn default_ineligible_region_generates_zero_support() {

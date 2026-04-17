@@ -117,7 +117,8 @@ impl LayerModule for TraditionalSupport {
             let z = region.z();
 
             for expoly in polygons {
-                // Eligibility precedence (docs/02 §412, docs/06 §387):
+                // Eligibility precedence (docs/01 Layer::Support, docs/02
+                // support precedence rules):
                 //   blocker → skip (always wins)
                 //   enforcer → generate (overrides needs_support)
                 //   default → consult SurfaceClassificationIR.needs_support

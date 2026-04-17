@@ -5,9 +5,9 @@
 //! overhang-angle support checks.
 //!
 //! Authoritative docs:
-//! - docs/06_agent_implementation_guide.md lines 694-705
+//! - docs/01_system_architecture.md §"Layer::Support"
 //! - docs/02_ir_schemas.md lines 412-418
-//! - docs/01_system_architecture.md lines 192-200
+//! - docs/10_glossary_and_scenario_traces.md §"Support paint conflict"
 //!
 //! OrcaSlicer ref:
 //! - OrcaSlicerDocumented/src/libslic3r/Support/SupportMaterial.cpp:1455-1461 (annotations)
@@ -239,7 +239,7 @@ fn unpainted_region_keeps_existing_behaviour() {
 }
 
 // ── SurfaceClassificationIR-driven default eligibility ────────────────────
-// docs/02_ir_schemas.md §IR 2 line 231; docs/06 §387.
+// docs/02_ir_schemas.md and docs/01_system_architecture.md §"Layer::Support".
 
 /// Default eligibility: `needs_support=false` and no paint → zero support.
 #[test]

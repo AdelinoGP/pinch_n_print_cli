@@ -126,7 +126,8 @@ impl LayerModule for TreeSupport {
             let z = region.z();
 
             for expoly in polygons {
-                // Eligibility precedence (docs/02 §412, docs/06 §387):
+                // Eligibility precedence (docs/01 Layer::Support, docs/02
+                // support precedence rules):
                 //   blocker → skip; enforcer → generate;
                 //   default → consult SurfaceClassificationIR.needs_support.
                 match support_paint_policy(paint_ir, layer_index, expoly) {
