@@ -4,7 +4,11 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(ralph --version)",
       "Bash(claude --version)",
-      "Bash(cargo test *)"
+      "Bash(cargo test *)",
+      "Bash(git checkout -b *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push -u origin *)"
     ]
   },
   "rust": {
