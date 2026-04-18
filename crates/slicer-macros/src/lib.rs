@@ -404,7 +404,7 @@ fn generate_slicer_module_impl(
 
     let wasm_export_shims = quote! {
         #[cfg(target_arch = "wasm32")]
-        #[allow(non_snake_case, dead_code)]
+        #[allow(dead_code)]
         mod #shim_mod_ident {
             #( #active_lifecycle_shims )*
             #stage_shim_tokens

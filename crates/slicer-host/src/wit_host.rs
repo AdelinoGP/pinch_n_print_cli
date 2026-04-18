@@ -173,6 +173,7 @@ pub struct PaintRegionLayerData {
 
 // ── Bindgen: Layer module world ─────────────────────────────────────────
 
+
 pub mod layer {
     wasmtime::component::bindgen!({
         inline: r#"
@@ -320,16 +321,19 @@ pub mod layer {
             }
         "#,
         world: "layer-module",
+        imports: {
+            default: trappable,
+        },
         with: {
-            "slicer:world-layer/config-types/config-view": super::ConfigViewData,
-            "slicer:world-layer/ir-handles/slice-region-view": super::SliceRegionData,
-            "slicer:world-layer/ir-handles/perimeter-region-view": super::PerimeterRegionData,
-            "slicer:world-layer/ir-handles/infill-output-builder": super::InfillOutputBuilderData,
-            "slicer:world-layer/ir-handles/perimeter-output-builder": super::PerimeterOutputBuilderData,
-            "slicer:world-layer/ir-handles/slice-postprocess-builder": super::SlicePostprocessBuilderData,
-            "slicer:world-layer/ir-handles/gcode-output-builder": super::GcodeOutputBuilderData,
-            "slicer:world-layer/ir-handles/support-output-builder": super::SupportOutputBuilderData,
-            "slicer:world-layer/ir-handles/paint-region-layer-view": super::PaintRegionLayerData,
+            "slicer:world-layer/config-types@1.0.0.config-view": super::ConfigViewData,
+            "slicer:world-layer/ir-handles@1.0.0.slice-region-view": super::SliceRegionData,
+            "slicer:world-layer/ir-handles@1.0.0.perimeter-region-view": super::PerimeterRegionData,
+            "slicer:world-layer/ir-handles@1.0.0.infill-output-builder": super::InfillOutputBuilderData,
+            "slicer:world-layer/ir-handles@1.0.0.perimeter-output-builder": super::PerimeterOutputBuilderData,
+            "slicer:world-layer/ir-handles@1.0.0.slice-postprocess-builder": super::SlicePostprocessBuilderData,
+            "slicer:world-layer/ir-handles@1.0.0.gcode-output-builder": super::GcodeOutputBuilderData,
+            "slicer:world-layer/ir-handles@1.0.0.support-output-builder": super::SupportOutputBuilderData,
+            "slicer:world-layer/ir-handles@1.0.0.paint-region-layer-view": super::PaintRegionLayerData,
         },
     });
 }
@@ -372,6 +376,7 @@ pub struct MeshSegmentationOutputData;
 /// This struct is just a table-entry tag so the resource-handle lifecycle
 /// works; the actual data lives on the context.
 pub struct PaintSegmentationOutputData;
+
 
 pub mod prepass {
     wasmtime::component::bindgen!({
@@ -489,8 +494,11 @@ pub mod prepass {
             }
         "#,
         world: "prepass-module",
+        imports: {
+            default: trappable,
+        },
         with: {
-            "slicer:world-prepass/config-types/config-view": super::ConfigViewData,
+            "slicer:world-prepass/config-types@1.0.0.config-view": super::ConfigViewData,
         },
     });
 }
@@ -663,8 +671,11 @@ pub mod finalization {
             }
         "#,
         world: "finalization-module",
+        imports: {
+            default: trappable,
+        },
         with: {
-            "slicer:world-finalization/config-types/config-view": super::ConfigViewData,
+            "slicer:world-finalization/config-types@1.0.0.config-view": super::ConfigViewData,
         },
     });
 }
@@ -760,8 +771,11 @@ pub mod postpass {
             }
         "#,
         world: "postpass-module",
+        imports: {
+            default: trappable,
+        },
         with: {
-            "slicer:world-postpass/config-types/config-view": super::ConfigViewData,
+            "slicer:world-postpass/config-types@1.0.0.config-view": super::ConfigViewData,
         },
     });
 }

@@ -175,7 +175,7 @@ impl WasmRuntimeDispatcher {
 
         // Wire typed host imports into a fresh linker.
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        wit_host::LayerModule::add_to_linker(&mut linker, |ctx| ctx).map_err(|e| {
+        wit_host::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).map_err(|e| {
             DispatchError {
                 module_id: module.module_id.clone(),
                 stage_id: stage_id.clone(),
@@ -202,7 +202,7 @@ impl WasmRuntimeDispatcher {
             })?;
 
         // Instantiate component through typed bindings.
-        let (bindings, _) = wit_host::LayerModule::instantiate(
+        let bindings = wit_host::LayerModule::instantiate(
             &mut store,
             component.wasmtime_component(),
             &linker,
@@ -443,7 +443,7 @@ impl WasmRuntimeDispatcher {
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<wit_host::HostExecutionContext>::new(engine);
-        wit_host::PrepassModule::add_to_linker(&mut linker, |ctx| ctx)
+        wit_host::PrepassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
             .map_err(|e| DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),
                 export_name: export_name.to_string(), phase: DispatchPhase::LinkerSetup,
@@ -460,7 +460,7 @@ impl WasmRuntimeDispatcher {
                 reason: format!("failed to push config resource: {e}"),
             })?;
 
-        let (bindings, _) = wit_host::PrepassModule::instantiate(&mut store, component.wasmtime_component(), &linker)
+        let bindings = wit_host::PrepassModule::instantiate(&mut store, component.wasmtime_component(), &linker)
             .map_err(|e| DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),
                 export_name: export_name.to_string(), phase: DispatchPhase::TypedInstantiation,
@@ -538,7 +538,7 @@ impl WasmRuntimeDispatcher {
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        wit_host::FinalizationModule::add_to_linker(&mut linker, |ctx| ctx)
+        wit_host::FinalizationModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
             .map_err(|e| DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),
                 export_name: export_name.to_string(), phase: DispatchPhase::LinkerSetup,
@@ -576,7 +576,7 @@ impl WasmRuntimeDispatcher {
             layer_handles.push(own(h));
         }
 
-        let (bindings, _) = wit_host::FinalizationModule::instantiate(&mut store, component.wasmtime_component(), &linker)
+        let bindings = wit_host::FinalizationModule::instantiate(&mut store, component.wasmtime_component(), &linker)
             .map_err(|e| DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),
                 export_name: export_name.to_string(), phase: DispatchPhase::TypedInstantiation,
@@ -633,7 +633,7 @@ impl WasmRuntimeDispatcher {
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        if let Err(e) = wit_host::PostpassModule::add_to_linker(&mut linker, |ctx| ctx) {
+        if let Err(e) = wit_host::PostpassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx) {
             return (
                 Err(DispatchError {
                     module_id: module.module_id.clone(),
@@ -677,7 +677,7 @@ impl WasmRuntimeDispatcher {
         };
 
         let bindings = match wit_host::PostpassModule::instantiate(&mut store, component.wasmtime_component(), &linker) {
-            Ok((b, _)) => b,
+            Ok(b) => b,
             Err(e) => return (
                 Err(DispatchError {
                     module_id: module.module_id.clone(),
@@ -746,7 +746,7 @@ impl WasmRuntimeDispatcher {
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        if let Err(e) = wit_host::PostpassModule::add_to_linker(&mut linker, |ctx| ctx) {
+        if let Err(e) = wit_host::PostpassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx) {
             return (
                 Err(DispatchError {
                     module_id: module.module_id.clone(),
@@ -777,7 +777,7 @@ impl WasmRuntimeDispatcher {
         };
 
         let bindings = match wit_host::PostpassModule::instantiate(&mut store, component.wasmtime_component(), &linker) {
-            Ok((b, _)) => b,
+            Ok(b) => b,
             Err(e) => return (
                 Err(DispatchError {
                     module_id: module.module_id.clone(),

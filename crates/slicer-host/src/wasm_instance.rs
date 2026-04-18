@@ -265,13 +265,6 @@ impl WasmInstance {
                 reason: e.to_string(),
             })?;
 
-        func.post_return(&mut self.store)
-            .map_err(|e| WasmCallError::CallFailed {
-                module_id: self.store.data().module_id().to_string(),
-                export_name: export_name.to_string(),
-                reason: format!("post_return failed: {e}"),
-            })?;
-
         Ok(())
     }
 
@@ -300,13 +293,6 @@ impl WasmInstance {
                     export_name: export_name.to_string(),
                     reason: e.to_string(),
                 })?;
-
-        func.post_return(&mut self.store)
-            .map_err(|e| WasmCallError::CallFailed {
-                module_id: self.store.data().module_id().to_string(),
-                export_name: export_name.to_string(),
-                reason: format!("post_return failed: {e}"),
-            })?;
 
         Ok(result)
     }
