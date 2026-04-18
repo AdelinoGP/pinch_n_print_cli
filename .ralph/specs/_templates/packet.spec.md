@@ -20,16 +20,29 @@ State the single remediation slice this packet owns.
 - In scope:
 - Out of scope:
 
+## Prerequisites and Blockers
+
+- Depends on:
+- Unblocks:
+- Activation blockers:
+
 ## Acceptance Criteria
 
 - **Given** [initial condition], **when** [action], **then** [observable result]. | `verification-command`
 - **Given** [second condition], **when** [second action], **then** [second observable result]. | `verification-command`
 
 Each criterion must end with a pipe `|` and a runnable verification command. If multiple criteria share the same verification, repeat the command in each criterion (do not use "see AC-N").
+Name exact assertion content in the criterion text. Prefer exact fields, paths, counts, error variants, or output fragments over phrases like "all required fields" or "correct diagnostics".
+
+## Negative Test Cases
+
+- **Given** [rejection or failure condition], **when** [action], **then** [observable failure or validation result]. | `verification-command`
+
+Include this section whenever the packet changes validation, enforcement, contract boundaries, or error-handling behavior.
 
 ## Verification
 
-- `[supplemental verification commands — only for criteria that share verification from a previous criterion]`
+- `[supplemental packet-level or workspace verification commands only — not a replacement for per-criterion commands]`
 
 ## Authoritative Docs
 
@@ -46,4 +59,4 @@ Each criterion must end with a pipe `|` and a runnable verification command. If 
 - `requirements.md`
 - `design.md`
 - `implementation-plan.md`
-- `task-map.md` (optional)
+- `task-map.md` (required when the packet spans more than one task ID or corrects a prior packet)

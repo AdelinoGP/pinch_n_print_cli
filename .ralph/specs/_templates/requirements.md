@@ -11,6 +11,8 @@
 
 Describe the concrete gap this packet closes and why it is a coherent slice.
 
+If this packet reopens, supersedes, or narrows a prior packet, name the earlier packet and the exact gap it left behind.
+
 ## In Scope
 
 -
@@ -33,9 +35,20 @@ Describe the concrete gap this packet closes and why it is a coherent slice.
 
 ## Acceptance Summary
 
-- Copy the packet-level Given/When/Then criteria from `packet.spec.md` and add any packet-specific refinements.
+- Positive cases: copy the packet-level Given/When/Then criteria from `packet.spec.md` and add packet-specific refinements.
+- Negative cases: restate the rejection or failure criteria that must hold.
+- Measurable outcomes: name the exact outputs, counts, empty/non-empty conditions, or diagnostics that define done.
+- Cross-packet impact: note any blocked or unblocked packets when relevant.
 
 ## Verification Commands
 
 - `[targeted test or command]`
 - `[workspace gate if required]`
+
+## Step Completion Expectations
+
+For each step in `implementation-plan.md`, capture or link the following:
+
+- Precondition:
+- Postcondition:
+- Falsifying check:
