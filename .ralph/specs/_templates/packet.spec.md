@@ -22,18 +22,14 @@ State the single remediation slice this packet owns.
 
 ## Acceptance Criteria
 
-- **Given** [initial condition]
-- **When** [action or execution step]
-- **Then** [observable result]
+- **Given** [initial condition], **when** [action], **then** [observable result]. | `verification-command`
+- **Given** [second condition], **when** [second action], **then** [second observable result]. | `verification-command`
 
-- **Given** [second condition]
-- **When** [second action]
-- **Then** [second observable result]
+Each criterion must end with a pipe `|` and a runnable verification command. If multiple criteria share the same verification, repeat the command in each criterion (do not use "see AC-N").
 
 ## Verification
 
-- `[targeted command]`
-- `[broader command, if required]`
+- `[supplemental verification commands — only for criteria that share verification from a previous criterion]`
 
 ## Authoritative Docs
 
