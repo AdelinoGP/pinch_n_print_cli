@@ -19,6 +19,7 @@ use slicer_host::{
 use slicer_host::dispatch::WasmRuntimeDispatcher;
 
 /// No-op prepass runner for MVP (no WASM modules loaded yet).
+#[allow(dead_code)]
 struct NoopPrepassRunner;
 impl slicer_host::PrepassStageRunner for NoopPrepassRunner {
     fn run_stage(
@@ -32,6 +33,7 @@ impl slicer_host::PrepassStageRunner for NoopPrepassRunner {
 }
 
 /// No-op layer runner for MVP.
+#[allow(dead_code)]
 struct NoopLayerRunner;
 impl slicer_host::LayerStageRunner for NoopLayerRunner {
     fn run_stage(
@@ -47,6 +49,7 @@ impl slicer_host::LayerStageRunner for NoopLayerRunner {
 }
 
 /// No-op finalization runner for MVP.
+#[allow(dead_code)]
 struct NoopFinalizationRunner;
 impl slicer_host::FinalizationStageRunner for NoopFinalizationRunner {
     fn run_stage(
@@ -61,6 +64,7 @@ impl slicer_host::FinalizationStageRunner for NoopFinalizationRunner {
 }
 
 /// No-op postpass runner for MVP.
+#[allow(dead_code)]
 struct NoopPostpassRunner;
 impl slicer_host::PostpassStageRunner for NoopPostpassRunner {
     fn run_gcode_postprocess(
