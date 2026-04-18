@@ -1,8 +1,0 @@
-[2m2026-04-17T07:26:58.124232Z[0m [33m WARN[0m [2mralph::loop_runner[0m[2m:[0m Interactive mode requested but stdout is not a TTY, falling back to autonomous
-[2m2026-04-17T07:26:58.124763Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/home/admin/pinch_n_print"
-[2m2026-04-17T07:26:58.124775Z2026-04-17T07:27:24.327198Z  INFO ralph_tui::app: Ctrl+C detected, signaling abort
-: "/home/admin/pinch_n_print/.ralph/agent/memories.md" (exists: true)
-[2m2026-04-17T07:26:58.125529Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Successfully loaded 10 memories from store
-[2m2026-04-17T07:26:58.125539Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting 10 memories (3378 chars) into prompt
-[2m2026-04-17T07:27:24.327562Z[0m [33m WARN[0m [2mralph::rpc_stdin[0m[2m:[0m Failed to write to stdout, stopping emitter
-[2m2026-04-17T07:27:27.931469Z[0m [32m INFO[0m [2mralph::rpc_stdin[0m[2m:[0m Stdin closed (EOF), stopping reader task

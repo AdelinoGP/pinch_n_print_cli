@@ -1,0 +1,23 @@
+[2m2026-04-18T02:02:13.243900Z[0m [33m WARN[0m [2mralph::loop_runner[0m[2m:[0m Interactive mode requested but stdout is not a TTY, falling back to autonomous
+[2m2026-04-18T02:02:13.244338Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service starting [3mbot_token[0m[2m=[0m8414...bo2k [3mworkspace[0m[2m=[0m/home/admin/pinch_n_print [3mtimeout_secs[0m[2m=[0m120
+[2m2026-04-18T02:02:13.927322Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Registered bot commands with Telegram API
+[2m2026-04-18T02:02:13.927365Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram polling task started [3mloop_id[0m[2m=[0mmain
+[2m2026-04-18T02:02:14.045702Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Sent greeting to chat 5506222402
+[2m2026-04-18T02:02:14.045736Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service started — polling for incoming messages
+[2m2026-04-18T02:02:14.045744Z[0m [32m INFO[0m [2mralph::loop_runner[0m[2m:[0m Robot human-in-the-loop service active [3mbot_token[0m[2m=[0m8414...bo2k [3mtimeout_secs[0m[2m=[0m120
+[2m2026-04-18T02:02:14.046106Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/home/admin/pinch_n_print"
+[2m2026-04-18T02:02:14.046133Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Looking for memories at: "/home/admin/pinch_n_print/.ralph/agent/memories.md" (exists: true)
+[2m2026-04-18T02:02:14.046863Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Successfully loaded 11 memories from store
+[2m2026-04-18T02:02:14.046892Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting 11 memories (3742 chars) into prompt
+[2m2026-04-18T02:03:13.126354Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/home/admin/pinch_n_print"
+[2m2026-04-18T02:03:13.126396Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Looking for memories at: "/home/admin/pinch_n_print/.ralph/agent/memories.md" (exists: true)
+[2m2026-04-18T02:03:13.126503Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Successfully loaded 11 memories from store
+[2m2026-04-18T02:03:13.126532Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting 11 memories (3742 chars) into prompt
+[2m2026-04-18T02:04:08.099146Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/home/admin/pinch_n_print"
+[2m2026-04-18T02:04:08.099189Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Looking for memories at: "/home/admin/pinch_n_print/.ralph/agent/memories.md" (exists: true)
+[2m2026-04-18T02:04:08.099307Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Successfully loaded 11 memories from store
+[2m2026-04-18T02:04:08.099339Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting 11 memories (3742 chars) into prompt
+[2m2026-04-18T02:04:53.058033Z[0m [33m WARN[0m [2mralph_core::event_loop[0m[2m:[0m Stale loop detected: same event signature emitted consecutively [3mtopic[0m[2m=[0m"implementation.blocked" [3mcount[0m[2m=[0m3
+[2m2026-04-18T02:04:54.036255Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Sent farewell to chat 5506222402
+[2m2026-04-18T02:04:54.036292Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service stopped [3mworkspace[0m[2m=[0m/home/admin/pinch_n_print
+[2m2026-04-18T02:04:54.036370Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Wrapping up: loop_stale. 3 iterations in 2m 40s. [3mreason[0m[2m=[0mloop_stale [3miterations[0m[2m=[0m3 [3mduration[0m[2m=[0m2m 40s

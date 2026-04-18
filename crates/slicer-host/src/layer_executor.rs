@@ -171,6 +171,11 @@ impl std::error::Error for LayerExecutionError {}
 /// Callback surface used by tests and future runtime bindings for layer stage execution.
 pub trait LayerStageRunner {
     /// Execute one compiled layer module against the current layer state.
+    ///
+    /// Returns both the stage output and the runtime IR read paths collected
+    /// by the WIT view methods during this call. The returned `runtime_reads`
+    /// is used to populate `ModuleAccessAudit.runtime_reads` for audit
+    /// construction in `execute_single_layer`.
     fn run_stage(
         &self,
         stage_id: &StageId,
@@ -178,7 +183,7 @@ pub trait LayerStageRunner {
         module: &CompiledModule,
         blackboard: &Blackboard,
         arena: &mut LayerArena,
-    ) -> Result<LayerStageOutput, LayerStageError>;
+    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError>;
 }
 
 /// Executes the Tier-2 per-layer parallel pipeline using rayon.
@@ -339,48 +344,31 @@ fn execute_single_layer(
         }
         // Execute modules in topological order within each stage
         for module in &stage.modules {
-            let result = runner.run_stage(&stage.stage_id, layer, module, blackboard, &mut arena);
+            let run_result = runner.run_stage(&stage.stage_id, layer, module, blackboard, &mut arena);
+            let (stage_result, runtime_reads) = match run_result {
+                Ok((output, reads)) => (output, reads),
+                Err(e) => return Err(LayerExecutionError::FatalLayer {
+                    layer_index: layer.index,
+                    stage_id: stage.stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e.to_string(),
+                }),
+            };
 
-            match result {
-                Ok(LayerStageOutput::Success) => {
+            match stage_result {
+                LayerStageOutput::Success => {
                     // Record runtime write audit for this module.
                     // Host-built-in stages (Slice) are not audited.
                     if let Some(path) = ir_path_for_layer_stage(&stage.stage_id) {
                         audits.push(ModuleAccessAudit {
                             module_id: module.module_id.clone(),
-                            runtime_reads: Vec::new(),
+                            runtime_reads,
                             runtime_writes: vec![path],
                         });
                     }
                 }
-                Ok(LayerStageOutput::NonFatalError { message: _ }) => {
+                LayerStageOutput::NonFatalError { message: _ } => {
                     // Non-fatal error: log but continue with next module
-                }
-                Err(LayerStageError::FatalModule {
-                    stage_id,
-                    module_id,
-                    message,
-                }) => {
-                    // Fatal error: abort this layer immediately
-                    return Err(LayerExecutionError::FatalLayer {
-                        layer_index: layer.index,
-                        stage_id,
-                        module_id,
-                        message,
-                    });
-                }
-                Err(LayerStageError::ArenaCommit { source }) => {
-                    // Arena commit failure: treat as fatal for this layer.
-                    // Include the underlying `LayerArenaError` variant so the
-                    // operator can tell `SlotAlreadyOccupied` (two modules
-                    // competing for the same slot) apart from any future
-                    // arena invariant violations.
-                    return Err(LayerExecutionError::FatalLayer {
-                        layer_index: layer.index,
-                        stage_id: stage.stage_id.clone(),
-                        module_id: module.module_id.clone(),
-                        message: format!("arena commit failed: {source}"),
-                    });
                 }
             }
         }

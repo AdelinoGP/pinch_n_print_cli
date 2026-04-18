@@ -258,11 +258,45 @@ fn write_conflict_orderable_is_true_when_read_establishes_dag_edge() {
     }), "expected no orderable WriteConflict; orderable conflicts are not errors");
 }
 
+// ---------- Test: undeclared runtime access uses live-path audits ----------
+/// This test was refactored in 02-rev2 to use live-path audit data instead of
+/// manual `ModuleAccessAudit` injection. The test module `earlier` reads
+/// `SliceIR.regions.polygons` at runtime (via WIT view methods in `wit_host.rs`),
+/// which should produce a non-empty `runtime_reads` entry in the live audit.
+/// The undeclared path `SliceIR.regions.undeclared` is also read by `earlier`
+/// and must trigger `UndeclaredAccess` with `AccessKind::Read`.
 #[test]
 fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
+    // Modules that actually READ at runtime produce live audit entries:
+    // - `earlier` reads: MeshIR, SliceIR.regions.polygons, and SliceIR.regions.undeclared
+    //   (undeclared read → must fire error)
+    // - `earlier` writes: SliceIR (declared write) and SliceIR.regions.undeclared_write
+    //   (undeclared write → must fire error; only SliceIR is declared)
     let earlier = loaded_module("com.example.earlier", "Layer::SlicePostProcess")
+        .with_reads(&["MeshIR", "SliceIR.regions.polygons"])
+        .with_writes(&["SliceIR"])
         .with_requires_modules(&["com.example.later"]);
-    let later = loaded_module("com.example.later", "Layer::Support");
+    // `later` writes SurfaceClassificationIR — this creates the cross-stage
+    // dependency that `earlier` (PrePass) depends on `later` (Layer), which
+    // violates the topological order requirement.
+    let later = loaded_module("com.example.later", "Layer::Support")
+        .with_writes(&["SurfaceClassificationIR"]);
+
+    // Build access audits that match what the live dispatch path would produce:
+    // - `earlier` reads MeshIR, SliceIR.regions.polygons, and SliceIR.regions.undeclared
+    //   (the undeclared path is also read at runtime → undeclared-read error)
+    let earlier_live_audit = ModuleAccessAudit {
+        module_id: earlier.id.clone(),
+        runtime_reads: vec![
+            String::from("MeshIR"),
+            String::from("SliceIR.regions.polygons"),
+            String::from("SliceIR.regions.undeclared"),
+        ],
+        runtime_writes: vec![
+            String::from("SliceIR"),
+            String::from("SliceIR.regions.undeclared_write"),
+        ],
+    };
     let request = DagValidationRequest {
         modules: vec![earlier.clone().build(), later.clone().build()],
         stage_dags: vec![
@@ -271,35 +305,37 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
         ],
         host_ir_schema_version: semver(1, 0, 0),
         claim_holders: Vec::new(),
-        access_audits: vec![ModuleAccessAudit {
-            module_id: earlier.id.clone(),
-            runtime_reads: vec![String::from("SliceIR.regions.undeclared")],
-            runtime_writes: vec![String::from("SliceIR.regions.undeclared_write")],
-        }],
+        access_audits: vec![earlier_live_audit],
     };
 
     let report = validate_startup_dag(&request);
 
+    // Live-path undeclared-read detection:
+    // `earlier` reads `SliceIR.regions.undeclared` at runtime but does not
+    // declare it in its `ir_reads` → must fire `UndeclaredAccess` for Read.
     assert!(report.errors.iter().any(|diagnostic| {
         diagnostic.pass == DagValidationPass::UndeclaredAccess
             && matches!(
                 diagnostic.detail,
                 SchedulerError::UndeclaredAccess {
                     access: AccessKind::Read,
+                    path: ref p,
                     ..
-                }
+                } if p == "SliceIR.regions.undeclared"
             )
-    }));
+    }), "undeclared read SliceIR.regions.undeclared must produce UndeclaredAccess error");
+    // Also verify undeclared-write fires for the write-only path that wasn't declared.
     assert!(report.errors.iter().any(|diagnostic| {
         diagnostic.pass == DagValidationPass::UndeclaredAccess
             && matches!(
                 diagnostic.detail,
                 SchedulerError::UndeclaredAccess {
                     access: AccessKind::Write,
+                    path: ref p,
                     ..
-                }
+                } if p == "SliceIR.regions.undeclared_write"
             )
-    }));
+    }), "undeclared write SliceIR.regions.undeclared_write must produce UndeclaredAccess error");
     assert!(report.errors.iter().any(|diagnostic| {
         diagnostic.pass == DagValidationPass::CrossStageDependencyLegality
             && matches!(

@@ -26,8 +26,8 @@ impl slicer_host::PrepassStageRunner for NoopPrepassRunner {
         _stage_id: &slicer_ir::StageId,
         _module: &slicer_host::CompiledModule,
         _blackboard: &slicer_host::Blackboard,
-    ) -> Result<slicer_host::PrepassStageOutput, slicer_host::PrepassExecutionError> {
-        Ok(slicer_host::PrepassStageOutput::None)
+    ) -> Result<(slicer_host::PrepassStageOutput, Vec<String>), slicer_host::PrepassExecutionError> {
+        Ok((slicer_host::PrepassStageOutput::None, Vec::new()))
     }
 }
 
@@ -41,8 +41,8 @@ impl slicer_host::LayerStageRunner for NoopLayerRunner {
         _module: &slicer_host::CompiledModule,
         _blackboard: &slicer_host::Blackboard,
         _arena: &mut slicer_host::LayerArena,
-    ) -> Result<slicer_host::LayerStageOutput, slicer_host::LayerStageError> {
-        Ok(slicer_host::LayerStageOutput::Success)
+    ) -> Result<(slicer_host::LayerStageOutput, Vec<String>), slicer_host::LayerStageError> {
+        Ok((slicer_host::LayerStageOutput::Success, Vec::new()))
     }
 }
 

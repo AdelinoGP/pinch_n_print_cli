@@ -89,8 +89,8 @@ impl PrepassStageRunner for NoopPrepassRunner {
         _stage_id: &StageId,
         _module: &CompiledModule,
         _blackboard: &Blackboard,
-    ) -> Result<PrepassStageOutput, PrepassExecutionError> {
-        Ok(PrepassStageOutput::None)
+    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+        Ok((PrepassStageOutput::None, Vec::new()))
     }
 }
 
@@ -103,8 +103,8 @@ impl LayerStageRunner for NoopLayerRunner {
         _module: &CompiledModule,
         _blackboard: &Blackboard,
         _arena: &mut LayerArena,
-    ) -> Result<LayerStageOutput, LayerStageError> {
-        Ok(LayerStageOutput::Success)
+    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+        Ok((LayerStageOutput::Success, Vec::new()))
     }
 }
 
@@ -283,7 +283,7 @@ fn run_pipeline_propagates_prepass_error() {
             _stage_id: &StageId,
             _module: &CompiledModule,
             _blackboard: &Blackboard,
-        ) -> Result<PrepassStageOutput, PrepassExecutionError> {
+        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
             Err(PrepassExecutionError::FatalModule {
                 stage_id: "PrePass::MeshAnalysis".into(),
                 module_id: "test-mod".into(),
@@ -337,7 +337,7 @@ fn run_pipeline_propagates_layer_error() {
             _module: &CompiledModule,
             _blackboard: &Blackboard,
             _arena: &mut LayerArena,
-        ) -> Result<LayerStageOutput, LayerStageError> {
+        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
             Err(LayerStageError::FatalModule {
                 stage_id: "Layer::Slice".into(),
                 module_id: "slice-mod".into(),
@@ -416,9 +416,9 @@ fn run_pipeline_calls_stages_in_order() {
             _stage_id: &StageId,
             _module: &CompiledModule,
             _blackboard: &Blackboard,
-        ) -> Result<PrepassStageOutput, PrepassExecutionError> {
+        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
             self.0.lock().unwrap().push("prepass".into());
-            Ok(PrepassStageOutput::None)
+            Ok((PrepassStageOutput::None, Vec::new()))
         }
     }
 
@@ -431,9 +431,9 @@ fn run_pipeline_calls_stages_in_order() {
             _module: &CompiledModule,
             _blackboard: &Blackboard,
             _arena: &mut LayerArena,
-        ) -> Result<LayerStageOutput, LayerStageError> {
+        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
             self.0.lock().unwrap().push("per_layer".into());
-            Ok(LayerStageOutput::Success)
+            Ok((LayerStageOutput::Success, Vec::new()))
         }
     }
 
@@ -632,15 +632,15 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
             _stage_id: &StageId,
             _module: &CompiledModule,
             _blackboard: &Blackboard,
-        ) -> Result<PrepassStageOutput, PrepassExecutionError> {
-            Ok(PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+            Ok((PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
                 schema_version: SemVer { major: 1, minor: 0, patch: 0 },
                 global_layers: vec![
                     make_global_layer(0, 0.2),
                     make_global_layer(1, 0.4),
                 ],
                 object_participation: HashMap::new(),
-            })))
+            })), Vec::new()))
         }
     }
 
@@ -655,9 +655,9 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
             _module: &CompiledModule,
             _blackboard: &Blackboard,
             _arena: &mut LayerArena,
-        ) -> Result<LayerStageOutput, LayerStageError> {
+        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
             *self.0.lock().unwrap() += 1;
-            Ok(LayerStageOutput::Success)
+            Ok((LayerStageOutput::Success, Vec::new()))
         }
     }
 
@@ -707,6 +707,13 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
 /// `PipelineOutput.postpass_audits` with `ModuleAccessAudit` entries for every
 /// postpass module that executes successfully. This proves the full pipeline
 /// wires audits from `execute_postpass` all the way to `run_pipeline` output.
+///
+/// Additionally, `access_audits_live_path` verifies:
+/// - Read-performing postpass modules (those that call WIT views into
+///   `LayerCollectionIR` for read access) produce non-empty `runtime_reads`
+///   in their audits.
+/// - Write-only postpass modules (those that only emit GCode or text output)
+///   produce empty `runtime_reads` while still carrying their `runtime_writes`.
 #[test]
 fn access_audits_live_path() {
     // Set up an execution plan with postpass stages containing modules.

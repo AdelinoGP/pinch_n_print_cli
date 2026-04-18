@@ -1050,7 +1050,7 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         stage_id: &StageId,
         module: &CompiledModule,
         blackboard: &Blackboard,
-    ) -> Result<PrepassStageOutput, PrepassExecutionError> {
+    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
         // Extract canonical object IDs from the blackboard's mesh IR so that
         // the guest export receives the real object list (docs/02 §MeshIR).
         // An empty list is valid (no-op for the module) but must never be
@@ -1071,7 +1071,7 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
                 // skip — return `None` so the prepass continues without this
                 // module's output.  Any other error is genuinely fatal.
                 if e.phase == DispatchPhase::MissingComponent {
-                    return Ok(PrepassStageOutput::None);
+                    return Ok((PrepassStageOutput::None, Vec::new()));
                 }
                 return Err(PrepassExecutionError::FatalModule {
                     stage_id: stage_id.clone(),
@@ -1081,6 +1081,9 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
             }
         };
 
+        // Preserve runtime reads before consuming the context.
+        let runtime_reads: Vec<String> = ctx.runtime_reads.clone();
+
         // For the LayerPlanning stage, convert collected proposals to LayerPlanIR.
         if stage_id == "PrePass::LayerPlanning" {
             let ir = harvest_layer_plan_ir(stage_id, &module.module_id, ctx)
@@ -1089,21 +1092,21 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
                     module_id: module.module_id.clone(),
                     message: e,
                 })?;
-            return Ok(PrepassStageOutput::LayerPlan(Arc::new(ir)));
+            return Ok((PrepassStageOutput::LayerPlan(Arc::new(ir)), runtime_reads));
         }
 
         // For the MeshSegmentation stage, convert collected triangle paint
         // marks to MeshSegmentationIR.
         if stage_id == "PrePass::MeshSegmentation" {
             let ir = harvest_mesh_segmentation_ir(ctx);
-            return Ok(PrepassStageOutput::MeshSegmentation(Arc::new(ir)));
+            return Ok((PrepassStageOutput::MeshSegmentation(Arc::new(ir)), runtime_reads));
         }
 
         // For the PaintSegmentation stage, convert collected paint-region
         // entries to PaintRegionIR.
         if stage_id == "PrePass::PaintSegmentation" {
             let ir = harvest_paint_segmentation_ir(ctx);
-            return Ok(PrepassStageOutput::PaintRegions(Arc::new(ir)));
+            return Ok((PrepassStageOutput::PaintRegions(Arc::new(ir)), runtime_reads));
         }
 
         // For the MeshAnalysis stage, surface any guest-emitted
@@ -1115,12 +1118,12 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         if stage_id == "PrePass::MeshAnalysis" {
             let aux = harvest_mesh_analysis_auxiliary(ctx);
             if aux.facet_annotations.is_empty() && aux.surface_groups.is_empty() {
-                return Ok(PrepassStageOutput::None);
+                return Ok((PrepassStageOutput::None, runtime_reads));
             }
-            return Ok(PrepassStageOutput::MeshAnalysisAuxiliary(Arc::new(aux)));
+            return Ok((PrepassStageOutput::MeshAnalysisAuxiliary(Arc::new(aux)), runtime_reads));
         }
 
-        Ok(PrepassStageOutput::None)
+        Ok((PrepassStageOutput::None, runtime_reads))
     }
 }
 
@@ -1186,7 +1189,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         module: &CompiledModule,
         blackboard: &Blackboard,
         arena: &mut LayerArena,
-    ) -> Result<LayerStageOutput, LayerStageError> {
+    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
         // Extract paint region IR from blackboard for paint-consuming stages.
         let paint_ir = blackboard.paint_regions();
         let paint_ref = paint_ir.map(|arc| arc.as_ref());
@@ -1196,7 +1199,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
                 // Placeholder/uncompiled module — skip gracefully.
-                return Ok(LayerStageOutput::Success);
+                return Ok((LayerStageOutput::Success, Vec::new()));
             }
             Err(e) => {
                 return Err(LayerStageError::FatalModule {
@@ -1207,10 +1210,13 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             }
         };
 
+        // Preserve runtime reads before committing outputs.
+        let runtime_reads: Vec<String> = ctx.runtime_reads.clone();
+
         // Commit collected outputs into the layer arena based on stage.
         commit_layer_outputs(stage_id, &module.module_id, layer.index, &ctx, arena)?;
 
-        Ok(LayerStageOutput::Success)
+        Ok((LayerStageOutput::Success, runtime_reads))
     }
 }
 

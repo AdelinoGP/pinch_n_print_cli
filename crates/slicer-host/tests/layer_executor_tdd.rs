@@ -417,12 +417,12 @@ impl LayerStageRunner for ScriptedRunner {
 
         // Check for non-fatal error
         if let Some(message) = self.non_fatal_errors.get(&key) {
-            return Ok(LayerStageOutput::NonFatalError {
+            return Ok((LayerStageOutput::NonFatalError {
                 message: message.clone(),
-            });
+            }, Vec::new()));
         }
 
-        Ok(LayerStageOutput::Success)
+        Ok((LayerStageOutput::Success, Vec::new()))
     }
 }
 
@@ -461,7 +461,7 @@ impl LayerStageRunner for ArenaIsolationRunner {
         _module: &CompiledModule,
         _blackboard: &Blackboard,
         arena: &mut LayerArena,
-    ) -> Result<LayerStageOutput, LayerStageError> {
+    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
         // Record the arena's address as an identity marker
         let arena_ptr = arena as *mut LayerArena as usize;
         self.arena_identities
@@ -469,7 +469,7 @@ impl LayerStageRunner for ArenaIsolationRunner {
             .unwrap()
             .insert(layer.index, arena_ptr);
 
-        Ok(LayerStageOutput::Success)
+        Ok((LayerStageOutput::Success, Vec::new()))
     }
 }
 
@@ -710,7 +710,7 @@ impl LayerStageRunner for StagingRunner {
         if let Some(s) = self.support.lock().unwrap().take() {
             arena.set_support(s).unwrap();
         }
-        Ok(LayerStageOutput::Success)
+        Ok((LayerStageOutput::Success, Vec::new()))
     }
 }
 

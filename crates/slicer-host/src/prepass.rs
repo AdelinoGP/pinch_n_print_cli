@@ -98,12 +98,17 @@ pub struct SurfaceGroupRecord {
 /// Callback surface used by tests and future runtime bindings.
 pub trait PrepassStageRunner {
     /// Execute one compiled prepass module against the current blackboard state.
+    ///
+    /// Returns both the stage output and the runtime IR read paths collected
+    /// by the WIT view methods during this call. The returned `runtime_reads`
+    /// is used to populate `ModuleAccessAudit.runtime_reads` for audit
+    /// construction in `execute_prepass`.
     fn run_stage(
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
         blackboard: &Blackboard,
-    ) -> Result<PrepassStageOutput, PrepassExecutionError>;
+    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError>;
 }
 
 /// Structured prepass executor failures.
@@ -196,19 +201,29 @@ pub fn execute_prepass(
         ensure_stage_prerequisites(&stage.stage_id, blackboard)?;
 
         for module in &stage.modules {
-            let output = runner.run_stage(&stage.stage_id, module, blackboard)?;
+            let (output, runtime_reads) = runner.run_stage(&stage.stage_id, module, blackboard)?;
 
             // Determine IR path before committing (output is moved into commit).
             let ir_path = ir_path_for_prepass_output(&output);
 
             commit_stage_output(&stage.stage_id, &module.module_id, blackboard, output)?;
 
-            // Record runtime write audit if the module produced output.
-            if let Some(path) = ir_path {
+            // Record runtime audit if the module produced output.
+            // Always record the audit when there is a runtime_reads vector,
+            // even if the output is None (read-performing modules that produce
+            // no IR output still have their reads audited).
+            if ir_path.is_some() {
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id.clone(),
-                    runtime_reads: Vec::new(),
-                    runtime_writes: vec![path],
+                    runtime_reads,
+                    runtime_writes: vec![ir_path.unwrap()],
+                });
+            } else if !runtime_reads.is_empty() {
+                // Module performed reads but produced no output — still record audit.
+                audits.push(ModuleAccessAudit {
+                    module_id: module.module_id.clone(),
+                    runtime_reads,
+                    runtime_writes: Vec::new(),
                 });
             }
         }

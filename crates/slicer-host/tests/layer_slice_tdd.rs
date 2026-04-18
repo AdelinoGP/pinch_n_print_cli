@@ -151,14 +151,14 @@ impl LayerStageRunner for RecordingRunner {
         _module: &CompiledModule,
         _blackboard: &Blackboard,
         arena: &mut LayerArena,
-    ) -> Result<LayerStageOutput, LayerStageError> {
+    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
         let slice = arena.slice().expect("host-built-in Layer::Slice must have staged SliceIR");
         let region_count = slice.regions.len();
         self.seen_slice
             .lock()
             .unwrap()
             .push((layer.index, region_count));
-        Ok(LayerStageOutput::Success)
+        Ok((LayerStageOutput::Success, Vec::new()))
     }
 }
 
@@ -216,8 +216,8 @@ fn per_layer_executor_produces_deterministic_slice_across_runs() {
             _m: &CompiledModule,
             _b: &Blackboard,
             _a: &mut LayerArena,
-        ) -> Result<LayerStageOutput, LayerStageError> {
-            Ok(LayerStageOutput::Success)
+        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+            Ok((LayerStageOutput::Success, Vec::new()))
         }
     }
 
@@ -363,8 +363,8 @@ fn per_layer_executor_surfaces_layer_slice_failure_structured() {
             _m: &CompiledModule,
             _b: &Blackboard,
             _a: &mut LayerArena,
-        ) -> Result<LayerStageOutput, LayerStageError> {
-            Ok(LayerStageOutput::Success)
+        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+            Ok((LayerStageOutput::Success, Vec::new()))
         }
     }
 
