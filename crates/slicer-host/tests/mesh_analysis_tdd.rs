@@ -36,7 +36,7 @@ impl PrepassStageRunner for UnreachableRunner {
         stage_id: &slicer_ir::StageId,
         module: &slicer_host::CompiledModule,
         _blackboard: &Blackboard,
-    ) -> Result<PrepassStageOutput, PrepassExecutionError> {
+    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
         panic!(
             "prepass runner should not be invoked for this test (stage={stage_id}, module={})",
             module.module_id

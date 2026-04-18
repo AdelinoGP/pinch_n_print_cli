@@ -59,14 +59,14 @@ def process_gcode(text, config):
             entry: "process_gcode".to_string(),
         },
     )]);
-    let runner = PythonPostpassRunner::new(bindings);
+    let mut runner = PythonPostpassRunner::new(bindings);
 
     let blackboard = Blackboard::new(Arc::new(mesh_fixture()), 0);
     let layers = vec![layer_collection_fixture(0, 0.2)];
     let emitter = StubEmitter;
     let serializer = StubSerializer { text: "g1 x1\ng1 x2".to_string() };
 
-    let (text, _audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner)
+    let (text, _audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &mut runner)
         .expect("postpass should succeed");
 
     assert_eq!(text, "; amp=0.5\nG1 X1\nG1 X2");
@@ -96,7 +96,7 @@ def process_gcode(text, config):
         module_id.clone(),
         PythonBinding { script_path: script, entry: "process_gcode".to_string() },
     )]);
-    let runner = PythonPostpassRunner::new(bindings);
+    let mut runner = PythonPostpassRunner::new(bindings);
 
     let blackboard = Blackboard::new(Arc::new(mesh_fixture()), 0);
     let layers = vec![layer_collection_fixture(0, 0.2)];
@@ -107,7 +107,7 @@ def process_gcode(text, config):
         &blackboard,
         &StubEmitter,
         &StubSerializer { text: "irrelevant".to_string() },
-        &runner,
+        &mut runner,
     )
     .expect_err("expected fatal error");
 
@@ -153,7 +153,7 @@ def process_gcode(text, config):
         module_id.clone(),
         PythonBinding { script_path: script, entry: "process_gcode".to_string() },
     )]);
-    let runner = PythonPostpassRunner::new(bindings);
+    let mut runner = PythonPostpassRunner::new(bindings);
 
     let stage = python_text_stage(&module_id, config_with_amplitude(0.25));
     let plan = plan_with_postpass(vec![stage]);
@@ -163,9 +163,9 @@ def process_gcode(text, config):
     let emitter = StubEmitter;
     let serializer = StubSerializer { text: input.to_string() };
 
-    let (a_text, _a_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner).unwrap();
-    let (b_text, _b_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner).unwrap();
-    let (c_text, _c_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &runner).unwrap();
+    let (a_text, _a_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &mut runner).unwrap();
+    let (b_text, _b_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &mut runner).unwrap();
+    let (c_text, _c_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &mut runner).unwrap();
 
     assert_eq!(a_text, b_text, "run 1 vs 2 must be identical");
     assert_eq!(b_text, c_text, "run 2 vs 3 must be identical");

@@ -2980,11 +2980,11 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
             module: &CompiledModule,
             blackboard: &Blackboard,
             arena: &mut LayerArena,
-        ) -> Result<LayerStageOutput, LayerStageError> {
+        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
             if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
                 if let Some(p) = self.perim.lock().unwrap().take() {
                     arena.set_perimeter(p).unwrap();
-                    return Ok(LayerStageOutput::Success);
+                    return Ok((LayerStageOutput::Success, Vec::new()));
                 }
             }
             LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
@@ -3065,11 +3065,11 @@ fn path_optimization_deterministic_across_repeated_runs() {
             module: &CompiledModule,
             blackboard: &Blackboard,
             arena: &mut LayerArena,
-        ) -> Result<LayerStageOutput, LayerStageError> {
+        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
             if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
                 if let Some(p) = self.perim.lock().unwrap().take() {
                     arena.set_perimeter(p).unwrap();
-                    return Ok(LayerStageOutput::Success);
+                    return Ok((LayerStageOutput::Success, Vec::new()));
                 }
             }
             LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
@@ -3299,11 +3299,11 @@ fn path_optimization_end_to_end_populates_z_hops() {
     impl<'a> LayerStageRunner for SeedingRunner<'a> {
         fn run_stage(&self, stage_id: &StageId, layer: &GlobalLayer, module: &CompiledModule,
                      blackboard: &Blackboard, arena: &mut LayerArena)
-                     -> Result<LayerStageOutput, LayerStageError> {
+                     -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
             if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
                 if let Some(p) = self.perim.lock().unwrap().take() {
                     arena.set_perimeter(p).unwrap();
-                    return Ok(LayerStageOutput::Success);
+                    return Ok((LayerStageOutput::Success, Vec::new()));
                 }
             }
             LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
@@ -3374,11 +3374,11 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
     impl<'a> LayerStageRunner for SeedingRunner<'a> {
         fn run_stage(&self, stage_id: &StageId, layer: &GlobalLayer, module: &CompiledModule,
                      blackboard: &Blackboard, arena: &mut LayerArena)
-                     -> Result<LayerStageOutput, LayerStageError> {
+                     -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
             if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
                 if let Some(p) = self.perim.lock().unwrap().take() {
                     arena.set_perimeter(p).unwrap();
-                    return Ok(LayerStageOutput::Success);
+                    return Ok((LayerStageOutput::Success, Vec::new()));
                 }
             }
             LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
@@ -3466,7 +3466,7 @@ fn layer_planning_dispatch_returns_layer_plan_variant() {
     );
 
     // Must return LayerPlan(...) variant, not None.
-    match result.unwrap() {
+    match result.unwrap().0 {
         PrepassStageOutput::LayerPlan(ir) => {
             // The prepass-guest returns no proposals, so the plan has zero
             // global layers.  This is valid until a real planning module
@@ -3586,8 +3586,8 @@ fn layer_plan_harvest_deterministic_across_repeated_calls() {
             &module,
             &blackboard,
         ) {
-            Ok(PrepassStageOutput::LayerPlan(ir)) => ir,
-            Ok(other) => panic!(
+            Ok((PrepassStageOutput::LayerPlan(ir), _)) => ir,
+            Ok((other, _)) => panic!(
                 "expected LayerPlan variant, got discriminant {:?}",
                 std::mem::discriminant(&other)
             ),
@@ -3748,7 +3748,7 @@ fn mesh_segmentation_dispatch_returns_empty_ir_for_unpainted_mesh() {
     )
     .expect("mesh-segmentation dispatch must succeed");
 
-    match result {
+    match result.0 {
         PrepassStageOutput::MeshSegmentation(ir) => {
             assert_eq!(ir.schema_version, SemVer { major: 1, minor: 0, patch: 0 });
             assert!(
@@ -3833,7 +3833,7 @@ fn mesh_segmentation_collects_config_driven_marks() {
     )
     .expect("mesh-segmentation dispatch must succeed");
 
-    let ir = match result {
+    let ir = match result.0 {
         PrepassStageOutput::MeshSegmentation(ir) => ir,
         other => panic!(
             "expected MeshSegmentation variant, got {:?}",
@@ -3911,7 +3911,7 @@ fn mesh_segmentation_dispatch_is_deterministic() {
             &blackboard,
         )
         .expect("dispatch succeeds");
-        match result {
+        match result.0 {
             PrepassStageOutput::MeshSegmentation(ir) => ir.marks.clone(),
             _ => panic!("wrong variant"),
         }
@@ -4075,7 +4075,7 @@ fn paint_segmentation_dispatch_returns_empty_paint_regions_for_unpainted_mesh() 
     )
     .expect("paint-segmentation dispatch must succeed");
 
-    match result {
+    match result.0 {
         PrepassStageOutput::PaintRegions(ir) => {
             assert_eq!(ir.schema_version, SemVer { major: 1, minor: 0, patch: 0 });
             assert!(
@@ -4152,7 +4152,7 @@ fn paint_segmentation_collects_config_driven_regions() {
     )
     .expect("paint-segmentation dispatch must succeed");
 
-    let ir = match result {
+    let ir = match result.0 {
         PrepassStageOutput::PaintRegions(ir) => ir,
         other => panic!("wrong variant: {:?}", std::mem::discriminant(&other)),
     };
@@ -4254,7 +4254,7 @@ fn paint_segmentation_dispatch_is_deterministic() {
             &blackboard,
         )
         .expect("dispatch succeeds");
-        match result {
+        match result.0 {
             PrepassStageOutput::PaintRegions(ir) => ir,
             _ => panic!("wrong variant"),
         }
@@ -4325,7 +4325,7 @@ fn paint_segmentation_malformed_config_emits_structured_diagnostic() {
 fn paint_segmentation_output_rejects_invalid_entries() {
     use slicer_host::wit_host::HostExecutionContext;
     use slicer_host::wit_host::prepass::{self as pm, HostPaintSegmentationOutput};
-    use slicer_host::wit_host::prepass::slicer::prepass_world::geometry as geo;
+    use slicer_host::wit_host::prepass::slicer::world_prepass::geometry as geo;
     use wasmtime::component::Resource;
 
     let mut ctx = HostExecutionContext::new("com.test.paint-seg-validate".into());
@@ -4581,7 +4581,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
         &mut arena,
     )
     .expect("path-optimization dispatch must succeed");
-    assert_eq!(result, LayerStageOutput::Success);
+    assert_eq!(result.0, LayerStageOutput::Success);
 
     // Dispatch already ran commit_layer_outputs internally; the comment
     // is now in the arena as a deferred annotation. Verify it.
@@ -4889,8 +4889,8 @@ fn layer_planner_default_macro_path_emits_real_proposals() {
     );
 
     let ir = match result {
-        Ok(PrepassStageOutput::LayerPlan(ir)) => ir,
-        Ok(other) => panic!(
+        Ok((PrepassStageOutput::LayerPlan(ir), _)) => ir,
+        Ok((other, _)) => panic!(
             "expected PrepassStageOutput::LayerPlan, got {:?}",
             std::mem::discriminant(&other)
         ),
@@ -4972,8 +4972,8 @@ fn layer_planner_default_macro_path_is_deterministic() {
             &module,
             &blackboard,
         ) {
-            Ok(PrepassStageOutput::LayerPlan(ir)) => ir,
-            Ok(other) => panic!(
+            Ok((PrepassStageOutput::LayerPlan(ir), _)) => ir,
+            Ok((other, _)) => panic!(
                 "expected LayerPlan, got {:?}",
                 std::mem::discriminant(&other)
             ),
@@ -5060,8 +5060,8 @@ fn mesh_analysis_macro_path_forwards_objects_and_drains_output() {
     );
 
     let aux = match result {
-        Ok(PrepassStageOutput::MeshAnalysisAuxiliary(a)) => a,
-        Ok(other) => panic!(
+        Ok((PrepassStageOutput::MeshAnalysisAuxiliary(a), _)) => a,
+        Ok((other, _)) => panic!(
             "expected PrepassStageOutput::MeshAnalysisAuxiliary, got {:?}",
             std::mem::discriminant(&other)
         ),
@@ -5145,8 +5145,8 @@ fn mesh_analysis_macro_path_drain_is_deterministic() {
             &module,
             &blackboard,
         ) {
-            Ok(PrepassStageOutput::MeshAnalysisAuxiliary(a)) => a,
-            Ok(other) => panic!(
+            Ok((PrepassStageOutput::MeshAnalysisAuxiliary(a), _)) => a,
+            Ok((other, _)) => panic!(
                 "expected MeshAnalysisAuxiliary, got {:?}",
                 std::mem::discriminant(&other)
             ),
@@ -5194,7 +5194,7 @@ fn mesh_analysis_macro_path_empty_drain_returns_none() {
         &blackboard,
     )
     .expect("empty-config path must succeed");
-    assert!(matches!(out, PrepassStageOutput::None));
+    assert!(matches!(out.0, PrepassStageOutput::None));
 }
 
 /// Host-side validation: a malformed push (empty object-id,
@@ -5381,7 +5381,7 @@ fn mesh_segmentation_macro_path_drain_preserves_push_order() {
     )
     .expect("mesh-segmentation dispatch must succeed");
 
-    let ir = match out {
+    let ir = match out.0 {
         PrepassStageOutput::MeshSegmentation(ir) => ir,
         other => panic!(
             "expected MeshSegmentation variant, got {:?}",

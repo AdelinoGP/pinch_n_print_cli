@@ -307,8 +307,8 @@ impl PrepassStageRunner for NoopPrepassRunner {
         _s: &StageId,
         _m: &CompiledModuleAlias,
         _b: &Blackboard,
-    ) -> Result<PrepassStageOutput, PrepassExecutionError> {
-        Ok(PrepassStageOutput::None)
+        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+            Ok((PrepassStageOutput::None, Vec::new()))
     }
 }
 struct NoopFinalizationRunner;

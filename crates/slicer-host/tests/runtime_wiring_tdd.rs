@@ -67,8 +67,8 @@ impl PrepassStageRunner for NoopPrepassRunner {
         _stage_id: &StageId,
         _module: &CompiledModule,
         _blackboard: &Blackboard,
-    ) -> Result<PrepassStageOutput, PrepassExecutionError> {
-        Ok(PrepassStageOutput::None)
+    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+        Ok((PrepassStageOutput::None, Vec::new()))
     }
 }
 

@@ -51,7 +51,7 @@ fn guest_reads_config_value_and_uses_it_in_output() {
         .expect("compile component");
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker(&mut linker, |ctx| ctx)
+    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
         .expect("add_to_linker");
 
     let mut ctx = HostExecutionContext::new("test-infill-module".into());
@@ -77,7 +77,7 @@ fn guest_reads_config_value_and_uses_it_in_output() {
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
-    let (bindings, _instance) = LayerModule::instantiate(&mut store, &component, &linker)
+    let bindings = LayerModule::instantiate(&mut store, &component, &linker)
         .expect("instantiate");
 
     // Call run-infill
@@ -119,7 +119,7 @@ fn guest_reads_region_z_from_ir_view() {
     let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker(&mut linker, |ctx| ctx).unwrap();
+    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
     let mut ctx = HostExecutionContext::new("test-ir-read".into());
 
@@ -139,7 +139,7 @@ fn guest_reads_region_z_from_ir_view() {
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
-    let (bindings, _) = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
+    let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
     bindings.call_run_infill(
         &mut store, 42, &[resource_to_own(region_handle)],
@@ -163,7 +163,7 @@ fn guest_emits_output_via_infill_builder() {
     let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker(&mut linker, |ctx| ctx).unwrap();
+    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
     let mut ctx = HostExecutionContext::new("test-output".into());
     let config_handle = ctx.push_config_view(ConfigViewData {
@@ -182,7 +182,7 @@ fn guest_emits_output_via_infill_builder() {
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
-    let (bindings, _) = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
+    let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
     bindings.call_run_infill(
         &mut store, 0, &[resource_to_own(region_handle)],
@@ -218,7 +218,7 @@ fn guest_logs_via_host_services() {
     let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker(&mut linker, |ctx| ctx).unwrap();
+    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
     let mut ctx = HostExecutionContext::new("test-log".into());
     let config_handle = ctx.push_config_view(ConfigViewData {
@@ -237,7 +237,7 @@ fn guest_logs_via_host_services() {
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
-    let (bindings, _) = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
+    let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
     bindings.call_run_infill(
         &mut store, 7, &[resource_to_own(region_handle)],
@@ -264,7 +264,7 @@ fn repeated_calls_produce_independent_outputs() {
     let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker(&mut linker, |ctx| ctx).unwrap();
+    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
     for i in 0..3 {
         let mut ctx = HostExecutionContext::new(format!("call-{i}"));
@@ -285,7 +285,7 @@ fn repeated_calls_produce_independent_outputs() {
         let output_handle = ctx.push_infill_output_builder().unwrap();
 
         let mut store = wasmtime::Store::new(&engine, ctx);
-        let (bindings, _) = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
+        let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
         bindings.call_run_infill(
             &mut store, i as u32, &[resource_to_own(region_handle)],
@@ -317,7 +317,7 @@ fn empty_region_list_handled_gracefully() {
     let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker(&mut linker, |ctx| ctx).unwrap();
+    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
     let mut ctx = HostExecutionContext::new("test-empty".into());
     let config_handle = ctx.push_config_view(ConfigViewData {
@@ -326,7 +326,7 @@ fn empty_region_list_handled_gracefully() {
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
-    let (bindings, _) = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
+    let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
     // Call with empty regions list
     bindings.call_run_infill(

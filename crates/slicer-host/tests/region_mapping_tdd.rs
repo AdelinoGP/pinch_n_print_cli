@@ -45,9 +45,12 @@ impl PrepassStageRunner for CommitLayerPlanRunner {
         stage_id: &slicer_ir::StageId,
         _module: &CompiledModule,
         _blackboard: &Blackboard,
-    ) -> Result<PrepassStageOutput, PrepassExecutionError> {
+    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
         assert_eq!(stage_id, "PrePass::LayerPlanning");
-        Ok(PrepassStageOutput::LayerPlan(Arc::clone(&self.layer_plan)))
+        Ok((
+            PrepassStageOutput::LayerPlan(Arc::clone(&self.layer_plan)),
+            Vec::new(),
+        ))
     }
 }
 
@@ -181,8 +184,8 @@ impl PrepassStageRunner for NoopRunner {
         _stage_id: &slicer_ir::StageId,
         _module: &CompiledModule,
         _blackboard: &Blackboard,
-    ) -> Result<PrepassStageOutput, PrepassExecutionError> {
-        Ok(PrepassStageOutput::None)
+    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+        Ok((PrepassStageOutput::None, Vec::new()))
     }
 }
 

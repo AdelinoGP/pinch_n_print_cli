@@ -245,7 +245,7 @@ fn prepass_world_macro_guest_succeeds_without_error_config() {
     let stage: StageId = "PrePass::MeshAnalysis".to_string();
     let out = PrepassStageRunner::run_stage(&dispatcher, &stage, &module, &bb)
         .expect("empty config path must succeed through real typed glue");
-    assert!(matches!(out, PrepassStageOutput::None));
+    assert!(matches!(out.0, PrepassStageOutput::None));
 }
 
 #[test]
@@ -265,7 +265,7 @@ fn prepass_world_macro_guest_is_deterministic() {
     for _ in 0..3 {
         let out = PrepassStageRunner::run_stage(&dispatcher, &stage, &module, &bb)
             .expect("deterministic success across repeated calls");
-        assert!(matches!(out, PrepassStageOutput::None));
+        assert!(matches!(out.0, PrepassStageOutput::None));
     }
 }
 

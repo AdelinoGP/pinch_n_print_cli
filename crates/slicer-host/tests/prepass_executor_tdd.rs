@@ -238,7 +238,7 @@ impl PrepassStageRunner for ScriptedRunner {
         _stage_id: &String,
         module: &CompiledModule,
         blackboard: &Blackboard,
-    ) -> Result<PrepassStageOutput, PrepassExecutionError> {
+    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
         let observed_mesh_ptr = Arc::as_ptr(blackboard.mesh()) as usize;
         if self.expected_mesh_ptr != 0 {
             assert_eq!(observed_mesh_ptr, self.expected_mesh_ptr);
@@ -256,6 +256,7 @@ impl PrepassStageRunner for ScriptedRunner {
             .get(&module.module_id)
             .cloned()
             .expect("runner fixture should define every module outcome")
+            .map(|output| (output, Vec::new()))
     }
 }
 

@@ -51,7 +51,7 @@ fn postpass_executor_runs_gcode_postprocess_before_text_postprocess() {
 
     let emitter = StubEmitter::new();
     let serializer = StubSerializer::new();
-    let runner = OrderTrackingRunner::new();
+    let mut runner = OrderTrackingRunner::new();
 
     let result = execute_postpass(
         &plan,
@@ -59,7 +59,7 @@ fn postpass_executor_runs_gcode_postprocess_before_text_postprocess() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
 
     // Must succeed (or fail on todo! for red phase)
@@ -114,7 +114,7 @@ fn postpass_executor_runs_gcode_postprocess_modules_sequentially() {
 
     let emitter = StubEmitter::new();
     let serializer = StubSerializer::new();
-    let runner = OrderTrackingRunner::new();
+    let mut runner = OrderTrackingRunner::new();
 
     let result = execute_postpass(
         &plan,
@@ -122,7 +122,7 @@ fn postpass_executor_runs_gcode_postprocess_modules_sequentially() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -159,7 +159,7 @@ fn postpass_executor_runs_text_postprocess_modules_sequentially() {
 
     let emitter = StubEmitter::new();
     let serializer = StubSerializer::new();
-    let runner = OrderTrackingRunner::new();
+    let mut runner = OrderTrackingRunner::new();
 
     let result = execute_postpass(
         &plan,
@@ -167,7 +167,7 @@ fn postpass_executor_runs_text_postprocess_modules_sequentially() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -203,7 +203,7 @@ fn postpass_executor_receives_immutable_layer_irs() {
 
     let emitter = StubEmitter::new();
     let serializer = StubSerializer::new();
-    let runner = ImmutabilityVerifyingRunner::new(layer_irs.len());
+    let mut runner = ImmutabilityVerifyingRunner::new(layer_irs.len());
 
     let result = execute_postpass(
         &plan,
@@ -211,7 +211,7 @@ fn postpass_executor_receives_immutable_layer_irs() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -235,7 +235,7 @@ fn postpass_executor_calls_emitter_first() {
 
     let emitter = CallTrackingEmitter::new();
     let serializer = StubSerializer::new();
-    let runner = OrderTrackingRunner::new();
+    let mut runner = OrderTrackingRunner::new();
 
     let result = execute_postpass(
         &plan,
@@ -243,7 +243,7 @@ fn postpass_executor_calls_emitter_first() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -268,7 +268,7 @@ fn postpass_executor_serializes_directly_when_no_text_postprocess() {
 
     let emitter = StubEmitter::new();
     let serializer = CallTrackingSerializer::new("G28 ; home\nG1 X10 Y10");
-    let runner = OrderTrackingRunner::new();
+    let mut runner = OrderTrackingRunner::new();
 
     let result = execute_postpass(
         &plan,
@@ -276,7 +276,7 @@ fn postpass_executor_serializes_directly_when_no_text_postprocess() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -303,7 +303,7 @@ fn postpass_executor_returns_text_from_last_text_postprocess() {
 
     let emitter = StubEmitter::new();
     let serializer = StubSerializer::new();
-    let runner = FinalTextRunner::new("FINAL OUTPUT FROM MODULE");
+    let mut runner = FinalTextRunner::new("FINAL OUTPUT FROM MODULE");
 
     let result = execute_postpass(
         &plan,
@@ -311,7 +311,7 @@ fn postpass_executor_returns_text_from_last_text_postprocess() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -337,7 +337,7 @@ fn postpass_executor_aborts_on_fatal_gcode_postprocess_error() {
 
     let emitter = StubEmitter::new();
     let serializer = StubSerializer::new();
-    let runner = FatalErrorRunner::gcode_fatal_at("com.example.fatal-module");
+    let mut runner = FatalErrorRunner::gcode_fatal_at("com.example.fatal-module");
 
     let result = execute_postpass(
         &plan,
@@ -345,7 +345,7 @@ fn postpass_executor_aborts_on_fatal_gcode_postprocess_error() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
 
     assert!(
@@ -386,7 +386,7 @@ fn postpass_executor_aborts_on_fatal_text_postprocess_error() {
 
     let emitter = StubEmitter::new();
     let serializer = StubSerializer::new();
-    let runner = FatalErrorRunner::text_fatal_at("com.example.fatal-text");
+    let mut runner = FatalErrorRunner::text_fatal_at("com.example.fatal-text");
 
     let result = execute_postpass(
         &plan,
@@ -394,7 +394,7 @@ fn postpass_executor_aborts_on_fatal_text_postprocess_error() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
 
     assert!(
@@ -429,7 +429,7 @@ fn postpass_executor_continues_after_nonfatal_gcode_postprocess_error() {
 
     let emitter = StubEmitter::new();
     let serializer = StubSerializer::new();
-    let runner = NonFatalErrorRunner::nonfatal_at("com.example.nonfatal");
+    let mut runner = NonFatalErrorRunner::nonfatal_at("com.example.nonfatal");
 
     let result = execute_postpass(
         &plan,
@@ -437,7 +437,7 @@ fn postpass_executor_continues_after_nonfatal_gcode_postprocess_error() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
     assert!(
         result.is_ok(),
@@ -471,7 +471,7 @@ fn postpass_executor_continues_after_nonfatal_text_postprocess_error() {
 
     let emitter = StubEmitter::new();
     let serializer = StubSerializer::new();
-    let runner = NonFatalErrorRunner::nonfatal_text_at("com.example.nonfatal-text", "final output");
+    let mut runner = NonFatalErrorRunner::nonfatal_text_at("com.example.nonfatal-text", "final output");
 
     let result = execute_postpass(
         &plan,
@@ -479,7 +479,7 @@ fn postpass_executor_continues_after_nonfatal_text_postprocess_error() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
     assert!(
         result.is_ok(),
@@ -507,7 +507,7 @@ fn postpass_executor_propagates_emitter_error() {
 
     let emitter = FailingEmitter::new("emit failure");
     let serializer = StubSerializer::new();
-    let runner = OrderTrackingRunner::new();
+    let mut runner = OrderTrackingRunner::new();
 
     let result = execute_postpass(
         &plan,
@@ -515,7 +515,7 @@ fn postpass_executor_propagates_emitter_error() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
 
     assert!(
@@ -540,7 +540,7 @@ fn postpass_executor_handles_empty_stages() {
 
     let emitter = StubEmitter::new();
     let serializer = CallTrackingSerializer::new("G28\nG1 Z10");
-    let runner = OrderTrackingRunner::new();
+    let mut runner = OrderTrackingRunner::new();
 
     let result = execute_postpass(
         &plan,
@@ -548,7 +548,7 @@ fn postpass_executor_handles_empty_stages() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
     assert!(
         result.is_ok(),
@@ -576,7 +576,7 @@ fn postpass_executor_allows_gcode_ir_mutation() {
 
     let emitter = StubEmitter::new();
     let serializer = MutationVerifyingSerializer::new();
-    let runner = MutatingRunner::new();
+    let mut runner = MutatingRunner::new();
 
     let result = execute_postpass(
         &plan,
@@ -584,7 +584,7 @@ fn postpass_executor_allows_gcode_ir_mutation() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
     assert!(result.is_ok(), "should succeed, got {:?}", result);
 
@@ -610,7 +610,7 @@ fn postpass_executor_propagates_serializer_error() {
 
     let emitter = StubEmitter::new();
     let serializer = FailingSerializer::new("serialization failed");
-    let runner = OrderTrackingRunner::new();
+    let mut runner = OrderTrackingRunner::new();
 
     let result = execute_postpass(
         &plan,
@@ -618,7 +618,7 @@ fn postpass_executor_propagates_serializer_error() {
         &blackboard,
         &emitter,
         &serializer,
-        &runner,
+        &mut runner,
     );
 
     assert!(

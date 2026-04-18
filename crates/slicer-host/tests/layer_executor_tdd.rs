@@ -399,7 +399,7 @@ impl LayerStageRunner for ScriptedRunner {
         module: &CompiledModule,
         _blackboard: &Blackboard,
         _arena: &mut LayerArena,
-    ) -> Result<LayerStageOutput, LayerStageError> {
+    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
         let key = (layer.index, stage_id.clone(), module.module_id.clone());
 
         // Record invocation
@@ -700,7 +700,7 @@ impl LayerStageRunner for StagingRunner {
         _module: &CompiledModule,
         _blackboard: &Blackboard,
         arena: &mut LayerArena,
-    ) -> Result<LayerStageOutput, LayerStageError> {
+    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
         if let Some(p) = self.perimeter.lock().unwrap().take() {
             arena.set_perimeter(p).unwrap();
         }

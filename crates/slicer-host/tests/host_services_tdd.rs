@@ -169,7 +169,7 @@ fn simplify_handles_degenerate_input() {
 
 #[test]
 fn object_bounds_fails_with_diagnostic_when_mesh_not_wired() {
-    use slicer_host::wit_host::layer::slicer::layer_world::host_services as hs;
+    use slicer_host::wit_host::layer::slicer::world_layer::host_services as hs;
 
     let mut ctx = HostExecutionContext::new("test-mod".into());
 
@@ -182,7 +182,7 @@ fn object_bounds_fails_with_diagnostic_when_mesh_not_wired() {
 
 #[test]
 fn raycast_returns_none_when_mesh_not_wired() {
-    use slicer_host::wit_host::layer::slicer::layer_world::host_services as hs;
+    use slicer_host::wit_host::layer::slicer::world_layer::host_services as hs;
 
     let mut ctx = HostExecutionContext::new("test-mod".into());
 
@@ -195,7 +195,7 @@ fn raycast_returns_none_when_mesh_not_wired() {
 
 #[test]
 fn now_us_is_monotonic_within_call() {
-    use slicer_host::wit_host::layer::slicer::layer_world::host_services as hs;
+    use slicer_host::wit_host::layer::slicer::world_layer::host_services as hs;
 
     let mut ctx = HostExecutionContext::new("test-mod".into());
 
