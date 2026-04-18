@@ -2,7 +2,7 @@
 name: swarm
 description: Planner-Worker pattern skill that orchestrates subagents to implement or refine spec packets using the repo's real packet lifecycle, packet docs, and backlog rules.
 type: anthropic-skill
-version: "1.1"
+version: "1.2"
 metadata:
   internal: true
 ---
@@ -34,10 +34,11 @@ Do not use Swarm when the packet touches one shared hotspot and offers no safe p
 ## Parameters
 
 - `packet` (optional): Packet slug or path. If omitted, resolve the single active packet from `.ralph/specs/**/packet.spec.md`.
-- `workers` (optional, default: `4`): Maximum concurrent workers. Use fewer when file overlap is high.
-- `max_iterations` (optional, default: `6`): Max review/fix loops after the first implementation pass.
+- `workers` (optional, default: `3`): Maximum concurrent workers. Start at `2`; only raise the count after file-surface and command independence checks pass.
+- `max_iterations` (optional, default: `4`): Max review/fix loops after the first implementation pass.
 - `scope` (optional): Restrict work to specific `implementation-plan.md` steps.
 - `mode` (optional): `implement`, `refine-draft`, or `review-only`. If omitted, infer from packet status and user request.
+- `state_backend` (optional): `session-memory` or `packet-checkpoint`. Use session memory for ephemeral runs; use a packet-local checkpoint only when the run must survive session loss or handoff.
 
 ## Repo Contract This Skill Must Obey
 
@@ -49,6 +50,9 @@ Do not use Swarm when the packet touches one shared hotspot and offers no safe p
 - `task-map.md` is the bridge from packet work back to `docs/07_implementation_status.md`, especially for reopened or superseded work.
 - `docs/07_implementation_status.md` should only be edited when the packet completion gate or the actual task state requires it. Do not update backlog rows unconditionally.
 - If a packet has `supersedes: ...`, read the superseded packet's `packet.spec.md` first and any additional predecessor files needed to understand what is being corrected.
+- The planner should compile packet docs once into a compact execution manifest and use that manifest plus rolling deltas as the default context source on later iterations.
+- Worker outputs must be structured and bounded. Do not let the planner accumulate full diffs, full logs, or repeated copies of the packet docs unless diagnosing a failure.
+- Intermediate review may be delta-scoped, but any packet-close decision still requires a final full review.
 
 ## Status Handling
 
@@ -97,11 +101,29 @@ If preflight fails:
 - In `refine-draft` mode, fix the packet docs first.
 - In `implement` mode, stop and report the packet-authoring defects instead of guessing.
 
+#### Step 1.4: Compile the packet once into an execution manifest
+
+After the packet docs are loaded, compile them into a compact execution manifest. The manifest is the planner's working context for the rest of the run.
+
+Recommended manifest contents:
+
+- packet slug, status, scope summary, and predecessor or successor relationships
+- acceptance criteria registry with stable IDs, one-line assertions, and command IDs
+- step table with step IDs, task IDs, objectives, preconditions, postconditions, expected files, verification commands, and exit conditions
+- dependency graph derived from step preconditions and postconditions
+- file-ownership matrix for parallelism checks
+- command registry marking which commands are gating, targeted, packet-level, or informational
+- docs and backlog impact summary
+
+Store this manifest in session memory by default. Use a packet-local checkpoint file only when the run must survive session loss or planner handoff.
+
+Do not re-read the full packet docs on every iteration unless the packet files changed or the manifest is incomplete.
+
 ### Phase 2: Build the Execution Graph from `implementation-plan.md`
 
 #### Step 2.1: Parse packet steps
 
-For each step, extract:
+From the implementation plan, compile or refresh the manifest entries for each step:
 
 - step number and title
 - task IDs
@@ -111,6 +133,12 @@ For each step, extract:
 - authoritative docs and Orca refs
 - verification commands
 - exit condition
+
+Also derive:
+
+- step dependencies
+- allowed worker ownership boundaries
+- direct links from acceptance criteria to the steps and commands that satisfy them
 
 Do not invent generic step groups when the packet already gives exact step boundaries.
 
@@ -129,6 +157,10 @@ Parallelization rules:
 - Test-writing and code-writing steps that touch the same crate or test file should usually be serialized.
 - If two steps both list the same source file, keep them sequential.
 - If the packet funnels multiple steps through one hotspot, Swarm should fall back to sequential execution instead of forcing parallel workers.
+- Default to `2` workers.
+- Allow `3` workers only when write surfaces are disjoint and no step precondition chain is being split across workers.
+- Allow `4` workers only when source files, test files, and verification commands are all independent and no shared build or temp-resource lock is expected.
+- If verification commands contend on the same build artifacts, temp directories, databases, or fixture outputs, serialize them even when file edits are disjoint.
 
 #### Step 2.3: Capture docs and backlog impact
 
@@ -140,6 +172,8 @@ From `task-map.md` and `docs/07_implementation_status.md`, decide whether the ru
 - reconcile a superseded predecessor packet
 
 Do not assume a `docs/07_implementation_status.md` edit is always required. For retrofit packets correcting already-closed work, the correct outcome may be `no backlog delta`.
+
+Track this decision in the execution manifest so the planner does not have to re-derive it during review and acceptance.
 
 ### Phase 3: Dispatch Workers with the Real Tooling
 
@@ -156,11 +190,13 @@ Do not refer to an `Agent` tool or background workers. Workers here are synchron
 
 #### Step 3.2: Worker prompt requirements
 
+Each worker prompt must be step-sliced. Do not paste the full packet docs into every worker.
+
 Each worker prompt must include:
 
 1. packet slug and current status
 2. execution mode
-3. packet goal and in-scope or out-of-scope items
+3. a compact packet digest: goal summary, scope summary, and only the acceptance criteria IDs or one-line assertions relevant to that worker
 4. exact `implementation-plan.md` steps owned by the worker
 5. exact files allowed to change
 6. authoritative docs and Orca refs for those steps
@@ -168,6 +204,37 @@ Each worker prompt must include:
 8. exit conditions for each step
 9. whether the worker is read-only or may edit files
 10. explicit instruction not to touch unrelated files or commit changes
+11. a strict return schema
+
+Prefer references to the execution manifest over repeated copies of the packet text. If a worker only owns one or two steps, include only those steps in full detail.
+
+Worker return schema:
+
+```json
+{
+  "worker_id": "w1",
+  "overall_status": "DONE|PARTIAL|BLOCKED",
+  "steps": [
+    {
+      "step_id": "Step 2",
+      "status": "DONE|PARTIAL|BLOCKED",
+      "files_changed": ["path/to/file"],
+      "commands_run": [
+        {
+          "command": "cargo test ...",
+          "result": "PASS|FAIL|NOT_RUN",
+          "summary": "one line"
+        }
+      ],
+      "exit_condition_met": true,
+      "blocker": null
+    }
+  ],
+  "follow_up": ["optional concise next action"]
+}
+```
+
+Do not return full diffs, full logs, or repeated packet excerpts unless the planner explicitly asks for them.
 
 Worker prompt template:
 ```text
@@ -175,12 +242,15 @@ Packet: <packet-slug>
 Status: <draft|active|implemented|superseded>
 Mode: <implement|refine-draft|review-only>
 
-Goal:
-<from packet.spec.md>
+Packet digest:
+- Goal: <1-3 lines>
+- Scope: <1-3 lines>
+- Relevant acceptance criteria: <AC-1 one-line summary>, <AC-3 one-line summary>
 
-Scope:
-- In scope: ...
-- Out of scope: ...
+Execution manifest references:
+- Step ledger entries: <Step 2, Step 3>
+- Allowed files: ...
+- Relevant docs: ...
 
 Assigned steps:
 - Step N: ...
@@ -200,19 +270,24 @@ Execution rules:
 3. Validate immediately after the first substantive edit using the step's narrow command.
 4. Do not modify files outside the allowed list.
 5. Do not commit or create branches.
-6. Return a concise report with files changed, validation run, and any blockers.
+6. Return JSON matching the worker return schema.
+7. Keep command summaries to one line each. Do not paste full logs unless asked.
 ```
 
 #### Step 3.3: Collect and merge worker results
 
 After the worker batch finishes:
 
-- aggregate the returned evidence
+- parse the worker return schema into a rolling step ledger
+- record `changed_steps`, `changed_files`, and command outcomes
 - verify whether each step actually met its exit condition
+- request detailed logs only for failed or ambiguous commands
 - run the narrowest validation command for any touched step before dispatching adjacent follow-up work
 - serialize any remaining edits that now touch shared files
 
 If a worker says `complete` but did not show step-level evidence, treat the step as incomplete.
+
+The planner should carry forward only the manifest, the step ledger, the `changed_steps` or `changed_files` set, and concise command summaries. Do not keep every raw worker transcript in the planner context.
 
 ### Phase 4: Validate and Review
 
@@ -229,6 +304,8 @@ Validation order:
 
 Do not replace packet-specific commands with hardcoded generic workspace tests unless the packet explicitly lists them.
 
+Use the command registry from the execution manifest so later iterations rerun only the commands affected by `changed_steps` or `changed_files`.
+
 #### Step 4.2: Review against the packet
 
 After the implementation pass, load `.claude/skills/spec-review/SKILL.md` and run the packet through that checklist.
@@ -239,6 +316,12 @@ Treat findings in two buckets:
 - implementation defects: missing code, wrong control path, incomplete verification, regression
 
 Fix packet-authoring defects first when they block trustworthy implementation review.
+
+Review guidance:
+
+- Intermediate loops may use a delta review keyed to `changed_steps` or `changed_files`.
+- A final packet-close review must still be full-scope.
+- If review is delegated, use at most one dedicated review worker after all code workers finish. Do not fan out `spec-review` across multiple workers or shard it by review dimension.
 
 #### Step 4.3: Iterate only on targeted gaps
 
@@ -251,6 +334,8 @@ For each high or critical finding:
 
 Stop after `max_iterations` and report any remaining gaps honestly.
 
+Use the step ledger to drive iteration. The planner should resend only the changed step slices and their directly affected acceptance criteria instead of the full packet.
+
 ### Phase 5: Completion, Status Transitions, and Docs
 
 #### Step 5.1: Run the packet acceptance ceremony
@@ -260,6 +345,7 @@ Re-run:
 - every pipe-suffixed acceptance command from `packet.spec.md`
 - every non-duplicate verification command from `implementation-plan.md` that still matters at packet scope
 - every packet-level command from the `Verification` section
+- a final full `spec-review` pass before changing packet status or claiming packet closure
 
 #### Step 5.2: Apply status transitions carefully
 
@@ -291,10 +377,15 @@ Mode: implement | refine-draft | review-only
 Starting packet status: draft | active | implemented | superseded
 Iterations: N
 Workers used: N
+Planner state backend: session-memory | packet-checkpoint
 
 Packet-quality preflight:
 - PASS / FAIL
 - Notes: ...
+
+Execution manifest:
+- built: yes / no
+- delta scope for this iteration: changed_steps=<...>, changed_files=<...>
 
 Step results:
 - Step N: DONE / PARTIAL / SKIPPED
@@ -320,12 +411,14 @@ Verification commands run:
 
 - Packet docs are authoritative. Do not substitute generic commands for packet commands.
 - `docs/07_implementation_status.md` is the backlog and progress ledger, not the technical specification for code behavior.
-- Prefer no more than 2-3 concurrent workers unless the file surfaces are obviously disjoint.
+- Prefer no more than 2 concurrent code workers by default. Raise to 3 or 4 only after file-surface and verification-resource checks pass.
 - If safe write parallelism is unclear, use workers for read-only analysis and keep edits sequential.
 - Do not commit, create branches, or require per-worker commits unless the user explicitly asks.
 - Do not mark a step complete without evidence that its exit condition was met.
 - If the packet status or backlog state conflicts with reality, report the mismatch instead of silently normalizing it.
 - When a packet reopens previously closed work, reconcile the packet, predecessor packet, and `docs/07_implementation_status.md` explicitly.
+- Keep the planner context compact: manifest, step ledger, deltas, and concise command summaries. Pull raw logs only on demand.
+- Do not fan out `spec-review`; use a single holistic review pass or a single review worker.
 
 ## Error Handling
 
@@ -351,6 +444,23 @@ If worker scopes collide after decomposition:
 - cancel the parallel plan
 - regroup as sequential steps or read-only workers plus planner-owned edits
 
+### Planner context pressure
+
+If the planner context starts to bloat:
+
+- rebuild the compact execution manifest from the packet docs once
+- discard stale raw worker transcripts from active context
+- retain only the step ledger, `changed_steps` or `changed_files`, and command summaries
+- request full logs only for the specific failed command or ambiguous step
+
+### Worker output overflow
+
+If a worker returns verbose prose or full logs instead of the schema:
+
+- treat the response as non-compliant
+- ask for a compact rerun using the schema
+- do not paste the entire verbose worker output into subsequent worker prompts
+
 ### Missing or stale verification commands
 
 If `packet.spec.md` or `implementation-plan.md` lacks runnable commands:
@@ -367,6 +477,7 @@ If `packet.spec.md` or `implementation-plan.md` lacks runnable commands:
 - `.claude/skills/spec-review/SKILL.md`
 - `runSubagent`
 - `multi_tool_use.parallel`
+- session memory or a packet-local checkpoint file for the execution manifest and step ledger
 - packet-specified build and test commands
 
 ## Usage Examples
@@ -380,6 +491,10 @@ If `packet.spec.md` or `implementation-plan.md` lacks runnable commands:
 ```
 
 ```text
+/swarm packet:02-rev2_runtime-access-audit-and-declaration-enforcement mode:implement workers:3 state_backend:session-memory
+```
+
+```text
 /swarm packet:02-rev2_runtime-access-audit-and-declaration-enforcement scope:"Step 1,Step 2,Step 3"
 ```
 
@@ -390,6 +505,8 @@ If `packet.spec.md` or `implementation-plan.md` lacks runnable commands:
 **"Packet tasks already show [x] in docs/07"**: Treat the packet as a retrofit or reopen slice. Do not blindly toggle backlog rows; reconcile the mismatch in the report.
 
 **"Worker produced no changes"**: Verify whether the step was read-only or already satisfied. If not, treat the step as incomplete.
+
+**"The planner is running out of context"**: Rebuild the compact execution manifest and continue from the step ledger plus deltas instead of reloading the full packet and prior worker transcripts.
 
 **"Review keeps finding packet-authoring defects"**: Fix the packet docs first; do not keep rerunning code workers against an under-specified packet.
 
