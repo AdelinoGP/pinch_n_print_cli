@@ -9,7 +9,7 @@ use slicer_ir::{ConfigKey, ConfigValue, ConfigView, GlobalLayer, ModuleId, Regio
 
 use crate::dag::build_intra_stage_dag;
 use crate::instance_pool::{build_wasm_instance_pool, InstancePoolError, WasmArtifactMetadata, WasmInstancePool};
-use crate::manifest::{load_modules_from_roots, LoadDiagnostic, LoadError, LoadedModule, ConfigFieldEntry};
+use crate::manifest::{load_modules_from_roots, LoadDiagnostic, LoadError, LoadedModule};
 use crate::topology::topological_sort;
 use crate::validation::SchedulerError;
 use crate::manifest::DiagnosticLevel;
@@ -269,6 +269,16 @@ impl From<InstancePoolError> for LiveModuleLoadError {
         Self::InstancePool(e)
     }
 }
+impl From<SchedulerError> for Box<LiveModuleLoadError> {
+    fn from(e: SchedulerError) -> Self {
+        Box::new(LiveModuleLoadError::Dag(e))
+    }
+}
+impl From<LoadError> for Box<LiveModuleLoadError> {
+    fn from(e: LoadError) -> Self {
+        Box::new(LiveModuleLoadError::Load(e))
+    }
+}
 
 /// Discover all modules under `search_roots`, plan their WASM instance
 /// pools, and produce canonical `STAGE_ORDER`-sorted bindings ready to
@@ -295,7 +305,7 @@ impl From<InstancePoolError> for LiveModuleLoadError {
 pub fn load_live_modules_for_plan(
     search_roots: &[PathBuf],
     host_parallelism: usize,
-) -> Result<LiveModuleLoadOutput, LiveModuleLoadError> {
+) -> Result<LiveModuleLoadOutput, Box<LiveModuleLoadError>> {
     let mut report = load_modules_from_roots(search_roots)?;
 
     // Claim-uniqueness enforcement (docs/04 §Global claim conflicts;
@@ -317,7 +327,7 @@ pub fn load_live_modules_for_plan(
     let mut sorted_stages = Vec::new();
     for stage in STAGE_ORDER {
         let stage_id = (*stage).to_string();
-        let nodes = build_intra_stage_dag(stage_id.clone(), &report.modules)?;
+        let nodes = build_intra_stage_dag(stage_id.clone(), &report.modules).map_err(|e| -> Box<LiveModuleLoadError> { Box::new(LiveModuleLoadError::Dag(*e)) })?;
         if nodes.is_empty() {
             continue;
         }
@@ -343,7 +353,7 @@ pub fn load_live_modules_for_plan(
             &module,
             host_parallelism,
             WasmArtifactMetadata::default(),
-        )?;
+        ).map_err(|e| -> Box<LiveModuleLoadError> { Box::new(LiveModuleLoadError::InstancePool(e)) })?;
         let wasm_component =
             compile_module_component(engine.as_ref(), &module, &mut diagnostics);
         bindings.push(LiveModuleBinding {
