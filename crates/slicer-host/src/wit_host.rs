@@ -118,9 +118,9 @@ pub struct SliceRegionData {
     /// Region ID.
     pub region_id: String,
     /// Slice polygons (bindgen ExPolygon type).
-    pub polygons: Vec<layer::slicer::layer_world::geometry::ExPolygon>,
+    pub polygons: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
     /// Infill areas.
-    pub infill_areas: Vec<layer::slicer::layer_world::geometry::ExPolygon>,
+    pub infill_areas: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
     /// Layer height at this Z.
     pub effective_layer_height: f32,
     /// Z height.
@@ -128,7 +128,7 @@ pub struct SliceRegionData {
     /// Whether this region has non-planar surfaces.
     pub has_nonplanar: bool,
     /// Boundary paint data.
-    pub boundary_paint: Vec<layer::slicer::layer_world::ir_handles::BoundaryPaintEntry>,
+    pub boundary_paint: Vec<layer::slicer::world_layer::ir_handles::BoundaryPaintEntry>,
 }
 
 /// Backing data for a `perimeter-region-view` resource handle.
@@ -138,9 +138,9 @@ pub struct PerimeterRegionData {
     /// Region ID.
     pub region_id: String,
     /// Wall loops.
-    pub wall_loops: Vec<layer::slicer::layer_world::ir_handles::WallLoopView>,
+    pub wall_loops: Vec<layer::slicer::world_layer::ir_handles::WallLoopView>,
     /// Infill areas after perimeter inset.
-    pub infill_areas: Vec<layer::slicer::layer_world::geometry::ExPolygon>,
+    pub infill_areas: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
 }
 
 /// Backing data for an `infill-output-builder` resource handle.
@@ -165,10 +165,10 @@ pub struct PaintRegionLayerData {
     pub layer_index: u32,
     /// Regions by semantic key string.
     pub regions_by_semantic:
-        HashMap<String, Vec<layer::slicer::layer_world::ir_handles::SemanticRegion>>,
+        HashMap<String, Vec<layer::slicer::world_layer::ir_handles::SemanticRegion>>,
     /// Custom regions by module ID.
     pub custom_regions:
-        HashMap<String, Vec<layer::slicer::layer_world::ir_handles::SemanticRegion>>,
+        HashMap<String, Vec<layer::slicer::world_layer::ir_handles::SemanticRegion>>,
 }
 
 // ── Bindgen: Layer module world ─────────────────────────────────────────
@@ -176,7 +176,7 @@ pub struct PaintRegionLayerData {
 pub mod layer {
     wasmtime::component::bindgen!({
         inline: r#"
-            package slicer:layer-world@1.0.0;
+            package slicer:world-layer@1.0.0;
 
             interface geometry {
                 record point2 { x: s64, y: s64 }
@@ -321,26 +321,26 @@ pub mod layer {
         "#,
         world: "layer-module",
         with: {
-            "slicer:layer-world/config-types/config-view": super::ConfigViewData,
-            "slicer:layer-world/ir-handles/slice-region-view": super::SliceRegionData,
-            "slicer:layer-world/ir-handles/perimeter-region-view": super::PerimeterRegionData,
-            "slicer:layer-world/ir-handles/infill-output-builder": super::InfillOutputBuilderData,
-            "slicer:layer-world/ir-handles/perimeter-output-builder": super::PerimeterOutputBuilderData,
-            "slicer:layer-world/ir-handles/slice-postprocess-builder": super::SlicePostprocessBuilderData,
-            "slicer:layer-world/ir-handles/gcode-output-builder": super::GcodeOutputBuilderData,
-            "slicer:layer-world/ir-handles/support-output-builder": super::SupportOutputBuilderData,
-            "slicer:layer-world/ir-handles/paint-region-layer-view": super::PaintRegionLayerData,
+            "slicer:world-layer/config-types/config-view": super::ConfigViewData,
+            "slicer:world-layer/ir-handles/slice-region-view": super::SliceRegionData,
+            "slicer:world-layer/ir-handles/perimeter-region-view": super::PerimeterRegionData,
+            "slicer:world-layer/ir-handles/infill-output-builder": super::InfillOutputBuilderData,
+            "slicer:world-layer/ir-handles/perimeter-output-builder": super::PerimeterOutputBuilderData,
+            "slicer:world-layer/ir-handles/slice-postprocess-builder": super::SlicePostprocessBuilderData,
+            "slicer:world-layer/ir-handles/gcode-output-builder": super::GcodeOutputBuilderData,
+            "slicer:world-layer/ir-handles/support-output-builder": super::SupportOutputBuilderData,
+            "slicer:world-layer/ir-handles/paint-region-layer-view": super::PaintRegionLayerData,
         },
     });
 }
 
 // Re-export commonly used generated types for convenience.
-pub use layer::slicer::layer_world::config_types::ConfigValue;
-pub use layer::slicer::layer_world::geometry::{
+pub use layer::slicer::world_layer::config_types::ConfigValue;
+pub use layer::slicer::world_layer::geometry::{
     BoundingBox3, ExPolygon, ExtrusionPath3d, ExtrusionRole, Point2, Point3, Point3WithWidth,
     Polygon,
 };
-pub use layer::slicer::layer_world::ir_handles::{
+pub use layer::slicer::world_layer::ir_handles::{
     BoundaryPaintEntry, BoundaryPaintPolygon, GcodeMoveCmd, PaintSemantic, PaintValue, RegionKey,
     SemanticRegion, WallFeatureFlag, WallLoopType, WallLoopView,
 };
@@ -376,7 +376,7 @@ pub struct PaintSegmentationOutputData;
 pub mod prepass {
     wasmtime::component::bindgen!({
         inline: r#"
-            package slicer:prepass-world@1.0.0;
+            package slicer:world-prepass@1.0.0;
 
             interface geometry {
                 record point3 { x: f32, y: f32, z: f32 }
@@ -490,7 +490,7 @@ pub mod prepass {
         "#,
         world: "prepass-module",
         with: {
-            "slicer:prepass-world/config-types/config-view": super::ConfigViewData,
+            "slicer:world-prepass/config-types/config-view": super::ConfigViewData,
         },
     });
 }
@@ -570,7 +570,7 @@ pub struct FinalizationOutputBuilderData {
 pub mod finalization {
     wasmtime::component::bindgen!({
         inline: r#"
-            package slicer:finalization-world@1.0.0;
+            package slicer:world-finalization@1.0.0;
 
             interface geometry {
                 record point3 { x: f32, y: f32, z: f32 }
@@ -664,7 +664,7 @@ pub mod finalization {
         "#,
         world: "finalization-module",
         with: {
-            "slicer:finalization-world/config-types/config-view": super::ConfigViewData,
+            "slicer:world-finalization/config-types/config-view": super::ConfigViewData,
         },
     });
 }
@@ -679,7 +679,7 @@ pub struct PostpassGcodeOutputBuilderData;
 pub mod postpass {
     wasmtime::component::bindgen!({
         inline: r#"
-            package slicer:postpass-world@1.0.0;
+            package slicer:world-postpass@1.0.0;
 
             interface geometry {
                 record point3 { x: f32, y: f32, z: f32 }
@@ -761,7 +761,7 @@ pub mod postpass {
         "#,
         world: "postpass-module",
         with: {
-            "slicer:postpass-world/config-types/config-view": super::ConfigViewData,
+            "slicer:world-postpass/config-types/config-view": super::ConfigViewData,
         },
     });
 }
@@ -1144,10 +1144,10 @@ impl HostExecutionContext {
 
 // ── Host trait implementations ──────────────────────────────────────────
 
-use layer::slicer::layer_world::config_types as ct;
-use layer::slicer::layer_world::geometry as geo;
-use layer::slicer::layer_world::host_services as hs;
-use layer::slicer::layer_world::ir_handles as ir;
+use layer::slicer::world_layer::config_types as ct;
+use layer::slicer::world_layer::geometry as geo;
+use layer::slicer::world_layer::host_services as hs;
+use layer::slicer::world_layer::ir_handles as ir;
 
 impl geo::Host for HostExecutionContext {}
 
@@ -1328,8 +1328,8 @@ fn ir_to_wit_paint_value(v: &slicer_ir::PaintValue) -> PaintValue {
 /// Convert slicer-ir SemanticRegion to WIT SemanticRegion.
 fn ir_to_wit_semantic_region(
     r: &slicer_ir::SemanticRegion,
-) -> layer::slicer::layer_world::ir_handles::SemanticRegion {
-    layer::slicer::layer_world::ir_handles::SemanticRegion {
+) -> layer::slicer::world_layer::ir_handles::SemanticRegion {
+    layer::slicer::world_layer::ir_handles::SemanticRegion {
         object_id: r.object_id.clone(),
         polygons: ir_to_wit_expolygons(&r.polygons),
         value: ir_to_wit_paint_value(&r.value),
@@ -1369,11 +1369,11 @@ pub fn paint_region_ir_to_layer_data(
 
     let mut regions_by_semantic: HashMap<
         String,
-        Vec<layer::slicer::layer_world::ir_handles::SemanticRegion>,
+        Vec<layer::slicer::world_layer::ir_handles::SemanticRegion>,
     > = HashMap::new();
     let mut custom_regions: HashMap<
         String,
-        Vec<layer::slicer::layer_world::ir_handles::SemanticRegion>,
+        Vec<layer::slicer::world_layer::ir_handles::SemanticRegion>,
     > = HashMap::new();
 
     for (semantic, regions) in &layer_map.semantic_regions {
@@ -1899,9 +1899,9 @@ impl ir::Host for HostExecutionContext {}
 
 mod prepass_impls {
     use super::*;
-    use prepass::slicer::prepass_world::config_types as pct;
-    use prepass::slicer::prepass_world::geometry as pgeo;
-    use prepass::slicer::prepass_world::host_services as phs;
+    use prepass::slicer::world_prepass::config_types as pct;
+    use prepass::slicer::world_prepass::geometry as pgeo;
+    use prepass::slicer::world_prepass::host_services as phs;
 
     impl pgeo::Host for HostExecutionContext {}
 
@@ -2161,9 +2161,9 @@ mod prepass_impls {
 
 mod finalization_impls {
     use super::*;
-    use finalization::slicer::finalization_world::config_types as fct;
-    use finalization::slicer::finalization_world::geometry as fgeo;
-    use finalization::slicer::finalization_world::host_services as fhs;
+    use finalization::slicer::world_finalization::config_types as fct;
+    use finalization::slicer::world_finalization::geometry as fgeo;
+    use finalization::slicer::world_finalization::host_services as fhs;
     use super::finalization as fm;
 
     impl fgeo::Host for HostExecutionContext {}
@@ -2379,9 +2379,9 @@ mod finalization_impls {
 
 mod postpass_impls {
     use super::*;
-    use postpass::slicer::postpass_world::config_types as ppct;
-    use postpass::slicer::postpass_world::geometry as ppgeo;
-    use postpass::slicer::postpass_world::host_services as pphs;
+    use postpass::slicer::world_postpass::config_types as ppct;
+    use postpass::slicer::world_postpass::geometry as ppgeo;
+    use postpass::slicer::world_postpass::host_services as pphs;
     use super::postpass as ppm;
 
     impl ppgeo::Host for HostExecutionContext {}
