@@ -8,8 +8,11 @@ use std::fs;
 use std::path::Path;
 
 use slicer_schema::{
-    lifecycle_exports_for_world, stage_by_id, world_for_stage_id, STAGES,
+    lifecycle_exports_for_world, stage_by_id, STAGES,
 };
+
+#[cfg(test)]
+use slicer_schema::world_for_stage_id;
 
 /// The list of valid pipeline stages, derived from the shared
 /// `slicer-schema` table so the CLI and the `#[slicer_module]` macro

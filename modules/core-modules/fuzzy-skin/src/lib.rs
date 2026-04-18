@@ -155,6 +155,7 @@ impl Rng {
 /// - min_dist = point_distance * 3/4
 /// - range = point_distance / 2
 /// - For determinism we use a fixed factor (1.0) for the distance jitter
+///
 /// Returns (new_points, new_flags, new_widths) all with matching lengths.
 #[allow(clippy::too_many_arguments)]
 fn apply_fuzzy_skin(
