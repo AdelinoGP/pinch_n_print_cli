@@ -188,11 +188,11 @@ pub mod layer {
                 record polygon       { points: list<point2> }
                 record ex-polygon    { contour: polygon, holes: list<polygon> }
                 record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32 }
-                enum extrusion-role {
+                variant extrusion-role {
                     outer-wall, inner-wall, thin-wall,
                     top-solid-infill, bottom-solid-infill, sparse-infill,
                     support-material, support-interface,
-                    ironing, bridge-infill, wipe-tower, custom,
+                    ironing, bridge-infill, wipe-tower, custom(string),
                 }
                 record semver { major: u32, minor: u32, patch: u32 }
             }
@@ -234,10 +234,10 @@ pub mod layer {
                 type region-id = string;
                 type layer-idx = u32;
                 record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
-                record wall-feature-flag { tool-index: option<u32>, fuzzy-skin: bool, is-bridge: bool, is-thin-wall: bool, skip-ironing: bool }
+                record wall-feature-flag { tool-index: option<u32>, fuzzy-skin: bool, is-bridge: bool, is-thin-wall: bool, skip-ironing: bool, custom: list<tuple<string, paint-value>> }
                 record wall-loop-view { perimeter-index: u32, loop-type: wall-loop-type, path: extrusion-path3d, feature-flags: list<wall-feature-flag> }
                 enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell }
-                enum paint-semantic { material, fuzzy-skin, support-enforcer, support-blocker, custom }
+                variant paint-semantic { material, fuzzy-skin, support-enforcer, support-blocker, custom(string) }
                 variant paint-value { flag(bool), scalar(f32), tool-index(u32) }
                 record boundary-paint-polygon { values: list<option<paint-value>> }
                 record boundary-paint-entry { semantic: paint-semantic, polygons: list<boundary-paint-polygon> }
@@ -590,11 +590,11 @@ pub mod finalization {
                 record polygon { points: list<point2> }
                 record ex-polygon { contour: polygon, holes: list<polygon> }
                 record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32 }
-                enum extrusion-role {
+                variant extrusion-role {
                     outer-wall, inner-wall, thin-wall,
                     top-solid-infill, bottom-solid-infill, sparse-infill,
                     support-material, support-interface,
-                    ironing, bridge-infill, wipe-tower, custom,
+                    ironing, bridge-infill, wipe-tower, custom(string),
                 }
             }
 
@@ -701,11 +701,11 @@ pub mod postpass {
                 record point2 { x: s64, y: s64 }
                 record polygon { points: list<point2> }
                 record ex-polygon { contour: polygon, holes: list<polygon> }
-                enum extrusion-role {
+                variant extrusion-role {
                     outer-wall, inner-wall, thin-wall,
                     top-solid-infill, bottom-solid-infill, sparse-infill,
                     support-material, support-interface,
-                    ironing, bridge-infill, wipe-tower, custom,
+                    ironing, bridge-infill, wipe-tower, custom(string),
                 }
             }
 
@@ -1427,7 +1427,7 @@ fn ir_to_wit_paint_semantic(s: &slicer_ir::PaintSemantic) -> PaintSemantic {
         slicer_ir::PaintSemantic::FuzzySkin => PaintSemantic::FuzzySkin,
         slicer_ir::PaintSemantic::SupportEnforcer => PaintSemantic::SupportEnforcer,
         slicer_ir::PaintSemantic::SupportBlocker => PaintSemantic::SupportBlocker,
-        slicer_ir::PaintSemantic::Custom(_) => PaintSemantic::Custom,
+        slicer_ir::PaintSemantic::Custom(tag) => PaintSemantic::Custom(tag.clone()),
     }
 }
 
@@ -1486,7 +1486,9 @@ fn ir_to_wit_extrusion_role(role: &slicer_ir::ExtrusionRole) -> ExtrusionRole {
         slicer_ir::ExtrusionRole::Ironing => ExtrusionRole::Ironing,
         slicer_ir::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
         slicer_ir::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
-        _ => ExtrusionRole::Custom,
+        slicer_ir::ExtrusionRole::Custom(tag) => ExtrusionRole::Custom(tag.clone()),
+        slicer_ir::ExtrusionRole::PrimeTower => ExtrusionRole::Custom(String::new()),
+        slicer_ir::ExtrusionRole::Skirt => ExtrusionRole::Custom(String::new()),
     }
 }
 
@@ -1511,12 +1513,26 @@ fn ir_to_wit_extrusion_path(path: &slicer_ir::ExtrusionPath3D) -> ExtrusionPath3
 
 /// Convert slicer-ir `WallFeatureFlags` to WIT `WallFeatureFlag`.
 fn ir_to_wit_wall_feature_flag(f: &slicer_ir::WallFeatureFlags) -> WallFeatureFlag {
+    let mut custom: Vec<(String, PaintValue)> = f
+        .custom
+        .iter()
+        .map(|(k, v)| {
+            let pv = match v {
+                slicer_ir::PaintValue::Flag(b) => PaintValue::Flag(*b),
+                slicer_ir::PaintValue::Scalar(s) => PaintValue::Scalar(*s),
+                slicer_ir::PaintValue::ToolIndex(t) => PaintValue::ToolIndex(*t),
+            };
+            (k.clone(), pv)
+        })
+        .collect();
+    custom.sort_by(|a, b| a.0.cmp(&b.0));
     WallFeatureFlag {
         tool_index: f.tool_index,
         fuzzy_skin: f.fuzzy_skin,
         is_bridge: f.is_bridge,
         is_thin_wall: f.is_thin_wall,
         skip_ironing: f.skip_ironing,
+        custom,
     }
 }
 
@@ -1888,7 +1904,11 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
             PaintSemantic::FuzzySkin => "fuzzy-skin",
             PaintSemantic::SupportEnforcer => "support-enforcer",
             PaintSemantic::SupportBlocker => "support-blocker",
-            PaintSemantic::Custom => "custom",
+            PaintSemantic::Custom(ref s) => {
+                // Leak the string so the &str is valid for the HashMap lookup.
+                // The HashMap lookup is immediate; no lingering reference afterward.
+                Box::leak(s.clone().into_boxed_str())
+            }
         };
         Ok(data.regions_by_semantic.get(key).cloned().unwrap_or_default())
     }
@@ -2282,12 +2302,12 @@ mod finalization_impls {
                     flow_factor: pt.flow_factor,
                 })
                 .collect(),
-            role: finalization_role_wit_to_ir(p.role),
+            role: finalization_role_wit_to_ir(&p.role),
             speed_factor: p.speed_factor,
         }
     }
 
-    fn finalization_role_wit_to_ir(r: fgeo::ExtrusionRole) -> slicer_ir::ExtrusionRole {
+    fn finalization_role_wit_to_ir(r: &fgeo::ExtrusionRole) -> slicer_ir::ExtrusionRole {
         match r {
             fgeo::ExtrusionRole::OuterWall => slicer_ir::ExtrusionRole::OuterWall,
             fgeo::ExtrusionRole::InnerWall => slicer_ir::ExtrusionRole::InnerWall,
@@ -2300,7 +2320,7 @@ mod finalization_impls {
             fgeo::ExtrusionRole::Ironing => slicer_ir::ExtrusionRole::Ironing,
             fgeo::ExtrusionRole::BridgeInfill => slicer_ir::ExtrusionRole::BridgeInfill,
             fgeo::ExtrusionRole::WipeTower => slicer_ir::ExtrusionRole::WipeTower,
-            fgeo::ExtrusionRole::Custom => slicer_ir::ExtrusionRole::Custom(String::new()),
+            fgeo::ExtrusionRole::Custom(s) => slicer_ir::ExtrusionRole::Custom(s.clone()),
         }
     }
 
@@ -2532,7 +2552,7 @@ mod postpass_impls {
             ppgeo::ExtrusionRole::Ironing => ExtrusionRole::Ironing,
             ppgeo::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
             ppgeo::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
-            ppgeo::ExtrusionRole::Custom => ExtrusionRole::Custom,
+            ppgeo::ExtrusionRole::Custom(s) => ExtrusionRole::Custom(s.clone()),
         }
     }
 }
@@ -2578,7 +2598,7 @@ pub fn convert_extrusion_role(role: &ExtrusionRole) -> slicer_ir::ExtrusionRole 
         ExtrusionRole::Ironing => slicer_ir::ExtrusionRole::Ironing,
         ExtrusionRole::BridgeInfill => slicer_ir::ExtrusionRole::BridgeInfill,
         ExtrusionRole::WipeTower => slicer_ir::ExtrusionRole::WipeTower,
-        ExtrusionRole::Custom => slicer_ir::ExtrusionRole::Custom(String::new()),
+        ExtrusionRole::Custom(s) => slicer_ir::ExtrusionRole::Custom(s.clone()),
     }
 }
 
@@ -2831,6 +2851,15 @@ pub fn convert_wall_loop_type(lt: &WallLoopType) -> slicer_ir::LoopType {
     }
 }
 
+/// Convert a WIT `PaintValue` variant to a slicer-ir `PaintValue`.
+fn convert_paint_value(v: &PaintValue) -> slicer_ir::PaintValue {
+    match v {
+        PaintValue::Flag(b) => slicer_ir::PaintValue::Flag(*b),
+        PaintValue::Scalar(s) => slicer_ir::PaintValue::Scalar(*s),
+        PaintValue::ToolIndex(t) => slicer_ir::PaintValue::ToolIndex(*t),
+    }
+}
+
 /// Convert a WIT `WallFeatureFlag` to a slicer-ir `WallFeatureFlags`.
 pub fn convert_wall_feature_flag(flag: &WallFeatureFlag) -> slicer_ir::WallFeatureFlags {
     slicer_ir::WallFeatureFlags {
@@ -2839,7 +2868,9 @@ pub fn convert_wall_feature_flag(flag: &WallFeatureFlag) -> slicer_ir::WallFeatu
         is_bridge: flag.is_bridge,
         is_thin_wall: flag.is_thin_wall,
         skip_ironing: flag.skip_ironing,
-        custom: std::collections::HashMap::new(),
+        custom: HashMap::from_iter(
+            flag.custom.iter().map(|(k, v)| (k.clone(), convert_paint_value(v))),
+        ),
     }
 }
 
