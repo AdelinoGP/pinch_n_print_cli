@@ -101,6 +101,24 @@ fn own<T: 'static>(r: Resource<T>) -> Resource<T> {
     Resource::new_own(r.rep())
 }
 
+/// Bundled static configuration for a layer dispatch call.
+struct CallConfig<'a> {
+    bindings: &'a wit_host::LayerModule,
+    store: &'a mut wasmtime::Store<HostExecutionContext>,
+    stage_id: &'a str,
+    module_id: &'a str,
+    export_name: &'a str,
+    config_handle: Resource<ConfigViewData>,
+}
+
+/// Bundled layer-specific parameters for a dispatch call.
+struct LayerParams<'a> {
+    layer_index: u32,
+    layer_z: f32,
+    paint_ir: Option<&'a slicer_ir::PaintRegionIR>,
+    arena: &'a LayerArena,
+}
+
 /// Runtime dispatcher that invokes WASM module exports through the component model.
 ///
 /// All four runner families (layer, prepass, finalization, postpass) use typed
@@ -217,16 +235,20 @@ impl WasmRuntimeDispatcher {
 
         // Call the stage-appropriate typed export.
         let call_result = self.call_layer_export(
-            &bindings,
-            &mut store,
-            stage_id,
-            &module.module_id,
-            export_name,
-            config_handle,
-            layer_index,
-            layer_z,
-            paint_ir,
-            arena,
+            CallConfig {
+                bindings: &bindings,
+                store: &mut store,
+                stage_id,
+                module_id: &module.module_id,
+                export_name,
+                config_handle,
+            },
+            LayerParams {
+                layer_index,
+                layer_z,
+                paint_ir,
+                arena,
+            },
         )?;
 
         // Handle module-returned error (inner Result).
@@ -252,163 +274,155 @@ impl WasmRuntimeDispatcher {
     /// invokes the matching typed call.
     fn call_layer_export(
         &self,
-        bindings: &wit_host::LayerModule,
-        store: &mut wasmtime::Store<HostExecutionContext>,
-        stage_id: &str,
-        module_id: &str,
-        export_name: &str,
-        config_handle: Resource<ConfigViewData>,
-        layer_index: u32,
-        layer_z: f32,
-        paint_ir: Option<&slicer_ir::PaintRegionIR>,
-        arena: &LayerArena,
+        config: CallConfig<'_>,
+        params: LayerParams<'_>,
     ) -> Result<Result<(), wit_host::ModuleError>, DispatchError> {
         let mk_call_err = |e: wasmtime::Error| DispatchError {
-            module_id: module_id.to_string(),
-            stage_id: stage_id.to_string(),
-            export_name: export_name.to_string(),
+            module_id: config.module_id.to_string(),
+            stage_id: config.stage_id.to_string(),
+            export_name: config.export_name.to_string(),
             phase: DispatchPhase::TypedExportCall,
             reason: e.to_string(),
         };
         let mk_ctx_err = |e: wasmtime::Error| DispatchError {
-            module_id: module_id.to_string(),
-            stage_id: stage_id.to_string(),
-            export_name: export_name.to_string(),
+            module_id: config.module_id.to_string(),
+            stage_id: config.stage_id.to_string(),
+            export_name: config.export_name.to_string(),
             phase: DispatchPhase::ContextCreation,
             reason: e.to_string(),
         };
 
-        match stage_id {
+        match config.stage_id {
             "Layer::Infill" => {
                 let region_handles =
-                    push_slice_regions(store, arena, layer_z).map_err(mk_ctx_err)?;
-                let output = store
+                    push_slice_regions(config.store, params.arena, params.layer_z).map_err(mk_ctx_err)?;
+                let output = config.store
                     .data_mut()
                     .push_infill_output_builder()
                     .map_err(mk_ctx_err)?;
-                bindings
-                    .call_run_infill(store, layer_index, &region_handles, own(output), own(config_handle))
+                config.bindings
+                    .call_run_infill(config.store, params.layer_index, &region_handles, own(output), own(config.config_handle))
                     .map_err(mk_call_err)
             }
             "Layer::InfillPostProcess" => {
                 let region_handles =
-                    push_perimeter_regions(store, arena).map_err(mk_ctx_err)?;
-                let output = store
+                    push_perimeter_regions(config.store, params.arena).map_err(mk_ctx_err)?;
+                let output = config.store
                     .data_mut()
                     .push_infill_output_builder()
                     .map_err(mk_ctx_err)?;
-                bindings
-                    .call_run_infill_postprocess(store, layer_index, &region_handles, own(output), own(config_handle))
+                config.bindings
+                    .call_run_infill_postprocess(config.store, params.layer_index, &region_handles, own(output), own(config.config_handle))
                     .map_err(mk_call_err)
             }
             "Layer::SlicePostProcess" => {
                 let region_handles =
-                    push_slice_regions(store, arena, layer_z).map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data(paint_ir, layer_index);
-                let paint = store
+                    push_slice_regions(config.store, params.arena, params.layer_z).map_err(mk_ctx_err)?;
+                let paint_data = build_paint_layer_data(params.paint_ir, params.layer_index);
+                let paint = config.store
                     .data_mut()
                     .push_paint_region_layer_view(paint_data)
                     .map_err(mk_ctx_err)?;
-                let output = store
+                let output = config.store
                     .data_mut()
                     .push_slice_postprocess_builder()
                     .map_err(mk_ctx_err)?;
-                bindings
+                config.bindings
                     .call_run_slice_postprocess(
-                        store,
-                        layer_index,
+                        config.store,
+                        params.layer_index,
                         &region_handles,
                         own(paint),
                         own(output),
-                        own(config_handle),
+                        own(config.config_handle),
                     )
                     .map_err(mk_call_err)
             }
             "Layer::Perimeters" => {
                 let region_handles =
-                    push_slice_regions(store, arena, layer_z).map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data(paint_ir, layer_index);
-                let paint = store
+                    push_slice_regions(config.store, params.arena, params.layer_z).map_err(mk_ctx_err)?;
+                let paint_data = build_paint_layer_data(params.paint_ir, params.layer_index);
+                let paint = config.store
                     .data_mut()
                     .push_paint_region_layer_view(paint_data)
                     .map_err(mk_ctx_err)?;
-                let output = store
+                let output = config.store
                     .data_mut()
                     .push_perimeter_output_builder()
                     .map_err(mk_ctx_err)?;
-                bindings
+                config.bindings
                     .call_run_perimeters(
-                        store,
-                        layer_index,
+                        config.store,
+                        params.layer_index,
                         &region_handles,
                         own(paint),
                         own(output),
-                        own(config_handle),
+                        own(config.config_handle),
                     )
                     .map_err(mk_call_err)
             }
             "Layer::PerimetersPostProcess" => {
                 let region_handles =
-                    push_perimeter_regions(store, arena).map_err(mk_ctx_err)?;
-                let output = store
+                    push_perimeter_regions(config.store, params.arena).map_err(mk_ctx_err)?;
+                let output = config.store
                     .data_mut()
                     .push_perimeter_output_builder()
                     .map_err(mk_ctx_err)?;
-                bindings
-                    .call_run_wall_postprocess(store, layer_index, &region_handles, own(output), own(config_handle))
+                config.bindings
+                    .call_run_wall_postprocess(config.store, params.layer_index, &region_handles, own(output), own(config.config_handle))
                     .map_err(mk_call_err)
             }
             "Layer::Support" => {
                 let region_handles =
-                    push_slice_regions(store, arena, layer_z).map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data(paint_ir, layer_index);
-                let paint = store
+                    push_slice_regions(config.store, params.arena, params.layer_z).map_err(mk_ctx_err)?;
+                let paint_data = build_paint_layer_data(params.paint_ir, params.layer_index);
+                let paint = config.store
                     .data_mut()
                     .push_paint_region_layer_view(paint_data)
                     .map_err(mk_ctx_err)?;
-                let output = store
+                let output = config.store
                     .data_mut()
                     .push_support_output_builder()
                     .map_err(mk_ctx_err)?;
-                bindings
+                config.bindings
                     .call_run_support(
-                        store,
-                        layer_index,
+                        config.store,
+                        params.layer_index,
                         &region_handles,
                         own(paint),
                         own(output),
-                        own(config_handle),
+                        own(config.config_handle),
                     )
                     .map_err(mk_call_err)
             }
             "Layer::SupportPostProcess" => {
                 let region_handles =
-                    push_slice_regions(store, arena, layer_z).map_err(mk_ctx_err)?;
-                let output = store
+                    push_slice_regions(config.store, params.arena, params.layer_z).map_err(mk_ctx_err)?;
+                let output = config.store
                     .data_mut()
                     .push_support_output_builder()
                     .map_err(mk_ctx_err)?;
-                bindings
-                    .call_run_support_postprocess(store, layer_index, &region_handles, own(output), own(config_handle))
+                config.bindings
+                    .call_run_support_postprocess(config.store, params.layer_index, &region_handles, own(output), own(config.config_handle))
                     .map_err(mk_call_err)
             }
             "Layer::PathOptimization" => {
                 let region_handles =
-                    push_perimeter_regions(store, arena).map_err(mk_ctx_err)?;
-                let output = store
+                    push_perimeter_regions(config.store, params.arena).map_err(mk_ctx_err)?;
+                let output = config.store
                     .data_mut()
                     .push_gcode_output_builder()
                     .map_err(mk_ctx_err)?;
-                bindings
-                    .call_run_path_optimization(store, layer_index, &region_handles, own(output), own(config_handle))
+                config.bindings
+                    .call_run_path_optimization(config.store, params.layer_index, &region_handles, own(output), own(config.config_handle))
                     .map_err(mk_call_err)
             }
             _ => Err(DispatchError {
-                module_id: module_id.to_string(),
-                stage_id: stage_id.to_string(),
-                export_name: export_name.to_string(),
+                module_id: config.module_id.to_string(),
+                stage_id: config.stage_id.to_string(),
+                export_name: config.export_name.to_string(),
                 phase: DispatchPhase::UnknownStage,
-                reason: format!("no typed layer export for stage '{stage_id}'"),
+                reason: format!("no typed layer export for stage '{}'", config.stage_id),
             }),
         }
     }
