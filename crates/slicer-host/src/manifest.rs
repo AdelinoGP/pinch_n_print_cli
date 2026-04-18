@@ -257,6 +257,7 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
     let module_id = required_string(&root, manifest_path, "module.id")?;
     let version = required_semver(&root, manifest_path, "module.version")?;
     let wit_world = required_string(&root, manifest_path, "module.wit-world")?;
+    validate_wit_world(&wit_world, manifest_path)?;
     let stage = required_stage(&root, manifest_path, "stage.id")?;
     let mut diagnostics = Vec::new();
     let layer_parallel_safe = effective_parallel_safety(
@@ -642,6 +643,37 @@ fn type_error(manifest_path: &Path, field: &'static str, expected: &str) -> Load
         field: Some(String::from(field)),
         kind: LoadErrorKind::Schema,
         message: format!("manifest field '{field}' must be {expected}"),
+    }
+}
+
+/// The canonical WIT world identifiers accepted by the host.
+///
+/// All four world identifiers must match the on-disk `wit/world-*.wit` package
+/// names exactly.  Version (`@1.0.0`) is part of the identifier.
+const WIT_WORLD_ALLOWLIST: &[&str] = &[
+    "slicer:world-layer@1.0.0",
+    "slicer:world-prepass@1.0.0",
+    "slicer:world-postpass@1.0.0",
+    "slicer:world-finalization@1.0.0",
+];
+
+/// Validates that `wit_world` from the manifest is in the host's allowlist.
+///
+/// This is a fatal startup check — modules that declare a non-allowlisted
+/// `wit_world` cannot be loaded and the host aborts with a diagnostic.
+fn validate_wit_world(wit_world: &str, manifest_path: &Path) -> Result<(), LoadError> {
+    if WIT_WORLD_ALLOWLIST.contains(&wit_world) {
+        Ok(())
+    } else {
+        Err(LoadError {
+            path: manifest_path.to_path_buf(),
+            field: Some(String::from("module.wit-world")),
+            kind: LoadErrorKind::Validation,
+            message: format!(
+                "Unknown wit_world '{wit_world}' — expected one of: {}",
+                WIT_WORLD_ALLOWLIST.join(", ")
+            ),
+        })
     }
 }
 
