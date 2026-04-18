@@ -231,6 +231,34 @@ fn write_conflict_orderable_is_false_when_neither_module_reads_conflicting_field
 }
 
 #[test]
+fn write_conflict_orderable_is_true_when_read_establishes_dag_edge() {
+    // Module A writes field F; Module B reads F AND writes F.
+    // B requires A's output (A -> B reachability), so ordering can resolve the conflict.
+    let stage = "Layer::PerimetersPostProcess";
+    let alpha = loaded_module("com.example.alpha", stage)
+        .with_reads(&[])
+        .with_writes(&["PerimeterIR.regions.walls.shared"]);
+    let beta = loaded_module("com.example.beta", stage)
+        .with_reads(&["PerimeterIR.regions.walls.shared"])
+        .with_writes(&["PerimeterIR.regions.walls.shared"])
+        .with_requires_modules(&["com.example.alpha"]);
+    let request = DagValidationRequest {
+        modules: vec![alpha.clone().build(), beta.clone().build()],
+        stage_dags: vec![stage_dag(stage, &[alpha, beta])],
+        host_ir_schema_version: semver(1, 0, 0),
+        claim_holders: Vec::new(),
+        access_audits: Vec::new(),
+    };
+
+    let report = validate_startup_dag(&request);
+
+    // No WriteConflict error should be raised because the conflict is orderable
+    assert!(!report.errors.iter().any(|diagnostic| {
+        matches!(&diagnostic.detail, SchedulerError::WriteConflict { orderable, .. } if *orderable)
+    }), "expected no orderable WriteConflict; orderable conflicts are not errors");
+}
+
+#[test]
 fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
     let earlier = loaded_module("com.example.earlier", "Layer::SlicePostProcess")
         .with_requires_modules(&["com.example.later"]);

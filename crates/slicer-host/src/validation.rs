@@ -526,14 +526,13 @@ fn validate_write_conflicts(request: &DagValidationRequest, report: &mut DagVali
                         && can_reach(&reachability, &left.module_id, &right.module_id);
                     let right_transforms_left = left.ir_reads.contains(&field)
                         && can_reach(&reachability, &right.module_id, &left.module_id);
-                    if left_transforms_right || right_transforms_left {
+                    let orderable = left_transforms_right || right_transforms_left;
+                    if orderable {
                         continue;
                     }
 
                     // Neither module's read establishes an ordering over this field.
                     // Ordering cannot resolve this write-write conflict.
-                    let orderable = right.ir_reads.contains(&field)
-                        || left.ir_reads.contains(&field);
                     report.push_error(
                         DagValidationPass::WriteConflicts,
                         SchedulerError::WriteConflict {

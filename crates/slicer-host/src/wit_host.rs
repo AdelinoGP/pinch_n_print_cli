@@ -956,6 +956,13 @@ pub struct HostExecutionContext {
     /// guest has dropped the builder handle (docs/03
     /// world-finalization.wit §finalization-output-builder).
     pub finalization_pushes: Vec<FinalizationBuilderPush>,
+
+    /// Runtime IR read paths accessed by the guest via WIT view methods
+    /// during this call. Populated by instrumenting each view method to
+    /// record the exact IR path (e.g. `SliceIR.regions.polygons`) when
+    /// called. Extracted by the dispatcher and returned as part of
+    /// `ModuleAccessAudit.runtime_reads`.
+    pub runtime_reads: Vec<String>,
 }
 
 impl HostExecutionContext {
@@ -979,6 +986,7 @@ impl HostExecutionContext {
             mesh_segmentation_marks: Vec::new(),
             paint_region_entries: Vec::new(),
             finalization_pushes: Vec::new(),
+            runtime_reads: Vec::new(),
         }
     }
 
@@ -1645,30 +1653,38 @@ impl HostExecutionContext {
 impl ir::HostSliceRegionView for HostExecutionContext {
     fn object_id(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<String> {
         self.touch_slice_region(&self_)?;
+        self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.object_id.clone())
     }
     fn region_id(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<String> {
         self.touch_slice_region(&self_)?;
+        self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.region_id.clone())
     }
     fn polygons(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<ExPolygon>> {
         self.touch_slice_region(&self_)?;
+        self.runtime_reads.push(String::from("SliceIR.regions.polygons"));
         Ok(self.table.get(&self_)?.polygons.clone())
     }
     fn infill_areas(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<ExPolygon>> {
         self.touch_slice_region(&self_)?;
+        self.runtime_reads.push(String::from("SliceIR.regions.infill-areas"));
         Ok(self.table.get(&self_)?.infill_areas.clone())
     }
     fn effective_layer_height(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<f32> {
+        self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.effective_layer_height)
     }
     fn z(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<f32> {
+        self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.z)
     }
     fn has_nonplanar(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<bool> {
+        self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.has_nonplanar)
     }
     fn boundary_paint(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<BoundaryPaintEntry>> {
+        self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.boundary_paint.clone())
     }
     fn drop(&mut self, rep: Resource<SliceRegionData>) -> wasmtime::Result<()> {
@@ -1693,18 +1709,22 @@ impl HostExecutionContext {
 impl ir::HostPerimeterRegionView for HostExecutionContext {
     fn object_id(&mut self, self_: Resource<PerimeterRegionData>) -> wasmtime::Result<String> {
         self.touch_perimeter_region(&self_)?;
+        self.runtime_reads.push(String::from("PerimeterIR"));
         Ok(self.table.get(&self_)?.object_id.clone())
     }
     fn region_id(&mut self, self_: Resource<PerimeterRegionData>) -> wasmtime::Result<String> {
         self.touch_perimeter_region(&self_)?;
+        self.runtime_reads.push(String::from("PerimeterIR"));
         Ok(self.table.get(&self_)?.region_id.clone())
     }
     fn wall_loops(&mut self, self_: Resource<PerimeterRegionData>) -> wasmtime::Result<Vec<WallLoopView>> {
         self.touch_perimeter_region(&self_)?;
+        self.runtime_reads.push(String::from("PerimeterIR.wall-loops"));
         Ok(self.table.get(&self_)?.wall_loops.clone())
     }
     fn infill_areas(&mut self, self_: Resource<PerimeterRegionData>) -> wasmtime::Result<Vec<ExPolygon>> {
         self.touch_perimeter_region(&self_)?;
+        self.runtime_reads.push(String::from("PerimeterIR.infill-areas"));
         Ok(self.table.get(&self_)?.infill_areas.clone())
     }
     fn drop(&mut self, rep: Resource<PerimeterRegionData>) -> wasmtime::Result<()> {
@@ -1843,6 +1863,7 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
 
 impl ir::HostPaintRegionLayerView for HostExecutionContext {
     fn get_regions(&mut self, self_: Resource<PaintRegionLayerData>, semantic: PaintSemantic) -> wasmtime::Result<Vec<SemanticRegion>> {
+        self.runtime_reads.push(String::from("PaintRegionIR"));
         let data = self.table.get(&self_)?;
         let key = match semantic {
             PaintSemantic::Material => "material",
@@ -1854,10 +1875,11 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         Ok(data.regions_by_semantic.get(key).cloned().unwrap_or_default())
     }
     fn get_custom_regions(&mut self, self_: Resource<PaintRegionLayerData>, module_id: String) -> wasmtime::Result<Vec<SemanticRegion>> {
-        let data = self.table.get(&self_)?;
-        Ok(data.custom_regions.get(&module_id).cloned().unwrap_or_default())
+        self.runtime_reads.push(String::from("PaintRegionIR"));
+        Ok(self.table.get(&self_)?.custom_regions.get(&module_id).cloned().unwrap_or_default())
     }
     fn layer_index(&mut self, self_: Resource<PaintRegionLayerData>) -> wasmtime::Result<u32> {
+        self.runtime_reads.push(String::from("PaintRegionIR"));
         Ok(self.table.get(&self_)?.layer_index)
     }
     fn drop(&mut self, rep: Resource<PaintRegionLayerData>) -> wasmtime::Result<()> {
@@ -1906,9 +1928,16 @@ mod prepass_impls {
             self.log_messages.push((level_str.to_string(), message));
             Ok(())
         }
-        fn raycast_z_down(&mut self, _: phs::ObjectId, _: f32, _: f32, _: f32) -> wasmtime::Result<Option<f32>> { Ok(None) }
-        fn surface_normal_at(&mut self, _: phs::ObjectId, _: f32, _: f32, _: f32) -> wasmtime::Result<Option<pgeo::Point3>> { Ok(None) }
+        fn raycast_z_down(&mut self, _: phs::ObjectId, _: f32, _: f32, _: f32) -> wasmtime::Result<Option<f32>> {
+            self.runtime_reads.push(String::from("MeshIR"));
+            Ok(None)
+        }
+        fn surface_normal_at(&mut self, _: phs::ObjectId, _: f32, _: f32, _: f32) -> wasmtime::Result<Option<pgeo::Point3>> {
+            self.runtime_reads.push(String::from("MeshIR"));
+            Ok(None)
+        }
         fn object_bounds(&mut self, object_id: phs::ObjectId) -> wasmtime::Result<pgeo::BoundingBox3> {
+            self.runtime_reads.push(String::from("MeshIR"));
             Err(wasmtime::Error::msg(format!("host-service object-bounds not yet wired: no mesh data for '{object_id}'")))
         }
         fn clip_polygons(&mut self, subject: Vec<pgeo::ExPolygon>, clip: Vec<pgeo::ExPolygon>, op: phs::ClipOperation) -> wasmtime::Result<Vec<pgeo::ExPolygon>> {
@@ -2259,21 +2288,25 @@ mod finalization_impls {
 
     impl fm::HostLayerCollectionView for HostExecutionContext {
         fn layer_index(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<u32> {
+            self.runtime_reads.push(String::from("LayerCollectionIR"));
             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
             let data = self.table.get(&typed)?;
             Ok(data.layer_index)
         }
         fn z(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<f32> {
+            self.runtime_reads.push(String::from("LayerCollectionIR"));
             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
             let data = self.table.get(&typed)?;
             Ok(data.z)
         }
         fn entity_count(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<u32> {
+            self.runtime_reads.push(String::from("LayerCollectionIR"));
             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
             let data = self.table.get(&typed)?;
             Ok(data.entity_count)
         }
         fn tool_changes(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<Vec<fm::ToolChangeView>> {
+            self.runtime_reads.push(String::from("LayerCollectionIR"));
             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
             let data = self.table.get(&typed)?;
             Ok(data
