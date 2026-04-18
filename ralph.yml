@@ -23,6 +23,7 @@ core:
   - 'Backpressure is law: cargo build --workspace, cargo test --workspace, and cargo clippy --workspace -- -D warnings must pass before packet completion unless the packet requires stricter checks.'
   - Use .ralph/agent/tasks.jsonl as the active execution queue and .ralph/agent/memories.md as learned context. Scratchpad files are not the task ledger.
   - Update docs/07_implementation_status.md only for the task IDs owned by the active packet and only after the packet acceptance evidence is green.
+  - 'Do not modify or write to files in another packet''s directory. If this packet corrects work from another packet, mark that packet status: superseded in its own packet.spec.md.'
 backpressure:
   gates:
   - name: build
@@ -66,6 +67,7 @@ hats:
       - Select the one packet whose `packet.spec.md` front matter declares `status: active`.
       - If no packet or more than one packet is active, stop and emit `implementation.blocked` with the exact reason.
       - Treat only files inside the active packet folder as run-scoped requirements.
+      - **AC completeness gate:** Before emitting `implementation.ready`, verify every Given/When/Then acceptance criterion in `packet.spec.md` ends with a pipe and a runnable verification command. If any criterion lacks this, emit `implementation.blocked` with the exact missing criterion and its required verification format.
 
       ## Packet Intake
       1. Read `packet.spec.md`, `requirements.md`, `design.md`, `implementation-plan.md`, and `task-map.md` if present.
@@ -130,6 +132,7 @@ hats:
       - Prefer small, reviewable edits and narrow commands before workspace-wide gates.
       - Preserve ModularSlicer contract rules from the cited docs, especially docs/01-05 and docs/08.
       - Use runtime tasks for execution tracking. Do not use scratchpad files as the task list.
+      - **Per-criterion verification binding:** Each Given/When/Then acceptance criterion has a pipe-suffixed verification command. Run that exact command to validate the criterion, not a broader or different one. If the command does not pass, the step is not complete.
 
       ## Completion Report
       Emit `implementation.done` only when you can provide:
@@ -166,6 +169,7 @@ hats:
 
       ## What Must Be Proven
       - The implementation satisfies the packet's Given/When/Then acceptance criteria.
+      - Each criterion's pipe-suffixed verification command passes. Do not substitute a different command for a criterion's stated verification.
       - The changed behavior stays inside the active packet scope.
       - The cited authoritative docs are not contradicted.
       - The required verification commands from the packet are actually green.
