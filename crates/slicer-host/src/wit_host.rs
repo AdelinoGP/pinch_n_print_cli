@@ -173,7 +173,7 @@ pub struct PaintRegionLayerData {
 
 // ── Bindgen: Layer module world ─────────────────────────────────────────
 
-
+#[allow(missing_docs)]
 pub mod layer {
     wasmtime::component::bindgen!({
         inline: r#"
@@ -378,6 +378,7 @@ pub struct MeshSegmentationOutputData;
 pub struct PaintSegmentationOutputData;
 
 
+#[allow(missing_docs)]
 pub mod prepass {
     wasmtime::component::bindgen!({
         inline: r#"
@@ -575,6 +576,7 @@ pub struct FinalizationOutputBuilderData {
     pub pushes: Vec<FinalizationBuilderPush>,
 }
 
+#[allow(missing_docs)]
 pub mod finalization {
     wasmtime::component::bindgen!({
         inline: r#"
@@ -687,6 +689,7 @@ pub use finalization::FinalizationModule;
 /// Backing data for postpass `gcode-output-builder` resource (shared with layer world).
 pub struct PostpassGcodeOutputBuilderData;
 
+#[allow(missing_docs)]
 pub mod postpass {
     wasmtime::component::bindgen!({
         inline: r#"
@@ -855,6 +858,7 @@ pub struct GcodeOutputCollected {
 
 /// A single GCode command collected from the guest.
 #[derive(Debug, Clone)]
+#[allow(missing_docs)]
 pub enum GcodeCommandCollected {
     /// Move command.
     Move(GcodeMoveCmd),
