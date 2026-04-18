@@ -963,8 +963,8 @@ fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
                 speed_factor: 1.0,
             },
             feature_flags: vec![
-                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false },
-                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false },
+                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
+                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
             ],
         }],
         infill_areas: Vec::new(),
@@ -1004,7 +1004,7 @@ fn perimeter_output_rejects_nan_in_wall_loop_path() {
                 speed_factor: 1.0,
             },
             feature_flags: vec![
-                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false },
+                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
             ],
         }],
         infill_areas: Vec::new(),
@@ -1040,7 +1040,7 @@ fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
                 speed_factor: 1.0,
             },
             feature_flags: vec![
-                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false },
+                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
                 // Missing second flag
             ],
         }],
@@ -1246,8 +1246,8 @@ fn perimeter_conversion_deterministic_across_repeated_calls() {
                 speed_factor: 1.0,
             },
             feature_flags: vec![
-                WallFeatureFlag { tool_index: Some(0), fuzzy_skin: true, is_bridge: false, is_thin_wall: false, skip_ironing: false },
-                WallFeatureFlag { tool_index: Some(0), fuzzy_skin: true, is_bridge: false, is_thin_wall: false, skip_ironing: false },
+                WallFeatureFlag { tool_index: Some(0), fuzzy_skin: true, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
+                WallFeatureFlag { tool_index: Some(0), fuzzy_skin: true, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
             ],
         }],
         infill_areas: Vec::new(),
@@ -2689,7 +2689,7 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
                 speed_factor: 1.0,
             },
             feature_flags: vec![WallFeatureFlag {
-                tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false,
+                tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![],
             }],
         }],
         wall_loop_origins: vec![None],
