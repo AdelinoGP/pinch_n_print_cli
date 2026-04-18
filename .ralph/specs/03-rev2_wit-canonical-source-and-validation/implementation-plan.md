@@ -45,7 +45,8 @@
   - `crates/slicer-host/src/region_mapping.rs` — remove `.clone()` on `u64`
   - `crates/slicer-host/src/slice_postprocess.rs` — remove `.clone()` on `PaintValue` (2 sites)
   - `crates/slicer-host/src/dispatch.rs` — reduce argument count (11 → ≤7)
-  - `crates/slicer-host/src/wit_host.rs` — add `#[allow(missing_docs)]` on `pub mod` blocks and struct fields
+  - `crates/slicer-host/src/wit_host.rs` — add `#[allow(missing_docs)]` on each `pub mod` block
+  - `crates/slicer-host/src/main.rs` — add `#[allow(dead_code)]` to each `Noop*Runner` stub struct
 - Authoritative docs: None needed (these are Rust idiom fixes)
 - OrcaSlicer refs: None
 - Verification:

@@ -32,8 +32,8 @@ If this packet reopens or narrows a prior packet: this is the second revision of
   - `region_mapping.rs:119` — `.clone()` on `u64` (which is `Copy`)
   - `slice_postprocess.rs:296,310` — `.clone()` on `PaintValue` (which is `Copy`)
   - `dispatch.rs:253` — function has 11 arguments (max 7)
-  - `wit_host.rs:177,381,578,690` — missing doc comments on `pub mod` blocks
-  - `wit_host.rs:862,866,868,870,874,876` — missing doc comments on struct fields
+  - `wit_host.rs:177,381,578,690` — `pub mod` blocks need `#[allow(missing_docs)]` to suppress bindgen! macro `missing_docs` lints
+  - `wit_host.rs:862+` — `GcodeCommandCollected` enum variants already have doc comments; no changes needed there
 
 ## Out of Scope
 

@@ -20,7 +20,7 @@
 
 - **Primary code path — too many arguments**: `crates/slicer-host/src/dispatch.rs:253` — function has 11 parameters. Refactor by bundling related parameters into a struct (e.g., a config/options struct).
 
-- **Primary code path — missing docs**: `crates/slicer-host/src/wit_host.rs` — add `#[allow(missing_docs)]` or real doc comments to `pub mod layer`, `pub mod prepass`, `pub mod finalization`, `pub mod postpass`, and the struct fields at lines 862+.
+- **Primary code path — missing docs**: `crates/slicer-host/src/wit_host.rs` — add `#[allow(missing_docs)]` on the line before each `pub mod layer` (line 177), `pub mod prepass` (line 381), `pub mod finalization` (line 578), and `pub mod postpass` (line 690). The bindgen!-generated items inside each module trigger `missing_docs` lints; `#[allow(missing_docs)]` on each module block suppresses them. The struct fields at lines 862+ (`GcodeCommandCollected` variants) already have doc comments — no changes needed there.
 
 ## Architecture Constraints
 
@@ -61,7 +61,9 @@ Each fix follows the minimal-change approach recommended by clippy.
 
 11. **`crates/slicer-host/src/dispatch.rs:253`**: Reduce argument count. Group related parameters (e.g., all config/view parameters into one `DispatchConfig` struct).
 
-12. **`crates/slicer-host/src/wit_host.rs`**: Add `#[allow(missing_docs)]` before each `pub mod` block (layer, prepass, finalization, postpass) and struct field blocks, or add real doc comments.
+12. **`crates/slicer-host/src/wit_host.rs`**: Add `#[allow(missing_docs)]` on the line before each `pub mod` block (`layer` at 177, `prepass` at 381, `finalization` at 578, `postpass` at 690) to suppress `missing_docs` lint on all bindgen!-generated items inside.
+
+13. **`crates/slicer-host/src/main.rs`**: Add `#[allow(dead_code)]` to each `NoopPrepassRunner`, `NoopLayerRunner`, `NoopFinalizationRunner`, `NoopPostpassRunner` stub struct (lines 22, 35, 50, 64). These MVP stubs are never constructed but are part of the binary's type coverage.
 
 ## Locked Assumptions and Invariants
 

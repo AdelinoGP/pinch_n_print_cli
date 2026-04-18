@@ -24,15 +24,17 @@
 
 ## Code Change Surface
 
-### Selected approach
+### Selected approach (revised after implementation)
 
-Consolidate by replacing inline WIT string literals with `include_str!` references to the canonical on-disk files. This is the minimal-change approach that preserves existing code structure while eliminating the drift root cause.
+**Macro (`slicer-macros/src/lib.rs`)**: The macro uses WIT-level `include` directives inside `const` string literals (e.g., `const LAYER_WORLD_WIT: &str = r#"include "../../wit/deps/types.wit";#` rather than `include_str!`). This is superior to `include_str!` because `wit_bindgen::generate!` processes the WIT string with its own parser, which resolves WIT `include` directives at parse time. The WIT parser resolves `include "../../wit/deps/types.wit"` relative to the macro crate source.
+
+**Host (`wit_host.rs`)**: The inline WIT in `bindgen!` blocks CANNOT be replaced with `include_str!` pointing to disk files. The disk `wit/world-*.wit` files use `import slicer:...` package references (e.g., `import slicer:host-api/host-services`) that require those WIT packages to be resolvable at compile time. The wasmtime `bindgen!` macro's `inline:` parameter expects a WIT string with all interfaces defined inline — external package imports cannot be resolved without the actual package files being present. Therefore the inline WIT blocks in `wit_host.rs` are the correct and necessary approach; they define fully-expanded interfaces for host-side `bindgen!`.
+
+**Drift detection (`wit_drift_detection_tdd.rs`)**: The test uses `std::fs::read_to_string` to read disk WIT files at test runtime, not `include_str!`. It reads the macro `lib.rs` and `wit_host.rs` source files as strings and checks for WIT-level `include` directives (in the macro) and canonical package names (in the host). This approach is correct.
 
 ### Exact functions, traits, manifests, tests, or fixtures expected to change:
 
-1. **`crates/slicer-macros/src/lib.rs`**: Replace hardcoded WIT string literals in `build_layer_world_glue` (near line 537+), `build_prepass_world_glue`, `build_postpass_world_glue`, and `build_finalization_world_glue` with `include_str!("../../wit/deps/types.wit")`, etc. The `WIT_WORLD_MAP` entries (`"slicer:world-layer@1.0.0"`, `"slicer:world-prepass@1.0.0"`) stay as-is — those are correct canonical identifiers.
-
-2. **`crates/slicer-host/src/wit_host.rs`**: Replace inline WIT strings in all four `wasmtime::component::bindgen!` blocks with `include_str!` references (`../../wit/deps/types.wit`, etc.). Fix package name `slicer:layer-world@1.0.0` → `slicer:world-layer@1.0.0` (line 179) and `slicer:prepass-world@1.0.0` → `slicer:world-prepass@1.0.0` (line 379).
+1. **`crates/slicer-macros/src/lib.rs`**: Update `build_*_world_glue` functions to use WIT-level `include` directives inside const string literals (`const LAYER_WORLD_WIT: &str = r#"include "../../wit/deps/types.wit";#`), pointing to the canonical `wit/deps/` files. The `WIT_WORLD_MAP` entries stay as-is.
 
 3. **`wit/deps/ir-types.wit`**: Add `needs-support` interface (matching what macro and host have inline). Check `deps/ir-types.wit` against the DEV-014 note: "needs-support is missing from inline WIT".
 
@@ -67,7 +69,7 @@ Consolidate by replacing inline WIT string literals with `include_str!` referenc
 ## Locked Assumptions and Invariants
 
 - The four canonical world identifiers (`slicer:world-layer@1.0.0`, `slicer:world-prepass@1.0.0`, `slicer:world-postpass@1.0.0`, `slicer:world-finalization@1.0.0`) are stable for the lifetime of this consolidation packet. They will not change.
-- The `wit/` directory is the single source of truth after this packet. All inline copies are eliminated or made to reference it.
+- The `wit/` directory is the single source of truth for macro WIT glue generation (macro uses WIT-level `include` directives referencing `wit/deps/`). The host `wit_host.rs` inline WIT blocks are retained because wasmtime's `bindgen!` requires fully-expanded inline WIT — external WIT package imports cannot be resolved at `bindgen!` compile time without the packages being present. This is a known deviation from the original "eliminate all inline copies" goal.
 - The allowlist contains exactly four entries — one per WIT world. No wildcard or regex matching.
 - `needs-support` and `push-z-hop` are additive missing members — adding them to the disk canonical does not break any existing bindings because they are optional interfaces.
 
@@ -78,12 +80,12 @@ Consolidate by replacing inline WIT string literals with `include_str!` referenc
 - **ir-types version bump**: If the canonical version is `@1.1.0`, any manifest that declares `min-ir-schema = "1.1.0"` must now pass. Existing manifests that only declare `1.0.0` range may need updating (but the IR schema version is independent of the WIT version per docs/03 architecture rules).
 - **Drift detection test fragility**: Extracting `include_str!` paths by string search is fragile. A more robust approach is to use a const that holds the string directly and compare that. Consider defining a const in each crate: `const CANONICAL_WIT_TYPES: &str = include_str!("../../wit/deps/types.wit");` and comparing those consts across crates.
 
-## Open Questions
+## Open Questions (answered)
 
-1. Does `include_str!("../../wit/deps/types.wit")` resolve correctly from `crates/slicer-macros/src/lib.rs` at proc-macro compile time? If not, what is the working alternative?
-2. What is the exact content of the missing `needs-support` interface in `deps/ir-types.wit`? (Search macro and host inline WIT for `needs-support` to determine the expected signature.)
-3. Does `push-z-hop` already exist in the layer-world `gcode-output-builder` but not in the postpass one? Or is it missing from both? (Verify against `docs/03_wit_and_manifest.md`.)
-4. Are there any schema/CLI constants in `crates/slicer-host/src/config_schema.rs` or `crates/slicer-host/src/cli.rs` that reference the wrong WIT package names?
-5. Should the drift detection test be a compile-time const assertion (faster, earlier failure) or a runtime test (can run in CI without recompiling)?
+1. **Does `include_str!("../../wit/deps/types.wit")` resolve from `crates/slicer-macros/src/lib.rs`?** The `include_str!` approach was not used. WIT-level `include` directives inside const string literals are used instead (e.g., `const LAYER_WORLD_WIT: &str = r#"include "../../wit/deps/types.wit";#`). This works because `wit_bindgen::generate!` processes the WIT string with its own parser that resolves `include` directives at WIT parse time. This is superior to `include_str!` because the WIT parser validates the included content.
+2. **What is the exact content of the missing `needs-support` interface?** Added to `wit/deps/ir-types.wit` at line 67 as `needs-support: func() -> bool;`.
+3. **Does `push-z-hop` exist in layer-world but not postpass?** Yes. Added to `wit/world-postpass.wit` at line 44. Layer-world already had it.
+4. Are there schema/CLI constants referencing wrong WIT package names? No issues found.
+5. **Runtime vs compile-time drift detection:** Runtime test (using `std::fs::read_to_string` in the test binary) was chosen. Compile-time assertions would require recompiling the macro on every test run. Runtime is sufficient.
 
 Resolve open questions 1-3 before activating the packet. Open questions 4-5 can be resolved during implementation.

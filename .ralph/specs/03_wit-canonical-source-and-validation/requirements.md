@@ -24,8 +24,8 @@ If this packet reopens or narrows a prior packet: this is the first WIT consolid
 
 ## In Scope
 
-- Replace macro inline WIT (`lib.rs` `build_*_world_glue`) with `include_str!` references to canonical `wit/` files
-- Replace host inline WIT (`wit_host.rs` inline `bindgen!` blocks) with `include_str!` references
+- Replace macro inline WIT (`lib.rs` `build_*_world_glue`) with WIT-level `include` directives inside const string literals (pointing to canonical `wit/deps/` files). Note: `include_str!` was not used — WIT-level `include` directives inside `const` strings work because `wit_bindgen::generate!` processes the WIT string with its own parser.
+- Replace host inline WIT (`wit_host.rs` inline `bindgen!` blocks) — **not feasible with `include_str!`**: wasmtime's `bindgen!` requires fully-expanded inline WIT; disk files use `import slicer:...` package references that cannot be resolved at `bindgen!` compile time. Host inline WIT is retained with expanded interfaces. This is documented as a deviation from the "eliminate all inline copies" goal.
 - Normalize `slicer:layer-world@1.0.0` → `slicer:world-layer@1.0.0` and `slicer:prepass-world@1.0.0` → `slicer:world-prepass@1.0.0` in host inline WIT
 - Normalize `slicer:ir-types@1.0.0` → `slicer:ir-types@1.1.0` wherever it diverges
 - Restore missing `needs-support` interface in `deps/ir-types.wit`

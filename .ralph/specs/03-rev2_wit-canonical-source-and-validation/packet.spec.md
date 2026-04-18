@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 03-rev2_wit-canonical-source-and-validation
 task_ids:
   - TASK-144

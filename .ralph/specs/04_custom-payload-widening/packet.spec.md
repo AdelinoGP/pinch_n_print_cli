@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 packet: 04_custom-payload-widening
 task_ids:
   - TASK-149
