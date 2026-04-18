@@ -27,30 +27,31 @@ members = [
     "modules/core-modules/fuzzy-skin",
     "modules/core-modules/path-optimization-default",
 ]
+resolver = "2"
 
 [workspace.package]
 edition = "2021"
-rust-version = "1.78"
+rust-version = "1.91.0"
 authors = ["ModularSlicer Team"]
 version = "0.1.0"
 
 [workspace.dependencies]
 # Core dependencies
-wasmtime = "20.0"
-wit-bindgen = "0.24"
-rayon = "1.10"
+wasmtime = "43.0.0"
+wit-bindgen = "0.57.1"
+rayon = "1.80"
 geo = "0.28"
 nalgebra = "0.32"
-clipper2-rust = "1.0.1"
-serde = { version = "1.0", features = ["derive"] }
-bincode = "1.3"
+clipper2-rust = "1.0.3"
+serde = { version = "1.0.228", features = ["derive"] }
+bincode = "1.3.3"
 meshopt = "0.6"
 truck-stepio = "0.3"
 truck-meshalgo = "0.4"
 truck-modeling = "0.6"
 
 # CLI dependencies
-clap = "4"
+clap = "4.6.1"
 
 # Python bridge (embedded interpreter for TextPostProcess modules; see
 # crates/slicer-host/src/python_bridge.rs). `auto-initialize` causes pyo3 to
