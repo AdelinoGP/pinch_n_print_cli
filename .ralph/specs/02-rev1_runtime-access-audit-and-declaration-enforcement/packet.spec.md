@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 02-rev1_runtime-access-audit-and-declaration-enforcement
 task_ids:
   - TASK-123a
