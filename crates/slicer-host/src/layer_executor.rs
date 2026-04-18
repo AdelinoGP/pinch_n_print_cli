@@ -260,7 +260,7 @@ fn collect_required_semantics(paint_regions: &PaintRegionIR) -> Vec<PaintSemanti
             }
         }
     }
-    out.sort_by(|a, b| semantic_sort_key(a).cmp(&semantic_sort_key(b)));
+    out.sort_by_key(semantic_sort_key);
     out
 }
 

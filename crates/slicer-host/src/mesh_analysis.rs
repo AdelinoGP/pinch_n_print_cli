@@ -116,7 +116,7 @@ fn classify_object(
     transform: &Transform3d,
     overhang_threshold_deg: f32,
 ) -> Result<ObjectSurfaceData, MeshAnalysisError> {
-    if mesh.indices.len() % 3 != 0 {
+    if !mesh.indices.len().is_multiple_of(3) {
         return Err(MeshAnalysisError::IndicesNotMultipleOfThree {
             object_id: object_id.clone(),
             count: mesh.indices.len(),
