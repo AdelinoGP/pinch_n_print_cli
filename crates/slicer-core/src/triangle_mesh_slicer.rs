@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 /// Represents a line segment intersection with a slicing plane.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct IntersectionLine {
     a: Point2,
     b: Point2,
@@ -53,7 +54,7 @@ pub fn slice_mesh_ex(mesh: &IndexedTriangleSet, zs: &[f32]) -> Vec<Vec<ExPolygon
     // Phase 2: Chain lines into polygons and convert to ExPolygons
     layers_lines
         .into_iter()
-        .map(|lines| chain_lines_to_expolygons(lines))
+        .map(chain_lines_to_expolygons)
         .collect()
 }
 
@@ -339,13 +340,6 @@ fn chain_lines(lines: Vec<IntersectionLine>) -> Vec<Polygon> {
     }
 
     polygons
-}
-
-fn find_unused_line(candidates: Option<&Vec<usize>>, used: &[bool]) -> Option<usize> {
-    candidates?
-        .iter()
-        .copied()
-        .find(|candidate_idx| !used[*candidate_idx])
 }
 
 fn simplify_polygon_points(mut points: Vec<Point2>) -> Vec<Point2> {
