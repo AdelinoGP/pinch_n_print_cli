@@ -8,108 +8,110 @@
 
 ## Steps
 
-### Step 1: Survey all callers of dispatch functions
+### Step 1: Inventory the real dispatch and audit surfaces
 
 - Task IDs: `TASK-123a`, `TASK-123b`, `TASK-123c`
-- Objective: Verify exactly which functions call `dispatch_prepass_call`, `dispatch_layer_call`, and `dispatch_postpass_call`. No callers should be missed.
-- Files expected to change: None
+- Objective: Capture the exact prepass, layer, and postpass call sites that currently lose `runtime_reads`, and record the tests that will become the packet acceptance gates.
+- Precondition: Packet docs and authoritative code paths have been loaded.
+- Postcondition: The packet records that prepass and layer already return `HostExecutionContext`, while postpass currently hides read paths behind its runner boundary.
+- Files expected to change:
+  - `.ralph/specs/02-rev2_runtime-access-audit-and-declaration-enforcement/design.md`
+  - `.ralph/specs/02-rev2_runtime-access-audit-and-declaration-enforcement/task-map.md`
 - Authoritative docs: N/A
 - OrcaSlicer refs: None
-- Verification: `grep -rn "dispatch_prepass_call\|dispatch_layer_call\|dispatch_postpass_call" crates/slicer-host/src/`
+- Verification: `grep -rn "dispatch_prepass_call\|dispatch_layer_call\|dispatch_postpass_gcode_call\|dispatch_postpass_text_call\|runtime_reads: Vec::new()" crates/slicer-host/src/`
+- Exit condition: The inventory names the `dispatch.rs`, `prepass.rs`, `layer_executor.rs`, and `postpass.rs` surfaces explicitly and no additional `src/` callers remain unaccounted for.
 
-### Step 2: Change dispatch call return types to include HostExecutionContext
-
-- Task IDs: `TASK-123a`, `TASK-123b`, `TASK-123c`
-- Objective: Change `dispatch_prepass_call`, `dispatch_layer_call`, and `dispatch_postpass_call` to return `(HostExecutionContext, Output)` so callers can extract `runtime_reads`.
-- Files expected to change:
-  - `crates/slicer-host/src/dispatch.rs` — update return types and body
-- Authoritative docs:
-  - `docs/04_host_scheduler.md` — dispatch semantics
-- OrcaSlicer refs: None
-- Verification: `cargo build --package slicer-host` (verify no type errors from return-type change)
-
-### Step 3: Wire runtime_reads through prepass execution
-
-- Task IDs: `TASK-123a`
-- Objective: In `impl PrepassStageRunner for WasmRuntimeDispatcher::run_stage`, unpack the returned `HostExecutionContext` and forward `ctx.runtime_reads` into `ModuleAccessAudit.runtime_reads`.
-- Files expected to change:
-  - `crates/slicer-host/src/prepass.rs` — extract `runtime_reads` and pass to `ModuleAccessAudit`
-  - `crates/slicer-host/src/dispatch.rs` — update `impl PrepassStageRunner` call site
-- Authoritative docs:
-  - `docs/01_system_architecture.md` — Module Access Contract
-  - `docs/04_host_scheduler.md` — DagValidationRequest
-- OrcaSlicer refs: None
-- Verification: `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture` — verify prepass read audit entries are non-empty
-
-### Step 4: Wire runtime_reads through per-layer execution
-
-- Task IDs: `TASK-123b`
-- Objective: In `impl LayerStageRunner for WasmRuntimeDispatcher::run_stage`, unpack the returned `HostExecutionContext` and forward `ctx.runtime_reads` into `ModuleAccessAudit.runtime_reads`.
-- Files expected to change:
-  - `crates/slicer-host/src/layer_executor.rs` — extract `runtime_reads` and pass to `ModuleAccessAudit`
-  - `crates/slicer-host/src/dispatch.rs` — update `impl LayerStageRunner` call site
-- Authoritative docs:
-  - `docs/01_system_architecture.md` — Module Access Contract
-  - `docs/04_host_scheduler.md` — DagValidationRequest
-- OrcaSlicer refs: None
-- Verification: `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture` — verify layer read audit entries are non-empty
-
-### Step 5: Wire runtime_reads through postpass execution
-
-- Task IDs: `TASK-123c`
-- Objective: In `execute_postpass`, unpack `HostExecutionContext` from dispatch call and forward `ctx.runtime_reads` into `ModuleAccessAudit.runtime_reads`.
-- Files expected to change:
-  - `crates/slicer-host/src/postpass.rs` — extract `runtime_reads` and pass to `ModuleAccessAudit`
-  - `crates/slicer-host/src/dispatch.rs` — update postpass dispatch call site
-- Authoritative docs:
-  - `docs/01_system_architecture.md` — Module Access Contract
-  - `docs/04_host_scheduler.md` — DagValidationRequest
-- OrcaSlicer refs: None
-- Verification: `cargo test --package slicer-host --test pipeline_tdd -- access_audits_live_path --nocapture` — postpass audits include non-empty `runtime_reads`
-
-### Step 6: Enhance access_audits_live_path to verify runtime_reads content
-
-- Task IDs: `TASK-123a`, `TASK-123b`, `TASK-123c`
-- Objective: Update `access_audits_live_path` in `pipeline_tdd.rs` to assert that `runtime_reads` is non-empty for modules that should have performed reads, and that modules performing only writes have empty `runtime_reads`.
-- Files expected to change:
-  - `crates/slicer-host/tests/pipeline_tdd.rs` — enhance `access_audits_live_path` assertions
-- Authoritative docs:
-  - `docs/01_system_architecture.md` — Module Access Contract
-- OrcaSlicer refs: None
-- Verification: `cargo test --package slicer-host --test pipeline_tdd -- access_audits_live_path --nocapture`
-
-### Step 7: Add live-path undeclared-read enforcement test
-
-- Task IDs: `TASK-124`
-- Objective: Add an integration test that runs a prepass or layer module that reads an undeclared path via WIT view, then verifies `validate_undeclared_access` fires with the correct diagnostics (module id, stage id, operation: Read, path).
-- Files expected to change:
-  - `crates/slicer-host/tests/dag_validation_tdd.rs` — add or extend live-path test
-- Authoritative docs:
-  - `docs/03_wit_and_manifest.md` — Host-Boundary Access Enforcement table
-- OrcaSlicer refs: None
-- Verification: `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture`
-
-### Step 8: Full test suite verification
+### Step 2: Expose failing tests with exact read-path assertions
 
 - Task IDs: `TASK-123a`, `TASK-123b`, `TASK-123c`, `TASK-124`
-- Objective: Run the full targeted test suite and confirm all access-audit, claim-matrix, and pipeline tests are green.
+- Objective: Strengthen `pipeline_tdd` and `dag_validation_tdd` so they assert the exact read-path content required by the packet and fail on the current `Vec::new()` behavior.
+- Precondition: Step 1 inventory is recorded.
+- Postcondition: The targeted tests assert `"MeshIR"`, `"SliceIR.regions.polygons"`, `"LayerCollectionIR"`, and the undeclared-read path `"SliceIR.regions.undeclared"` as appropriate.
+- Files expected to change:
+  - `crates/slicer-host/tests/pipeline_tdd.rs`
+  - `crates/slicer-host/tests/dag_validation_tdd.rs`
+- Authoritative docs:
+  - `docs/01_system_architecture.md`
+  - `docs/03_wit_and_manifest.md`
+- OrcaSlicer refs: None
+- Verification: `cargo test --package slicer-host --test pipeline_tdd -- access_audits_live_path --nocapture`
+- Exit condition: The targeted tests fail for the current implementation because a read-performing module still produces `runtime_reads: Vec::new()` or because undeclared-read enforcement still depends on manual audit injection.
+
+### Step 3: Preserve prepass and per-layer runtime_reads during harvesting
+
+- Task IDs: `TASK-123a`, `TASK-123b`
+- Objective: Refactor the prepass and layer runner flow so harvesting typed output does not discard `runtime_reads` before audit construction.
+- Precondition: Step 2 tests are failing with exact assertions.
+- Postcondition: Read-performing prepass and per-layer modules carry their collected read paths into `ModuleAccessAudit`.
+- Files expected to change:
+  - `crates/slicer-host/src/dispatch.rs`
+  - `crates/slicer-host/src/prepass.rs`
+  - `crates/slicer-host/src/layer_executor.rs`
+- Authoritative docs:
+  - `docs/01_system_architecture.md` — Module Access Contract
+  - `docs/04_host_scheduler.md` — DagValidationRequest
+- OrcaSlicer refs: None
+- Verification: `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture`
+- Exit condition: The targeted dag-validation test proves that prepass and per-layer audits now carry non-empty `runtime_reads` with the expected exact path strings.
+
+### Step 4: Surface postpass runtime_reads through the runner boundary
+
+- Task IDs: `TASK-123c`
+- Objective: Change the postpass dispatch or runner surface so read-performing postpass modules can contribute `LayerCollectionIR` read paths to their audits without losing current `PostpassOutput` behavior.
+- Precondition: Prepass and per-layer runtime reads survive harvesting.
+- Postcondition: `execute_postpass` can distinguish read-performing postpass modules from write-only modules when building `ModuleAccessAudit`.
+- Files expected to change:
+  - `crates/slicer-host/src/dispatch.rs`
+  - `crates/slicer-host/src/postpass.rs`
+  - `crates/slicer-host/src/main.rs` (if postpass trait stubs need updating)
+- Authoritative docs:
+  - `docs/01_system_architecture.md` — Module Access Contract
+  - `docs/04_host_scheduler.md` — DagValidationRequest
+- OrcaSlicer refs: None
+- Verification: `cargo test --package slicer-host --test pipeline_tdd -- access_audits_live_path --nocapture`
+- Exit condition: `access_audits_live_path` proves that postpass audits include `"LayerCollectionIR"` for read-performing modules and still leave write-only modules with empty `runtime_reads`.
+
+### Step 5: Replace manual undeclared-read audit injection with a live-path check
+
+- Task IDs: `TASK-124`
+- Objective: Convert the undeclared-read coverage from a manually injected `ModuleAccessAudit` fixture into a live execution path that proves the runtime audit reaches `validate_undeclared_access`.
+- Precondition: All three tiers can now produce live `runtime_reads`.
+- Postcondition: The dag-validation test asserts the exact undeclared path and `AccessKind::Read` using live audit data.
+- Files expected to change:
+  - `crates/slicer-host/tests/dag_validation_tdd.rs`
+- Authoritative docs:
+  - `docs/03_wit_and_manifest.md` — Host-Boundary Access Enforcement table
+  - `docs/04_host_scheduler.md` — DagValidationRequest
+- OrcaSlicer refs: None
+- Verification: `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture`
+- Exit condition: The undeclared-read assertion no longer depends on constructing `DagValidationRequest.access_audits` by hand.
+
+### Step 6: Packet acceptance ceremony and regression sweep
+
+- Task IDs: `TASK-123a`, `TASK-123b`, `TASK-123c`, `TASK-124`
+- Objective: Re-run the packet commands, confirm claim-matrix behavior is still green, and verify the packet acceptance criteria now match live code behavior.
+- Precondition: Steps 1 through 5 are complete.
+- Postcondition: All packet verification commands are green and no acceptance criterion relies on vague or manual-only evidence.
 - Files expected to change: None
 - Authoritative docs:
   - `docs/01_system_architecture.md`
   - `docs/04_host_scheduler.md`
 - OrcaSlicer refs: None
 - Verification:
+  - `cargo build --package slicer-host`
   - `cargo test --package slicer-host --test dag_validation_tdd -- --nocapture`
   - `cargo test --package slicer-host --test pipeline_tdd -- --nocapture`
   - `cargo test --package slicer-host --test claim_transition_matrix_tdd -- --nocapture`
+- Exit condition: Every pipe-suffixed packet command is green, and the packet is ready to move from `draft` to `implemented` once activated and executed.
 
 ## Packet Completion Gate
 
-- `dispatch_prepass_call`, `dispatch_layer_call`, and `dispatch_postpass_call` return `HostExecutionContext` alongside typed output.
-- All three execution tiers produce `ModuleAccessAudit` with non-empty `runtime_reads` for modules performing WIT reads.
-- `access_audits_live_path` asserts `runtime_reads` content is non-empty.
-- Live-path undeclared-read enforcement test proves full chain from WIT call to validation error.
+- Prepass and per-layer harvesting preserve `runtime_reads` instead of dropping them during output extraction.
+- Postpass audits surface `"LayerCollectionIR"` reads for read-performing modules.
+- `access_audits_live_path` asserts exact read-vs-write-only audit behavior rather than only module counts.
+- Live-path undeclared-read enforcement proves the full chain from WIT call to validation error.
+- `cargo build --package slicer-host` and the packet's targeted tests are green.
 - `claim_transition_matrix_tdd.rs` still green (not regressed).
-- `docs/07_implementation_status.md` TASK-123abc/124 updated to reflect completion.
-- `02-rev1_runtime-access-audit-and-declaration-enforcement/packet.spec.md` marked `status: superseded`.
-- This packet's `packet.spec.md` ready to move to `status: implemented`.
+- `02-rev1_runtime-access-audit-and-declaration-enforcement/packet.spec.md` is marked `status: superseded`.
+- This packet's `packet.spec.md` is ready to move to `status: implemented`.

@@ -15,19 +15,22 @@
 
 The 02-rev1 packet added `runtime_reads` to `HostExecutionContext` and instrumented all WIT view methods to populate it. However, the `HostExecutionContext` is consumed inside `WasmRuntimeDispatcher` dispatch calls and `runtime_reads` is never extracted and passed to `ModuleAccessAudit`. All three execution tiers (`execute_prepass`, `execute_single_layer`, `execute_postpass`) create `ModuleAccessAudit` entries with `runtime_reads: Vec::new()`.
 
-The architectural root cause: `dispatch_prepass_call` returns `Result<HostExecutionContext, DispatchError>` but the `impl PrepassStageRunner for WasmRuntimeDispatcher::run_stage` discards the `HostExecutionContext` after extracting only the typed output (e.g., `LayerPlanIR`). The context is consumed, `runtime_reads` is lost.
+The architectural root cause splits by tier:
+
+1. `dispatch_prepass_call` and `dispatch_layer_call` already return `HostExecutionContext`, but the tier-specific harvest and commit flow consumes that context without preserving `runtime_reads` before `ModuleAccessAudit` is created.
+2. Postpass dispatch currently hides runtime reads behind `dispatch_postpass_gcode_call` / `dispatch_postpass_text_call`, so the postpass audit path never sees read data even though `wit_host.rs` records `LayerCollectionIR` reads.
 
 Result:
-1. AC-1/AC-3/AC-4 (prepass/per-layer/postpass read audits) fail — all `runtime_reads` are empty.
-2. AC-5 (undeclared read enforcement) passes only because the test manually injects `ModuleAccessAudit`; the live execution path is untested.
+
+1. Positive audit assertions fail because all three tiers still write `runtime_reads: Vec::new()` on the host side.
+2. Undeclared-read enforcement only has confidence through a manually injected `ModuleAccessAudit`; the live execution path is untested.
 3. `access_audits_live_path` in `pipeline_tdd` passes but doesn't assert `runtime_reads` is non-empty — it only checks audit count and module IDs.
 
 ## In Scope
 
-- Refactor dispatch calls to return `HostExecutionContext` alongside typed output so `runtime_reads` can be extracted
-- Wire `runtime_reads` from prepass dispatch into `ModuleAccessAudit`
-- Wire `runtime_reads` from per-layer dispatch into `ModuleAccessAudit`
-- Wire `runtime_reads` from postpass dispatch into `ModuleAccessAudit`
+- Preserve `runtime_reads` through prepass harvest and audit construction
+- Preserve `runtime_reads` through per-layer commit and audit construction
+- Surface `runtime_reads` through the postpass dispatch or runner boundary into `ModuleAccessAudit`
 - Add live-path test asserting non-empty `runtime_reads` for modules that perform reads
 - Add live-path integration test for undeclared-read enforcement
 
@@ -51,9 +54,28 @@ None.
 
 ## Acceptance Summary
 
-- `dispatch_prepass_call`, `dispatch_layer_call`, and `dispatch_postpass_call` return `HostExecutionContext` alongside typed output
-- `execute_prepass` produces `ModuleAccessAudit` with non-empty `runtime_reads` for modules that invoke WIT view methods
-- `execute_single_layer` produces `ModuleAccessAudit` with non-empty `runtime_reads` for modules that invoke WIT view methods
-- `execute_postpass` produces `ModuleAccessAudit` with non-empty `runtime_reads` for modules that invoke WIT view methods
-- `access_audits_live_path` asserts `runtime_reads` content is non-empty
-- Live-path undeclared-read enforcement test proves the full chain works
+- Positive cases:
+  - Prepass audits for read-performing guests include `"MeshIR"` in `runtime_reads`.
+  - Per-layer audits for read-performing guests include `"SliceIR.regions.polygons"` in `runtime_reads`.
+  - Postpass audits for read-performing guests include `"LayerCollectionIR"` in `runtime_reads` and keep the expected `"GCodeIR"` write audit.
+  - `access_audits_live_path` distinguishes read-performing modules from write-only modules instead of accepting `Vec::new()` everywhere.
+- Negative cases:
+  - Live undeclared reads produce `SchedulerError::UndeclaredAccess { access: Read, path: "SliceIR.regions.undeclared", .. }` rather than relying on a manually injected audit fixture.
+- Measurable outcomes:
+  - No touched tier may leave a read-performing module with `runtime_reads: Vec::new()`.
+  - Packet verification includes both targeted tests and `cargo build --package slicer-host`.
+- Cross-packet impact:
+  - This packet supersedes the `TASK-123abc` and `TASK-124` closure previously claimed by 02-rev1.
+
+## Verification Commands
+
+- `cargo build --package slicer-host`
+- `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture`
+- `cargo test --package slicer-host --test pipeline_tdd -- access_audits_live_path --nocapture`
+- `cargo test --package slicer-host --test claim_transition_matrix_tdd -- --nocapture`
+
+## Step Completion Expectations
+
+- Precondition: the step names the exact guest, audit path, or helper surface it is changing.
+- Postcondition: the step leaves behind either a failing targeted test with exact path assertions or a passing implementation plus evidence.
+- Falsifying check: a targeted command still shows `runtime_reads: Vec::new()` for a read-performing module or still relies on manual audit injection for the undeclared-read case.

@@ -19,9 +19,9 @@ Complete the `runtime_reads` wiring from `HostExecutionContext` through all thre
 ## Scope Boundaries
 
 - In scope:
-  - TASK-123a: Extract `runtime_reads` from `HostExecutionContext` in prepass dispatch and wire to `ModuleAccessAudit`
-  - TASK-123b: Extract `runtime_reads` from `HostExecutionContext` in per-layer dispatch and wire to `ModuleAccessAudit`
-  - TASK-123c: Extract `runtime_reads` from `HostExecutionContext` in postpass dispatch and wire to `ModuleAccessAudit`
+  - TASK-123a: Preserve `HostExecutionContext.runtime_reads` while harvesting prepass output and wire the resulting read paths to `ModuleAccessAudit`
+  - TASK-123b: Preserve `HostExecutionContext.runtime_reads` from layer dispatch through `execute_single_layer` audit construction
+  - TASK-123c: Surface postpass read paths from the postpass dispatch boundary and wire them to `ModuleAccessAudit`
   - TASK-124: Add live-path integration test proving undeclared-read enforcement fires on actual execution
 
 - Out of scope:
@@ -30,20 +30,33 @@ Complete the `runtime_reads` wiring from `HostExecutionContext` through all thre
   - Claim Transition Matrix (already green)
   - `dispatch_tdd` linker error (pre-existing)
 
+## Prerequisites and Blockers
+
+- Depends on:
+  - 02-rev1 WIT view instrumentation in `crates/slicer-host/src/wit_host.rs` remaining intact so view methods continue to push exact runtime read paths.
+  - 02-rev1 `WriteConflict.orderable` fix staying unchanged; TASK-126 is not reopened here.
+- Unblocks:
+  - Clean closure of `TASK-123a`, `TASK-123b`, `TASK-123c`, and `TASK-124` without another reopen packet.
+- Activation blockers:
+  - None in packet content after this retrofit. The packet remains `draft` until explicitly activated.
+
 ## Acceptance Criteria
 
-- **Given** a prepass module call via `dispatch_prepass_call`, **when** the module invokes any WIT view method, **then** the returned `HostExecutionContext.runtime_reads` contains the exact IR path(s) and `execute_prepass` propagates them into `ModuleAccessAudit.runtime_reads`. | `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture`
+- **Given** the live prepass guest reads mesh data through prepass WIT views, **when** `execute_prepass` records the audit for that module, **then** the audit's `runtime_reads` is non-empty and includes `"MeshIR"` instead of `Vec::new()`. | `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture`
 
-- **Given** a per-layer module call via `dispatch_layer_call`, **when** the module invokes any WIT view method, **then** the returned `HostExecutionContext.runtime_reads` contains the exact IR path(s) and `execute_single_layer` propagates them into `ModuleAccessAudit.runtime_reads`. | `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture`
+- **Given** the live per-layer guest reads slice geometry through layer WIT views, **when** `execute_single_layer` records the audit for that module, **then** the audit's `runtime_reads` is non-empty and includes `"SliceIR.regions.polygons"` instead of `Vec::new()`. | `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture`
 
-- **Given** a postpass module call, **when** the module invokes any WIT view method, **then** the returned `HostExecutionContext.runtime_reads` contains the exact IR path(s) and `execute_postpass` propagates them into `ModuleAccessAudit.runtime_reads`. | `cargo test --package slicer-host --test pipeline_tdd -- access_audits_live_path --nocapture`
+- **Given** the live postpass guest reads layer-collection data through postpass WIT views, **when** `execute_postpass` records the audit for that module, **then** the audit's `runtime_reads` is non-empty and includes `"LayerCollectionIR"` while still preserving the expected `runtime_writes` entry for `"GCodeIR"`. | `cargo test --package slicer-host --test pipeline_tdd -- access_audits_live_path --nocapture`
 
-- **Given** a live prepass execution run with a module that reads an undeclared IR path via a WIT view method, **when** the module calls the WIT view method at runtime, **then** `validate_undeclared_access` produces a fatal `UndeclaredAccess` error with `access: Read` and the exact path. | `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture`
+- **Given** `access_audits_live_path` runs the packet's live postpass fixtures through `run_pipeline`, **when** the audits are collected, **then** read-performing modules no longer record `runtime_reads: Vec::new()` and explicitly write-only modules still record an empty `runtime_reads` vector. | `cargo test --package slicer-host --test pipeline_tdd -- access_audits_live_path --nocapture`
 
-- **Given** a live execution path, **when** `run_pipeline` collects audits from all three tiers and passes them to `validate_startup_dag`, **then** the resulting `DagValidationReport` shows non-empty `runtime_reads` for the modules that performed reads. | `cargo test --package slicer-host --test pipeline_tdd -- access_audits_live_path --nocapture`
+## Negative Test Cases
+
+- **Given** a live execution path where a module reads the undeclared path `"SliceIR.regions.undeclared"`, **when** the runtime audit reaches `validate_undeclared_access`, **then** the resulting diagnostic contains `SchedulerError::UndeclaredAccess { access: Read, path: "SliceIR.regions.undeclared", .. }` for that module and stage. | `cargo test --package slicer-host --test dag_validation_tdd -- validates_undeclared_runtime_access_and_cross_stage_dependency_rules --nocapture`
 
 ## Verification
 
+- `cargo build --package slicer-host`
 - `cargo test --package slicer-host --test dag_validation_tdd -- --nocapture`
 - `cargo test --package slicer-host --test pipeline_tdd -- --nocapture`
 - `cargo test --package slicer-host --test claim_transition_matrix_tdd -- --nocapture`
