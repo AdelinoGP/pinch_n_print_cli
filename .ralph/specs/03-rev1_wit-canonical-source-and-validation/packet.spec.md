@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: superseded
 packet: 03-rev1_wit-canonical-source-and-validation
 task_ids:
   - TASK-144
