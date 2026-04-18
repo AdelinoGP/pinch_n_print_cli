@@ -144,6 +144,37 @@ impl PostpassStageRunner for NoopPostpassRunner {
     }
 }
 
+/// A postpass runner that simulates a read-performing module by returning
+/// LayerCollectionIR from take_runtime_reads. This simulates a postpass module
+/// that calls WIT views into LayerCollectionIR during execution.
+struct PostpassModuleReadingPostpassRunner;
+impl PostpassStageRunner for PostpassModuleReadingPostpassRunner {
+    fn run_gcode_postprocess(
+        &self,
+        _stage_id: &StageId,
+        _module: &CompiledModule,
+        _blackboard: &Blackboard,
+        _gcode_ir: &mut GCodeIR,
+    ) -> Result<PostpassOutput, PostpassError> {
+        Ok(PostpassOutput::GCodeSuccess)
+    }
+
+    fn run_text_postprocess(
+        &self,
+        _stage_id: &StageId,
+        _module: &CompiledModule,
+        _blackboard: &Blackboard,
+        text: String,
+    ) -> Result<PostpassOutput, PostpassError> {
+        Ok(PostpassOutput::TextSuccess { text })
+    }
+
+    fn take_runtime_reads(&mut self) -> Vec<Vec<String>> {
+        // Simulate a postpass module that reads LayerCollectionIR via WIT views
+        vec![vec![String::from("LayerCollectionIR")]]
+    }
+}
+
 struct MinimalEmitter;
 impl GCodeEmitter for MinimalEmitter {
     fn emit_gcode(
@@ -1050,4 +1081,76 @@ fn access_audits_live_path() {
     // The actual verification requires:
     // 1. A postpass runner that calls WasmRuntimeDispatcher dispatch methods
     // 2. Modules with actual WASM components that call LayerCollectionIR WIT views
+}
+
+// ---------- Test 10d: live-path postpass audits with read-performing module ----------
+/// Regression guard for TASK-123c: AC-1 positive assertion.
+///
+/// This test verifies that a read-performing postpass module (one that calls
+/// WIT views into `LayerCollectionIR`) produces non-empty `runtime_reads`
+/// containing "LayerCollectionIR" in its audit entry.
+///
+/// STEP 1 (this variant): Uses NoopPostpassRunner which does not implement
+/// take_runtime_reads, so runtime_reads is empty. The assertion will FAIL,
+/// proving the gap that a read-performing runner is needed.
+///
+/// STEP 2: After implementing PostpassModuleReadingPostpassRunner, the test
+/// passes because the runner returns vec![vec!["LayerCollectionIR".to_string()]]
+/// from take_runtime_reads().
+#[test]
+fn access_audits_live_path_read_performing() {
+    // Set up an execution plan with a postpass module that performs reads.
+    // This test uses PostpassModuleReadingPostpassRunner which simulates
+    // a postpass module reading LayerCollectionIR via WIT views.
+    let plan = ExecutionPlan {
+        prepass_stages: Vec::new(),
+        per_layer_stages: Vec::new(),
+        layer_finalization_stage: None,
+        postpass_stages: vec![CompiledStage {
+            stage_id: "PostPass::GCodePostProcess".into(),
+            modules: vec![make_dummy_module(
+                "PostPass::GCodePostProcess",
+                "read-performing-pp",
+            )],
+        }],
+        global_layers: Arc::new(vec![make_global_layer(0, 0.2)]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
+        plan,
+        runners: PipelineStageRunners {
+            prepass: Box::new(NoopPrepassRunner),
+            layer: Box::new(NoopLayerRunner),
+            finalization: Box::new(NoopFinalizationRunner),
+            postpass: Box::new(PostpassModuleReadingPostpassRunner), // Returns LayerCollectionIR reads
+            emitter: Box::new(MinimalEmitter),
+            serializer: Box::new(MinimalSerializer),
+        },
+    };
+
+    let output = run_pipeline(config).expect("pipeline must succeed");
+
+    // Assert that postpass audits were collected for the read-performing module
+    assert!(
+        !output.postpass_audits.is_empty(),
+        "postpass_audits must be non-empty; expected 1 entry for read-performing-pp"
+    );
+    assert_eq!(
+        output.postpass_audits.len(),
+        1,
+        "expected 1 postpass audit entry"
+    );
+
+    // CRIT-TASK-123c AC-1: runtime_reads must contain "LayerCollectionIR" for a
+    // read-performing postpass module. PostpassModuleReadingPostpassRunner returns
+    // vec![vec!["LayerCollectionIR".to_string()]] from take_runtime_reads().
+    assert!(
+        output.postpass_audits[0]
+            .runtime_reads
+            .contains(&"LayerCollectionIR".to_string()),
+        "postpass audit runtime_reads must contain 'LayerCollectionIR' for read-performing module, got {:?}",
+        output.postpass_audits[0].runtime_reads
+    );
 }
