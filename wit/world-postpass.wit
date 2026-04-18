@@ -22,3 +22,24 @@ world postpass-module {
         config: config-view,
     ) -> result<string, module-error>;
 }
+
+// GCodeIR handle for postprocess output — mirrors Layer::PathOptimization interface
+// Required by PostPass modules (GCodePostProcess, TextPostProcess) to emit gcode lines
+interface gcode-output-interface {
+    // Push a move command (G0/G1 with xyzef)
+    push-move: func(cmd: gcode-move-cmd) -> result<_, string>;
+    // Push a retraction move
+    push-retract: func(length: f32, speed: f32) -> result<_, string>;
+    // Push a fan speed setting
+    push-fan-speed: func(value: u8) -> result<_, string>;
+    // Push a temperature setting
+    push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
+    // Push a tool change
+    push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
+    // Push a comment
+    push-comment: func(text: string) -> result<_, string>;
+    // Push a raw gcode line
+    push-raw: func(text: string) -> result<_, string>;
+    // Emit a Z hop (lift Z before travel for clearance)
+    push-z-hop: func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
+}
