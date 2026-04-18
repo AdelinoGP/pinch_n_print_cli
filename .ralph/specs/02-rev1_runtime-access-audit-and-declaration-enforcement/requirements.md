@@ -9,8 +9,9 @@
   - `TASK-124` — Undeclared read enforcement cannot work without runtime read auditing
   - `TASK-126` — `WriteConflict.orderable` positive test case missing; semantics unclear
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `superseded`
 - Supersedes: `02_runtime-access-audit-and-declaration-enforcement` (status: superseded)
+- Superseded by: `02-rev2_runtime-access-audit-and-declaration-enforcement`
 
 ## Problem Statement
 
