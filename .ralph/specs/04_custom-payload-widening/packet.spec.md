@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 04_custom-payload-widening
 task_ids:
   - TASK-149

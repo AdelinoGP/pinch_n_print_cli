@@ -52,8 +52,8 @@ Last updated: 2026-04-16
 - [x] TASK-144 Consolidate host, macro, and guest codegen onto one canonical shared WIT source rooted in `wit/`. Covers DEV-014.
 - [x] TASK-145 Normalize WIT package/version identifiers and restore missing members across the canonical WIT surface, generated bindings, schema constants, and test guests; add drift-detection regression coverage. Continues DEV-014. Added `wit_drift_detection_tdd.rs` (9 tests).
 - [x] TASK-146 Add host-side `wit_world` allowlist validation using the canonical identifiers and reject mismatched manifests at startup. Covers the validation slice of DEV-014 and DEV-026. Added `validate_wit_world` in `manifest.rs`; added `wit_world_mismatch` and `wit_world_major_version_mismatch` tests in `manifest_ingestion_tdd.rs`.
-- [ ] TASK-149 Widen the WIT types so `ExtrusionRole::Custom(String)`, `PaintSemantic::Custom(String)`, and `WallFeatureFlags.custom` can cross the boundary losslessly. Covers DEV-016.
-- [ ] TASK-150 Update host, macro, and guest converters to preserve the widened custom payloads and add round-trip WIT regression tests. Continues DEV-016.
+- [x] TASK-149 Widen the WIT types so `ExtrusionRole::Custom(String)`, `PaintSemantic::Custom(String)`, and `WallFeatureFlags.custom` can cross the boundary losslessly. Covers DEV-016.
+- [x] TASK-150 Update host, macro, and guest converters to preserve the widened custom payloads and add round-trip WIT regression tests. Continues DEV-016.
 
 ### Workstream 2 — Runtime correctness and scheduler guarantees
 
