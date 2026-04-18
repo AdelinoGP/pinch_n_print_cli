@@ -768,10 +768,8 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
 
             /// Map a wit-bindgen finalization-world `ExtrusionRole`
             /// enum value to `slicer_ir::ExtrusionRole`. The `Custom`
-            /// variant loses its payload across the boundary (the WIT
-            /// enum is arity-0 while `slicer_ir::ExtrusionRole::Custom`
-            /// carries a `String` tag); we synthesise an empty tag so
-            /// downstream code sees a valid variant.
+            /// variant carries a string tag which is passed through
+            /// losslessly.
             fn __slicer_role_wit_to_ir(r: ExtrusionRole) -> ::slicer_ir::ExtrusionRole {
                 match r {
                     ExtrusionRole::OuterWall => ::slicer_ir::ExtrusionRole::OuterWall,
@@ -785,7 +783,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     ExtrusionRole::Ironing => ::slicer_ir::ExtrusionRole::Ironing,
                     ExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                     ExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
-                    ExtrusionRole::Custom => ::slicer_ir::ExtrusionRole::Custom(::std::string::String::new()),
+                    ExtrusionRole::Custom(s) => ::slicer_ir::ExtrusionRole::Custom(s),
                 }
             }
 
@@ -802,14 +800,16 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     ::slicer_ir::ExtrusionRole::Ironing => ExtrusionRole::Ironing,
                     ::slicer_ir::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
                     ::slicer_ir::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
-                    // The finalization-world WIT `extrusion-role` enum
-                    // carries a subset of `slicer_ir::ExtrusionRole`.
-                    // Roles without a direct counterpart map to the
-                    // arity-0 `Custom` variant — the IR role's name
-                    // tag (if any) is dropped at the boundary.
-                    ::slicer_ir::ExtrusionRole::PrimeTower => ExtrusionRole::Custom,
-                    ::slicer_ir::ExtrusionRole::Skirt => ExtrusionRole::Custom,
-                    ::slicer_ir::ExtrusionRole::Custom(_) => ExtrusionRole::Custom,
+                    // The finalization-world WIT `extrusion-role` variant
+                    // carries only a subset of `slicer_ir::ExtrusionRole`.
+                    // PrimeTower and Skirt collapse to `Custom("")` since
+                    // they have no direct WIT counterpart and carry no
+                    // module-defined tag — the empty string is intentional.
+                    // Module-defined Custom roles (e.g. Custom("bridge-style-a@1"))
+                    // pass their string tag through directly.
+                    ::slicer_ir::ExtrusionRole::PrimeTower => ExtrusionRole::Custom(::std::string::String::new()),
+                    ::slicer_ir::ExtrusionRole::Skirt => ExtrusionRole::Custom(::std::string::String::new()),
+                    ::slicer_ir::ExtrusionRole::Custom(s) => ExtrusionRole::Custom(s),
                 }
             }
 
@@ -1563,7 +1563,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     WitExtrusionRole::Ironing => ::slicer_ir::ExtrusionRole::Ironing,
                     WitExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                     WitExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
-                    WitExtrusionRole::Custom => ::slicer_ir::ExtrusionRole::Custom(::std::string::String::new()),
+                    WitExtrusionRole::Custom(s) => ::slicer_ir::ExtrusionRole::Custom(s),
                 }
             }
             fn __slicer_wit_point3w_to_ir(p: &WitPoint3WithWidth) -> ::slicer_ir::Point3WithWidth {
@@ -1587,17 +1587,20 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 }
             }
             fn __slicer_wit_feature_to_ir(f: &WitWallFeatureFlag) -> ::slicer_ir::WallFeatureFlags {
+                use ::std::collections::HashMap;
+                // Decode WIT custom: Vec<(String, WitPaintValue)> → HashMap<String, PaintValue>
+                let custom: HashMap<String, ::slicer_ir::PaintValue> = f
+                    .custom
+                    .iter()
+                    .map(|(k, v)| (k.clone(), __slicer_wit_paintvalue_to_ir(v)))
+                    .collect();
                 ::slicer_ir::WallFeatureFlags {
                     tool_index: f.tool_index,
                     fuzzy_skin: f.fuzzy_skin,
                     is_bridge: f.is_bridge,
                     is_thin_wall: f.is_thin_wall,
                     skip_ironing: f.skip_ironing,
-                    // WIT `wall-feature-flag` does not carry the IR's
-                    // `custom: HashMap<String, PaintValue>` map (it is
-                    // populated later by paint-region modules); we arrive
-                    // here with an empty map.
-                    custom: ::std::collections::HashMap::new(),
+                    custom,
                 }
             }
             fn __slicer_wit_wallloop_to_ir(w: &WitWallLoopView) -> ::slicer_ir::WallLoop {
@@ -1622,7 +1625,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     WitPaintSemantic::FuzzySkin => ::slicer_ir::PaintSemantic::FuzzySkin,
                     WitPaintSemantic::SupportEnforcer => ::slicer_ir::PaintSemantic::SupportEnforcer,
                     WitPaintSemantic::SupportBlocker => ::slicer_ir::PaintSemantic::SupportBlocker,
-                    WitPaintSemantic::Custom => ::slicer_ir::PaintSemantic::Custom(::std::string::String::new()),
+                    WitPaintSemantic::Custom(s) => ::slicer_ir::PaintSemantic::Custom(s),
                 }
             }
             fn __slicer_wit_paintvalue_to_ir(v: &WitPaintValue) -> ::slicer_ir::PaintValue {
@@ -1630,6 +1633,13 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     WitPaintValue::Flag(b) => ::slicer_ir::PaintValue::Flag(*b),
                     WitPaintValue::Scalar(f) => ::slicer_ir::PaintValue::Scalar(*f),
                     WitPaintValue::ToolIndex(i) => ::slicer_ir::PaintValue::ToolIndex(*i),
+                }
+            }
+            fn __slicer_ir_paintvalue_to_wit(v: &::slicer_ir::PaintValue) -> WitPaintValue {
+                match v {
+                    ::slicer_ir::PaintValue::Flag(b) => WitPaintValue::Flag(*b),
+                    ::slicer_ir::PaintValue::Scalar(f) => WitPaintValue::Scalar(*f),
+                    ::slicer_ir::PaintValue::ToolIndex(i) => WitPaintValue::ToolIndex(*i),
                 }
             }
             fn __slicer_boundary_paint_to_ir(
@@ -1784,10 +1794,11 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     ::slicer_ir::ExtrusionRole::Ironing => WitExtrusionRole::Ironing,
                     ::slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
                     ::slicer_ir::ExtrusionRole::WipeTower => WitExtrusionRole::WipeTower,
-                    // PrimeTower/Skirt/Custom(tag) all collapse to the
-                    // arity-0 WIT Custom variant; the IR's tag string is
-                    // not carried across the boundary.
-                    _ => WitExtrusionRole::Custom,
+                    ::slicer_ir::ExtrusionRole::Custom(s) => WitExtrusionRole::Custom(s),
+                    // PrimeTower and Skirt have no direct WIT counterpart;
+                    // map them to Custom with an empty tag string.
+                    ::slicer_ir::ExtrusionRole::PrimeTower => WitExtrusionRole::Custom(::std::string::String::new()),
+                    ::slicer_ir::ExtrusionRole::Skirt => WitExtrusionRole::Custom(::std::string::String::new()),
                 }
             }
             fn __slicer_ir_path_to_wit(p: &::slicer_ir::ExtrusionPath3D) -> WitExtrusionPath3d {
@@ -1820,12 +1831,21 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 }
             }
             fn __slicer_ir_feature_to_wit(f: &::slicer_ir::WallFeatureFlags) -> WitWallFeatureFlag {
+                use ::std::collections::HashMap;
+                // Encode IR custom map as sorted Vec<(String, PaintValue)> for WIT
+                let mut custom_entries: ::std::vec::Vec<_> = f
+                    .custom
+                    .iter()
+                    .map(|(k, v)| (k.clone(), __slicer_ir_paintvalue_to_wit(v)))
+                    .collect();
+                custom_entries.sort_by(|a, b| a.0.cmp(&b.0));
                 WitWallFeatureFlag {
                     tool_index: f.tool_index,
                     fuzzy_skin: f.fuzzy_skin,
                     is_bridge: f.is_bridge,
                     is_thin_wall: f.is_thin_wall,
                     skip_ironing: f.skip_ironing,
+                    custom: custom_entries,
                 }
             }
             fn __slicer_ir_wallloop_to_wit(w: &::slicer_ir::WallLoop) -> WitWallLoopView {
