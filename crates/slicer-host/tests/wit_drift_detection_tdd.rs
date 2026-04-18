@@ -142,12 +142,12 @@ fn host_inline_wit_uses_canonical_world_package_names() {
 fn host_bindgen_with_keys_use_canonical_world_names() {
     let wit_host_rs = host_wit_host_rs_content();
 
-    // Check canonical with: keys are present.
+    // Check canonical with: keys are present (version-suffixed format as emitted by wasmtime bindgen).
     let canonical_keys = [
-        r#""slicer:world-layer/config-types/config-view""#,
-        r#""slicer:world-prepass/config-types/config-view""#,
-        r#""slicer:world-finalization/config-types/config-view""#,
-        r#""slicer:world-postpass/config-types/config-view""#,
+        r#""slicer:world-layer/config-types@1.0.0.config-view""#,
+        r#""slicer:world-prepass/config-types@1.0.0.config-view""#,
+        r#""slicer:world-finalization/config-types@1.0.0.config-view""#,
+        r#""slicer:world-postpass/config-types@1.0.0.config-view""#,
     ];
     for key in canonical_keys {
         assert!(
