@@ -26,8 +26,22 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "2.0.0"
 
 [config.schema]
-layer_height = "float"
-first_layer_height = "float"
+[config.schema.layer_height]
+type    = "float"
+default = 0.2
+min     = 0.01
+max     = 1.0
+display = "Layer Height"
+group   = "Layer Planning"
+
+[config.schema.first_layer_height]
+type    = "float"
+default = 0.3
+min     = 0.01
+max     = 1.0
+display = "First Layer Height"
+group   = "Layer Planning"
+
 "object_height:*" = "float"
 "layer_height:*" = "float"
 

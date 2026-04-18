@@ -1,8 +1,8 @@
 # Loop Summary
 
 **Status:** Completed successfully
-**Iterations:** 5
-**Duration:** 8m 50s
+**Iterations:** 1
+**Duration:** 5m 3s
 
 ## Tasks
 
@@ -14,4 +14,4 @@ _No events recorded._
 
 ## Final Commit
 
-a9c6e2a: docs: add rev1 spec packet for manifest config-schema fixes
+465d859: feat(manifest): convert 16 core-modules to full config.schema table format

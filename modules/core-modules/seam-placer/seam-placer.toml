@@ -26,7 +26,11 @@ min-ir-schema     = "1.0.0"
 max-ir-schema     = "2.0.0"
 
 [config.schema]
-seam_mode = "string"
+[config.schema.seam_mode]
+type    = "string"
+default = "nearest"
+display = "Seam Mode"
+group   = "Seam"
 
 [config.overridable-per-region]
 keys = []
