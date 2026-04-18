@@ -212,11 +212,11 @@ pub fn execute_prepass(
             // Always record the audit when there is a runtime_reads vector,
             // even if the output is None (read-performing modules that produce
             // no IR output still have their reads audited).
-            if ir_path.is_some() {
+            if let Some(ir_path) = ir_path {
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id.clone(),
                     runtime_reads,
-                    runtime_writes: vec![ir_path.unwrap()],
+                    runtime_writes: vec![ir_path],
                 });
             } else if !runtime_reads.is_empty() {
                 // Module performed reads but produced no output — still record audit.
