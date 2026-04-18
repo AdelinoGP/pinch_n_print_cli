@@ -531,36 +531,10 @@ fn emit_world_preamble(
 /// Only compiled on `wasm32`.
 fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = r#"
-        package slicer:postpass-world@1.0.0;
+        package slicer:world-postpass@1.0.0;
 
-        interface geometry {
-            record point3 { x: f32, y: f32, z: f32 }
-            record bounding-box3 { min: point3, max: point3 }
-            record point2 { x: s64, y: s64 }
-            record polygon { points: list<point2> }
-            record ex-polygon { contour: polygon, holes: list<polygon> }
-            enum extrusion-role {
-                outer-wall, inner-wall, thin-wall,
-                top-solid-infill, bottom-solid-infill, sparse-infill,
-                support-material, support-interface,
-                ironing, bridge-infill, wipe-tower, custom,
-            }
-        }
-
-        interface config-types {
-            variant config-value {
-                bool-val(bool), int-val(s64), float-val(f64),
-                string-val(string), float-list(list<f64>), string-list(list<string>),
-            }
-            resource config-view {
-                get:        func(key: string) -> option<config-value>;
-                get-bool:   func(key: string) -> option<bool>;
-                get-float:  func(key: string) -> option<f64>;
-                get-int:    func(key: string) -> option<s64>;
-                get-string: func(key: string) -> option<string>;
-                keys:       func() -> list<string>;
-            }
-        }
+        include "../../wit/deps/types.wit";
+        include "../../wit/deps/config.wit";
 
         interface host-services {
             use geometry.{point3, bounding-box3, ex-polygon, polygon};
@@ -594,6 +568,7 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                 push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
                 push-comment:     func(text: string) -> result<_, string>;
                 push-raw:         func(text: string) -> result<_, string>;
+                push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
             }
 
             enum gcode-command-kind { move-cmd, retract, fan-speed, temperature, tool-change, comment, raw }
@@ -708,38 +683,10 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
 /// SDK values and its `Result<(), ModuleError>` return round-trips.
 fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
     let wit_inline = r#"
-        package slicer:finalization-world@1.0.0;
+        package slicer:world-finalization@1.0.0;
 
-        interface geometry {
-            record point3 { x: f32, y: f32, z: f32 }
-            record bounding-box3 { min: point3, max: point3 }
-            record point2 { x: s64, y: s64 }
-            record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32 }
-            record polygon { points: list<point2> }
-            record ex-polygon { contour: polygon, holes: list<polygon> }
-            record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32 }
-            enum extrusion-role {
-                outer-wall, inner-wall, thin-wall,
-                top-solid-infill, bottom-solid-infill, sparse-infill,
-                support-material, support-interface,
-                ironing, bridge-infill, wipe-tower, custom,
-            }
-        }
-
-        interface config-types {
-            variant config-value {
-                bool-val(bool), int-val(s64), float-val(f64),
-                string-val(string), float-list(list<f64>), string-list(list<string>),
-            }
-            resource config-view {
-                get:        func(key: string) -> option<config-value>;
-                get-bool:   func(key: string) -> option<bool>;
-                get-float:  func(key: string) -> option<f64>;
-                get-int:    func(key: string) -> option<s64>;
-                get-string: func(key: string) -> option<string>;
-                keys:       func() -> list<string>;
-            }
-        }
+        include "../../wit/deps/types.wit";
+        include "../../wit/deps/config.wit";
 
         interface host-services {
             use geometry.{point3, bounding-box3, ex-polygon, polygon};
@@ -761,7 +708,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
             import host-services;
             import config-types;
             use config-types.{config-view};
-            use geometry.{extrusion-path3d};
+            use geometry.{extrusion-path-3d};
             type layer-idx = u32;
             type object-id = string;
             type region-id = string;
@@ -782,8 +729,8 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
             }
 
             resource finalization-output-builder {
-                push-entity-to-layer: func(layer-index: layer-idx, path: extrusion-path3d, region-key: region-key) -> result<_, string>;
-                insert-synthetic-layer: func(z: f32, paths: list<extrusion-path3d>) -> result<_, string>;
+                push-entity-to-layer: func(layer-index: layer-idx, path: extrusion-path-3d, region-key: region-key) -> result<_, string>;
+                insert-synthetic-layer: func(z: f32, paths: list<extrusion-path-3d>) -> result<_, string>;
             }
 
             export run-finalization: func(
@@ -998,30 +945,10 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
 /// prepass world and therefore stay on the placeholder path.
 fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = r#"
-        package slicer:prepass-world@1.0.0;
+        package slicer:world-prepass@1.0.0;
 
-        interface geometry {
-            record point3 { x: f32, y: f32, z: f32 }
-            record bounding-box3 { min: point3, max: point3 }
-            record point2 { x: s64, y: s64 }
-            record polygon { points: list<point2> }
-            record ex-polygon { contour: polygon, holes: list<polygon> }
-        }
-
-        interface config-types {
-            variant config-value {
-                bool-val(bool), int-val(s64), float-val(f64),
-                string-val(string), float-list(list<f64>), string-list(list<string>),
-            }
-            resource config-view {
-                get:        func(key: string) -> option<config-value>;
-                get-bool:   func(key: string) -> option<bool>;
-                get-float:  func(key: string) -> option<f64>;
-                get-int:    func(key: string) -> option<s64>;
-                get-string: func(key: string) -> option<string>;
-                keys:       func() -> list<string>;
-            }
-        }
+        include "../../wit/deps/types.wit";
+        include "../../wit/deps/config.wit";
 
         interface host-services {
             use geometry.{point3, bounding-box3, ex-polygon, polygon};
@@ -2116,40 +2043,11 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 /// macro-emitted guest binds against the same resource shapes the host
 /// dispatcher expects.
 const LAYER_WORLD_WIT: &str = r#"
-    package slicer:layer-world@1.0.0;
+    package slicer:world-layer@1.0.0;
 
-    interface geometry {
-        record point2 { x: s64, y: s64 }
-        record point3 { x: f32, y: f32, z: f32 }
-        record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32 }
-        record bounding-box2 { min: point2, max: point2 }
-        record bounding-box3 { min: point3, max: point3 }
-        record polygon       { points: list<point2> }
-        record ex-polygon    { contour: polygon, holes: list<polygon> }
-        record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32 }
-        enum extrusion-role {
-            outer-wall, inner-wall, thin-wall,
-            top-solid-infill, bottom-solid-infill, sparse-infill,
-            support-material, support-interface,
-            ironing, bridge-infill, wipe-tower, custom,
-        }
-        record semver { major: u32, minor: u32, patch: u32 }
-    }
-
-    interface config-types {
-        variant config-value {
-            bool-val(bool), int-val(s64), float-val(f64),
-            string-val(string), float-list(list<f64>), string-list(list<string>),
-        }
-        resource config-view {
-            get:        func(key: string) -> option<config-value>;
-            get-bool:   func(key: string) -> option<bool>;
-            get-float:  func(key: string) -> option<f64>;
-            get-int:    func(key: string) -> option<s64>;
-            get-string: func(key: string) -> option<string>;
-            keys:       func() -> list<string>;
-        }
-    }
+    include "../../wit/deps/types.wit";
+    include "../../wit/deps/config.wit";
+    include "../../wit/deps/ir-types.wit";
 
     interface host-services {
         use geometry.{point3, bounding-box3, ex-polygon, polygon};
@@ -2165,73 +2063,6 @@ const LAYER_WORLD_WIT: &str = r#"
         offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
         simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
         now-us: func() -> u64;
-    }
-
-    interface ir-handles {
-        use geometry.{ex-polygon, extrusion-path3d, point3, extrusion-role};
-        type object-id = string;
-        type region-id = string;
-        type layer-idx = u32;
-        record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
-        record wall-feature-flag { tool-index: option<u32>, fuzzy-skin: bool, is-bridge: bool, is-thin-wall: bool, skip-ironing: bool }
-        record wall-loop-view { perimeter-index: u32, loop-type: wall-loop-type, path: extrusion-path3d, feature-flags: list<wall-feature-flag> }
-        enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell }
-        enum paint-semantic { material, fuzzy-skin, support-enforcer, support-blocker, custom }
-        variant paint-value { flag(bool), scalar(f32), tool-index(u32) }
-        record boundary-paint-polygon { values: list<option<paint-value>> }
-        record boundary-paint-entry { semantic: paint-semantic, polygons: list<boundary-paint-polygon> }
-        resource slice-region-view {
-            object-id: func() -> object-id;
-            region-id: func() -> region-id;
-            polygons: func() -> list<ex-polygon>;
-            infill-areas: func() -> list<ex-polygon>;
-            effective-layer-height: func() -> f32;
-            z: func() -> f32;
-            has-nonplanar: func() -> bool;
-            boundary-paint: func() -> list<boundary-paint-entry>;
-        }
-        resource perimeter-region-view {
-            object-id: func() -> object-id;
-            region-id: func() -> region-id;
-            wall-loops: func() -> list<wall-loop-view>;
-            infill-areas: func() -> list<ex-polygon>;
-        }
-        resource infill-output-builder {
-            push-sparse-path:  func(path: extrusion-path3d) -> result<_, string>;
-            push-solid-path:   func(path: extrusion-path3d) -> result<_, string>;
-            push-ironing-path: func(path: extrusion-path3d) -> result<_, string>;
-        }
-        resource perimeter-output-builder {
-            push-wall-loop:      func(wall-loop: wall-loop-view) -> result<_, string>;
-            set-infill-areas:    func(areas: list<ex-polygon>) -> result<_, string>;
-            push-seam-candidate: func(pos: point3, score: f32) -> result<_, string>;
-        }
-        resource slice-postprocess-builder {
-            set-polygons: func(region: region-key, polys: list<ex-polygon>) -> result<_, string>;
-            set-path-z:   func(region: region-key, path-idx: u32, vertex-idx: u32, z: f32) -> result<_, string>;
-        }
-        record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
-        resource gcode-output-builder {
-            push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
-            push-retract:     func(length: f32, speed: f32) -> result<_, string>;
-            push-fan-speed:   func(value: u8) -> result<_, string>;
-            push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-            push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
-            push-comment:     func(text: string) -> result<_, string>;
-            push-raw:         func(text: string) -> result<_, string>;
-            push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
-        }
-        resource support-output-builder {
-            push-support-path:   func(path: extrusion-path3d) -> result<_, string>;
-            push-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
-            push-raft-path:      func(path: extrusion-path3d) -> result<_, string>;
-        }
-        record semantic-region { object-id: object-id, polygons: list<ex-polygon>, value: paint-value }
-        resource paint-region-layer-view {
-            get-regions: func(semantic: paint-semantic) -> list<semantic-region>;
-            get-custom-regions: func(module-id: string) -> list<semantic-region>;
-            layer-index: func() -> layer-idx;
-        }
     }
 
     world layer-module {
