@@ -24,7 +24,7 @@ pub struct ModuleNode {
 pub fn build_intra_stage_dag(
     stage: StageId,
     modules: &[LoadedModule],
-) -> Result<Vec<ModuleNode>, SchedulerError> {
+) -> Result<Vec<ModuleNode>, Box<SchedulerError>> {
     let stage_modules: Vec<&LoadedModule> = modules
         .iter()
         .filter(|module| module.stage == stage)
