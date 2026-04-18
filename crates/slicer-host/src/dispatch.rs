@@ -116,12 +116,19 @@ fn own<T: 'static>(r: Resource<T>) -> Resource<T> {
 /// 6. Releases the pool slot (via RAII lease drop)
 pub struct WasmRuntimeDispatcher {
     engine: Arc<WasmEngine>,
+    /// Accumulated runtime reads from postpass dispatch calls.
+    /// Populated by `run_gcode_postprocess` and `run_text_postprocess`,
+    /// consumed by `take_runtime_reads`.
+    postpass_runtime_reads: std::cell::RefCell<Vec<Vec<String>>>,
 }
 
 impl WasmRuntimeDispatcher {
     /// Create a new dispatcher backed by the given WASM engine.
     pub fn new(engine: Arc<WasmEngine>) -> Self {
-        Self { engine }
+        Self {
+            engine,
+            postpass_runtime_reads: std::cell::RefCell::new(Vec::new()),
+        }
     }
 
     // ── Typed layer-world dispatch ─────────────────────────────────────
@@ -600,120 +607,215 @@ impl WasmRuntimeDispatcher {
     // ── Typed postpass-world dispatch ──────────────────────────────────
 
     /// Dispatch a postpass gcode-postprocess call through the typed postpass-module boundary.
+    /// Returns `(Result<(), DispatchError>, Vec<String>)` where the second element
+    /// is the collected `runtime_reads` from the WIT view calls made during this dispatch.
     fn dispatch_postpass_gcode_call(
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
-    ) -> Result<(), DispatchError> {
+    ) -> (Result<(), DispatchError>, Vec<String>) {
         let export_name = "run-gcode-postprocess";
-        let component = module.wasm_component.as_ref().ok_or_else(|| DispatchError {
-            module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-            export_name: export_name.to_string(), phase: DispatchPhase::MissingComponent,
-            reason: "no compiled WASM component available".to_string(),
-        })?;
+        let component = match module.wasm_component.as_ref() {
+            Some(c) => c,
+            None => return (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                }),
+                Vec::new(),
+            ),
+        };
 
         let _lease = module.instance_pool.acquire();
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        wit_host::PostpassModule::add_to_linker(&mut linker, |ctx| ctx)
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::LinkerSetup,
-                reason: e.to_string(),
-            })?;
+        if let Err(e) = wit_host::PostpassModule::add_to_linker(&mut linker, |ctx| ctx) {
+            return (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::LinkerSetup,
+                    reason: e.to_string(),
+                }),
+                Vec::new(),
+            );
+        }
 
         let ctx = HostExecutionContext::new(module.module_id.clone());
         let mut store = wasmtime::Store::new(engine, ctx);
 
-        let config_handle = store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view))
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::ContextCreation,
-                reason: format!("failed to push config resource: {e}"),
-            })?;
-        let output_handle = store.data_mut().push_postpass_gcode_output_builder()
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::ContextCreation,
-                reason: format!("failed to push gcode output resource: {e}"),
-            })?;
+        let config_handle = match store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view)) {
+            Ok(h) => h,
+            Err(e) => return (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::ContextCreation,
+                    reason: format!("failed to push config resource: {e}"),
+                }),
+                Vec::new(),
+            ),
+        };
+        let output_handle = match store.data_mut().push_postpass_gcode_output_builder() {
+            Ok(h) => h,
+            Err(e) => return (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::ContextCreation,
+                    reason: format!("failed to push gcode output resource: {e}"),
+                }),
+                Vec::new(),
+            ),
+        };
 
-        let (bindings, _) = wit_host::PostpassModule::instantiate(&mut store, component.wasmtime_component(), &linker)
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::TypedInstantiation,
-                reason: e.to_string(),
-            })?;
+        let bindings = match wit_host::PostpassModule::instantiate(&mut store, component.wasmtime_component(), &linker) {
+            Ok((b, _)) => b,
+            Err(e) => return (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::TypedInstantiation,
+                    reason: e.to_string(),
+                }),
+                Vec::new(),
+            ),
+        };
 
-        let call_result = bindings.call_run_gcode_postprocess(&mut store, &[], own(output_handle), own(config_handle))
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::TypedExportCall,
-                reason: e.to_string(),
-            })?;
+        let call_result = bindings.call_run_gcode_postprocess(&mut store, &[], own(output_handle), own(config_handle));
+        let runtime_reads = store.data().runtime_reads.clone();
 
-        call_result.map_err(|module_err| DispatchError {
-            module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-            export_name: export_name.to_string(), phase: DispatchPhase::TypedExportCall,
-            reason: format!("module error (code={}, fatal={}): {}", module_err.code, module_err.fatal, module_err.message),
-        })
+        match call_result {
+            Ok(Ok(())) => (Ok(()), runtime_reads),
+            Ok(Err(module_err)) => (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::TypedExportCall,
+                    reason: format!("module error (code={}, fatal={}): {}", module_err.code, module_err.fatal, module_err.message),
+                }),
+                runtime_reads,
+            ),
+            Err(e) => (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::TypedExportCall,
+                    reason: e.to_string(),
+                }),
+                runtime_reads,
+            ),
+        }
     }
 
     /// Dispatch a postpass text-postprocess call through the typed postpass-module boundary.
+    /// Returns `(Result<String, DispatchError>, Vec<String>)` where the second element
+    /// is the collected `runtime_reads` from the WIT view calls made during this dispatch.
     fn dispatch_postpass_text_call(
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
         text: &str,
-    ) -> Result<String, DispatchError> {
+    ) -> (Result<String, DispatchError>, Vec<String>) {
         let export_name = "run-text-postprocess";
-        let component = module.wasm_component.as_ref().ok_or_else(|| DispatchError {
-            module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-            export_name: export_name.to_string(), phase: DispatchPhase::MissingComponent,
-            reason: "no compiled WASM component available".to_string(),
-        })?;
+        let component = match module.wasm_component.as_ref() {
+            Some(c) => c,
+            None => return (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::MissingComponent,
+                    reason: "no compiled WASM component available".to_string(),
+                }),
+                Vec::new(),
+            ),
+        };
 
         let _lease = module.instance_pool.acquire();
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        wit_host::PostpassModule::add_to_linker(&mut linker, |ctx| ctx)
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::LinkerSetup,
-                reason: e.to_string(),
-            })?;
+        if let Err(e) = wit_host::PostpassModule::add_to_linker(&mut linker, |ctx| ctx) {
+            return (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::LinkerSetup,
+                    reason: e.to_string(),
+                }),
+                Vec::new(),
+            );
+        }
 
         let ctx = HostExecutionContext::new(module.module_id.clone());
         let mut store = wasmtime::Store::new(engine, ctx);
 
-        let config_handle = store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view))
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::ContextCreation,
-                reason: format!("failed to push config resource: {e}"),
-            })?;
+        let config_handle = match store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view)) {
+            Ok(h) => h,
+            Err(e) => return (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::ContextCreation,
+                    reason: format!("failed to push config resource: {e}"),
+                }),
+                Vec::new(),
+            ),
+        };
 
-        let (bindings, _) = wit_host::PostpassModule::instantiate(&mut store, component.wasmtime_component(), &linker)
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::TypedInstantiation,
-                reason: e.to_string(),
-            })?;
+        let bindings = match wit_host::PostpassModule::instantiate(&mut store, component.wasmtime_component(), &linker) {
+            Ok((b, _)) => b,
+            Err(e) => return (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::TypedInstantiation,
+                    reason: e.to_string(),
+                }),
+                Vec::new(),
+            ),
+        };
 
-        let call_result = bindings.call_run_text_postprocess(&mut store, text, own(config_handle))
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::TypedExportCall,
-                reason: e.to_string(),
-            })?;
+        let call_result = bindings.call_run_text_postprocess(&mut store, text, own(config_handle));
+        let runtime_reads = store.data().runtime_reads.clone();
 
-        call_result.map_err(|module_err| DispatchError {
-            module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-            export_name: export_name.to_string(), phase: DispatchPhase::TypedExportCall,
-            reason: format!("module error (code={}, fatal={}): {}", module_err.code, module_err.fatal, module_err.message),
-        })
+        match call_result {
+            Ok(Ok(result_text)) => (Ok(result_text), runtime_reads),
+            Ok(Err(module_err)) => (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::TypedExportCall,
+                    reason: format!("module error (code={}, fatal={}): {}", module_err.code, module_err.fatal, module_err.message),
+                }),
+                runtime_reads,
+            ),
+            Err(e) => (
+                Err(DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::TypedExportCall,
+                    reason: e.to_string(),
+                }),
+                runtime_reads,
+            ),
+        }
     }
 }
 
@@ -1534,7 +1636,12 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         _blackboard: &Blackboard,
         _gcode_ir: &mut GCodeIR,
     ) -> Result<PostpassOutput, PostpassError> {
-        match self.dispatch_postpass_gcode_call(stage_id, module) {
+        let (result, reads) = self.dispatch_postpass_gcode_call(stage_id, module);
+        // Store reads for later retrieval via take_runtime_reads
+        if !reads.is_empty() {
+            self.postpass_runtime_reads.borrow_mut().push(reads);
+        }
+        match result {
             Ok(()) => {}
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
                 return Ok(PostpassOutput::GCodeSuccess);
@@ -1558,7 +1665,12 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         _blackboard: &Blackboard,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
-        match self.dispatch_postpass_text_call(stage_id, module, &text) {
+        let (result, reads) = self.dispatch_postpass_text_call(stage_id, module, &text);
+        // Store reads for later retrieval via take_runtime_reads
+        if !reads.is_empty() {
+            self.postpass_runtime_reads.borrow_mut().push(reads);
+        }
+        match result {
             Ok(result_text) => Ok(PostpassOutput::TextSuccess { text: result_text }),
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
                 // Placeholder module: pass text through unchanged.
@@ -1570,6 +1682,10 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
                 message: e.to_string(),
             }),
         }
+    }
+
+    fn take_runtime_reads(&mut self) -> Vec<Vec<String>> {
+        self.postpass_runtime_reads.borrow_mut().drain(..).collect()
     }
 }
 

@@ -1,6 +1,6 @@
 [2m2026-04-18T02:09:17.788028Z[0m [33m WARN[0m [2mralph::loop_runner[0m[2m:[0m Interactive mode requested but stdout is not a TTY, falling back to autonomous
-[2m2026-04-18T02:09:17.788940Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service starting [3mbot_token[0m[2m=[0m8414...bo2k [3mworkspace[0m[2m=[0m/home/admin/pinch_n_print [3mtimeout_secs[0m[2m=[0m120
-[2m2026-04-18T02:09:18.749684Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Sent greeting to chat 5506222402
+[2m2026-04-18T02:09:17.788940Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service starting [3mbot_token[0m[2m=[0m8414...bo2k [3mworkspace[0m[2m=[0m/home/admin/pinch_n_print [3mtimeo2026-04-18T02:26:25.738900Z  INFO ralph_tui::app: Ctrl+C detected, signaling abort
+h_telegram::service[0m[2m:[0m Sent greeting to chat 5506222402
 [2m2026-04-18T02:09:18.749716Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service started — polling for incoming messages
 [2m2026-04-18T02:09:18.749724Z[0m [32m INFO[0m [2mralph::loop_runner[0m[2m:[0m Robot human-in-the-loop service active [3mbot_token[0m[2m=[0m8414...bo2k [3mtimeout_secs[0m[2m=[0m120
 [2m2026-04-18T02:09:18.750081Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/home/admin/pinch_n_print"
@@ -16,3 +16,7 @@
 [2m2026-04-18T02:22:05.109220Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service stopped [3mworkspace[0m[2m=[0m/home/admin/pinch_n_print
 [2m2026-04-18T02:22:05.109311Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Wrapping up: completed. 1 iterations in 12m 47s. [3mreason[0m[2m=[0mcompleted [3miterations[0m[2m=[0m1 [3mduration[0m[2m=[0m12m 47s
 [2m2026-04-18T02:22:05.111446Z[0m [32m INFO[0m [2mralph_core::landing[0m[2m:[0m Beginning landing sequence [3mloop_id[0m[2m=[0mprimary
+[2m2026-04-18T02:22:05.134251Z[0m [32m INFO[0m [2mralph_core::landing[0m[2m:[0m Auto-committed changes during landing [3mloop_id[0m[2m=[0mprimary [3mcommit[0m[2m=[0mSome("d7368ffb59eae8234ed5e6c8ddf09f7ec2b22719") [3mfiles[0m[2m=[0m25
+[2m2026-04-18T02:22:05.763903Z[0m [32m INFO[0m [2mralph_core::landing[0m[2m:[0m Generated handoff file [3mloop_id[0m[2m=[0mprimary [3mpath[0m[2m=[0m/home/admin/pinch_n_print/.ralph/agent/handoff.md [3mcompleted[0m[2m=[0m0 [3mopen[0m[2m=[0m0
+[2m2026-04-18T02:22:05.767311Z[0m [32m INFO[0m [2mralph_core::loop_completion[0m[2m:[0m Landing completed with auto-commit [3mcommit[0m[2m=[0mSome("d7368ffb59eae8234ed5e6c8ddf09f7ec2b22719") [3mhandoff[0m[2m=[0m/home/admin/pinch_n_print/.ralph/agent/handoff.md
+[2m2026-04-18T02:22:05.767326Z[0m [32m INFO[0m [2mralph::loop_runner[0m[2m:[0m Primary loop landed successfully [3mcommitted[0m[2m=[0mtrue [3mhandoff[0m[2m=[0m/home/admin/pinch_n_print/.ralph/agent/handoff.md [3mopen_tasks[0m[2m=[0m0

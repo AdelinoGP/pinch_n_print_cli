@@ -1,5 +1,5 @@
 ---
-status: active
+status: superseded
 packet: 02-rev2_runtime-access-audit-and-declaration-enforcement
 task_ids:
   - TASK-123a

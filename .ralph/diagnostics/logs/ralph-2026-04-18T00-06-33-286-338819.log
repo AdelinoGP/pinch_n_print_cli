@@ -1,0 +1,41 @@
+[2m2026-04-18T03:06:33.293303Z[0m [33m WARN[0m [2mralph::loop_runner[0m[2m:[0m Interactive mode requested but stdout is not a TTY, falling back to autonomous
+[2m2026-04-18T03:06:33.293979Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service starting [3mbot_token[0m[2m=[0m8414...bo2k [3mworkspace[0m[2m=[0m/home/admin/pinch_n_print [3mtimeout_secs[0m[2m=[0m120
+[2m2026-04-18T03:06:34.290829Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Registered bot commands with Telegram API
+[2m2026-04-18T03:06:34.290880Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram polling task started [3mloop_id[0m[2m=[0mmain
+[2m2026-04-18T03:06:34.304299Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Sent greeting to chat 5506222402
+[2m2026-04-18T03:06:34.304341Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service started — polling for incoming messages
+[2m2026-04-18T03:06:34.304350Z[0m [32m INFO[0m [2mralph::loop_runner[0m[2m:[0m Robot human-in-the-loop service active [3mbot_token[0m[2m=[0m8414...bo2k [3mtimeout_secs[0m[2m=[0m120
+[2m2026-04-18T03:06:34.304884Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/home/admin/pinch_n_print"
+[2m2026-04-18T03:06:34.304917Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Looking for memories at: "/home/admin/pinch_n_print/.ralph/agent/memories.md" (exists: true)
+[2m2026-04-18T03:06:34.305961Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Successfully loaded 11 memories from store
+[2m2026-04-18T03:06:34.305995Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting 11 memories (3742 chars) into prompt
+[2m2026-04-18T03:07:04.769009Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/home/admin/pinch_n_print"
+[2m2026-04-18T03:07:04.769047Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Looking for memories at: "/home/admin/pinch_n_print/.ralph/agent/memories.md" (exists: true)
+[2m2026-04-18T03:07:04.769122Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Successfully loaded 11 memories from store
+[2m2026-04-18T03:07:04.769146Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting 11 memories (3742 chars) into prompt
+[2m2026-04-18T03:07:56.214384Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/home/admin/pinch_n_print"
+[2m2026-04-18T03:07:56.214461Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Looking for memories at: "/home/admin/pinch_n_print/.ralph/agent/memories.md" (exists: true)
+[2m2026-04-18T03:07:56.214553Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Successfully loaded 11 memories from store
+[2m2026-04-18T03:07:56.214604Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting 11 memories (3742 chars) into prompt
+[2m2026-04-18T03:29:53.374345Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/home/admin/pinch_n_print"
+[2m2026-04-18T03:29:53.374398Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Looking for memories at: "/home/admin/pinch_n_print/.ralph/agent/memories.md" (exists: true)
+[2m2026-04-18T03:29:53.374502Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Successfully loaded 11 memories from store
+[2m2026-04-18T03:29:53.374540Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting 11 memories (3742 chars) into prompt
+[2m2026-04-18T03:29:53.374576Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting scratchpad (3302 chars) into prompt
+[2m2026-04-18T03:42:38.777134Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/home/admin/pinch_n_print"
+[2m2026-04-18T03:42:38.777191Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Looking for memories at: "/home/admin/pinch_n_print/.ralph/agent/memories.md" (exists: true)
+[2m2026-04-18T03:42:38.777279Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Successfully loaded 11 memories from store
+[2m2026-04-18T03:42:38.777308Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting 11 memories (3742 chars) into prompt
+[2m2026-04-18T03:42:38.777334Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting scratchpad (5386 chars) into prompt
+[2m2026-04-18T03:56:40.807132Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Memory injection check: enabled=true, inject=Auto, workspace_root="/home/admin/pinch_n_print"
+[2m2026-04-18T03:56:40.807180Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Looking for memories at: "/home/admin/pinch_n_print/.ralph/agent/memories.md" (exists: true)
+[2m2026-04-18T03:56:40.807276Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Successfully loaded 11 memories from store
+[2m2026-04-18T03:56:40.807308Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting 11 memories (3742 chars) into prompt
+[2m2026-04-18T03:56:40.807342Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Injecting scratchpad (6595 chars) into prompt
+[2m2026-04-18T03:59:19.666923Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Completion event detected in JSONL [3mtopic[0m[2m=[0mSPEC_PACKET_COMPLETE
+[2m2026-04-18T03:59:19.666977Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Completion event detected - terminating
+[2m2026-04-18T03:59:19.666985Z[0m [32m INFO[0m [2mralph::loop_runner[0m[2m:[0m Completion event SPEC_PACKET_COMPLETE detected.
+[2m2026-04-18T03:59:20.451696Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Sent farewell to chat 5506222402
+[2m2026-04-18T03:59:20.451739Z[0m [32m INFO[0m [2mralph_telegram::service[0m[2m:[0m Telegram service stopped [3mworkspace[0m[2m=[0m/home/admin/pinch_n_print
+[2m2026-04-18T03:59:20.451840Z[0m [32m INFO[0m [2mralph_core::event_loop[0m[2m:[0m Wrapping up: completed. 6 iterations in 52m 47s. [3mreason[0m[2m=[0mcompleted [3miterations[0m[2m=[0m6 [3mduration[0m[2m=[0m52m 47s
+[2m2026-04-18T03:59:20.454017Z[0m [32m INFO[0m [2mralph_core::landing[0m[2m:[0m Beginning landing sequence [3mloop_id[0m[2m=[0mprimary

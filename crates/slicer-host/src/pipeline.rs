@@ -134,7 +134,7 @@ pub fn run_pipeline_with_events(
     let PipelineConfig {
         mesh_ir,
         mut plan,
-        runners,
+        mut runners,
     } = config;
 
     // Step 1: Create blackboard with the loaded mesh. Layer count is not known
@@ -174,7 +174,7 @@ pub fn run_pipeline_with_events(
         &blackboard,
         runners.emitter.as_ref(),
         runners.serializer.as_ref(),
-        runners.postpass.as_ref(),
+        runners.postpass.as_mut(),
     )?;
 
     Ok(PipelineOutput { gcode_text, prepass_audits, layer_audits, postpass_audits })

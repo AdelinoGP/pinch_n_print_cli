@@ -106,6 +106,20 @@ pub trait PostpassStageRunner {
         blackboard: &Blackboard,
         text: String,
     ) -> Result<PostpassOutput, PostpassError>;
+
+    /// Returns accumulated runtime reads from postpass module executions.
+    ///
+    /// After each postpass module call (via `run_gcode_postprocess` or
+    /// `run_text_postprocess`), the runner should collect `runtime_reads`
+    /// from the dispatch context and make them available via this method.
+    ///
+    /// Returns a `Vec<Vec<String>>` where each inner vector contains the
+    /// IR field paths read by one postpass module call, in call order.
+    /// The default implementation returns an empty vector (for runners that
+    /// don't collect reads, such as noop runners used in testing).
+    fn take_runtime_reads(&mut self) -> Vec<Vec<String>> {
+        Vec::new()
+    }
 }
 
 /// Trait for GCode emission (host-built-in, will be implemented in TASK-034).
@@ -152,7 +166,7 @@ pub fn execute_postpass(
     blackboard: &Blackboard,
     emitter: &dyn GCodeEmitter,
     serializer: &dyn GCodeSerializer,
-    runner: &dyn PostpassStageRunner,
+    runner: &mut dyn PostpassStageRunner,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
     // Step 1: Emit initial GCodeIR from layers
     let mut gcode_ir = emitter.emit_gcode(layer_irs, blackboard)?;
@@ -169,13 +183,16 @@ pub fn execute_postpass(
                     &mut gcode_ir,
                 )? {
                     PostpassOutput::GCodeSuccess => {
-                        // Record runtime write audit for GCodePostProcess modules.
+                        // Record runtime audit for GCodePostProcess modules.
+                        // Extract runtime reads collected during this dispatch call.
                         // The GCodeIR is a single host-owned output, not a guest-writable
                         // field path. GCodePostProcess modules are audited as writes
                         // to the GCodeIR field.
+                        let runtime_reads = runner.take_runtime_reads();
+                        let reads = runtime_reads.into_iter().flatten().collect();
                         audits.push(ModuleAccessAudit {
                             module_id: module.module_id.clone(),
-                            runtime_reads: Vec::new(),
+                            runtime_reads: reads,
                             runtime_writes: vec![String::from("GCodeIR")],
                         });
                     }
@@ -211,11 +228,14 @@ pub fn execute_postpass(
         for module in &stage.modules {
             match runner.run_text_postprocess(&stage.stage_id, module, blackboard, text)? {
                 PostpassOutput::TextSuccess { text: new_text } => {
-                    // Record runtime write audit for TextPostProcess modules.
+                    // Record runtime audit for TextPostProcess modules.
+                    // Extract runtime reads collected during this dispatch call.
                     // TextPostProcess modules produce final text output.
+                    let runtime_reads = runner.take_runtime_reads();
+                    let reads = runtime_reads.into_iter().flatten().collect();
                     audits.push(ModuleAccessAudit {
                         module_id: module.module_id.clone(),
-                        runtime_reads: Vec::new(),
+                        runtime_reads: reads,
                         runtime_writes: vec![String::from("GCodeIR")],
                     });
                     text = new_text;
