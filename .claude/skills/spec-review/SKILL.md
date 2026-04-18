@@ -19,7 +19,21 @@ Review and verify a spec packet implementation against its full documentation su
 
 ## Gathering Context
 
-### Step 1: Identify the Spec Packet
+### Step 0: Preflight — Acceptance Criteria Completeness Check
+
+Before reading packet files or running any verification, verify every acceptance criterion in the packet has a pipe-suffixed runnable verification command.
+
+For each criterion in `packet.spec.md`:
+- [ ] Criterion ends with `|` followed by a concrete command
+- [ ] The command uses correct paths, flags, and module names
+- [ ] The command is runnable in the current environment without additional context
+
+**If any criterion lacks a per-criterion verification command:**
+- Mark it as a **HIGH** finding (not MED).
+- In the report table, mark it `PARTIAL/INCOMPLETE`.
+- Do not proceed to full review until the finding is logged.
+
+### Step 2: Identify the Spec Packet
 
 If given a packet name, locate it:
 ```bash
@@ -38,7 +52,7 @@ If given a path, validate it contains packet files:
 ls [packet-dir]/
 ```
 
-### Step 2: Read All Spec Documents
+### Step 3: Read All Spec Documents
 
 Read in this order:
 1. `packet.spec.md` — Primary contract (goal, scope, acceptance criteria, verification commands)
@@ -47,7 +61,7 @@ Read in this order:
 4. `implementation-plan.md` — Step-by-step plan (each step maps to task IDs)
 5. `task-map.md` — Bridge to backlog task IDs
 
-### Step 3: Determine Implementation Artifacts
+### Step 4: Determine Implementation Artifacts
 
 From `design.md`, identify:
 - **Primary code paths** — What files were expected to change?

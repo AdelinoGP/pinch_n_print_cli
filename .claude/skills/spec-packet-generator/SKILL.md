@@ -78,7 +78,27 @@ Read `./docs/07_implementation_status.md` and map the prompt to one small, coher
 - If the prompt is too broad, narrow it and explain the cut.
 - If the mapping is ambiguous, present 1-3 options and ask the user to choose.
 
-### 3. Resolve Packet Metadata
+### 3. Gather Authoritative References
+
+Use `./docs/00_project_overview.md` as the normative document map and identify only the decisive docs for this slice.
+
+At minimum, determine whether the packet depends on:
+
+- `docs/01_system_architecture.md`
+- `docs/02_ir_schemas.md`
+- `docs/03_wit_and_manifest.md`
+- `docs/04_host_scheduler.md`
+- `docs/05_module_sdk.md`
+- `docs/08_coordinate_system.md`
+- `docs/09_progress_events.md`
+- `docs/11_operational_governance_and_acceptance_gate.md`
+- `docs/12_architecture_gate_metrics.md`
+
+If OrcaSlicer parity or reference behavior matters, inspect `./OrcaSlicerDocumented/` and record exact paths.
+
+**Cross-packet mutation rule:** A packet MUST NOT modify files in another packet's directory. If this packet corrects or completes work from another packet, mark that packet `status: superseded` in its `packet.spec.md` and note the absorption in this packet's `requirements.md` Problem Statement.
+
+### 4. Resolve Packet Metadata
 
 Determine:
 
@@ -100,25 +120,32 @@ Before generating files, present a short plan with:
 
 **Gate:** You MUST NOT write packet files until the user approves this packet scope.
 
-### 4. Gather Authoritative References
+### 5. Completeness Checklist for Acceptance Criteria
 
-Use `./docs/00_project_overview.md` as the normative document map and identify only the decisive docs for this slice.
+Before writing any packet file, verify the acceptance criteria you will include meet all of the following. If any item cannot be satisfied, resolve it before proceeding.
 
-At minimum, determine whether the packet depends on:
+**For each Given/When/Then criterion:**
+- [ ] The criterion is specific enough to be falsified by a single command or test.
+- [ ] The criterion names exact field names (IR paths, config keys, manifest entries) rather than generic categories.
+- [ ] The criterion ends with a pipe `|` followed by a runnable verification command.
+- [ ] If multiple criteria share the same verification, each still carries its own pipe-suffixed command (repeat it — do not use "see AC-N").
 
-- `docs/01_system_architecture.md`
-- `docs/02_ir_schemas.md`
-- `docs/03_wit_and_manifest.md`
-- `docs/04_host_scheduler.md`
-- `docs/05_module_sdk.md`
-- `docs/08_coordinate_system.md`
-- `docs/09_progress_events.md`
-- `docs/11_operational_governance_and_acceptance_gate.md`
-- `docs/12_architecture_gate_metrics.md`
+**For IR/config/schema criteria specifically:**
+- [ ] Each IR field path is spelled exactly as it appears in `docs/02_ir_schemas.md` (e.g., `mesh.bounding_box.min_x`, not `bounding_box.x`).
+- [ ] Each config field key is spelled exactly as it appears in the module's `.toml` manifest.
+- [ ] If the criterion involves a fixed number of fields (e.g., "all six AC-2 fields"), those field names are listed inline in the criterion text.
 
-If OrcaSlicer parity or reference behavior matters, inspect `./OrcaSlicerDocumented/` and record exact paths.
+**Example of compliant AC:**
+```
+- **Given** a core-module manifest with a shorthand config field (e.g., `wall_count = "int"`), **when** `config-schema` CLI is called on that module, **then** the JSON output contains an entry with `"key": "wall_count"`, `"type": "int"`, and `"min"`, `"max"`, `"default"`, `"display"`, `"group"` all present (absent optionals are `null`). | `cargo run --package slicer-host -- config-schema --module-dir modules/core-modules 2>/dev/null | python3 -c "import json,sys; entries=[e for e in json.load(sys.stdin)['schema'] if e['name']=='classic-perimeters'][0]['fields']; f=[f for f in entries if f['key']=='wall_count'][0]; assert all(k in f for k in ('type','min','max','default','display','group')), f'MISSING: {[k for k in (\"type\",\"min\",\"max\",\"default\",\"display\",\"group\") if k not in f]}'"`
+```
 
-### 5. Create Packet Structure
+**Example of non-compliant AC (do not use):**
+```
+- **Given** a core-module manifest with a shorthand config field, **when** `config-schema` CLI is called, **then** all six AC-2 fields are present.
+```
+
+### 6. Create Packet Structure
 
 Create `./.ralph/specs/[spec_slug]/` and generate:
 
@@ -130,7 +157,7 @@ Create `./.ralph/specs/[spec_slug]/` and generate:
 
 Use `./.ralph/specs/_templates/` as the starting structure, but replace placeholders with packet-specific content.
 
-### 6. Populate `packet.spec.md`
+### 7. Populate `packet.spec.md`
 
 `packet.spec.md` MUST include:
 
@@ -141,14 +168,12 @@ Use `./.ralph/specs/_templates/` as the starting structure, but replace placehol
   - `backlog_source: docs/07_implementation_status.md`
 - packet goal
 - scope boundaries
-- Given/When/Then acceptance criteria
-- verification commands
+- Given/When/Then acceptance criteria — each criterion MUST end with a pipe and a runnable verification command
+- verification commands (supplemental, for criteria that share verification)
 - authoritative docs
 - OrcaSlicer reference obligations
 
-The acceptance criteria must be concrete enough for Ralph preflight and later verification.
-
-### 7. Populate `requirements.md`
+### 8. Populate `requirements.md`
 
 Capture:
 
@@ -160,7 +185,7 @@ Capture:
 - acceptance summary
 - verification commands
 
-### 8. Populate `design.md`
+### 9. Populate `design.md`
 
 Document the implementation shape without doing the implementation.
 
@@ -174,7 +199,7 @@ Include:
 - risks and tradeoffs
 - open questions that must be resolved before the packet becomes active
 
-### 9. Populate `implementation-plan.md`
+### 10. Populate `implementation-plan.md`
 
 Break the packet into atomic steps.
 
@@ -195,7 +220,7 @@ Each step should include:
 - Steps must reflect TDD and narrow validation.
 - Include a packet completion gate at the end.
 
-### 10. Populate `task-map.md`
+### 11. Populate `task-map.md`
 
 Add `task-map.md` when it clarifies how packet steps map back to `docs/07`.
 
@@ -205,7 +230,7 @@ Use it especially when:
 - multiple docs are authoritative for different steps
 - OrcaSlicer refs differ by step
 
-### 11. Report Results
+### 12. Report Results
 
 List generated files with paths and summarize:
 
@@ -216,7 +241,7 @@ List generated files with paths and summarize:
 - OrcaSlicer refs chosen
 - any open questions or assumptions
 
-### 12. Offer Activation Guidance
+### 13. Offer Activation Guidance
 
 If the packet is still `draft`, ask whether the user wants you to mark it `active`.
 

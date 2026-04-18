@@ -16,16 +16,19 @@ Execute one prepared ModularSlicer packet and nothing else.
 
 ## Required Packet Inputs
 
-- `packet.spec.md` — thin contract and Given/When/Then acceptance criteria
+- `packet.spec.md` — thin contract and Given/When/Then acceptance criteria. Each criterion MUST end with a pipe `|` and a runnable verification command. If any criterion lacks this, stop before proceeding.
 - `requirements.md` — grouped task IDs, scope boundaries, docs, and OrcaSlicer obligations
 - `design.md` — intended technical shape and decisive code paths
 - `implementation-plan.md` — atomic steps and verification commands
 - `task-map.md` — optional mapping back to `./docs/07_implementation_status.md`
 
+**AC completeness gate:** Before beginning execution, verify every acceptance criterion in `packet.spec.md` has a pipe-suffixed verification command. If any criterion lacks one, report the missing command and do not proceed.
+
 ## Operating Rules
 
 - Only the packet's grouped task IDs are in scope.
 - Use the normative doc map in `./docs/00_project_overview.md` to resolve authoritative sources.
+- **Confirm scope against authoritative docs before executing.** Read the cited docs and confirm the packet's in-scope items are actually addressed by those docs. If the cited docs reveal scope gaps or misalignments, stop and report them before proceeding.
 - Use runtime tasks for active step tracking and `./.ralph/agent/memories.md` for learned context.
 - Apply TDD and run the narrowest falsifying checks before broad workspace gates.
 - Inspect `./OrcaSlicerDocumented/` when the packet asks for reference behavior.
