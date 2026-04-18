@@ -163,6 +163,66 @@ fn higher_precedence_root_wins_duplicate_module_ids_and_emits_warning() {
     );
 }
 
+// ── WIT world allowlist validation ─────────────────────────────────────────
+
+#[test]
+fn wit_world_mismatch_rejects_invalid_package_name() {
+    // The old (pre-consolidation) package name must be rejected.
+    let fixture = ModuleFixture::new("wit-world-bad-pkg");
+    let manifest_path = fixture.write_module(
+        "bad-pkg-module",
+        valid_manifest_toml(
+            "com.community.bad-pkg",
+            "Layer::Infill",
+            "slicer:layer-world@1.0.0", // wrong — canonical is slicer:world-layer@1.0.0
+            true,
+        ),
+        true,
+    );
+
+    let error = load_module_from_paths(&manifest_path, &manifest_path.with_extension("wasm"))
+        .expect_err("non-allowlisted wit_world should be rejected during ingestion");
+
+    assert_eq!(error.path, manifest_path);
+    assert_eq!(error.field.as_deref(), Some("module.wit-world"));
+    assert_eq!(error.kind, LoadErrorKind::Validation);
+    assert!(
+        error.message.contains("slicer:layer-world@1.0.0"),
+        "error should name the invalid wit_world value: {error:?}"
+    );
+    assert!(
+        error.message.contains("slicer:world-layer@1.0.0"),
+        "error should list the canonical wit_world values: {error:?}"
+    );
+}
+
+#[test]
+fn wit_world_major_version_mismatch_rejects_future_major() {
+    // A future major version of a canonical world must also be rejected.
+    let fixture = ModuleFixture::new("wit-world-future-major");
+    let manifest_path = fixture.write_module(
+        "future-major-module",
+        valid_manifest_toml(
+            "com.community.future-major",
+            "Layer::Infill",
+            "slicer:world-layer@2.0.0", // future major — not in allowlist
+            true,
+        ),
+        true,
+    );
+
+    let error = load_module_from_paths(&manifest_path, &manifest_path.with_extension("wasm"))
+        .expect_err("future major version should be rejected during ingestion");
+
+    assert_eq!(error.path, manifest_path);
+    assert_eq!(error.field.as_deref(), Some("module.wit-world"));
+    assert_eq!(error.kind, LoadErrorKind::Validation);
+    assert!(
+        error.message.contains("slicer:world-layer@2.0.0"),
+        "error should name the invalid wit_world value: {error:?}"
+    );
+}
+
 #[test]
 fn lexical_order_within_one_root_deterministically_breaks_duplicate_ids() {
     let fixture = ModuleFixture::new("duplicate-same-root");
