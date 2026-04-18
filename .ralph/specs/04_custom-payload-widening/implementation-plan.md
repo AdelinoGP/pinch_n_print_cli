@@ -8,17 +8,17 @@
 
 ## Steps
 
-### Step 1: Verify WIT type compilation (proof-of-concept)
+### Step 1: Confirm WIT type representation (resolved)
 
 - Task IDs: `TASK-149`
-- Objective: Confirm that `list<record { key: string, value: paint-value }>` compiles with wasmtime's component model bindgen and that `variant extrusion-role { ..., custom(string) }` and `variant paint-semantic { ..., custom(string) }` generate correct Rust types. Create a temporary test file to verify the WIT type shapes compile.
-- Precondition: Packet A steps 1-5 are complete (canonical `wit/` files exist and compile)
-- Postcondition: WIT type shapes confirmed to generate correct Rust bindings; no compile errors from wasmtime bindgen
-- Files expected to change: None (proof-of-concept only; temporary test file not committed)
-- Authoritative docs: `docs/03_wit_and_manifest.md` (WIT types section), wasmtime component model documentation
+- Objective: wasmtime confirmed to support `list<tuple<string, paint-value>>` for `wall-feature-flag.custom`. No proof-of-concept needed — the representation is valid and Step 2 can proceed directly.
+- Precondition: None (user confirmed wasmtime supports the representation)
+- Postcondition: Step 2 is unblocked; no files changed
+- Files expected to change: None
+- Authoritative docs: User verification (wasmtime supports `list<tuple<string, paint-value>>`)
 - OrcaSlicer refs: None
-- Verification: `cargo build --package slicer-host 2>&1 | grep -i error` after temporary WIT changes
-- Exit condition: Confirmed working WIT representation for all three custom types
+- Verification: N/A
+- Exit condition: Confirmed; Step 2 unblocked
 
 ---
 
@@ -28,7 +28,7 @@
 - Objective: Apply the three WIT type changes to the canonical disk source:
   - `wit/deps/types.wit`: `enum extrusion-role { ..., custom }` → `variant extrusion-role { ..., custom(string) }`
   - `wit/deps/ir-types.wit`: `enum paint-semantic { ..., custom }` → `variant paint-semantic { ..., custom(string) }`
-  - `wit/deps/ir-types.wit`: `record wall-feature-flag` → add `custom: list<record { key: string, value: paint-value }>` field
+  - `wit/deps/ir-types.wit`: `record wall-feature-flag` → add `custom: list<tuple<string, paint-value>>` field (wasmtime supports tuple in list)
 - Precondition: Step 1 confirmed WIT representation compiles
 - Postcondition: `wit/deps/types.wit` and `wit/deps/ir-types.wit` on disk carry the widened types; all four `include_str!` consumers (macro and host) pick up the changes on next build
 - Files expected to change:
@@ -44,11 +44,12 @@
 ### Step 3: Update macro converters for widened types
 
 - Task IDs: `TASK-150`
-- Objective: Update the three converter functions in `crates/slicer-macros/src/lib.rs` to handle the widened WIT types:
-  - `__slicer_adapt_extrusion_role` (line ~828): update `Custom` match arm from arity-0 to arity-1, carrying the string
-  - `__slicer_adapt_paint_semantic` (line ~1692): update `Custom` match arm, carrying the string
-  - `__slicer_adapt_wall_feature_flags` (line ~1662): update to encode `HashMap<String, PaintValue>` as `Vec<CustomEntry { key, value }>` sorted by key; decode back
-  - `__slicer_adapt_paint_layer` (line ~1789): add `PaintSemantic::Custom(s)` arm that routes through the WIT variant
+- Objective: Update the converter functions in `crates/slicer-macros/src/lib.rs` to handle the widened WIT types:
+  - `__slicer_ir_role_to_wit` (~line 1774): update `Custom` match arm from arity-0 to arity-1, carrying the string
+  - `__slicer_wit_semantic_to_ir` (~line 1619): update `Custom` match arm, carrying the string
+  - `__slicer_ir_feature_to_wit` (~line 1822): add encoding for `custom` map field as `Vec<(String, PaintValue)>` sorted by key
+  - `__slicer_wit_feature_to_ir` (~line 1589): add decoding for `custom` map field from wasmtime tuple `Vec<(String, PaintValue)>`
+  - `ir_to_wit_paint_semantic` (~line 1406): add `Custom(s)` arm that routes through the WIT variant
 - Precondition: Step 2 complete; disk WIT files updated
 - Postcondition: Macro converters correctly handle the three widened types; `cargo build --package slicer-macros` succeeds
 - Files expected to change:
@@ -66,14 +67,14 @@
 - Objective: Update host-side converters in `crates/slicer-host/src/wit_host.rs` to decode the widened WIT types back to IR:
   - Decode WIT `custom(string)` → IR `ExtrusionRole::Custom(string)`
   - Decode WIT `custom(string)` → IR `PaintSemantic::Custom(string)`
-  - Decode WIT `wall-feature-flag.custom: list<CustomEntry>` → IR `HashMap::from_iter(entries)`
+  - Decode WIT `wall-feature-flag.custom: list<tuple<string, paint-value>>` → IR `HashMap::from_iter(entries)` (wasmtime generates tuples as Rust `(K, V)` pairs)
 - Precondition: Step 3 complete; macro converters updated
 - Postcondition: Host converters correctly round-trip the three custom types; `cargo build --package slicer-host` succeeds
 - Files expected to change:
   - `crates/slicer-host/src/wit_host.rs`
 - Authoritative docs: `crates/slicer-host/src/wit_host.rs`
 - OrcaSlicer refs: None
-- Verification: `cargo build --package slicer-host && grep -c "String::new()" crates/slicer-host/src/wit_host.rs` (should be reduced from the 3 `String::new()` calls for custom types)
+- Verification: `cargo build --package slicer-host` — all 5 known `String::new()` synthesis sites for custom variants updated, and `convert_wall_feature_flag` updated to handle the new `custom` field
 - Exit condition: Host converters updated; host crate builds without errors
 
 ---
@@ -85,6 +86,8 @@
   - `extrusion_role_custom_payload_roundtrip`: create `ExtrusionRole::Custom("test-role@1")`, convert IR→WIT→IR, assert payload = "test-role@1"
   - `paint_semantic_custom_payload_roundtrip`: create `PaintSemantic::Custom("com.example/texture@1")`, round-trip, assert payload preserved
   - `wall_feature_flags_custom_payload_roundtrip`: create `WallFeatureFlags { custom: HashMap::from_iter([("key", PaintValue::Scalar(0.5))]) }`, round-trip, assert map has exactly one entry with key="key" and value=Scalar(0.5)
+- `wall_feature_flags_custom_multiple_entries_roundtrip`: create `WallFeatureFlags { custom: HashMap::from_iter([("a", PaintValue::Scalar(0.1)), ("b", PaintValue::Flag(true)), ("c", PaintValue::ToolIndex(2))]) }`, round-trip, assert all 3 entries survive with correct values
+- `paint_semantic_custom_empty_string_roundtrip`: create `PaintSemantic::Custom("")`, round-trip, assert payload is empty string (not `None` or dropped)
 - Precondition: Steps 3 and 4 complete; both macro and host converters updated
 - Postcondition: Three new test cases in `macro_all_worlds_roundtrip_tdd.rs` (or new dedicated file `custom_payload_roundtrip_tdd.rs`) that pass
 - Files expected to change:

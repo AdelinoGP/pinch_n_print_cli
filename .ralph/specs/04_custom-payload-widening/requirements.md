@@ -12,11 +12,11 @@
 
 Three distinct custom payload types are silently dropped at the WIT boundary (DEV-016):
 
-1. **`ExtrusionRole::Custom(String)`**: The WIT `enum extrusion-role { ..., custom }` is arity-0 (no fields). The macro converter at `lib.rs:828` synthesizes `String::new()` instead of carrying the actual string. Module authors who use `ExtrusionRole::Custom(...)` lose the string payload.
+1. **`ExtrusionRole::Custom(String)`**: The WIT `enum extrusion-role { ..., custom }` is arity-0 (no fields). The macro converter at `__slicer_ir_role_to_wit` (~line 1774 in `lib.rs`) synthesizes `String::new()` instead of carrying the actual string. Similarly, host converters in `wit_host.rs` at 5 known sites synthesize `String::new()`. Module authors who use `ExtrusionRole::Custom(...)` lose the string payload.
 
-2. **`PaintSemantic::Custom(String)`**: The WIT `enum paint-semantic { ..., custom }` is arity-0. The macro converter at `lib.rs:1692` synthesizes `String::new()`. The `__slicer_adapt_paint_layer` routing at `lib.rs:1789` intentionally skips `Custom`, routing through `get-custom-regions` by module-id only. The string payload is lost.
+2. **`PaintSemantic::Custom(String)`**: The WIT `enum paint-semantic { ..., custom }` is arity-0. The macro converter at `__slicer_wit_semantic_to_ir` (~line 1619) synthesizes `String::new()`. The paint layer routing (`ir_to_wit_paint_semantic` ~line 1406) intentionally skips `Custom`. The string payload is lost.
 
-3. **`WallFeatureFlags.custom: HashMap<String, PaintValue>`**: The WIT `record wall-feature-flag` has no `custom` field. The converter at `lib.rs:1662` synthesizes `HashMap::new()`. Any custom paint values on wall segments are silently discarded.
+3. **`WallFeatureFlags.custom: HashMap<String, PaintValue>`**: The WIT `record wall-feature-flag` has no `custom` field. The converter at `__slicer_wit_feature_to_ir` (~line 1589) has no `custom` field to populate. Any custom paint values on wall segments are silently discarded because the field doesn't exist in WIT yet.
 
 No test in `macros/tests/` or `host/tests/` verifies payload survival across the WIT boundary. Existing tests using `PaintSemantic::Custom(...)` operate at the host-IR level only.
 
@@ -26,9 +26,9 @@ This packet widens the WIT types and updates all converters to preserve payloads
 
 - Change `wit/deps/types.wit` `enum extrusion-role` → `variant extrusion-role` with `custom(string)` variant
 - Change `wit/deps/ir-types.wit` `enum paint-semantic` → `variant paint-semantic` with `custom(string)` variant
-- Change `wit/deps/ir-types.wit` `record wall-feature-flag` to add `custom: list<record { key: string, value: paint-value }>` field (WIT-compatible representation of `HashMap<String, PaintValue>`)
-- Update macro converters (`__slicer_adapt_extrusion_role`, `__slicer_adapt_paint_semantic`, `__slicer_adapt_wall_feature_flags`) to handle widened types
-- Update host converters in `wit_host.rs` for the three types
+- Change `wit/deps/ir-types.wit` `record wall-feature-flag` to add `custom: list<tuple<string, paint-value>>` field (WIT-compatible representation of `HashMap<String, PaintValue>`; wasmtime supports tuples in lists; this field does not yet exist and must be added)
+- Update macro converters in `crates/slicer-macros/src/lib.rs` (`__slicer_ir_role_to_wit`, `__slicer_wit_semantic_to_ir`, `__slicer_ir_feature_to_wit`, `__slicer_wit_feature_to_ir`, `ir_to_wit_paint_semantic`)
+- Update host converters in `crates/slicer-host/src/wit_host.rs` (5 `String::new()` synthesis sites plus the `convert_wall_feature_flag` function for the new custom field)
 - Add round-trip WIT regression tests for all three custom payloads
 - Verify the changes compile with the canonical WIT source (after Packet A consolidation)
 
@@ -44,10 +44,8 @@ This packet widens the WIT types and updates all converters to preserve payloads
 
 - `docs/03_wit_and_manifest.md` — `deps/types.wit`, `deps/ir-types.wit` sections
 - `docs/02_ir_schemas.md` — `ExtrusionRole::Custom(String)`, `PaintSemantic::Custom(String)`, `WallFeatureFlags.custom` IR definitions
-- `crates/slicer-macros/src/lib.rs` — converter function locations (exact lines to change)
-- `crates/slicer-host/src/wit_host.rs` — host-side converter locations
-- `crates/slicer-host/tests/macro_all_worlds_roundtrip_tdd.rs` — existing round-trip tests (add new cases here)
-- DEV-016 deviation log entry
+- `crates/slicer-macros/src/lib.rs` — converter function locations (actual lines: `__slicer_ir_role_to_wit` ~1774, `__slicer_wit_semantic_to_ir` ~1619, `__slicer_ir_feature_to_wit` ~1822, `__slicer_wit_feature_to_ir` ~1589, `ir_to_wit_paint_semantic` ~1406)
+- `crates/slicer-host/src/wit_host.rs` — host-side converter locations (5 `String::new()` synthesis sites for custom variants, and `convert_wall_feature_flag` for the new custom field)
 
 ## OrcaSlicer Reference Obligations
 
@@ -58,10 +56,10 @@ None. This is an internal WIT boundary type-widening task.
 - Positive cases:
   - `wit/deps/types.wit` defines `variant extrusion-role { ..., custom(string) }`
   - `wit/deps/ir-types.wit` defines `variant paint-semantic { ..., custom(string) }`
-  - `wit/deps/ir-types.wit` defines `record wall-feature-flag` with `custom: list<record { key: string, value: paint-value }>`
-  - `__slicer_adapt_extrusion_role` correctly encodes `Custom("...")` with string payload and decodes WIT `custom(string)` back to `Custom("...")`
-  - `__slicer_adapt_paint_semantic` correctly encodes `Custom("...")` and decodes WIT variant back
-  - `__slicer_adapt_wall_feature_flags` correctly encodes the custom map and decodes WIT list back to `HashMap`
+  - `wit/deps/ir-types.wit` defines `record wall-feature-flag` with `custom: list<tuple<string, paint-value>>`
+  - `__slicer_ir_role_to_wit` correctly encodes `Custom("...")` with string payload and decodes WIT `custom(string)` back to `Custom("...")`
+  - `__slicer_wit_semantic_to_ir` correctly encodes `Custom("...")` and decodes WIT variant back
+  - `__slicer_ir_feature_to_wit` / `__slicer_wit_feature_to_ir` correctly encode/decode the custom map and WIT list back to `HashMap`
   - All three round-trip tests pass with actual payload assertions
   - Full workspace build and clippy pass
 - Negative cases:
@@ -90,7 +88,7 @@ None. This is an internal WIT boundary type-widening task.
 
 Each step in `implementation-plan.md` must produce:
 - Step 1 (WIT type changes): Disk `wit/deps/types.wit` and `wit/deps/ir-types.wit` updated with widened types; diff shows `enum` → `variant` for extrusion-role and paint-semantic; `wall-feature-flag` has new `custom` field
-- Step 2 (Macro converter): `__slicer_adapt_extrusion_role`, `__slicer_adapt_paint_semantic`, `__slicer_adapt_wall_feature_flags` in `lib.rs` updated; macro crate builds
+- Step 2 (Macro converter): `__slicer_ir_role_to_wit`, `__slicer_wit_semantic_to_ir`, `__slicer_ir_feature_to_wit`, `__slicer_wit_feature_to_wit`, `ir_to_wit_paint_semantic` in `lib.rs` updated; macro crate builds
 - Step 3 (Host converter): Host `wit_host.rs` converters updated for all three types; host crate builds
 - Step 4 (Round-trip tests): Three new test cases in `macro_all_worlds_roundtrip_tdd.rs` (or new file) that assert payload survival for each custom type
 - Step 5 (Workspace gate): Full build and clippy pass
