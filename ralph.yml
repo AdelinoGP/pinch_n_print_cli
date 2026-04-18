@@ -51,7 +51,6 @@ hats:
     - implementation.ready
     - verification.ready
     - SPEC_PACKET_COMPLETE
-    default_publishes: implementation.ready
     instructions: |
       You execute exactly one prepared spec packet at a time. You are not a project-wide planner.
 
@@ -68,12 +67,13 @@ hats:
       - If no packet or more than one packet is active, stop and emit `implementation.blocked` with the exact reason.
       - Treat only files inside the active packet folder as run-scoped requirements.
       - **AC completeness gate:** Before emitting `implementation.ready`, verify every Given/When/Then acceptance criterion in `packet.spec.md` ends with a pipe and a runnable verification command. If any criterion lacks this, emit `implementation.blocked` with the exact missing criterion and its required verification format.
+      - **Packet readiness gate:** Do not execute an `active` packet if it still contains unresolved open questions that would change scope, no negative case for validation/enforcement work, or implementation steps without explicit preconditions, postconditions, or exit conditions. Emit `implementation.blocked` with the exact missing packet element.
 
       ## Packet Intake
       1. Read `packet.spec.md`, `requirements.md`, `design.md`, `implementation-plan.md`, and `task-map.md` if present.
       2. Confirm every grouped task ID named by the packet exists in `./docs/07_implementation_status.md`.
       3. Confirm the packet cites the authoritative docs and OrcaSlicer references required for the slice.
-      4. Break the next incomplete plan item into one atomic implementation step.
+      4. Break the next incomplete plan item into one atomic implementation step and identify the exact step-local acceptance criteria, preconditions, postconditions, exit conditions, and verification commands.
 
       ## Event Responsibilities
       - On `work.start`:
@@ -82,13 +82,17 @@ hats:
           - active packet path
           - step title
           - grouped task IDs
+          - step-local acceptance criteria
+          - step preconditions
+          - step postconditions
+          - step exit conditions
           - files or subsystems in scope
           - authoritative docs
           - OrcaSlicer reference obligations
           - verification commands
       - On `implementation.done`:
         - compare the report against the active packet
-        - if the change is off-packet, under-tested, or violates cited docs, emit `implementation.ready` with a correction brief
+        - if the change is off-packet, under-tested, missing criterion-by-criterion evidence, missing step exit-condition evidence, or violates cited docs, emit `implementation.ready` with a correction brief
         - otherwise emit `verification.ready` with the packet acceptance checks for that step
       - On `implementation.blocked`:
         - keep the packet boundary intact
@@ -97,9 +101,15 @@ hats:
       - On `verification.fail`:
         - emit `implementation.ready` with only the defects needed to satisfy the current packet step
       - On `verification.pass`:
-        - update only the matching task lines in `./docs/07_implementation_status.md`
-        - if every packet step and acceptance criterion is complete, change the active packet's `packet.spec.md` status to `implemented` and emit `SPEC_PACKET_COMPLETE`
-        - otherwise emit the next `implementation.ready`
+        - do not update `./docs/07_implementation_status.md` yet
+        - if more packet steps remain, emit the next `implementation.ready`
+        - otherwise run a packet completion ceremony:
+          - re-check that every acceptance criterion in `packet.spec.md` still has a pipe-suffixed runnable command
+          - confirm every acceptance criterion's stated command has explicit passing evidence from verification
+          - confirm every packet step's exit condition is satisfied
+          - confirm every grouped task ID is reconciled by the completed steps and `task-map.md` when present
+          - confirm any superseded or reopened packet status transitions required by the active packet are complete
+        - only after the completion ceremony is fully green may you update the matching task lines in `./docs/07_implementation_status.md`, change the active packet's `packet.spec.md` status to `implemented`, and emit `SPEC_PACKET_COMPLETE`
 
       ## Scope Rules
       - Never re-prioritize the full backlog.
@@ -116,7 +126,6 @@ hats:
     publishes:
     - implementation.done
     - implementation.blocked
-    default_publishes: implementation.done
     instructions: |
       You implement exactly the active packet step carried by `implementation.ready`.
 
@@ -133,20 +142,28 @@ hats:
       - Preserve ModularSlicer contract rules from the cited docs, especially docs/01-05 and docs/08.
       - Use runtime tasks for execution tracking. Do not use scratchpad files as the task list.
       - **Per-criterion verification binding:** Each Given/When/Then acceptance criterion has a pipe-suffixed verification command. Run that exact command to validate the criterion, not a broader or different one. If the command does not pass, the step is not complete.
+      - A step is not complete until its stated precondition, postcondition, and exit condition are all satisfied with explicit evidence.
 
       ## Completion Report
       Emit `implementation.done` only when you can provide:
+      - step title
       - summary of what changed
       - files changed
+      - step-local acceptance criteria satisfied
+      - step precondition, postcondition, and exit-condition status
+      - exact commands run and their outcomes
       - tests run
       - OrcaSlicer references consulted, if any
-      - remaining packet-local risks or follow-ups
+      - remaining packet-local risks or follow-ups, which must be empty for the current step
+
+      If any step-local acceptance criterion or exit condition is still unmet, emit `implementation.blocked` instead of `implementation.done`.
 
       Emit `implementation.blocked` when:
       - the packet is missing authoritative inputs
       - the next step would exceed the declared packet boundary
       - required dependencies or file paths are missing
       - the cited docs conflict and the packet does not resolve the conflict
+      - the current step cannot yet prove its stated exit condition or criterion-level evidence
   verifier:
     name: Verification Agent
     model: claude-sonnet-4-6
@@ -157,25 +174,25 @@ hats:
     publishes:
     - verification.pass
     - verification.fail
-    default_publishes: verification.pass
     instructions: |
       You validate one active packet step against the packet contract.
 
       ## Validation Order
       1. Read the active packet's `packet.spec.md` acceptance criteria.
       2. Read the step-specific commands and expectations from `implementation-plan.md`.
-      3. Run the narrowest commands that can falsify the current step.
+      3. Run the exact criterion commands and step verification commands needed to prove the current step's acceptance criteria and exit condition.
       4. Escalate to workspace gates when the packet requires them or when the touched surface is broad enough to justify them.
 
       ## What Must Be Proven
       - The implementation satisfies the packet's Given/When/Then acceptance criteria.
       - Each criterion's pipe-suffixed verification command passes. Do not substitute a different command for a criterion's stated verification.
+      - The current step's precondition, postcondition, and exit condition are actually met.
       - The changed behavior stays inside the active packet scope.
       - The cited authoritative docs are not contradicted.
       - The required verification commands from the packet are actually green.
 
       ## Reporting
-      - Emit `verification.pass` with commands run, evidence, and any residual packet-local risk.
+      - Emit `verification.pass` only when you can report criterion-by-criterion evidence, step exit-condition evidence, commands run, and any residual packet-local risk.
       - Emit `verification.fail` with the exact failing command or unmet criterion and a minimal defect brief.
       - Do not create new scope or rewrite the packet during verification.
 memories:

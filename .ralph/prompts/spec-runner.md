@@ -24,6 +24,8 @@ Execute one prepared ModularSlicer packet and nothing else.
 
 **AC completeness gate:** Before beginning execution, verify every acceptance criterion in `packet.spec.md` has a pipe-suffixed verification command. If any criterion lacks one, report the missing command and do not proceed.
 
+**Packet readiness gate:** Before beginning execution, verify the active packet does not have unresolved open questions that would change scope, missing negative cases for validation/enforcement work, or implementation steps without explicit preconditions, postconditions, and exit conditions. If any of these are missing, stop and report the exact blocker.
+
 ## Operating Rules
 
 - Only the packet's grouped task IDs are in scope.
@@ -32,29 +34,45 @@ Execute one prepared ModularSlicer packet and nothing else.
 - Use runtime tasks for active step tracking and `./.ralph/agent/memories.md` for learned context.
 - Apply TDD and run the narrowest falsifying checks before broad workspace gates.
 - Inspect `./OrcaSlicerDocumented/` when the packet asks for reference behavior.
-- Finish the run only after the packet acceptance criteria and verification commands are green, `./docs/07_implementation_status.md` is updated for the packet task IDs, and you emit `SPEC_PACKET_COMPLETE`.
+- Do not update `./docs/07_implementation_status.md` while step work is still in progress.
+- Finish the run only after a packet-wide acceptance ceremony re-runs or accounts for every pipe-suffixed acceptance command, the packet verification commands are green, the packet task IDs are reconciled, `./docs/07_implementation_status.md` is updated for the packet task IDs, and you emit `SPEC_PACKET_COMPLETE`.
+
+## Completion Contract
+
+Before emitting `SPEC_PACKET_COMPLETE`, confirm all of the following:
+
+- Every implementation-plan step is complete and its exit condition is explicitly satisfied.
+- Every acceptance criterion in `packet.spec.md` has passing evidence tied to its own stated command.
+- Any required superseded or reopened packet status updates have been applied.
+- Any remaining packet-local risk is explicitly documented rather than silently ignored.
 
 ## Version Control Workflow
 
 ### Branch Creation
+
 - At the start of the run, create a new dedicated branch from `master`: `agent/<packet-name>-<timestamp>` (e.g., `agent/01_manifest-ir-access-20260417`)
 - Use `git checkout -b` to create and switch to this branch before making any changes
 - Never commit directly to `master`
 
 ### Atomic Commits
+
 - After completing each logical unit of work (e.g., one task from task-map, one verification step, one file change), create a commit
 - Commit message format:
-  ```
+
+  ```text
   <type>(<scope>): <short description>
 
   <detailed explanation of what changed and why>
   ```
+
 - Types: `feat`, `fix`, `refactor`, `docs`, `chore`, `test`
 - Keep commits focused — one logical change per commit
 - Example: "docs(packet): add schema field description for manifest IR access" not "update docs"
 
 ### Commit Triggers
+
 Commit after each of these milestones:
+
 1. Initial file creation or scaffolding complete
 2. Each task/feature implementation complete
 3. Each verification step passing
@@ -62,6 +80,7 @@ Commit after each of these milestones:
 5. Final acceptance criteria green
 
 ### Branch Push
+
 - Push the dedicated branch to origin when:
   - The run completes successfully (SPEC_PACKET_COMPLETE)
   - Or when you need to preserve work-in-progress before a session ends
