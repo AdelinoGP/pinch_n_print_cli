@@ -34,8 +34,8 @@ Do not use Swarm when the packet touches one shared hotspot and offers no safe p
 ## Parameters
 
 - `packet` (optional): Packet slug or path. If omitted, resolve the single active packet from `.ralph/specs/**/packet.spec.md`.
-- `workers` (optional, default: `3`): Maximum concurrent workers. Use fewer when file overlap is high.
-- `max_iterations` (optional, default: `2`): Max review/fix loops after the first implementation pass.
+- `workers` (optional, default: `4`): Maximum concurrent workers. Use fewer when file overlap is high.
+- `max_iterations` (optional, default: `6`): Max review/fix loops after the first implementation pass.
 - `scope` (optional): Restrict work to specific `implementation-plan.md` steps.
 - `mode` (optional): `implement`, `refine-draft`, or `review-only`. If omitted, infer from packet status and user request.
 
