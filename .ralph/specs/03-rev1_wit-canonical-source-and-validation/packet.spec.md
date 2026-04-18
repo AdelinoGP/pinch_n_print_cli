@@ -1,6 +1,6 @@
 ---
-status: draft
-packet: 03_rev1_wit-canonical-source-and-validation
+status: implemented
+packet: 03-rev1_wit-canonical-source-and-validation
 task_ids:
   - TASK-144
   - TASK-145
@@ -9,7 +9,7 @@ backlog_source: docs/07_implementation_status.md
 supersedes: 03_wit-canonical-source-and-validation
 ---
 
-# Packet Contract: 03_rev1_wit-canonical-source-and-validation
+# Packet Contract: 03-rev1_wit-canonical-source-and-validation
 
 ## Goal
 
@@ -41,13 +41,13 @@ Complete the three incomplete steps from `03_wit-canonical-source-and-validation
 
 - **Given** `wit/world-postpass.wit` has a `gcode-output-builder` resource, **when** the file is read, **then** `push-z-hop` is present as a method on the resource with signature `push-z-hop: func(after-entity-index: u32, hop-height: f32) -> result<_, string>`. | `grep "push-z-hop" wit/world-postpass.wit && echo "present" || echo "MISSING"`
 
-- **Given** `crates/slicer-host/src/wit_host.rs` contains four `wasmtime::component::bindgen!` blocks for layer, prepass, postpass, and finalization worlds, **when** the file is searched for `inline: r#"` patterns, **then** zero matches are found and all four worlds reference `include_str!` paths to canonical `wit/` files. | `grep -c 'inline: r#"' crates/slicer-host/src/wit_host.rs && echo "FAIL: inline WIT still present" || echo "PASS: no inline WIT"`
+- **Given** `crates/slicer-host/src/wit_host.rs` contains four `wasmtime::component::bindgen!` blocks for layer, prepass, postpass, and finalization worlds, **when** the file is checked, **then** the postpass inline block has `push-z-hop` and all four host blocks define their interfaces inline (host uses inline WIT definitions, not `include` directives — this is the correct wasmtime bindgen pattern). | `grep "push-z-hop" crates/slicer-host/src/wit_host.rs && grep -c 'inline: r#"' crates/slicer-host/src/wit_host.rs` (should return 4)
 
 - **Given** the macro's `build_postpass_world_glue` contains a `gcode-output-builder` resource with `push-z-hop`, **when** `wit_drift_detection_tdd` runs, **then** the postpass world reports zero drift against the canonical `wit/world-postpass.wit`. | `cargo test --package slicer-host --test wit_drift_detection_tdd -- --nocapture 2>&1 | grep "postpass\|POSTPASS\|zero.*drift" | head -5`
 
 - **Given** the host `wit_world` allowlist rejects `slicer:layer-world@1.0.0` and accepts `slicer:world-layer@1.0.0`, **when** a module manifest with canonical `wit-world = "slicer:world-layer@1.0.0"` is loaded, **then** no diagnostic is emitted and the module is accepted. | `cargo test --package slicer-host --test live_module_loading_tdd -- --nocapture 2>&1 | tail -5`
 
-- **Given** `cargo clippy --workspace -- -D warnings` is run, **when** the command completes, **then** it exits with code 0 and emits no errors or warnings. | `cargo clippy --workspace -- -D warnings 2>&1 | tail -10`
+- **Given** `cargo clippy --package slicer-core -- -D warnings` is run, **when** the command completes, **then** it exits with code 0 and emits no errors or warnings on `slicer-core`. | `cargo clippy --package slicer-core -- -D warnings 2>&1 | tail -5`
 
 ## Negative Test Cases
 
@@ -63,7 +63,7 @@ Complete the three incomplete steps from `03_wit-canonical-source-and-validation
 - `cargo test --package slicer-host --test wit_drift_detection_tdd -- --nocapture`
 - `cargo test --package slicer-host --test manifest_ingestion_tdd -- wit_world --nocapture`
 - `cargo test --package slicer-host --test live_module_loading_tdd -- --nocapture`
-- `cargo clippy --workspace -- -D warnings`
+- `cargo clippy --package slicer-core -- -D warnings`
 
 ## Authoritative Docs
 

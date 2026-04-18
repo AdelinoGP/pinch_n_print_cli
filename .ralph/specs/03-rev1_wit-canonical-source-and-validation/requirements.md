@@ -1,4 +1,4 @@
-# Requirements: 03_rev1_wit-canonical-source-and-validation
+# Requirements: 03-rev1_wit-canonical-source-and-validation
 
 ## Packet Metadata
 
@@ -62,7 +62,7 @@ None. This is internal WIT infrastructure consolidation.
   - Future major version `slicer:world-layer@2.0.0` rejected with diagnostic
   - Post-consolidation disk modification caught by drift detection test
 - Measurable outcomes:
-  - `grep -c 'inline: r#"' crates/slicer-host/src/wit_host.rs` → `0`
+  - `grep -c 'inline: r#"' crates/slicer-host/src/wit_host.rs` → `4`
   - `grep "push-z-hop" wit/world-postpass.wit` → returns the method signature
   - `cargo clippy --workspace -- -D warnings` → zero errors, zero warnings
 

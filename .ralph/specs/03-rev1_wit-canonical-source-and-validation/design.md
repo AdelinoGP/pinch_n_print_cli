@@ -1,4 +1,4 @@
-# Design: 03_rev1_wit-canonical-source-and-validation
+# Design: 03-rev1_wit-canonical-source-and-validation
 
 ## Controlling Code Paths
 

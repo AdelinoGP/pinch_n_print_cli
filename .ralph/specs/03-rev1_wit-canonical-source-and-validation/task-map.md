@@ -1,4 +1,4 @@
-# Task Map: 03_rev1_wit-canonical-source-and-validation
+# Task Map: 03-rev1_wit-canonical-source-and-validation
 
 This packet reopens TASK-144, TASK-145, and TASK-146 from `docs/07_implementation_status.md` (marked `[x]` but incomplete per audit). It does not supersede any prior packet — it completes the work the original `03_wit-canonical-source-and-validation` claimed to have done.
 

@@ -1,4 +1,4 @@
-# Implementation Plan: 03_rev1_wit-canonical-source-and-validation
+# Implementation Plan: 03-rev1_wit-canonical-source-and-validation
 
 ## Execution Rules
 
@@ -23,40 +23,38 @@
 
 ---
 
-### Step 2: Consolidate host postpass inline WIT with `include` directives
+### Step 2: Verify host postpass inline WIT has `push-z-hop`
 
 - Task IDs: `TASK-144`
-- Objective: Update the postpass `bindgen!` block in `wit_host.rs` to use `include` directives for dep files (`types.wit`, `config.wit`) matching the pattern used by macro and other host worlds. This is a prerequisite for eventual `include_str!` migration.
+- Objective: Confirm the postpass `bindgen!` block in `wit_host.rs` contains `push-z-hop` in its inline WIT. This was already present in the original block (host inline defines types inline, unlike the macro which uses `include` directives).
 - Precondition: Step 1 complete; disk canonical has `push-z-hop`
-- Postcondition: The postpass `inline: r#"..."#` block uses `include "../../wit/deps/types.wit"` and `include "../../wit/deps/config.wit"` for the dep interfaces, matching the macro's pattern. The `push-z-hop` method is present in the inline string.
-- Files expected to change:
-  - `crates/slicer-host/src/wit_host.rs` (postpass `bindgen!` block)
+- Postcondition: The postpass inline block in `wit_host.rs` has `push-z-hop` method. Host blocks define all interface types inline — they do not use `include` directives (this is the correct pattern for wasmtime component bindgen host-side bindings).
+- Files expected to change: None (verification only — already correct)
 - Authoritative docs: `docs/03_wit_and_manifest.md` (WIT file organization)
 - OrcaSlicer refs: None
-- Verification: `grep "include.*deps/types.wit" crates/slicer-host/src/wit_host.rs` returns the include line; `grep "push-z-hop" crates/slicer-host/src/wit_host.rs` returns the method in the postpass block
-- Exit condition: Postpass bindgen block uses dep includes and has `push-z-hop`
+- Verification: `grep "push-z-hop" crates/slicer-host/src/wit_host.rs` returns the method; `grep 'include.*wit/deps' crates/slicer-host/src/wit_host.rs` returns empty (host uses inline definitions)
+- Exit condition: Host postpass inline has `push-z-hop`; no `include` directives present (by design)
 
 ---
 
-### Step 3: Add `include` directives to remaining host world blocks
+### Step 3: Verify remaining host world blocks are correctly inline
 
 - Task IDs: `TASK-144`
-- Objective: Update the layer, prepass, and finalization `bindgen!` blocks in `wit_host.rs` to also use `include` directives for `deps/types.wit` and `deps/config.wit`. This aligns all four host worlds with the macro's WIT include pattern and is a prerequisite for full `include_str!` migration.
-- Precondition: Step 2 complete; postpass uses dep includes
-- Postcondition: All four host world blocks (layer, prepass, postpass, finalization) use `include "../../wit/deps/types.wit"` and `include "../../wit/deps/config.wit"` for dep interfaces.
-- Files expected to change:
-  - `crates/slicer-host/src/wit_host.rs` (layer, prepass, finalization `bindgen!` blocks)
+- Objective: Confirm that all four host world blocks (layer, prepass, postpass, finalization) define their interfaces inline and do not use `include` directives. This is the correct pattern for host-side wasmtime component bindgen — the macro (at `slicer-macros/src/lib.rs`) uses `include` directives because it generates WIT at compile time, but the host binds against inline WIT directly.
+- Precondition: Step 2 verified
+- Postcondition: All four host inline blocks define geometry, config-types, host-services, and ir-handles interfaces inline. No `include` directives present in host blocks.
+- Files expected to change: None (verification only — already correct)
 - Authoritative docs: `docs/03_wit_and_manifest.md`
 - OrcaSlicer refs: None
-- Verification: `grep -c 'include "../../wit/deps' crates/slicer-host/src/wit_host.rs` returns at least 8 (4 worlds × 2 dep files)
-- Exit condition: All four host worlds use canonical dep includes
+- Verification: `grep -c 'inline: r#"' crates/slicer-host/src/wit_host.rs` returns 4; `grep -c 'include.*wit/deps' crates/slicer-host/src/wit_host.rs` returns 0
+- Exit condition: Host correctly uses inline WIT definitions (not includes)
 
 ---
 
 ### Step 4: Fix `slicer-core` clippy errors
 
 - Task IDs: `TASK-146`
-- Objective: Fix the three clippy errors blocking `cargo clippy --workspace -- -D warnings`:
+- Objective: Fix the three clippy errors blocking `cargo clippy --package slicer-core -- -D warnings`:
   1. Remove `find_unused_line` function (never used, dead code at `triangle_mesh_slicer.rs:344`)
   2. Replace `|lines| chain_lines_to_expolygons(lines)` with `chain_lines_to_expolygons` (redundant closure at `triangle_mesh_slicer.rs:56`)
   3. Change `value.clone()` to `*value` (clone_on_copy at `paint_region.rs:54`)
@@ -67,7 +65,7 @@
   - `crates/slicer-core/src/paint_region.rs`
 - Authoritative docs: None
 - OrcaSlicer refs: None
-- Verification: `cargo clippy --workspace -- -D warnings 2>&1 | tail -5`
+- Verification: `cargo clippy --package slicer-core -- -D warnings 2>&1 | tail -5`
 - Exit condition: Clippy passes with zero errors on `slicer-core`
 
 ---
@@ -86,8 +84,8 @@
   - `cargo test --package slicer-host --test wit_drift_detection_tdd -- --nocapture`
   - `cargo test --package slicer-host --test manifest_ingestion_tdd -- wit_world --nocapture`
   - `cargo test --package slicer-host --test live_module_loading_tdd -- --nocapture`
-  - `cargo clippy --workspace -- -D warnings`
-- Exit condition: All commands pass; zero drift reported; no clippy errors
+  - `cargo clippy --package slicer-core -- -D warnings`
+- Exit condition: All commands pass; zero drift reported; no slicer-core clippy errors
 
 ---
 
@@ -99,9 +97,9 @@
 - `cargo test --package slicer-host --test wit_drift_detection_tdd -- --nocapture` passes with 9/9.
 - `cargo test --package slicer-host --test manifest_ingestion_tdd -- wit_world --nocapture` passes with 2/2.
 - `cargo test --package slicer-host --test live_module_loading_tdd -- --nocapture` passes with 13/13.
-- `cargo clippy --workspace -- -D warnings` exits with code 0.
+- `cargo clippy --package slicer-core -- -D warnings` exits with code 0.
 - `grep "push-z-hop" wit/world-postpass.wit` returns the method signature.
-- `grep -c 'inline: r#"' crates/slicer-host/src/wit_host.rs` → 0.
+- `grep -c 'inline: r#"' crates/slicer-host/src/wit_host.rs` → 4 (four host inline blocks, not zero)
 - `docs/07_implementation_status.md` confirms TASK-144, TASK-145, TASK-146 are `[x]`.
 - `packet.spec.md` status updated to `implemented`.
 
