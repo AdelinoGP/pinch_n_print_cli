@@ -356,10 +356,7 @@ fn discover_manifest_paths(root: &Path) -> Result<Vec<PathBuf>, LoadError> {
                 for sub_entry in sub_dir.flatten() {
                     let sub_path = sub_entry.path();
                     if sub_path.extension().and_then(|v| v.to_str()) == Some("toml")
-                        && sub_path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .map_or(true, |n| n != "Cargo.toml")
+                        && sub_path.file_name().and_then(|n| n.to_str()) != Some("Cargo.toml")
                     {
                         manifests.push(sub_path);
                     }
