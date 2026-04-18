@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: superseded
 packet: runtime-access-audit-and-declaration-enforcement
 task_ids:
   - TASK-123
@@ -8,6 +8,7 @@ task_ids:
   - TASK-123c
   - TASK-124
   - TASK-125
+superseded_by: 02-rev1_runtime-access-audit-and-declaration-enforcement
   - TASK-126
 backlog_source: docs/07_implementation_status.md
 ---
