@@ -27,11 +27,23 @@ For each criterion in `packet.spec.md`:
 - [ ] Criterion ends with `|` followed by a concrete command
 - [ ] The command uses correct paths, flags, and module names
 - [ ] The command is runnable in the current environment without additional context
+- [ ] The criterion names exact assertion content rather than generic phrases like "all required fields" or "correct diagnostics"
+
+Packet-quality preflight:
+- [ ] The packet includes at least one negative or rejection criterion when the slice changes validation, enforcement, or failure behavior
+- [ ] `design.md` selects one implementation approach when more than one is plausible
+- [ ] `implementation-plan.md` gives each step an explicit exit condition, precondition, or postcondition
+- [ ] Open questions that would change implementation scope are resolved, or the packet is still `draft` and the blocker is explicit
 
 **If any criterion lacks a per-criterion verification command:**
 - Mark it as a **HIGH** finding (not MED).
 - In the report table, mark it `PARTIAL/INCOMPLETE`.
 - Do not proceed to full review until the finding is logged.
+
+**If the packet fails the packet-quality preflight:**
+- Treat the packet as under-specified before evaluating implementation completeness.
+- Log a **HIGH** finding for each missing packet-quality element.
+- Continue the review only after clearly separating packet-authoring defects from implementation defects.
 
 ### Step 2: Identify the Spec Packet
 
@@ -70,6 +82,7 @@ From `design.md`, identify:
 
 From `implementation-plan.md`, identify:
 - **Steps 1-N** — Each step's objective and verification command
+- **Step exit criteria** — What proves each step is actually complete?
 - **Files expected to change per step**
 
 ---
@@ -88,13 +101,15 @@ From `implementation-plan.md`, identify:
 - [ ] Items listed as "out of scope" are genuinely not touched
 - [ ] Any boundary items are explicitly noted with justification
 
-### 2. Acceptance Criteriaulfillment (Critical)
+### 2. Acceptance Criteria Fulfillment (Critical)
 
 For each acceptance criterion in `packet.spec.md`:
 - [ ] **Given/When/Then** structure is met by implementation
 - [ ] Verification command passes (or explanation of why not yet)
 - [ ] Test coverage exists for the criterion
 - [ ] No partial fulfillment — "mostly done" counts as incomplete
+- [ ] The criterion's promised assertion content is actually proven by the test or command output
+- [ ] Negative or rejection criteria are implemented and verified when the packet requires them
 
 ### 3. Requirements Traceability (Critical)
 
@@ -106,6 +121,7 @@ For each requirement in `requirements.md`:
 **Acceptance Summary Check:**
 - [ ] All bullets in acceptance summary are addressed
 - [ ] Each bullet has corresponding verification
+- [ ] Measurable outcomes in `requirements.md` are actually measurable in the evidence provided
 
 ### 4. Design Fidelity (High)
 
@@ -113,11 +129,13 @@ For each requirement in `requirements.md`:
 - [ ] Implementation respects architecture constraints in `design.md`
 - [ ] Module stage assignments match documented stage IDs
 - [ ] No ad-hoc workarounds that violate documented constraints
+- [ ] Locked assumptions and invariants called out by the packet are preserved
 
 **Controlling Code Paths:**
 - [ ] Changes made to expected files (no surprise changes)
 - [ ] No changes to unexpected files without justification
 - [ ] Test/fixture files properly updated
+- [ ] The implementation follows the selected approach from `design.md`, not an unreviewed alternative
 
 **Data & Contract Notes:**
 - [ ] IR field paths match exact names in `crates/slicer-ir/src/`
@@ -131,11 +149,14 @@ For each requirement in `requirements.md`:
 - [ ] Steps executed in logical order
 - [ ] Each step achieved its stated objective
 - [ ] Verification commands documented and passing
+- [ ] Each step satisfied its explicit precondition, postcondition, and exit condition
+- [ ] Read-only discovery steps produced the exact inventory or decision the packet said they would produce
 
 **Task Map Traceability:**
 - [ ] Each task ID from `task-map.md` corresponds to completed work
 - [ ] No unmapped task completions or gaps
 - [ ] Backlog source (e.g., `docs/07_implementation_status.md`) updated appropriately
+- [ ] Reopened or superseded packet work is reconciled explicitly rather than implied
 
 ### 6. Verification Quality (High)
 
@@ -155,6 +176,7 @@ For each requirement in `requirements.md`:
 **Open Questions Resolution:**
 - [ ] All open questions in `design.md` are answered or tracked
 - [ ] Answers are documented (code comments, doc comments, or deviation log)
+- [ ] No packet marked `active` or `implemented` still depends on unanswered questions that would change implementation scope
 
 **Known Risks:**
 - [ ] Identified risks are mitigated or documented
@@ -224,10 +246,10 @@ ls -la [expected-directories]
 | Scope boundaries respected | PASS/FAIL | Brief evidence |
 
 #### Acceptance Criteria Check
-| Criterion | Status | Trace |
-|-----------|--------|-------|
-| AC-1: [criterion text] | PASS/PARTIAL/FAIL | [file:function or test] |
-| AC-2: [criterion text] | PASS/PARTIAL/FAIL | [file:function or test] |
+| Criterion | Status | Trace | Assertion Quality |
+|-----------|--------|-------|-------------------|
+| AC-1: [criterion text] | PASS/PARTIAL/FAIL | [file:function or test] | Exact / Vague / Missing |
+| AC-2: [criterion text] | PASS/PARTIAL/FAIL | [file:function or test] | Exact / Vague / Missing |
 
 #### Requirements Traceability
 | Requirement | Status | Implementation Trace |
@@ -255,10 +277,10 @@ ls -la [expected-directories]
 ### Implementation Completeness
 
 #### Step Execution
-| Step | Status | Verification |
-|------|--------|--------------|
-| Step 1: [name] | DONE/PARTIAL/SKIP | [verification evidence] |
-| Step 2: [name] | DONE/PARTIAL/SKIP | [verification evidence] |
+| Step | Status | Verification | Exit Condition |
+|------|--------|--------------|----------------|
+| Step 1: [name] | DONE/PARTIAL/SKIP | [verification evidence] | Met / Weak / Missing |
+| Step 2: [name] | DONE/PARTIAL/SKIP | [verification evidence] | Met / Weak / Missing |
 | ... | ... | ... |
 
 #### Task Map Resolution

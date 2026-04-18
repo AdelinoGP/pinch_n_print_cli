@@ -36,6 +36,8 @@ These rules apply across all steps:
   - `task-map.md` when mapping back to `docs/07` needs to be explicit
 - `packet.spec.md` is the preflight-visible contract and MUST contain real Given/When/Then acceptance criteria.
 - Default new packets to `status: draft`. Only mark a packet `active` if the user explicitly requests it and there is no other active packet.
+- A packet must be implementation-grade on first emission: exact assertions, negative cases, step exit criteria, and decisive code surfaces are required. Do not emit placeholder prose that would force the implementer or reviewer to guess.
+- Unresolved ambiguity blocks activation. If open questions remain, keep the packet `draft` and record the blocker explicitly.
 - Use the normative document map in `./docs/00_project_overview.md` to choose authoritative sources.
 - If the packet mirrors or audits OrcaSlicer behavior, cite specific paths under `./OrcaSlicerDocumented/`.
 - This skill ends after generating the packet. Do not begin implementation.
@@ -127,8 +129,14 @@ Before writing any packet file, verify the acceptance criteria you will include 
 **For each Given/When/Then criterion:**
 - [ ] The criterion is specific enough to be falsified by a single command or test.
 - [ ] The criterion names exact field names (IR paths, config keys, manifest entries) rather than generic categories.
+- [ ] The criterion names the observable assertion content, not just the topic area. Prefer exact fields, counts, paths, error codes, enum variants, or output fragments over phrases like "all required fields" or "correct diagnostics".
 - [ ] The criterion ends with a pipe `|` followed by a runnable verification command.
 - [ ] If multiple criteria share the same verification, each still carries its own pipe-suffixed command (repeat it — do not use "see AC-N").
+
+**For packet-level coverage:**
+- [ ] At least one criterion is a negative or rejection case when the packet changes a validator, scheduler rule, contract boundary, or failure path.
+- [ ] The criteria together cover both the main success path and the failure mode most likely to regress silently.
+- [ ] Each criterion can be traced to one or more implementation steps without relying on implied work.
 
 **For IR/config/schema criteria specifically:**
 - [ ] Each IR field path is spelled exactly as it appears in `docs/02_ir_schemas.md` (e.g., `mesh.bounding_box.min_x`, not `bounding_box.x`).
@@ -169,7 +177,9 @@ Use `./.ralph/specs/_templates/` as the starting structure, but replace placehol
 - packet goal
 - scope boundaries
 - Given/When/Then acceptance criteria — each criterion MUST end with a pipe and a runnable verification command
-- verification commands (supplemental, for criteria that share verification)
+- at least one negative or rejection criterion when the packet touches validation, enforcement, or error handling
+- prerequisites and blockers when packet sequencing matters or a prior packet is being corrected
+- verification commands (supplemental workspace or packet checks, not a replacement for per-criterion commands)
 - authoritative docs
 - OrcaSlicer reference obligations
 
@@ -182,7 +192,8 @@ Capture:
 - in-scope and out-of-scope boundaries
 - authoritative docs
 - OrcaSlicer reference obligations
-- acceptance summary
+- acceptance summary with measurable outcomes and explicit negative cases
+- cross-packet dependencies or unblockers when relevant
 - verification commands
 
 ### 9. Populate `design.md`
@@ -194,10 +205,12 @@ Include:
 - controlling code paths or likely implementation surfaces
 - neighboring tests or fixtures
 - architecture constraints
-- proposed change shape
+- one selected implementation approach when multiple approaches are possible; rejected alternatives may be noted briefly, but the packet must choose one
+- explicit code change surface: the exact functions, traits, manifests, tests, or fixtures expected to move
 - data and contract notes
 - risks and tradeoffs
 - open questions that must be resolved before the packet becomes active
+- locked assumptions and invariants that the implementation must preserve
 
 ### 10. Populate `implementation-plan.md`
 
@@ -208,19 +221,38 @@ Each step should include:
 - step title
 - linked task ids
 - objective
+- precondition
+- postcondition
 - likely files or subsystems touched
 - authoritative docs
 - OrcaSlicer refs
 - narrow verification commands
+- the cheapest falsifying check or explicit exit condition for the step
 
 **Requirements:**
 
 - Steps must be ordered.
 - Steps must stay inside the packet boundary.
 - Steps must reflect TDD and narrow validation.
+- Steps must be actionable without guesswork; if a step is read-only discovery, the expected output of that discovery must be stated.
 - Include a packet completion gate at the end.
 
-### 11. Populate `task-map.md`
+### 11. Packet Self-Review Before Emitting Files
+
+Before reporting the packet as generated, perform a self-review against the packet itself. Do not skip this pass.
+
+**Self-review checklist:**
+- [ ] Every acceptance criterion is implementation-grade and names exact assertion content.
+- [ ] The packet includes at least one negative case when the slice changes validation, enforcement, or contract behavior.
+- [ ] `requirements.md` states measurable outcomes, not just topical summaries.
+- [ ] `design.md` selects one approach and lists the exact code surfaces expected to change.
+- [ ] `implementation-plan.md` gives each step a precondition, postcondition, and falsifying check or explicit exit condition.
+- [ ] Any reopened or superseding packet explains what the prior packet missed and how this packet narrows the remaining gap.
+- [ ] Any unresolved open question is either answered in the packet or the packet remains `draft` with the blocker called out.
+
+If any checklist item fails, revise the packet before presenting it as complete. If you cannot resolve the issue from the available sources, stop and tell the user exactly what remains ambiguous.
+
+### 12. Populate `task-map.md`
 
 Add `task-map.md` when it clarifies how packet steps map back to `docs/07`.
 
@@ -229,8 +261,9 @@ Use it especially when:
 - the packet spans more than one task id
 - multiple docs are authoritative for different steps
 - OrcaSlicer refs differ by step
+- the packet reopens or supersedes earlier packet work
 
-### 12. Report Results
+### 13. Report Results
 
 List generated files with paths and summarize:
 
@@ -240,14 +273,16 @@ List generated files with paths and summarize:
 - authoritative docs chosen
 - OrcaSlicer refs chosen
 - any open questions or assumptions
+- whether the packet passed the self-review checklist cleanly or remains `draft` because of explicit blockers
 
-### 13. Offer Activation Guidance
+### 14. Offer Activation Guidance
 
 If the packet is still `draft`, ask whether the user wants you to mark it `active`.
 
 If the user asks for activation:
 
 - confirm there is no other active packet
+- confirm there are no unresolved open questions, missing negative cases, or missing step exit criteria
 - update `packet.spec.md` to `status: active`
 - remind them the next step is `ralph preflight` and then `ralph run -c ralph.yml`
 
