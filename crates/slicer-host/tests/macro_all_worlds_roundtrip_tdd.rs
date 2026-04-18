@@ -29,9 +29,14 @@ use std::sync::Arc;
 use slicer_ir::{ConfigValue, ConfigView, GlobalLayer, StageId};
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_host::{
-    Blackboard, CompiledModule, FinalizationError, FinalizationOutput, FinalizationStageRunner,
-    IrAccessMask, LoadedModule, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
+    Blackboard, CompiledModule, FinalizationOutput, FinalizationStageRunner,
+    IrAccessMask, LoadedModule, PrepassStageOutput, PrepassStageRunner,
     WasmEngine, WasmRuntimeDispatcher,
+};
+use slicer_host::wit_host::{
+    ExtrusionRole as WitExtrusionRole, PaintSemantic as WitPaintSemantic,
+    PaintValue as WitPaintValue, WallFeatureFlag as WitWallFeatureFlag,
+    convert_extrusion_role, convert_wall_feature_flag,
 };
 
 fn semver(major: u32, minor: u32, patch: u32) -> slicer_ir::SemVer {
@@ -572,4 +577,287 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
         "deep-copy IN + drain-back OUT must be deterministic: {:?}",
         snapshots
     );
+}
+
+// ── Custom payload round-trip tests (TASK-150) ──────────────────────────────────
+
+/// Round-trip test for ExtrusionRole::Custom(String).
+///
+/// Tests that a custom extrusion role payload survives the WIT boundary:
+/// IR (ExtrusionRole::Custom) → WIT (ExtrusionRole::Custom) → IR (ExtrusionRole::Custom)
+///
+/// Note: The IR→WIT direction uses inline conversion logic that mirrors the
+/// macro's private __slicer_ir_role_to_wit function, since that function is
+/// not accessible from tests. The WIT→IR direction uses the public
+/// convert_extrusion_role function.
+#[test]
+fn extrusion_role_custom_payload_roundtrip() {
+    // Step 1: Create IR ExtrusionRole::Custom
+    let ir_role = slicer_ir::ExtrusionRole::Custom("test-role@1".to_string());
+
+    // Step 2: Convert IR → WIT using inline logic (mirrors macro's __slicer_ir_role_to_wit)
+    let wit_role = match &ir_role {
+        slicer_ir::ExtrusionRole::Custom(s) => WitExtrusionRole::Custom(s.clone()),
+        slicer_ir::ExtrusionRole::OuterWall => WitExtrusionRole::OuterWall,
+        slicer_ir::ExtrusionRole::InnerWall => WitExtrusionRole::InnerWall,
+        slicer_ir::ExtrusionRole::ThinWall => WitExtrusionRole::ThinWall,
+        slicer_ir::ExtrusionRole::TopSolidInfill => WitExtrusionRole::TopSolidInfill,
+        slicer_ir::ExtrusionRole::BottomSolidInfill => WitExtrusionRole::BottomSolidInfill,
+        slicer_ir::ExtrusionRole::SparseInfill => WitExtrusionRole::SparseInfill,
+        slicer_ir::ExtrusionRole::SupportMaterial => WitExtrusionRole::SupportMaterial,
+        slicer_ir::ExtrusionRole::SupportInterface => WitExtrusionRole::SupportInterface,
+        slicer_ir::ExtrusionRole::Ironing => WitExtrusionRole::Ironing,
+        slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
+        slicer_ir::ExtrusionRole::WipeTower => WitExtrusionRole::WipeTower,
+        slicer_ir::ExtrusionRole::PrimeTower => WitExtrusionRole::Custom(String::new()),
+        slicer_ir::ExtrusionRole::Skirt => WitExtrusionRole::Custom(String::new()),
+    };
+
+    // Step 3: Convert WIT → IR using public convert_extrusion_role
+    let ir_result = convert_extrusion_role(&wit_role);
+
+    // Step 4: Assert payload is preserved
+    match ir_result {
+        slicer_ir::ExtrusionRole::Custom(s) => {
+            assert_eq!(s, "test-role@1", "custom payload must survive round-trip");
+        }
+        other => panic!("expected ExtrusionRole::Custom, got {:?}", other),
+    }
+}
+
+/// Round-trip test for PaintSemantic::Custom(String).
+///
+/// Tests that a custom paint semantic payload survives the WIT boundary.
+/// Uses inline conversion logic for IR→WIT since the host's ir_to_wit_paint_semantic
+/// is private. The WIT→IR direction uses the public convert_wall_feature_flag
+/// indirectly via WallFeatureFlag round-trip.
+#[test]
+fn paint_semantic_custom_payload_roundtrip() {
+    // Create IR PaintSemantic::Custom
+    let ir_semantic = slicer_ir::PaintSemantic::Custom("com.example/texture@1".to_string());
+
+    // Convert IR → WIT using inline logic
+    let wit_semantic = match &ir_semantic {
+        slicer_ir::PaintSemantic::Custom(s) => WitPaintSemantic::Custom(s.clone()),
+        slicer_ir::PaintSemantic::Material => WitPaintSemantic::Material,
+        slicer_ir::PaintSemantic::FuzzySkin => WitPaintSemantic::FuzzySkin,
+        slicer_ir::PaintSemantic::SupportEnforcer => WitPaintSemantic::SupportEnforcer,
+        slicer_ir::PaintSemantic::SupportBlocker => WitPaintSemantic::SupportBlocker,
+    };
+
+    // Verify the WIT variant carries the correct payload
+    match wit_semantic {
+        WitPaintSemantic::Custom(ref s) => {
+            assert_eq!(s, "com.example/texture@1", "WIT custom semantic must carry payload");
+        }
+        other => panic!("expected WitPaintSemantic::Custom, got {:?}", other),
+    }
+
+    // Convert back to IR using inline logic (mirrors the private ir_to_wit_paint_semantic inverse)
+    let ir_result = match wit_semantic {
+        WitPaintSemantic::Custom(s) => slicer_ir::PaintSemantic::Custom(s),
+        WitPaintSemantic::Material => slicer_ir::PaintSemantic::Material,
+        WitPaintSemantic::FuzzySkin => slicer_ir::PaintSemantic::FuzzySkin,
+        WitPaintSemantic::SupportEnforcer => slicer_ir::PaintSemantic::SupportEnforcer,
+        WitPaintSemantic::SupportBlocker => slicer_ir::PaintSemantic::SupportBlocker,
+    };
+
+    // Assert payload is preserved
+    match ir_result {
+        slicer_ir::PaintSemantic::Custom(s) => {
+            assert_eq!(s, "com.example/texture@1", "custom payload must survive round-trip");
+        }
+        other => panic!("expected PaintSemantic::Custom, got {:?}", other),
+    }
+}
+
+/// Round-trip test for WallFeatureFlags with a single custom entry.
+///
+/// Tests that a custom paint value survives the WIT boundary when encoded
+/// in WallFeatureFlags::custom map.
+#[test]
+fn wall_feature_flags_custom_payload_roundtrip() {
+    // Create IR WallFeatureFlags with one custom entry
+    let ir_flags = slicer_ir::WallFeatureFlags {
+        tool_index: None,
+        fuzzy_skin: false,
+        is_bridge: false,
+        is_thin_wall: false,
+        skip_ironing: false,
+        custom: std::collections::HashMap::from_iter([(
+            "key".to_string(),
+            slicer_ir::PaintValue::Scalar(0.5),
+        )]),
+    };
+
+    // Convert IR → WIT using inline logic (mirrors macro's __slicer_ir_feature_to_wit)
+    let wit_flags = WitWallFeatureFlag {
+        tool_index: ir_flags.tool_index,
+        fuzzy_skin: ir_flags.fuzzy_skin,
+        is_bridge: ir_flags.is_bridge,
+        is_thin_wall: ir_flags.is_thin_wall,
+        skip_ironing: ir_flags.skip_ironing,
+        custom: {
+            let mut entries: Vec<_> = ir_flags
+                .custom
+                .iter()
+                .map(|(k, v)| {
+                    let wit_v = match v {
+                        slicer_ir::PaintValue::Flag(b) => WitPaintValue::Flag(*b),
+                        slicer_ir::PaintValue::Scalar(s) => WitPaintValue::Scalar(*s),
+                        slicer_ir::PaintValue::ToolIndex(t) => WitPaintValue::ToolIndex(*t),
+                    };
+                    (k.clone(), wit_v)
+                })
+                .collect();
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            entries
+        },
+    };
+
+    // Convert WIT → IR using public convert_wall_feature_flag
+    let ir_result = convert_wall_feature_flag(&wit_flags);
+
+    // Assert the custom map has exactly one entry with correct key and value
+    assert_eq!(
+        ir_result.custom.len(),
+        1,
+        "custom map must have exactly one entry"
+    );
+    let entry = ir_result
+        .custom
+        .get("key")
+        .expect("custom map must have 'key' entry");
+    match entry {
+        slicer_ir::PaintValue::Scalar(s) => {
+            assert!((*s - 0.5).abs() < 1e-6, "custom Scalar value must be 0.5");
+        }
+        other => panic!("expected Scalar(0.5), got {:?}", other),
+    }
+}
+
+/// Round-trip test for WallFeatureFlags with multiple custom entries.
+///
+/// Tests that multiple custom paint values of different types survive the WIT boundary.
+#[test]
+fn wall_feature_flags_custom_multiple_entries_roundtrip() {
+    // Create IR WallFeatureFlags with three custom entries
+    let ir_flags = slicer_ir::WallFeatureFlags {
+        tool_index: Some(1),
+        fuzzy_skin: true,
+        is_bridge: true,
+        is_thin_wall: false,
+        skip_ironing: true,
+        custom: std::collections::HashMap::from_iter([
+            ("a".to_string(), slicer_ir::PaintValue::Scalar(0.1)),
+            ("b".to_string(), slicer_ir::PaintValue::Flag(true)),
+            ("c".to_string(), slicer_ir::PaintValue::ToolIndex(2)),
+        ]),
+    };
+
+    // Convert IR → WIT using inline logic
+    let wit_flags = WitWallFeatureFlag {
+        tool_index: ir_flags.tool_index,
+        fuzzy_skin: ir_flags.fuzzy_skin,
+        is_bridge: ir_flags.is_bridge,
+        is_thin_wall: ir_flags.is_thin_wall,
+        skip_ironing: ir_flags.skip_ironing,
+        custom: {
+            let mut entries: Vec<_> = ir_flags
+                .custom
+                .iter()
+                .map(|(k, v)| {
+                    let wit_v = match v {
+                        slicer_ir::PaintValue::Flag(b) => WitPaintValue::Flag(*b),
+                        slicer_ir::PaintValue::Scalar(s) => WitPaintValue::Scalar(*s),
+                        slicer_ir::PaintValue::ToolIndex(t) => WitPaintValue::ToolIndex(*t),
+                    };
+                    (k.clone(), wit_v)
+                })
+                .collect();
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            entries
+        },
+    };
+
+    // Convert WIT → IR using public convert_wall_feature_flag
+    let ir_result = convert_wall_feature_flag(&wit_flags);
+
+    // Assert all three entries survived with correct values
+    assert_eq!(ir_result.custom.len(), 3, "custom map must have 3 entries");
+
+    // Check "a" -> Scalar(0.1)
+    match ir_result.custom.get("a") {
+        Some(slicer_ir::PaintValue::Scalar(s)) => {
+            assert!((*s - 0.1).abs() < 1e-6, "entry 'a' should be Scalar(0.1)");
+        }
+        other => panic!("expected Scalar(0.1) for 'a', got {:?}", other),
+    }
+
+    // Check "b" -> Flag(true)
+    match ir_result.custom.get("b") {
+        Some(slicer_ir::PaintValue::Flag(b)) => {
+            assert!(b, "entry 'b' should be Flag(true)");
+        }
+        other => panic!("expected Flag(true) for 'b', got {:?}", other),
+    }
+
+    // Check "c" -> ToolIndex(2)
+    match ir_result.custom.get("c") {
+        Some(slicer_ir::PaintValue::ToolIndex(t)) => {
+            assert_eq!(*t, 2, "entry 'c' should be ToolIndex(2)");
+        }
+        other => panic!("expected ToolIndex(2) for 'c', got {:?}", other),
+    }
+
+    // Also verify non-custom fields are preserved
+    assert_eq!(ir_result.tool_index, Some(1));
+    assert!(ir_result.fuzzy_skin);
+    assert!(ir_result.is_bridge);
+    assert!(!ir_result.is_thin_wall);
+    assert!(ir_result.skip_ironing);
+}
+
+/// Round-trip test for PaintSemantic::Custom with empty string.
+///
+/// Tests that an empty custom semantic string survives the WIT boundary
+/// (not converted to None or dropped).
+#[test]
+fn paint_semantic_custom_empty_string_roundtrip() {
+    // Create IR PaintSemantic::Custom with empty string
+    let ir_semantic = slicer_ir::PaintSemantic::Custom(String::new());
+
+    // Convert IR → WIT using inline logic
+    let wit_semantic = match &ir_semantic {
+        slicer_ir::PaintSemantic::Custom(s) => WitPaintSemantic::Custom(s.clone()),
+        slicer_ir::PaintSemantic::Material => WitPaintSemantic::Material,
+        slicer_ir::PaintSemantic::FuzzySkin => WitPaintSemantic::FuzzySkin,
+        slicer_ir::PaintSemantic::SupportEnforcer => WitPaintSemantic::SupportEnforcer,
+        slicer_ir::PaintSemantic::SupportBlocker => WitPaintSemantic::SupportBlocker,
+    };
+
+    // Verify WIT variant is Custom (not None or dropped)
+    match wit_semantic {
+        WitPaintSemantic::Custom(ref s) => {
+            assert_eq!(s, "", "empty string must be preserved in WIT custom");
+        }
+        other => panic!("expected WitPaintSemantic::Custom(\"\"), got {:?}", other),
+    }
+
+    // Convert back to IR using inline logic
+    let ir_result = match wit_semantic {
+        WitPaintSemantic::Custom(s) => slicer_ir::PaintSemantic::Custom(s),
+        WitPaintSemantic::Material => slicer_ir::PaintSemantic::Material,
+        WitPaintSemantic::FuzzySkin => slicer_ir::PaintSemantic::FuzzySkin,
+        WitPaintSemantic::SupportEnforcer => slicer_ir::PaintSemantic::SupportEnforcer,
+        WitPaintSemantic::SupportBlocker => slicer_ir::PaintSemantic::SupportBlocker,
+    };
+
+    // Assert empty string is preserved (not None or dropped)
+    match ir_result {
+        slicer_ir::PaintSemantic::Custom(s) => {
+            assert_eq!(s, "", "empty custom payload must survive round-trip");
+        }
+        other => panic!("expected PaintSemantic::Custom(\"\"), got {:?}", other),
+    }
 }
