@@ -15,6 +15,7 @@ interface ir-handles {
         is-bridge: bool,
         is-thin-wall: bool,
         skip-ironing: bool,
+        custom: list<tuple<string, paint-value>>,
     }
 
     record wall-loop-view {
@@ -26,12 +27,12 @@ interface ir-handles {
     }
     enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell }
 
-    enum paint-semantic {
+    variant paint-semantic {
         material,
         fuzzy-skin,
         support-enforcer,
         support-blocker,
-        custom,             // module queries by custom-id string separately
+        custom(string),             // module queries by custom-id string separately
     }
 
     variant paint-value {

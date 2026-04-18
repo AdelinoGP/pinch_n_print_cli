@@ -20,11 +20,11 @@ interface geometry {
         speed-factor: f32,
     }
 
-    enum extrusion-role {
+    variant extrusion-role {
         outer-wall, inner-wall, thin-wall,
         top-solid-infill, bottom-solid-infill, sparse-infill,
         support-material, support-interface,
-        ironing, bridge-infill, wipe-tower, custom,
+        ironing, bridge-infill, wipe-tower, custom(string),
     }
 
     record semver { major: u32, minor: u32, patch: u32 }
