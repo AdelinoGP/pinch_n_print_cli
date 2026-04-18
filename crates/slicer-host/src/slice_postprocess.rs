@@ -293,7 +293,7 @@ pub fn execute_slice_postprocess_paint_annotation(
                                             semantic: semantic.clone(),
                                             polygon_index,
                                             contour_point_index,
-                                            fallback_value: fallback_value.clone(),
+                                            fallback_value,
                                             reason:
                                                 SlicePostProcessPaintAnnotationWarningReason::NumericalEdgeAmbiguity,
                                         });
@@ -307,7 +307,7 @@ pub fn execute_slice_postprocess_paint_annotation(
                                         let regions = paint_regions.get(layer_index, semantic);
                                         if !regions.is_empty() {
                                             // Use the first region's value as the default
-                                            point_paint.push(Some(regions[0].value.clone()));
+                                            point_paint.push(Some(regions[0].value));
                                         } else {
                                             point_paint.push(None);
                                         }

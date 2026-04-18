@@ -116,7 +116,7 @@ pub fn execute_region_mapping_with_cap(
             let key = RegionKey {
                 global_layer_index: layer.index,
                 object_id: region.object_id.clone(),
-                region_id: region.region_id.clone(),
+                region_id: region.region_id,
             };
 
             let mut stage_modules: HashMap<StageId, Vec<ModuleInvocation>> =
