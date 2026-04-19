@@ -204,7 +204,7 @@ impl WasmRuntimeDispatcher {
         })?;
 
         // Create per-call execution context and store.
-        let ctx = HostExecutionContext::new(module.module_id.clone());
+        let ctx = HostExecutionContext::new(module.module_id.clone(), 0.0, 0.0, None);
         let mut store = wasmtime::Store::new(engine, ctx);
 
         // Push config-view resource from the module's frozen config.
@@ -444,7 +444,7 @@ impl WasmRuntimeDispatcher {
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
-        object_ids: &[String],
+        blackboard: &Blackboard,
     ) -> Result<wit_host::HostExecutionContext, DispatchError> {
         let export_name = export_name_for_stage(stage_id).unwrap_or("unknown");
         let component = module.wasm_component.as_ref().ok_or_else(|| DispatchError {
@@ -464,7 +464,7 @@ impl WasmRuntimeDispatcher {
                 reason: e.to_string(),
             })?;
 
-        let ctx = wit_host::HostExecutionContext::new(module.module_id.clone());
+        let ctx = wit_host::HostExecutionContext::new(module.module_id.clone(), 0.0, 0.0, None);
         let mut store = wasmtime::Store::new(engine, ctx);
 
         let config_handle = store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view))
@@ -492,22 +492,39 @@ impl WasmRuntimeDispatcher {
             reason: e.to_string(),
         };
 
+        // Build the appropriate WIT view for each stage.
+        // MeshAnalysis and LayerPlanning still pass object IDs (they don't need geometry).
+        // MeshSegmentation and PaintSegmentation pass geometry views.
         let call_result = match stage_id.as_str() {
             "PrePass::MeshAnalysis" => {
+                let object_ids: Vec<String> = blackboard.mesh().objects.iter().map(|o| o.id.clone()).collect();
                 let output = store.data_mut().push_mesh_analysis_output().map_err(mk_ctx_err)?;
-                bindings.call_run_mesh_analysis(&mut store, object_ids, own(output), own(config_handle)).map_err(mk_call_err)
+                bindings.call_run_mesh_analysis(&mut store, &object_ids, own(output), own(config_handle)).map_err(mk_call_err)
             }
             "PrePass::LayerPlanning" => {
+                let object_ids: Vec<String> = blackboard.mesh().objects.iter().map(|o| o.id.clone()).collect();
                 let output = store.data_mut().push_layer_plan_output().map_err(mk_ctx_err)?;
-                bindings.call_run_layer_planning(&mut store, object_ids, own(output), own(config_handle)).map_err(mk_call_err)
+                bindings.call_run_layer_planning(&mut store, &object_ids, own(output), own(config_handle)).map_err(mk_call_err)
             }
             "PrePass::MeshSegmentation" => {
+                let mesh_object_views: Vec<_> = blackboard.mesh().objects.iter().map(|obj| {
+                    wit_host::object_mesh_to_wit_mesh_object_view(obj)
+                }).collect();
                 let output = store.data_mut().push_mesh_segmentation_output().map_err(mk_ctx_err)?;
-                bindings.call_run_mesh_segmentation(&mut store, object_ids, own(output), own(config_handle)).map_err(mk_call_err)
+                bindings.call_run_mesh_segmentation(&mut store, &mesh_object_views, own(output), own(config_handle)).map_err(mk_call_err)
             }
             "PrePass::PaintSegmentation" => {
+                let layer_plan = blackboard.layer_plan();
+                let paint_object_views: Vec<_> = blackboard.mesh().objects.iter().map(|obj| {
+                    let participating_layers = layer_plan
+                        .as_ref()
+                        .and_then(|lp| lp.object_participation.get(&obj.id))
+                        .map(|refs| refs.iter().map(|r| r.global_layer_index).collect::<Vec<u32>>())
+                        .unwrap_or_default();
+                    wit_host::object_mesh_to_wit_paint_segmentation_view(obj, &participating_layers)
+                }).collect();
                 let output = store.data_mut().push_paint_segmentation_output().map_err(mk_ctx_err)?;
-                bindings.call_run_paint_segmentation(&mut store, object_ids, own(output), own(config_handle)).map_err(mk_call_err)
+                bindings.call_run_paint_segmentation(&mut store, &paint_object_views, own(output), own(config_handle)).map_err(mk_call_err)
             }
             _ => Err(DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),
@@ -559,7 +576,7 @@ impl WasmRuntimeDispatcher {
                 reason: e.to_string(),
             })?;
 
-        let ctx = HostExecutionContext::new(module.module_id.clone());
+        let ctx = HostExecutionContext::new(module.module_id.clone(), 0.0, 0.0, None);
         let mut store = wasmtime::Store::new(engine, ctx);
 
         let config_handle = store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view))
@@ -660,7 +677,7 @@ impl WasmRuntimeDispatcher {
             );
         }
 
-        let ctx = HostExecutionContext::new(module.module_id.clone());
+        let ctx = HostExecutionContext::new(module.module_id.clone(), 0.0, 0.0, None);
         let mut store = wasmtime::Store::new(engine, ctx);
 
         let config_handle = match store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view)) {
@@ -773,7 +790,7 @@ impl WasmRuntimeDispatcher {
             );
         }
 
-        let ctx = HostExecutionContext::new(module.module_id.clone());
+        let ctx = HostExecutionContext::new(module.module_id.clone(), 0.0, 0.0, None);
         let mut store = wasmtime::Store::new(engine, ctx);
 
         let config_handle = match store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view)) {
@@ -1171,14 +1188,10 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         // the guest export receives the real object list (docs/02 §MeshIR).
         // An empty list is valid (no-op for the module) but must never be
         // hard-coded; the mesh is the authoritative source.
-        let object_ids: Vec<String> = blackboard
-            .mesh()
-            .objects
-            .iter()
-            .map(|o| o.id.clone())
-            .collect();
+        // Note: object_ids is computed here for MeshAnalysis/LayerPlanning but
+        // the actual object data flow is handled inside dispatch_prepass_call.
 
-        let ctx = match self.dispatch_prepass_call(stage_id, module, &object_ids) {
+        let ctx = match self.dispatch_prepass_call(stage_id, module, blackboard) {
             Ok(ctx) => ctx,
             Err(e) => {
                 // A `MissingComponent` error means the module's `.wasm` was a
