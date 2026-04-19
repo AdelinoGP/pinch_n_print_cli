@@ -57,7 +57,7 @@ Last updated: 2026-04-16
 
 ### Workstream 2 — Runtime correctness and scheduler guarantees
 
-- [ ] TASK-127 Enforce the non-planar Z envelope `[layer.z, layer.z + effective_layer_height]` at output-commit boundaries. Covers DEV-005.
+- [x] TASK-127 Enforce the non-planar Z envelope `[layer.z, layer.z + effective_layer_height]` at output-commit boundaries. Covers DEV-005.
 - [~] TASK-128 Resolve prepass segmentation input-shape gaps on the macro/WIT path so segmentation modules stop receiving hollow SDK inputs. Covers DEV-025.
 - [ ] TASK-128a Provide usable `MeshSegmentation` inputs on the macro path by sourcing real geometry for `MeshObjectView` instead of object-id-only shells. Covers DEV-025.
 - [ ] TASK-128b Provide usable `PaintSegmentation` inputs on the macro path, including transform matrices, paint layers, and participating layer indices. Continues DEV-025.
