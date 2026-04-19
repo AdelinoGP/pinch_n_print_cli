@@ -54,7 +54,7 @@ fn guest_reads_config_value_and_uses_it_in_output() {
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
         .expect("add_to_linker");
 
-    let mut ctx = HostExecutionContext::new("test-infill-module".into());
+    let mut ctx = HostExecutionContext::new("test-infill-module".into(), 0.0, 0.0, None);
 
     // Provide config with infill-spacing = 3.5
     let mut fields = HashMap::new();
@@ -121,7 +121,7 @@ fn guest_reads_region_z_from_ir_view() {
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
-    let mut ctx = HostExecutionContext::new("test-ir-read".into());
+    let mut ctx = HostExecutionContext::new("test-ir-read".into(), 0.0, 0.0, None);
 
     let config_handle = ctx.push_config_view(ConfigViewData {
         fields: HashMap::new(),
@@ -165,7 +165,7 @@ fn guest_emits_output_via_infill_builder() {
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
-    let mut ctx = HostExecutionContext::new("test-output".into());
+    let mut ctx = HostExecutionContext::new("test-output".into(), 0.0, 0.0, None);
     let config_handle = ctx.push_config_view(ConfigViewData {
         fields: HashMap::new(),
     }).unwrap();
@@ -220,7 +220,7 @@ fn guest_logs_via_host_services() {
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
-    let mut ctx = HostExecutionContext::new("test-log".into());
+    let mut ctx = HostExecutionContext::new("test-log".into(), 0.0, 0.0, None);
     let config_handle = ctx.push_config_view(ConfigViewData {
         fields: HashMap::new(),
     }).unwrap();
@@ -267,7 +267,7 @@ fn repeated_calls_produce_independent_outputs() {
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
     for i in 0..3 {
-        let mut ctx = HostExecutionContext::new(format!("call-{i}"));
+        let mut ctx = HostExecutionContext::new(format!("call-{i}"), 0.0, 0.0, None);
         let z = (i + 1) as f32 * 10.0;
         let config_handle = ctx.push_config_view(ConfigViewData {
             fields: HashMap::new(),
@@ -319,7 +319,7 @@ fn empty_region_list_handled_gracefully() {
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
-    let mut ctx = HostExecutionContext::new("test-empty".into());
+    let mut ctx = HostExecutionContext::new("test-empty".into(), 0.0, 0.0, None);
     let config_handle = ctx.push_config_view(ConfigViewData {
         fields: HashMap::new(),
     }).unwrap();
