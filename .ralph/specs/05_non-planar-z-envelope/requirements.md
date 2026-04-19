@@ -60,7 +60,7 @@ None. This is an internal contract enforcement task.
 
 **Measurable outcomes:**
 
-- All 6 `push_*` methods in `HostExecutionContext` that accept Z-bearing types have envelope validation
+- All 8 `push_*` methods in `HostExecutionContext` that accept Z-bearing types have envelope validation
 - `Z_ENVELOPE_VIOLATION` error code appears in test output for the below-floor and above-ceiling cases
 - `z_envelope_contract_tdd.rs` test binary exists and passes all cases
 

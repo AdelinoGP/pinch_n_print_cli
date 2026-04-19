@@ -28,10 +28,14 @@ Close the remaining non-segmentation WIT-boundary gaps on live execution paths. 
 
 ## Acceptance Criteria
 
-- **Given** a GCodePostProcess module written via macro or raw WIT, **when** `dispatch_postpass_gcode_call` is invoked, **then** the `GCodeCommand` list passed across the boundary contains all command variants (Move with all field combinations, Retract, Unretract, FanSpeed, Temperature, ToolChange, Comment, Raw) with correct field values preserved through the round trip. | `cargo test -p slicer-host --test postpass_gcode_boundary_tdd 2>&1 | grep -E "Move|Retract|FanSpeed|Temperature|ToolChange|Comment|Raw.*pass"`
-- **Given** a `LayerCollectionIR` with `ordered_entities`, `tool_changes`, and `z_hops` is written by a layer-world module, **when** the layer-world deep-copy crosses the WIT boundary, **then** all entity fields (path points, role, region_key, topo_order, tool_change after_entity_index, z_hop hop_height) are preserved bit-for-bit. | `cargo test -p slicer-host --test layer_world_deep_copy_tdd 2>&1 | grep -E "deep.copy.*pass|bit.for.bit"`
-- **Given** a `LayerCollectionIR` is consumed by a finalization-world module, **when** the finalization-world deep-copy crosses the WIT boundary, **then** all layer indices, z values, ordered_entities, tool_changes, and z_hops are preserved bit-for-bit through the boundary. | `cargo test -p slicer-host --test finalization_world_deep_copy_tdd 2>&1 | grep -E "finalization.*deep.copy.*pass"`
-- **Given** `dispatch_postpass_gcode_call` processes a GCodeIR with `commands.len() > 0`, **when** the call returns, **then** the returned GCodeIR commands are in the same order with identical content and no command is silently dropped or mutated. | `cargo test -p slicer-host --test postpass_gcode_command_preservation_tdd 2>&1 | grep -E "command.*preserved|order.*identical"`
+- **Given** a GCodePostProcess module written via macro or raw WIT, **when** `dispatch_postpass_gcode_call` is invoked, **then** the `GCodeCommand` list passed across the boundary contains all command variants (Move with all field combinations, Retract, Unretract, FanSpeed, Temperature, ToolChange, Comment, Raw) with correct field values preserved through the round trip. | `cargo test -p slicer-host --test postpass_gcode_boundary_tdd 2>&1`
+  - NOTE: On test pass, grep should confirm variants: `Move`, `Retract`, `Unretract`, `FanSpeed`, `Temperature`, `ToolChange`, `Comment`, `Raw` appear in output.
+- **Given** a `LayerCollectionIR` with `ordered_entities`, `tool_changes`, and `z_hops` is written by a layer-world module, **when** the layer-world deep-copy crosses the WIT boundary, **then** all entity fields (path points, role, region_key, topo_order, tool_change after_entity_index, z_hop hop_height) are preserved bit-for-bit. | `cargo test -p slicer-host --test layer_world_deep_copy_tdd 2>&1`
+  - NOTE: On test pass, grep should confirm: `deep.copy.*pass` or `bit.for.bit` appears in output.
+- **Given** a `LayerCollectionIR` is consumed by a finalization-world module, **when** the finalization-world deep-copy crosses the WIT boundary, **then** all layer indices, z values, ordered_entities, tool_changes, and z_hops are preserved bit-for-bit through the boundary. | `cargo test -p slicer-host --test finalization_world_deep_copy_tdd 2>&1`
+  - NOTE: On test pass, grep should confirm: `finalization.*deep.copy.*pass` appears in output.
+- **Given** `dispatch_postpass_gcode_call` processes a GCodeIR with `commands.len() > 0`, **when** the call returns, **then** the returned GCodeIR commands are in the same order with identical content and no command is silently dropped or mutated. | `cargo test -p slicer-host --test postpass_gcode_command_preservation_tdd 2>&1`
+  - NOTE: On test pass, grep should confirm: `command.*preserved` or `order.*identical` appears in output.
 
 ## Negative Test Cases
 
@@ -39,10 +43,14 @@ Close the remaining non-segmentation WIT-boundary gaps on live execution paths. 
 
 ## Verification
 
-- `cargo test -p slicer-host --test postpass_gcode_boundary_tdd`
-- `cargo test -p slicer-host --test layer_world_deep_copy_tdd`
-- `cargo test -p slicer-host --test finalization_world_deep_copy_tdd`
-- `cargo test -p slicer-host --test postpass_gcode_command_preservation_tdd`
+- `cargo test -p slicer-host --test postpass_gcode_boundary_tdd 2>&1`
+  - NOTE: On pass, grep should confirm `Move`, `Retract`, `Unretract`, `FanSpeed`, `Temperature`, `ToolChange`, `Comment`, `Raw` in output.
+- `cargo test -p slicer-host --test layer_world_deep_copy_tdd 2>&1`
+  - NOTE: On pass, grep should confirm `deep.copy.*pass` or `bit.for.bit` in output.
+- `cargo test -p slicer-host --test finalization_world_deep_copy_tdd 2>&1`
+  - NOTE: On pass, grep should confirm `finalization.*deep.copy.*pass` in output.
+- `cargo test -p slicer-host --test postpass_gcode_command_preservation_tdd 2>&1`
+  - NOTE: On pass, grep should confirm `command.*preserved` or `order.*identical` in output.
 - `cargo clippy --workspace -- -D warnings` (workspace gate)
 
 ## Authoritative Docs

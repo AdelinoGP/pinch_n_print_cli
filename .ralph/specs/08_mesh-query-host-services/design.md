@@ -37,7 +37,7 @@ Add a `mesh_ir: Option<MeshIR>` field to `HostExecutionContext`, plumb `MeshIR` 
    c. Skip triangle if all vertices have Z <= start_z (no hit possible)
    d. Compute ray-triangle intersection (ray origin at (x, y, start_z), direction (0, 0, -1))
    e. Keep the hit with the largest intersection Z (closest to start_z, still below it)
-3. If a hit was found, return `Some(Hit { z: hit_z, facet_index: triangle_index })`
+3. If a hit was found, return `Some(hit_z)` (world-space Z as f32)
 4. Otherwise return `None`
 
 **`surface_normal_at`**:
@@ -79,13 +79,9 @@ Add a `mesh_ir: Option<MeshIR>` field to `HostExecutionContext`, plumb `MeshIR` 
 
 2. **Build a acceleration structure (BVH) upfront**: Rejected — the initial implementation should be correct before being optimized. A BVH can be added as a follow-up optimization task if profiling shows raycasting is a bottleneck. The current `IndexedTriangleSet` is small enough that brute-force intersection is acceptable for MVP.
 
-3. **Return `Option<(f32, u32)>` from `raycast_z_down` instead of `Hit` record**: Rejected — the WIT signature in `host-api.wit` already defines `raycast-z-down` as returning `option<f32>` (the z value only). We cannot change the WIT signature in this packet. The facet_index will need to be stored in a separate host-side map if needed, or the WIT signature must be updated in a separate packet (not in scope here).
+3. **Return `Option<(f32, u32)>` from `raycast_z_down` instead of `Hit` record**: The WIT signature `raycast-z-down` returns `option<f32>`. The `facet_index` is internal to the host implementation but does not cross the WIT boundary under the current signature. This is explicitly out of scope for this packet. A separate future packet may address a WIT signature change to return a `hit` record with `z` and `facet-index` fields — that is a WIT extension task, not a wiring task.
 
-   Wait — re-reading the acceptance criteria: "returns `Some(Hit { z: f32, facet_index: u32 })`". But the current WIT signature is `raycast-z-down: func(object-id, x, y, start-z) -> option<f32>`. The acceptance criteria may be aspirational (wanting the enhanced return), or the packet needs to also update the WIT signature. Given the task IDs and scope say "Implement live mesh-data wiring" without mentioning WIT signature changes, I will interpret this as: the initial implementation returns `option<f32>` matching the current WIT signature, and the enhanced signature with `Hit` record would be a separate future task. The tests should assert on the Z value being correct.
-
-   Actually, re-reading the acceptance criteria more carefully: "returns `Some(Hit { z: f32, facet_index: u32 })` with z being the world-space Z". This seems to describe the desired behavior internally even if the WIT boundary only exposes the Z. The tests will verify the Z value is correct. The `facet_index` is noted for validity checking but may not be directly returnable through the current WIT signature.
-
-   Given the scope says "WIT worlds" are in scope for hit/miss semantics, I'll implement the internal Hit structure and the tests will verify Z correctness. If the WIT signature needs updating to return facet_index, that would be a separate task.
+   The current packet implements wiring to match the existing WIT signature: `raycast_z_down` returns `Option<f32>` (world-Z only). All acceptance criteria and tests are written against this behavior.
 
 4. **Use `nalgeom` or similar for ray-triangle intersection**: Rejected — the math is simple enough (3 cross products) that adding an external dependency is not warranted. Implement directly using f32 arithmetic.
 
@@ -97,9 +93,9 @@ Add a `mesh_ir: Option<MeshIR>` field to `HostExecutionContext`, plumb `MeshIR` 
 
 ### WIT boundary considerations
 
-- The WIT signature for `raycast_z_down` returns `option<f32>` (just the Z). The `facet_index` is computed but not returned through the current WIT boundary.
-- `surface_normal_at` returns `option<point3>` — this is already the correct WIT signature.
-- `object_bounds` returns `bounding-box3` — this is already the correct WIT signature.
+- The WIT signature for `raycast_z_down` returns `option<f32>` (just the Z). The `facet_index` is computed internally for hit selection but is NOT returned through the current WIT boundary.
+- `surface_normal_at` returns `option<point3>` — already correct WIT signature.
+- `object_bounds` returns `bounding-box3` — already correct WIT signature.
 
 ### Determinism or scheduler constraints
 
@@ -123,8 +119,8 @@ Add a `mesh_ir: Option<MeshIR>` field to `HostExecutionContext`, plumb `MeshIR` 
 
 ## Open Questions
 
-1. Should the WIT signature for `raycast_z_down` be updated to return `option<hit>` where `hit = record { z: f32, facet-index: u32 }`? This would be a separate WIT change packet, not in scope here.
+1. **Resolved** (Q1 from prior draft): The WIT signature for `raycast_z_down` returns `option<f32>` (Z only). Changing this to return a `hit` record with `z` and `facet-index` is a WIT extension task, not in scope for this wiring packet. This packet implements against the current `option<f32>` WIT signature.
 
-2. Should the acceleration structure (BVH) be built once and cached, or rebuilt per-call? For MVP, rebuild per-call is acceptable. Caching is a future optimization.
+2. **Resolved** (Q2): `object_bounds` returns world-space bounding box (after transform), consistent with world-space Z semantics. This is confirmed correct.
 
-3. Should `object_bounds` return bounds in world space or object-local space? The current design says world space (after transform), consistent with the requirement that Z values are world space. Confirm: is this the correct interpretation?
+3. **Resolved** (Q3): BVH acceleration is deferred. MVP uses brute-force O(triangle_count) iteration. BVH follow-up is tracked separately.

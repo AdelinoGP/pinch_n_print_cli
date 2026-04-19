@@ -39,7 +39,7 @@ Implement live mesh-data wiring for `raycast_z_down` and implement `surface_norm
 
 ## Acceptance Criteria
 
-- **Given** `raycast_z_down(origin: Point3, object_id: ObjectId)` is called on a mesh that has triangles below the origin's Z, **when** the raycast executes, **then** it returns `Some(Hit { z: f32, facet_index: u32 })` with z being the world-space Z of the closest intersected triangle and facet_index being a valid index into the object's triangle array. | `cargo test -p slicer-host --test raycast_z_down_hit_tdd 2>&1 | grep -E "raycast.*hit|Hit.*z=|facet_index"`
+- **Given** `raycast_z_down(origin: Point3, object_id: ObjectId)` is called on a mesh that has triangles below the origin's Z, **when** the raycast executes, **then** it returns `Some(world_z: f32)` with world_z being the world-space Z of the closest intersected triangle. | `cargo test -p slicer-host --test raycast_z_down_hit_tdd 2>&1 | grep -E "raycast.*hit|world_z|Some\("`
 
 - **Given** `raycast_z_down(origin: Point3, object_id: ObjectId)` is called on a mesh with no triangles below the origin's Z (e.g., origin is below the print volume floor), **when** the raycast executes, **then** it returns `None`. | `cargo test -p slicer-host --test raycast_z_down_miss_tdd 2>&1 | grep -E "raycast.*miss|None|no.*hit"`
 

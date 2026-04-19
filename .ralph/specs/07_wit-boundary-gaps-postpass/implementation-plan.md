@@ -26,7 +26,8 @@
   - `wit/deps/ir-types.wit` (gcode-output-builder lines 98-116)
 - OrcaSlicer refs: None
 - Verification:
-  - `cargo build -p slicer-host 2>&1`
+  - `cargo build -p slicer-host`
+  - NOTE: Real command slice verification (vs `&[]`) requires the TDD test in Step 2 to confirm.
 - Exit condition:
   - The call to `bindings.call_run_gcode_postprocess` in `dispatch_postpass_gcode_call` receives the real command slice, not `&[]`.
 
@@ -47,7 +48,8 @@
   - `wit/deps/ir-types.wit` (gcode-move-cmd lines 112-116)
 - OrcaSlicer refs: None
 - Verification:
-  - `cargo test -p slicer-host --test postpass_gcode_boundary_tdd 2>&1 | grep -E "Move|Retract|FanSpeed|Temperature|ToolChange|Comment|Raw.*pass"`
+  - `cargo test -p slicer-host --test postpass_gcode_boundary_tdd 2>&1`
+  - NOTE: On test pass, grep should confirm `Move`, `Retract`, `Unretract`, `FanSpeed`, `Temperature`, `ToolChange`, `Comment`, `Raw` in output.
 - Exit condition:
   - All 8 GCodeCommand variants are represented in the test assertions, and the test passes.
 
@@ -68,7 +70,8 @@
   - `crates/slicer-host/src/dispatch.rs` (dispatch_postpass_gcode_call line 626)
 - OrcaSlicer refs: None
 - Verification:
-  - `cargo test -p slicer-host --test postpass_gcode_command_preservation_tdd 2>&1 | grep -E "command.*preserved|order.*identical"`
+  - `cargo test -p slicer-host --test postpass_gcode_command_preservation_tdd 2>&1`
+  - NOTE: On test pass, grep should confirm `command.*preserved` or `order.*identical` in output.
 - Exit condition:
   - Command order and content assertions pass; no command is dropped or mutated.
 
@@ -90,7 +93,8 @@
   - `wit/world-layer.wit`
 - OrcaSlicer refs: None
 - Verification:
-  - `cargo test -p slicer-host --test layer_world_deep_copy_tdd 2>&1 | grep -E "deep.copy.*pass|bit.for.bit"`
+  - `cargo test -p slicer-host --test layer_world_deep_copy_tdd 2>&1`
+  - NOTE: On test pass, grep should confirm `deep.copy.*pass` or `bit.for.bit` in output.
 - Exit condition:
   - All LayerCollectionIR entity field assertions pass; bit-for-bit preservation confirmed.
 
@@ -112,7 +116,8 @@
   - `wit/world-finalization.wit`
 - OrcaSlicer refs: None
 - Verification:
-  - `cargo test -p slicer-host --test finalization_world_deep_copy_tdd 2>&1 | grep -E "finalization.*deep.copy.*pass"`
+  - `cargo test -p slicer-host --test finalization_world_deep_copy_tdd 2>&1`
+  - NOTE: On test pass, grep should confirm `finalization.*deep.copy.*pass` in output.
 - Exit condition:
   - All Vec<LayerCollectionIR> field assertions pass; bit-for-bit preservation confirmed across all layers.
 
