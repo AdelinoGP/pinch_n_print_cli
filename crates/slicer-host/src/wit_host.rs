@@ -452,7 +452,7 @@ pub mod prepass {
                 }
 
                 export run-mesh-segmentation: func(
-                    objects: list<object-id>,
+                    objects: list<mesh-object-view>,
                     output: mesh-segmentation-output,
                     config: config-view,
                 ) -> result<_, module-error>;
@@ -471,7 +471,7 @@ pub mod prepass {
                 }
 
                 export run-paint-segmentation: func(
-                    objects: list<object-id>,
+                    objects: list<paint-segmentation-object-view>,
                     output: paint-segmentation-output,
                     config: config-view,
                 ) -> result<_, module-error>;
@@ -482,6 +482,67 @@ pub mod prepass {
                     is-catchup: bool, catchup-z-bottom: f32,
                 }
                 record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
+
+                // ── Prepass segmentation view records ────────────────────────
+                // Read-only views of mesh geometry and paint data for macro-authored
+                // PrePass::MeshSegmentation and PrePass::PaintSegmentation modules.
+
+                use geometry.{point3};
+
+                /// A paint value with discriminator for flag, scalar, or tool-index.
+                variant paint-value-view {
+                    flag(bool),
+                    scalar(f32),
+                    tool-index(u32),
+                }
+
+                /// A sub-facet paint stroke resolved into whole-triangle values.
+                record paint-stroke-view {
+                    /// Triangle vertices (3 point3 per triangle).
+                    triangles: list<point3>,
+                    /// Semantic identifier string.
+                    semantic: string,
+                    /// Paint value carried by this stroke.
+                    value: paint-value-view,
+                }
+
+                /// A paint layer on an object with per-facet values and strokes.
+                record paint-layer-view {
+                    /// Semantic identifier string.
+                    semantic: string,
+                    /// Per-facet paint values, parallel to mesh triangles.
+                    /// None = unpainted.
+                    facet-values: list<option<paint-value-view>>,
+                    /// Sub-facet strokes crossing triangle boundaries.
+                    strokes: list<paint-stroke-view>,
+                }
+
+                /// Read-only view of an object's mesh and paint data for segmentation.
+                record mesh-object-view {
+                    object-id: object-id,
+                    /// Mesh vertices as point3 coordinates.
+                    vertices: list<point3>,
+                    /// Triangle indices (3 per triangle), indexing into vertices.
+                    triangles: list<tuple<u32, u32, u32>>,
+                    /// All paint layers on this object.
+                    paint-layers: list<paint-layer-view>,
+                }
+
+                /// Read-only view of an object for paint segmentation, including
+                /// transform and layer participation.
+                record paint-segmentation-object-view {
+                    object-id: object-id,
+                    /// Mesh vertices as point3 coordinates.
+                    vertices: list<point3>,
+                    /// Triangle indices (3 per triangle), indexing into vertices.
+                    triangles: list<tuple<u32, u32, u32>>,
+                    /// All paint layers on this object.
+                    paint-layers: list<paint-layer-view>,
+                    /// 4x4 column-major transform matrix (16 elements).
+                    transform-matrix: list<f64>,
+                    /// Global layer indices this object participates in.
+                    participating-layer-indices: list<u32>,
+                }
 
                 resource layer-plan-output {
                     push-layer: func(proposal: layer-proposal) -> result<_, string>;
@@ -981,11 +1042,23 @@ pub struct HostExecutionContext {
     /// called. Extracted by the dispatcher and returned as part of
     /// `ModuleAccessAudit.runtime_reads`.
     pub runtime_reads: Vec<String>,
+
+    // ── Z envelope fields ─────────────────────────────────────────────
+    /// Layer Z floor (lower bound of the Z envelope).
+    layer_z: f32,
+    /// Effective layer height (envelope height).
+    effective_layer_height: f32,
+    /// Bottom Z of catch-up layer, or `None` if not a catch-up layer.
+    catchup_z_bottom: Option<f32>,
 }
 
 impl HostExecutionContext {
     /// Create a new execution context for a module call.
-    pub fn new(module_id: String) -> Self {
+    ///
+    /// `layer_z` is the layer floor (lower Z bound). `effective_layer_height` is
+    /// the envelope height. `catchup_z_bottom` is `Some` when this is a catch-up
+    /// layer (the floor is then `catchup_z_bottom` instead of `layer_z`).
+    pub fn new(module_id: String, layer_z: f32, effective_layer_height: f32, catchup_z_bottom: Option<f32>) -> Self {
         Self {
             table: ResourceTable::new(),
             module_id,
@@ -1005,6 +1078,42 @@ impl HostExecutionContext {
             paint_region_entries: Vec::new(),
             finalization_pushes: Vec::new(),
             runtime_reads: Vec::new(),
+            layer_z,
+            effective_layer_height,
+            catchup_z_bottom,
+        }
+    }
+
+    /// Returns the Z envelope floor for this layer.
+    ///
+    /// For catch-up layers the floor is `catchup_z_bottom`; otherwise it is `layer_z`.
+    fn z_envelope_floor(&self) -> f32 {
+        self.catchup_z_bottom.unwrap_or(self.layer_z)
+    }
+
+    /// Returns the Z envelope ceiling for this layer.
+    fn z_envelope_ceiling(&self) -> f32 {
+        self.z_envelope_floor() + self.effective_layer_height
+    }
+
+    /// Validates that `z` is within the Z envelope `[floor, ceiling]` (inclusive).
+    ///
+    /// Returns `Err` with a descriptive message on violation.
+    fn check_z_envelope(&self, z: f32) -> Result<(), String> {
+        let floor = self.z_envelope_floor();
+        let ceiling = self.z_envelope_ceiling();
+        if z < floor {
+            Err(format!(
+                "Z_ENVELOPE_VIOLATION: Z {} below layer.z floor {}",
+                z, floor
+            ))
+        } else if z > ceiling {
+            Err(format!(
+                "Z_ENVELOPE_VIOLATION: Z {} above layer.z ceiling {}",
+                z, ceiling
+            ))
+        } else {
+            Ok(())
         }
     }
 
@@ -1431,6 +1540,141 @@ fn ir_to_wit_paint_semantic(s: &slicer_ir::PaintSemantic) -> PaintSemantic {
     }
 }
 
+/// Convert a slicer-ir `PaintSemantic` to a string key for paint segmentation views.
+fn paint_semantic_to_string(s: &slicer_ir::PaintSemantic) -> String {
+    match s {
+        slicer_ir::PaintSemantic::Material => "material".to_string(),
+        slicer_ir::PaintSemantic::FuzzySkin => "fuzzy-skin".to_string(),
+        slicer_ir::PaintSemantic::SupportEnforcer => "support-enforcer".to_string(),
+        slicer_ir::PaintSemantic::SupportBlocker => "support-blocker".to_string(),
+        slicer_ir::PaintSemantic::Custom(tag) => tag.clone(),
+    }
+}
+
+/// Convert a slicer-ir `PaintValue` to a WIT `PaintValueView` variant.
+fn ir_to_wit_paint_value_view(v: &slicer_ir::PaintValue) -> prepass::PaintValueView {
+    match v {
+        slicer_ir::PaintValue::Flag(b) => prepass::PaintValueView::Flag(*b),
+        slicer_ir::PaintValue::Scalar(s) => prepass::PaintValueView::Scalar(*s),
+        slicer_ir::PaintValue::ToolIndex(idx) => prepass::PaintValueView::ToolIndex(*idx),
+    }
+}
+
+/// Convert a slicer-ir `PaintStroke` to a WIT `PaintStrokeView` record.
+fn ir_to_wit_paint_stroke_view(stroke: &slicer_ir::PaintStroke) -> prepass::PaintStrokeView {
+    prepass::PaintStrokeView {
+        triangles: stroke
+            .triangles
+            .iter()
+            .map(|tri| prepass::Point3 {
+                x: tri[0].x,
+                y: tri[0].y,
+                z: tri[0].z,
+            })
+            .collect(),
+        semantic: paint_semantic_to_string(&stroke.semantic),
+        value: ir_to_wit_paint_value_view(&stroke.value),
+    }
+}
+
+/// Convert a slicer-ir `PaintLayer` to a WIT `PaintLayerView` record.
+fn ir_to_wit_paint_layer_view(layer: &slicer_ir::PaintLayer) -> prepass::PaintLayerView {
+    prepass::PaintLayerView {
+        semantic: paint_semantic_to_string(&layer.semantic),
+        facet_values: layer
+            .facet_values
+            .iter()
+            .map(|opt| opt.as_ref().map(ir_to_wit_paint_value_view))
+            .collect(),
+        strokes: layer.strokes.iter().map(ir_to_wit_paint_stroke_view).collect(),
+    }
+}
+
+/// Convert a slicer-ir `ObjectMesh` to a WIT `MeshObjectView` for MeshSegmentation.
+///
+/// This converter extracts the mesh geometry and paint data from an `ObjectMesh`
+/// and produces a read-only WIT view suitable for passing to prepass modules.
+pub fn object_mesh_to_wit_mesh_object_view(
+    mesh: &slicer_ir::ObjectMesh,
+) -> prepass::MeshObjectView {
+    let vertices: Vec<prepass::Point3> = mesh
+        .mesh
+        .vertices
+        .iter()
+        .map(|v| prepass::Point3 { x: v.x, y: v.y, z: v.z })
+        .collect();
+
+    // Convert indexed triangles to list of tuples
+    let triangles: Vec<(u32, u32, u32)> = mesh
+        .mesh
+        .indices
+        .chunks(3)
+        .map(|chunk| (chunk[0], chunk[1], chunk[2]))
+        .collect();
+
+    // Convert paint layers if present
+    let paint_layers: Vec<prepass::PaintLayerView> = if let Some(ref paint_data) = mesh.paint_data {
+        paint_data
+            .layers
+            .iter()
+            .map(ir_to_wit_paint_layer_view)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    prepass::MeshObjectView {
+        object_id: mesh.id.clone(),
+        vertices,
+        triangles,
+        paint_layers,
+    }
+}
+
+/// Convert a slicer-ir `ObjectMesh` to a WIT `PaintSegmentationObjectView` for PaintSegmentation.
+///
+/// This converter includes the transform matrix and participating layer indices
+/// needed by paint segmentation modules to project 3D paint onto layers.
+pub fn object_mesh_to_wit_paint_segmentation_view(
+    mesh: &slicer_ir::ObjectMesh,
+    participating_layer_indices: &[u32],
+) -> prepass::PaintSegmentationObjectView {
+    let vertices: Vec<prepass::Point3> = mesh
+        .mesh
+        .vertices
+        .iter()
+        .map(|v| prepass::Point3 { x: v.x, y: v.y, z: v.z })
+        .collect();
+
+    // Convert indexed triangles to list of tuples
+    let triangles: Vec<(u32, u32, u32)> = mesh
+        .mesh
+        .indices
+        .chunks(3)
+        .map(|chunk| (chunk[0], chunk[1], chunk[2]))
+        .collect();
+
+    // Convert paint layers if present
+    let paint_layers: Vec<prepass::PaintLayerView> = if let Some(ref paint_data) = mesh.paint_data {
+        paint_data
+            .layers
+            .iter()
+            .map(ir_to_wit_paint_layer_view)
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    prepass::PaintSegmentationObjectView {
+        object_id: mesh.id.clone(),
+        vertices,
+        triangles,
+        paint_layers,
+        transform_matrix: mesh.transform.matrix.to_vec(),
+        participating_layer_indices: participating_layer_indices.to_vec(),
+    }
+}
+
 /// Convert a `SlicedRegion` from the IR into a `SliceRegionData` for the WIT resource.
 pub fn sliced_region_to_data(region: &slicer_ir::SlicedRegion, z: f32) -> SliceRegionData {
     let boundary_paint: Vec<BoundaryPaintEntry> = region
@@ -1769,18 +2013,33 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
 
 impl ir::HostInfillOutputBuilder for HostExecutionContext {
     fn push_sparse_path(&mut self, _self_: Resource<InfillOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
+        if let Some(z) = path.points.first().map(|p| p.z) {
+            if let Err(e) = self.check_z_envelope(z) {
+                return Ok(Err(e));
+            }
+        }
         let origin = self.current_perimeter_region.clone();
         self.infill_output.sparse_paths.push(path);
         self.infill_output.sparse_path_origins.push(origin);
         Ok(Ok(()))
     }
     fn push_solid_path(&mut self, _self_: Resource<InfillOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
+        if let Some(z) = path.points.first().map(|p| p.z) {
+            if let Err(e) = self.check_z_envelope(z) {
+                return Ok(Err(e));
+            }
+        }
         let origin = self.current_perimeter_region.clone();
         self.infill_output.solid_paths.push(path);
         self.infill_output.solid_path_origins.push(origin);
         Ok(Ok(()))
     }
     fn push_ironing_path(&mut self, _self_: Resource<InfillOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
+        if let Some(z) = path.points.first().map(|p| p.z) {
+            if let Err(e) = self.check_z_envelope(z) {
+                return Ok(Err(e));
+            }
+        }
         let origin = self.current_perimeter_region.clone();
         self.infill_output.ironing_paths.push(path);
         self.infill_output.ironing_path_origins.push(origin);
@@ -1794,17 +2053,30 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
 
 impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
     fn push_wall_loop(&mut self, _self_: Resource<PerimeterOutputBuilderData>, wall_loop: WallLoopView) -> wasmtime::Result<Result<(), String>> {
+        if let Some(z) = wall_loop.path.points.first().map(|p| p.z) {
+            if let Err(e) = self.check_z_envelope(z) {
+                return Ok(Err(e));
+            }
+        }
         let origin = self.current_perimeter_region.clone();
         self.perimeter_output.wall_loops.push(wall_loop);
         self.perimeter_output.wall_loop_origins.push(origin);
         Ok(Ok(()))
     }
+    /// Sets infill areas for this perimeter output builder.
+    ///
+    /// No Z envelope check is needed here — `ExPolygon` carries no Z coordinate.
+    /// Z validation for infill paths is performed in `push_sparse_path` and
+    /// `push_solid_path` where the actual extrusion geometry is supplied.
     fn set_infill_areas(&mut self, _self_: Resource<PerimeterOutputBuilderData>, areas: Vec<ExPolygon>) -> wasmtime::Result<Result<(), String>> {
         self.perimeter_output.infill_areas = areas;
         self.perimeter_output.infill_areas_origin = self.current_perimeter_region.clone();
         Ok(Ok(()))
     }
     fn push_seam_candidate(&mut self, _self_: Resource<PerimeterOutputBuilderData>, pos: Point3, score: f32) -> wasmtime::Result<Result<(), String>> {
+        if let Err(e) = self.check_z_envelope(pos.z) {
+            return Ok(Err(e));
+        }
         let origin = self.current_perimeter_region.clone();
         self.perimeter_output.seam_candidates.push((pos, score));
         self.perimeter_output.seam_candidate_origins.push(origin);
@@ -1872,18 +2144,33 @@ impl ir::HostGcodeOutputBuilder for HostExecutionContext {
 
 impl ir::HostSupportOutputBuilder for HostExecutionContext {
     fn push_support_path(&mut self, _self_: Resource<SupportOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
+        if let Some(z) = path.points.first().map(|p| p.z) {
+            if let Err(e) = self.check_z_envelope(z) {
+                return Ok(Err(e));
+            }
+        }
         let origin = self.current_slice_region.clone();
         self.support_output.support_paths.push(path);
         self.support_output.support_path_origins.push(origin);
         Ok(Ok(()))
     }
     fn push_interface_path(&mut self, _self_: Resource<SupportOutputBuilderData>, path: ExtrusionPath3d, is_top_interface: bool) -> wasmtime::Result<Result<(), String>> {
+        if let Some(z) = path.points.first().map(|p| p.z) {
+            if let Err(e) = self.check_z_envelope(z) {
+                return Ok(Err(e));
+            }
+        }
         let origin = self.current_slice_region.clone();
         self.support_output.interface_paths.push((path, is_top_interface));
         self.support_output.interface_path_origins.push(origin);
         Ok(Ok(()))
     }
     fn push_raft_path(&mut self, _self_: Resource<SupportOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
+        if let Some(z) = path.points.first().map(|p| p.z) {
+            if let Err(e) = self.check_z_envelope(z) {
+                return Ok(Err(e));
+            }
+        }
         let origin = self.current_slice_region.clone();
         self.support_output.raft_paths.push(path);
         self.support_output.raft_path_origins.push(origin);

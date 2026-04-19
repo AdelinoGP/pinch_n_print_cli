@@ -140,5 +140,64 @@ interface ir-handles {
         get-custom-regions: func(module-id: string) -> list<semantic-region>;
 
         layer-index: func() -> layer-idx;
-    } 
+    }
+
+    // ── Prepass segmentation view records ─────────────────────────────────
+    // Read-only views of mesh geometry and paint data for macro-authored
+    // PrePass::MeshSegmentation and PrePass::PaintSegmentation modules.
+
+    /// A paint value with discriminator for flag, scalar, or tool-index.
+    variant paint-value-view {
+        flag(bool),
+        scalar(f32),
+        tool-index(u32),
+    }
+
+    /// A sub-facet paint stroke resolved into whole-triangle values.
+    record paint-stroke-view {
+        /// Triangle vertices as list of point3 (3 per triangle).
+        triangles: list<point3>,
+        /// Semantic identifier string.
+        semantic: string,
+        /// Paint value carried by this stroke.
+        value: paint-value-view,
+    }
+
+    /// A paint layer on an object with per-facet values and strokes.
+    record paint-layer-view {
+        /// Semantic identifier string.
+        semantic: string,
+        /// Per-facet paint values, parallel to mesh triangles.
+        /// None = unpainted.
+        facet-values: list<option<paint-value-view>>,
+        /// Sub-facet strokes crossing triangle boundaries.
+        strokes: list<paint-stroke-view>,
+    }
+
+    /// Read-only view of an object's mesh and paint data for segmentation.
+    record mesh-object-view {
+        object-id: object-id,
+        /// Mesh vertices as point3 coordinates.
+        vertices: list<point3>,
+        /// Triangle indices (3 per triangle), indexing into vertices.
+        triangles: list<tuple<u32, u32, u32>>,
+        /// All paint layers on this object.
+        paint-layers: list<paint-layer-view>,
+    }
+
+    /// Read-only view of an object for paint segmentation, including
+    /// transform and layer participation.
+    record paint-segmentation-object-view {
+        object-id: object-id,
+        /// Mesh vertices as point3 coordinates.
+        vertices: list<point3>,
+        /// Triangle indices (3 per triangle), indexing into vertices.
+        triangles: list<tuple<u32, u32, u32>>,
+        /// All paint layers on this object.
+        paint-layers: list<paint-layer-view>,
+        /// 4x4 column-major transform matrix (16 elements).
+        transform-matrix: list<f64>,
+        /// Global layer indices this object participates in.
+        participating-layer-indices: list<u32>,
+    }
 }
