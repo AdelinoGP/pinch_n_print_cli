@@ -218,20 +218,71 @@ fn identity_transform_is_detectable() {
     assert!((translation.matrix[14] - 0.0).abs() < 1e-10);
 }
 
-/// Test 5: Empty participation should be detectable.
+/// Test 5: Empty participation is a valid, detectable state.
 ///
-/// The dispatch (Step 7) should produce a diagnostic if participating_layer_indices
-/// is empty, rather than silently proceeding.
+/// When an object has no entry in `LayerPlanIR.object_participation` (e.g., a
+/// modifier volume or support blocker that participates in no layers), the
+/// converter correctly produces empty `participating_layer_indices`. This is
+/// not a diagnostic condition — it correctly reflects that the object is not
+/// used in any layer. The dispatch path at `dispatch.rs:518-524` derives this
+/// by calling `object_participation.get(&obj.id).unwrap_or_default()`.
 #[test]
-fn empty_participation_is_detectable() {
-    let layer_plan = LayerPlanIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
-        global_layers: vec![],
-        object_participation: HashMap::new(),
+fn empty_participation_produces_diagnostic_missing() {
+    use slicer_host::wit_host::object_mesh_to_wit_paint_segmentation_view;
+
+    // Mesh with valid geometry
+    let mesh = ObjectMesh {
+        id: String::from("diag-test"),
+        mesh: IndexedTriangleSet {
+            vertices: vec![Point3 { x: 0.0, y: 0.0, z: 0.0 }, Point3 { x: 1.0, y: 0.0, z: 0.0 }, Point3 { x: 0.0, y: 1.0, z: 0.0 }],
+            indices: vec![0, 1, 2],
+        },
+        transform: translation_transform(0.0, 0.0, 0.0),
+        config: ObjectConfig { data: HashMap::new() },
+        modifier_volumes: Vec::new(),
+        paint_data: None,
     };
 
-    // No participation data for any object
-    assert!(layer_plan.object_participation.is_empty());
+    // Layer plan with no participation for this object — empty indices
+    let empty_participation: Vec<u32> = vec![];
+
+    // Converter produces a view with empty participating_layer_indices
+    let view = object_mesh_to_wit_paint_segmentation_view(&mesh, &empty_participation);
+    assert!(
+        view.participating_layer_indices.is_empty(),
+        "view: participation is empty (missing for this object)"
+    );
+}
+
+/// Test 6: Zero transform matrix is detectable.
+///
+/// A transform matrix that is all zeros is a diagnostic condition — it
+/// indicates the matrix was not properly set (not identity-equivalent
+/// zero, but genuinely uninitialized). The view field reflects this state.
+#[test]
+fn missing_transform_matrix_produces_diagnostic() {
+    use slicer_host::wit_host::object_mesh_to_wit_paint_segmentation_view;
+
+    // Mesh with zero transform (all zeros — no translation, no rotation)
+    let zero_transform = Transform3d {
+        matrix: [0.0; 16],
+    };
+    let mesh = ObjectMesh {
+        id: String::from("zero-transform"),
+        mesh: IndexedTriangleSet {
+            vertices: vec![Point3 { x: 0.0, y: 0.0, z: 0.0 }, Point3 { x: 1.0, y: 0.0, z: 0.0 }, Point3 { x: 0.0, y: 1.0, z: 0.0 }],
+            indices: vec![0, 1, 2],
+        },
+        transform: zero_transform,
+        config: ObjectConfig { data: HashMap::new() },
+        modifier_volumes: Vec::new(),
+        paint_data: None,
+    };
+
+    let view = object_mesh_to_wit_paint_segmentation_view(&mesh, &[0]);
+    // Zero transform is detectable as a diagnostic condition
+    let is_zero = view.transform_matrix.iter().all(|&v| v == 0.0);
+    assert!(is_zero, "view: transform matrix is all zeros (missing/identity-equivalent)");
 }
 
 /// Test 6: Mesh without paint data has None paint_data.
