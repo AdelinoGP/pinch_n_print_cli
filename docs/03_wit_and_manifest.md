@@ -110,16 +110,24 @@ interface geometry {
         speed-factor: f32,
     }
 
-    enum extrusion-role {
+    variant extrusion-role {
         outer-wall, inner-wall, thin-wall,
         top-solid-infill, bottom-solid-infill, sparse-infill,
         support-material, support-interface,
-        ironing, bridge-infill, wipe-tower, custom,
+        ironing, bridge-infill, wipe-tower,
+        custom(string),
     }
 
     record semver { major: u32, minor: u32, patch: u32 }
 }
 ```
+
+Built-in IR roles with no dedicated WIT case remain lossless at the boundary by
+using reserved `custom(string)` tags:
+
+- `PrimeTower` maps to `custom("slicer.builtin/prime-tower@1")`
+- `Skirt` maps to `custom("slicer.builtin/skirt@1")`
+- Third-party modules must not mint either reserved tag.
 
 ---
 
@@ -250,11 +258,13 @@ interface ir-handles {
     resource gcode-output-builder {
         push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
         push-retract:     func(length: f32, speed: f32) -> result<_, string>;
+        push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
         push-fan-speed:   func(value: u8) -> result<_, string>;
         push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-        push-tool-change: func(from: u32, to: u32) -> result<_, string>;
+        push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
         push-comment:     func(text: string) -> result<_, string>;
         push-raw:         func(text: string) -> result<_, string>;
+        push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
     }
 
     use slicer:types/geometry.{extrusion-role};
@@ -296,6 +306,7 @@ interface ir-handles {
 ID canonicalization note:
 
 - `region-id` string must carry canonical decimal `u64` representation from host IR.
+- Any non-canonical `region-id` observed at a module boundary is a fatal contract error.
 - Modules must treat IDs as opaque tokens and must not derive ordering from lexical string comparison.
 
 ### Wall Loop Flag Invariant
@@ -480,11 +491,24 @@ world postpass-module {
 
     record module-error { code: u32, message: string, fatal: bool }
 
-    enum gcode-command-kind { move_, retract, fan-speed, temperature, tool-change, comment, raw }
-    record gcode-command-view { index: u32, kind: gcode-command-kind }
+    record gcode-retract-cmd { length: f32, speed: f32 }
+    record gcode-fan-speed-cmd { value: u8 }
+    record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
+    record gcode-tool-change-cmd { from-tool: u32, to-tool: u32 }
+
+    variant gcode-command {
+        move(gcode-move-cmd),
+        retract(gcode-retract-cmd),
+        unretract(gcode-retract-cmd),
+        fan-speed(gcode-fan-speed-cmd),
+        temperature(gcode-temperature-cmd),
+        tool-change(gcode-tool-change-cmd),
+        comment(string),
+        raw(string),
+    }
 
     export run-gcode-postprocess: func(
-        commands: list<gcode-command-view>,
+        commands: list<gcode-command>,
         output: gcode-output-builder,
         config: config-view,
     ) -> result<_, module-error>;
@@ -519,12 +543,26 @@ world finalization-module {
         to-tool: u32,
     }
 
+    record print-entity-view {
+        path: extrusion-path-3d,
+        role: extrusion-role,
+        region-key: region-key,
+        topo-order: u32,
+    }
+
+    record z-hop-view {
+        after-entity-index: u32,
+        hop-height: f32,
+    }
+
     // Read-only view of one completed layer.
     resource layer-collection-view {
         layer-index:  func() -> layer-idx;
         z:            func() -> f32;
         entity-count: func() -> u32;
+        ordered-entities: func() -> list<print-entity-view>;
         tool-changes: func() -> list<tool-change-view>;
+        z-hops: func() -> list<z-hop-view>;
     }
 
     // Output builder — may append to existing layers or insert synthetic ones.
@@ -701,11 +739,12 @@ emit through `gcode-output-builder` and how the host commits that output into
 
 | Method                        | Accepted? | Commit destination                                                                                                  |
 |-------------------------------|-----------|---------------------------------------------------------------------------------------------------------------------|
-| `push-tool-change(from, to)`  | yes       | Appended to `LayerCollectionIR.tool_changes` with `after_entity_index = ordered_entities.len() - 1` (or 0 if empty) |
+| `push-tool-change(from-tool, to-tool)` | yes | Appended to `LayerCollectionIR.tool_changes` with `after_entity_index = ordered_entities.len() - 1` (or 0 if empty) |
 | `push-comment(text)`          | yes       | Appended to `LayerCollectionIR.annotations` as `Comment(text)` with the same anchor rule                            |
 | `push-raw(text)`              | yes       | Appended to `LayerCollectionIR.annotations` as `Raw(text)` with the same anchor rule                                |
 | `push-move(cmd)`              | rejected  | Fatal `FatalModule` diagnostic — no documented `LayerCollectionIR` mapping                                          |
 | `push-retract(length, speed)` | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
+| `push-unretract(length, speed)` | rejected | Fatal `FatalModule` diagnostic                                                                                      |
 | `push-fan-speed(value)`       | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
 | `push-temperature(...)`       | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
 

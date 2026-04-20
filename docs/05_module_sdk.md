@@ -283,7 +283,7 @@ use slicer_test::fixtures::*;
 // Build a SliceRegionView from scratch
 let region = SliceRegionViewBuilder::new()
     .object_id("test-obj")
-    .region_id("test-region")
+    .region_id("42")
     .z(1.2)
     .effective_layer_height(0.2)
     .add_polygon(square_polygon(0.0, 0.0, 20.0))   // 20mm square
@@ -293,7 +293,7 @@ let region = SliceRegionViewBuilder::new()
 // Build a PerimeterRegionView
 let perim_region = PerimeterRegionViewBuilder::new()
     .object_id("test-obj")
-    .region_id("test-region")
+    .region_id("42")
     .add_outer_wall(rect_path(0.0, 0.0, 20.0, 0.4))
     .add_inner_wall(rect_path(0.4, 0.4, 19.2, 0.4))
     .build();
