@@ -21,6 +21,11 @@ pub struct ConfigViewData {
     pub fields: HashMap<String, ConfigValueStorage>,
 }
 
+/// Reserved custom extrusion-role tag used to preserve PrimeTower through WIT boundaries.
+pub const BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG: &str = "slicer.builtin/prime-tower@1";
+/// Reserved custom extrusion-role tag used to preserve Skirt through WIT boundaries.
+pub const BUILTIN_EXTRUSION_ROLE_SKIRT_TAG: &str = "slicer.builtin/skirt@1";
+
 /// Storage for a single config value on the host side.
 #[derive(Debug, Clone)]
 pub enum ConfigValueStorage {
@@ -275,6 +280,7 @@ pub mod layer {
                 resource gcode-output-builder {
                     push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
                     push-retract:     func(length: f32, speed: f32) -> result<_, string>;
+                    push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
                     push-fan-speed:   func(value: u8) -> result<_, string>;
                     push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
                     push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
@@ -582,6 +588,10 @@ pub struct LayerCollectionViewData {
     /// the guest can consume real per-layer metadata rather than the
     /// previous empty-shell stub.
     pub tool_changes: Vec<(u32, u32, u32)>,
+    /// Ordered print entities exposed by `ordered-entities()`.
+    pub ordered_entities: Vec<slicer_ir::PrintEntity>,
+    /// Z hops exposed by `z-hops()`.
+    pub z_hops: Vec<slicer_ir::ZHop>,
 }
 
 impl LayerCollectionViewData {
@@ -597,6 +607,8 @@ impl LayerCollectionViewData {
                 .iter()
                 .map(|t| (t.after_entity_index, t.from_tool, t.to_tool))
                 .collect(),
+            ordered_entities: ir.ordered_entities.clone(),
+            z_hops: ir.z_hops.clone(),
         }
     }
 }
@@ -694,7 +706,7 @@ pub mod finalization {
                 import host-services;
                 import config-types;
                 use config-types.{config-view};
-                use geometry.{extrusion-path3d};
+                use geometry.{extrusion-path3d, extrusion-role};
                 type layer-idx = u32;
                 type object-id = string;
                 type region-id = string;
@@ -707,11 +719,25 @@ pub mod finalization {
                     to-tool: u32,
                 }
 
+                record print-entity-view {
+                    path: extrusion-path3d,
+                    role: extrusion-role,
+                    region-key: region-key,
+                    topo-order: u32,
+                }
+
+                record z-hop-view {
+                    after-entity-index: u32,
+                    hop-height: f32,
+                }
+
                 resource layer-collection-view {
                     layer-index:  func() -> layer-idx;
                     z:            func() -> f32;
                     entity-count: func() -> u32;
+                    ordered-entities: func() -> list<print-entity-view>;
                     tool-changes: func() -> list<tool-change-view>;
+                    z-hops: func() -> list<z-hop-view>;
                 }
 
                 resource finalization-output-builder {
@@ -809,21 +835,35 @@ pub mod postpass {
                 record module-error { code: u32, message: string, fatal: bool }
 
                 record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
+                record gcode-retract-cmd { length: f32, speed: f32 }
+                record gcode-fan-speed-cmd { value: u8 }
+                record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
+                record gcode-tool-change-cmd { from-tool: u32, to-tool: u32 }
                 resource gcode-output-builder {
                     push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
                     push-retract:     func(length: f32, speed: f32) -> result<_, string>;
+                    push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
                     push-fan-speed:   func(value: u8) -> result<_, string>;
                     push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
                     push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
                     push-comment:     func(text: string) -> result<_, string>;
                     push-raw:         func(text: string) -> result<_, string>;
+                    push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
                 }
 
-                enum gcode-command-kind { move-cmd, retract, fan-speed, temperature, tool-change, comment, raw }
-                record gcode-command-view { index: u32, kind: gcode-command-kind }
+                variant gcode-command {
+                    move(gcode-move-cmd),
+                    retract(gcode-retract-cmd),
+                    unretract(gcode-retract-cmd),
+                    fan-speed(gcode-fan-speed-cmd),
+                    temperature(gcode-temperature-cmd),
+                    tool-change(gcode-tool-change-cmd),
+                    comment(string),
+                    raw(string),
+                }
 
                 export run-gcode-postprocess: func(
-                    commands: list<gcode-command-view>,
+                    commands: list<gcode-command>,
                     output: gcode-output-builder,
                     config: config-view,
                 ) -> result<_, module-error>;
@@ -925,6 +965,8 @@ pub enum GcodeCommandCollected {
     Move(GcodeMoveCmd),
     /// Retract.
     Retract { length: f32, speed: f32 },
+    /// Unretract.
+    Unretract { length: f32, speed: f32 },
     /// Fan speed.
     FanSpeed(u8),
     /// Temperature.
@@ -1742,8 +1784,84 @@ fn ir_to_wit_extrusion_role(role: &slicer_ir::ExtrusionRole) -> ExtrusionRole {
         slicer_ir::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
         slicer_ir::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
         slicer_ir::ExtrusionRole::Custom(tag) => ExtrusionRole::Custom(tag.clone()),
-        slicer_ir::ExtrusionRole::PrimeTower => ExtrusionRole::Custom(String::new()),
-        slicer_ir::ExtrusionRole::Skirt => ExtrusionRole::Custom(String::new()),
+        slicer_ir::ExtrusionRole::PrimeTower => {
+            ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG.to_string())
+        }
+        slicer_ir::ExtrusionRole::Skirt => {
+            ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
+        }
+    }
+}
+
+#[cfg(test)]
+mod layer_role_tests {
+    use super::*;
+
+    #[test]
+    fn ir_to_wit_extrusion_role_preserves_reserved_builtin_roles() {
+        assert!(matches!(
+            ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::PrimeTower),
+            ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG
+        ));
+        assert!(matches!(
+            ir_to_wit_extrusion_role(&slicer_ir::ExtrusionRole::Skirt),
+            ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG
+        ));
+    }
+}
+
+#[cfg(test)]
+mod region_origin_tests {
+    use super::*;
+
+    #[test]
+    fn touch_slice_region_rejects_noncanonical_region_id_strings() {
+        let mut ctx = HostExecutionContext::new("com.test.slice-origin".to_string(), 0.0, 0.2, None);
+        let handle = ctx
+            .push_slice_region(SliceRegionData {
+                object_id: "obj-1".to_string(),
+                region_id: "01".to_string(),
+                polygons: Vec::new(),
+                infill_areas: Vec::new(),
+                effective_layer_height: 0.2,
+                z: 0.2,
+                has_nonplanar: false,
+                boundary_paint: Vec::new(),
+            })
+            .expect("push slice region");
+
+        let err = ctx
+            .touch_slice_region(&handle)
+            .expect_err("non-canonical region-id must be rejected");
+        let message = err.to_string();
+
+        assert!(
+            message.contains("region-id") && message.contains("01"),
+            "diagnostic must explain the rejected non-canonical region-id: {message}"
+        );
+    }
+
+    #[test]
+    fn touch_perimeter_region_rejects_noncanonical_region_id_strings() {
+        let mut ctx = HostExecutionContext::new("com.test.perimeter-origin".to_string(), 0.0, 0.2, None);
+        let handle = ctx
+            .push_perimeter_region(PerimeterRegionData {
+                object_id: "obj-1".to_string(),
+                region_id: "01".to_string(),
+                wall_loops: Vec::new(),
+                infill_areas: Vec::new(),
+            })
+            .expect("push perimeter region");
+
+        let err = ctx
+            .touch_perimeter_region(&handle)
+            .expect_err("non-canonical region-id must be rejected");
+        let message = err.to_string();
+
+        assert!(
+            message.contains("region-id") && message.contains("01"),
+            "diagnostic must explain the rejected non-canonical region-id: {message}"
+        );
     }
 }
 
@@ -1865,6 +1983,22 @@ pub fn ir_simplify_polygon(points: Vec<slicer_ir::Point2>) -> Vec<slicer_ir::Poi
     pts
 }
 
+fn parse_canonical_region_id(raw: &str) -> Result<u64, String> {
+    let parsed = raw.parse::<u64>().map_err(|_| {
+        format!(
+            "expected canonical decimal u64 string with no leading zeros, got '{raw}'"
+        )
+    })?;
+
+    if parsed.to_string() != raw {
+        return Err(format!(
+            "expected canonical decimal u64 string with no leading zeros, got '{raw}'"
+        ));
+    }
+
+    Ok(parsed)
+}
+
 impl ct::HostConfigView for HostExecutionContext {
     fn get(
         &mut self,
@@ -1933,7 +2067,12 @@ impl HostExecutionContext {
     /// output builder are tagged with this identity for identity-preserving commit.
     fn touch_slice_region(&mut self, self_: &Resource<SliceRegionData>) -> wasmtime::Result<()> {
         let data = self.table.get(self_)?;
-        let rid = data.region_id.parse::<u64>().unwrap_or(0);
+        let rid = parse_canonical_region_id(&data.region_id).map_err(|reason| {
+            wasmtime::Error::msg(format!(
+                "slice-region-view '{}'/'{}' has invalid region-id: {reason}",
+                data.object_id, data.region_id
+            ))
+        })?;
         self.current_slice_region = Some((data.object_id.clone(), rid));
         Ok(())
     }
@@ -1989,7 +2128,12 @@ impl HostExecutionContext {
     /// path can preserve per-region identity.
     fn touch_perimeter_region(&mut self, self_: &Resource<PerimeterRegionData>) -> wasmtime::Result<()> {
         let data = self.table.get(self_)?;
-        let rid = data.region_id.parse::<u64>().unwrap_or(0);
+        let rid = parse_canonical_region_id(&data.region_id).map_err(|reason| {
+            wasmtime::Error::msg(format!(
+                "perimeter-region-view '{}'/'{}' has invalid region-id: {reason}",
+                data.object_id, data.region_id
+            ))
+        })?;
         self.current_perimeter_region = Some((data.object_id.clone(), rid));
         Ok(())
     }
@@ -2121,6 +2265,10 @@ impl ir::HostGcodeOutputBuilder for HostExecutionContext {
     }
     fn push_retract(&mut self, _self_: Resource<GcodeOutputBuilderData>, length: f32, speed: f32) -> wasmtime::Result<Result<(), String>> {
         self.gcode_output.commands.push(GcodeCommandCollected::Retract { length, speed });
+        Ok(Ok(()))
+    }
+    fn push_unretract(&mut self, _self_: Resource<GcodeOutputBuilderData>, length: f32, speed: f32) -> wasmtime::Result<Result<(), String>> {
+        self.gcode_output.commands.push(GcodeCommandCollected::Unretract { length, speed });
         Ok(Ok(()))
     }
     fn push_fan_speed(&mut self, _self_: Resource<GcodeOutputBuilderData>, value: u8) -> wasmtime::Result<Result<(), String>> {
@@ -2622,6 +2770,47 @@ mod finalization_impls {
         }
     }
 
+    fn finalization_role_ir_to_wit(r: &slicer_ir::ExtrusionRole) -> fgeo::ExtrusionRole {
+        match r {
+            slicer_ir::ExtrusionRole::OuterWall => fgeo::ExtrusionRole::OuterWall,
+            slicer_ir::ExtrusionRole::InnerWall => fgeo::ExtrusionRole::InnerWall,
+            slicer_ir::ExtrusionRole::ThinWall => fgeo::ExtrusionRole::ThinWall,
+            slicer_ir::ExtrusionRole::TopSolidInfill => fgeo::ExtrusionRole::TopSolidInfill,
+            slicer_ir::ExtrusionRole::BottomSolidInfill => fgeo::ExtrusionRole::BottomSolidInfill,
+            slicer_ir::ExtrusionRole::SparseInfill => fgeo::ExtrusionRole::SparseInfill,
+            slicer_ir::ExtrusionRole::SupportMaterial => fgeo::ExtrusionRole::SupportMaterial,
+            slicer_ir::ExtrusionRole::SupportInterface => fgeo::ExtrusionRole::SupportInterface,
+            slicer_ir::ExtrusionRole::Ironing => fgeo::ExtrusionRole::Ironing,
+            slicer_ir::ExtrusionRole::BridgeInfill => fgeo::ExtrusionRole::BridgeInfill,
+            slicer_ir::ExtrusionRole::WipeTower => fgeo::ExtrusionRole::WipeTower,
+            slicer_ir::ExtrusionRole::Custom(s) => fgeo::ExtrusionRole::Custom(s.clone()),
+            slicer_ir::ExtrusionRole::PrimeTower => {
+                fgeo::ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG.to_string())
+            }
+            slicer_ir::ExtrusionRole::Skirt => {
+                fgeo::ExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
+            }
+        }
+    }
+
+    fn finalization_path_ir_to_wit(p: &slicer_ir::ExtrusionPath3D) -> fgeo::ExtrusionPath3d {
+        fgeo::ExtrusionPath3d {
+            points: p
+                .points
+                .iter()
+                .map(|pt| fgeo::Point3WithWidth {
+                    x: pt.x,
+                    y: pt.y,
+                    z: pt.z,
+                    width: pt.width,
+                    flow_factor: pt.flow_factor,
+                })
+                .collect(),
+            role: finalization_role_ir_to_wit(&p.role),
+            speed_factor: p.speed_factor,
+        }
+    }
+
     impl fm::HostLayerCollectionView for HostExecutionContext {
         fn layer_index(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<u32> {
             self.runtime_reads.push(String::from("LayerCollectionIR"));
@@ -2655,6 +2844,38 @@ mod finalization_impls {
                 })
                 .collect())
         }
+        fn ordered_entities(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<Vec<fm::PrintEntityView>> {
+            self.runtime_reads.push(String::from("LayerCollectionIR"));
+            let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get(&typed)?;
+            Ok(data
+                .ordered_entities
+                .iter()
+                .map(|entity| fm::PrintEntityView {
+                    path: finalization_path_ir_to_wit(&entity.path),
+                    role: finalization_role_ir_to_wit(&entity.role),
+                    region_key: fm::RegionKey {
+                        layer_index: entity.region_key.global_layer_index,
+                        object_id: entity.region_key.object_id.clone(),
+                        region_id: entity.region_key.region_id.to_string(),
+                    },
+                    topo_order: entity.topo_order,
+                })
+                .collect())
+        }
+        fn z_hops(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<Vec<fm::ZHopView>> {
+            self.runtime_reads.push(String::from("LayerCollectionIR"));
+            let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get(&typed)?;
+            Ok(data
+                .z_hops
+                .iter()
+                .map(|z_hop| fm::ZHopView {
+                    after_entity_index: z_hop.after_entity_index,
+                    hop_height: z_hop.hop_height,
+                })
+                .collect())
+        }
         fn drop(&mut self, rep: Resource<fm::LayerCollectionView>) -> wasmtime::Result<()> {
             let typed: Resource<LayerCollectionViewData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?; Ok(())
@@ -2671,10 +2892,19 @@ mod finalization_impls {
         ) -> wasmtime::Result<Result<(), String>> {
             let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
             let data = self.table.get_mut(&typed)?;
+            let region_id = match super::parse_canonical_region_id(&region_key.region_id) {
+                Ok(region_id) => region_id,
+                Err(reason) => {
+                    return Ok(Err(format!(
+                        "finalization-output-builder: region '{}'/'{}' has invalid region-id: {reason}",
+                        region_key.object_id, region_key.region_id
+                    )));
+                }
+            };
             let ir_region_key = slicer_ir::RegionKey {
                 global_layer_index: region_key.layer_index,
                 object_id: region_key.object_id,
-                region_id: region_key.region_id.parse::<u64>().unwrap_or(0),
+                region_id,
             };
             data.pushes.push(FinalizationBuilderPush::EntityToLayer {
                 layer_index,
@@ -2709,6 +2939,54 @@ mod finalization_impls {
     }
 
     impl fm::FinalizationModuleImports for HostExecutionContext {}
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn finalization_role_ir_to_wit_preserves_reserved_builtin_roles() {
+            assert!(matches!(
+                finalization_role_ir_to_wit(&slicer_ir::ExtrusionRole::PrimeTower),
+                fgeo::ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG
+            ));
+            assert!(matches!(
+                finalization_role_ir_to_wit(&slicer_ir::ExtrusionRole::Skirt),
+                fgeo::ExtrusionRole::Custom(tag) if tag == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG
+            ));
+        }
+
+        #[test]
+        fn finalization_output_builder_rejects_noncanonical_region_id_strings() {
+            let mut ctx = HostExecutionContext::new("com.test.finalization".to_string(), 0.0, 0.2, None);
+            let handle = ctx
+                .push_finalization_output_builder()
+                .expect("push finalization output builder");
+
+            let result = <HostExecutionContext as fm::HostFinalizationOutputBuilder>::push_entity_to_layer(
+                &mut ctx,
+                handle,
+                0,
+                fgeo::ExtrusionPath3d {
+                    points: Vec::new(),
+                    role: fgeo::ExtrusionRole::OuterWall,
+                    speed_factor: 1.0,
+                },
+                fm::RegionKey {
+                    layer_index: 0,
+                    object_id: "obj-1".to_string(),
+                    region_id: "01".to_string(),
+                },
+            )
+            .expect("host call must succeed");
+
+            let message = result.expect_err("non-canonical region-id must be rejected");
+            assert!(
+                message.contains("region-id") && message.contains("01"),
+                "diagnostic must explain the rejected non-canonical region-id: {message}"
+            );
+        }
+    }
 }
 
 // ── Postpass world host trait impls ───────────────────────────────────
@@ -2814,6 +3092,9 @@ mod postpass_impls {
         fn push_retract(&mut self, _: Resource<ppm::GcodeOutputBuilder>, length: f32, speed: f32) -> wasmtime::Result<Result<(), String>> {
             self.gcode_output.commands.push(GcodeCommandCollected::Retract { length, speed }); Ok(Ok(()))
         }
+        fn push_unretract(&mut self, _: Resource<ppm::GcodeOutputBuilder>, length: f32, speed: f32) -> wasmtime::Result<Result<(), String>> {
+            self.gcode_output.commands.push(GcodeCommandCollected::Unretract { length, speed }); Ok(Ok(()))
+        }
         fn push_fan_speed(&mut self, _: Resource<ppm::GcodeOutputBuilder>, value: u8) -> wasmtime::Result<Result<(), String>> {
             self.gcode_output.commands.push(GcodeCommandCollected::FanSpeed(value)); Ok(Ok(()))
         }
@@ -2828,6 +3109,9 @@ mod postpass_impls {
         }
         fn push_raw(&mut self, _: Resource<ppm::GcodeOutputBuilder>, text: String) -> wasmtime::Result<Result<(), String>> {
             self.gcode_output.commands.push(GcodeCommandCollected::Raw(text)); Ok(Ok(()))
+        }
+        fn push_z_hop(&mut self, _: Resource<ppm::GcodeOutputBuilder>, after_entity_index: u32, hop_height: f32) -> wasmtime::Result<Result<(), String>> {
+            self.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index, hop_height }); Ok(Ok(()))
         }
         fn drop(&mut self, rep: Resource<ppm::GcodeOutputBuilder>) -> wasmtime::Result<()> {
             let typed: Resource<PostpassGcodeOutputBuilderData> = Resource::new_own(rep.rep());
@@ -2896,6 +3180,12 @@ pub fn convert_extrusion_role(role: &ExtrusionRole) -> slicer_ir::ExtrusionRole 
         ExtrusionRole::Ironing => slicer_ir::ExtrusionRole::Ironing,
         ExtrusionRole::BridgeInfill => slicer_ir::ExtrusionRole::BridgeInfill,
         ExtrusionRole::WipeTower => slicer_ir::ExtrusionRole::WipeTower,
+        ExtrusionRole::Custom(s) if s == BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG => {
+            slicer_ir::ExtrusionRole::PrimeTower
+        }
+        ExtrusionRole::Custom(s) if s == BUILTIN_EXTRUSION_ROLE_SKIRT_TAG => {
+            slicer_ir::ExtrusionRole::Skirt
+        }
         ExtrusionRole::Custom(s) => slicer_ir::ExtrusionRole::Custom(s.clone()),
     }
 }
