@@ -85,7 +85,7 @@ interface ir-handles {
     }
 
     resource perimeter-output-builder {
-        push-wall-loop:      func(loop-: wall-loop-view) -> result<_, string>;
+        push-wall-loop:      func(wall-loop: wall-loop-view) -> result<_, string>;
         set-infill-areas:    func(areas: list<ex-polygon>) -> result<_, string>;
         push-seam-candidate: func(pos: point3, score: f32) -> result<_, string>;
     }
@@ -98,9 +98,10 @@ interface ir-handles {
     resource gcode-output-builder {
         push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
         push-retract:     func(length: f32, speed: f32) -> result<_, string>;
+        push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
         push-fan-speed:   func(value: u8) -> result<_, string>;
         push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-        push-tool-change: func(from: u32, to: u32) -> result<_, string>;
+        push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
         push-comment:     func(text: string) -> result<_, string>;
         push-raw:         func(text: string) -> result<_, string>;
         // Accepted only at Layer::PathOptimization; commits onto

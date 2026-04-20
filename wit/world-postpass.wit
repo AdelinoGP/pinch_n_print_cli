@@ -7,11 +7,24 @@ world postpass-module {
 
     record module-error { code: u32, message: string, fatal: bool }
 
-    enum gcode-command-kind { move_, retract, fan-speed, temperature, tool-change, comment, raw }
-    record gcode-command-view { index: u32, kind: gcode-command-kind }
+    record gcode-retract-cmd { length: f32, speed: f32 }
+    record gcode-fan-speed-cmd { value: u8 }
+    record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
+    record gcode-tool-change-cmd { from-tool: u32, to-tool: u32 }
+
+    variant gcode-command {
+        move(gcode-move-cmd),
+        retract(gcode-retract-cmd),
+        unretract(gcode-retract-cmd),
+        fan-speed(gcode-fan-speed-cmd),
+        temperature(gcode-temperature-cmd),
+        tool-change(gcode-tool-change-cmd),
+        comment(string),
+        raw(string),
+    }
 
     export run-gcode-postprocess: func(
-        commands: list<gcode-command-view>,
+        commands: list<gcode-command>,
         output: gcode-output-builder,
         config: config-view,
     ) -> result<_, module-error>;
@@ -30,6 +43,8 @@ interface gcode-output-interface {
     push-move: func(cmd: gcode-move-cmd) -> result<_, string>;
     // Push a retraction move
     push-retract: func(length: f32, speed: f32) -> result<_, string>;
+    // Push an unretraction move
+    push-unretract: func(length: f32, speed: f32) -> result<_, string>;
     // Push a fan speed setting
     push-fan-speed: func(value: u8) -> result<_, string>;
     // Push a temperature setting
