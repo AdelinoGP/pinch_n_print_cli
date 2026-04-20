@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use wasmtime::component::Resource;
 
-use slicer_ir::{GCodeIR, GlobalLayer, LayerCollectionIR, StageId};
+use slicer_ir::{GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, StageId};
 
 use crate::wit_host::{self, ConfigViewData, HostExecutionContext, PaintRegionLayerData};
 use crate::{
@@ -99,6 +99,138 @@ impl std::error::Error for DispatchError {}
 /// Convert a borrowed resource handle into an owned handle for component calls.
 fn own<T: 'static>(r: Resource<T>) -> Resource<T> {
     Resource::new_own(r.rep())
+}
+
+fn convert_postpass_role_to_wit(
+    role: &slicer_ir::ExtrusionRole,
+) -> wit_host::postpass::slicer::world_postpass::geometry::ExtrusionRole {
+    use wit_host::postpass::slicer::world_postpass::geometry::ExtrusionRole as WitExtrusionRole;
+
+    match role {
+        slicer_ir::ExtrusionRole::OuterWall => WitExtrusionRole::OuterWall,
+        slicer_ir::ExtrusionRole::InnerWall => WitExtrusionRole::InnerWall,
+        slicer_ir::ExtrusionRole::ThinWall => WitExtrusionRole::ThinWall,
+        slicer_ir::ExtrusionRole::TopSolidInfill => WitExtrusionRole::TopSolidInfill,
+        slicer_ir::ExtrusionRole::BottomSolidInfill => WitExtrusionRole::BottomSolidInfill,
+        slicer_ir::ExtrusionRole::SparseInfill => WitExtrusionRole::SparseInfill,
+        slicer_ir::ExtrusionRole::SupportMaterial => WitExtrusionRole::SupportMaterial,
+        slicer_ir::ExtrusionRole::SupportInterface => WitExtrusionRole::SupportInterface,
+        slicer_ir::ExtrusionRole::Ironing => WitExtrusionRole::Ironing,
+        slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
+        slicer_ir::ExtrusionRole::WipeTower => WitExtrusionRole::WipeTower,
+        slicer_ir::ExtrusionRole::Custom(tag) => WitExtrusionRole::Custom(tag.clone()),
+        slicer_ir::ExtrusionRole::PrimeTower => {
+            WitExtrusionRole::Custom(wit_host::BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG.to_string())
+        }
+        slicer_ir::ExtrusionRole::Skirt => {
+            WitExtrusionRole::Custom(wit_host::BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
+        }
+    }
+}
+
+fn convert_gcode_command_to_postpass_wit(command: &GCodeCommand) -> wit_host::postpass::GcodeCommand {
+    match command {
+        GCodeCommand::Move { x, y, z, e, f, role } => {
+            wit_host::postpass::GcodeCommand::Move(wit_host::postpass::GcodeMoveCmd {
+                x: *x,
+                y: *y,
+                z: *z,
+                e: *e,
+                f: *f,
+                role: convert_postpass_role_to_wit(role),
+            })
+        }
+        GCodeCommand::Retract { length, speed } => {
+            wit_host::postpass::GcodeCommand::Retract(wit_host::postpass::GcodeRetractCmd {
+                length: *length,
+                speed: *speed,
+            })
+        }
+        GCodeCommand::Unretract { length, speed } => {
+            wit_host::postpass::GcodeCommand::Unretract(wit_host::postpass::GcodeRetractCmd {
+                length: *length,
+                speed: *speed,
+            })
+        }
+        GCodeCommand::FanSpeed { value } => {
+            wit_host::postpass::GcodeCommand::FanSpeed(wit_host::postpass::GcodeFanSpeedCmd {
+                value: *value,
+            })
+        }
+        GCodeCommand::Temperature { tool, celsius, wait } => {
+            wit_host::postpass::GcodeCommand::Temperature(
+                wit_host::postpass::GcodeTemperatureCmd {
+                    tool: *tool,
+                    celsius: *celsius,
+                    wait: *wait,
+                },
+            )
+        }
+        GCodeCommand::ToolChange { from, to } => {
+            wit_host::postpass::GcodeCommand::ToolChange(wit_host::postpass::GcodeToolChangeCmd {
+                from_tool: *from,
+                to_tool: *to,
+            })
+        }
+        GCodeCommand::Comment { text } => wit_host::postpass::GcodeCommand::Comment(text.clone()),
+        GCodeCommand::Raw { text } => wit_host::postpass::GcodeCommand::Raw(text.clone()),
+    }
+}
+
+fn collect_postpass_output(
+    commands: &[wit_host::GcodeCommandCollected],
+) -> Result<Option<Vec<GCodeCommand>>, String> {
+    if commands.is_empty() {
+        return Ok(None);
+    }
+
+    let mut collected = Vec::with_capacity(commands.len());
+    for (index, command) in commands.iter().enumerate() {
+        let converted = match command {
+            wit_host::GcodeCommandCollected::Move(cmd) => GCodeCommand::Move {
+                x: cmd.x,
+                y: cmd.y,
+                z: cmd.z,
+                e: cmd.e,
+                f: cmd.f,
+                role: wit_host::convert_extrusion_role(&cmd.role),
+            },
+            wit_host::GcodeCommandCollected::Retract { length, speed } => GCodeCommand::Retract {
+                length: *length,
+                speed: *speed,
+            },
+            wit_host::GcodeCommandCollected::Unretract { length, speed } => GCodeCommand::Unretract {
+                length: *length,
+                speed: *speed,
+            },
+            wit_host::GcodeCommandCollected::FanSpeed(value) => GCodeCommand::FanSpeed {
+                value: *value,
+            },
+            wit_host::GcodeCommandCollected::Temperature { tool, celsius, wait } => GCodeCommand::Temperature {
+                tool: *tool,
+                celsius: *celsius,
+                wait: *wait,
+            },
+            wit_host::GcodeCommandCollected::ToolChange { from_tool, to_tool } => GCodeCommand::ToolChange {
+                from: *from_tool,
+                to: *to_tool,
+            },
+            wit_host::GcodeCommandCollected::Comment(text) => GCodeCommand::Comment {
+                text: text.clone(),
+            },
+            wit_host::GcodeCommandCollected::Raw(text) => GCodeCommand::Raw {
+                text: text.clone(),
+            },
+            wit_host::GcodeCommandCollected::ZHop { .. } => {
+                return Err(format!(
+                    "postpass gcode output command {index} used push-z-hop, but GCodeIR has no z-hop command variant"
+                ));
+            }
+        };
+        collected.push(converted);
+    }
+
+    Ok(Some(collected))
 }
 
 /// Bundled static configuration for a layer dispatch call.
@@ -644,7 +776,8 @@ impl WasmRuntimeDispatcher {
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
-    ) -> (Result<(), DispatchError>, Vec<String>) {
+        commands: &[GCodeCommand],
+    ) -> (Result<Option<Vec<GCodeCommand>>, DispatchError>, Vec<String>) {
         let export_name = "run-gcode-postprocess";
         let component = match module.wasm_component.as_ref() {
             Some(c) => c,
@@ -721,11 +854,38 @@ impl WasmRuntimeDispatcher {
             ),
         };
 
-        let call_result = bindings.call_run_gcode_postprocess(&mut store, &[], own(output_handle), own(config_handle));
+        let postpass_commands: Vec<_> = commands
+            .iter()
+            .map(convert_gcode_command_to_postpass_wit)
+            .collect();
+
+        let call_result = bindings.call_run_gcode_postprocess(
+            &mut store,
+            &postpass_commands,
+            own(output_handle),
+            own(config_handle),
+        );
         let runtime_reads = store.data().runtime_reads.clone();
 
         match call_result {
-            Ok(Ok(())) => (Ok(()), runtime_reads),
+            Ok(Ok(())) => {
+                let output = match collect_postpass_output(&store.data().gcode_output.commands) {
+                    Ok(output) => output,
+                    Err(reason) => {
+                        return (
+                            Err(DispatchError {
+                                module_id: module.module_id.clone(),
+                                stage_id: stage_id.clone(),
+                                export_name: export_name.to_string(),
+                                phase: DispatchPhase::OutputCommit,
+                                reason,
+                            }),
+                            runtime_reads,
+                        );
+                    }
+                };
+                (Ok(output), runtime_reads)
+            }
             Ok(Err(module_err)) => (
                 Err(DispatchError {
                     module_id: module.module_id.clone(),
@@ -925,17 +1085,29 @@ fn push_perimeter_regions(
 ///
 /// WIT `region-id` is declared as a string (docs/02 §Canonical ID Types).
 /// The canonical host form is a decimal `u64` string with no leading zeros.
-/// Modules that emit non-canonical IDs (e.g. `"default"`) receive a
-/// deterministic stable hash so the pipeline can proceed; the non-canonical
-/// value is logged as a diagnostic warning.  This matches the "harvest what
-/// the component actually returns" contract while avoiding a fatal error on
-/// the known `layer-planner-default` fallback case.
+/// Any non-canonical value is rejected as a fatal contract error.
 ///
 /// # Validation
 ///
 /// - `z` must be finite and non-negative (enforced in `push_layer`).
 /// - `effective_layer_height` must be finite and positive (enforced in `push_layer`).
 /// - `GlobalLayer.index` must be `< 100_000` (docs/02 §Bounds).
+fn parse_canonical_region_id(raw: &str) -> Result<u64, String> {
+    let parsed = raw.parse::<u64>().map_err(|_| {
+        format!(
+            "expected canonical decimal u64 string with no leading zeros, got '{raw}'"
+        )
+    })?;
+
+    if parsed.to_string() != raw {
+        return Err(format!(
+            "expected canonical decimal u64 string with no leading zeros, got '{raw}'"
+        ));
+    }
+
+    Ok(parsed)
+}
+
 fn harvest_layer_plan_ir(
     _stage_id: &str,
     _module_id: &str,
@@ -949,7 +1121,6 @@ fn harvest_layer_plan_ir(
     const MAX_LAYERS: u32 = 100_000;
 
     let mut global_layers: Vec<GlobalLayer> = Vec::with_capacity(proposals.len());
-    // object_id → Vec<ObjectLayerRef>
     let mut object_participation: HashMap<String, Vec<ObjectLayerRef>> = HashMap::new();
 
     for (idx, proposal) in proposals.into_iter().enumerate() {
@@ -963,15 +1134,12 @@ fn harvest_layer_plan_ir(
         let mut active_regions: Vec<ActiveRegion> = Vec::new();
 
         for region_prop in proposal.active_regions {
-            // Parse region_id: canonical = decimal u64, no leading zeros.
-            // Non-canonical strings get a stable FNV-1a hash as a fallback.
-            let region_id: u64 = match region_prop.region_id.parse::<u64>() {
-                Ok(id) => id,
-                Err(_) => {
-                    // Stable hash for determinism across identical runs.
-                    fnv1a_string_to_u64(&region_prop.region_id)
-                }
-            };
+            let region_id = parse_canonical_region_id(&region_prop.region_id).map_err(|reason| {
+                format!(
+                    "layer-plan-output: region '{}'/'{}' has invalid region-id: {reason}",
+                    region_prop.object_id, region_prop.region_id
+                )
+            })?;
 
             active_regions.push(ActiveRegion {
                 object_id: region_prop.object_id.clone(),
@@ -984,13 +1152,9 @@ fn harvest_layer_plan_ir(
                 tool_index: 0,
             });
 
-            // Track per-object layer participation.
             let obj_refs = object_participation
                 .entry(region_prop.object_id.clone())
                 .or_default();
-
-            // Avoid duplicate entries for the same (object, global_layer) pair
-            // when multiple regions from the same object appear in one layer.
             let already_referenced = obj_refs
                 .iter()
                 .any(|r| r.global_layer_index == index);
@@ -1017,6 +1181,44 @@ fn harvest_layer_plan_ir(
         global_layers,
         object_participation,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::harvest_layer_plan_ir;
+    use crate::wit_host::{self, HostExecutionContext};
+
+    #[test]
+    fn harvest_layer_plan_ir_rejects_noncanonical_region_id_strings() {
+        let mut ctx = HostExecutionContext::new(
+            "com.test.layer-plan-bad-region-id".to_string(),
+            0.0,
+            0.2,
+            None,
+        );
+        ctx.layer_plan_proposals.push(wit_host::prepass::LayerProposal {
+            z: 0.2,
+            active_regions: vec![wit_host::prepass::RegionLayerProposal {
+                object_id: "obj-1".to_string(),
+                region_id: "01".to_string(),
+                effective_layer_height: 0.2,
+                is_catchup: false,
+                catchup_z_bottom: 0.0,
+            }],
+        });
+
+        let err = harvest_layer_plan_ir(
+            "PrePass::LayerPlanning",
+            "com.test.layer-plan-bad-region-id",
+            ctx,
+        )
+        .expect_err("non-canonical region-id must be rejected");
+
+        assert!(
+            err.contains("region-id") && err.contains("01"),
+            "diagnostic must explain the rejected non-canonical region-id: {err}"
+        );
+    }
 }
 
 /// Harvest `push-paint-region` entries collected by a prepass
@@ -1158,25 +1360,7 @@ fn harvest_mesh_segmentation_ir(
     }
 }
 
-/// Stable FNV-1a 64-bit hash of a string.
-///
-/// Used to derive a deterministic `RegionId` from non-canonical WIT
-/// `region-id` strings (e.g., `"default"` emitted by the layer-planner
-/// fallback path).  Identical strings always produce identical hashes
-/// across runs, satisfying the determinism contract.
-fn fnv1a_string_to_u64(s: &str) -> u64 {
-    const FNV_OFFSET: u64 = 14695981039346656037;
-    const FNV_PRIME: u64 = 1099511628211;
-    let mut hash: u64 = FNV_OFFSET;
-    for byte in s.bytes() {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
-}
-
 // ── Stage runner trait implementations ──────────────────────────────────
-
 impl PrepassStageRunner for WasmRuntimeDispatcher {
     fn run_stage(
         &self,
@@ -1184,24 +1368,12 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         module: &CompiledModule,
         blackboard: &Blackboard,
     ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-        // Extract canonical object IDs from the blackboard's mesh IR so that
-        // the guest export receives the real object list (docs/02 §MeshIR).
-        // An empty list is valid (no-op for the module) but must never be
-        // hard-coded; the mesh is the authoritative source.
-        // Note: object_ids is computed here for MeshAnalysis/LayerPlanning but
-        // the actual object data flow is handled inside dispatch_prepass_call.
-
         let ctx = match self.dispatch_prepass_call(stage_id, module, blackboard) {
             Ok(ctx) => ctx,
+            Err(e) if e.phase == DispatchPhase::MissingComponent => {
+                return Ok((PrepassStageOutput::None, Vec::new()));
+            }
             Err(e) => {
-                // A `MissingComponent` error means the module's `.wasm` was a
-                // placeholder or could not be compiled.  The load path already
-                // emitted a structured warning for it.  Treat it as a graceful
-                // skip — return `None` so the prepass continues without this
-                // module's output.  Any other error is genuinely fatal.
-                if e.phase == DispatchPhase::MissingComponent {
-                    return Ok((PrepassStageOutput::None, Vec::new()));
-                }
                 return Err(PrepassExecutionError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
@@ -1661,15 +1833,18 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         stage_id: &StageId,
         module: &CompiledModule,
         _blackboard: &Blackboard,
-        _gcode_ir: &mut GCodeIR,
+        gcode_ir: &mut GCodeIR,
     ) -> Result<PostpassOutput, PostpassError> {
-        let (result, reads) = self.dispatch_postpass_gcode_call(stage_id, module);
+        let (result, reads) = self.dispatch_postpass_gcode_call(stage_id, module, &gcode_ir.commands);
         // Store reads for later retrieval via take_runtime_reads
         if !reads.is_empty() {
             self.postpass_runtime_reads.borrow_mut().push(reads);
         }
         match result {
-            Ok(()) => {}
+            Ok(Some(commands)) => {
+                gcode_ir.commands = commands;
+            }
+            Ok(None) => {}
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
                 return Ok(PostpassOutput::GCodeSuccess);
             }
