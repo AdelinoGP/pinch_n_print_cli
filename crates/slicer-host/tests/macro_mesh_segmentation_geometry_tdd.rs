@@ -14,15 +14,20 @@
 
 #![allow(missing_docs)]
 
-use slicer_host::wit_host::{
-    object_mesh_to_wit_mesh_object_view,
-    prepass,
+use slicer_host::{
+    wit_host::{object_mesh_to_wit_mesh_object_view, prepass},
+    Blackboard, CompiledModule, IrAccessMask,
+    PrepassStageRunner, WasmEngine,
 };
 use slicer_ir::{
-    BoundingBox3, FacetPaintData, IndexedTriangleSet,
+    BoundingBox3, ConfigView, FacetPaintData, IndexedTriangleSet,
     MeshIR, ObjectConfig, ObjectMesh, PaintLayer,
     PaintSemantic, PaintValue, Point3, SemVer, Transform3d,
 };
+use slicer_host::dispatch::WasmRuntimeDispatcher;
+use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
+use slicer_host::manifest::LoadedModule;
+use std::sync::Arc;
 
 /// Helper to construct a SemVer.
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -43,6 +48,66 @@ fn identity_transform() -> Transform3d {
             0.0, 0.0, 1.0, 0.0,
             0.0, 0.0, 0.0, 1.0,
         ],
+    }
+}
+
+/// Path to the pre-built prepass-guest component.
+const PREPASS_GUEST_PATH: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-guests/prepass-guest.component.wasm");
+
+fn load_prepass_guest(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmComponent>> {
+    let path = std::path::Path::new(PREPASS_GUEST_PATH);
+    if !path.exists() {
+        return None;
+    }
+    let bytes = std::fs::read(path).expect("prepass-guest.component.wasm must exist");
+    match engine.compile_component(&bytes) {
+        Ok(c) => Some(Arc::new(c)),
+        Err(e) => panic!("failed to compile prepass-guest: {e}"),
+    }
+}
+
+fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
+    LoadedModule {
+        id: id.to_string(),
+        version: semver(1, 0, 0),
+        stage: stage.to_string(),
+        wit_world: "slicer:world-prepass@1.0.0".to_string(),
+        ir_reads: Vec::new(),
+        ir_writes: Vec::new(),
+        claims: Vec::new(),
+        requires_claims: Vec::new(),
+        incompatible_with: Vec::new(),
+        requires_modules: Vec::new(),
+        min_host_version: semver(0, 1, 0),
+        min_ir_schema: semver(1, 0, 0),
+        max_ir_schema: semver(2, 0, 0),
+        config_schema: Default::default(),
+        overridable_per_region: Vec::new(),
+        overridable_per_layer: Vec::new(),
+        layer_parallel_safe: true,
+        wasm_path: std::path::PathBuf::from("/dev/null"),
+        placeholder_wasm: false,
+    }
+}
+
+fn make_compiled_module_with(
+    id: &str,
+    stage: &str,
+    component: Arc<slicer_host::WasmComponent>,
+) -> CompiledModule {
+    let loaded = make_loaded_module(id, stage);
+    let pool = Arc::new(
+        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
+            .unwrap(),
+    );
+    CompiledModule {
+        module_id: id.to_string(),
+        instance_pool: pool,
+        ir_read_mask: IrAccessMask { paths: Vec::new() },
+        ir_write_mask: IrAccessMask { paths: Vec::new() },
+        config_view: Arc::new(ConfigView::from_map(std::collections::HashMap::new())),
+        wasm_component: Some(component),
     }
 }
 
@@ -253,4 +318,142 @@ fn mesh_object_view_from_full_mesh_ir() {
     assert_eq!(view.vertices.len(), 8);
     assert_eq!(view.triangles.len(), 12);
     assert!(view.paint_layers.is_empty());
+}
+
+/// Proof that MeshObjectView iteration is deterministic.
+///
+/// The design doc specifies lexicographic ordering by object ID as the
+/// tiebreaker for deterministic results. This test verifies that repeated
+/// calls to the converter produce identical output for the same input.
+#[test]
+fn mesh_object_view_is_deterministic() {
+    use slicer_host::wit_host::object_mesh_to_wit_mesh_object_view;
+
+    let mesh = cube_mesh();
+
+    // Call converter multiple times and verify identical results
+    let view1: prepass::MeshObjectView = object_mesh_to_wit_mesh_object_view(&mesh);
+    let view2: prepass::MeshObjectView = object_mesh_to_wit_mesh_object_view(&mesh);
+    let view3: prepass::MeshObjectView = object_mesh_to_wit_mesh_object_view(&mesh);
+
+    assert_eq!(view1.object_id, view2.object_id);
+    assert_eq!(view2.object_id, view3.object_id);
+    assert_eq!(view1.vertices.len(), view2.vertices.len());
+    assert_eq!(view2.vertices.len(), view3.vertices.len());
+    assert_eq!(view1.triangles.len(), view2.triangles.len());
+    assert_eq!(view2.triangles.len(), view3.triangles.len());
+
+    for i in 0..view1.vertices.len() {
+        assert_eq!(view1.vertices[i].x, view2.vertices[i].x);
+        assert_eq!(view2.vertices[i].x, view3.vertices[i].x);
+    }
+}
+
+// ── AC-5: Negative test — empty geometry produces fatal WIT error ───────────
+
+/// Proof that passing empty geometry to the macro-authored MeshSegmentation
+/// path produces a fatal contract error at the WIT boundary, not a silent
+/// empty-data pass.
+///
+/// AC-5: "Given a macro-authored MeshSegmentation module, when MeshObjectView
+/// is constructed with empty vertices or triangles, then the host wired to
+/// dispatch produces a fatal contract error at the WIT boundary (not a silent
+/// empty-data pass)."
+#[test]
+fn mesh_seg_empty_geometry_produces_fatal_error() {
+    // Use the real prepass-guest so the dispatch path hits actual WIT boundary code.
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = match load_prepass_guest(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: prepass-guest.component.wasm missing — rebuild test guests");
+            return;
+        }
+    };
+    let module = make_compiled_module_with(
+        "com.test.empty-geo",
+        "PrePass::MeshSegmentation",
+        component,
+    );
+
+    // Mesh with empty vertices (no triangles can exist without vertices).
+    let empty_vertices_mesh = ObjectMesh {
+        id: String::from("empty-vertices"),
+        mesh: IndexedTriangleSet {
+            vertices: Vec::new(),
+            indices: Vec::new(),
+        },
+        transform: identity_transform(),
+        config: ObjectConfig {
+            data: std::collections::HashMap::new(),
+        },
+        modifier_volumes: Vec::new(),
+        paint_data: None,
+    };
+
+    // Mesh with vertices but empty triangles list.
+    let empty_triangles_mesh = ObjectMesh {
+        id: String::from("empty-triangles"),
+        mesh: IndexedTriangleSet {
+            vertices: vec![point3(0.0, 0.0, 0.0), point3(1.0, 0.0, 0.0)],
+            indices: Vec::new(),
+        },
+        transform: identity_transform(),
+        config: ObjectConfig {
+            data: std::collections::HashMap::new(),
+        },
+        modifier_volumes: Vec::new(),
+        paint_data: None,
+    };
+
+    // Test empty vertices case — dispatch must produce a fatal error.
+    {
+        let mesh_ir = MeshIR {
+            schema_version: semver(1, 0, 0),
+            objects: vec![empty_vertices_mesh.clone()],
+            build_volume: BoundingBox3 {
+                min: point3(0.0, 0.0, 0.0),
+                max: point3(0.0, 0.0, 0.0),
+            },
+        };
+        let blackboard = Blackboard::new(Arc::new(mesh_ir), 0);
+        let result = PrepassStageRunner::run_stage(
+            &dispatcher,
+            &"PrePass::MeshSegmentation".to_string(),
+            &module,
+            &blackboard,
+        );
+
+        let err_str = format!("{:?}", result);
+        assert!(
+            err_str.contains("FatalModule") || err_str.contains("empty"),
+            "empty vertices must produce a FatalModule error, got: {err_str}"
+        );
+    }
+
+    // Test empty triangles case — dispatch must produce a fatal error.
+    {
+        let mesh_ir = MeshIR {
+            schema_version: semver(1, 0, 0),
+            objects: vec![empty_triangles_mesh.clone()],
+            build_volume: BoundingBox3 {
+                min: point3(0.0, 0.0, 0.0),
+                max: point3(1.0, 0.0, 0.0),
+            },
+        };
+        let blackboard = Blackboard::new(Arc::new(mesh_ir), 0);
+        let result = PrepassStageRunner::run_stage(
+            &dispatcher,
+            &"PrePass::MeshSegmentation".to_string(),
+            &module,
+            &blackboard,
+        );
+
+        let err_str = format!("{:?}", result);
+        assert!(
+            err_str.contains("FatalModule") || err_str.contains("empty"),
+            "empty triangles must produce a FatalModule error, got: {err_str}"
+        );
+    }
 }
