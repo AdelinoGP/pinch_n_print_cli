@@ -23,6 +23,7 @@ GUESTS=(
     "sdk-finalization-guest:sdk_finalization_guest"
     "sdk-prepass-guest:sdk_prepass_guest"
     "sdk-layer-infill-guest:sdk_layer_infill_guest"
+    "sdk-layer-pathopt-guest:sdk_layer_pathopt_guest"
 )
 
 check_only=false

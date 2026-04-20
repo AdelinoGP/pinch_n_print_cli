@@ -2,7 +2,7 @@
 
 wit_bindgen::generate!({
     inline: r#"
-        package slicer:layer-world@1.0.0;
+        package slicer:world-layer@1.0.0;
 
         interface geometry {
             record point2 { x: s64, y: s64 }
@@ -167,17 +167,17 @@ impl Guest for Component {
         for r in &regions {
             let obj = r.object_id();
             let rid = r.region_id();
-            let key = slicer::layer_world::ir_handles::RegionKey {
+            let key = slicer::world_layer::ir_handles::RegionKey {
                 layer_index,
                 object_id: obj,
                 region_id: rid,
             };
-            let poly = slicer::layer_world::geometry::ExPolygon {
-                contour: slicer::layer_world::geometry::Polygon {
+            let poly = slicer::world_layer::geometry::ExPolygon {
+                contour: slicer::world_layer::geometry::Polygon {
                     points: vec![
-                        slicer::layer_world::geometry::Point2 { x: 0, y: 0 },
-                        slicer::layer_world::geometry::Point2 { x: 1000, y: 0 },
-                        slicer::layer_world::geometry::Point2 { x: 1000, y: 1000 },
+                        slicer::world_layer::geometry::Point2 { x: 0, y: 0 },
+                        slicer::world_layer::geometry::Point2 { x: 1000, y: 0 },
+                        slicer::world_layer::geometry::Point2 { x: 1000, y: 1000 },
                     ],
                 },
                 holes: vec![],
@@ -197,21 +197,21 @@ impl Guest for Component {
             // Touch wall_loops() to arm origin tag for this region.
             let walls = r.wall_loops();
             let infill_n = r.infill_areas().len();
-            let wl = slicer::layer_world::ir_handles::WallLoopView {
+            let wl = slicer::world_layer::ir_handles::WallLoopView {
                 perimeter_index: walls.len() as u32,
-                loop_type: slicer::layer_world::ir_handles::WallLoopType::Outer,
-                path: slicer::layer_world::geometry::ExtrusionPath3d {
-                    points: vec![slicer::layer_world::geometry::Point3WithWidth {
+                loop_type: slicer::world_layer::ir_handles::WallLoopType::Outer,
+                path: slicer::world_layer::geometry::ExtrusionPath3d {
+                    points: vec![slicer::world_layer::geometry::Point3WithWidth {
                         x: walls.len() as f32,
                         y: infill_n as f32,
                         z: 0.0,
                         width: 0.4,
                         flow_factor: 1.0,
                     }],
-                    role: slicer::layer_world::geometry::ExtrusionRole::OuterWall,
+                    role: slicer::world_layer::geometry::ExtrusionRole::OuterWall,
                     speed_factor: 1.0,
                 },
-                feature_flags: vec![slicer::layer_world::ir_handles::WallFeatureFlag {
+                feature_flags: vec![slicer::world_layer::ir_handles::WallFeatureFlag {
                     tool_index: None,
                     fuzzy_skin: false,
                     is_bridge: false,
@@ -232,8 +232,8 @@ impl Guest for Component {
         // 1. Read config
         let spacing = config.get_float("infill-spacing").unwrap_or(2.0);
         // 2. Log
-        slicer::layer_world::host_services::log(
-            slicer::layer_world::host_services::LogLevel::Info,
+        slicer::world_layer::host_services::log(
+            slicer::world_layer::host_services::LogLevel::Info,
             &format!("run-infill: layer={}, spacing={}, regions={}", layer_index, spacing, regions.len()),
         );
         // 3. Read region data — encode slice region info into output:
@@ -244,20 +244,20 @@ impl Guest for Component {
         let region_count = regions.len() as f32;
         let total_polys: f32 = regions.iter().map(|r| r.polygons().len() as f32).sum();
         // 4. Push output
-        let path = slicer::layer_world::geometry::ExtrusionPath3d {
+        let path = slicer::world_layer::geometry::ExtrusionPath3d {
             points: vec![
-                slicer::layer_world::geometry::Point3WithWidth {
+                slicer::world_layer::geometry::Point3WithWidth {
                     x: 0.0, y: 0.0, z,
                     width: total_polys,
                     flow_factor: region_count,
                 },
-                slicer::layer_world::geometry::Point3WithWidth {
+                slicer::world_layer::geometry::Point3WithWidth {
                     x: spacing as f32 * 10.0, y: 0.0, z,
                     width: 0.4,
                     flow_factor: 1.0,
                 },
             ],
-            role: slicer::layer_world::geometry::ExtrusionRole::SparseInfill,
+            role: slicer::world_layer::geometry::ExtrusionRole::SparseInfill,
             speed_factor: 1.0,
         };
         output.push_sparse_path(&path).expect("push failed");
@@ -269,15 +269,15 @@ impl Guest for Component {
         for r in &regions {
             let walls = r.wall_loops();
             let infill_n = r.infill_areas().len();
-            let path = slicer::layer_world::geometry::ExtrusionPath3d {
-                points: vec![slicer::layer_world::geometry::Point3WithWidth {
+            let path = slicer::world_layer::geometry::ExtrusionPath3d {
+                points: vec![slicer::world_layer::geometry::Point3WithWidth {
                     x: walls.len() as f32,
                     y: infill_n as f32,
                     z: 0.0,
                     width: 0.4,
                     flow_factor: 1.0,
                 }],
-                role: slicer::layer_world::geometry::ExtrusionRole::TopSolidInfill,
+                role: slicer::world_layer::geometry::ExtrusionRole::TopSolidInfill,
                 speed_factor: 1.0,
             };
             output.push_solid_path(&path).expect("push solid path failed");
@@ -286,7 +286,7 @@ impl Guest for Component {
     }
     fn run_support(layer_index: LayerIdx, _regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: SupportOutputBuilder, _config: ConfigView) -> Result<(), ModuleError> {
         // Query support-enforcer paint regions.
-        use slicer::layer_world::ir_handles::PaintSemantic;
+        use slicer::world_layer::ir_handles::PaintSemantic;
         let enforcers = paint.get_regions(PaintSemantic::SupportEnforcer);
         let blocker_count = paint.get_regions(PaintSemantic::SupportBlocker).len();
         let paint_layer_idx = paint.layer_index();
@@ -296,9 +296,9 @@ impl Guest for Component {
         // - first point y = blocker region count as f32
         // - first point z = paint layer index as f32 (proves layer index was threaded)
         let region_count = enforcers.len() as f32;
-        let path = slicer::layer_world::geometry::ExtrusionPath3d {
+        let path = slicer::world_layer::geometry::ExtrusionPath3d {
             points: vec![
-                slicer::layer_world::geometry::Point3WithWidth {
+                slicer::world_layer::geometry::Point3WithWidth {
                     x: region_count,
                     y: blocker_count as f32,
                     z: paint_layer_idx as f32,
@@ -306,7 +306,7 @@ impl Guest for Component {
                     flow_factor: 1.0,
                 },
             ],
-            role: slicer::layer_world::geometry::ExtrusionRole::SupportMaterial,
+            role: slicer::world_layer::geometry::ExtrusionRole::SupportMaterial,
             speed_factor: 1.0,
         };
         output.push_support_path(&path).expect("push support path failed");
@@ -321,15 +321,15 @@ impl Guest for Component {
             let _obj = r.object_id();
             let _rid = r.region_id();
             let poly_n = r.polygons().len();
-            let path = slicer::layer_world::geometry::ExtrusionPath3d {
-                points: vec![slicer::layer_world::geometry::Point3WithWidth {
+            let path = slicer::world_layer::geometry::ExtrusionPath3d {
+                points: vec![slicer::world_layer::geometry::Point3WithWidth {
                     x: poly_n as f32,
                     y: 0.0,
                     z: r.z(),
                     width: 0.4,
                     flow_factor: 1.0,
                 }],
-                role: slicer::layer_world::geometry::ExtrusionRole::SupportMaterial,
+                role: slicer::world_layer::geometry::ExtrusionRole::SupportMaterial,
                 speed_factor: 1.0,
             };
             output.push_support_path(&path).expect("push support path failed");

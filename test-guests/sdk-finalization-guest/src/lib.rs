@@ -34,22 +34,54 @@ impl FinalizationModule for SdkFinalizationModule {
 
         // Deep-copy input witness: emit one synthetic extrusion per
         // observed layer encoding the observed `(layer_index, z,
-        // entity_count, tool_changes.len())` into a deterministic
-        // `Point3WithWidth` tuple. A host test can then assert the
+        // entity_count, tool_changes.len(), z_hops.len())` plus a
+        // second point carrying the first ordered entity / first z-hop
+        // witness payloads. A host test can then assert the
         // synthesised entity's numbers match the source
         // `LayerCollectionIR`, which is only possible if the input
-        // deep-copy pipeline actually forwarded real per-layer data
-        // from the wit-bindgen resource accessors.
+        // deep-copy pipeline actually forwarded real completed-layer
+        // data from the wit-bindgen resource accessors.
         for layer in layers {
+            let ordered_entities = layer.ordered_entities();
             let tc = layer.tool_changes();
+            let z_hops = layer.z_hops();
+            let first_entity_topo = ordered_entities
+                .first()
+                .map(|entity| entity.topo_order as f32)
+                .unwrap_or(-1.0);
+            let first_entity_point_count = ordered_entities
+                .first()
+                .map(|entity| entity.path.points.len() as f32)
+                .unwrap_or(-1.0);
+            let first_entity_speed_factor = ordered_entities
+                .first()
+                .map(|entity| entity.path.speed_factor)
+                .unwrap_or(-1.0);
+            let first_zhop_after = z_hops
+                .first()
+                .map(|hop| hop.after_entity_index as f32)
+                .unwrap_or(-1.0);
+            let first_zhop_height = z_hops
+                .first()
+                .map(|hop| hop.hop_height)
+                .unwrap_or(-1.0);
             let marker = ExtrusionPath3D {
-                points: vec![Point3WithWidth {
-                    x: layer.layer_index() as f32,
-                    y: layer.z(),
-                    z: layer.entity_count() as f32,
-                    width: tc.len() as f32,
-                    flow_factor: 1.0,
-                }],
+                points: vec![
+                    Point3WithWidth {
+                        x: layer.layer_index() as f32,
+                        y: layer.z(),
+                        z: layer.entity_count() as f32,
+                        width: tc.len() as f32,
+                        flow_factor: z_hops.len() as f32,
+                    },
+                    Point3WithWidth {
+                        x: first_entity_topo,
+                        y: first_entity_point_count,
+                        z: first_entity_speed_factor,
+                        width: first_zhop_after,
+                        flow_factor: first_zhop_height,
+                    },
+                ],
                 role: ExtrusionRole::Custom("task-109-finalization-witness".into()),
                 speed_factor: 1.0,
             };

@@ -119,10 +119,6 @@ struct Component;
 
 impl Guest for Component {
     fn run_mesh_analysis(_objects: Vec<ObjectId>, _output: MeshAnalysisOutput, _config: ConfigView) -> Result<(), ModuleError> {
-        slicer::prepass_world::host_services::log(
-            slicer::prepass_world::host_services::LogLevel::Info,
-            "run-mesh-analysis: ok",
-        );
         Ok(())
     }
     fn run_layer_planning(_objects: Vec<ObjectId>, _output: LayerPlanOutput, _config: ConfigView) -> Result<(), ModuleError> {
