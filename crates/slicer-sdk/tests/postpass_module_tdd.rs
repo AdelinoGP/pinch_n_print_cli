@@ -40,61 +40,71 @@ fn test_01_postpass_module_trait_exists_with_lifecycle() {
 }
 
 // =============================================================================
-// Test 2: GcodeCommandKind enum has all 7 variants
+// Test 2: GcodeCommand enum exposes all payload-bearing variants
 // =============================================================================
 
 #[test]
-fn test_02_gcode_command_kind_enum_has_all_variants() {
-    // Per docs/03_wit_and_manifest.md (world-postpass.wit):
-    // enum gcode-command-kind { move_, retract, fan-speed, temperature, tool-change, comment, raw }
-
-    // Test that all variants exist and can be created
-    let move_kind = GcodeCommandKind::Move;
-    let retract = GcodeCommandKind::Retract;
-    let fan_speed = GcodeCommandKind::FanSpeed;
-    let temperature = GcodeCommandKind::Temperature;
-    let tool_change = GcodeCommandKind::ToolChange;
-    let comment = GcodeCommandKind::Comment;
-    let raw = GcodeCommandKind::Raw;
-
-    // Test equality
-    assert_eq!(move_kind, GcodeCommandKind::Move);
-    assert_eq!(retract, GcodeCommandKind::Retract);
-    assert_eq!(fan_speed, GcodeCommandKind::FanSpeed);
-    assert_eq!(temperature, GcodeCommandKind::Temperature);
-    assert_eq!(tool_change, GcodeCommandKind::ToolChange);
-    assert_eq!(comment, GcodeCommandKind::Comment);
-    assert_eq!(raw, GcodeCommandKind::Raw);
-
-    // Test inequality
-    assert_ne!(move_kind, retract);
-    assert_ne!(fan_speed, temperature);
-}
-
-// =============================================================================
-// Test 3: GcodeCommandView has required fields
-// =============================================================================
-
-#[test]
-fn test_03_gcode_command_view_has_required_fields() {
-    // Per docs/03_wit_and_manifest.md (world-postpass.wit):
-    // record gcode-command-view { index: u32, kind: gcode-command-kind }
-
-    let view = GcodeCommandView {
-        index: 42,
-        kind: GcodeCommandKind::Move,
+fn test_02_gcode_command_enum_has_all_variants() {
+    let move_cmd = GcodeCommand::Move {
+        x: Some(10.0),
+        y: Some(20.0),
+        z: Some(0.3),
+        e: Some(1.5),
+        f: Some(1200.0),
+        role: ExtrusionRole::OuterWall,
+    };
+    let retract = GcodeCommand::Retract { length: 1.0, speed: 30.0 };
+    let unretract = GcodeCommand::Unretract { length: 1.0, speed: 30.0 };
+    let fan_speed = GcodeCommand::FanSpeed { value: 255 };
+    let temperature = GcodeCommand::Temperature {
+        tool: 0,
+        celsius: 210.0,
+        wait: true,
+    };
+    let tool_change = GcodeCommand::ToolChange { from: 0, to: 1 };
+    let comment = GcodeCommand::Comment {
+        text: "layer change".to_string(),
+    };
+    let raw = GcodeCommand::Raw {
+        text: "G28".to_string(),
     };
 
-    assert_eq!(view.index, 42);
-    assert_eq!(view.kind, GcodeCommandKind::Move);
+    assert!(matches!(move_cmd, GcodeCommand::Move { .. }));
+    assert!(matches!(retract, GcodeCommand::Retract { .. }));
+    assert!(matches!(unretract, GcodeCommand::Unretract { .. }));
+    assert!(matches!(fan_speed, GcodeCommand::FanSpeed { .. }));
+    assert!(matches!(temperature, GcodeCommand::Temperature { .. }));
+    assert!(matches!(tool_change, GcodeCommand::ToolChange { .. }));
+    assert!(matches!(comment, GcodeCommand::Comment { .. }));
+    assert!(matches!(raw, GcodeCommand::Raw { .. }));
 }
 
-#[test]
-fn test_03b_gcode_command_view_constructor() {
-    let view = GcodeCommandView::new(100, GcodeCommandKind::Comment);
+// =============================================================================
+// Test 3: GcodeCommand preserves payload fields
+// =============================================================================
 
-    assert_eq!(view.index, 100);
-    assert_eq!(view.kind, GcodeCommandKind::Comment);
+#[test]
+fn test_03_gcode_command_preserves_payload_fields() {
+    let command = GcodeCommand::Move {
+        x: Some(42.0),
+        y: None,
+        z: Some(0.2),
+        e: Some(0.8),
+        f: Some(1800.0),
+        role: ExtrusionRole::InnerWall,
+    };
+
+    match command {
+        GcodeCommand::Move { x, y, z, e, f, role } => {
+            assert_eq!(x, Some(42.0));
+            assert_eq!(y, None);
+            assert_eq!(z, Some(0.2));
+            assert_eq!(e, Some(0.8));
+            assert_eq!(f, Some(1800.0));
+            assert_eq!(role, ExtrusionRole::InnerWall);
+        }
+        other => panic!("expected Move command, got {other:?}"),
+    }
 }
 
 // =============================================================================
@@ -166,6 +176,15 @@ fn test_06_gcode_output_builder_push_retract() {
     assert_eq!(builder.commands().len(), 1);
 }
 
+#[test]
+fn test_06b_gcode_output_builder_push_unretract() {
+    let mut builder = GcodeOutputBuilder::new();
+
+    let result = builder.push_unretract(1.0, 30.0);
+    assert!(result.is_ok());
+    assert_eq!(builder.commands().len(), 1);
+}
+
 // =============================================================================
 // Test 7: GcodeOutputBuilder push_fan_speed
 // =============================================================================
@@ -231,6 +250,15 @@ fn test_11_gcode_output_builder_push_raw() {
     assert_eq!(builder.commands().len(), 1);
 }
 
+#[test]
+fn test_11b_gcode_output_builder_push_z_hop() {
+    let mut builder = GcodeOutputBuilder::new();
+
+    let result = builder.push_z_hop(3, 0.4);
+    assert!(result.is_ok());
+    assert_eq!(builder.commands().len(), 1);
+}
+
 // =============================================================================
 // Test 12: run_gcode_postprocess signature matches WIT
 // =============================================================================
@@ -244,7 +272,7 @@ impl PostpassModule for GcodePostprocessTestModule {
 
     fn run_gcode_postprocess(
         &self,
-        commands: &[GcodeCommandView],
+        commands: &[GcodeCommand],
         output: &mut GcodeOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -261,8 +289,17 @@ fn test_12_run_gcode_postprocess_signature_matches_wit() {
     let config = ConfigView::from_map(HashMap::new(),);
     let module = GcodePostprocessTestModule::on_print_start(&config).unwrap();
     let commands = vec![
-        GcodeCommandView::new(0, GcodeCommandKind::Move),
-        GcodeCommandView::new(1, GcodeCommandKind::Comment),
+        GcodeCommand::Move {
+            x: Some(10.0),
+            y: Some(20.0),
+            z: Some(0.3),
+            e: Some(1.5),
+            f: Some(1200.0),
+            role: ExtrusionRole::OuterWall,
+        },
+        GcodeCommand::Comment {
+            text: "layer change".to_string(),
+        },
     ];
     let mut output = GcodeOutputBuilder::new();
 
@@ -322,7 +359,9 @@ impl PostpassModule for MinimalPostpassModule {
 fn test_14_default_implementations_exist() {
     let config = ConfigView::from_map(HashMap::new(),);
     let module = MinimalPostpassModule::on_print_start(&config).unwrap();
-    let commands = vec![GcodeCommandView::new(0, GcodeCommandKind::Raw)];
+    let commands = vec![GcodeCommand::Raw {
+        text: "G28".to_string(),
+    }];
     let mut gcode_output = GcodeOutputBuilder::new();
 
     // Default gcode postprocess should succeed (no-op)
@@ -346,8 +385,8 @@ fn test_15_prelude_exports_all_postpass_types() {
         // PostpassModule is a trait, so we check it via a function signature
         fn _takes_postpass_module<T: PostpassModule>(_: T) {}
 
-        let _: GcodeCommandKind;
-        let _: GcodeCommandView;
+        let _: GcodeCommand;
+        let _: GcodeOutputCommand;
         let _: GcodeOutputBuilder;
         let _: GcodeMoveCmd;
     }
@@ -356,8 +395,14 @@ fn test_15_prelude_exports_all_postpass_types() {
 #[test]
 fn test_15b_prelude_types_are_constructible() {
     // Verify types can be constructed via prelude imports
-    let _kind = GcodeCommandKind::Move;
-    let _view = GcodeCommandView::new(0, GcodeCommandKind::Retract);
+    let _command = GcodeCommand::Retract {
+        length: 1.0,
+        speed: 30.0,
+    };
+    let _output_command = GcodeOutputCommand::ZHop {
+        after_entity_index: 0,
+        hop_height: 0.2,
+    };
     let _builder = GcodeOutputBuilder::new();
     let _cmd = GcodeMoveCmd::new(None, None, None, None, None, ExtrusionRole::OuterWall);
 }

@@ -227,6 +227,96 @@ fn canonical_ir_types_has_push_z_hop() {
     );
 }
 
+/// Verifies that the disk canonical ir-types.wit contains `push-unretract`
+/// in the gcode-output-builder.
+#[test]
+fn canonical_ir_types_has_push_unretract() {
+    let path = workspace_root().join("wit/deps/ir-types.wit");
+    let content = fs::read_to_string(&path).expect("read canonical ir-types.wit");
+    assert!(
+        content.contains("push-unretract"),
+        "canonical ir-types.wit must contain 'push-unretract' in gcode-output-builder"
+    );
+}
+
+/// Verifies that the canonical postpass world widened to payload-bearing
+/// command input with explicit unretract support.
+#[test]
+fn canonical_world_postpass_has_payload_command_input() {
+    let path = workspace_root().join("wit/world-postpass.wit");
+    let content = fs::read_to_string(&path).expect("read canonical world-postpass.wit");
+    assert!(
+        content.contains("variant gcode-command"),
+        "canonical world-postpass.wit must define payload-bearing 'variant gcode-command'"
+    );
+    assert!(
+        content.contains("unretract"),
+        "canonical world-postpass.wit must carry an 'unretract' command case"
+    );
+}
+
+/// Verifies that the canonical finalization world widened layer-collection-view
+/// with ordered-entity and z-hop reads.
+#[test]
+fn canonical_world_finalization_has_entity_and_zhop_reads() {
+    let path = workspace_root().join("wit/world-finalization.wit");
+    let content = fs::read_to_string(&path).expect("read canonical world-finalization.wit");
+    assert!(
+        content.contains("ordered-entities"),
+        "canonical world-finalization.wit must expose 'ordered-entities'"
+    );
+    assert!(
+        content.contains("z-hops"),
+        "canonical world-finalization.wit must expose 'z-hops'"
+    );
+}
+
+/// Verifies that the macro's embedded postpass/finalization WIT strings track
+/// the widened canonical surfaces.
+#[test]
+fn macro_embedded_wit_tracks_boundary_widening() {
+    let lib_rs = macro_lib_rs_content();
+    assert!(
+        lib_rs.contains("push-unretract"),
+        "macro embedded WIT must contain 'push-unretract' after postpass widening"
+    );
+    assert!(
+        lib_rs.contains("variant gcode-command"),
+        "macro embedded postpass WIT must define payload-bearing 'variant gcode-command'"
+    );
+    assert!(
+        lib_rs.contains("ordered-entities"),
+        "macro embedded finalization WIT must expose 'ordered-entities'"
+    );
+    assert!(
+        lib_rs.contains("z-hops"),
+        "macro embedded finalization WIT must expose 'z-hops'"
+    );
+}
+
+/// Verifies that the host's embedded postpass/finalization WIT strings track
+/// the widened canonical surfaces.
+#[test]
+fn host_embedded_wit_tracks_boundary_widening() {
+    let wit_host_rs = host_wit_host_rs_content();
+    assert!(
+        wit_host_rs.contains("push-unretract"),
+        "host embedded WIT must contain 'push-unretract' after postpass widening"
+    );
+    assert!(
+        wit_host_rs.contains("variant gcode-command"),
+        "host embedded postpass WIT must define payload-bearing 'variant gcode-command'"
+    );
+    assert!(
+        wit_host_rs.contains("ordered-entities"),
+        "host embedded finalization WIT must expose 'ordered-entities'"
+    );
+    assert!(
+        wit_host_rs.contains("z-hops"),
+        "host embedded finalization WIT must expose 'z-hops'"
+    );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper functions
 // ─────────────────────────────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ use slicer_host::{
     WasmEngine, WasmRuntimeDispatcher,
 };
 use slicer_host::wit_host::{
+    BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG, BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
     ExtrusionRole as WitExtrusionRole, PaintSemantic as WitPaintSemantic,
     PaintValue as WitPaintValue, WallFeatureFlag as WitWallFeatureFlag,
     convert_extrusion_role, convert_wall_feature_flag,
@@ -609,8 +610,12 @@ fn extrusion_role_custom_payload_roundtrip() {
         slicer_ir::ExtrusionRole::Ironing => WitExtrusionRole::Ironing,
         slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
         slicer_ir::ExtrusionRole::WipeTower => WitExtrusionRole::WipeTower,
-        slicer_ir::ExtrusionRole::PrimeTower => WitExtrusionRole::Custom(String::new()),
-        slicer_ir::ExtrusionRole::Skirt => WitExtrusionRole::Custom(String::new()),
+        slicer_ir::ExtrusionRole::PrimeTower => {
+            WitExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG.to_string())
+        }
+        slicer_ir::ExtrusionRole::Skirt => {
+            WitExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
+        }
     };
 
     // Step 3: Convert WIT → IR using public convert_extrusion_role
@@ -622,6 +627,40 @@ fn extrusion_role_custom_payload_roundtrip() {
             assert_eq!(s, "test-role@1", "custom payload must survive round-trip");
         }
         other => panic!("expected ExtrusionRole::Custom, got {:?}", other),
+    }
+}
+
+#[test]
+fn extrusion_role_builtin_tags_roundtrip() {
+    let cases = [
+        (
+            slicer_ir::ExtrusionRole::PrimeTower,
+            BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG,
+            slicer_ir::ExtrusionRole::PrimeTower,
+        ),
+        (
+            slicer_ir::ExtrusionRole::Skirt,
+            BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
+            slicer_ir::ExtrusionRole::Skirt,
+        ),
+    ];
+
+    for (ir_role, expected_tag, expected_ir) in cases {
+        let wit_role = match ir_role {
+            slicer_ir::ExtrusionRole::PrimeTower => {
+                WitExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG.to_string())
+            }
+            slicer_ir::ExtrusionRole::Skirt => {
+                WitExtrusionRole::Custom(BUILTIN_EXTRUSION_ROLE_SKIRT_TAG.to_string())
+            }
+            _ => unreachable!("test only covers built-in reserved roles"),
+        };
+
+        assert!(matches!(
+            wit_role,
+            WitExtrusionRole::Custom(ref tag) if tag == expected_tag
+        ));
+        assert_eq!(convert_extrusion_role(&wit_role), expected_ir);
     }
 }
 

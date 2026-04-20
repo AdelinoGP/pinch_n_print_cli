@@ -34,7 +34,7 @@ pub struct LayerPlanOutput;
 pub struct PaintSegmentationOutput;
 pub struct LayerCollectionView;
 pub struct FinalizationOutputBuilder;
-pub struct GcodeCommandView;
+pub struct GcodeCommand;
 
 pub trait LayerModule: Sized {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError>;
@@ -126,7 +126,7 @@ pub trait PostpassModule: Sized {
     }
     fn run_gcode_postprocess(
         &self,
-        _commands: &[GcodeCommandView],
+        _commands: &[GcodeCommand],
         _output: &mut GcodeOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -224,7 +224,7 @@ impl PostpassModule for PostpassGcodeFixture {
     }
     fn run_gcode_postprocess(
         &self,
-        _cmds: &[GcodeCommandView],
+        _cmds: &[GcodeCommand],
         _o: &mut GcodeOutputBuilder,
         _c: &ConfigView,
     ) -> Result<(), ModuleError> {
