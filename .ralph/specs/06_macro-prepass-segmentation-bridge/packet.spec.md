@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: macro-prepass-segmentation-bridge
 task_ids:
   - TASK-128

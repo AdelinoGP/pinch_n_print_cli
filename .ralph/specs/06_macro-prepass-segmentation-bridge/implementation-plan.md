@@ -16,7 +16,7 @@
   Define `mesh-object-view` and `paint-segmentation-object-view` records in `wit/deps/ir-types.wit` as WIT counterparts to the SDK types in `crates/slicer-sdk/src/prepass_types.rs`.
 - Precondition:
   - `wit/deps/ir-types.wit` is a valid WIT file that compiles with `wit-component`
-  - No existing `mesh-object-view` or `paint-segmentation-object-view` record definitions exist in any WIT file
+  - `mesh-object-view` record may already exist; `paint-segmentation-object-view` must not already exist
 - Postcondition:
   - `wit/deps/ir-types.wit` contains a `mesh-object-view` record with fields: `object-id`, `vertices` (list of `point3`), `triangles` (list of `triangle-index`), `paint-layers` (list of `paint-layer-view`)
   - `wit/deps/ir-types.wit` contains a `paint-segmentation-object-view` record with fields: `object-id`, `vertices`, `triangles`, `paint-layers`, `transform-matrix` (list<f64> of length 16), `participating-layer-indices` (list<u32>)

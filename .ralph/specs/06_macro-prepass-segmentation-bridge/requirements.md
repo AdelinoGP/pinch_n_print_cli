@@ -7,7 +7,7 @@
   - `TASK-128a` — child: provide usable `MeshSegmentation` inputs on the macro path by sourcing real geometry for `MeshObjectView` instead of object-id-only shells
   - `TASK-128b` — child: provide usable `PaintSegmentation` inputs on the macro path, including transform matrices, paint layers, and participating layer indices
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 
 ## Problem Statement
 
