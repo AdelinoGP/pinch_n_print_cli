@@ -473,19 +473,52 @@ fn resolve_world_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<World
 /// a `ConfigValue` `use` statement, a `__slicer_adapt_config` helper
 /// and a `__slicer_error_out` helper. The `world_ident` string selects
 /// the world, and `world_namespace_ident` is the Rust module path
-/// produced by wit-bindgen for that world (e.g. `postpass_world`,
-/// `layer_world`). Caller supplies the inline WIT and the
+/// produced by wit-bindgen for that world (e.g. `world_postpass`,
+/// `world_layer`). Caller supplies the inline WIT and the
 /// world-specific `impl Guest` body.
 fn emit_world_preamble(
     world_name: &str,
     world_namespace: &str,
     inline_wit: &str,
 ) -> TokenStream2 {
+    const TYPES_WIT: &str = include_str!("../../../wit/deps/types.wit");
+    const CONFIG_WIT: &str = include_str!("../../../wit/deps/config.wit");
+    const IR_TYPES_WIT: &str = include_str!("../../../wit/deps/ir-types.wit");
+
+    fn strip_package_decl(dep_wit: &str) -> String {
+        let mut lines = dep_wit.lines();
+        let first = lines.next();
+        let body = match first {
+            Some(line) if line.trim_start().starts_with("package ") => lines.collect::<Vec<_>>().join("\n"),
+            Some(line) => {
+                let mut collected = vec![line.to_string()];
+                collected.extend(lines.map(str::to_string));
+                collected.join("\n")
+            }
+            None => String::new(),
+        };
+        body.trim_start().to_string()
+    }
+
+    fn expand_inline_wit(inline_wit: &str) -> String {
+        let types_wit = strip_package_decl(TYPES_WIT);
+        let config_wit = strip_package_decl(CONFIG_WIT);
+        let ir_types_wit = strip_package_decl(IR_TYPES_WIT)
+            .replace("slicer:types/geometry", "geometry");
+
+        inline_wit
+            .replace("include \"../../wit/deps/types.wit\";", &types_wit)
+            .replace("include \"../../wit/deps/config.wit\";", &config_wit)
+            .replace("include \"../../wit/deps/ir-types.wit\";", &ir_types_wit)
+            .replace("extrusion-path-3d", "extrusion-path3d")
+    }
+
+    let expanded_inline_wit = expand_inline_wit(inline_wit);
     let ns_path: syn::Path = syn::parse_str(&format!("self::slicer::{world_namespace}::config_types::ConfigValue"))
         .expect("parse ConfigValue path");
     quote! {
         ::wit_bindgen::generate!({
-            inline: #inline_wit,
+            inline: #expanded_inline_wit,
             world: #world_name,
         });
 
@@ -560,9 +593,14 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
             record module-error { code: u32, message: string, fatal: bool }
 
             record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
+            record gcode-retract-cmd { length: f32, speed: f32 }
+            record gcode-fan-speed-cmd { value: u8 }
+            record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
+            record gcode-tool-change-cmd { from-tool: u32, to-tool: u32 }
             resource gcode-output-builder {
                 push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
                 push-retract:     func(length: f32, speed: f32) -> result<_, string>;
+                push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
                 push-fan-speed:   func(value: u8) -> result<_, string>;
                 push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
                 push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
@@ -571,11 +609,19 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                 push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
             }
 
-            enum gcode-command-kind { move-cmd, retract, fan-speed, temperature, tool-change, comment, raw }
-            record gcode-command-view { index: u32, kind: gcode-command-kind }
+            variant gcode-command {
+                move(gcode-move-cmd),
+                retract(gcode-retract-cmd),
+                unretract(gcode-retract-cmd),
+                fan-speed(gcode-fan-speed-cmd),
+                temperature(gcode-temperature-cmd),
+                tool-change(gcode-tool-change-cmd),
+                comment(string),
+                raw(string),
+            }
 
             export run-gcode-postprocess: func(
-                commands: list<gcode-command-view>,
+                commands: list<gcode-command>,
                 output: gcode-output-builder,
                 config: config-view,
             ) -> result<_, module-error>;
@@ -587,7 +633,7 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
         }
     "#;
 
-    let preamble = emit_world_preamble("postpass-module", "postpass_world", wit_inline);
+    let preamble = emit_world_preamble("postpass-module", "world_postpass", wit_inline);
 
     // Decide which stage method routes into the user's trait: the
     // detected stage for this impl. The other arm returns a benign
@@ -600,20 +646,17 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                     Ok(m) => m,
                     Err(e) => return Err(__slicer_error_out(e)),
                 };
-                // `run_gcode_postprocess` takes typed `GcodeCommandView`
-                // slices via the SDK-level postpass_types module. The
-                // current SDK trait signature (docs/05) is
-                // `fn run_gcode_postprocess(&self, commands: &[GcodeCommandView], output: &mut GcodeOutputBuilder, config: &ConfigView) -> Result<(), ModuleError>`.
-                // We construct empty SDK views/builders — the SDK trait
-                // default accepts them; resource-level deep copy for
-                // per-command content is a follow-on polish.
-                let sdk_commands: ::std::vec::Vec<::slicer_sdk::postpass_types::GcodeCommandView> = ::std::vec::Vec::new();
+                let sdk_commands: ::std::vec::Vec<::slicer_sdk::postpass_types::GcodeCommand> =
+                    commands.iter().map(__slicer_adapt_postpass_command).collect();
                 let mut sdk_builder = ::slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
                 let out = <#self_ty as ::slicer_sdk::traits::PostpassModule>::run_gcode_postprocess(
                     &module, &sdk_commands, &mut sdk_builder, &ir_config,
                 );
                 match out {
-                    Ok(()) => Ok(()),
+                    Ok(()) => {
+                        __slicer_drain_postpass_gcode(&sdk_builder, &output);
+                        Ok(())
+                    }
                     Err(e) => Err(__slicer_error_out(e)),
                 }
             },
@@ -650,12 +693,152 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
 
             #preamble
 
+            fn __slicer_wit_role_to_sdk(role: &ExtrusionRole) -> ::slicer_sdk::ir::ExtrusionRole {
+                match role {
+                    ExtrusionRole::OuterWall => ::slicer_sdk::ir::ExtrusionRole::OuterWall,
+                    ExtrusionRole::InnerWall => ::slicer_sdk::ir::ExtrusionRole::InnerWall,
+                    ExtrusionRole::ThinWall => ::slicer_sdk::ir::ExtrusionRole::ThinWall,
+                    ExtrusionRole::TopSolidInfill => ::slicer_sdk::ir::ExtrusionRole::TopSolidInfill,
+                    ExtrusionRole::BottomSolidInfill => ::slicer_sdk::ir::ExtrusionRole::BottomSolidInfill,
+                    ExtrusionRole::SparseInfill => ::slicer_sdk::ir::ExtrusionRole::SparseInfill,
+                    ExtrusionRole::SupportMaterial => ::slicer_sdk::ir::ExtrusionRole::SupportMaterial,
+                    ExtrusionRole::SupportInterface => ::slicer_sdk::ir::ExtrusionRole::SupportInterface,
+                    ExtrusionRole::Ironing => ::slicer_sdk::ir::ExtrusionRole::Ironing,
+                    ExtrusionRole::BridgeInfill => ::slicer_sdk::ir::ExtrusionRole::BridgeInfill,
+                    ExtrusionRole::WipeTower => ::slicer_sdk::ir::ExtrusionRole::WipeTower,
+                    ExtrusionRole::Custom(s) => ::slicer_sdk::ir::ExtrusionRole::Custom(s.clone()),
+                }
+            }
+
+            fn __slicer_sdk_role_to_wit(role: &::slicer_sdk::ir::ExtrusionRole) -> ExtrusionRole {
+                match role {
+                    ::slicer_sdk::ir::ExtrusionRole::OuterWall => ExtrusionRole::OuterWall,
+                    ::slicer_sdk::ir::ExtrusionRole::InnerWall => ExtrusionRole::InnerWall,
+                    ::slicer_sdk::ir::ExtrusionRole::ThinWall => ExtrusionRole::ThinWall,
+                    ::slicer_sdk::ir::ExtrusionRole::TopSolidInfill => ExtrusionRole::TopSolidInfill,
+                    ::slicer_sdk::ir::ExtrusionRole::BottomSolidInfill => ExtrusionRole::BottomSolidInfill,
+                    ::slicer_sdk::ir::ExtrusionRole::SparseInfill => ExtrusionRole::SparseInfill,
+                    ::slicer_sdk::ir::ExtrusionRole::SupportMaterial => ExtrusionRole::SupportMaterial,
+                    ::slicer_sdk::ir::ExtrusionRole::SupportInterface => ExtrusionRole::SupportInterface,
+                    ::slicer_sdk::ir::ExtrusionRole::Ironing => ExtrusionRole::Ironing,
+                    ::slicer_sdk::ir::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
+                    ::slicer_sdk::ir::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
+                    ::slicer_sdk::ir::ExtrusionRole::Custom(s) => ExtrusionRole::Custom(s.clone()),
+                    ::slicer_sdk::ir::ExtrusionRole::PrimeTower => {
+                        ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/prime-tower@1"))
+                    }
+                    ::slicer_sdk::ir::ExtrusionRole::Skirt => {
+                        ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
+                    }
+                }
+            }
+
+            fn __slicer_adapt_postpass_command(command: &GcodeCommand) -> ::slicer_sdk::postpass_types::GcodeCommand {
+                match command {
+                    GcodeCommand::Move(cmd) => ::slicer_sdk::postpass_types::GcodeCommand::Move {
+                        x: cmd.x,
+                        y: cmd.y,
+                        z: cmd.z,
+                        e: cmd.e,
+                        f: cmd.f,
+                        role: __slicer_wit_role_to_sdk(&cmd.role),
+                    },
+                    GcodeCommand::Retract(cmd) => ::slicer_sdk::postpass_types::GcodeCommand::Retract {
+                        length: cmd.length,
+                        speed: cmd.speed,
+                    },
+                    GcodeCommand::Unretract(cmd) => ::slicer_sdk::postpass_types::GcodeCommand::Unretract {
+                        length: cmd.length,
+                        speed: cmd.speed,
+                    },
+                    GcodeCommand::FanSpeed(cmd) => ::slicer_sdk::postpass_types::GcodeCommand::FanSpeed {
+                        value: cmd.value,
+                    },
+                    GcodeCommand::Temperature(cmd) => ::slicer_sdk::postpass_types::GcodeCommand::Temperature {
+                        tool: cmd.tool,
+                        celsius: cmd.celsius,
+                        wait: cmd.wait,
+                    },
+                    GcodeCommand::ToolChange(cmd) => ::slicer_sdk::postpass_types::GcodeCommand::ToolChange {
+                        from: cmd.from_tool,
+                        to: cmd.to_tool,
+                    },
+                    GcodeCommand::Comment(text) => ::slicer_sdk::postpass_types::GcodeCommand::Comment {
+                        text: text.clone(),
+                    },
+                    GcodeCommand::Raw(text) => ::slicer_sdk::postpass_types::GcodeCommand::Raw {
+                        text: text.clone(),
+                    },
+                }
+            }
+
+            fn __slicer_drain_postpass_gcode(
+                sdk: &::slicer_sdk::postpass_builders::GcodeOutputBuilder,
+                wit: &GcodeOutputBuilder,
+            ) {
+                for cmd in sdk.commands() {
+                    match cmd {
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Move { x, y, z, e, f, role }
+                        ) => {
+                            let wit_cmd = GcodeMoveCmd {
+                                x: *x,
+                                y: *y,
+                                z: *z,
+                                e: *e,
+                                f: *f,
+                                role: __slicer_sdk_role_to_wit(role),
+                            };
+                            let _ = wit.push_move(wit_cmd);
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Retract { length, speed }
+                        ) => {
+                            let _ = wit.push_retract(*length, *speed);
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Unretract { length, speed }
+                        ) => {
+                            let _ = wit.push_unretract(*length, *speed);
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::FanSpeed { value }
+                        ) => {
+                            let _ = wit.push_fan_speed(*value);
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Temperature { tool, celsius, wait }
+                        ) => {
+                            let _ = wit.push_temperature(*tool, *celsius, *wait);
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::ToolChange { from, to }
+                        ) => {
+                            let _ = wit.push_tool_change(*from, *to);
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Comment { text }
+                        ) => {
+                            let _ = wit.push_comment(text);
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Raw { text }
+                        ) => {
+                            let _ = wit.push_raw(text);
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::ZHop { after_entity_index, hop_height } => {
+                            let _ = wit.push_z_hop(*after_entity_index, *hop_height);
+                        }
+                    }
+                }
+            }
+
             struct __SlicerPostpassComponent;
 
             impl Guest for __SlicerPostpassComponent {
                 fn run_gcode_postprocess(
-                    _commands: Vec<GcodeCommandView>,
-                    _output: GcodeOutputBuilder,
+                    commands: Vec<GcodeCommand>,
+                    output: GcodeOutputBuilder,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {
                     #gcode_arm
@@ -708,7 +891,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
             import host-services;
             import config-types;
             use config-types.{config-view};
-            use geometry.{extrusion-path-3d};
+            use geometry.{extrusion-path-3d, extrusion-role};
             type layer-idx = u32;
             type object-id = string;
             type region-id = string;
@@ -721,11 +904,25 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                 to-tool: u32,
             }
 
+            record print-entity-view {
+                path: extrusion-path-3d,
+                role: extrusion-role,
+                region-key: region-key,
+                topo-order: u32,
+            }
+
+            record z-hop-view {
+                after-entity-index: u32,
+                hop-height: f32,
+            }
+
             resource layer-collection-view {
                 layer-index:  func() -> layer-idx;
                 z:            func() -> f32;
                 entity-count: func() -> u32;
+                ordered-entities: func() -> list<print-entity-view>;
                 tool-changes: func() -> list<tool-change-view>;
+                z-hops: func() -> list<z-hop-view>;
             }
 
             resource finalization-output-builder {
@@ -741,7 +938,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
         }
     "#;
 
-    let preamble = emit_world_preamble("finalization-module", "finalization_world", wit_inline);
+    let preamble = emit_world_preamble("finalization-module", "world_finalization", wit_inline);
 
     quote! {
         #[cfg(target_arch = "wasm32")]
@@ -755,14 +952,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
 
             #preamble
 
-            // The `geometry` interface types needed by the drain-back
-            // adapter (`ExtrusionRole`, `ExtrusionPath3d`,
-            // `Point3WithWidth`) live under the world's geometry
-            // namespace and are not re-exported at the world's top
-            // level by wit-bindgen. Bring them in explicitly.
-            use self::slicer::finalization_world::geometry::{
-                ExtrusionRole, Point3WithWidth,
-            };
+            use self::slicer::world_finalization::geometry::Point3WithWidth;
 
             struct __SlicerFinalizationComponent;
 
@@ -800,16 +990,13 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     ::slicer_ir::ExtrusionRole::Ironing => ExtrusionRole::Ironing,
                     ::slicer_ir::ExtrusionRole::BridgeInfill => ExtrusionRole::BridgeInfill,
                     ::slicer_ir::ExtrusionRole::WipeTower => ExtrusionRole::WipeTower,
-                    // The finalization-world WIT `extrusion-role` variant
-                    // carries only a subset of `slicer_ir::ExtrusionRole`.
-                    // PrimeTower and Skirt collapse to `Custom("")` since
-                    // they have no direct WIT counterpart and carry no
-                    // module-defined tag — the empty string is intentional.
-                    // Module-defined Custom roles (e.g. Custom("bridge-style-a@1"))
-                    // pass their string tag through directly.
-                    ::slicer_ir::ExtrusionRole::PrimeTower => ExtrusionRole::Custom(::std::string::String::new()),
-                    ::slicer_ir::ExtrusionRole::Skirt => ExtrusionRole::Custom(::std::string::String::new()),
-                    ::slicer_ir::ExtrusionRole::Custom(s) => ExtrusionRole::Custom(s),
+                    ::slicer_ir::ExtrusionRole::PrimeTower => {
+                        ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/prime-tower@1"))
+                    }
+                    ::slicer_ir::ExtrusionRole::Skirt => {
+                        ExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
+                    }
+                    ::slicer_ir::ExtrusionRole::Custom(s) => ExtrusionRole::Custom(s.clone()),
                 }
             }
 
@@ -831,6 +1018,40 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                 }
             }
 
+            fn __slicer_path_wit_to_ir(p: &ExtrusionPath3d) -> ::slicer_ir::ExtrusionPath3D {
+                ::slicer_ir::ExtrusionPath3D {
+                    points: p
+                        .points
+                        .iter()
+                        .map(|pt| ::slicer_ir::Point3WithWidth {
+                            x: pt.x,
+                            y: pt.y,
+                            z: pt.z,
+                            width: pt.width,
+                            flow_factor: pt.flow_factor,
+                        })
+                        .collect(),
+                    role: __slicer_role_wit_to_ir(p.role.clone()),
+                    speed_factor: p.speed_factor,
+                }
+            }
+
+            fn __slicer_parse_region_id(raw: &str) -> Result<u64, ::std::string::String> {
+                let parsed = raw.parse::<u64>().map_err(|_| {
+                    format!(
+                        "expected canonical decimal u64 string with no leading zeros, got '{}'",
+                        raw,
+                    )
+                })?;
+                if parsed.to_string() != raw {
+                    return Err(format!(
+                        "expected canonical decimal u64 string with no leading zeros, got '{}'",
+                        raw,
+                    ));
+                }
+                Ok(parsed)
+            }
+
             impl Guest for __SlicerFinalizationComponent {
                 fn run_finalization(
                     layers: Vec<LayerCollectionView>,
@@ -847,33 +1068,42 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     // Build one SDK `LayerCollectionView` per incoming
                     // wit-bindgen resource handle by calling the typed
                     // accessors (`layer-index`, `z`, `entity-count`,
-                    // `tool-changes`). The SDK wrapper stores a full
-                    // `LayerCollectionIR`; we populate the fields the
-                    // guest trait body is documented to read and keep
-                    // `ordered_entities` at the reported arity using
-                    // empty entity placeholders so `entity_count()`
-                    // matches. Real per-entity geometry is not part of
-                    // the finalization-world WIT contract (docs/03).
+                    // `ordered-entities`, `tool-changes`, `z-hops`).
+                    // The SDK wrapper stores a full `LayerCollectionIR`,
+                    // so preserve the guest-visible completed-layer
+                    // content rather than synthesizing placeholder
+                    // entities.
                     let mut sdk_layers: ::std::vec::Vec<::slicer_sdk::traits::LayerCollectionView> =
                         ::std::vec::Vec::with_capacity(layers.len());
                     for wit_layer in layers.iter() {
-                        let entity_count = wit_layer.entity_count() as usize;
                         let mut ordered_entities: ::std::vec::Vec<::slicer_ir::PrintEntity> =
-                            ::std::vec::Vec::with_capacity(entity_count);
-                        for i in 0..entity_count {
+                            ::std::vec::Vec::new();
+                        for entity in wit_layer.ordered_entities().into_iter() {
+                            let region_id = match __slicer_parse_region_id(&entity.region_key.region_id) {
+                                Ok(region_id) => region_id,
+                                Err(reason) => {
+                                    return Err(ModuleError {
+                                        code: 1,
+                                        message: format!(
+                                            "finalization input region '{}'/'{}' has invalid region-id: {}",
+                                            entity.region_key.object_id,
+                                            entity.region_key.region_id,
+                                            reason,
+                                        ),
+                                        fatal: true,
+                                    });
+                                }
+                            };
+
                             ordered_entities.push(::slicer_ir::PrintEntity {
-                                path: ::slicer_ir::ExtrusionPath3D {
-                                    points: ::std::vec::Vec::new(),
-                                    role: ::slicer_ir::ExtrusionRole::Custom(::std::string::String::new()),
-                                    speed_factor: 1.0,
-                                },
-                                role: ::slicer_ir::ExtrusionRole::Custom(::std::string::String::new()),
+                                path: __slicer_path_wit_to_ir(&entity.path),
+                                role: __slicer_role_wit_to_ir(entity.role),
                                 region_key: ::slicer_ir::RegionKey {
-                                    global_layer_index: wit_layer.layer_index(),
-                                    object_id: ::std::string::String::new(),
-                                    region_id: 0,
+                                    global_layer_index: entity.region_key.layer_index,
+                                    object_id: entity.region_key.object_id,
+                                    region_id,
                                 },
-                                topo_order: i as u32,
+                                topo_order: entity.topo_order,
                             });
                         }
                         let tool_changes: ::std::vec::Vec<::slicer_ir::ToolChange> = wit_layer
@@ -885,13 +1115,21 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                                 to_tool: tc.to_tool,
                             })
                             .collect();
+                        let z_hops: ::std::vec::Vec<::slicer_ir::ZHop> = wit_layer
+                            .z_hops()
+                            .into_iter()
+                            .map(|hop| ::slicer_ir::ZHop {
+                                after_entity_index: hop.after_entity_index,
+                                hop_height: hop.hop_height,
+                            })
+                            .collect();
                         let ir = ::slicer_ir::LayerCollectionIR {
                             schema_version: ::slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
                             global_layer_index: wit_layer.layer_index(),
                             z: wit_layer.z(),
                             ordered_entities,
                             tool_changes,
-                            z_hops: ::std::vec::Vec::new(),
+                            z_hops,
                             annotations: ::std::vec::Vec::new(),
                         };
                         sdk_layers.push(::slicer_sdk::traits::LayerCollectionView::new(ir));
@@ -1038,7 +1276,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
         }
     "#;
 
-    let preamble = emit_world_preamble("prepass-module", "prepass_world", wit_inline);
+    let preamble = emit_world_preamble("prepass-module", "world_prepass", wit_inline);
 
     let (mesh_arm, layer_arm, mesh_seg_arm, paint_seg_arm) = match detected_stage {
         "PrePass::MeshAnalysis" => (
@@ -1326,7 +1564,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
 /// `build_finalization_world_glue`.
 fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = LAYER_WORLD_WIT;
-    let preamble = emit_world_preamble("layer-module", "layer_world", wit_inline);
+    let preamble = emit_world_preamble("layer-module", "world_layer", wit_inline);
 
     // Real deep-copy IN (from wit-bindgen resources to SDK views).
     let adapt_slice = quote! {
@@ -1517,13 +1755,13 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             // the interface sub-modules and are not re-exported. Use aliased
             // names so the helpers below can spell them without clashing
             // with slicer-ir or slicer-sdk names.
-            use self::slicer::layer_world::geometry::{
+            use self::slicer::world_layer::geometry::{
                 ExPolygon as WitExPolygon, ExtrusionPath3d as WitExtrusionPath3d,
                 ExtrusionRole as WitExtrusionRole, Point2 as WitPoint2,
                 Point3 as WitPoint3, Point3WithWidth as WitPoint3WithWidth,
                 Polygon as WitPolygon,
             };
-            use self::slicer::layer_world::ir_handles::{
+            use self::slicer::world_layer::ir_handles::{
                 BoundaryPaintEntry as WitBoundaryPaintEntry,
                 BoundaryPaintPolygon as WitBoundaryPaintPolygon,
                 GcodeMoveCmd as WitGcodeMoveCmd,
@@ -1550,7 +1788,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     holes: ep.holes.iter().map(__slicer_wit_polygon_to_ir).collect(),
                 }
             }
-            fn __slicer_wit_role_to_ir(r: WitExtrusionRole) -> ::slicer_ir::ExtrusionRole {
+            fn __slicer_wit_role_to_ir(r: &WitExtrusionRole) -> ::slicer_ir::ExtrusionRole {
                 match r {
                     WitExtrusionRole::OuterWall => ::slicer_ir::ExtrusionRole::OuterWall,
                     WitExtrusionRole::InnerWall => ::slicer_ir::ExtrusionRole::InnerWall,
@@ -1563,7 +1801,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     WitExtrusionRole::Ironing => ::slicer_ir::ExtrusionRole::Ironing,
                     WitExtrusionRole::BridgeInfill => ::slicer_ir::ExtrusionRole::BridgeInfill,
                     WitExtrusionRole::WipeTower => ::slicer_ir::ExtrusionRole::WipeTower,
-                    WitExtrusionRole::Custom(s) => ::slicer_ir::ExtrusionRole::Custom(s),
+                    WitExtrusionRole::Custom(s) => ::slicer_ir::ExtrusionRole::Custom(s.clone()),
                 }
             }
             fn __slicer_wit_point3w_to_ir(p: &WitPoint3WithWidth) -> ::slicer_ir::Point3WithWidth {
@@ -1574,7 +1812,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             fn __slicer_wit_path_to_ir(p: &WitExtrusionPath3d) -> ::slicer_ir::ExtrusionPath3D {
                 ::slicer_ir::ExtrusionPath3D {
                     points: p.points.iter().map(__slicer_wit_point3w_to_ir).collect(),
-                    role: __slicer_wit_role_to_ir(p.role),
+                    role: __slicer_wit_role_to_ir(&p.role),
                     speed_factor: p.speed_factor,
                 }
             }
@@ -1619,13 +1857,13 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     boundary_type: ::slicer_ir::WallBoundaryType::Interior,
                 }
             }
-            fn __slicer_wit_semantic_to_ir(s: WitPaintSemantic) -> ::slicer_ir::PaintSemantic {
+            fn __slicer_wit_semantic_to_ir(s: &WitPaintSemantic) -> ::slicer_ir::PaintSemantic {
                 match s {
                     WitPaintSemantic::Material => ::slicer_ir::PaintSemantic::Material,
                     WitPaintSemantic::FuzzySkin => ::slicer_ir::PaintSemantic::FuzzySkin,
                     WitPaintSemantic::SupportEnforcer => ::slicer_ir::PaintSemantic::SupportEnforcer,
                     WitPaintSemantic::SupportBlocker => ::slicer_ir::PaintSemantic::SupportBlocker,
-                    WitPaintSemantic::Custom(s) => ::slicer_ir::PaintSemantic::Custom(s),
+                    WitPaintSemantic::Custom(s) => ::slicer_ir::PaintSemantic::Custom(s.clone()),
                 }
             }
             fn __slicer_wit_paintvalue_to_ir(v: &WitPaintValue) -> ::slicer_ir::PaintValue {
@@ -1650,7 +1888,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             > {
                 let mut map = ::std::collections::HashMap::new();
                 for e in entries {
-                    let semantic = __slicer_wit_semantic_to_ir(e.semantic);
+                    let semantic = __slicer_wit_semantic_to_ir(&e.semantic);
                     let polygons: ::std::vec::Vec<_> = e
                         .polygons
                         .iter()
@@ -1742,7 +1980,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     WitPaintSemantic::SupportEnforcer,
                     WitPaintSemantic::SupportBlocker,
                 ];
-                for s in semantics.iter().copied() {
+                for s in semantics.iter() {
                     let wit_regions: ::std::vec::Vec<WitSemanticRegion> =
                         paint.get_regions(s);
                     if wit_regions.is_empty() { continue; }
@@ -1794,11 +2032,13 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     ::slicer_ir::ExtrusionRole::Ironing => WitExtrusionRole::Ironing,
                     ::slicer_ir::ExtrusionRole::BridgeInfill => WitExtrusionRole::BridgeInfill,
                     ::slicer_ir::ExtrusionRole::WipeTower => WitExtrusionRole::WipeTower,
-                    ::slicer_ir::ExtrusionRole::Custom(s) => WitExtrusionRole::Custom(s),
-                    // PrimeTower and Skirt have no direct WIT counterpart;
-                    // map them to Custom with an empty tag string.
-                    ::slicer_ir::ExtrusionRole::PrimeTower => WitExtrusionRole::Custom(::std::string::String::new()),
-                    ::slicer_ir::ExtrusionRole::Skirt => WitExtrusionRole::Custom(::std::string::String::new()),
+                    ::slicer_ir::ExtrusionRole::Custom(s) => WitExtrusionRole::Custom(s.clone()),
+                    ::slicer_ir::ExtrusionRole::PrimeTower => {
+                        WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/prime-tower@1"))
+                    }
+                    ::slicer_ir::ExtrusionRole::Skirt => {
+                        WitExtrusionRole::Custom(::std::string::String::from("slicer.builtin/skirt@1"))
+                    }
                 }
             }
             fn __slicer_ir_path_to_wit(p: &::slicer_ir::ExtrusionPath3D) -> WitExtrusionPath3d {
@@ -1943,40 +2183,53 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             ) {
                 for cmd in sdk.commands() {
                     match cmd {
-                        ::slicer_ir::GCodeCommand::Move { x, y, z, e, f, role } => {
-                            // `push-move` takes `gcode-move-cmd` by value in
-                            // the layer-world WIT (it is a record, not a
-                            // resource); wit-bindgen generates a
-                            // by-value parameter on the guest side.
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Move { x, y, z, e, f, role }
+                        ) => {
                             let wit_cmd = WitGcodeMoveCmd {
                                 x: *x, y: *y, z: *z, e: *e, f: *f,
                                 role: __slicer_ir_role_to_wit(role),
                             };
-                            let _ = wit.push_move(wit_cmd);
+                            let _ = wit.push_move(&wit_cmd);
                         }
-                        ::slicer_ir::GCodeCommand::Retract { length, speed } => {
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Retract { length, speed }
+                        ) => {
                             let _ = wit.push_retract(*length, *speed);
                         }
-                        ::slicer_ir::GCodeCommand::FanSpeed { value } => {
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Unretract { length, speed }
+                        ) => {
+                            let _ = wit.push_unretract(*length, *speed);
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::FanSpeed { value }
+                        ) => {
                             let _ = wit.push_fan_speed(*value);
                         }
-                        ::slicer_ir::GCodeCommand::Temperature { tool, celsius, wait } => {
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Temperature { tool, celsius, wait }
+                        ) => {
                             let _ = wit.push_temperature(*tool, *celsius, *wait);
                         }
-                        ::slicer_ir::GCodeCommand::ToolChange { from, to } => {
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::ToolChange { from, to }
+                        ) => {
                             let _ = wit.push_tool_change(*from, *to);
                         }
-                        ::slicer_ir::GCodeCommand::Comment { text } => {
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Comment { text }
+                        ) => {
                             let _ = wit.push_comment(text);
                         }
-                        ::slicer_ir::GCodeCommand::Raw { text } => {
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::Raw { text }
+                        ) => {
                             let _ = wit.push_raw(text);
                         }
-                        // `Unretract` (and any future non-layer-world GCode
-                        // variants) is not modelled in the layer-world WIT
-                        // `gcode-output-builder`. Drop silently so adding
-                        // variants to the IR does not break the macro glue.
-                        _ => {}
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::ZHop { after_entity_index, hop_height } => {
+                            let _ = wit.push_z_hop(*after_entity_index, *hop_height);
+                        }
                     }
                 }
             }
