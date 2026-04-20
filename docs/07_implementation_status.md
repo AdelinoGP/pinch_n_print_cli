@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-04-16
+Last updated: 2026-04-20
 
 ## Status Markers
 
@@ -30,7 +30,7 @@ Last updated: 2026-04-16
 
 - The live pipeline now produces `.gcode` for the Benchy STL.
 - The output is still below the Phase H acceptance bar.
-- Known live-output gaps on the Benchy path: top/bottom surface infill, support structures, seam placement on real wall loops, and travel retraction / unretraction behavior.
+- Known live-output gaps on the Benchy path: top/bottom surface infill, support structures, seam placement on real wall loops, travel retraction / unretraction behavior, and OrcaSlicer-compatible GCode comment metadata required for native preview visualization.
 - Architecture Acceptance Gate is blocked on the remediation backlog below.
 
 ## Active Remediation Backlog
@@ -79,6 +79,10 @@ Last updated: 2026-04-16
 
 ### Workstream 3 — Benchy parity and missing OrcaSlicer behavior
 
+- [~] TASK-119 Restore OrcaSlicer-identical GCode comment contracts on the live emit path so the original OrcaSlicer preview and visualization surfaces remain fully functional. Covers DEV-009 and must land before TASK-120.
+- [ ] TASK-119a Enumerate the OrcaSlicer-native GCode comment contract required for preview compatibility (`;LAYER_CHANGE`, `;Z:`, `;HEIGHT:`, `;TYPE:`, object/feature markers, and other viewer-required tokens) and codify it as one canonical emit spec with shared constants. Covers DEV-009.
+- [ ] TASK-119b Emit the canonical OrcaSlicer comment sequence with matching spelling, ordering, and boundary placement across the live host/finalization GCode path instead of partial or ad hoc annotations. Covers DEV-009.
+- [ ] TASK-119c Add compatibility regressions proving emitted `.gcode` preserves OrcaSlicer's native layer navigation, feature coloring, and toolpath visualization semantics end-to-end. Supports DEV-009 acceptance evidence.
 - [~] TASK-120 Produce a fully sliced Benchy `.gcode` with tree supports enabled as the Phase H end-to-end acceptance run.
 - [ ] TASK-120a Restore top/bottom surface fill generation on the live Benchy path. Covers DEV-009.
 - [ ] TASK-120b Restore support generation on the live Benchy path. Covers DEV-009.
@@ -131,7 +135,7 @@ Use `docs/14_deviation_audit_history.md` only for retired XML-era numbering and 
 - DEV-005 — Non-planar Z envelope enforcement is missing.
 - DEV-006 — Postpass GCode command content and executable WIT-boundary coverage still have live gaps.
 - DEV-008 — Core-module `config.schema` declarations are empty.
-- DEV-009 — Benchy Phase H output is only partially correct on the live path.
+- DEV-009 — Benchy Phase H output is only partially correct on the live path, including missing OrcaSlicer-compatible GCode comment metadata for native preview visualization.
 - DEV-010 — Acceptance-gate evidence and governance closure are still open.
 - DEV-013 — Finalization core modules still keep live behavior in legacy `process()` instead of `run_finalization()`.
 - DEV-014 — WIT compatibility is split across multiple sources and still drifts.
@@ -154,7 +158,7 @@ Use `docs/14_deviation_audit_history.md` only for retired XML-era numbering and 
 ## Architecture Acceptance Gate
 
 - Status: BLOCKED BY OPEN REMEDIATION TASKS
-- Blocking tasks: TASK-120a, TASK-120b, TASK-120c, TASK-120d1, TASK-120d2, TASK-125, TASK-126, TASK-127, TASK-128a, TASK-128b, TASK-129a, TASK-129b, TASK-129c, TASK-130a, TASK-130b, TASK-136, TASK-140, TASK-149, TASK-150, TASK-154, TASK-155, TASK-156
+- Blocking tasks: TASK-119a, TASK-119b, TASK-119c, TASK-120a, TASK-120b, TASK-120c, TASK-120d1, TASK-120d2, TASK-125, TASK-126, TASK-127, TASK-128a, TASK-128b, TASK-129a, TASK-129b, TASK-129c, TASK-130a, TASK-130b, TASK-136, TASK-140, TASK-149, TASK-150, TASK-154, TASK-155, TASK-156
 
 ### Evidence Links
 
@@ -163,7 +167,7 @@ Use `docs/14_deviation_audit_history.md` only for retired XML-era numbering and 
 - Resource bounds: pending RegionMap overflow, `resolve_active_regions`, and runtime-budget evidence collection
 - Coupling control: pending manifest contract cleanup, claim transition enforcement, and custom-payload preservation
 - Compatibility: pending WIT-source consolidation, `wit_world` validation, host semver/schema validation, and acceptance-gate evaluation
-- Operability: pending Benchy acceptance run, finalization parity, and progress-event validation
+- Operability: pending Benchy acceptance run, OrcaSlicer-compatible GCode comment parity, finalization parity, and progress-event validation
 
 ### Notes
 
