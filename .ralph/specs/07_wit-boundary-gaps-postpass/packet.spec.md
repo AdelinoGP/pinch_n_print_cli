@@ -39,7 +39,7 @@ Close the remaining non-segmentation WIT-boundary gaps on live execution paths. 
 
 ## Negative Test Cases
 
-- **Given** a GCodePostProcess module declares only `reads = ["GCodeIR.commands"]` but the live path passes an empty command list, **when** the module runs, **then** this is not a violation -- empty lists are valid and the module must handle them gracefully.
+- **Given** a GCodePostProcess module declares only `reads = ["GCodeIR.commands"]` but the live path passes an empty command list, **when** the module runs, **then** this is not a violation -- empty lists are valid and the module must handle them gracefully. | `cargo test -p slicer-host --test postpass_gcode_empty_list_tdd 2>&1`
 
 ## Verification
 
@@ -51,6 +51,8 @@ Close the remaining non-segmentation WIT-boundary gaps on live execution paths. 
   - NOTE: On pass, grep should confirm `finalization.*deep.copy.*pass` in output.
 - `cargo test -p slicer-host --test postpass_gcode_command_preservation_tdd 2>&1`
   - NOTE: On pass, grep should confirm `command.*preserved` or `order.*identical` in output.
+- `cargo test -p slicer-host --test postpass_gcode_empty_list_tdd 2>&1`
+  - NOTE: On pass, grep should confirm `empty.*valid` in output.
 - `cargo clippy --workspace -- -D warnings` (workspace gate)
 
 ## Authoritative Docs

@@ -8,28 +8,49 @@
 
 ## Steps
 
-### Step 1: Fix `dispatch_postpass_gcode_call` to pass real GCode command list
+### Step 0: Thread `GCodeCommand` slice through `dispatch_postpass_gcode_call` signature
 
 - Task IDs:
   - `TASK-129a`
 - Objective:
-  - Change the empty `&[]` slice in `dispatch_postpass_gcode_call` (dispatch.rs line 707) to pass the actual `gcode_ir.commands.as_slice()` so the live path carries real command data through the WIT boundary.
+  - Add `commands: &[GCodeCommand]` parameter to `dispatch_postpass_gcode_call` and pass `commands` (not `&[]`) to `bindings.call_run_gcode_postprocess`. Thread the slice from `WasmRuntimeDispatcher::run_gcode_postprocess` through `execute_postpass` → `runner.run_gcode_postprocess` call chain.
 - Precondition:
-  - `dispatch_postpass_gcode_call` passes `&[]` as the command list argument.
+  - `dispatch_postpass_gcode_call` takes no commands parameter; `bindings.call_run_run_gcode_postprocess` is called with `&[]`.
 - Postcondition:
-  - `dispatch_postpass_gcode_call` passes `gcode_ir.commands.as_slice()` (or equivalent owned copy) as the command list argument.
+  - `dispatch_postpass_gcode_call` accepts `commands: &[GCodeCommand]`, passes `commands` to the bindings call, and `WasmRuntimeDispatcher::run_gcode_postprocess` passes `&gcode_ir.commands`.
 - Files expected to change:
-  - `crates/slicer-host/src/dispatch.rs`
+  - `crates/slicer-host/src/dispatch.rs` — `dispatch_postpass_gcode_call` signature and body, `WasmRuntimeDispatcher::run_gcode_postprocess` body
 - Authoritative docs:
-  - `docs/04_host_scheduler.md` (PostPass execution, execute_postpass function)
-  - `crates/slicer-host/src/dispatch.rs` (dispatch_postpass_gcode_call line 626-733)
-  - `wit/deps/ir-types.wit` (gcode-output-builder lines 98-116)
+  - `crates/slicer-host/src/dispatch.rs` (dispatch_postpass_gcode_call line 643, run_gcode_postprocess line 1659)
+  - `crates/slicer-host/src/postpass.rs` (execute_postpass line 163, PostpassStageRunner trait line 87)
+  - `wit/world-postpass.wit` (export signature lines 13-17)
 - OrcaSlicer refs: None
 - Verification:
   - `cargo build -p slicer-host`
-  - NOTE: Real command slice verification (vs `&[]`) requires the TDD test in Step 2 to confirm.
 - Exit condition:
-  - The call to `bindings.call_run_gcode_postprocess` in `dispatch_postpass_gcode_call` receives the real command slice, not `&[]`.
+  - `dispatch_postpass_gcode_call` signature includes `commands: &[GCodeCommand]` and the bindings call uses it instead of `&[]`.
+
+### Step 1: Pass real GCode command slice through WIT boundary
+
+- Task IDs:
+  - `TASK-129a`
+- Objective:
+  - Change the `&[]` argument at dispatch.rs line 724 to pass `commands` (the threaded parameter from Step 0), so the live path carries real command data through the WIT boundary.
+- Precondition:
+  - `dispatch_postpass_gcode_call` has `commands: &[GCodeCommand]` in its signature (Step 0 done); the bindings call still passes `&[]`.
+- Postcondition:
+  - The bindings call receives `commands` instead of `&[]`, and all 8 GCodeCommand variants can round-trip through the WIT boundary.
+- Files expected to change:
+  - `crates/slicer-host/src/dispatch.rs` — line 724: change `&[]` to `commands`
+- Authoritative docs:
+  - `crates/slicer-host/src/dispatch.rs` (bindings call line 724)
+  - `wit/world-postpass.wit` (export signature lines 13-17)
+- OrcaSlicer refs: None
+- Verification:
+  - `cargo build -p slicer-host`
+  - NOTE: Real command slice behavior verified by TDD test in Step 2.
+- Exit condition:
+  - `bindings.call_run_gcode_postprocess` receives `commands` (not `&[]`).
 
 ### Step 2: Add `postpass_gcode_boundary_tdd` regression test
 
@@ -75,7 +96,29 @@
 - Exit condition:
   - Command order and content assertions pass; no command is dropped or mutated.
 
-### Step 4: Add `layer_world_deep_copy_tdd` regression test
+### Step 4: Add `postpass_gcode_empty_list_tdd` negative regression test
+
+- Task IDs:
+  - `TASK-129a`
+- Objective:
+  - Add a TDD test file `postpass_gcode_empty_list_tdd.rs` that proves an empty `GCodeCommand` list is handled gracefully with no contract violation.
+- Precondition:
+  - No test exercises the empty command list negative case.
+- Postcondition:
+  - `postpass_gcode_empty_list_tdd.rs` exists and passes, asserting empty list is valid and causes no contract violation.
+- Files expected to change:
+  - `crates/slicer-host/tests/postpass_gcode_empty_list_tdd.rs` (new file)
+- Authoritative docs:
+  - `crates/slicer-host/src/dispatch.rs` (dispatch_postpass_gcode_call)
+  - `wit/world-postpass.wit` (export signature lines 13-17)
+- OrcaSlicer refs: None
+- Verification:
+  - `cargo test -p slicer-host --test postpass_gcode_empty_list_tdd 2>&1`
+  - NOTE: On test pass, grep should confirm `empty.*valid` in output.
+- Exit condition:
+  - Empty command list causes no contract violation and module handles it gracefully.
+
+### Step 5: Add `layer_world_deep_copy_tdd` regression test
 
 - Task IDs:
   - `TASK-129b`
@@ -98,7 +141,7 @@
 - Exit condition:
   - All LayerCollectionIR entity field assertions pass; bit-for-bit preservation confirmed.
 
-### Step 5: Add `finalization_world_deep_copy_tdd` regression test
+### Step 6: Add `finalization_world_deep_copy_tdd` regression test
 
 - Task IDs:
   - `TASK-129c`
@@ -121,14 +164,14 @@
 - Exit condition:
   - All Vec<LayerCollectionIR> field assertions pass; bit-for-bit preservation confirmed across all layers.
 
-### Step 6: Workspace gate
+### Step 7: Workspace gate
 
 - Task IDs:
   - `TASK-129a`, `TASK-129b`, `TASK-129c`
 - Objective:
   - Verify the full workspace builds and passes clippy with no warnings.
 - Precondition:
-  - All 5 steps above are complete and their exit conditions are met.
+  - All 7 implementation steps above are complete and their exit conditions are met.
 - Postcondition:
   - `cargo build --workspace` succeeds and `cargo clippy --workspace -- -D warnings` produces no warnings.
 - Files expected to change: None (build verification only)
@@ -144,7 +187,7 @@
 
 - All steps complete.
 - Every step exit condition is met.
-- Four new TDD test files pass: `postpass_gcode_boundary_tdd`, `postpass_gcode_command_preservation_tdd`, `layer_world_deep_copy_tdd`, `finalization_world_deep_copy_tdd`.
+- Five new TDD test files pass: `postpass_gcode_boundary_tdd`, `postpass_gcode_command_preservation_tdd`, `postpass_gcode_empty_list_tdd`, `layer_world_deep_copy_tdd`, `finalization_world_deep_copy_tdd`.
 - Packet acceptance criteria green.
 - `docs/07_implementation_status.md` updated for the packet task IDs (TASK-129, TASK-129a, TASK-129b, TASK-129c marked complete).
 - `packet.spec.md` ready to move to `status: implemented`.

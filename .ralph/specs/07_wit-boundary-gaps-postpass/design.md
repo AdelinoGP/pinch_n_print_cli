@@ -24,13 +24,15 @@
 ## Code Change Surface
 
 - Selected approach:
-  - TASK-129a: Fix `dispatch_postpass_gcode_call` to pass `gcode_ir.commands.as_slice()` instead of `&[]`; add `postpass_gcode_boundary_tdd.rs` and `postpass_gcode_command_preservation_tdd.rs` regression tests
-  - TASK-129b: Add `layer_world_deep_copy_tdd.rs` proving `LayerCollectionIR` fields survive through the layer-world WIT boundary from arena view through WASM call and back
-  - TASK-129c: Add `finalization_world_deep_copy_tdd.rs` proving `Vec<LayerCollectionIR>` fields survive through the finalization-world WIT boundary
+  - TASK-129a: Modify `dispatch_postpass_gcode_call` to accept a `&[GCodeCommand]` parameter (added to function signature and threaded through from `WasmRuntimeDispatcher::run_gcode_postprocess`); pass `&gcode_ir.commands` through the WIT boundary instead of `&[]`. Add `postpass_gcode_boundary_tdd.rs` and `postpass_gcode_command_preservation_tdd.rs` regression tests. The commands parameter flows from `execute_postpass` → `runner.run_gcode_postprocess(gcode_ir)` → `WasmRuntimeDispatcher::run_gcode_postprocess` → `dispatch_postpass_gcode_call(commands)`.
+  - TASK-129b: Add `layer_world_deep_copy_tdd.rs` proving `LayerCollectionIR` fields survive through the layer-world WIT boundary via the arena view through WASM call and back.
+  - TASK-129c: Add `finalization_world_deep_copy_tdd.rs` proving `Vec<LayerCollectionIR>` fields survive through the finalization-world WIT boundary.
 - Exact functions, manifests, tests, or fixtures expected to change:
-  - `crates/slicer-host/src/dispatch.rs` — `dispatch_postpass_gcode_call` (line 707): change `&[]` to `gcode_ir.commands.as_slice()`
+  - `crates/slicer-host/src/dispatch.rs` — `dispatch_postpass_gcode_call`: add `commands: &[GCodeCommand]` parameter, pass `commands` (not `&[]`) to `bindings.call_run_gcode_postprocess`
+  - `crates/slicer-host/src/dispatch.rs` — `WasmRuntimeDispatcher::run_gcode_postprocess`: pass `&gcode_ir.commands` to `dispatch_postpass_gcode_call`
   - `crates/slicer-host/tests/postpass_gcode_boundary_tdd.rs` — new file, all 8 GCodeCommand variant round-trip tests
   - `crates/slicer-host/tests/postpass_gcode_command_preservation_tdd.rs` — new file, order/content preservation tests
+  - `crates/slicer-host/tests/postpass_gcode_empty_list_tdd.rs` — new file, negative case proving empty list is valid
   - `crates/slicer-host/tests/layer_world_deep_copy_tdd.rs` — new file, LayerCollectionIR deep-copy tests
   - `crates/slicer-host/tests/finalization_world_deep_copy_tdd.rs` — new file, Vec<LayerCollectionIR> deep-copy tests
 - Rejected alternatives that were not chosen:

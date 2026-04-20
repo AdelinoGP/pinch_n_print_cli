@@ -57,7 +57,7 @@ DEV-006 identifies that postpass GCode command content and executable WIT-bounda
 
 ### Negative Cases
 
-- Empty `GCodeCommand` list is valid; module must handle gracefully (no contract violation)
+- Empty `GCodeCommand` list is valid; module must handle gracefully (no contract violation) | `cargo test -p slicer-host --test postpass_gcode_empty_list_tdd 2>&1`
 
 ### Measurable Outcomes
 
