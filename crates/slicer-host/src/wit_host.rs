@@ -1670,7 +1670,18 @@ pub fn object_mesh_to_wit_paint_segmentation_view(
         vertices,
         triangles,
         paint_layers,
-        transform_matrix: mesh.transform.matrix.to_vec(),
+        // Validate transform matrix length — Transform3d.matrix is [f64; 16],
+        // and the WIT type is list<f64> (not a fixed 16-tuple). Enforce the
+        // invariant at the boundary to catch any future changes.
+        transform_matrix: {
+            let mat = &mesh.transform.matrix;
+            assert!(
+                mat.len() == 16,
+                "transform-matrix must have exactly 16 elements, got {}",
+                mat.len()
+            );
+            mat.to_vec()
+        },
         participating_layer_indices: participating_layer_indices.to_vec(),
     }
 }
