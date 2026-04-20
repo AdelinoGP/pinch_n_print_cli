@@ -10,7 +10,7 @@
 //! - output builders (InfillOutputBuilder, PerimeterOutputBuilder, etc.),
 //! - prepass types (FacetAnnotation, FacetClass, LayerProposal, etc.),
 //! - prepass builders (MeshAnalysisOutput, LayerPlanOutput),
-//! - postpass types (GcodeCommandKind, GcodeCommandView),
+//! - postpass types (GcodeCommand, GcodeOutputCommand),
 //! - postpass builders (GcodeOutputBuilder, GcodeMoveCmd).
 
 #![warn(missing_docs)]

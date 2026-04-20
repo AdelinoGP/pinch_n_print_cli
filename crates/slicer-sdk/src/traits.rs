@@ -13,7 +13,7 @@ use crate::builders::{
 };
 use crate::error::ModuleError;
 use crate::postpass_builders::GcodeOutputBuilder;
-use crate::postpass_types::GcodeCommandView;
+use crate::postpass_types::GcodeCommand;
 use crate::prepass_builders::{
     LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput, PaintSegmentationOutput,
 };
@@ -427,7 +427,7 @@ pub trait PostpassModule: Sized {
     /// Per docs/03_wit_and_manifest.md (world-postpass.wit):
     /// ```wit
     /// export run-gcode-postprocess: func(
-    ///     commands: list<gcode-command-view>,
+    ///     commands: list<gcode-command>,
     ///     output: gcode-output-builder,
     ///     config: config-view,
     /// ) -> result<_, module-error>;
@@ -436,7 +436,7 @@ pub trait PostpassModule: Sized {
     /// Default implementation does nothing. Override if your module targets GcodePostprocess stage.
     fn run_gcode_postprocess(
         &self,
-        _commands: &[GcodeCommandView],
+        _commands: &[GcodeCommand],
         _output: &mut GcodeOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -471,7 +471,9 @@ pub trait PostpassModule: Sized {
 ///     layer-index:  func() -> layer-idx;
 ///     z:            func() -> f32;
 ///     entity-count: func() -> u32;
+///     ordered-entities: func() -> list<print-entity-view>;
 ///     tool-changes: func() -> list<tool-change-view>;
+///     z-hops: func() -> list<z-hop-view>;
 /// }
 /// ```
 #[derive(Debug, Clone)]
@@ -504,6 +506,16 @@ impl LayerCollectionView {
     /// Returns tool changes in this layer as (after_entity_index, from_tool, to_tool).
     pub fn tool_changes(&self) -> &[slicer_ir::ToolChange] {
         &self.layer.tool_changes
+    }
+
+    /// Returns the ordered extrusion entities in this layer.
+    pub fn ordered_entities(&self) -> &[slicer_ir::PrintEntity] {
+        &self.layer.ordered_entities
+    }
+
+    /// Returns the Z hops in this layer.
+    pub fn z_hops(&self) -> &[slicer_ir::ZHop] {
+        &self.layer.z_hops
     }
 }
 

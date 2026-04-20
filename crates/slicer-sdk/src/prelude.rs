@@ -21,7 +21,7 @@ pub use crate::views::{PerimeterRegionView, SliceRegionView};
 
 // Postpass types and builders
 pub use crate::postpass_builders::{GcodeMoveCmd, GcodeOutputBuilder};
-pub use crate::postpass_types::{GcodeCommandKind, GcodeCommandView};
+pub use crate::postpass_types::{GcodeCommand, GcodeOutputCommand};
 
 // Prepass types and builders
 pub use crate::prepass_builders::{

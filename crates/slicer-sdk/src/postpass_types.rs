@@ -5,47 +5,27 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Classification of GCode commands for postpass processing.
+/// Payload-bearing GCode command input for postpass processing.
 ///
-/// Per docs/03_wit_and_manifest.md (world-postpass.wit):
-/// ```wit
-/// enum gcode-command-kind { move_, retract, fan-speed, temperature, tool-change, comment, raw }
-/// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum GcodeCommandKind {
-    /// Move command (linear move with optional extrusion).
-    Move,
-    /// Retract command.
-    Retract,
-    /// Fan speed change command.
-    FanSpeed,
-    /// Temperature change command.
-    Temperature,
-    /// Tool change command.
-    ToolChange,
-    /// Comment in GCode output.
-    Comment,
-    /// Raw GCode string.
-    Raw,
-}
+/// This mirrors `world-postpass.wit`'s `variant gcode-command` and is
+/// re-exported from the shared IR so SDK modules can inspect the full
+/// command payload rather than a thin kind-only view.
+pub use slicer_ir::GCodeCommand as GcodeCommand;
 
-/// View of a single GCode command for postpass inspection.
+/// Output emitted by the SDK-level postpass builder.
 ///
-/// Per docs/03_wit_and_manifest.md (world-postpass.wit):
-/// ```wit
-/// record gcode-command-view { index: u32, kind: gcode-command-kind }
-/// ```
+/// Most emissions map directly to `GCodeCommand`; `ZHop` remains a
+/// postpass-specific builder action because it does not have a direct
+/// `slicer_ir::GCodeCommand` representation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct GcodeCommandView {
-    /// Index of the command in the GCode command list.
-    pub index: u32,
-    /// Kind/classification of the command.
-    pub kind: GcodeCommandKind,
-}
-
-impl GcodeCommandView {
-    /// Create a new GcodeCommandView.
-    pub fn new(index: u32, kind: GcodeCommandKind) -> Self {
-        Self { index, kind }
-    }
+pub enum GcodeOutputCommand {
+    /// Standard GCode command emission.
+    Command(GcodeCommand),
+    /// Emit a Z hop after the referenced entity index.
+    ZHop {
+        /// Entity index after which the hop should occur.
+        after_entity_index: u32,
+        /// Hop height in millimeters.
+        hop_height: f32,
+    },
 }
