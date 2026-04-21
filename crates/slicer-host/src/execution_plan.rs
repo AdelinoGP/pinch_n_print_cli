@@ -555,6 +555,20 @@ pub struct ExecutionPlan {
     pub module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegion>>,
 }
 
+impl Default for ExecutionPlan {
+    fn default() -> Self {
+        Self {
+            prepass_stages: Vec::new(),
+            per_layer_stages: Vec::new(),
+            layer_finalization_stage: None,
+            postpass_stages: Vec::new(),
+            global_layers: Arc::new(Vec::new()),
+            region_plans: Arc::new(HashMap::new()),
+            module_region_index: HashMap::new(),
+        }
+    }
+}
+
 impl ExecutionPlan {
     /// Build an ExecutionPlan with a precomputed module_region_index.
     #[cfg(test)]
