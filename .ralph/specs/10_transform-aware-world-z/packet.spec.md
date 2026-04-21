@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: transform-aware-world-z
 task_ids:
   - TASK-157
