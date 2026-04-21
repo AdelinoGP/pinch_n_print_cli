@@ -24,9 +24,9 @@ use std::sync::Arc;
 use slicer_host::{
     build_execution_plan, build_wasm_instance_pool, execute_prepass_with_builtins,
     execute_region_mapping, execute_region_mapping_with_cap, Blackboard, CompiledModule,
-    CompiledStage, ConfigSchema, ExecutionPlan, ExecutionPlanRequest, IrAccessMask,
-    PrepassExecutionError, PrepassStageOutput, PrepassStageRunner, RegionMappingBuiltinError,
-    RegionMappingError, SortedStageModules, WasmArtifactMetadata,
+    CompiledStage, ConfigSchema, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest,
+    IrAccessMask, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
+    RegionMappingBuiltinError, RegionMappingError, SortedStageModules, WasmArtifactMetadata,
 };
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
@@ -61,18 +61,46 @@ fn region_mapping_builtin_runs_after_user_layer_planning_and_is_visible_to_downs
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 0);
 
     let layer_plan = Arc::new(plan_two_layers_two_regions());
-    let lp_stage = layer_planning_stage_with_module("com.example.planner");
 
-    // Include a per-layer stage so we verify its module invocations
-    // show up in each RegionPlan.stage_modules.
-    let perimeters_stage = user_stage(
+    // Commit the LayerPlanIR to the blackboard before running prepass.
+    // The real flow would have a PrePass::LayerPlanning module do this,
+    // but this test's plan has no prepass stages (only Layer::Perimeters
+    // per-layer stages), so CommitLayerPlanRunner would never be called.
+    // We seed it directly so commit_region_mapping_builtin finds it.
+    blackboard
+        .commit_layer_plan(Arc::clone(&layer_plan))
+        .expect("seed layer plan");
+
+    // Per-layer module: verify its invocations show up in each
+    // RegionPlan.stage_modules so downstream can resolve active regions.
+    // Build the LoadedModule + pool + binding via the same pattern used
+    // by the rest of the test suite (not struct-literal ExecutionPlan).
+    let walls_loaded = loaded_module(
         "Layer::Perimeters",
-        &[("com.example.walls", amp_cfg(0.7))],
+        "com.example.walls",
+        amp_cfg(0.7),
     );
+    let pool = Arc::new(
+        build_wasm_instance_pool(
+            &walls_loaded,
+            1,
+            WasmArtifactMetadata { uses_shared_memory: false },
+        )
+        .unwrap(),
+    );
+    let walls_binding = ExecutionModuleBinding {
+        module: walls_loaded,
+        instance_pool: pool,
+        config_view: Arc::new(amp_cfg(0.7)),
+        wasm_component: None,
+    };
 
     let request = ExecutionPlanRequest {
-        sorted_stages: Vec::new(),
-        module_bindings: vec![],
+        sorted_stages: vec![SortedStageModules {
+            stage_id: "Layer::Perimeters".to_string(),
+            module_ids: vec!["com.example.walls".to_string()],
+        }],
+        module_bindings: vec![walls_binding],
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
     };
@@ -439,6 +467,58 @@ fn user_stage(stage: &str, modules: &[(&str, ConfigView)]) -> CompiledStage {
 
 fn layer_planning_stage_with_module(module_id: &str) -> CompiledStage {
     user_stage("PrePass::LayerPlanning", &[(module_id, ConfigView::from_map(HashMap::new()))])
+}
+
+fn loaded_module(stage: &str, module_id: &str, config: ConfigView) -> slicer_host::LoadedModule {
+    // Build a minimal config_schema that declares all keys present in `config`
+    // so that build_execution_plan's undeclared-key guardrail passes.
+    let mut schema_entries = std::collections::BTreeMap::new();
+    for key in config.keys() {
+        schema_entries.insert(
+            key.clone(),
+            slicer_host::ConfigFieldEntry {
+                field_type: "float".to_string(),
+                default: None,
+                min: None,
+                max: None,
+                step: None,
+                display: None,
+                description: None,
+                group: None,
+                unit: None,
+                advanced: false,
+                values: None,
+                max_length: None,
+                min_list_length: None,
+                max_list_length: None,
+                validate: None,
+            },
+        );
+    }
+    let config_schema = ConfigSchema {
+        entries: schema_entries,
+    };
+    slicer_host::LoadedModule {
+        id: module_id.to_string(),
+        version: sv(1, 0, 0),
+        stage: stage.to_string(),
+        wit_world: "slicer:world-postpass@1.0.0".to_string(),
+        ir_reads: vec![],
+        ir_writes: vec![],
+        claims: vec![],
+        requires_claims: vec![],
+        incompatible_with: vec![],
+        requires_modules: vec![],
+        min_host_version: sv(0, 1, 0),
+        min_ir_schema: sv(1, 0, 0),
+        max_ir_schema: sv(2, 0, 0),
+        config_schema,
+        overridable_per_region: vec![],
+        overridable_per_layer: vec![],
+        layer_parallel_safe: false,
+        wasm_path: std::path::PathBuf::from(format!("fixtures/{module_id}.wasm")),
+        placeholder_wasm: false,
+    }
 }
 
 fn compiled_module(stage: &str, module_id: &str, config: ConfigView) -> CompiledModule {

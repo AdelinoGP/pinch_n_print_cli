@@ -170,6 +170,7 @@ fn plan_with_one_layer(layer: GlobalLayer) -> ExecutionPlan {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![layer]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     }
 }
 

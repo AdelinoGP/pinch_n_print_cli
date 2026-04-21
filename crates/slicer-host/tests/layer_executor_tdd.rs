@@ -240,7 +240,7 @@ fn layer_executor_propagates_fatal_module_error_and_aborts_layer() {
             layer_index: 1,
             stage_id: String::from("Layer::Perimeters"),
             module_id: String::from("com.example.perimeters"),
-            message: String::from("simulated fatal error in layer 1"),
+            message: String::from("fatal layer stage module failure in Layer::Perimeters for com.example.perimeters: simulated fatal error in layer 1"),
         })
     );
 }
@@ -518,6 +518,7 @@ fn execution_plan_fixture(
                 .collect(),
         ),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     }
 }
 
@@ -954,6 +955,7 @@ fn catchup_metadata_remains_stable_across_all_per_layer_stages() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![layer]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let mesh = Arc::new(mesh_fixture());
