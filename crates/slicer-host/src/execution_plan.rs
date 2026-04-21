@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use std::path::PathBuf;
 
-use slicer_ir::{ConfigKey, ConfigValue, ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageId};
+use slicer_ir::{ActiveRegion, ConfigKey, ConfigValue, ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageId};
 
 use crate::dag::build_intra_stage_dag;
 use crate::instance_pool::{build_wasm_instance_pool, InstancePoolError, WasmArtifactMetadata, WasmInstancePool};
@@ -550,6 +550,44 @@ pub struct ExecutionPlan {
     pub global_layers: Arc<Vec<GlobalLayer>>,
     /// Frozen per-region execution plans.
     pub region_plans: Arc<HashMap<RegionKey, RegionPlan>>,
+    /// Precomputed index for O(1) lookup of active regions per (layer, module).
+    /// Key: (global_layer_index, module_id) → Value: slice of ActiveRegion.
+    pub module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegion>>,
+}
+
+impl ExecutionPlan {
+    /// Build an ExecutionPlan with a precomputed module_region_index.
+    #[cfg(test)]
+    pub(crate) fn build_with_index(
+        prepass_stages: Vec<CompiledStage>,
+        per_layer_stages: Vec<CompiledStage>,
+        layer_finalization_stage: Option<CompiledStage>,
+        postpass_stages: Vec<CompiledStage>,
+        global_layers: Arc<Vec<GlobalLayer>>,
+        region_plans: Arc<HashMap<RegionKey, RegionPlan>>,
+    ) -> Self {
+        // Build index for all Layer:: stages
+        let mut module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegion>> = HashMap::new();
+        for layer in global_layers.iter() {
+            for stage in &per_layer_stages {
+                for module in &stage.modules {
+                    let key = (layer.index, module.module_id.clone());
+                    let entry = module_region_index.entry(key).or_default();
+                    entry.extend(layer.active_regions.iter().cloned());
+                }
+            }
+        }
+
+        ExecutionPlan {
+            prepass_stages,
+            per_layer_stages,
+            layer_finalization_stage,
+            postpass_stages,
+            global_layers,
+            region_plans,
+            module_region_index,
+        }
+    }
 }
 
 /// One compiled scheduler stage ready for direct runtime iteration.
@@ -841,6 +879,25 @@ pub fn build_execution_plan(
         }
     }
 
+    // ── Precompute module_region_index for O(1) resolve_active_regions ──
+    let mut module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegion>> = HashMap::new();
+    for layer in request.global_layers.iter() {
+        for stage in &request.sorted_stages {
+            if !stage.stage_id.starts_with("Layer::") {
+                continue;
+            }
+            for module_id in &stage.module_ids {
+                // Only index for modules that are actually bound
+                if bindings_by_module_id.contains_key(module_id) {
+                    let entry = module_region_index
+                        .entry((layer.index, module_id.clone()))
+                        .or_default();
+                    entry.extend(layer.active_regions.iter().cloned());
+                }
+            }
+        }
+    }
+
     Ok(ExecutionPlan {
         prepass_stages,
         per_layer_stages,
@@ -848,7 +905,18 @@ pub fn build_execution_plan(
         postpass_stages,
         global_layers: Arc::clone(&request.global_layers),
         region_plans: Arc::clone(&request.region_plans),
+        module_region_index,
     })
+}
+
+impl ExecutionPlan {
+    /// O(1) lookup of active regions for a (layer, module) pair via precomputed index.
+    pub fn resolve_active_regions(&self, layer: &GlobalLayer, module: &CompiledModule) -> &[ActiveRegion] {
+        self.module_region_index
+            .get(&(layer.index, module.module_id.clone()))
+            .map(|v: &Vec<ActiveRegion>| v.as_slice())
+            .unwrap_or(&[])
+    }
 }
 
 #[cfg(test)]
