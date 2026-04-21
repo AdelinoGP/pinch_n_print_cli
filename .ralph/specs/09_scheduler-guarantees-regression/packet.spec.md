@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: scheduler-guarantees-regression
 task_ids:
   - TASK-131
