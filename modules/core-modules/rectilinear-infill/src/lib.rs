@@ -101,9 +101,23 @@ impl LayerModule for RectilinearInfill {
 
             let z = region.z();
 
+            // Determine fill role based on surface classification.
+            // Priority: bridge > top > bottom > sparse.
+            // Top/bottom surfaces get solid fill; bridge gets bridge fill;
+            // everything else gets sparse infill.
+            let role = if region.is_bridge() {
+                ExtrusionRole::BridgeInfill
+            } else if region.is_top_surface() {
+                ExtrusionRole::TopSolidInfill
+            } else if region.is_bottom_surface() {
+                ExtrusionRole::BottomSolidInfill
+            } else {
+                ExtrusionRole::SparseInfill
+            };
+
             for expoly in infill_areas {
                 let paths =
-                    self.fill_expolygon(expoly, line_spacing, cos_a, sin_a, z, speed_factor);
+                    self.fill_expolygon(expoly, line_spacing, cos_a, sin_a, z, speed_factor, role.clone());
                 for path in paths {
                     let _ = output.push_sparse_path(path);
                 }
@@ -116,6 +130,7 @@ impl LayerModule for RectilinearInfill {
 
 impl RectilinearInfill {
     /// Generate fill lines for a single ExPolygon.
+    #[allow(clippy::too_many_arguments)]
     fn fill_expolygon(
         &self,
         expoly: &ExPolygon,
@@ -124,6 +139,7 @@ impl RectilinearInfill {
         sin_a: f64,
         z: f32,
         speed_factor: f32,
+        role: ExtrusionRole,
     ) -> Vec<ExtrusionPath3D> {
         // Collect all edges (contour + holes)
         let mut edges: Vec<(i64, i64, i64, i64)> = Vec::new();
@@ -201,7 +217,7 @@ impl RectilinearInfill {
 
                 paths.push(ExtrusionPath3D {
                     points: vec![start, end],
-                    role: ExtrusionRole::SparseInfill,
+                    role: role.clone(),
                     speed_factor,
                 });
 

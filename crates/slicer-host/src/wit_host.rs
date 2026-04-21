@@ -136,6 +136,12 @@ pub struct SliceRegionData {
     pub has_nonplanar: bool,
     /// Boundary paint data.
     pub boundary_paint: Vec<layer::slicer::world_layer::ir_handles::BoundaryPaintEntry>,
+    /// True when this region is classified as a top surface.
+    pub is_top_surface: bool,
+    /// True when this region is classified as a bottom surface.
+    pub is_bottom_surface: bool,
+    /// True when this region is classified as a bridge region.
+    pub is_bridge: bool,
 }
 
 /// Backing data for a `perimeter-region-view` resource handle.
@@ -2071,6 +2077,9 @@ pub fn sliced_region_to_data(region: &slicer_ir::SlicedRegion, z: f32) -> SliceR
         z,
         has_nonplanar: region.nonplanar_surface.is_some(),
         boundary_paint,
+        is_top_surface: false,
+        is_bottom_surface: false,
+        is_bridge: false,
     }
 }
 

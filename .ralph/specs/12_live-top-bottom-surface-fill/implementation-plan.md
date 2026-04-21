@@ -7,6 +7,26 @@
 
 ## Steps
 
+### Step 0 (prerequisite): Add surface classification fields to `SliceRegionView`
+
+- Task IDs:
+  - `TASK-120a`
+- Objective:
+  Add `is_top_surface`, `is_bottom_surface`, and `is_bridge` fields to `SliceRegionView` so surface classification data from `SurfaceClassificationIR` can reach the infill module. Without these fields, Step 1 tests cannot be authored because there is no way to construct a `SliceRegionView` with surface classification.
+- Precondition:
+  `SliceRegionView` in `crates/slicer-sdk/src/views.rs` has no surface classification fields.
+- Postcondition:
+  `SliceRegionView` carries `is_top_surface: bool`, `is_bottom_surface: bool`, and `is_bridge: bool`; constructors and setters are updated.
+- Files expected to change:
+  - `crates/slicer-sdk/src/views.rs`
+- Authoritative docs:
+  - `docs/02_ir_schemas.md` — `SurfaceClassificationIR` field definitions
+  - `crates/slicer-sdk/src/views.rs` — current `SliceRegionView` struct
+- Verification:
+  - `cargo build -p slicer-sdk`
+- Exit condition:
+  `SliceRegionView` has the three surface classification fields and the SDK compiles without errors.
+
 ### Step 1: Add failing rectilinear top/bottom/bridge role tests
 
 - Task IDs:
@@ -14,7 +34,7 @@
 - Objective:
   Freeze the exact `ExtrusionRole` expectations for top, bottom, bridge, and sparse-only cases on the canonical infill module.
 - Precondition:
-  No focused test currently locks top/bottom surface-role generation on the live default infill module.
+  `SliceRegionView` has surface classification fields (Step 0 complete). No focused test currently locks top/bottom surface-role generation on the live default infill module.
 - Postcondition:
   `top_bottom_fill_tdd.rs` exists with failing role-specific assertions.
 - Files expected to change:

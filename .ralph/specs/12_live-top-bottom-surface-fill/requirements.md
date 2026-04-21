@@ -13,6 +13,7 @@ The real Benchy path still misses top and bottom surface fill even though the ho
 
 ## In Scope
 
+- `SliceRegionView` surface classification fields (`is_top_surface`, `is_bottom_surface`, `is_bridge`) plumbed from `SurfaceClassificationIR` into the module-facing view, so the infill stage receives top/bottom/bridge signal data
 - canonical `rectilinear-infill` support for top, bottom, and bridge-sensitive solid fill roles
 - live host dispatch of those inputs into the infill stage
 - `InfillIR` and `LayerCollectionIR` regression coverage for the emitted roles

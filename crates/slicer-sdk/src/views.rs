@@ -29,6 +29,15 @@ pub struct SliceRegionView {
     /// so generators can apply the default eligibility rules from
     /// docs/01_system_architecture.md when no support paint override applies.
     needs_support: bool,
+    /// True when this region is classified as a top surface by SurfaceClassificationIR.
+    /// Indicates the region needs TopSolidInfill fill rather than sparse infill.
+    is_top_surface: bool,
+    /// True when this region is classified as a bottom surface by SurfaceClassificationIR.
+    /// Indicates the region needs BottomSolidInfill fill rather than sparse infill.
+    is_bottom_surface: bool,
+    /// True when this region is classified as a bridge region by SurfaceClassificationIR.
+    /// Indicates the region needs BridgeInfill fill and cannot rely on support below.
+    is_bridge: bool,
 }
 
 impl SliceRegionView {
@@ -53,6 +62,9 @@ impl SliceRegionView {
             has_nonplanar,
             boundary_paint: HashMap::new(),
             needs_support: true,
+            is_top_surface: false,
+            is_bottom_surface: false,
+            is_bridge: false,
         }
     }
 
@@ -79,6 +91,9 @@ impl SliceRegionView {
             has_nonplanar,
             boundary_paint,
             needs_support: true,
+            is_top_surface: false,
+            is_bottom_surface: false,
+            is_bridge: false,
         }
     }
 
@@ -94,6 +109,36 @@ impl SliceRegionView {
         self.needs_support = needs_support;
     }
 
+    /// Override the top-surface classification flag (host-only, for testing).
+    ///
+    /// Per docs/02_ir_schemas.md §SurfaceClassificationIR, the host populates
+    /// this from `ObjectSurfaceData.surface_groups` where `shell_count > 0`
+    /// indicates a top surface. Default constructors leave the flag `false`.
+    #[doc(hidden)]
+    pub fn set_is_top_surface(&mut self, is_top_surface: bool) {
+        self.is_top_surface = is_top_surface;
+    }
+
+    /// Override the bottom-surface classification flag (host-only, for testing).
+    ///
+    /// Per docs/02_ir_schemas.md §SurfaceClassificationIR, the host populates
+    /// this from `ObjectSurfaceData.surface_groups` where the group is adjacent
+    /// to the build plate. Default constructors leave the flag `false`.
+    #[doc(hidden)]
+    pub fn set_is_bottom_surface(&mut self, is_bottom_surface: bool) {
+        self.is_bottom_surface = is_bottom_surface;
+    }
+
+    /// Override the bridge classification flag (host-only, for testing).
+    ///
+    /// Per docs/02_ir_schemas.md §SurfaceClassificationIR, the host populates
+    /// this from `ObjectSurfaceData.bridge_regions`. Default constructors leave
+    /// the flag `false`.
+    #[doc(hidden)]
+    pub fn set_is_bridge(&mut self, is_bridge: bool) {
+        self.is_bridge = is_bridge;
+    }
+
     /// Returns the SurfaceClassificationIR-derived support eligibility flag.
     ///
     /// Used by `Layer::Support` modules as the default-eligibility predicate when
@@ -101,6 +146,31 @@ impl SliceRegionView {
     /// docs/01_system_architecture.md and docs/02_ir_schemas.md.
     pub fn needs_support(&self) -> bool {
         self.needs_support
+    }
+
+    /// Returns true if this region was classified as a top surface.
+    ///
+    /// Used by the infill stage to determine whether to emit `TopSolidInfill`
+    /// paths instead of `SparseInfill`.
+    pub fn is_top_surface(&self) -> bool {
+        self.is_top_surface
+    }
+
+    /// Returns true if this region was classified as a bottom surface.
+    ///
+    /// Used by the infill stage to determine whether to emit `BottomSolidInfill`
+    /// paths instead of `SparseInfill`.
+    pub fn is_bottom_surface(&self) -> bool {
+        self.is_bottom_surface
+    }
+
+    /// Returns true if this region was classified as a bridge region.
+    ///
+    /// Used by the infill stage to determine whether to emit `BridgeInfill`
+    /// paths. Bridge regions cannot rely on support below and require
+    /// a different fill strategy.
+    pub fn is_bridge(&self) -> bool {
+        self.is_bridge
     }
 
     /// Returns the object ID this region belongs to.

@@ -20,8 +20,9 @@
   - repair the live `SliceRegionView` to infill-module handoff if any surface-classification data is missing
   - add one host integration test that asserts final ordered roles after layer execution
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
-  - `modules/core-modules/rectilinear-infill/src/lib.rs`
+  - `crates/slicer-sdk/src/views.rs` — add `is_top_surface`, `is_bottom_surface`, `is_bridge` fields to `SliceRegionView` so surface classification data from `SurfaceClassificationIR` can reach the infill module
   - `modules/core-modules/rectilinear-infill/tests/top_bottom_fill_tdd.rs`
+  - `modules/core-modules/rectilinear-infill/src/lib.rs`
   - `crates/slicer-host/src/dispatch.rs`
   - `crates/slicer-host/src/layer_executor.rs`
   - `crates/slicer-host/tests/live_top_bottom_fill_tdd.rs`
