@@ -68,10 +68,10 @@ Last updated: 2026-04-20
 - [~] TASK-130 Finish the `#[slicer_module]` prepass segmentation bridge for macro-authored modules. Covers DEV-025.
 - [ ] TASK-130a Drain `PaintSegmentationOutput` back through WIT `push-paint-region` so macro-authored modules can emit paint regions without hand-written `wit-guest` glue. Covers DEV-025.
 - [ ] TASK-130b Add end-to-end macro-path regression tests proving `MeshSegmentation` and `PaintSegmentation` round-trip real data through WIT. Continues DEV-025.
-- [ ] TASK-131 Add a regression guard for the documented `resolve_active_regions` O(1) contract. Scheduler performance guard needed for runtime-budget evidence.
-- [ ] TASK-132 Add structured RegionMap overflow coverage for the 1000-entry cap, including top-contributor and remediation messaging. Hardens the existing bounds path needed for DEV-026 evidence.
-- [ ] TASK-133 Add a pool-behavior test proving `layer_parallel_safe = false` serializes concurrent WASM acquisition. Scheduler concurrency guard for the docs/04 instance-pool contract.
-- [ ] TASK-134 Add a catch-up-layer propagation test that verifies `is_catchup_layer`, `catchup_z_bottom`, and `effective_layer_height` survive every per-layer stage. Guards the documented catch-up-layer propagation contract across every per-layer stage.
+- [x] TASK-131 Add a regression guard for the documented `resolve_active_regions` O(1) contract. Scheduler performance guard needed for runtime-budget evidence.
+- [x] TASK-132 Add structured RegionMap overflow coverage for the 1000-entry cap, including top-contributor and remediation messaging. Hardens the existing bounds path needed for DEV-026 evidence.
+- [x] TASK-133 Add a pool-behavior test proving `layer_parallel_safe = false` serializes concurrent WASM acquisition. Scheduler concurrency guard for the docs/04 instance-pool contract.
+- [x] TASK-134 Add a catch-up-layer propagation test that verifies `is_catchup_layer`, `catchup_z_bottom`, and `effective_layer_height` survive every per-layer stage. Guards the documented catch-up-layer propagation contract across every per-layer stage.
 - [x] TASK-147 Implement live mesh-data wiring for `raycast_z_down` and cover hit/miss semantics across the WIT worlds. Covers DEV-015.
 - [x] TASK-148 Implement `surface_normal_at` and `object_bounds` on the same mesh-query backing surface, replacing the current stub/trap behavior with tested results. Continues DEV-015.
 - [ ] TASK-157 Add fixture-level integration coverage for non-identity object transforms so transformed STL/3MF inputs prove correct world-space Z behavior through planning. Covers DEV-027.
