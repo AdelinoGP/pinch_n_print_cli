@@ -381,3 +381,47 @@ fn per_layer_executor_surfaces_layer_slice_failure_structured() {
     }
 
 }
+
+/// AC-5 / TASK-134 regression guard: a catch-up GlobalLayer
+/// (is_catchup_layer=true, catchup_z_bottom=0.3, effective_layer_height=0.3)
+/// must produce SliceIR whose SlicedRegion.effective_layer_height == 0.3.
+///
+/// The catch-up metadata (is_catchup_layer, catchup_z_bottom) lives only on
+/// GlobalLayer.active_regions and does NOT flow into downstream IR types that
+/// don't define those fields (PerimeterIR, InfillIR, SupportIR, LayerCollectionIR).
+/// Only effective_layer_height is defined on SlicedRegion and must be preserved.
+#[test]
+fn layer_slice_builtin_preserves_effective_layer_height_for_catchup_regions() {
+    let mesh = Arc::new(tetra_mesh_ir("obj-a"));
+
+    // Catch-up layer: Object B at Z=0.6 spanning [0.3, 0.6].
+    // is_catchup_layer=true and catchup_z_bottom=0.3 flag that this is a
+    // widened catch-up layer computed in PrePass::LayerPlanning and never
+    // recomputed in Tier 2.
+    let layer = GlobalLayer {
+        index: 7,
+        z: 0.6,
+        active_regions: vec![ActiveRegion {
+            object_id: "obj-a".to_string(),
+            region_id: 0,
+            resolved_config: default_resolved(),
+            effective_layer_height: 0.3,
+            nonplanar_shell: None,
+            is_catchup_layer: true,
+            catchup_z_bottom: 0.3,
+            tool_index: 0,
+        }],
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    let slice = execute_layer_slice(&mesh, &layer).expect("slice ok");
+
+    // effective_layer_height must be preserved from the source ActiveRegion
+    // into the downstream SlicedRegion.
+    assert_eq!(slice.regions.len(), 1);
+    assert_eq!(
+        slice.regions[0].effective_layer_height, 0.3,
+        "SlicedRegion.effective_layer_height must preserve the catch-up layer height H=0.3"
+    );
+}

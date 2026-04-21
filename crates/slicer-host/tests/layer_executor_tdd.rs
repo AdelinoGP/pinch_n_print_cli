@@ -887,3 +887,161 @@ fn ordered_entities_assembly_is_deterministic_across_repeated_runs() {
     assert_eq!(results[0], results[1]);
     assert_eq!(results[1], results[2]);
 }
+
+// ============================================================================
+// TASK-134: Catch-up metadata regression guards
+// ============================================================================
+
+/// AC-4 / TASK-134 regression guard: a catch-up ActiveRegion passing through
+/// all nine per-layer stages keeps is_catchup_layer=true and catchup_z_bottom=B
+/// unchanged on the source layer surface seen by every stage.
+///
+/// The nine per-layer stages are (docs/04 §Full Lifecycle):
+///   Layer::Slice → Layer::SlicePostProcess → Layer::Perimeters →
+///   Layer::PerimetersPostProcess → Layer::Infill → Layer::InfillPostProcess →
+///   Layer::Support → Layer::SupportPostProcess → Layer::PathOptimization
+///
+/// Catch-up metadata is computed once in PrePass::LayerPlanning and must
+/// never be recomputed in Tier 2. This test proves the metadata is not
+/// mutated as the layer surface passes through each stage runner call.
+#[test]
+fn catchup_metadata_remains_stable_across_all_per_layer_stages() {
+    // Arrange: build a catch-up layer at Z=0.6 where Object B (0.3mm/layer)
+    // catches up to Object A (0.2mm/layer) on the 0.6mm sync plane.
+    let catchup_z_bottom = 0.3_f32;
+    let effective_layer_height = 0.3_f32;
+    // Use "test-object" to match the mesh_fixture() object ID.
+    let layer = GlobalLayer {
+        index: 7,
+        z: 0.6,
+        active_regions: vec![ActiveRegion {
+            object_id: "test-object".to_string(),
+            region_id: 0,
+            resolved_config: ResolvedConfig::default(),
+            effective_layer_height,
+            nonplanar_shell: None,
+            is_catchup_layer: true,
+            catchup_z_bottom,
+            tool_index: 0,
+        }],
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    // Use execution_plan_fixture but with a custom global_layers that has the
+    // catch-up layer.  We build the plan manually using the fixture's stage
+    // structure to stay compatible with both HEAD and post-module_region_index
+    // builds: we use struct-literal only for the fields that are pub.
+    let per_layer_stages = vec![
+        compiled_stage("Layer::SlicePostProcess", &["com.example.slice-postprocess"]),
+        compiled_stage("Layer::Perimeters", &["com.example.perimeters"]),
+        compiled_stage("Layer::PerimetersPostProcess", &["com.example.perimeters-postprocess"]),
+        compiled_stage("Layer::Infill", &["com.example.infill"]),
+        compiled_stage("Layer::InfillPostProcess", &["com.example.infill-postprocess"]),
+        compiled_stage("Layer::Support", &["com.example.support"]),
+        compiled_stage("Layer::SupportPostProcess", &["com.example.support-postprocess"]),
+        compiled_stage("Layer::PathOptimization", &["com.example.path-optimization"]),
+    ];
+
+    // Build ExecutionPlan using the same pattern as execution_plan_fixture
+    // but with a catch-up global layer.  This approach works at HEAD; if
+    // module_region_index is later added as pub(crate), a Default-based
+    // construction or builder must be used instead.
+    let plan = ExecutionPlan {
+        prepass_stages: Vec::new(),
+        per_layer_stages,
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
+        global_layers: Arc::new(vec![layer]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    let mesh = Arc::new(mesh_fixture());
+    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+
+    // RecordingRunner captures the active_regions surface at each stage call.
+    let runner = CatchupMetadataRecordingRunner::new();
+    let result = execute_per_layer(&plan, &blackboard, &runner);
+    if let Err(e) = &result {
+        panic!("execution failed: {e:?}");
+    }
+
+    // Assert: all eight module-driven stages saw identical catch-up metadata on
+    // the source GlobalLayer.active_regions surface.
+    //
+    // NOTE: we assert on the source GlobalLayer (layer.z=0.6, is_catchup=true,
+    // catchup_z_bottom=0.3) NOT on downstream IR types.  PerimeterIR, InfillIR,
+    // SupportIR, and LayerCollectionIR do not define is_catchup_layer or
+    // catchup_z_bottom — those fields exist only on GlobalLayer.active_regions.
+    // SlicedRegion.effective_layer_height is separately tested in
+    // layer_slice_tdd.rs.
+    //
+    // The nine per-layer stages per docs/04 §Full Lifecycle are:
+    //   Layer::Slice → SlicePostProcess → Perimeters → PerimetersPostProcess →
+    //   Infill → InfillPostProcess → Support → SupportPostProcess → PathOptimization
+    // Layer::Slice is host-built-in and runs before the module loop via
+    // execute_layer_slice; it does NOT call run_stage().  All eight module-driven
+    // stages DO call run_stage() and are recorded here.
+    let recordings = runner.recordings();
+    assert_eq!(
+        recordings.len(), 8,
+        "all eight module-driven per-layer stages should be invoked"
+    );
+    for (i, rec) in recordings.iter().enumerate() {
+        let stage_name = format!("stage[{i}]");
+        assert!(
+            rec.is_catchup_layer,
+            "{stage_name}: is_catchup_layer must remain true (was set at PrePass)"
+        );
+        assert_eq!(
+            rec.catchup_z_bottom, catchup_z_bottom,
+            "{stage_name}: catchup_z_bottom must remain B=0.3 unchanged"
+        );
+    }
+}
+
+/// RecordingRunner that captures catch-up metadata from GlobalLayer.active_regions
+/// at each stage invocation.
+struct CatchupMetadataRecordingRunner {
+    recordings: Mutex<Vec<CatchupSnapshot>>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CatchupSnapshot {
+    is_catchup_layer: bool,
+    catchup_z_bottom: f32,
+}
+
+impl CatchupMetadataRecordingRunner {
+    fn new() -> Self {
+        Self {
+            recordings: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn recordings(&self) -> Vec<CatchupSnapshot> {
+        self.recordings.lock().unwrap().clone()
+    }
+}
+
+impl LayerStageRunner for CatchupMetadataRecordingRunner {
+    fn run_stage(
+        &self,
+        _stage_id: &StageId,
+        layer: &GlobalLayer,
+        _module: &CompiledModule,
+        _blackboard: &Blackboard,
+        _arena: &mut LayerArena,
+    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+        // Record catch-up metadata from the source active_regions surface.
+        // We take the first region as the canary; if there are multiple regions
+        // all must carry the same catch-up flags per the pre-pass contract.
+        if let Some(region) = layer.active_regions.first() {
+            self.recordings.lock().unwrap().push(CatchupSnapshot {
+                is_catchup_layer: region.is_catchup_layer,
+                catchup_z_bottom: region.catchup_z_bottom,
+            });
+        }
+        Ok((LayerStageOutput::Success, Vec::new()))
+    }
+}

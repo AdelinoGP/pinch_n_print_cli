@@ -22,10 +22,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_host::{
-    build_wasm_instance_pool, execute_prepass_with_builtins, execute_region_mapping,
-    execute_region_mapping_with_cap, Blackboard, CompiledModule, CompiledStage, ConfigSchema,
-    ExecutionPlan, IrAccessMask, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
-    RegionMappingBuiltinError, RegionMappingError, WasmArtifactMetadata,
+    build_execution_plan, build_wasm_instance_pool, execute_prepass_with_builtins,
+    execute_region_mapping, execute_region_mapping_with_cap, Blackboard, CompiledModule,
+    CompiledStage, ConfigSchema, ExecutionPlan, ExecutionPlanRequest, IrAccessMask,
+    PrepassExecutionError, PrepassStageOutput, PrepassStageRunner, RegionMappingBuiltinError,
+    RegionMappingError, SortedStageModules, WasmArtifactMetadata,
 };
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
@@ -69,14 +70,13 @@ fn region_mapping_builtin_runs_after_user_layer_planning_and_is_visible_to_downs
         &[("com.example.walls", amp_cfg(0.7))],
     );
 
-    let plan = ExecutionPlan {
-        prepass_stages: vec![lp_stage],
-        per_layer_stages: vec![perimeters_stage],
-        layer_finalization_stage: None,
-        postpass_stages: vec![],
+    let request = ExecutionPlanRequest {
+        sorted_stages: Vec::new(),
+        module_bindings: vec![],
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
     };
+    let plan = build_execution_plan(&request).expect("plan should build");
 
     execute_prepass_with_builtins(
         &plan,
@@ -138,9 +138,90 @@ fn region_mapping_cap_exceeded_is_structured_fatal() {
 
     let err = execute_region_mapping_with_cap(&layer_plan, &plan, 2).expect_err("must fail");
     match err {
-        RegionMappingError::CapExceeded { entry_count: 3, cap: 2 } => {}
-        other => panic!("expected CapExceeded {{3,2}}, got {other:?}"),
+        RegionMappingError::CapExceeded { entry_count: 3, cap: 2, .. } => {}
+        other => panic!("expected CapExceeded {{3,2,..}}, got {other:?}"),
     }
+}
+
+// ----------------------------------------------------------------------
+// Test 2b — overflow surfaces top contributors and remediation (TASK-132)
+// ----------------------------------------------------------------------
+
+#[test]
+fn region_mapping_cap_exceeded_surfaces_top_contributors_and_remediation() {
+    let layer_plan = LayerPlanIR {
+        schema_version: sv(1, 0, 0),
+        global_layers: vec![
+            GlobalLayer {
+                index: 0,
+                z: 0.2,
+                active_regions: vec![
+                    active_region("cube", 1),
+                    active_region("cube", 2),
+                ],
+                has_nonplanar: false,
+                is_sync_layer: false,
+            },
+            GlobalLayer {
+                index: 1,
+                z: 0.4,
+                active_regions: vec![
+                    active_region("cube", 1),
+                    active_region("cube", 2),
+                    active_region("cube", 3),
+                    active_region("sphere", 1),
+                ],
+                has_nonplanar: false,
+                is_sync_layer: false,
+            },
+        ],
+        object_participation: HashMap::new(),
+    };
+    let plan = empty_execution_plan();
+
+    let err = execute_region_mapping_with_cap(&layer_plan, &plan, 5).expect_err("must fail");
+    match err {
+        RegionMappingError::CapExceeded { entry_count, cap, top_contributors, remediation } => {
+            assert_eq!(entry_count, 6);
+            assert_eq!(cap, 5);
+            assert!(!top_contributors.is_empty(), "must surface top contributors");
+            // "cube" should be the top contributor (5 regions vs sphere's 1).
+            assert_eq!(top_contributors[0].object_id, "cube");
+            assert_eq!(top_contributors[0].region_count, 5);
+            assert!(remediation.contains("reduce") || remediation.contains("raise") || remediation.contains("split"),
+                "must include remediation hint: {remediation}");
+        }
+        other => panic!("expected CapExceeded, got {other:?}"),
+    }
+}
+
+#[test]
+fn region_mapping_at_cap_is_accepted() {
+    let layer_plan = LayerPlanIR {
+        schema_version: sv(1, 0, 0),
+        global_layers: vec![
+            GlobalLayer {
+                index: 0,
+                z: 0.2,
+                active_regions: vec![active_region("cube", 1)],
+                has_nonplanar: false,
+                is_sync_layer: false,
+            },
+            GlobalLayer {
+                index: 1,
+                z: 0.4,
+                active_regions: vec![active_region("cube", 1)],
+                has_nonplanar: false,
+                is_sync_layer: false,
+            },
+        ],
+        object_participation: HashMap::new(),
+    };
+    let plan = empty_execution_plan();
+
+    // Exactly 2 entries against a cap of 2 must succeed (not error).
+    execute_region_mapping_with_cap(&layer_plan, &plan, 2)
+        .expect("region mapping at exactly the cap must be accepted");
 }
 
 // ----------------------------------------------------------------------
@@ -255,15 +336,21 @@ fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer { major, minor, patch }
 }
 
+fn sorted_stage(stage_id: &str, module_ids: &[&str]) -> SortedStageModules {
+    SortedStageModules {
+        stage_id: String::from(stage_id),
+        module_ids: module_ids.iter().map(|s| (*s).to_string()).collect(),
+    }
+}
+
 fn empty_execution_plan() -> ExecutionPlan {
-    ExecutionPlan {
-        prepass_stages: vec![],
-        per_layer_stages: vec![],
-        layer_finalization_stage: None,
-        postpass_stages: vec![],
+    let request = ExecutionPlanRequest {
+        sorted_stages: Vec::new(),
+        module_bindings: vec![],
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
-    }
+    };
+    build_execution_plan(&request).expect("empty execution plan should build")
 }
 
 fn single_object_mesh(id: &str) -> MeshIR {

@@ -10,7 +10,7 @@ use slicer_host::{
     WasmArtifactMetadata,
 };
 use slicer_ir::{
-    ConfigValue, ConfigView, GlobalLayer, RegionKey, RegionPlan, ResolvedConfig, SemVer,
+    ActiveRegion, ConfigValue, ConfigView, GlobalLayer, RegionKey, RegionPlan, ResolvedConfig, SemVer,
 };
 
 #[test]
@@ -616,5 +616,120 @@ fn duplicate_module_binding_rejected_with_stable_diagnostic() {
             }
             other => panic!("expected DuplicateModuleBinding, got {other:?}"),
         }
+    }
+}
+
+// ── Precomputed module-region index (TASK-131) ─────────────────────────
+
+#[test]
+fn resolve_active_regions_uses_precomputed_index() {
+    // Build a plan with two modules and three regions spread across two layers.
+    let global_layers = Arc::new(vec![
+        GlobalLayer {
+            index: 0,
+            z: 0.2,
+            active_regions: vec![
+                active_region("cube", 1),
+                active_region("cube", 2),
+            ],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        },
+        GlobalLayer {
+            index: 1,
+            z: 0.4,
+            active_regions: vec![active_region("cube", 1)],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        },
+    ]);
+
+    // Three region plans across two layers and two objects.
+    let region_plans = Arc::new(HashMap::from([
+        (RegionKey { global_layer_index: 0, object_id: "cube".into(), region_id: 1 }, RegionPlan { config: ResolvedConfig::default(), stage_modules: HashMap::new() }),
+        (RegionKey { global_layer_index: 0, object_id: "cube".into(), region_id: 2 }, RegionPlan { config: ResolvedConfig::default(), stage_modules: HashMap::new() }),
+        (RegionKey { global_layer_index: 1, object_id: "cube".into(), region_id: 1 }, RegionPlan { config: ResolvedConfig::default(), stage_modules: HashMap::new() }),
+    ]));
+
+    let mod_a = bound_module(
+        loaded_module("mod.a", "Layer::Perimeters", &[], &[], true, "slicer:world-layer@1.0.0"),
+        ConfigView::from_map(HashMap::new()),
+        4,
+    );
+    let mod_b = bound_module(
+        loaded_module("mod.b", "Layer::Infill", &[], &[], true, "slicer:world-layer@1.0.0"),
+        ConfigView::from_map(HashMap::new()),
+        4,
+    );
+
+    let request = ExecutionPlanRequest {
+        sorted_stages: vec![
+            sorted_stage("Layer::Perimeters", &["mod.a"]),
+            sorted_stage("Layer::Infill", &["mod.b"]),
+        ],
+        module_bindings: vec![mod_a, mod_b],
+        global_layers: Arc::clone(&global_layers),
+        region_plans: Arc::clone(&region_plans),
+    };
+
+    let plan = build_execution_plan(&request).expect("plan should build");
+
+    // mod.a on layer 0 → 2 regions
+    let layer0 = &global_layers[0];
+    let result = plan.resolve_active_regions(layer0, &plan.per_layer_stages[0].modules[0]);
+    let region_keys: Vec<_> = result.iter().map(|r| (r.object_id.clone(), r.region_id)).collect();
+    assert_eq!(region_keys, &[("cube".into(), 1), ("cube".into(), 2)],
+        "mod.a on layer 0 must find 2 regions");
+
+    // mod.a on layer 1 → 1 region
+    let layer1 = &global_layers[1];
+    let result = plan.resolve_active_regions(layer1, &plan.per_layer_stages[0].modules[0]);
+    let region_keys: Vec<_> = result.iter().map(|r| (r.object_id.clone(), r.region_id)).collect();
+    assert_eq!(region_keys, &[("cube".into(), 1)],
+        "mod.a on layer 1 must find 1 region");
+}
+
+#[test]
+fn resolve_active_regions_returns_empty_when_module_has_no_regions() {
+    // Module `mod.a` has no regions at any layer → returns empty slice (not error).
+    let global_layers = Arc::new(vec![GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: vec![], // no active regions
+        has_nonplanar: false,
+        is_sync_layer: false,
+    }]);
+
+    let region_plans = Arc::new(HashMap::new()); // no region plans
+
+    let mod_a = bound_module(
+        loaded_module("mod.a", "Layer::Perimeters", &[], &[], true, "slicer:world-layer@1.0.0"),
+        ConfigView::from_map(HashMap::new()),
+        4,
+    );
+
+    let request = ExecutionPlanRequest {
+        sorted_stages: vec![sorted_stage("Layer::Perimeters", &["mod.a"])],
+        module_bindings: vec![mod_a],
+        global_layers: Arc::clone(&global_layers),
+        region_plans,
+    };
+
+    let plan = build_execution_plan(&request).expect("plan should build");
+
+    let result = plan.resolve_active_regions(&global_layers[0], &plan.per_layer_stages[0].modules[0]);
+    assert!(result.is_empty(), "empty result for module with no regions must be an empty slice, not an error");
+}
+
+fn active_region(object_id: &str, region_id: u64) -> ActiveRegion {
+    ActiveRegion {
+        object_id: object_id.to_string(),
+        region_id,
+        resolved_config: ResolvedConfig::default(),
+        effective_layer_height: 0.2,
+        nonplanar_shell: None,
+        is_catchup_layer: false,
+        catchup_z_bottom: 0.0,
+        tool_index: 0,
     }
 }
