@@ -1,6 +1,6 @@
 wit_bindgen::generate!({
     inline: r#"
-        package slicer:finalization-world@1.0.0;
+        package slicer:world-finalization@1.0.0;
 
         interface geometry {
             record point3 { x: f32, y: f32, z: f32 }
@@ -10,11 +10,11 @@ wit_bindgen::generate!({
             record polygon { points: list<point2> }
             record ex-polygon { contour: polygon, holes: list<polygon> }
             record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32 }
-            enum extrusion-role {
+            variant extrusion-role {
                 outer-wall, inner-wall, thin-wall,
                 top-solid-infill, bottom-solid-infill, sparse-infill,
                 support-material, support-interface,
-                ironing, bridge-infill, wipe-tower, custom,
+                ironing, bridge-infill, wipe-tower, custom(string),
             }
         }
 
@@ -53,7 +53,7 @@ wit_bindgen::generate!({
             import host-services;
             import config-types;
             use config-types.{config-view};
-            use geometry.{extrusion-path3d};
+            use geometry.{extrusion-path3d, extrusion-role};
             type layer-idx = u32;
             type object-id = string;
             type region-id = string;
@@ -66,11 +66,25 @@ wit_bindgen::generate!({
                 to-tool: u32,
             }
 
+            record print-entity-view {
+                path: extrusion-path3d,
+                role: extrusion-role,
+                region-key: region-key,
+                topo-order: u32,
+            }
+
+            record z-hop-view {
+                after-entity-index: u32,
+                hop-height: f32,
+            }
+
             resource layer-collection-view {
                 layer-index:  func() -> layer-idx;
                 z:            func() -> f32;
                 entity-count: func() -> u32;
+                ordered-entities: func() -> list<print-entity-view>;
                 tool-changes: func() -> list<tool-change-view>;
+                z-hops: func() -> list<z-hop-view>;
             }
 
             resource finalization-output-builder {
@@ -92,8 +106,8 @@ struct Component;
 
 impl Guest for Component {
     fn run_finalization(_layers: Vec<LayerCollectionView>, _output: FinalizationOutputBuilder, _config: ConfigView) -> Result<(), ModuleError> {
-        slicer::finalization_world::host_services::log(
-            slicer::finalization_world::host_services::LogLevel::Info,
+        slicer::world_finalization::host_services::log(
+            slicer::world_finalization::host_services::LogLevel::Info,
             "run-finalization: ok",
         );
         Ok(())

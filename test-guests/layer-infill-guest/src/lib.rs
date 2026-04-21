@@ -13,11 +13,11 @@ wit_bindgen::generate!({
             record polygon       { points: list<point2> }
             record ex-polygon    { contour: polygon, holes: list<polygon> }
             record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32 }
-            enum extrusion-role {
+            variant extrusion-role {
                 outer-wall, inner-wall, thin-wall,
                 top-solid-infill, bottom-solid-infill, sparse-infill,
                 support-material, support-interface,
-                ironing, bridge-infill, wipe-tower, custom,
+                ironing, bridge-infill, wipe-tower, custom(string),
             }
             record semver { major: u32, minor: u32, patch: u32 }
         }
@@ -59,10 +59,10 @@ wit_bindgen::generate!({
             type region-id = string;
             type layer-idx = u32;
             record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
-            record wall-feature-flag { tool-index: option<u32>, fuzzy-skin: bool, is-bridge: bool, is-thin-wall: bool, skip-ironing: bool }
+            record wall-feature-flag { tool-index: option<u32>, fuzzy-skin: bool, is-bridge: bool, is-thin-wall: bool, skip-ironing: bool, custom: list<tuple<string, paint-value>> }
             record wall-loop-view { perimeter-index: u32, loop-type: wall-loop-type, path: extrusion-path3d, feature-flags: list<wall-feature-flag> }
             enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell }
-            enum paint-semantic { material, fuzzy-skin, support-enforcer, support-blocker, custom }
+            variant paint-semantic { material, fuzzy-skin, support-enforcer, support-blocker, custom(string) }
             variant paint-value { flag(bool), scalar(f32), tool-index(u32) }
             record boundary-paint-polygon { values: list<option<paint-value>> }
             record boundary-paint-entry { semantic: paint-semantic, polygons: list<boundary-paint-polygon> }
@@ -217,6 +217,7 @@ impl Guest for Component {
                     is_bridge: false,
                     is_thin_wall: false,
                     skip_ironing: false,
+                    custom: vec![],
                 }],
             };
             output.push_wall_loop(&wl).expect("push wall loop failed");
@@ -287,8 +288,8 @@ impl Guest for Component {
     fn run_support(layer_index: LayerIdx, _regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: SupportOutputBuilder, _config: ConfigView) -> Result<(), ModuleError> {
         // Query support-enforcer paint regions.
         use slicer::world_layer::ir_handles::PaintSemantic;
-        let enforcers = paint.get_regions(PaintSemantic::SupportEnforcer);
-        let blocker_count = paint.get_regions(PaintSemantic::SupportBlocker).len();
+        let enforcers = paint.get_regions(&PaintSemantic::SupportEnforcer);
+        let blocker_count = paint.get_regions(&PaintSemantic::SupportBlocker).len();
         let paint_layer_idx = paint.layer_index();
 
         // Encode paint data into observable support output:
