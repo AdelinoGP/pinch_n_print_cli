@@ -26,10 +26,10 @@
   - `crates/slicer-host/src/gcode_emit.rs`
   - `crates/slicer-host/src/postpass.rs`
   - `crates/slicer-host/src/wit_host.rs`
-  - `crates/slicer-sdk/src/postpass_builders.rs`
   - `crates/slicer-host/tests/gcode_emit_tdd.rs`
   - `crates/slicer-host/tests/postpass_gcode_emit_contract_tdd.rs`
-  - `crates/slicer-host/tests/postpass_gcode_boundary_tdd.rs`
+
+  Note: `crates/slicer-host/tests/postpass_gcode_boundary_tdd.rs` is a neighboring WASM-module boundary test and is not owned by this packet. `crates/slicer-sdk/src/postpass_builders.rs` does not exist; retract/travel/Z-hop cross the boundary via `GCodeCommand` variants on the existing `execute_postpass()` path.
 - Rejected alternatives that were considered and why they were not chosen:
   - injecting Orca comment strings directly from feature modules: rejected because it would duplicate spelling/order rules across producers
   - widening `LayerCollectionIR` with Orca-specific text fragments: rejected because the text contract belongs to postpass, not IR schema

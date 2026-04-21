@@ -98,8 +98,9 @@
   A whole-postpass regression proves the canonical contract survives `execute_postpass()` end-to-end and remains deterministic across repeats.
 - Files expected to change:
   - `crates/slicer-host/tests/postpass_gcode_emit_contract_tdd.rs`
-  - `crates/slicer-host/tests/postpass_gcode_boundary_tdd.rs`
   - `crates/slicer-host/src/postpass.rs`
+
+  Note: `crates/slicer-host/tests/postpass_gcode_boundary_tdd.rs` is a neighboring WASM-module boundary test and is not owned by this packet; it was incorrectly listed in an earlier draft.
 - Authoritative docs:
   - `docs/04_host_scheduler.md`
 - OrcaSlicer refs:
