@@ -289,10 +289,12 @@ impl WasmRuntimeDispatcher {
     /// `LayerModule::add_to_linker`, instantiates through typed bindings,
     /// and calls the stage-appropriate typed export. Returns the execution
     /// context so the caller can extract and commit collected outputs.
+    #[allow(clippy::too_many_arguments)]
     fn dispatch_layer_call(
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
+        blackboard: &Blackboard,
         layer_index: u32,
         layer_z: f32,
         paint_ir: Option<&slicer_ir::PaintRegionIR>,
@@ -336,7 +338,13 @@ impl WasmRuntimeDispatcher {
         })?;
 
         // Create per-call execution context and store.
-        let ctx = HostExecutionContext::new(module.module_id.clone(), 0.0, 0.0, None);
+        let ctx = HostExecutionContext::new(
+            module.module_id.clone(),
+            0.0,
+            0.0,
+            None,
+            Some(blackboard.mesh().clone()),
+        );
         let mut store = wasmtime::Store::new(engine, ctx);
 
         // Push config-view resource from the module's frozen config.
@@ -596,7 +604,13 @@ impl WasmRuntimeDispatcher {
                 reason: e.to_string(),
             })?;
 
-        let ctx = wit_host::HostExecutionContext::new(module.module_id.clone(), 0.0, 0.0, None);
+        let ctx = wit_host::HostExecutionContext::new(
+            module.module_id.clone(),
+            0.0,
+            0.0,
+            None,
+            Some(blackboard.mesh().clone()),
+        );
         let mut store = wasmtime::Store::new(engine, ctx);
 
         let config_handle = store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view))
@@ -688,6 +702,7 @@ impl WasmRuntimeDispatcher {
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
+        blackboard: &Blackboard,
         layers: &[slicer_ir::LayerCollectionIR],
     ) -> Result<Vec<wit_host::FinalizationBuilderPush>, DispatchError> {
         let export_name = export_name_for_stage(stage_id).unwrap_or("unknown");
@@ -708,7 +723,13 @@ impl WasmRuntimeDispatcher {
                 reason: e.to_string(),
             })?;
 
-        let ctx = HostExecutionContext::new(module.module_id.clone(), 0.0, 0.0, None);
+        let ctx = HostExecutionContext::new(
+            module.module_id.clone(),
+            0.0,
+            0.0,
+            None,
+            Some(blackboard.mesh().clone()),
+        );
         let mut store = wasmtime::Store::new(engine, ctx);
 
         let config_handle = store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view))
@@ -776,6 +797,7 @@ impl WasmRuntimeDispatcher {
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
+        blackboard: &Blackboard,
         commands: &[GCodeCommand],
     ) -> (Result<Option<Vec<GCodeCommand>>, DispatchError>, Vec<String>) {
         let export_name = "run-gcode-postprocess";
@@ -810,7 +832,13 @@ impl WasmRuntimeDispatcher {
             );
         }
 
-        let ctx = HostExecutionContext::new(module.module_id.clone(), 0.0, 0.0, None);
+        let ctx = HostExecutionContext::new(
+            module.module_id.clone(),
+            0.0,
+            0.0,
+            None,
+            Some(blackboard.mesh().clone()),
+        );
         let mut store = wasmtime::Store::new(engine, ctx);
 
         let config_handle = match store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view)) {
@@ -916,6 +944,7 @@ impl WasmRuntimeDispatcher {
         &self,
         stage_id: &StageId,
         module: &CompiledModule,
+        blackboard: &Blackboard,
         text: &str,
     ) -> (Result<String, DispatchError>, Vec<String>) {
         let export_name = "run-text-postprocess";
@@ -950,7 +979,13 @@ impl WasmRuntimeDispatcher {
             );
         }
 
-        let ctx = HostExecutionContext::new(module.module_id.clone(), 0.0, 0.0, None);
+        let ctx = HostExecutionContext::new(
+            module.module_id.clone(),
+            0.0,
+            0.0,
+            None,
+            Some(blackboard.mesh().clone()),
+        );
         let mut store = wasmtime::Store::new(engine, ctx);
 
         let config_handle = match store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view)) {
@@ -1194,6 +1229,7 @@ mod tests {
             "com.test.layer-plan-bad-region-id".to_string(),
             0.0,
             0.2,
+            None,
             None,
         );
         ctx.layer_plan_proposals.push(wit_host::prepass::LayerProposal {
@@ -1496,7 +1532,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         let paint_ref = paint_ir.map(|arc| arc.as_ref());
 
         // Layer stages always use the typed component-model boundary.
-        let ctx = match self.dispatch_layer_call(stage_id, module, layer.index, layer.z, paint_ref, arena) {
+        let ctx = match self.dispatch_layer_call(stage_id, module, blackboard, layer.index, layer.z, paint_ref, arena) {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
                 // Placeholder/uncompiled module — skip gracefully.
@@ -1755,7 +1791,7 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
         _blackboard: &Blackboard,
         layers: &mut Vec<LayerCollectionIR>,
     ) -> Result<FinalizationOutput, FinalizationError> {
-        let pushes = match self.dispatch_finalization_call(stage_id, module, layers) {
+        let pushes = match self.dispatch_finalization_call(stage_id, module, _blackboard, layers) {
             Ok(p) => p,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
                 // Placeholder/uncompiled modules are gracefully skipped.
@@ -1835,7 +1871,7 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         _blackboard: &Blackboard,
         gcode_ir: &mut GCodeIR,
     ) -> Result<PostpassOutput, PostpassError> {
-        let (result, reads) = self.dispatch_postpass_gcode_call(stage_id, module, &gcode_ir.commands);
+        let (result, reads) = self.dispatch_postpass_gcode_call(stage_id, module, _blackboard, &gcode_ir.commands);
         // Store reads for later retrieval via take_runtime_reads
         if !reads.is_empty() {
             self.postpass_runtime_reads.borrow_mut().push(reads);
@@ -1867,7 +1903,7 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         _blackboard: &Blackboard,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
-        let (result, reads) = self.dispatch_postpass_text_call(stage_id, module, &text);
+        let (result, reads) = self.dispatch_postpass_text_call(stage_id, module, _blackboard, &text);
         // Store reads for later retrieval via take_runtime_reads
         if !reads.is_empty() {
             self.postpass_runtime_reads.borrow_mut().push(reads);

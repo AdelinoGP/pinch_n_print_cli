@@ -7,8 +7,10 @@
 //! - Trait implementations bridging the generated WIT interface to real host data
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
 
+use slicer_ir::MeshIR;
 use wasmtime::component::{Resource, ResourceTable};
 
 // ── Resource backing data structs ───────────────────────────────────────
@@ -1092,6 +1094,8 @@ pub struct HostExecutionContext {
     effective_layer_height: f32,
     /// Bottom Z of catch-up layer, or `None` if not a catch-up layer.
     catchup_z_bottom: Option<f32>,
+    /// Host-owned mesh IR used by mesh-query host services.
+    pub mesh_ir: Option<Arc<MeshIR>>,
 }
 
 impl HostExecutionContext {
@@ -1100,7 +1104,13 @@ impl HostExecutionContext {
     /// `layer_z` is the layer floor (lower Z bound). `effective_layer_height` is
     /// the envelope height. `catchup_z_bottom` is `Some` when this is a catch-up
     /// layer (the floor is then `catchup_z_bottom` instead of `layer_z`).
-    pub fn new(module_id: String, layer_z: f32, effective_layer_height: f32, catchup_z_bottom: Option<f32>) -> Self {
+    pub fn new(
+        module_id: String,
+        layer_z: f32,
+        effective_layer_height: f32,
+        catchup_z_bottom: Option<f32>,
+        mesh_ir: Option<Arc<MeshIR>>,
+    ) -> Self {
         Self {
             table: ResourceTable::new(),
             module_id,
@@ -1123,6 +1133,7 @@ impl HostExecutionContext {
             layer_z,
             effective_layer_height,
             catchup_z_bottom,
+            mesh_ir,
         }
     }
 
@@ -1311,6 +1322,305 @@ impl HostExecutionContext {
     }
 }
 
+const MESH_QUERY_EPSILON: f32 = 1.0e-4;
+
+fn object_not_found_error(service: &str, object_id: &str) -> wasmtime::Error {
+    wasmtime::Error::msg(format!(
+        "OBJECT_NOT_FOUND: host-service {service} could not find object '{object_id}'"
+    ))
+}
+
+fn lookup_object_mesh<'a>(
+    ctx: &'a HostExecutionContext,
+    service: &str,
+    object_id: &str,
+) -> wasmtime::Result<Option<&'a slicer_ir::ObjectMesh>> {
+    let Some(mesh_ir) = ctx.mesh_ir.as_ref() else {
+        return Ok(None);
+    };
+
+    mesh_ir
+        .objects
+        .iter()
+        .find(|object| object.id == object_id)
+        .map(Some)
+        .ok_or_else(|| object_not_found_error(service, object_id))
+}
+
+fn transform_mesh_point(
+    transform: &slicer_ir::Transform3d,
+    point: &slicer_ir::Point3,
+) -> slicer_ir::Point3 {
+    let matrix = &transform.matrix;
+    if matrix.iter().all(|value| *value == 0.0) {
+        return *point;
+    }
+
+    let x = f64::from(point.x);
+    let y = f64::from(point.y);
+    let z = f64::from(point.z);
+    let transformed_x = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
+    let transformed_y = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
+    let transformed_z = matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14];
+    let transformed_w = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
+
+    if transformed_w != 0.0 && transformed_w != 1.0 {
+        return slicer_ir::Point3 {
+            x: (transformed_x / transformed_w) as f32,
+            y: (transformed_y / transformed_w) as f32,
+            z: (transformed_z / transformed_w) as f32,
+        };
+    }
+
+    slicer_ir::Point3 {
+        x: transformed_x as f32,
+        y: transformed_y as f32,
+        z: transformed_z as f32,
+    }
+}
+
+fn point3_to_array(point: slicer_ir::Point3) -> [f32; 3] {
+    [point.x, point.y, point.z]
+}
+
+fn sub(left: [f32; 3], right: [f32; 3]) -> [f32; 3] {
+    [left[0] - right[0], left[1] - right[1], left[2] - right[2]]
+}
+
+fn dot(left: [f32; 3], right: [f32; 3]) -> f32 {
+    left[0] * right[0] + left[1] * right[1] + left[2] * right[2]
+}
+
+fn cross(left: [f32; 3], right: [f32; 3]) -> [f32; 3] {
+    [
+        left[1] * right[2] - left[2] * right[1],
+        left[2] * right[0] - left[0] * right[2],
+        left[0] * right[1] - left[1] * right[0],
+    ]
+}
+
+fn triangle_vertices(
+    object: &slicer_ir::ObjectMesh,
+    triangle: &[u32],
+) -> Option<[slicer_ir::Point3; 3]> {
+    if triangle.len() != 3 {
+        return None;
+    }
+
+    let a = object.mesh.vertices.get(triangle[0] as usize)?;
+    let b = object.mesh.vertices.get(triangle[1] as usize)?;
+    let c = object.mesh.vertices.get(triangle[2] as usize)?;
+    Some([
+        transform_mesh_point(&object.transform, a),
+        transform_mesh_point(&object.transform, b),
+        transform_mesh_point(&object.transform, c),
+    ])
+}
+
+fn raycast_vertical_triangle(
+    triangle: [slicer_ir::Point3; 3],
+    x: f32,
+    y: f32,
+    start_z: f32,
+) -> Option<f32> {
+    let origin = [x, y, start_z];
+    let direction = [0.0, 0.0, -1.0];
+    let a = point3_to_array(triangle[0]);
+    let b = point3_to_array(triangle[1]);
+    let c = point3_to_array(triangle[2]);
+    let edge1 = sub(b, a);
+    let edge2 = sub(c, a);
+    let pvec = cross(direction, edge2);
+    let det = dot(edge1, pvec);
+    if det.abs() < MESH_QUERY_EPSILON {
+        return None;
+    }
+
+    let inv_det = 1.0 / det;
+    let tvec = sub(origin, a);
+    let u = dot(tvec, pvec) * inv_det;
+    if !(-MESH_QUERY_EPSILON..=1.0 + MESH_QUERY_EPSILON).contains(&u) {
+        return None;
+    }
+
+    let qvec = cross(tvec, edge1);
+    let v = dot(direction, qvec) * inv_det;
+    if v < -MESH_QUERY_EPSILON || u + v > 1.0 + MESH_QUERY_EPSILON {
+        return None;
+    }
+
+    let distance = dot(edge2, qvec) * inv_det;
+    if distance < -MESH_QUERY_EPSILON {
+        return None;
+    }
+
+    Some(start_z - distance.max(0.0))
+}
+
+fn triangle_unit_normal(triangle: [slicer_ir::Point3; 3]) -> Option<[f32; 3]> {
+    let a = point3_to_array(triangle[0]);
+    let b = point3_to_array(triangle[1]);
+    let c = point3_to_array(triangle[2]);
+    let edge1 = sub(b, a);
+    let edge2 = sub(c, a);
+    let normal = cross(edge1, edge2);
+    let magnitude = dot(normal, normal).sqrt();
+    if magnitude <= MESH_QUERY_EPSILON {
+        return None;
+    }
+
+    Some([
+        normal[0] / magnitude,
+        normal[1] / magnitude,
+        normal[2] / magnitude,
+    ])
+}
+
+fn point_on_triangle(point: slicer_ir::Point3, triangle: [slicer_ir::Point3; 3]) -> bool {
+    let a = point3_to_array(triangle[0]);
+    let b = point3_to_array(triangle[1]);
+    let c = point3_to_array(triangle[2]);
+    let p = point3_to_array(point);
+    let edge1 = sub(b, a);
+    let edge2 = sub(c, a);
+    let normal = cross(edge1, edge2);
+    let normal_length = dot(normal, normal).sqrt();
+    if normal_length <= MESH_QUERY_EPSILON {
+        return false;
+    }
+
+    let ap = sub(p, a);
+    let plane_distance = dot(normal, ap).abs() / normal_length;
+    if plane_distance > MESH_QUERY_EPSILON {
+        return false;
+    }
+
+    let d00 = dot(edge1, edge1);
+    let d01 = dot(edge1, edge2);
+    let d11 = dot(edge2, edge2);
+    let d20 = dot(ap, edge1);
+    let d21 = dot(ap, edge2);
+    let denom = d00 * d11 - d01 * d01;
+    if denom.abs() <= MESH_QUERY_EPSILON {
+        return false;
+    }
+
+    let v = (d11 * d20 - d01 * d21) / denom;
+    let w = (d00 * d21 - d01 * d20) / denom;
+    let u = 1.0 - v - w;
+
+    u >= -MESH_QUERY_EPSILON
+        && v >= -MESH_QUERY_EPSILON
+        && w >= -MESH_QUERY_EPSILON
+        && u <= 1.0 + MESH_QUERY_EPSILON
+        && v <= 1.0 + MESH_QUERY_EPSILON
+        && w <= 1.0 + MESH_QUERY_EPSILON
+}
+
+fn raycast_z_down_mesh_query(
+    ctx: &mut HostExecutionContext,
+    object_id: &str,
+    x: f32,
+    y: f32,
+    start_z: f32,
+) -> wasmtime::Result<Option<f32>> {
+    ctx.runtime_reads.push(String::from("MeshIR"));
+    let Some(object) = lookup_object_mesh(ctx, "raycast-z-down", object_id)? else {
+        return Ok(None);
+    };
+
+    let mut best_hit = None;
+    for triangle in object.mesh.indices.chunks_exact(3) {
+        let Some(vertices) = triangle_vertices(object, triangle) else {
+            continue;
+        };
+        let Some(hit_z) = raycast_vertical_triangle(vertices, x, y, start_z) else {
+            continue;
+        };
+        if hit_z > start_z + MESH_QUERY_EPSILON {
+            continue;
+        }
+        if best_hit.is_none_or(|current| hit_z > current) {
+            best_hit = Some(hit_z);
+        }
+    }
+
+    Ok(best_hit)
+}
+
+fn surface_normal_at_mesh_query(
+    ctx: &mut HostExecutionContext,
+    object_id: &str,
+    x: f32,
+    y: f32,
+    z: f32,
+) -> wasmtime::Result<Option<slicer_ir::Point3>> {
+    ctx.runtime_reads.push(String::from("MeshIR"));
+    let Some(object) = lookup_object_mesh(ctx, "surface-normal-at", object_id)? else {
+        return Ok(None);
+    };
+    let query_point = slicer_ir::Point3 { x, y, z };
+
+    for triangle in object.mesh.indices.chunks_exact(3) {
+        let Some(vertices) = triangle_vertices(object, triangle) else {
+            continue;
+        };
+        if !point_on_triangle(query_point, vertices) {
+            continue;
+        }
+        let Some(normal) = triangle_unit_normal(vertices) else {
+            continue;
+        };
+        return Ok(Some(slicer_ir::Point3 {
+            x: normal[0],
+            y: normal[1],
+            z: normal[2],
+        }));
+    }
+
+    Ok(None)
+}
+
+fn object_bounds_mesh_query(
+    ctx: &mut HostExecutionContext,
+    object_id: &str,
+) -> wasmtime::Result<slicer_ir::BoundingBox3> {
+    ctx.runtime_reads.push(String::from("MeshIR"));
+    // Missing mesh data and missing object both return OBJECT_NOT_FOUND.
+    let mesh_ir = ctx.mesh_ir.as_ref().ok_or_else(|| {
+        object_not_found_error("object-bounds", object_id)
+    })?;
+    let object = mesh_ir
+        .objects
+        .iter()
+        .find(|candidate| candidate.id == object_id)
+        .ok_or_else(|| object_not_found_error("object-bounds", object_id))?;
+
+    let mut vertices = object
+        .mesh
+        .vertices
+        .iter()
+        .map(|vertex| transform_mesh_point(&object.transform, vertex));
+    let Some(first_vertex) = vertices.next() else {
+        return Err(wasmtime::Error::msg(format!(
+            "host-service object-bounds could not compute bounds for empty mesh '{object_id}'"
+        )));
+    };
+
+    let mut min = first_vertex;
+    let mut max = first_vertex;
+    for vertex in vertices {
+        min.x = min.x.min(vertex.x);
+        min.y = min.y.min(vertex.y);
+        min.z = min.z.min(vertex.z);
+        max.x = max.x.max(vertex.x);
+        max.y = max.y.max(vertex.y);
+        max.z = max.z.max(vertex.z);
+    }
+
+    Ok(slicer_ir::BoundingBox3 { min, max })
+}
+
 // ── Host trait implementations ──────────────────────────────────────────
 
 use layer::slicer::world_layer::config_types as ct;
@@ -1319,6 +1629,21 @@ use layer::slicer::world_layer::host_services as hs;
 use layer::slicer::world_layer::ir_handles as ir;
 
 impl geo::Host for HostExecutionContext {}
+
+fn ir_point3_to_layer(point: slicer_ir::Point3) -> Point3 {
+    Point3 {
+        x: point.x,
+        y: point.y,
+        z: point.z,
+    }
+}
+
+fn ir_bounds_to_layer(bounds: slicer_ir::BoundingBox3) -> BoundingBox3 {
+    BoundingBox3 {
+        min: ir_point3_to_layer(bounds.min),
+        max: ir_point3_to_layer(bounds.max),
+    }
+}
 
 impl hs::Host for HostExecutionContext {
     fn log(&mut self, level: hs::LogLevel, message: String) -> wasmtime::Result<()> {
@@ -1335,36 +1660,26 @@ impl hs::Host for HostExecutionContext {
 
     fn raycast_z_down(
         &mut self,
-        _object_id: hs::ObjectId,
-        _x: f32,
-        _y: f32,
-        _start_z: f32,
+        object_id: hs::ObjectId,
+        x: f32,
+        y: f32,
+        start_z: f32,
     ) -> wasmtime::Result<Option<f32>> {
-        // Mesh queries require MeshIR data in the execution context, which is
-        // not yet wired. Return None (no hit) — this is semantically valid
-        // (the guest handles None as "no surface found") but means mesh-dependent
-        // features like non-planar Z projection won't produce real results until
-        // mesh data is plumbed into HostExecutionContext.
-        Ok(None)
+        raycast_z_down_mesh_query(self, &object_id, x, y, start_z)
     }
 
     fn surface_normal_at(
         &mut self,
-        _object_id: hs::ObjectId,
-        _x: f32,
-        _y: f32,
-        _z: f32,
+        object_id: hs::ObjectId,
+        x: f32,
+        y: f32,
+        z: f32,
     ) -> wasmtime::Result<Option<Point3>> {
-        // Same as raycast_z_down — mesh data not yet wired.
-        Ok(None)
+        Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_layer))
     }
 
     fn object_bounds(&mut self, object_id: hs::ObjectId) -> wasmtime::Result<BoundingBox3> {
-        // Mesh data not yet wired. Return a trap so callers don't silently
-        // proceed with a zero-volume bounding box.
-        Err(wasmtime::Error::msg(format!(
-            "host-service object-bounds not yet wired: no mesh data available for object '{object_id}'"
-        )))
+        Ok(ir_bounds_to_layer(object_bounds_mesh_query(self, &object_id)?))
     }
 
     fn clip_polygons(
@@ -1816,7 +2131,7 @@ mod region_origin_tests {
 
     #[test]
     fn touch_slice_region_rejects_noncanonical_region_id_strings() {
-        let mut ctx = HostExecutionContext::new("com.test.slice-origin".to_string(), 0.0, 0.2, None);
+        let mut ctx = HostExecutionContext::new("com.test.slice-origin".to_string(), 0.0, 0.2, None, None);
         let handle = ctx
             .push_slice_region(SliceRegionData {
                 object_id: "obj-1".to_string(),
@@ -1843,7 +2158,7 @@ mod region_origin_tests {
 
     #[test]
     fn touch_perimeter_region_rejects_noncanonical_region_id_strings() {
-        let mut ctx = HostExecutionContext::new("com.test.perimeter-origin".to_string(), 0.0, 0.2, None);
+        let mut ctx = HostExecutionContext::new("com.test.perimeter-origin".to_string(), 0.0, 0.2, None, None);
         let handle = ctx
             .push_perimeter_region(PerimeterRegionData {
                 object_id: "obj-1".to_string(),
@@ -2402,6 +2717,21 @@ mod prepass_impls {
         }
     }
 
+    fn ir_point3_to_prepass(point: slicer_ir::Point3) -> pgeo::Point3 {
+        pgeo::Point3 {
+            x: point.x,
+            y: point.y,
+            z: point.z,
+        }
+    }
+
+    fn ir_bounds_to_prepass(bounds: slicer_ir::BoundingBox3) -> pgeo::BoundingBox3 {
+        pgeo::BoundingBox3 {
+            min: ir_point3_to_prepass(bounds.min),
+            max: ir_point3_to_prepass(bounds.max),
+        }
+    }
+
     impl phs::Host for HostExecutionContext {
         fn log(&mut self, level: phs::LogLevel, message: String) -> wasmtime::Result<()> {
             let level_str = match level {
@@ -2412,17 +2742,14 @@ mod prepass_impls {
             self.log_messages.push((level_str.to_string(), message));
             Ok(())
         }
-        fn raycast_z_down(&mut self, _: phs::ObjectId, _: f32, _: f32, _: f32) -> wasmtime::Result<Option<f32>> {
-            self.runtime_reads.push(String::from("MeshIR"));
-            Ok(None)
+        fn raycast_z_down(&mut self, object_id: phs::ObjectId, x: f32, y: f32, start_z: f32) -> wasmtime::Result<Option<f32>> {
+            raycast_z_down_mesh_query(self, &object_id, x, y, start_z)
         }
-        fn surface_normal_at(&mut self, _: phs::ObjectId, _: f32, _: f32, _: f32) -> wasmtime::Result<Option<pgeo::Point3>> {
-            self.runtime_reads.push(String::from("MeshIR"));
-            Ok(None)
+        fn surface_normal_at(&mut self, object_id: phs::ObjectId, x: f32, y: f32, z: f32) -> wasmtime::Result<Option<pgeo::Point3>> {
+            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_prepass))
         }
         fn object_bounds(&mut self, object_id: phs::ObjectId) -> wasmtime::Result<pgeo::BoundingBox3> {
-            self.runtime_reads.push(String::from("MeshIR"));
-            Err(wasmtime::Error::msg(format!("host-service object-bounds not yet wired: no mesh data for '{object_id}'")))
+            Ok(ir_bounds_to_prepass(object_bounds_mesh_query(self, &object_id)?))
         }
         fn clip_polygons(&mut self, subject: Vec<pgeo::ExPolygon>, clip: Vec<pgeo::ExPolygon>, op: phs::ClipOperation) -> wasmtime::Result<Vec<pgeo::ExPolygon>> {
             let s: Vec<_> = subject.iter().map(p_wit_to_ir).collect();
@@ -2665,6 +2992,21 @@ mod finalization_impls {
         }
     }
 
+    fn ir_point3_to_finalization(point: slicer_ir::Point3) -> fgeo::Point3 {
+        fgeo::Point3 {
+            x: point.x,
+            y: point.y,
+            z: point.z,
+        }
+    }
+
+    fn ir_bounds_to_finalization(bounds: slicer_ir::BoundingBox3) -> fgeo::BoundingBox3 {
+        fgeo::BoundingBox3 {
+            min: ir_point3_to_finalization(bounds.min),
+            max: ir_point3_to_finalization(bounds.max),
+        }
+    }
+
     impl fhs::Host for HostExecutionContext {
         fn log(&mut self, level: fhs::LogLevel, message: String) -> wasmtime::Result<()> {
             let level_str = match level {
@@ -2675,10 +3017,14 @@ mod finalization_impls {
             self.log_messages.push((level_str.to_string(), message));
             Ok(())
         }
-        fn raycast_z_down(&mut self, _: fhs::ObjectId, _: f32, _: f32, _: f32) -> wasmtime::Result<Option<f32>> { Ok(None) }
-        fn surface_normal_at(&mut self, _: fhs::ObjectId, _: f32, _: f32, _: f32) -> wasmtime::Result<Option<fgeo::Point3>> { Ok(None) }
+        fn raycast_z_down(&mut self, object_id: fhs::ObjectId, x: f32, y: f32, start_z: f32) -> wasmtime::Result<Option<f32>> {
+            raycast_z_down_mesh_query(self, &object_id, x, y, start_z)
+        }
+        fn surface_normal_at(&mut self, object_id: fhs::ObjectId, x: f32, y: f32, z: f32) -> wasmtime::Result<Option<fgeo::Point3>> {
+            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_finalization))
+        }
         fn object_bounds(&mut self, object_id: fhs::ObjectId) -> wasmtime::Result<fgeo::BoundingBox3> {
-            Err(wasmtime::Error::msg(format!("host-service object-bounds not yet wired: no mesh data for '{object_id}'")))
+            Ok(ir_bounds_to_finalization(object_bounds_mesh_query(self, &object_id)?))
         }
         fn clip_polygons(&mut self, subject: Vec<fgeo::ExPolygon>, clip: Vec<fgeo::ExPolygon>, op: fhs::ClipOperation) -> wasmtime::Result<Vec<fgeo::ExPolygon>> {
             let s: Vec<_> = subject.iter().map(f_wit_to_ir).collect();
@@ -2958,7 +3304,7 @@ mod finalization_impls {
 
         #[test]
         fn finalization_output_builder_rejects_noncanonical_region_id_strings() {
-            let mut ctx = HostExecutionContext::new("com.test.finalization".to_string(), 0.0, 0.2, None);
+            let mut ctx = HostExecutionContext::new("com.test.finalization".to_string(), 0.0, 0.2, None, None);
             let handle = ctx
                 .push_finalization_output_builder()
                 .expect("push finalization output builder");
@@ -3013,6 +3359,21 @@ mod postpass_impls {
         }
     }
 
+    fn ir_point3_to_postpass(point: slicer_ir::Point3) -> ppgeo::Point3 {
+        ppgeo::Point3 {
+            x: point.x,
+            y: point.y,
+            z: point.z,
+        }
+    }
+
+    fn ir_bounds_to_postpass(bounds: slicer_ir::BoundingBox3) -> ppgeo::BoundingBox3 {
+        ppgeo::BoundingBox3 {
+            min: ir_point3_to_postpass(bounds.min),
+            max: ir_point3_to_postpass(bounds.max),
+        }
+    }
+
     impl pphs::Host for HostExecutionContext {
         fn log(&mut self, level: pphs::LogLevel, message: String) -> wasmtime::Result<()> {
             let level_str = match level {
@@ -3023,10 +3384,14 @@ mod postpass_impls {
             self.log_messages.push((level_str.to_string(), message));
             Ok(())
         }
-        fn raycast_z_down(&mut self, _: pphs::ObjectId, _: f32, _: f32, _: f32) -> wasmtime::Result<Option<f32>> { Ok(None) }
-        fn surface_normal_at(&mut self, _: pphs::ObjectId, _: f32, _: f32, _: f32) -> wasmtime::Result<Option<ppgeo::Point3>> { Ok(None) }
+        fn raycast_z_down(&mut self, object_id: pphs::ObjectId, x: f32, y: f32, start_z: f32) -> wasmtime::Result<Option<f32>> {
+            raycast_z_down_mesh_query(self, &object_id, x, y, start_z)
+        }
+        fn surface_normal_at(&mut self, object_id: pphs::ObjectId, x: f32, y: f32, z: f32) -> wasmtime::Result<Option<ppgeo::Point3>> {
+            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_postpass))
+        }
         fn object_bounds(&mut self, object_id: pphs::ObjectId) -> wasmtime::Result<ppgeo::BoundingBox3> {
-            Err(wasmtime::Error::msg(format!("host-service object-bounds not yet wired: no mesh data for '{object_id}'")))
+            Ok(ir_bounds_to_postpass(object_bounds_mesh_query(self, &object_id)?))
         }
         fn clip_polygons(&mut self, subject: Vec<ppgeo::ExPolygon>, clip: Vec<ppgeo::ExPolygon>, op: pphs::ClipOperation) -> wasmtime::Result<Vec<ppgeo::ExPolygon>> {
             let s: Vec<_> = subject.iter().map(pp_wit_to_ir).collect();

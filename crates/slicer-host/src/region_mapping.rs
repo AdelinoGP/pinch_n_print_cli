@@ -23,6 +23,17 @@ use slicer_ir::{
 use crate::execution_plan::DEFAULT_REGION_MAP_CAP;
 use crate::{CompiledStage, ExecutionPlan};
 
+/// Top contributing module/object for overflow diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TopContributor {
+    /// Object that contributed the most regions.
+    pub object_id: String,
+    /// Number of regions contributed by this object.
+    pub region_count: usize,
+    /// Number of layers this object appears on.
+    pub layer_count: usize,
+}
+
 /// Structured region-mapping failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegionMappingError {
@@ -32,6 +43,10 @@ pub enum RegionMappingError {
         entry_count: usize,
         /// Configured cap.
         cap: usize,
+        /// Top contributing objects sorted by region_count descending.
+        top_contributors: Vec<TopContributor>,
+        /// Remediation hint.
+        remediation: String,
     },
     /// `LayerPlanIR` contained duplicate `(layer_index, object_id, region_id)` keys.
     DuplicateRegionKey {
@@ -43,11 +58,17 @@ pub enum RegionMappingError {
 impl std::fmt::Display for RegionMappingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::CapExceeded { entry_count, cap } => write!(
-                f,
-                "region map has {entry_count} entries, exceeding cap of {cap}; \
-                 reduce region granularity, raise cap, or split job"
-            ),
+            Self::CapExceeded { entry_count, cap, top_contributors, remediation } => {
+                write!(f, "region map has {entry_count} entries, exceeding cap of {cap}; ")?;
+                if !top_contributors.is_empty() {
+                    let contribs: Vec<String> = top_contributors
+                        .iter()
+                        .map(|c| format!("{}({} regions, {} layers)", c.object_id, c.region_count, c.layer_count))
+                        .collect();
+                    write!(f, "top contributors: {}; ", contribs.join(", "))?;
+                }
+                write!(f, "{remediation}")
+            }
             Self::DuplicateRegionKey { key } => write!(
                 f,
                 "layer plan has duplicate active region (layer={}, object='{}', region={})",
@@ -78,13 +99,37 @@ pub fn execute_region_mapping_with_cap(
     plan: &ExecutionPlan,
     cap: usize,
 ) -> Result<RegionMapIR, RegionMappingError> {
-    // --- Cap check up front (docs/04 normative memory budget) ---------
+    // --- Cap check with top-contributor diagnostics (docs/04 normative memory budget) ----
     let mut entry_count = 0usize;
+    // Per-object region/layer counters for overflow diagnostics.
+    let mut region_counts: HashMap<String, usize> = HashMap::new();
+    let mut layer_counts: HashMap<String, usize> = HashMap::new();
     for layer in &layer_plan.global_layers {
         entry_count = entry_count.saturating_add(layer.active_regions.len());
+        for region in &layer.active_regions {
+            *region_counts.entry(region.object_id.clone()).or_insert(0) += 1;
+        }
+        layer_counts.insert(layer.index.to_string(), layer.active_regions.len());
     }
     if entry_count > cap {
-        return Err(RegionMappingError::CapExceeded { entry_count, cap });
+        // Build top contributors: sort objects by region_count descending, take top 5.
+        let mut sorted: Vec<(String, usize)> = region_counts.into_iter().collect();
+        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        let top_contributors: Vec<TopContributor> = sorted
+            .into_iter()
+            .take(5)
+            .map(|(object_id, region_count)| {
+                let layer_count = layer_counts.len();
+                TopContributor { object_id, region_count, layer_count }
+            })
+            .collect();
+        let remediation = "reduce region granularity, raise cap, or split job".to_string();
+        return Err(RegionMappingError::CapExceeded {
+            entry_count,
+            cap,
+            top_contributors,
+            remediation,
+        });
     }
 
     // --- Precompute per-stage ModuleInvocation lists ------------------
