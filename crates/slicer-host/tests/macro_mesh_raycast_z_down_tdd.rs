@@ -96,7 +96,7 @@ fn multi_object_mesh() -> Vec<(String, Vec<[f32; 3]>, Vec<[u32; 3]>)> {
 /// The world_z should equal the z of the surface triangle hit.
 #[test]
 fn raycast_z_down_returns_world_z_above_flat_surface() {
-    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     // Ray starts at z=10.0, shoots down. Flat surface is at z=0.
     // Expected hit at world_z = 0.0
@@ -124,7 +124,7 @@ fn raycast_z_down_returns_world_z_above_flat_surface() {
 /// raycast_z_down returns None when shooting past the build volume with no mesh.
 #[test]
 fn raycast_z_down_returns_none_when_miss() {
-    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     // Shoot down at a point with no mesh - should miss
     let result = hs::Host::raycast_z_down(&mut ctx, "nonexistent-object".to_string(), 100.0, 100.0, 50.0);
@@ -136,7 +136,7 @@ fn raycast_z_down_returns_none_when_miss() {
 /// raycast_z_down with sloped surface returns interpolated world_z.
 #[test]
 fn raycast_z_down_sloped_surface_interpolates_z() {
-    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     // Point at x=5 (midpoint), shoots down from z=20
     // Sloped surface: at x=0, z=0; at x=10, z=5
@@ -161,7 +161,7 @@ fn raycast_z_down_sloped_surface_interpolates_z() {
 /// raycast_z_down returns correct z for multi-object scene - bottom object.
 #[test]
 fn raycast_z_down_multi_object_bottom_surface() {
-    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     // Shoot at bottom plate (z=0)
     let result = hs::Host::raycast_z_down(&mut ctx, "plate-bottom".to_string(), 10.0, 10.0, 50.0);
@@ -183,7 +183,7 @@ fn raycast_z_down_multi_object_bottom_surface() {
 /// raycast_z_down returns correct z for multi-object scene - top object.
 #[test]
 fn raycast_z_down_multi_object_top_surface() {
-    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     // Shoot at top plate (z=10)
     let result = hs::Host::raycast_z_down(&mut ctx, "plate-top".to_string(), 10.0, 10.0, 50.0);
@@ -210,7 +210,7 @@ fn raycast_z_down_multi_object_top_surface() {
 fn raycast_z_down_exposed_via_wit_boundary_for_macro_modules() {
     use slicer_host::wit_host::layer::slicer::world_layer::host_services as hs;
 
-    let mut ctx = HostExecutionContext::new("macro-module".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("macro-module".into(), 0.0, 0.0, None, None);
 
     // This is how a macro-authored module would call raycast_z_down:
     // use slicer_sdk::host;
@@ -230,7 +230,7 @@ fn raycast_z_down_exposed_via_wit_boundary_for_macro_modules() {
 /// not local-space Z.
 #[test]
 fn raycast_z_down_returns_world_space_z_not_local() {
-    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     // If an object is translated by +10 in Z, raycast should return world-space Z
     // (including the translation), not the local-space Z.
@@ -265,7 +265,7 @@ fn raycast_z_down_returns_world_space_z_not_local() {
 /// raycast_z_down with start_z at/below surface returns surface z (not below).
 #[test]
 fn raycast_z_down_start_at_surface_returns_surface_z() {
-    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     // Start exactly at the surface - should still return the surface
     let result = hs::Host::raycast_z_down(&mut ctx, "flat-plate".to_string(), 5.0, 5.0, 0.0);
@@ -291,7 +291,7 @@ fn raycast_z_down_start_at_surface_returns_surface_z() {
 fn raycast_z_down_is_deterministic() {
     use slicer_host::wit_host::layer::slicer::world_layer::host_services as hs;
 
-    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     let results: Vec<Option<f32>> = (0..5)
         .map(|_| {

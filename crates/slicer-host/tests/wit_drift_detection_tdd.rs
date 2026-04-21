@@ -317,6 +317,56 @@ fn host_embedded_wit_tracks_boundary_widening() {
     );
 }
 
+/// Verifies that hand-written test guests carrying `extrusion-role`
+/// use the payload-bearing variant form and current world package names.
+#[test]
+fn handwritten_test_guests_use_payload_extrusion_role_variants() {
+    let guests = [
+        (
+            "layer-infill-guest",
+            "package slicer:world-layer@1.0.0;",
+            Some("package slicer:layer-world@1.0.0;"),
+            &["variant extrusion-role", "custom(string)"][..],
+        ),
+        (
+            "postpass-guest",
+            "package slicer:world-postpass@1.0.0;",
+            Some("package slicer:postpass-world@1.0.0;"),
+            &["variant extrusion-role", "custom(string)", "push-unretract"][..],
+        ),
+        (
+            "finalization-guest",
+            "package slicer:world-finalization@1.0.0;",
+            Some("package slicer:finalization-world@1.0.0;"),
+            &["variant extrusion-role", "custom(string)", "ordered-entities", "z-hops"][..],
+        ),
+    ];
+
+    for (guest_name, canonical_package, disallowed_package, required_snippets) in guests {
+        let content = test_guest_lib_rs_content(guest_name);
+        assert!(
+            content.contains(canonical_package),
+            "{guest_name} should use canonical package '{canonical_package}'"
+        );
+        if let Some(disallowed_package) = disallowed_package {
+            assert!(
+                !content.contains(disallowed_package),
+                "{guest_name} must not use stale package '{disallowed_package}'"
+            );
+        }
+        assert!(
+            !content.contains("enum extrusion-role"),
+            "{guest_name} must not use stale 'enum extrusion-role'"
+        );
+        for snippet in required_snippets {
+            assert!(
+                content.contains(snippet),
+                "{guest_name} should contain '{snippet}'"
+            );
+        }
+    }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper functions
 // ─────────────────────────────────────────────────────────────────────────────
@@ -333,5 +383,11 @@ fn macro_lib_rs_content() -> String {
 fn host_wit_host_rs_content() -> String {
     let path = workspace_root().join("crates/slicer-host/src/wit_host.rs");
     fs::read_to_string(&path).expect("read host wit_host.rs for inline WIT verification")
+}
+
+/// Returns the content of a hand-written test guest `src/lib.rs`.
+fn test_guest_lib_rs_content(guest_name: &str) -> String {
+    let path = workspace_root().join(format!("test-guests/{guest_name}/src/lib.rs"));
+    fs::read_to_string(&path).expect("read test guest lib.rs for embedded WIT verification")
 }
 

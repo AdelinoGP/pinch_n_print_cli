@@ -171,7 +171,7 @@ fn simplify_handles_degenerate_input() {
 fn object_bounds_fails_with_diagnostic_when_mesh_not_wired() {
     use slicer_host::wit_host::layer::slicer::world_layer::host_services as hs;
 
-    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     let result = hs::Host::object_bounds(&mut ctx, "obj-1".to_string());
     assert!(result.is_err(), "object_bounds should fail when mesh is not wired");
@@ -184,7 +184,7 @@ fn object_bounds_fails_with_diagnostic_when_mesh_not_wired() {
 fn raycast_returns_none_when_mesh_not_wired() {
     use slicer_host::wit_host::layer::slicer::world_layer::host_services as hs;
 
-    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     let result = hs::Host::raycast_z_down(&mut ctx, "obj-1".to_string(), 5.0, 5.0, 10.0);
     assert!(result.is_ok(), "raycast should succeed (returning None)");
@@ -197,7 +197,7 @@ fn raycast_returns_none_when_mesh_not_wired() {
 fn now_us_is_monotonic_within_call() {
     use slicer_host::wit_host::layer::slicer::world_layer::host_services as hs;
 
-    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     let t1 = hs::Host::now_us(&mut ctx).unwrap();
     // Do a small amount of work to ensure time advances

@@ -38,6 +38,12 @@ fn make_engine() -> wasmtime::Engine {
     wasmtime::Engine::new(&config).unwrap()
 }
 
+fn make_ctx(module_id: impl Into<String>, layer_z: f32) -> HostExecutionContext {
+    // mesh_ir is None — these WIT boundary tests exercise config/IR/output
+    // paths and do not require live mesh data.
+    HostExecutionContext::new(module_id.into(), layer_z, 1.0, None, None)
+}
+
 // ── A: Config access across the boundary ────────────────────────────────
 
 /// The guest reads `infill-spacing` from the config-view and uses its value
@@ -54,7 +60,7 @@ fn guest_reads_config_value_and_uses_it_in_output() {
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
         .expect("add_to_linker");
 
-    let mut ctx = HostExecutionContext::new("test-infill-module".into(), 0.0, 0.0, None);
+    let mut ctx = make_ctx("test-infill-module", 1.0);
 
     // Provide config with infill-spacing = 3.5
     let mut fields = HashMap::new();
@@ -64,7 +70,7 @@ fn guest_reads_config_value_and_uses_it_in_output() {
     // Provide one slice region at z=1.0
     let region_handle = ctx.push_slice_region(SliceRegionData {
         object_id: "obj-1".into(),
-        region_id: "reg-1".into(),
+        region_id: "1".into(),
         polygons: vec![],
         infill_areas: vec![],
         effective_layer_height: 0.2,
@@ -121,14 +127,14 @@ fn guest_reads_region_z_from_ir_view() {
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
-    let mut ctx = HostExecutionContext::new("test-ir-read".into(), 0.0, 0.0, None);
+    let mut ctx = make_ctx("test-ir-read", 5.5);
 
     let config_handle = ctx.push_config_view(ConfigViewData {
         fields: HashMap::new(),
     }).unwrap();
     let region_handle = ctx.push_slice_region(SliceRegionData {
         object_id: "obj-z-test".into(),
-        region_id: "reg-z-test".into(),
+        region_id: "2".into(),
         polygons: vec![],
         infill_areas: vec![],
         effective_layer_height: 0.3,
@@ -165,13 +171,13 @@ fn guest_emits_output_via_infill_builder() {
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
-    let mut ctx = HostExecutionContext::new("test-output".into(), 0.0, 0.0, None);
+    let mut ctx = make_ctx("test-output", 2.0);
     let config_handle = ctx.push_config_view(ConfigViewData {
         fields: HashMap::new(),
     }).unwrap();
     let region_handle = ctx.push_slice_region(SliceRegionData {
         object_id: "obj-out".into(),
-        region_id: "reg-out".into(),
+        region_id: "3".into(),
         polygons: vec![],
         infill_areas: vec![],
         effective_layer_height: 0.2,
@@ -220,13 +226,13 @@ fn guest_logs_via_host_services() {
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
-    let mut ctx = HostExecutionContext::new("test-log".into(), 0.0, 0.0, None);
+    let mut ctx = make_ctx("test-log", 0.2);
     let config_handle = ctx.push_config_view(ConfigViewData {
         fields: HashMap::new(),
     }).unwrap();
     let region_handle = ctx.push_slice_region(SliceRegionData {
         object_id: "obj-log".into(),
-        region_id: "reg-log".into(),
+        region_id: "4".into(),
         polygons: vec![],
         infill_areas: vec![],
         effective_layer_height: 0.2,
@@ -267,14 +273,14 @@ fn repeated_calls_produce_independent_outputs() {
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
     for i in 0..3 {
-        let mut ctx = HostExecutionContext::new(format!("call-{i}"), 0.0, 0.0, None);
         let z = (i + 1) as f32 * 10.0;
+        let mut ctx = make_ctx(format!("call-{i}"), z);
         let config_handle = ctx.push_config_view(ConfigViewData {
             fields: HashMap::new(),
         }).unwrap();
         let region_handle = ctx.push_slice_region(SliceRegionData {
             object_id: format!("obj-{i}"),
-            region_id: format!("reg-{i}"),
+            region_id: (i + 1).to_string(),
             polygons: vec![],
             infill_areas: vec![],
             effective_layer_height: 0.2,
@@ -319,7 +325,7 @@ fn empty_region_list_handled_gracefully() {
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
 
-    let mut ctx = HostExecutionContext::new("test-empty".into(), 0.0, 0.0, None);
+    let mut ctx = make_ctx("test-empty", 0.0);
     let config_handle = ctx.push_config_view(ConfigViewData {
         fields: HashMap::new(),
     }).unwrap();

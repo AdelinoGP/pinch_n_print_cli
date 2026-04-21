@@ -3117,7 +3117,7 @@ fn path_optimization_rejects_unsupported_gcode_override() {
     // Build a tiny WAT guest that exports only run-path-optimization and
     // emits a move is non-trivial, so exercise commit path directly.
     use slicer_host::wit_host::{GcodeCommandCollected, GcodeMoveCmd, ExtrusionRole, HostExecutionContext};
-    let mut ctx = HostExecutionContext::new("com.test.pathopt-bad".to_string(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("com.test.pathopt-bad".to_string(), 0.0, 0.0, None, None);
     ctx.gcode_output.commands.push(GcodeCommandCollected::Move(GcodeMoveCmd {
         x: Some(1.0), y: Some(2.0), z: None, e: None, f: None,
         role: ExtrusionRole::OuterWall,
@@ -3142,7 +3142,7 @@ fn path_optimization_commit_routes_comment_and_raw_to_deferred_annotations() {
     use slicer_host::wit_host::{GcodeCommandCollected, HostExecutionContext};
     use slicer_ir::LayerAnnotationKind;
 
-    let mut ctx = HostExecutionContext::new("com.test.pathopt-ann".to_string(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("com.test.pathopt-ann".to_string(), 0.0, 0.0, None, None);
     ctx.gcode_output.commands.push(GcodeCommandCollected::Comment("hello".into()));
     ctx.gcode_output.commands.push(GcodeCommandCollected::Raw("M117 hi".into()));
 
@@ -3167,7 +3167,7 @@ fn path_optimization_commit_is_deterministic_across_repeats() {
     use slicer_host::wit_host::{GcodeCommandCollected, HostExecutionContext};
 
     let mk_ctx = || {
-        let mut c = HostExecutionContext::new("com.test.pathopt-det2".to_string(), 0.0, 0.0, None);
+        let mut c = HostExecutionContext::new("com.test.pathopt-det2".to_string(), 0.0, 0.0, None, None);
         c.gcode_output.commands.push(GcodeCommandCollected::ToolChange { from_tool: 0, to_tool: 1 });
         c.gcode_output.commands.push(GcodeCommandCollected::Comment("a".into()));
         c.gcode_output.commands.push(GcodeCommandCollected::Raw("b".into()));
@@ -3195,7 +3195,7 @@ fn path_optimization_commit_routes_z_hops_to_deferred_queue() {
     // per-layer deferred z-hop queue, preserving guest call order.
     use slicer_host::wit_host::{GcodeCommandCollected, HostExecutionContext};
 
-    let mut ctx = HostExecutionContext::new("com.test.pathopt-zhop".to_string(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("com.test.pathopt-zhop".to_string(), 0.0, 0.0, None, None);
     ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index: 0, hop_height: 0.5 });
     ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index: 0, hop_height: 0.75 });
 
@@ -3216,7 +3216,7 @@ fn path_optimization_z_hop_rejects_out_of_bounds_index() {
     use slicer_host::wit_host::{GcodeCommandCollected, HostExecutionContext};
     use slicer_ir::{LayerCollectionIR, SemVer};
 
-    let mut ctx = HostExecutionContext::new("com.test.pathopt-zhop-oob".to_string(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("com.test.pathopt-zhop-oob".to_string(), 0.0, 0.0, None, None);
     ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index: 5, hop_height: 0.5 });
 
     let mut arena = LayerArena::new();
@@ -3252,7 +3252,7 @@ fn path_optimization_z_hop_rejects_invalid_hop_height() {
     use slicer_host::wit_host::{GcodeCommandCollected, HostExecutionContext};
 
     for bad in [0.0_f32, -1.0, f32::NAN, f32::INFINITY] {
-        let mut ctx = HostExecutionContext::new("com.test.pathopt-zhop-bad".to_string(), 0.0, 0.0, None);
+        let mut ctx = HostExecutionContext::new("com.test.pathopt-zhop-bad".to_string(), 0.0, 0.0, None, None);
         ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index: 0, hop_height: bad });
         let mut arena = LayerArena::new();
         let err = slicer_host::commit_layer_outputs_for_test(
@@ -3930,7 +3930,7 @@ fn mesh_segmentation_output_rejects_invalid_marks() {
     use slicer_host::wit_host::prepass::{self as pm, HostMeshSegmentationOutput};
     use wasmtime::component::Resource;
 
-    let mut ctx = HostExecutionContext::new("com.test.mesh-seg-validate".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("com.test.mesh-seg-validate".into(), 0.0, 0.0, None, None);
     let handle = ctx.push_mesh_segmentation_output().expect("push resource");
 
     // obj empty
@@ -4328,7 +4328,7 @@ fn paint_segmentation_output_rejects_invalid_entries() {
     use slicer_host::wit_host::prepass::slicer::world_prepass::geometry as geo;
     use wasmtime::component::Resource;
 
-    let mut ctx = HostExecutionContext::new("com.test.paint-seg-validate".into(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("com.test.paint-seg-validate".into(), 0.0, 0.0, None, None);
     let handle = ctx.push_paint_segmentation_output().expect("push resource");
 
     let valid_poly = vec![geo::ExPolygon {
@@ -5208,7 +5208,7 @@ fn mesh_analysis_output_push_validates_and_rejects_malformed() {
     use slicer_host::wit_host::HostExecutionContext;
     use wasmtime::component::Resource;
 
-    let mut ctx = HostExecutionContext::new("com.test.validator".to_string(), 0.0, 0.0, None);
+    let mut ctx = HostExecutionContext::new("com.test.validator".to_string(), 0.0, 0.0, None, None);
     // Get a handle for the mesh-analysis-output resource.
     let handle = ctx
         .push_mesh_analysis_output()
