@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: wit-boundary-gaps-postpass
 task_ids:
   - TASK-129
