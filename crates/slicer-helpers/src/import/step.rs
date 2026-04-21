@@ -309,6 +309,21 @@ fn polygon_to_mesh_ir(poly: &PolygonMesh, unit_to_mm: f64) -> MeshIR {
 
     let its = IndexedTriangleSet { vertices, indices };
 
+    // Compute world-space Z extent from mesh vertices (transform is identity here).
+    let world_z_extent = {
+        let mut z_min = f32::INFINITY;
+        let mut z_max = f32::NEG_INFINITY;
+        for v in &its.vertices {
+            if v.z < z_min { z_min = v.z; }
+            if v.z > z_max { z_max = v.z; }
+        }
+        if z_min.is_finite() && z_max.is_finite() && z_max > z_min {
+            Some((z_min, z_max))
+        } else {
+            None
+        }
+    };
+
     let object = ObjectMesh {
         id: uuid_v4(),
         mesh: its,
@@ -320,6 +335,7 @@ fn polygon_to_mesh_ir(poly: &PolygonMesh, unit_to_mm: f64) -> MeshIR {
         },
         modifier_volumes: Vec::new(),
         paint_data: None,
+        world_z_extent,
     };
 
     MeshIR {

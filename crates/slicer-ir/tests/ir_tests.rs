@@ -160,6 +160,7 @@ mod tests {
             },
             modifier_volumes: vec![],
             paint_data: None,
+            world_z_extent: None,
         };
 
         test_serde_roundtrip!(obj_mesh);

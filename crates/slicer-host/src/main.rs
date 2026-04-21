@@ -6,7 +6,7 @@
 use std::sync::{Arc, Mutex};
 
 use clap::Parser;
-use slicer_host::model_loader::{load_model, object_world_z_extent};
+use slicer_host::model_loader::load_model;
 use slicer_host::pipeline::{run_pipeline_with_events, PipelineConfig, PipelineStageRunners};
 use slicer_host::progress_events::{
     JsonLinesEmitter, ProgressEventEmitter, RuntimeProgressSink, SliceEventCollector,
@@ -155,7 +155,7 @@ fn main() {
                 if config_source.contains_key(&key) {
                     continue;
                 }
-                if let Some((z_min, z_max)) = object_world_z_extent(object) {
+                if let Some((z_min, z_max)) = object.world_z_extent {
                     config_source.insert(
                         key,
                         slicer_ir::ConfigValue::Float((z_max - z_min) as f64),

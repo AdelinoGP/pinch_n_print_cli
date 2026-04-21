@@ -260,6 +260,19 @@ pub struct ObjectMesh {
     pub modifier_volumes: Vec<ModifierVolume>,
     /// All user-painted data for this object
     pub paint_data: Option<FacetPaintData>,
+    /// Cached world-space Z extent `(z_min, z_max)` in millimeters.
+    ///
+    /// Computed once at `ObjectMesh` construction time by applying the
+    /// object transform to all mesh vertices and extracting the Z range.
+    /// `None` when the mesh is empty or the extent is degenerate
+    /// (`z_max <= z_min`, e.g. a lay-flat rotation collapses vertical extent).
+    ///
+    /// Not serialized — recomputed on every load so the field always reflects
+    /// the current `transform` value. No schema version bump needed (v1.0.0
+    /// not released). This makes world-space Z a first-class IR contract
+    /// surface, closing DEV-027.
+    #[serde(skip_deserializing, default)]
+    pub world_z_extent: Option<(f32, f32)>,
 }
 
 /// Mesh IR (produced by host mesh loader)

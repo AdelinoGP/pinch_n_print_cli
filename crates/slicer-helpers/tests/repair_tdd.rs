@@ -43,6 +43,7 @@ fn single_object_mesh(its: IndexedTriangleSet) -> MeshIR {
             },
             modifier_volumes: vec![],
             paint_data: None,
+            world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
             min: Point3 {

@@ -28,6 +28,19 @@ fn identity_transform() -> Transform3d {
 
 /// Wrap an IndexedTriangleSet in a single-object MeshIR.
 fn single_object_mesh(its: IndexedTriangleSet) -> MeshIR {
+    let world_z_extent = {
+        let mut z_min = f32::INFINITY;
+        let mut z_max = f32::NEG_INFINITY;
+        for v in &its.vertices {
+            if v.z < z_min { z_min = v.z; }
+            if v.z > z_max { z_max = v.z; }
+        }
+        if z_min.is_finite() && z_max.is_finite() && z_max > z_min {
+            Some((z_min, z_max))
+        } else {
+            None
+        }
+    };
     MeshIR {
         schema_version: SemVer {
             major: 1,
@@ -43,6 +56,7 @@ fn single_object_mesh(its: IndexedTriangleSet) -> MeshIR {
             },
             modifier_volumes: vec![],
             paint_data: None,
+            world_z_extent,
         }],
         build_volume: BoundingBox3 {
             min: Point3 {

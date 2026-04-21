@@ -39,6 +39,24 @@ pub enum ModelLoadError {
     ObjParse(String),
     /// 3MF parse error.
     ThreeMfParse(String),
+    /// NON_UNIFORM_SCALE_UNSUPPORTED — object transform has non-uniform scale
+    /// (scale_x ≠ scale_y or scale_y ≠ scale_z).  All three scale axes must be
+    /// equal; non-uniform scale is not supported by the slicer pipeline.
+    NonUniformScaleUnsupported {
+        /// Scale factor along X axis (magnitude of transform column 0 xyz).
+        scale_x: f64,
+        /// Scale factor along Y axis (magnitude of transform column 1 xyz).
+        scale_y: f64,
+        /// Scale factor along Z axis (magnitude of transform column 2 xyz).
+        scale_z: f64,
+    },
+    /// WORLD_Z_BELOW_FLOOR — one or more object vertices map to a world-space Z
+    /// below the print volume floor (0.0 mm).  Translate the object upward so
+    /// its lowest point is at or above Z = 0.
+    WorldZBelowFloor {
+        /// The minimum world-space Z found on the object (negative).
+        z_min: f32,
+    },
 }
 
 impl fmt::Display for ModelLoadError {
@@ -49,6 +67,14 @@ impl fmt::Display for ModelLoadError {
             Self::StlParse(msg) => write!(f, "STL parse error: {msg}"),
             Self::ObjParse(msg) => write!(f, "OBJ parse error: {msg}"),
             Self::ThreeMfParse(msg) => write!(f, "3MF parse error: {msg}"),
+            Self::NonUniformScaleUnsupported { scale_x, scale_y, scale_z } => write!(
+                f,
+                "NON_UNIFORM_SCALE_UNSUPPORTED: scale ({scale_x:.6}, {scale_y:.6}, {scale_z:.6}) is non-uniform"
+            ),
+            Self::WorldZBelowFloor { z_min } => write!(
+                f,
+                "WORLD_Z_BELOW_FLOOR: object world-space Z minimum {z_min} mm is below print floor 0.0 mm"
+            ),
         }
     }
 }
@@ -102,15 +128,27 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
 
     let build_volume = compute_bounding_box(&its);
 
+    let transform = identity_transform();
+    let world_z_extent = {
+        // Apply identity transform (zero-matrix fallback) to extract Z range.
+        // Safe because transform is identity — z_min/z_max of mesh == world z range.
+        let identity = transform.matrix.iter().all(|v| *v == 0.0);
+        if identity {
+            compute_z_extent_from_mesh(&its)
+        } else {
+            object_world_z_extent_from_mesh_and_transform(&its, &transform)
+        }
+    };
     let object = ObjectMesh {
         id: uuid::Uuid::new_v4().to_string(),
         mesh: its,
-        transform: identity_transform(),
+        transform,
         config: ObjectConfig {
             data: HashMap::new(),
         },
         modifier_volumes: Vec::new(),
         paint_data: None,
+        world_z_extent,
     };
 
     Ok(MeshIR {
@@ -391,6 +429,114 @@ fn identity_transform() -> Transform3d {
     Transform3d { matrix }
 }
 
+/// Compute the Z extent `(z_min, z_max)` of a mesh assuming an identity
+/// transform — i.e. just the raw vertex Z coordinates.
+fn compute_z_extent_from_mesh(mesh: &IndexedTriangleSet) -> Option<(f32, f32)> {
+    let mut z_min = f32::INFINITY;
+    let mut z_max = f32::NEG_INFINITY;
+    for v in &mesh.vertices {
+        if v.z < z_min {
+            z_min = v.z;
+        }
+        if v.z > z_max {
+            z_max = v.z;
+        }
+    }
+    if z_min.is_finite() && z_max.is_finite() && z_max > z_min {
+        Some((z_min, z_max))
+    } else {
+        None
+    }
+}
+
+/// Compute the world-space Z extent of a mesh given an explicit transform.
+fn object_world_z_extent_from_mesh_and_transform(
+    mesh: &IndexedTriangleSet,
+    transform: &Transform3d,
+) -> Option<(f32, f32)> {
+    let m = &transform.matrix;
+    let identity = m.iter().all(|v| *v == 0.0);
+    let mut z_min = f32::INFINITY;
+    let mut z_max = f32::NEG_INFINITY;
+    for v in &mesh.vertices {
+        let z = if identity {
+            v.z
+        } else {
+            let x = v.x as f64;
+            let y = v.y as f64;
+            let z_val = v.z as f64;
+            (m[2] * x + m[6] * y + m[10] * z_val + m[14]) as f32
+        };
+        if z < z_min {
+            z_min = z;
+        }
+        if z > z_max {
+            z_max = z;
+        }
+    }
+    if z_min.is_finite() && z_max.is_finite() && z_max > z_min {
+        Some((z_min, z_max))
+    } else {
+        None
+    }
+}
+
+/// Validate that an [`ObjectMesh`] transform does not have non-uniform scale.
+///
+/// Extracts the column-vector magnitudes (scale factors) from the upper-left 3×3
+/// of the 4×4 column-major transform matrix.  If any two scale axes differ by
+/// more than `1e-6`, returns [`ModelLoadError::NonUniformScaleUnsupported`].
+///
+/// A zero matrix is treated as identity (uniform scale 1.0) to stay consistent
+/// with the zero-matrix convention used in [`object_world_z_extent`].
+///
+/// # Errors
+///
+/// Returns `Err(NonUniformScaleUnsupported { … })` when the extracted scale
+/// factors are not all equal within tolerance.
+pub fn validate_non_uniform_scale(object: &ObjectMesh) -> Result<(), ModelLoadError> {
+    let m = &object.transform.matrix;
+    // Identity shortcut — all-zero matrix is treated as identity.
+    if m.iter().all(|v| *v == 0.0) {
+        return Ok(()); // identity → uniform scale 1.0
+    }
+    // Column-major layout: column k starts at index k*4.
+    // Scale factor = Euclidean length of the 3-element (xyz) part of each column.
+    let scale_x = (m[0] * m[0] + m[1] * m[1] + m[2] * m[2]).sqrt();
+    let scale_y = (m[4] * m[4] + m[5] * m[5] + m[6] * m[6]).sqrt();
+    let scale_z = (m[8] * m[8] + m[9] * m[9] + m[10] * m[10]).sqrt();
+    const TOLERANCE: f64 = 1e-6;
+    if (scale_x - scale_y).abs() > TOLERANCE || (scale_y - scale_z).abs() > TOLERANCE {
+        return Err(ModelLoadError::NonUniformScaleUnsupported {
+            scale_x,
+            scale_y,
+            scale_z,
+        });
+    }
+    Ok(())
+}
+
+/// Validate that the world-space Z minimum of an [`ObjectMesh`] is at or above
+/// the print volume floor (0.0 mm).
+///
+/// Uses [`object_world_z_extent`] to compute the world-space Z range.  If the
+/// minimum Z is negative, returns [`ModelLoadError::WorldZBelowFloor`].
+///
+/// Objects with no geometry (empty mesh) or a degenerate extent (single vertex)
+/// are treated as valid — they will be caught by later validation stages.
+///
+/// # Errors
+///
+/// Returns `Err(WorldZBelowFloor { z_min })` when the object extends below Z = 0.
+pub fn validate_world_z_floor(object: &ObjectMesh) -> Result<(), ModelLoadError> {
+    if let Some((z_min, _z_max)) = object_world_z_extent(object) {
+        if z_min < 0.0 {
+            return Err(ModelLoadError::WorldZBelowFloor { z_min });
+        }
+    }
+    Ok(())
+}
+
 /// Compute the world-space Z extent `(z_min, z_max)` of an [`ObjectMesh`] by
 /// applying its `transform` to each vertex and reducing.
 ///
@@ -458,18 +604,21 @@ mod tests {
         vertices: Vec<Point3>,
         transform: Transform3d,
     ) -> ObjectMesh {
+        let mesh = IndexedTriangleSet {
+            vertices,
+            indices: vec![],
+        };
+        let world_z_extent = object_world_z_extent_from_mesh_and_transform(&mesh, &transform);
         ObjectMesh {
             id: id.to_string(),
-            mesh: IndexedTriangleSet {
-                vertices,
-                indices: vec![],
-            },
+            mesh,
             transform,
             config: ObjectConfig {
                 data: HashMap::new(),
             },
             modifier_volumes: Vec::new(),
             paint_data: None,
+            world_z_extent,
         }
     }
 
