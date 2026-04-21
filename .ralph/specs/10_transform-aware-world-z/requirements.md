@@ -78,8 +78,8 @@ None. This is an internal architecture contract task. Transform behavior is defi
   - `non_uniform_scale_tdd.rs`
   - `world_z_below_floor_tdd.rs`
 - All 7 tests pass
-- If `ObjectMesh.world_z_extent` is added: `MeshIR` schema version bump (minor)
-- If config-only: `docs/02_ir_schemas.md` updated with canonical supply documentation
+- `ObjectMesh.world_z_extent` added as a derived IR field (no schema bump needed — v1.0.0 not released)
+- If config-only (not chosen): `docs/02_ir_schemas.md` updated with canonical supply documentation
 
 ### Cross-Packet Impact
 
@@ -113,7 +113,7 @@ None. This is an internal architecture contract task. Transform behavior is defi
 
 ### Step 3 — TASK-158: Canonical surface
 - **Precondition**: Step 2 complete
-- **Postcondition**: Either `ObjectMesh.world_z_extent: Option<(f32, f32)>` added as a cached derived field (with schema version bump), OR `docs/02_ir_schemas.md` updated to document `object_height:{id}` config keys as the canonical world-space Z supply with explicit "do not read local mesh Z" guidance
+- **Postcondition**: `ObjectMesh.world_z_extent: Option<(f32, f32)>` added as a cached derived IR field (no schema version bump needed — v1.0.0 not released), OR `docs/02_ir_schemas.md` updated to document `object_height:{id}` config keys as the canonical world-space Z supply with explicit "do not read local mesh Z" guidance
 - **Falsifying check**: Regression test `world_z_canonical_surface_tdd` fails if local mesh Z is used instead of world-space Z
 
 ### Step 4 — Negative cases

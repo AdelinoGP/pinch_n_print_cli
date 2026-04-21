@@ -58,7 +58,7 @@ MeshIR (ObjectMesh with transform field)
 
 **TASK-158 — Canonical surface**: Two options. The implementation must choose one:
 
-- **Option A (IR field)**: Add `ObjectMesh.world_z_extent: Option<(f32, f32)>` as a derived field, computed once at `MeshIR` construction time (in `model_loader.rs`) and cached on `ObjectMesh`. Schema minor version bump required. This makes world-space Z explicit in the IR contract.
+- **Option A (IR field)**: Add `ObjectMesh.world_z_extent: Option<(f32, f32)>` as a derived field, computed once at `MeshIR` construction time (in `model_loader.rs`) and cached on `ObjectMesh`. No schema version bump needed — v1.0.0 not yet released. This makes world-space Z explicit in the IR contract.
 
 - **Option B (config-only documentation)**: Update `docs/02_ir_schemas.md` to document that `object_height:{id}` config keys (populated at `main.rs:153` from `object_world_z_extent`) are the canonical world-space Z supply. Add explicit "do not read local mesh Z for planning purposes" guidance. No schema change.
 
@@ -68,7 +68,7 @@ The packet implementation should prefer Option A if the IR schema change is ligh
 
 **Production code changes (Option A — IR field)**:
 
-- `crates/slicer-ir/src/` — Add `world_z_extent: Option<(f32, f32)>` to `ObjectMesh` struct; bump `MeshIR.schema_version`
+- `crates/slicer-ir/src/` — Add `world_z_extent: Option<(f32, f32)>` to `ObjectMesh` struct (no schema bump — v1.0.0 not released)
 - `crates/slicer-host/src/model_loader.rs` — Compute and cache `world_z_extent` at `ObjectMesh` construction time
 - `crates/slicer-host/src/main.rs:153` — Update `object_height:{id}` population to use the cached field
 
@@ -103,7 +103,7 @@ The packet implementation should prefer Option A if the IR schema change is ligh
 
 - `MeshIR.ObjectMesh` — potentially adds `world_z_extent: Option<(f32, f32)>` (Option A) or documents existing behavior (Option B)
 - `LayerPlanIR.GlobalLayer.z` — the output that must be world-space when transforms are present
-- `MeshIR.schema_version` — minor bump if Option A is chosen
+- `MeshIR.schema_version` — no change needed (v1.0.0 not released)
 
 ### WIT Boundary Considerations
 
@@ -140,10 +140,10 @@ Resolution: Document this clearly in the canonical surface decision. If the ques
 
 ## Open Questions
 
-1. **Should `ObjectMesh.world_z_extent` be a cached IR field (Option A) or documented config-only behavior (Option B)?** Resolve before activating the packet.
+~~1. **Should `ObjectMesh.world_z_extent` be a cached IR field (Option A) or documented config-only behavior (Option B)?**~~ **RESOLVED → Option A (no schema bump — v1.0.0 not released).** `ObjectMesh.world_z_extent: Option<(f32, f32)>` will be added as a derived IR field, computed once at load time and cached on `ObjectMesh`. Serialization risk is mitigated by marking the field `#[serde(skip)]`. No schema version bump required since v1.0.0 has not been released. This makes world-space Z a first-class IR contract surface. Option B (config-only) was rejected because world-space Z canonical supply would only be documented, not enforced — any future refactor of `object_world_z_extent` or LayerPlanning could accidentally read object-local Z without a compile-time brake.
 
-2. **Does uniform scale affect `effective_layer_height`?** Currently no. Confirm this is correct behavior or determine if it should change.
+~~2. **Does uniform scale affect `effective_layer_height`?**~~ **RESOLVED → No.** `effective_layer_height` comes directly from the `layer_height` config value (or `first_layer_height` for the first layer), never scaled by the object's transform. When `scale_z=2.0` is applied to a 20mm-tall mesh, `object_world_z_extent` correctly returns world extent 0..40mm, but layers are generated at 0.2mm world-space intervals (not 0.1mm scale-compensated). Layer height is a user-facing config in mm, applied in world space. The scale applies to mesh geometry only.
 
-3. **What is the print volume floor for `WORLD_Z_BELOW_FLOOR`?** Is it 0.0 mm (world Z < 0 is always an error), or is it a configurable `print_volume_z_min`? The negative test case should specify this precisely.
+~~3. **What is the print volume floor for `WORLD_Z_BELOW_FLOOR`?**~~ **RESOLVED → 0.0mm, not configurable.** There is no `print_volume_z_min` or equivalent config in the current codebase. `WORLD_Z_BELOW_FLOOR` error is planned but not yet implemented. The test case for Step 9 should assert that an object with `translate(0,0,-5mm)` (world Z < 0) emits a fatal diagnostic with code `WORLD_Z_BELOW_FLOOR`.
 
-4. **For multi-object LCM synchronization with transforms**, are the sync Z planes computed in world space, and do all objects' world-space Z ranges correctly contribute to the LCM computation?
+~~4. **For multi-object LCM synchronization with transforms**, are the sync Z planes computed in world space, and do all objects' world-space Z ranges correctly contribute to the LCM computation?~~ **RESOLVED → Yes.** `layer-planner-default`'s `merge_different_heights()` collects all per-object Z values via `generate_object_layers(plan)`, which uses `plan.height` (from `object_height:{id}` config, i.e., world-space extent) and `plan.layer_height` (from `layer_height:{id}` config). `all_zs` is built from the union of all per-object world Z sequences, sorted and deduplicated. `last_z[i]` tracks the last world Z at which each object participated. All objects' world-space Z ranges correctly contribute to the LCM computation because `plan.height` (derived from `object_world_z_extent`) is world-space.

@@ -87,7 +87,7 @@
 - **Objective**: Implement the canonical world-space Z surface per the decision in Step 1.
 - **Precondition**: Steps 1–5 complete. Step 1 open question #1 answered.
 - **Postcondition**: Either:
-  - **Option A**: `ObjectMesh.world_z_extent: Option<(f32, f32)>` added to `MeshIR` schema, computed and cached at load time in `model_loader.rs`. `MeshIR.schema_version` bumped. `main.rs:153` updated to use the cached field.
+  - **Option A**: `ObjectMesh.world_z_extent: Option<(f32, f32)>` added to `MeshIR` schema (no schema version bump — v1.0.0 not released), computed and cached at load time in `model_loader.rs`. `main.rs:153` updated to use the cached field.
   - **Option B**: `docs/02_ir_schemas.md` updated to document `object_height:{id}` config keys as the canonical world-space Z supply with explicit "do not read local mesh Z" guidance.
 - **Files expected to change**:
   - Option A: `crates/slicer-ir/src/` (schema change), `crates/slicer-host/src/model_loader.rs`, `crates/slicer-host/src/main.rs`
