@@ -1,0 +1,9 @@
+# Task Map: path-optimization-tool-order-and-cooling-policy
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `TASK-152b` | Step 1 | `docs/01_system_architecture.md`, `docs/04_host_scheduler.md` | `crates/slicer-host/tests/tool_ordering_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/ToolOrdering.cpp` | Freezes the exact mixed-tool ordering and `ToolChange` expectations. |
+| `TASK-152b` | Step 2 | `docs/04_host_scheduler.md` | `crates/slicer-host/src/layer_executor.rs`, `crates/slicer-host/src/dispatch.rs`, `modules/core-modules/path-optimization-default/src/lib.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/ToolOrderUtils.hpp` | Implements deterministic mixed-tool ordering on the live path. |
+| `TASK-152c` | Step 3 | `docs/05_module_sdk.md`, `docs/07_implementation_status.md` | `docs/05_module_sdk.md`, `docs/07_implementation_status.md` | `OrcaSlicerDocumented/src/libslic3r/GCode/CoolingBuffer.hpp` | Closes the cooling override question explicitly on the documentation rejection path. |
+| `TASK-152` | Steps 1-3 | `docs/07_implementation_status.md` | `crates/slicer-host/src/layer_executor.rs`, `docs/05_module_sdk.md`, `docs/07_implementation_status.md` | All of the above | The umbrella task closes only when both the implemented tool-ordering slice and the explicit cooling decision land. |
+| `TASK-152b` (negative) | Step 1 | `docs/04_host_scheduler.md` | `crates/slicer-host/tests/tool_ordering_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/ToolOrdering.cpp` | Canonical or single-tool sequences must not emit redundant `ToolChange` entries. |

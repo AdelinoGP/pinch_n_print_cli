@@ -1,0 +1,10 @@
+# Task Map: path-optimization-entity-ordering
+
+| docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Notes |
+| --- | --- | --- | --- | --- | --- |
+| `TASK-152a` | Step 1 | `docs/02_ir_schemas.md`, `docs/04_host_scheduler.md` | `crates/slicer-host/tests/path_ordering_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/ShortestPath.cpp` | Freezes nearest-neighbor ordering and the no-op boundary case. |
+| `TASK-152a` | Step 2 | `docs/01_system_architecture.md`, `docs/04_host_scheduler.md` | `crates/slicer-host/src/layer_executor.rs`, `crates/slicer-host/src/dispatch.rs` | `OrcaSlicerDocumented/src/libslic3r/ShortestPath.cpp` | Implements same-object ordering on the host-owned entity surface. |
+| `TASK-152d` | Step 2 | `docs/01_system_architecture.md`, `docs/04_host_scheduler.md` | `crates/slicer-host/src/layer_executor.rs`, `crates/slicer-host/tests/path_ordering_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/ShortestPath.cpp` | Extends the helper to cross-object ordering. |
+| `TASK-152e` | Step 3 | `docs/02_ir_schemas.md` | `crates/slicer-host/src/layer_executor.rs`, `crates/slicer-host/tests/path_ordering_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/BridgeDetector.hpp` | Adds bridge-sensitive prioritization without expanding into travel policy. |
+| `TASK-152` | Step 4 | `docs/04_host_scheduler.md` | `crates/slicer-host/tests/path_ordering_tdd.rs`, `modules/core-modules/path-optimization-default/src/lib.rs` | `OrcaSlicerDocumented/tests/fff_print/test_extrusion_entity.cpp` | Locks the umbrella path-ordering slice with a deterministic live-stage guard. |
+| `TASK-152a` (negative) | Step 1 | `docs/02_ir_schemas.md` | `crates/slicer-host/tests/path_ordering_tdd.rs` | `OrcaSlicerDocumented/src/libslic3r/ShortestPath.cpp` | Single-entity or already-optimal sequences must stay unchanged. |
