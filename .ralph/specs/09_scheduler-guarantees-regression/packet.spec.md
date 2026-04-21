@@ -13,15 +13,15 @@ backlog_source: docs/07_implementation_status.md
 
 ## Goal
 
-Add regression guards for four scheduler guarantees: O(1) `resolve_active_regions` lookup, RegionMap overflow diagnostics for the 1000-entry cap, `layer_parallel_safe = false` serialization of WASM instance acquisition, and catch-up layer field propagation across all nine per-layer stages.
+Close the gap between the documented scheduler guarantees and the current host implementation by materializing the missing host-side `(global_layer_index, module_id)` active-region lookup surface, enriching RegionMap overflow failures with structured contributor/remediation diagnostics, locking serialized pool acquisition on the canonical instance-pool surface, and adding catch-up metadata regression coverage on the host and IR surfaces that actually carry it during per-layer execution.
 
 ## Scope Boundaries
 
 - In scope:
-  - `resolve_active_regions` O(1) contract regression guard (TASK-131)
-  - RegionMap overflow coverage with 1000-entry cap, top-contributor tuples, and remediation messaging (TASK-132)
-  - `layer_parallel_safe = false` pool-behavior serialization test (TASK-133)
-  - Catch-up layer field propagation test across Slice → SlicePostProcess → Perimeters → PerimetersPostProcess → Infill → InfillPostProcess → Support → SupportPostProcess → PathOptimization (TASK-134)
+  - host-side precomputed `(global_layer_index, module_id)` lookup plus regression guard for the documented `resolve_active_regions` O(1) contract (TASK-131)
+  - RegionMap overflow diagnostics with 1000-entry cap, top-contributor tuples, and remediation messaging on the real startup/region-mapping paths (TASK-132)
+  - concurrent acquisition coverage for `layer_parallel_safe = false` on the canonical `src/instance_pool.rs` surface (TASK-133)
+  - catch-up metadata coverage that verifies every per-layer stage sees unchanged source `ActiveRegion` catch-up fields, and every downstream IR surface that defines `effective_layer_height` preserves that value unchanged (TASK-134)
   - Negative cases for empty-region resolution and exactly-at-cap RegionMap
 - Out of scope:
   - PrePass segmentation boundary gaps (TASK-128a/128b)
@@ -29,35 +29,43 @@ Add regression guards for four scheduler guarantees: O(1) `resolve_active_region
   - Mesh-query host services (TASK-147/148)
   - Benchy parity (TASK-120 series)
   - Runtime-budget evidence collection (TASK-156) — separate packet
+  - WIT or IR widening to add `is_catchup_layer` / `catchup_z_bottom` fields to downstream per-layer IR structs that do not currently define them
 
 ## Prerequisites and Blockers
 
 - Depends on: TASK-120 (Benchy parity) is not a blocker for this packet; this packet operates at the scheduler/IR layer and does not require end-to-end Benchy completion.
 - Unblocks: TASK-156 (runtime-budget evidence collection) consumes the `resolve_active_regions` O(1) guard; DEV-026 evidence for RegionMap overflow; instance-pool concurrency documentation in docs/04.
-- Activation blockers: None — the four tasks are self-contained and do not depend on each other.
+- Activation blockers: None — this draft now selects concrete host-side lookup, diagnostics, and catch-up coverage surfaces without widening the IR schema.
 
 ## Acceptance Criteria
 
-- **Given** `resolve_active_regions` is called with a `GlobalLayer` and a `CompiledModule`, **when** the RegionMap has N entries (N up to 1000), **then** the call completes in O(1) time — specifically it must not iterate over all regions or all global layers. | `cargo test -p slicer-host --test resolve_active_regions_o1_contract_tdd 2>&1 | grep -E "O.1|O\\(1\\)|constant.*time"`
-- **Given** a slice job would produce more than 1000 RegionMap entries, **when** the host processes it, **then** startup fails with a fatal error containing: the computed entry count, the configured cap (1000), top-contributor tuples `(object_id, region_count, layer_count)`, and a remediation hint. | `cargo test -p slicer-host --test region_map_overflow_tdd 2>&1 | grep -E "overflow|cap.*1000|top.contributor|remediation"`
-- **Given** a module declares `layer_parallel_safe = false` and the host has multiple rayon threads, **when** two layer processing tasks both try to acquire a WASM instance from that module's pool concurrently, **then** only one acquisition succeeds at a time — the second blocks until the first releases. | `cargo test -p slicer-host --test layer_parallel_safe_false_serialization_tdd 2>&1 | grep -E "serialized|one.at.a.time|exclusive"`
-- **Given** a catch-up layer at global Z=Zc with `is_catchup_layer=true`, `catchup_z_bottom=B`, `effective_layer_height=H`, **when** the layer passes through Slice → SlicePostProcess → Perimeters → PerimetersPostProcess → Infill → InfillPostProcess → Support → SupportPostProcess → PathOptimization, **then** each stage's output IR preserves `is_catchup_layer=true`, `catchup_z_bottom=B`, and `effective_layer_height=H` unchanged. | `cargo test -p slicer-host --test catchup_layer_propagation_tdd 2>&1 | grep -E "catchup.*layer.*propagat|is_catchup_layer.*preserved"`
+- **Given** an `ExecutionPlan` with layer `3` containing regions `7` and `9` bound to module `com.example.perimeters`, **when** the host resolves active regions for `(3, com.example.perimeters)`, **then** it returns region IDs `[7, 9]` from a precomputed `(global_layer_index, module_id)` lookup and does not fall back to a full scan of `global_layers` or `region_plans`. | `cargo test -p slicer-host --test execution_plan_tdd resolve_active_regions_uses_precomputed_index -- --exact --nocapture`
+- **Given** a slice job would produce more than `1000` RegionMap entries, **when** the host aborts startup planning, **then** the fatal error contains `entry_count`, `cap=1000`, at least one top-contributor tuple `(object_id, region_count, layer_count)`, and one remediation hint among `reduce region granularity`, `raise cap`, or `split job`. | `cargo test -p slicer-host --test region_mapping_tdd region_mapping_cap_exceeded_surfaces_top_contributors_and_remediation -- --exact --nocapture`
+- **Given** a module declares `layer_parallel_safe = false`, **when** two concurrent acquisition attempts target the same pool, **then** the second acquisition blocks until the first lease is dropped and both leases observe slot `0` on the serialized pool. | `cargo test -p slicer-host --test wasm_instance_pool_tdd serialized_pools_block_other_leasers_until_release -- --exact --nocapture`
+- **Given** a catch-up `ActiveRegion` with `is_catchup_layer=true` and `catchup_z_bottom=0.3`, **when** a layer containing that region runs through Slice → SlicePostProcess → Perimeters → PerimetersPostProcess → Infill → InfillPostProcess → Support → SupportPostProcess → PathOptimization, **then** every stage sees unchanged source `ActiveRegion.is_catchup_layer` and `ActiveRegion.catchup_z_bottom` values. | `cargo test -p slicer-host --test layer_executor_tdd catchup_metadata_remains_stable_across_all_per_layer_stages -- --exact --nocapture`
+- **Given** a catch-up `ActiveRegion` with `effective_layer_height=0.3`, **when** the host-built slice/output surfaces are assembled for that layer, **then** every downstream IR type that defines `effective_layer_height` preserves the value `0.3` unchanged. | `cargo test -p slicer-host --test layer_slice_tdd layer_slice_builtin_preserves_effective_layer_height_for_catchup_regions -- --exact --nocapture`
 
 ## Negative Test Cases
 
-- **Given** `resolve_active_regions` is called with a `module_id` that has no active regions for the given layer, **when** it executes, **then** it returns an empty slice (not an error). | `cargo test -p slicer-host --test resolve_active_regions_empty_tdd 2>&1 | grep -E "empty.*slice|ok"`
-- **Given** `RegionMap` has exactly 1000 entries (at the cap), **when** a valid job with 1000 entries is processed, **then** it succeeds without overflow error. | `cargo test -p slicer-host --test region_map_at_cap_tdd 2>&1 | grep -E "at.cap|succeeds|1000.*entries"`
+- **Given** the host resolves active regions for `(3, com.example.support)` and no regions are bound to that module on layer `3`, **when** it executes, **then** it returns an empty slice/list rather than an error. | `cargo test -p slicer-host --test execution_plan_tdd resolve_active_regions_returns_empty_when_module_has_no_regions -- --exact --nocapture`
+- **Given** RegionMap construction produces exactly `1000` entries (at the cap), **when** startup planning continues, **then** it succeeds without overflow error. | `cargo test -p slicer-host --test region_mapping_tdd region_mapping_at_cap_is_accepted -- --exact --nocapture`
 
 ## Verification
 
-- `cargo test -p slicer-host -- resolve_active_regions_o1_contract_tdd region_map_overflow_tdd layer_parallel_safe_false_serialization_tdd catchup_layer_propagation_tdd resolve_active_regions_empty_tdd region_map_at_cap_tdd`
+- `cargo test -p slicer-host --test execution_plan_tdd resolve_active_regions_uses_precomputed_index -- --exact --nocapture`
+- `cargo test -p slicer-host --test execution_plan_tdd resolve_active_regions_returns_empty_when_module_has_no_regions -- --exact --nocapture`
+- `cargo test -p slicer-host --test region_mapping_tdd region_mapping_cap_exceeded_surfaces_top_contributors_and_remediation -- --exact --nocapture`
+- `cargo test -p slicer-host --test region_mapping_tdd region_mapping_at_cap_is_accepted -- --exact --nocapture`
+- `cargo test -p slicer-host --test wasm_instance_pool_tdd serialized_pools_block_other_leasers_until_release -- --exact --nocapture`
+- `cargo test -p slicer-host --test layer_executor_tdd catchup_metadata_remains_stable_across_all_per_layer_stages -- --exact --nocapture`
+- `cargo test -p slicer-host --test layer_slice_tdd layer_slice_builtin_preserves_effective_layer_height_for_catchup_regions -- --exact --nocapture`
 - `cargo clippy --workspace -- -D warnings` must pass before packet completion.
 
 ## Authoritative Docs
 
-- `docs/01_system_architecture.md` — WASM instance pool behavior (lines 46-49), Catch-Up Layer Semantics (lines 117-136)
-- `docs/02_ir_schemas.md` — LayerPlanIR `ActiveRegion` fields `is_catchup_layer`, `catchup_z_bottom`, `effective_layer_height` (lines 274-278); `RegionMapIR` structure
-- `docs/04_host_scheduler.md` — `resolve_active_regions` O(1) contract (lines 492-510); RegionMapIR Memory Budget Contract with 1000-entry cap (lines 512-530); WASM Host-Call Batching Contract
+- `docs/01_system_architecture.md` — WASM instance pool behavior; Catch-Up Layer Semantics
+- `docs/02_ir_schemas.md` — `ActiveRegion` catch-up metadata; `RegionMapIR` and `SlicedRegion` field surfaces
+- `docs/04_host_scheduler.md` — `resolve_active_regions` complexity contract; RegionMapIR Memory Budget Contract with 1000-entry cap; WASM host-call batching contract
 - `docs/12_architecture_gate_metrics.md` — performance thresholds
 
 ## OrcaSlicer Reference Obligations

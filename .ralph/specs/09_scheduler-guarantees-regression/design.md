@@ -2,63 +2,77 @@
 
 ## Controlling Code Paths
 
-- Primary code path for TASK-131 and TASK-132: `crates/slicer-host/src/scheduler/` — `resolve_active_regions` function and `RegionMap` construction/budget enforcement.
-- Primary code path for TASK-133: `crates/slicer-host/src/wasm_instance_pool.rs` — instance acquisition and the `layer_parallel_safe` gating in the pool.
-- Primary code path for TASK-134: `crates/slicer-host/src/layer_executor.rs` — per-layer stage runner and the nine stage executors (Slice, SlicePostProcess, Perimeters, PerimetersPostProcess, Infill, InfillPostProcess, Support, SupportPostProcess, PathOptimization).
-- Neighboring tests or fixtures: `crates/slicer-host/tests/` — existing TDD tests use `#[tokio::test]` or `#[test]` with `slicer_host_test_fixtures` or `wasmtime` bindings. Existing `resolve_active_regions` callers in `dispatch_tdd.rs` and `layer_executor_tdd.rs` show the invocation pattern.
+- Primary code path for TASK-131: `crates/slicer-host/src/execution_plan.rs` — frozen runtime execution metadata already carries `global_layers` and `region_plans`, and is the narrowest host-owned surface where the documented `(global_layer_index, module_id)` lookup can be materialized without widening the IR schema.
+- Primary code path for TASK-132: `crates/slicer-host/src/region_mapping.rs` and `crates/slicer-host/src/execution_plan.rs` — both participate in startup-time RegionMap bounds enforcement and must surface the same structured contributor/remediation diagnostics.
+- Primary code path for TASK-133: `crates/slicer-host/src/instance_pool.rs` — instance acquisition and the `layer_parallel_safe` gating in the canonical pool implementation.
+- Primary code path for TASK-134: `crates/slicer-host/src/layer_executor.rs`, `crates/slicer-host/src/layer_slice.rs`, and adjacent typed layer dispatch in `crates/slicer-host/src/dispatch.rs` — these surfaces carry the source `GlobalLayer.active_regions` metadata and the downstream `effective_layer_height` copies.
+- Neighboring tests or fixtures: `crates/slicer-host/tests/execution_plan_tdd.rs`, `crates/slicer-host/tests/region_mapping_tdd.rs`, `crates/slicer-host/tests/wasm_instance_pool_tdd.rs`, `crates/slicer-host/tests/acceptance_gate_gaps_tdd.rs`, `crates/slicer-host/tests/layer_executor_tdd.rs`, `crates/slicer-host/tests/layer_slice_tdd.rs`, and `crates/slicer-host/tests/scenario_traces_tdd.rs`.
 - OrcaSlicer comparison surface: None — all four are internal scheduler contracts.
 
 ## Architecture Constraints
 
-- `resolve_active_regions` must use `module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegionRef>>` for O(1) lookup. Any implementation that filters `region_map.entries.iter()` on each call is non-compliant per docs/04.
-- RegionMap overflow must be caught at startup (Phase 3 DAG validation), not lazily at per-layer execution, per docs/04 Memory Budget Contract.
-- Instance pool serialization must be enforced at the pool level, not by requiring modules to be single-threaded — a `Mutex<WasmInstance>` inside the pool for sequential modules is the correct implementation.
-- Catch-up field propagation must survive each stage's output IR transformation. Stages that produce new IR structs (e.g., `SliceIR`, `PerimeterIR`) must preserve the three `ActiveRegion` fields from the input `GlobalLayer` into the output IR's `effective_layer_height`, `is_catchup_layer`, `catchup_z_bottom` fields.
+- The O(1) lookup must come from a precomputed host-side index built once at startup. Any implementation that filters all `global_layers`, all `RegionMapIR.entries`, or all `ExecutionPlan.region_plans` on each call is non-compliant with docs/04.
+- Selected approach for TASK-131: add a derived host-only lookup table to `ExecutionPlan` keyed by `(global_layer_index, module_id)` and expose a canonical `resolve_active_regions` helper on that surface. Do not widen `RegionMapIR` in `slicer-ir` for this packet.
+- RegionMap overflow must be caught at startup (planning / region-mapping time), not lazily at per-layer execution, per docs/04 Memory Budget Contract.
+- Selected approach for TASK-132: enrich the startup error shape with contributor tuples and remediation text on the real `region_mapping.rs` / `execution_plan.rs` paths. If both paths can fail, they must share one diagnostics shape or one formatting helper so the emitted fields stay identical.
+- Instance pool serialization must remain enforced at the canonical pool level through `InstancePoolMode::Serialized` and `SlotAvailability` (`Mutex<SlotAvailabilityState>` + `Condvar`). Do not introduce a second concurrency primitive or a fake test-only pool implementation.
+- Catch-up metadata is defined on `ActiveRegion`; downstream per-layer IRs only guarantee `effective_layer_height`. Tests must therefore assert `is_catchup_layer` / `catchup_z_bottom` on the source `GlobalLayer.active_regions` surface across all nine stages, and assert `effective_layer_height` only on the IR types that actually define it.
 
 ## Code Change Surface
 
 - Selected approach:
-  - TASK-131: Add `resolve_active_regions_o1_contract_tdd.rs`. Use a mock `RegionMap` with N entries and verify the implementation calls `module_region_index.get()` directly, not an iteration over `entries`. Assert the output matches expected active regions.
-  - TASK-132: Add `region_map_overflow_tdd.rs`. Build a `RegionMap` with 1001 entries using a test helper, attempt host initialization, and assert the returned error contains entry count, cap 1000, top-contributor tuples, and remediation string. Also add `region_map_at_cap_tdd.rs` for the boundary case.
-  - TASK-133: Add `layer_parallel_safe_false_serialization_tdd.rs`. Use `rayon::spawn` with a shared sequential module pool, spawn two concurrent acquisition tasks, and assert via an `Arc<Mutex<u32>>` counter that only one acquisition is in-flight at a time.
-  - TASK-134: Add `catchup_layer_propagation_tdd.rs`. Construct a catch-up `GlobalLayer` with the three fields set, run it through each of the nine stage executors in sequence, and assert each output IR preserves the three fields. Stage executors can be called directly via `SliceExecutor::run`, `SlicePostProcessExecutor::run`, etc. using test fixtures from the existing layer executor tests.
+  - TASK-131: extend `ExecutionPlan` with a precomputed module-region lookup and a canonical lookup helper; add direct coverage in `execution_plan_tdd.rs` for the positive and empty-result cases.
+  - TASK-132: enrich the startup overflow diagnostics on `region_mapping.rs` / `execution_plan.rs`, then extend `region_mapping_tdd.rs` (and `execution_plan_tdd.rs` only if needed for the plan-build path) to assert the exact contributor/remediation fields.
+  - TASK-133: extend or tighten the canonical contention coverage in `wasm_instance_pool_tdd.rs` so the backlog item is satisfied on the real `src/instance_pool.rs` surface. Source changes are only expected if the current blocking path needs small diagnostic or observability adjustments.
+  - TASK-134: extend `layer_executor_tdd.rs` with a recording runner that proves each stage sees unchanged source `ActiveRegion` catch-up metadata, and extend `layer_slice_tdd.rs` to assert `effective_layer_height` propagation on the supported downstream IR surface. If the real typed dispatch path proves to be the controlling surface for the regression, `dispatch.rs` may need a narrow fix to thread non-zero layer metadata into `HostExecutionContext::new`.
 
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
-  - New: `crates/slicer-host/tests/resolve_active_regions_o1_contract_tdd.rs`
-  - New: `crates/slicer-host/tests/region_map_overflow_tdd.rs`
-  - New: `crates/slicer-host/tests/region_map_at_cap_tdd.rs`
-  - New: `crates/slicer-host/tests/layer_parallel_safe_false_serialization_tdd.rs`
-  - New: `crates/slicer-host/tests/catchup_layer_propagation_tdd.rs`
-  - No existing source files need modification. The tests are additive regression guards. If an existing implementation already satisfies the contract, the test validates the existing behavior without requiring changes.
+  - `crates/slicer-host/src/execution_plan.rs`
+  - `crates/slicer-host/src/region_mapping.rs`
+  - `crates/slicer-host/src/instance_pool.rs` (only if Step 3 needs a narrow observability/diagnostic change)
+  - `crates/slicer-host/src/layer_executor.rs`
+  - `crates/slicer-host/src/layer_slice.rs`
+  - `crates/slicer-host/src/dispatch.rs` (only if Step 4 proves the typed layer dispatch path is the controlling metadata surface)
+  - `crates/slicer-host/tests/execution_plan_tdd.rs`
+  - `crates/slicer-host/tests/region_mapping_tdd.rs`
+  - `crates/slicer-host/tests/wasm_instance_pool_tdd.rs`
+  - `crates/slicer-host/tests/layer_executor_tdd.rs`
+  - `crates/slicer-host/tests/layer_slice_tdd.rs`
 
 - Rejected alternatives that were considered and why they were not chosen:
-  - Adding performance benchmarks for TASK-131 instead of a contract test: Benchmarks are noisy and platform-dependent. A contract test that asserts the implementation uses `module_region_index.get()` is deterministic and reproducible.
-  - Putting overflow check inside per-layer loop for TASK-132: The docs/04 contract requires catch at startup/Phase 3, not lazily. A per-layer check would miss the overflow until runtime and could produce partial output before failing.
-  - Using a semaphore for TASK-133 instead of a mutex: A semaphore with count=1 is functionally equivalent to a mutex for serialization. A `Mutex<WasmInstance>` is simpler and already used in the existing pool implementation pattern.
+  - Adding performance benchmarks for TASK-131 instead of a direct lookup contract test: benchmarks are noisy and platform-dependent. A host-owned lookup helper plus deterministic tests is the right guardrail.
+  - Widening `RegionMapIR` with a serialized `module_region_index` field: the documented lookup can be implemented as host-only runtime state on `ExecutionPlan` without changing the IR schema.
+  - Putting overflow checks inside the later per-layer loop for TASK-132: the docs/04 contract requires catch at startup/Phase 3, not lazily during execution.
+  - Replacing the current serialized pool implementation with a second `Mutex<WasmInstance>` wrapper just for tests: `src/instance_pool.rs` already encodes the canonical serialized behavior through slot availability and should remain the single implementation surface.
+  - Asserting `is_catchup_layer` / `catchup_z_bottom` on every downstream IR: the downstream IR types do not define those fields, so the test must stay on the source `ActiveRegion` surface and on the IRs that actually define `effective_layer_height`.
 
 ## Data and Contract Notes
 
 - IR or manifest contracts touched:
-  - `RegionMapIR` (docs/02) — budget cap at 1000 entries
-  - `ActiveRegion` (docs/02 lines 274-278) — `is_catchup_layer`, `catchup_z_bottom`, `effective_layer_height`
-  - `GlobalLayer` (docs/02) — carries catch-up metadata from planning into per-layer execution
+  - `ExecutionPlan` host runtime state — gains the precomputed module-region lookup surface for TASK-131
+  - `RegionMapIR` / `region_plans` startup budget cap at 1000 entries
+  - `RegionMappingError` / `ExecutionPlanError` contributor/remediation diagnostics
+  - `ActiveRegion` — `is_catchup_layer`, `catchup_z_bottom`, `effective_layer_height`
+  - `SlicedRegion.effective_layer_height` — downstream IR field that must preserve the source height
   - `layer_parallel_safe` manifest field (docs/03) — gates pool behavior
 
-- WIT boundary considerations: None for this packet. All four tests operate at the host/scheduler layer and do not cross the WIT boundary.
+- WIT boundary considerations: No WIT schema change is planned. If Step 4 uncovers that the typed layer dispatch path is the controlling metadata surface, keep any fix narrowly inside host-side dispatch/context wiring and do not widen the world definitions in this packet.
 
-- Determinism or scheduler constraints: `resolve_active_regions` must be deterministic — same `(layer, module)` pair always returns the same slice. The test must cover repeated calls with the same inputs.
+- Determinism or scheduler constraints: the module-region lookup must be deterministic — the same `(layer, module)` pair always returns the same region ordering; overflow contributor ordering must also be stable enough for exact test assertions.
 
 ## Locked Assumptions and Invariants
 
-- The `module_region_index` map is precomputed once during RegionMap construction and never modified during per-layer execution. This is required for the O(1) guarantee.
+- `ExecutionPlan.region_plans` remains the canonical per-region plan storage; the new module-region lookup is derived once during startup and never mutated during per-layer execution.
 - RegionMap overflow is a fatal planning error (not a warning or a retry). The test must assert the host terminates with an error, not just logs a warning.
-- Sequential module pools use a single `Mutex<WasmInstance>` wrapping one instance. The mutex ensures only one thread can hold the instance at a time.
-- Catch-up layer metadata originates in `PrePass::LayerPlanning` and is stored in `GlobalLayer`. Each stage executor receives a `GlobalLayer` and must propagate relevant fields into its output IR.
+- Sequential module pools use one serialized slot and block contenders until release. The backlog slice should keep proving that canonical behavior rather than re-specifying the pool abstraction.
+- Catch-up metadata originates in `PrePass::LayerPlanning` and is stored on `GlobalLayer.active_regions`. Each stage executor receives the source `GlobalLayer`; downstream IRs only need to preserve the fields they actually define.
 
 ## Risks and Tradeoffs
 
-- Risk: The TASK-134 propagation test could be brittle if stage executors produce output IR with different type signatures than currently documented. Mitigation: Use the existing `LayerPlanIR` fixture from `layer_executor_tdd.rs` as the test harness, and assert only on the three named fields that are documented in docs/02.
-- Risk: TASK-133 serialization test could be flaky under heavy CI load if rayon thread scheduling is unpredictable. Mitigation: Use a barrier (`std::sync::Barrier`) to ensure both tasks attempt acquisition simultaneously, and assert the counter never exceeds 1. The test completes in under 1 second.
+- Risk: TASK-131 may expose that no runtime consumer currently calls the lookup helper. Mitigation: land the host-side lookup and direct tests first, then wire one canonical consumer only if the task still lacks an executable proof.
+- Risk: TASK-132 touches the same startup surfaces as TASK-131. Mitigation: keep Steps 1 and 2 serialized and reuse one diagnostics helper/shape rather than forking the startup error contract.
+- Risk: TASK-133 contention coverage could still be timing-sensitive on CI. Mitigation: keep the existing blocking-lease test shape and only strengthen it with deterministic coordination primitives already used in the test suite.
+- Risk: TASK-134 can become brittle if it asserts non-existent fields on downstream IRs. Mitigation: keep the assertions on `GlobalLayer.active_regions` for catch-up flags and on `effective_layer_height` only for the IR types that declare it.
 
 ## Open Questions
 
