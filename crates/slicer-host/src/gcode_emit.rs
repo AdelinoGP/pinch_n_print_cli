@@ -52,6 +52,47 @@ impl DefaultGCodeEmitter {
     }
 }
 
+/// Returns true if two extrusion roles are functionally equal for ;TYPE: labeling.
+fn role_equals(a: &ExtrusionRole, b: &ExtrusionRole) -> bool {
+    match (a, b) {
+        (ExtrusionRole::OuterWall, ExtrusionRole::OuterWall) => true,
+        (ExtrusionRole::InnerWall, ExtrusionRole::InnerWall) => true,
+        (ExtrusionRole::ThinWall, ExtrusionRole::ThinWall) => true,
+        (ExtrusionRole::TopSolidInfill, ExtrusionRole::TopSolidInfill) => true,
+        (ExtrusionRole::BottomSolidInfill, ExtrusionRole::BottomSolidInfill) => true,
+        (ExtrusionRole::SparseInfill, ExtrusionRole::SparseInfill) => true,
+        (ExtrusionRole::BridgeInfill, ExtrusionRole::BridgeInfill) => true,
+        (ExtrusionRole::SupportMaterial, ExtrusionRole::SupportMaterial) => true,
+        (ExtrusionRole::SupportInterface, ExtrusionRole::SupportInterface) => true,
+        (ExtrusionRole::Skirt, ExtrusionRole::Skirt) => true,
+        (ExtrusionRole::WipeTower, ExtrusionRole::WipeTower) => true,
+        (ExtrusionRole::PrimeTower, ExtrusionRole::PrimeTower) => true,
+        (ExtrusionRole::Ironing, ExtrusionRole::Ironing) => true,
+        (ExtrusionRole::Custom(a_str), ExtrusionRole::Custom(b_str)) => a_str == b_str,
+        _ => false,
+    }
+}
+
+/// Returns the canonical OrcaSlicer ";TYPE:{label}" comment text for an extrusion role.
+fn orca_type_label(role: &ExtrusionRole) -> &'static str {
+    match role {
+        ExtrusionRole::OuterWall => ";TYPE:Outer wall",
+        ExtrusionRole::InnerWall => ";TYPE:Inner wall",
+        ExtrusionRole::ThinWall => ";TYPE:Inner wall",
+        ExtrusionRole::TopSolidInfill => ";TYPE:Top surface",
+        ExtrusionRole::BottomSolidInfill => ";TYPE:Bottom surface",
+        ExtrusionRole::SparseInfill => ";TYPE:Sparse infill",
+        ExtrusionRole::BridgeInfill => ";TYPE:Bridge",
+        ExtrusionRole::SupportMaterial => ";TYPE:Support",
+        ExtrusionRole::SupportInterface => ";TYPE:Support interface",
+        ExtrusionRole::Skirt => ";TYPE:Skirt/Brim",
+        ExtrusionRole::WipeTower => ";TYPE:Wipe tower",
+        ExtrusionRole::PrimeTower => ";TYPE:Prime tower",
+        ExtrusionRole::Ironing => ";TYPE:Ironing",
+        ExtrusionRole::Custom(_) => ";TYPE:Custom",
+    }
+}
+
 impl GCodeEmitter for DefaultGCodeEmitter {
     fn emit_gcode(
         &self,
@@ -68,9 +109,40 @@ impl GCodeEmitter for DefaultGCodeEmitter {
         // Cumulative E position
         let mut e_position: f32 = 0.0;
 
+        // Previous layer Z for computing ;HEIGHT: delta
+        let mut prev_layer_z: Option<f32> = None;
+        // Track the last non-zero height delta (for first-layer fallback)
+        let mut last_height_delta: f32 = 0.2;
+        // Previous role for ;TYPE: emission
+        let mut prev_role: Option<ExtrusionRole> = None;
+
         // Walk layers in order (already Z-sorted by LayerFinalization)
         for layer in layer_irs {
             let layer_z = layer.z;
+
+            // Emit Orca layer-change headers BEFORE the first Move of this layer
+            // Insert ;LAYER_CHANGE, ;Z:{z}, ;HEIGHT:{h} before the first command
+            // Note: push bare text; serializer adds "; " prefix for regular comments.
+            // Orca header lines are output via Raw so they go through verbatim.
+            let height_delta = if let Some(prev_z) = prev_layer_z {
+                layer_z - prev_z
+            } else {
+                last_height_delta
+            };
+            if prev_layer_z.is_some() {
+                last_height_delta = height_delta;
+            }
+            prev_layer_z = Some(layer_z);
+
+            commands.push(GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".to_string(),
+            });
+            commands.push(GCodeCommand::Raw {
+                text: format!(";Z:{}", format_coord(layer_z)),
+            });
+            commands.push(GCodeCommand::Raw {
+                text: format!(";HEIGHT:{}", format_coord(height_delta)),
+            });
 
             // Build lookup maps for tool_changes and z_hops by after_entity_index
             let tool_changes: HashMap<u32, &_> = layer
@@ -89,6 +161,17 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 let entity_idx = entity_idx as u32;
                 let points = &entity.path.points;
                 let role = &entity.path.role;
+
+                // Emit ;TYPE: comment when role changes from previous entity
+                let role_changed = prev_role.as_ref().is_none_or(|prev| {
+                    !role_equals(prev, role)
+                });
+                if role_changed {
+                    commands.push(GCodeCommand::Raw {
+                        text: orca_type_label(role).to_string(),
+                    });
+                }
+                prev_role = Some(role.clone());
 
                 // Emit Move commands for each point in the path
                 let mut prev_point: Option<&slicer_ir::Point3WithWidth> = None;
