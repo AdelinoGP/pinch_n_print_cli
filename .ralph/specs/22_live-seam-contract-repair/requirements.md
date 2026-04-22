@@ -6,7 +6,7 @@
   - `TASK-120c` — Restore seam placement on real wall-loop seam candidates
   - `TASK-151` — Teach `path-optimization-default` to consume seam-placement output without reopening replay semantics
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented` (2026-04-22 — activation blocker resolved when packet `15_live-travel-retraction-policy` was moved to `draft`)
 - Supersedes: `14-rev1_live-seam-placement-and-consumption`
 
 ## Problem Statement

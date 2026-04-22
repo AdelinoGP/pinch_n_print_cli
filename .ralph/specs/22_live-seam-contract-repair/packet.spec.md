@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 22_live-seam-contract-repair
 task_ids:
   - TASK-120c
@@ -36,8 +36,7 @@ Repair the live seam contract on the current `Layer::PerimetersPostProcess` and 
 - Unblocks:
   - packet `23` prepass seam-planning design by restoring a correct apply-stage baseline
   - `TASK-135` seam-start evidence on the Benchy path
-- Activation blockers:
-  - packet `15_live-travel-retraction-policy` is currently `active`, so this packet must remain `draft`
+- Activation blockers: none — packet `15_live-travel-retraction-policy` was moved to `draft` (2026-04-22), removing the activation blocker that kept this packet in `draft` status
 
 ## Acceptance Criteria
 

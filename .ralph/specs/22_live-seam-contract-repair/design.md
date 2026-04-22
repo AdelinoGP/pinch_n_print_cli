@@ -66,8 +66,7 @@ This is the narrowest approach because it avoids a WIT expansion, avoids a new I
 
 ## Open Questions
 
-- No technical design blocker remains inside packet `22`; it stays `draft` only because packet `15` is currently `active`
-
+- No technical design blocker remains inside packet `22`; 
 ## Locked Assumptions and Invariants
 
 - `convert_perimeter_output` continues to treat `rotated_wall_loops` as canonical replacement geometry
