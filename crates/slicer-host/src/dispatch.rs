@@ -297,6 +297,8 @@ impl WasmRuntimeDispatcher {
         blackboard: &Blackboard,
         layer_index: u32,
         layer_z: f32,
+        envelope_floor: f32,
+        envelope_height: f32,
         paint_ir: Option<&slicer_ir::PaintRegionIR>,
         arena: &LayerArena,
     ) -> Result<HostExecutionContext, DispatchError> {
@@ -340,8 +342,8 @@ impl WasmRuntimeDispatcher {
         // Create per-call execution context and store.
         let ctx = HostExecutionContext::new(
             module.module_id.clone(),
-            0.0,
-            0.0,
+            envelope_floor,
+            envelope_height,
             None,
             Some(blackboard.mesh().clone()),
         );
@@ -1064,6 +1066,41 @@ fn build_paint_layer_data(
     }
 }
 
+fn derive_layer_output_envelope(layer: &GlobalLayer, arena: &LayerArena) -> (f32, f32) {
+    let fallback_height = arena
+        .slice()
+        .and_then(|slice_ir| slice_ir.regions.first())
+        .map(|region| region.effective_layer_height)
+        .unwrap_or(0.2);
+
+    if layer.active_regions.is_empty() {
+        return (layer.z, fallback_height);
+    }
+
+    let mut floor = f32::INFINITY;
+    let mut ceiling = f32::NEG_INFINITY;
+
+    for region in &layer.active_regions {
+        let region_floor = if region.is_catchup_layer {
+            region.catchup_z_bottom
+        } else {
+            layer.z
+        };
+        floor = floor.min(region_floor);
+        ceiling = ceiling.max(region_floor + region.effective_layer_height);
+    }
+
+    if !floor.is_finite() || !ceiling.is_finite() || ceiling <= floor {
+        log::warn!(
+            "derive_layer_output_envelope: invalid envelope (floor={}, ceiling={}) for layer z={}, using fallback height={}",
+            floor, ceiling, layer.z, fallback_height
+        );
+        return (layer.z, fallback_height);
+    }
+
+    (floor, ceiling - floor)
+}
+
 /// Push `SliceRegionData` resources into the store from the arena's `SliceIR`.
 ///
 /// Returns resource handles for each `SlicedRegion`. Returns an empty vec
@@ -1530,9 +1567,20 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         // Extract paint region IR from blackboard for paint-consuming stages.
         let paint_ir = blackboard.paint_regions();
         let paint_ref = paint_ir.map(|arc| arc.as_ref());
+        let (envelope_floor, envelope_height) = derive_layer_output_envelope(layer, arena);
 
         // Layer stages always use the typed component-model boundary.
-        let ctx = match self.dispatch_layer_call(stage_id, module, blackboard, layer.index, layer.z, paint_ref, arena) {
+        let ctx = match self.dispatch_layer_call(
+            stage_id,
+            module,
+            blackboard,
+            layer.index,
+            layer.z,
+            envelope_floor,
+            envelope_height,
+            paint_ref,
+            arena,
+        ) {
             Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
                 // Placeholder/uncompiled module — skip gracefully.
@@ -1718,6 +1766,16 @@ fn commit_layer_outputs(
                             kind: slicer_ir::LayerAnnotationKind::Raw(text.clone()),
                         });
                     }
+                    GcodeCommandCollected::Move(_cmd) => {
+                        return Err(LayerStageError::FatalModule {
+                            stage_id: stage_id.to_string(),
+                            module_id: module_id.to_string(),
+                            message: format!(
+                                "Layer::PathOptimization push-move call {i} rejected: \
+                                 no documented LayerCollectionIR mapping exists for move commands"
+                            ),
+                        });
+                    }
                     GcodeCommandCollected::ZHop { after_entity_index, hop_height } => {
                         // Validation per docs/03 § z-hops:
                         // - after-entity-index in bounds (or 0 for empty layers)
@@ -1764,7 +1822,7 @@ fn commit_layer_outputs(
                             module_id: module_id.to_string(),
                             message: format!(
                                 "Layer::PathOptimization guest emitted unsupported GCode command at index {i} ({:?}); \
-                                 only tool-change/comment/raw are documented overrides for the LayerCollectionIR commit path",
+                                 only tool-change/comment/raw/z-hop are documented overrides for the LayerCollectionIR commit path",
                                 std::mem::discriminant(other)
                             ),
                         });

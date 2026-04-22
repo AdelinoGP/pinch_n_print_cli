@@ -1016,12 +1016,10 @@ mod dedup_tests {
 
     #[test]
     fn bind_config_view_expands_prefix_wildcard_entries() {
-        // Regression guard for the single-layer Benchy bug (2026-04-14).
-        // `layer-planner-default.toml` declares `"object_height:*"` so the
-        // host-derived per-object keys (`object_height:<uuid>`) survive
-        // the declared-read filter. Without this, the planner's guest
-        // falls back to a single first-layer proposal and Benchy emits
-        // only Z=0.2.
+        // Regression guard for planner-specific per-object config keys.
+        // `layer-planner-default.toml` declares `"object_height:*"`, and
+        // the bound ConfigView must preserve every matching source key
+        // that was explicitly provided to the host/runtime plan builder.
         use std::collections::HashMap;
         use slicer_ir::ConfigValue;
 
