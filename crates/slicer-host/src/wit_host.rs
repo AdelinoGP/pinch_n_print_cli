@@ -154,6 +154,8 @@ pub struct PerimeterRegionData {
     pub wall_loops: Vec<layer::slicer::world_layer::ir_handles::WallLoopView>,
     /// Infill areas after perimeter inset.
     pub infill_areas: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
+    /// Resolved seam position (populated from PerimeterIR after seam-placer runs).
+    pub resolved_seam: Option<(Point3, u32)>,
 }
 
 /// Backing data for an `infill-output-builder` resource handle.
@@ -242,7 +244,7 @@ pub mod layer {
             }
 
             interface ir-handles {
-                use geometry.{ex-polygon, extrusion-path3d, point3, extrusion-role};
+                use geometry.{ex-polygon, extrusion-path3d, point3, point3-with-width, extrusion-role};
                 type object-id = string;
                 type region-id = string;
                 type layer-idx = u32;
@@ -264,11 +266,13 @@ pub mod layer {
                     has-nonplanar: func() -> bool;
                     boundary-paint: func() -> list<boundary-paint-entry>;
                 }
+                record seam-position { point: point3-with-width, wall-index: u32 }
                 resource perimeter-region-view {
                     object-id: func() -> object-id;
                     region-id: func() -> region-id;
                     wall-loops: func() -> list<wall-loop-view>;
                     infill-areas: func() -> list<ex-polygon>;
+                    resolved-seam: func() -> option<seam-position>;
                 }
                 resource infill-output-builder {
                     push-sparse-path:  func(path: extrusion-path3d) -> result<_, string>;
@@ -276,9 +280,11 @@ pub mod layer {
                     push-ironing-path: func(path: extrusion-path3d) -> result<_, string>;
                 }
                 resource perimeter-output-builder {
-                    push-wall-loop:      func(wall-loop: wall-loop-view) -> result<_, string>;
-                    set-infill-areas:    func(areas: list<ex-polygon>) -> result<_, string>;
-                    push-seam-candidate: func(pos: point3, score: f32) -> result<_, string>;
+                    push-wall-loop:          func(wall-loop: wall-loop-view) -> result<_, string>;
+                    push-reordered-wall-loop: func(pos: point3-with-width, wall-index: u32, rotated-wall-loop: wall-loop-view) -> result<_, string>;
+                    set-infill-areas:        func(areas: list<ex-polygon>) -> result<_, string>;
+                    push-seam-candidate:     func(pos: point3, score: f32) -> result<_, string>;
+                    push-resolved-seam:      func(pos: point3, wall-index: u32) -> result<_, string>;
                 }
                 resource slice-postprocess-builder {
                     set-polygons: func(region: region-key, polys: list<ex-polygon>) -> result<_, string>;
@@ -360,7 +366,7 @@ pub use layer::slicer::world_layer::geometry::{
 };
 pub use layer::slicer::world_layer::ir_handles::{
     BoundaryPaintEntry, BoundaryPaintPolygon, GcodeMoveCmd, PaintSemantic, PaintValue, RegionKey,
-    SemanticRegion, WallFeatureFlag, WallLoopType, WallLoopView,
+    SemanticRegion, SeamPosition, WallFeatureFlag, WallLoopType, WallLoopView,
 };
 pub use layer::LayerModule;
 pub use layer::ModuleError;
@@ -928,10 +934,18 @@ pub struct InfillOutputCollected {
 pub struct PerimeterOutputCollected {
     /// Wall loops emitted by the guest.
     pub wall_loops: Vec<WallLoopView>,
+    /// Wall loops with the seam at points[0] — rotated by seam-placer.
+    pub rotated_wall_loops: Vec<WallLoopView>,
+    /// Origin tags parallel to `rotated_wall_loops`.
+    pub rotated_wall_loop_origins: Vec<Option<PerimeterRegionOrigin>>,
     /// Infill areas set by the guest.
     pub infill_areas: Vec<ExPolygon>,
     /// Seam candidates emitted by the guest.
     pub seam_candidates: Vec<(Point3, f32)>,
+    /// Resolved seam position set by the guest (e.g. by seam-placer).
+    pub resolved_seam: Option<(Point3, u32)>,
+    /// Origin tag for the most recent `push_resolved_seam` call.
+    pub resolved_seam_origin: Option<PerimeterRegionOrigin>,
     /// Origin tags parallel to `wall_loops`.
     pub wall_loop_origins: Vec<Option<PerimeterRegionOrigin>>,
     /// Origin tag for the most recent `set_infill_areas` call.
@@ -1929,10 +1943,11 @@ fn ir_to_wit_paint_stroke_view(stroke: &slicer_ir::PaintStroke) -> prepass::Pain
         triangles: stroke
             .triangles
             .iter()
-            .map(|tri| prepass::Point3 {
-                x: tri[0].x,
-                y: tri[0].y,
-                z: tri[0].z,
+            .flat_map(|triangle| triangle.iter())
+            .map(|point| prepass::Point3 {
+                x: point.x,
+                y: point.y,
+                z: point.z,
             })
             .collect(),
         semantic: paint_semantic_to_string(&stroke.semantic),
@@ -2151,6 +2166,9 @@ mod region_origin_tests {
                 z: 0.2,
                 has_nonplanar: false,
                 boundary_paint: Vec::new(),
+                is_top_surface: false,
+                is_bottom_surface: false,
+                is_bridge: false,
             })
             .expect("push slice region");
 
@@ -2174,6 +2192,7 @@ mod region_origin_tests {
                 region_id: "01".to_string(),
                 wall_loops: Vec::new(),
                 infill_areas: Vec::new(),
+                resolved_seam: None,
             })
             .expect("push perimeter region");
 
@@ -2250,6 +2269,9 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
         region_id: region.region_id.to_string(),
         wall_loops: region.walls.iter().map(ir_to_wit_wall_loop).collect(),
         infill_areas: ir_to_wit_expolygons(&region.infill_areas),
+        // Note: width and flow_factor are intentionally discarded here;
+        // SeamPosition.point is used for diagnostics only.
+        resolved_seam: region.resolved_seam.clone().map(|sp| (Point3 { x: sp.point.x, y: sp.point.y, z: sp.point.z }, sp.wall_index)),
     }
 }
 
@@ -2484,6 +2506,24 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
         self.runtime_reads.push(String::from("PerimeterIR.infill-areas"));
         Ok(self.table.get(&self_)?.infill_areas.clone())
     }
+    fn resolved_seam(&mut self, self_: Resource<PerimeterRegionData>) -> wasmtime::Result<Option<layer::slicer::world_layer::ir_handles::SeamPosition>> {
+        self.touch_perimeter_region(&self_)?;
+        self.runtime_reads.push(String::from("PerimeterIR.resolved-seam"));
+        let resolved = self.table.get(&self_)?.resolved_seam;
+        match resolved {
+            None => Ok(None),
+            Some((pos, wall_index)) => Ok(Some(layer::slicer::world_layer::ir_handles::SeamPosition {
+                point: Point3WithWidth {
+                    x: pos.x,
+                    y: pos.y,
+                    z: pos.z,
+                    width: 0.0,
+                    flow_factor: 1.0,
+                },
+                wall_index,
+            })),
+        }
+    }
     fn drop(&mut self, rep: Resource<PerimeterRegionData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;
         Ok(())
@@ -2559,6 +2599,38 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         let origin = self.current_perimeter_region.clone();
         self.perimeter_output.seam_candidates.push((pos, score));
         self.perimeter_output.seam_candidate_origins.push(origin);
+        Ok(Ok(()))
+    }
+    fn push_resolved_seam(&mut self, _self_: Resource<PerimeterOutputBuilderData>, pos: Point3, wall_index: u32) -> wasmtime::Result<Result<(), String>> {
+        if let Err(e) = self.check_z_envelope(pos.z) {
+            return Ok(Err(e));
+        }
+        self.perimeter_output.resolved_seam = Some((pos, wall_index));
+        self.perimeter_output.resolved_seam_origin = self.current_perimeter_region.clone();
+        Ok(Ok(()))
+    }
+    fn push_reordered_wall_loop(
+        &mut self,
+        _self_: Resource<PerimeterOutputBuilderData>,
+        pos: Point3WithWidth,
+        _wall_index: u32,
+        rotated_wall_loop: WallLoopView,
+    ) -> wasmtime::Result<Result<(), String>> {
+        // Z envelope check: pos.z must be within [layer_z, layer_z + effective_layer_height]
+        if let Err(e) = self.check_z_envelope(pos.z) {
+            return Ok(Err(e));
+        }
+        // Cardinality invariant: feature_flags.len() == rotated_wall_loop.path.points.len()
+        if rotated_wall_loop.feature_flags.len() != rotated_wall_loop.path.points.len() {
+            return Ok(Err(format!(
+                "CARDINALITY_MISMATCH: feature_flags.len() {} != path.points.len() {}",
+                rotated_wall_loop.feature_flags.len(),
+                rotated_wall_loop.path.points.len()
+            )));
+        }
+        let origin = self.current_perimeter_region.clone();
+        self.perimeter_output.rotated_wall_loops.push(rotated_wall_loop);
+        self.perimeter_output.rotated_wall_loop_origins.push(origin);
         Ok(Ok(()))
     }
     fn drop(&mut self, rep: Resource<PerimeterOutputBuilderData>) -> wasmtime::Result<()> {
@@ -3879,11 +3951,24 @@ pub fn convert_perimeter_output(
     collected: &PerimeterOutputCollected,
     layer_index: u32,
 ) -> Result<slicer_ir::PerimeterIR, String> {
-    let walls: Vec<slicer_ir::WallLoop> = collected
-        .wall_loops
-        .iter()
-        .map(convert_wall_loop)
-        .collect::<Result<_, _>>()?;
+    // When seam-placer has rotated wall loops, those are the canonical geometry.
+    // rotated_wall_loops replaces the original wall_loops in PerimeterIR.
+    let (walls, wall_origins): (Vec<slicer_ir::WallLoop>, Vec<Option<PerimeterRegionOrigin>>) =
+        if !collected.rotated_wall_loops.is_empty() {
+            let rotated: Vec<slicer_ir::WallLoop> = collected
+                .rotated_wall_loops
+                .iter()
+                .map(convert_wall_loop)
+                .collect::<Result<_, _>>()?;
+            (rotated, collected.rotated_wall_loop_origins.clone())
+        } else {
+            let original: Vec<slicer_ir::WallLoop> = collected
+                .wall_loops
+                .iter()
+                .map(convert_wall_loop)
+                .collect::<Result<_, _>>()?;
+            (original, collected.wall_loop_origins.clone())
+        };
     let infill_areas = wit_to_ir_expolygons(&collected.infill_areas);
     let seam_candidates: Vec<slicer_ir::SeamCandidate> = collected
         .seam_candidates
@@ -3913,7 +3998,22 @@ pub fn convert_perimeter_output(
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let any_tagged = collected.wall_loop_origins.iter().any(Option::is_some)
+    // Convert collected resolved_seam to IR type.
+    let resolved_seam = collected.resolved_seam.as_ref().map(|(pos, wall_index)| {
+        slicer_ir::SeamPosition {
+            point: slicer_ir::Point3WithWidth {
+                x: pos.x,
+                y: pos.y,
+                z: pos.z,
+                width: 0.0,
+                flow_factor: 1.0,
+            },
+            wall_index: *wall_index,
+        }
+    });
+    let resolved_seam_origin = collected.resolved_seam_origin.as_ref();
+
+    let any_tagged = wall_origins.iter().any(Option::is_some)
         || collected.seam_candidate_origins.iter().any(Option::is_some)
         || collected.infill_areas_origin.is_some();
 
@@ -3927,7 +4027,7 @@ pub fn convert_perimeter_output(
                 walls,
                 infill_areas,
                 seam_candidates,
-                resolved_seam: None,
+                resolved_seam,
             }],
         });
     }
@@ -3953,15 +4053,15 @@ pub fn convert_perimeter_output(
         buckets.len() - 1
     };
 
-    if !walls.is_empty() && collected.wall_loop_origins.len() != walls.len() {
+    if !walls.is_empty() && wall_origins.len() != walls.len() {
         return Err(format!(
             "wall_loops: origin tag count ({}) does not match wall count ({})",
-            collected.wall_loop_origins.len(),
+            wall_origins.len(),
             walls.len()
         ));
     }
     for (i, wl) in walls.into_iter().enumerate() {
-        let origin = collected.wall_loop_origins[i].as_ref().ok_or_else(|| format!(
+        let origin = wall_origins[i].as_ref().ok_or_else(|| format!(
             "wall_loop[{i}] was emitted without an active perimeter source region; \
              guest must access a perimeter-region-view before pushing wall loops"
         ))?;
@@ -3992,6 +4092,16 @@ pub fn convert_perimeter_output(
         })?;
         let idx = ensure(&mut buckets, origin);
         buckets[idx].1.infill_areas = infill_areas;
+    }
+
+    if let Some(rs) = &resolved_seam {
+        let Some(origin) = resolved_seam_origin else {
+            return Err(
+                "resolved_seam was emitted without an active perimeter source region".to_string(),
+            );
+        };
+        let idx = ensure(&mut buckets, origin);
+        buckets[idx].1.resolved_seam = Some(rs.clone());
     }
 
     Ok(slicer_ir::PerimeterIR {

@@ -12,7 +12,7 @@ id = "Layer::PerimetersPostProcess"
 
 [ir-access]
 reads  = ["PerimeterIR"]
-writes = ["PerimeterIR"]
+writes = ["PerimeterIR.resolved-seam", "PerimeterIR.regions.walls"]
 
 [claims]
 holds    = ["seam-placer"]

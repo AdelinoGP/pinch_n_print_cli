@@ -7,7 +7,7 @@ use std::collections::HashMap;
 
 use slicer_ir::{
     ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LoopType, Point3WithWidth,
-    SeamCandidate, SeamReason, WallBoundaryType, WallLoop, WidthProfile,
+    SeamCandidate, SeamReason, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::traits::LayerModule;
@@ -51,14 +51,88 @@ fn wall_at_z(z: f32) -> WallLoop {
                     width: 0.4,
                     flow_factor: 1.0,
                 },
+                Point3WithWidth {
+                    x: 2.0,
+                    y: 0.0,
+                    z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
         width_profile: WidthProfile {
-            widths: vec![0.4, 0.4],
+            widths: vec![0.4, 0.4, 0.4],
         },
-        feature_flags: vec![],
+        feature_flags: vec![
+            WallFeatureFlags {
+                tool_index: None,
+                fuzzy_skin: false,
+                is_bridge: false,
+                is_thin_wall: false,
+                skip_ironing: false,
+                custom: HashMap::new(),
+            },
+            WallFeatureFlags {
+                tool_index: None,
+                fuzzy_skin: false,
+                is_bridge: false,
+                is_thin_wall: false,
+                skip_ironing: false,
+                custom: HashMap::new(),
+            },
+            WallFeatureFlags {
+                tool_index: None,
+                fuzzy_skin: false,
+                is_bridge: false,
+                is_thin_wall: false,
+                skip_ironing: false,
+                custom: HashMap::new(),
+            },
+        ],
+        boundary_type: WallBoundaryType::ExteriorSurface,
+    }
+}
+
+fn wall_from_candidates(candidates: &[SeamCandidate], z: f32) -> WallLoop {
+    if candidates.is_empty() {
+        return wall_at_z(z);
+    }
+
+    let points: Vec<_> = candidates
+        .iter()
+        .map(|candidate| Point3WithWidth {
+            x: candidate.position.x,
+            y: candidate.position.y,
+            z,
+            width: candidate.position.width,
+            flow_factor: candidate.position.flow_factor,
+        })
+        .collect();
+    let point_count = points.len();
+
+    WallLoop {
+        perimeter_index: 0,
+        loop_type: LoopType::Outer,
+        path: ExtrusionPath3D {
+            points,
+            role: ExtrusionRole::OuterWall,
+            speed_factor: 1.0,
+        },
+        width_profile: WidthProfile {
+            widths: vec![0.4; point_count],
+        },
+        feature_flags: (0..point_count)
+            .map(|_| WallFeatureFlags {
+                tool_index: None,
+                fuzzy_skin: false,
+                is_bridge: false,
+                is_thin_wall: false,
+                skip_ironing: false,
+                custom: HashMap::new(),
+            })
+            .collect(),
         boundary_type: WallBoundaryType::ExteriorSurface,
     }
 }
@@ -68,9 +142,10 @@ fn region_with_candidates(candidates: Vec<SeamCandidate>, z: f32) -> PerimeterRe
     PerimeterRegionView::new(
         "obj-0".to_string(),
         0,
-        vec![wall_at_z(z)],
+        vec![wall_from_candidates(&candidates, z)],
         vec![],
         candidates,
+        None,
     )
 }
 
