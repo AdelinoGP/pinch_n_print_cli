@@ -632,6 +632,7 @@ fn full_pipeline_with_typed_layer_dispatch() {
             is_sync_layer: false,
         }]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {
@@ -694,6 +695,7 @@ fn full_pipeline_multi_tier_with_typed_layer() {
             has_nonplanar: false, is_sync_layer: false,
         }]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {
@@ -739,6 +741,7 @@ fn guest_infill_output_committed_to_arena() {
         is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
+    arena.set_slice(make_slice_ir(7, 1.4, 1, 1)).unwrap();
 
     let result = LayerStageRunner::run_stage(
         &dispatcher,
@@ -821,6 +824,7 @@ fn output_commitment_deterministic_across_repeated_runs() {
     let mut results = Vec::new();
     for _ in 0..3 {
         let mut arena = LayerArena::new();
+        arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
         LayerStageRunner::run_stage(
             &dispatcher,
             &"Layer::Infill".to_string(),
@@ -901,6 +905,7 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
             },
         ]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {
@@ -1282,6 +1287,7 @@ fn failed_commit_does_not_leak_into_next_call() {
         "com.test.infill", "Layer::Infill", Arc::clone(&component),
     );
     let mut arena = LayerArena::new();
+    arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
     let r1 = LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Infill".to_string(),
@@ -1336,6 +1342,7 @@ fn real_config_visible_through_production_layer_dispatch() {
         has_nonplanar: false, is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
+    arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
 
     let result = LayerStageRunner::run_stage(
         &dispatcher,
@@ -1377,6 +1384,7 @@ fn different_configs_produce_different_output() {
         "com.test.infill-a", "Layer::Infill", Arc::clone(&component), config_a,
     );
     let mut arena_a = LayerArena::new();
+    arena_a.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Infill".to_string(),
@@ -1393,6 +1401,7 @@ fn different_configs_produce_different_output() {
         "com.test.infill-b", "Layer::Infill", Arc::clone(&component), config_b,
     );
     let mut arena_b = LayerArena::new();
+    arena_b.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Infill".to_string(),
@@ -1434,6 +1443,7 @@ fn repeated_identical_config_produces_deterministic_output() {
     for _ in 0..3 {
         let module = mk_module();
         let mut arena = LayerArena::new();
+        arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
         LayerStageRunner::run_stage(
             &dispatcher,
             &"Layer::Infill".to_string(),
@@ -1470,6 +1480,7 @@ fn config_isolation_across_sequential_calls() {
         "com.test.infill", "Layer::Infill", Arc::clone(&component), config1,
     );
     let mut arena1 = LayerArena::new();
+    arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Infill".to_string(),
@@ -1486,6 +1497,7 @@ fn config_isolation_across_sequential_calls() {
         "com.test.infill2", "Layer::Infill", Arc::clone(&component), config2,
     );
     let mut arena2 = LayerArena::new();
+    arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Infill".to_string(),
@@ -1574,7 +1586,8 @@ fn make_paint_region_ir(
 #[test]
 fn real_paint_region_data_visible_through_production_support_dispatch() {
     // The test guest's run_support queries paint regions and encodes counts
-    // into support output: x=enforcer_count, y=blocker_count, z=layer_index.
+    // into support output: x=enforcer_count, y=blocker_count,
+    // flow_factor=layer_index.
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
@@ -1598,6 +1611,7 @@ fn real_paint_region_data_visible_through_production_support_dispatch() {
         is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
+    arena.set_slice(make_slice_ir(7, 1.4, 1, 1)).unwrap();
 
     LayerStageRunner::run_stage(
         &dispatcher,
@@ -1622,9 +1636,9 @@ fn real_paint_region_data_visible_through_production_support_dispatch() {
         p.y
     );
     assert_eq!(
-        p.z, 7.0,
+        p.flow_factor, 7.0,
         "paint layer index should match layer.index=7, got {}",
-        p.z
+        p.flow_factor
     );
 }
 
@@ -1651,6 +1665,7 @@ fn no_paint_region_ir_produces_empty_paint_view() {
         is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
+    arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
 
     LayerStageRunner::run_stage(
         &dispatcher,
@@ -1695,6 +1710,7 @@ fn paint_region_layer_mismatch_produces_empty_view() {
         is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
+    arena.set_slice(make_slice_ir(10, 2.0, 1, 1)).unwrap();
 
     LayerStageRunner::run_stage(
         &dispatcher,
@@ -1710,9 +1726,9 @@ fn paint_region_layer_mismatch_produces_empty_view() {
     let p = &support.support_paths[0].points[0];
     assert_eq!(p.x, 0.0, "no enforcers at mismatched layer");
     assert_eq!(
-        p.z, 10.0,
+        p.flow_factor, 10.0,
         "paint layer index should be 10 (execution layer), got {}",
-        p.z
+        p.flow_factor
     );
 }
 
@@ -1740,6 +1756,7 @@ fn paint_region_isolation_across_sequential_dispatches() {
         is_sync_layer: false,
     };
     let mut arena1 = LayerArena::new();
+    arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Support".to_string(),
@@ -1760,6 +1777,7 @@ fn paint_region_isolation_across_sequential_dispatches() {
         Arc::clone(&component),
     );
     let mut arena2 = LayerArena::new();
+    arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Support".to_string(),
@@ -1806,6 +1824,7 @@ fn paint_region_deterministic_across_repeated_dispatches() {
             Arc::clone(&component),
         );
         let mut arena = LayerArena::new();
+        arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
         LayerStageRunner::run_stage(
             &dispatcher,
             &"Layer::Support".to_string(),
@@ -1846,6 +1865,7 @@ fn non_paint_stage_not_affected_by_blackboard_paint_data() {
         is_sync_layer: false,
     };
     let mut arena1 = LayerArena::new();
+    arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Infill".to_string(),
@@ -1867,6 +1887,7 @@ fn non_paint_stage_not_affected_by_blackboard_paint_data() {
         Arc::clone(&component),
     );
     let mut arena2 = LayerArena::new();
+    arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Infill".to_string(),
@@ -1981,8 +2002,8 @@ fn real_slice_region_data_visible_through_production_infill_dispatch() {
 
 #[test]
 fn empty_arena_produces_no_slice_regions() {
-    // When the arena has no SliceIR, the guest should see 0 regions.
-    // The guest encodes region_count=0 into flow_factor of point[0].
+    // When the arena has no SliceIR, the guest has no valid layer Z source and
+    // emits no infill output. The empty bypass must preserve that state.
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
@@ -2013,11 +2034,7 @@ fn empty_arena_produces_no_slice_regions() {
     )
     .unwrap();
 
-    let infill = arena.infill().unwrap();
-    let p0 = &infill.regions[0].sparse_infill[0].points[0];
-    assert_eq!(p0.flow_factor, 0.0, "no slice regions → region count 0");
-    assert_eq!(p0.width, 0.0, "no slice regions → polygon count 0");
-    assert_eq!(p0.z, 0.0, "no slice regions → z default 0");
+    assert!(arena.infill().is_none(), "no slice regions → empty bypass preserved");
 }
 
 #[test]
@@ -2221,10 +2238,10 @@ fn infill_output_correct_when_slice_regions_present() {
 
 // ── L. Perimeter-region wiring tests ────────────────────────────────────
 
-fn make_wall_loop(perimeter_index: u32, point_count: usize) -> slicer_ir::WallLoop {
+fn make_wall_loop(perimeter_index: u32, point_count: usize, z: f32) -> slicer_ir::WallLoop {
     let points = (0..point_count)
         .map(|i| slicer_ir::Point3WithWidth {
-            x: i as f32, y: 0.0, z: 0.2,
+            x: i as f32, y: 0.0, z,
             width: 0.4, flow_factor: 1.0,
         })
         .collect::<Vec<_>>();
@@ -2255,11 +2272,18 @@ fn make_wall_loop(perimeter_index: u32, point_count: usize) -> slicer_ir::WallLo
 }
 
 fn make_perimeter_ir(layer_index: u32, regions: usize, walls_per_region: u32, infill_polys: usize) -> slicer_ir::PerimeterIR {
+    let wall_z = if layer_index == 0 {
+        0.2
+    } else {
+        layer_index as f32 * 0.2
+    };
     let regions = (0..regions)
         .map(|i| slicer_ir::PerimeterRegion {
             object_id: format!("obj-{i}"),
             region_id: i as u64,
-            walls: (0..walls_per_region).map(|w| make_wall_loop(w, 2)).collect(),
+            walls: (0..walls_per_region)
+                .map(|w| make_wall_loop(w, 2, wall_z))
+                .collect(),
             infill_areas: (0..infill_polys)
                 .map(|_| ExPolygon {
                     contour: Polygon {
@@ -2485,7 +2509,7 @@ fn perimeter_region_deterministic_across_repeated_dispatches() {
 fn stage_without_perimeter_input_does_not_see_perimeter_state() {
     // Layer::Infill consumes slice regions, not perimeter regions. Even if
     // PerimeterIR is staged in the arena, the infill guest should not
-    // observe it — it should only see slice regions (zero, here).
+    // observe it — with zero slice regions, the guest emits no geometry.
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
@@ -2507,23 +2531,27 @@ fn stage_without_perimeter_input_does_not_see_perimeter_state() {
         &layer, &module, &blackboard, &mut arena,
     ).unwrap();
 
-    // Guest sees zero slice regions (confirming perimeter state is NOT
-    // misrouted to the slice-region view).
-    let infill = arena.infill().unwrap();
-    let p0 = &infill.regions[0].sparse_infill[0].points[0];
-    assert_eq!(p0.flow_factor, 0.0, "Infill stage must not see perimeter data as slice regions");
-    assert_eq!(p0.width, 0.0, "no polygons visible via slice view");
+    // No infill output confirms perimeter state was not misrouted into the
+    // slice-region view.
+    assert!(arena.infill().is_none(), "Infill stage must not see perimeter data as slice regions");
 }
 
 // ── M. Identity-preservation tests for post-process commit ─────────────
 
 fn make_perimeter_ir_with_ids(layer_index: u32, ids: &[(&str, u64)], walls_per: u32, infill_per: usize) -> slicer_ir::PerimeterIR {
+    let wall_z = if layer_index == 0 {
+        0.2
+    } else {
+        layer_index as f32 * 0.2
+    };
     let regions = ids
         .iter()
         .map(|(obj, rid)| slicer_ir::PerimeterRegion {
             object_id: (*obj).to_string(),
             region_id: *rid,
-            walls: (0..walls_per).map(|w| make_wall_loop(w, 2)).collect(),
+            walls: (0..walls_per)
+                .map(|w| make_wall_loop(w, 2, wall_z))
+                .collect(),
             infill_areas: (0..infill_per)
                 .map(|_| ExPolygon {
                     contour: Polygon {
@@ -2695,8 +2723,12 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
         wall_loop_origins: vec![None],
         infill_areas: Vec::new(),
         infill_areas_origin: None,
+        rotated_wall_loops: Vec::new(),
+        rotated_wall_loop_origins: Vec::new(),
         seam_candidates: Vec::new(),
         seam_candidate_origins: Vec::new(),
+        resolved_seam: None,
+        resolved_seam_origin: None,
     };
     // Force "any_tagged" by setting a dummy infill_areas_origin so the
     // identity-preserving path is taken; then the untagged wall_loop fails.
@@ -2963,6 +2995,7 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
             has_nonplanar: false, is_sync_layer: false,
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
+        module_region_index: HashMap::new(),
     };
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
 
@@ -3039,6 +3072,7 @@ fn path_optimization_empty_input_is_no_op() {
             has_nonplanar: false, is_sync_layer: false,
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
+        module_region_index: HashMap::new(),
     };
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layers = execute_per_layer(&plan, &blackboard, &dispatcher).expect("exec");
@@ -3095,6 +3129,7 @@ fn path_optimization_deterministic_across_repeated_runs() {
             has_nonplanar: false, is_sync_layer: false,
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let mut results = Vec::new();
@@ -3111,11 +3146,10 @@ fn path_optimization_deterministic_across_repeated_runs() {
 }
 
 #[test]
-fn path_optimization_rejects_unsupported_gcode_override() {
-    // Guest emits a Move via gcode-output-builder — no documented mapping
-    // into LayerCollectionIR → commit path must surface a structured error.
-    // Build a tiny WAT guest that exports only run-path-optimization and
-    // emits a move is non-trivial, so exercise commit path directly.
+fn path_optimization_rejects_move_override_without_layer_collection_mapping() {
+    // Per docs/03 § Path Optimization Output Contract, push-move has no
+    // documented LayerCollectionIR mapping and must fail as a fatal module
+    // error instead of being lowered into an annotation.
     use slicer_host::wit_host::{GcodeCommandCollected, GcodeMoveCmd, ExtrusionRole, HostExecutionContext};
     let mut ctx = HostExecutionContext::new("com.test.pathopt-bad".to_string(), 0.0, 0.0, None, None);
     ctx.gcode_output.commands.push(GcodeCommandCollected::Move(GcodeMoveCmd {
@@ -3125,12 +3159,11 @@ fn path_optimization_rejects_unsupported_gcode_override() {
     let mut arena = LayerArena::new();
     let err = slicer_host::commit_layer_outputs_for_test(
         "Layer::PathOptimization", "com.test.pathopt-bad", 0, &ctx, &mut arena,
-    ).expect_err("Move override must fail with structured diagnostic");
+    ).expect_err("move override must be rejected");
     let msg = err.to_string();
-    assert!(
-        msg.contains("unsupported GCode command") || msg.contains("Layer::PathOptimization"),
-        "diagnostic should identify the rejection cause: {msg}",
-    );
+    assert!(msg.contains("push-move"), "diagnostic should name the rejected method: {msg}");
+    assert!(msg.contains("no documented LayerCollectionIR mapping exists"), "diagnostic should explain the contract violation: {msg}");
+    assert!(arena.take_deferred_annotations().is_empty(), "rejected move override must not enqueue annotations");
 }
 
 #[test]
@@ -3290,6 +3323,7 @@ fn path_optimization_end_to_end_populates_z_hops() {
             has_nonplanar: false, is_sync_layer: false,
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     struct SeedingRunner<'a> {
@@ -3365,6 +3399,7 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
             has_nonplanar: false, is_sync_layer: false,
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     struct SeedingRunner<'a> {
@@ -3520,6 +3555,7 @@ fn layer_plan_committed_to_blackboard_after_execute_prepass() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 0);
@@ -4012,6 +4048,7 @@ fn mesh_segmentation_commits_through_execute_prepass() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 0);
     execute_prepass(&plan, &mut blackboard, &dispatcher).expect("prepass succeeds");
@@ -4443,6 +4480,7 @@ fn paint_segmentation_commits_through_execute_prepass() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 0);
     // PrePass::PaintSegmentation requires SurfaceClassification and
@@ -4801,6 +4839,7 @@ fn make_object(id: &str) -> slicer_ir::ObjectMesh {
         config: slicer_ir::ObjectConfig { data: HashMap::new() },
         modifier_volumes: Vec::new(),
         paint_data: None,
+        world_z_extent: None,
     }
 }
 
