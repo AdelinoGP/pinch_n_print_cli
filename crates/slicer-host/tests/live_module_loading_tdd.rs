@@ -17,8 +17,17 @@ use slicer_host::{
     build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
     ExecutionPlanError, STAGE_ORDER,
 };
+use slicer_host::model_loader::load_model;
 use slicer_ir::{ConfigValue, RegionKey, RegionPlan};
 use tempfile::TempDir;
+
+fn repo_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .canonicalize()
+        .expect("repo root canonicalize")
+}
 
 fn write_module(root: &Path, stem: &str, manifest: &str) {
     fs::write(root.join(format!("{stem}.toml")), manifest).expect("write manifest");
@@ -286,6 +295,62 @@ fn live_plan_is_deterministic_across_repeated_loads() {
         .flat_map(|s| s.modules.iter().map(|m| m.module_id.clone()))
         .collect();
     assert_eq!(ids_a, ids_b, "module ordering must be deterministic");
+}
+
+#[test]
+fn live_plan_preserves_seeded_planner_object_height_keys_for_real_core_modules() {
+    let repo = repo_root();
+    let model = repo.join("resources/benchy.stl");
+    let core_modules = repo.join("modules/core-modules");
+
+    let mesh_ir = load_model(&model).expect("load real Benchy fixture");
+    let object = mesh_ir
+        .objects
+        .first()
+        .expect("Benchy fixture should load one object");
+    let (z_min, z_max) = object
+        .world_z_extent
+        .expect("Benchy fixture should expose cached world_z_extent");
+
+    let mut source = HashMap::new();
+    let object_height_key = format!("object_height:{}", object.id);
+    source.insert(
+        object_height_key.clone(),
+        ConfigValue::Float((z_max - z_min) as f64),
+    );
+
+    let out = load_live_modules_for_plan(&[core_modules], 1)
+        .expect("load real core modules");
+    let plan = build_live_execution_plan(
+        out.sorted_stages,
+        out.bindings,
+        &source,
+        Arc::new(Vec::new()),
+        Arc::new(HashMap::<RegionKey, RegionPlan>::new()),
+    )
+    .expect("build live execution plan");
+
+    let planner_stage = plan
+        .prepass_stages
+        .iter()
+        .find(|stage| stage.stage_id == "PrePass::LayerPlanning")
+        .expect("planner stage present");
+    let planner_module = planner_stage
+        .modules
+        .iter()
+        .find(|module| module.module_id == "com.core.layer-planner-default")
+        .expect("default planner module present");
+
+    assert!(
+        planner_module.config_view.contains_key(&object_height_key),
+        "real planner binding must preserve seeded wildcard-expanded key '{}'",
+        object_height_key,
+    );
+    assert_eq!(
+        planner_module.config_view.get_float(&object_height_key),
+        Some((z_max - z_min) as f64),
+        "real planner binding must expose the seeded object height",
+    );
 }
 
 #[test]

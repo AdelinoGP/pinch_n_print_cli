@@ -141,15 +141,10 @@ fn main() {
                 None => std::collections::HashMap::new(),
             };
 
-            // Inject per-object Z extents from the loaded mesh as
-            // `object_height:<id>` config keys so the layer planner
-            // module (which otherwise falls back to a single first-
-            // layer proposal when no height is known) sees real per-
-            // object geometry. Extents are computed in world space by
-            // applying each object's `Transform3d` so transformed
-            // multi-object scenes (scale/rotation/translation) yield a
-            // correct planner height. User-supplied values on
-            // `--config` win over host-derived defaults.
+            // Seed planner-visible per-object world heights from the cached
+            // `ObjectMesh.world_z_extent` field before module binding. This is
+            // the documented live-path contract surface for LayerPlanning and
+            // stays outside the later immutable ConfigView binding step.
             for object in &mesh_ir.objects {
                 let key = format!("object_height:{}", object.id);
                 if config_source.contains_key(&key) {
