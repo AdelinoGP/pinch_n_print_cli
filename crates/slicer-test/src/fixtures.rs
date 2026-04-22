@@ -573,6 +573,7 @@ impl PerimeterRegionViewBuilder {
             self.wall_loops,
             self.infill_areas,
             self.seam_candidates,
+            None, // resolved_seam
         )
     }
 }

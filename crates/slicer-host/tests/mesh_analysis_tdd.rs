@@ -112,6 +112,7 @@ fn mesh_analysis_classifies_known_facets_and_emits_overhang_region() {
             config: ObjectConfig { data: HashMap::new() },
             modifier_volumes: vec![],
             paint_data: None,
+            world_z_extent: None,
         }],
         build_volume: build_volume(),
     };
@@ -228,6 +229,7 @@ fn empty_plan() -> ExecutionPlan {
         postpass_stages: vec![],
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     }
 }
 
@@ -269,6 +271,7 @@ fn triangle_mesh(id: &str) -> MeshIR {
             config: ObjectConfig { data: HashMap::new() },
             modifier_volumes: vec![],
             paint_data: None,
+            world_z_extent: None,
         }],
         build_volume: build_volume(),
     }
@@ -299,6 +302,7 @@ fn cube_like_mesh() -> MeshIR {
             config: ObjectConfig { data: HashMap::new() },
             modifier_volumes: vec![],
             paint_data: None,
+            world_z_extent: None,
         }],
         build_volume: build_volume(),
     }

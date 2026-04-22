@@ -81,6 +81,7 @@ fn tetra_mesh_ir(object_id: &str) -> MeshIR {
             config: ObjectConfig { data: HashMap::new() },
             modifier_volumes: Vec::new(),
             paint_data: None,
+            world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
             min: Point3 { x: 0.0, y: 0.0, z: 0.0 },

@@ -55,6 +55,7 @@ fn empty_execution_plan() -> ExecutionPlan {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     }
 }
 
@@ -305,6 +306,7 @@ fn run_pipeline_propagates_prepass_error() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     struct FailingPrepass;
@@ -357,6 +359,7 @@ fn run_pipeline_propagates_layer_error() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![make_global_layer(0, 0.2)]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     struct FailingLayerRunner;
@@ -513,6 +516,7 @@ fn run_pipeline_calls_stages_in_order() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![make_global_layer(0, 0.2)]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {
@@ -555,6 +559,7 @@ fn run_pipeline_propagates_finalization_error() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     struct FailingFinalization;
@@ -629,6 +634,7 @@ fn run_pipeline_with_layers_produces_output() {
             make_global_layer(2, 0.6),
         ]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {
@@ -707,6 +713,7 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(Vec::new()), // empty — must be filled by promotion
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {
@@ -775,6 +782,7 @@ fn prepass_audits_live_path() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {
@@ -869,6 +877,7 @@ fn layer_audits_live_path() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![make_global_layer(0, 0.2)]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {
@@ -959,6 +968,7 @@ fn access_audits_live_path() {
         ],
         global_layers: Arc::new(vec![make_global_layer(0, 0.2)]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {
@@ -1115,6 +1125,7 @@ fn access_audits_live_path_read_performing() {
         }],
         global_layers: Arc::new(vec![make_global_layer(0, 0.2)]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {

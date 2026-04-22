@@ -155,6 +155,7 @@ fn cube_mesh() -> ObjectMesh {
         },
         modifier_volumes: Vec::new(),
         paint_data: None,
+        world_z_extent: None,
     }
 }
 
@@ -196,6 +197,7 @@ fn mesh_with_paint() -> ObjectMesh {
                 },
             ],
         }),
+        world_z_extent: None,
     }
 }
 
@@ -390,6 +392,7 @@ fn mesh_seg_empty_geometry_produces_fatal_error() {
         },
         modifier_volumes: Vec::new(),
         paint_data: None,
+        world_z_extent: None,
     };
 
     // Mesh with vertices but empty triangles list.
@@ -405,6 +408,7 @@ fn mesh_seg_empty_geometry_produces_fatal_error() {
         },
         modifier_volumes: Vec::new(),
         paint_data: None,
+        world_z_extent: None,
     };
 
     // Test empty vertices case — dispatch must produce a fatal error.

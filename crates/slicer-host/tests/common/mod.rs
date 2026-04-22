@@ -72,6 +72,7 @@ pub fn flat_plate_object(id: &str, local_z: f32, transform: Transform3d) -> Obje
         },
         modifier_volumes: Vec::new(),
         paint_data: None,
+        world_z_extent: None,
     }
 }
 
@@ -90,6 +91,7 @@ pub fn sloped_triangle_object(id: &str, transform: Transform3d) -> ObjectMesh {
         },
         modifier_volumes: Vec::new(),
         paint_data: None,
+        world_z_extent: None,
     }
 }
 

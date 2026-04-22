@@ -224,6 +224,7 @@ fn layer_world_builder_commit_preserves_entities_tool_changes_and_z_hops() {
             is_sync_layer: false,
         }]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let runner = SeedingRunner {

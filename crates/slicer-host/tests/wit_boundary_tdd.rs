@@ -77,6 +77,9 @@ fn guest_reads_config_value_and_uses_it_in_output() {
         z: 1.0,
         has_nonplanar: false,
         boundary_paint: vec![],
+        is_top_surface: false,
+        is_bottom_surface: false,
+        is_bridge: false,
     }).unwrap();
 
     // Provide infill output builder
@@ -141,6 +144,9 @@ fn guest_reads_region_z_from_ir_view() {
         z: 5.5, // distinctive z value
         has_nonplanar: false,
         boundary_paint: vec![],
+        is_top_surface: false,
+        is_bottom_surface: false,
+        is_bridge: false,
     }).unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
@@ -184,6 +190,9 @@ fn guest_emits_output_via_infill_builder() {
         z: 2.0,
         has_nonplanar: false,
         boundary_paint: vec![],
+        is_top_surface: false,
+        is_bottom_surface: false,
+        is_bridge: false,
     }).unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
@@ -239,6 +248,9 @@ fn guest_logs_via_host_services() {
         z: 0.2,
         has_nonplanar: false,
         boundary_paint: vec![],
+        is_top_surface: false,
+        is_bottom_surface: false,
+        is_bridge: false,
     }).unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
@@ -287,6 +299,9 @@ fn repeated_calls_produce_independent_outputs() {
             z,
             has_nonplanar: false,
             boundary_paint: vec![],
+            is_top_surface: false,
+            is_bottom_surface: false,
+            is_bridge: false,
         }).unwrap();
         let output_handle = ctx.push_infill_output_builder().unwrap();
 

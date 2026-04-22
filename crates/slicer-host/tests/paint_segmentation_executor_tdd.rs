@@ -173,6 +173,7 @@ fn painted_material_object() -> ObjectMesh {
                 strokes: Vec::new(),
             }],
         }),
+        world_z_extent: None,
     }
 }
 
@@ -204,6 +205,7 @@ fn painted_semantic_family_object() -> ObjectMesh {
                 },
             ],
         }),
+        world_z_extent: None,
     }
 }
 
@@ -230,6 +232,7 @@ fn painted_custom_object(semantic: PaintSemantic) -> ObjectMesh {
                 },
             ],
         }),
+        world_z_extent: None,
     }
 }
 
@@ -243,6 +246,7 @@ fn unpainted_object() -> ObjectMesh {
         },
         modifier_volumes: Vec::new(),
         paint_data: None,
+        world_z_extent: None,
     }
 }
 
@@ -262,6 +266,7 @@ fn conflicting_custom_object(semantic: PaintSemantic) -> ObjectMesh {
                 strokes: Vec::new(),
             }],
         }),
+        world_z_extent: None,
     }
 }
 

@@ -111,6 +111,7 @@ fn mesh_without_strokes() -> MeshIR {
                     strokes: Vec::new(),
                 }],
             }),
+            world_z_extent: None,
         }],
         build_volume: build_volume(),
     }

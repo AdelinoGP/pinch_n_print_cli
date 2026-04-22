@@ -261,6 +261,7 @@ fn plan_with_postpass(stages: Vec<CompiledStage>) -> ExecutionPlan {
         postpass_stages: stages,
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     }
 }
 
@@ -329,6 +330,7 @@ fn mesh_fixture() -> MeshIR {
             config: ObjectConfig { data: HashMap::new() },
             modifier_volumes: vec![],
             paint_data: None,
+            world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
             min: Point3 { x: 0.0, y: 0.0, z: 0.0 },

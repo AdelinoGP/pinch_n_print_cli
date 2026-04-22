@@ -21,7 +21,8 @@ use std::collections::HashMap;
 
 use slicer_ir::{
     FacetPaintData, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectConfig,
-    ObjectLayerRef, ObjectMesh, PaintLayer, PaintSemantic, PaintValue, Point3, Transform3d,
+    ObjectLayerRef, ObjectMesh, PaintLayer, PaintSemantic, PaintStroke, PaintValue, Point3,
+    Transform3d,
 };
 
 /// Identity 4x4 column-major transform matrix.
@@ -74,6 +75,7 @@ fn mesh_with_paint() -> MeshIR {
                     strokes: Vec::new(),
                 }],
             }),
+            world_z_extent: None,
         }],
         build_volume: slicer_ir::BoundingBox3 {
             min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
@@ -241,6 +243,7 @@ fn empty_participation_produces_diagnostic_missing() {
         config: ObjectConfig { data: HashMap::new() },
         modifier_volumes: Vec::new(),
         paint_data: None,
+        world_z_extent: None,
     };
 
     // Layer plan with no participation for this object — empty indices
@@ -277,6 +280,7 @@ fn missing_transform_matrix_produces_diagnostic() {
         config: ObjectConfig { data: HashMap::new() },
         modifier_volumes: Vec::new(),
         paint_data: None,
+        world_z_extent: None,
     };
 
     let view = object_mesh_to_wit_paint_segmentation_view(&mesh, &[0]);
@@ -306,6 +310,7 @@ fn mesh_without_paint_has_none_paint_data() {
             },
             modifier_volumes: Vec::new(),
             paint_data: None, // No paint data
+            world_z_extent: None,
         }],
         build_volume: slicer_ir::BoundingBox3 {
             min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
@@ -339,6 +344,7 @@ fn multiple_objects_with_different_transforms() {
                 config: ObjectConfig { data: HashMap::new() },
                 modifier_volumes: Vec::new(),
                 paint_data: None,
+                world_z_extent: None,
             },
             ObjectMesh {
                 id: String::from("object-b"),
@@ -354,6 +360,7 @@ fn multiple_objects_with_different_transforms() {
                 config: ObjectConfig { data: HashMap::new() },
                 modifier_volumes: Vec::new(),
                 paint_data: None,
+                world_z_extent: None,
             },
         ],
         build_volume: slicer_ir::BoundingBox3 {
@@ -374,4 +381,58 @@ fn multiple_objects_with_different_transforms() {
     assert!((obj_b.transform.matrix[12] - 50.0).abs() < 1e-10);
     assert!((obj_b.transform.matrix[13] - 100.0).abs() < 1e-10);
     assert!((obj_b.transform.matrix[14] - 25.0).abs() < 1e-10);
+}
+
+#[test]
+fn paint_segmentation_view_flattens_each_stroke_triangle_vertex_in_order() {
+    use slicer_host::wit_host::object_mesh_to_wit_paint_segmentation_view;
+
+    let mesh = ObjectMesh {
+        id: String::from("stroke-object"),
+        mesh: IndexedTriangleSet {
+            vertices: vec![
+                Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                Point3 { x: 1.0, y: 0.0, z: 0.0 },
+                Point3 { x: 0.0, y: 1.0, z: 0.0 },
+            ],
+            indices: vec![0, 1, 2],
+        },
+        transform: identity_transform(),
+        config: ObjectConfig { data: HashMap::new() },
+        modifier_volumes: Vec::new(),
+        paint_data: Some(FacetPaintData {
+            layers: vec![PaintLayer {
+                semantic: PaintSemantic::Material,
+                facet_values: vec![None],
+                strokes: vec![PaintStroke {
+                    triangles: vec![
+                        [
+                            Point3 { x: 1.0, y: 2.0, z: 3.0 },
+                            Point3 { x: 4.0, y: 5.0, z: 6.0 },
+                            Point3 { x: 7.0, y: 8.0, z: 9.0 },
+                        ],
+                        [
+                            Point3 { x: 10.0, y: 11.0, z: 12.0 },
+                            Point3 { x: 13.0, y: 14.0, z: 15.0 },
+                            Point3 { x: 16.0, y: 17.0, z: 18.0 },
+                        ],
+                    ],
+                    semantic: PaintSemantic::Material,
+                    value: PaintValue::ToolIndex(1),
+                }],
+            }],
+        }),
+        world_z_extent: None,
+    };
+
+    let view = object_mesh_to_wit_paint_segmentation_view(&mesh, &[0]);
+    let triangles = &view.paint_layers[0].strokes[0].triangles;
+
+    assert_eq!(triangles.len(), 6, "two triangles must flatten to six points");
+    assert_eq!((triangles[0].x, triangles[0].y, triangles[0].z), (1.0, 2.0, 3.0));
+    assert_eq!((triangles[1].x, triangles[1].y, triangles[1].z), (4.0, 5.0, 6.0));
+    assert_eq!((triangles[2].x, triangles[2].y, triangles[2].z), (7.0, 8.0, 9.0));
+    assert_eq!((triangles[3].x, triangles[3].y, triangles[3].z), (10.0, 11.0, 12.0));
+    assert_eq!((triangles[4].x, triangles[4].y, triangles[4].z), (13.0, 14.0, 15.0));
+    assert_eq!((triangles[5].x, triangles[5].y, triangles[5].z), (16.0, 17.0, 18.0));
 }

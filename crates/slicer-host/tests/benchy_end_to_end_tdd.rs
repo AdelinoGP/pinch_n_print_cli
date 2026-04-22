@@ -492,14 +492,14 @@ fn benchy_mvp_content_is_deterministic() {
 
 /// Regression guard for the 2026-04-14 single-layer Benchy failure.
 ///
-/// Previously, the host passed an empty config to the layer-planner
-/// guest, which had no per-object heights and fell back to a single
-/// `z = first_layer_height` proposal. The live binary now derives
-/// `object_height:<id>` from the loaded mesh's per-object vertex
-/// extent, and `layer-planner-default.toml` declares `object_height:*`
-/// so the key survives the declared-read filter. Benchy is 48 mm tall
-/// at a 0.2 mm layer height, so the emitter must produce on the order
-/// of ~240 distinct layer Zs and reach a Z close to the physical top.
+/// Previously, the planner could reach the live path without any per-object
+/// height in its bound config and fall back to a single
+/// `z = first_layer_height` proposal. The canonical live path now seeds
+/// `object_height:<id>` from cached `ObjectMesh.world_z_extent` before the
+/// ConfigView is bound, so Benchy is again planned to its real ~48 mm
+/// world-space height. At a 0.2 mm layer height, the emitter must produce
+/// on the order of ~240 distinct layer Zs and reach a Z close to the
+/// physical top.
 #[test]
 fn benchy_mvp_produces_full_height_layer_progression() {
     let model = fixture_stl();
@@ -524,7 +524,8 @@ fn benchy_mvp_produces_full_height_layer_progression() {
         "Benchy produced only {} distinct layer Zs; expected ~240 \
          (48 mm height / 0.2 mm layer height). Most likely cause: the \
          layer-planner module is falling back to a single first-layer \
-         proposal because no `object_height:<id>` reached it.",
+         proposal because no planner-visible world height reached its \
+         bound ConfigView.",
         zs.len(),
     );
 

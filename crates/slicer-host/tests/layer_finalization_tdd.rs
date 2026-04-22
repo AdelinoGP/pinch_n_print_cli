@@ -275,6 +275,7 @@ fn execution_plan_fixture(layer_finalization_stage: Option<CompiledStage>) -> Ex
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     }
 }
 
@@ -365,6 +366,7 @@ fn mesh_fixture() -> MeshIR {
             },
             modifier_volumes: Vec::new(),
             paint_data: None,
+            world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
             min: Point3 {

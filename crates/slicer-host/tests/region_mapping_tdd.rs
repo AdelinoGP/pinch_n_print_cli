@@ -402,6 +402,7 @@ fn single_object_mesh(id: &str) -> MeshIR {
             config: ObjectConfig { data: HashMap::new() },
             modifier_volumes: vec![],
             paint_data: None,
+            world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
             min: Point3 { x: 0.0, y: 0.0, z: 0.0 },

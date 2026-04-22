@@ -87,6 +87,7 @@ fn tetra_mesh_ir(object_id: &str) -> MeshIR {
             config: ObjectConfig { data: HashMap::new() },
             modifier_volumes: Vec::new(),
             paint_data: None,
+            world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
             min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
@@ -134,6 +135,7 @@ fn plan_empty(layers: Vec<GlobalLayer>) -> ExecutionPlan {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(layers),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     }
 }
 
@@ -460,6 +462,7 @@ fn run_pipeline_with_events_on_empty_plan_emits_no_spurious_events() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let (raw_emitter, emitter) = capture_emitter();

@@ -637,6 +637,7 @@ fn mesh_fixture() -> MeshIR {
             },
             modifier_volumes: Vec::new(),
             paint_data: None,
+            world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
             min: Point3 {

@@ -42,6 +42,7 @@ fn empty_plan() -> ExecutionPlan {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     }
 }
 
@@ -282,6 +283,7 @@ fn e2e_with_layers() {
             make_global_layer(2, 0.6),
         ]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {

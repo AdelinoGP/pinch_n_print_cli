@@ -331,6 +331,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
             is_sync_layer: false,
         }]),
         region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
     };
 
     let config = PipelineConfig {
