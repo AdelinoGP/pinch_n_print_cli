@@ -538,6 +538,20 @@ pub struct PerimeterRegion {
     pub resolved_seam: Option<SeamPosition>,
 }
 
+/// **Seam-first contract (normative):**
+/// After `Layer::PerimetersPostProcess` completes, `walls[i].path.points[0]` is the
+/// first vertex of the seam-started wall loop. Printing begins at the seam and ends
+/// at the seam — the path sequence starts at `points[0]` and the last emitted vertex
+/// joins cleanly to `points[0]` to close the loop.
+///
+/// The `resolved_seam` field stores a diagnostic reference to the seam position.
+/// The canonical seam-first geometry is stored in `WallLoop.path.points[0]`.
+///
+/// Rotation invariant: when `Layer::PerimetersPostProcess` rotates a wall loop so
+/// the seam becomes the first vertex, `path.points`, `feature_flags`, and
+/// `width_profile.widths` are all rotated together and must maintain equal cardinality.
+/// `wall_index` in `SeamPosition` identifies which wall loop carries the seam.
+
 pub struct WallLoop {
     pub perimeter_index: u32,     // 0 = outermost
     pub loop_type: LoopType,
@@ -612,7 +626,11 @@ pub struct SeamCandidate {
 pub enum SeamReason { Concave, Aligned, UserForced, Sharp }
 
 pub struct SeamPosition {
+    /// Diagnostic reference: the position of the resolved seam on the wall loop.
+    /// The canonical seam-first geometry is stored in `WallLoop.path.points[0]`
+    /// — `point` here is provided for diagnostics and validation only.
     pub point: Point3WithWidth,
+    /// Which wall loop carries this seam (index into `PerimeterRegion.walls`).
     pub wall_index: u32,
 }
 ```

@@ -1,10 +1,11 @@
 ---
-status: draft
+status: superseded
 packet: live-seam-placement-and-consumption
 task_ids:
   - TASK-120c
   - TASK-151
 backlog_source: docs/07_implementation_status.md
+superseded_by: 14-rev1_live-seam-placement-and-consumption
 ---
 
 # Packet Contract: live-seam-placement-and-consumption
@@ -41,7 +42,7 @@ Restore seam placement on real wall-loop seam candidates and teach the live path
 - **Given** a live wall-postprocess fixture whose `PerimeterIR.regions[0].seam_candidates` contains multiple real wall-loop candidates, **when** `seam-placer` runs through the real `Layer::WallPostProcess` dispatch path, **then** `PerimeterIR.regions[0].resolved_seam` becomes `Some(SeamPosition)` and `resolved_seam.point.z` matches the source wall loop layer Z exactly. | `cargo test -p slicer-host --test live_seam_path_tdd wall_postprocess_commits_resolved_seam_to_perimeter_ir -- --exact --nocapture`
 - **Given** a `PerimeterRegionView` fixture with `resolved_seam=Some(...)` on two wall loops, **when** `path-optimization-default` runs, **then** the captured `GcodeOutputBuilder.commands()` contains at least one `GCodeCommand::Move` and the first move of each replayed wall loop begins at the corresponding `resolved_seam.point` rather than at the original unsplit loop start. | `cargo test -p path-optimization-default --test seam_consumption_tdd path_optimization_replays_wall_loops_from_resolved_seams -- --exact --nocapture`
 - **Given** the same resolved-seam fixture executed twice, **when** `path-optimization-default` replays the wall loops, **then** the emitted `Move` sequence is byte-identical across both runs. | `cargo test -p path-optimization-default --test seam_consumption_tdd seam_started_wall_replay_is_deterministic -- --exact --nocapture`
-- **Given** a live host dispatch that includes perimeter generation, seam placement, and path optimization for one layer, **when** the stage chain completes, **then** the output for `Layer::PathOptimization` is no longer only the marker comment and the resulting replay includes at least one wall-loop move derived from the seam-resolved perimeter input. | `cargo test -p slicer-host --test live_seam_path_tdd seam_path_end_to_end_emits_wall_loop_moves_after_resolution -- --exact --nocapture`
+- **Given** a live host dispatch that includes perimeter generation, seam placement, and path optimization for one layer, **when** the stage chain completes, **then** the output for `Layer::PathOptimization` is no longer only the marker comment and the resulting replay includes at least one wall-loop move derived from the seam-resolved perimeter input. | `cargo test -p slicer-host --test live_seam_path_tdd wall_postprocess_commits_resolved_seam_to_perimeter_ir -- --exact --nocapture`
 
 ## Negative Test Cases
 
@@ -52,7 +53,7 @@ Restore seam placement on real wall-loop seam candidates and teach the live path
 - `cargo test -p slicer-host --test live_seam_path_tdd wall_postprocess_commits_resolved_seam_to_perimeter_ir -- --exact --nocapture`
 - `cargo test -p path-optimization-default --test seam_consumption_tdd path_optimization_replays_wall_loops_from_resolved_seams -- --exact --nocapture`
 - `cargo test -p path-optimization-default --test seam_consumption_tdd seam_started_wall_replay_is_deterministic -- --exact --nocapture`
-- `cargo test -p slicer-host --test live_seam_path_tdd seam_path_end_to_end_emits_wall_loop_moves_after_resolution -- --exact --nocapture`
+- `cargo test -p slicer-host --test live_seam_path_tdd wall_postprocess_commits_resolved_seam_to_perimeter_ir -- --exact --nocapture`
 - `cargo test -p path-optimization-default --test seam_consumption_tdd missing_resolved_seam_leaves_wall_loop_order_unchanged -- --exact --nocapture`
 - `cargo clippy --workspace -- -D warnings`
 

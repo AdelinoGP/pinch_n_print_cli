@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: live-support-generation
 task_ids:
   - TASK-120b

@@ -52,6 +52,23 @@ The manifest naming is canonical for author-facing docs and examples. Runtime fi
 
 Ingestion scans all module search paths and deserializes every `.toml`. TOML schema errors produce a structured `LoadError` with file path and field name. No module is silently skipped.
 
+### IR Access Path Format (Normative)
+
+`ir_reads` and `ir_writes` entries in manifests use dot-notation to name specific fields within an IR struct. The format is `<IRName>.<field>`, where `<IRName>` is the canonical IR short name (e.g., `PerimeterIR`, `LayerCollectionIR`) and `<field>` is a snake_case field name declared in the corresponding Rust struct in `crates/slicer-ir/src/`.
+
+Examples:
+- `PerimeterIR.regions` — the `regions` field of `PerimeterIR` (array of per-region slices)
+- `PerimeterIR.resolved-seam` — the `resolved_seam` field of each `PerimeterRegion` (written by `seam-placer` via `push-resolved-seam`)
+- `LayerCollectionIR.skirt-brim` — the `skirt-brim` field of `LayerCollectionIR` (written by skirt-brim finalization modules)
+- `PerimeterIR.walls` — wall loop array within each perimeter region
+
+Wildcards are not supported in this version. Each dot-terminated path is matched literally against runtime access audit paths generated at the WIT boundary.
+
+Why sub-field specificity matters: declaring `PerimeterIR` as a whole grants access to every field in the struct, preventing other modules from writing non-overlapping sub-fields in the same stage without a claim conflict. Narrow declarations like `PerimeterIR.resolved-seam` let modules operate on non-overlapping fields within the same IR type without mutual exclusion.
+
+Ingestion does **not** validate that a declared path exists in the IR schema — that check is performed by the IR schema itself at load time. Declaring a non-existent field path produces a manifest that passes ingestion but fails at Phase 3 DAG validation or at the WIT boundary runtime check when the module attempts the access.
+
+---
 ### Stage ID Validation (during ingestion)
 
 `stage` is validated against the canonical `STAGE_ORDER` set before DAG construction.

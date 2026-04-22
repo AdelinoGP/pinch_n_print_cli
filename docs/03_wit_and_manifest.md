@@ -737,16 +737,16 @@ emit through `gcode-output-builder` and how the host commits that output into
 
 ### Accepted `gcode-output-builder` methods at PathOptimization
 
-| Method                        | Accepted? | Commit destination                                                                                                  |
-|-------------------------------|-----------|---------------------------------------------------------------------------------------------------------------------|
-| `push-tool-change(from-tool, to-tool)` | yes | Appended to `LayerCollectionIR.tool_changes` with `after_entity_index = ordered_entities.len() - 1` (or 0 if empty) |
-| `push-comment(text)`          | yes       | Appended to `LayerCollectionIR.annotations` as `Comment(text)` with the same anchor rule                            |
-| `push-raw(text)`              | yes       | Appended to `LayerCollectionIR.annotations` as `Raw(text)` with the same anchor rule                                |
-| `push-move(cmd)`              | rejected  | Fatal `FatalModule` diagnostic — no documented `LayerCollectionIR` mapping                                          |
-| `push-retract(length, speed)` | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
-| `push-unretract(length, speed)` | rejected | Fatal `FatalModule` diagnostic                                                                                      |
-| `push-fan-speed(value)`       | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
-| `push-temperature(...)`       | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
+| Method                                 | Accepted? | Commit destination                                                                                                  |
+|----------------------------------------|-----------|---------------------------------------------------------------------------------------------------------------------|
+| `push-tool-change(from-tool, to-tool)` | yes       | Appended to `LayerCollectionIR.tool_changes` with `after_entity_index = ordered_entities.len() - 1` (or 0 if empty) |
+| `push-comment(text)`                   | yes       | Appended to `LayerCollectionIR.annotations` as `Comment(text)` with the same anchor rule                            |
+| `push-raw(text)`                       | yes       | Appended to `LayerCollectionIR.annotations` as `Raw(text)` with the same anchor rule                                |
+| `push-move(cmd)`                       | rejected  | Fatal `FatalModule` diagnostic — no documented `LayerCollectionIR` mapping                                          |
+| `push-retract(length, speed)`          | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
+| `push-unretract(length, speed)`        | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
+| `push-fan-speed(value)`                | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
+| `push-temperature(...)`                | rejected  | Fatal `FatalModule` diagnostic                                                                                      |
 
 The `LayerAnnotation { after_entity_index, kind: Comment(..)|Raw(..) }` IR
 record is the host-side carrier for guest comment/raw oustput. The default

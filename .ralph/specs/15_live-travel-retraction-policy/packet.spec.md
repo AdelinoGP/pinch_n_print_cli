@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 packet: live-travel-retraction-policy
 task_ids:
   - TASK-120d

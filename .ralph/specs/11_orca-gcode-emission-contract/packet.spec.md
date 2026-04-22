@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: orca-gcode-emission-contract
 task_ids:
   - TASK-119
