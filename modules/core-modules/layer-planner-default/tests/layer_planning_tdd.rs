@@ -246,6 +246,16 @@ fn test_multi_object_lcm_sync() {
         .iter()
         .any(|l| l.active_regions.iter().any(|r| r.is_catchup));
     assert!(has_catchup, "LCM sync should produce catch-up layers");
+
+    for layer in layers {
+        for region in &layer.active_regions {
+            assert_eq!(
+                region.region_id,
+                "0",
+                "layer planner must emit canonical decimal region ids on mixed-height paths"
+            );
+        }
+    }
 }
 
 // =============================================================================

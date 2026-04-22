@@ -12,7 +12,7 @@ id = "PostPass::LayerFinalization"
 
 [ir-access]
 reads  = ["LayerCollectionIR"]
-writes = ["LayerCollectionIR"]
+writes = ["LayerCollectionIR.skirt-brim"]
 
 [claims]
 holds    = []

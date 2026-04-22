@@ -7,6 +7,7 @@
 //!
 //! 1. Read `layer_height` and `first_layer_height` from config
 //! 2. For each object: read height from config key `"object_height:<object_id>"`
+//!    when supplied, otherwise query `host::object_bounds`
 //! 3. Generate layer sequence: first_layer_height, then layer_height increments
 //! 4. For multi-object with different layer heights: compute LCM sync interval
 //! 5. Generate catch-up layers for objects that skip intermediate global layers
@@ -75,7 +76,13 @@ impl PrepassModule for DefaultLayerPlanner {
         // Build per-object plans
         let mut plans = Vec::new();
         for obj_id in objects {
-            let height = object_height(config, obj_id).unwrap_or(0.0);
+            let height = object_height(config, obj_id)
+                .or_else(|| {
+                    host::object_bounds(obj_id)
+                        .ok()
+                        .map(|bounds| bounds.max.z - bounds.min.z)
+                })
+                .unwrap_or(0.0);
             if height <= 0.0 {
                 continue;
             }
@@ -207,7 +214,7 @@ fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
                 };
                 RegionLayerProposal::new(
                     p.object_id.clone(),
-                    "default".to_string(),
+                    "0".to_string(),
                     effective_lh,
                     false,
                     0.0,
@@ -261,7 +268,7 @@ fn merge_different_heights(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
                 };
                 regions.push(RegionLayerProposal::new(
                     plan.object_id.clone(),
-                    "default".to_string(),
+                    "0".to_string(),
                     effective_lh,
                     false,
                     0.0,
@@ -274,7 +281,7 @@ fn merge_different_heights(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
                 if catchup_height > 1e-6 {
                     regions.push(RegionLayerProposal::new(
                         plan.object_id.clone(),
-                        "default".to_string(),
+                        "0".to_string(),
                         catchup_height,
                         true,
                         bottom_z,

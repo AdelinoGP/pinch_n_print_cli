@@ -90,6 +90,7 @@ fn region_with_square_at_z(z: f32) -> PerimeterRegionView {
         vec![wall_loop_at_z(z)],
         vec![square_10mm()],
         vec![],
+        None,
     )
 }
 

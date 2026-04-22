@@ -125,7 +125,7 @@ fn inner_wall(z: f32) -> WallLoop {
 
 /// Helper: create a PerimeterRegionView with given wall loops.
 fn region_with_walls(walls: Vec<WallLoop>) -> PerimeterRegionView {
-    PerimeterRegionView::new("obj-0".to_string(), 0, walls, vec![], vec![])
+    PerimeterRegionView::new("obj-0".to_string(), 0, walls, vec![], vec![], None)
 }
 
 /// Helper: default config (no overrides).

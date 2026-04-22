@@ -3,27 +3,11 @@
 //! Implements `LayerModule::run_path_optimization` for the canonical
 //! `Layer::PathOptimization` stage (docs/04 §Fixed Stage Order).
 //!
-//! # MVP scope
+//! # Marker-comment-only output
 //!
-//! Full travel optimisation (nearest-neighbor / TSP / seam scheduling
-//! à la OrcaSlicer's `GCode::_do_export` + `LayerTools` +
-//! `SeamPlacer`) is deferred — see the Step D handoff deviations list
-//! for the concrete set of OrcaSlicer `PathOptimization`-family
-//! passes that are NOT yet implemented here. This first canonical
-//! module:
-//!
-//! 1. Runs in the real `Layer::PathOptimization` slot against real
-//!    `PerimeterRegionView` content,
-//! 2. Emits one deterministic `; path-optimization layer <n>
-//!    regions=<r> entities=<e>` Comment per layer via
-//!    `GcodeOutputBuilder::push_comment`, which the commit path
-//!    routes into `LayerCollectionIR.annotations` (anchor = last
-//!    ordered entity) and the default G-code emitter turns into a
-//!    real `; ...` line in the emitted file.
-//!
-//! Determinism: the emitted string is a pure function of the layer
-//! index and the guest-visible region/entity counts, so two
-//! identical runs produce byte-identical G-code output.
+//! PerimeterIR is already correctly rotated by seam-placer during
+//! `Layer::WallPostProcess`. PathOptimization reads seam-first geometry
+//! but emits only a per-layer marker comment. No push-move calls are made.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
@@ -41,6 +25,7 @@ pub struct PathOptimizationDefault {
     /// `true` so the stage is observable in the generated G-code;
     /// byte-size-sensitive presets can disable it via the manifest
     /// config key `path_optimization_emit_layer_markers`.
+    #[allow(dead_code)]
     emit_layer_markers: bool,
 }
 
@@ -54,6 +39,8 @@ impl LayerModule for PathOptimizationDefault {
         Ok(Self { emit_layer_markers })
     }
 
+    /// TODO TASK-151: implement actual path-optimization logic here
+    /// (e.g. nearest-neighbor travel ordering, cross-layer chaining, etc.)
     fn run_path_optimization(
         &self,
         layer_index: u32,
@@ -61,25 +48,21 @@ impl LayerModule for PathOptimizationDefault {
         output: &mut GcodeOutputBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        if !self.emit_layer_markers {
-            return Ok(());
+        // PerimeterIR is already correctly rotated by seam-placer during
+        // Layer::WallPostProcess — path.optimization reads seam-first geometry
+        // but emits only a marker comment (no push-move calls).
+        // PathOptimization is comment-only; no wall loop replay needed.
+
+        if self.emit_layer_markers {
+            let region_count = regions.len();
+            let entity_count: usize = regions.iter().map(|r| r.wall_loops().len()).sum();
+            let marker = format!(
+                "path-optimization layer {layer_index} regions={region_count} entities={entity_count}"
+            );
+            output
+                .push_comment(marker)
+                .map_err(|e| ModuleError::fatal(1, e))?;
         }
-
-        // Count the total number of wall-loop "entities" observable
-        // through the region view. PerimeterRegionView is read-only
-        // so the guest just tallies; the host has already frozen
-        // the real `ordered_entities` into the layer collection at
-        // this point (see layer_executor.rs pre-stage for
-        // Layer::PathOptimization).
-        let region_count = regions.len();
-        let entity_count: usize = regions.iter().map(|r| r.wall_loops().len()).sum();
-
-        let marker = format!(
-            "path-optimization layer {layer_index} regions={region_count} entities={entity_count}"
-        );
-        output
-            .push_comment(marker)
-            .map_err(|e| ModuleError::fatal(1, e))?;
         Ok(())
     }
 }
@@ -88,6 +71,8 @@ impl LayerModule for PathOptimizationDefault {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use slicer_sdk::postpass_builders::GcodeOutputBuilder;
+    use slicer_sdk::traits::LayerModule;
 
     #[test]
     fn defaults_emit_layer_markers_true() {
@@ -106,5 +91,26 @@ mod tests {
         let config = ConfigView::from_map(fields);
         let module = PathOptimizationDefault::on_print_start(&config).unwrap();
         assert!(!module.emit_layer_markers);
+    }
+
+    #[test]
+    fn disabled_markers_emit_no_comments() {
+        let mut fields: HashMap<String, ConfigValue> = HashMap::new();
+        fields.insert(
+            "path_optimization_emit_layer_markers".into(),
+            ConfigValue::Bool(false),
+        );
+        let config = ConfigView::from_map(fields);
+        let module = PathOptimizationDefault::on_print_start(&config).unwrap();
+        let mut output = GcodeOutputBuilder::new();
+
+        module
+            .run_path_optimization(3, &[], &mut output, &config)
+            .expect("path optimization should succeed with markers disabled");
+
+        assert!(
+            output.commands().is_empty(),
+            "emit_layer_markers=false must suppress all marker comments"
+        );
     }
 }
