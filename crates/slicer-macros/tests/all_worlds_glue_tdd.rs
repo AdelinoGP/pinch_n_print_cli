@@ -138,6 +138,19 @@ fn macro_prepass_covers_mesh_analysis_and_layer_planning() {
 }
 
 #[test]
+fn macro_groups_flat_paint_stroke_vertices_into_triangle_triplets() {
+    let src = macro_src();
+    assert!(
+        src.contains("chunks_exact(3)"),
+        "paint stroke bridge must regroup the flat WIT point stream into triangle triplets"
+    );
+    assert!(
+        !src.contains(".map(|point| [[point.x, point.y, point.z]; 3])"),
+        "paint stroke bridge must not duplicate each point into a degenerate triangle"
+    );
+}
+
+#[test]
 fn macro_finalization_covers_run_finalization() {
     let src = macro_src();
     assert!(src.contains("fn run_finalization"));

@@ -7,7 +7,8 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    ExPolygon, ObjectId, PaintSemantic, PaintValue, RegionId, SeamCandidate, WallLoop,
+    ExPolygon, ObjectId, PaintSemantic, PaintValue, RegionId, SeamCandidate, SeamPosition,
+    WallLoop,
 };
 
 /// Read-only view of a slice region.
@@ -229,6 +230,8 @@ pub struct PerimeterRegionView {
     wall_loops: Vec<WallLoop>,
     infill_areas: Vec<ExPolygon>,
     seam_candidates: Vec<SeamCandidate>,
+    /// Resolved seam position, if set by seam-placer during WallPostProcess.
+    resolved_seam: Option<SeamPosition>,
 }
 
 impl PerimeterRegionView {
@@ -240,6 +243,7 @@ impl PerimeterRegionView {
         wall_loops: Vec<WallLoop>,
         infill_areas: Vec<ExPolygon>,
         seam_candidates: Vec<SeamCandidate>,
+        resolved_seam: Option<SeamPosition>,
     ) -> Self {
         Self {
             object_id,
@@ -247,6 +251,7 @@ impl PerimeterRegionView {
             wall_loops,
             infill_areas,
             seam_candidates,
+            resolved_seam,
         }
     }
 
@@ -273,5 +278,10 @@ impl PerimeterRegionView {
     /// Returns the seam candidates for this region.
     pub fn seam_candidates(&self) -> &[SeamCandidate] {
         &self.seam_candidates
+    }
+
+    /// Returns the resolved seam position, if set by seam-placer.
+    pub fn resolved_seam(&self) -> Option<&SeamPosition> {
+        self.resolved_seam.as_ref()
     }
 }

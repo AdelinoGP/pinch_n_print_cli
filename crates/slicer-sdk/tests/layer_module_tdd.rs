@@ -430,13 +430,13 @@ fn slice_region_view_set_needs_support_overrides() {
 
 #[test]
 fn test_19_perimeter_region_view_object_id() {
-    let view = PerimeterRegionView::new("obj-2".to_string(), 0, vec![], vec![], vec![]);
+    let view = PerimeterRegionView::new("obj-2".to_string(), 0, vec![], vec![], vec![], None);
     assert_eq!(view.object_id(), "obj-2");
 }
 
 #[test]
 fn test_20_perimeter_region_view_region_id() {
-    let view = PerimeterRegionView::new("obj-2".to_string(), 99, vec![], vec![], vec![]);
+    let view = PerimeterRegionView::new("obj-2".to_string(), 99, vec![], vec![], vec![], None);
     assert_eq!(*view.region_id(), 99);
 }
 
@@ -454,7 +454,7 @@ fn test_21_perimeter_region_view_wall_loops() {
         feature_flags: vec![],
         boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
     };
-    let view = PerimeterRegionView::new("obj-2".to_string(), 0, vec![wall], vec![], vec![]);
+    let view = PerimeterRegionView::new("obj-2".to_string(), 0, vec![wall], vec![], vec![], None);
     assert_eq!(view.wall_loops().len(), 1);
 }
 
@@ -464,7 +464,7 @@ fn test_22_perimeter_region_view_infill_areas() {
         contour: Polygon { points: vec![] },
         holes: vec![],
     };
-    let view = PerimeterRegionView::new("obj-2".to_string(), 0, vec![], vec![poly], vec![]);
+    let view = PerimeterRegionView::new("obj-2".to_string(), 0, vec![], vec![poly], vec![], None);
     assert_eq!(view.infill_areas().len(), 1);
 }
 

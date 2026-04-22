@@ -96,6 +96,8 @@ pub struct PerimeterOutputBuilder {
     infill_areas: Vec<ExPolygon>,
     seam_candidates: Vec<(Point3, f32)>,
     resolved_seam: Option<SeamPosition>,
+    /// Rotated wall loops with seam at points[0], set by seam-placer.
+    rotated_wall_loops: Vec<(Point3WithWidth, u32, WallLoop)>,
 }
 
 impl PerimeterOutputBuilder {
@@ -106,6 +108,7 @@ impl PerimeterOutputBuilder {
             infill_areas: Vec::new(),
             seam_candidates: Vec::new(),
             resolved_seam: None,
+            rotated_wall_loops: Vec::new(),
         }
     }
 
@@ -137,10 +140,36 @@ impl PerimeterOutputBuilder {
         Ok(())
     }
 
+    /// Push a wall loop with the seam at points[0] (rotated).
+    ///
+    /// Used by seam-placer during `Layer::WallPostProcess` to commit
+    /// seam-first wall loop geometry. The `pos` and `wall_index` are
+    /// the resolved seam reference; the `rotated_loop` contains the
+    /// wall loop with path.points[0] as the seam vertex.
+    ///
+    /// When the SDK builder is drained back to the WIT boundary, this
+    /// emits via `perimeter-output-builder.push-reordered-wall-loop`.
+    pub fn push_reordered_wall_loop(
+        &mut self,
+        pos: Point3WithWidth,
+        wall_index: u32,
+        loop_: WallLoop,
+    ) -> Result<(), String> {
+        self.rotated_wall_loops
+            .push((pos, wall_index, loop_));
+        Ok(())
+    }
+
     /// Get all wall loops (for testing).
     #[doc(hidden)]
     pub fn wall_loops(&self) -> &[WallLoop] {
         &self.wall_loops
+    }
+
+    /// Get the rotated wall loops (for testing).
+    #[doc(hidden)]
+    pub fn rotated_wall_loops(&self) -> &[(Point3WithWidth, u32, WallLoop)] {
+        &self.rotated_wall_loops
     }
 
     /// Get the infill areas (for testing).
@@ -175,6 +204,7 @@ impl std::fmt::Debug for PerimeterOutputBuilder {
             .field("infill_areas", &self.infill_areas.len())
             .field("seam_candidates", &self.seam_candidates.len())
             .field("resolved_seam", &self.resolved_seam.is_some())
+            .field("rotated_wall_loops", &self.rotated_wall_loops.len())
             .finish()
     }
 }

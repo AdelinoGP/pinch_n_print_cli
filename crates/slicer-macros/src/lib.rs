@@ -1177,10 +1177,10 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
 }
 
 /// Emit the `wit_bindgen`-backed component export glue for the prepass
-/// world (`PrePass::MeshAnalysis` + `PrePass::LayerPlanning`). The
-/// other two documented prepass stages (`MeshSegmentation`,
-/// `PaintSegmentation`) are not yet routed by the host's wit_host.rs
-/// prepass world and therefore stay on the placeholder path.
+/// world for all documented prepass stages. `MeshSegmentation` and
+/// `PaintSegmentation` now route through the real prepass world here,
+/// although their SDK output-builder bridges still retain the staged
+/// limitations documented in the per-stage arms below.
 fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = r#"
         package slicer:world-prepass@1.0.0;
@@ -1233,7 +1233,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             }
 
             export run-mesh-segmentation: func(
-                objects: list<object-id>,
+                objects: list<mesh-object-view>,
                 output: mesh-segmentation-output,
                 config: config-view,
             ) -> result<_, module-error>;
@@ -1252,7 +1252,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             }
 
             export run-paint-segmentation: func(
-                objects: list<object-id>,
+                objects: list<paint-segmentation-object-view>,
                 output: paint-segmentation-output,
                 config: config-view,
             ) -> result<_, module-error>;
@@ -1263,6 +1263,42 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 is-catchup: bool, catchup-z-bottom: f32,
             }
             record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
+
+            use geometry.{point3};
+
+            variant paint-value-view {
+                flag(bool),
+                scalar(f32),
+                tool-index(u32),
+            }
+
+            record paint-stroke-view {
+                triangles: list<point3>,
+                semantic: string,
+                value: paint-value-view,
+            }
+
+            record paint-layer-view {
+                semantic: string,
+                facet-values: list<option<paint-value-view>>,
+                strokes: list<paint-stroke-view>,
+            }
+
+            record mesh-object-view {
+                object-id: object-id,
+                vertices: list<point3>,
+                triangles: list<tuple<u32, u32, u32>>,
+                paint-layers: list<paint-layer-view>,
+            }
+
+            record paint-segmentation-object-view {
+                object-id: object-id,
+                vertices: list<point3>,
+                triangles: list<tuple<u32, u32, u32>>,
+                paint-layers: list<paint-layer-view>,
+                transform-matrix: list<f64>,
+                participating-layer-indices: list<u32>,
+            }
 
             resource layer-plan-output {
                 push-layer: func(proposal: layer-proposal) -> result<_, string>;
@@ -1277,6 +1313,126 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
     "#;
 
     let preamble = emit_world_preamble("prepass-module", "world_prepass", wit_inline);
+    let segmentation_helpers = quote! {
+        fn __slicer_paint_value_from_wit(
+            value: PaintValueView,
+        ) -> ::slicer_sdk::prepass_types::PaintValueView {
+            match value {
+                PaintValueView::Flag(flag) => ::slicer_sdk::prepass_types::PaintValueView {
+                    kind: ::std::string::String::from("flag"),
+                    flag: Some(flag),
+                    scalar: None,
+                    tool_index: None,
+                },
+                PaintValueView::Scalar(scalar) => ::slicer_sdk::prepass_types::PaintValueView {
+                    kind: ::std::string::String::from("scalar"),
+                    flag: None,
+                    scalar: Some(scalar),
+                    tool_index: None,
+                },
+                PaintValueView::ToolIndex(tool_index) => ::slicer_sdk::prepass_types::PaintValueView {
+                    kind: ::std::string::String::from("tool_index"),
+                    flag: None,
+                    scalar: None,
+                    tool_index: Some(tool_index),
+                },
+            }
+        }
+
+        fn __slicer_paint_stroke_from_wit(
+            stroke: PaintStrokeView,
+        ) -> ::slicer_sdk::prepass_types::PaintStrokeView {
+            let triangle_points: ::std::vec::Vec<[f32; 3]> = stroke
+                .triangles
+                .into_iter()
+                .map(|point| [point.x, point.y, point.z])
+                .collect();
+            let mut triangle_chunks = triangle_points.chunks_exact(3);
+            debug_assert!(
+                triangle_chunks.remainder().is_empty(),
+                "PaintStrokeView.triangles must contain complete triangle triplets"
+            );
+            ::slicer_sdk::prepass_types::PaintStrokeView {
+                triangles: triangle_chunks
+                    .by_ref()
+                    .map(|triangle| [triangle[0], triangle[1], triangle[2]])
+                    .collect(),
+                semantic: stroke.semantic,
+                value: __slicer_paint_value_from_wit(stroke.value),
+            }
+        }
+
+        fn __slicer_paint_layer_from_wit(
+            layer: PaintLayerView,
+        ) -> ::slicer_sdk::prepass_types::PaintLayerView {
+            ::slicer_sdk::prepass_types::PaintLayerView {
+                semantic: layer.semantic,
+                facet_values: layer
+                    .facet_values
+                    .into_iter()
+                    .map(|value| value.map(__slicer_paint_value_from_wit))
+                    .collect(),
+                strokes: layer
+                    .strokes
+                    .into_iter()
+                    .map(__slicer_paint_stroke_from_wit)
+                    .collect(),
+            }
+        }
+
+        fn __slicer_mesh_object_from_wit(
+            object: MeshObjectView,
+        ) -> ::slicer_sdk::prepass_types::MeshObjectView {
+            ::slicer_sdk::prepass_types::MeshObjectView {
+                object_id: object.object_id,
+                vertices: object
+                    .vertices
+                    .into_iter()
+                    .map(|point| [point.x, point.y, point.z])
+                    .collect(),
+                triangles: object
+                    .triangles
+                    .into_iter()
+                    .map(|(a, b, c)| [a, b, c])
+                    .collect(),
+                paint_layers: object
+                    .paint_layers
+                    .into_iter()
+                    .map(__slicer_paint_layer_from_wit)
+                    .collect(),
+            }
+        }
+
+        fn __slicer_paint_segmentation_object_from_wit(
+            object: PaintSegmentationObjectView,
+        ) -> ::slicer_sdk::prepass_types::PaintSegmentationObjectView {
+            let mut transform_matrix = [0.0_f64; 16];
+            for (idx, value) in object.transform_matrix.into_iter().take(16).enumerate() {
+                transform_matrix[idx] = value;
+            }
+
+            ::slicer_sdk::prepass_types::PaintSegmentationObjectView {
+                object_id: object.object_id,
+                vertices: object
+                    .vertices
+                    .into_iter()
+                    .map(|point| [point.x, point.y, point.z])
+                    .collect(),
+                triangles: object
+                    .triangles
+                    .into_iter()
+                    .map(|(a, b, c)| [a, b, c])
+                    .collect(),
+                paint_layers: object
+                    .paint_layers
+                    .into_iter()
+                    .map(__slicer_paint_layer_from_wit)
+                    .collect(),
+                transform_matrix,
+                participating_layer_indices: object.participating_layer_indices,
+            }
+        }
+    };
 
     let (mesh_arm, layer_arm, mesh_seg_arm, paint_seg_arm) = match detected_stage {
         "PrePass::MeshAnalysis" => (
@@ -1434,13 +1590,8 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     Err(e) => return Err(__slicer_error_out(e)),
                 };
                 let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = _objects
-                    .iter()
-                    .map(|id| ::slicer_sdk::prepass_types::MeshObjectView {
-                        object_id: id.clone(),
-                        vertices: ::std::vec::Vec::new(),
-                        triangles: ::std::vec::Vec::new(),
-                        paint_layers: ::std::vec::Vec::new(),
-                    })
+                    .into_iter()
+                    .map(__slicer_mesh_object_from_wit)
                     .collect();
                 let mut sdk_output = ::slicer_sdk::prepass_builders::MeshSegmentationOutput::new();
                 let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_mesh_segmentation(
@@ -1487,7 +1638,10 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     Ok(m) => m,
                     Err(e) => return Err(__slicer_error_out(e)),
                 };
-                let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::PaintSegmentationObjectView> = ::std::vec::Vec::new();
+                let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::PaintSegmentationObjectView> = _objects
+                    .into_iter()
+                    .map(__slicer_paint_segmentation_object_from_wit)
+                    .collect();
                 let mut sdk_output = ::slicer_sdk::prepass_builders::PaintSegmentationOutput::new();
                 let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_paint_segmentation(
                     &module, &sdk_objects, &mut sdk_output, &ir_config,
@@ -1512,6 +1666,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             use super::#self_ty;
 
             #preamble
+            #segmentation_helpers
 
             struct __SlicerPrepassComponent;
 
@@ -1531,14 +1686,14 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     #layer_arm
                 }
                 fn run_mesh_segmentation(
-                    _objects: Vec<ObjectId>,
+                    _objects: Vec<MeshObjectView>,
                     _output: MeshSegmentationOutput,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {
                     #mesh_seg_arm
                 }
                 fn run_paint_segmentation(
-                    _objects: Vec<ObjectId>,
+                    _objects: Vec<PaintSegmentationObjectView>,
                     _output: PaintSegmentationOutput,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {
@@ -1767,6 +1922,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 GcodeMoveCmd as WitGcodeMoveCmd,
                 PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
                 RegionKey as WitRegionKey,
+                SeamPosition as WitSeamPosition,
                 SemanticRegion as WitSemanticRegion,
                 WallFeatureFlag as WitWallFeatureFlag,
                 WallLoopType as WitWallLoopType, WallLoopView as WitWallLoopView,
@@ -1936,6 +2092,15 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 out
             }
 
+            fn __slicer_adapt_seam_position(
+                sp: WitSeamPosition,
+            ) -> ::slicer_ir::SeamPosition {
+                ::slicer_ir::SeamPosition {
+                    point: __slicer_wit_point3w_to_ir(&sp.point),
+                    wall_index: sp.wall_index,
+                }
+            }
+
             fn __slicer_adapt_perimeter_regions(
                 regions: &[PerimeterRegionView],
             ) -> ::std::vec::Vec<::slicer_sdk::views::PerimeterRegionView> {
@@ -1946,6 +2111,10 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     let infill: ::std::vec::Vec<::slicer_ir::ExPolygon> =
                         r.infill_areas().iter().map(__slicer_wit_expolygon_to_ir).collect();
                     let region_id: ::slicer_ir::RegionId = r.region_id().parse().unwrap_or(0);
+                    // resolved_seam is on the perimeter-region-view WIT resource:
+                    // read it and map to the SDK seam position type.
+                    let resolved_seam = r.resolved_seam()
+                        .map(|sp| __slicer_adapt_seam_position(sp));
                     out.push(::slicer_sdk::views::PerimeterRegionView::new(
                         r.object_id(),
                         region_id,
@@ -1956,6 +2125,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         // and consumed later); per the read-only input view we
                         // arrive here with none.
                         ::std::vec::Vec::new(),
+                        resolved_seam,
                     ));
                 }
                 out
@@ -2137,6 +2307,19 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     let _ = wit.push_seam_candidate(
                         WitPoint3 { x: pos.x as f32, y: pos.y as f32, z: 0.0 },
                         *score,
+                    );
+                }
+                for (pos, wall_index, loop_) in sdk.rotated_wall_loops() {
+                    let _ = wit.push_reordered_wall_loop(
+                        WitPoint3WithWidth {
+                            x: pos.x,
+                            y: pos.y,
+                            z: pos.z,
+                            width: pos.width,
+                            flow_factor: pos.flow_factor,
+                        },
+                        *wall_index,
+                        &__slicer_ir_wallloop_to_wit(loop_),
                     );
                 }
             }
