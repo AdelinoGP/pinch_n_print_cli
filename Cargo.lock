@@ -2163,13 +2163,16 @@ name = "slicer-host"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "log",
  "pyo3",
  "quick-xml 0.39.2",
  "rayon",
+ "seam-placer",
  "serde",
  "serde_json",
  "slicer-core",
  "slicer-ir",
+ "slicer-sdk",
  "stl_io",
  "tempfile",
  "tobj",
