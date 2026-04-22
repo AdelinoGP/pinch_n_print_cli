@@ -1,7 +1,7 @@
 package slicer:ir-types@1.1.0;
 
 interface ir-handles {
-    use slicer:types/geometry.{ex-polygon, extrusion-path-3d, point3, semver};
+    use slicer:types/geometry.{ex-polygon, extrusion-path-3d, point3, point3-with-width, semver};
 
     type object-id = string;
     type region-id = string;
@@ -73,6 +73,12 @@ interface ir-handles {
         region-id:    func() -> region-id;
         wall-loops:   func() -> list<wall-loop-view>;
         infill-areas: func() -> list<ex-polygon>;
+        resolved-seam: func() -> option<seam-position>;
+    }
+
+    record seam-position {
+        point: point3-with-width,
+        wall-index: u32,
     }
 
     // ── Mutable output builder resources ────────────────────────────────
@@ -85,9 +91,11 @@ interface ir-handles {
     }
 
     resource perimeter-output-builder {
-        push-wall-loop:      func(wall-loop: wall-loop-view) -> result<_, string>;
-        set-infill-areas:    func(areas: list<ex-polygon>) -> result<_, string>;
-        push-seam-candidate: func(pos: point3, score: f32) -> result<_, string>;
+        push-wall-loop:          func(wall-loop: wall-loop-view) -> result<_, string>;
+        push-reordered-wall-loop: func(pos: point3-with-width, wall-index: u32, rotated-wall-loop: wall-loop-view) -> result<_, string>;
+        set-infill-areas:        func(areas: list<ex-polygon>) -> result<_, string>;
+        push-seam-candidate:     func(pos: point3, score: f32) -> result<_, string>;
+        push-resolved-seam:      func(pos: point3, wall-index: u32) -> result<_, string>;
     }
 
     resource slice-postprocess-builder {

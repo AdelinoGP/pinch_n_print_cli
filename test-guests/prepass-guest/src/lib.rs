@@ -1,6 +1,6 @@
 wit_bindgen::generate!({
     inline: r#"
-        package slicer:prepass-world@1.0.0;
+        package slicer:world-prepass@1.0.0;
 
         interface geometry {
             record point3 { x: f32, y: f32, z: f32 }
@@ -70,7 +70,7 @@ wit_bindgen::generate!({
             }
 
             export run-mesh-segmentation: func(
-                objects: list<object-id>,
+                objects: list<mesh-object-view>,
                 output: mesh-segmentation-output,
                 config: config-view,
             ) -> result<_, module-error>;
@@ -89,7 +89,7 @@ wit_bindgen::generate!({
             }
 
             export run-paint-segmentation: func(
-                objects: list<object-id>,
+                objects: list<paint-segmentation-object-view>,
                 output: paint-segmentation-output,
                 config: config-view,
             ) -> result<_, module-error>;
@@ -100,6 +100,42 @@ wit_bindgen::generate!({
                 is-catchup: bool, catchup-z-bottom: f32,
             }
             record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
+
+            use geometry.{point3};
+
+            variant paint-value-view {
+                flag(bool),
+                scalar(f32),
+                tool-index(u32),
+            }
+
+            record paint-stroke-view {
+                triangles: list<point3>,
+                semantic: string,
+                value: paint-value-view,
+            }
+
+            record paint-layer-view {
+                semantic: string,
+                facet-values: list<option<paint-value-view>>,
+                strokes: list<paint-stroke-view>,
+            }
+
+            record mesh-object-view {
+                object-id: object-id,
+                vertices: list<point3>,
+                triangles: list<tuple<u32, u32, u32>>,
+                paint-layers: list<paint-layer-view>,
+            }
+
+            record paint-segmentation-object-view {
+                object-id: object-id,
+                vertices: list<point3>,
+                triangles: list<tuple<u32, u32, u32>>,
+                paint-layers: list<paint-layer-view>,
+                transform-matrix: list<f64>,
+                participating-layer-indices: list<u32>,
+            }
 
             resource layer-plan-output {
                 push-layer: func(proposal: layer-proposal) -> result<_, string>;
@@ -124,10 +160,10 @@ impl Guest for Component {
     fn run_layer_planning(_objects: Vec<ObjectId>, _output: LayerPlanOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
     }
-    fn run_mesh_segmentation(_objects: Vec<ObjectId>, _output: MeshSegmentationOutput, _config: ConfigView) -> Result<(), ModuleError> {
+    fn run_mesh_segmentation(_objects: Vec<MeshObjectView>, _output: MeshSegmentationOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
     }
-    fn run_paint_segmentation(_objects: Vec<ObjectId>, _output: PaintSegmentationOutput, _config: ConfigView) -> Result<(), ModuleError> {
+    fn run_paint_segmentation(_objects: Vec<PaintSegmentationObjectView>, _output: PaintSegmentationOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
     }
 }

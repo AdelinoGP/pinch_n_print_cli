@@ -196,6 +196,13 @@ impl Guest for Component {
         for r in &regions {
             // Touch wall_loops() to arm origin tag for this region.
             let walls = r.wall_loops();
+            let Some(z) = walls
+                .first()
+                .and_then(|wall| wall.path.points.first())
+                .map(|point| point.z)
+            else {
+                continue;
+            };
             let infill_n = r.infill_areas().len();
             let wl = slicer::world_layer::ir_handles::WallLoopView {
                 perimeter_index: walls.len() as u32,
@@ -204,7 +211,7 @@ impl Guest for Component {
                     points: vec![slicer::world_layer::geometry::Point3WithWidth {
                         x: walls.len() as f32,
                         y: infill_n as f32,
-                        z: 0.0,
+                        z,
                         width: 0.4,
                         flow_factor: 1.0,
                     }],
@@ -241,7 +248,9 @@ impl Guest for Component {
         //    point[0].z = region z (or 0 if empty)
         //    point[0].flow_factor = region count as f32
         //    point[0].width = total polygon count across all regions
-        let z = if !regions.is_empty() { regions[0].z() } else { 0.0 };
+        let Some(z) = regions.first().map(|region| region.z()) else {
+            return Ok(());
+        };
         let region_count = regions.len() as f32;
         let total_polys: f32 = regions.iter().map(|r| r.polygons().len() as f32).sum();
         // 4. Push output
@@ -269,12 +278,19 @@ impl Guest for Component {
         // each tagged with its source region's identity.
         for r in &regions {
             let walls = r.wall_loops();
+            let Some(z) = walls
+                .first()
+                .and_then(|wall| wall.path.points.first())
+                .map(|point| point.z)
+            else {
+                continue;
+            };
             let infill_n = r.infill_areas().len();
             let path = slicer::world_layer::geometry::ExtrusionPath3d {
                 points: vec![slicer::world_layer::geometry::Point3WithWidth {
                     x: walls.len() as f32,
                     y: infill_n as f32,
-                    z: 0.0,
+                    z,
                     width: 0.4,
                     flow_factor: 1.0,
                 }],
@@ -285,9 +301,12 @@ impl Guest for Component {
         }
         Ok(())
     }
-    fn run_support(layer_index: LayerIdx, _regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: SupportOutputBuilder, _config: ConfigView) -> Result<(), ModuleError> {
+    fn run_support(_layer_index: LayerIdx, regions: Vec<SliceRegionView>, paint: PaintRegionLayerView, output: SupportOutputBuilder, _config: ConfigView) -> Result<(), ModuleError> {
         // Query support-enforcer paint regions.
         use slicer::world_layer::ir_handles::PaintSemantic;
+        let Some(z) = regions.first().map(|region| region.z()) else {
+            return Ok(());
+        };
         let enforcers = paint.get_regions(&PaintSemantic::SupportEnforcer);
         let blocker_count = paint.get_regions(&PaintSemantic::SupportBlocker).len();
         let paint_layer_idx = paint.layer_index();
@@ -295,16 +314,17 @@ impl Guest for Component {
         // Encode paint data into observable support output:
         // - first point x = enforcer region count as f32
         // - first point y = blocker region count as f32
-        // - first point z = paint layer index as f32 (proves layer index was threaded)
+        // - first point z = first slice region z (keeps the path inside the host envelope)
+        // - first point flow_factor = paint layer index as f32 (proves layer index was threaded)
         let region_count = enforcers.len() as f32;
         let path = slicer::world_layer::geometry::ExtrusionPath3d {
             points: vec![
                 slicer::world_layer::geometry::Point3WithWidth {
                     x: region_count,
                     y: blocker_count as f32,
-                    z: paint_layer_idx as f32,
+                    z,
                     width: 0.4,
-                    flow_factor: 1.0,
+                    flow_factor: paint_layer_idx as f32,
                 },
             ],
             role: slicer::world_layer::geometry::ExtrusionRole::SupportMaterial,
