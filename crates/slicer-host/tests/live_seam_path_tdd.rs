@@ -101,6 +101,7 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
         layer_index,
         &ctx,
         &mut arena,
+        None,
     )
     .expect("commit must succeed");
 
@@ -155,6 +156,7 @@ fn empty_perimeter_output_for_wallpostprocess_skips_commit() {
         layer_index,
         &ctx,
         &mut arena,
+        None,
     )
     .expect("commit must succeed for empty perimeter (not an error)");
 
@@ -381,6 +383,7 @@ fn resolved_seam_is_applied_only_to_origin_region() {
         layer_index,
         &ctx,
         &mut arena,
+        None,
     )
     .expect("commit must succeed");
 
@@ -832,5 +835,352 @@ fn seam_z_outside_layer_envelope_rejected() {
     assert!(
         ctx.perimeter_output.rotated_wall_loops.is_empty(),
         "no rotated wall loops must be stored after Z rejection"
+    );
+}
+
+// ── AC-3: SeamPlanIR injection into wall postprocess region view ─────────────────────────────
+
+/// AC-3: Given SeamPlanIR.entries[0] with RegionKey matching PerimeterRegionView,
+/// when Layer::PerimetersPostProcess dispatches seam-placer,
+/// then PerimeterIR.regions[0].resolved_seam equals SeamPlanIR.entries[0].chosen_candidate.
+///
+/// The injection happens inside `push_perimeter_regions` (dispatch.rs) where
+/// `seam_plan_ir.entries` are matched against perimeter regions by
+/// `(global_layer_index, object_id, region_id)` and the `resolved_seam` field
+/// of `PerimeterRegionData` is populated before the WASM guest receives the view.
+///
+/// This test exercises the full dispatch path:
+///   `WasmRuntimeDispatcher::run_stage` → `dispatch_layer_call` →
+///   `push_perimeter_regions` (injects seam) → WASM guest →
+///   `commit_layer_outputs_for_test` → PerimeterIR in arena.
+#[test]
+fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
+    use std::sync::Arc;
+    use slicer_host::{
+        Blackboard, CompiledModule, IrAccessMask, LayerArena, LayerStageRunner,
+        WasmEngine, WasmRuntimeDispatcher,
+    };
+    use slicer_host::instance_pool::build_wasm_instance_pool;
+    use slicer_host::manifest::LoadedModule;
+    use slicer_ir::{
+        BoundingBox3, GlobalLayer, PerimeterIR, PerimeterRegion, LoopType,
+        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, RegionKey, SeamCandidate,
+        SeamPosition, SeamPlanEntry, SeamPlanIR, SeamReason, SemVer, WallBoundaryType,
+        WallFeatureFlags, WallLoop, WidthProfile, RegionId,
+    };
+
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+
+    // Load the real seam-placer.wasm module.
+    let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent().unwrap() // crates/slicer-host
+        .parent().unwrap() // pinch_n_print
+        .join("modules/core-modules/seam-placer/seam-placer.wasm");
+    let bytes = std::fs::read(&wasm_path).unwrap_or_else(|_| {
+        panic!(
+            "seam-placer.wasm not found at {}. \
+             Build it with: ./modules/core-modules/build-core-modules.sh",
+            wasm_path.display()
+        )
+    });
+    let component = Arc::new(
+        engine
+            .compile_component(&bytes)
+            .expect("seam-placer.wasm must compile"),
+    );
+
+    let loaded = LoadedModule {
+        id: "com.core.seam-placer".to_string(),
+        version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        stage: "Layer::PerimetersPostProcess".to_string(),
+        wit_world: "slicer:world-layer@1.0.0".to_string(),
+        ir_reads: vec!["PerimeterIR".to_string()],
+        ir_writes: vec!["PerimeterIR.resolved-seam".to_string(), "PerimeterIR.regions.walls".to_string()],
+        claims: vec!["seam-placer".to_string()],
+        requires_claims: vec![],
+        incompatible_with: vec![],
+        requires_modules: vec![],
+        min_host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        min_ir_schema: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        max_ir_schema: SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
+        config_schema: Default::default(),
+        overridable_per_region: vec![],
+        overridable_per_layer: vec![],
+        layer_parallel_safe: true,
+        wasm_path: wasm_path.clone(),
+        placeholder_wasm: false,
+    };
+    let pool = Arc::new(
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            slicer_host::instance_pool::WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("instance pool must build"),
+    );
+    let module = CompiledModule {
+        module_id: loaded.id.clone(),
+        instance_pool: pool,
+        ir_read_mask: IrAccessMask { paths: vec![] },
+        ir_write_mask: IrAccessMask { paths: vec![] },
+        config_view: Arc::new(slicer_ir::ConfigView::from_map(
+            std::collections::HashMap::new(),
+        )),
+        wasm_component: Some(component),
+    };
+
+    let layer_z = 0.2;
+    let layer_index = 0u32;
+    let object_id = "obj-a".to_string();
+    let region_id: RegionId = 0;
+
+    // Build a PerimeterIR WITHOUT resolved_seam set.
+    // The resolved_seam should be injected from SeamPlanIR during dispatch.
+    let perimeter_ir = PerimeterIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        global_layer_index: layer_index,
+        regions: vec![PerimeterRegion {
+            object_id: object_id.clone(),
+            region_id,
+            walls: vec![WallLoop {
+                perimeter_index: 0,
+                loop_type: LoopType::Outer,
+                path: ExtrusionPath3D {
+                    points: vec![
+                        Point3WithWidth {
+                            x: 0.0,
+                            y: 0.0,
+                            z: layer_z,
+                            width: 0.4,
+                            flow_factor: 1.0,
+                        },
+                        Point3WithWidth {
+                            x: 10.0,
+                            y: 0.0,
+                            z: layer_z,
+                            width: 0.4,
+                            flow_factor: 1.0,
+                        },
+                        Point3WithWidth {
+                            x: 10.0,
+                            y: 10.0,
+                            z: layer_z,
+                            width: 0.4,
+                            flow_factor: 1.0,
+                        },
+                        Point3WithWidth {
+                            x: 0.0,
+                            y: 10.0,
+                            z: layer_z,
+                            width: 0.4,
+                            flow_factor: 1.0,
+                        },
+                    ],
+                    role: ExtrusionRole::OuterWall,
+                    speed_factor: 1.0,
+                },
+                width_profile: WidthProfile {
+                    widths: vec![0.4; 4],
+                },
+                feature_flags: vec![
+                    WallFeatureFlags {
+                        tool_index: None,
+                        fuzzy_skin: false,
+                        is_bridge: false,
+                        is_thin_wall: false,
+                        skip_ironing: false,
+                        custom: std::collections::HashMap::new(),
+                    };
+                    4
+                ],
+                boundary_type: WallBoundaryType::ExteriorSurface,
+            }],
+            infill_areas: vec![],
+            seam_candidates: vec![],
+            resolved_seam: None, // Not set — should be injected from SeamPlanIR
+        }],
+    };
+
+    // Build a SeamPlanIR with an entry matching the perimeter region.
+    // The chosen_candidate is what should be injected into PerimeterRegionView.resolved_seam.
+    // Use a seam point that exactly matches the first vertex of the wall loop
+    // to pass the seam-placer's validation that the seam is "in" the wall.
+    let chosen_x = 0.0;
+    let chosen_y = 0.0;
+    let chosen_z = layer_z;
+    let chosen_wall_index = 0;
+
+    let seam_plan_ir = SeamPlanIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        entries: vec![SeamPlanEntry {
+            region_key: RegionKey {
+                global_layer_index: layer_index,
+                object_id: object_id.clone(),
+                region_id,
+            },
+            chosen_candidate: SeamPosition {
+                point: Point3WithWidth {
+                    x: chosen_x,
+                    y: chosen_y,
+                    z: chosen_z,
+                    width: 0.0,
+                    flow_factor: 1.0,
+                },
+                wall_index: chosen_wall_index,
+            },
+            scored_candidates: vec![],
+        }],
+    };
+
+    // Stage PerimeterIR into arena (without resolved_seam).
+    let mut arena = LayerArena::new();
+    arena.set_perimeter(perimeter_ir).unwrap();
+
+    // Stage SeamPlanIR into blackboard.
+    let mut blackboard = Blackboard::new(
+        Arc::new(slicer_ir::MeshIR {
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            objects: vec![],
+            build_volume: BoundingBox3 {
+                min: slicer_ir::Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                max: slicer_ir::Point3 {
+                    x: 200.0,
+                    y: 200.0,
+                    z: 10.0,
+                },
+            },
+        }),
+        1,
+    );
+    blackboard
+        .commit_seam_plan(Arc::new(seam_plan_ir.clone()))
+        .expect("seam_plan must commit");
+
+    let layer = GlobalLayer {
+        index: layer_index,
+        z: layer_z,
+        active_regions: vec![],
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    // Dispatch Layer::PerimetersPostProcess through the real run_stage path.
+    // Inside dispatch_layer_call, push_perimeter_regions is called with
+    // seam_plan_ir from blackboard, and resolved_seam is injected into
+    // PerimeterRegionData before the WASM guest receives the view.
+    eprintln!("DEBUG: before run_stage: seam_plan entries={}", seam_plan_ir.entries.len());
+    if let Some(entry) = seam_plan_ir.entries.first() {
+        eprintln!("DEBUG: seam_plan entry[0]: layer={}, obj={}, region={}, seam=({:.3},{:.3},{:.3})",
+            entry.region_key.global_layer_index,
+            entry.region_key.object_id,
+            entry.region_key.region_id,
+            entry.chosen_candidate.point.x,
+            entry.chosen_candidate.point.y,
+            entry.chosen_candidate.point.z);
+    }
+    eprintln!("DEBUG: perimeter region: obj={}, region={}", object_id, region_id);
+
+    // Check that blackboard has seam_plan BEFORE dispatch
+    eprintln!("DEBUG: blackboard.seam_plan() before run_stage: {:?}", blackboard.seam_plan().is_some());
+    if let Some(sp) = blackboard.seam_plan() {
+        eprintln!("DEBUG: blackboard seam_plan entries: {}", sp.entries.len());
+    }
+    LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::PerimetersPostProcess".to_string(),
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .expect("PerimetersPostProcess dispatch must succeed");
+
+    eprintln!("DEBUG: after run_stage, arena.perimeter()={:?}", arena.perimeter().is_some());
+
+    // Verify that PerimeterIR in arena now has resolved_seam set
+    // from the SeamPlanIR entry.
+    let perimeter_ir_after = arena
+        .perimeter()
+        .expect("PerimeterIR must be committed after PerimetersPostProcess");
+
+    let region = perimeter_ir_after
+        .regions
+        .first()
+        .expect("at least one region must exist");
+
+    if region.resolved_seam.is_none() {
+        eprintln!("DEBUG: PerimeterIR.resolved_seam is None after PerimetersPostProcess");
+        eprintln!("DEBUG: region object_id={}, region_id={}", region.object_id, region.region_id);
+        eprintln!("DEBUG: perimeter_ir_after.global_layer_index={}", perimeter_ir_after.global_layer_index);
+        eprintln!("DEBUG: seam_placer output: wall_loops={}, seam_candidates={}, resolved_seam_set_by_guest={}",
+            perimeter_ir_after.regions.first().map(|r| r.walls.len()).unwrap_or(0),
+            perimeter_ir_after.regions.first().map(|r| r.seam_candidates.len()).unwrap_or(0),
+            perimeter_ir_after.regions.first().map(|r| r.resolved_seam.is_some()).unwrap_or(false));
+        // Also check the raw wall loop vertices
+        if let Some(r) = perimeter_ir_after.regions.first() {
+            for (wi, loop_) in r.walls.iter().enumerate() {
+                eprintln!("DEBUG: wall[{}] points: {:?}", wi, loop_.path.points.iter().map(|p| (p.x, p.y, p.z)).collect::<Vec<_>>());
+            }
+        }
+    }
+    let resolved_seam = region
+        .resolved_seam
+        .as_ref()
+        .expect("resolved_seam must be injected from SeamPlanIR");
+
+    assert_eq!(
+        resolved_seam.point.x, chosen_x,
+        "resolved_seam.point.x must equal chosen_candidate.x ({chosen_x}), got {}",
+        resolved_seam.point.x
+    );
+    assert_eq!(
+        resolved_seam.point.y, chosen_y,
+        "resolved_seam.point.y must equal chosen_candidate.y ({chosen_y}), got {}",
+        resolved_seam.point.y
+    );
+    assert_eq!(
+        resolved_seam.point.z, chosen_z,
+        "resolved_seam.point.z must equal chosen_candidate.z ({chosen_z}), got {}",
+        resolved_seam.point.z
+    );
+    assert_eq!(
+        resolved_seam.wall_index, chosen_wall_index,
+        "resolved_seam.wall_index must equal chosen_candidate.wall_index ({chosen_wall_index}), got {}",
+        resolved_seam.wall_index
     );
 }

@@ -733,3 +733,35 @@ fn active_region(object_id: &str, region_id: u64) -> ActiveRegion {
         tool_index: 0,
     }
 }
+
+// ── PrePass::SeamPlanning stage order tests (TASK-159) ───────────────────────
+
+#[test]
+fn prepass_seam_planning_stage_orders_between_layer_planning_and_paint_segmentation() {
+    use slicer_host::STAGE_ORDER;
+
+    // Find the indices of the three relevant stages in the canonical order.
+    let seam_idx = STAGE_ORDER
+        .iter()
+        .position(|&s| s == "PrePass::SeamPlanning")
+        .expect("STAGE_ORDER must contain PrePass::SeamPlanning");
+    let layer_plan_idx = STAGE_ORDER
+        .iter()
+        .position(|&s| s == "PrePass::LayerPlanning")
+        .expect("STAGE_ORDER must contain PrePass::LayerPlanning");
+    let paint_seg_idx = STAGE_ORDER
+        .iter()
+        .position(|&s| s == "PrePass::PaintSegmentation")
+        .expect("STAGE_ORDER must contain PrePass::PaintSegmentation");
+
+    // PrePass::SeamPlanning must come AFTER PrePass::LayerPlanning
+    assert!(
+        seam_idx > layer_plan_idx,
+        "PrePass::SeamPlanning (index {seam_idx}) must come after PrePass::LayerPlanning (index {layer_plan_idx})"
+    );
+    // PrePass::SeamPlanning must come BEFORE PrePass::PaintSegmentation
+    assert!(
+        seam_idx < paint_seg_idx,
+        "PrePass::SeamPlanning (index {seam_idx}) must come before PrePass::PaintSegmentation (index {paint_seg_idx})"
+    );
+}

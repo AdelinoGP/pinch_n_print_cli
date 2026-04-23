@@ -42,6 +42,9 @@ fn required_contract_for_stage(stage: &str) -> Option<(&'static [&'static str], 
         "PrePass::LayerPlanning" => {
             Some((&["MeshIR", "SurfaceClassificationIR"], &["LayerPlanIR"]))
         }
+        "PrePass::SeamPlanning" => {
+            Some((&["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"], &["SeamPlanIR"]))
+        }
         "PrePass::PaintSegmentation" => Some((
             &["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"],
             &["PaintRegionIR"],
@@ -210,6 +213,9 @@ fn core_module_reads_are_restricted_to_upstream_ir_root_set() {
             "PrePass::MeshSegmentation" => &["MeshIR"],
             "PrePass::MeshAnalysis" => &["MeshIR"],
             "PrePass::LayerPlanning" => &["MeshIR", "SurfaceClassificationIR"],
+            "PrePass::SeamPlanning" => {
+                &["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"]
+            }
             "PrePass::PaintSegmentation" => {
                 &["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"]
             }
@@ -267,5 +273,48 @@ fn core_module_reads_are_restricted_to_upstream_ir_root_set() {
         offenders.is_empty(),
         "docs/01 §'Module Access Contract' forbids reads of non-upstream IR. Offenders:\n  - {}",
         offenders.join("\n  - ")
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Test 4 — seam-planner-default declares the PrePass::SeamPlanning contract
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Verifies AC-4: the seam-planner-default module manifest declares the
+/// correct prepass contract roots (reads: MeshIR, SurfaceClassificationIR,
+/// LayerPlanIR; writes: SeamPlanIR) with no undeclared layer-stage writes.
+#[test]
+fn seam_planner_default_declares_prepass_contract_roots() {
+    let modules = discover_core_manifests();
+
+    let seam_planner = modules
+        .iter()
+        .find(|(stem, _)| stem.as_str() == "seam-planner-default");
+
+    let Some((_, module)) = seam_planner else {
+        panic!(
+            "seam-planner-default not found under {}. \
+             Is the module's .toml and .wasm present?",
+            core_modules_root().display()
+        )
+    };
+
+    assert_eq!(
+        module.stage, "PrePass::SeamPlanning",
+        "seam-planner-default must declare stage = PrePass::SeamPlanning"
+    );
+
+    let required_reads = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"];
+    for root in &required_reads {
+        assert!(
+            module.ir_reads.iter().any(|p| path_mentions_root(p, root)),
+            "seam-planner-default must declare read root '{}'",
+            root
+        );
+    }
+
+    assert!(
+        module.ir_writes.iter().any(|p| path_mentions_root(p, "SeamPlanIR")),
+        "seam-planner-default must declare write root 'SeamPlanIR'"
     );
 }

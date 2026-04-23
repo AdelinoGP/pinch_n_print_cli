@@ -67,7 +67,7 @@ fn tree_support_dispatch_commits_support_material_paths() {
     ctx.support_output.support_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena)
+    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena, None)
         .expect("commit must succeed");
 
     let support_ir = arena.support().expect("SupportIR must be set after Layer::Support commit");
@@ -117,7 +117,7 @@ fn traditional_support_dispatch_commits_support_material_paths() {
     }
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena)
+    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena, None)
         .expect("commit must succeed");
 
     let support_ir = arena.support().expect("SupportIR must be set after traditional-support commit");
@@ -162,7 +162,7 @@ fn enforcer_forces_live_support_commit_even_when_needs_support_is_false() {
     ctx.support_output.support_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena)
+    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena, None)
         .expect("commit must succeed");
 
     let support_ir = arena.support().expect(
@@ -193,7 +193,7 @@ fn disabled_or_ineligible_support_stage_commits_empty_support_ir() {
     // No paths pushed, all origin vectors empty.
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena)
+    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena, None)
         .expect("commit must succeed (empty commit is not an error)");
 
     let support_ir = arena.support(); // arena.support() returns Option
@@ -220,7 +220,7 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
     }
 
     let mut arena1 = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx1, &mut arena1)
+    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx1, &mut arena1, None)
         .expect("first commit must succeed");
 
     // Second run — identical input
@@ -232,7 +232,7 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
     }
 
     let mut arena2 = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx2, &mut arena2)
+    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx2, &mut arena2, None)
         .expect("second commit must succeed");
 
     // Compare SupportIR outputs
@@ -292,7 +292,7 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
     // the support module honored the blocker.
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena)
+    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena, None)
         .expect("commit must succeed for blocker case (empty is valid)");
 
     let support_ir = arena.support();

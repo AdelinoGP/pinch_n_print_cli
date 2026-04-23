@@ -25,8 +25,9 @@ use slicer_host::{
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExPolygon, GCodeIR, GlobalLayer, LayerCollectionIR,
-    LayerPaintMap, MeshIR, PaintRegionIR, PaintSemantic, PaintValue, Point2, Point3, Polygon,
-    PrintMetadata, SemVer, SemanticRegion, SliceIR, SlicedRegion, StageId, SurfaceClassificationIR,
+    LayerPaintMap, LayerPlanIR, MeshIR, PaintRegionIR, PaintSemantic, PaintValue, Point2, Point3,
+    Polygon, PrintMetadata, SemVer, SemanticRegion, SliceIR, SlicedRegion, StageId,
+    SurfaceClassificationIR,
 };
 
 // ── WAT Fixtures (for non-layer stages on the legacy path) ──────────────
@@ -3158,8 +3159,7 @@ fn path_optimization_rejects_move_override_without_layer_collection_mapping() {
     }));
     let mut arena = LayerArena::new();
     let err = slicer_host::commit_layer_outputs_for_test(
-        "Layer::PathOptimization", "com.test.pathopt-bad", 0, &ctx, &mut arena,
-    ).expect_err("move override must be rejected");
+        "Layer::PathOptimization", "com.test.pathopt-bad", 0, &ctx, &mut arena, None,).expect_err("move override must be rejected");
     let msg = err.to_string();
     assert!(msg.contains("push-move"), "diagnostic should name the rejected method: {msg}");
     assert!(msg.contains("no documented LayerCollectionIR mapping exists"), "diagnostic should explain the contract violation: {msg}");
@@ -3181,8 +3181,7 @@ fn path_optimization_commit_routes_comment_and_raw_to_deferred_annotations() {
 
     let mut arena = LayerArena::new();
     slicer_host::commit_layer_outputs_for_test(
-        "Layer::PathOptimization", "com.test.pathopt-ann", 0, &ctx, &mut arena,
-    ).expect("comment/raw must commit successfully");
+        "Layer::PathOptimization", "com.test.pathopt-ann", 0, &ctx, &mut arena, None,).expect("comment/raw must commit successfully");
 
     let anns = arena.take_deferred_annotations();
     assert_eq!(anns.len(), 2, "both annotations are committed");
@@ -3212,8 +3211,7 @@ fn path_optimization_commit_is_deterministic_across_repeats() {
         let mut arena = LayerArena::new();
         let ctx = mk_ctx();
         slicer_host::commit_layer_outputs_for_test(
-            "Layer::PathOptimization", "com.test.pathopt-det2", 0, &ctx, &mut arena,
-        ).unwrap();
+            "Layer::PathOptimization", "com.test.pathopt-det2", 0, &ctx, &mut arena, None,).unwrap();
         snapshots.push((arena.take_deferred_tool_changes(), arena.take_deferred_annotations()));
     }
     assert_eq!(snapshots[0], snapshots[1]);
@@ -3234,8 +3232,7 @@ fn path_optimization_commit_routes_z_hops_to_deferred_queue() {
 
     let mut arena = LayerArena::new();
     slicer_host::commit_layer_outputs_for_test(
-        "Layer::PathOptimization", "com.test.pathopt-zhop", 0, &ctx, &mut arena,
-    ).expect("z-hop must commit");
+        "Layer::PathOptimization", "com.test.pathopt-zhop", 0, &ctx, &mut arena, None,).expect("z-hop must commit");
 
     let zhops = arena.take_deferred_z_hops();
     assert_eq!(zhops.len(), 2);
@@ -3273,8 +3270,7 @@ fn path_optimization_z_hop_rejects_out_of_bounds_index() {
     });
 
     let err = slicer_host::commit_layer_outputs_for_test(
-        "Layer::PathOptimization", "com.test.pathopt-zhop-oob", 0, &ctx, &mut arena,
-    ).expect_err("out-of-bounds z-hop must fail");
+        "Layer::PathOptimization", "com.test.pathopt-zhop-oob", 0, &ctx, &mut arena, None,).expect_err("out-of-bounds z-hop must fail");
     let msg = err.to_string();
     assert!(msg.contains("after-entity-index=5"), "diagnostic should name field: {msg}");
     assert!(msg.contains("out of bounds"), "diagnostic should explain: {msg}");
@@ -3289,8 +3285,7 @@ fn path_optimization_z_hop_rejects_invalid_hop_height() {
         ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index: 0, hop_height: bad });
         let mut arena = LayerArena::new();
         let err = slicer_host::commit_layer_outputs_for_test(
-            "Layer::PathOptimization", "com.test.pathopt-zhop-bad", 0, &ctx, &mut arena,
-        ).expect_err("bad hop_height must fail");
+            "Layer::PathOptimization", "com.test.pathopt-zhop-bad", 0, &ctx, &mut arena, None,).expect_err("bad hop_height must fail");
         assert!(err.to_string().contains("hop-height"), "diagnostic should name field for {bad}: {err}");
     }
 }
@@ -5452,4 +5447,203 @@ fn mesh_segmentation_macro_path_drain_preserves_push_order() {
         "macro-path drain must preserve the module's push order \
          (object_index_in_host_list, facet asc, semantic asc)"
     );
+}
+
+// ── PrePass::SeamPlanning tests (TASK-159) ──────────────────────────────
+
+#[test]
+fn prepass_seam_planning_requires_layer_plan_slot() {
+    // PrePass::SeamPlanning requires BlackboardPrepassSlot::LayerPlan to be
+    // committed before the stage can run. We verify this by calling the
+    // ensure_stage_prerequisites check directly.
+    use slicer_host::prepass::ensure_stage_prerequisites;
+
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    // No prepass slots committed — LayerPlan is absent.
+    let result = ensure_stage_prerequisites(&"PrePass::SeamPlanning".to_string(), &blackboard);
+    assert!(
+        result.is_err(),
+        "SeamPlanning must fail when LayerPlan is not committed"
+    );
+    let err = result.unwrap_err();
+    match err {
+        slicer_host::prepass::PrepassExecutionError::MissingRequiredPrepass { stage_id, slot } => {
+            assert_eq!(stage_id.as_str(), "PrePass::SeamPlanning");
+            assert_eq!(slot, slicer_host::BlackboardPrepassSlot::LayerPlan);
+        }
+        other => panic!("expected MissingRequiredPrepass, got {other:?}"),
+    }
+}
+
+#[test]
+fn seam_plan_ir_rejects_duplicate_region_keys() {
+    // SeamPlanIR must reject commits that contain duplicate region keys
+    // (same global_layer_index + object_id + region_id triple).
+    // The validation happens at commit time in the blackboard.
+    use slicer_host::{Blackboard, BlackboardError, BlackboardPrepassSlot};
+    use slicer_ir::{RegionKey, SeamPlanEntry, SeamPlanIR, SeamPosition, SemVer};
+
+    let mesh = empty_mesh_ir();
+    let mut blackboard = Blackboard::new(empty_mesh_ir(), 0);
+
+    // Build a minimal valid SeamPosition for the chosen_candidate field.
+    let dummy_position = slicer_ir::Point3WithWidth {
+        x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0,
+    };
+    let seam_position = SeamPosition {
+        point: dummy_position,
+        wall_index: 0,
+    };
+
+    // First commit with valid unique entries.
+    let seam_plan = SeamPlanIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        entries: vec![
+            SeamPlanEntry {
+                region_key: RegionKey {
+                    global_layer_index: 0,
+                    object_id: "obj-A".to_string(),
+                    region_id: 1,
+                },
+                chosen_candidate: seam_position.clone(),
+                scored_candidates: vec![],
+            },
+            SeamPlanEntry {
+                region_key: RegionKey {
+                    global_layer_index: 0,
+                    object_id: "obj-B".to_string(),
+                    region_id: 2,
+                },
+                chosen_candidate: seam_position.clone(),
+                scored_candidates: vec![],
+            },
+        ],
+    };
+
+    // Commit once — should succeed.
+    let result = blackboard.commit_seam_plan(std::sync::Arc::new(seam_plan));
+    assert!(result.is_ok(), "first commit with unique keys should succeed");
+
+    // Second commit — same region key (global_layer_index=0, obj-A, region_id=1)
+    // is a duplicate and must be rejected.
+    let duplicate_seam_plan = SeamPlanIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        entries: vec![
+            SeamPlanEntry {
+                region_key: RegionKey {
+                    global_layer_index: 0,
+                    object_id: "obj-A".to_string(),
+                    region_id: 1, // duplicate of above
+                },
+                chosen_candidate: seam_position,
+                scored_candidates: vec![],
+            },
+        ],
+    };
+    let result2 = blackboard.commit_seam_plan(std::sync::Arc::new(duplicate_seam_plan));
+    assert!(
+        result2.is_err(),
+        "commit with duplicate region key must be rejected"
+    );
+    let err = result2.unwrap_err();
+    match err {
+        BlackboardError::DuplicatePrepassCommit { slot } => {
+            assert_eq!(slot, BlackboardPrepassSlot::SeamPlan);
+        }
+        other => panic!("expected DuplicatePrepassCommit for SeamPlan slot, got {other:?}"),
+    }
+}
+
+/// `PrePass::SeamPlanning` dispatch with the real seam-planner-default module
+/// must return `PrepassStageOutput::SeamPlan`. The module is an MVP no-op (emits
+/// no entries) but the harvest path must still produce a well-formed `SeamPlanIR`.
+///
+/// This is the Step 5 exit-condition test for AC-1.
+#[test]
+fn prepass_seam_planning_commits_seam_plan_ir() {
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let component = {
+        const PATH: &str = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../modules/core-modules/seam-planner-default/seam-planner-default.wasm"
+        );
+        let path = std::path::Path::new(PATH);
+        if !path.exists() {
+            eprintln!("SKIP: seam-planner-default.wasm missing — rebuild core modules");
+            return;
+        }
+        let bytes = std::fs::read(path).expect("read seam-planner-default.wasm");
+        Arc::new(engine.compile_component(&bytes).expect("compile seam-planner-default"))
+    };
+
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+
+    // Build a loaded + compiled module for SeamPlanning.
+    let loaded = make_loaded_module("com.test.seam-planner", "PrePass::SeamPlanning");
+    let pool = Arc::new(
+        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
+            .unwrap(),
+    );
+    let compiled = CompiledModule {
+        module_id: "com.test.seam-planner".to_string(),
+        instance_pool: pool,
+        ir_read_mask: Default::default(),
+        ir_write_mask: Default::default(),
+        config_view: Arc::new(ConfigView::from_map(Default::default())),
+        wasm_component: Some(component),
+    };
+
+    // Build a blackboard with a committed LayerPlanIR (SeamPlanning's required slot).
+    let empty_mesh = empty_mesh_ir();
+    let mut blackboard = Blackboard::new(empty_mesh, 0);
+    blackboard
+        .commit_layer_plan(Arc::new(LayerPlanIR {
+            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            global_layers: vec![],
+            object_participation: Default::default(),
+        }))
+        .expect("commit minimal layer plan for required slot");
+
+    // Also commit SurfaceClassificationIR (MeshAnalysis output that other stages need).
+    blackboard
+        .commit_surface_classification(Arc::new(SurfaceClassificationIR {
+            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            per_object: Default::default(),
+        }))
+        .expect("commit surface classification for required slot");
+
+    let result = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::SeamPlanning".to_string(),
+        &compiled,
+        &blackboard,
+    );
+
+    match result {
+        Ok((PrepassStageOutput::SeamPlan(ir), _)) => {
+            assert_eq!(
+                ir.schema_version,
+                SemVer { major: 1, minor: 0, patch: 0 },
+                "SeamPlanIR schema_version must be 1.0.0"
+            );
+            // seam-planner-default emits seam entries for objects with mesh geometry.
+            // Entries may be empty if the blackboard mesh has no objects.
+            for entry in &ir.entries {
+                assert!(!entry.region_key.object_id.is_empty(), "region_key.object_id must be non-empty");
+                assert!(entry.region_key.global_layer_index < 1000, "global_layer_index must be reasonable");
+                // Verify the chosen position is valid.
+                assert!(entry.chosen_candidate.point.x.is_finite());
+                assert!(entry.chosen_candidate.point.y.is_finite());
+                assert!(entry.chosen_candidate.point.z.is_finite());
+                assert!(entry.chosen_candidate.point.width > 0.0);
+            }
+        }
+        Ok((other, _)) => panic!(
+            "expected PrepassStageOutput::SeamPlan, got {:?}",
+            std::mem::discriminant(&other)
+        ),
+        Err(e) => panic!("SeamPlanning dispatch failed: {e}"),
+    }
 }

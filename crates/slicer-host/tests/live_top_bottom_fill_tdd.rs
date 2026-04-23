@@ -69,7 +69,7 @@ fn commit_layer_outputs_preserves_top_solid_infill_role() {
 
     // Commit into an empty arena.
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Infill", module_id, layer_index, &ctx, &mut arena)
+    commit_layer_outputs_for_test("Layer::Infill", module_id, layer_index, &ctx, &mut arena, None)
         .expect("commit must succeed");
 
     // Verify the role survived through the convert_infill_output path and
@@ -114,7 +114,7 @@ fn commit_layer_outputs_preserves_bottom_solid_infill_role() {
     ctx.infill_output.solid_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Infill", module_id, layer_index, &ctx, &mut arena)
+    commit_layer_outputs_for_test("Layer::Infill", module_id, layer_index, &ctx, &mut arena, None)
         .expect("commit must succeed");
 
     let infill = arena.infill().expect("InfillIR must be set in arena");
@@ -168,7 +168,7 @@ fn commit_layer_outputs_preserves_mixed_infill_roles() {
     ctx.infill_output.solid_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Infill", module_id, layer_index, &ctx, &mut arena)
+    commit_layer_outputs_for_test("Layer::Infill", module_id, layer_index, &ctx, &mut arena, None)
         .expect("commit must succeed");
 
     let infill = arena.infill().expect("InfillIR must be set");
@@ -203,7 +203,7 @@ fn commit_layer_outputs_infill_postprocess_replaces_correctly() {
     ctx1.infill_output.sparse_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Infill", module_id, layer_index, &ctx1, &mut arena)
+    commit_layer_outputs_for_test("Layer::Infill", module_id, layer_index, &ctx1, &mut arena, None)
         .expect("Layer::Infill commit must succeed");
 
     // Confirm no TopSolidInfill before postprocess.
@@ -220,8 +220,7 @@ fn commit_layer_outputs_infill_postprocess_replaces_correctly() {
     ctx2.infill_output.solid_path_origins.push(None);
 
     commit_layer_outputs_for_test(
-        "Layer::InfillPostProcess", module_id, layer_index, &ctx2, &mut arena,
-    ).expect("Layer::InfillPostProcess commit must succeed");
+        "Layer::InfillPostProcess", module_id, layer_index, &ctx2, &mut arena, None,).expect("Layer::InfillPostProcess commit must succeed");
 
     // Verify postprocess replaced (not appended) and TopSolidInfill is present.
     let after = arena.infill().expect("must have infill after postprocess commit");

@@ -405,3 +405,70 @@ fn identity4() -> [f64; 16] {
         1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
     ]
 }
+
+// ── SeamPlan blackboard slot tests (TASK-159) ─────────────────────────────
+
+#[test]
+fn seam_plan_blackboard_slot_is_write_once() {
+    // The SeamPlan blackboard slot follows the standard prepass write-once contract:
+    // exactly one commit is allowed; a second commit must fail with
+    // BlackboardError::DuplicatePrepassCommit { slot: SeamPlan }.
+    use slicer_host::{Blackboard, BlackboardError, BlackboardPrepassSlot};
+    use slicer_ir::{RegionKey, SeamPlanEntry, SeamPlanIR, SeamPosition, SemVer};
+
+    let mesh = Arc::new(mesh_fixture());
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 0);
+
+    // Build a minimal valid SeamPosition for the chosen_candidate field.
+    let dummy_position = slicer_ir::Point3WithWidth {
+        x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0,
+    };
+    let seam_position = SeamPosition {
+        point: dummy_position,
+        wall_index: 0,
+    };
+
+    // Commit an empty SeamPlanIR.
+    let plan = SeamPlanIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        entries: vec![SeamPlanEntry {
+            region_key: RegionKey {
+                global_layer_index: 0,
+                object_id: "cube".to_string(),
+                region_id: 1,
+            },
+            chosen_candidate: seam_position,
+            scored_candidates: vec![],
+        }],
+    };
+
+    let first = blackboard.commit_seam_plan(Arc::new(plan));
+    assert!(
+        first.is_ok(),
+        "first SeamPlan commit should succeed, got {:?}",
+        first.err()
+    );
+
+    // Second commit to the same slot must be rejected.
+    let duplicate = SeamPlanIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        entries: vec![],
+    };
+    let second = blackboard.commit_seam_plan(Arc::new(duplicate));
+    assert!(
+        second.is_err(),
+        "duplicate SeamPlan commit must be rejected"
+    );
+    match second.unwrap_err() {
+        BlackboardError::DuplicatePrepassCommit { slot } => {
+            assert_eq!(slot, BlackboardPrepassSlot::SeamPlan);
+        }
+        other => panic!("expected DuplicatePrepassCommit {{ slot: SeamPlan }}, got {other:?}"),
+    }
+
+    // The slot should be readable after the first commit.
+    assert!(
+        blackboard.seam_plan().is_some(),
+        "seam_plan() should return Some after first commit"
+    );
+}
