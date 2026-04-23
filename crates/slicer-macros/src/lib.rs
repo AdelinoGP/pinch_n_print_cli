@@ -448,6 +448,7 @@ fn resolve_world_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<World
         "PostPass::LayerFinalization" => Some(WorldGlueKind::Finalization),
         "PrePass::MeshAnalysis"
         | "PrePass::LayerPlanning"
+        | "PrePass::SeamPlanning"
         | "PrePass::MeshSegmentation"
         | "PrePass::PaintSegmentation" => Some(WorldGlueKind::Prepass),
         "Layer::Slice"
@@ -1309,6 +1310,32 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 output: layer-plan-output,
                 config: config-view,
             ) -> result<_, module-error>;
+
+            // SeamPlanning stage
+            use geometry.{point3-with-width};
+
+            record seam-reason { tag: string }
+            record scored-seam-candidate {
+                position: point3-with-width,
+                score: f32,
+                reason: seam-reason,
+            }
+            record seam-plan-entry {
+                global-layer-index: u32,
+                object-id: object-id,
+                region-id: region-id,
+                chosen-position: point3-with-width,
+                chosen-wall-index: u32,
+                scored-candidates: list<scored-seam-candidate>,
+            }
+            resource seam-planning-output {
+                push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
+            }
+            export run-seam-planning: func(
+                objects: list<object-id>,
+                output: seam-planning-output,
+                config: config-view,
+            ) -> result<_, module-error>;
         }
     "#;
 
@@ -1432,9 +1459,21 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 participating_layer_indices: object.participating_layer_indices,
             }
         }
+
+        fn __slicer_point3_with_width_from_sdk(
+            sdk_pt: &::slicer_ir::Point3WithWidth,
+        ) -> ::slicer_sdk::prelude::Point3WithWidth {
+            ::slicer_sdk::prelude::Point3WithWidth {
+                x: sdk_pt.x,
+                y: sdk_pt.y,
+                z: sdk_pt.z,
+                width: sdk_pt.width,
+                flow_factor: sdk_pt.flow_factor,
+            }
+        }
     };
 
-    let (mesh_arm, layer_arm, mesh_seg_arm, paint_seg_arm) = match detected_stage {
+    let (mesh_arm, layer_arm, mesh_seg_arm, paint_seg_arm, seam_arm) = match detected_stage {
         "PrePass::MeshAnalysis" => (
             quote! {
                 let ir_config = __slicer_adapt_config(&config);
@@ -1507,12 +1546,13 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     Err(e) => Err(__slicer_error_out(e)),
                 }
             },
-            quote! { Ok(()) },
-            quote! { Ok(()) },
-            quote! { Ok(()) },
+            quote! { Ok(()) }, // layer_arm (unused)
+            quote! { Ok(()) }, // mesh_seg_arm (unused)
+            quote! { Ok(()) }, // paint_seg_arm (unused)
+            quote! { Ok(()) }, // seam_arm (unused)
         ),
         "PrePass::LayerPlanning" => (
-            quote! { Ok(()) },
+            quote! { Ok(()) }, // mesh_arm (unused)
             quote! {
                 let ir_config = __slicer_adapt_config(&config);
                 let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
@@ -1564,8 +1604,9 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     Err(e) => Err(__slicer_error_out(e)),
                 }
             },
-            quote! { Ok(()) },
-            quote! { Ok(()) },
+            quote! { Ok(()) }, // mesh_seg_arm (unused)
+            quote! { Ok(()) }, // paint_seg_arm (unused)
+            quote! { Ok(()) }, // seam_arm (unused)
         ),
         "PrePass::MeshSegmentation" => (
             quote! { Ok(()) },
@@ -1616,7 +1657,8 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     Err(e) => Err(__slicer_error_out(e)),
                 }
             },
-            quote! { Ok(()) },
+            quote! { Ok(()) }, // paint_seg_arm (unused)
+            quote! { Ok(()) }, // seam_arm (unused)
         ),
         "PrePass::PaintSegmentation" => (
             quote! { Ok(()) },
@@ -1651,8 +1693,61 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     Err(e) => Err(__slicer_error_out(e)),
                 }
             },
+            quote! { Ok(()) }, // seam_arm (unused)
         ),
-        _ => (quote! { Ok(()) }, quote! { Ok(()) }, quote! { Ok(()) }, quote! { Ok(()) }),
+        "PrePass::SeamPlanning" => (
+            // SeamPlanning: the seam planner reads MeshIR + SurfaceClassificationIR
+            // via host services and emits SeamPlanEntry records. Forward real
+            // objects list, call run_seam_planning, drain SDK output back through
+            // the WIT seam-planning-output resource.
+            quote! { Ok(()) }, // mesh_arm (unused)
+            quote! { Ok(()) }, // layer_arm (unused)
+            quote! { Ok(()) }, // mesh_seg_arm (unused)
+            quote! { Ok(()) }, // paint_seg_arm (unused)
+            quote! {
+                let ir_config = __slicer_adapt_config(&config);
+                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
+                    Ok(m) => m,
+                    Err(e) => return Err(__slicer_error_out(e)),
+                };
+                let sdk_objects: ::std::vec::Vec<::slicer_ir::ObjectId> = _objects.clone();
+                let mut sdk_output = ::slicer_sdk::prepass_builders::SeamPlanningOutput::new();
+                let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_seam_planning(
+                    &module, &sdk_objects, &mut sdk_output, &ir_config,
+                );
+                for __slicer_entry in sdk_output.entries() {
+                    let __slicer_wit_candidates: ::std::vec::Vec<ScoredSeamCandidate> = __slicer_entry
+                        .scored_candidates
+                        .iter()
+                        .map(|sc| ScoredSeamCandidate {
+                            position: __slicer_point3_with_width_from_sdk(&sc.position),
+                            score: sc.score,
+                            reason: SeamReason { tag: sc.reason.tag.clone() },
+                        })
+                        .collect();
+                    let __slicer_wit_entry = SeamPlanEntry {
+                        global_layer_index: __slicer_entry.global_layer_index,
+                        object_id: __slicer_entry.object_id.clone(),
+                        region_id: __slicer_entry.region_id.clone(),
+                        chosen_position: __slicer_point3_with_width_from_sdk(&__slicer_entry.chosen_position),
+                        chosen_wall_index: __slicer_entry.chosen_wall_index,
+                        scored_candidates: __slicer_wit_candidates,
+                    };
+                    if let Err(e) = _output.push_seam_plan(&__slicer_wit_entry) {
+                        return Err(ModuleError {
+                            code: 11,
+                            message: e,
+                            fatal: true,
+                        });
+                    }
+                }
+                match out {
+                    Ok(()) => Ok(()),
+                    Err(e) => Err(__slicer_error_out(e)),
+                }
+            },
+        ),
+        _ => (quote! { Ok(()) }, quote! { Ok(()) }, quote! { Ok(()) }, quote! { Ok(()) }, quote! { Ok(()) }),
     };
 
     quote! {
@@ -1698,6 +1793,13 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {
                     #paint_seg_arm
+                }
+                fn run_seam_planning(
+                    _objects: Vec<ObjectId>,
+                    _output: SeamPlanningOutput,
+                    config: ConfigView,
+                ) -> Result<(), ModuleError> {
+                    #seam_arm
                 }
             }
 
