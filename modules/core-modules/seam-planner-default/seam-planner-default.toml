@@ -1,0 +1,43 @@
+[module]
+id           = "com.core.seam-planner-default"
+version      = "0.1.0"
+display-name = "Default Seam Planner"
+description  = "Core default seam planner module for PrePass::SeamPlanning"
+author       = "modular-slicer"
+license      = "MIT"
+wit-world    = "slicer:world-prepass@1.0.0"
+
+[stage]
+id = "PrePass::SeamPlanning"
+
+[ir-access]
+reads  = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"]
+writes = ["SeamPlanIR"]
+
+[claims]
+holds    = ["seam-planner"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "2.0.0"
+
+[config.schema]
+[config.schema.seam_mode]
+type    = "string"
+default = "nearest"
+display = "Seam Mode"
+group   = "Seam"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 10
+layer-parallel-safe    = true

@@ -73,7 +73,9 @@ pub struct MeshIR {
 
 pub struct ObjectMesh {
     pub id: ObjectId,                       // stable UUID string
-    pub mesh: IndexedTriangleSet,           // host-owned; never serialized to WASM
+    pub mesh: IndexedTriangleSet,           // host-owned; serialized to WASM only for single-pass modules
+                                               // (PaintSegmentation, MeshSegmentation, SeamPlanning); not
+                                               // serialized for multi-pass per-layer modules
     pub transform: Transform3d,             // world-space placement (column-major f64)
     pub config: ObjectConfig,               // raw user config, not yet override-resolved
     pub modifier_volumes: Vec<ModifierVolume>,

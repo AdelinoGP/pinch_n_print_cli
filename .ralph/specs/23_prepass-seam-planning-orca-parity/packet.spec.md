@@ -1,9 +1,10 @@
 ---
-status: draft
+status: superseded
 packet: 23_prepass-seam-planning-orca-parity
 task_ids:
   - TASK-159
 backlog_source: docs/07_implementation_status.md
+superseded_by: 23-rev1_prepass-seam-planning-orca-parity
 ---
 
 # Packet Contract: 23_prepass-seam-planning-orca-parity
