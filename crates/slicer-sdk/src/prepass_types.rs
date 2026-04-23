@@ -4,6 +4,7 @@
 //! They are used by PrepassModule implementations for mesh analysis and layer planning stages.
 
 use serde::{Deserialize, Serialize};
+use slicer_ir::Point3WithWidth;
 
 /// Type alias for object IDs (per ir-types.wit: `type object-id = string`).
 pub type ObjectId = String;
@@ -274,4 +275,39 @@ impl LayerProposal {
     pub fn new(z: f32, active_regions: Vec<RegionLayerProposal>) -> Self {
         Self { z, active_regions }
     }
+}
+
+/// Reason tag for seam scoring (mirrors WIT `seam-reason`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SeamReason {
+    /// Semantic tag describing why this candidate scored this way.
+    pub tag: String,
+}
+
+/// One scored seam candidate from the prepass planner.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScoredSeamCandidate {
+    /// 3D position with extrusion width.
+    pub position: Point3WithWidth,
+    /// Numerical score (higher = better).
+    pub score: f32,
+    /// Human-readable reason for the score.
+    pub reason: SeamReason,
+}
+
+/// One entry in the global seam plan.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SeamPlanEntry {
+    /// Global layer index for this seam plan entry.
+    pub global_layer_index: u32,
+    /// Object this entry belongs to.
+    pub object_id: ObjectId,
+    /// Region identifier within the object.
+    pub region_id: RegionId,
+    /// The chosen seam position for this region at this layer.
+    pub chosen_position: Point3WithWidth,
+    /// Wall index the chosen seam belongs to (0 = outermost).
+    pub chosen_wall_index: u32,
+    /// All scored candidates considered, including the chosen one.
+    pub scored_candidates: Vec<ScoredSeamCandidate>,
 }

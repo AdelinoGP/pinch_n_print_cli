@@ -146,6 +146,31 @@ wit_bindgen::generate!({
                 output: layer-plan-output,
                 config: config-view,
             ) -> result<_, module-error>;
+
+            // SeamPlanning stage
+            record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32 }
+            record seam-reason { tag: string }
+            record scored-seam-candidate {
+                position: point3-with-width,
+                score: f32,
+                reason: seam-reason,
+            }
+            record seam-plan-entry {
+                global-layer-index: u32,
+                object-id: object-id,
+                region-id: region-id,
+                chosen-position: point3-with-width,
+                chosen-wall-index: u32,
+                scored-candidates: list<scored-seam-candidate>,
+            }
+            resource seam-planning-output {
+                push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
+            }
+            export run-seam-planning: func(
+                objects: list<object-id>,
+                output: seam-planning-output,
+                config: config-view,
+            ) -> result<_, module-error>;
         }
     "#,
     world: "prepass-module",
@@ -164,6 +189,9 @@ impl Guest for Component {
         Ok(())
     }
     fn run_paint_segmentation(_objects: Vec<PaintSegmentationObjectView>, _output: PaintSegmentationOutput, _config: ConfigView) -> Result<(), ModuleError> {
+        Ok(())
+    }
+    fn run_seam_planning(_objects: Vec<ObjectId>, _output: SeamPlanningOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
     }
 }

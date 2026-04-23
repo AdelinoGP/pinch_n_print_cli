@@ -77,4 +77,34 @@ world prepass-module {
         output: paint-segmentation-output,
         config: config-view,
     ) -> result<_, module-error>;
+
+    // SeamPlanning stage
+    // Computes optimal seam positions for each region using prepass geometry analysis.
+    use slicer:ir-types/ir-handles.{layer-idx};
+    use slicer:types/geometry.{point3-with-width};
+
+    record seam-reason { tag: string }
+    record scored-seam-candidate {
+        position: point3-with-width,
+        score: f32,
+        reason: seam-reason,
+    }
+    record seam-plan-entry {
+        global-layer-index: layer-idx,
+        object-id: object-id,
+        region-id: region-id,
+        chosen-position: point3-with-width,
+        chosen-wall-index: u32,
+        scored-candidates: list<scored-seam-candidate>,
+    }
+
+    resource seam-planning-output {
+        push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
+    }
+
+    export run-seam-planning: func(
+        objects: list<object-id>,
+        output: seam-planning-output,
+        config: config-view,
+    ) -> result<_, module-error>;
 }

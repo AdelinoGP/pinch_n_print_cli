@@ -16,6 +16,7 @@ use crate::postpass_builders::GcodeOutputBuilder;
 use crate::postpass_types::GcodeCommand;
 use crate::prepass_builders::{
     LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput, PaintSegmentationOutput,
+    SeamPlanningOutput,
 };
 use crate::prepass_types::{MeshObjectView, ObjectId, PaintSegmentationObjectView};
 use crate::views::{PerimeterRegionView, SliceRegionView};
@@ -390,6 +391,20 @@ pub trait PrepassModule: Sized {
         &self,
         _objects: &[PaintSegmentationObjectView],
         _output: &mut PaintSegmentationOutput,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run seam planning to compute optimal seam positions for each region.
+    ///
+    /// Uses the mesh from `run_mesh_segmentation` and facet annotations from
+    /// `run_mesh_analysis` to score and select seam positions for each region.
+    /// Default implementation does nothing.
+    fn run_seam_planning(
+        &self,
+        _objects: &[MeshObjectView],
+        _output: &mut SeamPlanningOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())

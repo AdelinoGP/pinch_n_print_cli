@@ -26,12 +26,12 @@ pub use crate::postpass_types::{GcodeCommand, GcodeOutputCommand};
 // Prepass types and builders
 pub use crate::prepass_builders::{
     LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput, ObjectMeshModification,
-    PaintRegionEntry, PaintSegmentationOutput, TrianglePaintMark,
+    PaintRegionEntry, PaintSegmentationOutput, SeamPlanningOutput, TrianglePaintMark,
 };
 pub use crate::prepass_types::{
     FacetAnnotation, FacetClass, LayerProposal, MeshObjectView, ObjectId, PaintLayerView,
     PaintSegmentationObjectView, PaintStrokeView, PaintValueView, RegionId as PrepassRegionId,
-    RegionLayerProposal, SurfaceGroupProposal,
+    RegionLayerProposal, ScoredSeamCandidate, SeamPlanEntry, SeamReason, SurfaceGroupProposal,
 };
 
 // IR re-exports

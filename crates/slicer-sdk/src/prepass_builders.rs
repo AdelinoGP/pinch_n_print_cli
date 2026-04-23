@@ -339,3 +339,48 @@ impl std::fmt::Debug for PaintSegmentationOutput {
             .finish()
     }
 }
+
+/// Output builder for seam planning stage.
+///
+/// Collects seam plan entries produced by `PrepassModule::run_seam_planning`.
+pub struct SeamPlanningOutput {
+    entries: Vec<super::prepass_types::SeamPlanEntry>,
+}
+
+impl SeamPlanningOutput {
+    /// Create a new empty output.
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+
+    /// Push a seam plan entry.
+    pub fn push_seam_plan(
+        &mut self,
+        entry: super::prepass_types::SeamPlanEntry,
+    ) -> Result<(), String> {
+        self.entries.push(entry);
+        Ok(())
+    }
+
+    /// Get all entries (for testing).
+    #[doc(hidden)]
+    pub fn entries(&self) -> &[super::prepass_types::SeamPlanEntry] {
+        &self.entries
+    }
+}
+
+impl Default for SeamPlanningOutput {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for SeamPlanningOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SeamPlanningOutput")
+            .field("entries", &self.entries.len())
+            .finish()
+    }
+}
