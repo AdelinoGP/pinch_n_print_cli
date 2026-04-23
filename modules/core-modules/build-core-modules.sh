@@ -37,6 +37,7 @@ MODULES=(
     "lightning-infill:lightning_infill_guest"
     "paint-region-annotator:paint_region_annotator_guest"
     "rectilinear-infill:rectilinear_infill_guest"
+    "seam-planner-default:seam_planner_default_guest"
     "seam-placer:seam_placer_guest"
     "skirt-brim:skirt_brim_guest"
     "support-surface-ironing:support_surface_ironing_guest"
