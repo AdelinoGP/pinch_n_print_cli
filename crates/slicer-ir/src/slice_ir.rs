@@ -731,6 +731,55 @@ pub struct LayerPlanIR {
 }
 
 // ============================================================================
+// Seam Plan IR Types
+// ============================================================================
+
+/// One scored seam candidate from the prepass planner.
+///
+/// Used both inside `SeamPlanEntry.scored_candidates` and as the
+/// `SeamPlanEntry.chosen_candidate` selected by the planning algorithm.
+/// The `score` field is the primary sort key; lower is better.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ScoredSeamCandidate {
+    /// Candidate position with extrusion width.
+    pub position: Point3WithWidth,
+    /// Normalized seam score (lower = preferred).
+    pub score: f32,
+    /// Enum tag explaining why this candidate was scored this way.
+    pub reason: SeamReason,
+}
+
+/// One entry in the global seam plan.
+///
+/// Produced once per `(global_layer_index, object_id, region_id)` triple
+/// by `PrePass::SeamPlanning` and stored immutably on the blackboard.
+/// Consumed at dispatch time by `Layer::PerimetersPostProcess` to seed
+/// `PerimeterRegionView.resolved_seam` so the apply-stage module
+/// (seam-placer) operates on a pre-resolved seam without rescoring.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SeamPlanEntry {
+    /// Stable region key for lookup during layer dispatch.
+    pub region_key: RegionKey,
+    /// The seam position selected by the planner.
+    pub chosen_candidate: SeamPosition,
+    /// Full scored candidate list for evidence and regression checks.
+    pub scored_candidates: Vec<ScoredSeamCandidate>,
+}
+
+/// Seam plan IR — committed once to the blackboard by `PrePass::SeamPlanning`.
+///
+/// Stored as write-once on the blackboard alongside the other prepass
+/// artifacts. Consumed by the layer dispatch path to inject resolved
+/// seams into `PerimeterRegionView` before `seam-placer` runs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SeamPlanIR {
+    /// Schema version of this IR.
+    pub schema_version: SemVer,
+    /// One entry per active `(layer, object, region)` triple.
+    pub entries: Vec<SeamPlanEntry>,
+}
+
+// ============================================================================
 // Paint Region IR Types
 // ============================================================================
 

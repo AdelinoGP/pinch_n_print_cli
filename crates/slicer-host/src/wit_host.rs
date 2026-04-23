@@ -396,6 +396,13 @@ pub struct MeshSegmentationOutputData;
 /// This struct is just a table-entry tag so the resource-handle lifecycle
 /// works; the actual data lives on the context.
 pub struct PaintSegmentationOutputData;
+/// Backing data for prepass `seam-planning-output` resource.
+///
+/// Seam-plan entries emitted by `push-seam-plan` during a WIT prepass
+/// invocation are stored on `HostExecutionContext::seam_plan_entries`.
+/// This struct is just a table-entry tag so the resource-handle lifecycle
+/// works; the actual data lives on the context.
+pub struct SeamPlanningOutputData;
 
 
 #[allow(missing_docs)]
@@ -410,6 +417,7 @@ pub mod prepass {
                 record point2 { x: s64, y: s64 }
                 record polygon { points: list<point2> }
                 record ex-polygon { contour: polygon, holes: list<polygon> }
+                record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32 }
             }
 
             interface config-types {
@@ -448,6 +456,7 @@ pub mod prepass {
                 import config-types;
                 type object-id = string;
                 type region-id = string;
+                type layer-idx = u32;
                 record module-error { code: u32, message: string, fatal: bool }
 
                 enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
@@ -571,6 +580,34 @@ pub mod prepass {
                 export run-layer-planning: func(
                     objects: list<object-id>,
                     output: layer-plan-output,
+                    config: config-view,
+                ) -> result<_, module-error>;
+
+                // SeamPlanning stage
+                use geometry.{point3-with-width};
+
+                record seam-reason { tag: string }
+                record scored-seam-candidate {
+                    position: point3-with-width,
+                    score: f32,
+                    reason: seam-reason,
+                }
+                record seam-plan-entry {
+                    global-layer-index: layer-idx,
+                    object-id: object-id,
+                    region-id: region-id,
+                    chosen-position: point3-with-width,
+                    chosen-wall-index: u32,
+                    scored-candidates: list<scored-seam-candidate>,
+                }
+
+                resource seam-planning-output {
+                    push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
+                }
+
+                export run-seam-planning: func(
+                    objects: list<object-id>,
+                    output: seam-planning-output,
                     config: config-view,
                 ) -> result<_, module-error>;
             }
@@ -1091,6 +1128,12 @@ pub struct HostExecutionContext {
     /// Empty for all non-prepass stages.
     pub paint_region_entries: Vec<prepass::PaintRegionEntry>,
 
+    /// Seam-plan entries collected during a prepass `run-seam-planning`
+    /// invocation. Stored as raw `prepass::SeamPlanEntry` records so the
+    /// harvest helper can convert them to `SeamPlanIR` without losing any field.
+    /// Empty for all non-prepass stages.
+    pub seam_plan_entries: Vec<prepass::SeamPlanEntry>,
+
     /// Finalization builder pushes collected during a finalization
     /// `run-finalization` invocation. The host-side
     /// `HostFinalizationOutputBuilder::drop` moves the resource's
@@ -1148,6 +1191,7 @@ impl HostExecutionContext {
             mesh_analysis_surface_groups: Vec::new(),
             mesh_segmentation_marks: Vec::new(),
             paint_region_entries: Vec::new(),
+            seam_plan_entries: Vec::new(),
             finalization_pushes: Vec::new(),
             runtime_reads: Vec::new(),
             layer_z,
@@ -1296,6 +1340,18 @@ impl HostExecutionContext {
         &mut self,
     ) -> wasmtime::Result<Resource<prepass::PaintSegmentationOutput>> {
         let rep = self.table.push(PaintSegmentationOutputData)?;
+        Ok(Resource::new_own(rep.rep()))
+    }
+
+    /// Push a seam-planning-output resource (prepass world). The
+    /// returned handle is what the host passes into
+    /// `run-seam-planning`; guest calls to `push-seam-plan` go
+    /// through `HostSeamPlanningOutput::push_seam_plan` below,
+    /// which appends entries to `seam_plan_entries`.
+    pub fn push_seam_planning_output(
+        &mut self,
+    ) -> wasmtime::Result<Resource<prepass::SeamPlanningOutput>> {
+        let rep = self.table.push(SeamPlanningOutputData)?;
         Ok(Resource::new_own(rep.rep()))
     }
 
@@ -3004,6 +3060,34 @@ mod prepass_impls {
         }
         fn drop(&mut self, rep: Resource<pm::PaintSegmentationOutput>) -> wasmtime::Result<()> {
             let typed: Resource<PaintSegmentationOutputData> = Resource::new_own(rep.rep());
+            self.table.delete(typed)?;
+            Ok(())
+        }
+    }
+
+    impl pm::HostSeamPlanningOutput for HostExecutionContext {
+        fn push_seam_plan(
+            &mut self,
+            _handle: Resource<pm::SeamPlanningOutput>,
+            entry: pm::SeamPlanEntry,
+        ) -> wasmtime::Result<Result<(), String>> {
+            // Validate before collecting. Empty object-id would corrupt
+            // the RegionKey construction in the harvest helper.
+            if entry.object_id.is_empty() {
+                return Ok(Err(String::from(
+                    "seam-planning-output: object-id must be non-empty",
+                )));
+            }
+            if entry.region_id.is_empty() {
+                return Ok(Err(String::from(
+                    "seam-planning-output: region-id must be non-empty",
+                )));
+            }
+            self.seam_plan_entries.push(entry);
+            Ok(Ok(()))
+        }
+        fn drop(&mut self, rep: Resource<pm::SeamPlanningOutput>) -> wasmtime::Result<()> {
+            let typed: Resource<SeamPlanningOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
             Ok(())
         }

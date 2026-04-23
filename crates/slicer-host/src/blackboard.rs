@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use slicer_ir::{
     InfillIR, LayerAnnotation, LayerCollectionIR, LayerPlanIR, MeshIR, MeshSegmentationIR,
-    PaintRegionIR, PerimeterIR, RegionMapIR, SliceIR, SupportIR, SurfaceClassificationIR,
-    ToolChange, ZHop,
+    PaintRegionIR, PerimeterIR, RegionMapIR, SeamPlanIR, SliceIR, SupportIR,
+    SurfaceClassificationIR, ToolChange, ZHop,
 };
 
 /// Host-owned immutable global IR store plus write-once per-layer output slots.
@@ -19,6 +19,7 @@ pub struct Blackboard {
     surface_classification: Option<Arc<SurfaceClassificationIR>>,
     mesh_segmentation: Option<Arc<MeshSegmentationIR>>,
     layer_plan: Option<Arc<LayerPlanIR>>,
+    seam_plan: Option<Arc<SeamPlanIR>>,
     paint_regions: Option<Arc<PaintRegionIR>>,
     region_map: Option<Arc<RegionMapIR>>,
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
@@ -99,6 +100,8 @@ pub enum BlackboardPrepassSlot {
     MeshSegmentation,
     /// Layer plan produced by `PrePass::LayerPlanning`.
     LayerPlan,
+    /// Seam plan produced by `PrePass::SeamPlanning`.
+    SeamPlan,
     /// Paint regions produced by `PrePass::PaintSegmentation`.
     PaintRegions,
     /// Region map produced by `PrePass::RegionMapping`.
@@ -111,6 +114,7 @@ impl fmt::Display for BlackboardPrepassSlot {
             Self::SurfaceClassification => "surface-classification",
             Self::MeshSegmentation => "mesh-segmentation",
             Self::LayerPlan => "layer-plan",
+            Self::SeamPlan => "seam-plan",
             Self::PaintRegions => "paint-regions",
             Self::RegionMap => "region-map",
         };
@@ -128,6 +132,7 @@ impl Blackboard {
             surface_classification: None,
             mesh_segmentation: None,
             layer_plan: None,
+            seam_plan: None,
             paint_regions: None,
             region_map: None,
             layer_outputs: Some((0..layer_count).map(|_| None).collect()),
@@ -185,6 +190,17 @@ impl Blackboard {
     #[must_use]
     pub fn layer_plan(&self) -> Option<&Arc<LayerPlanIR>> {
         self.layer_plan.as_ref()
+    }
+
+    /// Commit `SeamPlanIR` exactly once.
+    pub fn commit_seam_plan(&mut self, ir: Arc<SeamPlanIR>) -> Result<(), BlackboardError> {
+        commit_prepass(&mut self.seam_plan, ir, BlackboardPrepassSlot::SeamPlan)
+    }
+
+    /// Return the committed seam plan, if available.
+    #[must_use]
+    pub fn seam_plan(&self) -> Option<&Arc<SeamPlanIR>> {
+        self.seam_plan.as_ref()
     }
 
     /// Commit `PaintRegionIR` exactly once.

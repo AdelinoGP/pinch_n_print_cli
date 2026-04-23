@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use wasmtime::component::Resource;
 
-use slicer_ir::{GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, StageId};
+use slicer_ir::{GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, SeamPosition, StageId};
 
 use crate::wit_host::{self, ConfigViewData, HostExecutionContext, PaintRegionLayerData};
 use crate::{
@@ -33,6 +33,7 @@ pub fn export_name_for_stage(stage_id: &str) -> Option<&'static str> {
         "PrePass::MeshSegmentation" => Some("run-mesh-segmentation"),
         "PrePass::MeshAnalysis" => Some("run-mesh-analysis"),
         "PrePass::LayerPlanning" => Some("run-layer-planning"),
+        "PrePass::SeamPlanning" => Some("run-seam-planning"),
         "PrePass::PaintSegmentation" => Some("run-paint-segmentation"),
         "Layer::Slice" => Some("run-slice"),
         "Layer::SlicePostProcess" => Some("run-slice-postprocess"),
@@ -248,6 +249,7 @@ struct LayerParams<'a> {
     layer_index: u32,
     layer_z: f32,
     paint_ir: Option<&'a slicer_ir::PaintRegionIR>,
+    seam_plan_ir: Option<&'a slicer_ir::SeamPlanIR>,
     arena: &'a LayerArena,
 }
 
@@ -300,6 +302,7 @@ impl WasmRuntimeDispatcher {
         envelope_floor: f32,
         envelope_height: f32,
         paint_ir: Option<&slicer_ir::PaintRegionIR>,
+        _seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
         arena: &LayerArena,
     ) -> Result<HostExecutionContext, DispatchError> {
         let export_name = export_name_for_stage(stage_id).ok_or_else(|| DispatchError {
@@ -389,6 +392,7 @@ impl WasmRuntimeDispatcher {
                 layer_index,
                 layer_z,
                 paint_ir,
+                seam_plan_ir: blackboard.seam_plan().map(|arc| arc.as_ref()),
                 arena,
             },
         )?;
@@ -448,7 +452,8 @@ impl WasmRuntimeDispatcher {
             }
             "Layer::InfillPostProcess" => {
                 let region_handles =
-                    push_perimeter_regions(config.store, params.arena).map_err(mk_ctx_err)?;
+                    push_perimeter_regions(config.store, params.arena, None, params.layer_index)
+                        .map_err(mk_ctx_err)?;
                 let output = config.store
                     .data_mut()
                     .push_infill_output_builder()
@@ -504,8 +509,13 @@ impl WasmRuntimeDispatcher {
                     .map_err(mk_call_err)
             }
             "Layer::PerimetersPostProcess" => {
-                let region_handles =
-                    push_perimeter_regions(config.store, params.arena).map_err(mk_ctx_err)?;
+                let region_handles = push_perimeter_regions(
+                    config.store,
+                    params.arena,
+                    params.seam_plan_ir,
+                    params.layer_index,
+                )
+                .map_err(mk_ctx_err)?;
                 let output = config.store
                     .data_mut()
                     .push_perimeter_output_builder()
@@ -550,7 +560,8 @@ impl WasmRuntimeDispatcher {
             }
             "Layer::PathOptimization" => {
                 let region_handles =
-                    push_perimeter_regions(config.store, params.arena).map_err(mk_ctx_err)?;
+                    push_perimeter_regions(config.store, params.arena, None, params.layer_index)
+                        .map_err(mk_ctx_err)?;
                 let output = config.store
                     .data_mut()
                     .push_gcode_output_builder()
@@ -673,6 +684,11 @@ impl WasmRuntimeDispatcher {
                 }).collect();
                 let output = store.data_mut().push_paint_segmentation_output().map_err(mk_ctx_err)?;
                 bindings.call_run_paint_segmentation(&mut store, &paint_object_views, own(output), own(config_handle)).map_err(mk_call_err)
+            }
+            "PrePass::SeamPlanning" => {
+                let object_ids: Vec<String> = blackboard.mesh().objects.iter().map(|o| o.id.clone()).collect();
+                let output = store.data_mut().push_seam_planning_output().map_err(mk_ctx_err)?;
+                bindings.call_run_seam_planning(&mut store, &object_ids, own(output), own(config_handle)).map_err(mk_call_err)
             }
             _ => Err(DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),
@@ -1133,6 +1149,8 @@ fn push_slice_regions(
 fn push_perimeter_regions(
     store: &mut wasmtime::Store<HostExecutionContext>,
     arena: &LayerArena,
+    seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
+    layer_index: u32,
 ) -> Result<Vec<Resource<wit_host::PerimeterRegionData>>, wasmtime::Error> {
     let perimeter_ir = match arena.perimeter() {
         Some(ir) => ir,
@@ -1141,7 +1159,33 @@ fn push_perimeter_regions(
 
     let mut handles = Vec::with_capacity(perimeter_ir.regions.len());
     for region in &perimeter_ir.regions {
-        let data = wit_host::perimeter_region_to_data(region);
+        let mut data = wit_host::perimeter_region_to_data(region);
+        // Inject resolved seam from SeamPlanIR if available for this region.
+        if let Some(seam_ir) = seam_plan_ir {
+            eprintln!("DEBUG push_perimeter_regions: seam_plan_ir has {} entries, looking for layer={}, obj={}, region={}",
+                seam_ir.entries.len(), layer_index, region.object_id, region.region_id);
+            if let Some(entry) = seam_ir.entries.iter().find(|e| {
+                e.region_key.global_layer_index == layer_index
+                    && e.region_key.object_id == region.object_id
+                    && e.region_key.region_id == region.region_id
+            }) {
+                eprintln!("DEBUG push_perimeter_regions: MATCHED! injecting seam ({:.3},{:.3},{:.3}) wall_index={}",
+                    entry.chosen_candidate.point.x, entry.chosen_candidate.point.y, entry.chosen_candidate.point.z,
+                    entry.chosen_candidate.wall_index);
+                data.resolved_seam = Some((
+                    wit_host::Point3 {
+                        x: entry.chosen_candidate.point.x,
+                        y: entry.chosen_candidate.point.y,
+                        z: entry.chosen_candidate.point.z,
+                    },
+                    entry.chosen_candidate.wall_index,
+                ));
+            } else {
+                eprintln!("DEBUG push_perimeter_regions: no matching entry found");
+            }
+        } else {
+            eprintln!("DEBUG push_perimeter_regions: seam_plan_ir is None");
+        }
         let handle = store.data_mut().push_perimeter_region(data)?;
         handles.push(handle);
     }
@@ -1252,6 +1296,90 @@ fn harvest_layer_plan_ir(
         schema_version: SemVer { major: 1, minor: 0, patch: 0 },
         global_layers,
         object_participation,
+    })
+}
+
+// ── Seam-plan harvest ──────────────────────────────────────────────────────
+
+/// Convert WIT `SeamPlanEntry` records collected by a `PrePass::SeamPlanning`
+/// call into a host-side [`slicer_ir::SeamPlanIR`].
+///
+/// Entries are keyed by `(global_layer_index, object_id, region_id)` and
+/// deduplicated — if two entries share the same key the second wins.
+fn harvest_seam_plan_ir(
+    _stage_id: &str,
+    _module_id: &str,
+    ctx: wit_host::HostExecutionContext,
+) -> Result<slicer_ir::SeamPlanIR, String> {
+    use slicer_ir::{RegionKey, ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition, SemVer};
+    use std::collections::HashMap;
+
+    let mut seen: HashMap<RegionKey, ()> = HashMap::new();
+    let mut entries: Vec<SeamPlanEntry> = Vec::with_capacity(ctx.seam_plan_entries.len());
+
+    for entry in ctx.seam_plan_entries.into_iter() {
+        let region_id = parse_canonical_region_id(&entry.region_id).map_err(|reason| {
+            format!(
+                "seam-planning-output: region '{}'/'{}' has invalid region-id: {reason}",
+                entry.object_id, entry.region_id
+            )
+        })?;
+
+        let region_key = RegionKey {
+            global_layer_index: entry.global_layer_index,
+            object_id: entry.object_id.clone(),
+            region_id,
+        };
+
+        // Deduplicate: later entry wins for same key
+        let is_duplicate = seen.contains_key(&region_key);
+        seen.insert(region_key.clone(), ());
+        if is_duplicate {
+            continue;
+        }
+
+        let scored_candidates: Vec<ScoredSeamCandidate> = entry
+            .scored_candidates
+            .iter()
+            .map(|sc| ScoredSeamCandidate {
+                position: slicer_ir::Point3WithWidth {
+                    x: sc.position.x,
+                    y: sc.position.y,
+                    z: sc.position.z,
+                    width: sc.position.width,
+                    flow_factor: sc.position.flow_factor,
+                },
+                score: sc.score,
+                reason: match sc.reason.tag.as_str() {
+                    "concave" => slicer_ir::SeamReason::Concave,
+                    "sharp" => slicer_ir::SeamReason::Sharp,
+                    "user_forced" => slicer_ir::SeamReason::UserForced,
+                    _ => slicer_ir::SeamReason::Aligned,
+                },
+            })
+            .collect();
+
+        let chosen_candidate = SeamPosition {
+            point: slicer_ir::Point3WithWidth {
+                x: entry.chosen_position.x,
+                y: entry.chosen_position.y,
+                z: entry.chosen_position.z,
+                width: entry.chosen_position.width,
+                flow_factor: entry.chosen_position.flow_factor,
+            },
+            wall_index: entry.chosen_wall_index,
+        };
+
+        entries.push(SeamPlanEntry {
+            region_key,
+            chosen_candidate,
+            scored_candidates,
+        });
+    }
+
+    Ok(SeamPlanIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        entries,
     })
 }
 
@@ -1483,6 +1611,18 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
             return Ok((PrepassStageOutput::PaintRegions(Arc::new(ir)), runtime_reads));
         }
 
+        // For the SeamPlanning stage, convert collected seam-plan entries
+        // to SeamPlanIR.
+        if stage_id == "PrePass::SeamPlanning" {
+            let ir = harvest_seam_plan_ir(stage_id, &module.module_id, ctx)
+                .map_err(|e| PrepassExecutionError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e,
+                })?;
+            return Ok((PrepassStageOutput::SeamPlan(Arc::new(ir)), runtime_reads));
+        }
+
         // For the MeshAnalysis stage, surface any guest-emitted
         // annotations / surface groups via `MeshAnalysisAuxiliary` when
         // the drain is non-empty. A guest that pushed nothing still
@@ -1567,6 +1707,8 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         // Extract paint region IR from blackboard for paint-consuming stages.
         let paint_ir = blackboard.paint_regions();
         let paint_ref = paint_ir.map(|arc| arc.as_ref());
+        let seam_plan_ir = blackboard.seam_plan();
+        let seam_plan_ref = seam_plan_ir.map(|arc| arc.as_ref());
         let (envelope_floor, envelope_height) = derive_layer_output_envelope(layer, arena);
 
         // Layer stages always use the typed component-model boundary.
@@ -1579,14 +1721,20 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             envelope_floor,
             envelope_height,
             paint_ref,
+            seam_plan_ref,
             arena,
         ) {
-            Ok(ctx) => ctx,
+            Ok(ctx) => {
+                eprintln!("DEBUG run_stage: dispatch_layer_call returned Ok, calling commit_layer_outputs");
+                ctx
+            }
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
                 // Placeholder/uncompiled module — skip gracefully.
+                eprintln!("DEBUG run_stage: MissingComponent error, returning early without commit");
                 return Ok((LayerStageOutput::Success, Vec::new()));
             }
             Err(e) => {
+                eprintln!("DEBUG run_stage: DispatchError phase={:?}, returning error", e.phase);
                 return Err(LayerStageError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
@@ -1599,7 +1747,39 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         let runtime_reads: Vec<String> = ctx.runtime_reads.clone();
 
         // Commit collected outputs into the layer arena based on stage.
-        commit_layer_outputs(stage_id, &module.module_id, layer.index, &ctx, arena)?;
+        eprintln!("DEBUG run_stage: about to call commit_layer_outputs for {}", stage_id);
+        use std::io::Write;
+        let _ = std::io::stderr().write_all(b"DEBUG run_stage: calling commit_layer_outputs now\n");
+        std::io::stderr().flush().ok();
+        commit_layer_outputs(stage_id, &module.module_id, layer.index, &ctx, arena, seam_plan_ref)?;
+        let _ = std::io::stderr().write_all(b"DEBUG run_stage: commit_layer_outputs returned\n");
+        std::io::stderr().flush().ok();
+
+        // For Layer::Perimeters: inject seam from SeamPlanIR into arena.perimeter()
+        // so PerimetersPostProcess can merge it into the guest output.
+        // The seam was sent to the WASM store via PerimeterRegionData but was NOT
+        // baked into the PerimeterIR committed above (WASM output doesn't carry it).
+        if stage_id == "Layer::Perimeters" {
+            if let Some(seam_ir) = seam_plan_ir {
+                if let Some(mut perimeter) = arena.take_perimeter() {
+                    for region in &mut perimeter.regions {
+                        if region.resolved_seam.is_none() {
+                            if let Some(entry) = seam_ir.entries.iter().find(|e| {
+                                e.region_key.global_layer_index == layer.index
+                                    && e.region_key.object_id == region.object_id
+                                    && e.region_key.region_id == region.region_id
+                            }) {
+                                region.resolved_seam = Some(SeamPosition {
+                                    point: entry.chosen_candidate.point,
+                                    wall_index: entry.chosen_candidate.wall_index,
+                                });
+                            }
+                        }
+                    }
+                    let _ = arena.set_perimeter(perimeter);
+                }
+            }
+        }
 
         Ok((LayerStageOutput::Success, runtime_reads))
     }
@@ -1628,8 +1808,9 @@ pub fn commit_layer_outputs_for_test(
     layer_index: u32,
     ctx: &HostExecutionContext,
     arena: &mut LayerArena,
+    seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
 ) -> Result<(), LayerStageError> {
-    commit_layer_outputs(stage_id, module_id, layer_index, ctx, arena)
+    commit_layer_outputs(stage_id, module_id, layer_index, ctx, arena, seam_plan_ir)
 }
 
 fn commit_layer_outputs(
@@ -1638,6 +1819,7 @@ fn commit_layer_outputs(
     layer_index: u32,
     ctx: &HostExecutionContext,
     arena: &mut LayerArena,
+    seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
 ) -> Result<(), LayerStageError> {
     let mk_validation_err = |what: &str, reason: String| LayerStageError::FatalModule {
         stage_id: stage_id.to_string(),
@@ -1682,20 +1864,98 @@ fn commit_layer_outputs(
         }
         "Layer::Perimeters" | "Layer::PerimetersPostProcess" => {
             let perimeter = &ctx.perimeter_output;
-            if perimeter.wall_loops.is_empty()
-                && perimeter.infill_areas.is_empty()
-                && perimeter.seam_candidates.is_empty()
-            {
+            eprintln!("DEBUG commit_layer_outputs: CHECKING skip condition for PerimetersPostProcess");
+            eprintln!("DEBUG commit_layer_outputs: perimeter.wall_loops.is_empty()={}", perimeter.wall_loops.is_empty());
+            eprintln!("DEBUG commit_layer_outputs: perimeter.rotated_wall_loops.is_empty()={}", perimeter.rotated_wall_loops.is_empty());
+            eprintln!("DEBUG commit_layer_outputs: perimeter.infill_areas.is_empty()={}", perimeter.infill_areas.is_empty());
+            eprintln!("DEBUG commit_layer_outputs: perimeter.seam_candidates.is_empty()={}", perimeter.seam_candidates.is_empty());
+            // For PerimetersPostProcess: perimeter may have wall_loops (before rotation
+            // from Layer::Perimeters) OR rotated_wall_loops (after rotation from seam-placer).
+            // Skip only if BOTH are empty (genuinely no perimeter output).
+            let has_any_output = if stage_id == "Layer::PerimetersPostProcess" {
+                !perimeter.wall_loops.is_empty()
+                    || !perimeter.rotated_wall_loops.is_empty()
+                    || !perimeter.infill_areas.is_empty()
+                    || !perimeter.seam_candidates.is_empty()
+            } else {
+                !perimeter.wall_loops.is_empty()
+                    || !perimeter.infill_areas.is_empty()
+                    || !perimeter.seam_candidates.is_empty()
+            };
+            if !has_any_output {
+                eprintln!("DEBUG commit_layer_outputs: SKIPPING via early return");
                 return Ok(());
             }
+            eprintln!("DEBUG commit_layer_outputs: NOT skipping, proceeding with conversion");
             let ir = wit_host::convert_perimeter_output(perimeter, layer_index)
                 .map_err(|r| mk_validation_err("perimeter", r))?;
-            if stage_id == "Layer::PerimetersPostProcess" {
-                let _ = arena.take_perimeter();
+            // DEBUG: log resolved_seam state from guest output
+            let arena_perim_before = arena.perimeter().map(|p| format!("Some(SeamPlanIR{{regions={}}})", p.regions.len()));
+            eprintln!("DEBUG commit_layer_outputs ENTRY: stage_id={}, layer_index={}, arena.perimeter={:?}", stage_id, layer_index, arena_perim_before);
+            {
+                eprintln!("DEBUG commit_layer_outputs: perimeter.resolved_seam={:?}", perimeter.resolved_seam);
+                eprintln!("DEBUG commit_layer_outputs: perimeter.rotated_wall_loops={}", perimeter.rotated_wall_loops.len());
             }
-            arena
-                .set_perimeter(ir)
-                .map_err(|e| LayerStageError::ArenaCommit { source: e })?;
+            // For PerimetersPostProcess: preserve the original perimeter's
+            // resolved_seam if it was pre-seeded from SeamPlanIR. The guest
+            // only rotates wall loops; it does not re-emit a resolved_seam
+            // through the WIT boundary, so we must not take/overwrite the
+            // original perimeter slot which holds the injected seam.
+            if stage_id == "Layer::PerimetersPostProcess" {
+                // Take ownership of original perimeter so we can inject seam if needed.
+                let mut original = arena.take_perimeter();
+                // If we have seam_plan_ir and the original has no seam in any region,
+                // inject from seam_plan_ir. This handles the case where perimeter was
+                // pre-staged (e.g., by a test) without going through Layer::Perimeters.
+                if let (Some(seam_ir), Some(ref mut orig_perim)) = (seam_plan_ir, &mut original) {
+                    for region in &mut orig_perim.regions {
+                        if region.resolved_seam.is_none() {
+                            if let Some(entry) = seam_ir.entries.iter().find(|e| {
+                                e.region_key.global_layer_index == layer_index
+                                    && e.region_key.object_id == region.object_id
+                                    && e.region_key.region_id == region.region_id
+                            }) {
+                                region.resolved_seam = Some(entry.chosen_candidate.clone());
+                            }
+                        }
+                    }
+                }
+                if let Some(orig_perim) = original {
+                    eprintln!("DEBUG commit_layer_outputs MERGE: original perimeter found, regions={}", orig_perim.regions.len());
+                    let mut ir_owned = ir;
+                    eprintln!("DEBUG commit_layer_outputs MERGE: ir_owned (from guest) has {} regions", ir_owned.regions.len());
+                    for (idx, region) in ir_owned.regions.iter_mut().enumerate() {
+                        eprintln!("DEBUG commit_layer_outputs MERGE: ir_owned.region[{}] resolved_seam BEFORE merge={:?}", idx, region.resolved_seam);
+                        if region.resolved_seam.is_none() {
+                            if let Some(orig_region) = orig_perim.regions.get(idx) {
+                                if let Some(rs) = &orig_region.resolved_seam {
+                                    eprintln!("DEBUG commit_layer_outputs MERGE: copying resolved_seam from original.region[{}]={:?}", idx, rs);
+                                    region.resolved_seam = Some(rs.clone());
+                                } else {
+                                    eprintln!("DEBUG commit_layer_outputs MERGE: original.region[{}] has no resolved_seam", idx);
+                                }
+                            } else {
+                                eprintln!("DEBUG commit_layer_outputs MERGE: no original.region[{}]", idx);
+                            }
+                        }
+                    }
+                    // ir_owned now has seam (either from guest or copied from original).
+                    // Take is already done above; set it back.
+                    arena
+                        .set_perimeter(ir_owned)
+                        .map_err(|e| LayerStageError::ArenaCommit { source: e })?;
+                } else {
+                    eprintln!("DEBUG commit_layer_outputs MERGE: no original perimeter found");
+                    arena
+                        .set_perimeter(ir)
+                        .map_err(|e| LayerStageError::ArenaCommit { source: e })?;
+                }
+            } else {
+                let _ = arena.take_perimeter();
+                arena
+                    .set_perimeter(ir)
+                    .map_err(|e| LayerStageError::ArenaCommit { source: e })?;
+            }
         }
         "Layer::SlicePostProcess" => {
             let sp = &ctx.slice_postprocess_output;

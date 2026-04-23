@@ -96,6 +96,9 @@ pub use slice_ir::{
     RegionPlan,
     ResolvedConfig,
     SeamCandidate,
+    ScoredSeamCandidate,
+    SeamPlanEntry,
+    SeamPlanIR,
     SeamPosition,
 
     SeamReason,

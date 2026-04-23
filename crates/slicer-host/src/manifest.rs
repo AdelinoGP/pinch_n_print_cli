@@ -679,6 +679,7 @@ fn known_stage_ids() -> &'static [&'static str] {
         "PrePass::MeshSegmentation",
         "PrePass::MeshAnalysis",
         "PrePass::LayerPlanning",
+        "PrePass::SeamPlanning",
         "PrePass::PaintSegmentation",
         "PrePass::RegionMapping",
         "Layer::Slice",

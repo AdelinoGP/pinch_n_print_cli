@@ -4,8 +4,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use slicer_ir::{
-    LayerPlanIR, MeshSegmentationIR, ModuleId, PaintRegionIR, RegionMapIR, StageId,
-    SurfaceClassificationIR,
+    LayerPlanIR, MeshSegmentationIR, ModuleId, PaintRegionIR, RegionMapIR, SeamPlanIR,
+    StageId, SurfaceClassificationIR,
 };
 
 use crate::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
@@ -24,6 +24,8 @@ pub enum PrepassStageOutput {
     MeshSegmentation(Arc<MeshSegmentationIR>),
     /// Stage produced `LayerPlanIR`.
     LayerPlan(Arc<LayerPlanIR>),
+    /// Stage produced `SeamPlanIR`.
+    SeamPlan(Arc<SeamPlanIR>),
     /// Stage produced `PaintRegionIR`.
     PaintRegions(Arc<PaintRegionIR>),
     /// Stage produced `RegionMapIR`.
@@ -241,6 +243,7 @@ fn ir_path_for_prepass_output(output: &PrepassStageOutput) -> Option<String> {
         }
         PrepassStageOutput::MeshSegmentation(_) => Some(String::from("MeshSegmentationIR")),
         PrepassStageOutput::LayerPlan(_) => Some(String::from("LayerPlanIR")),
+        PrepassStageOutput::SeamPlan(_) => Some(String::from("SeamPlanIR")),
         PrepassStageOutput::PaintRegions(_) => Some(String::from("PaintRegionIR")),
         PrepassStageOutput::RegionMap(_) => Some(String::from("RegionMapIR")),
         // MeshAnalysisAuxiliary is auxiliary data, not a primary IR commit.
@@ -291,7 +294,9 @@ pub fn execute_prepass_with_builtins(
     Ok(audits)
 }
 
-fn ensure_stage_prerequisites(
+/// Ensures all prerequisite IR artifacts are present on the blackboard
+/// before a prepass stage is executed.
+pub fn ensure_stage_prerequisites(
     stage_id: &StageId,
     blackboard: &Blackboard,
 ) -> Result<(), PrepassExecutionError> {
@@ -306,6 +311,7 @@ fn ensure_stage_prerequisites(
             BlackboardPrepassSlot::LayerPlan => blackboard.layer_plan().is_some(),
             BlackboardPrepassSlot::PaintRegions => blackboard.paint_regions().is_some(),
             BlackboardPrepassSlot::RegionMap => blackboard.region_map().is_some(),
+            BlackboardPrepassSlot::SeamPlan => blackboard.seam_plan().is_some(),
         };
 
         if !present {
@@ -323,6 +329,7 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
     match stage_id.as_str() {
         "PrePass::MeshAnalysis" => &[],
         "PrePass::LayerPlanning" => &[BlackboardPrepassSlot::SurfaceClassification],
+        "PrePass::SeamPlanning" => &[BlackboardPrepassSlot::LayerPlan],
         "PrePass::PaintSegmentation" => &[
             BlackboardPrepassSlot::SurfaceClassification,
             BlackboardPrepassSlot::LayerPlan,
@@ -345,6 +352,7 @@ fn commit_stage_output(
         }
         PrepassStageOutput::MeshSegmentation(ir) => blackboard.commit_mesh_segmentation(ir),
         PrepassStageOutput::LayerPlan(ir) => blackboard.commit_layer_plan(ir),
+        PrepassStageOutput::SeamPlan(ir) => blackboard.commit_seam_plan(ir),
         PrepassStageOutput::PaintRegions(ir) => blackboard.commit_paint_regions(ir),
         PrepassStageOutput::RegionMap(ir) => blackboard.commit_region_map(ir),
         // Mesh-analysis auxiliary pushes are surfaced for observability
