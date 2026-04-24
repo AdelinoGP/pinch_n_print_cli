@@ -10,13 +10,5 @@
       "Bash(git commit *)",
       "Bash(git push -u origin *)"
     ]
-  },
-  "rust": {
-    "command": "rust-analyzer",
-    "args": [],
-    "extensionToLanguage": {
-      ".rs": "rust"
-    },
-    "transport": "stdio"
   }
 }
