@@ -172,10 +172,12 @@ impl std::error::Error for LayerExecutionError {}
 pub trait LayerStageRunner {
     /// Execute one compiled layer module against the current layer state.
     ///
-    /// Returns both the stage output and the runtime IR read paths collected
-    /// by the WIT view methods during this call. The returned `runtime_reads`
-    /// is used to populate `ModuleAccessAudit.runtime_reads` for audit
-    /// construction in `execute_single_layer`.
+    /// Returns the stage output, the runtime IR read paths collected
+    /// by the WIT view methods during this call, and the runtime IR
+    /// write paths declared in the module's manifest. The returned
+    /// `runtime_reads` and `runtime_writes` are used to populate
+    /// `ModuleAccessAudit.runtime_reads` and `ModuleAccessAudit.runtime_writes`
+    /// for audit construction in `execute_single_layer`.
     fn run_stage(
         &self,
         stage_id: &StageId,
@@ -183,7 +185,7 @@ pub trait LayerStageRunner {
         module: &CompiledModule,
         blackboard: &Blackboard,
         arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError>;
+    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError>;
 }
 
 /// Executes the Tier-2 per-layer parallel pipeline using rayon.
@@ -345,8 +347,8 @@ fn execute_single_layer(
         // Execute modules in topological order within each stage
         for module in &stage.modules {
             let run_result = runner.run_stage(&stage.stage_id, layer, module, blackboard, &mut arena);
-            let (stage_result, runtime_reads) = match run_result {
-                Ok((output, reads)) => (output, reads),
+            let (stage_result, runtime_reads, runtime_writes) = match run_result {
+                Ok((output, reads, writes)) => (output, reads, writes),
                 Err(e) => return Err(LayerExecutionError::FatalLayer {
                     layer_index: layer.index,
                     stage_id: stage.stage_id.clone(),
@@ -358,12 +360,19 @@ fn execute_single_layer(
             match stage_result {
                 LayerStageOutput::Success => {
                     // Record runtime write audit for this module.
-                    // Host-built-in stages (Slice) are not audited.
-                    if let Some(path) = ir_path_for_layer_stage(&stage.stage_id) {
+                    // When runtime_writes is populated (instrumented modules),
+                    // use it directly. Otherwise fall back to the coarse
+                    // ir_path_for_layer_stage mapping for non-instrumented stages.
+                    let writes = if runtime_writes.is_empty() {
+                        ir_path_for_layer_stage(&stage.stage_id).map(|p| vec![p]).unwrap_or_default()
+                    } else {
+                        runtime_writes.clone()
+                    };
+                    if !writes.is_empty() {
                         audits.push(ModuleAccessAudit {
                             module_id: module.module_id.clone(),
                             runtime_reads,
-                            runtime_writes: vec![path],
+                            runtime_writes: writes,
                         });
                     }
                 }
@@ -433,7 +442,17 @@ fn execute_single_layer(
 /// is excluded (no audit). `Layer::SlicePostProcess` only merges into the
 /// existing `SliceIR` without creating a primary IR object; it is also
 /// excluded.
-fn ir_path_for_layer_stage(stage_id: &StageId) -> Option<String> {
+/// Maps a layer stage ID to the coarse IR write path used as fallback
+/// when the stage has no narrow runtime_writes instrumentation.
+///
+/// This mapping is used in `execute_single_layer` when `runtime_writes` is
+/// empty (non-instrumented stage). Each stage in the per-layer pipeline
+/// produces exactly one primary IR type, and this mapping records that
+/// write in the runtime audit. `Layer::Slice` is a host-built-in and
+/// is excluded (no audit). `Layer::SlicePostProcess` only merges into the
+/// existing `SliceIR` without creating a primary IR object; it is also
+/// excluded.
+pub fn ir_path_for_layer_stage(stage_id: &StageId) -> Option<String> {
     match stage_id.as_str() {
         "Layer::Slice" => None, // host-built-in, not audited
         "Layer::SlicePostProcess" => None, // merges into existing SliceIR, not a primary commit

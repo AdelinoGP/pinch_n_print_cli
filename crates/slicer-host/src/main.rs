@@ -43,8 +43,8 @@ impl slicer_host::LayerStageRunner for NoopLayerRunner {
         _module: &slicer_host::CompiledModule,
         _blackboard: &slicer_host::Blackboard,
         _arena: &mut slicer_host::LayerArena,
-    ) -> Result<(slicer_host::LayerStageOutput, Vec<String>), slicer_host::LayerStageError> {
-        Ok((slicer_host::LayerStageOutput::Success, Vec::new()))
+    ) -> Result<(slicer_host::LayerStageOutput, Vec<String>, Vec<String>), slicer_host::LayerStageError> {
+        Ok((slicer_host::LayerStageOutput::Success, Vec::new(), Vec::new()))
     }
 }
 

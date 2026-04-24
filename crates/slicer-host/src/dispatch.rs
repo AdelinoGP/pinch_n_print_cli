@@ -1705,7 +1705,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         module: &CompiledModule,
         blackboard: &Blackboard,
         arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
         // Extract paint region IR from blackboard for paint-consuming stages.
         let paint_ir = blackboard.paint_regions();
         let paint_ref = paint_ir.map(|arc| arc.as_ref());
@@ -1733,7 +1733,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
                 // Placeholder/uncompiled module — skip gracefully.
                 eprintln!("DEBUG run_stage: MissingComponent error, returning early without commit");
-                return Ok((LayerStageOutput::Success, Vec::new()));
+                return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
             }
             Err(e) => {
                 eprintln!("DEBUG run_stage: DispatchError phase={:?}, returning error", e.phase);
@@ -1745,8 +1745,9 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             }
         };
 
-        // Preserve runtime reads before committing outputs.
+        // Preserve runtime reads and writes before committing outputs.
         let runtime_reads: Vec<String> = ctx.runtime_reads.clone();
+        let runtime_writes: Vec<String> = ctx.runtime_writes.clone();
 
         // Commit collected outputs into the layer arena based on stage.
         eprintln!("DEBUG run_stage: about to call commit_layer_outputs for {}", stage_id);
@@ -1783,7 +1784,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             }
         }
 
-        Ok((LayerStageOutput::Success, runtime_reads))
+        Ok((LayerStageOutput::Success, runtime_reads, runtime_writes))
     }
 }
 

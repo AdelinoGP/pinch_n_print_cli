@@ -62,8 +62,9 @@ pub use dispatch::{
     WasmRuntimeDispatcher,
 };
 pub use layer_executor::{
-    execute_per_layer, execute_per_layer_with_events, LayerExecutionError, LayerProgressSink,
-    LayerStageError, LayerStageOutput, LayerStageRunner, NoopLayerProgressSink,
+    execute_per_layer, execute_per_layer_with_events, ir_path_for_layer_stage,
+    LayerExecutionError, LayerProgressSink, LayerStageError, LayerStageOutput, LayerStageRunner,
+    NoopLayerProgressSink,
 };
 pub use layer_finalization::{
     execute_layer_finalization, FinalizationError, FinalizationOutput, FinalizationOutputBuilder,
