@@ -1,10 +1,11 @@
 ---
-status: draft
+status: implemented
 packet: 25_wit-canonical-surface-lock
 task_ids:
   - TASK-144
   - TASK-145
 backlog_source: docs/07_implementation_status.md
+note: Tasks reopened from [x] to [ ] on 2026-04-24 after audit revealed disk WIT state did not match backlog claims.
 ---
 
 # Packet Contract: 25_wit-canonical-surface-lock
@@ -20,9 +21,8 @@ Restore and lock the canonical WIT surface so the disk WIT files under `wit/` ar
 
 ## Prerequisites and Blockers
 
-- **Depends on:** Packet 24 (runtime-write audit plumbing) — the narrow-write vocabulary decision (Step 2 of the original plan) gates the doc update in Step 10.
 - **Unblocks:** None (this packet closes independently; it is a parallel track).
-- **Activation blockers:** Packet 24 Step 2 vocabulary decision must be settled.
+- **Prior state:** TASK-144 and TASK-145 were marked complete in docs/07 but disk WIT audit revealed the prepass segmentation surface was not yet updated — tasks have been reopened in docs/07_implementation_status.md.
 
 ## Acceptance Criteria
 
