@@ -197,8 +197,8 @@ impl LayerStageRunner for NoopRunner {
         _m: &CompiledModule,
         _b: &Blackboard,
         _a: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
-        Ok((LayerStageOutput::Success, Vec::new()))
+    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
+        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
     }
 }
 

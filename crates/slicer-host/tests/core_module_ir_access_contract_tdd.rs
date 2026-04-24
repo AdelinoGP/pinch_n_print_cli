@@ -26,6 +26,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use slicer_host::{load_module_from_paths, LoadedModule};
+use slicer_ir::SemVer;
 
 // ── Stage → required (reads, writes) contract from docs/01 ────────────────
 //
@@ -316,5 +317,203 @@ fn seam_planner_default_declares_prepass_contract_roots() {
     assert!(
         module.ir_writes.iter().any(|p| path_mentions_root(p, "SeamPlanIR")),
         "seam-planner-default must declare write root 'SeamPlanIR'"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tests for TASK-124 / packet 24: narrow-write audit regression
+// AC-5: seam-placer narrow manifest write PerimeterIR.resolved-seam validates
+// AC-6: fallback when stage not instrumented → coarse fallback without panic
+// ═══════════════════════════════════════════════════════════════════════════
+
+use slicer_host::validation::{DagValidationRequest, ModuleAccessAudit, validate_startup_dag};
+
+fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
+    SemVer { major, minor, patch }
+}
+
+/// AC-5: seam-placer module with narrow manifest write "PerimeterIR.resolved-seam"
+/// validates correctly when runtime audit contains only that narrow path.
+///
+/// The seam-placer module (seam-placer.toml) declares:
+///   writes = ["PerimeterIR.resolved-seam", "PerimeterIR.regions.walls"]
+/// During execution, it calls push_resolved_seam (records "PerimeterIR.resolved-seam")
+/// and push_reordered_wall_loop (records "PerimeterIR.regions.walls").
+/// validate_undeclared_access must accept both paths since they are declared.
+#[test]
+fn seam_placer_narrow_manifest_write_validates() {
+    // Build a minimal DagValidationRequest with seam-placer and its audit
+    let seam_placer = LoadedModule {
+        id: "com.core.seam-placer".into(),
+        version: semver(0, 1, 0),
+        stage: "Layer::PerimetersPostProcess".into(),
+        wit_world: "slicer:world-layer@1.0.0".into(),
+        ir_reads: vec!["PerimeterIR".into()],
+        ir_writes: vec!["PerimeterIR.resolved-seam".into(), "PerimeterIR.regions.walls".into()],
+        claims: vec!["seam-placer".into()],
+        requires_claims: vec![],
+        incompatible_with: vec![],
+        requires_modules: vec![],
+        min_host_version: semver(0, 1, 0),
+        min_ir_schema: semver(1, 0, 0),
+        max_ir_schema: semver(2, 0, 0),
+        config_schema: slicer_host::ConfigSchema::default(),
+        overridable_per_region: vec![],
+        overridable_per_layer: vec![],
+        layer_parallel_safe: true,
+        wasm_path: PathBuf::from("modules/core-modules/seam-placer/seam-placer.wasm"),
+        placeholder_wasm: false,
+    };
+
+    // Simulate runtime audit from seam-placer execution:
+    // - push_resolved_seam → records "PerimeterIR.resolved-seam"
+    // - push_reordered_wall_loop → records "PerimeterIR.regions.walls"
+    let audit = ModuleAccessAudit {
+        module_id: "com.core.seam-placer".into(),
+        runtime_reads: vec!["PerimeterIR".into()],
+        runtime_writes: vec![
+            "PerimeterIR.resolved-seam".into(),
+            "PerimeterIR.regions.walls".into(),
+        ],
+    };
+
+    let request = DagValidationRequest {
+        modules: vec![seam_placer],
+        stage_dags: Vec::new(),
+        host_ir_schema_version: semver(1, 0, 0),
+        claim_holders: Vec::new(),
+        access_audits: vec![audit],
+    };
+
+    let report = validate_startup_dag(&request);
+
+    // Assert no undeclared-access errors for seam-placer
+    let undeclared_errors: Vec<_> = report
+        .errors
+        .iter()
+        .filter(|d| matches!(d.detail, slicer_host::SchedulerError::UndeclaredAccess { .. }))
+        .collect();
+
+    assert!(
+        undeclared_errors.is_empty(),
+        "seam-placer narrow writes must not produce undeclared-access errors. Got: {:?}",
+        undeclared_errors
+    );
+}
+
+/// AC-6 variant: perimeter module writes coarse "PerimeterIR" path in runtime_writes
+/// but manifest only declares narrow "PerimeterIR.resolved-seam".
+/// validate_undeclared_access must flag this as an error (coarse path not declared).
+#[test]
+fn coarse_write_rejected_against_narrow_manifest() {
+    let perimeter_module = LoadedModule {
+        id: "com.core.perimeter-gen".into(),
+        version: semver(0, 1, 0),
+        stage: "Layer::Perimeters".into(),
+        wit_world: "slicer:world-layer@1.0.0".into(),
+        ir_reads: vec!["SliceIR".into(), "PaintRegionIR".into()],
+        // Only declares narrow path
+        ir_writes: vec!["PerimeterIR.resolved-seam".into()],
+        claims: vec!["perimeter-generator".into()],
+        requires_claims: vec![],
+        incompatible_with: vec![],
+        requires_modules: vec![],
+        min_host_version: semver(0, 1, 0),
+        min_ir_schema: semver(1, 0, 0),
+        max_ir_schema: semver(2, 0, 0),
+        config_schema: slicer_host::ConfigSchema::default(),
+        overridable_per_region: vec![],
+        overridable_per_layer: vec![],
+        layer_parallel_safe: true,
+        wasm_path: PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
+        placeholder_wasm: false,
+    };
+
+    // Runtime audit contains coarse "PerimeterIR" (pre-fix fallback behavior)
+    // This should be rejected since manifest only declares narrow "PerimeterIR.resolved-seam"
+    let audit = ModuleAccessAudit {
+        module_id: "com.core.perimeter-gen".into(),
+        runtime_reads: vec!["SliceIR".into(), "PaintRegionIR".into()],
+        runtime_writes: vec!["PerimeterIR".into()], // coarse - not declared
+    };
+
+    let request = DagValidationRequest {
+        modules: vec![perimeter_module],
+        stage_dags: Vec::new(),
+        host_ir_schema_version: semver(1, 0, 0),
+        claim_holders: Vec::new(),
+        access_audits: vec![audit],
+    };
+
+    let report = validate_startup_dag(&request);
+
+    // Assert there IS an undeclared-access error (coarse path not in manifest)
+    let undeclared_errors: Vec<_> = report
+        .errors
+        .iter()
+        .filter(|d| matches!(&d.detail, slicer_host::SchedulerError::UndeclaredAccess { module, access, path }
+            if module == "com.core.perimeter-gen" && *access == slicer_host::AccessKind::Write && *path == "PerimeterIR"))
+        .collect();
+
+    assert!(
+        !undeclared_errors.is_empty(),
+        "coarse write 'PerimeterIR' not in narrow manifest must produce undeclared-access error. \
+         Report errors: {:?}", report.errors
+    );
+}
+
+/// Simulates perimeter module that only writes narrow "PerimeterIR.regions.walls"
+/// (pre-fix instrumentation state). This should pass validation when declared.
+#[test]
+fn perimeter_narrow_write_audit() {
+    let perimeter_module = LoadedModule {
+        id: "com.core.perimeter-gen".into(),
+        version: semver(0, 1, 0),
+        stage: "Layer::Perimeters".into(),
+        wit_world: "slicer:world-layer@1.0.0".into(),
+        ir_reads: vec!["SliceIR".into(), "PaintRegionIR".into()],
+        ir_writes: vec!["PerimeterIR.regions.walls".into()],
+        claims: vec!["perimeter-generator".into()],
+        requires_claims: vec![],
+        incompatible_with: vec![],
+        requires_modules: vec![],
+        min_host_version: semver(0, 1, 0),
+        min_ir_schema: semver(1, 0, 0),
+        max_ir_schema: semver(2, 0, 0),
+        config_schema: slicer_host::ConfigSchema::default(),
+        overridable_per_region: vec![],
+        overridable_per_layer: vec![],
+        layer_parallel_safe: true,
+        wasm_path: PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
+        placeholder_wasm: false,
+    };
+
+    // Narrow runtime write matches manifest
+    let audit = ModuleAccessAudit {
+        module_id: "com.core.perimeter-gen".into(),
+        runtime_reads: vec!["SliceIR".into()],
+        runtime_writes: vec!["PerimeterIR.regions.walls".into()],
+    };
+
+    let request = DagValidationRequest {
+        modules: vec![perimeter_module],
+        stage_dags: Vec::new(),
+        host_ir_schema_version: semver(1, 0, 0),
+        claim_holders: Vec::new(),
+        access_audits: vec![audit],
+    };
+
+    let report = validate_startup_dag(&request);
+
+    let undeclared_errors: Vec<_> = report
+        .errors
+        .iter()
+        .filter(|d| matches!(d.detail, slicer_host::SchedulerError::UndeclaredAccess { .. }))
+        .collect();
+
+    assert!(
+        undeclared_errors.is_empty(),
+        "narrow write 'PerimeterIR.regions.walls' matching manifest must not error. Got: {:?}",
+        undeclared_errors
     );
 }

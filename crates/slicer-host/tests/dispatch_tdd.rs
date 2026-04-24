@@ -3014,11 +3014,11 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
             module: &CompiledModule,
             blackboard: &Blackboard,
             arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
             if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
                 if let Some(p) = self.perim.lock().unwrap().take() {
                     arena.set_perimeter(p).unwrap();
-                    return Ok((LayerStageOutput::Success, Vec::new()));
+                    return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
                 }
             }
             LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
@@ -3100,11 +3100,11 @@ fn path_optimization_deterministic_across_repeated_runs() {
             module: &CompiledModule,
             blackboard: &Blackboard,
             arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
             if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
                 if let Some(p) = self.perim.lock().unwrap().take() {
                     arena.set_perimeter(p).unwrap();
-                    return Ok((LayerStageOutput::Success, Vec::new()));
+                    return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
                 }
             }
             LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
@@ -3328,11 +3328,11 @@ fn path_optimization_end_to_end_populates_z_hops() {
     impl<'a> LayerStageRunner for SeedingRunner<'a> {
         fn run_stage(&self, stage_id: &StageId, layer: &GlobalLayer, module: &CompiledModule,
                      blackboard: &Blackboard, arena: &mut LayerArena)
-                     -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+                     -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
             if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
                 if let Some(p) = self.perim.lock().unwrap().take() {
                     arena.set_perimeter(p).unwrap();
-                    return Ok((LayerStageOutput::Success, Vec::new()));
+                    return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
                 }
             }
             LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
@@ -3404,11 +3404,11 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
     impl<'a> LayerStageRunner for SeedingRunner<'a> {
         fn run_stage(&self, stage_id: &StageId, layer: &GlobalLayer, module: &CompiledModule,
                      blackboard: &Blackboard, arena: &mut LayerArena)
-                     -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+                     -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
             if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
                 if let Some(p) = self.perim.lock().unwrap().take() {
                     arena.set_perimeter(p).unwrap();
-                    return Ok((LayerStageOutput::Success, Vec::new()));
+                    return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
                 }
             }
             LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)

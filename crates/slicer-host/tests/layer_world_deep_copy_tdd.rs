@@ -168,11 +168,11 @@ impl<'a> LayerStageRunner for SeedingRunner<'a> {
         module: &CompiledModule,
         blackboard: &Blackboard,
         arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
         if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
             if let Some(perimeter) = self.perimeter.lock().expect("lock seed perimeter").take() {
                 arena.set_perimeter(perimeter).expect("seed perimeter into arena");
-                return Ok((LayerStageOutput::Success, Vec::new()));
+                return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
             }
         }
 

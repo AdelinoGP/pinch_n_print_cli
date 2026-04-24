@@ -399,7 +399,7 @@ impl LayerStageRunner for ScriptedRunner {
         module: &CompiledModule,
         _blackboard: &Blackboard,
         _arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
         let key = (layer.index, stage_id.clone(), module.module_id.clone());
 
         // Record invocation
@@ -419,10 +419,10 @@ impl LayerStageRunner for ScriptedRunner {
         if let Some(message) = self.non_fatal_errors.get(&key) {
             return Ok((LayerStageOutput::NonFatalError {
                 message: message.clone(),
-            }, Vec::new()));
+            }, Vec::new(), Vec::new()));
         }
 
-        Ok((LayerStageOutput::Success, Vec::new()))
+        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
     }
 }
 
@@ -461,7 +461,7 @@ impl LayerStageRunner for ArenaIsolationRunner {
         _module: &CompiledModule,
         _blackboard: &Blackboard,
         arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
         // Record the arena's address as an identity marker
         let arena_ptr = arena as *mut LayerArena as usize;
         self.arena_identities
@@ -469,7 +469,7 @@ impl LayerStageRunner for ArenaIsolationRunner {
             .unwrap()
             .insert(layer.index, arena_ptr);
 
-        Ok((LayerStageOutput::Success, Vec::new()))
+        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
     }
 }
 
@@ -702,7 +702,7 @@ impl LayerStageRunner for StagingRunner {
         _module: &CompiledModule,
         _blackboard: &Blackboard,
         arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
         if let Some(p) = self.perimeter.lock().unwrap().take() {
             arena.set_perimeter(p).unwrap();
         }
@@ -712,7 +712,7 @@ impl LayerStageRunner for StagingRunner {
         if let Some(s) = self.support.lock().unwrap().take() {
             arena.set_support(s).unwrap();
         }
-        Ok((LayerStageOutput::Success, Vec::new()))
+        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
     }
 }
 
@@ -1035,7 +1035,7 @@ impl LayerStageRunner for CatchupMetadataRecordingRunner {
         _module: &CompiledModule,
         _blackboard: &Blackboard,
         _arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
         // Record catch-up metadata from the source active_regions surface.
         // We take the first region as the canary; if there are multiple regions
         // all must carry the same catch-up flags per the pre-pass contract.
@@ -1045,6 +1045,6 @@ impl LayerStageRunner for CatchupMetadataRecordingRunner {
                 catchup_z_bottom: region.catchup_z_bottom,
             });
         }
-        Ok((LayerStageOutput::Success, Vec::new()))
+        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
     }
 }

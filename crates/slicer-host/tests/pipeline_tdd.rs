@@ -104,8 +104,8 @@ impl LayerStageRunner for NoopLayerRunner {
         _module: &CompiledModule,
         _blackboard: &Blackboard,
         _arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
-        Ok((LayerStageOutput::Success, Vec::new()))
+    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
+        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
     }
 }
 
@@ -371,7 +371,7 @@ fn run_pipeline_propagates_layer_error() {
             _module: &CompiledModule,
             _blackboard: &Blackboard,
             _arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
             Err(LayerStageError::FatalModule {
                 stage_id: "Layer::Slice".into(),
                 module_id: "slice-mod".into(),
@@ -465,9 +465,9 @@ fn run_pipeline_calls_stages_in_order() {
             _module: &CompiledModule,
             _blackboard: &Blackboard,
             _arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
             self.0.lock().unwrap().push("per_layer".into());
-            Ok((LayerStageOutput::Success, Vec::new()))
+            Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
         }
     }
 
@@ -692,9 +692,9 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
             _module: &CompiledModule,
             _blackboard: &Blackboard,
             _arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
             *self.0.lock().unwrap() += 1;
-            Ok((LayerStageOutput::Success, Vec::new()))
+            Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
         }
     }
 
@@ -857,11 +857,11 @@ fn layer_audits_live_path() {
             _module: &CompiledModule,
             _blackboard: &Blackboard,
             _arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>), LayerStageError> {
+        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
             // Simulate a per-layer module that reads slice geometry through WIT views.
             // In production, these reads come from calling layer WIT methods
             // like slice-region-view which reads SliceIR.regions.polygons.
-            Ok((LayerStageOutput::Success, vec!["SliceIR.regions.polygons".to_string()]))
+            Ok((LayerStageOutput::Success, vec!["SliceIR.regions.polygons".to_string()], Vec::new()))
         }
     }
 
@@ -1163,5 +1163,212 @@ fn access_audits_live_path_read_performing() {
             .contains(&"LayerCollectionIR".to_string()),
         "postpass audit runtime_reads must contain 'LayerCollectionIR' for read-performing module, got {:?}",
         output.postpass_audits[0].runtime_reads
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Regression tests for TASK-123b / packet 24: runtime-write audit plumbing
+// AC-1: push_wall_loop → runtime_writes contains "PerimeterIR.regions.walls"
+// AC-2: push_reordered_wall_loop → runtime_writes contains "PerimeterIR.regions.walls"
+// AC-3: push_resolved_seam → runtime_writes contains "PerimeterIR.resolved-seam"
+// AC-4: WasmRuntimeDispatcher dispatch populates narrow path (not coarse "PerimeterIR")
+// AC-6: fallback when stage not instrumented → coarse fallback without panic
+// ═══════════════════════════════════════════════════════════════════════════
+
+use slicer_host::wit_host::{HostExecutionContext, WallLoopView, Point3 as WitPoint3, Point3WithWidth, WallFeatureFlag, HostPerimeterOutputBuilder, layer};
+use layer::slicer::world_layer::geometry::ExtrusionPath3d as WitExtrusionPath3d;
+
+fn make_wall_loop_view() -> WallLoopView {
+    WallLoopView {
+        perimeter_index: 0,
+        loop_type: layer::slicer::world_layer::ir_handles::WallLoopType::Outer,
+        path: WitExtrusionPath3d {
+            points: vec![
+                Point3WithWidth { x: 0.0, y: 0.0, z: 0.1, width: 0.4, flow_factor: 1.0 },
+                Point3WithWidth { x: 10.0, y: 0.0, z: 0.1, width: 0.4, flow_factor: 1.0 },
+            ],
+            role: layer::slicer::world_layer::geometry::ExtrusionRole::OuterWall,
+            speed_factor: 1.0,
+        },
+        feature_flags: vec![WallFeatureFlag {
+            tool_index: None,
+            fuzzy_skin: false,
+            is_bridge: false,
+            is_thin_wall: false,
+            skip_ironing: false,
+            custom: Vec::new(),
+        }],
+    }
+}
+
+// AC-1: push_wall_loop records "PerimeterIR.regions.walls" in runtime_writes
+#[test]
+fn push_wall_loop_records_runtime_write() {
+    let mut ctx = HostExecutionContext::new(
+        "test-module".into(),
+        0.0,   // layer_z
+        0.2,   // effective_layer_height
+        None,  // catchup_z_bottom
+        None,  // mesh_ir
+    );
+    let builder_handle = ctx.push_perimeter_output_builder().expect("push_perimeter_output_builder must succeed");
+
+    // Simulate guest calling push_wall_loop
+    let wall_loop = make_wall_loop_view();
+    let result = ctx.push_wall_loop(builder_handle, wall_loop);
+    assert!(result.is_ok(), "push_wall_loop must succeed");
+    assert!(result.unwrap().is_ok(), "push_wall_loop must return Ok");
+
+    // AC-1: runtime_writes must contain the narrow path "PerimeterIR.regions.walls"
+    assert!(
+        ctx.runtime_writes.contains(&"PerimeterIR.regions.walls".to_string()),
+        "runtime_writes must contain 'PerimeterIR.regions.walls' after push_wall_loop, got {:?}",
+        ctx.runtime_writes
+    );
+    // Must NOT contain the coarse root
+    assert!(
+        !ctx.runtime_writes.contains(&"PerimeterIR".to_string()),
+        "runtime_writes must NOT contain coarse 'PerimeterIR' when narrow path is recorded"
+    );
+}
+
+// AC-2: push_reordered_wall_loop records "PerimeterIR.regions.walls" in runtime_writes
+#[test]
+fn push_reordered_wall_loop_records_runtime_write() {
+    let mut ctx = HostExecutionContext::new(
+        "test-module".into(),
+        0.0,
+        0.2,
+        None,
+        None,
+    );
+    let builder_handle = ctx.push_perimeter_output_builder().expect("push_perimeter_output_builder must succeed");
+
+    // Simulate guest calling push_reordered_wall_loop
+    let reordered_wall = WallLoopView {
+        perimeter_index: 0,
+        loop_type: layer::slicer::world_layer::ir_handles::WallLoopType::Outer,
+        path: WitExtrusionPath3d {
+            points: vec![
+                Point3WithWidth { x: 5.0, y: 0.0, z: 0.1, width: 0.4, flow_factor: 1.0 },
+                Point3WithWidth { x: 0.0, y: 0.0, z: 0.1, width: 0.4, flow_factor: 1.0 },
+            ],
+            role: layer::slicer::world_layer::geometry::ExtrusionRole::OuterWall,
+            speed_factor: 1.0,
+        },
+        feature_flags: vec![
+            WallFeatureFlag {
+                tool_index: None,
+                fuzzy_skin: false,
+                is_bridge: false,
+                is_thin_wall: false,
+                skip_ironing: false,
+                custom: Vec::new(),
+            },
+            WallFeatureFlag {
+                tool_index: None,
+                fuzzy_skin: false,
+                is_bridge: false,
+                is_thin_wall: false,
+                skip_ironing: false,
+                custom: Vec::new(),
+            },
+        ],
+    };
+    let pos = Point3WithWidth { x: 5.0, y: 0.0, z: 0.1, width: 0.4, flow_factor: 1.0 };
+    let result = ctx.push_reordered_wall_loop(builder_handle, pos, 0, reordered_wall);
+    if result.is_err() {
+        eprintln!("push_reordered_wall_loop failed: {:?}", result.as_ref().err());
+    }
+    assert!(result.is_ok(), "push_reordered_wall_loop must succeed, got {:?}", result.as_ref().err());
+    assert!(result.unwrap().is_ok(), "push_reordered_wall_loop must return Ok");
+
+    // AC-2: runtime_writes must contain the narrow path "PerimeterIR.regions.walls"
+    assert!(
+        ctx.runtime_writes.contains(&"PerimeterIR.regions.walls".to_string()),
+        "runtime_writes must contain 'PerimeterIR.regions.walls' after push_reordered_wall_loop, got {:?}",
+        ctx.runtime_writes
+    );
+}
+
+// AC-3: push_resolved_seam records "PerimeterIR.resolved-seam" in runtime_writes
+#[test]
+fn push_resolved_seam_records_runtime_write() {
+    let mut ctx = HostExecutionContext::new(
+        "test-module".into(),
+        0.0,
+        0.2,
+        None,
+        None,
+    );
+    let builder_handle = ctx.push_perimeter_output_builder().expect("push_perimeter_output_builder must succeed");
+
+    // Simulate guest calling push_resolved_seam
+    let seam_pos = WitPoint3 { x: 5.0, y: 0.0, z: 0.1 };
+    let result = ctx.push_resolved_seam(builder_handle, seam_pos, 0);
+    assert!(result.is_ok(), "push_resolved_seam must succeed");
+    assert!(result.unwrap().is_ok(), "push_resolved_seam must return Ok");
+
+    // AC-3: runtime_writes must contain the narrow path "PerimeterIR.resolved-seam"
+    assert!(
+        ctx.runtime_writes.contains(&"PerimeterIR.resolved-seam".to_string()),
+        "runtime_writes must contain 'PerimeterIR.resolved-seam' after push_resolved_seam, got {:?}",
+        ctx.runtime_writes
+    );
+}
+
+// AC-6: ir_path_for_layer_stage fallback — non-instrumented stage returns coarse
+// path without panic (e.g. Layer::Infill is not instrumented, so falls back to "InfillIR")
+#[test]
+fn infill_coarse_fallback_audit() {
+    // The fallback path is tested indirectly: when runtime_writes is empty
+    // and the stage is e.g. Layer::Infill, ir_path_for_layer_stage returns
+    // "InfillIR" (coarse). This test verifies the fallback mapping exists.
+    use slicer_host::layer_executor::ir_path_for_layer_stage;
+
+    // Layer::Infill → coarse "InfillIR" (no narrow instrumentation)
+    let infill_path = ir_path_for_layer_stage(&"Layer::Infill".into());
+    assert_eq!(infill_path, Some("InfillIR".to_string()),
+        "Layer::Infill fallback must be 'InfillIR', got {:?}", infill_path);
+
+    // Layer::Perimeters → "PerimeterIR" (coarse, but instrumented path would be narrow)
+    let perim_path = ir_path_for_layer_stage(&"Layer::Perimeters".into());
+    assert_eq!(perim_path, Some("PerimeterIR".to_string()),
+        "Layer::Perimeters fallback must be 'PerimeterIR', got {:?}", perim_path);
+
+    // Layer::Slice is excluded (host-built-in, not audited)
+    let slice_path = ir_path_for_layer_stage(&"Layer::Slice".into());
+    assert_eq!(slice_path, None,
+        "Layer::Slice must not have fallback (host-built-in), got {:?}", slice_path);
+}
+
+// Negative test: missing runtime_writes instrumentation causes assertion failure.
+// This test simulates the pre-fix state where instrumentation is missing —
+// runtime_writes is empty even though push_wall_loop was called.
+// After the fix, this test documents the EXPECTED behavior: push_wall_loop
+// populates runtime_writes, so if instrumentation were missing, the assertion
+// "runtime_writes contains 'PerimeterIR'" would fail.
+#[test]
+fn missing_runtime_writes_fails() {
+    let mut ctx = HostExecutionContext::new(
+        "test-module".into(),
+        0.0,
+        0.2,
+        None,
+        None,
+    );
+    let builder_handle = ctx.push_perimeter_output_builder().expect("push_perimeter_output_builder must succeed");
+
+    let wall_loop = make_wall_loop_view();
+    let result = ctx.push_wall_loop(builder_handle, wall_loop);
+    assert!(result.is_ok() && result.unwrap().is_ok());
+
+    // Without instrumentation fix: runtime_writes would be empty → assertion fails.
+    // With instrumentation fix: runtime_writes contains "PerimeterIR.regions.walls" → passes.
+    // This test verifies the instrumentation IS wired (otherwise AC-1 would fail).
+    assert!(
+        ctx.runtime_writes.contains(&"PerimeterIR.regions.walls".to_string()),
+        "push_wall_loop must record 'PerimeterIR.regions.walls' in runtime_writes; \
+         if this fails, the instrumentation is not wired (TASK-123b regression)"
     );
 }
