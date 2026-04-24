@@ -365,8 +365,9 @@ pub use layer::slicer::world_layer::geometry::{
     Polygon,
 };
 pub use layer::slicer::world_layer::ir_handles::{
-    BoundaryPaintEntry, BoundaryPaintPolygon, GcodeMoveCmd, PaintSemantic, PaintValue, RegionKey,
-    SemanticRegion, SeamPosition, WallFeatureFlag, WallLoopType, WallLoopView,
+    BoundaryPaintEntry, BoundaryPaintPolygon, GcodeMoveCmd, HostPerimeterOutputBuilder,
+    PaintSemantic, PaintValue, RegionKey, SemanticRegion, SeamPosition, WallFeatureFlag,
+    WallLoopType, WallLoopView,
 };
 pub use layer::LayerModule;
 pub use layer::ModuleError;
@@ -1150,6 +1151,13 @@ pub struct HostExecutionContext {
     /// `ModuleAccessAudit.runtime_reads`.
     pub runtime_reads: Vec<String>,
 
+    /// Runtime IR write paths accessed by the guest via WIT builder methods
+    /// during this call. Populated by instrumenting each builder method to
+    /// record the exact IR path (e.g. `PerimeterIR.regions.walls`) when
+    /// called. Extracted by the dispatcher and returned as part of
+    /// `ModuleAccessAudit.runtime_writes`.
+    pub runtime_writes: Vec<String>,
+
     // ── Z envelope fields ─────────────────────────────────────────────
     /// Layer Z floor (lower bound of the Z envelope).
     layer_z: f32,
@@ -1194,6 +1202,7 @@ impl HostExecutionContext {
             seam_plan_entries: Vec::new(),
             finalization_pushes: Vec::new(),
             runtime_reads: Vec::new(),
+            runtime_writes: Vec::new(),
             layer_z,
             effective_layer_height,
             catchup_z_bottom,
@@ -1232,6 +1241,11 @@ impl HostExecutionContext {
         } else {
             Ok(())
         }
+    }
+
+    /// Record a runtime IR write path accessed by the guest.
+    pub fn record_write(&mut self, path: &'static str) {
+        self.runtime_writes.push(String::from(path));
     }
 
     /// Push a config-view resource and return its handle.
@@ -2596,6 +2610,7 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
         let origin = self.current_perimeter_region.clone();
         self.infill_output.sparse_paths.push(path);
         self.infill_output.sparse_path_origins.push(origin);
+        self.record_write("InfillIR");
         Ok(Ok(()))
     }
     fn push_solid_path(&mut self, _self_: Resource<InfillOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
@@ -2607,6 +2622,7 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
         let origin = self.current_perimeter_region.clone();
         self.infill_output.solid_paths.push(path);
         self.infill_output.solid_path_origins.push(origin);
+        self.record_write("InfillIR");
         Ok(Ok(()))
     }
     fn push_ironing_path(&mut self, _self_: Resource<InfillOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
@@ -2618,6 +2634,7 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
         let origin = self.current_perimeter_region.clone();
         self.infill_output.ironing_paths.push(path);
         self.infill_output.ironing_path_origins.push(origin);
+        self.record_write("InfillIR");
         Ok(Ok(()))
     }
     fn drop(&mut self, rep: Resource<InfillOutputBuilderData>) -> wasmtime::Result<()> {
@@ -2636,6 +2653,7 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         let origin = self.current_perimeter_region.clone();
         self.perimeter_output.wall_loops.push(wall_loop);
         self.perimeter_output.wall_loop_origins.push(origin);
+        self.record_write("PerimeterIR.regions.walls");
         Ok(Ok(()))
     }
     /// Sets infill areas for this perimeter output builder.
@@ -2663,6 +2681,7 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         }
         self.perimeter_output.resolved_seam = Some((pos, wall_index));
         self.perimeter_output.resolved_seam_origin = self.current_perimeter_region.clone();
+        self.record_write("PerimeterIR.resolved-seam");
         Ok(Ok(()))
     }
     fn push_reordered_wall_loop(
@@ -2687,6 +2706,7 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         let origin = self.current_perimeter_region.clone();
         self.perimeter_output.rotated_wall_loops.push(rotated_wall_loop);
         self.perimeter_output.rotated_wall_loop_origins.push(origin);
+        self.record_write("PerimeterIR.regions.walls");
         Ok(Ok(()))
     }
     fn drop(&mut self, rep: Resource<PerimeterOutputBuilderData>) -> wasmtime::Result<()> {
@@ -2763,6 +2783,7 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
         let origin = self.current_slice_region.clone();
         self.support_output.support_paths.push(path);
         self.support_output.support_path_origins.push(origin);
+        self.record_write("SupportIR");
         Ok(Ok(()))
     }
     fn push_interface_path(&mut self, _self_: Resource<SupportOutputBuilderData>, path: ExtrusionPath3d, is_top_interface: bool) -> wasmtime::Result<Result<(), String>> {
@@ -2774,6 +2795,7 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
         let origin = self.current_slice_region.clone();
         self.support_output.interface_paths.push((path, is_top_interface));
         self.support_output.interface_path_origins.push(origin);
+        self.record_write("SupportIR");
         Ok(Ok(()))
     }
     fn push_raft_path(&mut self, _self_: Resource<SupportOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
@@ -2785,6 +2807,7 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
         let origin = self.current_slice_region.clone();
         self.support_output.raft_paths.push(path);
         self.support_output.raft_path_origins.push(origin);
+        self.record_write("SupportIR");
         Ok(Ok(()))
     }
     fn drop(&mut self, rep: Resource<SupportOutputBuilderData>) -> wasmtime::Result<()> {
