@@ -60,14 +60,14 @@ Create `resources/test_config/benchy-tree-support.json`:
 ```json
 {
   "support_enabled": true,
-  "support_module": "tree-support",
-  "support_type": "tree",
-  "support_threshold": 45.0,
-  "support_density": 0.1
+  "support_density": 20.0,
+  "support_angle": 60.0,
+  "support_speed": 50.0,
+  "line_width": 0.4
 }
 ```
 
-The exact keys must match those accepted by `tree-support.toml`. Confirm from the manifest before writing.
+The keys must match those declared in `tree-support.toml` `config.schema`. The TOML manifest defines `support_enabled` (bool), `support_density` (float), `support_angle` (float), `support_speed` (float), and `line_width` (float) — no `support_module` or `support_type` keys exist in the schema. The `support_type` is implicit in the module selected via the filtered module-dir fixture.
 
 ### Filtered Module-Dir Builder
 
@@ -123,9 +123,9 @@ Add new tests:
 ## Open Questions
 
 - Q1: What exact keys does `tree-support.toml` accept for `support_enabled`, `support_type`, etc.?
-  - **Resolution**: Read `modules/core-modules/tree-support/tree-support.toml` before writing the JSON fixture.
+  - **Resolution**: Confirmed — `tree-support.toml` schema declares: `support_enabled` (bool), `support_density` (float), `support_angle` (float), `support_speed` (float), `line_width` (float). No `support_module` or `support_type` keys. The JSON fixture uses only the real schema keys.
 - Q2: Does the existing `dispatch_tdd.rs` have `PaintRegionIR` helpers for SupportEnforcer/SupportBlocker paint precedence?
-  - **Resolution**: Search `dispatch_tdd.rs` for `SupportEnforcer`/`SupportBlocker` patterns before adding that test.
+  - **Resolution**: Confirmed — `dispatch_tdd.rs` contains `SupportEnforcer` and `SupportBlocker` paint helpers (lines 1525–1581 and 4221–4299). Step 6 can use these helpers rather than building them from scratch. The test is still optional per Step 6's own exit condition (pass or justified skip).
 
 ## Locked Assumptions
 

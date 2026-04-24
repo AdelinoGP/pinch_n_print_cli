@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 26_live-support-module-evidence
 task_ids:
   - TASK-120b
@@ -27,18 +27,19 @@ Replace the synthetic `HostExecutionContext` commit-helper tests with real live-
 ## Acceptance Criteria
 
 - **Given** `crates/slicer-host/tests/live_support_generation_tdd.rs`, **when** the test suite runs, **then** it distinguishes commit-path tests (existing `commit_layer_outputs_for_test` harness) from real live-dispatch tests (new `WasmRuntimeDispatcher` + real `.wasm` loading harness) and both tiers pass. | `cargo test -p slicer-host --test live_support_generation_tdd -- --nocapture 2>&1 | tail -30`
-- **Given** a real `tree-support.wasm` loaded via `WasmInstancePool::get` and dispatched via `WasmRuntimeDispatcher::dispatch_layer_call` for `Layer::Support`, **when** the dispatch completes, **then** the resulting `SupportIR.support_paths` is non-empty and each path has `ExtrusionRole::SupportMaterial`. | `cargo test -p slicer-host --test live_support_generation_tdd tree_support_live_dispatch -- --nocapture 2>&1 | tail -20`
-- **Given** a real `traditional-support.wasm` loaded via `WasmInstancePool::get` and dispatched via `WasmRuntimeDispatcher::dispatch_layer_call` for `Layer::Support`, **when** the dispatch completes, **then** the resulting `SupportIR.support_paths` is non-empty and each path has `ExtrusionRole::SupportMaterial`. | `cargo test -p slicer-host --test live_support_generation_tdd traditional_support_live_dispatch -- --nocapture 2>&1 | tail -20`
-- **Given** two identical `Layer::Support` dispatches for the same layer index, **when** they run sequentially, **then** both produce byte-identical `SupportIR.support_paths` (determinism). | `cargo test -p slicer-host --test live_support_generation_tdd support_deterministic -- --nocapture 2>&1 | tail -20`
-- **Given** the `run_slicer_host` helper extended with optional `--config JSON` support, **when** it is called with a JSON config that enables `support_enabled` and points to `tree-support`, **then** the real binary exits successfully and produces a `.gcode` file. | `cargo test -p slicer-host --test benchy_end_to_end_tdd benchy_with_support -- --nocapture 2>&1 | tail -20`
+- **Given** a real `tree-support.wasm` loaded via `WasmInstancePool::get` and dispatched via `WasmRuntimeDispatcher::dispatch_layer_call` for `Layer::Support`, **when** the dispatch completes, **then** the resulting `SupportIR.support_paths` is non-empty and each path has `ExtrusionRole::SupportMaterial`. | `cargo test -p slicer-host --test live_support_generation_tdd tree_support_live_dispatch_produces_non_empty_support_ir -- --nocapture 2>&1 | tail -20`
+- **Given** a real `traditional-support.wasm` loaded via `WasmInstancePool::get` and dispatched via `WasmRuntimeDispatcher::dispatch_layer_call` for `Layer::Support`, **when** the dispatch completes, **then** the resulting `SupportIR.support_paths` is non-empty and each path has `ExtrusionRole::SupportMaterial`. | `cargo test -p slicer-host --test live_support_generation_tdd traditional_support_live_dispatch_produces_non_empty_support_ir -- --nocapture 2>&1 | tail -20`
+- **Given** two identical `Layer::Support` dispatches for the same layer index, **when** they run sequentially, **then** both produce byte-identical `SupportIR.support_paths` (determinism). | `cargo test -p slicer-host --test live_support_generation_tdd support_deterministic_across_repeated_runs -- --nocapture 2>&1 | tail -20`
+- **Given** the `run_slicer_host` helper extended with optional `--config JSON` support, **when** it is called with a JSON config that enables `support_enabled` and points to `tree-support`, **then** the real binary exits successfully and produces a `.gcode` file. | `cargo test -p slicer-host --test benchy_end_to_end_tdd benchy_with_support_enabled -- --nocapture 2>&1 | tail -20`
 - **Given** the filtered module-dir builder fixture that excludes `traditional-support.wasm`, **when** it is used to stage modules for a Benchy run, **then** `tree-support` is the active support-generator holder (claim wins). | `cargo test -p slicer-host --test benchy_end_to_end_tdd tree_support_active_holder -- --nocapture 2>&1 | tail -20`
-- **Given** a support-enabled Benchy acceptance run, **when** the run completes, **then** the emitted `.gcode` contains at least one support-specific marker (`;TYPE:Support` or `;TYPE:Support interface`) and two identical runs produce byte-identical output. | `cargo test -p slicer-host --test benchy_end_to_end_tdd benchy_support_marker_and_deterministic -- --nocapture 2>&1 | tail -20`
-- **Given** `resources/test_config/benchy-tree-support.json` (or similar), **when** it is loaded by the acceptance test, **then** it contains `support_enabled: true` and valid `tree-support` module keys. | `grep -E 'support_enabled|tree.support' resources/test_config/*.json 2>/dev/null || echo "NO_MATCH"`
+- **Given** a support-enabled Benchy acceptance run, **when** the run completes, **then** the emitted `.gcode` contains at least one support-specific marker (`;TYPE:Support` or `;TYPE:Support interface`) and two identical runs produce byte-identical output. | `cargo test -p slicer-host --test benchy_end_to_end_tdd benchy_support_marker_present benchy_support_deterministic -- --nocapture 2>&1 | tail -20`
+- **Given** `resources/test_config/benchy-tree-support.json` (or similar), **when** it is loaded by the acceptance test, **then** it contains `support_enabled: true` and keys matching the `tree-support.toml` `config.schema` (`support_density`, `support_angle`, `support_speed`, `line_width`). | `grep -E 'support_enabled|support_density|support_angle|support_speed|line_width' resources/test_config/benchy-tree-support.json`
 
 ## Negative Test Cases
 
 - **Given** a Benchy acceptance run without support enabled, **when** the output is checked for support markers, **then** no `;TYPE:Support` or `;TYPE:Support interface` markers appear. | `cargo test -p slicer-host --test benchy_end_to_end_tdd benchy_no_support -- --nocapture 2>&1 | tail -20`
-- **Given** a stale `tree-support.wasm` that does not produce output, **when** it is used in the live dispatch test, **then** the test fails because `SupportIR.support_paths` is empty. | `cd modules/core-modules && ./build-core-modules.sh && cargo test -p slicer-host --test live_support_generation_tdd -- --nocapture 2>&1 | tail -20`
+
+Note: The stale-binary failure mode is covered by the positive ACs (30–32): if the `.wasm` binaries are stale or empty, `SupportIR.support_paths` will be empty and those tests will fail. No separate negative AC is needed.
 
 ## Verification
 
