@@ -3,7 +3,7 @@ package slicer:world-prepass@1.0.0;
 world prepass-module {
     import slicer:host-api/host-services;
     import slicer:config/config-types.{config-view};
-    use slicer:ir-types/ir-handles.{object-id, region-id, mesh-object-view};
+    use slicer:ir-types/ir-handles.{object-id, region-id, mesh-object-view, paint-segmentation-object-view};
 
     record module-error { code: u32, message: string, fatal: bool }
 
@@ -15,7 +15,7 @@ world prepass-module {
     }
 
     export run-mesh-segmentation: func(
-        objects: list<object-id>,
+        objects: list<mesh-object-view>,
         output: mesh-segmentation-output,
         config: config-view,
     ) -> result<_, module-error>;
@@ -73,7 +73,7 @@ world prepass-module {
     }
 
     export run-paint-segmentation: func(
-        objects: list<object-id>,
+        objects: list<paint-segmentation-object-view>,
         output: paint-segmentation-output,
         config: config-view,
     ) -> result<_, module-error>;
