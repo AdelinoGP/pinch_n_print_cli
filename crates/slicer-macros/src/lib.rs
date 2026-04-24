@@ -1332,7 +1332,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
             }
             export run-seam-planning: func(
-                objects: list<object-id>,
+                objects: list<mesh-object-view>,
                 output: seam-planning-output,
                 config: config-view,
             ) -> result<_, module-error>;
@@ -1710,7 +1710,10 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     Ok(m) => m,
                     Err(e) => return Err(__slicer_error_out(e)),
                 };
-                let sdk_objects: ::std::vec::Vec<::slicer_ir::ObjectId> = _objects.clone();
+                let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = _objects
+                    .into_iter()
+                    .map(__slicer_mesh_object_from_wit)
+                    .collect();
                 let mut sdk_output = ::slicer_sdk::prepass_builders::SeamPlanningOutput::new();
                 let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_seam_planning(
                     &module, &sdk_objects, &mut sdk_output, &ir_config,
@@ -1795,7 +1798,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     #paint_seg_arm
                 }
                 fn run_seam_planning(
-                    _objects: Vec<ObjectId>,
+                    _objects: Vec<MeshObjectView>,
                     _output: SeamPlanningOutput,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {

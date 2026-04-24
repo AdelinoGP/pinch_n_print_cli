@@ -203,7 +203,7 @@ wit_bindgen::generate!({
                 push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
             }
             export run-seam-planning: func(
-                objects: list<object-id>,
+                objects: list<mesh-object-view>,
                 output: seam-planning-output,
                 config: config-view,
             ) -> result<_, module-error>;
@@ -385,7 +385,7 @@ impl Guest for Component {
     }
 
     fn run_seam_planning(
-        _objects: Vec<ObjectId>,
+        _objects: Vec<MeshObjectView>,
         _output: SeamPlanningOutput,
         _config: ConfigView,
     ) -> Result<(), ModuleError> {

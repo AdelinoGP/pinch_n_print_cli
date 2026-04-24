@@ -3,7 +3,7 @@ package slicer:world-prepass@1.0.0;
 world prepass-module {
     import slicer:host-api/host-services;
     import slicer:config/config-types.{config-view};
-    use slicer:ir-types/ir-handles.{object-id, region-id};
+    use slicer:ir-types/ir-handles.{object-id, region-id, mesh-object-view};
 
     record module-error { code: u32, message: string, fatal: bool }
 
@@ -103,7 +103,7 @@ world prepass-module {
     }
 
     export run-seam-planning: func(
-        objects: list<object-id>,
+        objects: list<mesh-object-view>,
         output: seam-planning-output,
         config: config-view,
     ) -> result<_, module-error>;
