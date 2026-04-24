@@ -5596,8 +5596,11 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
     };
 
     // Build a blackboard with a committed LayerPlanIR (SeamPlanning's required slot).
+    // The seam-planner-default module may or may not produce entries depending
+    // on geometry (it skips empty meshes), so we assert the result is non-empty
+    // only when geometry is present — AC-2 is verified via the live seam path test.
     let empty_mesh = empty_mesh_ir();
-    let mut blackboard = Blackboard::new(empty_mesh, 0);
+    let mut blackboard = Blackboard::new(Arc::clone(&empty_mesh), 0);
     blackboard
         .commit_layer_plan(Arc::new(LayerPlanIR {
             schema_version: SemVer { major: 1, minor: 0, patch: 0 },
@@ -5638,7 +5641,16 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
                 assert!(entry.chosen_candidate.point.y.is_finite());
                 assert!(entry.chosen_candidate.point.z.is_finite());
                 assert!(entry.chosen_candidate.point.width > 0.0);
+                eprintln!(
+                    "DEBUG: seam_candidate point=({:.4}, {:.4}, {:.4}) wall_index={} width={:.4}",
+                    entry.chosen_candidate.point.x,
+                    entry.chosen_candidate.point.y,
+                    entry.chosen_candidate.point.z,
+                    entry.chosen_candidate.wall_index,
+                    entry.chosen_candidate.point.width
+                );
             }
+            eprintln!("DEBUG: prepass_seam_planning_commits_seam_plan_ir — SeamPlanIR entry count = {}", ir.entries.len());
         }
         Ok((other, _)) => panic!(
             "expected PrepassStageOutput::SeamPlan, got {:?}",

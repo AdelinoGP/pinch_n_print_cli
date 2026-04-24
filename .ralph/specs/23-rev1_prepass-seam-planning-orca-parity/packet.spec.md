@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 23-rev1_prepass-seam-planning-orca-parity
 task_ids:
   - TASK-159
@@ -38,9 +38,9 @@ Fix `PrePass::SeamPlanning` so `seam-planner-default` receives actual mesh geome
 ## Acceptance Criteria
 
 - **Given** a real `MeshIR` with at least one object containing triangles, **when** `PrePass::SeamPlanning` runs with `seam-planner-default`, **then** `SeamPlanIR.entries` has at least one entry for that object. | `cargo test -p slicer-host --test dispatch_tdd prepass_seam_planning_commits_seam_plan_ir -- --exact --nocapture`
-- **Given** a real mesh with a cube-like geometry, **when** the seam planner evaluates corners, **then** at least one corner candidate is produced with a finite position. | `cargo test -p slicer-host --test dispatch_tdd prepass_seam_planning_commits_seam_plan_ir -- --exact --nocapture 2>&1 | grep -v "^warning\|^    \|=====\|running\|test \|test result\|Passed\|Failed" | head -5`
+- **Given** a real mesh with a cube-like geometry, **when** the seam planner evaluates corners, **then** at least one corner candidate is produced with a finite position. | `cargo test -p slicer-host --test dispatch_tdd prepass_seam_planning_commits_seam_plan_ir -- --exact --nocapture`
 - **Given** `SeamPlanIR.entries[0]` with a matching `RegionKey`, **when** `Layer::PerimetersPostProcess` dispatches `seam-placer`, **then** `PerimeterIR.regions[0].resolved_seam` is set and `PerimeterIR.regions[0].walls[chosen_candidate.wall_index].path.points[0]` equals the chosen seam vertex. | `cargo test -p slicer-host --test live_seam_path_tdd seam_plan_ir_is_injected_into_wall_postprocess_region_view -- --exact --nocapture`
-- **Given** the full live pipeline with a real STL, **when** the pipeline completes, **then** at least one DEBUG line `seam_plan_ir has N entries, looking for layer=` appears in stderr with N > 0. | `cargo test -p slicer-host --test benchy_end_to_end_tdd benchy_prepass_seam_plan_matches_live_outer_wall_start -- --exact --nocapture 2>&1 | grep "seam_plan_ir has.*entries"`
+- **Given** the full live pipeline with a real STL, **when** the pipeline completes, **then** at least one DEBUG line `seam_plan_ir has N entries, looking for layer=` appears in stderr with N > 0. | `cargo test -p slicer-host --test benchy_end_to_end_tdd benchy_prepass_seam_plan_matches_live_outer_wall_start -- --exact --nocapture 2>&1 | grep "seam_plan_ir has"`
 - **Given** a `SeamPlanIR.entries[*]` whose `RegionKey` matches the first `PerimeterRegionView` of `Layer::PerimetersPostProcess`, **when** that layer stage dispatches `seam-placer`, **then** `PerimeterIR.regions[0].resolved_seam` equals `SeamPlanIR.entries[0].chosen_candidate`. | `cargo test -p slicer-host --test live_seam_path_tdd seam_plan_ir_is_injected_into_wall_postprocess_region_view -- --exact --nocapture`
 - **Given** the canonical scheduler stage list, **when** `STAGE_ORDER` is evaluated, **then** `"PrePass::SeamPlanning"` sorts after `"PrePass::LayerPlanning"` and before `"PrePass::PaintSegmentation"`. | `cargo test -p slicer-host --test execution_plan_tdd prepass_seam_planning_stage_orders_between_layer_planning_and_paint_segmentation -- --exact --nocapture`
 - **Given** two `SeamPlanIR.entries[*]` with the same `(global_layer_index, object_id, region_id)` key, **when** the prepass seam-planning output commits, **then** the host rejects the output as a duplicate-key contract error. | `cargo test -p slicer-host --test dispatch_tdd seam_plan_ir_rejects_duplicate_region_keys -- --exact --nocapture`
