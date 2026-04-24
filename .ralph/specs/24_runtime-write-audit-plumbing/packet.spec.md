@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 24_runtime-write-audit-plumbing
 task_ids:
   - TASK-123b
