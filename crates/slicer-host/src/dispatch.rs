@@ -686,9 +686,11 @@ impl WasmRuntimeDispatcher {
                 bindings.call_run_paint_segmentation(&mut store, &paint_object_views, own(output), own(config_handle)).map_err(mk_call_err)
             }
             "PrePass::SeamPlanning" => {
-                let object_ids: Vec<String> = blackboard.mesh().objects.iter().map(|o| o.id.clone()).collect();
+                let mesh_object_views: Vec<_> = blackboard.mesh().objects.iter().map(|obj| {
+                    wit_host::object_mesh_to_wit_mesh_object_view(obj)
+                }).collect();
                 let output = store.data_mut().push_seam_planning_output().map_err(mk_ctx_err)?;
-                bindings.call_run_seam_planning(&mut store, &object_ids, own(output), own(config_handle)).map_err(mk_call_err)
+                bindings.call_run_seam_planning(&mut store, &mesh_object_views, own(output), own(config_handle)).map_err(mk_call_err)
             }
             _ => Err(DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),

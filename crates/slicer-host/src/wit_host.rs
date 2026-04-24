@@ -606,7 +606,7 @@ pub mod prepass {
                 }
 
                 export run-seam-planning: func(
-                    objects: list<object-id>,
+                    objects: list<mesh-object-view>,
                     output: seam-planning-output,
                     config: config-view,
                 ) -> result<_, module-error>;
@@ -3081,6 +3081,14 @@ mod prepass_impls {
             if entry.region_id.is_empty() {
                 return Ok(Err(String::from(
                     "seam-planning-output: region-id must be non-empty",
+                )));
+            }
+            if !entry.chosen_position.x.is_finite()
+                || !entry.chosen_position.y.is_finite()
+                || !entry.chosen_position.z.is_finite()
+            {
+                return Ok(Err(String::from(
+                    "seam-planning-output: chosen_position must have finite coordinates",
                 )));
             }
             self.seam_plan_entries.push(entry);

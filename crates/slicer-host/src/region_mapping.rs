@@ -114,7 +114,7 @@ pub fn execute_region_mapping_with_cap(
     if entry_count > cap {
         // Build top contributors: sort objects by region_count descending, take top 5.
         let mut sorted: Vec<(String, usize)> = region_counts.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.cmp(&a.1));
+        sorted.sort_by_key(|b| std::cmp::Reverse(b.1));
         let top_contributors: Vec<TopContributor> = sorted
             .into_iter()
             .take(5)
