@@ -42,6 +42,7 @@
 
 #![allow(missing_docs)]
 
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -72,6 +73,52 @@ fn empty_module_dir(tmp: &tempfile::TempDir) -> PathBuf {
     p
 }
 
+/// Return a copy of `core_modules_dir()` that excludes
+/// `traditional-support.wasm` and `traditional-support.toml` so that
+/// `tree-support` becomes the active `support-generator` holder.
+/// Both `.wasm` and `.toml` companion files are omitted to prevent
+/// the module discovery from selecting traditional-support as a
+/// candidate.
+#[allow(dead_code)]
+fn filtered_module_dir_for_tree_support(tmp: &tempfile::TempDir) -> PathBuf {
+    let src = core_modules_dir();
+    let dst = tmp.path().join("tree-support-modules");
+    std::fs::create_dir_all(&dst).expect("mkdir tree-support-modules");
+
+    for entry in std::fs::read_dir(&src).expect("read core-modules dir") {
+        let entry = entry.expect("read_dir entry");
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+        // Skip the traditional-support module entirely so tree-support
+        // becomes the sole support-generator holder.
+        if name_str == "traditional-support" {
+            continue;
+        }
+        let target = dst.join(&name);
+        if entry.file_type().expect("file_type").is_dir() {
+            recurse_copy(&entry.path(), &target).expect("recurse_copy dir");
+        } else {
+            fs::copy(&entry.path(), &target).expect("copy file");
+        }
+    }
+    dst
+}
+
+/// Recursively copy `src` directory tree to `dst`.
+#[allow(dead_code)]
+fn recurse_copy(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if src.is_dir() {
+        std::fs::create_dir_all(dst)?;
+        for entry in std::fs::read_dir(src)? {
+            let entry = entry?;
+            recurse_copy(&entry.path(), &dst.join(entry.file_name()))?;
+        }
+    } else {
+        std::fs::copy(src, dst)?;
+    }
+    Ok(())
+}
+
 fn assert_path_exists(p: &Path, label: &str) {
     assert!(
         p.exists(),
@@ -84,6 +131,7 @@ fn run_slicer_host(
     model: &Path,
     module_dir: &Path,
     output: &Path,
+    config: Option<&Path>,
 ) -> std::process::Output {
     let bin = env!("CARGO_BIN_EXE_slicer-host");
     // `--module` is a required CLI flag for the Run subcommand even
@@ -91,20 +139,22 @@ fn run_slicer_host(
     // at any real file on disk; the runtime does not execute a
     // singular "module" arg, it uses `--module-dir` discovery.
     let dummy_module = model; // any existing file
-    Command::new(bin)
-        .args([
-            "run",
-            "--module",
-            dummy_module.to_str().unwrap(),
-            "--model",
-            model.to_str().unwrap(),
-            "--module-dir",
-            module_dir.to_str().unwrap(),
-            "--output",
-            output.to_str().unwrap(),
-        ])
-        .output()
-        .expect("slicer-host binary should execute")
+    let mut cmd = Command::new(bin);
+    cmd.args([
+        "run",
+        "--module",
+        dummy_module.to_str().unwrap(),
+        "--model",
+        model.to_str().unwrap(),
+        "--module-dir",
+        module_dir.to_str().unwrap(),
+        "--output",
+        output.to_str().unwrap(),
+    ]);
+    if let Some(config_path) = config {
+        cmd.arg("--config").arg(config_path);
+    }
+    cmd.output().expect("slicer-host binary should execute")
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +173,7 @@ fn benchy_e2e_real_pipeline_produces_gcode() {
     let modules = empty_module_dir(&tmp);
     let out_path = tmp.path().join("benchy_e2e.gcode");
 
-    let output = run_slicer_host(&model, &modules, &out_path);
+    let output = run_slicer_host(&model, &modules, &out_path, None);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -158,7 +208,7 @@ fn benchy_e2e_module_discovery_runs_on_live_path() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let modules = empty_module_dir(&tmp);
     let out_path = tmp.path().join("discovery.gcode");
-    let output = run_slicer_host(&model, &modules, &out_path);
+    let output = run_slicer_host(&model, &modules, &out_path, None);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -185,8 +235,8 @@ fn benchy_e2e_is_deterministic() {
     let out_a = tmp.path().join("a.gcode");
     let out_b = tmp.path().join("b.gcode");
 
-    let ra = run_slicer_host(&model, &modules, &out_a);
-    let rb = run_slicer_host(&model, &modules, &out_b);
+    let ra = run_slicer_host(&model, &modules, &out_a, None);
+    let rb = run_slicer_host(&model, &modules, &out_b, None);
 
     assert!(ra.status.success(), "run A failed: {}", String::from_utf8_lossy(&ra.stderr));
     assert!(rb.status.success(), "run B failed: {}", String::from_utf8_lossy(&rb.stderr));
@@ -221,7 +271,7 @@ fn benchy_e2e_against_real_core_modules_is_diagnosable() {
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let out_path = tmp.path().join("real_modules.gcode");
-    let output = run_slicer_host(&model, &modules, &out_path);
+    let output = run_slicer_host(&model, &modules, &out_path, None);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
 
@@ -345,7 +395,7 @@ fn benchy_mvp_gcode_has_real_extrusion_content() {
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let out_path = tmp.path().join("benchy_mvp.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path);
+    let result = run_slicer_host(&model, &modules, &out_path, None);
     let stderr = String::from_utf8_lossy(&result.stderr);
 
     // (0) Regression guard for blocker #1: canonical Benchy-path modules
@@ -466,8 +516,8 @@ fn benchy_mvp_content_is_deterministic() {
     let out_a = tmp.path().join("mvp_a.gcode");
     let out_b = tmp.path().join("mvp_b.gcode");
 
-    let ra = run_slicer_host(&model, &modules, &out_a);
-    let rb = run_slicer_host(&model, &modules, &out_b);
+    let ra = run_slicer_host(&model, &modules, &out_a, None);
+    let rb = run_slicer_host(&model, &modules, &out_b, None);
 
     // Determinism holds whether the pipeline currently succeeds or
     // fails — both runs must reach the same conclusion byte-for-byte.
@@ -509,7 +559,7 @@ fn benchy_mvp_produces_full_height_layer_progression() {
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let out_path = tmp.path().join("benchy_height.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path);
+    let result = run_slicer_host(&model, &modules, &out_path, None);
     let stderr = String::from_utf8_lossy(&result.stderr);
     assert!(
         result.status.success(),
@@ -535,6 +585,249 @@ fn benchy_mvp_produces_full_height_layer_progression() {
         "Benchy max emitted Z = {max_z}; expected ~47–48 for a full-height \
          slicing run. Later layers are being dropped or the planner's \
          height ceiling is wrong.",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Step 10 — TASK-120 / TASK-120b: support-enabled Benchy acceptance tests
+// ---------------------------------------------------------------------------
+
+/// AC-6: benchy_with_support_enabled — runs Benchy with tree-support
+/// filtered dir and JSON config, asserts binary exits 0 and .gcode
+/// non-empty.
+#[test]
+fn benchy_with_support_enabled() {
+    let model = fixture_stl();
+    assert_path_exists(&model, "Benchy STL");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let modules = filtered_module_dir_for_tree_support(&tmp);
+    let config = repo_root().join("resources/test_config/benchy-tree-support.json");
+    assert_path_exists(&config, "benchy-tree-support.json config");
+
+    let out_path = tmp.path().join("benchy_support.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, Some(&config));
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "slicer-host with tree-support config must exit 0. Stderr:\n{stderr}"
+    );
+    assert!(out_path.exists(), "--output file must be written");
+
+    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+    assert!(
+        !gcode.is_empty(),
+        "gcode output must not be empty when support is enabled. Stderr:\n{stderr}"
+    );
+}
+
+/// AC-8: benchy_support_marker_present — asserts .gcode contains
+/// ;TYPE:Support or ;TYPE:Support interface marker emitted by the
+/// tree-support module's G-code post-processing.
+#[test]
+fn benchy_support_marker_present() {
+    let model = fixture_stl();
+    assert_path_exists(&model, "Benchy STL");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let modules = filtered_module_dir_for_tree_support(&tmp);
+    let config = repo_root().join("resources/test_config/benchy-tree-support.json");
+    assert_path_exists(&config, "benchy-tree-support.json config");
+
+    let out_path = tmp.path().join("benchy_support_marker.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, Some(&config));
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "slicer-host with tree-support must succeed. Stderr:\n{stderr}"
+    );
+
+    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+
+    // The tree-support module emits ;TYPE:Support or ;TYPE:Support interface
+    // markers in the G-code to label support extrusion moves.
+    let has_support_marker = gcode.lines().any(|l| {
+        l.contains(";TYPE:Support interface") || l.contains(";TYPE:Support")
+    });
+    assert!(
+        has_support_marker,
+        "G-code must contain ;TYPE:Support or ;TYPE:Support interface marker \
+         when tree-support is enabled. G-code preview (first 30 lines):\n{}",
+        preview(&gcode, 30)
+    );
+}
+
+/// AC-8: benchy_support_deterministic — runs identical command twice,
+/// asserts byte-identical output. Proves support generation is
+/// deterministic across two runs.
+#[test]
+fn benchy_support_deterministic() {
+    let model = fixture_stl();
+    assert_path_exists(&model, "Benchy STL");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let modules = filtered_module_dir_for_tree_support(&tmp);
+    let config = repo_root().join("resources/test_config/benchy-tree-support.json");
+    assert_path_exists(&config, "benchy-tree-support.json config");
+
+    let out_a = tmp.path().join("support_det_a.gcode");
+    let out_b = tmp.path().join("support_det_b.gcode");
+
+    let ra = run_slicer_host(&model, &modules, &out_a, Some(&config));
+    let rb = run_slicer_host(&model, &modules, &out_b, Some(&config));
+
+    assert_eq!(
+        ra.status.success(),
+        rb.status.success(),
+        "both runs must agree on success/failure. A stderr:\n{}\n\nB stderr:\n{}",
+        String::from_utf8_lossy(&ra.stderr),
+        String::from_utf8_lossy(&rb.stderr),
+    );
+
+    let a_bytes = std::fs::read(&out_a).unwrap_or_default();
+    let b_bytes = std::fs::read(&out_b).unwrap_or_default();
+    assert_eq!(
+        a_bytes, b_bytes,
+        "two identical support-enabled runs must produce byte-identical G-code"
+    );
+}
+
+/// AC-NEG: benchy_no_support — runs Benchy WITHOUT support config,
+/// asserts no ;TYPE:Support or ;TYPE:Support interface markers appear.
+/// This validates that support markers only appear when support is
+/// explicitly enabled, not as a side-effect of the default pipeline.
+#[test]
+fn benchy_no_support_marker_when_disabled() {
+    let model = fixture_stl();
+    assert_path_exists(&model, "Benchy STL");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    // Use the full core-modules tree (includes tree-support module
+    // but without config flag it should not generate support IR).
+    let modules = core_modules_dir();
+    assert_path_exists(&modules, "core-modules directory");
+
+    // Run WITHOUT any config — support_enabled defaults to false.
+    let out_path = tmp.path().join("benchy_no_support.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, None);
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    // Even if the pipeline fails, we check that support markers are absent.
+    // The pipeline may fail for unrelated reasons; what we guard against
+    // is a spurious ;TYPE:Support marker appearing when support is disabled.
+    let gcode = std::fs::read_to_string(&out_path).unwrap_or_default();
+
+    let support_marker_lines: Vec<&str> = gcode
+        .lines()
+        .filter(|l| l.contains(";TYPE:Support interface") || l.contains(";TYPE:Support"))
+        .collect();
+
+    assert!(
+        support_marker_lines.is_empty(),
+        "When support config is absent, G-code must NOT contain support \
+         markers. Found: {:?}. This indicates support is being generated \
+         even when support_enabled=false. Stderr tail:\n{}\nG-code preview:\n{}",
+        support_marker_lines,
+        stderr.lines().rev().take(8).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n"),
+        preview(&gcode, 30)
+    );
+}
+
+/// AC-7: tree_support_active_holder — proves that with the filtered
+/// module dir (traditional-support excluded), `com.core.tree-support`
+/// is the active `support-generator` claim holder. Contrastively
+/// proves the same module loses by alphabetical first-winner dedup
+/// when traditional-support is also present, so the filter is the
+/// load-bearing change that flips the holder.
+#[test]
+fn tree_support_active_holder() {
+    use slicer_host::{load_live_modules_for_plan, DiagnosticLevel};
+
+    // ── Filtered dir: traditional-support is excluded; tree-support
+    //    is the only `support-generator` holder, so the dedup never
+    //    drops it. ──
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let filtered = filtered_module_dir_for_tree_support(&tmp);
+    let loaded = load_live_modules_for_plan(&[filtered], 1)
+        .expect("filtered live module load must succeed");
+
+    let bound_ids: Vec<String> = loaded
+        .bindings
+        .iter()
+        .map(|b| b.module.id.clone())
+        .collect();
+    assert!(
+        bound_ids.iter().any(|id| id == "com.core.tree-support"),
+        "filtered dir bindings must include 'com.core.tree-support', got: {:?}",
+        bound_ids
+    );
+    assert!(
+        !bound_ids.iter().any(|id| id == "com.core.traditional-support"),
+        "filtered dir bindings must NOT include 'com.core.traditional-support', got: {:?}",
+        bound_ids
+    );
+    let dropped_tree_support = loaded.diagnostics.iter().any(|d| {
+        matches!(d.level, DiagnosticLevel::Info)
+            && d.message.contains("module 'com.core.tree-support'")
+            && d.message.contains("dropped")
+            && d.message.contains("support-generator")
+    });
+    assert!(
+        !dropped_tree_support,
+        "filtered dir must NOT drop tree-support via support-generator dedup; \
+         diagnostics: {:?}",
+        loaded
+            .diagnostics
+            .iter()
+            .map(|d| &d.message)
+            .collect::<Vec<_>>()
+    );
+
+    // ── Full dir: alphabetical dedup keeps `com.core.traditional-support`
+    //    (traditional < tree) and drops `com.core.tree-support`. This
+    //    contrastive check proves the filter is the load-bearing change. ──
+    let full = core_modules_dir();
+    assert_path_exists(&full, "core-modules directory");
+    let full_loaded = load_live_modules_for_plan(&[full], 1)
+        .expect("full live module load must succeed");
+
+    let full_ids: Vec<String> = full_loaded
+        .bindings
+        .iter()
+        .map(|b| b.module.id.clone())
+        .collect();
+    assert!(
+        full_ids
+            .iter()
+            .any(|id| id == "com.core.traditional-support"),
+        "full dir bindings must include 'com.core.traditional-support' as the \
+         alphabetical first-winner support-generator holder, got: {:?}",
+        full_ids
+    );
+    assert!(
+        !full_ids.iter().any(|id| id == "com.core.tree-support"),
+        "full dir bindings must NOT include 'com.core.tree-support' (it is \
+         dropped by alphabetical dedup), got: {:?}",
+        full_ids
+    );
+    let full_dropped_tree_support = full_loaded.diagnostics.iter().any(|d| {
+        matches!(d.level, DiagnosticLevel::Info)
+            && d.message.contains("module 'com.core.tree-support'")
+            && d.message.contains("dropped")
+            && d.message.contains("support-generator")
+            && d.message.contains("com.core.traditional-support")
+    });
+    assert!(
+        full_dropped_tree_support,
+        "full dir must emit a dedup diagnostic dropping tree-support in favour \
+         of traditional-support; diagnostics: {:?}",
+        full_loaded
+            .diagnostics
+            .iter()
+            .map(|d| &d.message)
+            .collect::<Vec<_>>()
     );
 }
 
@@ -565,7 +858,7 @@ fn benchy_prepass_seam_plan_matches_live_outer_wall_start() {
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let out_path = tmp.path().join("seam_evidence.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path);
+    let result = run_slicer_host(&model, &modules, &out_path, None);
 
     // The pipeline must succeed with real modules for this evidence to be meaningful.
     let stderr = String::from_utf8_lossy(&result.stderr);
