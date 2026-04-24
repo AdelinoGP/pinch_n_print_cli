@@ -368,6 +368,78 @@ fn handwritten_test_guests_use_payload_extrusion_role_variants() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Prepass segmentation signature surface
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Verifies that the canonical prepass world uses mesh-object-view (not raw
+/// object-id) for the run-mesh-segmentation export.
+#[test]
+fn prepass_world_uses_mesh_object_view() {
+    let path = workspace_root().join("wit/world-prepass.wit");
+    let content = fs::read_to_string(&path).expect("read canonical world-prepass.wit");
+    // Normalize CRLF → LF so the contains check works across platforms.
+    let normalized = content.replace("\r\n", "\n");
+    // The export signature must declare list<mesh-object-view>, not list<object-id>.
+    assert!(
+        normalized.contains("run-mesh-segmentation: func(\n        objects: list<mesh-object-view>"),
+        "canonical world-prepass.wit must use list<mesh-object-view> for run-mesh-segmentation"
+    );
+    // The old form must not appear.
+    assert!(
+        !normalized.contains("run-mesh-segmentation: func(\n        objects: list<object-id>"),
+        "canonical world-prepass.wit must not use stale list<object-id> for run-mesh-segmentation"
+    );
+}
+
+/// Verifies that the canonical prepass world uses paint-segmentation-object-view
+/// (not raw object-id) for the run-paint-segmentation export.
+#[test]
+fn prepass_world_uses_paint_segmentation_object_view() {
+    let path = workspace_root().join("wit/world-prepass.wit");
+    let content = fs::read_to_string(&path).expect("read canonical world-prepass.wit");
+    let normalized = content.replace("\r\n", "\n");
+    assert!(
+        normalized.contains("run-paint-segmentation: func(\n        objects: list<paint-segmentation-object-view>"),
+        "canonical world-prepass.wit must use list<paint-segmentation-object-view> for run-paint-segmentation"
+    );
+    assert!(
+        !normalized.contains("run-paint-segmentation: func(\n        objects: list<object-id>"),
+        "canonical world-prepass.wit must not use stale list<object-id> for run-paint-segmentation"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Seam-related layer-world members
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Verifies that perimeter-region-view exposes resolved-seam as a read member.
+#[test]
+fn perimeter_region_view_has_resolved_seam() {
+    let path = workspace_root().join("wit/deps/ir-types.wit");
+    let content = fs::read_to_string(&path).expect("read canonical ir-types.wit");
+    assert!(
+        content.contains("resolved-seam: func() -> option<seam-position>"),
+        "perimeter-region-view must expose resolved-seam read member"
+    );
+}
+
+/// Verifies that perimeter-output-builder exposes push-reordered-wall-loop and
+/// push-resolved-seam as write members.
+#[test]
+fn perimeter_output_builder_has_seam_write_methods() {
+    let path = workspace_root().join("wit/deps/ir-types.wit");
+    let content = fs::read_to_string(&path).expect("read canonical ir-types.wit");
+    assert!(
+        content.contains("push-reordered-wall-loop:"),
+        "perimeter-output-builder must expose push-reordered-wall-loop"
+    );
+    assert!(
+        content.contains("push-resolved-seam:"),
+        "perimeter-output-builder must expose push-resolved-seam"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Helper functions
 // ─────────────────────────────────────────────────────────────────────────────
 
