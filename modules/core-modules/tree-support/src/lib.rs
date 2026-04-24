@@ -27,6 +27,15 @@ use slicer_sdk::views::SliceRegionView;
 /// Default base speed used for normalizing speed factors (mm/s).
 const BASE_SPEED: f32 = 50.0;
 
+/// Cap on interior sample points per ExPolygon per layer. The tree MST
+/// builder is O(n²) Prim (same algorithmic class as OrcaSlicer's
+/// `MinimumSpanningTree::prim`), so grid refinements that push `n` into
+/// the millions produce effectively unbounded work. If the density-derived
+/// grid would exceed this cap, the spacing is widened so that the sample
+/// count stays ≤ `MAX_SAMPLES_PER_EXPOLY`. Deterministic and coverage-
+/// preserving — no random downsampling.
+const MAX_SAMPLES_PER_EXPOLY: f64 = 2000.0;
+
 /// Tree support branching generator.
 ///
 /// Produces tree-like branching fill patterns for support material areas.
@@ -213,7 +222,13 @@ impl TreeSupport {
         z: f32,
         speed_factor: f32,
     ) -> Vec<ExtrusionPath3D> {
-        let spacing_mm = self.line_width as f64 / self.density as f64;
+        // `support_density` is declared in tree-support.toml as a 0-100
+        // percentage (min=0, max=100, default=20), matching OrcaSlicer's
+        // UI convention. Convert to a 0-1 ratio before using it as the
+        // spacing divisor. A density of 0 has already been filtered
+        // upstream (run_support early-returns when density <= 0).
+        let density_ratio = (self.density as f64 / 100.0).max(f64::EPSILON);
+        let mut spacing_mm = self.line_width as f64 / density_ratio;
 
         // Compute bounding box in mm
         let (bb_min_x, bb_min_y, bb_max_x, bb_max_y) = polygon_bbox_mm(expoly);
@@ -222,6 +237,14 @@ impl TreeSupport {
 
         if bb_width <= 0.0 || bb_height <= 0.0 {
             return Vec::new();
+        }
+
+        // Sample-count cap: widen spacing so (bb_w/spacing)*(bb_h/spacing)
+        // ≤ MAX_SAMPLES_PER_EXPOLY. Bounds the O(n²) Prim work per
+        // ExPolygon; see MAX_SAMPLES_PER_EXPOLY doc.
+        let min_spacing_from_cap = (bb_width * bb_height / MAX_SAMPLES_PER_EXPOLY).sqrt();
+        if min_spacing_from_cap > spacing_mm {
+            spacing_mm = min_spacing_from_cap;
         }
 
         // Sample interior points on a grid with spacing

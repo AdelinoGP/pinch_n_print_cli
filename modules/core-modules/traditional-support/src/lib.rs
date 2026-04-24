@@ -89,7 +89,11 @@ impl LayerModule for TraditionalSupport {
             return Ok(());
         }
 
-        let line_spacing_mm = self.line_width / self.density;
+        // `support_density` is declared in traditional-support.toml as a
+        // 0-100 percentage (matching OrcaSlicer's UI convention). Convert
+        // to a 0-1 ratio before using it as the spacing divisor.
+        let density_ratio = (self.density / 100.0).max(f32::EPSILON);
+        let line_spacing_mm = self.line_width / density_ratio;
         let line_spacing = slicer_ir::mm_to_units(line_spacing_mm);
 
         // Compute angle: base + 90 degree alternation per layer
