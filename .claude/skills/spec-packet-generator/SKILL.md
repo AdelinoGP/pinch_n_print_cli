@@ -323,3 +323,10 @@ The generated packet should be sufficient for a later Ralph run to understand:
 **OrcaSlicer reference missing:** Note that the packet has no OrcaSlicer dependency instead of inventing one.
 
 **Existing packet directory already present:** Ask whether to overwrite, revise in place, or choose a new slug.
+
+## Packet Documentation Quality
+Packets must have:
+- All verification commands that actually work (test `grep` patterns, file paths)
+- Specific task descriptions (not vague 'implement X')
+- Matching status in docs vs actual code
+- All acceptance criteria with pass/fail evidence

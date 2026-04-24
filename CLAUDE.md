@@ -101,6 +101,13 @@ Phase H (end-to-end integration) is active. See `docs/07_implementation_status.m
 
 This project uses spec packets under `.ralph/specs/` for implementation. Each packet contains `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is selected by `status: active` in its `packet.spec.md`. Backpressure gates require `cargo build`, `cargo test`, and `cargo clippy` to pass before packet completion.
 
+## WIT/Type Changes Checklist
+When modifying WIT types or interface definitions:
+1. Search all `wit_host.rs`, `dispatch.rs`, and `wit_guest` modules for the affected type
+2. Verify type identity matches across component boundaries (e.g., `list<object-id>` in one file and `list<MeshObjectView>` in another causes linking failures)
+3. Run `cargo build --tests` after WIT changes
+4. Update both inline WIT and external package references consistently
+
 ## Key Docs
 
 - `docs/01_system_architecture.md` — pipeline tiers, data ownership, claim system
