@@ -229,10 +229,11 @@ interface ir-handles {
     }
 
     resource perimeter-region-view {
-        object-id:    func() -> object-id;
-        region-id:    func() -> region-id;
-        wall-loops:   func() -> list<wall-loop-view>;
-        infill-areas: func() -> list<ex-polygon>;
+        object-id:       func() -> object-id;
+        region-id:       func() -> region-id;
+        wall-loops:      func() -> list<wall-loop-view>;
+        infill-areas:   func() -> list<ex-polygon>;
+        resolved-seam:   func() -> option<seam-position>;
     }
 
     // ── Mutable output builder resources ────────────────────────────────
@@ -245,9 +246,11 @@ interface ir-handles {
     }
 
     resource perimeter-output-builder {
-        push-wall-loop:      func(loop-: wall-loop-view) -> result<_, string>;
-        set-infill-areas:    func(areas: list<ex-polygon>) -> result<_, string>;
-        push-seam-candidate: func(pos: point3, score: f32) -> result<_, string>;
+        push-wall-loop:          func(loop-: wall-loop-view) -> result<_, string>;
+        push-reordered-wall-loop: func(pos: point3-with-width, wall-index: u32, rotated-wall-loop: wall-loop-view) -> result<_, string>;
+        set-infill-areas:        func(areas: list<ex-polygon>) -> result<_, string>;
+        push-seam-candidate:     func(pos: point3, score: f32) -> result<_, string>;
+        push-resolved-seam:      func(pos: point3, wall-index: u32) -> result<_, string>;
     }
 
     resource slice-postprocess-builder {
