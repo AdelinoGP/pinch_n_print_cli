@@ -13,7 +13,7 @@ use slicer_ir::{
 };
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
-use slicer_sdk::traits::FinalizationModule;
+use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCollectionView};
 
 /// Skirt and brim path generator.
 ///
@@ -287,19 +287,82 @@ struct BBox2D {
     y_max: f32,
 }
 
-// ── SDK authoring-path adoption (TASK-111) ─────────────────────────────
-//
-// Aligns `SkirtBrim` with the documented `#[slicer_module]` authoring
-// surface (docs/05 §Module Entry Point). `on_print_start` delegates to
-// the existing `from_config` constructor so lifecycle semantics are
-// byte-identical to the legacy direct API. The `run_finalization`
-// default (`Ok(())`) is retained at the trait boundary — the real
-// geometry pipeline continues to consume `SkirtBrim::process` on the
-// legacy `&mut Vec<LayerCollectionIR>` surface until the host is ported
-// off that API, so runtime behaviour is preserved here.
+// `on_print_start` delegates to `from_config`; `run_finalization` is
+// fully implemented via `LayerCollectionView` + `FinalizationOutputBuilder`
+// (packet 16, TASK-142). The legacy `process()` helper remains for tests
+// but is no longer called on the live host path.
 #[slicer_module]
 impl FinalizationModule for SkirtBrim {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
         Self::from_config(config)
+    }
+
+    fn run_finalization(
+        &self,
+        layers: &[LayerCollectionView],
+        output: &mut FinalizationOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        if !self.enabled || layers.is_empty() {
+            return Ok(());
+        }
+
+        let max_layer = (self.skirt_height as usize).min(layers.len());
+
+        // Compute bbox from the first max_layer layers using the read-only view.
+        let mut bbox: Option<BBox2D> = None;
+        for view in layers.iter().take(max_layer) {
+            for entity in view.ordered_entities() {
+                for pt in &entity.path.points {
+                    match &mut bbox {
+                        Some(b) => {
+                            b.x_min = b.x_min.min(pt.x);
+                            b.y_min = b.y_min.min(pt.y);
+                            b.x_max = b.x_max.max(pt.x);
+                            b.y_max = b.y_max.max(pt.y);
+                        }
+                        None => {
+                            bbox = Some(BBox2D {
+                                x_min: pt.x,
+                                y_min: pt.y,
+                                x_max: pt.x,
+                                y_max: pt.y,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        let bbox = match bbox {
+            Some(b) => b,
+            None => return Ok(()), // no entities, nothing to do
+        };
+
+        // Emit skirt entity pushes for each targeted layer.
+        for view in layers.iter().take(max_layer) {
+            let layer_index = view.layer_index();
+            let z = view.z();
+            for entity in self.generate_skirt_entities(&bbox, z, layer_index) {
+                output
+                    .push_entity_to_layer(layer_index, entity.path, entity.region_key)
+                    .map_err(|e| ModuleError::fatal(1, e))?;
+            }
+        }
+
+        // Emit brim entity pushes on layer 0 only.
+        if self.brim_width > 0.0 {
+            if let Some(view) = layers.first() {
+                let layer_index = view.layer_index();
+                let z = view.z();
+                for entity in self.generate_brim_entities(&bbox, z, layer_index) {
+                    output
+                        .push_entity_to_layer(layer_index, entity.path, entity.region_key)
+                        .map_err(|e| ModuleError::fatal(1, e))?;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
