@@ -116,6 +116,67 @@ fn generate_schwartz_d(
 }
 ```
 
+### PrePass Module Authoring Pattern
+
+PrePass modules implement the `PrepassModule` trait. The `#[slicer_module]`
+macro routes the module's manifest `stage.id` to the matching trait method.
+Existing prepass stages each have a default-no-op trait method so a module
+only needs to override the one for its own stage.
+
+| Manifest `stage.id`               | Trait method called                           | Output builder              |
+|-----------------------------------|-----------------------------------------------|-----------------------------|
+| `PrePass::MeshSegmentation`       | `run_mesh_segmentation`                       | `MeshSegmentationOutput`    |
+| `PrePass::MeshAnalysis`           | `run_mesh_analysis`                           | `MeshAnalysisOutput`        |
+| `PrePass::LayerPlanning`          | `run_layer_planning`                          | `LayerPlanOutput`           |
+| `PrePass::PaintSegmentation`      | `run_paint_segmentation`                      | `PaintSegmentationOutput`   |
+| `PrePass::SeamPlanning`           | `run_seam_planning`                           | `SeamPlanningOutput`        |
+| `PrePass::SupportGeneration`      | `run_support_generation`                      | `SupportGenerationOutput`   |
+
+Example: a `PrePass::SupportGeneration` module that emits one branch entry
+per overhanging facet.
+
+```rust
+use slicer_sdk::prelude::*;
+
+pub struct MySupportPlanner;
+
+#[slicer_module]
+impl PrepassModule for MySupportPlanner {
+    fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
+        Ok(Self)
+    }
+
+    fn run_support_generation(
+        &self,
+        objects: &[MeshObjectView],
+        output: &mut SupportGenerationOutput,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        for obj in objects {
+            // Compute branches across layers (top-down propagation, etc.)
+            let entry = SupportPlanEntry {
+                global_layer_index: 5,
+                object_id: obj.object_id.clone(),
+                region_id: "0".to_string(),
+                branch_segments: vec![vec![
+                    Point3WithWidth { x: 1.0, y: 2.0, z: 1.0, width: 0.4, flow_factor: 1.0 },
+                    Point3WithWidth { x: 7.0, y: 8.0, z: 1.0, width: 0.4, flow_factor: 1.0 },
+                ]],
+            };
+            output.push_support_plan(entry).map_err(|e| {
+                ModuleError::fatal(1, format!("push_support_plan failed: {e}"))
+            })?;
+        }
+        Ok(())
+    }
+}
+```
+
+The matching manifest declares `[stage] id = "PrePass::SupportGeneration"`,
+`[claims] holds = ["support-planner"]`, `[ir-access] reads = ["MeshIR",
+"SurfaceClassificationIR", "LayerPlanIR", "PaintRegionIR"]`, `writes =
+["SupportPlanIR"]`, and `[module] wit-world = "slicer:world-prepass@1.0.0"`.
+
 ### SDK Type Re-Exports
 
 The SDK re-exports all WIT-generated types under clean names:
@@ -134,10 +195,59 @@ pub use slicer_wit::layer_module::{
     ExtrusionPath3D, ExtrusionRole, WallLoopView, WallLoopType,
 };
 
+// PrePass module authoring:
+pub use slicer_sdk::prepass_builders::{
+    LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput,
+    PaintSegmentationOutput, SeamPlanningOutput, SupportGenerationOutput,
+};
+pub use slicer_sdk::prepass_types::{
+    MeshObjectView, PaintLayerView, PaintSegmentationObjectView, SeamPlanEntry,
+    SupportPlanEntry,
+};
+pub use slicer_sdk::traits::{LayerModule, PrepassModule, PaintRegionLayerView};
+
 pub use slicer_sdk::error::ModuleError;
 pub use slicer_sdk::geometry::*;   // convenience geometry helpers
 pub use slicer_sdk::host;          // host service wrappers (log, raycast, clip_polygons, etc.)
 ```
+
+### Consuming a PrePass IR from a Layer Stage
+
+`Layer::Support` modules that want to emit pre-planned tree-support branches
+(produced by `PrePass::SupportGeneration`) read from `SupportPlanIR` via the
+`PaintRegionLayerView` accessor:
+
+```rust
+fn run_support(
+    &self,
+    layer_index: u32,
+    regions: &[SliceRegionView],
+    paint: &PaintRegionLayerView,
+    output: &mut SupportOutputBuilder,
+    _config: &ConfigView,
+) -> Result<(), ModuleError> {
+    for region in regions {
+        let planned = paint
+            .support_plan_segments_for(region.object_id().as_str(), *region.region_id());
+        if !planned.is_empty() {
+            // Plan-driven path: emit committed branches with SupportMaterial role.
+            for segment in planned {
+                let mut path = segment.clone();
+                path.role = ExtrusionRole::SupportMaterial;
+                output.push_support_path(path).ok();
+            }
+            continue;
+        }
+        // Fallback path: per-layer filler (grid-MST, scan-line, etc.).
+    }
+    Ok(())
+}
+```
+
+The module must declare `SupportPlanIR` in its manifest `[ir-access].reads`
+to receive a non-empty plan. Modules whose algorithm is inherently per-layer
+(e.g. `traditional-support`'s scan-line filler) intentionally omit the
+declaration so the audit contract reflects that they ignore the plan.
 
 For native host-side tests, `SliceRegionView` also exposes a convenience
 `boundary_paint()` accessor over the documented WIT `boundary-paint` data so

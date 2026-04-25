@@ -104,6 +104,21 @@ PrePass::PaintSegmentation
              SupportBlocker  → blocked support regions (consumed by Layer::Support)
              Custom(id)     → passed through for the registering module to consume
 
+PrePass::SupportGeneration  [optional — installed when a `support-planner` module is loaded]
+  Input:  MeshIR
+          SurfaceClassificationIR
+          LayerPlanIR
+          PaintRegionIR (SupportEnforcer/SupportBlocker semantics)
+  Output: SupportPlanIR
+  Purpose: Multi-layer organic tree-support planning. Walks layers top-to-bottom,
+           extracts contact points from overhang/bridge facets and SupportEnforcer
+           paint, and propagates them through a per-layer Prim minimum spanning
+           tree (simplified port of OrcaSlicer `TreeSupport::drop_nodes`). Emits
+           per-(layer, object, region) branch geometry that `Layer::Support`
+           modules consume directly when present. When no support-planner module
+           is installed this stage is absent and tree-support falls back to its
+           per-layer grid-MST filler.
+
 PrePass::RegionMapping  [host-built-in, not a module stage]
   Input:  LayerPlanIR + LoadedModules + ResolvedConfig
   Output: RegionMapIR
@@ -195,12 +210,20 @@ Layer::Support
   Input:  SliceIR
           SurfaceClassificationIR
           PaintRegionIR (read-only — SupportEnforcer and SupportBlocker semantics)
+          SupportPlanIR (read-only, optional — only modules that declare the
+                         read consume it; produced by PrePass::SupportGeneration)
   Output: SupportIR
   Purpose: Traditional or tree support geometry generation.
            Enforcer/blocker priority rules (applied in this order):
              1. SupportBlocker region → no support regardless of overhang angle
              2. SupportEnforcer region → support regardless of overhang angle
              3. Otherwise → support if overhang angle exceeds config threshold
+           Planner-consuming tier (TASK-161): modules holding the `support-generator`
+           claim that also declare `SupportPlanIR` as a read (e.g. `tree-support`)
+           emit committed branch geometry directly when the plan is present, and
+           fall back to their per-layer filler otherwise. Modules whose algorithm
+           is inherently per-layer (e.g. `traditional-support` with its scan-line
+           fill) intentionally do not declare the read.
 
 Layer::SupportPostProcess
   Input:  SupportIR
@@ -340,6 +363,7 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 | `PrePass::MeshAnalysis`                  | `MeshIR`                                                           | `SurfaceClassificationIR`                                           |
 | `PrePass::LayerPlanning`                 | `MeshIR`, `SurfaceClassificationIR`, global/object/modifier config | `LayerPlanIR`                                                       |
 | `PrePass::PaintSegmentation`             | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR`                 | `PaintRegionIR`                                                     |
+| `PrePass::SupportGeneration` (optional)  | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR`, `PaintRegionIR`| `SupportPlanIR`                                                     |
 | `PrePass::RegionMapping` (host-built-in) | `LayerPlanIR`, loaded modules, resolved config                     | `RegionMapIR`                                                       |
 | `Layer::Slice`                           | `MeshIR`, `LayerPlanIR`                                            | `SliceIR`                                                           |
 | `Layer::SlicePostProcess`                | `SliceIR`, `PaintRegionIR`                                         | `SliceIR` (polygon edits, `boundary_paint`)                         |
@@ -347,7 +371,7 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 | `Layer::PerimetersPostProcess`           | `PerimeterIR`                                                      | `PerimeterIR` (seam/geometry refinements)                           |
 | `Layer::Infill`                          | `SliceIR` (infill areas and context)                               | `InfillIR`                                                          |
 | `Layer::InfillPostProcess`               | `InfillIR`                                                         | `InfillIR`                                                          |
-| `Layer::Support`                         | `SliceIR`, `SurfaceClassificationIR`, `PaintRegionIR`              | `SupportIR`                                                         |
+| `Layer::Support`                         | `SliceIR`, `SurfaceClassificationIR`, `PaintRegionIR`, `SupportPlanIR` (optional, declared per module) | `SupportIR`                                                         |
 | `Layer::SupportPostProcess`              | `SupportIR`                                                        | `SupportIR`                                                         |
 | `Layer::PathOptimization`                | `PerimeterIR`, `InfillIR`, `SupportIR`                             | `LayerCollectionIR`                                                 |
 | `PostPass::LayerFinalization`            | `Vec<LayerCollectionIR>`, Blackboard IRs                           | `Vec<LayerCollectionIR>` (may insert synthetic layers)              |
@@ -359,23 +383,24 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 
 `X` indicates the consumer stage depends on data written by the producer stage.
 
-| Producer \ Consumer   | MeshAnalysis | LayerPlanning | PaintSegmentation | RegionMapping | Slice | SlicePostProcess | Perimeters | Infill | Support | PathOptimization | LayerFinalization | GCodeEmit |
-|-----------------------|--------------|---------------|-------------------|---------------|-------|------------------|------------|--------|---------|------------------|-------------------|-----------|
-| MeshSegmentation      |              | `X`           | `X`               |               | `X`   |                  |            |        |         |                  |                   |           |
-| MeshAnalysis          |              | `X`           | `X`               |               |       |                  |            |        | `X`     |                  |                   |           |
-| LayerPlanning         |              |               | `X`               | `X`           | `X`   |                  |            |        |         |                  |                   |           |
-| PaintSegmentation     |              |               |                   |               |       | `X`              | `X`        |        | `X`     |                  |                   |           |
-| RegionMapping         |              |               |                   |               | `X`   | `X`              | `X`        | `X`    | `X`     | `X`              |                   |           |
-| Slice                 |              |               |                   |               |       | `X`              | `X`        | `X`    | `X`     |                  |                   |           |
-| SlicePostProcess      |              |               |                   |               |       |                  | `X`        |        |         |                  |                   |           |
-| Perimeters            |              |               |                   |               |       |                  |            |        |         | `X`              |                   |           |
-| PerimetersPostProcess |              |               |                   |               |       |                  |            |        |         | `X`              |                   |           |
-| Infill                |              |               |                   |               |       |                  |            |        |         | `X`              |                   |           |
-| InfillPostProcess     |              |               |                   |               |       |                  |            |        |         | `X`              |                   |           |
-| Support               |              |               |                   |               |       |                  |            |        |         | `X`              |                   |           |
-| SupportPostProcess    |              |               |                   |               |       |                  |            |        |         | `X`              |                   |           |
-| PathOptimization      |              |               |                   |               |       |                  |            |        |         |                  | `X`               |           |
-| LayerFinalization     |              |               |                   |               |       |                  |            |        |         |                  |                   | `X`       |
+| Producer \ Consumer   | MeshAnalysis | LayerPlanning | PaintSegmentation | SupportGeneration | RegionMapping | Slice | SlicePostProcess | Perimeters | Infill | Support | PathOptimization | LayerFinalization | GCodeEmit |
+|-----------------------|--------------|---------------|-------------------|-------------------|---------------|-------|------------------|------------|--------|---------|------------------|-------------------|-----------|
+| MeshSegmentation      |              | `X`           | `X`               |                   |               | `X`   |                  |            |        |         |                  |                   |           |
+| MeshAnalysis          |              | `X`           | `X`               | `X`               |               |       |                  |            |        | `X`     |                  |                   |           |
+| LayerPlanning         |              |               | `X`               | `X`               | `X`           | `X`   |                  |            |        |         |                  |                   |           |
+| PaintSegmentation     |              |               |                   | `X`               |               |       | `X`              | `X`        |        | `X`     |                  |                   |           |
+| SupportGeneration     |              |               |                   |                   |               |       |                  |            |        | `X`     |                  |                   |           |
+| RegionMapping         |              |               |                   |                   |               | `X`   | `X`              | `X`        | `X`    | `X`     | `X`              |                   |           |
+| Slice                 |              |               |                   |                   |               |       | `X`              | `X`        | `X`    | `X`     |                  |                   |           |
+| SlicePostProcess      |              |               |                   |                   |               |       |                  | `X`        |        |         |                  |                   |           |
+| Perimeters            |              |               |                   |                   |               |       |                  |            |        |         | `X`              |                   |           |
+| PerimetersPostProcess |              |               |                   |                   |               |       |                  |            |        |         | `X`              |                   |           |
+| Infill                |              |               |                   |                   |               |       |                  |            |        |         | `X`              |                   |           |
+| InfillPostProcess     |              |               |                   |                   |               |       |                  |            |        |         | `X`              |                   |           |
+| Support               |              |               |                   |                   |               |       |                  |            |        |         | `X`              |                   |           |
+| SupportPostProcess    |              |               |                   |                   |               |       |                  |            |        |         | `X`              |                   |           |
+| PathOptimization      |              |               |                   |                   |               |       |                  |            |        |         |                  | `X`               |           |
+| LayerFinalization     |              |               |                   |                   |               |       |                  |            |        |         |                  |                   | `X`       |
 
 Notes:
 
@@ -394,6 +419,7 @@ These rules are enforced by the host at runtime. Violations trap the WASM module
 | `MeshIR`                                      | Host (permanent)                  | Query-only via host-services API (raycasts, normals, bounds)    |
 | `SurfaceClassificationIR`                     | Host Blackboard                   | Read-only view                                                  |
 | `LayerPlanIR`                                 | Host Blackboard                   | Read-only view                                                  |
+| `SupportPlanIR`                               | Host Blackboard                   | Read-only view (only modules that declare the read see it)      |
 | `RegionMapIR`                                 | Host Blackboard                   | Read-only view (own region only)                                |
 | Per-layer IR (Slice, Perimeter, Infill, etc.) | Per-layer arena                   | Read view of previous stages; write builder for declared output |
 | `LayerCollectionIR`                           | Per-layer arena → Host after join | Read-only in PostPass                                           |
@@ -490,7 +516,10 @@ Claims are named exclusive resource slots. They prevent two modules from both tr
 Built-in claim names:
   perimeter-generator     — generates wall loops for a region
   infill-generator        — generates infill paths for a region
-  support-generator       — generates support structures
+  support-generator       — generates support structures (Layer::Support)
+  support-planner         — plans multi-layer support branches in PrePass
+                            (PrePass::SupportGeneration; orthogonal to
+                            support-generator)
   seam-placer             — resolves seam position
   layer-planner           — contributes to Z-plane sequence
   mesh-analyzer           — contributes to surface classification
@@ -545,6 +574,7 @@ Unless explicitly listed as transition-capable below, the claim holder must rema
 |-----------------------|------------------------------|-----------------------------------------------------------------------------------------|
 | `infill-generator`    | Yes                          | Region-local transitions allowed when layer-range overrides do not overlap ambiguously. |
 | `support-generator`   | Yes                          | Allowed for planned support strategy shifts across geometry phases.                     |
+| `support-planner`     | No                           | PrePass global planner must be unique and stable; multi-layer propagation requires a single holder. |
 | `perimeter-generator` | No                           | Must remain stable to preserve wall continuity assumptions.                             |
 | `seam-placer`         | No                           | Must remain stable for seam scoring consistency.                                        |
 | `layer-planner`       | No                           | PrePass global planner must be unique and stable.                                       |

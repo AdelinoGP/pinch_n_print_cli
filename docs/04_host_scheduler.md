@@ -98,6 +98,8 @@ pub static STAGE_ORDER: &[StageId] = &[
     StageId::PrePassMeshSegmentation,
     StageId::PrePassMeshAnalysis,
     StageId::PrePassLayerPlanning,
+    StageId::PrePassSeamPlanning,        // optional; runs when a seam-planner module is loaded
+    StageId::PrePassSupportGeneration,   // optional; runs when a support-planner module is loaded
     StageId::PrePassPaintSegmentation,
     StageId::PrePassRegionMapping,   // host-built-in, not a module stage
     StageId::LayerSlice,             // host-built-in
@@ -633,6 +635,11 @@ pub fn execute_prepass(
     blackboard: &mut Blackboard,
 ) -> Result<(), SlicerError> {
     for stage in &plan.prepass_stages {
+        // Stage prerequisites are checked once per stage, before any module
+        // runs. The check returns `MissingRequiredPrepass { slot }` when a
+        // prerequisite IR slot is uncommitted — see required_slots() for
+        // the per-stage table.
+        ensure_stage_prerequisites(&stage.stage_id, blackboard)?;
         for module in &stage.modules {
             let ir_views = blackboard.build_read_views(&module.ir_read_mask);
             let output   = blackboard.build_output_builder(&module.ir_write_mask);
@@ -645,6 +652,27 @@ pub fn execute_prepass(
     Ok(())
 }
 ```
+
+#### Stage Prerequisites (Normative)
+
+Each PrePass stage declares which already-committed Blackboard slots it
+requires. The `required_slots()` table is the single source of truth — modules
+must not run their own ad-hoc presence checks for these slots.
+
+| Stage                          | Required Slots                                       |
+|--------------------------------|------------------------------------------------------|
+| `PrePass::MeshAnalysis`        | (none)                                               |
+| `PrePass::LayerPlanning`       | `SurfaceClassification`                              |
+| `PrePass::SeamPlanning`        | `LayerPlan`                                          |
+| `PrePass::SupportGeneration`   | `SurfaceClassification`, `LayerPlan`                 |
+| `PrePass::PaintSegmentation`   | `SurfaceClassification`, `LayerPlan`                 |
+| `PrePass::RegionMapping`       | `LayerPlan`                                          |
+
+A stage scheduled before its prerequisites are committed produces
+`PrepassExecutionError::MissingRequiredPrepass { stage_id, slot }` and aborts
+the prepass without invoking any module. This guard short-circuits before
+dispatch so module-side error handling for "the IR I need wasn't committed"
+is unnecessary.
 
 ### Per-Layer Execution (rayon parallel)
 
@@ -881,6 +909,8 @@ slice command
     │    ├─ PrePassMeshSegmentation → MeshIR (normalized paint) → Blackboard
     │    ├─ PrePassMeshAnalysis     → SurfaceClassificationIR   → Blackboard
     │    ├─ PrePassLayerPlanning    → LayerPlanIR               → Blackboard
+    │    ├─ PrePassSeamPlanning     → SeamPlanIR                → Blackboard  (optional)
+    │    ├─ PrePassSupportGeneration→ SupportPlanIR             → Blackboard  (optional)
         │    ├─ PrePassPaintSegmentation→ PaintRegionIR             → Blackboard
     │    └─ PrePassRegionMapping    → RegionMapIR               → Blackboard
   ├─ execute_per_layer()  [rayon::par_iter]

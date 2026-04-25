@@ -74,8 +74,9 @@ pub struct MeshIR {
 pub struct ObjectMesh {
     pub id: ObjectId,                       // stable UUID string
     pub mesh: IndexedTriangleSet,           // host-owned; serialized to WASM only for single-pass modules
-                                               // (PaintSegmentation, MeshSegmentation, SeamPlanning); not
-                                               // serialized for multi-pass per-layer modules
+                                               // (PaintSegmentation, MeshSegmentation, SeamPlanning,
+                                               // SupportGeneration); not serialized for multi-pass
+                                               // per-layer modules
     pub transform: Transform3d,             // world-space placement (column-major f64)
     pub config: ObjectConfig,               // raw user config, not yet override-resolved
     pub modifier_volumes: Vec<ModifierVolume>,
@@ -675,6 +676,66 @@ pub struct SupportIR {
     pub ironing_paths:    Vec<ExtrusionPath3D>, 
 }
 ```
+
+---
+
+## IR 9b — SupportPlanIR
+
+**Stage:** Output of `PrePass::SupportGeneration` (optional; only present when a
+`support-planner` module is loaded)
+
+**Producer:** A module holding the `support-planner` claim on `PrePass::SupportGeneration`
+(e.g. the bundled `support-planner` core module — a simplified port of OrcaSlicer's
+`TreeSupport::detect_overhangs` + `TreeSupport::drop_nodes`).
+
+**Consumers:** `Layer::Support` modules that declare `SupportPlanIR` as a read in
+their manifest (notably `tree-support`). Modules whose algorithm is inherently
+per-layer (e.g. `traditional-support`'s scan-line filler) intentionally do not
+read this IR.
+
+```rust
+pub struct SupportPlanIR {
+    pub schema_version: SemVer,
+    /// One entry per active `(global_layer_index, object_id, region_id)` triple
+    /// that received planned branches. Multiple entries may share a `(layer,
+    /// object)` when an object has multiple regions on the same layer.
+    pub entries: Vec<SupportPlanEntry>,
+}
+
+pub struct SupportPlanEntry {
+    pub global_layer_index: u32,
+    pub object_id: ObjectId,
+    pub region_id: RegionId,
+    /// Pre-planned organic branch geometry. Each `ExtrusionPath3D` is typically
+    /// a two-point segment (one MST edge between propagated contact points)
+    /// but may be multi-point for long merged branches. Points carry mm-valued
+    /// `Point3WithWidth` data and are emitted with `ExtrusionRole::SupportMaterial`.
+    pub branch_segments: Vec<ExtrusionPath3D>,
+}
+```
+
+**Consumption pattern — tree-support precedence:**
+
+For each `(layer, object, region)` reached during `Layer::Support` dispatch, a
+plan-aware module must:
+
+1. Look up `SupportPlanIR.entries` matching `(global_layer_index, object_id,
+   region_id)` (e.g. via the SDK's `PaintRegionLayerView::support_plan_segments_for(...)`
+   accessor).
+2. If at least one entry's `branch_segments` is non-empty: emit those segments
+   directly with `ExtrusionRole::SupportMaterial` and skip the per-layer filler
+   for that region.
+3. Otherwise: fall back to the module's own per-layer filler (e.g. tree-support's
+   grid-MST sample-and-merge path).
+
+This ordering preserves byte-for-byte fallback behavior when no `support-planner`
+module is installed, while enabling organic multi-layer branch geometry when
+one is loaded.
+
+**Determinism:** Identical PrePass inputs must produce byte-identical
+`SupportPlanIR` (`entries.len()`, every entry's `branch_segments.len()`, and
+every endpoint coordinate). The host-side prepass ceremony round-trips this via
+the `support_planner_is_deterministic_across_runs` test.
 
 ---
 

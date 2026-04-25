@@ -440,9 +440,20 @@ package slicer:world-prepass@1.0.0;
 world prepass-module {
     import slicer:host-api/host-services;
     import slicer:config/config-types.{config-view};
-    use slicer:ir-types/ir-handles.{object-id, region-id};
+    use slicer:ir-types/ir-handles.{object-id, region-id, mesh-object-view, paint-segmentation-object-view};
 
     record module-error { code: u32, message: string, fatal: bool }
+
+    // MeshSegmentation stage
+    resource mesh-segmentation-output {
+        mark-triangle-paint: func(obj: object-id, facet-index: u32, semantic: string, value: string) -> result<_, string>;
+    }
+
+    export run-mesh-segmentation: func(
+        objects: list<mesh-object-view>,
+        output: mesh-segmentation-output,
+        config: config-view,
+    ) -> result<_, module-error>;
 
     // MeshAnalysis stage
     enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
@@ -475,6 +486,78 @@ world prepass-module {
     export run-layer-planning: func(
         objects: list<object-id>,
         output: layer-plan-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+
+    // PaintSegmentation stage
+    use slicer:ir-types/ir-handles.{layer-idx};
+    use slicer:types/geometry.{ex-polygon};
+
+    record paint-region-entry {
+        object-id: object-id,
+        layer-index: layer-idx,
+        semantic: string,
+        polygons: list<ex-polygon>,
+        value: string,
+    }
+
+    resource paint-segmentation-output {
+        push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
+    }
+
+    export run-paint-segmentation: func(
+        objects: list<paint-segmentation-object-view>,
+        output: paint-segmentation-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+
+    // SeamPlanning stage
+    use slicer:types/geometry.{point3-with-width};
+
+    record seam-reason { tag: string }
+    record scored-seam-candidate {
+        position: point3-with-width,
+        score: f32,
+        reason: seam-reason,
+    }
+    record seam-plan-entry {
+        global-layer-index: layer-idx,
+        object-id: object-id,
+        region-id: region-id,
+        chosen-position: point3-with-width,
+        chosen-wall-index: u32,
+        scored-candidates: list<scored-seam-candidate>,
+    }
+
+    resource seam-planning-output {
+        push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
+    }
+
+    export run-seam-planning: func(
+        objects: list<mesh-object-view>,
+        output: seam-planning-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+
+    // SupportGeneration stage
+    // Multi-layer organic tree-support planning. Walks layers top-to-bottom,
+    // groups overhang/enforcer contacts via per-layer Prim MST, and emits
+    // per-(layer, object, region) branch geometry consumed directly by
+    // Layer::Support modules that declare SupportPlanIR as a read.
+    record support-plan-entry {
+        global-layer-index: layer-idx,
+        object-id: object-id,
+        region-id: region-id,
+        branch-segments: list<list<point3-with-width>>,
+    }
+
+    resource support-generation-output {
+        push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
+    }
+
+    export run-support-generation: func(
+        objects: list<mesh-object-view>,
+        output: support-generation-output,
         config: config-view,
     ) -> result<_, module-error>;
 }

@@ -25,6 +25,9 @@ This document is normative for term definitions and end-to-end behavior traces u
 | feature_flags | Segment-level wall metadata propagated from boundary paint. | Length and indexing must remain deterministic through wall transforms. |
 | paint_order | Deterministic tie-break key for paint overlap resolution. | Equal-precedence conflicting values are fatal. |
 | boundary_paint | Per-contour-point semantic paint annotations in `SlicedRegion`. | Must exist (possibly defaulted) before `Layer::Perimeters` consumption. |
+| SupportPlanIR | Per-(layer, object, region) organic tree-support branch geometry produced once by `PrePass::SupportGeneration` and stored on the Blackboard. | Treated read-only in Tier 2; only modules that declare the read see it. Optional — absent when no `support-planner` module is loaded. |
+| support-planner | Claim held by the single PrePass module producing `SupportPlanIR`. Orthogonal to `support-generator` (which is held in `Layer::Support`). | Non-transitionable across layers; first-winner alphabetical dedup if two modules declare it. |
+| Planner-consuming tier | The `Layer::Support` execution mode where a `support-generator` module emits committed `SupportPlanIR` branches directly instead of running its own per-layer filler. | Triggered per `(layer, object, region)` only when an entry exists for that triple in `SupportPlanIR`. Modules whose algorithm is inherently per-layer (e.g. `traditional-support`) intentionally do not declare the read and never enter this tier. |
 
 ---
 
@@ -112,6 +115,54 @@ This document is normative for term definitions and end-to-end behavior traces u
 
 ---
 
+## Scenario Trace 4 — Planner-Consuming Tree Support
+
+### Inputs
+
+- One overhanging object printed with `support_enabled = true`.
+- Module set installs both `support-planner` (PrePass) and `tree-support`
+  (Layer::Support). `traditional-support` is not installed for this scenario.
+- `tree-support.toml` declares `SupportPlanIR` as a manifest read.
+
+### Execution trace
+
+1. `PrePass::MeshAnalysis` populates `SurfaceClassificationIR` (host built-in).
+2. `PrePass::LayerPlanning` commits `LayerPlanIR`.
+3. `PrePass::SupportGeneration` runs the `support-planner`:
+   - `detect_overhangs` extracts contact points from overhang/bridge facets and
+     `SupportEnforcer` paint regions (drops contacts inside `SupportBlocker`).
+   - Top-down propagation (per-layer Prim MST merge-then-move) produces
+     `SupportPlanIR.entries` keyed by `(global_layer_index, object_id, region_id)`.
+4. Per-layer rayon tier runs.
+5. `Layer::Support` for the `tree-support` module looks up
+   `SupportPlanIR.entries` matching the current `(layer, object, region)`:
+   - When entries exist: emit their `branch_segments` directly with
+     `ExtrusionRole::SupportMaterial`, skip the grid-MST filler.
+   - When no entries exist: fall back to the per-layer grid-MST filler
+     (byte-identical to packet 26 baseline).
+
+### Expected outcomes
+
+- The committed `SupportIR.support_paths` for the planner-driven layers match
+  the planner's `branch_segments` byte-for-byte (≤ 1e-4 mm tolerance).
+- Without a `support-planner` module installed, the same `tree-support`
+  module emits identical paths to the pre-planner baseline.
+- Re-running the planner on the same fixture yields byte-identical
+  `SupportPlanIR` (deterministic node ordering and MST tie-break).
+
+### Negative cases (normative)
+
+- Empty overhangs + no enforcer paint → `SupportPlanIR.entries` is empty and
+  the planner returns `Ok(())` (no `ModuleError`).
+- `PrePass::SupportGeneration` scheduled before `LayerPlanIR` is committed →
+  `PrepassExecutionError::MissingRequiredPrepass { slot: LayerPlan }` aborts
+  the prepass before any module runs.
+- Two modules declaring `holds = ["support-planner"]` on the same stage →
+  alphabetical first-winner dedup keeps one and emits a `DiagnosticLevel::Info`
+  diagnostic naming the dropped module.
+
+---
+
 ## Compliance Checklist
 
 A documentation or implementation update is compliant with this spec only if all are true:
@@ -128,9 +179,14 @@ Each scenario should be mapped to a runnable validation artifact:
 - Scenario 1 → catch-up planning fixture + assertion on sync/catch-up metadata.
 - Scenario 2 → paint overlap fixture + assertion on precedence and fuzzy/material propagation.
 - Scenario 3 → failure-injection fixture + assertion on degraded/fatal event behavior.
+- Scenario 4 → overhang fixture + `prepass_support_generation_tdd` (positive,
+  empty-overhang, missing-`LayerPlanIR`, dedup, determinism) and
+  `live_support_generation_tdd::planner_consuming_tier` (plan-driven emission,
+  fallback, traditional-support no-op).
 
 Evidence files should be stored under:
 
 - `./docs/evidence/<release-id>/scenario-1-*`
 - `./docs/evidence/<release-id>/scenario-2-*`
 - `./docs/evidence/<release-id>/scenario-3-*`
+- `./docs/evidence/<release-id>/scenario-4-*`
