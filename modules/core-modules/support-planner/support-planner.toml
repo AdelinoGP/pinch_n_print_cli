@@ -1,0 +1,81 @@
+[module]
+id           = "com.core.support-planner"
+version      = "0.1.0"
+display-name = "Support Planner"
+description  = "Multi-layer organic tree-support planner for PrePass::SupportGeneration (simplified port of OrcaSlicer TreeSupport::drop_nodes)"
+author       = "modular-slicer"
+license      = "MIT"
+wit-world    = "slicer:world-prepass@1.0.0"
+
+[stage]
+id = "PrePass::SupportGeneration"
+
+[ir-access]
+# `LayerPlanIR` is a host-side scheduling prerequisite (see
+# `ensure_stage_prerequisites` for `PrePass::SupportGeneration`) but is not
+# read at runtime: v1 propagation is layer-height-agnostic and walks the
+# object's mesh bounds at the WIT-exposed `MeshObjectView` granularity. A
+# follow-up packet that surfaces `LayerPlanIR` to the prepass guest will add
+# it back to this list.
+reads  = ["MeshIR", "SurfaceClassificationIR", "PaintRegionIR"]
+writes = ["SupportPlanIR"]
+
+[claims]
+holds    = ["support-planner"]
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "2.0.0"
+
+[config.schema]
+[config.schema.support_enabled]
+type    = "bool"
+default = true
+display = "Support Enabled"
+group   = "Support"
+
+[config.schema.support_branch_angle_deg]
+type    = "float"
+default = 45.0
+min     = 0.0
+max     = 75.0
+display = "Support Branch Angle"
+group   = "Support"
+
+[config.schema.support_branch_merge_distance_mm]
+type    = "float"
+default = 0.8
+min     = 0.1
+max     = 5.0
+display = "Support Branch Merge Distance"
+group   = "Support"
+
+[config.schema.support_max_branches_per_layer]
+type    = "int"
+default = 1024
+min     = 1
+max     = 10000
+display = "Max Branches Per Layer"
+group   = "Support"
+
+[config.schema.line_width]
+type    = "float"
+default = 0.4
+min     = 0.1
+max     = 2.0
+display = "Line Width"
+group   = "Support"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 5
+layer-parallel-safe    = false
