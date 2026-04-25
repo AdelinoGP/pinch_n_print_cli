@@ -44,6 +44,8 @@ pub const STAGES: &[StageSpec] = &[
     StageSpec { method: "run_mesh_analysis",        stage_id: "PrePass::MeshAnalysis",        wit_export: "run-mesh-analysis",        world_id: "slicer:world-prepass@1.0.0",       trait_name: "PrepassModule" },
     StageSpec { method: "run_layer_planning",       stage_id: "PrePass::LayerPlanning",       wit_export: "run-layer-planning",       world_id: "slicer:world-prepass@1.0.0",       trait_name: "PrepassModule" },
     StageSpec { method: "run_paint_segmentation",   stage_id: "PrePass::PaintSegmentation",   wit_export: "run-paint-segmentation",   world_id: "slicer:world-prepass@1.0.0",       trait_name: "PrepassModule" },
+    StageSpec { method: "run_seam_planning",        stage_id: "PrePass::SeamPlanning",        wit_export: "run-seam-planning",        world_id: "slicer:world-prepass@1.0.0",       trait_name: "PrepassModule" },
+    StageSpec { method: "run_support_generation",   stage_id: "PrePass::SupportGeneration",   wit_export: "run-support-generation",   world_id: "slicer:world-prepass@1.0.0",       trait_name: "PrepassModule" },
     // ── Finalization world (slicer:world-finalization@1.0.0) ───────────
     StageSpec { method: "run_finalization",         stage_id: "PostPass::LayerFinalization",  wit_export: "run-finalization",         world_id: "slicer:world-finalization@1.0.0",  trait_name: "FinalizationModule" },
     // ── Postpass world (slicer:world-postpass@1.0.0) ───────────────────
@@ -178,11 +180,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn stage_table_has_fifteen_entries_one_per_documented_export() {
-        // Matches the total export count across wit/world-*.wit:
-        // Layer world: 8, Prepass world: 4, Finalization world: 1,
-        // Postpass world: 2.
-        assert_eq!(STAGES.len(), 15);
+    fn stage_table_has_one_entry_per_routed_export() {
+        // Matches the total stage exports the host dispatcher and macro
+        // route end-to-end. Currently:
+        //   Layer world: 8 (slice-postprocess, perimeters, wall-postprocess,
+        //                   infill, infill-postprocess, support,
+        //                   support-postprocess, path-optimization)
+        //   Prepass world: 6 (mesh-segmentation, mesh-analysis, layer-planning,
+        //                     paint-segmentation, seam-planning, support-generation)
+        //   Finalization world: 1
+        //   Postpass world: 2
+        assert_eq!(STAGES.len(), 17);
     }
 
     #[test]
