@@ -3242,16 +3242,25 @@ fn path_optimization_commit_routes_z_hops_to_deferred_queue() {
 }
 
 #[test]
-fn path_optimization_z_hop_rejects_out_of_bounds_index() {
-    use slicer_host::wit_host::{GcodeCommandCollected, HostExecutionContext};
+fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
+    // Module-supplied after_entity_index is ignored; the dispatch normalizes all
+    // ZHop/Retract/Move commands to the same global anchor so gcode_emit.rs can
+    // emit them as a coherent Retract→ZHop→Travel→Unretract sequence.
+    use slicer_host::wit_host::{GcodeCommandCollected, ExtrusionRole as WitRole, GcodeMoveCmd, HostExecutionContext};
     use slicer_ir::{LayerCollectionIR, SemVer};
 
-    let mut ctx = HostExecutionContext::new("com.test.pathopt-zhop-oob".to_string(), 0.0, 0.0, None, None);
-    ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index: 5, hop_height: 0.5 });
+    let mut ctx = HostExecutionContext::new("com.test.pathopt-zhop-norm".to_string(), 0.0, 0.0, None, None);
+    // Emit a full travel sequence; ZHop uses an arbitrary (formerly-rejected) index.
+    ctx.gcode_output.commands.push(GcodeCommandCollected::Retract { length: 0.8, speed: 25.0 });
+    ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index: 999, hop_height: 0.2 });
+    ctx.gcode_output.commands.push(GcodeCommandCollected::Move(GcodeMoveCmd {
+        x: Some(50.0), y: Some(50.0), z: None, e: None, f: None,
+        role: WitRole::Custom("travel".to_string()),
+    }));
+    ctx.gcode_output.commands.push(GcodeCommandCollected::Unretract { length: 0.8, speed: 25.0 });
 
     let mut arena = LayerArena::new();
-    // Pre-stage 2 entities directly into the LayerCollectionIR so the
-    // commit path sees a non-empty ordered_entities (entity_count=2).
+    // Pre-stage 2 entities so entity_count=2, anchor=1 (last entity index).
     let entity = slicer_ir::PrintEntity {
         path: slicer_ir::ExtrusionPath3D {
             points: vec![slicer_ir::Point3WithWidth { x: 0.0, y: 0.0, z: 0.2, width: 0.4, flow_factor: 1.0 }],
@@ -3267,13 +3276,29 @@ fn path_optimization_z_hop_rejects_out_of_bounds_index() {
         global_layer_index: 0, z: 0.2,
         ordered_entities: vec![entity.clone(), entity],
         tool_changes: Vec::new(), z_hops: Vec::new(), annotations: Vec::new(),
+        retracts: vec![], travel_moves: vec![],
     });
 
-    let err = slicer_host::commit_layer_outputs_for_test(
-        "Layer::PathOptimization", "com.test.pathopt-zhop-oob", 0, &ctx, &mut arena, None,).expect_err("out-of-bounds z-hop must fail");
-    let msg = err.to_string();
-    assert!(msg.contains("after-entity-index=5"), "diagnostic should name field: {msg}");
-    assert!(msg.contains("out of bounds"), "diagnostic should explain: {msg}");
+    slicer_host::commit_layer_outputs_for_test(
+        "Layer::PathOptimization", "com.test.pathopt-zhop-norm", 0, &ctx, &mut arena, None,
+    ).expect("ZHop with arbitrary entity index must be accepted and normalized to anchor");
+
+    let zhops = arena.take_deferred_z_hops();
+    assert_eq!(zhops.len(), 1);
+    assert_eq!(
+        zhops[0].after_entity_index, 1,
+        "ZHop must be anchored at global anchor (entity_count-1=1), got {}",
+        zhops[0].after_entity_index
+    );
+
+    let retracts = arena.take_deferred_retracts();
+    assert_eq!(retracts.len(), 2, "Retract + Unretract = 2");
+    assert_eq!(retracts[0].after_entity_index, 1, "Retract must share anchor with ZHop");
+    assert_eq!(retracts[1].after_entity_index, 1, "Unretract must share anchor with ZHop");
+
+    let travels = arena.take_deferred_travel_moves();
+    assert_eq!(travels.len(), 1);
+    assert_eq!(travels[0].after_entity_index, 1, "TravelMove must share anchor with ZHop");
 }
 
 #[test]
