@@ -36,7 +36,7 @@
 
 **Single-layer-at-a-time propagation, per-object, sequential, no avoidance cache.**
 
-The planner walks the model top-to-bottom using the committed `LayerPlanIR.layers` and `SurfaceClassificationIR.object_annotations`. For each object:
+The planner walks the model top-to-bottom over the object's mesh bounds at the WIT-exposed `MeshObjectView` granularity. v1 is **layer-height-agnostic** (uniform 0.2 mm assumed); `LayerPlanIR` is a host-side scheduling prerequisite via `ensure_stage_prerequisites` but is not read at runtime, and is therefore not declared in the planner's manifest `[ir-access].reads`. A follow-up packet that surfaces `LayerPlanIR.layers` and `SurfaceClassificationIR.object_annotations` through the prepass WIT will let the planner consume them and add them back to the manifest reads. For each object:
 
 1. **Contact-point extraction** (mirrors `detect_overhangs`):
    - For every layer `l` from top to bottom:
@@ -103,6 +103,7 @@ The planner walks the model top-to-bottom using the committed `LayerPlanIR.layer
 ## Data and Contract Notes
 
 - `SupportPlanIR.entries` keying: `(global_layer_index, object_id, region_id)`. Multiple entries may exist for the same `(layer, object)` across different `region_id`s — match `SeamPlanIR.entries`'s multiplicity contract.
+- **v1 single-region limitation:** `MeshObjectView` does not currently surface per-region segmentation, so the v1 planner emits every entry under the canonical `region_id = 0` bucket. Single-region objects (the Benchy fixture and the live-dispatch test geometries) match correctly because `tree-support`'s `support_plan_segments_for(object_id, region_id)` is invoked with `region_id = 0` for those regions. Multi-region objects will collapse all branches into the first region until a follow-up packet plumbs region info through the prepass WIT.
 - `SupportPlanEntry.branch_segments: Vec<ExtrusionPath3D>` — each segment is a polyline (typically 2-point but may be multi-point for long branches). Points use `ExtrusionRole::SupportMaterial` and `speed_factor` computed from the planner's `support_speed` config key (identical to existing tree-support formula: `support_speed / BASE_SPEED`).
 - `tree-support`'s `run_support` must preserve deterministic ordering: iterate `SupportPlanIR.entries` in input order, not via HashMap iteration, and emit `ExtrusionPath3D` in that order.
 - `traditional-support` does not read `SupportPlanIR`. If this invariant is violated (e.g. a future refactor adds the read), the contract audit in `core_module_ir_access_contract_tdd.rs` must fail. Add an assertion there if one does not already cover support modules.
