@@ -111,6 +111,8 @@ pub use slice_ir::{
     StageId,
     // Support types
     SupportIR,
+    SupportPlanEntry,
+    SupportPlanIR,
     SupportType,
 
     // Surface classification types

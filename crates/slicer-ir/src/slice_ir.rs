@@ -780,6 +780,50 @@ pub struct SeamPlanIR {
 }
 
 // ============================================================================
+// Support Plan IR Types
+// ============================================================================
+
+/// One entry in the global support plan.
+///
+/// Produced once per `(global_layer_index, object_id, region_id)` triple
+/// by `PrePass::SupportGeneration` and stored immutably on the blackboard.
+/// Consumed at dispatch time by `Layer::Support` modules (notably
+/// `tree-support`) that emit pre-planned organic branch geometry instead
+/// of running a per-layer filler.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportPlanEntry {
+    /// Global (inter-object) layer index this entry applies to.
+    pub global_layer_index: u32,
+    /// Object the branches belong to.
+    pub object_id: ObjectId,
+    /// Region inside the object the branches belong to.
+    pub region_id: RegionId,
+    /// Planned branch geometry for this `(layer, object, region)` triple.
+    /// Each `ExtrusionPath3D` is typically a two-point segment (a single
+    /// MST edge) but may be multi-point for long merged branches.
+    pub branch_segments: Vec<ExtrusionPath3D>,
+}
+
+/// Support plan IR — committed once to the blackboard by
+/// `PrePass::SupportGeneration`.
+///
+/// Carries per-layer organic branch geometry produced by a simplified
+/// OrcaSlicer-style top-down propagation (see the `support-planner`
+/// core module). The per-layer `Layer::Support` tree-support module
+/// consumes the plan when it is committed and emits branch segments
+/// directly; modules whose algorithm is inherently per-layer (e.g.
+/// `traditional-support`) do not read this IR.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportPlanIR {
+    /// Schema version of this IR.
+    pub schema_version: SemVer,
+    /// One entry per active `(layer, object, region)` triple that received
+    /// planned branches. Multiple entries may share `(layer, object)` when
+    /// a single object has multiple regions on the same layer.
+    pub entries: Vec<SupportPlanEntry>,
+}
+
+// ============================================================================
 // Paint Region IR Types
 // ============================================================================
 
