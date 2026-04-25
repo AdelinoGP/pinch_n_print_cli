@@ -167,172 +167,16 @@ fn empty_perimeter_output_for_wallpostprocess_skips_commit() {
     );
 }
 
-fn empty_seam_config() -> slicer_ir::ConfigView {
-    slicer_ir::ConfigView::from_map(std::collections::HashMap::new())
-}
-
-fn random_seam_config() -> slicer_ir::ConfigView {
-    let mut fields = std::collections::HashMap::new();
-    fields.insert(
-        "seam_mode".to_string(),
-        slicer_ir::ConfigValue::String("random".to_string()),
-    );
-    slicer_ir::ConfigView::from_map(fields)
-}
-
-fn ir_point(x: f32, y: f32, z: f32) -> slicer_ir::Point3WithWidth {
-    slicer_ir::Point3WithWidth {
-        x,
-        y,
-        z,
-        width: 0.4,
-        flow_factor: 1.0,
-    }
-}
-
-fn ir_flags(count: usize) -> Vec<slicer_ir::WallFeatureFlags> {
-    (0..count)
-        .map(|_| slicer_ir::WallFeatureFlags {
-            tool_index: None,
-            fuzzy_skin: false,
-            is_bridge: false,
-            is_thin_wall: false,
-            skip_ironing: false,
-            custom: std::collections::HashMap::new(),
-        })
-        .collect()
-}
-
-fn ir_wall(layer_z: f32, points: &[(f32, f32)]) -> slicer_ir::WallLoop {
-    let path_points: Vec<_> = points
-        .iter()
-        .map(|(x, y)| ir_point(*x, *y, layer_z))
-        .collect();
-    let point_count = path_points.len();
-    slicer_ir::WallLoop {
-        perimeter_index: 0,
-        loop_type: slicer_ir::LoopType::Outer,
-        path: slicer_ir::ExtrusionPath3D {
-            points: path_points,
-            role: slicer_ir::ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
-        },
-        width_profile: slicer_ir::WidthProfile {
-            widths: vec![0.4; point_count],
-        },
-        feature_flags: ir_flags(point_count),
-        boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
-    }
-}
-
-fn ir_candidate(
-    x: f32,
-    y: f32,
-    z: f32,
-    score: f32,
-    reason: slicer_ir::SeamReason,
-) -> slicer_ir::SeamCandidate {
-    slicer_ir::SeamCandidate {
-        position: ir_point(x, y, z),
-        score,
-        reason,
-    }
-}
-
-fn sdk_region(
-    object_id: &str,
-    region_id: u64,
-    walls: Vec<slicer_ir::WallLoop>,
-    candidates: Vec<slicer_ir::SeamCandidate>,
-) -> slicer_sdk::views::PerimeterRegionView {
-    slicer_sdk::views::PerimeterRegionView::new(
-        object_id.to_string(),
-        region_id,
-        walls,
-        vec![],
-        candidates,
-        None,
-    )
-}
-
-#[test]
-fn seam_placer_selects_lowest_effective_score_candidate() {
-    use seam_placer::SeamPlacer;
-    use slicer_sdk::builders::PerimeterOutputBuilder;
-    use slicer_sdk::traits::LayerModule;
-
-    let config = empty_seam_config();
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
-    let regions = vec![sdk_region(
-        "obj-a",
-        0,
-        vec![ir_wall(0.2, &[(1.0, 0.0), (2.0, 0.0), (3.0, 0.0)])],
-        vec![
-            ir_candidate(1.0, 0.0, 0.2, 0.55, slicer_ir::SeamReason::Aligned),
-            ir_candidate(2.0, 0.0, 0.2, 0.60, slicer_ir::SeamReason::Sharp),
-            ir_candidate(3.0, 0.0, 0.2, 0.45, slicer_ir::SeamReason::Aligned),
-        ],
-    )];
-    let mut output = PerimeterOutputBuilder::new();
-
-    module
-        .run_wall_postprocess(0, &regions, &mut output, &config)
-        .expect("wall postprocess must succeed");
-
-    let seam = output
-        .resolved_seam()
-        .expect("selected seam must be committed to output");
-    assert_eq!(seam.wall_index, 0, "single-wall region must resolve to wall 0");
-    assert!(
-        (seam.point.x - 2.0).abs() < 0.001,
-        "lowest effective score candidate should win, got seam at x={} instead of 2.0",
-        seam.point.x
-    );
-}
-
-#[test]
-fn seam_rotation_preserves_non_target_walls() {
-    use seam_placer::SeamPlacer;
-    use slicer_sdk::builders::PerimeterOutputBuilder;
-    use slicer_sdk::traits::LayerModule;
-
-    let config = empty_seam_config();
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
-    let outer_wall = ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)]);
-    let inner_wall = ir_wall(0.2, &[(0.0, 1.0), (1.0, 1.0), (2.0, 1.0)]);
-    let regions = vec![sdk_region(
-        "obj-a",
-        0,
-        vec![outer_wall.clone(), inner_wall.clone()],
-        vec![ir_candidate(1.0, 1.0, 0.2, 0.10, slicer_ir::SeamReason::Aligned)],
-    )];
-    let mut output = PerimeterOutputBuilder::new();
-
-    module
-        .run_wall_postprocess(0, &regions, &mut output, &config)
-        .expect("wall postprocess must succeed");
-
-    let seam = output
-        .resolved_seam()
-        .expect("resolved seam must be emitted for the selected wall");
-    assert_eq!(seam.wall_index, 1, "candidate on second wall must resolve to wall 1");
-
-    let rotated_loops = output.rotated_wall_loops();
-    assert_eq!(
-        rotated_loops.len(),
-        2,
-        "all region walls must be re-emitted so sibling walls survive commit"
-    );
-    assert_eq!(
-        rotated_loops[0].2, outer_wall,
-        "non-target sibling wall must be preserved in original order"
-    );
-    assert_eq!(
-        rotated_loops[1].2.path.points[0],
-        ir_point(1.0, 1.0, 0.2),
-        "target wall must be rotated so the seam point becomes the first vertex"
-    );
-}
+// SDK-level trait tests for `SeamPlacer::run_wall_postprocess` —
+// `seam_placer_selects_lowest_effective_score_candidate`,
+// `seam_rotation_preserves_non_target_walls`,
+// `seam_contract_is_deterministic_across_repeated_dispatch`,
+// `seam_candidate_missing_from_target_wall_rejects_dispatch` —
+// and their `ir_*` / `sdk_region` builders were moved to
+// `modules/core-modules/seam-placer/tests/seam_placer_dispatch_tdd.rs`
+// (packet-28 follow-up cleanup). SDK-level tests belong in the module
+// crate; slicer-host should only carry tests for host plumbing or
+// wasmtime-driven integration.
 
 #[test]
 fn resolved_seam_is_applied_only_to_origin_region() {
@@ -409,76 +253,10 @@ fn resolved_seam_is_applied_only_to_origin_region() {
     );
 }
 
-#[test]
-fn seam_contract_is_deterministic_across_repeated_dispatch() {
-    use seam_placer::SeamPlacer;
-    use slicer_sdk::builders::PerimeterOutputBuilder;
-    use slicer_sdk::traits::LayerModule;
-
-    let config = random_seam_config();
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
-
-    let run_once = || {
-        let mut output = PerimeterOutputBuilder::new();
-        let regions = vec![sdk_region(
-            "obj-a",
-            0,
-            vec![ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (3.0, 0.0)])],
-            vec![
-                ir_candidate(0.0, 0.0, 0.2, 0.2, slicer_ir::SeamReason::Aligned),
-                ir_candidate(1.0, 0.0, 0.2, 0.2, slicer_ir::SeamReason::Aligned),
-                ir_candidate(2.0, 0.0, 0.2, 0.2, slicer_ir::SeamReason::Aligned),
-                ir_candidate(3.0, 0.0, 0.2, 0.2, slicer_ir::SeamReason::Aligned),
-            ],
-        )];
-        module
-            .run_wall_postprocess(7, &regions, &mut output, &config)
-            .expect("wall postprocess must succeed");
-        (output.resolved_seam().cloned(), output.rotated_wall_loops().to_vec())
-    };
-
-    let first = run_once();
-    let second = run_once();
-    assert_eq!(
-        first.0, second.0,
-        "repeated identical dispatches must resolve the same seam"
-    );
-    assert_eq!(
-        first.1, second.1,
-        "repeated identical dispatches must emit byte-identical rotated loops"
-    );
-}
-
-#[test]
-fn seam_candidate_missing_from_target_wall_rejects_dispatch() {
-    use seam_placer::SeamPlacer;
-    use slicer_sdk::builders::PerimeterOutputBuilder;
-    use slicer_sdk::traits::LayerModule;
-
-    let config = empty_seam_config();
-    let module = SeamPlacer::on_print_start(&config).expect("module init must succeed");
-    let regions = vec![sdk_region(
-        "obj-a",
-        0,
-        vec![ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0)])],
-        vec![ir_candidate(99.0, 99.0, 0.2, 0.10, slicer_ir::SeamReason::Aligned)],
-    )];
-    let mut output = PerimeterOutputBuilder::new();
-
-    let result = module.run_wall_postprocess(0, &regions, &mut output, &config);
-    assert!(
-        result.is_err(),
-        "malformed seam candidate that is absent from all walls must reject dispatch"
-    );
-    assert!(
-        output.resolved_seam().is_none(),
-        "failed dispatch must not commit a resolved seam"
-    );
-    assert!(
-        output.rotated_wall_loops().is_empty(),
-        "failed dispatch must not emit rotated wall loops"
-    );
-}
+// `seam_contract_is_deterministic_across_repeated_dispatch` and
+// `seam_candidate_missing_from_target_wall_rejects_dispatch` were also
+// moved to `modules/core-modules/seam-placer/tests/seam_placer_dispatch_tdd.rs`
+// (same packet-28 follow-up cleanup as above).
 
 /// End-to-end test: after seam resolution, PathOptimization remains
 /// comment-only and does not replay wall loops as G1 moves.
@@ -864,8 +642,8 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     use slicer_host::manifest::LoadedModule;
     use slicer_ir::{
         BoundingBox3, GlobalLayer, PerimeterIR, PerimeterRegion, LoopType,
-        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, RegionKey, SeamCandidate,
-        SeamPosition, SeamPlanEntry, SeamPlanIR, SeamReason, SemVer, WallBoundaryType,
+        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, RegionKey,
+        SeamPosition, SeamPlanEntry, SeamPlanIR, SemVer, WallBoundaryType,
         WallFeatureFlags, WallLoop, WidthProfile, RegionId,
     };
 

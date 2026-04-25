@@ -2177,7 +2177,6 @@ dependencies = [
  "pyo3",
  "quick-xml 0.39.2",
  "rayon",
- "seam-placer",
  "serde",
  "serde_json",
  "slicer-core",
