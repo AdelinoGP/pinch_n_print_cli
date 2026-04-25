@@ -1133,6 +1133,8 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             tool_changes,
                             z_hops,
                             annotations: ::std::vec::Vec::new(),
+                            retracts: ::std::vec::Vec::new(),
+                            travel_moves: ::std::vec::Vec::new(),
                         };
                         sdk_layers.push(::slicer_sdk::traits::LayerCollectionView::new(ir));
                     }

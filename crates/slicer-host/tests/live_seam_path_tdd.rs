@@ -378,6 +378,8 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         tool_changes: vec![],
         z_hops: vec![],
         annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
     });
 
     let blackboard = Blackboard::new(

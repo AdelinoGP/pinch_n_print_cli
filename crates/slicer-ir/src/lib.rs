@@ -45,6 +45,8 @@ pub use slice_ir::{
     LayerAnnotation,
     LayerAnnotationKind,
     LayerCollectionIR,
+    TravelRetract,
+    TravelMove,
     LayerPaintMap,
     // Layer planning types
     LayerPlanIR,

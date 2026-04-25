@@ -35,6 +35,24 @@ default = true
 display = "Emit Layer Markers"
 group   = "Path Optimization"
 
+[config.schema.retract_length]
+type    = "float"
+default = 0.8
+display = "Retraction Length (mm)"
+group   = "Travel Retraction"
+
+[config.schema.retract_speed]
+type    = "float"
+default = 25.0
+display = "Retraction Speed (mm/s)"
+group   = "Travel Retraction"
+
+[config.schema.travel_z_hop]
+type    = "float"
+default = 0.0
+display = "Z-Hop Height (mm, 0 = disabled)"
+group   = "Travel Retraction"
+
 [config.overridable-per-region]
 keys = []
 

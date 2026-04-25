@@ -392,6 +392,8 @@ fn layer_collection_fixture(index: u32, z: f32) -> LayerCollectionIR {
         tool_changes: Vec::new(),
         z_hops: Vec::new(),
         annotations: Vec::new(),
+        retracts: Vec::new(),
+        travel_moves: Vec::new(),
     }
 }
 

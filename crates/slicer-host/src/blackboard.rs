@@ -12,6 +12,40 @@ use slicer_ir::{
     SurfaceClassificationIR, ToolChange, ZHop,
 };
 
+/// A retract or unretract decision collected from `Layer::PathOptimization`.
+///
+/// Stored in the per-layer deferred queue and verified by travel-policy tests.
+/// Packet 11 serialises these; packet 20 may reconcile them with finalization geometry.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeferredRetract {
+    /// Entity index anchor (same semantics as `ZHop.after_entity_index`).
+    pub after_entity_index: u32,
+    /// Retraction length in mm.
+    pub length: f32,
+    /// Retraction speed in mm/s.
+    pub speed: f32,
+    /// `true` = Unretract; `false` = Retract.
+    pub is_unretract: bool,
+}
+
+/// A travel move decision collected from `Layer::PathOptimization`.
+///
+/// Stored in the per-layer deferred queue so that packet-11 can serialize travel
+/// moves and packet-20 can reconcile them with finalization geometry.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeferredTravelMove {
+    /// Entity index anchor (same semantics as `ZHop.after_entity_index`).
+    pub after_entity_index: u32,
+    /// X destination in module coordinate units (100 nm).
+    pub x: Option<f32>,
+    /// Y destination in module coordinate units (100 nm).
+    pub y: Option<f32>,
+    /// Z destination in module coordinate units (100 nm).
+    pub z: Option<f32>,
+    /// Feed-rate override in mm/s (`None` = keep current speed).
+    pub f: Option<f32>,
+}
+
 /// Host-owned immutable global IR store plus write-once per-layer output slots.
 #[derive(Debug)]
 pub struct Blackboard {
@@ -330,6 +364,10 @@ pub struct LayerArena {
     /// Z-hops collected from `Layer::PathOptimization` guest output
     /// destined for `LayerCollectionIR.z_hops`.
     deferred_z_hops: Vec<ZHop>,
+    /// Retract/unretract decisions from `Layer::PathOptimization`.
+    deferred_retracts: Vec<DeferredRetract>,
+    /// Travel move destinations from `Layer::PathOptimization`.
+    deferred_travel_moves: Vec<DeferredTravelMove>,
 }
 
 /// Structured layer-arena contract failures.
@@ -497,7 +535,30 @@ impl LayerArena {
         std::mem::take(&mut self.deferred_z_hops)
     }
 
+    /// Append a guest-emitted `DeferredRetract` onto the per-layer queue.
+    pub fn push_deferred_retract(&mut self, r: DeferredRetract) {
+        self.deferred_retracts.push(r);
+    }
+
+    /// Take all accumulated deferred retract/unretract decisions.
+    pub fn take_deferred_retracts(&mut self) -> Vec<DeferredRetract> {
+        std::mem::take(&mut self.deferred_retracts)
+    }
+
+    /// Append a guest-emitted travel move onto the per-layer queue.
+    pub fn push_deferred_travel_move(&mut self, tm: DeferredTravelMove) {
+        self.deferred_travel_moves.push(tm);
+    }
+
+    /// Take all accumulated deferred travel move destinations.
+    pub fn take_deferred_travel_moves(&mut self) -> Vec<DeferredTravelMove> {
+        std::mem::take(&mut self.deferred_travel_moves)
+    }
+
     /// Drop all staged per-layer intermediates before finalization/postpass.
+    ///
+    /// `deferred_retracts` and `deferred_travel_moves` are flushed into
+    /// `LayerCollectionIR` by `layer_executor` before this is called.
     pub fn reset(&mut self) {
         self.slice = None;
         self.perimeter = None;
@@ -507,6 +568,8 @@ impl LayerArena {
         self.deferred_tool_changes.clear();
         self.deferred_annotations.clear();
         self.deferred_z_hops.clear();
+        self.deferred_retracts.clear();
+        self.deferred_travel_moves.clear();
     }
 }
 

@@ -1306,6 +1306,34 @@ pub struct ZHop {
     pub hop_height: f32,
 }
 
+/// Retract or unretract decision from `Layer::PathOptimization`, keyed by entity anchor.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TravelRetract {
+    /// Index of the entity after which this retract/unretract is anchored.
+    pub after_entity_index: u32,
+    /// Retraction length in mm.
+    pub length: f32,
+    /// Retraction speed in mm/s.
+    pub speed: f32,
+    /// `true` = Unretract; `false` = Retract.
+    pub is_unretract: bool,
+}
+
+/// Travel move destination from `Layer::PathOptimization`, keyed by entity anchor.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TravelMove {
+    /// Index of the entity after which this travel move is anchored.
+    pub after_entity_index: u32,
+    /// X destination (module coordinate units, 100 nm).
+    pub x: Option<f32>,
+    /// Y destination (module coordinate units, 100 nm).
+    pub y: Option<f32>,
+    /// Z destination (module coordinate units, 100 nm).
+    pub z: Option<f32>,
+    /// Feed-rate override in mm/s (`None` = keep current speed).
+    pub f: Option<f32>,
+}
+
 /// Print entity
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrintEntity {
@@ -1355,6 +1383,10 @@ pub struct LayerCollectionIR {
     pub z_hops: Vec<ZHop>,
     /// Guest-emitted per-layer annotations (comments / raw lines).
     pub annotations: Vec<LayerAnnotation>,
+    /// Retract/unretract decisions from `Layer::PathOptimization`.
+    pub retracts: Vec<TravelRetract>,
+    /// Travel move destinations from `Layer::PathOptimization`.
+    pub travel_moves: Vec<TravelMove>,
 }
 
 // ============================================================================

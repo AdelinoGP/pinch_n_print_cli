@@ -150,6 +150,8 @@ fn layer_collection_fixture(index: u32, z: f32) -> LayerCollectionIR {
         tool_changes: vec![],
         z_hops: vec![],
         annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
     }
 }
 
@@ -162,6 +164,8 @@ fn layer_with_entity(index: u32, z: f32, entity: PrintEntity) -> LayerCollection
         tool_changes: vec![],
         z_hops: vec![],
         annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
     }
 }
 

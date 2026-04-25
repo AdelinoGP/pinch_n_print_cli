@@ -342,6 +342,8 @@ fn execute_single_layer(
                 tool_changes: Vec::new(),
                 z_hops: Vec::new(),
                 annotations: Vec::new(),
+                retracts: Vec::new(),
+                travel_moves: Vec::new(),
             });
         }
         // Execute modules in topological order within each stage
@@ -422,6 +424,8 @@ fn execute_single_layer(
             tool_changes: Vec::new(),
             z_hops: Vec::new(),
             annotations: Vec::new(),
+            retracts: Vec::new(),
+            travel_moves: Vec::new(),
         }
     });
     layer_output
@@ -431,6 +435,19 @@ fn execute_single_layer(
         .annotations
         .extend(arena.take_deferred_annotations());
     layer_output.z_hops.extend(arena.take_deferred_z_hops());
+    layer_output.retracts.extend(arena.take_deferred_retracts().into_iter().map(|r| slicer_ir::TravelRetract {
+        after_entity_index: r.after_entity_index,
+        length: r.length,
+        speed: r.speed,
+        is_unretract: r.is_unretract,
+    }));
+    layer_output.travel_moves.extend(arena.take_deferred_travel_moves().into_iter().map(|m| slicer_ir::TravelMove {
+        after_entity_index: m.after_entity_index,
+        x: m.x,
+        y: m.y,
+        z: m.z,
+        f: m.f,
+    }));
     Ok((layer_output, audits))
 }
 

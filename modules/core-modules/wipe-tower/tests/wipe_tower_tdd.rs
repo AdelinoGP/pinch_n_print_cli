@@ -46,6 +46,8 @@ fn make_layer(index: u32, z: f32, tool_changes: Vec<ToolChange>) -> LayerCollect
         tool_changes,
         z_hops: vec![],
         annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
     }
 }
 

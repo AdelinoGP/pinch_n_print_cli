@@ -33,7 +33,8 @@ pub mod wit_host;
 pub mod dispatch;
 
 pub use blackboard::{
-    Blackboard, BlackboardError, BlackboardPrepassSlot, LayerArena, LayerArenaError, LayerArenaSlot,
+    Blackboard, BlackboardError, BlackboardPrepassSlot, DeferredRetract, DeferredTravelMove,
+    LayerArena, LayerArenaError, LayerArenaSlot,
 };
 pub use cli::{validate_run_options, CliError, HostCli, HostCommands, HostRunOptions};
 pub use config_schema::{

@@ -1217,16 +1217,11 @@ fn push_perimeter_regions(
         let mut data = wit_host::perimeter_region_to_data(region);
         // Inject resolved seam from SeamPlanIR if available for this region.
         if let Some(seam_ir) = seam_plan_ir {
-            eprintln!("DEBUG push_perimeter_regions: seam_plan_ir has {} entries, looking for layer={}, obj={}, region={}",
-                seam_ir.entries.len(), layer_index, region.object_id, region.region_id);
             if let Some(entry) = seam_ir.entries.iter().find(|e| {
                 e.region_key.global_layer_index == layer_index
                     && e.region_key.object_id == region.object_id
                     && e.region_key.region_id == region.region_id
             }) {
-                eprintln!("DEBUG push_perimeter_regions: MATCHED! injecting seam ({:.3},{:.3},{:.3}) wall_index={}",
-                    entry.chosen_candidate.point.x, entry.chosen_candidate.point.y, entry.chosen_candidate.point.z,
-                    entry.chosen_candidate.wall_index);
                 data.resolved_seam = Some((
                     wit_host::Point3 {
                         x: entry.chosen_candidate.point.x,
@@ -1235,11 +1230,7 @@ fn push_perimeter_regions(
                     },
                     entry.chosen_candidate.wall_index,
                 ));
-            } else {
-                eprintln!("DEBUG push_perimeter_regions: no matching entry found");
             }
-        } else {
-            eprintln!("DEBUG push_perimeter_regions: seam_plan_ir is None");
         }
         let handle = store.data_mut().push_perimeter_region(data)?;
         handles.push(handle);
@@ -1857,17 +1848,12 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             support_plan_ref,
             arena,
         ) {
-            Ok(ctx) => {
-                eprintln!("DEBUG run_stage: dispatch_layer_call returned Ok, calling commit_layer_outputs");
-                ctx
-            }
+            Ok(ctx) => ctx,
             Err(e) if e.phase == DispatchPhase::MissingComponent => {
                 // Placeholder/uncompiled module — skip gracefully.
-                eprintln!("DEBUG run_stage: MissingComponent error, returning early without commit");
                 return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
             }
             Err(e) => {
-                eprintln!("DEBUG run_stage: DispatchError phase={:?}, returning error", e.phase);
                 return Err(LayerStageError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
@@ -1881,13 +1867,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         let runtime_writes: Vec<String> = ctx.runtime_writes.clone();
 
         // Commit collected outputs into the layer arena based on stage.
-        eprintln!("DEBUG run_stage: about to call commit_layer_outputs for {}", stage_id);
-        use std::io::Write;
-        let _ = std::io::stderr().write_all(b"DEBUG run_stage: calling commit_layer_outputs now\n");
-        std::io::stderr().flush().ok();
         commit_layer_outputs(stage_id, &module.module_id, layer.index, &ctx, arena, seam_plan_ref)?;
-        let _ = std::io::stderr().write_all(b"DEBUG run_stage: commit_layer_outputs returned\n");
-        std::io::stderr().flush().ok();
 
         // For Layer::Perimeters: inject seam from SeamPlanIR into arena.perimeter()
         // so PerimetersPostProcess can merge it into the guest output.
@@ -1998,11 +1978,6 @@ fn commit_layer_outputs(
         }
         "Layer::Perimeters" | "Layer::PerimetersPostProcess" => {
             let perimeter = &ctx.perimeter_output;
-            eprintln!("DEBUG commit_layer_outputs: CHECKING skip condition for PerimetersPostProcess");
-            eprintln!("DEBUG commit_layer_outputs: perimeter.wall_loops.is_empty()={}", perimeter.wall_loops.is_empty());
-            eprintln!("DEBUG commit_layer_outputs: perimeter.rotated_wall_loops.is_empty()={}", perimeter.rotated_wall_loops.is_empty());
-            eprintln!("DEBUG commit_layer_outputs: perimeter.infill_areas.is_empty()={}", perimeter.infill_areas.is_empty());
-            eprintln!("DEBUG commit_layer_outputs: perimeter.seam_candidates.is_empty()={}", perimeter.seam_candidates.is_empty());
             // For PerimetersPostProcess: perimeter may have wall_loops (before rotation
             // from Layer::Perimeters) OR rotated_wall_loops (after rotation from seam-placer).
             // Skip only if BOTH are empty (genuinely no perimeter output).
@@ -2017,19 +1992,10 @@ fn commit_layer_outputs(
                     || !perimeter.seam_candidates.is_empty()
             };
             if !has_any_output {
-                eprintln!("DEBUG commit_layer_outputs: SKIPPING via early return");
                 return Ok(());
             }
-            eprintln!("DEBUG commit_layer_outputs: NOT skipping, proceeding with conversion");
             let ir = wit_host::convert_perimeter_output(perimeter, layer_index)
                 .map_err(|r| mk_validation_err("perimeter", r))?;
-            // DEBUG: log resolved_seam state from guest output
-            let arena_perim_before = arena.perimeter().map(|p| format!("Some(SeamPlanIR{{regions={}}})", p.regions.len()));
-            eprintln!("DEBUG commit_layer_outputs ENTRY: stage_id={}, layer_index={}, arena.perimeter={:?}", stage_id, layer_index, arena_perim_before);
-            {
-                eprintln!("DEBUG commit_layer_outputs: perimeter.resolved_seam={:?}", perimeter.resolved_seam);
-                eprintln!("DEBUG commit_layer_outputs: perimeter.rotated_wall_loops={}", perimeter.rotated_wall_loops.len());
-            }
             // For PerimetersPostProcess: preserve the original perimeter's
             // resolved_seam if it was pre-seeded from SeamPlanIR. The guest
             // only rotates wall loops; it does not re-emit a resolved_seam
@@ -2055,21 +2021,13 @@ fn commit_layer_outputs(
                     }
                 }
                 if let Some(orig_perim) = original {
-                    eprintln!("DEBUG commit_layer_outputs MERGE: original perimeter found, regions={}", orig_perim.regions.len());
                     let mut ir_owned = ir;
-                    eprintln!("DEBUG commit_layer_outputs MERGE: ir_owned (from guest) has {} regions", ir_owned.regions.len());
                     for (idx, region) in ir_owned.regions.iter_mut().enumerate() {
-                        eprintln!("DEBUG commit_layer_outputs MERGE: ir_owned.region[{}] resolved_seam BEFORE merge={:?}", idx, region.resolved_seam);
                         if region.resolved_seam.is_none() {
                             if let Some(orig_region) = orig_perim.regions.get(idx) {
                                 if let Some(rs) = &orig_region.resolved_seam {
-                                    eprintln!("DEBUG commit_layer_outputs MERGE: copying resolved_seam from original.region[{}]={:?}", idx, rs);
                                     region.resolved_seam = Some(rs.clone());
-                                } else {
-                                    eprintln!("DEBUG commit_layer_outputs MERGE: original.region[{}] has no resolved_seam", idx);
                                 }
-                            } else {
-                                eprintln!("DEBUG commit_layer_outputs MERGE: no original.region[{}]", idx);
                             }
                         }
                     }
@@ -2079,7 +2037,6 @@ fn commit_layer_outputs(
                         .set_perimeter(ir_owned)
                         .map_err(|e| LayerStageError::ArenaCommit { source: e })?;
                 } else {
-                    eprintln!("DEBUG commit_layer_outputs MERGE: no original perimeter found");
                     arena
                         .set_perimeter(ir)
                         .map_err(|e| LayerStageError::ArenaCommit { source: e })?;
@@ -2117,11 +2074,13 @@ fn commit_layer_outputs(
             // PathOptimization runs after ordered_entities have been pre-staged
             // into arena.layer_collection. The guest observes the layer via
             // perimeter-region-view and may emit overrides through the
-            // gcode-output-builder. Today we accept tool-change, comment, and
-            // raw overrides; tool-changes are folded into the final
-            // LayerCollectionIR.tool_changes. Move/Retract/FanSpeed/Temperature
-            // have no documented LayerCollectionIR mapping and are rejected
-            // with a structured diagnostic rather than being silently dropped.
+            // gcode-output-builder. Accepted overrides:
+            //   ToolChange        -> deferred_tool_changes -> LayerCollectionIR.tool_changes
+            //   Comment/Raw       -> deferred_annotations  -> LayerCollectionIR.annotations
+            //   ZHop              -> deferred_z_hops       -> LayerCollectionIR.z_hops
+            //   Retract/Unretract -> deferred_retracts     -> LayerCollectionIR.retracts
+            //   Move              -> deferred_travel_moves  -> LayerCollectionIR.travel_moves
+            // FanSpeed/Temperature have no LayerCollectionIR mapping and are rejected.
             use wit_host::GcodeCommandCollected;
             // The executor pre-stages `layer_collection` when running the full
             // per-layer loop. Direct-dispatch tests or plans without an
@@ -2133,12 +2092,10 @@ fn commit_layer_outputs(
                 .layer_collection()
                 .map(|lc| lc.ordered_entities.len().saturating_sub(1) as u32)
                 .unwrap_or(0);
-            let entity_count = arena
-                .layer_collection()
-                .map(|lc| lc.ordered_entities.len() as u32)
-                .unwrap_or(0);
             let mut accepted: Vec<slicer_ir::ToolChange> = Vec::new();
             let mut accepted_z_hops: Vec<slicer_ir::ZHop> = Vec::new();
+            let mut accepted_retracts: Vec<crate::blackboard::DeferredRetract> = Vec::new();
+            let mut accepted_travel_moves: Vec<crate::blackboard::DeferredTravelMove> = Vec::new();
             for (i, cmd) in ctx.gcode_output.commands.iter().enumerate() {
                 match cmd {
                     GcodeCommandCollected::ToolChange { from_tool, to_tool } => {
@@ -2160,41 +2117,21 @@ fn commit_layer_outputs(
                             kind: slicer_ir::LayerAnnotationKind::Raw(text.clone()),
                         });
                     }
-                    GcodeCommandCollected::Move(_cmd) => {
-                        return Err(LayerStageError::FatalModule {
-                            stage_id: stage_id.to_string(),
-                            module_id: module_id.to_string(),
-                            message: format!(
-                                "Layer::PathOptimization push-move call {i} rejected: \
-                                 no documented LayerCollectionIR mapping exists for move commands"
-                            ),
+                    GcodeCommandCollected::Move(cmd) => {
+                        accepted_travel_moves.push(crate::blackboard::DeferredTravelMove {
+                            after_entity_index: anchor,
+                            x: cmd.x,
+                            y: cmd.y,
+                            z: cmd.z,
+                            f: cmd.f,
                         });
                     }
-                    GcodeCommandCollected::ZHop { after_entity_index, hop_height } => {
-                        // Validation per docs/03 § z-hops:
-                        // - after-entity-index in bounds (or 0 for empty layers)
-                        // - hop-height finite and strictly > 0
-                        if entity_count == 0 {
-                            if *after_entity_index != 0 {
-                                return Err(LayerStageError::FatalModule {
-                                    stage_id: stage_id.to_string(),
-                                    module_id: module_id.to_string(),
-                                    message: format!(
-                                        "Layer::PathOptimization push-z-hop call {i} rejected: \
-                                         after-entity-index={after_entity_index} but ordered_entities is empty (must be 0)"
-                                    ),
-                                });
-                            }
-                        } else if *after_entity_index >= entity_count {
-                            return Err(LayerStageError::FatalModule {
-                                stage_id: stage_id.to_string(),
-                                module_id: module_id.to_string(),
-                                message: format!(
-                                    "Layer::PathOptimization push-z-hop call {i} rejected: \
-                                     after-entity-index={after_entity_index} out of bounds for ordered_entities.len()={entity_count}"
-                                ),
-                            });
-                        }
+                    GcodeCommandCollected::ZHop { after_entity_index: _, hop_height } => {
+                        // Normalize the module-supplied after_entity_index to the same global
+                        // `anchor` used for Retract/Move/Unretract so that gcode_emit.rs
+                        // emits the canonical sequence (Retract→ZHop→Travel→Unretract) anchored
+                        // at the same entity position. The module-supplied index reflects a
+                        // per-region local count and is always ignored at this stage.
                         if !hop_height.is_finite() || *hop_height <= 0.0 {
                             return Err(LayerStageError::FatalModule {
                                 stage_id: stage_id.to_string(),
@@ -2206,8 +2143,24 @@ fn commit_layer_outputs(
                             });
                         }
                         accepted_z_hops.push(slicer_ir::ZHop {
-                            after_entity_index: *after_entity_index,
+                            after_entity_index: anchor,
                             hop_height: *hop_height,
+                        });
+                    }
+                    GcodeCommandCollected::Retract { length, speed } => {
+                        accepted_retracts.push(crate::blackboard::DeferredRetract {
+                            after_entity_index: anchor,
+                            length: *length,
+                            speed: *speed,
+                            is_unretract: false,
+                        });
+                    }
+                    GcodeCommandCollected::Unretract { length, speed } => {
+                        accepted_retracts.push(crate::blackboard::DeferredRetract {
+                            after_entity_index: anchor,
+                            length: *length,
+                            speed: *speed,
+                            is_unretract: true,
                         });
                     }
                     other => {
@@ -2216,7 +2169,7 @@ fn commit_layer_outputs(
                             module_id: module_id.to_string(),
                             message: format!(
                                 "Layer::PathOptimization guest emitted unsupported GCode command at index {i} ({:?}); \
-                                 only tool-change/comment/raw/z-hop are documented overrides for the LayerCollectionIR commit path",
+                                 accepted overrides: tool-change/comment/raw/z-hop/retract/unretract/move",
                                 std::mem::discriminant(other)
                             ),
                         });
@@ -2228,6 +2181,12 @@ fn commit_layer_outputs(
             }
             for zh in accepted_z_hops {
                 arena.push_deferred_z_hop(zh);
+            }
+            for r in accepted_retracts {
+                arena.push_deferred_retract(r);
+            }
+            for tm in accepted_travel_moves {
+                arena.push_deferred_travel_move(tm);
             }
         }
         _ => {}
@@ -2306,6 +2265,8 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                         tool_changes: Vec::new(),
                         z_hops: Vec::new(),
                         annotations: Vec::new(),
+                        retracts: vec![],
+                        travel_moves: vec![],
                     });
                 }
             }

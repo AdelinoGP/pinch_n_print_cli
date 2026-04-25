@@ -155,6 +155,16 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 .iter()
                 .map(|zh| (zh.after_entity_index, zh))
                 .collect();
+            // retracts: per entity index, collect all in order (Retract entries first, Unretract entries last)
+            let mut retracts_by_entity: std::collections::HashMap<u32, Vec<&slicer_ir::TravelRetract>> = std::collections::HashMap::new();
+            for r in &layer.retracts {
+                retracts_by_entity.entry(r.after_entity_index).or_default().push(r);
+            }
+            // travel_moves: per entity index, collect all in order
+            let mut travel_moves_by_entity: std::collections::HashMap<u32, Vec<&slicer_ir::TravelMove>> = std::collections::HashMap::new();
+            for tm in &layer.travel_moves {
+                travel_moves_by_entity.entry(tm.after_entity_index).or_default().push(tm);
+            }
 
             // Process each entity
             for (entity_idx, entity) in layer.ordered_entities.iter().enumerate() {
@@ -234,27 +244,42 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     }
                 }
 
-                // Check for Z-hop after this entity
-                if let Some(zh) = z_hops.get(&entity_idx) {
+                // Emit canonical retract/z-hop/travel/unretract sequence after this entity.
+                let entity_retracts = retracts_by_entity.get(&entity_idx);
+                let entity_travels = travel_moves_by_entity.get(&entity_idx);
+                let entity_z_hop = z_hops.get(&entity_idx);
+
+                if let Some(retracts) = entity_retracts {
+                    for r in retracts.iter().filter(|r| !r.is_unretract) {
+                        commands.push(GCodeCommand::Retract { length: r.length, speed: r.speed });
+                    }
+                }
+                if let Some(zh) = entity_z_hop {
                     let hop_z = layer_z + zh.hop_height;
-                    // Lift to hop height (travel move, no extrusion)
                     commands.push(GCodeCommand::Move {
-                        x: None,
-                        y: None,
-                        z: Some(hop_z),
-                        e: None,
-                        f: None,
+                        x: None, y: None, z: Some(hop_z), e: None, f: None,
                         role: ExtrusionRole::Custom("Travel".to_string()),
                     });
-                    // Return to layer Z (travel move, no extrusion)
+                }
+                if let Some(travels) = entity_travels {
+                    for tm in travels.iter() {
+                        commands.push(GCodeCommand::Move {
+                            x: tm.x, y: tm.y, z: None, e: None, f: tm.f,
+                            role: ExtrusionRole::Custom("Travel".to_string()),
+                        });
+                    }
+                }
+                if let Some(zh) = entity_z_hop {
                     commands.push(GCodeCommand::Move {
-                        x: None,
-                        y: None,
-                        z: Some(layer_z),
-                        e: None,
-                        f: None,
+                        x: None, y: None, z: Some(layer_z), e: None, f: None,
                         role: ExtrusionRole::Custom("Travel".to_string()),
                     });
+                    let _ = zh;
+                }
+                if let Some(retracts) = entity_retracts {
+                    for r in retracts.iter().filter(|r| r.is_unretract) {
+                        commands.push(GCodeCommand::Unretract { length: r.length, speed: r.speed });
+                    }
                 }
             }
 

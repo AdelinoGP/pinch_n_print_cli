@@ -48,6 +48,8 @@ fn make_layer_with_entities(index: u32, z: f32, entities: Vec<PrintEntity>) -> L
         tool_changes: vec![],
         z_hops: vec![],
         annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
     }
 }
 

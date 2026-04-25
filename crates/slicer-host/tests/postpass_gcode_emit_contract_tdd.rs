@@ -88,6 +88,8 @@ fn layer_with_entity(
         tool_changes: vec![],
         z_hops: vec![],
         annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
     }
 }
 

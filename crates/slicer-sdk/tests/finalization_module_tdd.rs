@@ -91,6 +91,8 @@ fn test_03_layer_collection_view_accessors() {
         tool_changes: vec![],
         z_hops: vec![],
         annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
     };
 
     let view = LayerCollectionView::new(layer_ir);

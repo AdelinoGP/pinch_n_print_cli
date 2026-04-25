@@ -139,6 +139,8 @@ fn layer_ir(global_layer_index: u32, z: f32, entity_count: usize, tool_changes: 
             .collect(),
         z_hops: Vec::new(),
         annotations: Vec::new(),
+        retracts: Vec::new(),
+        travel_moves: Vec::new(),
     }
 }
 

@@ -133,6 +133,8 @@ fn make_layer(
         tool_changes,
         z_hops,
         annotations: Vec::new(),
+        retracts: Vec::new(),
+        travel_moves: Vec::new(),
     }
 }
 
