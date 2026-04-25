@@ -107,4 +107,27 @@ world prepass-module {
         output: seam-planning-output,
         config: config-view,
     ) -> result<_, module-error>;
+
+    // SupportGeneration stage
+    // Performs multi-layer top-down propagation of organic tree-support
+    // branches (simplified port of OrcaSlicer TreeSupport::drop_nodes).
+    // Writes per-(layer, object, region) branch geometry that Layer::Support
+    // modules (notably tree-support) can emit directly instead of running a
+    // per-layer filler.
+    record support-plan-entry {
+        global-layer-index: layer-idx,
+        object-id: object-id,
+        region-id: region-id,
+        branch-segments: list<list<point3-with-width>>,
+    }
+
+    resource support-generation-output {
+        push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
+    }
+
+    export run-support-generation: func(
+        objects: list<mesh-object-view>,
+        output: support-generation-output,
+        config: config-view,
+    ) -> result<_, module-error>;
 }

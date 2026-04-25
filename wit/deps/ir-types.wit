@@ -149,6 +149,21 @@ interface ir-handles {
         get-custom-regions: func(module-id: string) -> list<semantic-region>;
 
         layer-index: func() -> layer-idx;
+
+        /// Returns the pre-planned support-branch segments for the
+        /// `(this layer, object-id, region-id)` triple, sourced from a
+        /// `SupportPlanIR` committed by `PrePass::SupportGeneration`.
+        ///
+        /// Each inner list is one polyline branch (typically a 2-point
+        /// MST edge). Returns an empty list when no plan is committed,
+        /// when the consuming module did not declare `SupportPlanIR` in
+        /// its manifest reads, or when no entry matches the triple.
+        ///
+        /// Modules whose algorithm is inherently per-layer (e.g.
+        /// `traditional-support`'s scan-line filler) intentionally do
+        /// not declare the read and therefore never see a non-empty list.
+        support-plan-segments: func(object-id: object-id, region-id: region-id)
+            -> list<list<point3-with-width>>;
     }
 
     // ── Prepass segmentation view records ─────────────────────────────────
