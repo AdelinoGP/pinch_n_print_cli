@@ -46,9 +46,9 @@ pub use config_schema::{
 pub use dag::{build_intra_stage_dag, ModuleNode};
 pub use execution_plan::{
     bind_module_config_view, build_execution_plan, build_live_execution_plan,
-    load_live_modules_for_plan, parse_cli_config_source, CompiledModule, CompiledStage,
-    ConfigSourceParseError, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError,
-    ExecutionPlanRequest, IrAccessMask, LiveModuleBinding, LiveModuleLoadError,
+    dedup_same_claim_modules_for_test, load_live_modules_for_plan, parse_cli_config_source,
+    CompiledModule, CompiledStage, ConfigSourceParseError, ExecutionModuleBinding, ExecutionPlan,
+    ExecutionPlanError, ExecutionPlanRequest, IrAccessMask, LiveModuleBinding, LiveModuleLoadError,
     LiveModuleLoadOutput, SortedStageModules, DEFAULT_REGION_MAP_CAP, MAX_LAYER_INDEX, STAGE_ORDER,
 };
 pub use gcode_emit::{DefaultGCodeEmitter, DefaultGCodeSerializer};

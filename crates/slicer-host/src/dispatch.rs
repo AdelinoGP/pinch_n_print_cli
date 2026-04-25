@@ -34,6 +34,7 @@ pub fn export_name_for_stage(stage_id: &str) -> Option<&'static str> {
         "PrePass::MeshAnalysis" => Some("run-mesh-analysis"),
         "PrePass::LayerPlanning" => Some("run-layer-planning"),
         "PrePass::SeamPlanning" => Some("run-seam-planning"),
+        "PrePass::SupportGeneration" => Some("run-support-generation"),
         "PrePass::PaintSegmentation" => Some("run-paint-segmentation"),
         "Layer::Slice" => Some("run-slice"),
         "Layer::SlicePostProcess" => Some("run-slice-postprocess"),
@@ -250,6 +251,7 @@ struct LayerParams<'a> {
     layer_z: f32,
     paint_ir: Option<&'a slicer_ir::PaintRegionIR>,
     seam_plan_ir: Option<&'a slicer_ir::SeamPlanIR>,
+    support_plan_ir: Option<&'a slicer_ir::SupportPlanIR>,
     arena: &'a LayerArena,
 }
 
@@ -303,6 +305,7 @@ impl WasmRuntimeDispatcher {
         envelope_height: f32,
         paint_ir: Option<&slicer_ir::PaintRegionIR>,
         _seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
+        support_plan_ir: Option<&slicer_ir::SupportPlanIR>,
         arena: &LayerArena,
     ) -> Result<HostExecutionContext, DispatchError> {
         let export_name = export_name_for_stage(stage_id).ok_or_else(|| DispatchError {
@@ -393,6 +396,7 @@ impl WasmRuntimeDispatcher {
                 layer_z,
                 paint_ir,
                 seam_plan_ir: blackboard.seam_plan().map(|arc| arc.as_ref()),
+                support_plan_ir,
                 arena,
             },
         )?;
@@ -527,7 +531,11 @@ impl WasmRuntimeDispatcher {
             "Layer::Support" => {
                 let region_handles =
                     push_slice_regions(config.store, params.arena, params.layer_z).map_err(mk_ctx_err)?;
-                let paint_data = build_paint_layer_data(params.paint_ir, params.layer_index);
+                let paint_data = build_paint_layer_data_with_plan(
+                    params.paint_ir,
+                    params.layer_index,
+                    params.support_plan_ir,
+                );
                 let paint = config.store
                     .data_mut()
                     .push_paint_region_layer_view(paint_data)
@@ -691,6 +699,13 @@ impl WasmRuntimeDispatcher {
                 }).collect();
                 let output = store.data_mut().push_seam_planning_output().map_err(mk_ctx_err)?;
                 bindings.call_run_seam_planning(&mut store, &mesh_object_views, own(output), own(config_handle)).map_err(mk_call_err)
+            }
+            "PrePass::SupportGeneration" => {
+                let mesh_object_views: Vec<_> = blackboard.mesh().objects.iter().map(|obj| {
+                    wit_host::object_mesh_to_wit_mesh_object_view(obj)
+                }).collect();
+                let output = store.data_mut().push_support_generation_output().map_err(mk_ctx_err)?;
+                bindings.call_run_support_generation(&mut store, &mesh_object_views, own(output), own(config_handle)).map_err(mk_call_err)
             }
             _ => Err(DispatchError {
                 module_id: module.module_id.clone(), stage_id: stage_id.clone(),
@@ -1074,14 +1089,52 @@ fn build_paint_layer_data(
     paint_ir: Option<&slicer_ir::PaintRegionIR>,
     layer_index: u32,
 ) -> PaintRegionLayerData {
-    match paint_ir {
+    build_paint_layer_data_with_plan(paint_ir, layer_index, None)
+}
+
+/// Variant of [`build_paint_layer_data`] that also indexes a committed
+/// `SupportPlanIR` for this layer so the WIT
+/// `paint-region-layer-view::support-plan-segments` accessor can serve it
+/// to Layer::Support modules that declare `SupportPlanIR` as a manifest
+/// read (e.g. `tree-support`).
+fn build_paint_layer_data_with_plan(
+    paint_ir: Option<&slicer_ir::PaintRegionIR>,
+    layer_index: u32,
+    support_plan_ir: Option<&slicer_ir::SupportPlanIR>,
+) -> PaintRegionLayerData {
+    let mut data = match paint_ir {
         Some(ir) => wit_host::paint_region_ir_to_layer_data(ir, layer_index),
         None => PaintRegionLayerData {
             layer_index,
             regions_by_semantic: HashMap::new(),
             custom_regions: HashMap::new(),
+            support_plan_segments: HashMap::new(),
         },
+    };
+    if let Some(plan) = support_plan_ir {
+        for entry in &plan.entries {
+            if entry.global_layer_index != layer_index {
+                continue;
+            }
+            let key = (entry.object_id.clone(), entry.region_id.to_string());
+            let bucket = data.support_plan_segments.entry(key).or_default();
+            for segment in &entry.branch_segments {
+                let pts: Vec<_> = segment
+                    .points
+                    .iter()
+                    .map(|p| wit_host::layer::slicer::world_layer::geometry::Point3WithWidth {
+                        x: p.x,
+                        y: p.y,
+                        z: p.z,
+                        width: p.width,
+                        flow_factor: p.flow_factor,
+                    })
+                    .collect();
+                bucket.push(pts);
+            }
+        }
     }
+    data
 }
 
 fn derive_layer_output_envelope(layer: &GlobalLayer, arena: &LayerArena) -> (f32, f32) {
@@ -1385,6 +1438,69 @@ fn harvest_seam_plan_ir(
     })
 }
 
+// ── Support-plan harvest ───────────────────────────────────────────────────
+
+/// Convert WIT `SupportPlanEntry` records collected by a
+/// `PrePass::SupportGeneration` call into a host-side
+/// [`slicer_ir::SupportPlanIR`].
+///
+/// Entries are preserved in push order (the harvester does not deduplicate —
+/// multiple `(layer, object, region)` entries with distinct branch segment
+/// sets are legal because different parts of an object may share a
+/// `region_id` bucket across layers).
+fn harvest_support_plan_ir(
+    _stage_id: &str,
+    _module_id: &str,
+    ctx: wit_host::HostExecutionContext,
+) -> Result<slicer_ir::SupportPlanIR, String> {
+    use slicer_ir::{
+        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SemVer, SupportPlanEntry, SupportPlanIR,
+    };
+
+    let mut entries: Vec<SupportPlanEntry> = Vec::with_capacity(ctx.support_plan_entries.len());
+
+    for entry in ctx.support_plan_entries.into_iter() {
+        let region_id = parse_canonical_region_id(&entry.region_id).map_err(|reason| {
+            format!(
+                "support-generation-output: region '{}'/'{}' has invalid region-id: {reason}",
+                entry.object_id, entry.region_id
+            )
+        })?;
+
+        let mut branch_segments: Vec<ExtrusionPath3D> =
+            Vec::with_capacity(entry.branch_segments.len());
+        for segment in entry.branch_segments.into_iter() {
+            let points: Vec<Point3WithWidth> = segment
+                .into_iter()
+                .map(|p| Point3WithWidth {
+                    x: p.x,
+                    y: p.y,
+                    z: p.z,
+                    width: p.width,
+                    flow_factor: p.flow_factor,
+                })
+                .collect();
+            branch_segments.push(ExtrusionPath3D {
+                points,
+                role: ExtrusionRole::SupportMaterial,
+                speed_factor: 1.0,
+            });
+        }
+
+        entries.push(SupportPlanEntry {
+            global_layer_index: entry.global_layer_index,
+            object_id: entry.object_id,
+            region_id,
+            branch_segments,
+        });
+    }
+
+    Ok(SupportPlanIR {
+        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        entries,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::harvest_layer_plan_ir;
@@ -1625,6 +1741,18 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
             return Ok((PrepassStageOutput::SeamPlan(Arc::new(ir)), runtime_reads));
         }
 
+        // For the SupportGeneration stage, convert collected support-plan
+        // entries to SupportPlanIR.
+        if stage_id == "PrePass::SupportGeneration" {
+            let ir = harvest_support_plan_ir(stage_id, &module.module_id, ctx)
+                .map_err(|e| PrepassExecutionError::FatalModule {
+                    stage_id: stage_id.clone(),
+                    module_id: module.module_id.clone(),
+                    message: e,
+                })?;
+            return Ok((PrepassStageOutput::SupportPlan(Arc::new(ir)), runtime_reads));
+        }
+
         // For the MeshAnalysis stage, surface any guest-emitted
         // annotations / surface groups via `MeshAnalysisAuxiliary` when
         // the drain is non-empty. A guest that pushed nothing still
@@ -1711,6 +1839,8 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         let paint_ref = paint_ir.map(|arc| arc.as_ref());
         let seam_plan_ir = blackboard.seam_plan();
         let seam_plan_ref = seam_plan_ir.map(|arc| arc.as_ref());
+        let support_plan_ir = blackboard.support_plan();
+        let support_plan_ref = support_plan_ir.map(|arc| arc.as_ref());
         let (envelope_floor, envelope_height) = derive_layer_output_envelope(layer, arena);
 
         // Layer stages always use the typed component-model boundary.
@@ -1724,6 +1854,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             envelope_height,
             paint_ref,
             seam_plan_ref,
+            support_plan_ref,
             arena,
         ) {
             Ok(ctx) => {

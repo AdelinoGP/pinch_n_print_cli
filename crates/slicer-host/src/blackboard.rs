@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     InfillIR, LayerAnnotation, LayerCollectionIR, LayerPlanIR, MeshIR, MeshSegmentationIR,
-    PaintRegionIR, PerimeterIR, RegionMapIR, SeamPlanIR, SliceIR, SupportIR,
+    PaintRegionIR, PerimeterIR, RegionMapIR, SeamPlanIR, SliceIR, SupportIR, SupportPlanIR,
     SurfaceClassificationIR, ToolChange, ZHop,
 };
 
@@ -20,6 +20,7 @@ pub struct Blackboard {
     mesh_segmentation: Option<Arc<MeshSegmentationIR>>,
     layer_plan: Option<Arc<LayerPlanIR>>,
     seam_plan: Option<Arc<SeamPlanIR>>,
+    support_plan: Option<Arc<SupportPlanIR>>,
     paint_regions: Option<Arc<PaintRegionIR>>,
     region_map: Option<Arc<RegionMapIR>>,
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
@@ -102,6 +103,8 @@ pub enum BlackboardPrepassSlot {
     LayerPlan,
     /// Seam plan produced by `PrePass::SeamPlanning`.
     SeamPlan,
+    /// Support plan produced by `PrePass::SupportGeneration`.
+    SupportPlan,
     /// Paint regions produced by `PrePass::PaintSegmentation`.
     PaintRegions,
     /// Region map produced by `PrePass::RegionMapping`.
@@ -115,6 +118,7 @@ impl fmt::Display for BlackboardPrepassSlot {
             Self::MeshSegmentation => "mesh-segmentation",
             Self::LayerPlan => "layer-plan",
             Self::SeamPlan => "seam-plan",
+            Self::SupportPlan => "support-plan",
             Self::PaintRegions => "paint-regions",
             Self::RegionMap => "region-map",
         };
@@ -133,6 +137,7 @@ impl Blackboard {
             mesh_segmentation: None,
             layer_plan: None,
             seam_plan: None,
+            support_plan: None,
             paint_regions: None,
             region_map: None,
             layer_outputs: Some((0..layer_count).map(|_| None).collect()),
@@ -201,6 +206,24 @@ impl Blackboard {
     #[must_use]
     pub fn seam_plan(&self) -> Option<&Arc<SeamPlanIR>> {
         self.seam_plan.as_ref()
+    }
+
+    /// Commit `SupportPlanIR` exactly once.
+    pub fn commit_support_plan(
+        &mut self,
+        ir: Arc<SupportPlanIR>,
+    ) -> Result<(), BlackboardError> {
+        commit_prepass(
+            &mut self.support_plan,
+            ir,
+            BlackboardPrepassSlot::SupportPlan,
+        )
+    }
+
+    /// Return the committed support plan, if available.
+    #[must_use]
+    pub fn support_plan(&self) -> Option<&Arc<SupportPlanIR>> {
+        self.support_plan.as_ref()
     }
 
     /// Commit `PaintRegionIR` exactly once.

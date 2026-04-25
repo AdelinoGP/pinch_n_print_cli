@@ -24,6 +24,7 @@ pub const STAGE_ORDER: &[&str] = &[
     "PrePass::MeshAnalysis",
     "PrePass::LayerPlanning",
     "PrePass::SeamPlanning",
+    "PrePass::SupportGeneration",
     "PrePass::PaintSegmentation",
     "PrePass::RegionMapping",
     "Layer::Slice",
@@ -406,6 +407,17 @@ fn config_key_declared(
 /// (layer, object, region, claim) at execution"). Per-region scoping
 /// is deferred to the region-mapping pass; at live-load time we only
 /// enforce the global/stage constraint.
+/// Test-only wrapper around [`dedup_same_claim_modules`] so integration
+/// tests can exercise the claim dedup path without building a full
+/// `LoadModulesReport`. Behaviour is identical to the private helper.
+#[doc(hidden)]
+pub fn dedup_same_claim_modules_for_test(
+    modules: &mut Vec<LoadedModule>,
+    diagnostics: &mut Vec<LoadDiagnostic>,
+) -> Vec<LoadedModule> {
+    dedup_same_claim_modules(modules, diagnostics)
+}
+
 fn dedup_same_claim_modules(
     modules: &mut Vec<LoadedModule>,
     diagnostics: &mut Vec<LoadDiagnostic>,

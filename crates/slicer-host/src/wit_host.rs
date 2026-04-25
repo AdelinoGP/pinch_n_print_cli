@@ -184,6 +184,11 @@ pub struct PaintRegionLayerData {
     /// Custom regions by module ID.
     pub custom_regions:
         HashMap<String, Vec<layer::slicer::world_layer::ir_handles::SemanticRegion>>,
+    /// Pre-planned support-branch segments indexed by `(object_id, region_id)`,
+    /// projected from `SupportPlanIR.entries` filtered to this layer index.
+    /// Empty when no `SupportPlanIR` is committed on the blackboard.
+    pub support_plan_segments:
+        HashMap<(String, String), Vec<Vec<layer::slicer::world_layer::geometry::Point3WithWidth>>>,
 }
 
 // ── Bindgen: Layer module world ─────────────────────────────────────────
@@ -312,6 +317,8 @@ pub mod layer {
                     get-regions: func(semantic: paint-semantic) -> list<semantic-region>;
                     get-custom-regions: func(module-id: string) -> list<semantic-region>;
                     layer-index: func() -> layer-idx;
+                    support-plan-segments: func(object-id: object-id, region-id: region-id)
+                        -> list<list<point3-with-width>>;
                 }
             }
 
@@ -404,6 +411,13 @@ pub struct PaintSegmentationOutputData;
 /// This struct is just a table-entry tag so the resource-handle lifecycle
 /// works; the actual data lives on the context.
 pub struct SeamPlanningOutputData;
+/// Backing data for prepass `support-generation-output` resource.
+///
+/// Support-plan entries emitted by `push-support-plan` during a WIT prepass
+/// invocation are stored on `HostExecutionContext::support_plan_entries`.
+/// This struct is just a table-entry tag so the resource-handle lifecycle
+/// works; the actual data lives on the context.
+pub struct SupportGenerationOutputData;
 
 
 #[allow(missing_docs)]
@@ -609,6 +623,24 @@ pub mod prepass {
                 export run-seam-planning: func(
                     objects: list<mesh-object-view>,
                     output: seam-planning-output,
+                    config: config-view,
+                ) -> result<_, module-error>;
+
+                // SupportGeneration stage
+                record support-plan-entry {
+                    global-layer-index: layer-idx,
+                    object-id: object-id,
+                    region-id: region-id,
+                    branch-segments: list<list<point3-with-width>>,
+                }
+
+                resource support-generation-output {
+                    push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
+                }
+
+                export run-support-generation: func(
+                    objects: list<mesh-object-view>,
+                    output: support-generation-output,
                     config: config-view,
                 ) -> result<_, module-error>;
             }
@@ -1135,6 +1167,13 @@ pub struct HostExecutionContext {
     /// Empty for all non-prepass stages.
     pub seam_plan_entries: Vec<prepass::SeamPlanEntry>,
 
+    /// Support-plan entries collected during a prepass
+    /// `run-support-generation` invocation. Stored as raw
+    /// `prepass::SupportPlanEntry` records so the harvest helper can convert
+    /// them to `SupportPlanIR` without losing any field. Empty for all
+    /// non-prepass stages.
+    pub support_plan_entries: Vec<prepass::SupportPlanEntry>,
+
     /// Finalization builder pushes collected during a finalization
     /// `run-finalization` invocation. The host-side
     /// `HostFinalizationOutputBuilder::drop` moves the resource's
@@ -1200,6 +1239,7 @@ impl HostExecutionContext {
             mesh_segmentation_marks: Vec::new(),
             paint_region_entries: Vec::new(),
             seam_plan_entries: Vec::new(),
+            support_plan_entries: Vec::new(),
             finalization_pushes: Vec::new(),
             runtime_reads: Vec::new(),
             runtime_writes: Vec::new(),
@@ -1366,6 +1406,18 @@ impl HostExecutionContext {
         &mut self,
     ) -> wasmtime::Result<Resource<prepass::SeamPlanningOutput>> {
         let rep = self.table.push(SeamPlanningOutputData)?;
+        Ok(Resource::new_own(rep.rep()))
+    }
+
+    /// Push a support-generation-output resource (prepass world). The
+    /// returned handle is what the host passes into
+    /// `run-support-generation`; guest calls to `push-support-plan` go
+    /// through `HostSupportGenerationOutput::push_support_plan` below,
+    /// which appends entries to `support_plan_entries`.
+    pub fn push_support_generation_output(
+        &mut self,
+    ) -> wasmtime::Result<Resource<prepass::SupportGenerationOutput>> {
+        let rep = self.table.push(SupportGenerationOutputData)?;
         Ok(Resource::new_own(rep.rep()))
     }
 
@@ -1934,6 +1986,7 @@ pub fn paint_region_ir_to_layer_data(
         layer_index,
         regions_by_semantic: HashMap::new(),
         custom_regions: HashMap::new(),
+        support_plan_segments: HashMap::new(),
     };
 
     let layer_map = match ir.per_layer.get(&layer_index) {
@@ -1973,6 +2026,7 @@ pub fn paint_region_ir_to_layer_data(
         layer_index,
         regions_by_semantic,
         custom_regions,
+        support_plan_segments: HashMap::new(),
     }
 }
 
@@ -2841,6 +2895,20 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         self.runtime_reads.push(String::from("PaintRegionIR"));
         Ok(self.table.get(&self_)?.layer_index)
     }
+    fn support_plan_segments(
+        &mut self,
+        self_: Resource<PaintRegionLayerData>,
+        object_id: String,
+        region_id: String,
+    ) -> wasmtime::Result<Vec<Vec<layer::slicer::world_layer::geometry::Point3WithWidth>>> {
+        self.runtime_reads.push(String::from("SupportPlanIR"));
+        let data = self.table.get(&self_)?;
+        Ok(data
+            .support_plan_segments
+            .get(&(object_id, region_id))
+            .cloned()
+            .unwrap_or_default())
+    }
     fn drop(&mut self, rep: Resource<PaintRegionLayerData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;
         Ok(())
@@ -3119,6 +3187,46 @@ mod prepass_impls {
         }
         fn drop(&mut self, rep: Resource<pm::SeamPlanningOutput>) -> wasmtime::Result<()> {
             let typed: Resource<SeamPlanningOutputData> = Resource::new_own(rep.rep());
+            self.table.delete(typed)?;
+            Ok(())
+        }
+    }
+
+    impl pm::HostSupportGenerationOutput for HostExecutionContext {
+        fn push_support_plan(
+            &mut self,
+            _handle: Resource<pm::SupportGenerationOutput>,
+            entry: pm::SupportPlanEntry,
+        ) -> wasmtime::Result<Result<(), String>> {
+            if entry.object_id.is_empty() {
+                return Ok(Err(String::from(
+                    "support-generation-output: object-id must be non-empty",
+                )));
+            }
+            if entry.region_id.is_empty() {
+                return Ok(Err(String::from(
+                    "support-generation-output: region-id must be non-empty",
+                )));
+            }
+            for segment in &entry.branch_segments {
+                if segment.len() < 2 {
+                    return Ok(Err(String::from(
+                        "support-generation-output: each branch segment must have at least two points",
+                    )));
+                }
+                for pt in segment {
+                    if !pt.x.is_finite() || !pt.y.is_finite() || !pt.z.is_finite() {
+                        return Ok(Err(String::from(
+                            "support-generation-output: branch segment points must have finite coordinates",
+                        )));
+                    }
+                }
+            }
+            self.support_plan_entries.push(entry);
+            Ok(Ok(()))
+        }
+        fn drop(&mut self, rep: Resource<pm::SupportGenerationOutput>) -> wasmtime::Result<()> {
+            let typed: Resource<SupportGenerationOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
             Ok(())
         }
