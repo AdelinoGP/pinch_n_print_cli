@@ -41,6 +41,7 @@ These rules apply across all steps:
 - Use the normative document map in `./docs/00_project_overview.md` to choose authoritative sources.
 - If the packet mirrors or audits OrcaSlicer behavior, cite specific paths under `./OrcaSlicerDocumented/`.
 - This skill ends after generating the packet. Do not begin implementation.
+- Use the `AskUserQuestion` tool for ANY question you need answered to generate the packet — missing parameters, ambiguous task mapping, scope boundaries, status choice, overwrite confirmation, unresolved design questions, activation requests. Batch related questions into a single `AskUserQuestion` call rather than asking sequentially in plain text. Do not proceed past a gate (scope approval, file generation, activation) without an explicit answer collected via `AskUserQuestion`.
 
 ## Parameters
 
@@ -52,7 +53,7 @@ These rules apply across all steps:
 
 **Constraints:**
 
-- You MUST ask for any missing required parameters up front in one message.
+- You MUST ask for any missing required parameters up front using `AskUserQuestion`, batching them into one call.
 - You MUST support `input` as direct text, file path, or URL.
 - You MUST derive `spec_slug` as kebab-case when not provided.
 - You MUST NOT overwrite an existing packet directory without explicit user approval.
