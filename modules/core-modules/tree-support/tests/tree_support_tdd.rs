@@ -209,7 +209,9 @@ fn paths_at_correct_z() {
 /// (not all parallel like traditional support).
 #[test]
 fn branching_pattern_present() {
-    let config = make_config(true, 0.3, 0.0, 50.0, 0.4);
+    // density is interpreted as percent (0..100) post packet 26; 30% on a
+    // 20mm region yields ~25 grid samples and ample branching.
+    let config = make_config(true, 30.0, 0.0, 50.0, 0.4);
     let module = TreeSupport::on_print_start(&config).unwrap();
 
     // Use a large region to get many branches
@@ -275,8 +277,9 @@ fn branching_pattern_present() {
 /// Test 10: Higher density produces more paths than lower density.
 #[test]
 fn density_affects_coverage() {
-    let config_low = make_config(true, 0.1, 0.0, 50.0, 0.4);
-    let config_high = make_config(true, 0.5, 0.0, 50.0, 0.4);
+    // density is interpreted as percent (0..100) post packet 26.
+    let config_low = make_config(true, 10.0, 0.0, 50.0, 0.4);
+    let config_high = make_config(true, 50.0, 0.0, 50.0, 0.4);
 
     let module_low = TreeSupport::on_print_start(&config_low).unwrap();
     let module_high = TreeSupport::on_print_start(&config_high).unwrap();

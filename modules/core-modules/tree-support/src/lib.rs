@@ -134,6 +134,24 @@ impl LayerModule for TreeSupport {
 
             let z = region.z();
 
+            // Planner-consuming tier (TASK-161): when a `SupportPlanIR`
+            // is committed on the blackboard and carries an entry for
+            // this `(layer, object, region)` triple, emit its pre-planned
+            // branch geometry directly and skip the per-layer grid-MST
+            // fill. The grid-MST filler remains the fallback path when
+            // no planner module is installed.
+            let planned_segments = paint
+                .support_plan_segments_for(region.object_id().as_str(), *region.region_id());
+            if !planned_segments.is_empty() {
+                for segment in planned_segments {
+                    let mut path = segment.clone();
+                    path.role = ExtrusionRole::SupportMaterial;
+                    path.speed_factor = speed_factor;
+                    let _ = output.push_support_path(path);
+                }
+                continue;
+            }
+
             for expoly in polygons {
                 // Eligibility precedence (docs/01 Layer::Support, docs/02
                 // support precedence rules):
@@ -260,6 +278,18 @@ impl TreeSupport {
                 gx += spacing_mm;
             }
             gy += spacing_mm;
+        }
+
+        // Centroid fallback: when the grid yields no samples (e.g. polygon
+        // smaller than `spacing_mm` so no cell midpoint lands inside the
+        // bbox at all), drop a single sample at the polygon centroid so any
+        // non-empty support polygon still emits at least one branch path.
+        if samples.is_empty() {
+            let cx = (bb_min_x + bb_max_x) * 0.5;
+            let cy = (bb_min_y + bb_max_y) * 0.5;
+            if point_in_expolygon(cx, cy, expoly) {
+                samples.push((cx, cy));
+            }
         }
 
         if samples.is_empty() {

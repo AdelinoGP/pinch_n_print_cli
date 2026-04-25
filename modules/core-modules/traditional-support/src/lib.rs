@@ -3,6 +3,17 @@
 //! Implements `LayerModule::run_support` for the `Layer::Support` stage.
 //! Generates parallel scan-line fill patterns for support material areas
 //! with per-layer 90-degree angle alternation.
+//!
+//! # Per-layer scan-line nature
+//!
+//! This module is intentionally a per-layer scan-line filler. Its fill is a set of independent
+//! horizontal passes with no cross-layer dependency — each layer is a fresh
+//! scan at a rotated angle, deterministic from the layer index alone. It
+//! therefore does **not** declare `SupportPlanIR` as a read in its manifest
+//! and does **not** consume `PrePass::SupportGeneration` output. The
+//! planner-consuming tier is limited to `tree-support`, whose organic
+//! branches require multi-layer top-down propagation; see packet
+//! `28_tree-support-multi-layer-propagation` and docs/01 §Layer::Support.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
@@ -290,6 +301,53 @@ impl TraditionalSupport {
             }
 
             scan_y += line_spacing;
+        }
+
+        // Centroid fallback: when the polygon is smaller than `line_spacing`
+        // along the scan axis, the scan-line loop emits nothing. Drop a
+        // single horizontal segment across the polygon's centroid so any
+        // non-empty support polygon yields at least one fill path.
+        if paths.is_empty() {
+            let centroid_y = (min_y + max_y) / 2;
+            let mut centroid_xs: Vec<i64> = Vec::new();
+            for &(rx1, ry1, rx2, ry2) in &rotated_edges {
+                let (edge_min_y, edge_max_y) = if ry1 < ry2 { (ry1, ry2) } else { (ry2, ry1) };
+                if centroid_y > edge_min_y && centroid_y < edge_max_y {
+                    let x = rx1 as f64
+                        + (centroid_y - ry1) as f64 * (rx2 - rx1) as f64
+                            / (ry2 - ry1) as f64;
+                    centroid_xs.push(x.round() as i64);
+                }
+            }
+            centroid_xs.sort();
+            let mut i = 0;
+            while i + 1 < centroid_xs.len() {
+                let (start_x, start_y) =
+                    rotate_point(centroid_xs[i], centroid_y, cos_a, sin_a);
+                let (end_x, end_y) =
+                    rotate_point(centroid_xs[i + 1], centroid_y, cos_a, sin_a);
+                paths.push(ExtrusionPath3D {
+                    points: vec![
+                        Point3WithWidth {
+                            x: slicer_ir::units_to_mm(start_x),
+                            y: slicer_ir::units_to_mm(start_y),
+                            z,
+                            width: self.line_width,
+                            flow_factor: 1.0,
+                        },
+                        Point3WithWidth {
+                            x: slicer_ir::units_to_mm(end_x),
+                            y: slicer_ir::units_to_mm(end_y),
+                            z,
+                            width: self.line_width,
+                            flow_factor: 1.0,
+                        },
+                    ],
+                    role: ExtrusionRole::SupportMaterial,
+                    speed_factor,
+                });
+                i += 2;
+            }
         }
 
         paths
