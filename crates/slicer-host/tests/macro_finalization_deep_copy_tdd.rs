@@ -177,7 +177,7 @@ fn finalization_deep_copy_in_and_drain_back_out_round_trip() {
             original_lengths[i] + 1,
             "layer {i} must have gained exactly one witness entity via drain-back"
         );
-        let witness = layers[i].ordered_entities.last().unwrap();
+        let witness = layers[i].ordered_entities.first().unwrap();
         assert_eq!(witness.region_key.object_id, "__task109_fin_witness__");
         assert_eq!(witness.region_key.region_id, 109);
         let pt = &witness.path.points[0];

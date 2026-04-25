@@ -2218,57 +2218,83 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
         };
 
         // Apply guest-emitted pushes to the downstream layer collection.
-        // `push-entity-to-layer` appends ordered extrusion entities to
-        // the targeted existing layer; `insert-synthetic-layer` creates
-        // a new layer at the requested Z with the supplied extrusion
-        // paths (docs/03 world-finalization.wit §finalization-output-builder).
-        // Ordering is preserved: pushes run in guest-emission order,
-        // which — for a deterministic guest — gives byte-stable output.
+        //
+        // EntityToLayer pushes are batch-collected per layer and then spliced
+        // at position 0 so that finalization entities (skirt, brim) precede
+        // the original model entities — matching the legacy process() ordering
+        // where skirt/brim appear before model paths (docs/03
+        // world-finalization.wit §finalization-output-builder).
+        //
+        // Within each layer the guest's emission order is preserved because
+        // pushes accumulate into a Vec in arrival order; the HashMap keying is
+        // by layer_index, so HashMap iteration order never affects intra-layer
+        // ordering. The splice loop itself walks `layers` in slice order
+        // (deterministic), so cross-layer ordering is also stable.
+        // Using splice(0..0, ...) rather than repeated insert(0, ...) avoids
+        // reversing the emission order within a layer.
+        //
+        // SyntheticLayer pushes are new layers and are appended as before.
+        let mut entity_pushes_by_layer: std::collections::HashMap<u32, Vec<slicer_ir::PrintEntity>> =
+            std::collections::HashMap::new();
+        let mut synthetic_pushes: Vec<wit_host::FinalizationBuilderPush> = Vec::new();
+
         for push in pushes {
             match push {
                 wit_host::FinalizationBuilderPush::EntityToLayer { layer_index, path, region_key } => {
-                    if let Some(target) = layers.iter_mut().find(|l| l.global_layer_index == layer_index) {
-                        let role = path.role.clone();
-                        let topo_order = target.ordered_entities.len() as u32;
-                        target.ordered_entities.push(slicer_ir::PrintEntity {
+                    let role = path.role.clone();
+                    entity_pushes_by_layer
+                        .entry(layer_index)
+                        .or_default()
+                        .push(slicer_ir::PrintEntity {
                             path,
                             role,
                             region_key,
-                            topo_order,
+                            topo_order: 0,
                         });
-                    }
                 }
-                wit_host::FinalizationBuilderPush::SyntheticLayer { z, paths } => {
-                    let new_index = layers.len() as u32;
-                    let entities: Vec<_> = paths
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, path)| {
-                            let role = path.role.clone();
-                            slicer_ir::PrintEntity {
-                                path,
-                                role,
-                                region_key: slicer_ir::RegionKey {
-                                    global_layer_index: new_index,
-                                    object_id: String::new(),
-                                    region_id: 0,
-                                },
-                                topo_order: i as u32,
-                            }
-                        })
-                        .collect();
-                    layers.push(LayerCollectionIR {
-                        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
-                        global_layer_index: new_index,
-                        z,
-                        ordered_entities: entities,
-                        tool_changes: Vec::new(),
-                        z_hops: Vec::new(),
-                        annotations: Vec::new(),
-                        retracts: vec![],
-                        travel_moves: vec![],
-                    });
-                }
+                synthetic => synthetic_pushes.push(synthetic),
+            }
+        }
+
+        // Batch-prepend finalization entities before existing model entities.
+        for layer in layers.iter_mut() {
+            if let Some(fin_entities) = entity_pushes_by_layer.remove(&layer.global_layer_index) {
+                layer.ordered_entities.splice(0..0, fin_entities);
+            }
+        }
+
+        // Append any synthetic layers.
+        for push in synthetic_pushes {
+            if let wit_host::FinalizationBuilderPush::SyntheticLayer { z, paths } = push {
+                let new_index = layers.len() as u32;
+                let entities: Vec<_> = paths
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, path)| {
+                        let role = path.role.clone();
+                        slicer_ir::PrintEntity {
+                            path,
+                            role,
+                            region_key: slicer_ir::RegionKey {
+                                global_layer_index: new_index,
+                                object_id: String::new(),
+                                region_id: 0,
+                            },
+                            topo_order: i as u32,
+                        }
+                    })
+                    .collect();
+                layers.push(LayerCollectionIR {
+                    schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+                    global_layer_index: new_index,
+                    z,
+                    ordered_entities: entities,
+                    tool_changes: Vec::new(),
+                    z_hops: Vec::new(),
+                    annotations: Vec::new(),
+                    retracts: vec![],
+                    travel_moves: vec![],
+                });
             }
         }
 

@@ -85,7 +85,8 @@ fn make_module(id: &str, component: Arc<slicer_host::WasmComponent>) -> Compiled
 }
 
 fn witness_entity(layer: &LayerCollectionIR) -> &PrintEntity {
-    layer.ordered_entities.last().expect("witness entity appended")
+    // Finalization entity pushes are batch-prepended so the witness appears first.
+    layer.ordered_entities.first().expect("witness entity prepended")
 }
 
 fn make_entity(
