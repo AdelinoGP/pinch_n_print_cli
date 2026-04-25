@@ -862,3 +862,316 @@ fn support_enforcer_blocker_paint_precedence() {
         p.y
     );
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SECTION C — planner-consuming tier (TASK-161)
+//
+// Exercises the new `SupportPlanIR`-driven path added by packet
+// 28_tree-support-multi-layer-propagation. Tree-support emits branches from
+// a committed `SupportPlanIR` when one is present; traditional-support
+// ignores the plan (it is inherently per-layer); tree-support falls back
+// to its grid-MST filler when no plan is committed.
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Section C — planner-consuming tier (TASK-161), end-to-end live-dispatch.
+///
+/// These tests load the actual `tree-support.wasm` and `traditional-support.wasm`
+/// components, commit a `SupportPlanIR` on the blackboard, dispatch through
+/// wasmtime, and verify the resulting `SupportIR` reflects the plan-consuming
+/// contract via the WIT `paint-region-layer-view::support-plan-segments`
+/// accessor. No direct Rust trait calls into the modules.
+mod planner_consuming_tier {
+    use std::sync::Arc;
+
+    use slicer_host::{
+        Blackboard, IrAccessMask, LayerArena, LayerStageRunner, LoadedModule, WasmEngine,
+        WasmRuntimeDispatcher, build_wasm_instance_pool,
+        instance_pool::WasmArtifactMetadata, CompiledModule,
+    };
+    use slicer_ir::{
+        BoundingBox3, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
+        GlobalLayer, MeshIR, Point2, Point3, Point3WithWidth, Polygon, SemVer, SlicedRegion,
+        SupportPlanEntry, SupportPlanIR,
+    };
+
+    fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
+        SemVer { major, minor, patch }
+    }
+
+    fn tree_support_wasm() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent().unwrap().parent().unwrap()
+            .join("modules/core-modules/tree-support/tree-support.wasm")
+    }
+
+    fn traditional_support_wasm() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent().unwrap().parent().unwrap()
+            .join("modules/core-modules/traditional-support/traditional-support.wasm")
+    }
+
+    fn loaded_support_module(
+        id: &str,
+        wasm_path: std::path::PathBuf,
+        reads: Vec<&str>,
+    ) -> LoadedModule {
+        LoadedModule {
+            id: id.to_string(),
+            version: semver(0, 1, 0),
+            stage: "Layer::Support".to_string(),
+            wit_world: "slicer:world-layer@1.0.0".to_string(),
+            ir_reads: reads.into_iter().map(String::from).collect(),
+            ir_writes: vec!["SupportIR".to_string()],
+            claims: vec!["support-generator".to_string()],
+            requires_claims: vec![],
+            incompatible_with: vec![],
+            requires_modules: vec![],
+            min_host_version: semver(0, 1, 0),
+            min_ir_schema: semver(1, 0, 0),
+            max_ir_schema: semver(2, 0, 0),
+            config_schema: Default::default(),
+            overridable_per_region: vec![],
+            overridable_per_layer: vec![],
+            layer_parallel_safe: true,
+            wasm_path,
+            placeholder_wasm: false,
+        }
+    }
+
+    fn compile_module(
+        engine: &Arc<WasmEngine>,
+        loaded: LoadedModule,
+        wasm_path: &std::path::Path,
+    ) -> CompiledModule {
+        let bytes = std::fs::read(wasm_path).expect("wasm artifact must exist");
+        let component = Arc::new(
+            engine.compile_component(&bytes).expect("wasm component must compile"),
+        );
+        let pool = Arc::new(
+            build_wasm_instance_pool(
+                &loaded,
+                1,
+                WasmArtifactMetadata { uses_shared_memory: false },
+            )
+            .expect("instance pool must build"),
+        );
+        let mut config_map = std::collections::HashMap::new();
+        config_map.insert("support_enabled".to_string(), ConfigValue::Bool(true));
+        config_map.insert("support_density".to_string(), ConfigValue::Float(20.0));
+        CompiledModule {
+            module_id: loaded.id.clone(),
+            instance_pool: pool,
+            ir_read_mask: IrAccessMask { paths: vec![] },
+            ir_write_mask: IrAccessMask { paths: vec![] },
+            config_view: Arc::new(ConfigView::from_map(config_map)),
+            wasm_component: Some(component),
+        }
+    }
+
+    fn make_slice_ir(layer_index: u32, z: f32) -> slicer_ir::SliceIR {
+        let extent = slicer_ir::mm_to_units(10.0);
+        let region = SlicedRegion {
+            object_id: "obj-0".to_string(),
+            region_id: 0,
+            polygons: vec![ExPolygon {
+                contour: Polygon {
+                    points: vec![
+                        Point2 { x: 0, y: 0 },
+                        Point2 { x: extent, y: 0 },
+                        Point2 { x: extent, y: extent },
+                        Point2 { x: 0, y: extent },
+                    ],
+                },
+                holes: vec![],
+            }],
+            infill_areas: vec![],
+            nonplanar_surface: None,
+            effective_layer_height: 0.2,
+            boundary_paint: std::collections::HashMap::new(),
+        };
+        slicer_ir::SliceIR {
+            schema_version: semver(1, 0, 0),
+            global_layer_index: layer_index,
+            z,
+            regions: vec![region],
+        }
+    }
+
+    fn empty_blackboard_with_support_plan(plan: Option<Arc<SupportPlanIR>>) -> Blackboard {
+        let mesh = Arc::new(MeshIR {
+            schema_version: semver(1, 0, 0),
+            objects: vec![],
+            build_volume: BoundingBox3 {
+                min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                max: Point3 { x: 200.0, y: 200.0, z: 10.0 },
+            },
+        });
+        let mut bb = Blackboard::new(mesh, 1);
+        if let Some(p) = plan {
+            bb.commit_support_plan(p)
+                .expect("commit_support_plan must succeed");
+        }
+        bb
+    }
+
+    fn dispatch_support(
+        wasm_path: std::path::PathBuf,
+        manifest_id: &str,
+        manifest_reads: Vec<&str>,
+        plan: Option<Arc<SupportPlanIR>>,
+    ) -> slicer_ir::SupportIR {
+        let engine = Arc::new(WasmEngine::new());
+        let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+        let loaded = loaded_support_module(manifest_id, wasm_path.clone(), manifest_reads);
+        let module = compile_module(&engine, loaded, &wasm_path);
+
+        let blackboard = empty_blackboard_with_support_plan(plan);
+
+        let layer_z = 0.2;
+        let layer_index = 0u32;
+        let layer = GlobalLayer {
+            index: layer_index,
+            z: layer_z,
+            active_regions: vec![],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        };
+
+        let mut arena = LayerArena::new();
+        arena.set_slice(make_slice_ir(layer_index, layer_z)).unwrap();
+        LayerStageRunner::run_stage(
+            &dispatcher,
+            &"Layer::Support".to_string(),
+            &layer,
+            &module,
+            &blackboard,
+            &mut arena,
+        )
+        .expect("Layer::Support dispatch must succeed");
+
+        arena.take_support().expect("SupportIR must be committed")
+    }
+
+    fn make_planned_segment(layer_z: f32) -> ExtrusionPath3D {
+        ExtrusionPath3D {
+            points: vec![
+                Point3WithWidth { x: 1.0, y: 2.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
+                Point3WithWidth { x: 7.0, y: 8.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
+            ],
+            role: ExtrusionRole::SupportMaterial,
+            speed_factor: 1.0,
+        }
+    }
+
+    fn plan_for_obj0(layer_index: u32, layer_z: f32) -> Arc<SupportPlanIR> {
+        Arc::new(SupportPlanIR {
+            schema_version: semver(1, 0, 0),
+            entries: vec![SupportPlanEntry {
+                global_layer_index: layer_index,
+                object_id: "obj-0".to_string(),
+                region_id: 0,
+                branch_segments: vec![make_planned_segment(layer_z)],
+            }],
+        })
+    }
+
+    /// AC-7: tree-support live dispatch — when SupportPlanIR is committed,
+    /// the emitted SupportIR contains exactly the planner's branch segments.
+    #[test]
+    fn tree_support_live_dispatch_consumes_support_plan_ir() {
+        let layer_z = 0.2f32;
+        let plan = plan_for_obj0(0, layer_z);
+
+        let support_ir = dispatch_support(
+            tree_support_wasm(),
+            "com.core.tree-support",
+            vec!["SliceIR", "SurfaceClassificationIR", "PaintRegionIR", "SupportPlanIR"],
+            Some(Arc::clone(&plan)),
+        );
+
+        assert_eq!(
+            support_ir.support_paths.len(),
+            1,
+            "tree-support live dispatch must emit exactly the planner's branch count; got {}",
+            support_ir.support_paths.len()
+        );
+        let path = &support_ir.support_paths[0];
+        assert_eq!(path.role, ExtrusionRole::SupportMaterial);
+        let expected = &plan.entries[0].branch_segments[0];
+        assert_eq!(path.points.len(), expected.points.len());
+        for (a, b) in path.points.iter().zip(expected.points.iter()) {
+            assert!((a.x - b.x).abs() < 1e-4, "x mismatch: got {} expected {}", a.x, b.x);
+            assert!((a.y - b.y).abs() < 1e-4, "y mismatch: got {} expected {}", a.y, b.y);
+            assert!((a.z - b.z).abs() < 1e-4, "z mismatch: got {} expected {}", a.z, b.z);
+            assert!((a.width - b.width).abs() < 1e-4);
+        }
+    }
+
+    /// AC-10: tree-support live dispatch — when no SupportPlanIR is
+    /// committed, tree-support falls back to its per-layer grid-MST filler.
+    #[test]
+    fn tree_support_live_dispatch_falls_back_to_grid_when_plan_absent() {
+        let support_ir = dispatch_support(
+            tree_support_wasm(),
+            "com.core.tree-support",
+            vec!["SliceIR", "SurfaceClassificationIR", "PaintRegionIR", "SupportPlanIR"],
+            None,
+        );
+        assert!(
+            !support_ir.support_paths.is_empty(),
+            "tree-support must fall back to the grid-MST filler; got 0 paths"
+        );
+        for path in &support_ir.support_paths {
+            assert_eq!(path.role, ExtrusionRole::SupportMaterial);
+        }
+    }
+
+    /// AC-9: traditional-support live dispatch — its scan-line filler emits
+    /// byte-identical SupportIR with and without a committed SupportPlanIR
+    /// (proves the manifest-level read declaration gates the WIT accessor;
+    /// since traditional-support does not declare SupportPlanIR, the host
+    /// projects an empty plan even when one is committed... actually our
+    /// current contract surfaces the plan to any module that calls
+    /// `support-plan-segments`, regardless of manifest declaration. So this
+    /// test verifies traditional-support's behavioral choice not to call it).
+    #[test]
+    fn traditional_support_live_dispatch_ignores_support_plan_ir() {
+        let layer_z = 0.2f32;
+
+        let no_plan = dispatch_support(
+            traditional_support_wasm(),
+            "com.core.traditional-support",
+            vec!["SliceIR", "SurfaceClassificationIR", "PaintRegionIR"],
+            None,
+        );
+        let with_plan = dispatch_support(
+            traditional_support_wasm(),
+            "com.core.traditional-support",
+            vec!["SliceIR", "SurfaceClassificationIR", "PaintRegionIR"],
+            Some(plan_for_obj0(0, layer_z)),
+        );
+
+        assert_eq!(
+            no_plan.support_paths.len(),
+            with_plan.support_paths.len(),
+            "traditional-support must produce identical path count irrespective of SupportPlanIR \
+             (no-plan={}, with-plan={})",
+            no_plan.support_paths.len(),
+            with_plan.support_paths.len()
+        );
+        for (a, b) in no_plan
+            .support_paths
+            .iter()
+            .zip(with_plan.support_paths.iter())
+        {
+            assert_eq!(a.role, b.role);
+            assert_eq!(a.points.len(), b.points.len());
+            for (pa, pb) in a.points.iter().zip(b.points.iter()) {
+                assert_eq!(pa.x.to_bits(), pb.x.to_bits());
+                assert_eq!(pa.y.to_bits(), pb.y.to_bits());
+                assert_eq!(pa.z.to_bits(), pb.z.to_bits());
+                assert_eq!(pa.width.to_bits(), pb.width.to_bits());
+            }
+        }
+    }
+}
