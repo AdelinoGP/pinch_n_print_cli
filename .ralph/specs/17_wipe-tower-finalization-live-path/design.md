@@ -23,9 +23,12 @@
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
   - `modules/core-modules/wipe-tower/src/lib.rs`
   - `modules/core-modules/wipe-tower/tests/finalization_live_tdd.rs`
-  - `crates/slicer-host/src/dispatch.rs`
   - `crates/slicer-host/tests/finalization_live_tdd.rs`
   - `docs/DEVIATION_LOG.md`
+  - No `dispatch.rs` changes required — the batch-prepend fix from packet 16 already handles wipe-tower entity pushes generically.
+
+> **WASM rebuild note:** The Step 3 host integration test uses the real `wipe-tower.wasm` artifact to assert `ExtrusionRole::WipeTower` entities. This artifact must be rebuilt via `./modules/core-modules/build-core-modules.sh` after Step 2 code changes land.
+
 - Rejected alternatives that were considered and why they were not chosen:
   - keeping wipe-tower on the legacy helper while only documenting the gap: rejected because TASK-143 is an implementation backlog item, not a docs-only closure
   - bundling travel reconciliation into the same packet: rejected because packet `20` owns that next slice
