@@ -7,7 +7,7 @@
   - `TASK-120d1` — decide where retract/no-retract policy lives
   - `TASK-120d2` — emit matching retract/unretract pairs and Z-hop interactions on the chosen surface
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 
 ## Problem Statement
 

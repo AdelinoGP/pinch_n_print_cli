@@ -27,8 +27,15 @@
 - Verification:
   - `cargo test -p skirt-brim --test finalization_live_tdd run_finalization_pushes_skirt_entities_to_target_layers -- --exact --nocapture`
   - `cargo test -p skirt-brim --test finalization_live_tdd run_finalization_pushes_brim_entities_on_layer_zero_only -- --exact --nocapture`
+  - `cargo test -p skirt-brim --test finalization_live_tdd run_finalization_respects_skirt_height_layer_targeting -- --exact --nocapture`
+  - `cargo test -p skirt-brim --test finalization_live_tdd disabled_or_empty_input_emits_no_finalization_pushes -- --exact --nocapture`
 - Exit condition:
-  Focused module tests exist and fail only because `run_finalization()` still does nothing.
+  The three positive tests (`run_finalization_pushes_skirt_entities_to_target_layers`,
+  `run_finalization_pushes_brim_entities_on_layer_zero_only`,
+  `run_finalization_respects_skirt_height_layer_targeting`) exist and fail because
+  `run_finalization()` still does nothing. The negative test
+  (`disabled_or_empty_input_emits_no_finalization_pushes`) exists and passes — the
+  default no-op is already correct behavior for disabled or empty inputs.
 
 ### Step 2: Port the geometry helpers onto `run_finalization()`
 
@@ -57,14 +64,26 @@
 - Task IDs:
   - `TASK-142`
 - Objective:
-  Prove the real host finalization path now consumes `run_finalization()` output instead of relying on the legacy helper.
+  Prove the real host finalization path now consumes `run_finalization()` output instead
+  of relying on the legacy helper. Update `dispatch.rs` so finalization entity pushes are
+  **prepended** before existing ordered entities (matching legacy `process()` ordering
+  where skirt and brim appear before model entities). Record DEV-013 partial progress.
 - Precondition:
   Module-level finalization tests are green.
 - Postcondition:
-  A host integration test proves `LayerCollectionIR` receives merged skirt/brim entities from finalization output.
+  A host integration test proves `LayerCollectionIR` receives merged skirt/brim entities
+  from finalization output and those entities appear before the original model entities.
+  `docs/DEVIATION_LOG.md` notes that `SkirtBrim` is ported and `WipeTower` remains open.
 - Files expected to change:
-  - `crates/slicer-host/src/dispatch.rs`
+  - `crates/slicer-host/src/dispatch.rs` (change entity-push merge from `ordered_entities.push()` to batch-prepend so finalization entities precede model entities)
   - `crates/slicer-host/tests/finalization_live_tdd.rs`
+  - `docs/DEVIATION_LOG.md`
+- Implementation note:
+  Collect all `EntityToLayer` pushes for each target layer before inserting them, then
+  prepend the whole group at once via `ordered_entities.splice(0..0, collected_pushes)`.
+  Do **not** call `insert(0, entity)` in a loop — that reverses the emission order of
+  entities within the same layer. The batch-splice preserves the order the guest emitted
+  them while placing the entire finalization group before the original model entities.
 - Authoritative docs:
   - `docs/03_wit_and_manifest.md`
   - `docs/05_module_sdk.md`

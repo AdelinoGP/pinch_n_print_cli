@@ -51,6 +51,12 @@
 
 - Risk: bbox discovery through `LayerCollectionView` can diverge from the legacy vector path. Mitigation: reuse the same geometric helpers and assert exact layer targets.
 - Risk: the host may still call the legacy helper after the port. Mitigation: keep a host integration regression that proves merge-back from finalization output.
+- Risk: the current host entity-push merge path (`WasmRuntimeDispatcher::run_stage`,
+  `dispatch.rs:2250-2296`) appends finalization entity pushes via `ordered_entities.push()`.
+  This inverts the legacy ordering where skirt and brim appear **before** model entities.
+  Mitigation: Step 3 must update the merge path to batch-prepend finalization entity pushes
+  (e.g., collect all pushes for a layer then `ordered_entities.splice(0..0, pushes)` or
+  `Vec::extend` after reversing the collected set) so AC-4's "prepended" assertion holds.
 
 ## Open Questions
 
