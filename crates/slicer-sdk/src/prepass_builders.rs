@@ -384,3 +384,48 @@ impl std::fmt::Debug for SeamPlanningOutput {
             .finish()
     }
 }
+
+/// Output builder for support generation stage.
+///
+/// Collects support plan entries produced by `PrepassModule::run_support_generation`.
+pub struct SupportGenerationOutput {
+    entries: Vec<super::prepass_types::SupportPlanEntry>,
+}
+
+impl SupportGenerationOutput {
+    /// Create a new empty output.
+    pub fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+        }
+    }
+
+    /// Push a support plan entry.
+    pub fn push_support_plan(
+        &mut self,
+        entry: super::prepass_types::SupportPlanEntry,
+    ) -> Result<(), String> {
+        self.entries.push(entry);
+        Ok(())
+    }
+
+    /// Get all entries (for testing).
+    #[doc(hidden)]
+    pub fn entries(&self) -> &[super::prepass_types::SupportPlanEntry] {
+        &self.entries
+    }
+}
+
+impl Default for SupportGenerationOutput {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Debug for SupportGenerationOutput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SupportGenerationOutput")
+            .field("entries", &self.entries.len())
+            .finish()
+    }
+}

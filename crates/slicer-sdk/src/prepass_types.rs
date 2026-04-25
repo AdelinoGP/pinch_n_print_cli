@@ -311,3 +311,17 @@ pub struct SeamPlanEntry {
     /// All scored candidates considered, including the chosen one.
     pub scored_candidates: Vec<ScoredSeamCandidate>,
 }
+
+/// One entry in the global support plan.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportPlanEntry {
+    /// Global layer index for this support plan entry.
+    pub global_layer_index: u32,
+    /// Object this entry belongs to.
+    pub object_id: ObjectId,
+    /// Region identifier within the object.
+    pub region_id: RegionId,
+    /// Planned branch geometry: each inner `Vec<Point3WithWidth>` is a single
+    /// polyline branch (typically a two-point MST edge).
+    pub branch_segments: Vec<Vec<Point3WithWidth>>,
+}

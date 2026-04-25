@@ -16,13 +16,13 @@ use crate::postpass_builders::GcodeOutputBuilder;
 use crate::postpass_types::GcodeCommand;
 use crate::prepass_builders::{
     LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput, PaintSegmentationOutput,
-    SeamPlanningOutput,
+    SeamPlanningOutput, SupportGenerationOutput,
 };
 use crate::prepass_types::{MeshObjectView, ObjectId, PaintSegmentationObjectView};
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
     ConfigView, ExtrusionPath3D, LayerCollectionIR, PaintRegionIR, PaintSemantic, RegionKey,
-    SemVer, SemanticRegion,
+    SemVer, SemanticRegion, SupportPlanIR,
 };
 
 /// Paint region layer view for accessing painted regions.
@@ -34,6 +34,7 @@ use slicer_ir::{
 pub struct PaintRegionLayerView {
     layer_index: u32,
     paint_regions: Arc<PaintRegionIR>,
+    support_plan: Option<Arc<SupportPlanIR>>,
 }
 
 impl PaintRegionLayerView {
@@ -50,6 +51,7 @@ impl PaintRegionLayerView {
                 },
                 per_layer: std::collections::HashMap::new(),
             }),
+            support_plan: None,
         }
     }
 
@@ -59,7 +61,20 @@ impl PaintRegionLayerView {
         Self {
             layer_index,
             paint_regions,
+            support_plan: None,
         }
+    }
+
+    /// Attach a committed `SupportPlanIR` to this layer view (host-only).
+    ///
+    /// `Layer::Support` modules that declare `SupportPlanIR` as a read
+    /// (e.g. `tree-support`) consult the plan via
+    /// [`Self::support_plan_segments_for`] to emit pre-planned branch
+    /// geometry instead of running a per-layer filler.
+    #[doc(hidden)]
+    pub fn with_support_plan(mut self, support_plan: Arc<SupportPlanIR>) -> Self {
+        self.support_plan = Some(support_plan);
+        self
     }
 
     /// Returns the layer index.
@@ -86,6 +101,36 @@ impl PaintRegionLayerView {
             .get(&self.layer_index)
             .map(|lpm| lpm.semantic_regions.keys().cloned().collect())
             .unwrap_or_default()
+    }
+
+    /// Returns the full committed support plan, if any. Modules that want
+    /// to iterate across all entries for their object should use this and
+    /// filter on `global_layer_index == self.layer_index()` plus their
+    /// object/region ids.
+    pub fn support_plan(&self) -> Option<&Arc<SupportPlanIR>> {
+        self.support_plan.as_ref()
+    }
+
+    /// Returns all pre-planned branch segments for the `(layer, object_id,
+    /// region_id)` triple matching this view's `layer_index`. Returns an
+    /// empty vector if no plan is committed or no entry matches.
+    pub fn support_plan_segments_for(
+        &self,
+        object_id: &str,
+        region_id: u64,
+    ) -> Vec<&ExtrusionPath3D> {
+        let Some(plan) = self.support_plan.as_ref() else {
+            return Vec::new();
+        };
+        plan.entries
+            .iter()
+            .filter(|entry| {
+                entry.global_layer_index == self.layer_index
+                    && entry.object_id == object_id
+                    && entry.region_id == region_id
+            })
+            .flat_map(|entry| entry.branch_segments.iter())
+            .collect()
     }
 }
 
@@ -405,6 +450,22 @@ pub trait PrepassModule: Sized {
         &self,
         _objects: &[MeshObjectView],
         _output: &mut SeamPlanningOutput,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    /// Run support generation to compute multi-layer organic branch geometry.
+    ///
+    /// Propagates contact points from overhang/bridge facets and support-enforcer
+    /// paint regions top-down through the layer stack, grouping and merging via
+    /// per-layer minimum spanning trees. Emits branch segments that per-layer
+    /// `Layer::Support` modules (notably `tree-support`) can consume directly.
+    /// Default implementation does nothing.
+    fn run_support_generation(
+        &self,
+        _objects: &[MeshObjectView],
+        _output: &mut SupportGenerationOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())
