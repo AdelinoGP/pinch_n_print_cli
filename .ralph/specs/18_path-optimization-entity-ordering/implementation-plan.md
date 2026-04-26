@@ -28,7 +28,7 @@
   - `cargo test -p slicer-host --test path_ordering_tdd same_object_nearest_neighbor_ordering_is_applied_before_path_optimization -- --exact --nocapture`
   - `cargo test -p slicer-host --test path_ordering_tdd single_or_already_optimal_sequence_is_left_unchanged -- --exact --nocapture`
 - Exit condition:
-  Both focused host tests exist and fail only because no ordering helper is present yet.
+  `path_ordering_tdd.rs` contains the two tests and compiles against a passthrough stub helper (one that returns the input slice unchanged); both tests fail their ordering assertions because the stub does not reorder anything.
 
 ### Step 2: Implement the same-object ordering helper and extend it to cross-object travel ordering
 
@@ -100,8 +100,9 @@
   - `OrcaSlicerDocumented/tests/fff_print/test_extrusion_entity.cpp`
 - Verification:
   - `cargo test -p slicer-host --test path_ordering_tdd path_ordering_is_deterministic_across_repeated_runs -- --exact --nocapture`
+  - `cargo test -p slicer-host --test path_ordering_tdd reordered_sequence_is_consumed_by_path_optimization_stage -- --exact --nocapture`
 - Exit condition:
-  Determinism is green and the reordered sequence is the live input to the path-optimization stage.
+  Both the determinism test and the live-stage integration test are green; the integration test confirms the path-optimization module receives the host-reordered entity list, not the original assembled order.
 
 ## Packet Completion Gate
 

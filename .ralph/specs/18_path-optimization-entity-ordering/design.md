@@ -24,7 +24,7 @@
   - `crates/slicer-host/src/layer_executor.rs`
   - `crates/slicer-host/src/dispatch.rs`
   - `crates/slicer-host/tests/path_ordering_tdd.rs`
-  - `modules/core-modules/path-optimization-default/src/lib.rs`
+  - `modules/core-modules/path-optimization-default/src/lib.rs` — Step 4 only: add a narrow test-harness hook (or assertion log) so the integration test can confirm the module's received `ordered_entities` matches the host-reordered sequence. No functional change to travel policy.
 - Rejected alternatives that were considered and why they were not chosen:
   - forcing full-list reordering into the current module output surface: rejected because the host already owns `ordered_entities` and the WIT surface is a poor fit for whole-list mutation
   - bundling tool ordering into this packet: rejected because packet `19` owns that next slice
@@ -40,6 +40,10 @@
   - no WIT widening is expected; the packet uses the host-owned ordered entity surface
 - Determinism or scheduler constraints:
   - every ordering rule must be deterministic for identical inputs
+
+## Overhang Scope Clarification
+
+`ExtrusionRole` contains no `OverhangWall` or `OverhangInfill` variant in the current IR. The "bridge/overhang-sensitive prioritization" in TASK-152e is delivered exclusively via `ExtrusionRole::BridgeInfill`. This covers the primary structural-overhang infill case (bridges). Overhang wall prioritization (if ever needed) would require a future IR extension and is explicitly out of scope for this packet. The acceptance criterion (AC-3) tests the BridgeInfill case only.
 
 ## Locked Assumptions and Invariants
 

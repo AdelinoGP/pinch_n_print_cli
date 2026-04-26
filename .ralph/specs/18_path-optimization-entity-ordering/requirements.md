@@ -56,8 +56,9 @@ The current layer assembly order is mostly whatever `assemble_ordered_entities()
 
 ### Measurable Outcomes
 
-- Acceptance tests assert exact start-point or object-id order, not just vague “shorter travel.”
-- Host integration proves the reordered sequence is the one consumed by the live path.
+- Acceptance tests assert exact start-point (`.x`/`.y` in mm) or `object_id` order, not just vague “shorter travel.”
+- Bridge prioritization is defined as: `BridgeInfill` wins when both candidates' `path.points[0]` are equidistant (within 0.001 mm) from the current position. No `OverhangWall` variant exists in `ExtrusionRole`; overhang wall prioritization is deferred to a future packet.
+- Host integration proves the reordered sequence is the one consumed by the live path (`reordered_sequence_is_consumed_by_path_optimization_stage` test).
 
 ### Cross-Packet Impact
 
@@ -70,6 +71,7 @@ The current layer assembly order is mostly whatever `assemble_ordered_entities()
 - `cargo test -p slicer-host --test path_ordering_tdd cross_object_ordering_resequences_entities_by_travel_cost -- --exact --nocapture`
 - `cargo test -p slicer-host --test path_ordering_tdd bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill -- --exact --nocapture`
 - `cargo test -p slicer-host --test path_ordering_tdd path_ordering_is_deterministic_across_repeated_runs -- --exact --nocapture`
+- `cargo test -p slicer-host --test path_ordering_tdd reordered_sequence_is_consumed_by_path_optimization_stage -- --exact --nocapture`
 - `cargo test -p slicer-host --test path_ordering_tdd single_or_already_optimal_sequence_is_left_unchanged -- --exact --nocapture`
 - `cargo clippy --workspace -- -D warnings`
 

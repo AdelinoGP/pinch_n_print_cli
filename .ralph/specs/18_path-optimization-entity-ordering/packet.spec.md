@@ -41,10 +41,11 @@ Replace the current mostly pass-through entity ordering on the live path with on
 
 ## Acceptance Criteria
 
-- **Given** three same-object entities whose first points are `(0,0)`, `(30,0)`, and `(10,0)` in the raw assembled order, **when** the path-ordering helper runs, **then** the resulting `LayerCollectionIR.ordered_entities[*].path.points[0]` order is exactly `(0,0) -> (10,0) -> (30,0)` and the corresponding `topo_order` values are `0`, `1`, and `2`. | `cargo test -p slicer-host --test path_ordering_tdd same_object_nearest_neighbor_ordering_is_applied_before_path_optimization -- --exact --nocapture`
+- **Given** three same-object entities whose first points (in `path.points[0].x`, `path.points[0].y` mm) are `(0.0, 0.0)`, `(30.0, 0.0)`, and `(10.0, 0.0)` in the raw assembled order, **when** the path-ordering helper runs, **then** the resulting `LayerCollectionIR.ordered_entities[*].path.points[0].x` sequence is exactly `0.0, 10.0, 30.0` and the corresponding `topo_order` values are `0`, `1`, and `2`. | `cargo test -p slicer-host --test path_ordering_tdd same_object_nearest_neighbor_ordering_is_applied_before_path_optimization -- --exact --nocapture`
 - **Given** a mixed-object layer fixture whose raw order is all object `A` entities followed by all object `B` entities but whose nearest-next travel makes `A -> B -> B -> A` cheaper, **when** the host ordering helper runs, **then** `ordered_entities[*].region_key.object_id` follows exactly `["A", "B", "B", "A"]`. | `cargo test -p slicer-host --test path_ordering_tdd cross_object_ordering_resequences_entities_by_travel_cost -- --exact --nocapture`
-- **Given** one `ExtrusionRole::BridgeInfill` entity and one `ExtrusionRole::SparseInfill` entity at comparable travel cost, **when** the ordering helper ranks them, **then** the `BridgeInfill` entity is emitted first in `ordered_entities`. | `cargo test -p slicer-host --test path_ordering_tdd bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill -- --exact --nocapture`
+- **Given** one `ExtrusionRole::BridgeInfill` entity and one `ExtrusionRole::SparseInfill` entity whose `path.points[0]` start coordinates are equidistant (within 0.001 mm) from the current position, **when** the ordering helper ranks them, **then** the `BridgeInfill` entity appears at a lower index in `ordered_entities` than the `SparseInfill` entity. | `cargo test -p slicer-host --test path_ordering_tdd bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill -- --exact --nocapture`
 - **Given** the same layer fixture executed twice, **when** the host ordering helper runs before `Layer::PathOptimization`, **then** the resulting ordered entity sequence is byte-identical across both runs. | `cargo test -p slicer-host --test path_ordering_tdd path_ordering_is_deterministic_across_repeated_runs -- --exact --nocapture`
+- **Given** a layer fixture where the host ordering helper resequences entities from their raw assembled order, **when** `Layer::PathOptimization` runs after the ordering helper, **then** the path-optimization module receives entities in the reordered sequence confirmed by asserting the first entity's `region_key.object_id` and `path.points[0].x` match the expected post-ordering values, not the pre-ordering values. | `cargo test -p slicer-host --test path_ordering_tdd reordered_sequence_is_consumed_by_path_optimization_stage -- --exact --nocapture`
 
 ## Negative Test Cases
 
@@ -56,6 +57,7 @@ Replace the current mostly pass-through entity ordering on the live path with on
 - `cargo test -p slicer-host --test path_ordering_tdd cross_object_ordering_resequences_entities_by_travel_cost -- --exact --nocapture`
 - `cargo test -p slicer-host --test path_ordering_tdd bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill -- --exact --nocapture`
 - `cargo test -p slicer-host --test path_ordering_tdd path_ordering_is_deterministic_across_repeated_runs -- --exact --nocapture`
+- `cargo test -p slicer-host --test path_ordering_tdd reordered_sequence_is_consumed_by_path_optimization_stage -- --exact --nocapture`
 - `cargo test -p slicer-host --test path_ordering_tdd single_or_already_optimal_sequence_is_left_unchanged -- --exact --nocapture`
 - `cargo clippy --workspace -- -D warnings`
 
