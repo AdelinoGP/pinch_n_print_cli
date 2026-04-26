@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 29_slicer-cli-cmd-run-cross-platform
 task_ids: []
 deviation_ids:
@@ -93,8 +93,9 @@ no way to force the host-discovery probe to fail.
   `cargo test -p slicer-cli cmd_run::tests::execute_in_reaches_host_check 2>&1 | tail -5`
 - **Given** the full `slicer-cli` test suite, **when**
   `cargo test -p slicer-cli` is run on the local host, **then** all
-  `cmd_run::*` tests pass (the count must be 29 — the existing 27 plus
-  the two formerly-failing tests). |
+  `cmd_run::*` tests pass (the count must be 30 — the existing 27 plus
+  the two formerly-failing tests plus the new
+  `check_host_binary_default_is_slicer_host` lock-down). |
   `cargo test -p slicer-cli cmd_run 2>&1 | grep -E '^test result:' | tail -1`
 - **Given** `docs/DEVIATION_LOG.md`, **when** read, **then** it contains
   a `DEV-031` row naming both failing tests and pointing at this packet

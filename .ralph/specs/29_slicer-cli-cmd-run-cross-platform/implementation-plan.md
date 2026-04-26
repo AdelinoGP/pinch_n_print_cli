@@ -92,9 +92,10 @@ reintroduce it.
 
 **Task IDs**: DEV-031
 **Objective**: Add a focused negative test that nails the production
-default. Confirm via grep that `SLICER_HOST_BIN` has exactly 2 readers
-(`host_binary_name` and the new test) and exactly 2 writers (the two
-`TestEnvGuard` call sites in the test module).
+default. Confirm via grep that all `SLICER_HOST_BIN` consumers are
+confined to `cli/slicer-cli/src/cmd_run.rs` (the helper, the
+`TestEnvGuard` set/unset/Drop call sites, and the new lock-down test);
+no other crate or binary in the workspace reads or writes the variable.
 **Precondition**: Steps 1–3 complete.
 **Postcondition**:
 - `check_host_binary_default_is_slicer_host` exists in `mod tests {}`.
