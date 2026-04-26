@@ -103,6 +103,7 @@ Last updated: 2026-04-26
 - [x] TASK-152d Add cross-object ordering in `path-optimization-default` so per-layer planning can sequence entities across objects instead of treating each layer in object isolation; cover deterministic mixed-object cases. Continues DEV-023. **Closed 2026-04-26 — packet 18.**
 - [x] TASK-152e Add role-aware bridge / overhang reordering so bridge-sensitive entities can be prioritized and regression-lock the behavior on bridge-tagged inputs. Continues DEV-023. **Closed 2026-04-26 — packet 18.**
 - [ ] TASK-152f Coordinate `path-optimization-default` with `SkirtBrim` and `WipeTower` outputs so wipe / brim travel decisions stop ignoring finalization geometry; add integration coverage across the finalization boundary. Continues DEV-023 and supports TASK-142 and TASK-143.
+- [~] TASK-152g Add `layer-collection-builder` WIT resource (`set-entity-order(items: list<tuple<u32, bool>>)`) and wire it through host bindings, SDK, and the `LayerModule::run_path_optimization` trait. Host validates and applies the proposal; host fallback preserved. Module migration deferred to packet 33. Continues DEV-023. **Surface introduced 2026-04-26 — packet `32_layer-collection-builder-wit-surface`; module migration deferred to packet 33.**
 
 ### Workstream 4 — Progress events and Python bridge coverage
 
