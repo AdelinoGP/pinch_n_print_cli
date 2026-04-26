@@ -14,7 +14,7 @@ use slicer_ir::{
 };
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
-use slicer_sdk::traits::FinalizationModule;
+use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCollectionView};
 
 /// Default layer height used when layer height cannot be inferred from
 /// adjacent layers.
@@ -107,9 +107,10 @@ impl WipeTower {
             // Clone tool_changes so we don't borrow layers while mutating
             let tool_changes = layers[layer_idx].tool_changes.clone();
 
+            let global_layer_index = layers[layer_idx].global_layer_index;
             for tc in &tool_changes {
                 let entities =
-                    self.generate_purge_entities(z, layer_height, &layers[layer_idx], tc);
+                    self.generate_purge_entities(z, layer_height, global_layer_index, tc);
                 layers[layer_idx].ordered_entities.extend(entities);
             }
         }
@@ -122,7 +123,7 @@ impl WipeTower {
         &self,
         z: f32,
         layer_height: f32,
-        layer: &LayerCollectionIR,
+        global_layer_index: u32,
         _tc: &slicer_ir::ToolChange,
     ) -> Vec<PrintEntity> {
         // purge_depth = purge_volume / (line_width * layer_height * tower_width)
@@ -142,7 +143,6 @@ impl WipeTower {
         let mut entities = Vec::new();
         let mut y = y_min + self.line_width / 2.0;
         let mut forward = true;
-        let global_layer_index = layer.global_layer_index;
 
         while y < y_max {
             let (start_x, end_x) = if forward {
@@ -223,19 +223,54 @@ impl WipeTower {
     }
 }
 
-// ── SDK authoring-path adoption (TASK-111) ─────────────────────────────
+// ── SDK authoring-path adoption (TASK-111 / packet-17) ─────────────────
 //
-// Aligns `WipeTower` with the documented `#[slicer_module]` authoring
-// surface (docs/05 §Module Entry Point). `on_print_start` delegates to
-// the existing `from_config` constructor so lifecycle semantics are
-// byte-identical to the legacy direct API. The `run_finalization`
-// default (`Ok(())`) is retained at the trait boundary — the real
-// geometry pipeline continues to consume `WipeTower::process` on the
-// legacy `&mut Vec<LayerCollectionIR>` surface until the host is
-// ported off that API, so runtime behaviour is preserved here.
+// `on_print_start` delegates to the existing `from_config` constructor.
+// `run_finalization` is now fully implemented via `LayerCollectionView`
+// + `FinalizationOutputBuilder` (packet 17). The legacy `process()`
+// helper remains for backwards compatibility.
 #[slicer_module]
 impl FinalizationModule for WipeTower {
     fn on_print_start(config: &ConfigView) -> Result<Self, ModuleError> {
         Self::from_config(config)
+    }
+
+    fn run_finalization(
+        &self,
+        layers: &[LayerCollectionView],
+        output: &mut FinalizationOutputBuilder,
+        _config: &ConfigView,
+    ) -> Result<(), ModuleError> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        for (idx, view) in layers.iter().enumerate() {
+            if view.tool_changes().is_empty() {
+                continue;
+            }
+
+            let z = view.z();
+            let layer_index = view.layer_index();
+
+            let layer_height = if idx > 0 {
+                let dz = z - layers[idx - 1].z();
+                if dz > 0.0 { dz } else { DEFAULT_LAYER_HEIGHT }
+            } else {
+                DEFAULT_LAYER_HEIGHT
+            };
+
+            let tool_changes = view.tool_changes().to_vec();
+            for tc in &tool_changes {
+                let entities = self.generate_purge_entities(z, layer_height, layer_index, tc);
+                for entity in entities {
+                    output
+                        .push_entity_to_layer(layer_index, entity.path, entity.region_key)
+                        .map_err(|e| ModuleError::fatal(1, e))?;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
