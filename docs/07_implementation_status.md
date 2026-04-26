@@ -1,6 +1,6 @@
 # Implementation Status
 
-Last updated: 2026-04-20
+Last updated: 2026-04-26
 
 ## Status Markers
 
@@ -92,7 +92,7 @@ Last updated: 2026-04-20
 - [x] TASK-120d2 Emit matching retract/unretract pairs, z-hop interactions, and Benchy regression assertions for the chosen travel-policy surface. Covers DEV-009. **Closed with TASK-120d — `travel_policy_tdd.rs` covers external/internal/z-hop/determinism; `live_travel_policy_tdd.rs` covers host dispatch deferred-queue routing and orphan-free no-retract path.**
 - [ ] TASK-135 Add Benchy regression assertions for supports, top/bottom fills, seams, and retract/unretract pairs. Supports DEV-009 acceptance evidence. **Seam evidence is now split across packet `22_live-seam-contract-repair` (current live path) and draft packet `23_prepass-seam-planning-orca-parity` (future PrePass seam-planning slice).**
 - [x] TASK-142 Port `SkirtBrim` live geometry from legacy `process()` into `run_finalization()` using `LayerCollectionView` and `FinalizationOutputBuilder`. Covers DEV-013. **Closed 2026-04-25 — packet `16_skirt-brim-finalization-live-path` implements `run_finalization()` with `LayerCollectionView` bbox discovery and `FinalizationOutputBuilder::push_entity_to_layer()` for skirt/brim geometry. Host dispatch updated to batch-prepend entity pushes so finalization entities precede model entities. 5 acceptance tests pass, clippy clean. WASM rebuild (`build-core-modules.sh`) required to activate the live WASM path.**
-- [ ] TASK-143 Port `WipeTower` live geometry from legacy `process()` into `run_finalization()` and retire the legacy-only finalization path. Continues DEV-013.
+- [x] TASK-143 Port `WipeTower` live geometry from legacy `process()` into `run_finalization()` and retire the legacy-only finalization path. Continues DEV-013. **Closed 2026-04-25 (packet 17):** `WipeTower::run_finalization()` implemented via `LayerCollectionView` + `FinalizationOutputBuilder`; all 5 acceptance tests pass; `wipe-tower.wasm` rebuilt; DEV-013 fully closed.
 - [~] TASK-151 Teach `path-optimization-default` to consume seam-placement output and stop acting as a comment-only slot filler on real wall loops. Covers the non-retraction portion of DEV-023 and supports TASK-120c. **Reopened 2026-04-21 — packet `22_live-seam-contract-repair` restores the remaining live contract gap: `path_optimization_emit_layer_markers=false` still fails on the host path because `path-optimization-default` emits marker comments unconditionally.**
 - [x] TASK-159 Add `PrePass::SeamPlanning` plus a canonical `SeamPlanIR` blackboard contract so seam choices can be scored from global mesh/layer-plan context and injected into `Layer::PerimetersPostProcess`. Continues DEV-009, deepens Orca parity, and supports TASK-120c plus TASK-135. **Closed 2026-04-24 — packet `23-rev1_prepass-seam-planning-orca-parity` fixes WIT boundary (`run-seam-planning` now accepts `list<MeshObjectView>`), updates dispatch.rs to pass `MeshObjectView` geometry, fixes seam_arm type, lowers curvature threshold to 0.2, and rebuilds all affected WASM binaries. All 9 acceptance tests green, clippy clean. Unblocks TASK-135.**
 - [ ] TASK-161 Introduce `PrePass::SupportGeneration` plus a canonical `SupportPlanIR` blackboard contract so tree-support branches can be planned across layers (simplified port of OrcaSlicer `TreeSupport::drop_nodes`) and emitted by `Layer::Support` from pre-planned geometry. Continues DEV-009, deepens Orca parity, and supports TASK-120.
@@ -131,24 +131,24 @@ Last updated: 2026-04-20
 
 Use `docs/14_deviation_audit_history.md` only for retired XML-era numbering and audit provenance. The list below is the current live map.
 
-- DEV-002 — Core-module `ir-access` declarations are incomplete.
-- DEV-003 — Runtime IR-access enforcement is dormant because access audits are not fed from live execution.
-- DEV-004 — Claim Transition Matrix is not enforced for non-transitionable claims.
-- DEV-005 — Non-planar Z envelope enforcement is missing.
-- DEV-006 — Postpass GCode command content and executable WIT-boundary coverage still have live gaps.
-- DEV-008 — Core-module `config.schema` declarations are empty.
+- ~~DEV-002~~ — **Closed.** All 17 core-module manifests now populate `[ir-access]` declarations; `core_module_ir_access_contract_tdd.rs` green (TASK-121).
+- ~~DEV-003~~ — **Closed.** `ModuleAccessAudit` records now populated from all live prepass/layer/postpass paths and plumbed into `DagValidationRequest.access_audits`; undeclared runtime accesses rejected at the WIT boundary (TASK-123–124).
+- ~~DEV-004~~ — **Closed.** Claim Transition Matrix now enforced for all non-transitionable claims; `claim_transition_matrix_tdd.rs` green (TASK-125).
+- ~~DEV-005~~ — **Closed.** Non-planar Z envelope `[layer.z, layer.z + effective_layer_height]` now enforced at output-commit boundaries (TASK-127).
+- ~~DEV-006~~ — **Closed.** Postpass GCode command bodies now cross the WIT boundary via real command lists; layer-world and finalization-world deep-copy boundary coverage also landed (TASK-129a/b/c).
+- ~~DEV-008~~ — **Closed.** All 17 core-module manifests now populate `[config.schema]` declarations (TASK-122).
 - DEV-009 — Benchy Phase H output is only partially correct on the live path, including missing OrcaSlicer-compatible GCode comment metadata for native preview visualization.
 - DEV-010 — Acceptance-gate evidence and governance closure are still open.
-- DEV-013 — Finalization core modules still keep live behavior in legacy `process()` instead of `run_finalization()`.
-- DEV-014 — WIT compatibility is split across multiple sources and still drifts.
-- DEV-015 — Mesh-query host services remain stubs.
-- DEV-016 — Custom string payloads are dropped at the WIT boundary.
+- ~~DEV-013~~ — **Closed 2026-04-25.** Both `SkirtBrim` (packet 16) and `WipeTower` (packet 17) now implement `run_finalization()` on the live path.
+- ~~DEV-014~~ — **Closed 2026-04-24.** Macro, host, and test-guest codegen consolidated onto one canonical WIT source in `wit/`; package/version literals normalized; `validate_wit_world` enforces allowlist at startup (TASK-144–146, packet `25_wit-canonical-surface-lock`).
+- ~~DEV-015~~ — **Closed.** `raycast_z_down`, `surface_normal_at`, and `object_bounds` now backed by real mesh-query implementations; hit/miss semantics verified across all WIT worlds (TASK-147–148).
+- ~~DEV-016~~ — **Closed 2026-04-20.** `ExtrusionRole::Custom(String)`, `PaintSemantic::Custom(String)`, and `WallFeatureFlags.custom` now cross the WIT boundary losslessly (TASK-149–150).
 - DEV-020 — Phase G still overstates completion because dead `Noop*Runner` code remains.
 - DEV-023 — PathOptimization remains an MVP slot-filler rather than a real optimization stage.
 - DEV-024 — Python postpass support exists but is not on the live path.
 - DEV-025 — Prepass segmentation SDK↔WIT shapes are still misaligned.
 - DEV-026 — Host semver, manifest-schema validation, and runtime budget evidence remain incomplete.
-- DEV-027 — Transform-aware world-space Z lacks fixture-level integration coverage and a first-class IR surface.
+- ~~DEV-027~~ — **Closed 2026-04-21.** `ObjectMesh.world_z_extent` added as first-class derived IR field; 7 integration fixture tests and transform error paths added (TASK-157–158, packet `10_transform-aware-world-z`).
 - DEV-030 — Planning and remediation docs still lag the real dependency graph.
 
 ## Tests Added as Gap Locks
@@ -160,7 +160,7 @@ Use `docs/14_deviation_audit_history.md` only for retired XML-era numbering and 
 ## Architecture Acceptance Gate
 
 - Status: BLOCKED BY OPEN REMEDIATION TASKS
-- Blocking tasks: TASK-119a, TASK-119b, TASK-119c, TASK-120a, TASK-120b, TASK-120c, TASK-125, TASK-126, TASK-127, TASK-128a, TASK-128b, TASK-129a, TASK-129b, TASK-129c, TASK-130a, TASK-130b, TASK-136, TASK-140, TASK-149, TASK-150, TASK-154, TASK-155, TASK-156
+- Blocking tasks: TASK-120c, TASK-130a, TASK-130b, TASK-136, TASK-140, TASK-154, TASK-155, TASK-156
 
 ### Evidence Links
 

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: wipe-tower-finalization-live-path
 task_ids:
   - TASK-143
