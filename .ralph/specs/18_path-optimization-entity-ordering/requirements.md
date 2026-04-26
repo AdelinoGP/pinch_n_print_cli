@@ -8,7 +8,7 @@
   - `TASK-152d` — cross-object ordering within one layer
   - `TASK-152e` — role-aware bridge and overhang prioritization
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 
 ## Problem Statement
 

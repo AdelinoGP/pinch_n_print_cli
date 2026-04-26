@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: path-optimization-entity-ordering
 task_ids:
   - TASK-152
