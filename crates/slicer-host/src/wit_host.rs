@@ -171,6 +171,14 @@ pub struct SlicePostprocessBuilderData;
 /// Backing data for a `gcode-output-builder` resource handle.
 pub struct GcodeOutputBuilderData;
 
+/// Backing data for a `layer-collection-builder` resource handle.
+///
+/// The actual proposal (a permutation of `LayerCollectionIR.ordered_entities`
+/// plus per-entity reversal flags) is stored on
+/// `HostExecutionContext::layer_collection_proposal`. This struct is a
+/// zero-sized table-entry tag mirroring `GcodeOutputBuilderData`.
+pub struct LayerCollectionBuilderData;
+
 /// Backing data for a `support-output-builder` resource handle.
 pub struct SupportOutputBuilderData;
 
@@ -307,6 +315,9 @@ pub mod layer {
                     push-raw:         func(text: string) -> result<_, string>;
                     push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
                 }
+                resource layer-collection-builder {
+                    set-entity-order: func(items: list<tuple<u32, bool>>) -> result<_, string>;
+                }
                 resource support-output-builder {
                     push-support-path:   func(path: extrusion-path3d) -> result<_, string>;
                     push-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
@@ -332,7 +343,8 @@ pub mod layer {
                     slice-region-view, perimeter-region-view,
                     infill-output-builder, perimeter-output-builder,
                     slice-postprocess-builder, support-output-builder,
-                    gcode-output-builder, region-key, layer-idx,
+                    gcode-output-builder, layer-collection-builder,
+                    region-key, layer-idx,
                     paint-region-layer-view,
                 };
                 export on-print-start: func(config: config-view) -> result<_, module-error>;
@@ -344,7 +356,7 @@ pub mod layer {
                 export run-infill-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>;
                 export run-support: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: support-output-builder, config: config-view) -> result<_, module-error>;
                 export run-support-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, output: support-output-builder, config: config-view) -> result<_, module-error>;
-                export run-path-optimization: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: gcode-output-builder, config: config-view) -> result<_, module-error>;
+                export run-path-optimization: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: gcode-output-builder, collection: layer-collection-builder, config: config-view) -> result<_, module-error>;
             }
         "#,
         world: "layer-module",
@@ -359,6 +371,7 @@ pub mod layer {
             "slicer:world-layer/ir-handles@1.0.0.perimeter-output-builder": super::PerimeterOutputBuilderData,
             "slicer:world-layer/ir-handles@1.0.0.slice-postprocess-builder": super::SlicePostprocessBuilderData,
             "slicer:world-layer/ir-handles@1.0.0.gcode-output-builder": super::GcodeOutputBuilderData,
+            "slicer:world-layer/ir-handles@1.0.0.layer-collection-builder": super::LayerCollectionBuilderData,
             "slicer:world-layer/ir-handles@1.0.0.support-output-builder": super::SupportOutputBuilderData,
             "slicer:world-layer/ir-handles@1.0.0.paint-region-layer-view": super::PaintRegionLayerData,
         },
@@ -1183,6 +1196,15 @@ pub struct HostExecutionContext {
     /// world-finalization.wit §finalization-output-builder).
     pub finalization_pushes: Vec<FinalizationBuilderPush>,
 
+    /// Layer-collection ordering proposal captured during a
+    /// `Layer::PathOptimization` call via
+    /// `layer-collection-builder.set-entity-order`. `None` means the
+    /// guest emitted no proposal and the host fallback ordering applies.
+    /// Reset to `None` by `push_layer_collection_builder` so a single
+    /// `HostExecutionContext` reused across two layer calls cannot leak
+    /// a proposal between them.
+    pub layer_collection_proposal: Option<Vec<(u32, bool)>>,
+
     /// Runtime IR read paths accessed by the guest via WIT view methods
     /// during this call. Populated by instrumenting each view method to
     /// record the exact IR path (e.g. `SliceIR.regions.polygons`) when
@@ -1241,6 +1263,7 @@ impl HostExecutionContext {
             seam_plan_entries: Vec::new(),
             support_plan_entries: Vec::new(),
             finalization_pushes: Vec::new(),
+            layer_collection_proposal: None,
             runtime_reads: Vec::new(),
             runtime_writes: Vec::new(),
             layer_z,
@@ -1338,6 +1361,17 @@ impl HostExecutionContext {
         &mut self,
     ) -> wasmtime::Result<Resource<GcodeOutputBuilderData>> {
         Ok(self.table.push(GcodeOutputBuilderData)?)
+    }
+
+    /// Push a layer-collection-builder resource and return its handle.
+    /// Resets `layer_collection_proposal` to `None` so a context reused
+    /// across two `Layer::PathOptimization` calls cannot leak a stale
+    /// proposal from the previous call.
+    pub fn push_layer_collection_builder(
+        &mut self,
+    ) -> wasmtime::Result<Resource<LayerCollectionBuilderData>> {
+        self.layer_collection_proposal = None;
+        Ok(self.table.push(LayerCollectionBuilderData)?)
     }
 
     /// Push a slice-postprocess-builder resource and return its handle.
@@ -2822,6 +2856,26 @@ impl ir::HostGcodeOutputBuilder for HostExecutionContext {
         Ok(Ok(()))
     }
     fn drop(&mut self, rep: Resource<GcodeOutputBuilderData>) -> wasmtime::Result<()> {
+        self.table.delete(rep)?;
+        Ok(())
+    }
+}
+
+impl ir::HostLayerCollectionBuilder for HostExecutionContext {
+    fn set_entity_order(
+        &mut self,
+        _self_: Resource<LayerCollectionBuilderData>,
+        items: Vec<(u32, bool)>,
+    ) -> wasmtime::Result<Result<(), String>> {
+        if self.layer_collection_proposal.is_some() {
+            return Ok(Err(
+                "set-entity-order called twice within one run-path-optimization".into(),
+            ));
+        }
+        self.layer_collection_proposal = Some(items);
+        Ok(Ok(()))
+    }
+    fn drop(&mut self, rep: Resource<LayerCollectionBuilderData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;
         Ok(())
     }

@@ -574,8 +574,12 @@ impl WasmRuntimeDispatcher {
                     .data_mut()
                     .push_gcode_output_builder()
                     .map_err(mk_ctx_err)?;
+                let collection = config.store
+                    .data_mut()
+                    .push_layer_collection_builder()
+                    .map_err(mk_ctx_err)?;
                 config.bindings
-                    .call_run_path_optimization(config.store, params.layer_index, &region_handles, own(output), own(config.config_handle))
+                    .call_run_path_optimization(config.store, params.layer_index, &region_handles, own(output), own(collection), own(config.config_handle))
                     .map_err(mk_call_err)
             }
             _ => Err(DispatchError {
@@ -1835,7 +1839,7 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         let (envelope_floor, envelope_height) = derive_layer_output_envelope(layer, arena);
 
         // Layer stages always use the typed component-model boundary.
-        let ctx = match self.dispatch_layer_call(
+        let mut ctx = match self.dispatch_layer_call(
             stage_id,
             module,
             blackboard,
@@ -1865,6 +1869,25 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         // Preserve runtime reads and writes before committing outputs.
         let runtime_reads: Vec<String> = ctx.runtime_reads.clone();
         let runtime_writes: Vec<String> = ctx.runtime_writes.clone();
+
+        // Layer::PathOptimization may have emitted a `set-entity-order`
+        // proposal via `layer-collection-builder`. Validate and apply it
+        // against the staged `LayerCollectionIR.ordered_entities` before
+        // commit_layer_outputs runs (so any downstream commit sees the
+        // post-permutation order). When no proposal was emitted, the
+        // host fallback ordering pre-staged by the executor remains in
+        // effect (packet-18 behavior preserved until packet 33).
+        if stage_id == "Layer::PathOptimization" {
+            if let Some(proposal) = ctx.layer_collection_proposal.take() {
+                apply_entity_order_proposal(arena, &proposal).map_err(|message| {
+                    LayerStageError::FatalModule {
+                        stage_id: stage_id.clone(),
+                        module_id: module.module_id.clone(),
+                        message,
+                    }
+                })?;
+            }
+        }
 
         // Commit collected outputs into the layer arena based on stage.
         commit_layer_outputs(stage_id, &module.module_id, layer.index, &ctx, arena, seam_plan_ref)?;
@@ -1925,6 +1948,81 @@ pub fn commit_layer_outputs_for_test(
     seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
 ) -> Result<(), LayerStageError> {
     commit_layer_outputs(stage_id, module_id, layer_index, ctx, arena, seam_plan_ir)
+}
+
+/// Validate a `set-entity-order` proposal from a `Layer::PathOptimization`
+/// module and apply it to the arena's staged `LayerCollectionIR.ordered_entities`.
+///
+/// Validation order — first failure short-circuits with the corresponding
+/// diagnostic; on `Err` the arena's `ordered_entities` is left in its pre-call
+/// state (no partial mutation):
+/// 1. `proposal.len() == ordered_entities.len()` else
+///    `"set-entity-order: expected N indices, got M"`
+/// 2. each index in `[0, N)` else
+///    `"set-entity-order: index N out of range [0, M)"`
+/// 3. no duplicate indices else
+///    `"set-entity-order: duplicate index N"`
+///
+/// On `Ok`, the entities are permuted into the proposed order; entries whose
+/// reversal flag is `true` have `path.points` reversed in place; each entity's
+/// `topo_order` is reassigned to its new 0-based slot.
+pub fn apply_entity_order_proposal(
+    arena: &mut LayerArena,
+    proposal: &[(u32, bool)],
+) -> Result<(), String> {
+    let n = arena
+        .layer_collection()
+        .ok_or_else(|| {
+            "set-entity-order: no LayerCollectionIR staged on arena".to_string()
+        })?
+        .ordered_entities
+        .len();
+    if proposal.len() != n {
+        return Err(format!(
+            "set-entity-order: expected {} indices, got {}",
+            n,
+            proposal.len()
+        ));
+    }
+    for (idx, _reverse) in proposal {
+        if (*idx as usize) >= n {
+            return Err(format!(
+                "set-entity-order: index {} out of range [0, {})",
+                idx, n
+            ));
+        }
+    }
+    let mut seen = vec![false; n];
+    for (idx, _reverse) in proposal {
+        let slot = *idx as usize;
+        if seen[slot] {
+            return Err(format!("set-entity-order: duplicate index {}", idx));
+        }
+        seen[slot] = true;
+    }
+
+    // Validation passed — apply permutation, per-entity reversal, and
+    // topo_order reassignment. Take the staged IR, mutate in place, replace.
+    let mut lc = arena
+        .take_layer_collection()
+        .expect("layer_collection presence verified above");
+    let original = std::mem::take(&mut lc.ordered_entities);
+    let mut buckets: Vec<Option<slicer_ir::PrintEntity>> =
+        original.into_iter().map(Some).collect();
+    let mut new_entities: Vec<slicer_ir::PrintEntity> = Vec::with_capacity(n);
+    for (new_slot, (orig_idx, reverse)) in proposal.iter().enumerate() {
+        let mut entity = buckets[*orig_idx as usize]
+            .take()
+            .expect("uniqueness validated above");
+        if *reverse {
+            entity.path.points.reverse();
+        }
+        entity.topo_order = new_slot as u32;
+        new_entities.push(entity);
+    }
+    lc.ordered_entities = new_entities;
+    arena.set_layer_collection(lc);
+    Ok(())
 }
 
 fn commit_layer_outputs(

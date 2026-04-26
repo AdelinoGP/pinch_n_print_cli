@@ -700,11 +700,13 @@ impl LayerModule for PathOptimizationTestModule {
         layer_index: u32,
         regions: &[PerimeterRegionView],
         output: &mut GcodeOutputBuilder,
+        collection: &mut LayerCollectionBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
         let _ = layer_index;
         let _ = regions.len();
         let _ = output;
+        let _ = collection;
         let _ = config.len();
         Ok(())
     }
@@ -716,9 +718,39 @@ fn test_34_run_path_optimization_signature_matches_wit() {
     let module = PathOptimizationTestModule::on_print_start(&config).unwrap();
     let regions: Vec<PerimeterRegionView> = vec![];
     let mut output = GcodeOutputBuilder::new();
+    let mut collection = LayerCollectionBuilder::new();
 
-    let result = module.run_path_optimization(0, &regions, &mut output, &config);
+    let result = module.run_path_optimization(0, &regions, &mut output, &mut collection, &config);
     assert!(result.is_ok());
+}
+
+// =============================================================================
+// Packet 32 — TASK-152g: SDK builder rejects a second set_entity_order
+// =============================================================================
+
+#[test]
+fn set_entity_order_second_call_returns_err() {
+    let mut collection = LayerCollectionBuilder::new();
+    let first = vec![(0u32, false), (1, false), (2, false)];
+    let second = vec![(2u32, false), (1, false), (0, false)];
+
+    collection
+        .set_entity_order(first.clone())
+        .expect("first set_entity_order must succeed");
+
+    let err = collection
+        .set_entity_order(second)
+        .expect_err("second set_entity_order must return Err");
+    assert!(
+        err.contains("set-entity-order called twice"),
+        "diagnostic must mention the double-call rule; got: {err}"
+    );
+
+    assert_eq!(
+        collection.proposal(),
+        Some(first.as_slice()),
+        "first proposal must be preserved after rejected second call"
+    );
 }
 
 // =============================================================================
@@ -774,7 +806,13 @@ fn test_35_layer_module_defaults_do_not_panic() {
         .run_support_postprocess(0, &slice_regions, &mut SupportOutputBuilder::new(), &config)
         .is_ok());
     assert!(module
-        .run_path_optimization(0, &perim_regions, &mut GcodeOutputBuilder::new(), &config)
+        .run_path_optimization(
+            0,
+            &perim_regions,
+            &mut GcodeOutputBuilder::new(),
+            &mut LayerCollectionBuilder::new(),
+            &config,
+        )
         .is_ok());
 }
 

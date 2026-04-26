@@ -80,8 +80,9 @@ fn no_move_commands_emitted_when_perimeter_already_rotated() {
     )
     .expect("on_print_start must succeed");
     let mut output = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
+    let mut collection = slicer_sdk::LayerCollectionBuilder::new();
     module
-        .run_path_optimization(7, &[region], &mut output, &slicer_ir::ConfigView::default())
+        .run_path_optimization(7, &[region], &mut output, &mut collection, &slicer_ir::ConfigView::default())
         .expect("run_path_optimization must succeed");
 
     let commands = output.commands();
@@ -133,8 +134,9 @@ fn missing_resolved_seam_leaves_wall_loop_order_unchanged() {
     )
     .expect("on_print_start must succeed");
     let mut output = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
+    let mut collection = slicer_sdk::LayerCollectionBuilder::new();
     module
-        .run_path_optimization(7, &[region], &mut output, &slicer_ir::ConfigView::default())
+        .run_path_optimization(7, &[region], &mut output, &mut collection, &slicer_ir::ConfigView::default())
         .expect("run_path_optimization must succeed");
 
     let commands = output.commands();
@@ -179,13 +181,15 @@ fn seam_started_wall_replay_is_deterministic() {
     .expect("on_print_start must succeed");
 
     let mut output1 = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
+    let mut collection1 = slicer_sdk::LayerCollectionBuilder::new();
     module
-        .run_path_optimization(7, &[region.clone()], &mut output1, &slicer_ir::ConfigView::default())
+        .run_path_optimization(7, &[region.clone()], &mut output1, &mut collection1, &slicer_ir::ConfigView::default())
         .expect("first run must succeed");
 
     let mut output2 = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
+    let mut collection2 = slicer_sdk::LayerCollectionBuilder::new();
     module
-        .run_path_optimization(7, &[region.clone()], &mut output2, &slicer_ir::ConfigView::default())
+        .run_path_optimization(7, &[region.clone()], &mut output2, &mut collection2, &slicer_ir::ConfigView::default())
         .expect("second run must succeed");
 
     let cmds1 = output1.commands();

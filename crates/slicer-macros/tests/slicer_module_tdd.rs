@@ -152,6 +152,15 @@ impl GcodeOutputBuilder {
     }
 }
 
+/// Mock LayerCollectionBuilder for testing
+pub struct LayerCollectionBuilder;
+
+impl LayerCollectionBuilder {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 /// Mock PaintRegionLayerView for testing
 pub struct PaintRegionLayerView;
 
@@ -253,6 +262,7 @@ pub trait LayerModule: Sized {
         _layer_index: u32,
         _regions: &[PerimeterRegionView],
         _output: &mut GcodeOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())
@@ -693,6 +703,7 @@ impl LayerModule for PathOptModule {
         _layer_index: u32,
         _regions: &[PerimeterRegionView],
         _output: &mut GcodeOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())

@@ -59,8 +59,8 @@ pub use instance_pool::{
 };
 pub use wasm_instance::{WasmCallError, WasmComponent, WasmEngine, WasmInstance, WasmLoadError};
 pub use dispatch::{
-    commit_layer_outputs_for_test, export_name_for_stage, DispatchError, DispatchPhase,
-    WasmRuntimeDispatcher,
+    apply_entity_order_proposal, commit_layer_outputs_for_test, export_name_for_stage,
+    DispatchError, DispatchPhase, WasmRuntimeDispatcher,
 };
 pub use layer_executor::{
     execute_per_layer, execute_per_layer_with_events, ir_path_for_layer_stage,

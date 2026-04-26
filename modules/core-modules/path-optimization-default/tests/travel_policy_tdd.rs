@@ -10,6 +10,7 @@ use slicer_ir::{
     ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LoopType,
     Point3WithWidth, WallBoundaryType, WallLoop, WidthProfile,
 };
+use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::postpass_builders::GcodeOutputBuilder;
 use slicer_sdk::postpass_types::{GcodeCommand, GcodeOutputCommand};
 use slicer_sdk::traits::LayerModule;
@@ -80,8 +81,9 @@ fn external_travel_emits_matched_retract_and_unretract() {
     let module = path_optimization_default::PathOptimizationDefault::on_print_start(&config)
         .expect("on_print_start must succeed");
     let mut output = GcodeOutputBuilder::new();
+    let mut collection = LayerCollectionBuilder::new();
     module
-        .run_path_optimization(0, &[region_a, region_b], &mut output, &config)
+        .run_path_optimization(0, &[region_a, region_b], &mut output, &mut collection, &config)
         .expect("run_path_optimization must succeed");
 
     let commands = output.commands();
@@ -148,8 +150,9 @@ fn internal_travel_suppresses_retraction() {
     let module = path_optimization_default::PathOptimizationDefault::on_print_start(&config)
         .expect("on_print_start must succeed");
     let mut output = GcodeOutputBuilder::new();
+    let mut collection = LayerCollectionBuilder::new();
     module
-        .run_path_optimization(0, &[region], &mut output, &config)
+        .run_path_optimization(0, &[region], &mut output, &mut collection, &config)
         .expect("run_path_optimization must succeed");
 
     let commands = output.commands();
@@ -199,8 +202,9 @@ fn external_travel_with_z_hop_emits_z_hop_and_retract_pair() {
     let module = path_optimization_default::PathOptimizationDefault::on_print_start(&config)
         .expect("on_print_start must succeed");
     let mut output = GcodeOutputBuilder::new();
+    let mut collection = LayerCollectionBuilder::new();
     module
-        .run_path_optimization(0, &[region_a, region_b], &mut output, &config)
+        .run_path_optimization(0, &[region_a, region_b], &mut output, &mut collection, &config)
         .expect("run_path_optimization must succeed");
 
     let commands = output.commands();
@@ -255,13 +259,15 @@ fn travel_policy_output_is_deterministic() {
         .expect("on_print_start must succeed");
 
     let mut out1 = GcodeOutputBuilder::new();
+    let mut collection1 = LayerCollectionBuilder::new();
     module
-        .run_path_optimization(0, &make_regions(), &mut out1, &config)
+        .run_path_optimization(0, &make_regions(), &mut out1, &mut collection1, &config)
         .expect("first run must succeed");
 
     let mut out2 = GcodeOutputBuilder::new();
+    let mut collection2 = LayerCollectionBuilder::new();
     module
-        .run_path_optimization(0, &make_regions(), &mut out2, &config)
+        .run_path_optimization(0, &make_regions(), &mut out2, &mut collection2, &config)
         .expect("second run must succeed");
 
     let cmds1 = out1.commands();

@@ -367,6 +367,43 @@ fn handwritten_test_guests_use_payload_extrusion_role_variants() {
     }
 }
 
+/// Verifies that the `#[slicer_module]` macro's embedded layer-world WIT
+/// references the `layer-collection-builder` resource — both in the world's
+/// `use ir-handles.{...}` import block and in the `run-path-optimization`
+/// export signature — and that the canonical disk `wit/deps/ir-types.wit`
+/// (which the macro pulls in via `include`) declares the resource with the
+/// canonical `set-entity-order` signature (packet 32 — TASK-152g).
+///
+/// Drift between disk WIT and the macro's embedded LAYER_WORLD_WIT here
+/// would silently break the guest-side bindings produced by the macro.
+#[test]
+fn macro_embeds_layer_collection_builder_resource() {
+    let lib_rs = macro_lib_rs_content();
+    assert!(
+        lib_rs.contains("layer-collection-builder,"),
+        "macro LAYER_WORLD_WIT must import 'layer-collection-builder' in the world's `use ir-handles.{{...}}` block"
+    );
+    assert!(
+        lib_rs.contains("collection: layer-collection-builder"),
+        "macro LAYER_WORLD_WIT must wire 'collection: layer-collection-builder' into run-path-optimization"
+    );
+
+    // The actual resource declaration lives in the canonical disk WIT
+    // (the macro pulls it in via WIT `include`).
+    let ir_types = fs::read_to_string(workspace_root().join("wit/deps/ir-types.wit"))
+        .expect("read canonical ir-types.wit");
+    assert!(
+        ir_types.contains("resource layer-collection-builder"),
+        "canonical wit/deps/ir-types.wit must declare 'resource layer-collection-builder'"
+    );
+    assert!(
+        ir_types.contains(
+            "set-entity-order: func(items: list<tuple<u32, bool>>) -> result<_, string>"
+        ),
+        "canonical wit/deps/ir-types.wit must declare set-entity-order with the canonical signature"
+    );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Prepass segmentation signature surface
 // ─────────────────────────────────────────────────────────────────────────────

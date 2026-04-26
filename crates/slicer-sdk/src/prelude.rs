@@ -13,6 +13,7 @@ pub use crate::builders::{
     InfillOutputBuilder, PerimeterOutputBuilder, SlicePostprocessBuilder, SupportOutputBuilder,
 };
 pub use crate::error::ModuleError;
+pub use crate::layer_collection_builder::LayerCollectionBuilder;
 pub use crate::traits::{
     FinalizationModule, FinalizationOutputBuilder, LayerCollectionView, LayerModule,
     PaintRegionLayerView, PostpassModule, PrepassModule,

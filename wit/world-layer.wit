@@ -11,6 +11,7 @@ world layer-module {
         slice-postprocess-builder,
         support-output-builder,
         gcode-output-builder,
+        layer-collection-builder,
         region-key,
         layer-idx,
         paint-region-layer-view,
@@ -81,6 +82,7 @@ world layer-module {
         layer-index: layer-idx,
         regions:     list<perimeter-region-view>,
         output:      gcode-output-builder,
+        collection:  layer-collection-builder,
         config:      config-view,
     ) -> result<_, module-error>;
 }

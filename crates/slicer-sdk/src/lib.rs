@@ -21,6 +21,7 @@ pub mod builders;
 pub mod coords;
 pub mod error;
 pub mod host;
+pub mod layer_collection_builder;
 pub mod postpass_builders;
 pub mod postpass_types;
 pub mod prelude;
@@ -28,6 +29,8 @@ pub mod prepass_builders;
 pub mod prepass_types;
 pub mod traits;
 pub mod views;
+
+pub use layer_collection_builder::LayerCollectionBuilder;
 
 /// Re-export of the shared IR crate used by host and modules.
 pub use slicer_ir as ir;

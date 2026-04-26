@@ -107,6 +107,9 @@ wit_bindgen::generate!({
                 push-raw:         func(text: string) -> result<_, string>;
                 push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
             }
+            resource layer-collection-builder {
+                set-entity-order: func(items: list<tuple<u32, bool>>) -> result<_, string>;
+            }
             resource support-output-builder {
                 push-support-path:   func(path: extrusion-path3d) -> result<_, string>;
                 push-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
@@ -130,7 +133,8 @@ wit_bindgen::generate!({
                 slice-region-view, perimeter-region-view,
                 infill-output-builder, perimeter-output-builder,
                 slice-postprocess-builder, support-output-builder,
-                gcode-output-builder, region-key, layer-idx,
+                gcode-output-builder, layer-collection-builder,
+                region-key, layer-idx,
                 paint-region-layer-view,
             };
             export on-print-start: func(config: config-view) -> result<_, module-error>;
@@ -142,7 +146,7 @@ wit_bindgen::generate!({
             export run-infill-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>;
             export run-support: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: support-output-builder, config: config-view) -> result<_, module-error>;
             export run-support-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, output: support-output-builder, config: config-view) -> result<_, module-error>;
-            export run-path-optimization: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: gcode-output-builder, config: config-view) -> result<_, module-error>;
+            export run-path-optimization: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: gcode-output-builder, collection: layer-collection-builder, config: config-view) -> result<_, module-error>;
         }
     "#,
     world: "layer-module",
@@ -357,7 +361,7 @@ impl Guest for Component {
         }
         Ok(())
     }
-    fn run_path_optimization(_layer_index: LayerIdx, regions: Vec<PerimeterRegionView>, output: GcodeOutputBuilder, _config: ConfigView) -> Result<(), ModuleError> {
+    fn run_path_optimization(_layer_index: LayerIdx, regions: Vec<PerimeterRegionView>, output: GcodeOutputBuilder, _collection: LayerCollectionBuilder, _config: ConfigView) -> Result<(), ModuleError> {
         // Emit a comment encoding perimeter-region counts (observable through output).
         let region_count = regions.len();
         let total_walls: usize = regions.iter().map(|r| r.wall_loops().len()).sum();

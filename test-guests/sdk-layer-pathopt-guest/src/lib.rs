@@ -1,5 +1,6 @@
 use slicer_ir::ConfigView;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::postpass_builders::GcodeOutputBuilder;
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::LayerModule;
@@ -18,6 +19,7 @@ impl LayerModule for SdkLayerPathoptGuest {
         _layer_index: u32,
         regions: &[PerimeterRegionView],
         output: &mut GcodeOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         let comment = format!(

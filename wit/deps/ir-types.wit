@@ -117,6 +117,16 @@ interface ir-handles {
         push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
     }
 
+    // Host-collection mutation surface for Layer::PathOptimization. The module
+    // proposes a permutation of the host-staged `LayerCollectionIR.ordered_entities`
+    // and an optional per-entity reversal flag (mirrors OrcaSlicer's
+    // `vector<pair<size_t, bool>>` from ShortestPath::chain_segments_closest_point).
+    // The host validates the proposal and applies it after the module returns;
+    // a malformed proposal leaves `ordered_entities` unchanged.
+    resource layer-collection-builder {
+        set-entity-order: func(items: list<tuple<u32, bool>>) -> result<_, string>;
+    }
+
     use slicer:types/geometry.{extrusion-role};
     record gcode-move-cmd {
         x: option<f32>, y: option<f32>, z: option<f32>,

@@ -2117,10 +2117,12 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             };
             #adapt_perim
             let mut sdk_output = ::slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
+            let mut sdk_collection = ::slicer_sdk::LayerCollectionBuilder::new();
             let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_path_optimization(
-                &module, layer_index, &sdk_regions, &mut sdk_output, &ir_config,
+                &module, layer_index, &sdk_regions, &mut sdk_output, &mut sdk_collection, &ir_config,
             );
             __slicer_drain_gcode(&sdk_output, &output);
+            __slicer_drain_layer_collection(&sdk_collection, &collection);
             match out { Ok(()) => Ok(()), Err(e) => Err(__slicer_error_out(e)) }
         }
     } else {
@@ -2726,6 +2728,15 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 }
             }
 
+            fn __slicer_drain_layer_collection(
+                sdk: &::slicer_sdk::LayerCollectionBuilder,
+                wit: &LayerCollectionBuilder,
+            ) {
+                if let Some(items) = sdk.proposal() {
+                    let _ = wit.set_entity_order(items);
+                }
+            }
+
             struct __SlicerLayerComponent;
 
             impl Guest for __SlicerLayerComponent {
@@ -2794,6 +2805,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     layer_index: u32,
                     regions: Vec<PerimeterRegionView>,
                     output: GcodeOutputBuilder,
+                    collection: LayerCollectionBuilder,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> { #path_opt_arm }
             }
@@ -2840,7 +2852,8 @@ const LAYER_WORLD_WIT: &str = r#"
             slice-region-view, perimeter-region-view,
             infill-output-builder, perimeter-output-builder,
             slice-postprocess-builder, support-output-builder,
-            gcode-output-builder, region-key, layer-idx,
+            gcode-output-builder, layer-collection-builder,
+            region-key, layer-idx,
             paint-region-layer-view,
         };
         export on-print-start: func(config: config-view) -> result<_, module-error>;
@@ -2852,7 +2865,7 @@ const LAYER_WORLD_WIT: &str = r#"
         export run-infill-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>;
         export run-support: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: support-output-builder, config: config-view) -> result<_, module-error>;
         export run-support-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, output: support-output-builder, config: config-view) -> result<_, module-error>;
-        export run-path-optimization: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: gcode-output-builder, config: config-view) -> result<_, module-error>;
+        export run-path-optimization: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: gcode-output-builder, collection: layer-collection-builder, config: config-view) -> result<_, module-error>;
     }
 "#;
 

@@ -19,6 +19,7 @@
 #![warn(unused_imports)]
 
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::postpass_builders::{GcodeMoveCmd, GcodeOutputBuilder};
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::LayerModule;
@@ -64,6 +65,7 @@ impl LayerModule for PathOptimizationDefault {
         layer_index: u32,
         regions: &[PerimeterRegionView],
         output: &mut GcodeOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         if self.emit_layer_markers {
@@ -131,6 +133,7 @@ impl LayerModule for PathOptimizationDefault {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
     use slicer_sdk::postpass_builders::GcodeOutputBuilder;
     use slicer_sdk::traits::LayerModule;
 
@@ -163,9 +166,10 @@ mod tests {
         let config = ConfigView::from_map(fields);
         let module = PathOptimizationDefault::on_print_start(&config).unwrap();
         let mut output = GcodeOutputBuilder::new();
+        let mut collection = LayerCollectionBuilder::new();
 
         module
-            .run_path_optimization(3, &[], &mut output, &config)
+            .run_path_optimization(3, &[], &mut output, &mut collection, &config)
             .expect("path optimization should succeed with markers disabled");
 
         assert!(
@@ -183,9 +187,10 @@ mod tests {
         let config = ConfigView::from_map(HashMap::new());
         let module = PathOptimizationDefault::on_print_start(&config).unwrap();
         let mut output = GcodeOutputBuilder::new();
+        let mut collection = LayerCollectionBuilder::new();
 
         module
-            .run_path_optimization(0, &[], &mut output, &config)
+            .run_path_optimization(0, &[], &mut output, &mut collection, &config)
             .expect("path optimization must succeed on a pre-ordered (empty) entity list");
 
         assert_eq!(

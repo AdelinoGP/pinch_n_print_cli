@@ -23,6 +23,7 @@ pub struct InfillOutputBuilder;
 pub struct PerimeterOutputBuilder;
 pub struct SupportOutputBuilder;
 pub struct GcodeOutputBuilder;
+pub struct LayerCollectionBuilder;
 pub struct PaintRegionLayerView;
 pub struct SlicePostprocessBuilder;
 pub struct MeshObjectView;
@@ -75,6 +76,7 @@ pub trait LayerModule: Sized {
         _layer_index: u32,
         _regions: &[PerimeterRegionView],
         _output: &mut GcodeOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())

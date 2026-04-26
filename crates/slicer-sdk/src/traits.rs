@@ -12,6 +12,7 @@ use crate::builders::{
     InfillOutputBuilder, PerimeterOutputBuilder, SlicePostprocessBuilder, SupportOutputBuilder,
 };
 use crate::error::ModuleError;
+use crate::layer_collection_builder::LayerCollectionBuilder;
 use crate::postpass_builders::GcodeOutputBuilder;
 use crate::postpass_types::GcodeCommand;
 use crate::prepass_builders::{
@@ -332,6 +333,7 @@ pub trait LayerModule: Sized {
     ///     layer-index: layer-idx,
     ///     regions: list<perimeter-region-view>,
     ///     output: gcode-output-builder,
+    ///     collection: layer-collection-builder,
     ///     config: config-view,
     /// ) -> result<_, module-error>;
     /// ```
@@ -340,6 +342,7 @@ pub trait LayerModule: Sized {
         _layer_index: u32,
         _regions: &[PerimeterRegionView],
         _output: &mut GcodeOutputBuilder,
+        _collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())
