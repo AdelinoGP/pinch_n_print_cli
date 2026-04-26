@@ -124,22 +124,31 @@ fn detect_cdylib_no_lib_section() {
 #[test]
 fn wasm_output_path_debug() {
     let p = cmd_build::core_wasm_output_path("my-infill", false);
-    assert!(p.ends_with("debug/my_infill.wasm"), "got: {}", p.display());
-    assert!(p.to_str().unwrap().contains("wasm32-unknown-unknown/debug"));
+    let expected = std::path::PathBuf::from("target")
+        .join("wasm32-unknown-unknown")
+        .join("debug")
+        .join("my_infill.wasm");
+    assert_eq!(p, expected, "got: {}", p.display());
+    // LEGACY_BROKEN_FORM:
+    //   `p.to_str().unwrap().contains("wasm32-unknown-unknown/debug")`
+    // failed on Windows because `PathBuf::join` uses '\\' separators, so a
+    // forward-slash substring match against `to_str()` returned false. Compare
+    // PathBuf to PathBuf instead.
 }
 
 #[test]
 fn wasm_output_path_release() {
     let p = cmd_build::core_wasm_output_path("my-infill", true);
-    assert!(
-        p.ends_with("release/my_infill.wasm"),
-        "got: {}",
-        p.display()
-    );
-    assert!(p
-        .to_str()
-        .unwrap()
-        .contains("wasm32-unknown-unknown/release"));
+    let expected = std::path::PathBuf::from("target")
+        .join("wasm32-unknown-unknown")
+        .join("release")
+        .join("my_infill.wasm");
+    assert_eq!(p, expected, "got: {}", p.display());
+    // LEGACY_BROKEN_FORM:
+    //   `p.to_str().unwrap().contains("wasm32-unknown-unknown/release")`
+    // failed on Windows because `PathBuf::join` uses '\\' separators, so a
+    // forward-slash substring match against `to_str()` returned false. Compare
+    // PathBuf to PathBuf instead.
 }
 
 #[test]

@@ -102,9 +102,21 @@ pub fn parse_config_file(path: &Path) -> Result<serde_json::Value, RunError> {
         .map_err(|e| RunError::ConfigParseError(format!("invalid JSON in {}: {e}", path.display())))
 }
 
+/// Resolve the host binary name, honoring the `SLICER_HOST_BIN` env override.
+///
+/// Defaults to the literal `"slicer-host"` when the env var is unset, empty,
+/// or contains a NUL byte (a malformed value should never silently override).
+/// This is an internal test hook; production callers do not set the variable.
+fn host_binary_name() -> String {
+    match std::env::var("SLICER_HOST_BIN") {
+        Ok(v) if !v.is_empty() && !v.contains('\0') => v,
+        _ => String::from("slicer-host"),
+    }
+}
+
 /// Check whether the `slicer-host` binary is available on PATH.
 pub fn check_host_binary() -> bool {
-    Command::new("slicer-host")
+    Command::new(host_binary_name())
         .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -199,7 +211,7 @@ pub fn execute_in(
     println!("Running module: {}", wasm_path.display());
     println!("Model: {model}");
 
-    let host_output = Command::new("slicer-host")
+    let host_output = Command::new(host_binary_name())
         .args(&args)
         .status()
         .map_err(RunError::Io)?;
@@ -227,6 +239,41 @@ pub fn execute(model: &str, config: Option<&str>, output: Option<&str>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── RAII helper: save/restore env vars across a single test body ──────
+    //
+    // `std::env::set_var` is process-wide. The packet's verification command
+    // pins `--test-threads=1` so this guard cannot race with parallel tests
+    // that read SLICER_HOST_BIN. The Drop impl restores the prior value (or
+    // removes the var entirely when it was unset on entry), including on
+    // panic-driven unwind.
+    struct TestEnvGuard {
+        key: &'static str,
+        prior: Option<String>,
+    }
+
+    impl TestEnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let prior = std::env::var(key).ok();
+            std::env::set_var(key, value);
+            Self { key, prior }
+        }
+
+        fn unset(key: &'static str) -> Self {
+            let prior = std::env::var(key).ok();
+            std::env::remove_var(key);
+            Self { key, prior }
+        }
+    }
+
+    impl Drop for TestEnvGuard {
+        fn drop(&mut self) {
+            match &self.prior {
+                Some(v) => std::env::set_var(self.key, v),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
 
     // ── Helper: create a minimal valid module project directory ───────────
 
@@ -323,10 +370,36 @@ layer-parallel-safe = true
         write_wasm_binary(dir.path(), "cool-perimeters");
 
         let path = find_wasm_binary(dir.path()).unwrap();
-        assert!(
-            path.to_string_lossy()
-                .contains("target/slicer/cool-perimeters.wasm"),
-            "path should use module name with hyphens preserved: {path:?}"
+        let expected = dir
+            .path()
+            .join("target")
+            .join("slicer")
+            .join("cool-perimeters.wasm");
+        assert_eq!(
+            path, expected,
+            "find_wasm_binary must return target/slicer/<module-name>.wasm \
+             joined under the cargo project root, with the module name \
+             (hyphens preserved); got {path:?}"
+        );
+        // LEGACY_BROKEN_FORM:
+        //   `path.to_string_lossy().contains("target/slicer/cool-perimeters.wasm")`
+        // failed on Windows because `PathBuf::join` uses '\\' separators, so a
+        // forward-slash substring match against `to_string_lossy()` returned
+        // false. Do not reintroduce a substring check against a forward-slash
+        // literal — compare PathBuf to PathBuf instead.
+    }
+
+    #[test]
+    fn check_host_binary_default_is_slicer_host() {
+        // Lock down the production default: with SLICER_HOST_BIN unset,
+        // host_binary_name() must return the literal "slicer-host" string.
+        // The RAII guard restores any prior value on Drop so this test
+        // cannot leak environment state to neighbors.
+        let _guard = TestEnvGuard::unset("SLICER_HOST_BIN");
+        assert_eq!(
+            host_binary_name(),
+            "slicer-host",
+            "SLICER_HOST_BIN unset must default to literal \"slicer-host\""
         );
     }
 
@@ -659,7 +732,15 @@ id = "Layer::Bogus"
 
     #[test]
     fn execute_in_reaches_host_check() {
-        // With valid manifest, WASM, model, and config — should fail at host binary check
+        // Force the host-binary lookup to a guaranteed-missing name so the
+        // test passes even on dev machines where slicer-host IS on PATH
+        // (cargo install / workspace bin). The RAII guard restores the
+        // prior SLICER_HOST_BIN value on Drop.
+        let _guard = TestEnvGuard::set(
+            "SLICER_HOST_BIN",
+            "__slicer_host_test_marker_does_not_exist__",
+        );
+
         let dir = tempfile::tempdir().unwrap();
         write_cargo_toml(dir.path(), "my-module");
         write_valid_manifest(dir.path());
@@ -675,10 +756,10 @@ id = "Layer::Bogus"
             Some(&config_path.to_string_lossy()),
             Some("output.gcode"),
         );
-        // slicer-host is not installed in test env, so this should fail at the host check
         assert!(
             matches!(result, Err(RunError::MissingHostBinary)),
-            "expected MissingHostBinary, got: {result:?}"
+            "expected MissingHostBinary when SLICER_HOST_BIN points at a \
+             non-existent binary; got: {result:?}"
         );
     }
 }
