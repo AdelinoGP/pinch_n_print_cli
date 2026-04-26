@@ -22,13 +22,19 @@ use slicer_host::{
     WasmRuntimeDispatcher,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, MeshIR, ObjectMesh,
-    Point3, Point3WithWidth, PrintEntity, RegionKey, SemVer, Transform3d,
+    BoundingBox3, ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR,
+    MeshIR, ObjectMesh, Point3, Point3WithWidth, PrintEntity, RegionKey, SemVer, ToolChange,
+    Transform3d,
 };
 
 const SDK_FINALIZATION_GUEST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../test-guests/sdk-finalization-guest.component.wasm"
+);
+
+const WIPE_TOWER_WASM: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../modules/core-modules/wipe-tower/wipe-tower.wasm"
 );
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -137,6 +143,47 @@ fn make_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollection
     }
 }
 
+fn load_wipe_tower(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {
+    let path = PathBuf::from(WIPE_TOWER_WASM);
+    assert!(path.exists(), "wipe-tower.wasm missing at {}", path.display());
+    let bytes = std::fs::read(&path).expect("read wipe-tower.wasm");
+    Arc::new(engine.compile_component(&bytes).expect("compile wipe-tower.wasm"))
+}
+
+fn make_module_with_config(
+    id: &str,
+    component: Arc<slicer_host::WasmComponent>,
+    config: ConfigView,
+) -> CompiledModule {
+    let loaded = make_loaded_module(id);
+    let pool = Arc::new(
+        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
+            .expect("build instance pool"),
+    );
+    CompiledModule {
+        module_id: id.to_string(),
+        instance_pool: pool,
+        ir_read_mask: IrAccessMask { paths: vec![] },
+        ir_write_mask: IrAccessMask { paths: vec![] },
+        config_view: Arc::new(config),
+        wasm_component: Some(component),
+    }
+}
+
+fn make_layer_with_tool_change(index: u32, z: f32) -> LayerCollectionIR {
+    LayerCollectionIR {
+        schema_version: semver(1, 0, 0),
+        global_layer_index: index,
+        z,
+        ordered_entities: vec![model_entity(index, z)],
+        tool_changes: vec![ToolChange { after_entity_index: 0, from_tool: 0, to_tool: 1 }],
+        z_hops: vec![],
+        annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
+    }
+}
+
 /// AC-4: The live host finalization dispatch batch-prepends entity pushes from
 /// the WASM guest so that finalization entities (e.g. skirt/brim) appear
 /// BEFORE the original model entities in each target layer.
@@ -197,4 +244,56 @@ fn live_finalization_dispatch_merges_skirt_brim_entity_pushes() {
         finalization_entity.region_key.object_id, "obj1",
         "finalization entity must not have the model object_id"
     );
+}
+
+/// AC-4 (wipe-tower): The live host finalization dispatch merges WipeTower entity
+/// pushes from `WipeTower::run_finalization()` into the target layer.
+///
+/// Uses the real `wipe-tower.wasm` artifact with `wipe_tower_enabled=true` and
+/// a layer containing a `ToolChange`. After dispatch the layer must contain at
+/// least one `ExtrusionRole::WipeTower` entity, proving that `run_finalization()`
+/// — not the legacy `process()` path — is the source of those entities.
+#[test]
+fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
+    let engine = Arc::new(WasmEngine::new());
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let component = load_wipe_tower(&engine);
+
+    let mut config_map = std::collections::HashMap::new();
+    config_map.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
+    config_map.insert("wipe_tower_purge_volume".to_string(), ConfigValue::Float(70.0));
+    config_map.insert("wipe_tower_width".to_string(), ConfigValue::Float(60.0));
+    config_map.insert("line_width".to_string(), ConfigValue::Float(0.4));
+    let config = ConfigView::from_map(config_map);
+
+    let module = make_module_with_config("com.core.wipe-tower", component, config);
+    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    let stage = "PostPass::LayerFinalization".to_string();
+
+    // One layer with a model entity and one ToolChange — must trigger WipeTower output.
+    let mut layers = vec![make_layer_with_tool_change(0, 0.2)];
+
+    assert_eq!(layers[0].ordered_entities.len(), 1, "layer must start with exactly 1 model entity");
+    assert!(!layers[0].tool_changes.is_empty(), "layer must have at least one ToolChange");
+
+    dispatcher
+        .run_stage(&stage, &module, &blackboard, &mut layers)
+        .expect("finalization dispatch must succeed");
+
+    let has_wipe_tower = layers[0]
+        .ordered_entities
+        .iter()
+        .any(|e| e.role == ExtrusionRole::WipeTower);
+
+    assert!(
+        has_wipe_tower,
+        "layer must contain at least one WipeTower entity after live finalization dispatch"
+    );
+
+    // Model entity must still be present — finalization appends/prepends, not replaces.
+    let has_outer_wall = layers[0]
+        .ordered_entities
+        .iter()
+        .any(|e| e.role == ExtrusionRole::OuterWall);
+    assert!(has_outer_wall, "original OuterWall model entity must still be present after finalization");
 }
