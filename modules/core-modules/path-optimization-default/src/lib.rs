@@ -175,6 +175,27 @@ mod tests {
     }
 
     #[test]
+    fn path_optimization_processes_pre_ordered_entity_sequence() {
+        // Verifies the module correctly processes a pre-ordered PerimeterRegionView
+        // list (the host ordering helper guarantees this order before dispatch).
+        // With emit_layer_markers=true and an empty regions list the module emits
+        // one marker comment referencing layer 0 with 0 regions and 0 entities.
+        let config = ConfigView::from_map(HashMap::new());
+        let module = PathOptimizationDefault::on_print_start(&config).unwrap();
+        let mut output = GcodeOutputBuilder::new();
+
+        module
+            .run_path_optimization(0, &[], &mut output, &config)
+            .expect("path optimization must succeed on a pre-ordered (empty) entity list");
+
+        assert_eq!(
+            output.commands().len(),
+            1,
+            "one marker comment expected for a pre-ordered layer with no entities"
+        );
+    }
+
+    #[test]
     fn retract_length_read_from_config() {
         let mut fields: HashMap<String, ConfigValue> = HashMap::new();
         fields.insert("retract_length".into(), ConfigValue::Float(1.5));

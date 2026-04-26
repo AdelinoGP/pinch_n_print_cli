@@ -9,8 +9,8 @@ use std::fmt;
 
 use rayon::prelude::*;
 use slicer_ir::{
-    GlobalLayer, InfillIR, LayerCollectionIR, ModuleId, PaintRegionIR, PaintSemantic, PerimeterIR,
-    PrintEntity, RegionKey, SemVer, StageId, SupportIR,
+    ExtrusionRole, GlobalLayer, InfillIR, LayerCollectionIR, ModuleId, PaintRegionIR, PaintSemantic,
+    PerimeterIR, PrintEntity, RegionKey, SemVer, StageId, SupportIR,
 };
 
 use crate::layer_slice::{execute_layer_slice, LayerSliceError};
@@ -324,12 +324,13 @@ fn execute_single_layer(
     let mut paint_annotation_ran = false;
     for stage in &plan.per_layer_stages {
         if stage.stage_id == "Layer::PathOptimization" && arena.layer_collection().is_none() {
-            let ordered_entities = assemble_ordered_entities(
+            let raw_entities = assemble_ordered_entities(
                 layer.index,
                 arena.perimeter(),
                 arena.infill(),
                 arena.support(),
             );
+            let ordered_entities = order_entities_by_nearest_neighbor(raw_entities);
             arena.set_layer_collection(LayerCollectionIR {
                 schema_version: SemVer {
                     major: 1,
@@ -406,12 +407,13 @@ fn execute_single_layer(
     // Otherwise fall back to direct assembly from arena slots (stages without
     // a PathOptimization module, or tests that omit it).
     let mut layer_output = arena.take_layer_collection().unwrap_or_else(|| {
-        let ordered_entities = assemble_ordered_entities(
+        let raw_entities = assemble_ordered_entities(
             layer.index,
             arena.perimeter(),
             arena.infill(),
             arena.support(),
         );
+        let ordered_entities = order_entities_by_nearest_neighbor(raw_entities);
         LayerCollectionIR {
             schema_version: SemVer {
                 major: 1,
@@ -540,6 +542,92 @@ fn run_paint_annotation(
             message: "slice arena slot unexpectedly occupied after take_slice".to_string(),
         })?;
     Ok(())
+}
+
+/// Reorders `entities` using a greedy nearest-neighbor heuristic starting from
+/// position (0.0, 0.0).
+///
+/// At each step, the unvisited entity whose `path.points[0]` is nearest (by
+/// Euclidean distance) to the current position is selected. When two candidates
+/// are equidistant within 0.001 mm, `BridgeInfill` is preferred over any other
+/// role. For remaining ties the entity with the lower original index wins,
+/// guaranteeing determinism. After selection the current position advances to
+/// the selected entity's last point.
+///
+/// Single-entity and already-optimal sequences are returned unchanged (modulo
+/// `topo_order` reassignment). `topo_order` values are always reassigned to
+/// reflect the new sequence (0, 1, 2, …).
+pub fn order_entities_by_nearest_neighbor(entities: Vec<PrintEntity>) -> Vec<PrintEntity> {
+    let n = entities.len();
+    if n <= 1 {
+        let mut out = entities;
+        for (i, e) in out.iter_mut().enumerate() {
+            e.topo_order = i as u32;
+        }
+        return out;
+    }
+
+    let mut result = Vec::with_capacity(n);
+    let mut used = vec![false; n];
+    let mut cur_x: f32 = 0.0;
+    let mut cur_y: f32 = 0.0;
+
+    for _ in 0..n {
+        let mut best_idx = usize::MAX;
+        let mut best_dist = f32::INFINITY;
+
+        for (i, entity) in entities.iter().enumerate() {
+            if used[i] {
+                continue;
+            }
+            let (sx, sy) = entity
+                .path
+                .points
+                .first()
+                .map(|p| (p.x, p.y))
+                .unwrap_or((0.0, 0.0));
+            let dx = sx - cur_x;
+            let dy = sy - cur_y;
+            let dist = (dx * dx + dy * dy).sqrt();
+
+            let better = if best_idx == usize::MAX {
+                true
+            } else if (dist - best_dist).abs() < 0.001 {
+                let curr_bridge = entity.role == ExtrusionRole::BridgeInfill;
+                let best_bridge = entities[best_idx].role == ExtrusionRole::BridgeInfill;
+                if curr_bridge && !best_bridge {
+                    true
+                } else if !curr_bridge && best_bridge {
+                    false
+                } else {
+                    i < best_idx
+                }
+            } else {
+                dist < best_dist
+            };
+
+            if better {
+                best_idx = i;
+                best_dist = dist;
+            }
+        }
+
+        used[best_idx] = true;
+        let (nx, ny) = entities[best_idx]
+            .path
+            .points
+            .last()
+            .map(|p| (p.x, p.y))
+            .unwrap_or((cur_x, cur_y));
+        cur_x = nx;
+        cur_y = ny;
+        result.push(entities[best_idx].clone());
+    }
+
+    for (i, e) in result.iter_mut().enumerate() {
+        e.topo_order = i as u32;
+    }
+    result
 }
 
 /// Thin identity-preserving drain from committed arena IR into `PrintEntity`s.
