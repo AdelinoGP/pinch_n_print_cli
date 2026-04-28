@@ -402,6 +402,19 @@ fn macro_embeds_layer_collection_builder_resource() {
         ),
         "canonical wit/deps/ir-types.wit must declare set-entity-order with the canonical signature"
     );
+    assert!(
+        ir_types.contains("get-ordered-entities: func() -> list<ordered-entity-view>"),
+        "canonical wit/deps/ir-types.wit must declare get-ordered-entities with the canonical signature"
+    );
+    assert!(
+        ir_types.contains("record ordered-entity-view"),
+        "canonical wit/deps/ir-types.wit must declare 'record ordered-entity-view'"
+    );
+    // Spot-check one critical field of the record.
+    assert!(
+        ir_types.contains("original-index: u32"),
+        "canonical wit/deps/ir-types.wit ordered-entity-view must carry 'original-index: u32'"
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

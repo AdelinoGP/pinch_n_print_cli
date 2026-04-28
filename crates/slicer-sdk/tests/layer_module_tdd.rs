@@ -842,3 +842,94 @@ fn test_32_multiple_implementations_coexist() {
     let _a = ModuleA::on_print_start(&config).unwrap();
     let _b = ModuleB::on_print_start(&config).unwrap();
 }
+
+// =============================================================================
+// SDK cache contract: LayerCollectionBuilder::get_ordered_entities returns
+// the snapshot stashed by set_ordered_entities and serves repeated reads
+// from the local cache without round-tripping anywhere.
+// =============================================================================
+
+#[test]
+fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
+    let mut builder = slicer_sdk::LayerCollectionBuilder::new();
+    let snapshot = vec![
+        OrderedEntityView {
+            original_index: 0,
+            region_key: RegionKey {
+                global_layer_index: 5,
+                object_id: "obj-A".to_string(),
+                region_id: 1,
+            },
+            role: ExtrusionRole::OuterWall,
+            start_point: Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+            },
+            end_point: Point3WithWidth {
+                x: 1.0,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+            },
+            point_count: 4,
+        },
+        OrderedEntityView {
+            original_index: 1,
+            region_key: RegionKey {
+                global_layer_index: 5,
+                object_id: "obj-A".to_string(),
+                region_id: 1,
+            },
+            role: ExtrusionRole::SparseInfill,
+            start_point: Point3WithWidth {
+                x: 1.0,
+                y: 1.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+            },
+            end_point: Point3WithWidth {
+                x: 2.0,
+                y: 1.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+            },
+            point_count: 6,
+        },
+        OrderedEntityView {
+            original_index: 2,
+            region_key: RegionKey {
+                global_layer_index: 5,
+                object_id: "obj-B".to_string(),
+                region_id: 2,
+            },
+            role: ExtrusionRole::TopSolidInfill,
+            start_point: Point3WithWidth {
+                x: 2.0,
+                y: 2.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+            },
+            end_point: Point3WithWidth {
+                x: 3.0,
+                y: 2.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+            },
+            point_count: 8,
+        },
+    ];
+    builder.set_ordered_entities(snapshot.clone());
+    let first = builder.get_ordered_entities().to_vec();
+    let second = builder.get_ordered_entities().to_vec();
+    assert_eq!(first.len(), 3);
+    assert_eq!(first, second);
+    assert_eq!(first, snapshot);
+}
