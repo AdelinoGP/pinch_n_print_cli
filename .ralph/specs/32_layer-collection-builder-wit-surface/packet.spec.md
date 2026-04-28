@@ -1,5 +1,5 @@
 ---
-status: draft
+status: active
 packet: layer-collection-builder-wit-surface
 task_ids:
   - TASK-152g
