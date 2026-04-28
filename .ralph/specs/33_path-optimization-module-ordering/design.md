@@ -83,6 +83,33 @@
 - The reversal flag stays `false` for every entry. This is a future-proofing affordance — packet 32's WIT carries it, but no packet-33 test sets it true.
 - Once `order_entities_by_nearest_neighbor` is deleted, no new code in `crates/slicer-host/` may reintroduce host-side ordering.
 
+## Read-only Context
+
+These files inform the implementation but must NOT be edited by this packet:
+
+- `OrcaSlicerDocumented/src/libslic3r/ShortestPath.cpp` — algorithm reference (NN heuristic shape, `chain_segments_closest_point` minus segment reversal)
+- `OrcaSlicerDocumented/src/libslic3r/BridgeDetector.hpp` — bridge-priority tiebreak reference
+- `crates/slicer-host/src/dispatch.rs` — packet-32 host helpers `apply_entity_order_proposal` and `project_ordered_entities`, plus the `Layer::PathOptimization` dispatch arm (consumed unchanged)
+- `crates/slicer-sdk` — `LayerCollectionBuilder::set_entity_order`, `LayerCollectionBuilder::get_ordered_entities`, and the `OrderedEntityView` SDK type (signatures only — already landed by packet 32)
+- `crates/slicer-host/tests/layer_collection_builder_tdd.rs` — packet-32 validation suite (read for fixture patterns; must remain green after packet 33)
+- `crates/slicer-host/tests/finalization_live_tdd.rs` — canonical pattern for live-WASM-dispatch tests (`Blackboard`, `ExecutionPlan`, `WasmRuntimeDispatcher`, `execute_per_layer`)
+- `docs/01_system_architecture.md`, `docs/02_ir_schemas.md`, `docs/04_host_scheduler.md`, `docs/05_module_sdk.md` — authoritative architecture/IR/scheduler/SDK docs (consulted, not edited)
+- `.ralph/specs/32_layer-collection-builder-wit-surface/` — predecessor packet (consulted for surface details, not edited)
+
+## Out-of-bounds Files
+
+This packet must NOT modify any of the following — drift here means the packet's scope has grown and the change belongs to a follow-up packet:
+
+- `wit/deps/ir-types.wit` and any other WIT package files — packet 32 owns the `layer-collection-builder` resource definition (`set-entity-order`, `get-ordered-entities`, `ordered-entity-view`)
+- `crates/slicer-host/src/dispatch.rs` — host validation/application logic (`apply_entity_order_proposal`, `project_ordered_entities`, dispatch arm) stays exactly as packet 32 landed it
+- `crates/slicer-sdk/` — SDK builder, SDK types, and the `#[slicer_module]` macro plumbing belong to packet 32
+- any handler for `Layer::Perimeters`, `Layer::Infill`, or `Layer::Support` — out of scope per `packet.spec.md`
+- seam placement, retraction policy, or Z-hop policy code — covered by packets 15 and 23
+- `path-optimization-default`'s existing inter-region travel-retraction logic that consumes `regions: &[PerimeterRegionView]` — left structurally unchanged; the NN code added by this packet must not read or mutate that block
+- any backlog row in `docs/07_implementation_status.md` other than `TASK-152` (parent), `TASK-152g` (closed), and `TASK-152h` (added + closed)
+- packet 18's `requirements.md`, `design.md`, `implementation-plan.md`, or `task-map.md` — only packet 18's `packet.spec.md` is touched (frontmatter flip + new `## Superseded By` section)
+- the NN algorithm itself — preserved bit-identically from packet 18; if any byte-level algorithmic change is needed, scope has drifted
+
 ## Risks and Tradeoffs
 
 - Risk: the module assumes the snapshot index is `OrderedEntityView::original_index` but accidentally uses the slice index `i` from `iter().enumerate()` after a partial sort. Mitigation: the algorithm builds the proposal entirely off `view.original_index`; do not write code that closes over `i` from a temporarily-sorted slice. The test rewrites pin the exact expected post-dispatch start-x sequences; a mismatch surfaces immediately.

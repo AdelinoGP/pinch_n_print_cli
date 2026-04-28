@@ -62,7 +62,7 @@ Migrate the deterministic nearest-neighbor entity ordering from the host into `p
 
 ## Negative Test Cases
 
-- **Given** a `Layer::PathOptimization` runner that does not call `set_entity_order`, **when** the layer finalizes, **then** `ordered_entities` reflects raw assembly order (NOT NN order). This is the fallback-removal proof and is required because this packet changes host behavior in the no-proposal case. | `cargo test -p slicer-host --test path_ordering_tdd no_module_proposal_leaves_raw_assembled_order -- --exact --nocapture`
+This packet changes host behavior in the no-module-proposal case (the previous host-side NN fallback in `order_entities_by_nearest_neighbor` is deleted), so the activation-gate's negative-criterion requirement applies. The gate-required negative criterion is **acceptance criterion #6** (`no_module_proposal_leaves_raw_assembled_order`) — it is the *rejection* criterion, not just a positive assertion: with no module proposal emitted, the host must NOT silently re-introduce NN ordering, and `LayerCollectionIR.ordered_entities` MUST stay in raw `assemble_ordered_entities` order. The negative case is therefore not duplicated here — see acceptance criterion #6 above for the full Given/When/Then and run command (`cargo test -p slicer-host --test path_ordering_tdd no_module_proposal_leaves_raw_assembled_order -- --exact --nocapture`).
 
 ## Verification
 
