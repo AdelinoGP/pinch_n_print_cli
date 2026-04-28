@@ -1,4 +1,4 @@
-package slicer:ir-types@1.1.0;
+package slicer:ir-types@1.0.0;
 
 interface ir-handles {
     use slicer:types/geometry.{ex-polygon, extrusion-path-3d, point3, point3-with-width, semver};
@@ -117,17 +117,31 @@ interface ir-handles {
         push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
     }
 
+    use slicer:types/geometry.{extrusion-role};
+
+    record ordered-entity-view {
+        original-index: u32,
+        region-key: region-key,
+        role: extrusion-role,
+        start-point: point3-with-width,
+        end-point: point3-with-width,
+        point-count: u32,
+    }
+
     // Host-collection mutation surface for Layer::PathOptimization. The module
     // proposes a permutation of the host-staged `LayerCollectionIR.ordered_entities`
     // and an optional per-entity reversal flag (mirrors OrcaSlicer's
     // `vector<pair<size_t, bool>>` from ShortestPath::chain_segments_closest_point).
     // The host validates the proposal and applies it after the module returns;
     // a malformed proposal leaves `ordered_entities` unchanged.
+    // The `get-ordered-entities` read accessor lets the module inspect the
+    // host-staged ordering before proposing the new permutation via
+    // `set-entity-order`.
     resource layer-collection-builder {
         set-entity-order: func(items: list<tuple<u32, bool>>) -> result<_, string>;
+        get-ordered-entities: func() -> list<ordered-entity-view>;
     }
 
-    use slicer:types/geometry.{extrusion-role};
     record gcode-move-cmd {
         x: option<f32>, y: option<f32>, z: option<f32>,
         e: option<f32>, f: option<f32>,
