@@ -16,9 +16,9 @@
 - Objective:
   Add the deterministic nearest-neighbor permutation builder to the default path-optimization module without removing the host helper yet.
 - Precondition:
-  Packet 32 implemented (the SDK `LayerCollectionBuilder::set_entity_order` and the `collection: &mut LayerCollectionBuilder` trait parameter are reachable). `order_entities_by_nearest_neighbor` is still present in `crates/slicer-host/src/layer_executor.rs`.
+  Packet 32 implemented (the SDK `LayerCollectionBuilder::set_entity_order`, `LayerCollectionBuilder::get_ordered_entities`, the `OrderedEntityView` SDK type, and the `collection: &mut LayerCollectionBuilder` trait parameter are reachable). `order_entities_by_nearest_neighbor` is still present in `crates/slicer-host/src/layer_executor.rs`.
 - Postcondition:
-  `modules/core-modules/path-optimization-default/src/lib.rs` declares a private `fn nearest_neighbor_permutation(regions: &[PerimeterRegionView]) -> Vec<(u32, bool)>` that mirrors the packet-18 algorithm: start at `(0.0, 0.0)`, Euclidean distance to `path.points[0]`, advance to `path.points.last()`, BridgeInfill priority within 0.001 mm, lower-original-index stable tiebreak, reversal flag always `false`. `run_path_optimization` calls this helper, calls `collection.set_entity_order(items)?` exactly once, then runs the existing inter-region travel-retraction logic unchanged.
+  `modules/core-modules/path-optimization-default/src/lib.rs` declares a private `fn nearest_neighbor_permutation(entities: &[OrderedEntityView]) -> Vec<(u32, bool)>` that mirrors the packet-18 algorithm: start at `(0.0, 0.0)`, Euclidean distance from current cursor to each unpicked entity's `start_point` (in mm), advance current cursor to the picked entity's `end_point`, equality within 0.001 mm prefers `view.role == ExtrusionRole::BridgeInfill`, further ties go to lower `view.original_index`, reversal flag always `false`. The output `Vec<(u32, bool)>` is keyed on `view.original_index`, not on the slice index. `run_path_optimization` calls `let snapshot = collection.get_ordered_entities();` exactly once at the top, then `let items = nearest_neighbor_permutation(snapshot);`, then `collection.set_entity_order(items)?` exactly once. If `snapshot.is_empty()`, the function skips the call to `set_entity_order`. The existing inter-region travel-retraction logic that consumes `regions: &[PerimeterRegionView]` runs unchanged after the `set_entity_order` call.
 - Files expected to change:
   - `modules/core-modules/path-optimization-default/src/lib.rs`
 - Authoritative docs:
@@ -28,8 +28,10 @@
 - Verification:
   - `cargo build -p path-optimization-default`
   - `./modules/core-modules/build-core-modules.sh`
+  - `grep -c "collection.get_ordered_entities()" modules/core-modules/path-optimization-default/src/lib.rs | grep -E "^1$"`
+  - `grep -c "collection.set_entity_order(" modules/core-modules/path-optimization-default/src/lib.rs | grep -E "^1$"`
 - Exit condition:
-  Module builds. WASM artifact rebuilds successfully.
+  Module builds. WASM artifact rebuilds successfully. Both grep counts are exactly `1`.
 
 ### Step 2: Rewrite the same-object acceptance test against live dispatch
 
@@ -104,12 +106,12 @@
 - Exit condition:
   Test compiles and runs. It is allowed (and expected) to fail at this step — failure means "host fallback still active," which is exactly what Step 5 removes.
 
-### Step 5: Delete `order_entities_by_nearest_neighbor` and its call sites
+### Step 5: Delete `order_entities_by_nearest_neighbor`, its call sites, and the obsolete packet-32 fallback test
 
 - Task IDs:
   - `TASK-152h`
 - Objective:
-  Remove the host helper and update its two call sites in `execute_single_layer` to use raw assembled order directly.
+  Remove the host helper, update its two call sites in `execute_single_layer` to use raw assembled order directly, and delete the now-obsolete test that locked in the host-fallback contract.
 - Precondition:
   Steps 1–4 complete; the live-dispatch tests are green; the no-proposal proof test is in place.
 - Postcondition:
@@ -118,19 +120,22 @@
   - The no-PathOptimization fallback block at the end of `execute_single_layer` uses the same direct call.
   - The `ExtrusionRole` import at the top of the file is removed if it became unused.
   - `crates/slicer-host/src/lib.rs` removes `order_entities_by_nearest_neighbor` from `pub use layer_executor::{...}`.
+  - `crates/slicer-host/tests/path_ordering_tdd.rs` no longer contains the test `reordered_sequence_is_consumed_by_path_optimization_stage` or its supporting fixture (`LiveStageCapture` helper, if it is unused after the deletion). Any module-level comment referencing the deleted test is updated.
 - Files expected to change:
   - `crates/slicer-host/src/layer_executor.rs`
   - `crates/slicer-host/src/lib.rs`
+  - `crates/slicer-host/tests/path_ordering_tdd.rs`
 - Authoritative docs:
   - `docs/01_system_architecture.md`
 - Verification:
   - `! grep -RIn "order_entities_by_nearest_neighbor" crates/slicer-host/`
+  - `! grep -RIn "reordered_sequence_is_consumed_by_path_optimization_stage" crates/slicer-host/tests/`
   - `cargo build -p slicer-host`
   - `cargo test -p slicer-host --test path_ordering_tdd no_module_proposal_leaves_raw_assembled_order -- --exact --nocapture`
   - `cargo test -p slicer-host --test path_ordering_tdd same_object_nearest_neighbor_ordering_is_applied_before_path_optimization -- --exact --nocapture`
   - `cargo test -p slicer-host --test layer_collection_builder_tdd 2>&1 | grep "test result: ok"`
 - Exit condition:
-  Grep returns zero matches. Build is clean. The fallback-removal test is green. The live-dispatch test is still green. The packet-32 host validation tests are still green.
+  Both greps return zero matches. Build is clean. The fallback-removal test is green. The live-dispatch test is still green. The packet-32 host validation tests (including the new read-projection tests) are still green.
 
 ### Step 6: Mark packet 18 superseded and record the deviation
 
@@ -142,7 +147,7 @@
   Step 5 complete; the migration is verifiably done.
 - Postcondition:
   - `.ralph/specs/18_path-optimization-entity-ordering/packet.spec.md` frontmatter `status: implemented` is changed to `status: superseded`. A new top-level section `## Superseded By` is added with the body `Packet 33 (33_path-optimization-module-ordering) moved the entity-ordering algorithm from the host helper into path-optimization-default via the layer-collection-builder WIT surface introduced by packet 32. The algorithm is preserved; only its location moved.`
-  - `docs/DEVIATION_LOG.md` gains an entry titled `path-optimization-module-ordering (2026-MM-DD)` summarizing the move, noting that packet 32 introduced the WIT surface and packet 33 consumed it, and noting that the NN algorithm and bridge-priority tiebreak are bit-identical to packet 18.
+  - `docs/DEVIATION_LOG.md` gains an entry titled `path-optimization-module-ordering (2026-04-28)` summarizing the move, noting that packet 32 introduced the WIT surface and packet 33 consumed it, and noting that the NN algorithm and bridge-priority tiebreak are bit-identical to packet 18.
   - `docs/14_deviation_audit_history.md` cross-links the new deviation log entry.
 - Files expected to change:
   - `.ralph/specs/18_path-optimization-entity-ordering/packet.spec.md`
@@ -164,8 +169,8 @@
 - Precondition:
   Step 6 complete.
 - Postcondition:
-  - `docs/07_implementation_status.md` `TASK-152g` row is `[x]` with a close note pointing at packet 33: *"Closed 2026-MM-DD — packet 33 consumes the layer-collection-builder surface end-to-end."*
-  - `docs/07_implementation_status.md` `TASK-152h` row is `[x]` with a close note: *"Closed 2026-MM-DD — packet 33 ports NN ordering into path-optimization-default and removes order_entities_by_nearest_neighbor from slicer-host."*
+  - `docs/07_implementation_status.md` `TASK-152g` row is `[x]` with a close note pointing at packet 33: *"Closed 2026-04-28 — packet 33 consumes the layer-collection-builder surface end-to-end."*
+  - `docs/07_implementation_status.md` `TASK-152h` row is `[x]` with a close note: *"Closed 2026-04-28 — packet 33 ports NN ordering into path-optimization-default and removes order_entities_by_nearest_neighbor from slicer-host."*
   - `TASK-152` parent stays `[~]` (152b/c/f remain open).
 - Files expected to change:
   - `docs/07_implementation_status.md`
