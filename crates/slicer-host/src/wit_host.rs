@@ -173,11 +173,34 @@ pub struct GcodeOutputBuilderData;
 
 /// Backing data for a `layer-collection-builder` resource handle.
 ///
+/// Carries a per-call snapshot of the host-staged
+/// `LayerCollectionIR.ordered_entities`, projected to
+/// [`crate::dispatch::OrderedEntityView`] by
+/// [`crate::dispatch::project_ordered_entities`] at
+/// `push_layer_collection_builder` time. The snapshot is what
+/// `HostLayerCollectionBuilder::get_ordered_entities` returns — repeated
+/// reads from the same call hit this snapshot rather than the live arena.
+///
 /// The actual proposal (a permutation of `LayerCollectionIR.ordered_entities`
 /// plus per-entity reversal flags) is stored on
-/// `HostExecutionContext::layer_collection_proposal`. This struct is a
-/// zero-sized table-entry tag mirroring `GcodeOutputBuilderData`.
-pub struct LayerCollectionBuilderData;
+/// `HostExecutionContext::layer_collection_proposal`.
+pub struct LayerCollectionBuilderData {
+    /// Snapshot of the host-staged `LayerCollectionIR.ordered_entities`
+    /// captured at `push_layer_collection_builder` time.
+    pub ordered_entities: Vec<crate::dispatch::OrderedEntityView>,
+}
+
+/// Global test-instrumentation counter incremented every time
+/// `HostLayerCollectionBuilder::get_ordered_entities` is invoked. The
+/// per-context `host_get_ordered_entities_call_count` field is reset by
+/// `push_layer_collection_builder` so it cannot be observed from a host
+/// integration test that runs `execute_per_layer` (the post-call context is
+/// consumed internally). This static is the cross-call observation point used
+/// by `macro_drain_invokes_host_get_ordered_entities_exactly_once`. Tests
+/// MUST `.store(0, Ordering::SeqCst)` before exercising a layer call.
+#[doc(hidden)]
+pub static HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS: std::sync::atomic::AtomicU32 =
+    std::sync::atomic::AtomicU32::new(0);
 
 /// Backing data for a `support-output-builder` resource handle.
 pub struct SupportOutputBuilderData;
@@ -315,8 +338,17 @@ pub mod layer {
                     push-raw:         func(text: string) -> result<_, string>;
                     push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
                 }
+                record ordered-entity-view {
+                    original-index: u32,
+                    region-key: region-key,
+                    role: extrusion-role,
+                    start-point: point3-with-width,
+                    end-point: point3-with-width,
+                    point-count: u32,
+                }
                 resource layer-collection-builder {
                     set-entity-order: func(items: list<tuple<u32, bool>>) -> result<_, string>;
+                    get-ordered-entities: func() -> list<ordered-entity-view>;
                 }
                 resource support-output-builder {
                     push-support-path:   func(path: extrusion-path3d) -> result<_, string>;
@@ -1205,6 +1237,13 @@ pub struct HostExecutionContext {
     /// a proposal between them.
     pub layer_collection_proposal: Option<Vec<(u32, bool)>>,
 
+    /// Counter incremented at the top of `HostLayerCollectionBuilder::get_ordered_entities`,
+    /// reset to `0` by `push_layer_collection_builder`. Exists to pin the macro-call-once
+    /// contract — the macro drain MUST call `wit_resource.get_ordered_entities()` exactly
+    /// once per `run-path-optimization` invocation; subsequent calls in the trait method
+    /// hit the SDK-local cache instead of round-tripping to the WIT host.
+    pub(crate) host_get_ordered_entities_call_count: u32,
+
     /// Runtime IR read paths accessed by the guest via WIT view methods
     /// during this call. Populated by instrumenting each view method to
     /// record the exact IR path (e.g. `SliceIR.regions.polygons`) when
@@ -1264,6 +1303,7 @@ impl HostExecutionContext {
             support_plan_entries: Vec::new(),
             finalization_pushes: Vec::new(),
             layer_collection_proposal: None,
+            host_get_ordered_entities_call_count: 0,
             runtime_reads: Vec::new(),
             runtime_writes: Vec::new(),
             layer_z,
@@ -1366,12 +1406,34 @@ impl HostExecutionContext {
     /// Push a layer-collection-builder resource and return its handle.
     /// Resets `layer_collection_proposal` to `None` so a context reused
     /// across two `Layer::PathOptimization` calls cannot leak a stale
-    /// proposal from the previous call.
+    /// proposal from the previous call. Resets the
+    /// `host_get_ordered_entities_call_count` counter to `0` so each new
+    /// `Layer::PathOptimization` invocation starts a fresh count for the
+    /// macro-call-once contract test.
+    ///
+    /// The `ordered_entities` snapshot is captured by
+    /// [`crate::dispatch::project_ordered_entities`] at dispatch time and
+    /// stashed on the resource so the host-side
+    /// `HostLayerCollectionBuilder::get_ordered_entities` impl can serve
+    /// reads from it without re-touching the live arena.
     pub fn push_layer_collection_builder(
         &mut self,
+        ordered_entities: Vec<crate::dispatch::OrderedEntityView>,
     ) -> wasmtime::Result<Resource<LayerCollectionBuilderData>> {
         self.layer_collection_proposal = None;
-        Ok(self.table.push(LayerCollectionBuilderData)?)
+        self.host_get_ordered_entities_call_count = 0;
+        Ok(self.table.push(LayerCollectionBuilderData { ordered_entities })?)
+    }
+
+    /// Test-only accessor for the
+    /// `host_get_ordered_entities_call_count` counter. Used by the
+    /// host-side macro-call-once test to verify that the SDK macro
+    /// drain hits the WIT host exactly once per
+    /// `Layer::PathOptimization` invocation regardless of how many
+    /// times the module's trait method is called.
+    #[doc(hidden)]
+    pub fn host_get_ordered_entities_call_count(&self) -> u32 {
+        self.host_get_ordered_entities_call_count
     }
 
     /// Push a slice-postprocess-builder resource and return its handle.
@@ -2874,6 +2936,47 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
         }
         self.layer_collection_proposal = Some(items);
         Ok(Ok(()))
+    }
+    fn get_ordered_entities(
+        &mut self,
+        self_: Resource<LayerCollectionBuilderData>,
+    ) -> wasmtime::Result<Vec<ir::OrderedEntityView>> {
+        self.host_get_ordered_entities_call_count =
+            self.host_get_ordered_entities_call_count.saturating_add(1);
+        HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let data = self.table.get(&self_)?;
+        let views: Vec<ir::OrderedEntityView> = data
+            .ordered_entities
+            .iter()
+            .map(|v| ir::OrderedEntityView {
+                original_index: v.original_index,
+                region_key: ir::RegionKey {
+                    layer_index: v.region_key.global_layer_index,
+                    object_id: v.region_key.object_id.clone(),
+                    region_id: v.region_key.region_id.to_string(),
+                },
+                role: ir_to_wit_extrusion_role(&v.role),
+                start_point: Point3WithWidth {
+                    x: v.start_point.x,
+                    y: v.start_point.y,
+                    z: v.start_point.z,
+                    width: v.start_point.width,
+                    flow_factor: v.start_point.flow_factor,
+                },
+                end_point: Point3WithWidth {
+                    x: v.end_point.x,
+                    y: v.end_point.y,
+                    z: v.end_point.z,
+                    width: v.end_point.width,
+                    flow_factor: v.end_point.flow_factor,
+                },
+                point_count: v.point_count,
+            })
+            .collect();
+        self.runtime_reads
+            .push(String::from("LayerCollectionIR.ordered_entities"));
+        Ok(views)
     }
     fn drop(&mut self, rep: Resource<LayerCollectionBuilderData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

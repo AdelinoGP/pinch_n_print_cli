@@ -574,9 +574,10 @@ impl WasmRuntimeDispatcher {
                     .data_mut()
                     .push_gcode_output_builder()
                     .map_err(mk_ctx_err)?;
+                let snapshot = project_ordered_entities(params.arena);
                 let collection = config.store
                     .data_mut()
-                    .push_layer_collection_builder()
+                    .push_layer_collection_builder(snapshot)
                     .map_err(mk_ctx_err)?;
                 config.bindings
                     .call_run_path_optimization(config.store, params.layer_index, &region_handles, own(output), own(collection), own(config.config_handle))
@@ -1948,6 +1949,70 @@ pub fn commit_layer_outputs_for_test(
     seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
 ) -> Result<(), LayerStageError> {
     commit_layer_outputs(stage_id, module_id, layer_index, ctx, arena, seam_plan_ir)
+}
+
+/// Host-local projection of a single staged
+/// `LayerCollectionIR.ordered_entities[i]` entry, mirroring the WIT
+/// `ordered-entity-view` record. Built once per `Layer::PathOptimization`
+/// invocation by [`project_ordered_entities`] and stashed on
+/// [`crate::wit_host::LayerCollectionBuilderData`] so the host-side
+/// `HostLayerCollectionBuilder::get_ordered_entities` impl can serve
+/// repeated reads from a snapshot rather than the live arena.
+#[derive(Debug, Clone)]
+pub struct OrderedEntityView {
+    /// Index into the host-staged `LayerCollectionIR.ordered_entities`
+    /// at the time this snapshot was projected.
+    pub original_index: u32,
+    /// Region key of the entity at `original_index`.
+    pub region_key: slicer_ir::RegionKey,
+    /// Extrusion role of the entity's path.
+    pub role: slicer_ir::ExtrusionRole,
+    /// First point of `path.points`. PrintEntity invariant requires
+    /// `path.points` to be non-empty.
+    pub start_point: slicer_ir::Point3WithWidth,
+    /// Last point of `path.points`.
+    pub end_point: slicer_ir::Point3WithWidth,
+    /// Number of points in `path.points`.
+    pub point_count: u32,
+}
+
+/// Project the host-staged `LayerCollectionIR.ordered_entities` into
+/// a snapshot list of [`OrderedEntityView`] for one
+/// `Layer::PathOptimization` invocation.
+///
+/// Total: when no `LayerCollectionIR` is staged on the arena, returns
+/// an empty `Vec` (no error). The caller is expected to stash this
+/// snapshot on the builder resource so subsequent guest reads through
+/// `layer-collection-builder.get-ordered-entities` are served from
+/// the snapshot.
+pub fn project_ordered_entities(arena: &LayerArena) -> Vec<OrderedEntityView> {
+    let Some(lc) = arena.layer_collection() else {
+        return Vec::new();
+    };
+    lc.ordered_entities
+        .iter()
+        .enumerate()
+        .map(|(i, entity)| {
+            let start_point = *entity
+                .path
+                .points
+                .first()
+                .expect("PrintEntity invariant: path.points non-empty");
+            let end_point = *entity
+                .path
+                .points
+                .last()
+                .expect("PrintEntity invariant: path.points non-empty");
+            OrderedEntityView {
+                original_index: i as u32,
+                region_key: entity.region_key.clone(),
+                role: entity.path.role.clone(),
+                start_point,
+                end_point,
+                point_count: entity.path.points.len() as u32,
+            }
+        })
+        .collect()
 }
 
 /// Validate a `set-entity-order` proposal from a `Layer::PathOptimization`

@@ -58,9 +58,11 @@ pub use instance_pool::{
     WasmInstanceLease, WasmInstancePool,
 };
 pub use wasm_instance::{WasmCallError, WasmComponent, WasmEngine, WasmInstance, WasmLoadError};
+pub use wit_host::HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS;
 pub use dispatch::{
     apply_entity_order_proposal, commit_layer_outputs_for_test, export_name_for_stage,
-    DispatchError, DispatchPhase, WasmRuntimeDispatcher,
+    project_ordered_entities, DispatchError, DispatchPhase, OrderedEntityView,
+    WasmRuntimeDispatcher,
 };
 pub use layer_executor::{
     execute_per_layer, execute_per_layer_with_events, ir_path_for_layer_stage,
