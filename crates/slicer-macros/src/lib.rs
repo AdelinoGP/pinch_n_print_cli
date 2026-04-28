@@ -2118,6 +2118,13 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             #adapt_perim
             let mut sdk_output = ::slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
             let mut sdk_collection = ::slicer_sdk::LayerCollectionBuilder::new();
+            // Pre-call: capture the host-staged ordering snapshot once and
+            // stash it on the SDK builder so the trait method's repeated
+            // `get_ordered_entities` reads hit the local cache. Per the
+            // macro-call-once contract in docs/03_wit_and_manifest.md, the
+            // WIT host's `get-ordered-entities` is invoked exactly once
+            // per `run-path-optimization` dispatch.
+            __slicer_populate_layer_collection(&collection, &mut sdk_collection);
             let out = <#self_ty as ::slicer_sdk::traits::LayerModule>::run_path_optimization(
                 &module, layer_index, &sdk_regions, &mut sdk_output, &mut sdk_collection, &ir_config,
             );
@@ -2160,6 +2167,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 BoundaryPaintEntry as WitBoundaryPaintEntry,
                 BoundaryPaintPolygon as WitBoundaryPaintPolygon,
                 GcodeMoveCmd as WitGcodeMoveCmd,
+                OrderedEntityView as WitOrderedEntityView,
                 PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
                 RegionKey as WitRegionKey,
                 SeamPosition as WitSeamPosition,
@@ -2735,6 +2743,36 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 if let Some(items) = sdk.proposal() {
                     let _ = wit.set_entity_order(items);
                 }
+            }
+
+            // Pre-call helper: read the host-staged ordering snapshot from
+            // the WIT `layer-collection-builder` resource exactly once per
+            // `run-path-optimization` dispatch and stash it on the SDK
+            // builder. The trait method's repeated `get_ordered_entities`
+            // reads then hit the SDK-local cache — see the macro-call-once
+            // contract in docs/03_wit_and_manifest.md.
+            fn __slicer_populate_layer_collection(
+                wit: &LayerCollectionBuilder,
+                sdk: &mut ::slicer_sdk::LayerCollectionBuilder,
+            ) {
+                let wit_entities: ::std::vec::Vec<WitOrderedEntityView> =
+                    wit.get_ordered_entities();
+                let sdk_entities: ::std::vec::Vec<::slicer_sdk::OrderedEntityView> = wit_entities
+                    .into_iter()
+                    .map(|e| ::slicer_sdk::OrderedEntityView {
+                        original_index: e.original_index,
+                        region_key: ::slicer_ir::RegionKey {
+                            global_layer_index: e.region_key.layer_index,
+                            object_id: e.region_key.object_id,
+                            region_id: e.region_key.region_id.parse().unwrap_or(0),
+                        },
+                        role: __slicer_wit_role_to_ir(&e.role),
+                        start_point: __slicer_wit_point3w_to_ir(&e.start_point),
+                        end_point: __slicer_wit_point3w_to_ir(&e.end_point),
+                        point_count: e.point_count,
+                    })
+                    .collect();
+                sdk.set_ordered_entities(sdk_entities);
             }
 
             struct __SlicerLayerComponent;
