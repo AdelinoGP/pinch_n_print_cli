@@ -79,6 +79,21 @@
   - returning a resource handle from `get-ordered-entities` (one resource per view) with per-view accessors: rejected because every existing read view (e.g., `slice-region-view`) is heavyweight by necessity (large polygon lists). `ordered-entity-view` is a flat 6-field record; resource overhead is unjustified and makes algorithm code more verbose.
   - exposing `path.points: list<point3-with-width>` in full on `ordered-entity-view`: deferred. The flat `start-point` + `end-point` + `point-count` summary is sufficient for the NN algorithm and any reversal-aware tiebreak. Modules that need the full path can be addressed by a future packet that adds an explicit accessor.
 
+## Files Out of Bounds / Read-Only Context
+
+- **Read-only context (consult, do not edit):**
+  - authoritative docs `docs/01_system_architecture.md`, `docs/02_ir_schemas.md`, `docs/03_wit_and_manifest.md`, `docs/04_host_scheduler.md`, `docs/05_module_sdk.md`
+  - `OrcaSlicerDocumented/src/libslic3r/ShortestPath.cpp` (parity reference for `vector<pair<size_t, bool>>` shape; must not be modified — it is upstream documentation)
+  - existing world WITs not in scope: `wit/world-prepass.wit`, `wit/world-postpass.wit`, `wit/world-finalization.wit` (only `wit/world-layer.wit` and `wit/deps/ir-types.wit` are mutated)
+  - existing fallback algorithm `order_entities_by_nearest_neighbor` and its call site in `crates/slicer-host/src/layer_executor.rs` (kept verbatim in this packet; removed in packet 33 only)
+  - `docs/07_implementation_status.md` (only the `TASK-152` group is consulted; no other rows are read or edited)
+- **Out of bounds entirely (do not read or load):**
+  - `target/` and any cargo build artifacts
+  - any `Cargo.lock` (workspace-level or per-crate)
+  - generated WASM artifacts under `modules/core-modules/*/*.wasm` and `test-guests/*.component.wasm` (rebuilt by their respective scripts; never hand-edited)
+  - vendored dependencies under any `vendor/` or `third_party/` directories
+  - all of `OrcaSlicerOriginal/` (use `OrcaSlicerDocumented/` for documented references)
+
 ## Data and Contract Notes
 
 - IR or manifest contracts touched:

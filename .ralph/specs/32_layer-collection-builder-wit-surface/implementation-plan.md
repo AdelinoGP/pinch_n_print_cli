@@ -8,6 +8,12 @@
 - Do not alter `order_entities_by_nearest_neighbor` in this packet (packet 33).
 - Do not change any module's behavior beyond signature compatibility (packet 33).
 
+## Implementation State
+
+Steps 1–9 below are landed on disk as of 2026-04-28 (commits `7909068`, `89b0259`, `f21f808`, `d4d3afd`). The step blocks are retained for verification context and to record the originally-intended ordering — they are not a re-implementation blueprint. Step 10 (full acceptance ceremony) has not been run end-to-end.
+
+The per-step structural preflight fields described by the swarm skill (`files-to-read` separate from `files-to-edit`, `expected sub-agent dispatches`, `context cost S/M/L`) are intentionally omitted from each step block because re-implementation is not expected for this packet. If the packet is ever reopened for re-implementation (rather than verification), populate those fields per the skill's `1.3` preflight requirements before activating it.
+
 ## Steps
 
 ### Step 1: Declare `layer-collection-builder` resource and `ordered-entity-view` record in WIT
@@ -65,15 +71,16 @@
 - Objective:
   Add the host-side resource backing and both host trait methods (`set_entity_order`, `get_ordered_entities`) without touching dispatch yet.
 - Precondition:
-  Steps 1–2 complete.
+  Steps 1–2 complete. The host trait method `get_ordered_entities` introduced here calls `dispatch::project_ordered_entities` which Step 4 lands; in practice land Step 4 first (or stub `get_ordered_entities` to return an empty `Vec` until Step 4 lands) so this step's `cargo check` exit condition is reachable.
 - Postcondition:
   `crates/slicer-host/src/wit_host.rs`:
-  - declares `pub struct LayerCollectionBuilderData;`
+  - declares `pub struct LayerCollectionBuilderData;` (or carries the pre-projected snapshot per `design.md` if the trait method reads from a per-resource cache)
   - adds `pub layer_collection_proposal: Option<Vec<(u32, bool)>>` to `HostExecutionContext` (initialized to `None` and reset by the constructor `push_layer_collection_builder`)
   - adds `pub(crate) host_get_ordered_entities_call_count: u32` to `HostExecutionContext` (initialized to `0` and reset by `push_layer_collection_builder`); exposes `#[doc(hidden)] pub fn host_get_ordered_entities_call_count(&self) -> u32` for tests
+  - declares `pub static HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS: AtomicU32 = AtomicU32::new(0);` (cross-call observation handle used by Step 8's macro-call-once test, since `execute_per_layer` consumes the wasmtime `Store` and the per-context counter is unreachable from a layer-level integration test). Both counters increment in lockstep at the top of `HostLayerCollectionBuilder::get_ordered_entities`; the static is reset by tests via `.store(0, Ordering::SeqCst)` before exercising a layer.
   - `impl ir::HostLayerCollectionBuilder for HostExecutionContext` provides:
     - `set_entity_order(&mut self, _self_, items) -> wasmtime::Result<Result<(), String>>` that returns `Ok(Err("set-entity-order called twice within one run-path-optimization".into()))` if `self.layer_collection_proposal.is_some()`, otherwise stores `Some(items.into_iter().map(|(i, r)| (i, r)).collect())` and returns `Ok(Ok(()))`
-    - `get_ordered_entities(&mut self, _self_) -> wasmtime::Result<Vec<ir::OrderedEntityView>>` that **first** increments `self.host_get_ordered_entities_call_count`, then delegates to `dispatch::project_ordered_entities(self.current_arena())` (the helper introduced in Step 4) and maps the SDK-shaped `OrderedEntityView` to the wasmtime-bindgen `ir::OrderedEntityView` type. Returns an empty `Vec` when no `LayerCollectionIR` is staged (do not error).
+    - `get_ordered_entities(&mut self, _self_) -> wasmtime::Result<Vec<ir::OrderedEntityView>>` that **first** increments both `self.host_get_ordered_entities_call_count` and `HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS` (in lockstep), then delegates to `dispatch::project_ordered_entities(self.current_arena())` (the helper introduced in Step 4) and maps the SDK-shaped `OrderedEntityView` to the wasmtime-bindgen `ir::OrderedEntityView` type. Returns an empty `Vec` when no `LayerCollectionIR` is staged (do not error).
   - new `pub fn push_layer_collection_builder(&mut self) -> wasmtime::Result<Resource<LayerCollectionBuilderData>>` constructor exists and resets both `layer_collection_proposal = None` and `host_get_ordered_entities_call_count = 0`.
   - if `HostExecutionContext` does not already carry an arena handle reachable from trait methods, add one (mirror the pattern used by other read views — e.g., the way `slice-region-view` accessors thread arena state).
 - Files expected to change:
@@ -121,22 +128,20 @@
 - Precondition:
   Step 4 complete; both helpers exist and are reachable from `slicer-host` integration tests.
 - Postcondition:
-  New file `crates/slicer-host/tests/layer_collection_builder_tdd.rs` contains nine tests:
+  New file `crates/slicer-host/tests/layer_collection_builder_tdd.rs` contains nine host tests:
   - write-side: `valid_permutation_is_applied_to_ordered_entities`, `reversal_flag_reverses_path_points_in_place`, `duplicate_index_is_rejected_with_fatal_diagnostic`, `out_of_range_index_is_rejected_with_fatal_diagnostic`, `wrong_length_proposal_is_rejected_with_fatal_diagnostic`, `malformed_proposal_leaves_ordered_entities_unchanged`
   - read-side: `get_ordered_entities_projects_staged_entities_in_index_order`, `get_ordered_entities_carries_endpoints_and_point_count`, `get_ordered_entities_returns_empty_when_no_layer_collection_is_staged`
-  Each write test sets up a 1- or 3-entity `LayerArena`, calls `apply_entity_order_proposal`, and asserts on the post-call state (start-x sequence, topo_order, point reversal) or on the exact error substring. Each read test sets up a `LayerArena` (or leaves it without `LayerCollectionIR`), calls `project_ordered_entities`, and asserts on the projected `Vec<OrderedEntityView>` (length, per-entry `original_index`/`region_key`/`role`/`start_point`/`end_point`/`point_count`).
-  In addition, `crates/slicer-sdk/tests/layer_module_tdd.rs` gains `layer_collection_builder_get_ordered_entities_reads_local_cache`: it constructs a `LayerCollectionBuilder::new()`, calls `set_ordered_entities(snapshot)` with a 3-entity fixture, then calls `get_ordered_entities()` twice and asserts the two slices are equal in content. The SDK type is structurally cache-only (no WIT resource field), so the test pins the public observable contract without instrumenting internals.
+  Each write test sets up a 1- or 3-entity `LayerArena`, calls `apply_entity_order_proposal`, and asserts on the post-call state (start-x sequence, topo_order, point reversal) or on the exact error substring. Each read test sets up a `LayerArena` (or leaves it without `LayerCollectionIR`), calls `project_ordered_entities`, and asserts on the projected `Vec<OrderedEntityView>` (length, per-entry `original_index`/`region_key`/`role`/`start_point`/`end_point`/`point_count`). The SDK-cache test (`layer_collection_builder_get_ordered_entities_reads_local_cache`) is added in Step 7 because it depends on the `LayerCollectionBuilder` SDK type that lands there, not on the helpers introduced in Step 4.
 - Files expected to change:
   - `crates/slicer-host/tests/layer_collection_builder_tdd.rs` (new)
-  - `crates/slicer-sdk/tests/layer_module_tdd.rs` (add the cache test)
 - Authoritative docs:
   - `docs/02_ir_schemas.md`
-  - `docs/05_module_sdk.md`
 - Verification:
-  - `cargo test -p slicer-host --test layer_collection_builder_tdd 2>&1 | grep "test result:"`
-  - `cargo test -p slicer-sdk --test layer_module_tdd layer_collection_builder_get_ordered_entities_reads_local_cache -- --exact --nocapture`
+  - `cargo test -p slicer-host --test layer_collection_builder_tdd valid_permutation_is_applied_to_ordered_entities -- --exact --nocapture`
+  - `cargo test -p slicer-host --test layer_collection_builder_tdd get_ordered_entities_projects_staged_entities_in_index_order -- --exact --nocapture`
+  - `cargo test -p slicer-host --test layer_collection_builder_tdd 2>&1 | grep -E "test result: ok\\. 9 passed"`
 - Exit condition:
-  All nine host tests and the SDK cache test pass. (Step 4 implemented both helpers; Step 7 will land the SDK type — order this step's SDK test addition after Step 7 if needed.) If any test fails, fix the helper before proceeding.
+  All nine host tests pass. If any test fails, fix the helper from Step 4 before proceeding.
 
 ### Step 6: Wire dispatch to push the resource and apply the proposal
 
@@ -182,19 +187,24 @@
     1. before invoking the trait method, calls `wit_resource.get_ordered_entities()` and stores the result via `sdk_builder.set_ordered_entities(snapshot)` (mapping the wasmtime-bindgen `OrderedEntityView` to the SDK `OrderedEntityView`)
     2. after the trait method returns, if `sdk_builder.proposal()` is `Some(items)`, calls `wit_resource.set_entity_order(items.to_vec())` exactly once
   - The macro expansion of `run_path_optimization` constructs an SDK `LayerCollectionBuilder::new()`, runs the pre-call drain step, passes `&mut` into the trait method, then runs the post-call drain step.
+  - `crates/slicer-sdk/tests/layer_module_tdd.rs` gains `layer_collection_builder_get_ordered_entities_reads_local_cache`: it constructs a `LayerCollectionBuilder::new()`, calls the doc-hidden `set_ordered_entities(snapshot)` with a 3-entity fixture, then calls `get_ordered_entities()` twice and asserts the two slices are content-equal. The SDK type is structurally cache-only (no `wasmtime::component::Resource` field), so the test pins the public observable contract without instrumenting internals.
+  - `crates/slicer-sdk/tests/layer_module_tdd.rs` also gains `set_entity_order_second_call_returns_err`: a second `set_entity_order` call within the same builder returns `Err` carrying the substring `"set-entity-order called twice"` and preserves the first proposal.
 - Files expected to change:
   - `crates/slicer-sdk/src/layer_collection_builder.rs`
   - `crates/slicer-sdk/src/views.rs`
   - `crates/slicer-sdk/src/lib.rs`
   - `crates/slicer-sdk/src/traits.rs`
   - `crates/slicer-macros/src/lib.rs`
+  - `crates/slicer-sdk/tests/layer_module_tdd.rs` (add the SDK cache test and the second-call rejection test)
 - Authoritative docs:
   - `docs/05_module_sdk.md`
 - Verification:
   - `cargo build -p slicer-sdk`
   - `cargo build -p slicer-macros`
+  - `cargo test -p slicer-sdk --test layer_module_tdd layer_collection_builder_get_ordered_entities_reads_local_cache -- --exact --nocapture`
+  - `cargo test -p slicer-sdk --test layer_module_tdd set_entity_order_second_call_returns_err -- --exact --nocapture`
 - Exit condition:
-  Both crates build. The macro's embedded WIT contains the new record, both resource methods, and the updated export signature.
+  Both crates build. The macro's embedded WIT contains the new record, both resource methods, and the updated export signature. Both SDK tests pass.
 
 ### Step 8: Sweep-update existing impls, add the multi-read test guest, rebuild WASM, and add the macro-call-once host test
 
@@ -213,12 +223,13 @@
     - `src/lib.rs` declares a `#[slicer_module]` `LayerModule` impl whose `run_path_optimization` body calls `collection.get_ordered_entities()` exactly 5 times, captures each returned slice into a `Vec<Vec<OrderedEntityView>>` (cloning the views), and asserts every snapshot equals the first via `assert_eq!`. On mismatch the module panics with `"path-optimization-multi-read: snapshot drifted across calls"`. The module emits no `set_entity_order` proposal and returns `Ok(())`.
     - the test-guest build script `./test-guests/build-test-guests.sh` is extended (its `GUESTS` array gains a `path-optimization-multi-read:path_optimization_multi_read_guest` entry) so the guest is compiled to `test-guests/path-optimization-multi-read.component.wasm`. `modules/core-modules/build-core-modules.sh` is unchanged — it covers manifest-shipped core modules only.
   - `crates/slicer-host/tests/layer_collection_builder_tdd.rs` gains `macro_drain_invokes_host_get_ordered_entities_exactly_once` that:
-    1. loads `path-optimization-multi-read.wasm` and compiles it via `WasmEngine::compile_component`
-    2. builds a `Blackboard` + minimal mesh + `ExecutionPlan` whose per-layer stages include `Layer::Infill` (mock seeds a 3-entity infill IR) followed by `Layer::PathOptimization` driving the multi-read guest through `WasmRuntimeDispatcher`
-    3. runs `execute_per_layer`
-    4. reads `store.data().host_get_ordered_entities_call_count()` and asserts the count equals exactly `1`
-    5. ensures the run completed without trapping (no `"snapshot drifted"` panic)
-  - `./modules/core-modules/build-core-modules.sh` runs to completion and rebuilds all `.wasm` artifacts including the new test guest.
+    1. resets the cross-call counter via `slicer_host::HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS.store(0, Ordering::SeqCst)`
+    2. loads `path-optimization-multi-read.component.wasm` and compiles it via `WasmEngine::compile_component`
+    3. builds a `Blackboard` + minimal mesh + `ExecutionPlan` whose per-layer stages include `Layer::Infill` (mock seeds a 3-entity infill IR) followed by `Layer::PathOptimization` driving the multi-read guest through `WasmRuntimeDispatcher`
+    4. runs `execute_per_layer`
+    5. asserts `slicer_host::HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS.load(Ordering::SeqCst)` equals exactly `1`. The per-context `host_get_ordered_entities_call_count()` getter cannot be used here because `execute_per_layer` consumes the wasmtime `Store` internally; that getter is reserved for direct host-side tests that own the store.
+    6. ensures the run completed without trapping (no `"snapshot drifted"` panic from the multi-read guest)
+  - `./modules/core-modules/build-core-modules.sh` rebuilds the manifest-shipped core-module `.wasm` artifacts (e.g., `path-optimization-default`); the new `path-optimization-multi-read` test guest is rebuilt by `./test-guests/build-test-guests.sh` (test-guests are not manifest-shipped). Both scripts must succeed.
 - Files expected to change:
   - `modules/core-modules/path-optimization-default/src/lib.rs`
   - any other `modules/core-modules/*/src/lib.rs` and `test-guests/*/src/lib.rs` that implement `run_path_optimization`
@@ -285,6 +296,8 @@
 
 - Re-run every acceptance command from `packet.spec.md`.
 - Confirm the packet-18 acceptance test (`reordered_sequence_is_consumed_by_path_optimization_stage`) still passes — proves the host fallback path is intact.
-- Confirm all six host validation tests in `layer_collection_builder_tdd.rs` pass.
-- Confirm the drift-detection regression covers the new resource.
+- Confirm all nine host write/read tests in `layer_collection_builder_tdd.rs` pass (six write-side: positive permutation, reversal, three rejection cases, atomicity; three read-side: index ordering, endpoints + point count, empty-when-unstaged).
+- Confirm the macro-call-once host test (`macro_drain_invokes_host_get_ordered_entities_exactly_once`) passes against the multi-read test guest — `HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS` reads `1` after a 5-call trait-method body.
+- Confirm both SDK tests pass: `layer_collection_builder_get_ordered_entities_reads_local_cache` and `set_entity_order_second_call_returns_err`.
+- Confirm the drift-detection regression (`macro_embeds_layer_collection_builder_resource`) covers the new resource, the `ordered-entity-view` record, both methods, and the export-signature parameter.
 - Record any remaining packet-local risk (e.g., test guests not exercised) before status changes.

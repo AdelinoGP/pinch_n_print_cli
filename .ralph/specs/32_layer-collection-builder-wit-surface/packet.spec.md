@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: layer-collection-builder-wit-surface
 task_ids:
   - TASK-152g
@@ -17,6 +17,10 @@ Introduce a new `layer-collection-builder` WIT resource (the planned host-collec
 
 The packet-18 host-side `order_entities_by_nearest_neighbor` is retained as a fallback when no module emits a proposal — it is removed in packet 33, not here.
 
+## Implementation State
+
+Per on-disk audit on 2026-04-28, the surface introduced by this packet is already landed across commits `7909068` (macro snapshot population), `89b0259` (multi-read test guest), `f21f808` (read-projection + macro-call-once + SDK cache tests), and `d4d3afd` (the `get-ordered-entities` read accessor was added to packet scope here after the packet 33 agent flagged that downstream consumers must enumerate the full mixed entity list — perimeters + infill + support — and that the existing `regions: list<perimeter-region-view>` parameter on `run-path-optimization` only surfaces perimeter wall-loops). All of `implementation-plan.md` Steps 1–9 are DONE: the WIT declarations, world-layer parameter, host bindings (resource, both counters including the static `HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS`, push constructor), host helpers (`apply_entity_order_proposal`, `project_ordered_entities`), dispatch wiring, SDK type + view + macro drain, sweep + multi-read test guest + macro-call-once host test, and the WIT drift-detection regression are all present and reachable. **Step 10 (full acceptance ceremony) is the only step that has not been verified end-to-end.** The packet remains `status: draft` deliberately until that ceremony runs and any final refinements are accepted; this packet is not a blueprint for new work — re-implementing from these steps is not expected.
+
 ## Scope Boundaries
 
 - In scope:
@@ -27,7 +31,7 @@ The packet-18 host-side `order_entities_by_nearest_neighbor` is retained as a fa
   - new `collection: layer-collection-builder` parameter on `run-path-optimization` in `wit/world-layer.wit`
   - host backing data type `LayerCollectionBuilderData` and host trait impl in `crates/slicer-host/src/wit_host.rs` (both `set_entity_order` and `get_ordered_entities`)
   - host resource constructor `push_layer_collection_builder()`
-  - host helper `apply_entity_order_proposal(arena, proposal)` for write validation/application (already landed) plus new helper `project_ordered_entities(arena) -> Vec<OrderedEntityView>` for read projection (returns empty `Vec` when no `LayerCollectionIR` is staged)
+  - host helpers `apply_entity_order_proposal(arena, proposal)` for write validation/application and `project_ordered_entities(arena) -> Vec<OrderedEntityView>` for read projection (returns empty `Vec` when no `LayerCollectionIR` is staged)
   - dispatch wiring in `crates/slicer-host/src/dispatch.rs` that pushes the new resource into the store, captures the proposal in `HostExecutionContext`, and applies validated ordering + reversal to `arena.layer_collection().ordered_entities` after the module returns; the read accessor is synchronous (no post-call wiring needed)
   - SDK guest builder `LayerCollectionBuilder` in `crates/slicer-sdk/src/layer_collection_builder.rs` exposing both `set_entity_order(items)` and `get_ordered_entities() -> &[OrderedEntityView]` (the macro drain populates the read snapshot before invoking the trait method)
   - SDK record `OrderedEntityView` mirroring the WIT shape in `crates/slicer-sdk/src/views.rs`

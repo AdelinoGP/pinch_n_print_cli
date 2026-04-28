@@ -2,6 +2,8 @@
 
 This packet introduces a new sub-task `TASK-152g` under the existing `TASK-152` parent in `docs/07_implementation_status.md`. The parent stays `[~]` (partial) until packet 33 finishes the migration. The packet does **not** reopen or close any other backlog row; it only adds the new surface.
 
+**Implementation State (2026-04-28):** the surfaces in rows for Steps 1–9 are all landed on disk (commits `7909068`, `89b0259`, `f21f808`, `d4d3afd`); the rows are retained for verification cross-referencing. `TASK-152g` stays `[~]` until packet 33 closes the migration. Step 10 (full acceptance ceremony) is the only step that has not been verified end-to-end.
+
 | docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `TASK-152g` (new) | Step 1 | `docs/03_wit_and_manifest.md` | `wit/deps/ir-types.wit` | `OrcaSlicerDocumented/src/libslic3r/ShortestPath.cpp` | Declares `record ordered-entity-view` and `resource layer-collection-builder` with both methods `set-entity-order: func(items: list<tuple<u32, bool>>) -> result<_, string>` and `get-ordered-entities: func() -> list<ordered-entity-view>`. |
