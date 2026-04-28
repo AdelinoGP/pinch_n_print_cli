@@ -24,6 +24,7 @@ GUESTS=(
     "sdk-prepass-guest:sdk_prepass_guest"
     "sdk-layer-infill-guest:sdk_layer_infill_guest"
     "sdk-layer-pathopt-guest:sdk_layer_pathopt_guest"
+    "path-optimization-multi-read:path_optimization_multi_read_guest"
 )
 
 check_only=false
