@@ -16,3 +16,4 @@ modules/core-modules/*/wit-guest/target/
 /OrcaSlicerDocumented/
 .worktrees/
 .env
+.claude/settings.local.json
