@@ -31,6 +31,7 @@ pub mod traits;
 pub mod views;
 
 pub use layer_collection_builder::LayerCollectionBuilder;
+pub use views::OrderedEntityView;
 
 /// Re-export of the shared IR crate used by host and modules.
 pub use slicer_ir as ir;

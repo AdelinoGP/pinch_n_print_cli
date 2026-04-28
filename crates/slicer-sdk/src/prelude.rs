@@ -18,7 +18,7 @@ pub use crate::traits::{
     FinalizationModule, FinalizationOutputBuilder, LayerCollectionView, LayerModule,
     PaintRegionLayerView, PostpassModule, PrepassModule,
 };
-pub use crate::views::{PerimeterRegionView, SliceRegionView};
+pub use crate::views::{OrderedEntityView, PerimeterRegionView, SliceRegionView};
 
 // Postpass types and builders
 pub use crate::postpass_builders::{GcodeMoveCmd, GcodeOutputBuilder};

@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    ExPolygon, ObjectId, PaintSemantic, PaintValue, RegionId, SeamCandidate, SeamPosition,
-    WallLoop,
+    ExPolygon, ExtrusionRole, ObjectId, PaintSemantic, PaintValue, Point3WithWidth, RegionId,
+    RegionKey, SeamCandidate, SeamPosition, WallLoop,
 };
 
 /// Read-only view of a slice region.
@@ -284,4 +284,28 @@ impl PerimeterRegionView {
     pub fn resolved_seam(&self) -> Option<&SeamPosition> {
         self.resolved_seam.as_ref()
     }
+}
+
+/// Read-only projection of a host-staged `LayerCollectionIR.ordered_entities`
+/// entry, exposed to `Layer::PathOptimization` modules via
+/// `LayerCollectionBuilder::get_ordered_entities`.
+///
+/// Mirrors WIT `record ordered-entity-view` from
+/// `wit/deps/ir-types.wit`. Modules consume this snapshot to compute a
+/// permutation proposal which they then submit through
+/// `LayerCollectionBuilder::set_entity_order`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrderedEntityView {
+    /// Index of this entity in the host-staged ordering at snapshot time.
+    pub original_index: u32,
+    /// Region key (layer / object / region triple) the entity belongs to.
+    pub region_key: RegionKey,
+    /// Extrusion role of the entity.
+    pub role: ExtrusionRole,
+    /// First point of the entity's path (with width / flow factor).
+    pub start_point: Point3WithWidth,
+    /// Last point of the entity's path (with width / flow factor).
+    pub end_point: Point3WithWidth,
+    /// Total number of points on the entity's path (including endpoints).
+    pub point_count: u32,
 }
