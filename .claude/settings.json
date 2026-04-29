@@ -6,5 +6,29 @@
       ".rs": "rust"
     },
     "transport": "stdio"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [[ \"$CLAUDE_TOOL_INPUT_FILE_PATH\" == *.rs ]]; then rustfmt \"$CLAUDE_TOOL_INPUT_FILE_PATH\" 2>/dev/null || true; fi"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cargo fmt && cargo clippy --all-targets --message-format=short -- -D warnings && cargo test --quiet",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
   }
 }
