@@ -11,7 +11,5 @@ slicer-core = { path = "../slicer-core" }
 slicer-macros = { path = "../slicer-macros" }
 slicer-schema = { path = "../slicer-schema" }
 
-[lints.rust]
-missing_docs = "warn"
-unused_imports = "warn"
-unused_must_use = "warn"
+[lints]
+workspace = true

@@ -8,7 +8,5 @@ authors = ["ModularSlicer Team"]
 slicer-ir = { path = "../slicer-ir" }
 slicer-sdk = { path = "../slicer-sdk" }
 
-[lints.rust]
-missing_docs = "warn"
-unused_imports = "warn"
-unused_must_use = "warn"
+[lints]
+workspace = true

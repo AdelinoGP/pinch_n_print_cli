@@ -16,7 +16,5 @@ bincode = { workspace = true }
 default = []
 std = []
 
-[lints.rust]
-missing_docs = "warn"
-unused_imports = "warn"
-unused_must_use = "warn"
+[lints]
+workspace = true

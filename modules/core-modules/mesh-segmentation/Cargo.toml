@@ -17,3 +17,6 @@ slicer-ir = { path = "../../../crates/slicer-ir" }
 # gated behind `#[cfg(target_arch = "wasm32")]` and never expanded.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wit-bindgen = "0.24"
+
+[lints]
+workspace = true

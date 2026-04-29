@@ -21,3 +21,6 @@ slicer-core = { path = "../../../crates/slicer-core" }
 wit-bindgen = "0.24"
 
 [dev-dependencies]
+
+[lints]
+workspace = true

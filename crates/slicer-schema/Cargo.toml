@@ -6,3 +6,6 @@ authors.workspace = true
 description = "Single source of truth for the module stage × WIT world × export mapping shared by slicer-macros and slicer-cli."
 
 [dependencies]
+
+[lints]
+workspace = true

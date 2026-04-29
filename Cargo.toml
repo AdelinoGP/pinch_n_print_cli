@@ -63,8 +63,36 @@ clap = "4.6.1"
 pyo3 = { version = "0.28.3", features = ["auto-initialize"] }
 
 [workspace.lints.rust]
+missing_docs = "warn"
 unused_imports = "warn"
 unused_must_use = "warn"
+
+[workspace.lints.clippy]
+# Tests in this workspace freely use vec! literals, identity assertions, and
+# slice::from_ref-equivalent patterns; setting these style lints to allow
+# keeps `cargo clippy --all-targets -- -D warnings` green without rewriting
+# every fixture.
+useless_vec = "allow"
+redundant_clone = "allow"
+cloned_ref_to_slice_refs = "allow"
+single_range_in_vec_init = "allow"
+needless_range_loop = "allow"
+unnecessary_map_or = "allow"
+assertions_on_constants = "allow"
+bool_assert_comparison = "allow"
+nonminimal_bool = "allow"
+overly_complex_bool_expr = "allow"
+default_constructed_unit_structs = "allow"
+type_complexity = "allow"
+needless_lifetimes = "allow"
+needless_borrow = "allow"
+needless_borrows_for_generic_args = "allow"
+map_identity = "allow"
+ptr_arg = "allow"
+result_unit_err = "allow"
+new_without_default = "allow"
+redundant_closure = "allow"
+too_many_arguments = "allow"
 
 [profile.release]
 opt-level = 3
