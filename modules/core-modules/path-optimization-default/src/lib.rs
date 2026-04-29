@@ -23,12 +23,81 @@ use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::postpass_builders::{GcodeMoveCmd, GcodeOutputBuilder};
 use slicer_sdk::slicer_module;
 use slicer_sdk::traits::LayerModule;
+use slicer_sdk::views::OrderedEntityView;
 use slicer_sdk::views::PerimeterRegionView;
 use slicer_ir::{ConfigValue, ConfigView, ExtrusionRole};
 
 const DEFAULT_RETRACT_LENGTH: f32 = 0.8;
 const DEFAULT_RETRACT_SPEED: f32 = 25.0;
 const DEFAULT_TRAVEL_Z_HOP: f32 = 0.0;
+
+/// Deterministically permutes `entities` using a greedy nearest-neighbor
+/// heuristic starting from position (0.0, 0.0).
+///
+/// At each step the unvisited entity whose `start_point` (x, y) is nearest
+/// (Euclidean distance) to the current cursor position is selected. When two
+/// candidates are equidistant within 0.001 mm, `BridgeInfill` is preferred.
+/// Further ties go to the lower `original_index`. After selection the cursor
+/// advances to the picked entity's `end_point`. The reversal flag is always
+/// `false`. Output is keyed on `view.original_index`.
+fn nearest_neighbor_permutation(entities: &[OrderedEntityView]) -> Vec<(u32, bool)> {
+    let n = entities.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    if n == 1 {
+        return vec![(entities[0].original_index, false)];
+    }
+
+    let mut result = Vec::with_capacity(n);
+    let mut used = vec![false; n];
+    let mut cur_x: f32 = 0.0;
+    let mut cur_y: f32 = 0.0;
+
+    for _ in 0..n {
+        let mut best_idx = usize::MAX;
+        let mut best_dist = f32::INFINITY;
+
+        for (i, view) in entities.iter().enumerate() {
+            if used[i] {
+                continue;
+            }
+            let (sx, sy) = (view.start_point.x, view.start_point.y);
+            let dx = sx - cur_x;
+            let dy = sy - cur_y;
+            let dist = (dx * dx + dy * dy).sqrt();
+
+            let better = if best_idx == usize::MAX {
+                true
+            } else if (dist - best_dist).abs() < 0.001 {
+                let curr_bridge = view.role == ExtrusionRole::BridgeInfill;
+                let best_bridge = entities[best_idx].role == ExtrusionRole::BridgeInfill;
+                if curr_bridge && !best_bridge {
+                    true
+                } else if !curr_bridge && best_bridge {
+                    false
+                } else {
+                    i < best_idx
+                }
+            } else {
+                dist < best_dist
+            };
+
+            if better {
+                best_idx = i;
+                best_dist = dist;
+            }
+        }
+
+        used[best_idx] = true;
+        let (nx, ny) = (entities[best_idx].end_point.x, entities[best_idx].end_point.y);
+        cur_x = nx;
+        cur_y = ny;
+        result.push((entities[best_idx].original_index, false));
+    }
+
+    result
+}
 
 /// Default path-optimization module.
 pub struct PathOptimizationDefault {
@@ -65,9 +134,15 @@ impl LayerModule for PathOptimizationDefault {
         layer_index: u32,
         regions: &[PerimeterRegionView],
         output: &mut GcodeOutputBuilder,
-        _collection: &mut LayerCollectionBuilder,
+        collection: &mut LayerCollectionBuilder,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
+        let snapshot = collection.get_ordered_entities();
+        if !snapshot.is_empty() {
+            let items = nearest_neighbor_permutation(snapshot);
+            collection.set_entity_order(items).map_err(|e| ModuleError::fatal(6, e))?;
+        }
+
         if self.emit_layer_markers {
             let region_count = regions.len();
             let entity_count: usize = regions.iter().map(|r| r.wall_loops().len()).sum();
