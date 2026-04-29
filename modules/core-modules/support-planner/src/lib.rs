@@ -229,10 +229,9 @@ impl SupportPlanner {
 
             // Sort for deterministic MST/merge ordering.
             active_nodes.sort_by(|a, b| match a.x.partial_cmp(&b.x) {
-                Some(std::cmp::Ordering::Equal) | None => a
-                    .y
-                    .partial_cmp(&b.y)
-                    .unwrap_or(std::cmp::Ordering::Equal),
+                Some(std::cmp::Ordering::Equal) | None => {
+                    a.y.partial_cmp(&b.y).unwrap_or(std::cmp::Ordering::Equal)
+                }
                 Some(ord) => ord,
             });
 
@@ -292,8 +291,7 @@ impl SupportPlanner {
             // For each surviving node, move toward its MST parent by
             // `step_xy` in the XY plane. Nodes without an MST edge simply
             // propagate unchanged.
-            let mut next_nodes: Vec<PlannedSupportNode> =
-                Vec::with_capacity(active_nodes.len());
+            let mut next_nodes: Vec<PlannedSupportNode> = Vec::with_capacity(active_nodes.len());
             // Build a neighbour lookup: for node i, remember its closest MST
             // neighbour (the other endpoint of its lowest-distance edge).
             let mut nearest_neighbour: Vec<Option<usize>> = vec![None; active_nodes.len()];
@@ -455,11 +453,7 @@ fn collect_paint_blocker_polygons(obj: &MeshObjectView) -> Vec<Vec<[f32; 2]>> {
             let v1 = obj.vertices[triangle[1] as usize];
             let v2 = obj.vertices[triangle[2] as usize];
             // Treat the triangle as a 2D polygon projected onto XY.
-            result.push(vec![
-                [v0[0], v0[1]],
-                [v1[0], v1[1]],
-                [v2[0], v2[1]],
-            ]);
+            result.push(vec![[v0[0], v0[1]], [v1[0], v1[1]], [v2[0], v2[1]]]);
         }
     }
     result
@@ -614,7 +608,10 @@ mod tests {
         planner
             .run_support_generation(&[obj], &mut output, &ConfigView::default())
             .unwrap();
-        assert!(output.entries().is_empty(), "cube without overhangs → empty plan");
+        assert!(
+            output.entries().is_empty(),
+            "cube without overhangs → empty plan"
+        );
     }
 
     #[test]

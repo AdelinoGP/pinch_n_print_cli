@@ -23,8 +23,8 @@ use slicer_host::{
 };
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
-    LayerPlanIR, MeshIR, ObjectConfig, ObjectLayerRef, ObjectMesh, Point3,
-    ResolvedConfig, SemVer, Transform3d,
+    LayerPlanIR, MeshIR, ObjectConfig, ObjectLayerRef, ObjectMesh, Point3, ResolvedConfig, SemVer,
+    Transform3d,
 };
 
 // ============================================================================
@@ -51,7 +51,9 @@ fn transformed_model_world_z_through_layer_plan() {
     // compute after reading the transformed mesh).
     let runner = ScriptedLayerPlanningRunner::new(
         vec![String::from("com.example.layer-planning")],
-        Ok(PrepassStageOutput::LayerPlan(Arc::new(layer_plan_in_world_space()))),
+        Ok(PrepassStageOutput::LayerPlan(Arc::new(
+            layer_plan_in_world_space(),
+        ))),
         Arc::as_ptr(&mesh) as usize,
     );
 
@@ -184,7 +186,6 @@ impl ScriptedLayerPlanningRunner {
             expected_order,
         }
     }
-
 }
 
 impl PrepassStageRunner for ScriptedLayerPlanningRunner {
@@ -327,15 +328,25 @@ fn mesh_with_90deg_x_rotation() -> MeshIR {
             id: String::from("rotated-cube"),
             mesh: unit_cube_its(),
             transform: Transform3d { matrix: rot90_x },
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: Some((-1.0, 0.0)),
         }],
         build_volume: BoundingBox3 {
             // After 90° X rotation: world X=[0,1], Y=[0,1], Z=[-1,0]
-            min: Point3 { x: 0.0, y: 0.0, z: -1.0 },
-            max: Point3 { x: 1.0, y: 1.0, z: 0.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: -1.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 0.0,
+            },
         },
     }
 }
@@ -347,14 +358,24 @@ fn mesh_with_identity_transform() -> MeshIR {
             id: String::from("identity-cube"),
             mesh: unit_cube_its(),
             transform: identity_transform(),
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: Some((0.0, 1.0)),
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     }
 }
@@ -368,7 +389,9 @@ fn mesh_with_z_translation(tz: f64) -> MeshIR {
             id: String::from("translated-cube"),
             mesh: unit_cube_its(),
             transform: Transform3d { matrix },
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: Some((tz as f32, (tz + 1.0) as f32)),
@@ -392,14 +415,46 @@ fn mesh_with_z_translation(tz: f64) -> MeshIR {
 fn unit_cube_its() -> IndexedTriangleSet {
     IndexedTriangleSet {
         vertices: vec![
-            Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            Point3 { x: 1.0, y: 0.0, z: 0.0 },
-            Point3 { x: 1.0, y: 1.0, z: 0.0 },
-            Point3 { x: 0.0, y: 1.0, z: 0.0 },
-            Point3 { x: 0.0, y: 0.0, z: 1.0 },
-            Point3 { x: 1.0, y: 0.0, z: 1.0 },
-            Point3 { x: 1.0, y: 1.0, z: 1.0 },
-            Point3 { x: 0.0, y: 1.0, z: 1.0 },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 1.0,
+                z: 1.0,
+            },
         ],
         indices: vec![
             0, 2, 1, 0, 3, 2, // -Z

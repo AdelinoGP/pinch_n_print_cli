@@ -54,7 +54,7 @@ fn make_layer_with_entities(index: u32, z: f32, entities: Vec<PrintEntity>) -> L
 }
 
 fn empty_config() -> ConfigView {
-    ConfigView::from_map(HashMap::new(),)
+    ConfigView::from_map(HashMap::new())
 }
 
 fn custom_config(

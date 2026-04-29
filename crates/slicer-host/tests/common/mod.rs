@@ -3,8 +3,7 @@ use std::sync::Arc;
 
 use slicer_host::wit_host::HostExecutionContext;
 use slicer_ir::{
-    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer,
-    Transform3d,
+    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
 };
 
 pub fn ctx_with_mesh(module_id: &str, mesh: Arc<MeshIR>) -> HostExecutionContext {
@@ -82,7 +81,11 @@ pub fn sloped_triangle_object(id: &str, transform: Transform3d) -> ObjectMesh {
     ObjectMesh {
         id: id.to_string(),
         mesh: IndexedTriangleSet {
-            vertices: vec![point3(0.0, 0.0, 0.0), point3(10.0, 0.0, 0.0), point3(0.0, 10.0, 10.0)],
+            vertices: vec![
+                point3(0.0, 0.0, 0.0),
+                point3(10.0, 0.0, 0.0),
+                point3(0.0, 10.0, 10.0),
+            ],
             indices: vec![0, 1, 2],
         },
         transform,
@@ -107,14 +110,7 @@ pub fn assert_unit_length(x: f32, y: f32, z: f32, label: &str) {
     assert_close(magnitude, 1.0, label);
 }
 
-pub fn assert_perpendicular(
-    x: f32,
-    y: f32,
-    z: f32,
-    edge1: [f32; 3],
-    edge2: [f32; 3],
-    label: &str,
-) {
+pub fn assert_perpendicular(x: f32, y: f32, z: f32, edge1: [f32; 3], edge2: [f32; 3], label: &str) {
     let dot1 = x * edge1[0] + y * edge1[1] + z * edge1[2];
     let dot2 = x * edge2[0] + y * edge2[1] + z * edge2[2];
     assert_close(dot1, 0.0, &format!("{label} dot edge1"));

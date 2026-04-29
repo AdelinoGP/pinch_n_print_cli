@@ -27,7 +27,10 @@ fn square_polygon(x: i64, y: i64, side: i64) -> ExPolygon {
             points: vec![
                 Point2 { x, y },
                 Point2 { x: x + side, y },
-                Point2 { x: x + side, y: y + side },
+                Point2 {
+                    x: x + side,
+                    y: y + side,
+                },
                 Point2 { x, y: y + side },
             ],
         },
@@ -136,14 +139,24 @@ fn paint_region_ir_support_enforcer_semantic_roundtrip() {
 #[test]
 fn paint_region_ir_multiple_semantic_families_roundtrip() {
     let ir = PaintRegionIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
                 global_layer_index: 0,
                 semantic_regions: HashMap::from([
-                    (PaintSemantic::Material, vec![material_semantic_region("obj-1", 0, 1)]),
-                    (PaintSemantic::FuzzySkin, vec![fuzzy_skin_semantic_region("obj-1", 0)]),
+                    (
+                        PaintSemantic::Material,
+                        vec![material_semantic_region("obj-1", 0, 1)],
+                    ),
+                    (
+                        PaintSemantic::FuzzySkin,
+                        vec![fuzzy_skin_semantic_region("obj-1", 0)],
+                    ),
                     (
                         PaintSemantic::SupportEnforcer,
                         vec![support_enforcer_semantic_region("obj-1", 0)],
@@ -162,17 +175,23 @@ fn paint_region_ir_multiple_semantic_families_roundtrip() {
     assert_eq!(layer_map.semantic_regions.len(), 3);
 
     // Material semantic
-    assert!(layer_map.semantic_regions.contains_key(&PaintSemantic::Material));
+    assert!(layer_map
+        .semantic_regions
+        .contains_key(&PaintSemantic::Material));
     let material_regions = &layer_map.semantic_regions[&PaintSemantic::Material];
     assert_eq!(material_regions.len(), 1);
 
     // FuzzySkin semantic
-    assert!(layer_map.semantic_regions.contains_key(&PaintSemantic::FuzzySkin));
+    assert!(layer_map
+        .semantic_regions
+        .contains_key(&PaintSemantic::FuzzySkin));
     let fuzzy_regions = &layer_map.semantic_regions[&PaintSemantic::FuzzySkin];
     assert_eq!(fuzzy_regions.len(), 1);
 
     // SupportEnforcer semantic
-    assert!(layer_map.semantic_regions.contains_key(&PaintSemantic::SupportEnforcer));
+    assert!(layer_map
+        .semantic_regions
+        .contains_key(&PaintSemantic::SupportEnforcer));
     let support_regions = &layer_map.semantic_regions[&PaintSemantic::SupportEnforcer];
     assert_eq!(support_regions.len(), 1);
 }
@@ -181,7 +200,11 @@ fn paint_region_ir_multiple_semantic_families_roundtrip() {
 #[test]
 fn paint_region_ir_get_accessor_after_roundtrip() {
     let ir = PaintRegionIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
@@ -217,7 +240,11 @@ fn paint_region_ir_get_accessor_after_roundtrip() {
 fn paint_region_ir_custom_semantic_roundtrip() {
     let custom_semantic = PaintSemantic::Custom("com.example.texture/roughness@1".to_string());
     let ir = PaintRegionIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         per_layer: HashMap::from([(
             5,
             LayerPaintMap {
@@ -280,7 +307,11 @@ fn paint_region_ir_paint_order_preserved_through_roundtrip() {
 #[test]
 fn paint_region_ir_multiple_regions_same_semantic_roundtrip() {
     let ir = PaintRegionIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {

@@ -6,6 +6,7 @@
 use std::sync::{Arc, Mutex};
 
 use clap::Parser;
+use slicer_host::dispatch::WasmRuntimeDispatcher;
 use slicer_host::model_loader::load_model;
 use slicer_host::pipeline::{run_pipeline_with_events, PipelineConfig, PipelineStageRunners};
 use slicer_host::progress_events::{
@@ -16,7 +17,6 @@ use slicer_host::{
     load_modules_from_roots, parse_cli_config_source, DefaultGCodeEmitter, DefaultGCodeSerializer,
     HostCli, HostCommands,
 };
-use slicer_host::dispatch::WasmRuntimeDispatcher;
 
 /// No-op prepass runner for MVP (no WASM modules loaded yet).
 #[allow(dead_code)]
@@ -27,7 +27,8 @@ impl slicer_host::PrepassStageRunner for NoopPrepassRunner {
         _stage_id: &slicer_ir::StageId,
         _module: &slicer_host::CompiledModule,
         _blackboard: &slicer_host::Blackboard,
-    ) -> Result<(slicer_host::PrepassStageOutput, Vec<String>), slicer_host::PrepassExecutionError> {
+    ) -> Result<(slicer_host::PrepassStageOutput, Vec<String>), slicer_host::PrepassExecutionError>
+    {
         Ok((slicer_host::PrepassStageOutput::None, Vec::new()))
     }
 }
@@ -43,8 +44,15 @@ impl slicer_host::LayerStageRunner for NoopLayerRunner {
         _module: &slicer_host::CompiledModule,
         _blackboard: &slicer_host::Blackboard,
         _arena: &mut slicer_host::LayerArena,
-    ) -> Result<(slicer_host::LayerStageOutput, Vec<String>, Vec<String>), slicer_host::LayerStageError> {
-        Ok((slicer_host::LayerStageOutput::Success, Vec::new(), Vec::new()))
+    ) -> Result<
+        (slicer_host::LayerStageOutput, Vec<String>, Vec<String>),
+        slicer_host::LayerStageError,
+    > {
+        Ok((
+            slicer_host::LayerStageOutput::Success,
+            Vec::new(),
+            Vec::new(),
+        ))
     }
 }
 
@@ -151,10 +159,8 @@ fn main() {
                     continue;
                 }
                 if let Some((z_min, z_max)) = object.world_z_extent {
-                    config_source.insert(
-                        key,
-                        slicer_ir::ConfigValue::Float((z_max - z_min) as f64),
-                    );
+                    config_source
+                        .insert(key, slicer_ir::ConfigValue::Float((z_max - z_min) as f64));
                 }
             }
 
@@ -266,115 +272,115 @@ fn main() {
 
 #[cfg(any())]
 mod _stale_build_plan {
-                  /// Build an ExecutionPlan from loaded modules with compiled WASM components.
-      ///                                                                                                                                                                                                                           
-      /// For each loaded module, reads the companion .wasm file, compiles it to a                                                                                                                                                  
-      /// WASM component via the shared engine, and stores it in the CompiledModule.                                                                                                                                         
-      /// Compilation failures are reported as diagnostics (stderr) but do not prevent                                                                                                                                       
-      /// plan construction — the dispatcher will surface a structured error at call time.                                                                                                                                   
-      fn build_plan_from_loaded_modules(                                                                                                                                                                                     
-          modules: &[slicer_host::LoadedModule],                                                                                                                                                                             
-          engine: &Arc<WasmEngine>,                                                                                                                                                                                          
-      ) -> slicer_host::ExecutionPlan {                                                                                                                                                                                      
-          use slicer_host::{                                                                                                                                                                                                 
-              build_wasm_instance_pool, CompiledModule, CompiledStage, ExecutionPlan, IrAccessMask,                                                                                                                          
-              WasmArtifactMetadata,                                                                                                                                                                                          
-          };                                                                                                                                                                                                                 
-          use slicer_ir::ConfigView;                                                                                                                                                                                         
-                                                                                                                                                                                                                             
-          let mut prepass_stages: Vec<CompiledStage> = Vec::new();                                                                                                                                                           
-          let mut per_layer_stages: Vec<CompiledStage> = Vec::new();                                                                                                                                                         
-          let mut layer_finalization_stage: Option<CompiledStage> = None;                                                                                                                                                    
-          let mut postpass_stages: Vec<CompiledStage> = Vec::new();                                                                                                                                                          
-                                                                                                                                                                                                                             
-          // Group modules by stage                                                                                                                                                                                          
-          let mut stage_groups: std::collections::BTreeMap<String, Vec<&slicer_host::LoadedModule>> =                                                                                                                        
-              std::collections::BTreeMap::new();                                                                                                                                                                             
-          for module in modules {                                                                                                                                                                                            
-              stage_groups                                                                                                                                                                                                   
-                  .entry(module.stage.clone())                                                                                                                                                                               
-                  .or_default()                                                                                                                                                                                              
-                  .push(module);                                                                                                                                                                                             
-          }                                                                                                                                                                                                                  
-                                                                                                                                                                                                                             
-         // Build compiled stages per group                                                                                                                                                                                 
-         for (stage_id, stage_modules) in &stage_groups {                                                                                                                                                                   
-              let compiled_modules: Vec<CompiledModule> = stage_modules                                                                                                                                                      
-                  .iter()                                                                                                                                                                                                    
-                  .map(|m| {                                                                                                                                                                                                 
-                      let parallelism = if m.layer_parallel_safe { 4 } else { 1 };                                                                                                                                           
-                      let pool = Arc::new(                                                                                                                                                                                   
-                         build_wasm_instance_pool(                                                                                                                                                                          
-                              m,                                                                                                                                                                                             
-                             parallelism,                                                                                                                                                                                   
-                              WasmArtifactMetadata {                                                                                                                                                                         
-                                  uses_shared_memory: false,                                                                                                                                                                 
-                              },                                                                                                                                                                                             
-                         )                                                                                                                                                                                                  
-                          .expect("pool build should succeed"),                                                                                                                                                              
-                      );                                                                                                                                                                                                     
-                                                                                                                                                                                                                             
-                      // Compile the WASM component from the module's .wasm file.                                                                                                                                            
-                      let wasm_component = match std::fs::read(&m.wasm_path) {                                                                                                                                               
-                          Ok(bytes) => match engine.compile_component(&bytes) {                                                                                                                                              
-                              Ok(component) => Some(Arc::new(component)),                                                                                                                                                    
-                              Err(e) => {                                                                                                                                                                                    
-                                  eprintln!(                                                                                                                                                                                 
-                                      "warning: failed to compile WASM for module '{}': {}",                                                                                                                                 
-                                      m.id, e                                                                                                                                                                                
-                                  );                                                                                                                                                                                         
-                                  None                                                                                                                                                                                       
-                              }                                                                                                                                                                                              
-                          },                                                                                                                                                                                                 
-                          Err(e) => {                                                                                                                                                                                        
-                              eprintln!(                                                                                                                                                                                     
-                                  "warning: failed to read WASM file '{}' for module '{}': {}",                                                                                                                              
-                                  m.wasm_path.display(),                                                                                                                                                                     
-                                  m.id,                                                                                                                                                                                      
-                                  e                                                                                                                                                                                          
-                              );                                                                                                                                                                                             
-                              None                                                                                                                                                                                           
-                          }                                                                                                                                                                                                  
-                      };                                                                                                                                                                                                     
-                                                                                                                                                                                                                             
-                      CompiledModule {                                                                                                                                                                                       
-                          module_id: m.id.clone(),                                                                                                                                                                           
-                         instance_pool: pool,                                                                                                                                                                               
-                         ir_read_mask: IrAccessMask {                                                                                                                                                                       
-                              paths: m.ir_reads.clone(),                                                                                                                                                                     
-                          },                                                                                                                                                                                                 
-                         ir_write_mask: IrAccessMask {                                                                                                                                                                      
-                             paths: m.ir_writes.clone(),                                                                                                                                                                    
-                       },                                                                                                                                                                                                 
-                      config_view: Arc::new(ConfigView::new()),                                                                                                                                                                                                
-                     wasm_component,                                                                                                                                                                                    
-                  }                                                                                                                                                                                                      
-              })                                                                                                                                                                                                         
-             .collect();                                                                                                                                                                                                
-                                                                                                                                                                                                                       
-           let compiled_stage = CompiledStage {                                                                                                                                                                           
-             stage_id: stage_id.clone(),                                                                                                                                                                                
-             modules: compiled_modules,                                                                                                                                                                                 
-          };                                                                                                                                                                                                             
-                                                                                                                                                                                                                         
-        if stage_id.starts_with("PrePass::") {                                                                                                                                                                         
-              prepass_stages.push(compiled_stage);                                                                                                                                                                       
-          } else if stage_id.starts_with("Layer::") {                                                                                                                                                                    
-               per_layer_stages.push(compiled_stage);                                                                                                                                                                     
-           } else if stage_id == "PostPass::LayerFinalization" {                                                                                                                                                          
-               layer_finalization_stage = Some(compiled_stage);                                                                                                                                                           
-         } else if stage_id.starts_with("PostPass::") {                                                                                                                                                                 
-              postpass_stages.push(compiled_stage);                                                                                                                                                                      
-          }                                                                                                                                                                                                              
-      }                                                                                                                                                                                                                  
-                                                                                                                                                                                                                            
-        ExecutionPlan {                                                                                                                                                                                                    
-              prepass_stages,                                                                                                                                                                                                
-             per_layer_stages,                                                                                                                                                                                              
-              layer_finalization_stage,                                                                                                                                                                                      
-             postpass_stages,                                                                                                                                                                                               
-       global_layers: Arc::new(Vec::new()),                                                                                                                                                                           
-       region_plans: Arc::new(HashMap::new()),                                                                                                                                                                        
-   }                                                                                                                                                                                                                  
-}
+    /// Build an ExecutionPlan from loaded modules with compiled WASM components.
+    ///                                                                                                                                                                                                                           
+    /// For each loaded module, reads the companion .wasm file, compiles it to a                                                                                                                                                  
+    /// WASM component via the shared engine, and stores it in the CompiledModule.                                                                                                                                         
+    /// Compilation failures are reported as diagnostics (stderr) but do not prevent                                                                                                                                       
+    /// plan construction — the dispatcher will surface a structured error at call time.                                                                                                                                   
+    fn build_plan_from_loaded_modules(
+        modules: &[slicer_host::LoadedModule],
+        engine: &Arc<WasmEngine>,
+    ) -> slicer_host::ExecutionPlan {
+        use slicer_host::{
+            build_wasm_instance_pool, CompiledModule, CompiledStage, ExecutionPlan, IrAccessMask,
+            WasmArtifactMetadata,
+        };
+        use slicer_ir::ConfigView;
+
+        let mut prepass_stages: Vec<CompiledStage> = Vec::new();
+        let mut per_layer_stages: Vec<CompiledStage> = Vec::new();
+        let mut layer_finalization_stage: Option<CompiledStage> = None;
+        let mut postpass_stages: Vec<CompiledStage> = Vec::new();
+
+        // Group modules by stage
+        let mut stage_groups: std::collections::BTreeMap<String, Vec<&slicer_host::LoadedModule>> =
+            std::collections::BTreeMap::new();
+        for module in modules {
+            stage_groups
+                .entry(module.stage.clone())
+                .or_default()
+                .push(module);
+        }
+
+        // Build compiled stages per group
+        for (stage_id, stage_modules) in &stage_groups {
+            let compiled_modules: Vec<CompiledModule> = stage_modules
+                .iter()
+                .map(|m| {
+                    let parallelism = if m.layer_parallel_safe { 4 } else { 1 };
+                    let pool = Arc::new(
+                        build_wasm_instance_pool(
+                            m,
+                            parallelism,
+                            WasmArtifactMetadata {
+                                uses_shared_memory: false,
+                            },
+                        )
+                        .expect("pool build should succeed"),
+                    );
+
+                    // Compile the WASM component from the module's .wasm file.
+                    let wasm_component = match std::fs::read(&m.wasm_path) {
+                        Ok(bytes) => match engine.compile_component(&bytes) {
+                            Ok(component) => Some(Arc::new(component)),
+                            Err(e) => {
+                                eprintln!(
+                                    "warning: failed to compile WASM for module '{}': {}",
+                                    m.id, e
+                                );
+                                None
+                            }
+                        },
+                        Err(e) => {
+                            eprintln!(
+                                "warning: failed to read WASM file '{}' for module '{}': {}",
+                                m.wasm_path.display(),
+                                m.id,
+                                e
+                            );
+                            None
+                        }
+                    };
+
+                    CompiledModule {
+                        module_id: m.id.clone(),
+                        instance_pool: pool,
+                        ir_read_mask: IrAccessMask {
+                            paths: m.ir_reads.clone(),
+                        },
+                        ir_write_mask: IrAccessMask {
+                            paths: m.ir_writes.clone(),
+                        },
+                        config_view: Arc::new(ConfigView::new()),
+                        wasm_component,
+                    }
+                })
+                .collect();
+
+            let compiled_stage = CompiledStage {
+                stage_id: stage_id.clone(),
+                modules: compiled_modules,
+            };
+
+            if stage_id.starts_with("PrePass::") {
+                prepass_stages.push(compiled_stage);
+            } else if stage_id.starts_with("Layer::") {
+                per_layer_stages.push(compiled_stage);
+            } else if stage_id == "PostPass::LayerFinalization" {
+                layer_finalization_stage = Some(compiled_stage);
+            } else if stage_id.starts_with("PostPass::") {
+                postpass_stages.push(compiled_stage);
+            }
+        }
+
+        ExecutionPlan {
+            prepass_stages,
+            per_layer_stages,
+            layer_finalization_stage,
+            postpass_stages,
+            global_layers: Arc::new(Vec::new()),
+            region_plans: Arc::new(HashMap::new()),
+        }
+    }
 }

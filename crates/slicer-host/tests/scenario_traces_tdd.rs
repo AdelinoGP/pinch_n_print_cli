@@ -32,7 +32,11 @@ use slicer_ir::{
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn loaded_module_for_compat(id: &str, min_ir: SemVer, max_ir: SemVer) -> LoadedModule {
@@ -134,7 +138,13 @@ fn ir_version_inside_range_emits_no_compat_errors() {
 // ── Scenario 1 — Mixed Layer Heights + Catch-Up ─────────────────────────
 // docs/10 §31-53.
 
-fn region(object_id: &str, region_id: u64, h: f32, is_catchup: bool, catchup_z: f32) -> ActiveRegion {
+fn region(
+    object_id: &str,
+    region_id: u64,
+    h: f32,
+    is_catchup: bool,
+    catchup_z: f32,
+) -> ActiveRegion {
     ActiveRegion {
         object_id: object_id.to_string(),
         region_id,
@@ -213,7 +223,10 @@ fn paint_ir_with_two_custom_regions(layer_idx: u32, orders: (u64, u64)) -> Paint
             points: vec![
                 Point2 { x: 0, y: 0 },
                 Point2 { x: 100_000, y: 0 },
-                Point2 { x: 100_000, y: 100_000 },
+                Point2 {
+                    x: 100_000,
+                    y: 100_000,
+                },
                 Point2 { x: 0, y: 100_000 },
             ],
         },
@@ -244,7 +257,11 @@ fn paint_ir_with_two_custom_regions(layer_idx: u32, orders: (u64, u64)) -> Paint
         },
     );
     PaintRegionIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         per_layer,
     }
 }
@@ -256,7 +273,10 @@ fn scenario_2_higher_paint_order_wins_for_custom_overlap() {
         &ir,
         0,
         &PaintSemantic::Custom("com.example.texture/roughness@1".to_string()),
-        Point2 { x: 50_000, y: 50_000 },
+        Point2 {
+            x: 50_000,
+            y: 50_000,
+        },
         BoundaryInclusion::Include,
     )
     .expect("non-conflicting overlap must resolve");
@@ -270,7 +290,10 @@ fn scenario_2_equal_paint_order_conflicting_values_are_fatal() {
         &ir,
         0,
         &PaintSemantic::Custom("com.example.texture/roughness@1".to_string()),
-        Point2 { x: 50_000, y: 50_000 },
+        Point2 {
+            x: 50_000,
+            y: 50_000,
+        },
         BoundaryInclusion::Include,
     )
     .expect_err("equal paint_order with different values must be a deterministic conflict");

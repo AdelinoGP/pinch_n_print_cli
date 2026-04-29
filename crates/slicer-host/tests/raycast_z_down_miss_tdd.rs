@@ -25,15 +25,21 @@ fn raycast_miss_returns_none_across_all_worlds() {
 
     let layer_hit = lhs::Host::raycast_z_down(&mut layer_ctx, "plate".to_string(), 5.0, 5.0, -1.0)
         .expect("layer miss query should not error");
-    let prepass_hit = phs::Host::raycast_z_down(&mut prepass_ctx, "plate".to_string(), 5.0, 5.0, -1.0)
-        .expect("prepass miss query should not error");
-    let finalization_hit = fhs::Host::raycast_z_down(&mut finalization_ctx, "plate".to_string(), 5.0, 5.0, -1.0)
-        .expect("finalization miss query should not error");
-    let postpass_hit = pphs::Host::raycast_z_down(&mut postpass_ctx, "plate".to_string(), 5.0, 5.0, -1.0)
-        .expect("postpass miss query should not error");
+    let prepass_hit =
+        phs::Host::raycast_z_down(&mut prepass_ctx, "plate".to_string(), 5.0, 5.0, -1.0)
+            .expect("prepass miss query should not error");
+    let finalization_hit =
+        fhs::Host::raycast_z_down(&mut finalization_ctx, "plate".to_string(), 5.0, 5.0, -1.0)
+            .expect("finalization miss query should not error");
+    let postpass_hit =
+        pphs::Host::raycast_z_down(&mut postpass_ctx, "plate".to_string(), 5.0, 5.0, -1.0)
+            .expect("postpass miss query should not error");
 
     assert_eq!(layer_hit, None, "layer miss should return None");
     assert_eq!(prepass_hit, None, "prepass miss should return None");
-    assert_eq!(finalization_hit, None, "finalization miss should return None");
+    assert_eq!(
+        finalization_hit, None,
+        "finalization miss should return None"
+    );
     assert_eq!(postpass_hit, None, "postpass miss should return None");
 }

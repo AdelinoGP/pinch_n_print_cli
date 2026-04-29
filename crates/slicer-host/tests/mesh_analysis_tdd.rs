@@ -109,7 +109,9 @@ fn mesh_analysis_classifies_known_facets_and_emits_overhang_region() {
                 indices: vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
             },
             transform: identity_transform(),
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
@@ -234,7 +236,11 @@ fn empty_plan() -> ExecutionPlan {
 }
 
 fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn p3(x: f32, y: f32, z: f32) -> Point3 {
@@ -251,8 +257,16 @@ fn identity_transform() -> Transform3d {
 
 fn build_volume() -> BoundingBox3 {
     BoundingBox3 {
-        min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-        max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+        min: Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        max: Point3 {
+            x: 200.0,
+            y: 200.0,
+            z: 200.0,
+        },
     }
 }
 
@@ -268,7 +282,9 @@ fn triangle_mesh(id: &str) -> MeshIR {
                 indices: vec![0, 1, 2],
             },
             transform: identity_transform(),
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
@@ -299,7 +315,9 @@ fn cube_like_mesh() -> MeshIR {
                 indices: vec![0, 1, 2, 3, 4, 5],
             },
             transform: identity_transform(),
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,

@@ -25,11 +25,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_host::{
-    build_wasm_instance_pool, dedup_same_claim_modules_for_test, execute_prepass_with_builtins,
-    instance_pool::WasmArtifactMetadata, Blackboard, BlackboardPrepassSlot, CompiledModule,
-    CompiledStage, ConfigSchema, DiagnosticLevel, ExecutionPlan, IrAccessMask, LoadDiagnostic,
-    LoadedModule, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner, WasmEngine,
-    WasmRuntimeDispatcher, execute_prepass,
+    build_wasm_instance_pool, dedup_same_claim_modules_for_test, execute_prepass,
+    execute_prepass_with_builtins, instance_pool::WasmArtifactMetadata, Blackboard,
+    BlackboardPrepassSlot, CompiledModule, CompiledStage, ConfigSchema, DiagnosticLevel,
+    ExecutionPlan, IrAccessMask, LoadDiagnostic, LoadedModule, PrepassExecutionError,
+    PrepassStageOutput, PrepassStageRunner, WasmEngine, WasmRuntimeDispatcher,
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
@@ -39,7 +39,11 @@ use slicer_ir::{
 // ── Fixtures ──────────────────────────────────────────────────────────────
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn support_planner_wasm() -> std::path::PathBuf {
@@ -64,17 +68,39 @@ fn overhang_plate_mesh() -> MeshIR {
             mesh: IndexedTriangleSet {
                 vertices: vec![
                     // Anchor so object bounds span z=0..2.0.
-                    Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
                     // Lower face of the floating plate at z=1.8.
-                    Point3 { x: 0.0, y: 0.0, z: 1.8 },
-                    Point3 { x: 4.0, y: 0.0, z: 1.8 },
-                    Point3 { x: 4.0, y: 4.0, z: 1.8 },
-                    Point3 { x: 0.0, y: 4.0, z: 1.8 },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 1.8,
+                    },
+                    Point3 {
+                        x: 4.0,
+                        y: 0.0,
+                        z: 1.8,
+                    },
+                    Point3 {
+                        x: 4.0,
+                        y: 4.0,
+                        z: 1.8,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 4.0,
+                        z: 1.8,
+                    },
                 ],
                 // CW winding (when viewed from above) → normals point down.
                 indices: vec![1, 3, 2, 1, 4, 3],
             },
-            transform: Transform3d { matrix: identity4() },
+            transform: Transform3d {
+                matrix: identity4(),
+            },
             config: slicer_ir::ObjectConfig {
                 data: HashMap::new(),
             },
@@ -83,8 +109,16 @@ fn overhang_plate_mesh() -> MeshIR {
             world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     }
 }
@@ -99,14 +133,46 @@ fn flat_cube_mesh() -> MeshIR {
             id: "cube".to_string(),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 1.0, y: 1.0, z: 0.0 },
-                    Point3 { x: 0.0, y: 1.0, z: 0.0 },
-                    Point3 { x: 0.0, y: 0.0, z: 1.0 },
-                    Point3 { x: 1.0, y: 0.0, z: 1.0 },
-                    Point3 { x: 1.0, y: 1.0, z: 1.0 },
-                    Point3 { x: 0.0, y: 1.0, z: 1.0 },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 1.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 1.0,
+                        y: 1.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 1.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 1.0,
+                    },
+                    Point3 {
+                        x: 1.0,
+                        y: 0.0,
+                        z: 1.0,
+                    },
+                    Point3 {
+                        x: 1.0,
+                        y: 1.0,
+                        z: 1.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 1.0,
+                        z: 1.0,
+                    },
                 ],
                 indices: vec![
                     0, 2, 1, 0, 3, 2, // bottom (overhang at z=0; planner skips layer 0)
@@ -117,25 +183,34 @@ fn flat_cube_mesh() -> MeshIR {
                     3, 0, 4, 3, 4, 7, // left
                 ],
             },
-            transform: Transform3d { matrix: identity4() },
-            config: slicer_ir::ObjectConfig { data: HashMap::new() },
+            transform: Transform3d {
+                matrix: identity4(),
+            },
+            config: slicer_ir::ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     }
 }
 
 fn identity4() -> [f64; 16] {
     [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
     ]
 }
 
@@ -178,14 +253,18 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         )
     });
     let component = Arc::new(
-        engine.compile_component(&bytes).expect("support-planner.wasm must compile"),
+        engine
+            .compile_component(&bytes)
+            .expect("support-planner.wasm must compile"),
     );
     let loaded = loaded_support_planner_module("com.core.support-planner", wasm_path);
     let pool = Arc::new(
         build_wasm_instance_pool(
             &loaded,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .expect("instance pool must build"),
     );
@@ -445,9 +524,7 @@ fn blackboard_accepts_and_returns_support_plan_ir() {
         Err(slicer_host::BlackboardError::DuplicatePrepassCommit { slot }) => {
             assert_eq!(slot, BlackboardPrepassSlot::SupportPlan);
         }
-        other => panic!(
-            "expected DuplicatePrepassCommit for SupportPlan; got {other:?}"
-        ),
+        other => panic!("expected DuplicatePrepassCommit for SupportPlan; got {other:?}"),
     }
 }
 
@@ -496,21 +573,45 @@ fn minimal_mesh_fixture() -> MeshIR {
             id: "plate".to_string(),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 0.0, y: 1.0, z: 0.0 },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 1.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 1.0,
+                        z: 0.0,
+                    },
                 ],
                 indices: vec![0, 1, 2],
             },
-            transform: Transform3d { matrix: identity4() },
-            config: slicer_ir::ObjectConfig { data: HashMap::new() },
+            transform: Transform3d {
+                matrix: identity4(),
+            },
+            config: slicer_ir::ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     }
 }
@@ -563,7 +664,9 @@ fn compiled_native_module(stage_id: &str, module_id: &str) -> CompiledModule {
         build_wasm_instance_pool(
             &loaded,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .expect("fixture instance pool must build"),
     );

@@ -32,7 +32,11 @@ use slicer_ir::{
 };
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn empty_mesh_ir() -> Arc<slicer_ir::MeshIR> {
@@ -40,8 +44,16 @@ fn empty_mesh_ir() -> Arc<slicer_ir::MeshIR> {
         schema_version: semver(1, 0, 0),
         objects: Vec::new(),
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: slicer_ir::Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: slicer_ir::Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     })
 }
@@ -56,7 +68,10 @@ fn guest_component_path(name: &str) -> PathBuf {
 
 fn load_guest(engine: &WasmEngine, name: &str) -> Arc<slicer_host::WasmComponent> {
     let path = guest_component_path(name);
-    assert!(path.exists(), "guest component {name} missing; run test-guests/build-test-guests.sh");
+    assert!(
+        path.exists(),
+        "guest component {name} missing; run test-guests/build-test-guests.sh"
+    );
     let bytes = std::fs::read(&path).expect("read .component.wasm");
     Arc::new(engine.compile_component(&bytes).expect("compile component"))
 }
@@ -92,8 +107,14 @@ fn make_module(
 ) -> CompiledModule {
     let loaded = make_loaded(id);
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .expect("build instance pool"),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("build instance pool"),
     );
     CompiledModule {
         module_id: id.into(),
@@ -106,7 +127,12 @@ fn make_module(
 }
 
 /// Build a small layer fixture with known `entity_count` and tool changes.
-fn layer_ir(global_layer_index: u32, z: f32, entity_count: usize, tool_changes: &[(u32, u32, u32)]) -> LayerCollectionIR {
+fn layer_ir(
+    global_layer_index: u32,
+    z: f32,
+    entity_count: usize,
+    tool_changes: &[(u32, u32, u32)],
+) -> LayerCollectionIR {
     let mut ordered_entities = Vec::with_capacity(entity_count);
     for i in 0..entity_count {
         ordered_entities.push(PrintEntity {
@@ -150,7 +176,11 @@ fn finalization_deep_copy_in_and_drain_back_out_round_trip() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine, "sdk-finalization-guest");
 
-    let module = make_module("com.test.sdk-finalization-deep", component, ConfigView::new());
+    let module = make_module(
+        "com.test.sdk-finalization-deep",
+        component,
+        ConfigView::new(),
+    );
     let bb = Blackboard::new(empty_mesh_ir(), 0);
     let stage = "PostPass::LayerFinalization".to_string();
 
@@ -220,7 +250,11 @@ fn finalization_drain_back_creates_synthetic_layer_when_config_requests() {
     FinalizationStageRunner::run_stage(&dispatcher, &stage, &module, &bb, &mut layers)
         .expect("finalization must succeed");
 
-    assert_eq!(layers.len(), 1, "synthetic layer must be appended via drain-back");
+    assert_eq!(
+        layers.len(),
+        1,
+        "synthetic layer must be appended via drain-back"
+    );
     assert_eq!(layers[0].global_layer_index, 0);
     assert!(
         (layers[0].z - 7.5).abs() < 1e-6,
@@ -238,22 +272,35 @@ fn finalization_deep_copy_round_trip_is_deterministic_across_repeated_runs() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine, "sdk-finalization-guest");
-    let module = make_module("com.test.sdk-finalization-det", component, ConfigView::new());
+    let module = make_module(
+        "com.test.sdk-finalization-det",
+        component,
+        ConfigView::new(),
+    );
     let bb = Blackboard::new(empty_mesh_ir(), 0);
     let stage = "PostPass::LayerFinalization".to_string();
 
     let run_once = || -> Vec<(u32, f32, u32, u32, String, u64)> {
-        let mut layers = vec![
-            layer_ir(0, 0.2, 2, &[]),
-            layer_ir(1, 0.4, 5, &[(2, 0, 1)]),
-        ];
+        let mut layers = vec![layer_ir(0, 0.2, 2, &[]), layer_ir(1, 0.4, 5, &[(2, 0, 1)])];
         FinalizationStageRunner::run_stage(&dispatcher, &stage, &module, &bb, &mut layers).unwrap();
         layers
             .iter()
-            .flat_map(|l| l.ordered_entities.iter().filter(|e| e.region_key.region_id == 109).map(|e| {
-                let p = &e.path.points[0];
-                (p.x as u32, p.y, p.z as u32, p.width as u32, e.region_key.object_id.clone(), e.region_key.region_id)
-            }))
+            .flat_map(|l| {
+                l.ordered_entities
+                    .iter()
+                    .filter(|e| e.region_key.region_id == 109)
+                    .map(|e| {
+                        let p = &e.path.points[0];
+                        (
+                            p.x as u32,
+                            p.y,
+                            p.z as u32,
+                            p.width as u32,
+                            e.region_key.object_id.clone(),
+                            e.region_key.region_id,
+                        )
+                    })
+            })
             .collect()
     };
     let a = run_once();

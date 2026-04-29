@@ -22,12 +22,12 @@
 
 #![allow(missing_docs)]
 
-use slicer_host::wit_host::{
-    HostExecutionContext, ExtrusionPath3d, ExtrusionRole, Point3, Point3WithWidth,
-    WallLoopType, WallLoopView,
-};
 use slicer_host::wit_host::layer::slicer::world_layer::ir_handles::{
     HostInfillOutputBuilder, HostPerimeterOutputBuilder, HostSupportOutputBuilder,
+};
+use slicer_host::wit_host::{
+    ExtrusionPath3d, ExtrusionRole, HostExecutionContext, Point3, Point3WithWidth, WallLoopType,
+    WallLoopView,
 };
 
 // ── Helper: build an ExtrusionPath3d with a given Z ───────────────────────
@@ -35,8 +35,20 @@ use slicer_host::wit_host::layer::slicer::world_layer::ir_handles::{
 fn make_path(z: f32) -> ExtrusionPath3d {
     ExtrusionPath3d {
         points: vec![
-            Point3WithWidth { x: 0.0, y: 0.0, z, width: 0.4, flow_factor: 1.0 },
-            Point3WithWidth { x: 10.0, y: 0.0, z, width: 0.4, flow_factor: 1.0 },
+            Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z,
+                width: 0.4,
+                flow_factor: 1.0,
+            },
+            Point3WithWidth {
+                x: 10.0,
+                y: 0.0,
+                z,
+                width: 0.4,
+                flow_factor: 1.0,
+            },
         ],
         role: ExtrusionRole::SparseInfill,
         speed_factor: 1.0,
@@ -49,8 +61,20 @@ fn make_wall_loop(z: f32) -> WallLoopView {
         loop_type: WallLoopType::Outer,
         path: ExtrusionPath3d {
             points: vec![
-                Point3WithWidth { x: 0.0, y: 0.0, z, width: 0.4, flow_factor: 1.0 },
-                Point3WithWidth { x: 10.0, y: 0.0, z, width: 0.4, flow_factor: 1.0 },
+                Point3WithWidth {
+                    x: 0.0,
+                    y: 0.0,
+                    z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
+                Point3WithWidth {
+                    x: 10.0,
+                    y: 0.0,
+                    z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -214,9 +238,21 @@ fn push_seam_candidate_below_floor_is_fatal() {
     let mut ctx = HostExecutionContext::new("test.perimeters".into(), 0.2, 0.2, None, None);
     let handle = ctx.push_perimeter_output_builder().unwrap();
 
-    let result = HostPerimeterOutputBuilder::push_seam_candidate(&mut ctx, handle, Point3 { x: 0.0, y: 0.0, z: 0.1 }, 1.0);
+    let result = HostPerimeterOutputBuilder::push_seam_candidate(
+        &mut ctx,
+        handle,
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.1,
+        },
+        1.0,
+    );
     let inner = result.unwrap();
-    assert!(inner.is_err(), "seam candidate Z below floor should be fatal");
+    assert!(
+        inner.is_err(),
+        "seam candidate Z below floor should be fatal"
+    );
     let msg = inner.unwrap_err();
     assert!(msg.contains("Z_ENVELOPE_VIOLATION"), "got: {msg}");
 }
@@ -228,9 +264,21 @@ fn push_seam_candidate_at_floor_boundary_is_valid() {
     let mut ctx = HostExecutionContext::new("test.perimeters".into(), 0.2, 0.2, None, None);
     let handle = ctx.push_perimeter_output_builder().unwrap();
 
-    let result = HostPerimeterOutputBuilder::push_seam_candidate(&mut ctx, handle, Point3 { x: 0.0, y: 0.0, z: 0.2 }, 1.0);
+    let result = HostPerimeterOutputBuilder::push_seam_candidate(
+        &mut ctx,
+        handle,
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.2,
+        },
+        1.0,
+    );
     let inner = result.unwrap();
-    assert!(inner.is_ok(), "seam candidate Z at floor boundary should be valid, got: {inner:?}");
+    assert!(
+        inner.is_ok(),
+        "seam candidate Z at floor boundary should be valid, got: {inner:?}"
+    );
 }
 
 // ── AC-support: push_wall_loop with invalid Z is fatal ─────────────────────
@@ -256,7 +304,10 @@ fn push_support_path_above_ceiling_is_fatal() {
 
     let result = HostSupportOutputBuilder::push_support_path(&mut ctx, handle, make_path(0.5));
     let inner = result.unwrap();
-    assert!(inner.is_err(), "support path Z above ceiling should be fatal");
+    assert!(
+        inner.is_err(),
+        "support path Z above ceiling should be fatal"
+    );
     let msg = inner.unwrap_err();
     assert!(msg.contains("Z_ENVELOPE_VIOLATION"), "got: {msg}");
 }
@@ -268,9 +319,13 @@ fn push_interface_path_below_floor_is_fatal() {
     let mut ctx = HostExecutionContext::new("test.support".into(), 0.2, 0.2, None, None);
     let handle = ctx.push_support_output_builder().unwrap();
 
-    let result = HostSupportOutputBuilder::push_interface_path(&mut ctx, handle, make_path(0.1), true);
+    let result =
+        HostSupportOutputBuilder::push_interface_path(&mut ctx, handle, make_path(0.1), true);
     let inner = result.unwrap();
-    assert!(inner.is_err(), "interface path Z below floor should be fatal");
+    assert!(
+        inner.is_err(),
+        "interface path Z below floor should be fatal"
+    );
     let msg = inner.unwrap_err();
     assert!(msg.contains("Z_ENVELOPE_VIOLATION"), "got: {msg}");
 }
@@ -316,12 +371,21 @@ fn normal_layer_uses_layer_z_catchup_uses_catchup_z_bottom() {
     // Normal layer: Z 0.1 should fail
     let mut ctx_normal = HostExecutionContext::new("test.infill".into(), 0.2, 0.2, None, None);
     let handle_normal = ctx_normal.push_infill_output_builder().unwrap();
-    let result_normal = HostInfillOutputBuilder::push_sparse_path(&mut ctx_normal, handle_normal, make_path(0.1));
-    assert!(result_normal.unwrap().is_err(), "Z 0.1 should be invalid for normal layer [0.2, 0.4]");
+    let result_normal =
+        HostInfillOutputBuilder::push_sparse_path(&mut ctx_normal, handle_normal, make_path(0.1));
+    assert!(
+        result_normal.unwrap().is_err(),
+        "Z 0.1 should be invalid for normal layer [0.2, 0.4]"
+    );
 
     // Catchup layer: Z 0.1 should pass
-    let mut ctx_catchup = HostExecutionContext::new("test.infill".into(), 0.2, 0.2, Some(0.0), None);
+    let mut ctx_catchup =
+        HostExecutionContext::new("test.infill".into(), 0.2, 0.2, Some(0.0), None);
     let handle_catchup = ctx_catchup.push_infill_output_builder().unwrap();
-    let result_catchup = HostInfillOutputBuilder::push_sparse_path(&mut ctx_catchup, handle_catchup, make_path(0.1));
-    assert!(result_catchup.unwrap().is_ok(), "Z 0.1 should be valid for catchup layer [0.0, 0.2]");
+    let result_catchup =
+        HostInfillOutputBuilder::push_sparse_path(&mut ctx_catchup, handle_catchup, make_path(0.1));
+    assert!(
+        result_catchup.unwrap().is_ok(),
+        "Z 0.1 should be valid for catchup layer [0.0, 0.2]"
+    );
 }

@@ -17,7 +17,10 @@ fn macro_src() -> String {
 #[test]
 fn macro_has_world_dispatch_with_all_four_world_kinds() {
     let src = macro_src();
-    assert!(src.contains("enum WorldGlueKind"), "world dispatch type is present");
+    assert!(
+        src.contains("enum WorldGlueKind"),
+        "world dispatch type is present"
+    );
     for kind in ["Postpass", "Finalization", "Prepass", "Layer"] {
         assert!(
             src.contains(&format!("WorldGlueKind::{kind}")),

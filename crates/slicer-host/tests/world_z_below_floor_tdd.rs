@@ -68,21 +68,40 @@ fn make_object(vertices: Vec<Point3>, matrix: [f64; 16]) -> ObjectMesh {
 #[test]
 fn object_at_z_zero_is_valid() {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 0.0 },
-        Point3 { x: 10.0, y: 10.0, z: 20.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 10.0,
+            y: 10.0,
+            z: 20.0,
+        },
     ];
     let obj = make_object(vertices, identity_matrix());
     let result = validate_world_z_floor(&obj);
     println!("object_at_z_zero: {result:?}");
-    assert!(result.is_ok(), "object at Z=0 should be Ok, got: {result:?}");
+    assert!(
+        result.is_ok(),
+        "object at Z=0 should be Ok, got: {result:?}"
+    );
 }
 
 /// An object entirely above Z=0 is valid.
 #[test]
 fn object_above_floor_is_valid() {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 5.0 },
-        Point3 { x: 0.0, y: 0.0, z: 30.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 5.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 30.0,
+        },
     ];
     let obj = make_object(vertices, identity_matrix());
     let result = validate_world_z_floor(&obj);
@@ -104,8 +123,16 @@ fn object_translated_5mm_below_floor_is_rejected() {
     // Vertices from Z=0 to Z=10 in local space, then translated -5mm in Z.
     // World Z: -5 to +5.  z_min = -5 → below floor.
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 0.0 },
-        Point3 { x: 0.0, y: 0.0, z: 10.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 10.0,
+        },
     ];
     let obj = make_object(vertices, translation_matrix(0.0, 0.0, -5.0));
     let result = validate_world_z_floor(&obj);
@@ -128,8 +155,16 @@ fn object_translated_5mm_below_floor_is_rejected() {
 #[test]
 fn object_translated_up_is_valid() {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 0.0 },
-        Point3 { x: 0.0, y: 0.0, z: 5.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 5.0,
+        },
     ];
     let obj = make_object(vertices, translation_matrix(0.0, 0.0, 10.0));
     let result = validate_world_z_floor(&obj);
@@ -148,8 +183,16 @@ fn object_translated_up_is_valid() {
 #[test]
 fn object_straddling_floor_is_rejected() {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: -1.0 },
-        Point3 { x: 0.0, y: 0.0, z: 5.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: -1.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 5.0,
+        },
     ];
     let obj = make_object(vertices, identity_matrix());
     let result = validate_world_z_floor(&obj);
@@ -190,8 +233,16 @@ fn empty_mesh_is_valid() {
 #[test]
 fn error_display_contains_error_code() {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 0.0 },
-        Point3 { x: 0.0, y: 0.0, z: 5.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 5.0,
+        },
     ];
     let obj = make_object(vertices, translation_matrix(0.0, 0.0, -10.0));
     let err = validate_world_z_floor(&obj).unwrap_err();
@@ -212,8 +263,16 @@ fn error_display_contains_error_code() {
 #[test]
 fn identity_object_at_z_zero_passes() {
     let vertices = vec![
-        Point3 { x: 5.0, y: 5.0, z: 0.0 },
-        Point3 { x: 10.0, y: 10.0, z: 48.0 }, // Benchy-like height
+        Point3 {
+            x: 5.0,
+            y: 5.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 10.0,
+            y: 10.0,
+            z: 48.0,
+        }, // Benchy-like height
     ];
     let obj = make_object(vertices, identity_matrix());
     let result = validate_world_z_floor(&obj);
@@ -234,8 +293,16 @@ fn identity_object_at_z_zero_passes() {
 fn error_z_min_field_is_accurate() {
     // Vertices at local Z 2.0..12.0, translated by -15mm → world Z -13..−3.
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 2.0 },
-        Point3 { x: 0.0, y: 0.0, z: 12.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 2.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 12.0,
+        },
     ];
     let obj = make_object(vertices, translation_matrix(0.0, 0.0, -15.0));
     let err = validate_world_z_floor(&obj).unwrap_err();
@@ -258,8 +325,16 @@ fn error_z_min_field_is_accurate() {
 #[test]
 fn large_negative_z_translation_is_rejected() {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 0.0 },
-        Point3 { x: 0.0, y: 0.0, z: 100.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 100.0,
+        },
     ];
     // translate -200mm → world Z -200 .. -100
     let obj = make_object(vertices, translation_matrix(0.0, 0.0, -200.0));

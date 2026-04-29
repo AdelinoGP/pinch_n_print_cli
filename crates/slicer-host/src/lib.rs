@@ -8,6 +8,7 @@ pub mod blackboard;
 pub mod cli;
 pub mod config_schema;
 pub mod dag;
+pub mod dispatch;
 pub mod execution_plan;
 pub mod gcode_emit;
 pub mod instance_pool;
@@ -30,7 +31,6 @@ pub mod topology;
 pub mod validation;
 pub mod wasm_instance;
 pub mod wit_host;
-pub mod dispatch;
 
 pub use blackboard::{
     Blackboard, BlackboardError, BlackboardPrepassSlot, DeferredRetract, DeferredTravelMove,
@@ -45,6 +45,11 @@ pub use config_schema::{
     ConfigValue, CrossValidateRule, CrossValidateSeverity, FullConfigSchema,
 };
 pub use dag::{build_intra_stage_dag, ModuleNode};
+pub use dispatch::{
+    apply_entity_order_proposal, commit_layer_outputs_for_test, export_name_for_stage,
+    project_ordered_entities, DispatchError, DispatchPhase, OrderedEntityView,
+    WasmRuntimeDispatcher,
+};
 pub use execution_plan::{
     bind_module_config_view, build_execution_plan, build_live_execution_plan,
     dedup_same_claim_modules_for_test, load_live_modules_for_plan, parse_cli_config_source,
@@ -57,17 +62,9 @@ pub use instance_pool::{
     build_wasm_instance_pool, InstancePoolError, InstancePoolMode, WasmArtifactMetadata,
     WasmInstanceLease, WasmInstancePool,
 };
-pub use wasm_instance::{WasmCallError, WasmComponent, WasmEngine, WasmInstance, WasmLoadError};
-pub use wit_host::HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS;
-pub use dispatch::{
-    apply_entity_order_proposal, commit_layer_outputs_for_test, export_name_for_stage,
-    project_ordered_entities, DispatchError, DispatchPhase, OrderedEntityView,
-    WasmRuntimeDispatcher,
-};
 pub use layer_executor::{
-    execute_per_layer, execute_per_layer_with_events, ir_path_for_layer_stage,
-    LayerExecutionError, LayerProgressSink, LayerStageError, LayerStageOutput, LayerStageRunner,
-    NoopLayerProgressSink,
+    execute_per_layer, execute_per_layer_with_events, ir_path_for_layer_stage, LayerExecutionError,
+    LayerProgressSink, LayerStageError, LayerStageOutput, LayerStageRunner, NoopLayerProgressSink,
 };
 pub use layer_finalization::{
     execute_layer_finalization, FinalizationError, FinalizationOutput, FinalizationOutputBuilder,
@@ -111,3 +108,5 @@ pub use validation::{
     DagValidationPass, DagValidationReport, DagValidationRequest, ModuleAccessAudit,
     SchedulerError, StageDag,
 };
+pub use wasm_instance::{WasmCallError, WasmComponent, WasmEngine, WasmInstance, WasmLoadError};
+pub use wit_host::HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS;

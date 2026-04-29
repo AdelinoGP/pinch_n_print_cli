@@ -68,8 +68,7 @@ impl PrepassModule for MeshSegmentation {
             }
         }
 
-        let known_object_ids: Vec<&str> =
-            objects.iter().map(|o| o.object_id.as_str()).collect();
+        let known_object_ids: Vec<&str> = objects.iter().map(|o| o.object_id.as_str()).collect();
         let object_rank = |id: &str| -> usize {
             known_object_ids
                 .iter()
@@ -86,12 +85,7 @@ impl PrepassModule for MeshSegmentation {
 
         for mark in parsed {
             output
-                .mark_triangle_paint(
-                    mark.object_id,
-                    mark.facet_index,
-                    mark.semantic,
-                    mark.value,
-                )
+                .mark_triangle_paint(mark.object_id, mark.facet_index, mark.semantic, mark.value)
                 .map_err(|e| ModuleError::fatal(1, e))?;
         }
 
@@ -164,17 +158,9 @@ mod tests {
 
     #[test]
     fn parse_mark_coerces_non_string_values() {
-        let pm = parse_mark(
-            "mesh_seg_mark:obj:0:tool",
-            &ConfigValue::Int(3),
-        )
-        .unwrap();
+        let pm = parse_mark("mesh_seg_mark:obj:0:tool", &ConfigValue::Int(3)).unwrap();
         assert_eq!(pm.value, "3");
-        let pm = parse_mark(
-            "mesh_seg_mark:obj:0:flag",
-            &ConfigValue::Bool(true),
-        )
-        .unwrap();
+        let pm = parse_mark("mesh_seg_mark:obj:0:flag", &ConfigValue::Bool(true)).unwrap();
         assert_eq!(pm.value, "true");
     }
 
@@ -186,17 +172,9 @@ mod tests {
     #[test]
     fn parse_mark_rejects_malformed_shape() {
         // Missing semantic segment.
-        assert!(parse_mark(
-            "mesh_seg_mark:obj:5",
-            &ConfigValue::String("x".into())
-        )
-        .is_none());
+        assert!(parse_mark("mesh_seg_mark:obj:5", &ConfigValue::String("x".into())).is_none());
         // Empty object id.
-        assert!(parse_mark(
-            "mesh_seg_mark::5:sem",
-            &ConfigValue::String("x".into())
-        )
-        .is_none());
+        assert!(parse_mark("mesh_seg_mark::5:sem", &ConfigValue::String("x".into())).is_none());
         // Non-numeric facet index.
         assert!(parse_mark(
             "mesh_seg_mark:obj:not-a-number:sem",
@@ -204,10 +182,6 @@ mod tests {
         )
         .is_none());
         // Unsupported value kind (a list).
-        assert!(parse_mark(
-            "mesh_seg_mark:obj:0:sem",
-            &ConfigValue::List(vec![])
-        )
-        .is_none());
+        assert!(parse_mark("mesh_seg_mark:obj:0:sem", &ConfigValue::List(vec![])).is_none());
     }
 }

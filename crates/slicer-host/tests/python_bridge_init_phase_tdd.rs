@@ -71,7 +71,8 @@ def other_name(text, config):
         "docs/05 §'Python Bridge' requires entry-resolution failures to be \
          classified as `Init`, not `ScriptError` or `MissingScript`. Got \
          phase={:?}, message={}",
-        err.phase, err.message
+        err.phase,
+        err.message
     );
     assert!(
         err.message.contains("process_gcode") || err.message.contains("entry"),
@@ -118,7 +119,8 @@ fn python_bridge_syntax_error_in_user_script_reports_script_error_phase() {
         "user-source syntax errors must be classified as ScriptError so the \
          operator knows to look at their own .py file. Got phase={:?}, \
          message={}",
-        err.phase, err.message
+        err.phase,
+        err.message
     );
 }
 
@@ -148,7 +150,13 @@ fn python_bridge_error_diagnostics_preserve_module_and_stage_identifiers() {
         .run_text(&binding, &empty_config(), "", &module_id, &stage_id)
         .expect_err("entry missing from empty script");
 
-    assert_eq!(err.module_id, module_id, "module_id must round-trip for routing");
-    assert_eq!(err.stage_id, stage_id, "stage_id must round-trip for routing");
+    assert_eq!(
+        err.module_id, module_id,
+        "module_id must round-trip for routing"
+    );
+    assert_eq!(
+        err.stage_id, stage_id,
+        "stage_id must round-trip for routing"
+    );
     assert_eq!(err.phase, PythonBridgePhase::Init);
 }

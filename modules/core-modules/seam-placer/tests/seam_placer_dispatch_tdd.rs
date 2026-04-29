@@ -28,12 +28,21 @@ fn empty_seam_config() -> ConfigView {
 
 fn random_seam_config() -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("seam_mode".to_string(), ConfigValue::String("random".to_string()));
+    fields.insert(
+        "seam_mode".to_string(),
+        ConfigValue::String("random".to_string()),
+    );
     ConfigView::from_map(fields)
 }
 
 fn ir_point(x: f32, y: f32, z: f32) -> Point3WithWidth {
-    Point3WithWidth { x, y, z, width: 0.4, flow_factor: 1.0 }
+    Point3WithWidth {
+        x,
+        y,
+        z,
+        width: 0.4,
+        flow_factor: 1.0,
+    }
 }
 
 fn ir_flags(count: usize) -> Vec<WallFeatureFlags> {
@@ -50,7 +59,10 @@ fn ir_flags(count: usize) -> Vec<WallFeatureFlags> {
 }
 
 fn ir_wall(layer_z: f32, points: &[(f32, f32)]) -> WallLoop {
-    let path_points: Vec<_> = points.iter().map(|(x, y)| ir_point(*x, *y, layer_z)).collect();
+    let path_points: Vec<_> = points
+        .iter()
+        .map(|(x, y)| ir_point(*x, *y, layer_z))
+        .collect();
     let point_count = path_points.len();
     WallLoop {
         perimeter_index: 0,
@@ -60,14 +72,20 @@ fn ir_wall(layer_z: f32, points: &[(f32, f32)]) -> WallLoop {
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
-        width_profile: WidthProfile { widths: vec![0.4; point_count] },
+        width_profile: WidthProfile {
+            widths: vec![0.4; point_count],
+        },
         feature_flags: ir_flags(point_count),
         boundary_type: WallBoundaryType::ExteriorSurface,
     }
 }
 
 fn ir_candidate(x: f32, y: f32, z: f32, score: f32, reason: SeamReason) -> SeamCandidate {
-    SeamCandidate { position: ir_point(x, y, z), score, reason }
+    SeamCandidate {
+        position: ir_point(x, y, z),
+        score,
+        reason,
+    }
 }
 
 fn sdk_region(
@@ -111,7 +129,10 @@ fn seam_placer_selects_lowest_effective_score_candidate() {
     let seam = output
         .resolved_seam()
         .expect("selected seam must be committed to output");
-    assert_eq!(seam.wall_index, 0, "single-wall region must resolve to wall 0");
+    assert_eq!(
+        seam.wall_index, 0,
+        "single-wall region must resolve to wall 0"
+    );
     assert!(
         (seam.point.x - 2.0).abs() < 0.001,
         "lowest effective score candidate should win, got seam at x={} instead of 2.0",
@@ -140,7 +161,10 @@ fn seam_rotation_preserves_non_target_walls() {
     let seam = output
         .resolved_seam()
         .expect("resolved seam must be emitted for the selected wall");
-    assert_eq!(seam.wall_index, 1, "candidate on second wall must resolve to wall 1");
+    assert_eq!(
+        seam.wall_index, 1,
+        "candidate on second wall must resolve to wall 1"
+    );
 
     let rotated_loops = output.rotated_wall_loops();
     assert_eq!(
@@ -169,7 +193,10 @@ fn seam_contract_is_deterministic_across_repeated_dispatch() {
         let regions = vec![sdk_region(
             "obj-a",
             0,
-            vec![ir_wall(0.2, &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (3.0, 0.0)])],
+            vec![ir_wall(
+                0.2,
+                &[(0.0, 0.0), (1.0, 0.0), (2.0, 0.0), (3.0, 0.0)],
+            )],
             vec![
                 ir_candidate(0.0, 0.0, 0.2, 0.2, SeamReason::Aligned),
                 ir_candidate(1.0, 0.0, 0.2, 0.2, SeamReason::Aligned),
@@ -180,7 +207,10 @@ fn seam_contract_is_deterministic_across_repeated_dispatch() {
         module
             .run_wall_postprocess(7, &regions, &mut output, &config)
             .expect("wall postprocess must succeed");
-        (output.resolved_seam().cloned(), output.rotated_wall_loops().to_vec())
+        (
+            output.resolved_seam().cloned(),
+            output.rotated_wall_loops().to_vec(),
+        )
     };
 
     let first = run_once();

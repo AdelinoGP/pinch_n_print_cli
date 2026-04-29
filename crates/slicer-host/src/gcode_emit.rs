@@ -156,14 +156,26 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 .map(|zh| (zh.after_entity_index, zh))
                 .collect();
             // retracts: per entity index, collect all in order (Retract entries first, Unretract entries last)
-            let mut retracts_by_entity: std::collections::HashMap<u32, Vec<&slicer_ir::TravelRetract>> = std::collections::HashMap::new();
+            let mut retracts_by_entity: std::collections::HashMap<
+                u32,
+                Vec<&slicer_ir::TravelRetract>,
+            > = std::collections::HashMap::new();
             for r in &layer.retracts {
-                retracts_by_entity.entry(r.after_entity_index).or_default().push(r);
+                retracts_by_entity
+                    .entry(r.after_entity_index)
+                    .or_default()
+                    .push(r);
             }
             // travel_moves: per entity index, collect all in order
-            let mut travel_moves_by_entity: std::collections::HashMap<u32, Vec<&slicer_ir::TravelMove>> = std::collections::HashMap::new();
+            let mut travel_moves_by_entity: std::collections::HashMap<
+                u32,
+                Vec<&slicer_ir::TravelMove>,
+            > = std::collections::HashMap::new();
             for tm in &layer.travel_moves {
-                travel_moves_by_entity.entry(tm.after_entity_index).or_default().push(tm);
+                travel_moves_by_entity
+                    .entry(tm.after_entity_index)
+                    .or_default()
+                    .push(tm);
             }
 
             // Process each entity
@@ -173,9 +185,9 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 let role = &entity.path.role;
 
                 // Emit ;TYPE: comment when role changes from previous entity
-                let role_changed = prev_role.as_ref().is_none_or(|prev| {
-                    !role_equals(prev, role)
-                });
+                let role_changed = prev_role
+                    .as_ref()
+                    .is_none_or(|prev| !role_equals(prev, role));
                 if role_changed {
                     commands.push(GCodeCommand::Raw {
                         text: orca_type_label(role).to_string(),
@@ -251,34 +263,52 @@ impl GCodeEmitter for DefaultGCodeEmitter {
 
                 if let Some(retracts) = entity_retracts {
                     for r in retracts.iter().filter(|r| !r.is_unretract) {
-                        commands.push(GCodeCommand::Retract { length: r.length, speed: r.speed });
+                        commands.push(GCodeCommand::Retract {
+                            length: r.length,
+                            speed: r.speed,
+                        });
                     }
                 }
                 if let Some(zh) = entity_z_hop {
                     let hop_z = layer_z + zh.hop_height;
                     commands.push(GCodeCommand::Move {
-                        x: None, y: None, z: Some(hop_z), e: None, f: None,
+                        x: None,
+                        y: None,
+                        z: Some(hop_z),
+                        e: None,
+                        f: None,
                         role: ExtrusionRole::Custom("Travel".to_string()),
                     });
                 }
                 if let Some(travels) = entity_travels {
                     for tm in travels.iter() {
                         commands.push(GCodeCommand::Move {
-                            x: tm.x, y: tm.y, z: None, e: None, f: tm.f,
+                            x: tm.x,
+                            y: tm.y,
+                            z: None,
+                            e: None,
+                            f: tm.f,
                             role: ExtrusionRole::Custom("Travel".to_string()),
                         });
                     }
                 }
                 if let Some(zh) = entity_z_hop {
                     commands.push(GCodeCommand::Move {
-                        x: None, y: None, z: Some(layer_z), e: None, f: None,
+                        x: None,
+                        y: None,
+                        z: Some(layer_z),
+                        e: None,
+                        f: None,
                         role: ExtrusionRole::Custom("Travel".to_string()),
                     });
                     let _ = zh;
                 }
                 if let Some(retracts) = entity_retracts {
                     for r in retracts.iter().filter(|r| r.is_unretract) {
-                        commands.push(GCodeCommand::Unretract { length: r.length, speed: r.speed });
+                        commands.push(GCodeCommand::Unretract {
+                            length: r.length,
+                            speed: r.speed,
+                        });
                     }
                 }
             }

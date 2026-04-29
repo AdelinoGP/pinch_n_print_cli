@@ -423,7 +423,11 @@ fn seam_plan_blackboard_slot_is_write_once() {
 
     // Build a minimal valid SeamPosition for the chosen_candidate field.
     let dummy_position = slicer_ir::Point3WithWidth {
-        x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0,
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        width: 0.4,
+        flow_factor: 1.0,
     };
     let seam_position = SeamPosition {
         point: dummy_position,
@@ -432,7 +436,11 @@ fn seam_plan_blackboard_slot_is_write_once() {
 
     // Commit an empty SeamPlanIR.
     let plan = SeamPlanIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         entries: vec![SeamPlanEntry {
             region_key: RegionKey {
                 global_layer_index: 0,
@@ -453,7 +461,11 @@ fn seam_plan_blackboard_slot_is_write_once() {
 
     // Second commit to the same slot must be rejected.
     let duplicate = SeamPlanIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         entries: vec![],
     };
     let second = blackboard.commit_seam_plan(Arc::new(duplicate));

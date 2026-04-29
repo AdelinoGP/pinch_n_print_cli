@@ -11,12 +11,12 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use slicer_host::progress_events::{ProgressEvent, ProgressPhase};
 use slicer_host::{
     execute_per_layer_with_events, Blackboard, CompiledModule, ExecutionPlan, LayerArena,
     LayerExecutionError, LayerProgressSink, LayerStageError, LayerStageOutput, LayerStageRunner,
     SlicePostProcessPaintAnnotationError,
 };
-use slicer_host::progress_events::{ProgressEvent, ProgressPhase};
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, InfillType,
     LayerPaintMap, MeshIR, ObjectConfig, ObjectMesh, PaintRegionIR, PaintSemantic, PaintValue,
@@ -29,10 +29,26 @@ fn unit_tetra() -> IndexedTriangleSet {
     // (0,0), (9.9, 0), (0, 9.9) in mm.
     IndexedTriangleSet {
         vertices: vec![
-            Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            Point3 { x: 10.0, y: 0.0, z: 0.0 },
-            Point3 { x: 0.0, y: 10.0, z: 0.0 },
-            Point3 { x: 0.0, y: 0.0, z: 10.0 },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 10.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 10.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 10.0,
+            },
         ],
         indices: vec![0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3],
     }
@@ -79,19 +95,33 @@ fn default_resolved() -> ResolvedConfig {
 
 fn tetra_mesh_ir(object_id: &str) -> MeshIR {
     MeshIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: vec![ObjectMesh {
             id: object_id.to_string(),
             mesh: unit_tetra(),
             transform: identity_transform(),
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 10.0, y: 10.0, z: 10.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 10.0,
+                y: 10.0,
+                z: 10.0,
+            },
         },
     }
 }
@@ -167,7 +197,11 @@ fn ambiguous_triangle_paint_regions(layer_index: u32) -> PaintRegionIR {
         },
     );
     PaintRegionIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         per_layer,
     }
 }
@@ -212,7 +246,8 @@ fn paint_annotation_is_invoked_on_real_per_layer_path_and_warnings_reach_sink() 
         .unwrap();
 
     let sink = VecSink(Mutex::new(Vec::new()));
-    let (layer_irs, _layer_audits) = execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink).expect("ok");
+    let (layer_irs, _layer_audits) =
+        execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink).expect("ok");
     assert_eq!(layer_irs.len(), 1);
 
     let events = sink.0.lock().unwrap().clone();
@@ -221,7 +256,10 @@ fn paint_annotation_is_invoked_on_real_per_layer_path_and_warnings_reach_sink() 
         "paint annotator must produce at least one progress event on the real per-layer path"
     );
     let event = &events[0];
-    let err = event.error.as_ref().expect("module_error must carry error payload");
+    let err = event
+        .error
+        .as_ref()
+        .expect("module_error must carry error payload");
     assert_eq!(err.code, 504);
     assert!(!err.fatal, "paint-fallback warnings must be non-fatal");
     assert_eq!(event.phase, Some(ProgressPhase::PerLayer));
@@ -235,17 +273,24 @@ fn paint_annotation_degraded_fallback_is_deterministic_across_repeated_runs() {
     let plan2 = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
     let mut bb1 = Blackboard::new(Arc::clone(&mesh), 1);
     let mut bb2 = Blackboard::new(Arc::clone(&mesh), 1);
-    bb1.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0))).unwrap();
-    bb2.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0))).unwrap();
+    bb1.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0)))
+        .unwrap();
+    bb2.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0)))
+        .unwrap();
 
     let sink_a = VecSink(Mutex::new(Vec::new()));
     let sink_b = VecSink(Mutex::new(Vec::new()));
-    let (_layer_irs_a, _audits_a) = execute_per_layer_with_events(&plan1, &bb1, &NoopRunner, &sink_a).unwrap();
-    let (_layer_irs_b, _audits_b) = execute_per_layer_with_events(&plan2, &bb2, &NoopRunner, &sink_b).unwrap();
+    let (_layer_irs_a, _audits_a) =
+        execute_per_layer_with_events(&plan1, &bb1, &NoopRunner, &sink_a).unwrap();
+    let (_layer_irs_b, _audits_b) =
+        execute_per_layer_with_events(&plan2, &bb2, &NoopRunner, &sink_b).unwrap();
 
     let a = sink_a.0.lock().unwrap().clone();
     let b = sink_b.0.lock().unwrap().clone();
-    assert_eq!(a, b, "paint-fallback events must be byte-identical across runs");
+    assert_eq!(
+        a, b,
+        "paint-fallback events must be byte-identical across runs"
+    );
     assert!(!a.is_empty());
 }
 
@@ -254,7 +299,8 @@ fn paint_annotation_missing_required_semantic_surfaces_typed_fatal_error() {
     let mesh = Arc::new(tetra_mesh_ir("obj-a"));
     let plan = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
     let mut bb = Blackboard::new(Arc::clone(&mesh), plan.global_layers.len());
-    bb.commit_paint_regions(Arc::new(material_only_on_other_layer())).unwrap();
+    bb.commit_paint_regions(Arc::new(material_only_on_other_layer()))
+        .unwrap();
 
     let sink = VecSink(Mutex::new(Vec::new()));
     let err = execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink)
@@ -309,8 +355,8 @@ impl PrepassStageRunner for NoopPrepassRunner {
         _s: &StageId,
         _m: &CompiledModuleAlias,
         _b: &Blackboard,
-        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-            Ok((PrepassStageOutput::None, Vec::new()))
+    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+        Ok((PrepassStageOutput::None, Vec::new()))
     }
 }
 struct NoopFinalizationRunner;
@@ -354,7 +400,11 @@ impl GCodeEmitter for MinimalEmitter {
         _b: &Blackboard,
     ) -> Result<GCodeIR, PostpassError> {
         Ok(GCodeIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             commands: Vec::new(),
             metadata: PrintMetadata {
                 slicer_version: "test".into(),
@@ -383,7 +433,10 @@ fn minimal_runners() -> PipelineStageRunners {
     }
 }
 
-fn capture_emitter() -> (Arc<JsonLinesEmitter<Vec<u8>>>, Arc<dyn ProgressEventEmitter>) {
+fn capture_emitter() -> (
+    Arc<JsonLinesEmitter<Vec<u8>>>,
+    Arc<dyn ProgressEventEmitter>,
+) {
     let e = Arc::new(JsonLinesEmitter::new(Vec::<u8>::new()));
     let as_emitter: Arc<dyn ProgressEventEmitter> = e.clone();
     (e, as_emitter)
@@ -394,7 +447,8 @@ fn runtime_sink_forwards_paint_warning_to_both_jsonl_emitter_and_slice_event_col
     let mesh = Arc::new(tetra_mesh_ir("obj-a"));
     let plan = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
     let mut bb = Blackboard::new(Arc::clone(&mesh), plan.global_layers.len());
-    bb.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0))).unwrap();
+    bb.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0)))
+        .unwrap();
 
     let (raw_emitter, emitter) = capture_emitter();
     let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
@@ -419,7 +473,9 @@ fn runtime_sink_forwards_paint_warning_to_both_jsonl_emitter_and_slice_event_col
     );
     assert!(lines.iter().all(|l| l.contains("\"code\":504")));
     assert!(lines.iter().all(|l| l.contains("\"fatal\":false")));
-    assert!(lines.iter().all(|l| l.contains("\"event\":\"module_error\"")));
+    assert!(lines
+        .iter()
+        .all(|l| l.contains("\"event\":\"module_error\"")));
     assert!(lines
         .iter()
         .all(|l| l.contains("\"stage\":\"Layer::SlicePostProcess\"")));
@@ -432,7 +488,8 @@ fn runtime_sink_jsonl_output_is_byte_identical_across_repeated_runs() {
     let run_once = || -> Vec<u8> {
         let plan = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
         let mut bb = Blackboard::new(Arc::clone(&mesh), 1);
-        bb.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0))).unwrap();
+        bb.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0)))
+            .unwrap();
         let (raw, emitter) = capture_emitter();
         let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
         let sink = RuntimeProgressSink::new(emitter, collector);
@@ -495,11 +552,8 @@ fn main_production_entry_path_uses_run_pipeline_with_events() {
     // sink-less `run_pipeline` (which dropped paint warnings into
     // `NoopLayerProgressSink`). If this regresses, paint-annotation
     // degraded-success events stop reaching the documented transport.
-    let main_src = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/main.rs"
-    ))
-    .expect("read main.rs");
+    let main_src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"))
+        .expect("read main.rs");
     assert!(
         main_src.contains("run_pipeline_with_events"),
         "main.rs must call run_pipeline_with_events"

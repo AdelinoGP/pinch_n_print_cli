@@ -10,23 +10,37 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_host::{
-    execute_layer_slice, execute_per_layer, Blackboard, CompiledModule, ExecutionPlan,
-    LayerArena, LayerExecutionError, LayerSliceError, LayerStageError, LayerStageOutput,
-    LayerStageRunner,
+    execute_layer_slice, execute_per_layer, Blackboard, CompiledModule, ExecutionPlan, LayerArena,
+    LayerExecutionError, LayerSliceError, LayerStageError, LayerStageOutput, LayerStageRunner,
 };
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, InfillType, MeshIR,
-    ObjectConfig, ObjectMesh, Point3, ResolvedConfig, SemVer, StageId, SupportType, Transform3d,
-    WallGenerator,
+    ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, InfillType, MeshIR, ObjectConfig,
+    ObjectMesh, Point3, ResolvedConfig, SemVer, StageId, SupportType, Transform3d, WallGenerator,
 };
 
 fn unit_tetra() -> IndexedTriangleSet {
     IndexedTriangleSet {
         vertices: vec![
-            Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            Point3 { x: 1.0, y: 0.0, z: 0.0 },
-            Point3 { x: 0.0, y: 1.0, z: 0.0 },
-            Point3 { x: 0.0, y: 0.0, z: 1.0 },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
         ],
         indices: vec![0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3],
     }
@@ -73,19 +87,33 @@ fn identity_transform() -> Transform3d {
 
 fn tetra_mesh_ir(object_id: &str) -> MeshIR {
     MeshIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: vec![ObjectMesh {
             id: object_id.to_string(),
             mesh: unit_tetra(),
             transform: identity_transform(),
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     }
 }
@@ -153,7 +181,9 @@ impl LayerStageRunner for RecordingRunner {
         _blackboard: &Blackboard,
         arena: &mut LayerArena,
     ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        let slice = arena.slice().expect("host-built-in Layer::Slice must have staged SliceIR");
+        let slice = arena
+            .slice()
+            .expect("host-built-in Layer::Slice must have staged SliceIR");
         let region_count = slice.regions.len();
         self.seen_slice
             .lock()
@@ -262,8 +292,7 @@ fn layer_slice_builtin_produces_real_polygons_for_benchy_mesh() {
         return;
     }
 
-    let mesh =
-        slicer_host::model_loader::load_model(&path).expect("load 3dbenchy STL");
+    let mesh = slicer_host::model_loader::load_model(&path).expect("load 3dbenchy STL");
     assert_eq!(mesh.objects.len(), 1, "benchy STL must load as one object");
     let object_id = mesh.objects[0].id.clone();
 
@@ -296,11 +325,7 @@ fn layer_slice_builtin_produces_real_polygons_for_benchy_mesh() {
             !region.polygons.is_empty(),
             "expected non-empty polygons at z={z}, got 0; slice stage has regressed"
         );
-        let total_points: usize = region
-            .polygons
-            .iter()
-            .map(|p| p.contour.points.len())
-            .sum();
+        let total_points: usize = region.polygons.iter().map(|p| p.contour.points.len()).sum();
         assert!(
             total_points >= 20,
             "expected a real hull contour at z={z} (>= 20 points), got {total_points}"
@@ -381,7 +406,6 @@ fn per_layer_executor_surfaces_layer_slice_failure_structured() {
         }
         other => panic!("expected LayerSlice error, got {other:?}"),
     }
-
 }
 
 /// AC-5 / TASK-134 regression guard: a catch-up GlobalLayer

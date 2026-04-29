@@ -14,24 +14,26 @@
 
 #![allow(missing_docs)]
 
-use slicer_host::{
-    wit_host::{object_mesh_to_wit_mesh_object_view, prepass},
-    Blackboard, CompiledModule, IrAccessMask,
-    PrepassStageRunner, WasmEngine,
-};
-use slicer_ir::{
-    BoundingBox3, ConfigView, FacetPaintData, IndexedTriangleSet,
-    MeshIR, ObjectConfig, ObjectMesh, PaintLayer,
-    PaintSemantic, PaintValue, Point3, SemVer, Transform3d,
-};
 use slicer_host::dispatch::WasmRuntimeDispatcher;
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_host::manifest::LoadedModule;
+use slicer_host::{
+    wit_host::{object_mesh_to_wit_mesh_object_view, prepass},
+    Blackboard, CompiledModule, IrAccessMask, PrepassStageRunner, WasmEngine,
+};
+use slicer_ir::{
+    BoundingBox3, ConfigView, FacetPaintData, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh,
+    PaintLayer, PaintSemantic, PaintValue, Point3, SemVer, Transform3d,
+};
 use std::sync::Arc;
 
 /// Helper to construct a SemVer.
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 /// Helper to construct a Point3.
@@ -43,17 +45,16 @@ fn point3(x: f32, y: f32, z: f32) -> Point3 {
 fn identity_transform() -> Transform3d {
     Transform3d {
         matrix: [
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ],
     }
 }
 
 /// Path to the pre-built prepass-guest component.
-const PREPASS_GUEST_PATH: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-guests/prepass-guest.component.wasm");
+const PREPASS_GUEST_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../test-guests/prepass-guest.component.wasm"
+);
 
 fn load_prepass_guest(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmComponent>> {
     let path = std::path::Path::new(PREPASS_GUEST_PATH);
@@ -98,8 +99,14 @@ fn make_compiled_module_with(
 ) -> CompiledModule {
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .unwrap(),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .unwrap(),
     );
     CompiledModule {
         module_id: id.to_string(),
@@ -130,23 +137,12 @@ fn cube_mesh() -> ObjectMesh {
             ],
             indices: vec![
                 // Front face triangles
-                0, 1, 2,
-                0, 2, 3,
-                // Back face triangles
-                4, 6, 5,
-                4, 7, 6,
-                // Top face triangles
-                3, 2, 6,
-                3, 6, 7,
-                // Bottom face triangles
-                4, 5, 1,
-                4, 1, 0,
-                // Right face triangles
-                1, 5, 6,
-                1, 6, 2,
-                // Left face triangles
-                4, 0, 3,
-                4, 3, 7,
+                0, 1, 2, 0, 2, 3, // Back face triangles
+                4, 6, 5, 4, 7, 6, // Top face triangles
+                3, 2, 6, 3, 6, 7, // Bottom face triangles
+                4, 5, 1, 4, 1, 0, // Right face triangles
+                1, 5, 6, 1, 6, 2, // Left face triangles
+                4, 0, 3, 4, 3, 7,
             ],
         },
         transform: identity_transform(),
@@ -170,10 +166,7 @@ fn mesh_with_paint() -> ObjectMesh {
                 point3(10.0, 10.0, 0.0),
                 point3(0.0, 10.0, 0.0),
             ],
-            indices: vec![
-                0, 1, 2,
-                0, 2, 3,
-            ],
+            indices: vec![0, 1, 2, 0, 2, 3],
         },
         transform: identity_transform(),
         config: ObjectConfig {
@@ -250,7 +243,10 @@ fn mesh_object_view_has_empty_paint_layers_when_no_paint() {
     let mesh = cube_mesh();
     let view: prepass::MeshObjectView = object_mesh_to_wit_mesh_object_view(&mesh);
 
-    assert!(view.paint_layers.is_empty(), "mesh without paint should have empty paint_layers");
+    assert!(
+        view.paint_layers.is_empty(),
+        "mesh without paint should have empty paint_layers"
+    );
 }
 
 /// Proof that paint_layers are correctly populated when FacetPaintData is present.
@@ -259,7 +255,11 @@ fn mesh_object_view_contains_paint_layers() {
     let mesh = mesh_with_paint();
     let view: prepass::MeshObjectView = object_mesh_to_wit_mesh_object_view(&mesh);
 
-    assert_eq!(view.paint_layers.len(), 2, "mesh with paint should have 2 paint layers");
+    assert_eq!(
+        view.paint_layers.len(),
+        2,
+        "mesh with paint should have 2 paint layers"
+    );
 
     // First layer should be Material
     assert_eq!(view.paint_layers[0].semantic, "material");
@@ -373,11 +373,8 @@ fn mesh_seg_empty_geometry_produces_fatal_error() {
             return;
         }
     };
-    let module = make_compiled_module_with(
-        "com.test.empty-geo",
-        "PrePass::MeshSegmentation",
-        component,
-    );
+    let module =
+        make_compiled_module_with("com.test.empty-geo", "PrePass::MeshSegmentation", component);
 
     // Mesh with empty vertices (no triangles can exist without vertices).
     let empty_vertices_mesh = ObjectMesh {

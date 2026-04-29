@@ -417,9 +417,13 @@ impl LayerStageRunner for ScriptedRunner {
 
         // Check for non-fatal error
         if let Some(message) = self.non_fatal_errors.get(&key) {
-            return Ok((LayerStageOutput::NonFatalError {
-                message: message.clone(),
-            }, Vec::new(), Vec::new()));
+            return Ok((
+                LayerStageOutput::NonFatalError {
+                    message: message.clone(),
+                },
+                Vec::new(),
+                Vec::new(),
+            ));
         }
 
         Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
@@ -733,7 +737,11 @@ fn mk_path(x: f32) -> slicer_ir::ExtrusionPath3D {
 fn mk_path_role(x: f32, role: slicer_ir::ExtrusionRole) -> slicer_ir::ExtrusionPath3D {
     slicer_ir::ExtrusionPath3D {
         points: vec![slicer_ir::Point3WithWidth {
-            x, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0,
+            x,
+            y: 0.0,
+            z: 0.0,
+            width: 0.4,
+            flow_factor: 1.0,
         }],
         role,
         speed_factor: 1.0,
@@ -806,8 +814,14 @@ fn support_ir_simple() -> slicer_ir::SupportIR {
     slicer_ir::SupportIR {
         schema_version: semver(1, 0, 0),
         global_layer_index: 0,
-        support_paths: vec![mk_path_role(100.0, slicer_ir::ExtrusionRole::SupportMaterial)],
-        interface_paths: vec![mk_path_role(101.0, slicer_ir::ExtrusionRole::SupportInterface)],
+        support_paths: vec![mk_path_role(
+            100.0,
+            slicer_ir::ExtrusionRole::SupportMaterial,
+        )],
+        interface_paths: vec![mk_path_role(
+            101.0,
+            slicer_ir::ExtrusionRole::SupportInterface,
+        )],
         raft_paths: Vec::new(),
         ironing_paths: Vec::new(),
     }
@@ -833,19 +847,24 @@ fn ordered_entities_assembled_with_preserved_region_identity() {
     // 2 walls + (1 sparse + 1 solid) + 1 sparse + 1 support + 1 interface = 7
     assert_eq!(l.ordered_entities.len(), 7, "all committed paths drained");
 
-    let keys: Vec<(String, u64)> = l.ordered_entities.iter()
+    let keys: Vec<(String, u64)> = l
+        .ordered_entities
+        .iter()
         .map(|e| (e.region_key.object_id.clone(), e.region_key.region_id))
         .collect();
     // Perimeter region order, then infill region order, then support (flat: "", 0).
-    assert_eq!(keys, vec![
-        ("obj-A".into(), 1), // perim region A wall
-        ("obj-B".into(), 2), // perim region B wall
-        ("obj-A".into(), 1), // infill A sparse
-        ("obj-A".into(), 1), // infill A solid
-        ("obj-B".into(), 2), // infill B sparse
-        ("".into(), 0),      // support
-        ("".into(), 0),      // interface
-    ]);
+    assert_eq!(
+        keys,
+        vec![
+            ("obj-A".into(), 1), // perim region A wall
+            ("obj-B".into(), 2), // perim region B wall
+            ("obj-A".into(), 1), // infill A sparse
+            ("obj-A".into(), 1), // infill A solid
+            ("obj-B".into(), 2), // infill B sparse
+            ("".into(), 0),      // support
+            ("".into(), 0),      // interface
+        ]
+    );
     // topo_order is 0..N
     for (i, e) in l.ordered_entities.iter().enumerate() {
         assert_eq!(e.topo_order, i as u32, "topo_order is emit position");
@@ -864,7 +883,10 @@ fn ordered_entities_empty_when_arena_has_no_committed_content() {
     let runner = StagingRunner::new(None, None, None);
     let layers = execute_per_layer(&plan, &blackboard, &runner).expect("layer exec");
     assert_eq!(layers.len(), 1);
-    assert!(layers[0].ordered_entities.is_empty(), "empty-input -> empty ordered_entities");
+    assert!(
+        layers[0].ordered_entities.is_empty(),
+        "empty-input -> empty ordered_entities"
+    );
 }
 
 #[test]
@@ -935,14 +957,29 @@ fn catchup_metadata_remains_stable_across_all_per_layer_stages() {
     // structure to stay compatible with both HEAD and post-module_region_index
     // builds: we use struct-literal only for the fields that are pub.
     let per_layer_stages = vec![
-        compiled_stage("Layer::SlicePostProcess", &["com.example.slice-postprocess"]),
+        compiled_stage(
+            "Layer::SlicePostProcess",
+            &["com.example.slice-postprocess"],
+        ),
         compiled_stage("Layer::Perimeters", &["com.example.perimeters"]),
-        compiled_stage("Layer::PerimetersPostProcess", &["com.example.perimeters-postprocess"]),
+        compiled_stage(
+            "Layer::PerimetersPostProcess",
+            &["com.example.perimeters-postprocess"],
+        ),
         compiled_stage("Layer::Infill", &["com.example.infill"]),
-        compiled_stage("Layer::InfillPostProcess", &["com.example.infill-postprocess"]),
+        compiled_stage(
+            "Layer::InfillPostProcess",
+            &["com.example.infill-postprocess"],
+        ),
         compiled_stage("Layer::Support", &["com.example.support"]),
-        compiled_stage("Layer::SupportPostProcess", &["com.example.support-postprocess"]),
-        compiled_stage("Layer::PathOptimization", &["com.example.path-optimization"]),
+        compiled_stage(
+            "Layer::SupportPostProcess",
+            &["com.example.support-postprocess"],
+        ),
+        compiled_stage(
+            "Layer::PathOptimization",
+            &["com.example.path-optimization"],
+        ),
     ];
 
     // Build ExecutionPlan using the same pattern as execution_plan_fixture
@@ -987,7 +1024,8 @@ fn catchup_metadata_remains_stable_across_all_per_layer_stages() {
     // stages DO call run_stage() and are recorded here.
     let recordings = runner.recordings();
     assert_eq!(
-        recordings.len(), 8,
+        recordings.len(),
+        8,
         "all eight module-driven per-layer stages should be invoked"
     );
     for (i, rec) in recordings.iter().enumerate() {

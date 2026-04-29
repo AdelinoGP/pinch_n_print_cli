@@ -155,8 +155,7 @@ impl PerimeterOutputBuilder {
         wall_index: u32,
         loop_: WallLoop,
     ) -> Result<(), String> {
-        self.rotated_wall_loops
-            .push((pos, wall_index, loop_));
+        self.rotated_wall_loops.push((pos, wall_index, loop_));
         Ok(())
     }
 

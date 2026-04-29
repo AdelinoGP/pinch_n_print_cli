@@ -6,7 +6,7 @@
 //! All four tests are intentionally FAILING (TDD approach) because the role
 //! logic is not yet implemented in the module.
 
-use slicer_ir::{ConfigView, ExtrusionRole, ExPolygon, Polygon, Point2};
+use slicer_ir::{ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::prelude::LayerModule;
 use slicer_sdk::views::SliceRegionView;
@@ -19,10 +19,22 @@ fn make_square_expolygon() -> ExPolygon {
     let u = slicer_ir::mm_to_units;
     let contour = Polygon {
         points: vec![
-            Point2 { x: u(0.0), y: u(0.0) },
-            Point2 { x: u(10.0), y: u(0.0) },
-            Point2 { x: u(10.0), y: u(10.0) },
-            Point2 { x: u(0.0), y: u(10.0) },
+            Point2 {
+                x: u(0.0),
+                y: u(0.0),
+            },
+            Point2 {
+                x: u(10.0),
+                y: u(0.0),
+            },
+            Point2 {
+                x: u(10.0),
+                y: u(10.0),
+            },
+            Point2 {
+                x: u(0.0),
+                y: u(10.0),
+            },
         ],
     };
     ExPolygon {
@@ -56,9 +68,12 @@ fn has_path_with_role(paths: &[slicer_ir::ExtrusionPath3D], role: ExtrusionRole)
 /// Helper: returns true if NO path in `paths` uses any of the three surface roles.
 fn no_surface_fill_roles(paths: &[slicer_ir::ExtrusionPath3D]) -> bool {
     !paths.iter().any(|p| {
-        matches!(p.role, ExtrusionRole::TopSolidInfill
-                       | ExtrusionRole::BottomSolidInfill
-                       | ExtrusionRole::BridgeInfill)
+        matches!(
+            p.role,
+            ExtrusionRole::TopSolidInfill
+                | ExtrusionRole::BottomSolidInfill
+                | ExtrusionRole::BridgeInfill
+        )
     })
 }
 
@@ -67,8 +82,7 @@ fn no_surface_fill_roles(paths: &[slicer_ir::ExtrusionPath3D]) -> bool {
 // ---------------------------------------------------------------------------
 #[test]
 fn top_surface_region_emits_top_solid_infill() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new())
-        .unwrap();
+    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
     let region = make_test_region(true, false, false);
     let mut output = InfillOutputBuilder::new();
 
@@ -95,8 +109,7 @@ fn top_surface_region_emits_top_solid_infill() {
 // ---------------------------------------------------------------------------
 #[test]
 fn bottom_surface_region_emits_bottom_solid_infill() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new())
-        .unwrap();
+    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
     let region = make_test_region(false, true, false);
     let mut output = InfillOutputBuilder::new();
 
@@ -123,8 +136,7 @@ fn bottom_surface_region_emits_bottom_solid_infill() {
 // ---------------------------------------------------------------------------
 #[test]
 fn bridge_surface_region_emits_bridge_infill_role() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new())
-        .unwrap();
+    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
     let region = make_test_region(false, false, true);
     let mut output = InfillOutputBuilder::new();
 
@@ -152,8 +164,7 @@ fn bridge_surface_region_emits_bridge_infill_role() {
 // ---------------------------------------------------------------------------
 #[test]
 fn sparse_only_region_does_not_fabricate_surface_fill_roles() {
-    let module = RectilinearInfill::on_print_start(&ConfigView::new())
-        .unwrap();
+    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
     let region = make_test_region(false, false, false);
     let mut output = InfillOutputBuilder::new();
 

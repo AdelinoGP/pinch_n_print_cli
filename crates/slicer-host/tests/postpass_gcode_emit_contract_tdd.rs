@@ -15,7 +15,11 @@
 use slicer_ir::{BoundingBox3, ExtrusionRole, GCodeIR, MeshIR, Point3, SemVer};
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn empty_mesh_ir() -> slicer_ir::MeshIR {
@@ -23,8 +27,16 @@ fn empty_mesh_ir() -> slicer_ir::MeshIR {
         schema_version: semver(1, 0, 0),
         objects: Vec::new(),
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     }
 }
@@ -170,26 +182,12 @@ fn full_postpass_pipeline_preserves_orca_emission_contract() {
     let mut runner = NoOpRunner;
 
     // Run postpass twice and confirm deterministic output
-    let (text1, _audits1) = execute_postpass(
-        &plan,
-        &layer_irs,
-        &bb,
-        &emitter,
-        &serializer,
-        &mut runner,
-    )
-    .unwrap();
+    let (text1, _audits1) =
+        execute_postpass(&plan, &layer_irs, &bb, &emitter, &serializer, &mut runner).unwrap();
 
     let mut runner2 = NoOpRunner;
-    let (text2, _audits2) = execute_postpass(
-        &plan,
-        &layer_irs,
-        &bb,
-        &emitter,
-        &serializer,
-        &mut runner2,
-    )
-    .unwrap();
+    let (text2, _audits2) =
+        execute_postpass(&plan, &layer_irs, &bb, &emitter, &serializer, &mut runner2).unwrap();
 
     // Output must be byte-for-byte identical across runs (determinism check)
     assert_eq!(

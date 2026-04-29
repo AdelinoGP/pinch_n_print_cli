@@ -25,8 +25,8 @@
 //! required behavior and expose the gap.
 
 use slicer_host::{
-    build_intra_stage_dag, validate_startup_dag, ClaimHolder, ConflictScope,
-    DagValidationRequest, LoadedModule, SchedulerError, StageDag,
+    build_intra_stage_dag, validate_startup_dag, ClaimHolder, ConflictScope, DagValidationRequest,
+    LoadedModule, SchedulerError, StageDag,
 };
 use slicer_ir::SemVer;
 use std::path::PathBuf;
@@ -89,10 +89,7 @@ fn request_with_per_layer_transition(
 ) -> DagValidationRequest {
     DagValidationRequest {
         modules: vec![module_a.clone(), module_b.clone()],
-        stage_dags: vec![stage_dag_for(
-            stage,
-            &[module_a.clone(), module_b.clone()],
-        )],
+        stage_dags: vec![stage_dag_for(stage, &[module_a.clone(), module_b.clone()])],
         host_ir_schema_version: semver(1, 0, 0),
         claim_holders: vec![
             ClaimHolder {
@@ -110,10 +107,7 @@ fn request_with_per_layer_transition(
     }
 }
 
-fn report_has_transition_error(
-    report: &slicer_host::DagValidationReport,
-    claim: &str,
-) -> bool {
+fn report_has_transition_error(report: &slicer_host::DagValidationReport, claim: &str) -> bool {
     report.errors.iter().any(|d| match &d.detail {
         // Either a new dedicated variant...
         //   SchedulerError::ClaimTransitionViolation { claim: c, .. } => c == claim,
@@ -146,8 +140,12 @@ fn non_transitionable_perimeter_generator_rejects_layer_varying_holder() {
         "perimeter-generator",
     );
 
-    let request =
-        request_with_per_layer_transition("Layer::Perimeters", "perimeter-generator", &alpha, &beta);
+    let request = request_with_per_layer_transition(
+        "Layer::Perimeters",
+        "perimeter-generator",
+        &alpha,
+        &beta,
+    );
     let report = validate_startup_dag(&request);
 
     assert!(

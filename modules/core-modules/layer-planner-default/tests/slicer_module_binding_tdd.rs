@@ -10,10 +10,7 @@ fn binding_surface_matches_prepass_layer_planning_stage() {
         DefaultLayerPlanner::__slicer_world_id(),
         "slicer:world-prepass@1.0.0"
     );
-    assert_eq!(
-        DefaultLayerPlanner::__slicer_trait_name(),
-        "PrepassModule"
-    );
+    assert_eq!(DefaultLayerPlanner::__slicer_trait_name(), "PrepassModule");
     assert_eq!(
         DefaultLayerPlanner::__slicer_stage_name(),
         "PrePass::LayerPlanning"

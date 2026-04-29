@@ -12,8 +12,8 @@
 
 use slicer_ir::{ConfigValue, ConfigView, SeamReason};
 use slicer_sdk::builders::PerimeterOutputBuilder;
-use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::slicer_module;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
@@ -93,18 +93,21 @@ fn find_seam_location(
     wall_loops: &[slicer_sdk::prelude::WallLoop],
     seam: &slicer_ir::Point3WithWidth,
 ) -> Option<(usize, usize)> {
-    wall_loops.iter().enumerate().find_map(|(wall_index, loop_)| {
-        loop_
-            .path
-            .points
-            .iter()
-            .position(|point| {
-                (point.x - seam.x).abs() < 0.001
-                    && (point.y - seam.y).abs() < 0.001
-                    && (point.z - seam.z).abs() < 0.001
-            })
-            .map(|start_idx| (wall_index, start_idx))
-    })
+    wall_loops
+        .iter()
+        .enumerate()
+        .find_map(|(wall_index, loop_)| {
+            loop_
+                .path
+                .points
+                .iter()
+                .position(|point| {
+                    (point.x - seam.x).abs() < 0.001
+                        && (point.y - seam.y).abs() < 0.001
+                        && (point.z - seam.z).abs() < 0.001
+                })
+                .map(|start_idx| (wall_index, start_idx))
+        })
 }
 
 fn rotate_wall_loop(

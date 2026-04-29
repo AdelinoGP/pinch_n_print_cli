@@ -26,31 +26,46 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_ir::{ConfigValue, ConfigView, GlobalLayer, StageId};
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
-use slicer_host::{
-    Blackboard, CompiledModule, FinalizationOutput, FinalizationStageRunner,
-    IrAccessMask, LoadedModule, PrepassStageOutput, PrepassStageRunner,
-    WasmEngine, WasmRuntimeDispatcher,
-};
 use slicer_host::wit_host::{
-    BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG, BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
-    ExtrusionRole as WitExtrusionRole, PaintSemantic as WitPaintSemantic,
-    PaintValue as WitPaintValue, WallFeatureFlag as WitWallFeatureFlag,
-    convert_extrusion_role, convert_wall_feature_flag,
+    convert_extrusion_role, convert_wall_feature_flag, ExtrusionRole as WitExtrusionRole,
+    PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
+    WallFeatureFlag as WitWallFeatureFlag, BUILTIN_EXTRUSION_ROLE_PRIME_TOWER_TAG,
+    BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
 };
+use slicer_host::{
+    Blackboard, CompiledModule, FinalizationOutput, FinalizationStageRunner, IrAccessMask,
+    LoadedModule, PrepassStageOutput, PrepassStageRunner, WasmEngine, WasmRuntimeDispatcher,
+};
+use slicer_ir::{ConfigValue, ConfigView, GlobalLayer, StageId};
 
 fn semver(major: u32, minor: u32, patch: u32) -> slicer_ir::SemVer {
-    slicer_ir::SemVer { major, minor, patch }
+    slicer_ir::SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn empty_mesh_ir() -> Arc<slicer_ir::MeshIR> {
     Arc::new(slicer_ir::MeshIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: Vec::new(),
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: slicer_ir::Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: slicer_ir::Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     })
 }
@@ -108,8 +123,14 @@ fn make_module(
 ) -> CompiledModule {
     let loaded = make_loaded_module(module_id, stage_id, wit_world);
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .expect("build instance pool"),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("build instance pool"),
     );
     CompiledModule {
         module_id: module_id.to_string(),
@@ -146,14 +167,9 @@ fn finalization_world_macro_guest_round_trips_typed_config_and_result() {
     let bb = Blackboard::new(empty_mesh_ir(), 0);
     let stage: StageId = "PostPass::LayerFinalization".to_string();
 
-    let err = FinalizationStageRunner::run_stage(
-        &dispatcher,
-        &stage,
-        &module,
-        &bb,
-        &mut Vec::new(),
-    )
-    .expect_err("guest must surface typed ModuleError driven by config");
+    let err =
+        FinalizationStageRunner::run_stage(&dispatcher, &stage, &module, &bb, &mut Vec::new())
+            .expect_err("guest must surface typed ModuleError driven by config");
     // The typed error code set in config must reach the trait body and
     // marshal back through the component boundary.
     let msg = format!("{err}");
@@ -161,7 +177,10 @@ fn finalization_world_macro_guest_round_trips_typed_config_and_result() {
         msg.contains("241") || msg.contains("0xF1") || msg.contains("f1"),
         "error must carry the intentional code 0xF1 (241): {msg}"
     );
-    assert!(msg.contains("sdk-finalization-guest"), "trait body must run: {msg}");
+    assert!(
+        msg.contains("sdk-finalization-guest"),
+        "trait body must run: {msg}"
+    );
 }
 
 #[test]
@@ -178,14 +197,9 @@ fn finalization_world_macro_guest_succeeds_without_error_config() {
     );
     let bb = Blackboard::new(empty_mesh_ir(), 0);
     let stage: StageId = "PostPass::LayerFinalization".to_string();
-    let out = FinalizationStageRunner::run_stage(
-        &dispatcher,
-        &stage,
-        &module,
-        &bb,
-        &mut Vec::new(),
-    )
-    .expect("empty config path must succeed through real typed glue");
+    let out =
+        FinalizationStageRunner::run_stage(&dispatcher, &stage, &module, &bb, &mut Vec::new())
+            .expect("empty config path must succeed through real typed glue");
     assert!(matches!(out, FinalizationOutput::Success));
 }
 
@@ -204,8 +218,9 @@ fn finalization_world_macro_guest_is_deterministic() {
     let bb = Blackboard::new(empty_mesh_ir(), 0);
     let stage: StageId = "PostPass::LayerFinalization".to_string();
     for _ in 0..3 {
-        let out = FinalizationStageRunner::run_stage(&dispatcher, &stage, &module, &bb, &mut Vec::new())
-            .expect("deterministic success across repeated calls");
+        let out =
+            FinalizationStageRunner::run_stage(&dispatcher, &stage, &module, &bb, &mut Vec::new())
+                .expect("deterministic success across repeated calls");
         assert!(matches!(out, FinalizationOutput::Success));
     }
 }
@@ -230,9 +245,14 @@ fn prepass_world_macro_guest_round_trips_typed_config_and_result() {
     let err = PrepassStageRunner::run_stage(&dispatcher, &stage, &module, &bb)
         .expect_err("guest must surface typed ModuleError driven by config");
     let msg = format!("{err}");
-    assert!(msg.contains("231") || msg.contains("0xE7") || msg.contains("e7"),
-        "error must carry the intentional code 0xE7 (231): {msg}");
-    assert!(msg.contains("sdk-prepass-guest"), "trait body must run: {msg}");
+    assert!(
+        msg.contains("231") || msg.contains("0xE7") || msg.contains("e7"),
+        "error must carry the intentional code 0xE7 (231): {msg}"
+    );
+    assert!(
+        msg.contains("sdk-prepass-guest"),
+        "trait body must run: {msg}"
+    );
 }
 
 #[test]
@@ -290,7 +310,7 @@ fn one_layer_arena() -> (slicer_host::LayerArena, GlobalLayer) {
 
 #[test]
 fn layer_world_macro_guest_round_trips_typed_config_and_result() {
-    use slicer_host::{LayerStageRunner, LayerStageError};
+    use slicer_host::{LayerStageError, LayerStageRunner};
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine, "sdk-layer-infill-guest");
@@ -309,9 +329,16 @@ fn layer_world_macro_guest_round_trips_typed_config_and_result() {
     let err = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module, &bb, &mut arena)
         .expect_err("guest must surface typed ModuleError driven by config");
     match err {
-        LayerStageError::FatalModule { stage_id, module_id, message } => {
+        LayerStageError::FatalModule {
+            stage_id,
+            module_id,
+            message,
+        } => {
             assert_eq!(stage_id, "Layer::Infill");
-            assert!(module_id.contains("sdk-layer-infill"), "module id preserved: {module_id}");
+            assert!(
+                module_id.contains("sdk-layer-infill"),
+                "module id preserved: {module_id}"
+            );
             assert!(
                 message.contains("213") || message.contains("0xD5") || message.contains("d5"),
                 "error carries intentional code 0xD5 (213): {message}"
@@ -397,7 +424,10 @@ fn slice_ir_with_regions(
                         points: vec![
                             Point2 { x: 0, y: 0 },
                             Point2 { x: 10_000, y: 0 },
-                            Point2 { x: 10_000, y: 10_000 },
+                            Point2 {
+                                x: 10_000,
+                                y: 10_000,
+                            },
                             Point2 { x: 0, y: 10_000 },
                         ],
                     },
@@ -406,7 +436,9 @@ fn slice_ir_with_regions(
                 .collect(),
             infill_areas: (0..i + 1)
                 .map(|_| ExPolygon {
-                    contour: Polygon { points: vec![Point2 { x: 0, y: 0 }] },
+                    contour: Polygon {
+                        points: vec![Point2 { x: 0, y: 0 }],
+                    },
                     holes: Vec::new(),
                 })
                 .collect(),
@@ -415,7 +447,12 @@ fn slice_ir_with_regions(
             boundary_paint: HashMap::new(),
         })
         .collect();
-    SliceIR { schema_version: semver(1, 0, 0), global_layer_index: layer_index, z, regions }
+    SliceIR {
+        schema_version: semver(1, 0, 0),
+        global_layer_index: layer_index,
+        z,
+        regions,
+    }
 }
 
 #[test]
@@ -520,7 +557,11 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
     //   point[0].width = first region's effective_layer_height = 0.2
     //   point[0].flow_factor = first region's infill_areas().len() = 1
     assert_eq!(p0.x, 3.0, "deep-copy witnessed 3 regions (got x={})", p0.x);
-    assert_eq!(p0.y, 12.0, "deep-copy witnessed 12 polygons (got y={})", p0.y);
+    assert_eq!(
+        p0.y, 12.0,
+        "deep-copy witnessed 12 polygons (got y={})",
+        p0.y
+    );
     assert!(
         (p0.z - 1.8).abs() < 1e-4,
         "deep-copy witnessed z=1.8 from SliceRegionView::z(): {}",
@@ -538,7 +579,11 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
     );
     // Second point encodes the forwarded layer_index.
     let p1 = &path0.points[1];
-    assert_eq!(p1.x, 9.0, "typed layer_index=9 forwarded to trait body: x={}", p1.x);
+    assert_eq!(
+        p1.x, 9.0,
+        "typed layer_index=9 forwarded to trait body: x={}",
+        p1.x
+    );
 }
 
 #[test]
@@ -568,7 +613,9 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
             is_sync_layer: false,
         };
         let mut arena = LayerArena::new();
-        arena.set_slice(slice_ir_with_regions(2, 0.4, 2, 5)).unwrap();
+        arena
+            .set_slice(slice_ir_with_regions(2, 0.4, 2, 5))
+            .unwrap();
         LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module, &bb, &mut arena).unwrap();
         let p = &arena.infill().unwrap().regions[0].sparse_infill[0].points[0];
         snapshots.push((p.x, p.y, p.z, p.width, p.flow_factor));
@@ -687,7 +734,10 @@ fn paint_semantic_custom_payload_roundtrip() {
     // Verify the WIT variant carries the correct payload
     match wit_semantic {
         WitPaintSemantic::Custom(ref s) => {
-            assert_eq!(s, "com.example/texture@1", "WIT custom semantic must carry payload");
+            assert_eq!(
+                s, "com.example/texture@1",
+                "WIT custom semantic must carry payload"
+            );
         }
         other => panic!("expected WitPaintSemantic::Custom, got {:?}", other),
     }
@@ -704,7 +754,10 @@ fn paint_semantic_custom_payload_roundtrip() {
     // Assert payload is preserved
     match ir_result {
         slicer_ir::PaintSemantic::Custom(s) => {
-            assert_eq!(s, "com.example/texture@1", "custom payload must survive round-trip");
+            assert_eq!(
+                s, "com.example/texture@1",
+                "custom payload must survive round-trip"
+            );
         }
         other => panic!("expected PaintSemantic::Custom, got {:?}", other),
     }

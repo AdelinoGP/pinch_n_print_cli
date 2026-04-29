@@ -11,10 +11,7 @@ fn binding_surface_matches_documented_layer_infill_stage() {
         "slicer:world-layer@1.0.0"
     );
     assert_eq!(RectilinearInfill::__slicer_trait_name(), "LayerModule");
-    assert_eq!(
-        RectilinearInfill::__slicer_stage_name(),
-        "Layer::Infill"
-    );
+    assert_eq!(RectilinearInfill::__slicer_stage_name(), "Layer::Infill");
     assert_eq!(
         RectilinearInfill::__slicer_stage_export_name(),
         "run-infill"

@@ -39,8 +39,8 @@ fn boundary_preserves_nan_and_infinity() {
 
 #[test]
 fn config_value_to_storage_round_trips_basic_types() {
-    use slicer_ir::ConfigValue;
     use slicer_host::wit_host::ConfigValueStorage;
+    use slicer_ir::ConfigValue;
 
     assert!(matches!(
         config_value_to_storage(&ConfigValue::Bool(true)),
@@ -62,8 +62,8 @@ fn config_value_to_storage_round_trips_basic_types() {
 
 #[test]
 fn config_value_to_storage_homogeneous_float_list_collapses() {
-    use slicer_ir::ConfigValue;
     use slicer_host::wit_host::ConfigValueStorage;
+    use slicer_ir::ConfigValue;
 
     let v = ConfigValue::List(vec![ConfigValue::Float(1.0), ConfigValue::Float(2.0)]);
     match config_value_to_storage(&v) {

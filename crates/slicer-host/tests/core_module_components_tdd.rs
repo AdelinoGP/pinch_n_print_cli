@@ -28,12 +28,14 @@ fn repo_root() -> PathBuf {
 fn layer_planner_default_loads_as_real_component() {
     let core_modules = repo_root().join("modules/core-modules");
     assert!(
-        core_modules.join("layer-planner-default/layer-planner-default.wasm").exists(),
+        core_modules
+            .join("layer-planner-default/layer-planner-default.wasm")
+            .exists(),
         "layer-planner-default.wasm missing; run modules/core-modules/build-core-modules.sh"
     );
 
-    let out = load_live_modules_for_plan(&[core_modules.clone()], 1)
-        .expect("load_live_modules_for_plan");
+    let out =
+        load_live_modules_for_plan(&[core_modules.clone()], 1).expect("load_live_modules_for_plan");
 
     let binding = out
         .bindings

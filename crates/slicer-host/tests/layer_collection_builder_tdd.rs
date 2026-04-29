@@ -20,19 +20,29 @@ use slicer_host::{
     WasmEngine, WasmRuntimeDispatcher, HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS,
 };
 use slicer_ir::{
-    BoundingBox3, ExPolygon, ExtrusionPath3D, ExtrusionRole, GlobalLayer, LoopType, MeshIR,
-    PerimeterIR, PerimeterRegion, Point2, Point3, Point3WithWidth, Polygon, LayerCollectionIR,
+    BoundingBox3, ExPolygon, ExtrusionPath3D, ExtrusionRole, GlobalLayer, LayerCollectionIR,
+    LoopType, MeshIR, PerimeterIR, PerimeterRegion, Point2, Point3, Point3WithWidth, Polygon,
     PrintEntity, RegionKey, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
 };
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 fn semver() -> SemVer {
-    SemVer { major: 1, minor: 0, patch: 0 }
+    SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    }
 }
 
 fn pt(x: f32, y: f32, z: f32) -> Point3WithWidth {
-    Point3WithWidth { x, y, z, width: 0.4, flow_factor: 1.0 }
+    Point3WithWidth {
+        x,
+        y,
+        z,
+        width: 0.4,
+        flow_factor: 1.0,
+    }
 }
 
 fn entity_with_points(points: Vec<Point3WithWidth>, original_idx: u32) -> PrintEntity {
@@ -142,8 +152,7 @@ fn valid_permutation_is_applied_to_ordered_entities() {
 
 #[test]
 fn reversal_flag_reverses_path_points_in_place() {
-    let mut arena =
-        single_entity_arena_with_path(pt(0.0, 0.0, 0.2), pt(5.0, 0.0, 0.2));
+    let mut arena = single_entity_arena_with_path(pt(0.0, 0.0, 0.2), pt(5.0, 0.0, 0.2));
 
     let proposal: Vec<(u32, bool)> = vec![(0, true)];
 
@@ -260,21 +269,9 @@ fn get_ordered_entities_projects_staged_entities_in_index_order() {
     //   [(30.0, SparseInfill), (0.0, BridgeInfill), (10.0, SparseInfill)].
     // All entities share object_id = "obj".
     let entities = vec![
-        entity_with_points_and_role(
-            vec![pt(30.0, 0.0, 0.2)],
-            0,
-            ExtrusionRole::SparseInfill,
-        ),
-        entity_with_points_and_role(
-            vec![pt(0.0, 0.0, 0.2)],
-            1,
-            ExtrusionRole::BridgeInfill,
-        ),
-        entity_with_points_and_role(
-            vec![pt(10.0, 0.0, 0.2)],
-            2,
-            ExtrusionRole::SparseInfill,
-        ),
+        entity_with_points_and_role(vec![pt(30.0, 0.0, 0.2)], 0, ExtrusionRole::SparseInfill),
+        entity_with_points_and_role(vec![pt(0.0, 0.0, 0.2)], 1, ExtrusionRole::BridgeInfill),
+        entity_with_points_and_role(vec![pt(10.0, 0.0, 0.2)], 2, ExtrusionRole::SparseInfill),
     ];
     let mut arena = LayerArena::new();
     arena.set_layer_collection(LayerCollectionIR {
@@ -291,11 +288,24 @@ fn get_ordered_entities_projects_staged_entities_in_index_order() {
 
     let views = project_ordered_entities(&arena);
 
-    assert_eq!(views.len(), 3, "projection must include all 3 staged entities");
+    assert_eq!(
+        views.len(),
+        3,
+        "projection must include all 3 staged entities"
+    );
 
-    assert_eq!(views[0].original_index, 0, "views[0].original_index must be 0");
-    assert_eq!(views[1].original_index, 1, "views[1].original_index must be 1");
-    assert_eq!(views[2].original_index, 2, "views[2].original_index must be 2");
+    assert_eq!(
+        views[0].original_index, 0,
+        "views[0].original_index must be 0"
+    );
+    assert_eq!(
+        views[1].original_index, 1,
+        "views[1].original_index must be 1"
+    );
+    assert_eq!(
+        views[2].original_index, 2,
+        "views[2].original_index must be 2"
+    );
 
     let xs: Vec<f32> = views.iter().map(|v| v.start_point.x).collect();
     assert_eq!(
@@ -329,7 +339,11 @@ fn get_ordered_entities_carries_endpoints_and_point_count() {
 
     let views = project_ordered_entities(&arena);
 
-    assert_eq!(views.len(), 1, "single-entity fixture must project to 1 view");
+    assert_eq!(
+        views.len(),
+        1,
+        "single-entity fixture must project to 1 view"
+    );
     let v = &views[0];
     assert_eq!(
         v.start_point.x, 0.0,
@@ -339,10 +353,7 @@ fn get_ordered_entities_carries_endpoints_and_point_count() {
         v.end_point.x, 5.0,
         "end_point.x must mirror path.points.last().x"
     );
-    assert_eq!(
-        v.point_count, 2,
-        "point_count must equal path.points.len()"
-    );
+    assert_eq!(v.point_count, 2, "point_count must equal path.points.len()");
 }
 
 #[test]
@@ -368,9 +379,9 @@ fn malformed_proposal_leaves_ordered_entities_unchanged() {
 
     // Try each malformed proposal flavor and confirm the arena is untouched.
     for proposal in [
-        vec![(0u32, false), (0, false), (1, false)],   // duplicate
-        vec![(99u32, false), (0, false), (1, false)],  // out of range
-        vec![(0u32, false), (1, false)],               // wrong length
+        vec![(0u32, false), (0, false), (1, false)],  // duplicate
+        vec![(99u32, false), (0, false), (1, false)], // out of range
+        vec![(0u32, false), (1, false)],              // wrong length
     ] {
         let err = apply_entity_order_proposal(&mut arena, &proposal)
             .expect_err("malformed proposal must produce an Err");
@@ -399,7 +410,11 @@ const MULTI_READ_GUEST_COMPONENT: &str = concat!(
 );
 
 fn semver_v(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
@@ -407,8 +422,16 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
         schema_version: semver_v(1, 0, 0),
         objects: Vec::new(),
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     })
 }
@@ -444,8 +467,14 @@ fn make_module(
 ) -> CompiledModule {
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .expect("build instance pool"),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("build instance pool"),
     );
     CompiledModule {
         module_id: id.to_string(),
@@ -545,25 +574,19 @@ impl<'a> slicer_host::LayerStageRunner for PerimeterSeedingRunner<'a> {
         slicer_host::LayerStageError,
     > {
         if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
-            if let Some(perimeter) = self
-                .perimeter
-                .lock()
-                .expect("lock seed perimeter")
-                .take()
-            {
+            if let Some(perimeter) = self.perimeter.lock().expect("lock seed perimeter").take() {
                 arena
                     .set_perimeter(perimeter)
                     .expect("seed perimeter into arena");
-                return Ok((slicer_host::LayerStageOutput::Success, Vec::new(), Vec::new()));
+                return Ok((
+                    slicer_host::LayerStageOutput::Success,
+                    Vec::new(),
+                    Vec::new(),
+                ));
             }
         }
         slicer_host::LayerStageRunner::run_stage(
-            self.inner,
-            stage_id,
-            layer,
-            module,
-            blackboard,
-            arena,
+            self.inner, stage_id, layer, module, blackboard, arena,
         )
     }
 }
@@ -632,8 +655,7 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
         perimeter: std::sync::Mutex::new(Some(seeded_perimeter)),
     };
 
-    let layers =
-        execute_per_layer(&plan, &blackboard, &runner).expect("execute per-layer plan");
+    let layers = execute_per_layer(&plan, &blackboard, &runner).expect("execute per-layer plan");
     assert_eq!(
         layers.len(),
         1,

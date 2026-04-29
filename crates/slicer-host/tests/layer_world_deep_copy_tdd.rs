@@ -22,7 +22,11 @@ const LAYER_GUEST_COMPONENT: &str = concat!(
 );
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
@@ -30,17 +34,33 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
         schema_version: semver(1, 0, 0),
         objects: Vec::new(),
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     })
 }
 
 fn load_layer_guest(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {
     let path = PathBuf::from(LAYER_GUEST_COMPONENT);
-    assert!(path.exists(), "layer guest component missing at {}", path.display());
+    assert!(
+        path.exists(),
+        "layer guest component missing at {}",
+        path.display()
+    );
     let bytes = std::fs::read(&path).expect("read layer guest component");
-    Arc::new(engine.compile_component(&bytes).expect("compile layer guest component"))
+    Arc::new(
+        engine
+            .compile_component(&bytes)
+            .expect("compile layer guest component"),
+    )
 }
 
 fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
@@ -67,11 +87,21 @@ fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
     }
 }
 
-fn make_module(id: &str, stage: &str, component: Arc<slicer_host::WasmComponent>) -> CompiledModule {
+fn make_module(
+    id: &str,
+    stage: &str,
+    component: Arc<slicer_host::WasmComponent>,
+) -> CompiledModule {
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .expect("build instance pool"),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("build instance pool"),
     );
     CompiledModule {
         module_id: id.to_string(),
@@ -133,7 +163,11 @@ fn make_perimeter_ir_with_ids(layer_index: u32, ids: &[(&str, u64)]) -> Perimete
         .map(|(index, (object_id, region_id))| PerimeterRegion {
             object_id: (*object_id).to_string(),
             region_id: *region_id,
-            walls: vec![make_wall_loop(index as u32, 0.2 + index as f32 * 0.1, 1.0 + index as f32)],
+            walls: vec![make_wall_loop(
+                index as u32,
+                0.2 + index as f32 * 0.1,
+                1.0 + index as f32,
+            )],
             infill_areas: vec![ExPolygon {
                 contour: Polygon {
                     points: vec![
@@ -171,7 +205,9 @@ impl<'a> LayerStageRunner for SeedingRunner<'a> {
     ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
         if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
             if let Some(perimeter) = self.perimeter.lock().expect("lock seed perimeter").take() {
-                arena.set_perimeter(perimeter).expect("seed perimeter into arena");
+                arena
+                    .set_perimeter(perimeter)
+                    .expect("seed perimeter into arena");
                 return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
             }
         }

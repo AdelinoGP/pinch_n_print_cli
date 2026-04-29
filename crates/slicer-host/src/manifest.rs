@@ -483,7 +483,12 @@ fn parse_config_field_entry(
         ),
     })?;
 
-    let field_type = get_string(table, manifest_path, &format!("config.schema.{field_key}.type"), "type")?;
+    let field_type = get_string(
+        table,
+        manifest_path,
+        &format!("config.schema.{field_key}.type"),
+        "type",
+    )?;
     let default = table.get("default").map(|v| v.to_string());
     let min = get_float_opt(table, "min");
     let max = get_float_opt(table, "max");
@@ -492,15 +497,26 @@ fn parse_config_field_entry(
     let description = get_string_opt(table, "description");
     let group = get_string_opt(table, "group");
     let unit = get_string_opt(table, "unit");
-    let advanced = table.get("advanced").and_then(|v| v.as_bool()).unwrap_or(false);
+    let advanced = table
+        .get("advanced")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     let values = table.get("values").and_then(|v| {
         v.as_array().map(|arr| {
-            arr.iter().filter_map(|item| item.as_str().map(String::from)).collect()
+            arr.iter()
+                .filter_map(|item| item.as_str().map(String::from))
+                .collect()
         })
     });
-    let max_length = table.get("max_length").and_then(|v| v.as_integer().map(|i| i as usize));
-    let min_list_length = table.get("min_list_length").and_then(|v| v.as_integer().map(|i| i as usize));
-    let max_list_length = table.get("max_list_length").and_then(|v| v.as_integer().map(|i| i as usize));
+    let max_length = table
+        .get("max_length")
+        .and_then(|v| v.as_integer().map(|i| i as usize));
+    let min_list_length = table
+        .get("min_list_length")
+        .and_then(|v| v.as_integer().map(|i| i as usize));
+    let max_list_length = table
+        .get("max_list_length")
+        .and_then(|v| v.as_integer().map(|i| i as usize));
     let validate = get_string_opt(table, "validate");
 
     Ok(ConfigFieldEntry {
@@ -522,12 +538,17 @@ fn parse_config_field_entry(
     })
 }
 
-fn get_string(table: &toml::map::Map<String, toml::Value>, manifest_path: &Path, field: &str, key: &str) -> Result<String, LoadError> {
+fn get_string(
+    table: &toml::map::Map<String, toml::Value>,
+    manifest_path: &Path,
+    field: &str,
+    key: &str,
+) -> Result<String, LoadError> {
     get_string_opt(table, key).ok_or_else(|| LoadError {
         path: manifest_path.to_path_buf(),
         field: Some(field.to_string()),
         kind: LoadErrorKind::Schema,
-        message: format!("config.schema.{key} is required", ),
+        message: format!("config.schema.{key} is required",),
     })
 }
 
@@ -536,9 +557,9 @@ fn get_string_opt(table: &toml::map::Map<String, toml::Value>, key: &str) -> Opt
 }
 
 fn get_float_opt(table: &toml::map::Map<String, toml::Value>, key: &str) -> Option<f64> {
-    table.get(key).and_then(|v| {
-        v.as_float().or_else(|| v.as_integer().map(|i| i as f64))
-    })
+    table
+        .get(key)
+        .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
 }
 
 fn required_string(

@@ -149,7 +149,7 @@ fn polygon_area_mm(poly: &Polygon) -> f64 {
 
 #[test]
 fn on_print_start_defaults() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
     // Default: wall_count=2, line_width=0.4mm
     assert_eq!(module.wall_count(), 2);

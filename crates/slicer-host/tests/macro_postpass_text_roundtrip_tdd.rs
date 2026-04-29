@@ -23,15 +23,19 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_ir::{ConfigValue, ConfigView, StageId};
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_host::{
     Blackboard, CompiledModule, IrAccessMask, LoadedModule, PostpassOutput, PostpassStageRunner,
     WasmEngine, WasmRuntimeDispatcher,
 };
+use slicer_ir::{ConfigValue, ConfigView, StageId};
 
 fn semver(major: u32, minor: u32, patch: u32) -> slicer_ir::SemVer {
-    slicer_ir::SemVer { major, minor, patch }
+    slicer_ir::SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
@@ -65,11 +69,23 @@ const GUEST_COMPONENT: &str = concat!(
 
 fn empty_mesh_ir() -> Arc<slicer_ir::MeshIR> {
     Arc::new(slicer_ir::MeshIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: Vec::new(),
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: slicer_ir::Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: slicer_ir::Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     })
 }
@@ -83,7 +99,11 @@ fn load_guest(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {
         path.display()
     );
     let bytes = std::fs::read(&path).expect("read guest .component.wasm");
-    Arc::new(engine.compile_component(&bytes).expect("compile guest component"))
+    Arc::new(
+        engine
+            .compile_component(&bytes)
+            .expect("compile guest component"),
+    )
 }
 
 fn make_module_with_config(
@@ -93,8 +113,14 @@ fn make_module_with_config(
 ) -> CompiledModule {
     let loaded = make_loaded_module(module_id, "PostPass::TextPostProcess");
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .expect("build instance pool"),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("build instance pool"),
     );
     CompiledModule {
         module_id: module_id.to_string(),
@@ -188,16 +214,25 @@ fn macro_authored_guest_is_deterministic_across_repeated_dispatch_calls() {
     let bb = Blackboard::new(empty_mesh_ir(), 0);
     let stage: StageId = "PostPass::TextPostProcess".to_string();
 
-    let a = text_of(dispatcher
-        .run_text_postprocess(&stage, &module, &bb, "; A\n".to_string())
-        .unwrap());
-    let b = text_of(dispatcher
-        .run_text_postprocess(&stage, &module, &bb, "; A\n".to_string())
-        .unwrap());
-    let c = text_of(dispatcher
-        .run_text_postprocess(&stage, &module, &bb, "; A\n".to_string())
-        .unwrap());
+    let a = text_of(
+        dispatcher
+            .run_text_postprocess(&stage, &module, &bb, "; A\n".to_string())
+            .unwrap(),
+    );
+    let b = text_of(
+        dispatcher
+            .run_text_postprocess(&stage, &module, &bb, "; A\n".to_string())
+            .unwrap(),
+    );
+    let c = text_of(
+        dispatcher
+            .run_text_postprocess(&stage, &module, &bb, "; A\n".to_string())
+            .unwrap(),
+    );
     assert_eq!(a, b);
     assert_eq!(b, c);
-    assert!(a.ends_with("; A\n"), "macro-glue must preserve input text suffix: {a:?}");
+    assert!(
+        a.ends_with("; A\n"),
+        "macro-glue must preserve input text suffix: {a:?}"
+    );
 }

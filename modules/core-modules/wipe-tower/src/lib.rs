@@ -255,7 +255,11 @@ impl FinalizationModule for WipeTower {
 
             let layer_height = if idx > 0 {
                 let dz = z - layers[idx - 1].z();
-                if dz > 0.0 { dz } else { DEFAULT_LAYER_HEIGHT }
+                if dz > 0.0 {
+                    dz
+                } else {
+                    DEFAULT_LAYER_HEIGHT
+                }
             } else {
                 DEFAULT_LAYER_HEIGHT
             };

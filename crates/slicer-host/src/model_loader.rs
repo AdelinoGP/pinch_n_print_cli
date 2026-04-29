@@ -599,11 +599,7 @@ mod tests {
         assert_eq!(bb.max.x, 0.0);
     }
 
-    fn make_object(
-        id: &str,
-        vertices: Vec<Point3>,
-        transform: Transform3d,
-    ) -> ObjectMesh {
+    fn make_object(id: &str, vertices: Vec<Point3>, transform: Transform3d) -> ObjectMesh {
         let mesh = IndexedTriangleSet {
             vertices,
             indices: vec![],
@@ -627,8 +623,16 @@ mod tests {
         let object = make_object(
             "benchy",
             vec![
-                Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                Point3 { x: 1.0, y: 2.0, z: 48.0 },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 2.0,
+                    z: 48.0,
+                },
             ],
             identity_transform(),
         );
@@ -645,8 +649,16 @@ mod tests {
         let object = make_object(
             "translated",
             vec![
-                Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                Point3 { x: 0.0, y: 0.0, z: 5.0 },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 5.0,
+                },
             ],
             t,
         );
@@ -670,8 +682,16 @@ mod tests {
         let object = make_object(
             "rotated",
             vec![
-                Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                Point3 { x: 0.0, y: 0.0, z: 10.0 },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 10.0,
+                },
             ],
             transform,
         );
@@ -686,8 +706,16 @@ mod tests {
         let object = make_object(
             "scaled",
             vec![
-                Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                Point3 { x: 0.0, y: 0.0, z: 20.0 },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 20.0,
+                },
             ],
             t,
         );
@@ -703,8 +731,16 @@ mod tests {
         let object = make_object(
             "zero-matrix",
             vec![
-                Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                Point3 { x: 0.0, y: 0.0, z: 7.0 },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 7.0,
+                },
             ],
             Transform3d { matrix: [0.0; 16] },
         );

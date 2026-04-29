@@ -23,20 +23,33 @@ fn surface_normal_outside_surface_returns_none_across_all_worlds() {
     let mut finalization_ctx = ctx_with_mesh("mesh-query.finalization.oob", mesh.clone());
     let mut postpass_ctx = ctx_with_mesh("mesh-query.postpass.oob", mesh.clone());
 
-    let layer_normal = lhs::Host::surface_normal_at(&mut layer_ctx, "slope".to_string(), 30.0, 30.0, 30.0)
-        .expect("layer off-surface query should not error");
-    let prepass_normal = phs::Host::surface_normal_at(&mut prepass_ctx, "slope".to_string(), 30.0, 30.0, 30.0)
-        .expect("prepass off-surface query should not error");
-    let finalization_normal = fhs::Host::surface_normal_at(&mut finalization_ctx, "slope".to_string(), 30.0, 30.0, 30.0)
-        .expect("finalization off-surface query should not error");
-    let postpass_normal = pphs::Host::surface_normal_at(&mut postpass_ctx, "slope".to_string(), 30.0, 30.0, 30.0)
-        .expect("postpass off-surface query should not error");
+    let layer_normal =
+        lhs::Host::surface_normal_at(&mut layer_ctx, "slope".to_string(), 30.0, 30.0, 30.0)
+            .expect("layer off-surface query should not error");
+    let prepass_normal =
+        phs::Host::surface_normal_at(&mut prepass_ctx, "slope".to_string(), 30.0, 30.0, 30.0)
+            .expect("prepass off-surface query should not error");
+    let finalization_normal =
+        fhs::Host::surface_normal_at(&mut finalization_ctx, "slope".to_string(), 30.0, 30.0, 30.0)
+            .expect("finalization off-surface query should not error");
+    let postpass_normal =
+        pphs::Host::surface_normal_at(&mut postpass_ctx, "slope".to_string(), 30.0, 30.0, 30.0)
+            .expect("postpass off-surface query should not error");
 
-    assert!(layer_normal.is_none(), "layer off-surface query should return None");
-    assert!(prepass_normal.is_none(), "prepass off-surface query should return None");
+    assert!(
+        layer_normal.is_none(),
+        "layer off-surface query should return None"
+    );
+    assert!(
+        prepass_normal.is_none(),
+        "prepass off-surface query should return None"
+    );
     assert!(
         finalization_normal.is_none(),
         "finalization off-surface query should return None"
     );
-    assert!(postpass_normal.is_none(), "postpass off-surface query should return None");
+    assert!(
+        postpass_normal.is_none(),
+        "postpass off-surface query should return None"
+    );
 }

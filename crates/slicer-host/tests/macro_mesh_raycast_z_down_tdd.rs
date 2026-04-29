@@ -17,8 +17,7 @@
 #![allow(missing_docs)]
 
 use slicer_host::wit_host::{
-    HostExecutionContext,
-    layer::slicer::world_layer::host_services as hs,
+    layer::slicer::world_layer::host_services as hs, HostExecutionContext,
 };
 
 /// Simple mesh: flat plate at z=0 with one triangle.
@@ -34,10 +33,7 @@ fn flat_plate_mesh() -> (String, Vec<[f32; 3]>, Vec<[u32; 3]>) {
         [10.0, 10.0, 0.0],
     ];
     // Two triangles covering the plate
-    let triangles = vec![
-        [0, 1, 2],
-        [1, 3, 2],
-    ];
+    let triangles = vec![[0, 1, 2], [1, 3, 2]];
     (object_id, vertices, triangles)
 }
 
@@ -53,10 +49,7 @@ fn sloped_mesh() -> (String, Vec<[f32; 3]>, Vec<[u32; 3]>) {
         [0.0, 10.0, 0.0],
         [10.0, 10.0, 5.0],
     ];
-    let triangles = vec![
-        [0, 1, 2],
-        [1, 3, 2],
-    ];
+    let triangles = vec![[0, 1, 2], [1, 3, 2]];
     (object_id, vertices, triangles)
 }
 
@@ -110,13 +103,18 @@ fn raycast_z_down_returns_world_z_above_flat_surface() {
     // This test documents the expected post-wiring behavior
     match hit_z {
         Some(z) => {
-            assert!((z - 0.0).abs() < 1e-4,
-                "world_z should be 0.0 (surface z), got {}", z);
+            assert!(
+                (z - 0.0).abs() < 1e-4,
+                "world_z should be 0.0 (surface z), got {}",
+                z
+            );
         }
         None => {
             // This is the current placeholder behavior - mesh not wired yet
             // After Step 7 (mesh wiring for raycast), this should return Some(0.0)
-            println!("NOTE: raycast_z_down returns None - mesh not yet wired (expected before Step 7)");
+            println!(
+                "NOTE: raycast_z_down returns None - mesh not yet wired (expected before Step 7)"
+            );
         }
     }
 }
@@ -127,9 +125,18 @@ fn raycast_z_down_returns_none_when_miss() {
     let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     // Shoot down at a point with no mesh - should miss
-    let result = hs::Host::raycast_z_down(&mut ctx, "nonexistent-object".to_string(), 100.0, 100.0, 50.0);
+    let result = hs::Host::raycast_z_down(
+        &mut ctx,
+        "nonexistent-object".to_string(),
+        100.0,
+        100.0,
+        50.0,
+    );
 
-    assert!(result.is_ok(), "raycast should succeed (returning None is not an error)");
+    assert!(
+        result.is_ok(),
+        "raycast should succeed (returning None is not an error)"
+    );
     assert_eq!(result.unwrap(), None, "should return None for missed ray");
 }
 
@@ -149,11 +156,16 @@ fn raycast_z_down_sloped_surface_interpolates_z() {
     match hit_z {
         Some(z) => {
             // At x=5 on a slope from z=0 to z=5, world_z should be ~2.5
-            assert!((z - 2.5).abs() < 0.1,
-                "world_z should be ~2.5 for sloped surface at x=5, got {}", z);
+            assert!(
+                (z - 2.5).abs() < 0.1,
+                "world_z should be ~2.5 for sloped surface at x=5, got {}",
+                z
+            );
         }
         None => {
-            println!("NOTE: raycast_z_down returns None - mesh not yet wired (expected before Step 7)");
+            println!(
+                "NOTE: raycast_z_down returns None - mesh not yet wired (expected before Step 7)"
+            );
         }
     }
 }
@@ -171,8 +183,11 @@ fn raycast_z_down_multi_object_bottom_surface() {
 
     match hit_z {
         Some(z) => {
-            assert!((z - 0.0).abs() < 1e-4,
-                "world_z should be 0.0 for bottom plate, got {}", z);
+            assert!(
+                (z - 0.0).abs() < 1e-4,
+                "world_z should be 0.0 for bottom plate, got {}",
+                z
+            );
         }
         None => {
             println!("NOTE: raycast_z_down returns None - mesh not yet wired");
@@ -193,8 +208,11 @@ fn raycast_z_down_multi_object_top_surface() {
 
     match hit_z {
         Some(z) => {
-            assert!((z - 10.0).abs() < 1e-4,
-                "world_z should be 10.0 for top plate, got {}", z);
+            assert!(
+                (z - 10.0).abs() < 1e-4,
+                "world_z should be 10.0 for top plate, got {}",
+                z
+            );
         }
         None => {
             println!("NOTE: raycast_z_down returns None - mesh not yet wired");
@@ -221,7 +239,10 @@ fn raycast_z_down_exposed_via_wit_boundary_for_macro_modules() {
     let result = hs::Host::raycast_z_down(&mut ctx, "any-object".to_string(), 0.0, 0.0, 100.0);
 
     // Result is Ok - even if it returns None (mesh not wired)
-    assert!(result.is_ok(), "raycast_z_down must be callable and return Ok");
+    assert!(
+        result.is_ok(),
+        "raycast_z_down must be callable and return Ok"
+    );
 }
 
 /// World-space Z must account for object transform.
@@ -241,7 +262,8 @@ fn raycast_z_down_returns_world_space_z_not_local() {
     // - world surface is at z=10
     // - raycast_z_down should return Some(10.0), not Some(0.0)
 
-    let result = hs::Host::raycast_z_down(&mut ctx, "translated-object".to_string(), 0.0, 0.0, 50.0);
+    let result =
+        hs::Host::raycast_z_down(&mut ctx, "translated-object".to_string(), 0.0, 0.0, 50.0);
 
     assert!(result.is_ok());
     let hit_z = result.unwrap();
@@ -275,13 +297,18 @@ fn raycast_z_down_start_at_surface_returns_surface_z() {
 
     match hit_z {
         Some(z) => {
-            assert!((z - 0.0).abs() < 1e-4,
-                "world_z should be 0.0 when starting at surface, got {}", z);
+            assert!(
+                (z - 0.0).abs() < 1e-4,
+                "world_z should be 0.0 when starting at surface, got {}",
+                z
+            );
         }
         None => {
             // If start_z is at or below surface, some implementations return None
             // This is acceptable behavior
-            println!("NOTE: raycast_z_down returns None when starting at surface - acceptable behavior");
+            println!(
+                "NOTE: raycast_z_down returns None when starting at surface - acceptable behavior"
+            );
         }
     }
 }
@@ -295,12 +322,14 @@ fn raycast_z_down_is_deterministic() {
 
     let results: Vec<Option<f32>> = (0..5)
         .map(|_| {
-            hs::Host::raycast_z_down(&mut ctx, "flat-plate".to_string(), 5.0, 5.0, 10.0)
-                .unwrap()
+            hs::Host::raycast_z_down(&mut ctx, "flat-plate".to_string(), 5.0, 5.0, 10.0).unwrap()
         })
         .collect();
 
     // All results should be identical
-    assert!(results.windows(2).all(|w| w[0] == w[1]),
-        "raycast_z_down must be deterministic, got varying results: {:?}", results);
+    assert!(
+        results.windows(2).all(|w| w[0] == w[1]),
+        "raycast_z_down must be deterministic, got varying results: {:?}",
+        results
+    );
 }

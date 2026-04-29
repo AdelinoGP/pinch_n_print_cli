@@ -28,26 +28,59 @@ fn surface_normal_returns_unit_length_normal_for_on_surface_point_across_all_wor
     let mut finalization_ctx = ctx_with_mesh("mesh-query.finalization.normal", mesh.clone());
     let mut postpass_ctx = ctx_with_mesh("mesh-query.postpass.normal", mesh.clone());
 
-    let layer_normal = lhs::Host::surface_normal_at(&mut layer_ctx, "slope".to_string(), 2.0, 2.0, 2.0)
-        .expect("layer surface_normal_at should not error")
-        .expect("layer surface_normal_at should find a normal");
-    let prepass_normal = phs::Host::surface_normal_at(&mut prepass_ctx, "slope".to_string(), 2.0, 2.0, 2.0)
-        .expect("prepass surface_normal_at should not error")
-        .expect("prepass surface_normal_at should find a normal");
-    let finalization_normal = fhs::Host::surface_normal_at(&mut finalization_ctx, "slope".to_string(), 2.0, 2.0, 2.0)
-        .expect("finalization surface_normal_at should not error")
-        .expect("finalization surface_normal_at should find a normal");
-    let postpass_normal = pphs::Host::surface_normal_at(&mut postpass_ctx, "slope".to_string(), 2.0, 2.0, 2.0)
-        .expect("postpass surface_normal_at should not error")
-        .expect("postpass surface_normal_at should find a normal");
+    let layer_normal =
+        lhs::Host::surface_normal_at(&mut layer_ctx, "slope".to_string(), 2.0, 2.0, 2.0)
+            .expect("layer surface_normal_at should not error")
+            .expect("layer surface_normal_at should find a normal");
+    let prepass_normal =
+        phs::Host::surface_normal_at(&mut prepass_ctx, "slope".to_string(), 2.0, 2.0, 2.0)
+            .expect("prepass surface_normal_at should not error")
+            .expect("prepass surface_normal_at should find a normal");
+    let finalization_normal =
+        fhs::Host::surface_normal_at(&mut finalization_ctx, "slope".to_string(), 2.0, 2.0, 2.0)
+            .expect("finalization surface_normal_at should not error")
+            .expect("finalization surface_normal_at should find a normal");
+    let postpass_normal =
+        pphs::Host::surface_normal_at(&mut postpass_ctx, "slope".to_string(), 2.0, 2.0, 2.0)
+            .expect("postpass surface_normal_at should not error")
+            .expect("postpass surface_normal_at should find a normal");
 
-    assert_unit_length(layer_normal.x, layer_normal.y, layer_normal.z, "layer magnitude");
-    assert_perpendicular(layer_normal.x, layer_normal.y, layer_normal.z, edge1, edge2, "layer normal");
+    assert_unit_length(
+        layer_normal.x,
+        layer_normal.y,
+        layer_normal.z,
+        "layer magnitude",
+    );
+    assert_perpendicular(
+        layer_normal.x,
+        layer_normal.y,
+        layer_normal.z,
+        edge1,
+        edge2,
+        "layer normal",
+    );
 
-    assert_unit_length(prepass_normal.x, prepass_normal.y, prepass_normal.z, "prepass magnitude");
-    assert_perpendicular(prepass_normal.x, prepass_normal.y, prepass_normal.z, edge1, edge2, "prepass normal");
+    assert_unit_length(
+        prepass_normal.x,
+        prepass_normal.y,
+        prepass_normal.z,
+        "prepass magnitude",
+    );
+    assert_perpendicular(
+        prepass_normal.x,
+        prepass_normal.y,
+        prepass_normal.z,
+        edge1,
+        edge2,
+        "prepass normal",
+    );
 
-    assert_unit_length(finalization_normal.x, finalization_normal.y, finalization_normal.z, "finalization magnitude");
+    assert_unit_length(
+        finalization_normal.x,
+        finalization_normal.y,
+        finalization_normal.z,
+        "finalization magnitude",
+    );
     assert_perpendicular(
         finalization_normal.x,
         finalization_normal.y,
@@ -57,6 +90,18 @@ fn surface_normal_returns_unit_length_normal_for_on_surface_point_across_all_wor
         "finalization normal",
     );
 
-    assert_unit_length(postpass_normal.x, postpass_normal.y, postpass_normal.z, "postpass magnitude");
-    assert_perpendicular(postpass_normal.x, postpass_normal.y, postpass_normal.z, edge1, edge2, "postpass normal");
+    assert_unit_length(
+        postpass_normal.x,
+        postpass_normal.y,
+        postpass_normal.z,
+        "postpass magnitude",
+    );
+    assert_perpendicular(
+        postpass_normal.x,
+        postpass_normal.y,
+        postpass_normal.z,
+        edge1,
+        edge2,
+        "postpass normal",
+    );
 }

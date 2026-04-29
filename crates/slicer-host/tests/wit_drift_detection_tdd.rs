@@ -177,7 +177,12 @@ fn host_bindgen_with_keys_use_canonical_world_names() {
 #[test]
 fn canonical_world_files_exist_on_disk() {
     let root = workspace_root();
-    for world_file in ["world-layer.wit", "world-prepass.wit", "world-postpass.wit", "world-finalization.wit"] {
+    for world_file in [
+        "world-layer.wit",
+        "world-prepass.wit",
+        "world-postpass.wit",
+        "world-finalization.wit",
+    ] {
         let path = root.join(format!("wit/{world_file}"));
         assert!(
             path.exists(),
@@ -338,7 +343,12 @@ fn handwritten_test_guests_use_payload_extrusion_role_variants() {
             "finalization-guest",
             "package slicer:world-finalization@1.0.0;",
             Some("package slicer:finalization-world@1.0.0;"),
-            &["variant extrusion-role", "custom(string)", "ordered-entities", "z-hops"][..],
+            &[
+                "variant extrusion-role",
+                "custom(string)",
+                "ordered-entities",
+                "z-hops",
+            ][..],
         ),
     ];
 
@@ -431,7 +441,8 @@ fn prepass_world_uses_mesh_object_view() {
     let normalized = content.replace("\r\n", "\n");
     // The export signature must declare list<mesh-object-view>, not list<object-id>.
     assert!(
-        normalized.contains("run-mesh-segmentation: func(\n        objects: list<mesh-object-view>"),
+        normalized
+            .contains("run-mesh-segmentation: func(\n        objects: list<mesh-object-view>"),
         "canonical world-prepass.wit must use list<mesh-object-view> for run-mesh-segmentation"
     );
     // The old form must not appear.
@@ -512,4 +523,3 @@ fn test_guest_lib_rs_content(guest_name: &str) -> String {
     let path = workspace_root().join(format!("test-guests/{guest_name}/src/lib.rs"));
     fs::read_to_string(&path).expect("read test guest lib.rs for embedded WIT verification")
 }
-

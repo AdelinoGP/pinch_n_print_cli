@@ -30,7 +30,7 @@ impl PrepassModule for TestPrepassModule {
 #[test]
 fn test_01_prepass_module_trait_exists_with_lifecycle() {
     // Test that PrepassModule trait can be implemented with on_print_start/on_print_end
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
 
     let module = TestPrepassModule::on_print_start(&config).expect("on_print_start should succeed");
     assert!(module.initialized, "module should be initialized");
@@ -276,7 +276,7 @@ impl PrepassModule for MeshAnalysisTestModule {
 
 #[test]
 fn test_10_run_mesh_analysis_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = MeshAnalysisTestModule::on_print_start(&config).unwrap();
     let objects: Vec<ObjectId> = vec!["obj-1".to_string()];
     let mut output = MeshAnalysisOutput::new();
@@ -312,7 +312,7 @@ impl PrepassModule for LayerPlanningTestModule {
 
 #[test]
 fn test_11_run_layer_planning_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = LayerPlanningTestModule::on_print_start(&config).unwrap();
     let objects: Vec<ObjectId> = vec!["obj-1".to_string()];
     let mut output = LayerPlanOutput::new();
@@ -336,7 +336,7 @@ impl PrepassModule for MinimalPrepassModule {
 
 #[test]
 fn test_12_default_implementations_exist() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = MinimalPrepassModule::on_print_start(&config).unwrap();
     let objects: Vec<ObjectId> = vec![];
     let mut mesh_output = MeshAnalysisOutput::new();

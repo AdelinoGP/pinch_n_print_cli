@@ -78,7 +78,8 @@ pub fn slicer_module(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    let expanded = generate_slicer_module_impl(&input, &self_ty, &detected_stages, trait_ident.as_deref());
+    let expanded =
+        generate_slicer_module_impl(&input, &self_ty, &detected_stages, trait_ident.as_deref());
     TokenStream::from(expanded)
 }
 
@@ -131,12 +132,7 @@ fn generate_slicer_module_impl(
 
     let (stage_id_literal, stage_method_literal, stage_export_literal, stage_world_literal) =
         if let Some(s) = detected.first() {
-            (
-                s.stage_id,
-                s.method,
-                s.wit_export,
-                s.world_id,
-            )
+            (s.stage_id, s.method, s.wit_export, s.world_id)
         } else {
             ("", "", "", "")
         };
@@ -334,8 +330,10 @@ fn generate_slicer_module_impl(
         type_name_str.hash(&mut hasher);
         hasher.finish()
     };
-    let shim_mod_ident =
-        syn::Ident::new(&format!("__slicer_wasm_exports_{type_ident_hash:x}"), proc_macro2::Span::call_site());
+    let shim_mod_ident = syn::Ident::new(
+        &format!("__slicer_wasm_exports_{type_ident_hash:x}"),
+        proc_macro2::Span::call_site(),
+    );
 
     let lifecycle_shim_tokens: Vec<TokenStream2> = lifecycle_exports
         .iter()
@@ -368,19 +366,20 @@ fn generate_slicer_module_impl(
     // 2 lifecycle exports).
     let real_glue_world = resolve_world_glue(stage_id_literal, trait_ident);
 
-    let stage_shim_tokens: TokenStream2 = if stage_export_literal.is_empty() || real_glue_world.is_some() {
-        quote! {}
-    } else {
-        let shim_name = syn::Ident::new(
-            &format!("__slicer_export_{}", stage_export_literal.replace('-', "_")),
-            proc_macro2::Span::call_site(),
-        );
-        quote! {
-            #[cfg(target_arch = "wasm32")]
-            #[export_name = #stage_export_literal]
-            pub extern "C" fn #shim_name() -> i32 { 0 }
-        }
-    };
+    let stage_shim_tokens: TokenStream2 =
+        if stage_export_literal.is_empty() || real_glue_world.is_some() {
+            quote! {}
+        } else {
+            let shim_name = syn::Ident::new(
+                &format!("__slicer_export_{}", stage_export_literal.replace('-', "_")),
+                proc_macro2::Span::call_site(),
+            );
+            quote! {
+                #[cfg(target_arch = "wasm32")]
+                #[export_name = #stage_export_literal]
+                pub extern "C" fn #shim_name() -> i32 { 0 }
+            }
+        };
 
     // For worlds that emit real glue, skip the lifecycle fake shims —
     // the wit-bindgen expansion handles lifecycle exports (layer world)
@@ -478,11 +477,7 @@ fn resolve_world_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<World
 /// produced by wit-bindgen for that world (e.g. `world_postpass`,
 /// `world_layer`). Caller supplies the inline WIT and the
 /// world-specific `impl Guest` body.
-fn emit_world_preamble(
-    world_name: &str,
-    world_namespace: &str,
-    inline_wit: &str,
-) -> TokenStream2 {
+fn emit_world_preamble(world_name: &str, world_namespace: &str, inline_wit: &str) -> TokenStream2 {
     const TYPES_WIT: &str = include_str!("../../../wit/deps/types.wit");
     const CONFIG_WIT: &str = include_str!("../../../wit/deps/config.wit");
     const IR_TYPES_WIT: &str = include_str!("../../../wit/deps/ir-types.wit");
@@ -491,7 +486,9 @@ fn emit_world_preamble(
         let mut lines = dep_wit.lines();
         let first = lines.next();
         let body = match first {
-            Some(line) if line.trim_start().starts_with("package ") => lines.collect::<Vec<_>>().join("\n"),
+            Some(line) if line.trim_start().starts_with("package ") => {
+                lines.collect::<Vec<_>>().join("\n")
+            }
             Some(line) => {
                 let mut collected = vec![line.to_string()];
                 collected.extend(lines.map(str::to_string));
@@ -505,8 +502,8 @@ fn emit_world_preamble(
     fn expand_inline_wit(inline_wit: &str) -> String {
         let types_wit = strip_package_decl(TYPES_WIT);
         let config_wit = strip_package_decl(CONFIG_WIT);
-        let ir_types_wit = strip_package_decl(IR_TYPES_WIT)
-            .replace("slicer:types/geometry", "geometry");
+        let ir_types_wit =
+            strip_package_decl(IR_TYPES_WIT).replace("slicer:types/geometry", "geometry");
 
         inline_wit
             .replace("include \"../../wit/deps/types.wit\";", &types_wit)
@@ -516,8 +513,10 @@ fn emit_world_preamble(
     }
 
     let expanded_inline_wit = expand_inline_wit(inline_wit);
-    let ns_path: syn::Path = syn::parse_str(&format!("self::slicer::{world_namespace}::config_types::ConfigValue"))
-        .expect("parse ConfigValue path");
+    let ns_path: syn::Path = syn::parse_str(&format!(
+        "self::slicer::{world_namespace}::config_types::ConfigValue"
+    ))
+    .expect("parse ConfigValue path");
     quote! {
         ::wit_bindgen::generate!({
             inline: #expanded_inline_wit,
@@ -1492,376 +1491,377 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
         }
     };
 
-    let (mesh_arm, layer_arm, mesh_seg_arm, paint_seg_arm, seam_arm, support_arm) = match detected_stage {
-        "PrePass::MeshAnalysis" => (
-            quote! {
-                let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
-                    Ok(m) => m,
-                    Err(e) => return Err(__slicer_error_out(e)),
-                };
-                // Forward the real WIT `objects` list (aliased to
-                // `String` by wit-bindgen; `slicer_ir::ObjectId` is also
-                // `String`) so the SDK trait body sees per-object ids
-                // instead of the previous empty-Vec stub.
-                let sdk_objects: ::std::vec::Vec<::slicer_ir::ObjectId> = _objects.clone();
-                let mut sdk_output = ::slicer_sdk::prepass_builders::MeshAnalysisOutput::new();
-                let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_mesh_analysis(
-                    &module, &sdk_objects, &mut sdk_output, &ir_config,
-                );
-                // Drain the SDK builder back into the WIT
-                // `mesh-analysis-output` resource in push order so
-                // facet annotations and surface groups reach the host.
-                // Push failures surface as fatal `ModuleError` (matches
-                // the LayerPlanning bridge pattern): the host-side
-                // `push-facet-annotation` / `push-surface-group`
-                // handlers reject malformed records (empty object-id,
-                // non-finite z bounds, inverted z ranges), and silently
-                // dropping them would break the drain contract.
-                for (__slicer_obj, __slicer_ann) in sdk_output.facet_annotations() {
-                    let __slicer_wit_ann = FacetAnnotation {
-                        facet_index: __slicer_ann.facet_index,
-                        slope_angle_deg: __slicer_ann.slope_angle_deg,
-                        classification: match __slicer_ann.classification {
-                            ::slicer_sdk::prepass_types::FacetClass::Normal => FacetClass::Normal,
-                            ::slicer_sdk::prepass_types::FacetClass::NearHorizontal => FacetClass::NearHorizontal,
-                            ::slicer_sdk::prepass_types::FacetClass::Overhang => FacetClass::Overhang,
-                            ::slicer_sdk::prepass_types::FacetClass::Bridge => FacetClass::Bridge,
-                            ::slicer_sdk::prepass_types::FacetClass::TopSurface => FacetClass::TopSurface,
-                            ::slicer_sdk::prepass_types::FacetClass::BottomSurface => FacetClass::BottomSurface,
-                        },
+    let (mesh_arm, layer_arm, mesh_seg_arm, paint_seg_arm, seam_arm, support_arm) =
+        match detected_stage {
+            "PrePass::MeshAnalysis" => (
+                quote! {
+                    let ir_config = __slicer_adapt_config(&config);
+                    let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
+                        Ok(m) => m,
+                        Err(e) => return Err(__slicer_error_out(e)),
                     };
-                    if let Err(e) = _output.push_facet_annotation(
-                        __slicer_obj,
-                        __slicer_wit_ann,
-                    ) {
-                        return Err(ModuleError {
-                            code: 6,
-                            message: e,
-                            fatal: true,
-                        });
-                    }
-                }
-                for (__slicer_obj, __slicer_grp) in sdk_output.surface_groups() {
-                    let __slicer_wit_grp = SurfaceGroupProposal {
-                        facet_indices: __slicer_grp.facet_indices.clone(),
-                        z_min: __slicer_grp.z_min,
-                        z_max: __slicer_grp.z_max,
-                        shell_count: __slicer_grp.shell_count,
-                    };
-                    if let Err(e) = _output.push_surface_group(
-                        __slicer_obj,
-                        &__slicer_wit_grp,
-                    ) {
-                        return Err(ModuleError {
-                            code: 7,
-                            message: e,
-                            fatal: true,
-                        });
-                    }
-                }
-                match out {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(__slicer_error_out(e)),
-                }
-            },
-            quote! { Ok(()) }, // layer_arm (unused)
-            quote! { Ok(()) }, // mesh_seg_arm (unused)
-            quote! { Ok(()) }, // paint_seg_arm (unused)
-            quote! { Ok(()) }, // seam_arm (unused)
-            quote! { Ok(()) }, // support_arm (unused)
-        ),
-        "PrePass::LayerPlanning" => (
-            quote! { Ok(()) }, // mesh_arm (unused)
-            quote! {
-                let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
-                    Ok(m) => m,
-                    Err(e) => return Err(__slicer_error_out(e)),
-                };
-                // The WIT `objects` list is `Vec<ObjectId>` (aliased to
-                // `String` by wit-bindgen); the SDK trait wants
-                // `&[::slicer_ir::ObjectId]`, which is also `String`.
-                // Forward the list by value so the guest's planner
-                // actually sees per-object ids.
-                let sdk_objects: ::std::vec::Vec<::slicer_ir::ObjectId> = _objects.clone();
-                let mut sdk_output = ::slicer_sdk::prepass_builders::LayerPlanOutput::new();
-                let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_layer_planning(
-                    &module, &sdk_objects, &mut sdk_output, &ir_config,
-                );
-                // Drain the SDK builder back into the WIT
-                // `layer-plan-output` resource in push order so the host
-                // sees every planner-emitted proposal. A `push_layer`
-                // failure is surfaced as a fatal module error because
-                // the host's `push_layer` host-side handler rejects
-                // malformed proposals (e.g. non-finite Z), and dropping
-                // them silently would desync the planner's contract.
-                for __slicer_layer in sdk_output.layers() {
-                    let __slicer_wit_regions: ::std::vec::Vec<RegionLayerProposal> = __slicer_layer
-                        .active_regions
-                        .iter()
-                        .map(|r| RegionLayerProposal {
-                            object_id: r.object_id.clone(),
-                            region_id: r.region_id.clone(),
-                            effective_layer_height: r.effective_layer_height,
-                            is_catchup: r.is_catchup,
-                            catchup_z_bottom: r.catchup_z_bottom,
-                        })
-                        .collect();
-                    if let Err(e) = _output.push_layer(&LayerProposal {
-                        z: __slicer_layer.z,
-                        active_regions: __slicer_wit_regions,
-                    }) {
-                        return Err(ModuleError {
-                            code: 5,
-                            message: e,
-                            fatal: true,
-                        });
-                    }
-                }
-                match out {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(__slicer_error_out(e)),
-                }
-            },
-            quote! { Ok(()) }, // mesh_seg_arm (unused)
-            quote! { Ok(()) }, // paint_seg_arm (unused)
-            quote! { Ok(()) }, // seam_arm (unused)
-            quote! { Ok(()) }, // support_arm (unused)
-        ),
-        "PrePass::MeshSegmentation" => (
-            quote! { Ok(()) },
-            quote! { Ok(()) },
-            // STEP H: forward real `_objects` as skeletal
-            // `MeshObjectView`s (only `object_id` populated; the WIT
-            // `run-mesh-segmentation` surface provides just
-            // `list<object-id>`, so geometry/paint can't cross the
-            // boundary without separate host-service calls), then drain
-            // the SDK builder's `triangle_paint_marks` back through the
-            // WIT `mesh-segmentation-output::mark-triangle-paint`
-            // resource method. The SDK's legacy `push_modification` /
-            // `ObjectMeshModification` stream is intentionally NOT
-            // drained: it has no WIT representation and is reserved for
-            // native-mode authoring. Push failures surface as fatal
-            // `ModuleError` (mirrors the LayerPlanning / MeshAnalysis
-            // bridge shape from STEP F / STEP G).
-            quote! {
-                let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
-                    Ok(m) => m,
-                    Err(e) => return Err(__slicer_error_out(e)),
-                };
-                let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = _objects
-                    .into_iter()
-                    .map(__slicer_mesh_object_from_wit)
-                    .collect();
-                let mut sdk_output = ::slicer_sdk::prepass_builders::MeshSegmentationOutput::new();
-                let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_mesh_segmentation(
-                    &module, &sdk_objects, &mut sdk_output, &ir_config,
-                );
-                for __slicer_mark in sdk_output.triangle_paint_marks() {
-                    if let Err(e) = _output.mark_triangle_paint(
-                        &__slicer_mark.object_id,
-                        __slicer_mark.facet_index,
-                        &__slicer_mark.semantic,
-                        &__slicer_mark.value,
-                    ) {
-                        return Err(ModuleError {
-                            code: 10,
-                            message: e,
-                            fatal: true,
-                        });
-                    }
-                }
-                match out {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(__slicer_error_out(e)),
-                }
-            },
-            quote! { Ok(()) }, // paint_seg_arm (unused)
-            quote! { Ok(()) }, // seam_arm (unused)
-            quote! { Ok(()) }, // support_arm (unused)
-        ),
-        "PrePass::PaintSegmentation" => (
-            quote! { Ok(()) },
-            quote! { Ok(()) },
-            quote! { Ok(()) },
-            // Same disconnect as MeshSegmentation: the SDK
-            // `PaintSegmentationOutput` builder operates on an in-Rust
-            // tree of `(layer, semantic, object, paint-order)` tuples
-            // that doesn't map 1:1 back to the WIT `push-paint-region`
-            // calls. Canonical modules implement the WIT world
-            // directly in their `wit-guest/` subcrate (pattern shared
-            // with `layer-planner-default` and `mesh-segmentation`);
-            // the macro path is kept alive for `#[slicer_module]`
-            // authoring of PaintSegmentation-stage modules where
-            // lifecycle-only behavior is acceptable.
-            quote! {
-                let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
-                    Ok(m) => m,
-                    Err(e) => return Err(__slicer_error_out(e)),
-                };
-                let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::PaintSegmentationObjectView> = _objects
-                    .into_iter()
-                    .map(__slicer_paint_segmentation_object_from_wit)
-                    .collect();
-                let mut sdk_output = ::slicer_sdk::prepass_builders::PaintSegmentationOutput::new();
-                let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_paint_segmentation(
-                    &module, &sdk_objects, &mut sdk_output, &ir_config,
-                );
-                match out {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(__slicer_error_out(e)),
-                }
-            },
-            quote! { Ok(()) }, // seam_arm (unused)
-            quote! { Ok(()) }, // support_arm (unused)
-        ),
-        "PrePass::SeamPlanning" => (
-            // SeamPlanning: the seam planner reads MeshIR + SurfaceClassificationIR
-            // via host services and emits SeamPlanEntry records. Forward real
-            // objects list, call run_seam_planning, drain SDK output back through
-            // the WIT seam-planning-output resource.
-            quote! { Ok(()) }, // mesh_arm (unused)
-            quote! { Ok(()) }, // layer_arm (unused)
-            quote! { Ok(()) }, // mesh_seg_arm (unused)
-            quote! { Ok(()) }, // paint_seg_arm (unused)
-            quote! {
-                let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
-                    Ok(m) => m,
-                    Err(e) => return Err(__slicer_error_out(e)),
-                };
-                let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = _objects
-                    .into_iter()
-                    .map(__slicer_mesh_object_from_wit)
-                    .collect();
-                let mut sdk_output = ::slicer_sdk::prepass_builders::SeamPlanningOutput::new();
-                let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_seam_planning(
-                    &module, &sdk_objects, &mut sdk_output, &ir_config,
-                );
-                for __slicer_entry in sdk_output.entries() {
-                    // Construct the wit-bindgen `Point3WithWidth` inline.
-                    // `__slicer_point3_with_width_from_sdk` returns the SDK
-                    // (slicer_ir) flavour, which is a different type from
-                    // the wit-bindgen-generated record even though the
-                    // field shape is identical (5 f32 fields). Same fix
-                    // pattern as the SupportGeneration arm below.
-                    let __slicer_wit_candidates: ::std::vec::Vec<ScoredSeamCandidate> = __slicer_entry
-                        .scored_candidates
-                        .iter()
-                        .map(|sc| ScoredSeamCandidate {
-                            position: Point3WithWidth {
-                                x: sc.position.x,
-                                y: sc.position.y,
-                                z: sc.position.z,
-                                width: sc.position.width,
-                                flow_factor: sc.position.flow_factor,
+                    // Forward the real WIT `objects` list (aliased to
+                    // `String` by wit-bindgen; `slicer_ir::ObjectId` is also
+                    // `String`) so the SDK trait body sees per-object ids
+                    // instead of the previous empty-Vec stub.
+                    let sdk_objects: ::std::vec::Vec<::slicer_ir::ObjectId> = _objects.clone();
+                    let mut sdk_output = ::slicer_sdk::prepass_builders::MeshAnalysisOutput::new();
+                    let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_mesh_analysis(
+                        &module, &sdk_objects, &mut sdk_output, &ir_config,
+                    );
+                    // Drain the SDK builder back into the WIT
+                    // `mesh-analysis-output` resource in push order so
+                    // facet annotations and surface groups reach the host.
+                    // Push failures surface as fatal `ModuleError` (matches
+                    // the LayerPlanning bridge pattern): the host-side
+                    // `push-facet-annotation` / `push-surface-group`
+                    // handlers reject malformed records (empty object-id,
+                    // non-finite z bounds, inverted z ranges), and silently
+                    // dropping them would break the drain contract.
+                    for (__slicer_obj, __slicer_ann) in sdk_output.facet_annotations() {
+                        let __slicer_wit_ann = FacetAnnotation {
+                            facet_index: __slicer_ann.facet_index,
+                            slope_angle_deg: __slicer_ann.slope_angle_deg,
+                            classification: match __slicer_ann.classification {
+                                ::slicer_sdk::prepass_types::FacetClass::Normal => FacetClass::Normal,
+                                ::slicer_sdk::prepass_types::FacetClass::NearHorizontal => FacetClass::NearHorizontal,
+                                ::slicer_sdk::prepass_types::FacetClass::Overhang => FacetClass::Overhang,
+                                ::slicer_sdk::prepass_types::FacetClass::Bridge => FacetClass::Bridge,
+                                ::slicer_sdk::prepass_types::FacetClass::TopSurface => FacetClass::TopSurface,
+                                ::slicer_sdk::prepass_types::FacetClass::BottomSurface => FacetClass::BottomSurface,
                             },
-                            score: sc.score,
-                            reason: SeamReason { tag: sc.reason.tag.clone() },
-                        })
-                        .collect();
-                    let __slicer_wit_entry = SeamPlanEntry {
-                        global_layer_index: __slicer_entry.global_layer_index,
-                        object_id: __slicer_entry.object_id.clone(),
-                        region_id: __slicer_entry.region_id.clone(),
-                        chosen_position: Point3WithWidth {
-                            x: __slicer_entry.chosen_position.x,
-                            y: __slicer_entry.chosen_position.y,
-                            z: __slicer_entry.chosen_position.z,
-                            width: __slicer_entry.chosen_position.width,
-                            flow_factor: __slicer_entry.chosen_position.flow_factor,
-                        },
-                        chosen_wall_index: __slicer_entry.chosen_wall_index,
-                        scored_candidates: __slicer_wit_candidates,
-                    };
-                    if let Err(e) = _output.push_seam_plan(&__slicer_wit_entry) {
-                        return Err(ModuleError {
-                            code: 11,
-                            message: e,
-                            fatal: true,
-                        });
+                        };
+                        if let Err(e) = _output.push_facet_annotation(
+                            __slicer_obj,
+                            __slicer_wit_ann,
+                        ) {
+                            return Err(ModuleError {
+                                code: 6,
+                                message: e,
+                                fatal: true,
+                            });
+                        }
                     }
-                }
-                match out {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(__slicer_error_out(e)),
-                }
-            },
-            quote! { Ok(()) }, // support_arm (unused)
-        ),
-        "PrePass::SupportGeneration" => (
-            quote! { Ok(()) }, // mesh_arm (unused)
-            quote! { Ok(()) }, // layer_arm (unused)
-            quote! { Ok(()) }, // mesh_seg_arm (unused)
-            quote! { Ok(()) }, // paint_seg_arm (unused)
-            quote! { Ok(()) }, // seam_arm (unused)
-            quote! {
-                let ir_config = __slicer_adapt_config(&config);
-                let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
-                    Ok(m) => m,
-                    Err(e) => return Err(__slicer_error_out(e)),
-                };
-                let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = _objects
-                    .into_iter()
-                    .map(__slicer_mesh_object_from_wit)
-                    .collect();
-                let mut sdk_output = ::slicer_sdk::prepass_builders::SupportGenerationOutput::new();
-                let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_generation(
-                    &module, &sdk_objects, &mut sdk_output, &ir_config,
-                );
-                for __slicer_entry in sdk_output.entries() {
-                    // Construct the wit-bindgen Point3WithWidth inline.
-                    // `__slicer_point3_with_width_from_sdk` returns the SDK
-                    // (slicer_ir) flavour, which is a different type from
-                    // the wit-bindgen-generated record even though the
-                    // field shape is identical (5 f32 fields).
-                    let __slicer_wit_segments: ::std::vec::Vec<::std::vec::Vec<Point3WithWidth>> = __slicer_entry
-                        .branch_segments
-                        .iter()
-                        .map(|seg| {
-                            seg.iter()
-                                .map(|pt| Point3WithWidth {
-                                    x: pt.x,
-                                    y: pt.y,
-                                    z: pt.z,
-                                    width: pt.width,
-                                    flow_factor: pt.flow_factor,
-                                })
-                                .collect()
-                        })
-                        .collect();
-                    let __slicer_wit_entry = SupportPlanEntry {
-                        global_layer_index: __slicer_entry.global_layer_index,
-                        object_id: __slicer_entry.object_id.clone(),
-                        region_id: __slicer_entry.region_id.clone(),
-                        branch_segments: __slicer_wit_segments,
-                    };
-                    if let Err(e) = _output.push_support_plan(&__slicer_wit_entry) {
-                        return Err(ModuleError {
-                            code: 12,
-                            message: e,
-                            fatal: true,
-                        });
+                    for (__slicer_obj, __slicer_grp) in sdk_output.surface_groups() {
+                        let __slicer_wit_grp = SurfaceGroupProposal {
+                            facet_indices: __slicer_grp.facet_indices.clone(),
+                            z_min: __slicer_grp.z_min,
+                            z_max: __slicer_grp.z_max,
+                            shell_count: __slicer_grp.shell_count,
+                        };
+                        if let Err(e) = _output.push_surface_group(
+                            __slicer_obj,
+                            &__slicer_wit_grp,
+                        ) {
+                            return Err(ModuleError {
+                                code: 7,
+                                message: e,
+                                fatal: true,
+                            });
+                        }
                     }
-                }
-                match out {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(__slicer_error_out(e)),
-                }
-            },
-        ),
-        _ => (
-            quote! { Ok(()) },
-            quote! { Ok(()) },
-            quote! { Ok(()) },
-            quote! { Ok(()) },
-            quote! { Ok(()) },
-            quote! { Ok(()) },
-        ),
-    };
+                    match out {
+                        Ok(()) => Ok(()),
+                        Err(e) => Err(__slicer_error_out(e)),
+                    }
+                },
+                quote! { Ok(()) }, // layer_arm (unused)
+                quote! { Ok(()) }, // mesh_seg_arm (unused)
+                quote! { Ok(()) }, // paint_seg_arm (unused)
+                quote! { Ok(()) }, // seam_arm (unused)
+                quote! { Ok(()) }, // support_arm (unused)
+            ),
+            "PrePass::LayerPlanning" => (
+                quote! { Ok(()) }, // mesh_arm (unused)
+                quote! {
+                    let ir_config = __slicer_adapt_config(&config);
+                    let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
+                        Ok(m) => m,
+                        Err(e) => return Err(__slicer_error_out(e)),
+                    };
+                    // The WIT `objects` list is `Vec<ObjectId>` (aliased to
+                    // `String` by wit-bindgen); the SDK trait wants
+                    // `&[::slicer_ir::ObjectId]`, which is also `String`.
+                    // Forward the list by value so the guest's planner
+                    // actually sees per-object ids.
+                    let sdk_objects: ::std::vec::Vec<::slicer_ir::ObjectId> = _objects.clone();
+                    let mut sdk_output = ::slicer_sdk::prepass_builders::LayerPlanOutput::new();
+                    let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_layer_planning(
+                        &module, &sdk_objects, &mut sdk_output, &ir_config,
+                    );
+                    // Drain the SDK builder back into the WIT
+                    // `layer-plan-output` resource in push order so the host
+                    // sees every planner-emitted proposal. A `push_layer`
+                    // failure is surfaced as a fatal module error because
+                    // the host's `push_layer` host-side handler rejects
+                    // malformed proposals (e.g. non-finite Z), and dropping
+                    // them silently would desync the planner's contract.
+                    for __slicer_layer in sdk_output.layers() {
+                        let __slicer_wit_regions: ::std::vec::Vec<RegionLayerProposal> = __slicer_layer
+                            .active_regions
+                            .iter()
+                            .map(|r| RegionLayerProposal {
+                                object_id: r.object_id.clone(),
+                                region_id: r.region_id.clone(),
+                                effective_layer_height: r.effective_layer_height,
+                                is_catchup: r.is_catchup,
+                                catchup_z_bottom: r.catchup_z_bottom,
+                            })
+                            .collect();
+                        if let Err(e) = _output.push_layer(&LayerProposal {
+                            z: __slicer_layer.z,
+                            active_regions: __slicer_wit_regions,
+                        }) {
+                            return Err(ModuleError {
+                                code: 5,
+                                message: e,
+                                fatal: true,
+                            });
+                        }
+                    }
+                    match out {
+                        Ok(()) => Ok(()),
+                        Err(e) => Err(__slicer_error_out(e)),
+                    }
+                },
+                quote! { Ok(()) }, // mesh_seg_arm (unused)
+                quote! { Ok(()) }, // paint_seg_arm (unused)
+                quote! { Ok(()) }, // seam_arm (unused)
+                quote! { Ok(()) }, // support_arm (unused)
+            ),
+            "PrePass::MeshSegmentation" => (
+                quote! { Ok(()) },
+                quote! { Ok(()) },
+                // STEP H: forward real `_objects` as skeletal
+                // `MeshObjectView`s (only `object_id` populated; the WIT
+                // `run-mesh-segmentation` surface provides just
+                // `list<object-id>`, so geometry/paint can't cross the
+                // boundary without separate host-service calls), then drain
+                // the SDK builder's `triangle_paint_marks` back through the
+                // WIT `mesh-segmentation-output::mark-triangle-paint`
+                // resource method. The SDK's legacy `push_modification` /
+                // `ObjectMeshModification` stream is intentionally NOT
+                // drained: it has no WIT representation and is reserved for
+                // native-mode authoring. Push failures surface as fatal
+                // `ModuleError` (mirrors the LayerPlanning / MeshAnalysis
+                // bridge shape from STEP F / STEP G).
+                quote! {
+                    let ir_config = __slicer_adapt_config(&config);
+                    let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
+                        Ok(m) => m,
+                        Err(e) => return Err(__slicer_error_out(e)),
+                    };
+                    let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = _objects
+                        .into_iter()
+                        .map(__slicer_mesh_object_from_wit)
+                        .collect();
+                    let mut sdk_output = ::slicer_sdk::prepass_builders::MeshSegmentationOutput::new();
+                    let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_mesh_segmentation(
+                        &module, &sdk_objects, &mut sdk_output, &ir_config,
+                    );
+                    for __slicer_mark in sdk_output.triangle_paint_marks() {
+                        if let Err(e) = _output.mark_triangle_paint(
+                            &__slicer_mark.object_id,
+                            __slicer_mark.facet_index,
+                            &__slicer_mark.semantic,
+                            &__slicer_mark.value,
+                        ) {
+                            return Err(ModuleError {
+                                code: 10,
+                                message: e,
+                                fatal: true,
+                            });
+                        }
+                    }
+                    match out {
+                        Ok(()) => Ok(()),
+                        Err(e) => Err(__slicer_error_out(e)),
+                    }
+                },
+                quote! { Ok(()) }, // paint_seg_arm (unused)
+                quote! { Ok(()) }, // seam_arm (unused)
+                quote! { Ok(()) }, // support_arm (unused)
+            ),
+            "PrePass::PaintSegmentation" => (
+                quote! { Ok(()) },
+                quote! { Ok(()) },
+                quote! { Ok(()) },
+                // Same disconnect as MeshSegmentation: the SDK
+                // `PaintSegmentationOutput` builder operates on an in-Rust
+                // tree of `(layer, semantic, object, paint-order)` tuples
+                // that doesn't map 1:1 back to the WIT `push-paint-region`
+                // calls. Canonical modules implement the WIT world
+                // directly in their `wit-guest/` subcrate (pattern shared
+                // with `layer-planner-default` and `mesh-segmentation`);
+                // the macro path is kept alive for `#[slicer_module]`
+                // authoring of PaintSegmentation-stage modules where
+                // lifecycle-only behavior is acceptable.
+                quote! {
+                    let ir_config = __slicer_adapt_config(&config);
+                    let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
+                        Ok(m) => m,
+                        Err(e) => return Err(__slicer_error_out(e)),
+                    };
+                    let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::PaintSegmentationObjectView> = _objects
+                        .into_iter()
+                        .map(__slicer_paint_segmentation_object_from_wit)
+                        .collect();
+                    let mut sdk_output = ::slicer_sdk::prepass_builders::PaintSegmentationOutput::new();
+                    let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_paint_segmentation(
+                        &module, &sdk_objects, &mut sdk_output, &ir_config,
+                    );
+                    match out {
+                        Ok(()) => Ok(()),
+                        Err(e) => Err(__slicer_error_out(e)),
+                    }
+                },
+                quote! { Ok(()) }, // seam_arm (unused)
+                quote! { Ok(()) }, // support_arm (unused)
+            ),
+            "PrePass::SeamPlanning" => (
+                // SeamPlanning: the seam planner reads MeshIR + SurfaceClassificationIR
+                // via host services and emits SeamPlanEntry records. Forward real
+                // objects list, call run_seam_planning, drain SDK output back through
+                // the WIT seam-planning-output resource.
+                quote! { Ok(()) }, // mesh_arm (unused)
+                quote! { Ok(()) }, // layer_arm (unused)
+                quote! { Ok(()) }, // mesh_seg_arm (unused)
+                quote! { Ok(()) }, // paint_seg_arm (unused)
+                quote! {
+                    let ir_config = __slicer_adapt_config(&config);
+                    let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
+                        Ok(m) => m,
+                        Err(e) => return Err(__slicer_error_out(e)),
+                    };
+                    let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = _objects
+                        .into_iter()
+                        .map(__slicer_mesh_object_from_wit)
+                        .collect();
+                    let mut sdk_output = ::slicer_sdk::prepass_builders::SeamPlanningOutput::new();
+                    let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_seam_planning(
+                        &module, &sdk_objects, &mut sdk_output, &ir_config,
+                    );
+                    for __slicer_entry in sdk_output.entries() {
+                        // Construct the wit-bindgen `Point3WithWidth` inline.
+                        // `__slicer_point3_with_width_from_sdk` returns the SDK
+                        // (slicer_ir) flavour, which is a different type from
+                        // the wit-bindgen-generated record even though the
+                        // field shape is identical (5 f32 fields). Same fix
+                        // pattern as the SupportGeneration arm below.
+                        let __slicer_wit_candidates: ::std::vec::Vec<ScoredSeamCandidate> = __slicer_entry
+                            .scored_candidates
+                            .iter()
+                            .map(|sc| ScoredSeamCandidate {
+                                position: Point3WithWidth {
+                                    x: sc.position.x,
+                                    y: sc.position.y,
+                                    z: sc.position.z,
+                                    width: sc.position.width,
+                                    flow_factor: sc.position.flow_factor,
+                                },
+                                score: sc.score,
+                                reason: SeamReason { tag: sc.reason.tag.clone() },
+                            })
+                            .collect();
+                        let __slicer_wit_entry = SeamPlanEntry {
+                            global_layer_index: __slicer_entry.global_layer_index,
+                            object_id: __slicer_entry.object_id.clone(),
+                            region_id: __slicer_entry.region_id.clone(),
+                            chosen_position: Point3WithWidth {
+                                x: __slicer_entry.chosen_position.x,
+                                y: __slicer_entry.chosen_position.y,
+                                z: __slicer_entry.chosen_position.z,
+                                width: __slicer_entry.chosen_position.width,
+                                flow_factor: __slicer_entry.chosen_position.flow_factor,
+                            },
+                            chosen_wall_index: __slicer_entry.chosen_wall_index,
+                            scored_candidates: __slicer_wit_candidates,
+                        };
+                        if let Err(e) = _output.push_seam_plan(&__slicer_wit_entry) {
+                            return Err(ModuleError {
+                                code: 11,
+                                message: e,
+                                fatal: true,
+                            });
+                        }
+                    }
+                    match out {
+                        Ok(()) => Ok(()),
+                        Err(e) => Err(__slicer_error_out(e)),
+                    }
+                },
+                quote! { Ok(()) }, // support_arm (unused)
+            ),
+            "PrePass::SupportGeneration" => (
+                quote! { Ok(()) }, // mesh_arm (unused)
+                quote! { Ok(()) }, // layer_arm (unused)
+                quote! { Ok(()) }, // mesh_seg_arm (unused)
+                quote! { Ok(()) }, // paint_seg_arm (unused)
+                quote! { Ok(()) }, // seam_arm (unused)
+                quote! {
+                    let ir_config = __slicer_adapt_config(&config);
+                    let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
+                        Ok(m) => m,
+                        Err(e) => return Err(__slicer_error_out(e)),
+                    };
+                    let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = _objects
+                        .into_iter()
+                        .map(__slicer_mesh_object_from_wit)
+                        .collect();
+                    let mut sdk_output = ::slicer_sdk::prepass_builders::SupportGenerationOutput::new();
+                    let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_generation(
+                        &module, &sdk_objects, &mut sdk_output, &ir_config,
+                    );
+                    for __slicer_entry in sdk_output.entries() {
+                        // Construct the wit-bindgen Point3WithWidth inline.
+                        // `__slicer_point3_with_width_from_sdk` returns the SDK
+                        // (slicer_ir) flavour, which is a different type from
+                        // the wit-bindgen-generated record even though the
+                        // field shape is identical (5 f32 fields).
+                        let __slicer_wit_segments: ::std::vec::Vec<::std::vec::Vec<Point3WithWidth>> = __slicer_entry
+                            .branch_segments
+                            .iter()
+                            .map(|seg| {
+                                seg.iter()
+                                    .map(|pt| Point3WithWidth {
+                                        x: pt.x,
+                                        y: pt.y,
+                                        z: pt.z,
+                                        width: pt.width,
+                                        flow_factor: pt.flow_factor,
+                                    })
+                                    .collect()
+                            })
+                            .collect();
+                        let __slicer_wit_entry = SupportPlanEntry {
+                            global_layer_index: __slicer_entry.global_layer_index,
+                            object_id: __slicer_entry.object_id.clone(),
+                            region_id: __slicer_entry.region_id.clone(),
+                            branch_segments: __slicer_wit_segments,
+                        };
+                        if let Err(e) = _output.push_support_plan(&__slicer_wit_entry) {
+                            return Err(ModuleError {
+                                code: 12,
+                                message: e,
+                                fatal: true,
+                            });
+                        }
+                    }
+                    match out {
+                        Ok(()) => Ok(()),
+                        Err(e) => Err(__slicer_error_out(e)),
+                    }
+                },
+            ),
+            _ => (
+                quote! { Ok(()) },
+                quote! { Ok(()) },
+                quote! { Ok(()) },
+                quote! { Ok(()) },
+                quote! { Ok(()) },
+                quote! { Ok(()) },
+            ),
+        };
 
     quote! {
         #[cfg(target_arch = "wasm32")]

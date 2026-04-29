@@ -100,7 +100,7 @@ fn region_with_square_at_z(z: f32) -> PerimeterRegionView {
 
 #[test]
 fn on_print_start_defaults() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
     assert!(!module.enabled());
     assert!((module.ironing_speed() - 15.0).abs() < 0.001);
@@ -127,7 +127,7 @@ fn on_print_start_custom() {
 
 #[test]
 fn disabled_no_paths() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
     let region = region_with_square_at_z(1.0);
     let mut output = InfillOutputBuilder::new();

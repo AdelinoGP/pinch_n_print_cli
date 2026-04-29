@@ -155,7 +155,7 @@ fn region_with_candidates(candidates: Vec<SeamCandidate>, z: f32) -> PerimeterRe
 
 #[test]
 fn on_print_start_defaults() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SeamPlacer::on_print_start(&config).unwrap();
     assert_eq!(module.seam_mode(), "nearest");
 }
@@ -182,7 +182,7 @@ fn on_print_start_custom() {
 
 #[test]
 fn picks_lowest_score() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SeamPlacer::on_print_start(&config).unwrap();
 
     let candidates = vec![
@@ -210,7 +210,7 @@ fn picks_lowest_score() {
 
 #[test]
 fn concave_preferred() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SeamPlacer::on_print_start(&config).unwrap();
 
     let candidates = vec![
@@ -237,7 +237,7 @@ fn concave_preferred() {
 
 #[test]
 fn no_candidates_no_seam() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SeamPlacer::on_print_start(&config).unwrap();
 
     let regions = vec![region_with_candidates(vec![], 1.0)];
@@ -320,7 +320,7 @@ fn random_mode_produces_seam() {
 
 #[test]
 fn seam_at_correct_z() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SeamPlacer::on_print_start(&config).unwrap();
 
     let candidates = vec![candidate(1.0, 0.0, 1.5, 0.3, SeamReason::Concave)];
@@ -341,7 +341,7 @@ fn seam_at_correct_z() {
 
 #[test]
 fn multiple_regions() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SeamPlacer::on_print_start(&config).unwrap();
 
     let regions = vec![
@@ -371,7 +371,7 @@ fn multiple_regions() {
 
 #[test]
 fn empty_regions_no_output() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SeamPlacer::on_print_start(&config).unwrap();
 
     let regions: Vec<PerimeterRegionView> = vec![];
@@ -390,7 +390,7 @@ fn empty_regions_no_output() {
 
 #[test]
 fn wall_index_zero() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SeamPlacer::on_print_start(&config).unwrap();
 
     let candidates = vec![candidate(1.0, 2.0, 1.0, 0.3, SeamReason::Concave)];

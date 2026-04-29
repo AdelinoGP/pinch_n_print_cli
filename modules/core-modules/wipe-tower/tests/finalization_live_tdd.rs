@@ -10,7 +10,11 @@ use wipe_tower::WipeTower;
 // ---- Helpers ----
 
 fn semver() -> SemVer {
-    SemVer { major: 0, minor: 1, patch: 0 }
+    SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    }
 }
 
 fn dummy_entity(z: f32, index: u32) -> PrintEntity {
@@ -63,7 +67,11 @@ fn wipe_tower_from(pairs: &[(&str, ConfigValue)]) -> WipeTower {
 }
 
 fn tc(after: u32, from: u32, to: u32) -> ToolChange {
-    ToolChange { after_entity_index: after, from_tool: from, to_tool: to }
+    ToolChange {
+        after_entity_index: after,
+        from_tool: from,
+        to_tool: to,
+    }
 }
 
 // ─── AC-1: run_finalization pushes wipe-tower entities for tool-change layers ─
@@ -85,7 +93,10 @@ fn run_finalization_pushes_wipe_tower_entities_for_tool_change_layers() {
         .expect("run_finalization must succeed");
 
     let pushes = output.entity_pushes();
-    assert!(!pushes.is_empty(), "expected non-empty entity pushes for a tool-change layer");
+    assert!(
+        !pushes.is_empty(),
+        "expected non-empty entity pushes for a tool-change layer"
+    );
     for (layer_index, path, _region_key) in pushes {
         assert_eq!(*layer_index, 0, "all pushes must target layer index 0");
         assert_eq!(

@@ -19,9 +19,8 @@ use slicer_ir::{GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, SeamPosit
 use crate::wit_host::{self, ConfigViewData, HostExecutionContext, PaintRegionLayerData};
 use crate::{
     Blackboard, CompiledModule, FinalizationError, FinalizationOutput, FinalizationStageRunner,
-    LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner, PostpassError,
-    PostpassOutput, PostpassStageRunner, PrepassExecutionError, PrepassStageOutput,
-    PrepassStageRunner, WasmEngine,
+    LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner, PostpassError, PostpassOutput,
+    PostpassStageRunner, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner, WasmEngine,
 };
 
 /// Maps a canonical stage ID to the WIT export function name the module must provide.
@@ -130,18 +129,25 @@ fn convert_postpass_role_to_wit(
     }
 }
 
-fn convert_gcode_command_to_postpass_wit(command: &GCodeCommand) -> wit_host::postpass::GcodeCommand {
+fn convert_gcode_command_to_postpass_wit(
+    command: &GCodeCommand,
+) -> wit_host::postpass::GcodeCommand {
     match command {
-        GCodeCommand::Move { x, y, z, e, f, role } => {
-            wit_host::postpass::GcodeCommand::Move(wit_host::postpass::GcodeMoveCmd {
-                x: *x,
-                y: *y,
-                z: *z,
-                e: *e,
-                f: *f,
-                role: convert_postpass_role_to_wit(role),
-            })
-        }
+        GCodeCommand::Move {
+            x,
+            y,
+            z,
+            e,
+            f,
+            role,
+        } => wit_host::postpass::GcodeCommand::Move(wit_host::postpass::GcodeMoveCmd {
+            x: *x,
+            y: *y,
+            z: *z,
+            e: *e,
+            f: *f,
+            role: convert_postpass_role_to_wit(role),
+        }),
         GCodeCommand::Retract { length, speed } => {
             wit_host::postpass::GcodeCommand::Retract(wit_host::postpass::GcodeRetractCmd {
                 length: *length,
@@ -159,14 +165,16 @@ fn convert_gcode_command_to_postpass_wit(command: &GCodeCommand) -> wit_host::po
                 value: *value,
             })
         }
-        GCodeCommand::Temperature { tool, celsius, wait } => {
-            wit_host::postpass::GcodeCommand::Temperature(
-                wit_host::postpass::GcodeTemperatureCmd {
-                    tool: *tool,
-                    celsius: *celsius,
-                    wait: *wait,
-                },
-            )
+        GCodeCommand::Temperature {
+            tool,
+            celsius,
+            wait,
+        } => {
+            wit_host::postpass::GcodeCommand::Temperature(wit_host::postpass::GcodeTemperatureCmd {
+                tool: *tool,
+                celsius: *celsius,
+                wait: *wait,
+            })
         }
         GCodeCommand::ToolChange { from, to } => {
             wit_host::postpass::GcodeCommand::ToolChange(wit_host::postpass::GcodeToolChangeCmd {
@@ -201,28 +209,34 @@ fn collect_postpass_output(
                 length: *length,
                 speed: *speed,
             },
-            wit_host::GcodeCommandCollected::Unretract { length, speed } => GCodeCommand::Unretract {
-                length: *length,
-                speed: *speed,
-            },
-            wit_host::GcodeCommandCollected::FanSpeed(value) => GCodeCommand::FanSpeed {
-                value: *value,
-            },
-            wit_host::GcodeCommandCollected::Temperature { tool, celsius, wait } => GCodeCommand::Temperature {
+            wit_host::GcodeCommandCollected::Unretract { length, speed } => {
+                GCodeCommand::Unretract {
+                    length: *length,
+                    speed: *speed,
+                }
+            }
+            wit_host::GcodeCommandCollected::FanSpeed(value) => {
+                GCodeCommand::FanSpeed { value: *value }
+            }
+            wit_host::GcodeCommandCollected::Temperature {
+                tool,
+                celsius,
+                wait,
+            } => GCodeCommand::Temperature {
                 tool: *tool,
                 celsius: *celsius,
                 wait: *wait,
             },
-            wit_host::GcodeCommandCollected::ToolChange { from_tool, to_tool } => GCodeCommand::ToolChange {
-                from: *from_tool,
-                to: *to_tool,
-            },
-            wit_host::GcodeCommandCollected::Comment(text) => GCodeCommand::Comment {
-                text: text.clone(),
-            },
-            wit_host::GcodeCommandCollected::Raw(text) => GCodeCommand::Raw {
-                text: text.clone(),
-            },
+            wit_host::GcodeCommandCollected::ToolChange { from_tool, to_tool } => {
+                GCodeCommand::ToolChange {
+                    from: *from_tool,
+                    to: *to_tool,
+                }
+            }
+            wit_host::GcodeCommandCollected::Comment(text) => {
+                GCodeCommand::Comment { text: text.clone() }
+            }
+            wit_host::GcodeCommandCollected::Raw(text) => GCodeCommand::Raw { text: text.clone() },
             wit_host::GcodeCommandCollected::ZHop { .. } => {
                 return Err(format!(
                     "postpass gcode output command {index} used push-z-hop, but GCodeIR has no z-hop command variant"
@@ -316,17 +330,16 @@ impl WasmRuntimeDispatcher {
             reason: format!("no export mapping for stage '{stage_id}'"),
         })?;
 
-        let component =
-            module
-                .wasm_component
-                .as_ref()
-                .ok_or_else(|| DispatchError {
-                    module_id: module.module_id.clone(),
-                    stage_id: stage_id.clone(),
-                    export_name: export_name.to_string(),
-                    phase: DispatchPhase::MissingComponent,
-                    reason: "no compiled WASM component available".to_string(),
-                })?;
+        let component = module
+            .wasm_component
+            .as_ref()
+            .ok_or_else(|| DispatchError {
+                module_id: module.module_id.clone(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::MissingComponent,
+                reason: "no compiled WASM component available".to_string(),
+            })?;
 
         // Acquire pool slot for concurrency control (RAII — released on drop).
         let _lease = module.instance_pool.acquire();
@@ -335,14 +348,16 @@ impl WasmRuntimeDispatcher {
 
         // Wire typed host imports into a fresh linker.
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        wit_host::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).map_err(|e| {
-            DispatchError {
-                module_id: module.module_id.clone(),
-                stage_id: stage_id.clone(),
-                export_name: export_name.to_string(),
-                phase: DispatchPhase::LinkerSetup,
-                reason: e.to_string(),
-            }
+        wit_host::LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+            &mut linker,
+            |ctx| ctx,
+        )
+        .map_err(|e| DispatchError {
+            module_id: module.module_id.clone(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::LinkerSetup,
+            reason: e.to_string(),
         })?;
 
         // Create per-call execution context and store.
@@ -368,18 +383,15 @@ impl WasmRuntimeDispatcher {
             })?;
 
         // Instantiate component through typed bindings.
-        let bindings = wit_host::LayerModule::instantiate(
-            &mut store,
-            component.wasmtime_component(),
-            &linker,
-        )
-        .map_err(|e| DispatchError {
-            module_id: module.module_id.clone(),
-            stage_id: stage_id.clone(),
-            export_name: export_name.to_string(),
-            phase: DispatchPhase::TypedInstantiation,
-            reason: e.to_string(),
-        })?;
+        let bindings =
+            wit_host::LayerModule::instantiate(&mut store, component.wasmtime_component(), &linker)
+                .map_err(|e| DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::TypedInstantiation,
+                    reason: e.to_string(),
+                })?;
 
         // Call the stage-appropriate typed export.
         let call_result = self.call_layer_export(
@@ -444,41 +456,60 @@ impl WasmRuntimeDispatcher {
 
         match config.stage_id {
             "Layer::Infill" => {
-                let region_handles =
-                    push_slice_regions(config.store, params.arena, params.layer_z).map_err(mk_ctx_err)?;
-                let output = config.store
+                let region_handles = push_slice_regions(config.store, params.arena, params.layer_z)
+                    .map_err(mk_ctx_err)?;
+                let output = config
+                    .store
                     .data_mut()
                     .push_infill_output_builder()
                     .map_err(mk_ctx_err)?;
-                config.bindings
-                    .call_run_infill(config.store, params.layer_index, &region_handles, own(output), own(config.config_handle))
+                config
+                    .bindings
+                    .call_run_infill(
+                        config.store,
+                        params.layer_index,
+                        &region_handles,
+                        own(output),
+                        own(config.config_handle),
+                    )
                     .map_err(mk_call_err)
             }
             "Layer::InfillPostProcess" => {
                 let region_handles =
                     push_perimeter_regions(config.store, params.arena, None, params.layer_index)
                         .map_err(mk_ctx_err)?;
-                let output = config.store
+                let output = config
+                    .store
                     .data_mut()
                     .push_infill_output_builder()
                     .map_err(mk_ctx_err)?;
-                config.bindings
-                    .call_run_infill_postprocess(config.store, params.layer_index, &region_handles, own(output), own(config.config_handle))
+                config
+                    .bindings
+                    .call_run_infill_postprocess(
+                        config.store,
+                        params.layer_index,
+                        &region_handles,
+                        own(output),
+                        own(config.config_handle),
+                    )
                     .map_err(mk_call_err)
             }
             "Layer::SlicePostProcess" => {
-                let region_handles =
-                    push_slice_regions(config.store, params.arena, params.layer_z).map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(config.store, params.arena, params.layer_z)
+                    .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(params.paint_ir, params.layer_index);
-                let paint = config.store
+                let paint = config
+                    .store
                     .data_mut()
                     .push_paint_region_layer_view(paint_data)
                     .map_err(mk_ctx_err)?;
-                let output = config.store
+                let output = config
+                    .store
                     .data_mut()
                     .push_slice_postprocess_builder()
                     .map_err(mk_ctx_err)?;
-                config.bindings
+                config
+                    .bindings
                     .call_run_slice_postprocess(
                         config.store,
                         params.layer_index,
@@ -490,18 +521,21 @@ impl WasmRuntimeDispatcher {
                     .map_err(mk_call_err)
             }
             "Layer::Perimeters" => {
-                let region_handles =
-                    push_slice_regions(config.store, params.arena, params.layer_z).map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(config.store, params.arena, params.layer_z)
+                    .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data(params.paint_ir, params.layer_index);
-                let paint = config.store
+                let paint = config
+                    .store
                     .data_mut()
                     .push_paint_region_layer_view(paint_data)
                     .map_err(mk_ctx_err)?;
-                let output = config.store
+                let output = config
+                    .store
                     .data_mut()
                     .push_perimeter_output_builder()
                     .map_err(mk_ctx_err)?;
-                config.bindings
+                config
+                    .bindings
                     .call_run_perimeters(
                         config.store,
                         params.layer_index,
@@ -520,31 +554,42 @@ impl WasmRuntimeDispatcher {
                     params.layer_index,
                 )
                 .map_err(mk_ctx_err)?;
-                let output = config.store
+                let output = config
+                    .store
                     .data_mut()
                     .push_perimeter_output_builder()
                     .map_err(mk_ctx_err)?;
-                config.bindings
-                    .call_run_wall_postprocess(config.store, params.layer_index, &region_handles, own(output), own(config.config_handle))
+                config
+                    .bindings
+                    .call_run_wall_postprocess(
+                        config.store,
+                        params.layer_index,
+                        &region_handles,
+                        own(output),
+                        own(config.config_handle),
+                    )
                     .map_err(mk_call_err)
             }
             "Layer::Support" => {
-                let region_handles =
-                    push_slice_regions(config.store, params.arena, params.layer_z).map_err(mk_ctx_err)?;
+                let region_handles = push_slice_regions(config.store, params.arena, params.layer_z)
+                    .map_err(mk_ctx_err)?;
                 let paint_data = build_paint_layer_data_with_plan(
                     params.paint_ir,
                     params.layer_index,
                     params.support_plan_ir,
                 );
-                let paint = config.store
+                let paint = config
+                    .store
                     .data_mut()
                     .push_paint_region_layer_view(paint_data)
                     .map_err(mk_ctx_err)?;
-                let output = config.store
+                let output = config
+                    .store
                     .data_mut()
                     .push_support_output_builder()
                     .map_err(mk_ctx_err)?;
-                config.bindings
+                config
+                    .bindings
                     .call_run_support(
                         config.store,
                         params.layer_index,
@@ -556,31 +601,49 @@ impl WasmRuntimeDispatcher {
                     .map_err(mk_call_err)
             }
             "Layer::SupportPostProcess" => {
-                let region_handles =
-                    push_slice_regions(config.store, params.arena, params.layer_z).map_err(mk_ctx_err)?;
-                let output = config.store
+                let region_handles = push_slice_regions(config.store, params.arena, params.layer_z)
+                    .map_err(mk_ctx_err)?;
+                let output = config
+                    .store
                     .data_mut()
                     .push_support_output_builder()
                     .map_err(mk_ctx_err)?;
-                config.bindings
-                    .call_run_support_postprocess(config.store, params.layer_index, &region_handles, own(output), own(config.config_handle))
+                config
+                    .bindings
+                    .call_run_support_postprocess(
+                        config.store,
+                        params.layer_index,
+                        &region_handles,
+                        own(output),
+                        own(config.config_handle),
+                    )
                     .map_err(mk_call_err)
             }
             "Layer::PathOptimization" => {
                 let region_handles =
                     push_perimeter_regions(config.store, params.arena, None, params.layer_index)
                         .map_err(mk_ctx_err)?;
-                let output = config.store
+                let output = config
+                    .store
                     .data_mut()
                     .push_gcode_output_builder()
                     .map_err(mk_ctx_err)?;
                 let snapshot = project_ordered_entities(params.arena);
-                let collection = config.store
+                let collection = config
+                    .store
                     .data_mut()
                     .push_layer_collection_builder(snapshot)
                     .map_err(mk_ctx_err)?;
-                config.bindings
-                    .call_run_path_optimization(config.store, params.layer_index, &region_handles, own(output), own(collection), own(config.config_handle))
+                config
+                    .bindings
+                    .call_run_path_optimization(
+                        config.store,
+                        params.layer_index,
+                        &region_handles,
+                        own(output),
+                        own(collection),
+                        own(config.config_handle),
+                    )
                     .map_err(mk_call_err)
             }
             _ => Err(DispatchError {
@@ -613,22 +676,32 @@ impl WasmRuntimeDispatcher {
         blackboard: &Blackboard,
     ) -> Result<wit_host::HostExecutionContext, DispatchError> {
         let export_name = export_name_for_stage(stage_id).unwrap_or("unknown");
-        let component = module.wasm_component.as_ref().ok_or_else(|| DispatchError {
-            module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-            export_name: export_name.to_string(), phase: DispatchPhase::MissingComponent,
-            reason: "no compiled WASM component available".to_string(),
-        })?;
+        let component = module
+            .wasm_component
+            .as_ref()
+            .ok_or_else(|| DispatchError {
+                module_id: module.module_id.clone(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::MissingComponent,
+                reason: "no compiled WASM component available".to_string(),
+            })?;
 
         let _lease = module.instance_pool.acquire();
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<wit_host::HostExecutionContext>::new(engine);
-        wit_host::PrepassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::LinkerSetup,
-                reason: e.to_string(),
-            })?;
+        wit_host::PrepassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+            &mut linker,
+            |ctx| ctx,
+        )
+        .map_err(|e| DispatchError {
+            module_id: module.module_id.clone(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::LinkerSetup,
+            reason: e.to_string(),
+        })?;
 
         let ctx = wit_host::HostExecutionContext::new(
             module.module_id.clone(),
@@ -639,28 +712,42 @@ impl WasmRuntimeDispatcher {
         );
         let mut store = wasmtime::Store::new(engine, ctx);
 
-        let config_handle = store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view))
+        let config_handle = store
+            .data_mut()
+            .push_config_view(wit_host::config_view_to_data(&module.config_view))
             .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::ContextCreation,
+                module_id: module.module_id.clone(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::ContextCreation,
                 reason: format!("failed to push config resource: {e}"),
             })?;
 
-        let bindings = wit_host::PrepassModule::instantiate(&mut store, component.wasmtime_component(), &linker)
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::TypedInstantiation,
-                reason: e.to_string(),
-            })?;
+        let bindings = wit_host::PrepassModule::instantiate(
+            &mut store,
+            component.wasmtime_component(),
+            &linker,
+        )
+        .map_err(|e| DispatchError {
+            module_id: module.module_id.clone(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::TypedInstantiation,
+            reason: e.to_string(),
+        })?;
 
         let mk_call_err = |e: wasmtime::Error| DispatchError {
-            module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-            export_name: export_name.to_string(), phase: DispatchPhase::TypedExportCall,
+            module_id: module.module_id.clone(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::TypedExportCall,
             reason: e.to_string(),
         };
         let mk_ctx_err = |e: wasmtime::Error| DispatchError {
-            module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-            export_name: export_name.to_string(), phase: DispatchPhase::ContextCreation,
+            module_id: module.module_id.clone(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::ContextCreation,
             reason: e.to_string(),
         };
 
@@ -669,60 +756,158 @@ impl WasmRuntimeDispatcher {
         // MeshSegmentation and PaintSegmentation pass geometry views.
         let call_result = match stage_id.as_str() {
             "PrePass::MeshAnalysis" => {
-                let object_ids: Vec<String> = blackboard.mesh().objects.iter().map(|o| o.id.clone()).collect();
-                let output = store.data_mut().push_mesh_analysis_output().map_err(mk_ctx_err)?;
-                bindings.call_run_mesh_analysis(&mut store, &object_ids, own(output), own(config_handle)).map_err(mk_call_err)
+                let object_ids: Vec<String> = blackboard
+                    .mesh()
+                    .objects
+                    .iter()
+                    .map(|o| o.id.clone())
+                    .collect();
+                let output = store
+                    .data_mut()
+                    .push_mesh_analysis_output()
+                    .map_err(mk_ctx_err)?;
+                bindings
+                    .call_run_mesh_analysis(
+                        &mut store,
+                        &object_ids,
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)
             }
             "PrePass::LayerPlanning" => {
-                let object_ids: Vec<String> = blackboard.mesh().objects.iter().map(|o| o.id.clone()).collect();
-                let output = store.data_mut().push_layer_plan_output().map_err(mk_ctx_err)?;
-                bindings.call_run_layer_planning(&mut store, &object_ids, own(output), own(config_handle)).map_err(mk_call_err)
+                let object_ids: Vec<String> = blackboard
+                    .mesh()
+                    .objects
+                    .iter()
+                    .map(|o| o.id.clone())
+                    .collect();
+                let output = store
+                    .data_mut()
+                    .push_layer_plan_output()
+                    .map_err(mk_ctx_err)?;
+                bindings
+                    .call_run_layer_planning(
+                        &mut store,
+                        &object_ids,
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)
             }
             "PrePass::MeshSegmentation" => {
-                let mesh_object_views: Vec<_> = blackboard.mesh().objects.iter().map(|obj| {
-                    wit_host::object_mesh_to_wit_mesh_object_view(obj)
-                }).collect();
-                let output = store.data_mut().push_mesh_segmentation_output().map_err(mk_ctx_err)?;
-                bindings.call_run_mesh_segmentation(&mut store, &mesh_object_views, own(output), own(config_handle)).map_err(mk_call_err)
+                let mesh_object_views: Vec<_> = blackboard
+                    .mesh()
+                    .objects
+                    .iter()
+                    .map(|obj| wit_host::object_mesh_to_wit_mesh_object_view(obj))
+                    .collect();
+                let output = store
+                    .data_mut()
+                    .push_mesh_segmentation_output()
+                    .map_err(mk_ctx_err)?;
+                bindings
+                    .call_run_mesh_segmentation(
+                        &mut store,
+                        &mesh_object_views,
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)
             }
             "PrePass::PaintSegmentation" => {
                 let layer_plan = blackboard.layer_plan();
-                let paint_object_views: Vec<_> = blackboard.mesh().objects.iter().map(|obj| {
-                    let participating_layers = layer_plan
-                        .as_ref()
-                        .and_then(|lp| lp.object_participation.get(&obj.id))
-                        .map(|refs| refs.iter().map(|r| r.global_layer_index).collect::<Vec<u32>>())
-                        .unwrap_or_default();
-                    wit_host::object_mesh_to_wit_paint_segmentation_view(obj, &participating_layers)
-                }).collect();
-                let output = store.data_mut().push_paint_segmentation_output().map_err(mk_ctx_err)?;
-                bindings.call_run_paint_segmentation(&mut store, &paint_object_views, own(output), own(config_handle)).map_err(mk_call_err)
+                let paint_object_views: Vec<_> = blackboard
+                    .mesh()
+                    .objects
+                    .iter()
+                    .map(|obj| {
+                        let participating_layers = layer_plan
+                            .as_ref()
+                            .and_then(|lp| lp.object_participation.get(&obj.id))
+                            .map(|refs| {
+                                refs.iter()
+                                    .map(|r| r.global_layer_index)
+                                    .collect::<Vec<u32>>()
+                            })
+                            .unwrap_or_default();
+                        wit_host::object_mesh_to_wit_paint_segmentation_view(
+                            obj,
+                            &participating_layers,
+                        )
+                    })
+                    .collect();
+                let output = store
+                    .data_mut()
+                    .push_paint_segmentation_output()
+                    .map_err(mk_ctx_err)?;
+                bindings
+                    .call_run_paint_segmentation(
+                        &mut store,
+                        &paint_object_views,
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)
             }
             "PrePass::SeamPlanning" => {
-                let mesh_object_views: Vec<_> = blackboard.mesh().objects.iter().map(|obj| {
-                    wit_host::object_mesh_to_wit_mesh_object_view(obj)
-                }).collect();
-                let output = store.data_mut().push_seam_planning_output().map_err(mk_ctx_err)?;
-                bindings.call_run_seam_planning(&mut store, &mesh_object_views, own(output), own(config_handle)).map_err(mk_call_err)
+                let mesh_object_views: Vec<_> = blackboard
+                    .mesh()
+                    .objects
+                    .iter()
+                    .map(|obj| wit_host::object_mesh_to_wit_mesh_object_view(obj))
+                    .collect();
+                let output = store
+                    .data_mut()
+                    .push_seam_planning_output()
+                    .map_err(mk_ctx_err)?;
+                bindings
+                    .call_run_seam_planning(
+                        &mut store,
+                        &mesh_object_views,
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)
             }
             "PrePass::SupportGeneration" => {
-                let mesh_object_views: Vec<_> = blackboard.mesh().objects.iter().map(|obj| {
-                    wit_host::object_mesh_to_wit_mesh_object_view(obj)
-                }).collect();
-                let output = store.data_mut().push_support_generation_output().map_err(mk_ctx_err)?;
-                bindings.call_run_support_generation(&mut store, &mesh_object_views, own(output), own(config_handle)).map_err(mk_call_err)
+                let mesh_object_views: Vec<_> = blackboard
+                    .mesh()
+                    .objects
+                    .iter()
+                    .map(|obj| wit_host::object_mesh_to_wit_mesh_object_view(obj))
+                    .collect();
+                let output = store
+                    .data_mut()
+                    .push_support_generation_output()
+                    .map_err(mk_ctx_err)?;
+                bindings
+                    .call_run_support_generation(
+                        &mut store,
+                        &mesh_object_views,
+                        own(output),
+                        own(config_handle),
+                    )
+                    .map_err(mk_call_err)
             }
             _ => Err(DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::UnknownStage,
+                module_id: module.module_id.clone(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::UnknownStage,
                 reason: format!("no typed prepass export for stage '{stage_id}'"),
             }),
         }?;
 
         call_result.map_err(|module_err| DispatchError {
-            module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-            export_name: export_name.to_string(), phase: DispatchPhase::TypedExportCall,
-            reason: format!("module error (code={}, fatal={}): {}", module_err.code, module_err.fatal, module_err.message),
+            module_id: module.module_id.clone(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::TypedExportCall,
+            reason: format!(
+                "module error (code={}, fatal={}): {}",
+                module_err.code, module_err.fatal, module_err.message
+            ),
         })?;
 
         // Move the execution context out of the store so the caller can harvest
@@ -746,22 +931,32 @@ impl WasmRuntimeDispatcher {
         layers: &[slicer_ir::LayerCollectionIR],
     ) -> Result<Vec<wit_host::FinalizationBuilderPush>, DispatchError> {
         let export_name = export_name_for_stage(stage_id).unwrap_or("unknown");
-        let component = module.wasm_component.as_ref().ok_or_else(|| DispatchError {
-            module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-            export_name: export_name.to_string(), phase: DispatchPhase::MissingComponent,
-            reason: "no compiled WASM component available".to_string(),
-        })?;
+        let component = module
+            .wasm_component
+            .as_ref()
+            .ok_or_else(|| DispatchError {
+                module_id: module.module_id.clone(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::MissingComponent,
+                reason: "no compiled WASM component available".to_string(),
+            })?;
 
         let _lease = module.instance_pool.acquire();
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        wit_host::FinalizationModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::LinkerSetup,
-                reason: e.to_string(),
-            })?;
+        wit_host::FinalizationModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+            &mut linker,
+            |ctx| ctx,
+        )
+        .map_err(|e| DispatchError {
+            module_id: module.module_id.clone(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::LinkerSetup,
+            reason: e.to_string(),
+        })?;
 
         let ctx = HostExecutionContext::new(
             module.module_id.clone(),
@@ -772,17 +967,25 @@ impl WasmRuntimeDispatcher {
         );
         let mut store = wasmtime::Store::new(engine, ctx);
 
-        let config_handle = store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view))
+        let config_handle = store
+            .data_mut()
+            .push_config_view(wit_host::config_view_to_data(&module.config_view))
             .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::ContextCreation,
+                module_id: module.module_id.clone(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::ContextCreation,
                 reason: format!("failed to push config resource: {e}"),
             })?;
 
-        let output_handle = store.data_mut().push_finalization_output_builder()
+        let output_handle = store
+            .data_mut()
+            .push_finalization_output_builder()
             .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::ContextCreation,
+                module_id: module.module_id.clone(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::ContextCreation,
                 reason: format!("failed to push finalization output resource: {e}"),
             })?;
 
@@ -792,33 +995,56 @@ impl WasmRuntimeDispatcher {
         // world-finalization.wit `resource layer-collection-view`).
         let mut layer_handles = Vec::with_capacity(layers.len());
         for layer in layers {
-            let h = store.data_mut().push_finalization_layer_view(layer).map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::ContextCreation,
-                reason: format!("failed to push layer-collection-view resource: {e}"),
-            })?;
+            let h = store
+                .data_mut()
+                .push_finalization_layer_view(layer)
+                .map_err(|e| DispatchError {
+                    module_id: module.module_id.clone(),
+                    stage_id: stage_id.clone(),
+                    export_name: export_name.to_string(),
+                    phase: DispatchPhase::ContextCreation,
+                    reason: format!("failed to push layer-collection-view resource: {e}"),
+                })?;
             layer_handles.push(own(h));
         }
 
-        let bindings = wit_host::FinalizationModule::instantiate(&mut store, component.wasmtime_component(), &linker)
-            .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::TypedInstantiation,
-                reason: e.to_string(),
-            })?;
+        let bindings = wit_host::FinalizationModule::instantiate(
+            &mut store,
+            component.wasmtime_component(),
+            &linker,
+        )
+        .map_err(|e| DispatchError {
+            module_id: module.module_id.clone(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::TypedInstantiation,
+            reason: e.to_string(),
+        })?;
 
         let call_result = bindings
-            .call_run_finalization(&mut store, &layer_handles, own(output_handle), own(config_handle))
+            .call_run_finalization(
+                &mut store,
+                &layer_handles,
+                own(output_handle),
+                own(config_handle),
+            )
             .map_err(|e| DispatchError {
-                module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-                export_name: export_name.to_string(), phase: DispatchPhase::TypedExportCall,
+                module_id: module.module_id.clone(),
+                stage_id: stage_id.clone(),
+                export_name: export_name.to_string(),
+                phase: DispatchPhase::TypedExportCall,
                 reason: e.to_string(),
             })?;
 
         call_result.map_err(|module_err| DispatchError {
-            module_id: module.module_id.clone(), stage_id: stage_id.clone(),
-            export_name: export_name.to_string(), phase: DispatchPhase::TypedExportCall,
-            reason: format!("module error (code={}, fatal={}): {}", module_err.code, module_err.fatal, module_err.message),
+            module_id: module.module_id.clone(),
+            stage_id: stage_id.clone(),
+            export_name: export_name.to_string(),
+            phase: DispatchPhase::TypedExportCall,
+            reason: format!(
+                "module error (code={}, fatal={}): {}",
+                module_err.code, module_err.fatal, module_err.message
+            ),
         })?;
 
         // Drain the builder's captured pushes so the caller can apply
@@ -839,27 +1065,35 @@ impl WasmRuntimeDispatcher {
         module: &CompiledModule,
         blackboard: &Blackboard,
         commands: &[GCodeCommand],
-    ) -> (Result<Option<Vec<GCodeCommand>>, DispatchError>, Vec<String>) {
+    ) -> (
+        Result<Option<Vec<GCodeCommand>>, DispatchError>,
+        Vec<String>,
+    ) {
         let export_name = "run-gcode-postprocess";
         let component = match module.wasm_component.as_ref() {
             Some(c) => c,
-            None => return (
-                Err(DispatchError {
-                    module_id: module.module_id.clone(),
-                    stage_id: stage_id.clone(),
-                    export_name: export_name.to_string(),
-                    phase: DispatchPhase::MissingComponent,
-                    reason: "no compiled WASM component available".to_string(),
-                }),
-                Vec::new(),
-            ),
+            None => {
+                return (
+                    Err(DispatchError {
+                        module_id: module.module_id.clone(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::MissingComponent,
+                        reason: "no compiled WASM component available".to_string(),
+                    }),
+                    Vec::new(),
+                )
+            }
         };
 
         let _lease = module.instance_pool.acquire();
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        if let Err(e) = wit_host::PostpassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx) {
+        if let Err(e) = wit_host::PostpassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+            &mut linker,
+            |ctx| ctx,
+        ) {
             return (
                 Err(DispatchError {
                     module_id: module.module_id.clone(),
@@ -881,45 +1115,58 @@ impl WasmRuntimeDispatcher {
         );
         let mut store = wasmtime::Store::new(engine, ctx);
 
-        let config_handle = match store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view)) {
+        let config_handle = match store
+            .data_mut()
+            .push_config_view(wit_host::config_view_to_data(&module.config_view))
+        {
             Ok(h) => h,
-            Err(e) => return (
-                Err(DispatchError {
-                    module_id: module.module_id.clone(),
-                    stage_id: stage_id.clone(),
-                    export_name: export_name.to_string(),
-                    phase: DispatchPhase::ContextCreation,
-                    reason: format!("failed to push config resource: {e}"),
-                }),
-                Vec::new(),
-            ),
+            Err(e) => {
+                return (
+                    Err(DispatchError {
+                        module_id: module.module_id.clone(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    }),
+                    Vec::new(),
+                )
+            }
         };
         let output_handle = match store.data_mut().push_postpass_gcode_output_builder() {
             Ok(h) => h,
-            Err(e) => return (
-                Err(DispatchError {
-                    module_id: module.module_id.clone(),
-                    stage_id: stage_id.clone(),
-                    export_name: export_name.to_string(),
-                    phase: DispatchPhase::ContextCreation,
-                    reason: format!("failed to push gcode output resource: {e}"),
-                }),
-                Vec::new(),
-            ),
+            Err(e) => {
+                return (
+                    Err(DispatchError {
+                        module_id: module.module_id.clone(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push gcode output resource: {e}"),
+                    }),
+                    Vec::new(),
+                )
+            }
         };
 
-        let bindings = match wit_host::PostpassModule::instantiate(&mut store, component.wasmtime_component(), &linker) {
+        let bindings = match wit_host::PostpassModule::instantiate(
+            &mut store,
+            component.wasmtime_component(),
+            &linker,
+        ) {
             Ok(b) => b,
-            Err(e) => return (
-                Err(DispatchError {
-                    module_id: module.module_id.clone(),
-                    stage_id: stage_id.clone(),
-                    export_name: export_name.to_string(),
-                    phase: DispatchPhase::TypedInstantiation,
-                    reason: e.to_string(),
-                }),
-                Vec::new(),
-            ),
+            Err(e) => {
+                return (
+                    Err(DispatchError {
+                        module_id: module.module_id.clone(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::TypedInstantiation,
+                        reason: e.to_string(),
+                    }),
+                    Vec::new(),
+                )
+            }
         };
 
         let postpass_commands: Vec<_> = commands
@@ -960,7 +1207,10 @@ impl WasmRuntimeDispatcher {
                     stage_id: stage_id.clone(),
                     export_name: export_name.to_string(),
                     phase: DispatchPhase::TypedExportCall,
-                    reason: format!("module error (code={}, fatal={}): {}", module_err.code, module_err.fatal, module_err.message),
+                    reason: format!(
+                        "module error (code={}, fatal={}): {}",
+                        module_err.code, module_err.fatal, module_err.message
+                    ),
                 }),
                 runtime_reads,
             ),
@@ -990,23 +1240,28 @@ impl WasmRuntimeDispatcher {
         let export_name = "run-text-postprocess";
         let component = match module.wasm_component.as_ref() {
             Some(c) => c,
-            None => return (
-                Err(DispatchError {
-                    module_id: module.module_id.clone(),
-                    stage_id: stage_id.clone(),
-                    export_name: export_name.to_string(),
-                    phase: DispatchPhase::MissingComponent,
-                    reason: "no compiled WASM component available".to_string(),
-                }),
-                Vec::new(),
-            ),
+            None => {
+                return (
+                    Err(DispatchError {
+                        module_id: module.module_id.clone(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::MissingComponent,
+                        reason: "no compiled WASM component available".to_string(),
+                    }),
+                    Vec::new(),
+                )
+            }
         };
 
         let _lease = module.instance_pool.acquire();
         let engine = self.engine.wasmtime_engine();
 
         let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(engine);
-        if let Err(e) = wit_host::PostpassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx) {
+        if let Err(e) = wit_host::PostpassModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(
+            &mut linker,
+            |ctx| ctx,
+        ) {
             return (
                 Err(DispatchError {
                     module_id: module.module_id.clone(),
@@ -1028,32 +1283,43 @@ impl WasmRuntimeDispatcher {
         );
         let mut store = wasmtime::Store::new(engine, ctx);
 
-        let config_handle = match store.data_mut().push_config_view(wit_host::config_view_to_data(&module.config_view)) {
+        let config_handle = match store
+            .data_mut()
+            .push_config_view(wit_host::config_view_to_data(&module.config_view))
+        {
             Ok(h) => h,
-            Err(e) => return (
-                Err(DispatchError {
-                    module_id: module.module_id.clone(),
-                    stage_id: stage_id.clone(),
-                    export_name: export_name.to_string(),
-                    phase: DispatchPhase::ContextCreation,
-                    reason: format!("failed to push config resource: {e}"),
-                }),
-                Vec::new(),
-            ),
+            Err(e) => {
+                return (
+                    Err(DispatchError {
+                        module_id: module.module_id.clone(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::ContextCreation,
+                        reason: format!("failed to push config resource: {e}"),
+                    }),
+                    Vec::new(),
+                )
+            }
         };
 
-        let bindings = match wit_host::PostpassModule::instantiate(&mut store, component.wasmtime_component(), &linker) {
+        let bindings = match wit_host::PostpassModule::instantiate(
+            &mut store,
+            component.wasmtime_component(),
+            &linker,
+        ) {
             Ok(b) => b,
-            Err(e) => return (
-                Err(DispatchError {
-                    module_id: module.module_id.clone(),
-                    stage_id: stage_id.clone(),
-                    export_name: export_name.to_string(),
-                    phase: DispatchPhase::TypedInstantiation,
-                    reason: e.to_string(),
-                }),
-                Vec::new(),
-            ),
+            Err(e) => {
+                return (
+                    Err(DispatchError {
+                        module_id: module.module_id.clone(),
+                        stage_id: stage_id.clone(),
+                        export_name: export_name.to_string(),
+                        phase: DispatchPhase::TypedInstantiation,
+                        reason: e.to_string(),
+                    }),
+                    Vec::new(),
+                )
+            }
         };
 
         let call_result = bindings.call_run_text_postprocess(&mut store, text, own(config_handle));
@@ -1067,7 +1333,10 @@ impl WasmRuntimeDispatcher {
                     stage_id: stage_id.clone(),
                     export_name: export_name.to_string(),
                     phase: DispatchPhase::TypedExportCall,
-                    reason: format!("module error (code={}, fatal={}): {}", module_err.code, module_err.fatal, module_err.message),
+                    reason: format!(
+                        "module error (code={}, fatal={}): {}",
+                        module_err.code, module_err.fatal, module_err.message
+                    ),
                 }),
                 runtime_reads,
             ),
@@ -1127,13 +1396,15 @@ fn build_paint_layer_data_with_plan(
                 let pts: Vec<_> = segment
                     .points
                     .iter()
-                    .map(|p| wit_host::layer::slicer::world_layer::geometry::Point3WithWidth {
-                        x: p.x,
-                        y: p.y,
-                        z: p.z,
-                        width: p.width,
-                        flow_factor: p.flow_factor,
-                    })
+                    .map(
+                        |p| wit_host::layer::slicer::world_layer::geometry::Point3WithWidth {
+                            x: p.x,
+                            y: p.y,
+                            z: p.z,
+                            width: p.width,
+                            flow_factor: p.flow_factor,
+                        },
+                    )
                     .collect();
                 bucket.push(pts);
             }
@@ -1261,9 +1532,7 @@ fn push_perimeter_regions(
 /// - `GlobalLayer.index` must be `< 100_000` (docs/02 §Bounds).
 fn parse_canonical_region_id(raw: &str) -> Result<u64, String> {
     let parsed = raw.parse::<u64>().map_err(|_| {
-        format!(
-            "expected canonical decimal u64 string with no leading zeros, got '{raw}'"
-        )
+        format!("expected canonical decimal u64 string with no leading zeros, got '{raw}'")
     })?;
 
     if parsed.to_string() != raw {
@@ -1280,7 +1549,9 @@ fn harvest_layer_plan_ir(
     _module_id: &str,
     ctx: wit_host::HostExecutionContext,
 ) -> Result<slicer_ir::LayerPlanIR, String> {
-    use slicer_ir::{ActiveRegion, GlobalLayer, LayerPlanIR, ObjectLayerRef, ResolvedConfig, SemVer};
+    use slicer_ir::{
+        ActiveRegion, GlobalLayer, LayerPlanIR, ObjectLayerRef, ResolvedConfig, SemVer,
+    };
     use std::collections::HashMap;
 
     let proposals = ctx.layer_plan_proposals;
@@ -1301,12 +1572,13 @@ fn harvest_layer_plan_ir(
         let mut active_regions: Vec<ActiveRegion> = Vec::new();
 
         for region_prop in proposal.active_regions {
-            let region_id = parse_canonical_region_id(&region_prop.region_id).map_err(|reason| {
-                format!(
-                    "layer-plan-output: region '{}'/'{}' has invalid region-id: {reason}",
-                    region_prop.object_id, region_prop.region_id
-                )
-            })?;
+            let region_id =
+                parse_canonical_region_id(&region_prop.region_id).map_err(|reason| {
+                    format!(
+                        "layer-plan-output: region '{}'/'{}' has invalid region-id: {reason}",
+                        region_prop.object_id, region_prop.region_id
+                    )
+                })?;
 
             active_regions.push(ActiveRegion {
                 object_id: region_prop.object_id.clone(),
@@ -1322,9 +1594,7 @@ fn harvest_layer_plan_ir(
             let obj_refs = object_participation
                 .entry(region_prop.object_id.clone())
                 .or_default();
-            let already_referenced = obj_refs
-                .iter()
-                .any(|r| r.global_layer_index == index);
+            let already_referenced = obj_refs.iter().any(|r| r.global_layer_index == index);
             if !already_referenced {
                 obj_refs.push(ObjectLayerRef {
                     local_layer_index: obj_refs.len() as u32,
@@ -1344,7 +1614,11 @@ fn harvest_layer_plan_ir(
     }
 
     Ok(LayerPlanIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         global_layers,
         object_participation,
     })
@@ -1362,7 +1636,9 @@ fn harvest_seam_plan_ir(
     _module_id: &str,
     ctx: wit_host::HostExecutionContext,
 ) -> Result<slicer_ir::SeamPlanIR, String> {
-    use slicer_ir::{RegionKey, ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition, SemVer};
+    use slicer_ir::{
+        RegionKey, ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition, SemVer,
+    };
     use std::collections::HashMap;
 
     let mut seen: HashMap<RegionKey, ()> = HashMap::new();
@@ -1429,7 +1705,11 @@ fn harvest_seam_plan_ir(
     }
 
     Ok(SeamPlanIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         entries,
     })
 }
@@ -1492,7 +1772,11 @@ fn harvest_support_plan_ir(
     }
 
     Ok(SupportPlanIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         entries,
     })
 }
@@ -1511,16 +1795,17 @@ mod tests {
             None,
             None,
         );
-        ctx.layer_plan_proposals.push(wit_host::prepass::LayerProposal {
-            z: 0.2,
-            active_regions: vec![wit_host::prepass::RegionLayerProposal {
-                object_id: "obj-1".to_string(),
-                region_id: "01".to_string(),
-                effective_layer_height: 0.2,
-                is_catchup: false,
-                catchup_z_bottom: 0.0,
-            }],
-        });
+        ctx.layer_plan_proposals
+            .push(wit_host::prepass::LayerProposal {
+                z: 0.2,
+                active_regions: vec![wit_host::prepass::RegionLayerProposal {
+                    object_id: "obj-1".to_string(),
+                    region_id: "01".to_string(),
+                    effective_layer_height: 0.2,
+                    is_catchup: false,
+                    catchup_z_bottom: 0.0,
+                }],
+            });
 
         let err = harvest_layer_plan_ir(
             "PrePass::LayerPlanning",
@@ -1554,14 +1839,12 @@ mod tests {
 ///
 /// Unknown semantic strings map to `PaintSemantic::Custom(name)` so
 /// guests can introduce new semantics without host-side changes.
-fn harvest_paint_segmentation_ir(
-    ctx: wit_host::HostExecutionContext,
-) -> slicer_ir::PaintRegionIR {
-    use std::collections::HashMap;
+fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_ir::PaintRegionIR {
     use slicer_ir::{
         ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon,
-        SemanticRegion, SemVer,
+        SemVer, SemanticRegion,
     };
+    use std::collections::HashMap;
 
     let parse_semantic = |s: &str| -> PaintSemantic {
         match s {
@@ -1640,7 +1923,11 @@ fn harvest_paint_segmentation_ir(
     }
 
     PaintRegionIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         per_layer,
     }
 }
@@ -1670,7 +1957,11 @@ fn harvest_mesh_segmentation_ir(
         .collect();
 
     MeshSegmentationIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         marks,
     }
 }
@@ -1702,12 +1993,13 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
 
         // For the LayerPlanning stage, convert collected proposals to LayerPlanIR.
         if stage_id == "PrePass::LayerPlanning" {
-            let ir = harvest_layer_plan_ir(stage_id, &module.module_id, ctx)
-                .map_err(|e| PrepassExecutionError::FatalModule {
+            let ir = harvest_layer_plan_ir(stage_id, &module.module_id, ctx).map_err(|e| {
+                PrepassExecutionError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
                     message: e,
-                })?;
+                }
+            })?;
             return Ok((PrepassStageOutput::LayerPlan(Arc::new(ir)), runtime_reads));
         }
 
@@ -1715,37 +2007,45 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         // marks to MeshSegmentationIR.
         if stage_id == "PrePass::MeshSegmentation" {
             let ir = harvest_mesh_segmentation_ir(ctx);
-            return Ok((PrepassStageOutput::MeshSegmentation(Arc::new(ir)), runtime_reads));
+            return Ok((
+                PrepassStageOutput::MeshSegmentation(Arc::new(ir)),
+                runtime_reads,
+            ));
         }
 
         // For the PaintSegmentation stage, convert collected paint-region
         // entries to PaintRegionIR.
         if stage_id == "PrePass::PaintSegmentation" {
             let ir = harvest_paint_segmentation_ir(ctx);
-            return Ok((PrepassStageOutput::PaintRegions(Arc::new(ir)), runtime_reads));
+            return Ok((
+                PrepassStageOutput::PaintRegions(Arc::new(ir)),
+                runtime_reads,
+            ));
         }
 
         // For the SeamPlanning stage, convert collected seam-plan entries
         // to SeamPlanIR.
         if stage_id == "PrePass::SeamPlanning" {
-            let ir = harvest_seam_plan_ir(stage_id, &module.module_id, ctx)
-                .map_err(|e| PrepassExecutionError::FatalModule {
+            let ir = harvest_seam_plan_ir(stage_id, &module.module_id, ctx).map_err(|e| {
+                PrepassExecutionError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
                     message: e,
-                })?;
+                }
+            })?;
             return Ok((PrepassStageOutput::SeamPlan(Arc::new(ir)), runtime_reads));
         }
 
         // For the SupportGeneration stage, convert collected support-plan
         // entries to SupportPlanIR.
         if stage_id == "PrePass::SupportGeneration" {
-            let ir = harvest_support_plan_ir(stage_id, &module.module_id, ctx)
-                .map_err(|e| PrepassExecutionError::FatalModule {
+            let ir = harvest_support_plan_ir(stage_id, &module.module_id, ctx).map_err(|e| {
+                PrepassExecutionError::FatalModule {
                     stage_id: stage_id.clone(),
                     module_id: module.module_id.clone(),
                     message: e,
-                })?;
+                }
+            })?;
             return Ok((PrepassStageOutput::SupportPlan(Arc::new(ir)), runtime_reads));
         }
 
@@ -1760,7 +2060,10 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
             if aux.facet_annotations.is_empty() && aux.surface_groups.is_empty() {
                 return Ok((PrepassStageOutput::None, runtime_reads));
             }
-            return Ok((PrepassStageOutput::MeshAnalysisAuxiliary(Arc::new(aux)), runtime_reads));
+            return Ok((
+                PrepassStageOutput::MeshAnalysisAuxiliary(Arc::new(aux)),
+                runtime_reads,
+            ));
         }
 
         Ok((PrepassStageOutput::None, runtime_reads))
@@ -1773,7 +2076,9 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
 fn harvest_mesh_analysis_auxiliary(
     ctx: wit_host::HostExecutionContext,
 ) -> crate::prepass::MeshAnalysisAuxiliary {
-    use crate::prepass::{FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, SurfaceGroupRecord};
+    use crate::prepass::{
+        FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, SurfaceGroupRecord,
+    };
     use crate::wit_host::prepass as pm;
 
     let facet_annotations = ctx
@@ -1891,7 +2196,14 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         }
 
         // Commit collected outputs into the layer arena based on stage.
-        commit_layer_outputs(stage_id, &module.module_id, layer.index, &ctx, arena, seam_plan_ref)?;
+        commit_layer_outputs(
+            stage_id,
+            &module.module_id,
+            layer.index,
+            &ctx,
+            arena,
+            seam_plan_ref,
+        )?;
 
         // For Layer::Perimeters: inject seam from SeamPlanIR into arena.perimeter()
         // so PerimetersPostProcess can merge it into the guest output.
@@ -2037,9 +2349,7 @@ pub fn apply_entity_order_proposal(
 ) -> Result<(), String> {
     let n = arena
         .layer_collection()
-        .ok_or_else(|| {
-            "set-entity-order: no LayerCollectionIR staged on arena".to_string()
-        })?
+        .ok_or_else(|| "set-entity-order: no LayerCollectionIR staged on arena".to_string())?
         .ordered_entities
         .len();
     if proposal.len() != n {
@@ -2072,8 +2382,7 @@ pub fn apply_entity_order_proposal(
         .take_layer_collection()
         .expect("layer_collection presence verified above");
     let original = std::mem::take(&mut lc.ordered_entities);
-    let mut buckets: Vec<Option<slicer_ir::PrintEntity>> =
-        original.into_iter().map(Some).collect();
+    let mut buckets: Vec<Option<slicer_ir::PrintEntity>> = original.into_iter().map(Some).collect();
     let mut new_entities: Vec<slicer_ir::PrintEntity> = Vec::with_capacity(n);
     for (new_slot, (orig_idx, reverse)) in proposal.iter().enumerate() {
         let mut entity = buckets[*orig_idx as usize]
@@ -2221,12 +2530,15 @@ fn commit_layer_outputs(
             // and restage. Regions not mentioned by the guest pass through
             // unchanged so the full per-region shape survives to downstream
             // consumers (push_slice_regions on later stages sees every region).
-            let existing = arena.take_slice().ok_or_else(|| LayerStageError::FatalModule {
-                stage_id: stage_id.to_string(),
-                module_id: module_id.to_string(),
-                message: "Layer::SlicePostProcess has no staged SliceIR to merge into; \
-                          Layer::Slice must commit per-region slice output first".into(),
-            })?;
+            let existing = arena
+                .take_slice()
+                .ok_or_else(|| LayerStageError::FatalModule {
+                    stage_id: stage_id.to_string(),
+                    module_id: module_id.to_string(),
+                    message: "Layer::SlicePostProcess has no staged SliceIR to merge into; \
+                          Layer::Slice must commit per-region slice output first"
+                        .into(),
+                })?;
             let merged = wit_host::merge_slice_postprocess_into(existing, sp)
                 .map_err(|r| mk_validation_err("slice postprocess", r))?;
             arena
@@ -2289,7 +2601,10 @@ fn commit_layer_outputs(
                             f: cmd.f,
                         });
                     }
-                    GcodeCommandCollected::ZHop { after_entity_index: _, hop_height } => {
+                    GcodeCommandCollected::ZHop {
+                        after_entity_index: _,
+                        hop_height,
+                    } => {
                         // Normalize the module-supplied after_entity_index to the same global
                         // `anchor` used for Retract/Move/Unretract so that gcode_emit.rs
                         // emits the canonical sequence (Retract→ZHop→Travel→Unretract) anchored
@@ -2397,23 +2712,28 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
         // reversing the emission order within a layer.
         //
         // SyntheticLayer pushes are new layers and are appended as before.
-        let mut entity_pushes_by_layer: std::collections::HashMap<u32, Vec<slicer_ir::PrintEntity>> =
-            std::collections::HashMap::new();
+        let mut entity_pushes_by_layer: std::collections::HashMap<
+            u32,
+            Vec<slicer_ir::PrintEntity>,
+        > = std::collections::HashMap::new();
         let mut synthetic_pushes: Vec<wit_host::FinalizationBuilderPush> = Vec::new();
 
         for push in pushes {
             match push {
-                wit_host::FinalizationBuilderPush::EntityToLayer { layer_index, path, region_key } => {
+                wit_host::FinalizationBuilderPush::EntityToLayer {
+                    layer_index,
+                    path,
+                    region_key,
+                } => {
                     let role = path.role.clone();
-                    entity_pushes_by_layer
-                        .entry(layer_index)
-                        .or_default()
-                        .push(slicer_ir::PrintEntity {
+                    entity_pushes_by_layer.entry(layer_index).or_default().push(
+                        slicer_ir::PrintEntity {
                             path,
                             role,
                             region_key,
                             topo_order: 0,
-                        });
+                        },
+                    );
                 }
                 synthetic => synthetic_pushes.push(synthetic),
             }
@@ -2448,7 +2768,11 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                     })
                     .collect();
                 layers.push(LayerCollectionIR {
-                    schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+                    schema_version: slicer_ir::SemVer {
+                        major: 1,
+                        minor: 0,
+                        patch: 0,
+                    },
                     global_layer_index: new_index,
                     z,
                     ordered_entities: entities,
@@ -2473,7 +2797,8 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         _blackboard: &Blackboard,
         gcode_ir: &mut GCodeIR,
     ) -> Result<PostpassOutput, PostpassError> {
-        let (result, reads) = self.dispatch_postpass_gcode_call(stage_id, module, _blackboard, &gcode_ir.commands);
+        let (result, reads) =
+            self.dispatch_postpass_gcode_call(stage_id, module, _blackboard, &gcode_ir.commands);
         // Store reads for later retrieval via take_runtime_reads
         if !reads.is_empty() {
             self.postpass_runtime_reads.borrow_mut().push(reads);
@@ -2505,7 +2830,8 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
         _blackboard: &Blackboard,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
-        let (result, reads) = self.dispatch_postpass_text_call(stage_id, module, _blackboard, &text);
+        let (result, reads) =
+            self.dispatch_postpass_text_call(stage_id, module, _blackboard, &text);
         // Store reads for later retrieval via take_runtime_reads
         if !reads.is_empty() {
             self.postpass_runtime_reads.borrow_mut().push(reads);

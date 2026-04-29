@@ -64,10 +64,19 @@ def process_gcode(text, config):
     let blackboard = Blackboard::new(Arc::new(mesh_fixture()), 0);
     let layers = vec![layer_collection_fixture(0, 0.2)];
     let emitter = StubEmitter;
-    let serializer = StubSerializer { text: "g1 x1\ng1 x2".to_string() };
+    let serializer = StubSerializer {
+        text: "g1 x1\ng1 x2".to_string(),
+    };
 
-    let (text, _audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &mut runner)
-        .expect("postpass should succeed");
+    let (text, _audits) = execute_postpass(
+        &plan,
+        &layers,
+        &blackboard,
+        &emitter,
+        &serializer,
+        &mut runner,
+    )
+    .expect("postpass should succeed");
 
     assert_eq!(text, "; amp=0.5\nG1 X1\nG1 X2");
 }
@@ -94,7 +103,10 @@ def process_gcode(text, config):
 
     let bindings = HashMap::from([(
         module_id.clone(),
-        PythonBinding { script_path: script, entry: "process_gcode".to_string() },
+        PythonBinding {
+            script_path: script,
+            entry: "process_gcode".to_string(),
+        },
     )]);
     let mut runner = PythonPostpassRunner::new(bindings);
 
@@ -106,13 +118,19 @@ def process_gcode(text, config):
         &layers,
         &blackboard,
         &StubEmitter,
-        &StubSerializer { text: "irrelevant".to_string() },
+        &StubSerializer {
+            text: "irrelevant".to_string(),
+        },
         &mut runner,
     )
     .expect_err("expected fatal error");
 
     match err {
-        PostpassError::FatalModule { module_id: m, message, .. } => {
+        PostpassError::FatalModule {
+            module_id: m,
+            message,
+            ..
+        } => {
             assert_eq!(m, "com.example.py-boom");
             assert!(
                 message.contains("synthetic failure for TASK-104 test"),
@@ -151,7 +169,10 @@ def process_gcode(text, config):
     let module_id = "com.example.py-det".to_string();
     let bindings = HashMap::from([(
         module_id.clone(),
-        PythonBinding { script_path: script, entry: "process_gcode".to_string() },
+        PythonBinding {
+            script_path: script,
+            entry: "process_gcode".to_string(),
+        },
     )]);
     let mut runner = PythonPostpassRunner::new(bindings);
 
@@ -161,15 +182,44 @@ def process_gcode(text, config):
     let layers = vec![layer_collection_fixture(0, 0.2)];
     let input = "G28\nG1 X10 Y20\nG1 Z5";
     let emitter = StubEmitter;
-    let serializer = StubSerializer { text: input.to_string() };
+    let serializer = StubSerializer {
+        text: input.to_string(),
+    };
 
-    let (a_text, _a_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &mut runner).unwrap();
-    let (b_text, _b_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &mut runner).unwrap();
-    let (c_text, _c_audits) = execute_postpass(&plan, &layers, &blackboard, &emitter, &serializer, &mut runner).unwrap();
+    let (a_text, _a_audits) = execute_postpass(
+        &plan,
+        &layers,
+        &blackboard,
+        &emitter,
+        &serializer,
+        &mut runner,
+    )
+    .unwrap();
+    let (b_text, _b_audits) = execute_postpass(
+        &plan,
+        &layers,
+        &blackboard,
+        &emitter,
+        &serializer,
+        &mut runner,
+    )
+    .unwrap();
+    let (c_text, _c_audits) = execute_postpass(
+        &plan,
+        &layers,
+        &blackboard,
+        &emitter,
+        &serializer,
+        &mut runner,
+    )
+    .unwrap();
 
     assert_eq!(a_text, b_text, "run 1 vs 2 must be identical");
     assert_eq!(b_text, c_text, "run 2 vs 3 must be identical");
-    assert!(a_text.starts_with("; cfg=amplitude=0.25\n"), "unexpected: {a_text}");
+    assert!(
+        a_text.starts_with("; cfg=amplitude=0.25\n"),
+        "unexpected: {a_text}"
+    );
     assert!(a_text.contains("G1 Z5"));
 }
 
@@ -195,7 +245,11 @@ fn python_bridge_missing_script_reports_missing_script_phase() {
         .expect_err("must fail when script is absent");
 
     assert_eq!(err.phase, PythonBridgePhase::MissingScript);
-    assert!(err.message.contains("script not found"), "got: {}", err.message);
+    assert!(
+        err.message.contains("script not found"),
+        "got: {}",
+        err.message
+    );
 }
 
 // ----------------------------------------------------------------------
@@ -215,7 +269,10 @@ def process_gcode(text, config):
     );
 
     let bridge = PythonBridge::default();
-    let binding = PythonBinding { script_path: script, entry: "process_gcode".to_string() };
+    let binding = PythonBinding {
+        script_path: script,
+        entry: "process_gcode".to_string(),
+    };
     let err = bridge
         .run_text(
             &binding,
@@ -302,7 +359,9 @@ fn compiled_module(stage_id: &str, module_id: &str, config: ConfigView) -> Compi
         build_wasm_instance_pool(
             &loaded,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .expect("pool"),
     );
@@ -321,20 +380,33 @@ fn mesh_fixture() -> MeshIR {
         schema_version: semver(1, 0, 0),
         objects: vec![ObjectMesh {
             id: "cube".to_string(),
-            mesh: IndexedTriangleSet { vertices: vec![], indices: vec![] },
+            mesh: IndexedTriangleSet {
+                vertices: vec![],
+                indices: vec![],
+            },
             transform: Transform3d {
                 matrix: [
                     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 ],
             },
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     }
 }
@@ -354,7 +426,11 @@ fn layer_collection_fixture(index: u32, z: f32) -> LayerCollectionIR {
 }
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 // ----------------------------------------------------------------------
@@ -370,7 +446,9 @@ impl GCodeEmitter for StubEmitter {
     ) -> Result<GCodeIR, PostpassError> {
         Ok(GCodeIR {
             schema_version: semver(1, 0, 0),
-            commands: vec![GCodeCommand::Comment { text: "stub".to_string() }],
+            commands: vec![GCodeCommand::Comment {
+                text: "stub".to_string(),
+            }],
             metadata: PrintMetadata {
                 estimated_print_time_s: 0,
                 filament_used_mm: vec![0.0],

@@ -14,8 +14,10 @@ use slicer_host::wit_host::{
 };
 
 /// Path to the pre-built test guest component.
-const GUEST_COMPONENT_PATH: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-guests/layer-infill-guest.component.wasm");
+const GUEST_COMPONENT_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../test-guests/layer-infill-guest.component.wasm"
+);
 
 /// Load the test guest component bytes, or skip the test if not built.
 fn load_guest_component() -> Vec<u8> {
@@ -53,8 +55,8 @@ fn make_ctx(module_id: impl Into<String>, layer_z: f32) -> HostExecutionContext 
 fn guest_reads_config_value_and_uses_it_in_output() {
     let wasm_bytes = load_guest_component();
     let engine = make_engine();
-    let component = wasmtime::component::Component::new(&engine, &wasm_bytes)
-        .expect("compile component");
+    let component =
+        wasmtime::component::Component::new(&engine, &wasm_bytes).expect("compile component");
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
@@ -68,26 +70,27 @@ fn guest_reads_config_value_and_uses_it_in_output() {
     let config_handle = ctx.push_config_view(ConfigViewData { fields }).unwrap();
 
     // Provide one slice region at z=1.0
-    let region_handle = ctx.push_slice_region(SliceRegionData {
-        object_id: "obj-1".into(),
-        region_id: "1".into(),
-        polygons: vec![],
-        infill_areas: vec![],
-        effective_layer_height: 0.2,
-        z: 1.0,
-        has_nonplanar: false,
-        boundary_paint: vec![],
-        is_top_surface: false,
-        is_bottom_surface: false,
-        is_bridge: false,
-    }).unwrap();
+    let region_handle = ctx
+        .push_slice_region(SliceRegionData {
+            object_id: "obj-1".into(),
+            region_id: "1".into(),
+            polygons: vec![],
+            infill_areas: vec![],
+            effective_layer_height: 0.2,
+            z: 1.0,
+            has_nonplanar: false,
+            boundary_paint: vec![],
+            is_top_surface: false,
+            is_bottom_surface: false,
+            is_bridge: false,
+        })
+        .unwrap();
 
     // Provide infill output builder
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
-    let bindings = LayerModule::instantiate(&mut store, &component, &linker)
-        .expect("instantiate");
+    let bindings = LayerModule::instantiate(&mut store, &component, &linker).expect("instantiate");
 
     // Call run-infill
     let result = bindings.call_run_infill(
@@ -106,15 +109,25 @@ fn guest_reads_config_value_and_uses_it_in_output() {
     let ctx = store.into_data();
 
     // Verify config was read: spacing=3.5 → second point x = 3.5*10 = 35.0
-    assert_eq!(ctx.infill_output.sparse_paths.len(), 1, "expected 1 sparse path");
+    assert_eq!(
+        ctx.infill_output.sparse_paths.len(),
+        1,
+        "expected 1 sparse path"
+    );
     let path = &ctx.infill_output.sparse_paths[0];
     assert_eq!(path.points.len(), 2, "expected 2 points");
-    assert!((path.points[1].x - 35.0).abs() < 0.001,
-        "second point x should be 35.0 (spacing*10), got {}", path.points[1].x);
+    assert!(
+        (path.points[1].x - 35.0).abs() < 0.001,
+        "second point x should be 35.0 (spacing*10), got {}",
+        path.points[1].x
+    );
 
     // Verify z was read from region data
-    assert!((path.points[0].z - 1.0).abs() < 0.001,
-        "point z should be 1.0 (from region), got {}", path.points[0].z);
+    assert!(
+        (path.points[0].z - 1.0).abs() < 0.001,
+        "point z should be 1.0 (from region), got {}",
+        path.points[0].z
+    );
 }
 
 // ── B: IR/read-view access across the boundary ──────────────────────────
@@ -128,35 +141,46 @@ fn guest_reads_region_z_from_ir_view() {
     let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
+    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
+        .unwrap();
 
     let mut ctx = make_ctx("test-ir-read", 5.5);
 
-    let config_handle = ctx.push_config_view(ConfigViewData {
-        fields: HashMap::new(),
-    }).unwrap();
-    let region_handle = ctx.push_slice_region(SliceRegionData {
-        object_id: "obj-z-test".into(),
-        region_id: "2".into(),
-        polygons: vec![],
-        infill_areas: vec![],
-        effective_layer_height: 0.3,
-        z: 5.5, // distinctive z value
-        has_nonplanar: false,
-        boundary_paint: vec![],
-        is_top_surface: false,
-        is_bottom_surface: false,
-        is_bridge: false,
-    }).unwrap();
+    let config_handle = ctx
+        .push_config_view(ConfigViewData {
+            fields: HashMap::new(),
+        })
+        .unwrap();
+    let region_handle = ctx
+        .push_slice_region(SliceRegionData {
+            object_id: "obj-z-test".into(),
+            region_id: "2".into(),
+            polygons: vec![],
+            infill_areas: vec![],
+            effective_layer_height: 0.3,
+            z: 5.5, // distinctive z value
+            has_nonplanar: false,
+            boundary_paint: vec![],
+            is_top_surface: false,
+            is_bottom_surface: false,
+            is_bridge: false,
+        })
+        .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
-    bindings.call_run_infill(
-        &mut store, 42, &[resource_to_own(region_handle)],
-        resource_to_own(output_handle), resource_to_own(config_handle),
-    ).unwrap().unwrap();
+    bindings
+        .call_run_infill(
+            &mut store,
+            42,
+            &[resource_to_own(region_handle)],
+            resource_to_own(output_handle),
+            resource_to_own(config_handle),
+        )
+        .unwrap()
+        .unwrap();
 
     let ctx = store.into_data();
     assert_eq!(ctx.infill_output.sparse_paths.len(), 1);
@@ -175,34 +199,45 @@ fn guest_emits_output_via_infill_builder() {
     let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
+    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
+        .unwrap();
 
     let mut ctx = make_ctx("test-output", 2.0);
-    let config_handle = ctx.push_config_view(ConfigViewData {
-        fields: HashMap::new(),
-    }).unwrap();
-    let region_handle = ctx.push_slice_region(SliceRegionData {
-        object_id: "obj-out".into(),
-        region_id: "3".into(),
-        polygons: vec![],
-        infill_areas: vec![],
-        effective_layer_height: 0.2,
-        z: 2.0,
-        has_nonplanar: false,
-        boundary_paint: vec![],
-        is_top_surface: false,
-        is_bottom_surface: false,
-        is_bridge: false,
-    }).unwrap();
+    let config_handle = ctx
+        .push_config_view(ConfigViewData {
+            fields: HashMap::new(),
+        })
+        .unwrap();
+    let region_handle = ctx
+        .push_slice_region(SliceRegionData {
+            object_id: "obj-out".into(),
+            region_id: "3".into(),
+            polygons: vec![],
+            infill_areas: vec![],
+            effective_layer_height: 0.2,
+            z: 2.0,
+            has_nonplanar: false,
+            boundary_paint: vec![],
+            is_top_surface: false,
+            is_bottom_surface: false,
+            is_bridge: false,
+        })
+        .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
-    bindings.call_run_infill(
-        &mut store, 0, &[resource_to_own(region_handle)],
-        resource_to_own(output_handle), resource_to_own(config_handle),
-    ).unwrap().unwrap();
+    bindings
+        .call_run_infill(
+            &mut store,
+            0,
+            &[resource_to_own(region_handle)],
+            resource_to_own(output_handle),
+            resource_to_own(config_handle),
+        )
+        .unwrap()
+        .unwrap();
 
     let ctx = store.into_data();
     // Guest must have pushed exactly one sparse path
@@ -233,42 +268,62 @@ fn guest_logs_via_host_services() {
     let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
+    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
+        .unwrap();
 
     let mut ctx = make_ctx("test-log", 0.2);
-    let config_handle = ctx.push_config_view(ConfigViewData {
-        fields: HashMap::new(),
-    }).unwrap();
-    let region_handle = ctx.push_slice_region(SliceRegionData {
-        object_id: "obj-log".into(),
-        region_id: "4".into(),
-        polygons: vec![],
-        infill_areas: vec![],
-        effective_layer_height: 0.2,
-        z: 0.2,
-        has_nonplanar: false,
-        boundary_paint: vec![],
-        is_top_surface: false,
-        is_bottom_surface: false,
-        is_bridge: false,
-    }).unwrap();
+    let config_handle = ctx
+        .push_config_view(ConfigViewData {
+            fields: HashMap::new(),
+        })
+        .unwrap();
+    let region_handle = ctx
+        .push_slice_region(SliceRegionData {
+            object_id: "obj-log".into(),
+            region_id: "4".into(),
+            polygons: vec![],
+            infill_areas: vec![],
+            effective_layer_height: 0.2,
+            z: 0.2,
+            has_nonplanar: false,
+            boundary_paint: vec![],
+            is_top_surface: false,
+            is_bottom_surface: false,
+            is_bridge: false,
+        })
+        .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
-    bindings.call_run_infill(
-        &mut store, 7, &[resource_to_own(region_handle)],
-        resource_to_own(output_handle), resource_to_own(config_handle),
-    ).unwrap().unwrap();
+    bindings
+        .call_run_infill(
+            &mut store,
+            7,
+            &[resource_to_own(region_handle)],
+            resource_to_own(output_handle),
+            resource_to_own(config_handle),
+        )
+        .unwrap()
+        .unwrap();
 
     let ctx = store.into_data();
     // Guest logs "run-infill: layer=7, ..."
-    assert!(!ctx.log_messages.is_empty(), "expected at least one log message");
+    assert!(
+        !ctx.log_messages.is_empty(),
+        "expected at least one log message"
+    );
     let (level, msg) = &ctx.log_messages[0];
     assert_eq!(level, "info");
-    assert!(msg.contains("layer=7"), "log should contain layer=7, got: {msg}");
-    assert!(msg.contains("regions=1"), "log should mention 1 region, got: {msg}");
+    assert!(
+        msg.contains("layer=7"),
+        "log should contain layer=7, got: {msg}"
+    );
+    assert!(
+        msg.contains("regions=1"),
+        "log should mention 1 region, got: {msg}"
+    );
 }
 
 // ── E: Repeated calls with fresh context (pool correctness) ─────────────
@@ -282,48 +337,68 @@ fn repeated_calls_produce_independent_outputs() {
     let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
+    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
+        .unwrap();
 
     for i in 0..3 {
         let z = (i + 1) as f32 * 10.0;
         let mut ctx = make_ctx(format!("call-{i}"), z);
-        let config_handle = ctx.push_config_view(ConfigViewData {
-            fields: HashMap::new(),
-        }).unwrap();
-        let region_handle = ctx.push_slice_region(SliceRegionData {
-            object_id: format!("obj-{i}"),
-            region_id: (i + 1).to_string(),
-            polygons: vec![],
-            infill_areas: vec![],
-            effective_layer_height: 0.2,
-            z,
-            has_nonplanar: false,
-            boundary_paint: vec![],
-            is_top_surface: false,
-            is_bottom_surface: false,
-            is_bridge: false,
-        }).unwrap();
+        let config_handle = ctx
+            .push_config_view(ConfigViewData {
+                fields: HashMap::new(),
+            })
+            .unwrap();
+        let region_handle = ctx
+            .push_slice_region(SliceRegionData {
+                object_id: format!("obj-{i}"),
+                region_id: (i + 1).to_string(),
+                polygons: vec![],
+                infill_areas: vec![],
+                effective_layer_height: 0.2,
+                z,
+                has_nonplanar: false,
+                boundary_paint: vec![],
+                is_top_surface: false,
+                is_bottom_surface: false,
+                is_bridge: false,
+            })
+            .unwrap();
         let output_handle = ctx.push_infill_output_builder().unwrap();
 
         let mut store = wasmtime::Store::new(&engine, ctx);
         let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
-        bindings.call_run_infill(
-            &mut store, i as u32, &[resource_to_own(region_handle)],
-            resource_to_own(output_handle), resource_to_own(config_handle),
-        ).unwrap().unwrap();
+        bindings
+            .call_run_infill(
+                &mut store,
+                i as u32,
+                &[resource_to_own(region_handle)],
+                resource_to_own(output_handle),
+                resource_to_own(config_handle),
+            )
+            .unwrap()
+            .unwrap();
 
         let ctx = store.into_data();
         // Each call should have exactly one path
-        assert_eq!(ctx.infill_output.sparse_paths.len(), 1,
-            "call {i}: expected 1 path");
+        assert_eq!(
+            ctx.infill_output.sparse_paths.len(),
+            1,
+            "call {i}: expected 1 path"
+        );
         // Each call should have the z from its own region
         let actual_z = ctx.infill_output.sparse_paths[0].points[0].z;
-        assert!((actual_z - z).abs() < 0.001,
-            "call {i}: z should be {z}, got {actual_z}");
+        assert!(
+            (actual_z - z).abs() < 0.001,
+            "call {i}: z should be {z}, got {actual_z}"
+        );
         // No log messages from previous calls
-        assert_eq!(ctx.log_messages.len(), 1,
-            "call {i}: expected 1 log message, got {}", ctx.log_messages.len());
+        assert_eq!(
+            ctx.log_messages.len(),
+            1,
+            "call {i}: expected 1 log message, got {}",
+            ctx.log_messages.len()
+        );
     }
 }
 
@@ -338,22 +413,31 @@ fn empty_region_list_handled_gracefully() {
     let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
-    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx).unwrap();
+    LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
+        .unwrap();
 
     let mut ctx = make_ctx("test-empty", 0.0);
-    let config_handle = ctx.push_config_view(ConfigViewData {
-        fields: HashMap::new(),
-    }).unwrap();
+    let config_handle = ctx
+        .push_config_view(ConfigViewData {
+            fields: HashMap::new(),
+        })
+        .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
     // Call with empty regions list
-    bindings.call_run_infill(
-        &mut store, 0, &[], // no regions
-        resource_to_own(output_handle), resource_to_own(config_handle),
-    ).unwrap().unwrap();
+    bindings
+        .call_run_infill(
+            &mut store,
+            0,
+            &[], // no regions
+            resource_to_own(output_handle),
+            resource_to_own(config_handle),
+        )
+        .unwrap()
+        .unwrap();
 
     let ctx = store.into_data();
     assert_eq!(ctx.infill_output.sparse_paths.len(), 1);
@@ -367,6 +451,8 @@ fn empty_region_list_handled_gracefully() {
 /// Convert a `Resource<T>` to `Resource<U>` by preserving the rep.
 /// This is needed because the call methods expect `Resource<WitType>`
 /// but our push methods return `Resource<BackingData>`.
-fn resource_to_own<T: 'static, U: 'static>(r: wasmtime::component::Resource<T>) -> wasmtime::component::Resource<U> {
+fn resource_to_own<T: 'static, U: 'static>(
+    r: wasmtime::component::Resource<T>,
+) -> wasmtime::component::Resource<U> {
     wasmtime::component::Resource::new_own(r.rep())
 }

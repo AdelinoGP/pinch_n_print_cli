@@ -5,16 +5,16 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LoopType,
-    Point3WithWidth, WallBoundaryType, WallLoop, WidthProfile,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LoopType, Point3WithWidth,
+    WallBoundaryType, WallLoop, WidthProfile,
 };
 use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::postpass_builders::GcodeOutputBuilder;
 use slicer_sdk::postpass_types::{GcodeCommand, GcodeOutputCommand};
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
+use std::collections::HashMap;
 
 fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32) -> WallLoop {
     WallLoop {
@@ -22,13 +22,27 @@ fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32) -> WallLoop {
         loop_type: LoopType::Outer,
         path: ExtrusionPath3D {
             points: vec![
-                Point3WithWidth { x: x1, y: y1, z, width: 0.4, flow_factor: 1.0 },
-                Point3WithWidth { x: x2, y: y2, z, width: 0.4, flow_factor: 1.0 },
+                Point3WithWidth {
+                    x: x1,
+                    y: y1,
+                    z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
+                Point3WithWidth {
+                    x: x2,
+                    y: y2,
+                    z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
-        width_profile: WidthProfile { widths: vec![0.4, 0.4] },
+        width_profile: WidthProfile {
+            widths: vec![0.4, 0.4],
+        },
         feature_flags: vec![],
         boundary_type: WallBoundaryType::Interior,
     }
@@ -36,7 +50,10 @@ fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32) -> WallLoop {
 
 fn config_with_retract(retract_length: f64) -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("retract_length".to_string(), ConfigValue::Float(retract_length));
+    fields.insert(
+        "retract_length".to_string(),
+        ConfigValue::Float(retract_length),
+    );
     // Disable markers so they don't interfere with command-sequence assertions.
     fields.insert(
         "path_optimization_emit_layer_markers".to_string(),
@@ -47,7 +64,10 @@ fn config_with_retract(retract_length: f64) -> ConfigView {
 
 fn config_with_retract_and_z_hop(retract_length: f64, z_hop: f64) -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("retract_length".to_string(), ConfigValue::Float(retract_length));
+    fields.insert(
+        "retract_length".to_string(),
+        ConfigValue::Float(retract_length),
+    );
     fields.insert("travel_z_hop".to_string(), ConfigValue::Float(z_hop));
     fields.insert(
         "path_optimization_emit_layer_markers".to_string(),
@@ -83,7 +103,13 @@ fn external_travel_emits_matched_retract_and_unretract() {
     let mut output = GcodeOutputBuilder::new();
     let mut collection = LayerCollectionBuilder::new();
     module
-        .run_path_optimization(0, &[region_a, region_b], &mut output, &mut collection, &config)
+        .run_path_optimization(
+            0,
+            &[region_a, region_b],
+            &mut output,
+            &mut collection,
+            &config,
+        )
         .expect("run_path_optimization must succeed");
 
     let commands = output.commands();
@@ -96,7 +122,10 @@ fn external_travel_emits_matched_retract_and_unretract() {
         )
     });
     let move_pos = commands.iter().position(|c| {
-        matches!(c, GcodeOutputCommand::Command(GcodeCommand::Move { e: None, .. }))
+        matches!(
+            c,
+            GcodeOutputCommand::Command(GcodeCommand::Move { e: None, .. })
+        )
     });
     let unretract_pos = commands.iter().position(|c| {
         matches!(
@@ -163,7 +192,12 @@ fn internal_travel_suppresses_retraction() {
         .count();
     let unretract_count = commands
         .iter()
-        .filter(|c| matches!(c, GcodeOutputCommand::Command(GcodeCommand::Unretract { .. })))
+        .filter(|c| {
+            matches!(
+                c,
+                GcodeOutputCommand::Command(GcodeCommand::Unretract { .. })
+            )
+        })
         .count();
 
     assert_eq!(
@@ -204,7 +238,13 @@ fn external_travel_with_z_hop_emits_z_hop_and_retract_pair() {
     let mut output = GcodeOutputBuilder::new();
     let mut collection = LayerCollectionBuilder::new();
     module
-        .run_path_optimization(0, &[region_a, region_b], &mut output, &mut collection, &config)
+        .run_path_optimization(
+            0,
+            &[region_a, region_b],
+            &mut output,
+            &mut collection,
+            &config,
+        )
         .expect("run_path_optimization must succeed");
 
     let commands = output.commands();
@@ -223,7 +263,12 @@ fn external_travel_with_z_hop_emits_z_hop_and_retract_pair() {
         .count();
     let unretract = commands
         .iter()
-        .filter(|c| matches!(c, GcodeOutputCommand::Command(GcodeCommand::Unretract { .. })))
+        .filter(|c| {
+            matches!(
+                c,
+                GcodeOutputCommand::Command(GcodeCommand::Unretract { .. })
+            )
+        })
         .count();
     assert_eq!(retract, 1, "must have exactly one Retract with z_hop");
     assert_eq!(unretract, 1, "must have exactly one Unretract with z_hop");

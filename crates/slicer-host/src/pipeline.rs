@@ -12,9 +12,9 @@ use slicer_ir::MeshIR;
 use crate::{
     execute_layer_finalization, execute_per_layer_with_events, execute_postpass,
     execute_prepass_with_builtins, Blackboard, ExecutionPlan, FinalizationError,
-    FinalizationStageRunner, GCodeEmitter, GCodeSerializer, LayerExecutionError,
-    LayerProgressSink, LayerStageRunner, ModuleAccessAudit, NoopLayerProgressSink,
-    PostpassError, PostpassStageRunner, PrepassExecutionError, PrepassStageRunner,
+    FinalizationStageRunner, GCodeEmitter, GCodeSerializer, LayerExecutionError, LayerProgressSink,
+    LayerStageRunner, ModuleAccessAudit, NoopLayerProgressSink, PostpassError, PostpassStageRunner,
+    PrepassExecutionError, PrepassStageRunner,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -145,7 +145,8 @@ pub fn run_pipeline_with_events(
     let mut blackboard = Blackboard::new(mesh_ir, 0);
 
     // Step 2: Execute prepass stages sequentially, collecting runtime audits.
-    let prepass_audits = execute_prepass_with_builtins(&plan, &mut blackboard, runners.prepass.as_ref())?;
+    let prepass_audits =
+        execute_prepass_with_builtins(&plan, &mut blackboard, runners.prepass.as_ref())?;
 
     // Step 2b: Promote the LayerPlanIR committed by prepass into the execution
     // plan so that the per-layer loop iterates real layers. The plan is built
@@ -177,7 +178,12 @@ pub fn run_pipeline_with_events(
         runners.postpass.as_mut(),
     )?;
 
-    Ok(PipelineOutput { gcode_text, prepass_audits, layer_audits, postpass_audits })
+    Ok(PipelineOutput {
+        gcode_text,
+        prepass_audits,
+        layer_audits,
+        postpass_audits,
+    })
 }
 
 #[cfg(test)]

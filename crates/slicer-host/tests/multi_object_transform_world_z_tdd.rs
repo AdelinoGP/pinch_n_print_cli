@@ -24,8 +24,8 @@ use slicer_host::{
 };
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
-    LayerPlanIR, MeshIR, ObjectConfig, ObjectLayerRef, ObjectMesh, Point3,
-    ResolvedConfig, SemVer, Transform3d,
+    LayerPlanIR, MeshIR, ObjectConfig, ObjectLayerRef, ObjectMesh, Point3, ResolvedConfig, SemVer,
+    Transform3d,
 };
 
 // ============================================================================
@@ -226,7 +226,9 @@ fn mesh_with_two_objects() -> MeshIR {
         id: String::from("object-a"),
         mesh: unit_cube_its(),
         transform: Transform3d { matrix: rot90_x },
-        config: ObjectConfig { data: HashMap::new() },
+        config: ObjectConfig {
+            data: HashMap::new(),
+        },
         modifier_volumes: Vec::new(),
         paint_data: None,
         world_z_extent: Some((-1.0, 0.0)),
@@ -239,7 +241,9 @@ fn mesh_with_two_objects() -> MeshIR {
         id: String::from("object-b"),
         mesh: unit_cube_its(),
         transform: Transform3d { matrix: trans_z10 },
-        config: ObjectConfig { data: HashMap::new() },
+        config: ObjectConfig {
+            data: HashMap::new(),
+        },
         modifier_volumes: Vec::new(),
         paint_data: None,
         world_z_extent: Some((10.0, 11.0)),
@@ -250,8 +254,16 @@ fn mesh_with_two_objects() -> MeshIR {
         objects: vec![obj_a, obj_b],
         build_volume: BoundingBox3 {
             // Object A world Z = [-1, 0], Object B world Z = [10, 11]
-            min: Point3 { x: 0.0, y: 0.0, z: -1.0 },
-            max: Point3 { x: 1.0, y: 1.0, z: 11.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: -1.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 11.0,
+            },
         },
     }
 }
@@ -276,7 +288,9 @@ fn mesh_with_three_objects() -> MeshIR {
                 id: String::from("object-a"),
                 mesh: unit_cube_its(),
                 transform: Transform3d { matrix: rot90_x },
-                config: ObjectConfig { data: HashMap::new() },
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
                 modifier_volumes: Vec::new(),
                 paint_data: None,
                 world_z_extent: Some((-1.0, 0.0)),
@@ -285,7 +299,9 @@ fn mesh_with_three_objects() -> MeshIR {
                 id: String::from("object-b"),
                 mesh: unit_cube_its(),
                 transform: Transform3d { matrix: trans_z10 },
-                config: ObjectConfig { data: HashMap::new() },
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
                 modifier_volumes: Vec::new(),
                 paint_data: None,
                 world_z_extent: Some((10.0, 11.0)),
@@ -294,15 +310,25 @@ fn mesh_with_three_objects() -> MeshIR {
                 id: String::from("object-c"),
                 mesh: unit_cube_its(),
                 transform: Transform3d { matrix: trans_z20 },
-                config: ObjectConfig { data: HashMap::new() },
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
                 modifier_volumes: Vec::new(),
                 paint_data: None,
                 world_z_extent: Some((20.0, 21.0)),
             },
         ],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: -1.0 },
-            max: Point3 { x: 1.0, y: 1.0, z: 21.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: -1.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 21.0,
+            },
         },
     }
 }
@@ -718,14 +744,46 @@ fn loaded_layer_planning_module() -> slicer_host::LoadedModule {
 fn unit_cube_its() -> IndexedTriangleSet {
     IndexedTriangleSet {
         vertices: vec![
-            Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            Point3 { x: 1.0, y: 0.0, z: 0.0 },
-            Point3 { x: 1.0, y: 1.0, z: 0.0 },
-            Point3 { x: 0.0, y: 1.0, z: 0.0 },
-            Point3 { x: 0.0, y: 0.0, z: 1.0 },
-            Point3 { x: 1.0, y: 0.0, z: 1.0 },
-            Point3 { x: 1.0, y: 1.0, z: 1.0 },
-            Point3 { x: 0.0, y: 1.0, z: 1.0 },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 1.0,
+                z: 1.0,
+            },
         ],
         indices: vec![
             0, 2, 1, 0, 3, 2, // -Z

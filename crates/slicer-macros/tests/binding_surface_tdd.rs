@@ -439,15 +439,24 @@ fn typed_schema_const_mirrors_string_accessors_for_layer_infill() {
     assert_eq!(s.exports.len(), 3);
     assert_eq!(
         s.exports[0],
-        ExportBinding { name: "on-print-start", kind: ExportKind::Lifecycle }
+        ExportBinding {
+            name: "on-print-start",
+            kind: ExportKind::Lifecycle
+        }
     );
     assert_eq!(
         s.exports[1],
-        ExportBinding { name: "on-print-end", kind: ExportKind::Lifecycle }
+        ExportBinding {
+            name: "on-print-end",
+            kind: ExportKind::Lifecycle
+        }
     );
     assert_eq!(
         s.exports[2],
-        ExportBinding { name: "run-infill", kind: ExportKind::Stage }
+        ExportBinding {
+            name: "run-infill",
+            kind: ExportKind::Stage
+        }
     );
 }
 
@@ -510,7 +519,10 @@ fn typed_schema_lifecycle_export_count_matches_world_lifecycle_table() {
     // (`on-print-start` + `on-print-end`). Every schema emitted by the
     // macro must reflect that count.
     assert_eq!(LayerInfillFixture::__SLICER_LIFECYCLE_EXPORT_COUNT, 2);
-    assert_eq!(PrepassMeshAnalysisFixture::__SLICER_LIFECYCLE_EXPORT_COUNT, 2);
+    assert_eq!(
+        PrepassMeshAnalysisFixture::__SLICER_LIFECYCLE_EXPORT_COUNT,
+        2
+    );
     assert_eq!(FinalizationFixture::__SLICER_LIFECYCLE_EXPORT_COUNT, 2);
     assert_eq!(PostpassGcodeFixture::__SLICER_LIFECYCLE_EXPORT_COUNT, 2);
 }
@@ -525,7 +537,10 @@ fn typed_schema_exports_are_deterministic_across_invocations() {
     let names_a: Vec<&str> = a.exports.iter().map(|e| e.name).collect();
     let names_b: Vec<&str> = b.exports.iter().map(|e| e.name).collect();
     assert_eq!(names_a, names_b);
-    assert_eq!(names_a, vec!["on-print-start", "on-print-end", "run-infill"]);
+    assert_eq!(
+        names_a,
+        vec!["on-print-start", "on-print-end", "run-infill"]
+    );
 }
 
 #[test]

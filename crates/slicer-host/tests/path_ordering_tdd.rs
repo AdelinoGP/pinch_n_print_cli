@@ -11,10 +11,9 @@ use std::sync::Arc;
 use slicer_host::instance_pool::build_wasm_instance_pool;
 use slicer_host::manifest::LoadedModule;
 use slicer_host::{
-    execute_per_layer, Blackboard, CompiledModule,
-    CompiledStage, ConfigSchema, ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LayerArena,
-    LayerStageError, LayerStageOutput, LayerStageRunner, WasmArtifactMetadata, WasmEngine,
-    WasmRuntimeDispatcher,
+    execute_per_layer, Blackboard, CompiledModule, CompiledStage, ConfigSchema,
+    ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LayerArena, LayerStageError,
+    LayerStageOutput, LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmRuntimeDispatcher,
 };
 
 const PATH_OPT_WASM: &str = concat!(
@@ -30,14 +29,30 @@ use slicer_ir::{
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 fn semver() -> SemVer {
-    SemVer { major: 1, minor: 0, patch: 0 }
+    SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    }
 }
 
 fn pt(x: f32, y: f32) -> Point3WithWidth {
-    Point3WithWidth { x, y, z: 0.2, width: 0.4, flow_factor: 1.0 }
+    Point3WithWidth {
+        x,
+        y,
+        z: 0.2,
+        width: 0.4,
+        flow_factor: 1.0,
+    }
 }
 
-fn entity_at(x: f32, y: f32, role: ExtrusionRole, object_id: &str, original_idx: u32) -> PrintEntity {
+fn entity_at(
+    x: f32,
+    y: f32,
+    role: ExtrusionRole,
+    object_id: &str,
+    original_idx: u32,
+) -> PrintEntity {
     PrintEntity {
         path: ExtrusionPath3D {
             points: vec![pt(x, y)],
@@ -82,11 +97,7 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
         regions: vec![InfillRegion {
             object_id: "test-object".to_string(),
             region_id: 0,
-            sparse_infill: vec![
-                path_at(30.0, 0.0),
-                path_at(10.0, 0.0),
-                path_at(0.0, 0.0),
-            ],
+            sparse_infill: vec![path_at(30.0, 0.0), path_at(10.0, 0.0), path_at(0.0, 0.0)],
             solid_infill: vec![],
             ironing: vec![],
         }],
@@ -99,7 +110,10 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
     let plan = plan_with_stages(
         vec![
             stage("Layer::Infill", "com.test.infill"),
-            stage("Layer::PathOptimization", "com.core.path-optimization-default"),
+            stage(
+                "Layer::PathOptimization",
+                "com.core.path-optimization-default",
+            ),
         ],
         1,
     );
@@ -121,9 +135,21 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
         requires_claims: vec![],
         incompatible_with: vec![],
         requires_modules: vec![],
-        min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
-        min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 },
-        max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
+        min_host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        min_ir_schema: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        max_ir_schema: SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
         config_schema: ConfigSchema::default(),
         overridable_per_region: vec![],
         overridable_per_layer: vec![],
@@ -135,7 +161,9 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
         build_wasm_instance_pool(
             &path_opt_loaded,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .expect("fixture pool"),
     );
@@ -149,14 +177,11 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
     });
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let runner = LiveDispatcherWithInfill::with_module(
-        infill,
-        Arc::new(dispatcher),
-        path_opt_module,
-    );
+    let runner =
+        LiveDispatcherWithInfill::with_module(infill, Arc::new(dispatcher), path_opt_module);
 
-    let layers = execute_per_layer(&plan, &blackboard, &runner)
-        .expect("per-layer execution must succeed");
+    let layers =
+        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
 
     let xs: Vec<f32> = layers[0]
         .ordered_entities
@@ -182,9 +207,17 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
 
 fn load_path_optimization_module(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {
     let path = PathBuf::from(PATH_OPT_WASM);
-    assert!(path.exists(), "path-optimization-default.wasm missing at {}", path.display());
+    assert!(
+        path.exists(),
+        "path-optimization-default.wasm missing at {}",
+        path.display()
+    );
     let bytes = std::fs::read(&path).expect("read path-optimization-default.wasm");
-    Arc::new(engine.compile_component(&bytes).expect("compile path-optimization-default.wasm"))
+    Arc::new(
+        engine
+            .compile_component(&bytes)
+            .expect("compile path-optimization-default.wasm"),
+    )
 }
 
 /// LayerStageRunner that injects a pre-seeded InfillIR for Layer::Infill
@@ -205,7 +238,11 @@ impl LiveDispatcherWithInfill {
         dispatcher: Arc<WasmRuntimeDispatcher>,
         path_opt_module: Arc<CompiledModule>,
     ) -> Self {
-        Self { infill, dispatcher, path_opt_module }
+        Self {
+            infill,
+            dispatcher,
+            path_opt_module,
+        }
     }
 }
 
@@ -219,13 +256,16 @@ impl LayerStageRunner for LiveDispatcherWithInfill {
         arena: &mut LayerArena,
     ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
         if stage_id == "Layer::Infill" {
-            arena.set_infill(self.infill.clone()).expect("infill slot must be free");
+            arena
+                .set_infill(self.infill.clone())
+                .expect("infill slot must be free");
             return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
         }
         // Delegate PathOptimization to the live WASM dispatcher.
         // Pass self.path_opt_module (which has the real wasm_component) instead of
         // the stage module (which has wasm_component: None due to compiled_module()).
-        self.dispatcher.run_stage(stage_id, layer, &self.path_opt_module, blackboard, arena)
+        self.dispatcher
+            .run_stage(stage_id, layer, &self.path_opt_module, blackboard, arena)
     }
 }
 
@@ -242,25 +282,22 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
     let infill = InfillIR {
         schema_version: semver(),
         global_layer_index: 0,
-        regions: vec![InfillRegion {
-            object_id: "test-object".to_string(),
-            region_id: 0,
-            sparse_infill: vec![
-                path_at(0.0, 0.0),
-                path_at(0.0, 100.0),
-            ],
-            solid_infill: vec![],
-            ironing: vec![],
-        }, InfillRegion {
-            object_id: "test-object".to_string(),
-            region_id: 1,
-            sparse_infill: vec![
-                path_at(1.0, 0.0),
-                path_at(1.0, 1.0),
-            ],
-            solid_infill: vec![],
-            ironing: vec![],
-        }],
+        regions: vec![
+            InfillRegion {
+                object_id: "test-object".to_string(),
+                region_id: 0,
+                sparse_infill: vec![path_at(0.0, 0.0), path_at(0.0, 100.0)],
+                solid_infill: vec![],
+                ironing: vec![],
+            },
+            InfillRegion {
+                object_id: "test-object".to_string(),
+                region_id: 1,
+                sparse_infill: vec![path_at(1.0, 0.0), path_at(1.0, 1.0)],
+                solid_infill: vec![],
+                ironing: vec![],
+            },
+        ],
     };
 
     let mesh = minimal_mesh("test-object");
@@ -268,7 +305,10 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
     let plan = plan_with_stages(
         vec![
             stage("Layer::Infill", "com.test.infill"),
-            stage("Layer::PathOptimization", "com.core.path-optimization-default"),
+            stage(
+                "Layer::PathOptimization",
+                "com.core.path-optimization-default",
+            ),
         ],
         1,
     );
@@ -287,9 +327,21 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         requires_claims: vec![],
         incompatible_with: vec![],
         requires_modules: vec![],
-        min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
-        min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 },
-        max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
+        min_host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        min_ir_schema: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        max_ir_schema: SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
         config_schema: ConfigSchema::default(),
         overridable_per_region: vec![],
         overridable_per_layer: vec![],
@@ -301,7 +353,9 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         build_wasm_instance_pool(
             &path_opt_loaded,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .expect("fixture pool"),
     );
@@ -315,14 +369,11 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
     });
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let runner = LiveDispatcherWithInfill::with_module(
-        infill,
-        Arc::new(dispatcher),
-        path_opt_module,
-    );
+    let runner =
+        LiveDispatcherWithInfill::with_module(infill, Arc::new(dispatcher), path_opt_module);
 
-    let layers = execute_per_layer(&plan, &blackboard, &runner)
-        .expect("per-layer execution must succeed");
+    let layers =
+        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
 
     let xs: Vec<f32> = layers[0]
         .ordered_entities
@@ -365,7 +416,10 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
     let plan = plan_with_stages(
         vec![
             stage("Layer::Infill", "com.test.infill"),
-            stage("Layer::PathOptimization", "com.core.path-optimization-default"),
+            stage(
+                "Layer::PathOptimization",
+                "com.core.path-optimization-default",
+            ),
         ],
         1,
     );
@@ -384,9 +438,21 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
         requires_claims: vec![],
         incompatible_with: vec![],
         requires_modules: vec![],
-        min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
-        min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 },
-        max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
+        min_host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        min_ir_schema: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        max_ir_schema: SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
         config_schema: ConfigSchema::default(),
         overridable_per_region: vec![],
         overridable_per_layer: vec![],
@@ -398,7 +464,9 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
         build_wasm_instance_pool(
             &path_opt_loaded,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .expect("fixture pool"),
     );
@@ -412,14 +480,11 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
     });
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let runner = LiveDispatcherWithInfill::with_module(
-        infill,
-        Arc::new(dispatcher),
-        path_opt_module,
-    );
+    let runner =
+        LiveDispatcherWithInfill::with_module(infill, Arc::new(dispatcher), path_opt_module);
 
-    let layers = execute_per_layer(&plan, &blackboard, &runner)
-        .expect("per-layer execution must succeed");
+    let layers =
+        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
 
     assert_eq!(
         layers[0].ordered_entities[0].role,
@@ -446,11 +511,7 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             regions: vec![InfillRegion {
                 object_id: "test-object".to_string(),
                 region_id: 0,
-                sparse_infill: vec![
-                    path_at(30.0, 0.0),
-                    path_at(0.0, 0.0),
-                    path_at(15.0, 0.0),
-                ],
+                sparse_infill: vec![path_at(30.0, 0.0), path_at(0.0, 0.0), path_at(15.0, 0.0)],
                 solid_infill: vec![],
                 ironing: vec![],
             }],
@@ -464,7 +525,10 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
         let plan = plan_with_stages(
             vec![
                 stage("Layer::Infill", "com.test.infill"),
-                stage("Layer::PathOptimization", "com.core.path-optimization-default"),
+                stage(
+                    "Layer::PathOptimization",
+                    "com.core.path-optimization-default",
+                ),
             ],
             1,
         );
@@ -483,9 +547,21 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             requires_claims: vec![],
             incompatible_with: vec![],
             requires_modules: vec![],
-            min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
-            min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 },
-            max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
+            min_host_version: SemVer {
+                major: 0,
+                minor: 1,
+                patch: 0,
+            },
+            min_ir_schema: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            max_ir_schema: SemVer {
+                major: 2,
+                minor: 0,
+                patch: 0,
+            },
             config_schema: ConfigSchema::default(),
             overridable_per_region: vec![],
             overridable_per_layer: vec![],
@@ -497,7 +573,9 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             build_wasm_instance_pool(
                 &path_opt_loaded,
                 1,
-                WasmArtifactMetadata { uses_shared_memory: false },
+                WasmArtifactMetadata {
+                    uses_shared_memory: false,
+                },
             )
             .expect("fixture pool"),
         );
@@ -511,14 +589,10 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
         });
 
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-        let runner = LiveDispatcherWithInfill::with_module(
-            infill,
-            Arc::new(dispatcher),
-            path_opt_module,
-        );
+        let runner =
+            LiveDispatcherWithInfill::with_module(infill, Arc::new(dispatcher), path_opt_module);
 
-        execute_per_layer(&plan, &blackboard, &runner)
-            .expect("per-layer execution must succeed")
+        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed")
     }
 
     let layers1 = run();
@@ -526,8 +600,7 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
 
     // Byte-identical assertion at the ordered_entities slice level.
     assert_eq!(
-        &layers1[0].ordered_entities,
-        &layers2[0].ordered_entities,
+        &layers1[0].ordered_entities, &layers2[0].ordered_entities,
         "ordered_entities must be byte-identical across runs"
     );
 }
@@ -545,11 +618,7 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         regions: vec![InfillRegion {
             object_id: "test-object".to_string(),
             region_id: 0,
-            sparse_infill: vec![
-                path_at(0.0, 0.0),
-                path_at(10.0, 0.0),
-                path_at(30.0, 0.0),
-            ],
+            sparse_infill: vec![path_at(0.0, 0.0), path_at(10.0, 0.0), path_at(30.0, 0.0)],
             solid_infill: vec![],
             ironing: vec![],
         }],
@@ -560,7 +629,10 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
     let plan = plan_with_stages(
         vec![
             stage("Layer::Infill", "com.test.infill"),
-            stage("Layer::PathOptimization", "com.core.path-optimization-default"),
+            stage(
+                "Layer::PathOptimization",
+                "com.core.path-optimization-default",
+            ),
         ],
         1,
     );
@@ -579,9 +651,21 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         requires_claims: vec![],
         incompatible_with: vec![],
         requires_modules: vec![],
-        min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
-        min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 },
-        max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
+        min_host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        min_ir_schema: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        max_ir_schema: SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
         config_schema: ConfigSchema::default(),
         overridable_per_region: vec![],
         overridable_per_layer: vec![],
@@ -593,7 +677,9 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         build_wasm_instance_pool(
             &path_opt_loaded,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .expect("fixture pool"),
     );
@@ -607,14 +693,11 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
     });
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let runner = LiveDispatcherWithInfill::with_module(
-        infill,
-        Arc::new(dispatcher),
-        path_opt_module,
-    );
+    let runner =
+        LiveDispatcherWithInfill::with_module(infill, Arc::new(dispatcher), path_opt_module);
 
-    let layers = execute_per_layer(&plan, &blackboard, &runner)
-        .expect("per-layer execution must succeed");
+    let layers =
+        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
 
     let xs: Vec<f32> = layers[0]
         .ordered_entities
@@ -648,11 +731,7 @@ fn no_module_proposal_leaves_raw_assembled_order() {
         regions: vec![InfillRegion {
             object_id: "test-object".to_string(),
             region_id: 0,
-            sparse_infill: vec![
-                path_at(30.0, 0.0),
-                path_at(0.0, 0.0),
-                path_at(10.0, 0.0),
-            ],
+            sparse_infill: vec![path_at(30.0, 0.0), path_at(0.0, 0.0), path_at(10.0, 0.0)],
             solid_infill: vec![],
             ironing: vec![],
         }],
@@ -672,8 +751,8 @@ fn no_module_proposal_leaves_raw_assembled_order() {
     // without ever calling set_entity_order.
     let runner = NoProposalStubRunner { infill };
 
-    let layers = execute_per_layer(&plan, &blackboard, &runner)
-        .expect("per-layer execution must succeed");
+    let layers =
+        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
 
     let xs: Vec<f32> = layers[0]
         .ordered_entities
@@ -703,7 +782,9 @@ impl LayerStageRunner for NoProposalStubRunner {
         arena: &mut LayerArena,
     ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
         if stage_id == "Layer::Infill" {
-            arena.set_infill(self.infill.clone()).expect("infill slot must be free");
+            arena
+                .set_infill(self.infill.clone())
+                .expect("infill slot must be free");
         }
         // No proposal — no set_entity_order call, no layer_collection_proposal.
         Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
@@ -730,28 +811,56 @@ fn path_at_explicit(x: f32, y: f32, role: ExtrusionRole) -> ExtrusionPath3D {
 
 fn minimal_mesh(object_id: &str) -> Arc<MeshIR> {
     Arc::new(MeshIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: vec![ObjectMesh {
             id: object_id.to_string(),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 { x: 0.0, y: 0.0, z: 0.1 },
-                    Point3 { x: 10.0, y: 0.0, z: 0.1 },
-                    Point3 { x: 0.0, y: 10.0, z: 0.1 },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.1,
+                    },
+                    Point3 {
+                        x: 10.0,
+                        y: 0.0,
+                        z: 0.1,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 10.0,
+                        z: 0.1,
+                    },
                 ],
                 indices: vec![0, 1, 2],
             },
             transform: Transform3d {
-                matrix: [1.0,0.0,0.0,0.0, 0.0,1.0,0.0,0.0, 0.0,0.0,1.0,0.0, 0.0,0.0,0.0,1.0],
+                matrix: [
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ],
             },
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     })
 }
@@ -797,7 +906,11 @@ fn stage(stage_id: &str, module_id: &str) -> CompiledStage {
 fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded = LoadedModule {
         id: module_id.to_string(),
-        version: SemVer { major: 1, minor: 0, patch: 0 },
+        version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         stage: stage_id.to_string(),
         wit_world: String::new(),
         ir_reads: vec![],
@@ -806,9 +919,21 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         requires_claims: vec![],
         incompatible_with: vec![],
         requires_modules: vec![],
-        min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
-        min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 },
-        max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
+        min_host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        min_ir_schema: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        max_ir_schema: SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
         config_schema: ConfigSchema::default(),
         overridable_per_region: vec![],
         overridable_per_layer: vec![],
@@ -820,7 +945,9 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         build_wasm_instance_pool(
             &loaded,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .expect("fixture pool"),
     );

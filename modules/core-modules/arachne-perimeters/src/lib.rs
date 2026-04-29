@@ -25,8 +25,8 @@ use slicer_ir::{
     WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
-use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
@@ -624,7 +624,7 @@ mod tests {
 
     #[test]
     fn on_print_start_defaults() {
-        let config = ConfigView::from_map(HashMap::new(),);
+        let config = ConfigView::from_map(HashMap::new());
         let module = ArachnePerimeters::on_print_start(&config).unwrap();
         assert_eq!(module.wall_count, 2);
         assert!((module.line_width - 0.4).abs() < 0.001);

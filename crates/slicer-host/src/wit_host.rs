@@ -418,7 +418,7 @@ pub use layer::slicer::world_layer::geometry::{
 };
 pub use layer::slicer::world_layer::ir_handles::{
     BoundaryPaintEntry, BoundaryPaintPolygon, GcodeMoveCmd, HostPerimeterOutputBuilder,
-    PaintSemantic, PaintValue, RegionKey, SemanticRegion, SeamPosition, WallFeatureFlag,
+    PaintSemantic, PaintValue, RegionKey, SeamPosition, SemanticRegion, WallFeatureFlag,
     WallLoopType, WallLoopView,
 };
 pub use layer::LayerModule;
@@ -463,7 +463,6 @@ pub struct SeamPlanningOutputData;
 /// This struct is just a table-entry tag so the resource-handle lifecycle
 /// works; the actual data lives on the context.
 pub struct SupportGenerationOutputData;
-
 
 #[allow(missing_docs)]
 pub mod prepass {
@@ -1115,7 +1114,10 @@ pub enum GcodeCommandCollected {
     /// Raw G-code.
     Raw(String),
     /// Z-hop request.
-    ZHop { after_entity_index: u32, hop_height: f32 },
+    ZHop {
+        after_entity_index: u32,
+        hop_height: f32,
+    },
 }
 
 /// Collected output from a slice-postprocess-builder during a call.
@@ -1422,7 +1424,9 @@ impl HostExecutionContext {
     ) -> wasmtime::Result<Resource<LayerCollectionBuilderData>> {
         self.layer_collection_proposal = None;
         self.host_get_ordered_entities_call_count = 0;
-        Ok(self.table.push(LayerCollectionBuilderData { ordered_entities })?)
+        Ok(self
+            .table
+            .push(LayerCollectionBuilderData { ordered_entities })?)
     }
 
     /// Test-only accessor for the
@@ -1825,9 +1829,10 @@ fn object_bounds_mesh_query(
 ) -> wasmtime::Result<slicer_ir::BoundingBox3> {
     ctx.runtime_reads.push(String::from("MeshIR"));
     // Missing mesh data and missing object both return OBJECT_NOT_FOUND.
-    let mesh_ir = ctx.mesh_ir.as_ref().ok_or_else(|| {
-        object_not_found_error("object-bounds", object_id)
-    })?;
+    let mesh_ir = ctx
+        .mesh_ir
+        .as_ref()
+        .ok_or_else(|| object_not_found_error("object-bounds", object_id))?;
     let object = mesh_ir
         .objects
         .iter()
@@ -1917,7 +1922,9 @@ impl hs::Host for HostExecutionContext {
     }
 
     fn object_bounds(&mut self, object_id: hs::ObjectId) -> wasmtime::Result<BoundingBox3> {
-        Ok(ir_bounds_to_layer(object_bounds_mesh_query(self, &object_id)?))
+        Ok(ir_bounds_to_layer(object_bounds_mesh_query(
+            self, &object_id,
+        )?))
     }
 
     fn clip_polygons(
@@ -1930,7 +1937,9 @@ impl hs::Host for HostExecutionContext {
         let ir_clip = wit_to_ir_expolygons(&clip);
         let ir_op = match op {
             hs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
-            hs::ClipOperation::Intersection => slicer_core::polygon_ops::ClipOperation::Intersection,
+            hs::ClipOperation::Intersection => {
+                slicer_core::polygon_ops::ClipOperation::Intersection
+            }
             hs::ClipOperation::Difference => slicer_core::polygon_ops::ClipOperation::Difference,
             hs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor,
         };
@@ -2008,11 +2017,24 @@ impl hs::Host for HostExecutionContext {
 fn wit_to_ir_expolygon(ep: &ExPolygon) -> slicer_ir::ExPolygon {
     slicer_ir::ExPolygon {
         contour: slicer_ir::Polygon {
-            points: ep.contour.points.iter().map(|p| slicer_ir::Point2 { x: p.x, y: p.y }).collect(),
+            points: ep
+                .contour
+                .points
+                .iter()
+                .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
+                .collect(),
         },
-        holes: ep.holes.iter().map(|h| slicer_ir::Polygon {
-            points: h.points.iter().map(|p| slicer_ir::Point2 { x: p.x, y: p.y }).collect(),
-        }).collect(),
+        holes: ep
+            .holes
+            .iter()
+            .map(|h| slicer_ir::Polygon {
+                points: h
+                    .points
+                    .iter()
+                    .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
+                    .collect(),
+            })
+            .collect(),
     }
 }
 
@@ -2025,11 +2047,20 @@ fn wit_to_ir_expolygons(eps: &[ExPolygon]) -> Vec<slicer_ir::ExPolygon> {
 fn ir_to_wit_expolygon(ep: &slicer_ir::ExPolygon) -> ExPolygon {
     ExPolygon {
         contour: Polygon {
-            points: ep.contour.points.iter().map(|p| Point2 { x: p.x, y: p.y }).collect(),
+            points: ep
+                .contour
+                .points
+                .iter()
+                .map(|p| Point2 { x: p.x, y: p.y })
+                .collect(),
         },
-        holes: ep.holes.iter().map(|h| Polygon {
-            points: h.points.iter().map(|p| Point2 { x: p.x, y: p.y }).collect(),
-        }).collect(),
+        holes: ep
+            .holes
+            .iter()
+            .map(|h| Polygon {
+                points: h.points.iter().map(|p| Point2 { x: p.x, y: p.y }).collect(),
+            })
+            .collect(),
     }
 }
 
@@ -2184,7 +2215,11 @@ fn ir_to_wit_paint_layer_view(layer: &slicer_ir::PaintLayer) -> prepass::PaintLa
             .iter()
             .map(|opt| opt.as_ref().map(ir_to_wit_paint_value_view))
             .collect(),
-        strokes: layer.strokes.iter().map(ir_to_wit_paint_stroke_view).collect(),
+        strokes: layer
+            .strokes
+            .iter()
+            .map(ir_to_wit_paint_stroke_view)
+            .collect(),
     }
 }
 
@@ -2199,7 +2234,11 @@ pub fn object_mesh_to_wit_mesh_object_view(
         .mesh
         .vertices
         .iter()
-        .map(|v| prepass::Point3 { x: v.x, y: v.y, z: v.z })
+        .map(|v| prepass::Point3 {
+            x: v.x,
+            y: v.y,
+            z: v.z,
+        })
         .collect();
 
     // Convert indexed triangles to list of tuples
@@ -2241,7 +2280,11 @@ pub fn object_mesh_to_wit_paint_segmentation_view(
         .mesh
         .vertices
         .iter()
-        .map(|v| prepass::Point3 { x: v.x, y: v.y, z: v.z })
+        .map(|v| prepass::Point3 {
+            x: v.x,
+            y: v.y,
+            z: v.z,
+        })
         .collect();
 
     // Convert indexed triangles to list of tuples
@@ -2375,7 +2418,8 @@ mod region_origin_tests {
 
     #[test]
     fn touch_slice_region_rejects_noncanonical_region_id_strings() {
-        let mut ctx = HostExecutionContext::new("com.test.slice-origin".to_string(), 0.0, 0.2, None, None);
+        let mut ctx =
+            HostExecutionContext::new("com.test.slice-origin".to_string(), 0.0, 0.2, None, None);
         let handle = ctx
             .push_slice_region(SliceRegionData {
                 object_id: "obj-1".to_string(),
@@ -2405,7 +2449,13 @@ mod region_origin_tests {
 
     #[test]
     fn touch_perimeter_region_rejects_noncanonical_region_id_strings() {
-        let mut ctx = HostExecutionContext::new("com.test.perimeter-origin".to_string(), 0.0, 0.2, None, None);
+        let mut ctx = HostExecutionContext::new(
+            "com.test.perimeter-origin".to_string(),
+            0.0,
+            0.2,
+            None,
+            None,
+        );
         let handle = ctx
             .push_perimeter_region(PerimeterRegionData {
                 object_id: "obj-1".to_string(),
@@ -2478,7 +2528,11 @@ fn ir_to_wit_wall_loop(wl: &slicer_ir::WallLoop) -> WallLoopView {
         perimeter_index: wl.perimeter_index,
         loop_type: ir_to_wit_wall_loop_type(&wl.loop_type),
         path: ir_to_wit_extrusion_path(&wl.path),
-        feature_flags: wl.feature_flags.iter().map(ir_to_wit_wall_feature_flag).collect(),
+        feature_flags: wl
+            .feature_flags
+            .iter()
+            .map(ir_to_wit_wall_feature_flag)
+            .collect(),
     }
 }
 
@@ -2491,7 +2545,16 @@ pub fn perimeter_region_to_data(region: &slicer_ir::PerimeterRegion) -> Perimete
         infill_areas: ir_to_wit_expolygons(&region.infill_areas),
         // Note: width and flow_factor are intentionally discarded here;
         // SeamPosition.point is used for diagnostics only.
-        resolved_seam: region.resolved_seam.clone().map(|sp| (Point3 { x: sp.point.x, y: sp.point.y, z: sp.point.z }, sp.wall_index)),
+        resolved_seam: region.resolved_seam.clone().map(|sp| {
+            (
+                Point3 {
+                    x: sp.point.x,
+                    y: sp.point.y,
+                    z: sp.point.z,
+                },
+                sp.wall_index,
+            )
+        }),
     }
 }
 
@@ -2551,9 +2614,7 @@ pub fn ir_simplify_polygon(points: Vec<slicer_ir::Point2>) -> Vec<slicer_ir::Poi
 
 fn parse_canonical_region_id(raw: &str) -> Result<u64, String> {
     let parsed = raw.parse::<u64>().map_err(|_| {
-        format!(
-            "expected canonical decimal u64 string with no leading zeros, got '{raw}'"
-        )
+        format!("expected canonical decimal u64 string with no leading zeros, got '{raw}'")
     })?;
 
     if parsed.to_string() != raw {
@@ -2582,7 +2643,11 @@ impl ct::HostConfigView for HostExecutionContext {
         }))
     }
 
-    fn get_bool(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<bool>> {
+    fn get_bool(
+        &mut self,
+        self_: Resource<ConfigViewData>,
+        key: String,
+    ) -> wasmtime::Result<Option<bool>> {
         let data = self.table.get(&self_)?;
         Ok(data.fields.get(&key).and_then(|v| match v {
             ConfigValueStorage::Bool(b) => Some(*b),
@@ -2590,7 +2655,11 @@ impl ct::HostConfigView for HostExecutionContext {
         }))
     }
 
-    fn get_float(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<f64>> {
+    fn get_float(
+        &mut self,
+        self_: Resource<ConfigViewData>,
+        key: String,
+    ) -> wasmtime::Result<Option<f64>> {
         let data = self.table.get(&self_)?;
         Ok(data.fields.get(&key).and_then(|v| match v {
             ConfigValueStorage::Float(f) => Some(normalize_subnormal_boundary(*f)),
@@ -2598,7 +2667,11 @@ impl ct::HostConfigView for HostExecutionContext {
         }))
     }
 
-    fn get_int(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<i64>> {
+    fn get_int(
+        &mut self,
+        self_: Resource<ConfigViewData>,
+        key: String,
+    ) -> wasmtime::Result<Option<i64>> {
         let data = self.table.get(&self_)?;
         Ok(data.fields.get(&key).and_then(|v| match v {
             ConfigValueStorage::Int(i) => Some(*i),
@@ -2606,7 +2679,11 @@ impl ct::HostConfigView for HostExecutionContext {
         }))
     }
 
-    fn get_string(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<String>> {
+    fn get_string(
+        &mut self,
+        self_: Resource<ConfigViewData>,
+        key: String,
+    ) -> wasmtime::Result<Option<String>> {
         let data = self.table.get(&self_)?;
         Ok(data.fields.get(&key).and_then(|v| match v {
             ConfigValueStorage::Str(s) => Some(s.clone()),
@@ -2657,15 +2734,23 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     }
     fn polygons(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<ExPolygon>> {
         self.touch_slice_region(&self_)?;
-        self.runtime_reads.push(String::from("SliceIR.regions.polygons"));
+        self.runtime_reads
+            .push(String::from("SliceIR.regions.polygons"));
         Ok(self.table.get(&self_)?.polygons.clone())
     }
-    fn infill_areas(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<ExPolygon>> {
+    fn infill_areas(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
         self.touch_slice_region(&self_)?;
-        self.runtime_reads.push(String::from("SliceIR.regions.infill-areas"));
+        self.runtime_reads
+            .push(String::from("SliceIR.regions.infill-areas"));
         Ok(self.table.get(&self_)?.infill_areas.clone())
     }
-    fn effective_layer_height(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<f32> {
+    fn effective_layer_height(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<f32> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.effective_layer_height)
     }
@@ -2677,7 +2762,10 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.has_nonplanar)
     }
-    fn boundary_paint(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<BoundaryPaintEntry>> {
+    fn boundary_paint(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<BoundaryPaintEntry>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.boundary_paint.clone())
     }
@@ -2692,7 +2780,10 @@ impl HostExecutionContext {
     /// resource as the currently-active one. Subsequent pushes to perimeter
     /// or infill output builders are tagged with this identity so the commit
     /// path can preserve per-region identity.
-    fn touch_perimeter_region(&mut self, self_: &Resource<PerimeterRegionData>) -> wasmtime::Result<()> {
+    fn touch_perimeter_region(
+        &mut self,
+        self_: &Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<()> {
         let data = self.table.get(self_)?;
         let rid = parse_canonical_region_id(&data.region_id).map_err(|reason| {
             wasmtime::Error::msg(format!(
@@ -2716,32 +2807,46 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
         self.runtime_reads.push(String::from("PerimeterIR"));
         Ok(self.table.get(&self_)?.region_id.clone())
     }
-    fn wall_loops(&mut self, self_: Resource<PerimeterRegionData>) -> wasmtime::Result<Vec<WallLoopView>> {
+    fn wall_loops(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Vec<WallLoopView>> {
         self.touch_perimeter_region(&self_)?;
-        self.runtime_reads.push(String::from("PerimeterIR.wall-loops"));
+        self.runtime_reads
+            .push(String::from("PerimeterIR.wall-loops"));
         Ok(self.table.get(&self_)?.wall_loops.clone())
     }
-    fn infill_areas(&mut self, self_: Resource<PerimeterRegionData>) -> wasmtime::Result<Vec<ExPolygon>> {
+    fn infill_areas(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
         self.touch_perimeter_region(&self_)?;
-        self.runtime_reads.push(String::from("PerimeterIR.infill-areas"));
+        self.runtime_reads
+            .push(String::from("PerimeterIR.infill-areas"));
         Ok(self.table.get(&self_)?.infill_areas.clone())
     }
-    fn resolved_seam(&mut self, self_: Resource<PerimeterRegionData>) -> wasmtime::Result<Option<layer::slicer::world_layer::ir_handles::SeamPosition>> {
+    fn resolved_seam(
+        &mut self,
+        self_: Resource<PerimeterRegionData>,
+    ) -> wasmtime::Result<Option<layer::slicer::world_layer::ir_handles::SeamPosition>> {
         self.touch_perimeter_region(&self_)?;
-        self.runtime_reads.push(String::from("PerimeterIR.resolved-seam"));
+        self.runtime_reads
+            .push(String::from("PerimeterIR.resolved-seam"));
         let resolved = self.table.get(&self_)?.resolved_seam;
         match resolved {
             None => Ok(None),
-            Some((pos, wall_index)) => Ok(Some(layer::slicer::world_layer::ir_handles::SeamPosition {
-                point: Point3WithWidth {
-                    x: pos.x,
-                    y: pos.y,
-                    z: pos.z,
-                    width: 0.0,
-                    flow_factor: 1.0,
-                },
-                wall_index,
-            })),
+            Some((pos, wall_index)) => {
+                Ok(Some(layer::slicer::world_layer::ir_handles::SeamPosition {
+                    point: Point3WithWidth {
+                        x: pos.x,
+                        y: pos.y,
+                        z: pos.z,
+                        width: 0.0,
+                        flow_factor: 1.0,
+                    },
+                    wall_index,
+                }))
+            }
         }
     }
     fn drop(&mut self, rep: Resource<PerimeterRegionData>) -> wasmtime::Result<()> {
@@ -2751,7 +2856,11 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
 }
 
 impl ir::HostInfillOutputBuilder for HostExecutionContext {
-    fn push_sparse_path(&mut self, _self_: Resource<InfillOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
+    fn push_sparse_path(
+        &mut self,
+        _self_: Resource<InfillOutputBuilderData>,
+        path: ExtrusionPath3d,
+    ) -> wasmtime::Result<Result<(), String>> {
         if let Some(z) = path.points.first().map(|p| p.z) {
             if let Err(e) = self.check_z_envelope(z) {
                 return Ok(Err(e));
@@ -2763,7 +2872,11 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
         self.record_write("InfillIR");
         Ok(Ok(()))
     }
-    fn push_solid_path(&mut self, _self_: Resource<InfillOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
+    fn push_solid_path(
+        &mut self,
+        _self_: Resource<InfillOutputBuilderData>,
+        path: ExtrusionPath3d,
+    ) -> wasmtime::Result<Result<(), String>> {
         if let Some(z) = path.points.first().map(|p| p.z) {
             if let Err(e) = self.check_z_envelope(z) {
                 return Ok(Err(e));
@@ -2775,7 +2888,11 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
         self.record_write("InfillIR");
         Ok(Ok(()))
     }
-    fn push_ironing_path(&mut self, _self_: Resource<InfillOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
+    fn push_ironing_path(
+        &mut self,
+        _self_: Resource<InfillOutputBuilderData>,
+        path: ExtrusionPath3d,
+    ) -> wasmtime::Result<Result<(), String>> {
         if let Some(z) = path.points.first().map(|p| p.z) {
             if let Err(e) = self.check_z_envelope(z) {
                 return Ok(Err(e));
@@ -2794,7 +2911,11 @@ impl ir::HostInfillOutputBuilder for HostExecutionContext {
 }
 
 impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
-    fn push_wall_loop(&mut self, _self_: Resource<PerimeterOutputBuilderData>, wall_loop: WallLoopView) -> wasmtime::Result<Result<(), String>> {
+    fn push_wall_loop(
+        &mut self,
+        _self_: Resource<PerimeterOutputBuilderData>,
+        wall_loop: WallLoopView,
+    ) -> wasmtime::Result<Result<(), String>> {
         if let Some(z) = wall_loop.path.points.first().map(|p| p.z) {
             if let Err(e) = self.check_z_envelope(z) {
                 return Ok(Err(e));
@@ -2811,12 +2932,21 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
     /// No Z envelope check is needed here — `ExPolygon` carries no Z coordinate.
     /// Z validation for infill paths is performed in `push_sparse_path` and
     /// `push_solid_path` where the actual extrusion geometry is supplied.
-    fn set_infill_areas(&mut self, _self_: Resource<PerimeterOutputBuilderData>, areas: Vec<ExPolygon>) -> wasmtime::Result<Result<(), String>> {
+    fn set_infill_areas(
+        &mut self,
+        _self_: Resource<PerimeterOutputBuilderData>,
+        areas: Vec<ExPolygon>,
+    ) -> wasmtime::Result<Result<(), String>> {
         self.perimeter_output.infill_areas = areas;
         self.perimeter_output.infill_areas_origin = self.current_perimeter_region.clone();
         Ok(Ok(()))
     }
-    fn push_seam_candidate(&mut self, _self_: Resource<PerimeterOutputBuilderData>, pos: Point3, score: f32) -> wasmtime::Result<Result<(), String>> {
+    fn push_seam_candidate(
+        &mut self,
+        _self_: Resource<PerimeterOutputBuilderData>,
+        pos: Point3,
+        score: f32,
+    ) -> wasmtime::Result<Result<(), String>> {
         if let Err(e) = self.check_z_envelope(pos.z) {
             return Ok(Err(e));
         }
@@ -2825,7 +2955,12 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
         self.perimeter_output.seam_candidate_origins.push(origin);
         Ok(Ok(()))
     }
-    fn push_resolved_seam(&mut self, _self_: Resource<PerimeterOutputBuilderData>, pos: Point3, wall_index: u32) -> wasmtime::Result<Result<(), String>> {
+    fn push_resolved_seam(
+        &mut self,
+        _self_: Resource<PerimeterOutputBuilderData>,
+        pos: Point3,
+        wall_index: u32,
+    ) -> wasmtime::Result<Result<(), String>> {
         if let Err(e) = self.check_z_envelope(pos.z) {
             return Ok(Err(e));
         }
@@ -2854,7 +2989,9 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
             )));
         }
         let origin = self.current_perimeter_region.clone();
-        self.perimeter_output.rotated_wall_loops.push(rotated_wall_loop);
+        self.perimeter_output
+            .rotated_wall_loops
+            .push(rotated_wall_loop);
         self.perimeter_output.rotated_wall_loop_origins.push(origin);
         self.record_write("PerimeterIR.regions.walls");
         Ok(Ok(()))
@@ -2866,12 +3003,28 @@ impl ir::HostPerimeterOutputBuilder for HostExecutionContext {
 }
 
 impl ir::HostSlicePostprocessBuilder for HostExecutionContext {
-    fn set_polygons(&mut self, _self_: Resource<SlicePostprocessBuilderData>, region: RegionKey, polys: Vec<ExPolygon>) -> wasmtime::Result<Result<(), String>> {
-        self.slice_postprocess_output.polygon_updates.push((region, polys));
+    fn set_polygons(
+        &mut self,
+        _self_: Resource<SlicePostprocessBuilderData>,
+        region: RegionKey,
+        polys: Vec<ExPolygon>,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.slice_postprocess_output
+            .polygon_updates
+            .push((region, polys));
         Ok(Ok(()))
     }
-    fn set_path_z(&mut self, _self_: Resource<SlicePostprocessBuilderData>, region: RegionKey, path_idx: u32, vertex_idx: u32, z: f32) -> wasmtime::Result<Result<(), String>> {
-        self.slice_postprocess_output.path_z_updates.push((region, path_idx, vertex_idx, z));
+    fn set_path_z(
+        &mut self,
+        _self_: Resource<SlicePostprocessBuilderData>,
+        region: RegionKey,
+        path_idx: u32,
+        vertex_idx: u32,
+        z: f32,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.slice_postprocess_output
+            .path_z_updates
+            .push((region, path_idx, vertex_idx, z));
         Ok(Ok(()))
     }
     fn drop(&mut self, rep: Resource<SlicePostprocessBuilderData>) -> wasmtime::Result<()> {
@@ -2881,40 +3034,107 @@ impl ir::HostSlicePostprocessBuilder for HostExecutionContext {
 }
 
 impl ir::HostGcodeOutputBuilder for HostExecutionContext {
-    fn push_move(&mut self, _self_: Resource<GcodeOutputBuilderData>, cmd: GcodeMoveCmd) -> wasmtime::Result<Result<(), String>> {
-        self.gcode_output.commands.push(GcodeCommandCollected::Move(cmd));
+    fn push_move(
+        &mut self,
+        _self_: Resource<GcodeOutputBuilderData>,
+        cmd: GcodeMoveCmd,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.gcode_output
+            .commands
+            .push(GcodeCommandCollected::Move(cmd));
         Ok(Ok(()))
     }
-    fn push_retract(&mut self, _self_: Resource<GcodeOutputBuilderData>, length: f32, speed: f32) -> wasmtime::Result<Result<(), String>> {
-        self.gcode_output.commands.push(GcodeCommandCollected::Retract { length, speed });
+    fn push_retract(
+        &mut self,
+        _self_: Resource<GcodeOutputBuilderData>,
+        length: f32,
+        speed: f32,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.gcode_output
+            .commands
+            .push(GcodeCommandCollected::Retract { length, speed });
         Ok(Ok(()))
     }
-    fn push_unretract(&mut self, _self_: Resource<GcodeOutputBuilderData>, length: f32, speed: f32) -> wasmtime::Result<Result<(), String>> {
-        self.gcode_output.commands.push(GcodeCommandCollected::Unretract { length, speed });
+    fn push_unretract(
+        &mut self,
+        _self_: Resource<GcodeOutputBuilderData>,
+        length: f32,
+        speed: f32,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.gcode_output
+            .commands
+            .push(GcodeCommandCollected::Unretract { length, speed });
         Ok(Ok(()))
     }
-    fn push_fan_speed(&mut self, _self_: Resource<GcodeOutputBuilderData>, value: u8) -> wasmtime::Result<Result<(), String>> {
-        self.gcode_output.commands.push(GcodeCommandCollected::FanSpeed(value));
+    fn push_fan_speed(
+        &mut self,
+        _self_: Resource<GcodeOutputBuilderData>,
+        value: u8,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.gcode_output
+            .commands
+            .push(GcodeCommandCollected::FanSpeed(value));
         Ok(Ok(()))
     }
-    fn push_temperature(&mut self, _self_: Resource<GcodeOutputBuilderData>, tool: u32, celsius: f32, wait: bool) -> wasmtime::Result<Result<(), String>> {
-        self.gcode_output.commands.push(GcodeCommandCollected::Temperature { tool, celsius, wait });
+    fn push_temperature(
+        &mut self,
+        _self_: Resource<GcodeOutputBuilderData>,
+        tool: u32,
+        celsius: f32,
+        wait: bool,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.gcode_output
+            .commands
+            .push(GcodeCommandCollected::Temperature {
+                tool,
+                celsius,
+                wait,
+            });
         Ok(Ok(()))
     }
-    fn push_tool_change(&mut self, _self_: Resource<GcodeOutputBuilderData>, from_tool: u32, to_tool: u32) -> wasmtime::Result<Result<(), String>> {
-        self.gcode_output.commands.push(GcodeCommandCollected::ToolChange { from_tool, to_tool });
+    fn push_tool_change(
+        &mut self,
+        _self_: Resource<GcodeOutputBuilderData>,
+        from_tool: u32,
+        to_tool: u32,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.gcode_output
+            .commands
+            .push(GcodeCommandCollected::ToolChange { from_tool, to_tool });
         Ok(Ok(()))
     }
-    fn push_comment(&mut self, _self_: Resource<GcodeOutputBuilderData>, text: String) -> wasmtime::Result<Result<(), String>> {
-        self.gcode_output.commands.push(GcodeCommandCollected::Comment(text));
+    fn push_comment(
+        &mut self,
+        _self_: Resource<GcodeOutputBuilderData>,
+        text: String,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.gcode_output
+            .commands
+            .push(GcodeCommandCollected::Comment(text));
         Ok(Ok(()))
     }
-    fn push_raw(&mut self, _self_: Resource<GcodeOutputBuilderData>, text: String) -> wasmtime::Result<Result<(), String>> {
-        self.gcode_output.commands.push(GcodeCommandCollected::Raw(text));
+    fn push_raw(
+        &mut self,
+        _self_: Resource<GcodeOutputBuilderData>,
+        text: String,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.gcode_output
+            .commands
+            .push(GcodeCommandCollected::Raw(text));
         Ok(Ok(()))
     }
-    fn push_z_hop(&mut self, _self_: Resource<GcodeOutputBuilderData>, after_entity_index: u32, hop_height: f32) -> wasmtime::Result<Result<(), String>> {
-        self.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index, hop_height });
+    fn push_z_hop(
+        &mut self,
+        _self_: Resource<GcodeOutputBuilderData>,
+        after_entity_index: u32,
+        hop_height: f32,
+    ) -> wasmtime::Result<Result<(), String>> {
+        self.gcode_output
+            .commands
+            .push(GcodeCommandCollected::ZHop {
+                after_entity_index,
+                hop_height,
+            });
         Ok(Ok(()))
     }
     fn drop(&mut self, rep: Resource<GcodeOutputBuilderData>) -> wasmtime::Result<()> {
@@ -2943,8 +3163,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
     ) -> wasmtime::Result<Vec<ir::OrderedEntityView>> {
         self.host_get_ordered_entities_call_count =
             self.host_get_ordered_entities_call_count.saturating_add(1);
-        HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let data = self.table.get(&self_)?;
         let views: Vec<ir::OrderedEntityView> = data
             .ordered_entities
@@ -2985,7 +3204,11 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
 }
 
 impl ir::HostSupportOutputBuilder for HostExecutionContext {
-    fn push_support_path(&mut self, _self_: Resource<SupportOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
+    fn push_support_path(
+        &mut self,
+        _self_: Resource<SupportOutputBuilderData>,
+        path: ExtrusionPath3d,
+    ) -> wasmtime::Result<Result<(), String>> {
         if let Some(z) = path.points.first().map(|p| p.z) {
             if let Err(e) = self.check_z_envelope(z) {
                 return Ok(Err(e));
@@ -2997,19 +3220,30 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
         self.record_write("SupportIR");
         Ok(Ok(()))
     }
-    fn push_interface_path(&mut self, _self_: Resource<SupportOutputBuilderData>, path: ExtrusionPath3d, is_top_interface: bool) -> wasmtime::Result<Result<(), String>> {
+    fn push_interface_path(
+        &mut self,
+        _self_: Resource<SupportOutputBuilderData>,
+        path: ExtrusionPath3d,
+        is_top_interface: bool,
+    ) -> wasmtime::Result<Result<(), String>> {
         if let Some(z) = path.points.first().map(|p| p.z) {
             if let Err(e) = self.check_z_envelope(z) {
                 return Ok(Err(e));
             }
         }
         let origin = self.current_slice_region.clone();
-        self.support_output.interface_paths.push((path, is_top_interface));
+        self.support_output
+            .interface_paths
+            .push((path, is_top_interface));
         self.support_output.interface_path_origins.push(origin);
         self.record_write("SupportIR");
         Ok(Ok(()))
     }
-    fn push_raft_path(&mut self, _self_: Resource<SupportOutputBuilderData>, path: ExtrusionPath3d) -> wasmtime::Result<Result<(), String>> {
+    fn push_raft_path(
+        &mut self,
+        _self_: Resource<SupportOutputBuilderData>,
+        path: ExtrusionPath3d,
+    ) -> wasmtime::Result<Result<(), String>> {
         if let Some(z) = path.points.first().map(|p| p.z) {
             if let Err(e) = self.check_z_envelope(z) {
                 return Ok(Err(e));
@@ -3028,7 +3262,11 @@ impl ir::HostSupportOutputBuilder for HostExecutionContext {
 }
 
 impl ir::HostPaintRegionLayerView for HostExecutionContext {
-    fn get_regions(&mut self, self_: Resource<PaintRegionLayerData>, semantic: PaintSemantic) -> wasmtime::Result<Vec<SemanticRegion>> {
+    fn get_regions(
+        &mut self,
+        self_: Resource<PaintRegionLayerData>,
+        semantic: PaintSemantic,
+    ) -> wasmtime::Result<Vec<SemanticRegion>> {
         self.runtime_reads.push(String::from("PaintRegionIR"));
         let data = self.table.get(&self_)?;
         let key = match semantic {
@@ -3042,11 +3280,25 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
                 Box::leak(s.clone().into_boxed_str())
             }
         };
-        Ok(data.regions_by_semantic.get(key).cloned().unwrap_or_default())
+        Ok(data
+            .regions_by_semantic
+            .get(key)
+            .cloned()
+            .unwrap_or_default())
     }
-    fn get_custom_regions(&mut self, self_: Resource<PaintRegionLayerData>, module_id: String) -> wasmtime::Result<Vec<SemanticRegion>> {
+    fn get_custom_regions(
+        &mut self,
+        self_: Resource<PaintRegionLayerData>,
+        module_id: String,
+    ) -> wasmtime::Result<Vec<SemanticRegion>> {
         self.runtime_reads.push(String::from("PaintRegionIR"));
-        Ok(self.table.get(&self_)?.custom_regions.get(&module_id).cloned().unwrap_or_default())
+        Ok(self
+            .table
+            .get(&self_)?
+            .custom_regions
+            .get(&module_id)
+            .cloned()
+            .unwrap_or_default())
     }
     fn layer_index(&mut self, self_: Resource<PaintRegionLayerData>) -> wasmtime::Result<u32> {
         self.runtime_reads.push(String::from("PaintRegionIR"));
@@ -3091,14 +3343,48 @@ mod prepass_impls {
 
     fn p_wit_to_ir(ep: &pgeo::ExPolygon) -> slicer_ir::ExPolygon {
         slicer_ir::ExPolygon {
-            contour: slicer_ir::Polygon { points: ep.contour.points.iter().map(|p| slicer_ir::Point2 { x: p.x, y: p.y }).collect() },
-            holes: ep.holes.iter().map(|h| slicer_ir::Polygon { points: h.points.iter().map(|p| slicer_ir::Point2 { x: p.x, y: p.y }).collect() }).collect(),
+            contour: slicer_ir::Polygon {
+                points: ep
+                    .contour
+                    .points
+                    .iter()
+                    .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
+                    .collect(),
+            },
+            holes: ep
+                .holes
+                .iter()
+                .map(|h| slicer_ir::Polygon {
+                    points: h
+                        .points
+                        .iter()
+                        .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
+                        .collect(),
+                })
+                .collect(),
         }
     }
     fn p_ir_to_wit(ep: &slicer_ir::ExPolygon) -> pgeo::ExPolygon {
         pgeo::ExPolygon {
-            contour: pgeo::Polygon { points: ep.contour.points.iter().map(|p| pgeo::Point2 { x: p.x, y: p.y }).collect() },
-            holes: ep.holes.iter().map(|h| pgeo::Polygon { points: h.points.iter().map(|p| pgeo::Point2 { x: p.x, y: p.y }).collect() }).collect(),
+            contour: pgeo::Polygon {
+                points: ep
+                    .contour
+                    .points
+                    .iter()
+                    .map(|p| pgeo::Point2 { x: p.x, y: p.y })
+                    .collect(),
+            },
+            holes: ep
+                .holes
+                .iter()
+                .map(|h| pgeo::Polygon {
+                    points: h
+                        .points
+                        .iter()
+                        .map(|p| pgeo::Point2 { x: p.x, y: p.y })
+                        .collect(),
+                })
+                .collect(),
         }
     }
 
@@ -3120,43 +3406,110 @@ mod prepass_impls {
     impl phs::Host for HostExecutionContext {
         fn log(&mut self, level: phs::LogLevel, message: String) -> wasmtime::Result<()> {
             let level_str = match level {
-                phs::LogLevel::Trace => "trace", phs::LogLevel::Debug => "debug",
-                phs::LogLevel::Info => "info", phs::LogLevel::Warn => "warn",
+                phs::LogLevel::Trace => "trace",
+                phs::LogLevel::Debug => "debug",
+                phs::LogLevel::Info => "info",
+                phs::LogLevel::Warn => "warn",
                 phs::LogLevel::Error => "error",
             };
             self.log_messages.push((level_str.to_string(), message));
             Ok(())
         }
-        fn raycast_z_down(&mut self, object_id: phs::ObjectId, x: f32, y: f32, start_z: f32) -> wasmtime::Result<Option<f32>> {
+        fn raycast_z_down(
+            &mut self,
+            object_id: phs::ObjectId,
+            x: f32,
+            y: f32,
+            start_z: f32,
+        ) -> wasmtime::Result<Option<f32>> {
             raycast_z_down_mesh_query(self, &object_id, x, y, start_z)
         }
-        fn surface_normal_at(&mut self, object_id: phs::ObjectId, x: f32, y: f32, z: f32) -> wasmtime::Result<Option<pgeo::Point3>> {
+        fn surface_normal_at(
+            &mut self,
+            object_id: phs::ObjectId,
+            x: f32,
+            y: f32,
+            z: f32,
+        ) -> wasmtime::Result<Option<pgeo::Point3>> {
             Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_prepass))
         }
-        fn object_bounds(&mut self, object_id: phs::ObjectId) -> wasmtime::Result<pgeo::BoundingBox3> {
-            Ok(ir_bounds_to_prepass(object_bounds_mesh_query(self, &object_id)?))
+        fn object_bounds(
+            &mut self,
+            object_id: phs::ObjectId,
+        ) -> wasmtime::Result<pgeo::BoundingBox3> {
+            Ok(ir_bounds_to_prepass(object_bounds_mesh_query(
+                self, &object_id,
+            )?))
         }
-        fn clip_polygons(&mut self, subject: Vec<pgeo::ExPolygon>, clip: Vec<pgeo::ExPolygon>, op: phs::ClipOperation) -> wasmtime::Result<Vec<pgeo::ExPolygon>> {
+        fn clip_polygons(
+            &mut self,
+            subject: Vec<pgeo::ExPolygon>,
+            clip: Vec<pgeo::ExPolygon>,
+            op: phs::ClipOperation,
+        ) -> wasmtime::Result<Vec<pgeo::ExPolygon>> {
             let s: Vec<_> = subject.iter().map(p_wit_to_ir).collect();
             let c: Vec<_> = clip.iter().map(p_wit_to_ir).collect();
-            let ir_op = match op { phs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union, phs::ClipOperation::Intersection => slicer_core::polygon_ops::ClipOperation::Intersection, phs::ClipOperation::Difference => slicer_core::polygon_ops::ClipOperation::Difference, phs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor };
-            Ok(ir_clip_polygons(&s, &c, ir_op).iter().map(p_ir_to_wit).collect())
+            let ir_op = match op {
+                phs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
+                phs::ClipOperation::Intersection => {
+                    slicer_core::polygon_ops::ClipOperation::Intersection
+                }
+                phs::ClipOperation::Difference => {
+                    slicer_core::polygon_ops::ClipOperation::Difference
+                }
+                phs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor,
+            };
+            Ok(ir_clip_polygons(&s, &c, ir_op)
+                .iter()
+                .map(p_ir_to_wit)
+                .collect())
         }
-        fn offset_polygons(&mut self, polygons: Vec<pgeo::ExPolygon>, delta_mm: f32, join: phs::OffsetJoinType) -> wasmtime::Result<Vec<pgeo::ExPolygon>> {
+        fn offset_polygons(
+            &mut self,
+            polygons: Vec<pgeo::ExPolygon>,
+            delta_mm: f32,
+            join: phs::OffsetJoinType,
+        ) -> wasmtime::Result<Vec<pgeo::ExPolygon>> {
             let ir: Vec<_> = polygons.iter().map(p_wit_to_ir).collect();
-            let j = match join { phs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter, phs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round, phs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square };
-            Ok(ir_offset_polygons(&ir, delta_mm, j).iter().map(p_ir_to_wit).collect())
+            let j = match join {
+                phs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter,
+                phs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
+                phs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square,
+            };
+            Ok(ir_offset_polygons(&ir, delta_mm, j)
+                .iter()
+                .map(p_ir_to_wit)
+                .collect())
         }
-        fn simplify_polygon(&mut self, polygon: pgeo::Polygon, _: f32) -> wasmtime::Result<pgeo::Polygon> {
-            let pts: Vec<_> = polygon.points.iter().map(|p| slicer_ir::Point2 { x: p.x, y: p.y }).collect();
-            Ok(pgeo::Polygon { points: ir_simplify_polygon(pts).into_iter().map(|p| pgeo::Point2 { x: p.x, y: p.y }).collect() })
+        fn simplify_polygon(
+            &mut self,
+            polygon: pgeo::Polygon,
+            _: f32,
+        ) -> wasmtime::Result<pgeo::Polygon> {
+            let pts: Vec<_> = polygon
+                .points
+                .iter()
+                .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
+                .collect();
+            Ok(pgeo::Polygon {
+                points: ir_simplify_polygon(pts)
+                    .into_iter()
+                    .map(|p| pgeo::Point2 { x: p.x, y: p.y })
+                    .collect(),
+            })
         }
-        fn now_us(&mut self) -> wasmtime::Result<u64> { Ok(self.start_time.elapsed().as_micros() as u64) }
+        fn now_us(&mut self) -> wasmtime::Result<u64> {
+            Ok(self.start_time.elapsed().as_micros() as u64)
+        }
     }
 
     impl pct::Host for HostExecutionContext {}
     impl pct::HostConfigView for HostExecutionContext {
-        fn get(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<pct::ConfigValue>> {
+        fn get(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<pct::ConfigValue>> {
             let data = self.table.get(&self_)?;
             Ok(data.fields.get(&key).map(|v| match v {
                 ConfigValueStorage::Bool(b) => pct::ConfigValue::BoolVal(*b),
@@ -3167,26 +3520,57 @@ mod prepass_impls {
                 ConfigValueStorage::StringList(sl) => pct::ConfigValue::StringList(sl.clone()),
             }))
         }
-        fn get_bool(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<bool>> {
+        fn get_bool(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<bool>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Bool(b) => Some(*b), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Bool(b) => Some(*b),
+                _ => None,
+            }))
         }
-        fn get_float(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<f64>> {
+        fn get_float(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<f64>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Float(f) => Some(normalize_subnormal_boundary(*f)), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Float(f) => Some(normalize_subnormal_boundary(*f)),
+                _ => None,
+            }))
         }
-        fn get_int(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<i64>> {
+        fn get_int(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<i64>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Int(i) => Some(*i), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Int(i) => Some(*i),
+                _ => None,
+            }))
         }
-        fn get_string(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<String>> {
+        fn get_string(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<String>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Str(s) => Some(s.clone()), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Str(s) => Some(s.clone()),
+                _ => None,
+            }))
         }
         fn keys(&mut self, self_: Resource<ConfigViewData>) -> wasmtime::Result<Vec<String>> {
             Ok(self.table.get(&self_)?.fields.keys().cloned().collect())
         }
-        fn drop(&mut self, rep: Resource<ConfigViewData>) -> wasmtime::Result<()> { self.table.delete(rep)?; Ok(()) }
+        fn drop(&mut self, rep: Resource<ConfigViewData>) -> wasmtime::Result<()> {
+            self.table.delete(rep)?;
+            Ok(())
+        }
     }
 
     // Prepass world resources
@@ -3241,7 +3625,8 @@ mod prepass_impls {
         }
         fn drop(&mut self, rep: Resource<pm::MeshAnalysisOutput>) -> wasmtime::Result<()> {
             let typed: Resource<MeshAnalysisOutputData> = Resource::new_own(rep.rep());
-            self.table.delete(typed)?; Ok(())
+            self.table.delete(typed)?;
+            Ok(())
         }
     }
 
@@ -3272,7 +3657,8 @@ mod prepass_impls {
         }
         fn drop(&mut self, rep: Resource<pm::LayerPlanOutput>) -> wasmtime::Result<()> {
             let typed: Resource<LayerPlanOutputData> = Resource::new_own(rep.rep());
-            self.table.delete(typed)?; Ok(())
+            self.table.delete(typed)?;
+            Ok(())
         }
     }
 
@@ -3432,24 +3818,58 @@ mod prepass_impls {
 // ── Finalization world host trait impls ────────────────────────────────
 
 mod finalization_impls {
+    use super::finalization as fm;
     use super::*;
     use finalization::slicer::world_finalization::config_types as fct;
     use finalization::slicer::world_finalization::geometry as fgeo;
     use finalization::slicer::world_finalization::host_services as fhs;
-    use super::finalization as fm;
 
     impl fgeo::Host for HostExecutionContext {}
 
     fn f_wit_to_ir(ep: &fgeo::ExPolygon) -> slicer_ir::ExPolygon {
         slicer_ir::ExPolygon {
-            contour: slicer_ir::Polygon { points: ep.contour.points.iter().map(|p| slicer_ir::Point2 { x: p.x, y: p.y }).collect() },
-            holes: ep.holes.iter().map(|h| slicer_ir::Polygon { points: h.points.iter().map(|p| slicer_ir::Point2 { x: p.x, y: p.y }).collect() }).collect(),
+            contour: slicer_ir::Polygon {
+                points: ep
+                    .contour
+                    .points
+                    .iter()
+                    .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
+                    .collect(),
+            },
+            holes: ep
+                .holes
+                .iter()
+                .map(|h| slicer_ir::Polygon {
+                    points: h
+                        .points
+                        .iter()
+                        .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
+                        .collect(),
+                })
+                .collect(),
         }
     }
     fn f_ir_to_wit(ep: &slicer_ir::ExPolygon) -> fgeo::ExPolygon {
         fgeo::ExPolygon {
-            contour: fgeo::Polygon { points: ep.contour.points.iter().map(|p| fgeo::Point2 { x: p.x, y: p.y }).collect() },
-            holes: ep.holes.iter().map(|h| fgeo::Polygon { points: h.points.iter().map(|p| fgeo::Point2 { x: p.x, y: p.y }).collect() }).collect(),
+            contour: fgeo::Polygon {
+                points: ep
+                    .contour
+                    .points
+                    .iter()
+                    .map(|p| fgeo::Point2 { x: p.x, y: p.y })
+                    .collect(),
+            },
+            holes: ep
+                .holes
+                .iter()
+                .map(|h| fgeo::Polygon {
+                    points: h
+                        .points
+                        .iter()
+                        .map(|p| fgeo::Point2 { x: p.x, y: p.y })
+                        .collect(),
+                })
+                .collect(),
         }
     }
 
@@ -3471,43 +3891,111 @@ mod finalization_impls {
     impl fhs::Host for HostExecutionContext {
         fn log(&mut self, level: fhs::LogLevel, message: String) -> wasmtime::Result<()> {
             let level_str = match level {
-                fhs::LogLevel::Trace => "trace", fhs::LogLevel::Debug => "debug",
-                fhs::LogLevel::Info => "info", fhs::LogLevel::Warn => "warn",
+                fhs::LogLevel::Trace => "trace",
+                fhs::LogLevel::Debug => "debug",
+                fhs::LogLevel::Info => "info",
+                fhs::LogLevel::Warn => "warn",
                 fhs::LogLevel::Error => "error",
             };
             self.log_messages.push((level_str.to_string(), message));
             Ok(())
         }
-        fn raycast_z_down(&mut self, object_id: fhs::ObjectId, x: f32, y: f32, start_z: f32) -> wasmtime::Result<Option<f32>> {
+        fn raycast_z_down(
+            &mut self,
+            object_id: fhs::ObjectId,
+            x: f32,
+            y: f32,
+            start_z: f32,
+        ) -> wasmtime::Result<Option<f32>> {
             raycast_z_down_mesh_query(self, &object_id, x, y, start_z)
         }
-        fn surface_normal_at(&mut self, object_id: fhs::ObjectId, x: f32, y: f32, z: f32) -> wasmtime::Result<Option<fgeo::Point3>> {
-            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_finalization))
+        fn surface_normal_at(
+            &mut self,
+            object_id: fhs::ObjectId,
+            x: f32,
+            y: f32,
+            z: f32,
+        ) -> wasmtime::Result<Option<fgeo::Point3>> {
+            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?
+                .map(ir_point3_to_finalization))
         }
-        fn object_bounds(&mut self, object_id: fhs::ObjectId) -> wasmtime::Result<fgeo::BoundingBox3> {
-            Ok(ir_bounds_to_finalization(object_bounds_mesh_query(self, &object_id)?))
+        fn object_bounds(
+            &mut self,
+            object_id: fhs::ObjectId,
+        ) -> wasmtime::Result<fgeo::BoundingBox3> {
+            Ok(ir_bounds_to_finalization(object_bounds_mesh_query(
+                self, &object_id,
+            )?))
         }
-        fn clip_polygons(&mut self, subject: Vec<fgeo::ExPolygon>, clip: Vec<fgeo::ExPolygon>, op: fhs::ClipOperation) -> wasmtime::Result<Vec<fgeo::ExPolygon>> {
+        fn clip_polygons(
+            &mut self,
+            subject: Vec<fgeo::ExPolygon>,
+            clip: Vec<fgeo::ExPolygon>,
+            op: fhs::ClipOperation,
+        ) -> wasmtime::Result<Vec<fgeo::ExPolygon>> {
             let s: Vec<_> = subject.iter().map(f_wit_to_ir).collect();
             let c: Vec<_> = clip.iter().map(f_wit_to_ir).collect();
-            let ir_op = match op { fhs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union, fhs::ClipOperation::Intersection => slicer_core::polygon_ops::ClipOperation::Intersection, fhs::ClipOperation::Difference => slicer_core::polygon_ops::ClipOperation::Difference, fhs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor };
-            Ok(ir_clip_polygons(&s, &c, ir_op).iter().map(f_ir_to_wit).collect())
+            let ir_op = match op {
+                fhs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
+                fhs::ClipOperation::Intersection => {
+                    slicer_core::polygon_ops::ClipOperation::Intersection
+                }
+                fhs::ClipOperation::Difference => {
+                    slicer_core::polygon_ops::ClipOperation::Difference
+                }
+                fhs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor,
+            };
+            Ok(ir_clip_polygons(&s, &c, ir_op)
+                .iter()
+                .map(f_ir_to_wit)
+                .collect())
         }
-        fn offset_polygons(&mut self, polygons: Vec<fgeo::ExPolygon>, delta_mm: f32, join: fhs::OffsetJoinType) -> wasmtime::Result<Vec<fgeo::ExPolygon>> {
+        fn offset_polygons(
+            &mut self,
+            polygons: Vec<fgeo::ExPolygon>,
+            delta_mm: f32,
+            join: fhs::OffsetJoinType,
+        ) -> wasmtime::Result<Vec<fgeo::ExPolygon>> {
             let ir: Vec<_> = polygons.iter().map(f_wit_to_ir).collect();
-            let j = match join { fhs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter, fhs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round, fhs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square };
-            Ok(ir_offset_polygons(&ir, delta_mm, j).iter().map(f_ir_to_wit).collect())
+            let j = match join {
+                fhs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter,
+                fhs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
+                fhs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square,
+            };
+            Ok(ir_offset_polygons(&ir, delta_mm, j)
+                .iter()
+                .map(f_ir_to_wit)
+                .collect())
         }
-        fn simplify_polygon(&mut self, polygon: fgeo::Polygon, _: f32) -> wasmtime::Result<fgeo::Polygon> {
-            let pts: Vec<_> = polygon.points.iter().map(|p| slicer_ir::Point2 { x: p.x, y: p.y }).collect();
-            Ok(fgeo::Polygon { points: ir_simplify_polygon(pts).into_iter().map(|p| fgeo::Point2 { x: p.x, y: p.y }).collect() })
+        fn simplify_polygon(
+            &mut self,
+            polygon: fgeo::Polygon,
+            _: f32,
+        ) -> wasmtime::Result<fgeo::Polygon> {
+            let pts: Vec<_> = polygon
+                .points
+                .iter()
+                .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
+                .collect();
+            Ok(fgeo::Polygon {
+                points: ir_simplify_polygon(pts)
+                    .into_iter()
+                    .map(|p| fgeo::Point2 { x: p.x, y: p.y })
+                    .collect(),
+            })
         }
-        fn now_us(&mut self) -> wasmtime::Result<u64> { Ok(self.start_time.elapsed().as_micros() as u64) }
+        fn now_us(&mut self) -> wasmtime::Result<u64> {
+            Ok(self.start_time.elapsed().as_micros() as u64)
+        }
     }
 
     impl fct::Host for HostExecutionContext {}
     impl fct::HostConfigView for HostExecutionContext {
-        fn get(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<fct::ConfigValue>> {
+        fn get(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<fct::ConfigValue>> {
             let data = self.table.get(&self_)?;
             Ok(data.fields.get(&key).map(|v| match v {
                 ConfigValueStorage::Bool(b) => fct::ConfigValue::BoolVal(*b),
@@ -3518,26 +4006,57 @@ mod finalization_impls {
                 ConfigValueStorage::StringList(sl) => fct::ConfigValue::StringList(sl.clone()),
             }))
         }
-        fn get_bool(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<bool>> {
+        fn get_bool(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<bool>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Bool(b) => Some(*b), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Bool(b) => Some(*b),
+                _ => None,
+            }))
         }
-        fn get_float(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<f64>> {
+        fn get_float(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<f64>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Float(f) => Some(normalize_subnormal_boundary(*f)), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Float(f) => Some(normalize_subnormal_boundary(*f)),
+                _ => None,
+            }))
         }
-        fn get_int(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<i64>> {
+        fn get_int(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<i64>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Int(i) => Some(*i), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Int(i) => Some(*i),
+                _ => None,
+            }))
         }
-        fn get_string(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<String>> {
+        fn get_string(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<String>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Str(s) => Some(s.clone()), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Str(s) => Some(s.clone()),
+                _ => None,
+            }))
         }
         fn keys(&mut self, self_: Resource<ConfigViewData>) -> wasmtime::Result<Vec<String>> {
             Ok(self.table.get(&self_)?.fields.keys().cloned().collect())
         }
-        fn drop(&mut self, rep: Resource<ConfigViewData>) -> wasmtime::Result<()> { self.table.delete(rep)?; Ok(()) }
+        fn drop(&mut self, rep: Resource<ConfigViewData>) -> wasmtime::Result<()> {
+            self.table.delete(rep)?;
+            Ok(())
+        }
     }
 
     /// Convert a wit-bindgen finalization-world `ExtrusionPath3d` record
@@ -3619,7 +4138,10 @@ mod finalization_impls {
     }
 
     impl fm::HostLayerCollectionView for HostExecutionContext {
-        fn layer_index(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<u32> {
+        fn layer_index(
+            &mut self,
+            self_: Resource<fm::LayerCollectionView>,
+        ) -> wasmtime::Result<u32> {
             self.runtime_reads.push(String::from("LayerCollectionIR"));
             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
             let data = self.table.get(&typed)?;
@@ -3631,27 +4153,38 @@ mod finalization_impls {
             let data = self.table.get(&typed)?;
             Ok(data.z)
         }
-        fn entity_count(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<u32> {
+        fn entity_count(
+            &mut self,
+            self_: Resource<fm::LayerCollectionView>,
+        ) -> wasmtime::Result<u32> {
             self.runtime_reads.push(String::from("LayerCollectionIR"));
             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
             let data = self.table.get(&typed)?;
             Ok(data.entity_count)
         }
-        fn tool_changes(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<Vec<fm::ToolChangeView>> {
+        fn tool_changes(
+            &mut self,
+            self_: Resource<fm::LayerCollectionView>,
+        ) -> wasmtime::Result<Vec<fm::ToolChangeView>> {
             self.runtime_reads.push(String::from("LayerCollectionIR"));
             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
             let data = self.table.get(&typed)?;
             Ok(data
                 .tool_changes
                 .iter()
-                .map(|(after_entity_index, from_tool, to_tool)| fm::ToolChangeView {
-                    after_entity_index: *after_entity_index,
-                    from_tool: *from_tool,
-                    to_tool: *to_tool,
-                })
+                .map(
+                    |(after_entity_index, from_tool, to_tool)| fm::ToolChangeView {
+                        after_entity_index: *after_entity_index,
+                        from_tool: *from_tool,
+                        to_tool: *to_tool,
+                    },
+                )
                 .collect())
         }
-        fn ordered_entities(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<Vec<fm::PrintEntityView>> {
+        fn ordered_entities(
+            &mut self,
+            self_: Resource<fm::LayerCollectionView>,
+        ) -> wasmtime::Result<Vec<fm::PrintEntityView>> {
             self.runtime_reads.push(String::from("LayerCollectionIR"));
             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
             let data = self.table.get(&typed)?;
@@ -3670,7 +4203,10 @@ mod finalization_impls {
                 })
                 .collect())
         }
-        fn z_hops(&mut self, self_: Resource<fm::LayerCollectionView>) -> wasmtime::Result<Vec<fm::ZHopView>> {
+        fn z_hops(
+            &mut self,
+            self_: Resource<fm::LayerCollectionView>,
+        ) -> wasmtime::Result<Vec<fm::ZHopView>> {
             self.runtime_reads.push(String::from("LayerCollectionIR"));
             let typed: Resource<LayerCollectionViewData> = Resource::new_borrow(self_.rep());
             let data = self.table.get(&typed)?;
@@ -3685,7 +4221,8 @@ mod finalization_impls {
         }
         fn drop(&mut self, rep: Resource<fm::LayerCollectionView>) -> wasmtime::Result<()> {
             let typed: Resource<LayerCollectionViewData> = Resource::new_own(rep.rep());
-            self.table.delete(typed)?; Ok(())
+            self.table.delete(typed)?;
+            Ok(())
         }
     }
 
@@ -3765,27 +4302,34 @@ mod finalization_impls {
 
         #[test]
         fn finalization_output_builder_rejects_noncanonical_region_id_strings() {
-            let mut ctx = HostExecutionContext::new("com.test.finalization".to_string(), 0.0, 0.2, None, None);
+            let mut ctx = HostExecutionContext::new(
+                "com.test.finalization".to_string(),
+                0.0,
+                0.2,
+                None,
+                None,
+            );
             let handle = ctx
                 .push_finalization_output_builder()
                 .expect("push finalization output builder");
 
-            let result = <HostExecutionContext as fm::HostFinalizationOutputBuilder>::push_entity_to_layer(
-                &mut ctx,
-                handle,
-                0,
-                fgeo::ExtrusionPath3d {
-                    points: Vec::new(),
-                    role: fgeo::ExtrusionRole::OuterWall,
-                    speed_factor: 1.0,
-                },
-                fm::RegionKey {
-                    layer_index: 0,
-                    object_id: "obj-1".to_string(),
-                    region_id: "01".to_string(),
-                },
-            )
-            .expect("host call must succeed");
+            let result =
+                <HostExecutionContext as fm::HostFinalizationOutputBuilder>::push_entity_to_layer(
+                    &mut ctx,
+                    handle,
+                    0,
+                    fgeo::ExtrusionPath3d {
+                        points: Vec::new(),
+                        role: fgeo::ExtrusionRole::OuterWall,
+                        speed_factor: 1.0,
+                    },
+                    fm::RegionKey {
+                        layer_index: 0,
+                        object_id: "obj-1".to_string(),
+                        region_id: "01".to_string(),
+                    },
+                )
+                .expect("host call must succeed");
 
             let message = result.expect_err("non-canonical region-id must be rejected");
             assert!(
@@ -3799,24 +4343,58 @@ mod finalization_impls {
 // ── Postpass world host trait impls ───────────────────────────────────
 
 mod postpass_impls {
+    use super::postpass as ppm;
     use super::*;
     use postpass::slicer::world_postpass::config_types as ppct;
     use postpass::slicer::world_postpass::geometry as ppgeo;
     use postpass::slicer::world_postpass::host_services as pphs;
-    use super::postpass as ppm;
 
     impl ppgeo::Host for HostExecutionContext {}
 
     fn pp_wit_to_ir(ep: &ppgeo::ExPolygon) -> slicer_ir::ExPolygon {
         slicer_ir::ExPolygon {
-            contour: slicer_ir::Polygon { points: ep.contour.points.iter().map(|p| slicer_ir::Point2 { x: p.x, y: p.y }).collect() },
-            holes: ep.holes.iter().map(|h| slicer_ir::Polygon { points: h.points.iter().map(|p| slicer_ir::Point2 { x: p.x, y: p.y }).collect() }).collect(),
+            contour: slicer_ir::Polygon {
+                points: ep
+                    .contour
+                    .points
+                    .iter()
+                    .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
+                    .collect(),
+            },
+            holes: ep
+                .holes
+                .iter()
+                .map(|h| slicer_ir::Polygon {
+                    points: h
+                        .points
+                        .iter()
+                        .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
+                        .collect(),
+                })
+                .collect(),
         }
     }
     fn pp_ir_to_wit(ep: &slicer_ir::ExPolygon) -> ppgeo::ExPolygon {
         ppgeo::ExPolygon {
-            contour: ppgeo::Polygon { points: ep.contour.points.iter().map(|p| ppgeo::Point2 { x: p.x, y: p.y }).collect() },
-            holes: ep.holes.iter().map(|h| ppgeo::Polygon { points: h.points.iter().map(|p| ppgeo::Point2 { x: p.x, y: p.y }).collect() }).collect(),
+            contour: ppgeo::Polygon {
+                points: ep
+                    .contour
+                    .points
+                    .iter()
+                    .map(|p| ppgeo::Point2 { x: p.x, y: p.y })
+                    .collect(),
+            },
+            holes: ep
+                .holes
+                .iter()
+                .map(|h| ppgeo::Polygon {
+                    points: h
+                        .points
+                        .iter()
+                        .map(|p| ppgeo::Point2 { x: p.x, y: p.y })
+                        .collect(),
+                })
+                .collect(),
         }
     }
 
@@ -3838,43 +4416,110 @@ mod postpass_impls {
     impl pphs::Host for HostExecutionContext {
         fn log(&mut self, level: pphs::LogLevel, message: String) -> wasmtime::Result<()> {
             let level_str = match level {
-                pphs::LogLevel::Trace => "trace", pphs::LogLevel::Debug => "debug",
-                pphs::LogLevel::Info => "info", pphs::LogLevel::Warn => "warn",
+                pphs::LogLevel::Trace => "trace",
+                pphs::LogLevel::Debug => "debug",
+                pphs::LogLevel::Info => "info",
+                pphs::LogLevel::Warn => "warn",
                 pphs::LogLevel::Error => "error",
             };
             self.log_messages.push((level_str.to_string(), message));
             Ok(())
         }
-        fn raycast_z_down(&mut self, object_id: pphs::ObjectId, x: f32, y: f32, start_z: f32) -> wasmtime::Result<Option<f32>> {
+        fn raycast_z_down(
+            &mut self,
+            object_id: pphs::ObjectId,
+            x: f32,
+            y: f32,
+            start_z: f32,
+        ) -> wasmtime::Result<Option<f32>> {
             raycast_z_down_mesh_query(self, &object_id, x, y, start_z)
         }
-        fn surface_normal_at(&mut self, object_id: pphs::ObjectId, x: f32, y: f32, z: f32) -> wasmtime::Result<Option<ppgeo::Point3>> {
+        fn surface_normal_at(
+            &mut self,
+            object_id: pphs::ObjectId,
+            x: f32,
+            y: f32,
+            z: f32,
+        ) -> wasmtime::Result<Option<ppgeo::Point3>> {
             Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_postpass))
         }
-        fn object_bounds(&mut self, object_id: pphs::ObjectId) -> wasmtime::Result<ppgeo::BoundingBox3> {
-            Ok(ir_bounds_to_postpass(object_bounds_mesh_query(self, &object_id)?))
+        fn object_bounds(
+            &mut self,
+            object_id: pphs::ObjectId,
+        ) -> wasmtime::Result<ppgeo::BoundingBox3> {
+            Ok(ir_bounds_to_postpass(object_bounds_mesh_query(
+                self, &object_id,
+            )?))
         }
-        fn clip_polygons(&mut self, subject: Vec<ppgeo::ExPolygon>, clip: Vec<ppgeo::ExPolygon>, op: pphs::ClipOperation) -> wasmtime::Result<Vec<ppgeo::ExPolygon>> {
+        fn clip_polygons(
+            &mut self,
+            subject: Vec<ppgeo::ExPolygon>,
+            clip: Vec<ppgeo::ExPolygon>,
+            op: pphs::ClipOperation,
+        ) -> wasmtime::Result<Vec<ppgeo::ExPolygon>> {
             let s: Vec<_> = subject.iter().map(pp_wit_to_ir).collect();
             let c: Vec<_> = clip.iter().map(pp_wit_to_ir).collect();
-            let ir_op = match op { pphs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union, pphs::ClipOperation::Intersection => slicer_core::polygon_ops::ClipOperation::Intersection, pphs::ClipOperation::Difference => slicer_core::polygon_ops::ClipOperation::Difference, pphs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor };
-            Ok(ir_clip_polygons(&s, &c, ir_op).iter().map(pp_ir_to_wit).collect())
+            let ir_op = match op {
+                pphs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
+                pphs::ClipOperation::Intersection => {
+                    slicer_core::polygon_ops::ClipOperation::Intersection
+                }
+                pphs::ClipOperation::Difference => {
+                    slicer_core::polygon_ops::ClipOperation::Difference
+                }
+                pphs::ClipOperation::Xor => slicer_core::polygon_ops::ClipOperation::Xor,
+            };
+            Ok(ir_clip_polygons(&s, &c, ir_op)
+                .iter()
+                .map(pp_ir_to_wit)
+                .collect())
         }
-        fn offset_polygons(&mut self, polygons: Vec<ppgeo::ExPolygon>, delta_mm: f32, join: pphs::OffsetJoinType) -> wasmtime::Result<Vec<ppgeo::ExPolygon>> {
+        fn offset_polygons(
+            &mut self,
+            polygons: Vec<ppgeo::ExPolygon>,
+            delta_mm: f32,
+            join: pphs::OffsetJoinType,
+        ) -> wasmtime::Result<Vec<ppgeo::ExPolygon>> {
             let ir: Vec<_> = polygons.iter().map(pp_wit_to_ir).collect();
-            let j = match join { pphs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter, pphs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round, pphs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square };
-            Ok(ir_offset_polygons(&ir, delta_mm, j).iter().map(pp_ir_to_wit).collect())
+            let j = match join {
+                pphs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter,
+                pphs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
+                pphs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square,
+            };
+            Ok(ir_offset_polygons(&ir, delta_mm, j)
+                .iter()
+                .map(pp_ir_to_wit)
+                .collect())
         }
-        fn simplify_polygon(&mut self, polygon: ppgeo::Polygon, _: f32) -> wasmtime::Result<ppgeo::Polygon> {
-            let pts: Vec<_> = polygon.points.iter().map(|p| slicer_ir::Point2 { x: p.x, y: p.y }).collect();
-            Ok(ppgeo::Polygon { points: ir_simplify_polygon(pts).into_iter().map(|p| ppgeo::Point2 { x: p.x, y: p.y }).collect() })
+        fn simplify_polygon(
+            &mut self,
+            polygon: ppgeo::Polygon,
+            _: f32,
+        ) -> wasmtime::Result<ppgeo::Polygon> {
+            let pts: Vec<_> = polygon
+                .points
+                .iter()
+                .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
+                .collect();
+            Ok(ppgeo::Polygon {
+                points: ir_simplify_polygon(pts)
+                    .into_iter()
+                    .map(|p| ppgeo::Point2 { x: p.x, y: p.y })
+                    .collect(),
+            })
         }
-        fn now_us(&mut self) -> wasmtime::Result<u64> { Ok(self.start_time.elapsed().as_micros() as u64) }
+        fn now_us(&mut self) -> wasmtime::Result<u64> {
+            Ok(self.start_time.elapsed().as_micros() as u64)
+        }
     }
 
     impl ppct::Host for HostExecutionContext {}
     impl ppct::HostConfigView for HostExecutionContext {
-        fn get(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<ppct::ConfigValue>> {
+        fn get(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<ppct::ConfigValue>> {
             let data = self.table.get(&self_)?;
             Ok(data.fields.get(&key).map(|v| match v {
                 ConfigValueStorage::Bool(b) => ppct::ConfigValue::BoolVal(*b),
@@ -3885,63 +4530,174 @@ mod postpass_impls {
                 ConfigValueStorage::StringList(sl) => ppct::ConfigValue::StringList(sl.clone()),
             }))
         }
-        fn get_bool(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<bool>> {
+        fn get_bool(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<bool>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Bool(b) => Some(*b), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Bool(b) => Some(*b),
+                _ => None,
+            }))
         }
-        fn get_float(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<f64>> {
+        fn get_float(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<f64>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Float(f) => Some(normalize_subnormal_boundary(*f)), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Float(f) => Some(normalize_subnormal_boundary(*f)),
+                _ => None,
+            }))
         }
-        fn get_int(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<i64>> {
+        fn get_int(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<i64>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Int(i) => Some(*i), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Int(i) => Some(*i),
+                _ => None,
+            }))
         }
-        fn get_string(&mut self, self_: Resource<ConfigViewData>, key: String) -> wasmtime::Result<Option<String>> {
+        fn get_string(
+            &mut self,
+            self_: Resource<ConfigViewData>,
+            key: String,
+        ) -> wasmtime::Result<Option<String>> {
             let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v { ConfigValueStorage::Str(s) => Some(s.clone()), _ => None }))
+            Ok(data.fields.get(&key).and_then(|v| match v {
+                ConfigValueStorage::Str(s) => Some(s.clone()),
+                _ => None,
+            }))
         }
         fn keys(&mut self, self_: Resource<ConfigViewData>) -> wasmtime::Result<Vec<String>> {
             Ok(self.table.get(&self_)?.fields.keys().cloned().collect())
         }
-        fn drop(&mut self, rep: Resource<ConfigViewData>) -> wasmtime::Result<()> { self.table.delete(rep)?; Ok(()) }
+        fn drop(&mut self, rep: Resource<ConfigViewData>) -> wasmtime::Result<()> {
+            self.table.delete(rep)?;
+            Ok(())
+        }
     }
 
     impl ppm::HostGcodeOutputBuilder for HostExecutionContext {
-        fn push_move(&mut self, _: Resource<ppm::GcodeOutputBuilder>, cmd: ppm::GcodeMoveCmd) -> wasmtime::Result<Result<(), String>> {
-            self.gcode_output.commands.push(GcodeCommandCollected::Move(GcodeMoveCmd {
-                x: cmd.x, y: cmd.y, z: cmd.z, e: cmd.e, f: cmd.f,
-                role: convert_postpass_role(&cmd.role),
-            }));
+        fn push_move(
+            &mut self,
+            _: Resource<ppm::GcodeOutputBuilder>,
+            cmd: ppm::GcodeMoveCmd,
+        ) -> wasmtime::Result<Result<(), String>> {
+            self.gcode_output
+                .commands
+                .push(GcodeCommandCollected::Move(GcodeMoveCmd {
+                    x: cmd.x,
+                    y: cmd.y,
+                    z: cmd.z,
+                    e: cmd.e,
+                    f: cmd.f,
+                    role: convert_postpass_role(&cmd.role),
+                }));
             Ok(Ok(()))
         }
-        fn push_retract(&mut self, _: Resource<ppm::GcodeOutputBuilder>, length: f32, speed: f32) -> wasmtime::Result<Result<(), String>> {
-            self.gcode_output.commands.push(GcodeCommandCollected::Retract { length, speed }); Ok(Ok(()))
+        fn push_retract(
+            &mut self,
+            _: Resource<ppm::GcodeOutputBuilder>,
+            length: f32,
+            speed: f32,
+        ) -> wasmtime::Result<Result<(), String>> {
+            self.gcode_output
+                .commands
+                .push(GcodeCommandCollected::Retract { length, speed });
+            Ok(Ok(()))
         }
-        fn push_unretract(&mut self, _: Resource<ppm::GcodeOutputBuilder>, length: f32, speed: f32) -> wasmtime::Result<Result<(), String>> {
-            self.gcode_output.commands.push(GcodeCommandCollected::Unretract { length, speed }); Ok(Ok(()))
+        fn push_unretract(
+            &mut self,
+            _: Resource<ppm::GcodeOutputBuilder>,
+            length: f32,
+            speed: f32,
+        ) -> wasmtime::Result<Result<(), String>> {
+            self.gcode_output
+                .commands
+                .push(GcodeCommandCollected::Unretract { length, speed });
+            Ok(Ok(()))
         }
-        fn push_fan_speed(&mut self, _: Resource<ppm::GcodeOutputBuilder>, value: u8) -> wasmtime::Result<Result<(), String>> {
-            self.gcode_output.commands.push(GcodeCommandCollected::FanSpeed(value)); Ok(Ok(()))
+        fn push_fan_speed(
+            &mut self,
+            _: Resource<ppm::GcodeOutputBuilder>,
+            value: u8,
+        ) -> wasmtime::Result<Result<(), String>> {
+            self.gcode_output
+                .commands
+                .push(GcodeCommandCollected::FanSpeed(value));
+            Ok(Ok(()))
         }
-        fn push_temperature(&mut self, _: Resource<ppm::GcodeOutputBuilder>, tool: u32, celsius: f32, wait: bool) -> wasmtime::Result<Result<(), String>> {
-            self.gcode_output.commands.push(GcodeCommandCollected::Temperature { tool, celsius, wait }); Ok(Ok(()))
+        fn push_temperature(
+            &mut self,
+            _: Resource<ppm::GcodeOutputBuilder>,
+            tool: u32,
+            celsius: f32,
+            wait: bool,
+        ) -> wasmtime::Result<Result<(), String>> {
+            self.gcode_output
+                .commands
+                .push(GcodeCommandCollected::Temperature {
+                    tool,
+                    celsius,
+                    wait,
+                });
+            Ok(Ok(()))
         }
-        fn push_tool_change(&mut self, _: Resource<ppm::GcodeOutputBuilder>, from_tool: u32, to_tool: u32) -> wasmtime::Result<Result<(), String>> {
-            self.gcode_output.commands.push(GcodeCommandCollected::ToolChange { from_tool, to_tool }); Ok(Ok(()))
+        fn push_tool_change(
+            &mut self,
+            _: Resource<ppm::GcodeOutputBuilder>,
+            from_tool: u32,
+            to_tool: u32,
+        ) -> wasmtime::Result<Result<(), String>> {
+            self.gcode_output
+                .commands
+                .push(GcodeCommandCollected::ToolChange { from_tool, to_tool });
+            Ok(Ok(()))
         }
-        fn push_comment(&mut self, _: Resource<ppm::GcodeOutputBuilder>, text: String) -> wasmtime::Result<Result<(), String>> {
-            self.gcode_output.commands.push(GcodeCommandCollected::Comment(text)); Ok(Ok(()))
+        fn push_comment(
+            &mut self,
+            _: Resource<ppm::GcodeOutputBuilder>,
+            text: String,
+        ) -> wasmtime::Result<Result<(), String>> {
+            self.gcode_output
+                .commands
+                .push(GcodeCommandCollected::Comment(text));
+            Ok(Ok(()))
         }
-        fn push_raw(&mut self, _: Resource<ppm::GcodeOutputBuilder>, text: String) -> wasmtime::Result<Result<(), String>> {
-            self.gcode_output.commands.push(GcodeCommandCollected::Raw(text)); Ok(Ok(()))
+        fn push_raw(
+            &mut self,
+            _: Resource<ppm::GcodeOutputBuilder>,
+            text: String,
+        ) -> wasmtime::Result<Result<(), String>> {
+            self.gcode_output
+                .commands
+                .push(GcodeCommandCollected::Raw(text));
+            Ok(Ok(()))
         }
-        fn push_z_hop(&mut self, _: Resource<ppm::GcodeOutputBuilder>, after_entity_index: u32, hop_height: f32) -> wasmtime::Result<Result<(), String>> {
-            self.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index, hop_height }); Ok(Ok(()))
+        fn push_z_hop(
+            &mut self,
+            _: Resource<ppm::GcodeOutputBuilder>,
+            after_entity_index: u32,
+            hop_height: f32,
+        ) -> wasmtime::Result<Result<(), String>> {
+            self.gcode_output
+                .commands
+                .push(GcodeCommandCollected::ZHop {
+                    after_entity_index,
+                    hop_height,
+                });
+            Ok(Ok(()))
         }
         fn drop(&mut self, rep: Resource<ppm::GcodeOutputBuilder>) -> wasmtime::Result<()> {
             let typed: Resource<PostpassGcodeOutputBuilderData> = Resource::new_own(rep.rep());
-            self.table.delete(typed)?; Ok(())
+            self.table.delete(typed)?;
+            Ok(())
         }
     }
 
@@ -4019,9 +4775,14 @@ pub fn convert_extrusion_role(role: &ExtrusionRole) -> slicer_ir::ExtrusionRole 
 /// Validate and convert a WIT `ExtrusionPath3d` to a slicer-ir `ExtrusionPath3D`.
 ///
 /// Returns an error if any point coordinate is NaN or Inf (per docs/02_ir_schemas.md).
-pub fn convert_extrusion_path(path: &ExtrusionPath3d) -> Result<slicer_ir::ExtrusionPath3D, String> {
+pub fn convert_extrusion_path(
+    path: &ExtrusionPath3d,
+) -> Result<slicer_ir::ExtrusionPath3D, String> {
     if path.speed_factor.is_nan() || path.speed_factor.is_infinite() {
-        return Err(format!("speed_factor is NaN or Inf ({})", path.speed_factor));
+        return Err(format!(
+            "speed_factor is NaN or Inf ({})",
+            path.speed_factor
+        ));
     }
     let points: Result<Vec<_>, _> = path
         .points
@@ -4075,7 +4836,11 @@ pub fn convert_infill_output(
 
     if !any_tagged {
         return Ok(slicer_ir::InfillIR {
-            schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: slicer_ir::SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             global_layer_index: layer_index,
             regions: vec![slicer_ir::InfillRegion {
                 object_id: String::new(),
@@ -4149,12 +4914,34 @@ pub fn convert_infill_output(
 
     let _ = bucket_for; // silence unused (helper defined for symmetry)
 
-    drain_into(sparse, &collected.sparse_path_origins, "sparse_infill", &mut buckets, |r, p| r.sparse_infill.push(p))?;
-    drain_into(solid, &collected.solid_path_origins, "solid_infill", &mut buckets, |r, p| r.solid_infill.push(p))?;
-    drain_into(ironing, &collected.ironing_path_origins, "ironing", &mut buckets, |r, p| r.ironing.push(p))?;
+    drain_into(
+        sparse,
+        &collected.sparse_path_origins,
+        "sparse_infill",
+        &mut buckets,
+        |r, p| r.sparse_infill.push(p),
+    )?;
+    drain_into(
+        solid,
+        &collected.solid_path_origins,
+        "solid_infill",
+        &mut buckets,
+        |r, p| r.solid_infill.push(p),
+    )?;
+    drain_into(
+        ironing,
+        &collected.ironing_path_origins,
+        "ironing",
+        &mut buckets,
+        |r, p| r.ironing.push(p),
+    )?;
 
     Ok(slicer_ir::InfillIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         global_layer_index: layer_index,
         regions: buckets.into_iter().map(|(_, r)| r).collect(),
     })
@@ -4177,9 +4964,21 @@ pub fn convert_support_output(
     collected: &SupportOutputCollected,
     layer_index: u32,
 ) -> Result<slicer_ir::SupportIR, String> {
-    let support: Vec<_> = collected.support_paths.iter().map(convert_extrusion_path).collect::<Result<_, _>>()?;
-    let interface: Vec<_> = collected.interface_paths.iter().map(|(p, _)| convert_extrusion_path(p)).collect::<Result<_, _>>()?;
-    let raft: Vec<_> = collected.raft_paths.iter().map(convert_extrusion_path).collect::<Result<_, _>>()?;
+    let support: Vec<_> = collected
+        .support_paths
+        .iter()
+        .map(convert_extrusion_path)
+        .collect::<Result<_, _>>()?;
+    let interface: Vec<_> = collected
+        .interface_paths
+        .iter()
+        .map(|(p, _)| convert_extrusion_path(p))
+        .collect::<Result<_, _>>()?;
+    let raft: Vec<_> = collected
+        .raft_paths
+        .iter()
+        .map(convert_extrusion_path)
+        .collect::<Result<_, _>>()?;
 
     let any_tagged = collected.support_path_origins.iter().any(Option::is_some)
         || collected.interface_path_origins.iter().any(Option::is_some)
@@ -4187,7 +4986,11 @@ pub fn convert_support_output(
 
     if !any_tagged {
         return Ok(slicer_ir::SupportIR {
-            schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: slicer_ir::SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             global_layer_index: layer_index,
             support_paths: support,
             interface_paths: interface,
@@ -4211,12 +5014,14 @@ pub fn convert_support_output(
         }
         let mut buckets: Vec<(SliceRegionOrigin, Vec<T>)> = Vec::new();
         for (i, path) in paths.into_iter().enumerate() {
-            let origin = origins[i].as_ref().ok_or_else(|| format!(
-                "{kind} path[{i}] was emitted without an active slice source region; \
+            let origin = origins[i].as_ref().ok_or_else(|| {
+                format!(
+                    "{kind} path[{i}] was emitted without an active slice source region; \
                  guest must access a slice-region-view (object-id/region-id/polygons/\
                  infill-areas/effective-layer-height/z/has-nonplanar/boundary-paint) \
                  before pushing support output for identity-preserving commit"
-            ))?;
+                )
+            })?;
             if let Some(idx) = buckets.iter().position(|(o, _)| o == origin) {
                 buckets[idx].1.push(path);
             } else {
@@ -4241,12 +5046,26 @@ pub fn convert_support_output(
     }
 
     let mut order: Vec<SliceRegionOrigin> = Vec::new();
-    let support = group_by_origin(support, &collected.support_path_origins, "support", &mut order)?;
-    let interface = group_by_origin(interface, &collected.interface_path_origins, "interface", &mut order)?;
+    let support = group_by_origin(
+        support,
+        &collected.support_path_origins,
+        "support",
+        &mut order,
+    )?;
+    let interface = group_by_origin(
+        interface,
+        &collected.interface_path_origins,
+        "interface",
+        &mut order,
+    )?;
     let raft = group_by_origin(raft, &collected.raft_path_origins, "raft", &mut order)?;
 
     Ok(slicer_ir::SupportIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         global_layer_index: layer_index,
         support_paths: support,
         interface_paths: interface,
@@ -4283,7 +5102,9 @@ pub fn convert_wall_feature_flag(flag: &WallFeatureFlag) -> slicer_ir::WallFeatu
         is_thin_wall: flag.is_thin_wall,
         skip_ironing: flag.skip_ironing,
         custom: HashMap::from_iter(
-            flag.custom.iter().map(|(k, v)| (k.clone(), convert_paint_value(v))),
+            flag.custom
+                .iter()
+                .map(|(k, v)| (k.clone(), convert_paint_value(v))),
         ),
     }
 }
@@ -4309,7 +5130,11 @@ pub fn convert_wall_loop(wl: &WallLoopView) -> Result<slicer_ir::WallLoop, Strin
         width_profile: slicer_ir::WidthProfile {
             widths: wl.path.points.iter().map(|p| p.width).collect(),
         },
-        feature_flags: wl.feature_flags.iter().map(convert_wall_feature_flag).collect(),
+        feature_flags: wl
+            .feature_flags
+            .iter()
+            .map(convert_wall_feature_flag)
+            .collect(),
         boundary_type: slicer_ir::WallBoundaryType::Interior,
     })
 }
@@ -4355,9 +5180,12 @@ pub fn convert_perimeter_output(
         .iter()
         .enumerate()
         .map(|(i, (pos, score))| {
-            if pos.x.is_nan() || pos.x.is_infinite()
-                || pos.y.is_nan() || pos.y.is_infinite()
-                || pos.z.is_nan() || pos.z.is_infinite()
+            if pos.x.is_nan()
+                || pos.x.is_infinite()
+                || pos.y.is_nan()
+                || pos.y.is_infinite()
+                || pos.z.is_nan()
+                || pos.z.is_infinite()
             {
                 Err(format!("seam_candidate[{i}] has NaN/Inf coordinate"))
             } else if score.is_nan() || score.is_infinite() {
@@ -4379,18 +5207,20 @@ pub fn convert_perimeter_output(
         .collect::<Result<Vec<_>, _>>()?;
 
     // Convert collected resolved_seam to IR type.
-    let resolved_seam = collected.resolved_seam.as_ref().map(|(pos, wall_index)| {
-        slicer_ir::SeamPosition {
-            point: slicer_ir::Point3WithWidth {
-                x: pos.x,
-                y: pos.y,
-                z: pos.z,
-                width: 0.0,
-                flow_factor: 1.0,
-            },
-            wall_index: *wall_index,
-        }
-    });
+    let resolved_seam =
+        collected
+            .resolved_seam
+            .as_ref()
+            .map(|(pos, wall_index)| slicer_ir::SeamPosition {
+                point: slicer_ir::Point3WithWidth {
+                    x: pos.x,
+                    y: pos.y,
+                    z: pos.z,
+                    width: 0.0,
+                    flow_factor: 1.0,
+                },
+                wall_index: *wall_index,
+            });
     let resolved_seam_origin = collected.resolved_seam_origin.as_ref();
 
     let any_tagged = wall_origins.iter().any(Option::is_some)
@@ -4399,7 +5229,11 @@ pub fn convert_perimeter_output(
 
     if !any_tagged {
         return Ok(slicer_ir::PerimeterIR {
-            schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: slicer_ir::SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             global_layer_index: layer_index,
             regions: vec![slicer_ir::PerimeterRegion {
                 object_id: String::new(),
@@ -4441,10 +5275,12 @@ pub fn convert_perimeter_output(
         ));
     }
     for (i, wl) in walls.into_iter().enumerate() {
-        let origin = wall_origins[i].as_ref().ok_or_else(|| format!(
-            "wall_loop[{i}] was emitted without an active perimeter source region; \
+        let origin = wall_origins[i].as_ref().ok_or_else(|| {
+            format!(
+                "wall_loop[{i}] was emitted without an active perimeter source region; \
              guest must access a perimeter-region-view before pushing wall loops"
-        ))?;
+            )
+        })?;
         let idx = ensure(&mut buckets, origin);
         buckets[idx].1.walls.push(wl);
     }
@@ -4459,9 +5295,11 @@ pub fn convert_perimeter_output(
         ));
     }
     for (i, sc) in seam_candidates.into_iter().enumerate() {
-        let origin = collected.seam_candidate_origins[i].as_ref().ok_or_else(|| format!(
-            "seam_candidate[{i}] was emitted without an active perimeter source region"
-        ))?;
+        let origin = collected.seam_candidate_origins[i]
+            .as_ref()
+            .ok_or_else(|| {
+                format!("seam_candidate[{i}] was emitted without an active perimeter source region")
+            })?;
         let idx = ensure(&mut buckets, origin);
         buckets[idx].1.seam_candidates.push(sc);
     }
@@ -4485,7 +5323,11 @@ pub fn convert_perimeter_output(
     }
 
     Ok(slicer_ir::PerimeterIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         global_layer_index: layer_index,
         regions: buckets.into_iter().map(|(_, r)| r).collect(),
     })
@@ -4521,28 +5363,34 @@ pub fn merge_slice_postprocess_into(
     };
 
     for (i, (key, polys)) in collected.polygon_updates.iter().enumerate() {
-        let idx = find_region(&existing.regions, key).ok_or_else(|| format!(
-            "slice_postprocess polygon_update[{i}] targets unknown region \
+        let idx = find_region(&existing.regions, key).ok_or_else(|| {
+            format!(
+                "slice_postprocess polygon_update[{i}] targets unknown region \
              (object_id='{}', region_id='{}'); guest must reference an existing \
              slice-region-view identity for identity-preserving commit",
-            key.object_id, key.region_id,
-        ))?;
+                key.object_id, key.region_id,
+            )
+        })?;
         existing.regions[idx].polygons = wit_to_ir_expolygons(polys);
     }
 
     for (i, (key, path_idx, vertex_idx, z)) in collected.path_z_updates.iter().enumerate() {
-        let ridx = find_region(&existing.regions, key).ok_or_else(|| format!(
-            "slice_postprocess path_z_update[{i}] targets unknown region \
+        let ridx = find_region(&existing.regions, key).ok_or_else(|| {
+            format!(
+                "slice_postprocess path_z_update[{i}] targets unknown region \
              (object_id='{}', region_id='{}')",
-            key.object_id, key.region_id,
-        ))?;
+                key.object_id, key.region_id,
+            )
+        })?;
         let region = &mut existing.regions[ridx];
         let poly_count = region.polygons.len();
-        let poly = region.polygons.get_mut(*path_idx as usize).ok_or_else(|| format!(
-            "slice_postprocess path_z_update[{i}]: polygon index {path_idx} out of range \
+        let poly = region.polygons.get_mut(*path_idx as usize).ok_or_else(|| {
+            format!(
+                "slice_postprocess path_z_update[{i}]: polygon index {path_idx} out of range \
              for region ({}, {}) with {poly_count} polygons",
-            key.object_id, key.region_id,
-        ))?;
+                key.object_id, key.region_id,
+            )
+        })?;
         // Z updates apply to contour points; validate vertex index bound.
         if (*vertex_idx as usize) >= poly.contour.points.len() {
             return Err(format!(

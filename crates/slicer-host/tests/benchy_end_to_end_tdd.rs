@@ -217,9 +217,7 @@ fn benchy_e2e_module_discovery_runs_on_live_path() {
             !stderr.trim().is_empty(),
             "pipeline failure must produce diagnosable stderr output"
         );
-        panic!(
-            "benchy_e2e_module_discovery_runs_on_live_path expected success; stderr:\n{stderr}"
-        );
+        panic!("benchy_e2e_module_discovery_runs_on_live_path expected success; stderr:\n{stderr}");
     }
 }
 
@@ -238,8 +236,16 @@ fn benchy_e2e_is_deterministic() {
     let ra = run_slicer_host(&model, &modules, &out_a, None);
     let rb = run_slicer_host(&model, &modules, &out_b, None);
 
-    assert!(ra.status.success(), "run A failed: {}", String::from_utf8_lossy(&ra.stderr));
-    assert!(rb.status.success(), "run B failed: {}", String::from_utf8_lossy(&rb.stderr));
+    assert!(
+        ra.status.success(),
+        "run A failed: {}",
+        String::from_utf8_lossy(&ra.stderr)
+    );
+    assert!(
+        rb.status.success(),
+        "run B failed: {}",
+        String::from_utf8_lossy(&rb.stderr)
+    );
 
     let a_text = std::fs::read_to_string(&out_a).unwrap();
     let b_text = std::fs::read_to_string(&out_b).unwrap();
@@ -287,9 +293,8 @@ fn benchy_e2e_against_real_core_modules_is_diagnosable() {
         "layer-planner-default",
         "paint-region-annotator",
     ] {
-        let regressed = stderr.contains(&format!(
-            "{canonical}/{canonical}.wasm: companion .wasm"
-        )) && stderr.contains("placeholder");
+        let regressed = stderr.contains(&format!("{canonical}/{canonical}.wasm: companion .wasm"))
+            && stderr.contains("placeholder");
         assert!(
             !regressed,
             "regression: canonical Benchy-path module '{canonical}' has \
@@ -408,16 +413,23 @@ fn benchy_mvp_gcode_has_real_extrusion_content() {
         "traditional-support",
         "layer-planner-default",
     ] {
-        let regressed = stderr.contains(&format!(
-            "{canonical}/{canonical}.wasm: companion .wasm"
-        )) && stderr.contains("placeholder");
+        let regressed = stderr.contains(&format!("{canonical}/{canonical}.wasm: companion .wasm"))
+            && stderr.contains("placeholder");
         assert!(
             !regressed,
             "MVP blocker #1 regression: canonical Benchy-path module \
              '{canonical}' has reverted to a placeholder .wasm binary. \
              Rebuild via modules/core-modules/build-core-modules.sh. \
              Stderr tail:\n{}",
-            stderr.lines().rev().take(8).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n")
+            stderr
+                .lines()
+                .rev()
+                .take(8)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n")
         );
     }
 
@@ -427,7 +439,10 @@ fn benchy_mvp_gcode_has_real_extrusion_content() {
          closed (real component binaries built); this is the next \
          downstream-content failure. Stderr:\n{stderr}"
     );
-    assert!(out_path.exists(), "--output file must be written; stderr:\n{stderr}");
+    assert!(
+        out_path.exists(),
+        "--output file must be written; stderr:\n{stderr}"
+    );
 
     let gcode = std::fs::read_to_string(&out_path).expect("read output");
 
@@ -442,7 +457,15 @@ fn benchy_mvp_gcode_has_real_extrusion_content() {
          remaining failure mode is a content-producing bug in one of the \
          Layer::Perimeters / Layer::Infill / Layer::PathOptimization \
          modules or the arena commit path. Stderr tail:\n{}",
-        stderr.lines().rev().take(5).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n")
+        stderr
+            .lines()
+            .rev()
+            .take(5)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 
     // (2) Must contain real extrusion moves, not just a header/footer.
@@ -464,7 +487,9 @@ fn benchy_mvp_gcode_has_real_extrusion_content() {
         "MVP blocker: expected at least 2 distinct layer Z values in Benchy \
          output, got {} ({:?}). Only the priming layer appears to have been \
          emitted. G-code preview:\n{}",
-        zs.len(), zs, preview(&gcode, 30)
+        zs.len(),
+        zs,
+        preview(&gcode, 30)
     );
 
     // (4) Z must be monotonic across layer changes. Small numerical
@@ -648,9 +673,9 @@ fn benchy_support_marker_present() {
 
     // The tree-support module emits ;TYPE:Support or ;TYPE:Support interface
     // markers in the G-code to label support extrusion moves.
-    let has_support_marker = gcode.lines().any(|l| {
-        l.contains(";TYPE:Support interface") || l.contains(";TYPE:Support")
-    });
+    let has_support_marker = gcode
+        .lines()
+        .any(|l| l.contains(";TYPE:Support interface") || l.contains(";TYPE:Support"));
     assert!(
         has_support_marker,
         "G-code must contain ;TYPE:Support or ;TYPE:Support interface marker \
@@ -730,7 +755,15 @@ fn benchy_no_support_marker_when_disabled() {
          markers. Found: {:?}. This indicates support is being generated \
          even when support_enabled=false. Stderr tail:\n{}\nG-code preview:\n{}",
         support_marker_lines,
-        stderr.lines().rev().take(8).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n"),
+        stderr
+            .lines()
+            .rev()
+            .take(8)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n"),
         preview(&gcode, 30)
     );
 }
@@ -750,8 +783,8 @@ fn tree_support_active_holder() {
     //    drops it. ──
     let tmp = tempfile::tempdir().expect("tempdir");
     let filtered = filtered_module_dir_for_tree_support(&tmp);
-    let loaded = load_live_modules_for_plan(&[filtered], 1)
-        .expect("filtered live module load must succeed");
+    let loaded =
+        load_live_modules_for_plan(&[filtered], 1).expect("filtered live module load must succeed");
 
     let bound_ids: Vec<String> = loaded
         .bindings
@@ -764,7 +797,9 @@ fn tree_support_active_holder() {
         bound_ids
     );
     assert!(
-        !bound_ids.iter().any(|id| id == "com.core.traditional-support"),
+        !bound_ids
+            .iter()
+            .any(|id| id == "com.core.traditional-support"),
         "filtered dir bindings must NOT include 'com.core.traditional-support', got: {:?}",
         bound_ids
     );
@@ -790,8 +825,8 @@ fn tree_support_active_holder() {
     //    contrastive check proves the filter is the load-bearing change. ──
     let full = core_modules_dir();
     assert_path_exists(&full, "core-modules directory");
-    let full_loaded = load_live_modules_for_plan(&[full], 1)
-        .expect("full live module load must succeed");
+    let full_loaded =
+        load_live_modules_for_plan(&[full], 1).expect("full live module load must succeed");
 
     let full_ids: Vec<String> = full_loaded
         .bindings
@@ -874,7 +909,8 @@ fn benchy_prepass_seam_plan_matches_live_outer_wall_start() {
     // is wired and consulted during the live dispatch path. The count may be 0
     // (module didn't produce entries for this geometry) or >0 (entries found).
     let has_seam_plan_lookup = stderr.contains("seam_plan_ir has ")
-        && (stderr.contains("entries, looking for layer=") || stderr.contains("entries, looking for layer="));
+        && (stderr.contains("entries, looking for layer=")
+            || stderr.contains("entries, looking for layer="));
     assert!(
         has_seam_plan_lookup,
         "stderr must contain 'seam_plan_ir has ... entries, looking for layer=' — proves \
@@ -934,7 +970,8 @@ fn canonical_core_module_artifacts_are_real_components() {
         if meta.len() < MIN_REAL_COMPONENT_BYTES {
             failures.push(format!(
                 "{name}: {} bytes (< {} byte lower bound) — likely placeholder",
-                meta.len(), MIN_REAL_COMPONENT_BYTES,
+                meta.len(),
+                MIN_REAL_COMPONENT_BYTES,
             ));
             continue;
         }

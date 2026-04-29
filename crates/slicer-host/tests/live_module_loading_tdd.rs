@@ -13,11 +13,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use slicer_host::model_loader::load_model;
 use slicer_host::{
     build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
     ExecutionPlanError, STAGE_ORDER,
 };
-use slicer_host::model_loader::load_model;
 use slicer_ir::{ConfigValue, RegionKey, RegionPlan};
 use tempfile::TempDir;
 
@@ -139,11 +139,8 @@ fn load_live_modules_for_plan_discovers_manifests_from_module_dir() {
     write_module(dir.path(), "a", &infill_manifest("com.example.a", &[]));
     write_module(dir.path(), "b", &prepass_manifest("com.example.b"));
 
-    let out = load_live_modules_for_plan(
-        std::slice::from_ref(&PathBuf::from(dir.path())),
-        2,
-    )
-    .expect("load");
+    let out = load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 2)
+        .expect("load");
     let ids: Vec<String> = out.bindings.iter().map(|b| b.module.id.clone()).collect();
     assert!(ids.contains(&"com.example.a".to_string()));
     assert!(ids.contains(&"com.example.b".to_string()));
@@ -154,17 +151,29 @@ fn load_live_modules_for_plan_emits_stages_in_canonical_stage_order() {
     let dir = TempDir::new().unwrap();
     // Deliberately write stages out of canonical order on disk so we can
     // assert STAGE_ORDER-sorting in the output.
-    write_module(dir.path(), "infill", &infill_manifest("com.example.infill", &[]));
-    write_module(dir.path(), "prepass", &prepass_manifest("com.example.prepass"));
+    write_module(
+        dir.path(),
+        "infill",
+        &infill_manifest("com.example.infill", &[]),
+    );
+    write_module(
+        dir.path(),
+        "prepass",
+        &prepass_manifest("com.example.prepass"),
+    );
 
-    let out = load_live_modules_for_plan(
-        std::slice::from_ref(&PathBuf::from(dir.path())),
-        1,
-    )
-    .unwrap();
+    let out =
+        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
 
-    let stages: Vec<&str> = out.sorted_stages.iter().map(|s| s.stage_id.as_str()).collect();
-    let prepass_idx = stages.iter().position(|s| *s == "PrePass::MeshAnalysis").unwrap();
+    let stages: Vec<&str> = out
+        .sorted_stages
+        .iter()
+        .map(|s| s.stage_id.as_str())
+        .collect();
+    let prepass_idx = stages
+        .iter()
+        .position(|s| *s == "PrePass::MeshAnalysis")
+        .unwrap();
     let layer_idx = stages.iter().position(|s| *s == "Layer::Infill").unwrap();
     assert!(
         prepass_idx < layer_idx,
@@ -180,21 +189,30 @@ fn load_live_modules_for_plan_emits_stages_in_canonical_stage_order() {
 fn load_live_modules_for_plan_topologically_sorts_modules_within_a_stage() {
     let dir = TempDir::new().unwrap();
     // Module "b" requires "a"; topological order must place a before b.
-    write_module(dir.path(), "b", &infill_manifest("com.example.b", &["com.example.a"]));
+    write_module(
+        dir.path(),
+        "b",
+        &infill_manifest("com.example.b", &["com.example.a"]),
+    );
     write_module(dir.path(), "a", &infill_manifest("com.example.a", &[]));
 
-    let out = load_live_modules_for_plan(
-        std::slice::from_ref(&PathBuf::from(dir.path())),
-        1,
-    )
-    .unwrap();
+    let out =
+        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
     let stage = out
         .sorted_stages
         .iter()
         .find(|s| s.stage_id == "Layer::Infill")
         .unwrap();
-    let a_idx = stage.module_ids.iter().position(|m| m == "com.example.a").unwrap();
-    let b_idx = stage.module_ids.iter().position(|m| m == "com.example.b").unwrap();
+    let a_idx = stage
+        .module_ids
+        .iter()
+        .position(|m| m == "com.example.a")
+        .unwrap();
+    let b_idx = stage
+        .module_ids
+        .iter()
+        .position(|m| m == "com.example.b")
+        .unwrap();
     assert!(a_idx < b_idx, "dependency ordering must be deterministic");
 }
 
@@ -203,11 +221,8 @@ fn live_plan_assigns_declared_read_filtered_config_view_to_every_module() {
     let dir = TempDir::new().unwrap();
     write_module(dir.path(), "m", &infill_manifest("com.example.infill", &[]));
 
-    let out = load_live_modules_for_plan(
-        std::slice::from_ref(&PathBuf::from(dir.path())),
-        1,
-    )
-    .unwrap();
+    let out =
+        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
 
     // Raw source carries declared keys AND unrelated noise; the bound view
     // must not expose anything undeclared to the compiled module.
@@ -238,15 +253,11 @@ fn live_plan_end_to_end_with_cli_config_json_respects_declared_reads() {
     let dir = TempDir::new().unwrap();
     write_module(dir.path(), "m", &infill_manifest("com.example.infill", &[]));
 
-    let out = load_live_modules_for_plan(
-        std::slice::from_ref(&PathBuf::from(dir.path())),
-        1,
-    )
-    .unwrap();
+    let out =
+        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
 
     // Simulate a user `--config` JSON with one declared key and one leaked.
-    let source =
-        parse_cli_config_source(r#"{"density": 0.9, "extra": "nope"}"#).unwrap();
+    let source = parse_cli_config_source(r#"{"density": 0.9, "extra": "nope"}"#).unwrap();
     let plan = build_live_execution_plan(
         out.sorted_stages,
         out.bindings,
@@ -265,7 +276,11 @@ fn live_plan_end_to_end_with_cli_config_json_respects_declared_reads() {
 #[test]
 fn live_plan_is_deterministic_across_repeated_loads() {
     let dir = TempDir::new().unwrap();
-    write_module(dir.path(), "b", &infill_manifest("com.example.b", &["com.example.a"]));
+    write_module(
+        dir.path(),
+        "b",
+        &infill_manifest("com.example.b", &["com.example.a"]),
+    );
     write_module(dir.path(), "a", &infill_manifest("com.example.a", &[]));
 
     let source = HashMap::new();
@@ -319,8 +334,7 @@ fn live_plan_preserves_seeded_planner_object_height_keys_for_real_core_modules()
         ConfigValue::Float((z_max - z_min) as f64),
     );
 
-    let out = load_live_modules_for_plan(&[core_modules], 1)
-        .expect("load real core modules");
+    let out = load_live_modules_for_plan(&[core_modules], 1).expect("load real core modules");
     let plan = build_live_execution_plan(
         out.sorted_stages,
         out.bindings,
@@ -360,11 +374,8 @@ fn live_plan_build_still_rejects_handrolled_undeclared_view_via_guardrail() {
 
     let dir = TempDir::new().unwrap();
     write_module(dir.path(), "m", &infill_manifest("com.example.infill", &[]));
-    let out = load_live_modules_for_plan(
-        std::slice::from_ref(&PathBuf::from(dir.path())),
-        1,
-    )
-    .unwrap();
+    let out =
+        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
 
     // Bypass `build_live_execution_plan` — hand-roll an
     // `ExecutionModuleBinding` with a leaky ConfigView and pass it to
@@ -404,7 +415,11 @@ fn minimal_component_bytes() -> Vec<u8> {
     // Smallest valid component-model artifact. Must be >8 bytes so
     // manifest ingestion doesn't classify it as a placeholder binary.
     let bytes = wat::parse_str("(component (core module))").expect("wat parse");
-    assert!(bytes.len() > 8, "component binary must exceed placeholder threshold (actual {} bytes)", bytes.len());
+    assert!(
+        bytes.len() > 8,
+        "component binary must exceed placeholder threshold (actual {} bytes)",
+        bytes.len()
+    );
     bytes
 }
 
@@ -417,11 +432,8 @@ fn valid_component_binary_is_compiled_and_attached_to_live_binding() {
         &infill_manifest("com.example.infill", &[]),
         &minimal_component_bytes(),
     );
-    let out = load_live_modules_for_plan(
-        std::slice::from_ref(&PathBuf::from(dir.path())),
-        1,
-    )
-    .unwrap();
+    let out =
+        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
     let binding = out
         .bindings
         .iter()
@@ -432,11 +444,9 @@ fn valid_component_binary_is_compiled_and_attached_to_live_binding() {
         "valid component must be compiled and attached"
     );
     // No per-module warning diagnostic on the happy path.
-    assert!(out
-        .diagnostics
-        .iter()
-        .all(|d| d.path != binding.module.wasm_path
-            || !matches!(d.level, DiagnosticLevel::Warning)));
+    assert!(out.diagnostics.iter().all(
+        |d| d.path != binding.module.wasm_path || !matches!(d.level, DiagnosticLevel::Warning)
+    ));
 }
 
 #[test]
@@ -449,11 +459,8 @@ fn placeholder_wasm_is_skipped_with_structured_warning_diagnostic() {
         &infill_manifest("com.example.placeholder", &[]),
         b"x",
     );
-    let out = load_live_modules_for_plan(
-        std::slice::from_ref(&PathBuf::from(dir.path())),
-        1,
-    )
-    .unwrap();
+    let out =
+        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
     let binding = out
         .bindings
         .iter()
@@ -489,11 +496,8 @@ fn non_component_bytes_are_skipped_with_compile_failure_diagnostic() {
         &infill_manifest("com.example.broken", &[]),
         b"this is definitely not a wasm component binary",
     );
-    let out = load_live_modules_for_plan(
-        std::slice::from_ref(&PathBuf::from(dir.path())),
-        1,
-    )
-    .unwrap();
+    let out =
+        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
     let binding = out
         .bindings
         .iter()
@@ -562,13 +566,13 @@ fn mixed_valid_and_invalid_binaries_load_deterministically_side_by_side() {
         &infill_manifest("com.example.ph", &[]),
         b"x",
     );
-    let out = load_live_modules_for_plan(
-        std::slice::from_ref(&PathBuf::from(dir.path())),
-        1,
-    )
-    .unwrap();
-    let by_id: std::collections::HashMap<&str, &slicer_host::LiveModuleBinding> =
-        out.bindings.iter().map(|b| (b.module.id.as_str(), b)).collect();
+    let out =
+        load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
+    let by_id: std::collections::HashMap<&str, &slicer_host::LiveModuleBinding> = out
+        .bindings
+        .iter()
+        .map(|b| (b.module.id.as_str(), b))
+        .collect();
     assert!(by_id["com.example.ok"].wasm_component.is_some());
     assert!(by_id["com.example.bad"].wasm_component.is_none());
     assert!(by_id["com.example.ph"].wasm_component.is_none());
@@ -576,7 +580,9 @@ fn mixed_valid_and_invalid_binaries_load_deterministically_side_by_side() {
     let skipped_warnings = out
         .diagnostics
         .iter()
-        .filter(|d| matches!(d.level, DiagnosticLevel::Warning) && d.field.as_deref() == Some("wasm_path"))
+        .filter(|d| {
+            matches!(d.level, DiagnosticLevel::Warning) && d.field.as_deref() == Some("wasm_path")
+        })
         .count();
     assert_eq!(skipped_warnings, 2);
 }
@@ -588,11 +594,8 @@ fn main_production_entry_path_loads_real_modules_and_calls_live_helpers() {
     // must read the CLI's --config via `parse_cli_config_source`. If any
     // of these vanish, real module bindings no longer flow through
     // `bind_module_config_view` on the production entry path.
-    let main_src = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/main.rs"
-    ))
-    .unwrap();
+    let main_src =
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs")).unwrap();
     assert!(
         main_src.contains("load_live_modules_for_plan("),
         "main.rs must call load_live_modules_for_plan"
@@ -606,7 +609,8 @@ fn main_production_entry_path_loads_real_modules_and_calls_live_helpers() {
         "main.rs must parse --config through parse_cli_config_source"
     );
     assert!(
-        !main_src.contains("Vec::new(),\n                Vec::new(),\n                &config_source"),
+        !main_src
+            .contains("Vec::new(),\n                Vec::new(),\n                &config_source"),
         "main.rs must no longer pass empty bindings into build_live_execution_plan"
     );
 }

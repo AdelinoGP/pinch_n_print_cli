@@ -516,22 +516,37 @@ fn test_shared_edge_with_opposite_windings_produces_closed_loop() {
     // canonicalized by vertex ID.
     let mesh = IndexedTriangleSet {
         vertices: vec![
-            Point3 { x: 0.0, y: 0.0, z: 1.0 },  // apex
-            Point3 { x: 1.0, y: 0.0, z: -1.0 }, // base 0
-            Point3 { x: 0.0, y: 1.0, z: -1.0 }, // base 1
-            Point3 { x: -1.0, y: 0.0, z: -1.0 },// base 2
-            Point3 { x: 0.0, y: -1.0, z: -1.0 },// base 3
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            }, // apex
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: -1.0,
+            }, // base 0
+            Point3 {
+                x: 0.0,
+                y: 1.0,
+                z: -1.0,
+            }, // base 1
+            Point3 {
+                x: -1.0,
+                y: 0.0,
+                z: -1.0,
+            }, // base 2
+            Point3 {
+                x: 0.0,
+                y: -1.0,
+                z: -1.0,
+            }, // base 3
         ],
         indices: vec![
             // Side triangles — each one shares an edge with its neighbor
             // but local winding alternates.
-            0, 1, 2,
-            0, 2, 3,
-            0, 3, 4,
-            0, 4, 1,
-            // Base (irrelevant for this slice).
-            1, 3, 2,
-            1, 4, 3,
+            0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 1, // Base (irrelevant for this slice).
+            1, 3, 2, 1, 4, 3,
         ],
     };
     let result = slice_mesh_ex(&mesh, &[0.0]);

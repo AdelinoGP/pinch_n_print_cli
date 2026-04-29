@@ -21,8 +21,8 @@ use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
-use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::slicer_module;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::SliceRegionView;
 
@@ -440,7 +440,7 @@ mod tests {
 
     #[test]
     fn on_print_start_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new(),);
+        let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = LightningInfill::on_print_start(&config).unwrap();
         assert!((module.density - 0.2).abs() < 0.001);
         assert!((module.line_width - 0.4).abs() < 0.001);

@@ -43,7 +43,7 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
 /// Test 1: Default config values when no fields provided.
 #[test]
 fn on_print_start_defaults() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = GyroidInfill::on_print_start(&config).unwrap();
     assert!((module.density() - 0.2).abs() < 0.001);
     assert!((module.line_width() - 0.4).abs() < 0.001);

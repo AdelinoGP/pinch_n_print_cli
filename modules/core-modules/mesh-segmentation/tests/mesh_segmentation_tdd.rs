@@ -81,10 +81,7 @@ fn marks_are_sorted_by_object_then_facet_then_semantic() {
     //   obj-A first (host order), facet asc, semantic asc,
     //   then obj-B.
     let cfg = config_with(&[
-        (
-            "mesh_seg_mark:obj-B:0:tool",
-            ConfigValue::Int(1),
-        ),
+        ("mesh_seg_mark:obj-B:0:tool", ConfigValue::Int(1)),
         (
             "mesh_seg_mark:obj-A:1:seam",
             ConfigValue::String("x".into()),
@@ -93,10 +90,7 @@ fn marks_are_sorted_by_object_then_facet_then_semantic() {
             "mesh_seg_mark:obj-A:0:seam",
             ConfigValue::String("y".into()),
         ),
-        (
-            "mesh_seg_mark:obj-A:0:fuzzy_skin",
-            ConfigValue::Bool(true),
-        ),
+        ("mesh_seg_mark:obj-A:0:fuzzy_skin", ConfigValue::Bool(true)),
     ]);
     let module = MeshSegmentation::on_print_start(&cfg).unwrap();
     let objects = vec![object_view("obj-A"), object_view("obj-B")];
@@ -125,18 +119,9 @@ fn marks_are_sorted_by_object_then_facet_then_semantic() {
 #[test]
 fn non_string_values_are_coerced_to_strings() {
     let cfg = config_with(&[
-        (
-            "mesh_seg_mark:obj-1:0:tool",
-            ConfigValue::Int(7),
-        ),
-        (
-            "mesh_seg_mark:obj-1:1:flag",
-            ConfigValue::Bool(false),
-        ),
-        (
-            "mesh_seg_mark:obj-1:2:scalar",
-            ConfigValue::Float(1.5),
-        ),
+        ("mesh_seg_mark:obj-1:0:tool", ConfigValue::Int(7)),
+        ("mesh_seg_mark:obj-1:1:flag", ConfigValue::Bool(false)),
+        ("mesh_seg_mark:obj-1:2:scalar", ConfigValue::Float(1.5)),
     ]);
     let module = MeshSegmentation::on_print_start(&cfg).unwrap();
     let objects = vec![object_view("obj-1")];
@@ -187,10 +172,7 @@ fn unknown_object_ids_still_emit_but_sort_after_known_ones() {
             "mesh_seg_mark:unknown:0:sem",
             ConfigValue::String("x".into()),
         ),
-        (
-            "mesh_seg_mark:obj-1:0:sem",
-            ConfigValue::String("y".into()),
-        ),
+        ("mesh_seg_mark:obj-1:0:sem", ConfigValue::String("y".into())),
     ]);
     let module = MeshSegmentation::on_print_start(&cfg).unwrap();
     let objects = vec![object_view("obj-1")];

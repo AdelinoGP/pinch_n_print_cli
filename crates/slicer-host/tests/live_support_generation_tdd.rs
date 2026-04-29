@@ -27,14 +27,28 @@ use slicer_ir::ExtrusionRole as IrExtrusionRole;
 /// Helper: make a 2-point horizontal support path in mm units.
 fn make_support_path(
     layer_z: f32,
-    x1: f32, y1: f32,
-    x2: f32, y2: f32,
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
     width: f32,
 ) -> ExtrusionPath3d {
     ExtrusionPath3d {
         points: vec![
-            Point3WithWidth { x: x1, y: y1, z: layer_z, width, flow_factor: 1.0 },
-            Point3WithWidth { x: x2, y: y2, z: layer_z, width, flow_factor: 1.0 },
+            Point3WithWidth {
+                x: x1,
+                y: y1,
+                z: layer_z,
+                width,
+                flow_factor: 1.0,
+            },
+            Point3WithWidth {
+                x: x2,
+                y: y2,
+                z: layer_z,
+                width,
+                flow_factor: 1.0,
+            },
         ],
         role: ExtrusionRole::SupportMaterial,
         speed_factor: 1.0,
@@ -56,26 +70,41 @@ fn tree_support_dispatch_commits_support_material_paths() {
     // Simulate tree-support module output: 3 branch paths.
     let mut ctx = HostExecutionContext::new(
         module_id.to_string(),
-        0.2,   // layer_z
-        0.2,   // effective_layer_height
-        None,  // catchup_z_bottom
-        None,  // mesh_ir
+        0.2,  // layer_z
+        0.2,  // effective_layer_height
+        None, // catchup_z_bottom
+        None, // mesh_ir
     );
 
     // Tree-support emits 3 support_material paths.
-    ctx.support_output.support_paths.push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx.support_output.support_paths.push(make_support_path(0.2, 0.0, 2.0, 10.0, 2.0, 0.4));
-    ctx.support_output.support_paths.push(make_support_path(0.2, 0.0, 4.0, 10.0, 4.0, 0.4));
+    ctx.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
+    ctx.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 2.0, 10.0, 2.0, 0.4));
+    ctx.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 4.0, 10.0, 4.0, 0.4));
     // Origins are None → synthetic region path.
     ctx.support_output.support_path_origins.push(None);
     ctx.support_output.support_path_origins.push(None);
     ctx.support_output.support_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena, None)
-        .expect("commit must succeed");
+    commit_layer_outputs_for_test(
+        "Layer::Support",
+        module_id,
+        layer_index,
+        &ctx,
+        &mut arena,
+        None,
+    )
+    .expect("commit must succeed");
 
-    let support_ir = arena.support().expect("SupportIR must be set after Layer::Support commit");
+    let support_ir = arena
+        .support()
+        .expect("SupportIR must be set after Layer::Support commit");
 
     assert!(
         !support_ir.support_paths.is_empty(),
@@ -90,7 +119,8 @@ fn tree_support_dispatch_commits_support_material_paths() {
 
     for path in &support_ir.support_paths {
         assert_eq!(
-            path.role, IrExtrusionRole::SupportMaterial,
+            path.role,
+            IrExtrusionRole::SupportMaterial,
             "all tree-support paths must have ExtrusionRole::SupportMaterial, got {:?}",
             path.role
         );
@@ -104,28 +134,39 @@ fn traditional_support_dispatch_commits_support_material_paths() {
     let module_id = "com.test.traditional-support";
     let layer_index = 0u32;
 
-    let mut ctx = HostExecutionContext::new(
-        module_id.to_string(),
-        0.2,
-        0.2,
-        None,
-        None,
-    );
+    let mut ctx = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
 
     // Traditional-support emits 4 parallel scan lines.
-    ctx.support_output.support_paths.push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx.support_output.support_paths.push(make_support_path(0.2, 0.0, 2.0, 10.0, 2.0, 0.4));
-    ctx.support_output.support_paths.push(make_support_path(0.2, 0.0, 4.0, 10.0, 4.0, 0.4));
-    ctx.support_output.support_paths.push(make_support_path(0.2, 0.0, 6.0, 10.0, 6.0, 0.4));
+    ctx.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
+    ctx.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 2.0, 10.0, 2.0, 0.4));
+    ctx.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 4.0, 10.0, 4.0, 0.4));
+    ctx.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 6.0, 10.0, 6.0, 0.4));
     for _ in 0..4 {
         ctx.support_output.support_path_origins.push(None);
     }
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena, None)
-        .expect("commit must succeed");
+    commit_layer_outputs_for_test(
+        "Layer::Support",
+        module_id,
+        layer_index,
+        &ctx,
+        &mut arena,
+        None,
+    )
+    .expect("commit must succeed");
 
-    let support_ir = arena.support().expect("SupportIR must be set after traditional-support commit");
+    let support_ir = arena
+        .support()
+        .expect("SupportIR must be set after traditional-support commit");
 
     assert!(
         !support_ir.support_paths.is_empty(),
@@ -140,7 +181,8 @@ fn traditional_support_dispatch_commits_support_material_paths() {
 
     for path in &support_ir.support_paths {
         assert_eq!(
-            path.role, IrExtrusionRole::SupportMaterial,
+            path.role,
+            IrExtrusionRole::SupportMaterial,
             "all traditional-support paths must have ExtrusionRole::SupportMaterial"
         );
     }
@@ -153,25 +195,28 @@ fn enforcer_forces_live_support_commit_even_when_needs_support_is_false() {
     let module_id = "com.test.enforcer-override";
     let layer_index = 0u32;
 
-    let mut ctx = HostExecutionContext::new(
-        module_id.to_string(),
-        0.2,
-        0.2,
-        None,
-        None,
-    );
+    let mut ctx = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
 
     // Simulate enforcer override: module was called with needs_support=false
     // but SupportEnforcer paint forced it to emit paths anyway.
-    ctx.support_output.support_paths.push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
+    ctx.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
     ctx.support_output.support_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena, None)
-        .expect("commit must succeed");
+    commit_layer_outputs_for_test(
+        "Layer::Support",
+        module_id,
+        layer_index,
+        &ctx,
+        &mut arena,
+        None,
+    )
+    .expect("commit must succeed");
 
     let support_ir = arena.support().expect(
-        "SupportIR must be set even when needs_support=false if SupportEnforcer was present"
+        "SupportIR must be set even when needs_support=false if SupportEnforcer was present",
     );
 
     assert!(
@@ -187,19 +232,20 @@ fn disabled_or_ineligible_support_stage_commits_empty_support_ir() {
     let module_id = "com.test.disabled-support";
     let layer_index = 0u32;
 
-    let ctx = HostExecutionContext::new(
-        module_id.to_string(),
-        0.2,
-        0.2,
-        None,
-        None,
-    );
+    let ctx = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
     // All three path collections are empty — support disabled or no eligible regions.
     // No paths pushed, all origin vectors empty.
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena, None)
-        .expect("commit must succeed (empty commit is not an error)");
+    commit_layer_outputs_for_test(
+        "Layer::Support",
+        module_id,
+        layer_index,
+        &ctx,
+        &mut arena,
+        None,
+    )
+    .expect("commit must succeed (empty commit is not an error)");
 
     let support_ir = arena.support(); // arena.support() returns Option
     assert!(
@@ -218,27 +264,49 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
 
     // First run
     let mut ctx1 = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
-    ctx1.support_output.support_paths.push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx1.support_output.support_paths.push(make_support_path(0.2, 0.0, 3.0, 10.0, 3.0, 0.4));
+    ctx1.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
+    ctx1.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 3.0, 10.0, 3.0, 0.4));
     for _ in 0..2 {
         ctx1.support_output.support_path_origins.push(None);
     }
 
     let mut arena1 = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx1, &mut arena1, None)
-        .expect("first commit must succeed");
+    commit_layer_outputs_for_test(
+        "Layer::Support",
+        module_id,
+        layer_index,
+        &ctx1,
+        &mut arena1,
+        None,
+    )
+    .expect("first commit must succeed");
 
     // Second run — identical input
     let mut ctx2 = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
-    ctx2.support_output.support_paths.push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx2.support_output.support_paths.push(make_support_path(0.2, 0.0, 3.0, 10.0, 3.0, 0.4));
+    ctx2.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
+    ctx2.support_output
+        .support_paths
+        .push(make_support_path(0.2, 0.0, 3.0, 10.0, 3.0, 0.4));
     for _ in 0..2 {
         ctx2.support_output.support_path_origins.push(None);
     }
 
     let mut arena2 = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx2, &mut arena2, None)
-        .expect("second commit must succeed");
+    commit_layer_outputs_for_test(
+        "Layer::Support",
+        module_id,
+        layer_index,
+        &ctx2,
+        &mut arena2,
+        None,
+    )
+    .expect("second commit must succeed");
 
     // Compare SupportIR outputs
     let ir1 = arena1.support().expect("first run must produce SupportIR");
@@ -250,7 +318,12 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
         "path count must be identical across runs"
     );
 
-    for (i, (p1, p2)) in ir1.support_paths.iter().zip(ir2.support_paths.iter()).enumerate() {
+    for (i, (p1, p2)) in ir1
+        .support_paths
+        .iter()
+        .zip(ir2.support_paths.iter())
+        .enumerate()
+    {
         assert_eq!(
             p1.points.len(),
             p2.points.len(),
@@ -264,7 +337,10 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
                     && (pt1.z - pt2.z).abs() < 0.001
                     && (pt1.width - pt2.width).abs() < 0.001,
                 "run 1 path {} point {} coord mismatch: ({:?}, {:?})",
-                i, j, pt1, pt2
+                i,
+                j,
+                pt1,
+                pt2
             );
         }
         assert_eq!(
@@ -284,20 +360,21 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
     let module_id = "com.test.blocker-commit";
     let layer_index = 0u32;
 
-    let ctx = HostExecutionContext::new(
-        module_id.to_string(),
-        0.2,
-        0.2,
-        None,
-        None,
-    );
+    let ctx = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
     // Module with SupportBlocker would emit zero paths — simulate that at commit level.
     // All path vectors remain empty; this is the correct host behavior when
     // the support module honored the blocker.
 
     let mut arena = slicer_host::LayerArena::new();
-    commit_layer_outputs_for_test("Layer::Support", module_id, layer_index, &ctx, &mut arena, None)
-        .expect("commit must succeed for blocker case (empty is valid)");
+    commit_layer_outputs_for_test(
+        "Layer::Support",
+        module_id,
+        layer_index,
+        &ctx,
+        &mut arena,
+        None,
+    )
+    .expect("commit must succeed for blocker case (empty is valid)");
 
     let support_ir = arena.support();
     assert!(
@@ -313,31 +390,35 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
 //  WasmRuntimeDispatcher::dispatch_layer_call, asserts real SupportIR output)
 // ══════════════════════════════════════════════════════════════════════════════
 
-use std::sync::Arc;
-use slicer_host::{
-    Blackboard, CompiledModule, IrAccessMask, LayerArena, LayerStageRunner,
-    WasmEngine, WasmRuntimeDispatcher,
-};
 use slicer_host::instance_pool::build_wasm_instance_pool;
 use slicer_host::manifest::LoadedModule;
+use slicer_host::{
+    Blackboard, CompiledModule, IrAccessMask, LayerArena, LayerStageRunner, WasmEngine,
+    WasmRuntimeDispatcher,
+};
 use slicer_ir::{
     BoundingBox3, ExPolygon, GlobalLayer, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue,
-    Point2, Polygon, SemanticRegion, SemVer, SliceIR, SlicedRegion,
+    Point2, Polygon, SemVer, SemanticRegion, SliceIR, SlicedRegion,
 };
+use std::sync::Arc;
 
 /// Returns the path to the tree-support.wasm module, panicking if not found.
 fn tree_support_wasm_path() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .join("modules/core-modules/tree-support/tree-support.wasm")
 }
 
 /// Returns the path to the traditional-support.wasm module, panicking if not found.
 fn traditional_support_wasm_path() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .join("modules/core-modules/traditional-support/traditional-support.wasm")
 }
 
@@ -356,12 +437,19 @@ fn compile_support_module(
         )
     });
     let component = Arc::new(
-        engine.compile_component(&bytes).expect("support module must compile")
+        engine
+            .compile_component(&bytes)
+            .expect("support module must compile"),
     );
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, slicer_host::instance_pool::WasmArtifactMetadata {
-            uses_shared_memory: false,
-        }).expect("instance pool must build")
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            slicer_host::instance_pool::WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("instance pool must build"),
     );
     let mut config_map = std::collections::HashMap::new();
     config_map.insert(
@@ -393,7 +481,10 @@ fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
                     points: vec![
                         Point2 { x: 0, y: 0 },
                         Point2 { x: 10_000, y: 0 },
-                        Point2 { x: 10_000, y: 10_000 },
+                        Point2 {
+                            x: 10_000,
+                            y: 10_000,
+                        },
                         Point2 { x: 0, y: 10_000 },
                     ],
                 },
@@ -407,7 +498,11 @@ fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
         .collect();
 
     SliceIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         global_layer_index: layer_index,
         z,
         regions,
@@ -422,18 +517,38 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
 
     let loaded = LoadedModule {
         id: "com.core.tree-support".to_string(),
-        version: SemVer { major: 0, minor: 1, patch: 0 },
+        version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
         stage: "Layer::Support".to_string(),
         wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: vec!["SliceIR".to_string(), "SurfaceClassificationIR".to_string(), "PaintRegionIR".to_string()],
+        ir_reads: vec![
+            "SliceIR".to_string(),
+            "SurfaceClassificationIR".to_string(),
+            "PaintRegionIR".to_string(),
+        ],
         ir_writes: vec!["SupportIR".to_string()],
         claims: vec!["support-generator".to_string()],
         requires_claims: vec![],
         incompatible_with: vec![],
         requires_modules: vec![],
-        min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
-        min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 },
-        max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
+        min_host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        min_ir_schema: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        max_ir_schema: SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
         config_schema: Default::default(),
         overridable_per_region: vec![],
         overridable_per_layer: vec![],
@@ -446,11 +561,23 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
 
     let blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             objects: vec![],
             build_volume: BoundingBox3 {
-                min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                max: slicer_ir::Point3 { x: 200.0, y: 200.0, z: 10.0 },
+                min: slicer_ir::Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                max: slicer_ir::Point3 {
+                    x: 200.0,
+                    y: 200.0,
+                    z: 10.0,
+                },
             },
         }),
         1,
@@ -468,7 +595,9 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
 
     let mut arena = LayerArena::new();
     // Layer::Support requires a staged SliceIR (pushed via push_slice_regions).
-    arena.set_slice(make_slice_ir(layer_index, layer_z, 1)).unwrap();
+    arena
+        .set_slice(make_slice_ir(layer_index, layer_z, 1))
+        .unwrap();
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Support".to_string(),
@@ -479,9 +608,9 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
     )
     .expect("tree-support Layer::Support dispatch must succeed");
 
-    let support_ir = arena.support().expect(
-        "SupportIR must be committed after tree-support live dispatch"
-    );
+    let support_ir = arena
+        .support()
+        .expect("SupportIR must be committed after tree-support live dispatch");
 
     assert!(
         !support_ir.support_paths.is_empty(),
@@ -507,18 +636,38 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 
     let loaded = LoadedModule {
         id: "com.core.traditional-support".to_string(),
-        version: SemVer { major: 0, minor: 1, patch: 0 },
+        version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
         stage: "Layer::Support".to_string(),
         wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: vec!["SliceIR".to_string(), "SurfaceClassificationIR".to_string(), "PaintRegionIR".to_string()],
+        ir_reads: vec![
+            "SliceIR".to_string(),
+            "SurfaceClassificationIR".to_string(),
+            "PaintRegionIR".to_string(),
+        ],
         ir_writes: vec!["SupportIR".to_string()],
         claims: vec!["support-generator".to_string()],
         requires_claims: vec![],
         incompatible_with: vec![],
         requires_modules: vec![],
-        min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
-        min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 },
-        max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
+        min_host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        min_ir_schema: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        max_ir_schema: SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
         config_schema: Default::default(),
         overridable_per_region: vec![],
         overridable_per_layer: vec![],
@@ -531,11 +680,23 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 
     let blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             objects: vec![],
             build_volume: BoundingBox3 {
-                min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                max: slicer_ir::Point3 { x: 200.0, y: 200.0, z: 10.0 },
+                min: slicer_ir::Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                max: slicer_ir::Point3 {
+                    x: 200.0,
+                    y: 200.0,
+                    z: 10.0,
+                },
             },
         }),
         1,
@@ -553,7 +714,9 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 
     let mut arena = LayerArena::new();
     // Layer::Support requires a staged SliceIR (pushed via push_slice_regions).
-    arena.set_slice(make_slice_ir(layer_index, layer_z, 1)).unwrap();
+    arena
+        .set_slice(make_slice_ir(layer_index, layer_z, 1))
+        .unwrap();
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Support".to_string(),
@@ -564,9 +727,9 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
     )
     .expect("traditional-support Layer::Support dispatch must succeed");
 
-    let support_ir = arena.support().expect(
-        "SupportIR must be committed after traditional-support live dispatch"
-    );
+    let support_ir = arena
+        .support()
+        .expect("SupportIR must be committed after traditional-support live dispatch");
 
     assert!(
         !support_ir.support_paths.is_empty(),
@@ -592,18 +755,38 @@ fn support_deterministic_across_repeated_runs() {
 
     let loaded = LoadedModule {
         id: "com.core.tree-support".to_string(),
-        version: SemVer { major: 0, minor: 1, patch: 0 },
+        version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
         stage: "Layer::Support".to_string(),
         wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: vec!["SliceIR".to_string(), "SurfaceClassificationIR".to_string(), "PaintRegionIR".to_string()],
+        ir_reads: vec![
+            "SliceIR".to_string(),
+            "SurfaceClassificationIR".to_string(),
+            "PaintRegionIR".to_string(),
+        ],
         ir_writes: vec!["SupportIR".to_string()],
         claims: vec!["support-generator".to_string()],
         requires_claims: vec![],
         incompatible_with: vec![],
         requires_modules: vec![],
-        min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
-        min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 },
-        max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
+        min_host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        min_ir_schema: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        max_ir_schema: SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
         config_schema: Default::default(),
         overridable_per_region: vec![],
         overridable_per_layer: vec![],
@@ -617,11 +800,23 @@ fn support_deterministic_across_repeated_runs() {
     let blackboard = || {
         Blackboard::new(
             Arc::new(slicer_ir::MeshIR {
-                schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+                schema_version: SemVer {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
                 objects: vec![],
                 build_volume: BoundingBox3 {
-                    min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                    max: slicer_ir::Point3 { x: 200.0, y: 200.0, z: 10.0 },
+                    min: slicer_ir::Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    max: slicer_ir::Point3 {
+                        x: 200.0,
+                        y: 200.0,
+                        z: 10.0,
+                    },
                 },
             }),
             1,
@@ -641,7 +836,9 @@ fn support_deterministic_across_repeated_runs() {
     let run_dispatch = |module: &CompiledModule, _blackboard: &Blackboard, layer: &GlobalLayer| {
         let mut arena = LayerArena::new();
         // Layer::Support requires a staged SliceIR (pushed via push_slice_regions).
-        arena.set_slice(make_slice_ir(layer.index, layer.z, 1)).unwrap();
+        arena
+            .set_slice(make_slice_ir(layer.index, layer.z, 1))
+            .unwrap();
         LayerStageRunner::run_stage(
             &dispatcher,
             &"Layer::Support".to_string(),
@@ -651,7 +848,11 @@ fn support_deterministic_across_repeated_runs() {
             &mut arena,
         )
         .expect("support dispatch must succeed");
-        arena.support().expect("SupportIR must be present").support_paths.clone()
+        arena
+            .support()
+            .expect("SupportIR must be present")
+            .support_paths
+            .clone()
     };
 
     let first = run_dispatch(&module, &blackboard(), &layer);
@@ -677,7 +878,10 @@ fn support_deterministic_across_repeated_runs() {
                     && (pt1.z - pt2.z).abs() < 0.001
                     && (pt1.width - pt2.width).abs() < 0.001,
                 "path {} point {} coords must be byte-identical across runs: ({:?}, {:?})",
-                i, j, pt1, pt2
+                i,
+                j,
+                pt1,
+                pt2
             );
         }
         assert_eq!(
@@ -705,48 +909,78 @@ fn support_enforcer_blocker_paint_precedence() {
     // paint queries — it encodes enforcer/blocker counts into support output.
     use std::path::PathBuf;
     let guest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .join("test-guests/layer-infill-guest.component.wasm");
     let guest_bytes = std::fs::read(&guest_path).unwrap_or_else(|_| {
-        panic!("test-guest component not found at {}. run build scripts first", guest_path.display())
+        panic!(
+            "test-guest component not found at {}. run build scripts first",
+            guest_path.display()
+        )
     });
 
     let engine = Arc::new(WasmEngine::new());
     let component = Arc::new(
-        engine.compile_component(&guest_bytes).expect("guest component must compile")
+        engine
+            .compile_component(&guest_bytes)
+            .expect("guest component must compile"),
     );
     let pool = Arc::new(
-        build_wasm_instance_pool(&LoadedModule {
-            id: "com.test.support".to_string(),
-            version: SemVer { major: 1, minor: 0, patch: 0 },
-            stage: "Layer::Support".to_string(),
-            wit_world: "slicer:world-layer@1.0.0".to_string(),
-            ir_reads: vec!["SliceIR".to_string(), "PaintRegionIR".to_string()],
-            ir_writes: vec!["SupportIR".to_string()],
-            claims: vec!["support-generator".to_string()],
-            requires_claims: vec![],
-            incompatible_with: vec![],
-            requires_modules: vec![],
-            min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
-            min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 },
-            max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
-            config_schema: Default::default(),
-            overridable_per_region: vec![],
-            overridable_per_layer: vec![],
-            layer_parallel_safe: true,
-            wasm_path: guest_path,
-            placeholder_wasm: false,
-        }, 1, slicer_host::instance_pool::WasmArtifactMetadata {
-            uses_shared_memory: false,
-        }).expect("instance pool must build")
+        build_wasm_instance_pool(
+            &LoadedModule {
+                id: "com.test.support".to_string(),
+                version: SemVer {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
+                stage: "Layer::Support".to_string(),
+                wit_world: "slicer:world-layer@1.0.0".to_string(),
+                ir_reads: vec!["SliceIR".to_string(), "PaintRegionIR".to_string()],
+                ir_writes: vec!["SupportIR".to_string()],
+                claims: vec!["support-generator".to_string()],
+                requires_claims: vec![],
+                incompatible_with: vec![],
+                requires_modules: vec![],
+                min_host_version: SemVer {
+                    major: 0,
+                    minor: 1,
+                    patch: 0,
+                },
+                min_ir_schema: SemVer {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
+                max_ir_schema: SemVer {
+                    major: 2,
+                    minor: 0,
+                    patch: 0,
+                },
+                config_schema: Default::default(),
+                overridable_per_region: vec![],
+                overridable_per_layer: vec![],
+                layer_parallel_safe: true,
+                wasm_path: guest_path,
+                placeholder_wasm: false,
+            },
+            1,
+            slicer_host::instance_pool::WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("instance pool must build"),
     );
     let module = CompiledModule {
         module_id: "com.test.support".to_string(),
         instance_pool: pool,
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(slicer_ir::ConfigView::from_map(std::collections::HashMap::new())),
+        config_view: Arc::new(slicer_ir::ConfigView::from_map(
+            std::collections::HashMap::new(),
+        )),
         wasm_component: Some(component),
     };
 
@@ -762,7 +996,10 @@ fn support_enforcer_blocker_paint_precedence() {
                     points: vec![
                         Point2 { x: 0, y: 0 },
                         Point2 { x: 10_000, y: 0 },
-                        Point2 { x: 10_000, y: 10_000 },
+                        Point2 {
+                            x: 10_000,
+                            y: 10_000,
+                        },
                         Point2 { x: 0, y: 10_000 },
                     ],
                 },
@@ -801,7 +1038,11 @@ fn support_enforcer_blocker_paint_precedence() {
         );
 
         Arc::new(PaintRegionIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             per_layer,
         })
     };
@@ -809,16 +1050,29 @@ fn support_enforcer_blocker_paint_precedence() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let mut blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             objects: vec![],
             build_volume: BoundingBox3 {
-                min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                max: slicer_ir::Point3 { x: 200.0, y: 200.0, z: 10.0 },
+                min: slicer_ir::Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                max: slicer_ir::Point3 {
+                    x: 200.0,
+                    y: 200.0,
+                    z: 10.0,
+                },
             },
         }),
         1,
     );
-    blackboard.commit_paint_regions(Arc::clone(&paint_ir))
+    blackboard
+        .commit_paint_regions(Arc::clone(&paint_ir))
         .expect("commit_paint_regions must succeed");
 
     let layer = GlobalLayer {
@@ -884,9 +1138,9 @@ mod planner_consuming_tier {
     use std::sync::Arc;
 
     use slicer_host::{
-        Blackboard, IrAccessMask, LayerArena, LayerStageRunner, LoadedModule, WasmEngine,
-        WasmRuntimeDispatcher, build_wasm_instance_pool,
-        instance_pool::WasmArtifactMetadata, CompiledModule,
+        build_wasm_instance_pool, instance_pool::WasmArtifactMetadata, Blackboard, CompiledModule,
+        IrAccessMask, LayerArena, LayerStageRunner, LoadedModule, WasmEngine,
+        WasmRuntimeDispatcher,
     };
     use slicer_ir::{
         BoundingBox3, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
@@ -895,18 +1149,28 @@ mod planner_consuming_tier {
     };
 
     fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-        SemVer { major, minor, patch }
+        SemVer {
+            major,
+            minor,
+            patch,
+        }
     }
 
     fn tree_support_wasm() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent().unwrap().parent().unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
             .join("modules/core-modules/tree-support/tree-support.wasm")
     }
 
     fn traditional_support_wasm() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent().unwrap().parent().unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
             .join("modules/core-modules/traditional-support/traditional-support.wasm")
     }
 
@@ -945,13 +1209,17 @@ mod planner_consuming_tier {
     ) -> CompiledModule {
         let bytes = std::fs::read(wasm_path).expect("wasm artifact must exist");
         let component = Arc::new(
-            engine.compile_component(&bytes).expect("wasm component must compile"),
+            engine
+                .compile_component(&bytes)
+                .expect("wasm component must compile"),
         );
         let pool = Arc::new(
             build_wasm_instance_pool(
                 &loaded,
                 1,
-                WasmArtifactMetadata { uses_shared_memory: false },
+                WasmArtifactMetadata {
+                    uses_shared_memory: false,
+                },
             )
             .expect("instance pool must build"),
         );
@@ -978,7 +1246,10 @@ mod planner_consuming_tier {
                     points: vec![
                         Point2 { x: 0, y: 0 },
                         Point2 { x: extent, y: 0 },
-                        Point2 { x: extent, y: extent },
+                        Point2 {
+                            x: extent,
+                            y: extent,
+                        },
                         Point2 { x: 0, y: extent },
                     ],
                 },
@@ -1002,8 +1273,16 @@ mod planner_consuming_tier {
             schema_version: semver(1, 0, 0),
             objects: vec![],
             build_volume: BoundingBox3 {
-                min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                max: Point3 { x: 200.0, y: 200.0, z: 10.0 },
+                min: Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                max: Point3 {
+                    x: 200.0,
+                    y: 200.0,
+                    z: 10.0,
+                },
             },
         });
         let mut bb = Blackboard::new(mesh, 1);
@@ -1038,7 +1317,9 @@ mod planner_consuming_tier {
         };
 
         let mut arena = LayerArena::new();
-        arena.set_slice(make_slice_ir(layer_index, layer_z)).unwrap();
+        arena
+            .set_slice(make_slice_ir(layer_index, layer_z))
+            .unwrap();
         LayerStageRunner::run_stage(
             &dispatcher,
             &"Layer::Support".to_string(),
@@ -1055,8 +1336,20 @@ mod planner_consuming_tier {
     fn make_planned_segment(layer_z: f32) -> ExtrusionPath3D {
         ExtrusionPath3D {
             points: vec![
-                Point3WithWidth { x: 1.0, y: 2.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
-                Point3WithWidth { x: 7.0, y: 8.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
+                Point3WithWidth {
+                    x: 1.0,
+                    y: 2.0,
+                    z: layer_z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
+                Point3WithWidth {
+                    x: 7.0,
+                    y: 8.0,
+                    z: layer_z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
             ],
             role: ExtrusionRole::SupportMaterial,
             speed_factor: 1.0,
@@ -1085,7 +1378,12 @@ mod planner_consuming_tier {
         let support_ir = dispatch_support(
             tree_support_wasm(),
             "com.core.tree-support",
-            vec!["SliceIR", "SurfaceClassificationIR", "PaintRegionIR", "SupportPlanIR"],
+            vec![
+                "SliceIR",
+                "SurfaceClassificationIR",
+                "PaintRegionIR",
+                "SupportPlanIR",
+            ],
             Some(Arc::clone(&plan)),
         );
 
@@ -1100,9 +1398,24 @@ mod planner_consuming_tier {
         let expected = &plan.entries[0].branch_segments[0];
         assert_eq!(path.points.len(), expected.points.len());
         for (a, b) in path.points.iter().zip(expected.points.iter()) {
-            assert!((a.x - b.x).abs() < 1e-4, "x mismatch: got {} expected {}", a.x, b.x);
-            assert!((a.y - b.y).abs() < 1e-4, "y mismatch: got {} expected {}", a.y, b.y);
-            assert!((a.z - b.z).abs() < 1e-4, "z mismatch: got {} expected {}", a.z, b.z);
+            assert!(
+                (a.x - b.x).abs() < 1e-4,
+                "x mismatch: got {} expected {}",
+                a.x,
+                b.x
+            );
+            assert!(
+                (a.y - b.y).abs() < 1e-4,
+                "y mismatch: got {} expected {}",
+                a.y,
+                b.y
+            );
+            assert!(
+                (a.z - b.z).abs() < 1e-4,
+                "z mismatch: got {} expected {}",
+                a.z,
+                b.z
+            );
             assert!((a.width - b.width).abs() < 1e-4);
         }
     }
@@ -1114,7 +1427,12 @@ mod planner_consuming_tier {
         let support_ir = dispatch_support(
             tree_support_wasm(),
             "com.core.tree-support",
-            vec!["SliceIR", "SurfaceClassificationIR", "PaintRegionIR", "SupportPlanIR"],
+            vec![
+                "SliceIR",
+                "SurfaceClassificationIR",
+                "PaintRegionIR",
+                "SupportPlanIR",
+            ],
             None,
         );
         assert!(

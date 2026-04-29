@@ -18,10 +18,7 @@ fn bool_true_value() {
 #[test]
 fn bool_false_value() {
     let config = ConfigViewBuilder::new().bool("enabled", false).build();
-    assert_eq!(
-        config.get("enabled"),
-        Some(&ConfigValue::Bool(false))
-    );
+    assert_eq!(config.get("enabled"), Some(&ConfigValue::Bool(false)));
 }
 
 #[test]
@@ -33,10 +30,7 @@ fn int_value() {
 #[test]
 fn float_value() {
     let config = ConfigViewBuilder::new().float("density", 0.15).build();
-    assert_eq!(
-        config.get("density"),
-        Some(&ConfigValue::Float(0.15))
-    );
+    assert_eq!(config.get("density"), Some(&ConfigValue::Float(0.15)));
 }
 
 #[test]
@@ -54,10 +48,7 @@ fn list_of_floats() {
     let config = ConfigViewBuilder::new()
         .list("speeds", values.clone())
         .build();
-    assert_eq!(
-        config.get("speeds"),
-        Some(&ConfigValue::List(values))
-    );
+    assert_eq!(config.get("speeds"), Some(&ConfigValue::List(values)));
 }
 
 #[test]

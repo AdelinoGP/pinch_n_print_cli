@@ -26,15 +26,18 @@ fn raycast_hit_returns_some_world_z_across_all_worlds() {
     let layer_hit = lhs::Host::raycast_z_down(&mut layer_ctx, "plate".to_string(), 5.0, 5.0, 10.0)
         .expect("layer raycast should not error")
         .expect("layer raycast should hit the flat plate");
-    let prepass_hit = phs::Host::raycast_z_down(&mut prepass_ctx, "plate".to_string(), 5.0, 5.0, 10.0)
-        .expect("prepass raycast should not error")
-        .expect("prepass raycast should hit the flat plate");
-    let finalization_hit = fhs::Host::raycast_z_down(&mut finalization_ctx, "plate".to_string(), 5.0, 5.0, 10.0)
-        .expect("finalization raycast should not error")
-        .expect("finalization raycast should hit the flat plate");
-    let postpass_hit = pphs::Host::raycast_z_down(&mut postpass_ctx, "plate".to_string(), 5.0, 5.0, 10.0)
-        .expect("postpass raycast should not error")
-        .expect("postpass raycast should hit the flat plate");
+    let prepass_hit =
+        phs::Host::raycast_z_down(&mut prepass_ctx, "plate".to_string(), 5.0, 5.0, 10.0)
+            .expect("prepass raycast should not error")
+            .expect("prepass raycast should hit the flat plate");
+    let finalization_hit =
+        fhs::Host::raycast_z_down(&mut finalization_ctx, "plate".to_string(), 5.0, 5.0, 10.0)
+            .expect("finalization raycast should not error")
+            .expect("finalization raycast should hit the flat plate");
+    let postpass_hit =
+        pphs::Host::raycast_z_down(&mut postpass_ctx, "plate".to_string(), 5.0, 5.0, 10.0)
+            .expect("postpass raycast should not error")
+            .expect("postpass raycast should hit the flat plate");
 
     assert_close(layer_hit, 0.0, "layer world_z");
     assert_close(prepass_hit, 0.0, "prepass world_z");

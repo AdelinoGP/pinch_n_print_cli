@@ -780,13 +780,22 @@ fn serialize_retract_unretract_commands() {
 fn emit_inserts_comment_and_raw_annotations_after_anchor_entity() {
     use slicer_ir::{LayerAnnotation, LayerAnnotationKind};
     let entity = print_entity_fixture(
-        vec![point3_with_width(0.0, 0.0, 0.2), point3_with_width(1.0, 0.0, 0.2)],
+        vec![
+            point3_with_width(0.0, 0.0, 0.2),
+            point3_with_width(1.0, 0.0, 0.2),
+        ],
         ExtrusionRole::OuterWall,
     );
     let mut layer = layer_with_entity(0, 0.2, entity);
     layer.annotations = vec![
-        LayerAnnotation { after_entity_index: 0, kind: LayerAnnotationKind::Comment("hello".into()) },
-        LayerAnnotation { after_entity_index: 0, kind: LayerAnnotationKind::Raw("M117 hi".into()) },
+        LayerAnnotation {
+            after_entity_index: 0,
+            kind: LayerAnnotationKind::Comment("hello".into()),
+        },
+        LayerAnnotation {
+            after_entity_index: 0,
+            kind: LayerAnnotationKind::Raw("M117 hi".into()),
+        },
     ];
 
     let emitter = DefaultGCodeEmitter::new("test".into());
@@ -795,22 +804,47 @@ fn emit_inserts_comment_and_raw_annotations_after_anchor_entity() {
 
     // Find the indices of Comment and Raw — they must come AFTER all Move
     // commands for entity 0 (declaration order preserved).
-    let last_move = ir.commands.iter().rposition(|c| matches!(c, GCodeCommand::Move { .. })).unwrap();
-    let comment_idx = ir.commands.iter().position(|c| matches!(c, GCodeCommand::Comment { text } if text == "hello")).expect("comment emitted");
-    let raw_idx = ir.commands.iter().position(|c| matches!(c, GCodeCommand::Raw { text } if text == "M117 hi")).expect("raw emitted");
-    assert!(comment_idx > last_move, "comment must appear after the entity's moves");
-    assert!(raw_idx > comment_idx, "raw must appear after comment (declaration order)");
+    let last_move = ir
+        .commands
+        .iter()
+        .rposition(|c| matches!(c, GCodeCommand::Move { .. }))
+        .unwrap();
+    let comment_idx = ir
+        .commands
+        .iter()
+        .position(|c| matches!(c, GCodeCommand::Comment { text } if text == "hello"))
+        .expect("comment emitted");
+    let raw_idx = ir
+        .commands
+        .iter()
+        .position(|c| matches!(c, GCodeCommand::Raw { text } if text == "M117 hi"))
+        .expect("raw emitted");
+    assert!(
+        comment_idx > last_move,
+        "comment must appear after the entity's moves"
+    );
+    assert!(
+        raw_idx > comment_idx,
+        "raw must appear after comment (declaration order)"
+    );
 }
 
 #[test]
 fn emit_preserves_tool_change_path_with_annotations_present() {
     use slicer_ir::{LayerAnnotation, LayerAnnotationKind};
     let entity = print_entity_fixture(
-        vec![point3_with_width(0.0, 0.0, 0.2), point3_with_width(1.0, 0.0, 0.2)],
+        vec![
+            point3_with_width(0.0, 0.0, 0.2),
+            point3_with_width(1.0, 0.0, 0.2),
+        ],
         ExtrusionRole::OuterWall,
     );
     let mut layer = layer_with_entity(0, 0.2, entity);
-    layer.tool_changes = vec![ToolChange { after_entity_index: 0, from_tool: 0, to_tool: 1 }];
+    layer.tool_changes = vec![ToolChange {
+        after_entity_index: 0,
+        from_tool: 0,
+        to_tool: 1,
+    }];
     layer.annotations = vec![LayerAnnotation {
         after_entity_index: 0,
         kind: LayerAnnotationKind::Comment("post-tc".into()),
@@ -820,9 +854,20 @@ fn emit_preserves_tool_change_path_with_annotations_present() {
     let bb = blackboard_fixture();
     let ir = emitter.emit_gcode(&[layer], &bb).unwrap();
 
-    let tc_idx = ir.commands.iter().position(|c| matches!(c, GCodeCommand::ToolChange { .. })).expect("tool change emitted");
-    let comment_idx = ir.commands.iter().position(|c| matches!(c, GCodeCommand::Comment { .. })).expect("comment emitted");
-    assert!(tc_idx < comment_idx, "tool-change comes before comment at same anchor");
+    let tc_idx = ir
+        .commands
+        .iter()
+        .position(|c| matches!(c, GCodeCommand::ToolChange { .. }))
+        .expect("tool change emitted");
+    let comment_idx = ir
+        .commands
+        .iter()
+        .position(|c| matches!(c, GCodeCommand::Comment { .. }))
+        .expect("comment emitted");
+    assert!(
+        tc_idx < comment_idx,
+        "tool-change comes before comment at same anchor"
+    );
 }
 
 #[test]
@@ -830,13 +875,22 @@ fn emit_is_deterministic_with_annotations() {
     use slicer_ir::{LayerAnnotation, LayerAnnotationKind};
     let mk = || {
         let entity = print_entity_fixture(
-            vec![point3_with_width(0.0, 0.0, 0.2), point3_with_width(1.0, 0.0, 0.2)],
+            vec![
+                point3_with_width(0.0, 0.0, 0.2),
+                point3_with_width(1.0, 0.0, 0.2),
+            ],
             ExtrusionRole::OuterWall,
         );
         let mut layer = layer_with_entity(0, 0.2, entity);
         layer.annotations = vec![
-            LayerAnnotation { after_entity_index: 0, kind: LayerAnnotationKind::Comment("a".into()) },
-            LayerAnnotation { after_entity_index: 0, kind: LayerAnnotationKind::Raw("b".into()) },
+            LayerAnnotation {
+                after_entity_index: 0,
+                kind: LayerAnnotationKind::Comment("a".into()),
+            },
+            LayerAnnotation {
+                after_entity_index: 0,
+                kind: LayerAnnotationKind::Raw("b".into()),
+            },
         ];
         layer
     };
@@ -859,7 +913,10 @@ fn emit_emits_trailing_annotations_on_empty_layer() {
     let emitter = DefaultGCodeEmitter::new("test".into());
     let bb = blackboard_fixture();
     let ir = emitter.emit_gcode(&[layer], &bb).unwrap();
-    assert!(ir.commands.iter().any(|c| matches!(c, GCodeCommand::Comment { text } if text == "only")));
+    assert!(ir
+        .commands
+        .iter()
+        .any(|c| matches!(c, GCodeCommand::Comment { text } if text == "only")));
 }
 
 // ============================================================================
@@ -908,7 +965,10 @@ fn emits_orca_layer_headers_before_first_extrusion() {
     let lines: Vec<&str> = text.lines().collect();
 
     // Find the first G1 line for layer 7
-    let first_g1_idx = lines.iter().position(|l| l.starts_with("G1")).expect("should have a G1 line");
+    let first_g1_idx = lines
+        .iter()
+        .position(|l| l.starts_with("G1"))
+        .expect("should have a G1 line");
 
     // Layer-change header lines must appear BEFORE the first G1
     let header_lines = &lines[..first_g1_idx];
@@ -952,38 +1012,64 @@ fn emits_orca_type_comments_at_role_boundaries() {
 
     // Build a layer with one entity per role, no interspersed travel
     let entity_outer = print_entity_fixture(
-        vec![point3_with_width(0.0, 0.0, 0.2), point3_with_width(1.0, 0.0, 0.2)],
+        vec![
+            point3_with_width(0.0, 0.0, 0.2),
+            point3_with_width(1.0, 0.0, 0.2),
+        ],
         ExtrusionRole::OuterWall,
     );
     let entity_top = print_entity_fixture(
-        vec![point3_with_width(1.0, 0.0, 0.2), point3_with_width(2.0, 0.0, 0.2)],
+        vec![
+            point3_with_width(1.0, 0.0, 0.2),
+            point3_with_width(2.0, 0.0, 0.2),
+        ],
         ExtrusionRole::TopSolidInfill,
     );
     let entity_sparse = print_entity_fixture(
-        vec![point3_with_width(2.0, 0.0, 0.2), point3_with_width(3.0, 0.0, 0.2)],
+        vec![
+            point3_with_width(2.0, 0.0, 0.2),
+            point3_with_width(3.0, 0.0, 0.2),
+        ],
         ExtrusionRole::SparseInfill,
     );
     let entity_support = print_entity_fixture(
-        vec![point3_with_width(3.0, 0.0, 0.2), point3_with_width(4.0, 0.0, 0.2)],
+        vec![
+            point3_with_width(3.0, 0.0, 0.2),
+            point3_with_width(4.0, 0.0, 0.2),
+        ],
         ExtrusionRole::SupportMaterial,
     );
     let entity_supp_iface = print_entity_fixture(
-        vec![point3_with_width(4.0, 0.0, 0.2), point3_with_width(5.0, 0.0, 0.2)],
+        vec![
+            point3_with_width(4.0, 0.0, 0.2),
+            point3_with_width(5.0, 0.0, 0.2),
+        ],
         ExtrusionRole::SupportInterface,
     );
     let entity_skirt = print_entity_fixture(
-        vec![point3_with_width(5.0, 0.0, 0.2), point3_with_width(6.0, 0.0, 0.2)],
+        vec![
+            point3_with_width(5.0, 0.0, 0.2),
+            point3_with_width(6.0, 0.0, 0.2),
+        ],
         ExtrusionRole::Skirt,
     );
     let entity_wipe = print_entity_fixture(
-        vec![point3_with_width(6.0, 0.0, 0.2), point3_with_width(7.0, 0.0, 0.2)],
+        vec![
+            point3_with_width(6.0, 0.0, 0.2),
+            point3_with_width(7.0, 0.0, 0.2),
+        ],
         ExtrusionRole::PrimeTower,
     );
 
     let mut layer = layer_collection_fixture(0, 0.2);
     layer.ordered_entities = vec![
-        entity_outer, entity_top, entity_sparse, entity_support, entity_supp_iface,
-        entity_skirt, entity_wipe,
+        entity_outer,
+        entity_top,
+        entity_sparse,
+        entity_support,
+        entity_supp_iface,
+        entity_skirt,
+        entity_wipe,
     ];
 
     let gcode_ir = emitter.emit_gcode(&[layer], &bb).unwrap();
@@ -1021,12 +1107,23 @@ fn emits_orca_type_comments_at_role_boundaries() {
 
     // No role label should appear more than once (use line-based matching to avoid
     // substring collisions: ";TYPE:Support" is a prefix of ";TYPE:Support interface")
-    let type_labels = [";TYPE:Outer wall", ";TYPE:Top surface", ";TYPE:Sparse infill",
-        ";TYPE:Support", ";TYPE:Support interface", ";TYPE:Skirt/Brim", ";TYPE:Prime tower"];
+    let type_labels = [
+        ";TYPE:Outer wall",
+        ";TYPE:Top surface",
+        ";TYPE:Sparse infill",
+        ";TYPE:Support",
+        ";TYPE:Support interface",
+        ";TYPE:Skirt/Brim",
+        ";TYPE:Prime tower",
+    ];
     let lines: Vec<&str> = text.lines().collect();
     for label in type_labels {
         let count = lines.iter().filter(|l| l.to_string() == label).count();
-        assert_eq!(count, 1, "label '{}' should appear exactly once, found {}", label, count);
+        assert_eq!(
+            count, 1,
+            "label '{}' should appear exactly once, found {}",
+            label, count
+        );
     }
 }
 
@@ -1046,8 +1143,8 @@ fn preserves_seam_started_wall_loop_order_in_output() {
     let seam_y = 10.0;
     let seam_z = 0.2;
     let points = vec![
-        point3_with_width(seam_x, seam_y, seam_z),           // seam start
-        point3_with_width(seam_x + 1.0, seam_y, seam_z),   // second point
+        point3_with_width(seam_x, seam_y, seam_z), // seam start
+        point3_with_width(seam_x + 1.0, seam_y, seam_z), // second point
         point3_with_width(seam_x + 1.0, seam_y + 1.0, seam_z),
     ];
     let entity = print_entity_fixture(points, ExtrusionRole::OuterWall);
@@ -1059,7 +1156,8 @@ fn preserves_seam_started_wall_loop_order_in_output() {
     let lines: Vec<&str> = text.lines().collect();
 
     // Find the first G1 line that has X and Y (extruding move)
-    let first_extrude_idx = lines.iter()
+    let first_extrude_idx = lines
+        .iter()
         .position(|l| l.starts_with("G1") && (l.contains("X20") || l.contains("X 20")));
     assert!(
         first_extrude_idx.is_some(),
@@ -1070,14 +1168,18 @@ fn preserves_seam_started_wall_loop_order_in_output() {
 
     // First extruding move must be AT the seam start coordinates
     assert!(
-        first_extrude.contains(&format!("X{}", seam_x)) && first_extrude.contains(&format!("Y{}", seam_y)),
+        first_extrude.contains(&format!("X{}", seam_x))
+            && first_extrude.contains(&format!("Y{}", seam_y)),
         "first extruding move should be at seam start ({}, {}), got: {}",
-        seam_x, seam_y, first_extrude
+        seam_x,
+        seam_y,
+        first_extrude
     );
 
     // No travel-only line with X20 Y10 should appear BEFORE the first extruding G1
     // (travel lines have no E, extruding lines do)
-    let travel_with_seam_start: Vec<usize> = lines.iter()
+    let travel_with_seam_start: Vec<usize> = lines
+        .iter()
         .enumerate()
         .filter(|(idx, l)| {
             let line_idx = *idx;
@@ -1109,23 +1211,38 @@ fn serializes_retract_travel_and_z_hop_in_canonical_order() {
     // Build a GCodeIR with the Orca-canonical order: retract -> hop-up (Z-only,
     // no XY) -> travel (XY, no E) -> hop-down (Z-only) -> unretract
     let commands = vec![
-        GCodeCommand::Retract { length: 0.8, speed: 1800.0 },
+        GCodeCommand::Retract {
+            length: 0.8,
+            speed: 1800.0,
+        },
         GCodeCommand::Move {
-            x: None, y: None, z: Some(0.6),
-            e: None, f: None,
+            x: None,
+            y: None,
+            z: Some(0.6),
+            e: None,
+            f: None,
             role: ExtrusionRole::Custom("Travel".to_string()),
         },
         GCodeCommand::Move {
-            x: Some(50.0), y: Some(50.0), z: Some(0.4),
-            e: None, f: None,
+            x: Some(50.0),
+            y: Some(50.0),
+            z: Some(0.4),
+            e: None,
+            f: None,
             role: ExtrusionRole::Custom("Travel".to_string()),
         },
         GCodeCommand::Move {
-            x: None, y: None, z: Some(0.4),
-            e: None, f: None,
+            x: None,
+            y: None,
+            z: Some(0.4),
+            e: None,
+            f: None,
             role: ExtrusionRole::Custom("Travel".to_string()),
         },
-        GCodeCommand::Unretract { length: 0.8, speed: 1800.0 },
+        GCodeCommand::Unretract {
+            length: 0.8,
+            speed: 1800.0,
+        },
     ];
 
     let gcode_ir = gcode_ir_fixture(commands);
@@ -1133,18 +1250,39 @@ fn serializes_retract_travel_and_z_hop_in_canonical_order() {
     let lines: Vec<&str> = text.lines().collect();
 
     // Find indices of key lines
-    let retract_idx = lines.iter().position(|l| l.contains("E-0.8")).expect("should have retract E-0.8");
-    let hop_up_idx = lines.iter().position(|l| l.contains("Z0.6") && !l.contains("X")).expect("should have hop-up Z0.6");
-    let travel_idx = lines.iter().position(|l| l.contains("X50") || l.contains("X 50")).expect("should have XY travel");
-    let hop_down_idx = lines.iter().position(|l| l.contains("Z0.4") && !l.contains("X")).expect("should have hop-down Z0.4");
-    let unretract_idx = lines.iter().position(|l| l.contains("E0.8")).expect("should have unretract E0.8");
+    let retract_idx = lines
+        .iter()
+        .position(|l| l.contains("E-0.8"))
+        .expect("should have retract E-0.8");
+    let hop_up_idx = lines
+        .iter()
+        .position(|l| l.contains("Z0.6") && !l.contains("X"))
+        .expect("should have hop-up Z0.6");
+    let travel_idx = lines
+        .iter()
+        .position(|l| l.contains("X50") || l.contains("X 50"))
+        .expect("should have XY travel");
+    let hop_down_idx = lines
+        .iter()
+        .position(|l| l.contains("Z0.4") && !l.contains("X"))
+        .expect("should have hop-down Z0.4");
+    let unretract_idx = lines
+        .iter()
+        .position(|l| l.contains("E0.8"))
+        .expect("should have unretract E0.8");
 
     // Canonical order: retract BEFORE hop-up, hop-up BEFORE travel-without-E,
     // travel BEFORE hop-down, hop-down BEFORE unretract
     assert!(retract_idx < hop_up_idx, "retract must come before hop-up");
     assert!(hop_up_idx < travel_idx, "hop-up must come before travel");
-    assert!(travel_idx < hop_down_idx, "travel must come before hop-down");
-    assert!(hop_down_idx < unretract_idx, "hop-down must come before unretract");
+    assert!(
+        travel_idx < hop_down_idx,
+        "travel must come before hop-down"
+    );
+    assert!(
+        hop_down_idx < unretract_idx,
+        "hop-down must come before unretract"
+    );
 }
 
 #[test]
@@ -1161,11 +1299,17 @@ fn omits_absent_role_labels_and_retraction_lines() {
 
     // Only OuterWall + SparseInfill — no support, skirt, wipe/prime tower
     let entity_outer = print_entity_fixture(
-        vec![point3_with_width(0.0, 0.0, 0.2), point3_with_width(1.0, 0.0, 0.2)],
+        vec![
+            point3_with_width(0.0, 0.0, 0.2),
+            point3_with_width(1.0, 0.0, 0.2),
+        ],
         ExtrusionRole::OuterWall,
     );
     let entity_sparse = print_entity_fixture(
-        vec![point3_with_width(1.0, 0.0, 0.2), point3_with_width(2.0, 0.0, 0.2)],
+        vec![
+            point3_with_width(1.0, 0.0, 0.2),
+            point3_with_width(2.0, 0.0, 0.2),
+        ],
         ExtrusionRole::SparseInfill,
     );
 
@@ -1177,12 +1321,30 @@ fn omits_absent_role_labels_and_retraction_lines() {
     let text = serializer.serialize_gcode(&gcode_ir).unwrap();
 
     // Absent roles must not appear
-    assert!(!text.contains(";TYPE:Support"), "must not fabricate ;TYPE:Support when no SupportMaterial entity exists");
-    assert!(!text.contains(";TYPE:Support interface"), "must not fabricate ;TYPE:Support interface");
-    assert!(!text.contains(";TYPE:Skirt"), "must not fabricate ;TYPE:Skirt/Brim");
-    assert!(!text.contains(";TYPE:Prime tower"), "must not fabricate ;TYPE:Prime tower");
-    assert!(!text.contains(";TYPE:Wipe"), "must not fabricate ;TYPE:Wipe tower");
+    assert!(
+        !text.contains(";TYPE:Support"),
+        "must not fabricate ;TYPE:Support when no SupportMaterial entity exists"
+    );
+    assert!(
+        !text.contains(";TYPE:Support interface"),
+        "must not fabricate ;TYPE:Support interface"
+    );
+    assert!(
+        !text.contains(";TYPE:Skirt"),
+        "must not fabricate ;TYPE:Skirt/Brim"
+    );
+    assert!(
+        !text.contains(";TYPE:Prime tower"),
+        "must not fabricate ;TYPE:Prime tower"
+    );
+    assert!(
+        !text.contains(";TYPE:Wipe"),
+        "must not fabricate ;TYPE:Wipe tower"
+    );
 
     // No retract lines when no retract was queued
-    assert!(!text.contains("E-"), "must not emit retract lines when no retract was queued");
+    assert!(
+        !text.contains("E-"),
+        "must not emit retract lines when no retract was queued"
+    );
 }

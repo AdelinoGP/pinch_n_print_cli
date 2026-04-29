@@ -10,13 +10,23 @@ use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCol
 // ---- Helpers ----
 
 fn semver() -> SemVer {
-    SemVer { major: 0, minor: 1, patch: 0 }
+    SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    }
 }
 
 fn make_entity_at(layer_index: u32, x: f32, y: f32, z: f32) -> PrintEntity {
     PrintEntity {
         path: ExtrusionPath3D {
-            points: vec![Point3WithWidth { x, y, z, width: 0.4, flow_factor: 1.0 }],
+            points: vec![Point3WithWidth {
+                x,
+                y,
+                z,
+                width: 0.4,
+                flow_factor: 1.0,
+            }],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
@@ -65,21 +75,33 @@ fn run_finalization_pushes_skirt_entities_to_target_layers() {
         ("skirt_height", ConfigValue::Int(1)),
     ]);
 
-    let layer = make_layer(0, 0.2, vec![
-        make_entity_at(0, 10.0, 10.0, 0.2),
-        make_entity_at(0, 20.0, 20.0, 0.2),
-    ]);
+    let layer = make_layer(
+        0,
+        0.2,
+        vec![
+            make_entity_at(0, 10.0, 10.0, 0.2),
+            make_entity_at(0, 20.0, 20.0, 0.2),
+        ],
+    );
     let views = vec![LayerCollectionView::new(layer)];
     let config = config_with(&[]);
     let mut output = FinalizationOutputBuilder::new();
-    sb.run_finalization(&views, &mut output, &config).expect("run_finalization must succeed");
+    sb.run_finalization(&views, &mut output, &config)
+        .expect("run_finalization must succeed");
 
     let pushes = output.entity_pushes();
-    assert_eq!(pushes.len(), 2, "expected exactly 2 skirt pushes for skirt_loops=2");
+    assert_eq!(
+        pushes.len(),
+        2,
+        "expected exactly 2 skirt pushes for skirt_loops=2"
+    );
     for (layer_index, path, region_key) in pushes {
         assert_eq!(*layer_index, 0, "skirt must target layer 0");
         assert_eq!(path.role, ExtrusionRole::Skirt, "path role must be Skirt");
-        assert_eq!(region_key.object_id, "__skirt__", "object_id must be '__skirt__'");
+        assert_eq!(
+            region_key.object_id, "__skirt__",
+            "object_id must be '__skirt__'"
+        );
     }
 }
 
@@ -92,23 +114,38 @@ fn run_finalization_pushes_brim_entities_on_layer_zero_only() {
         ("skirt_loops", ConfigValue::Int(0)),
     ]);
 
-    let layer = make_layer(0, 0.2, vec![
-        make_entity_at(0, 10.0, 10.0, 0.2),
-        make_entity_at(0, 20.0, 20.0, 0.2),
-    ]);
+    let layer = make_layer(
+        0,
+        0.2,
+        vec![
+            make_entity_at(0, 10.0, 10.0, 0.2),
+            make_entity_at(0, 20.0, 20.0, 0.2),
+        ],
+    );
     let views = vec![LayerCollectionView::new(layer)];
     let config = config_with(&[]);
     let mut output = FinalizationOutputBuilder::new();
-    sb.run_finalization(&views, &mut output, &config).expect("run_finalization must succeed");
+    sb.run_finalization(&views, &mut output, &config)
+        .expect("run_finalization must succeed");
 
     let pushes = output.entity_pushes();
     assert!(!pushes.is_empty(), "brim pushes must not be empty");
     for (layer_index, path, region_key) in pushes {
         assert_eq!(*layer_index, 0, "brim must target layer 0 only");
-        assert_eq!(path.role, ExtrusionRole::Skirt, "brim path role must be Skirt");
-        assert_eq!(region_key.object_id, "__brim__", "object_id must be '__brim__'");
+        assert_eq!(
+            path.role,
+            ExtrusionRole::Skirt,
+            "brim path role must be Skirt"
+        );
+        assert_eq!(
+            region_key.object_id, "__brim__",
+            "object_id must be '__brim__'"
+        );
     }
-    assert!(output.synthetic_layers().is_empty(), "brim must not use insert_synthetic_layer");
+    assert!(
+        output.synthetic_layers().is_empty(),
+        "brim must not use insert_synthetic_layer"
+    );
 }
 
 // ─── AC-3: skirt_height restricts layer targeting ────────────────────────────
@@ -121,21 +158,30 @@ fn run_finalization_respects_skirt_height_layer_targeting() {
     ]);
 
     let layers: Vec<LayerCollectionIR> = (0..4u32)
-        .map(|i| make_layer(i, (i as f32 + 1.0) * 0.2, vec![
-            make_entity_at(i, 10.0, 10.0, (i as f32 + 1.0) * 0.2),
-        ]))
+        .map(|i| {
+            make_layer(
+                i,
+                (i as f32 + 1.0) * 0.2,
+                vec![make_entity_at(i, 10.0, 10.0, (i as f32 + 1.0) * 0.2)],
+            )
+        })
         .collect();
-    let views: Vec<LayerCollectionView> = layers.into_iter().map(LayerCollectionView::new).collect();
+    let views: Vec<LayerCollectionView> =
+        layers.into_iter().map(LayerCollectionView::new).collect();
     let config = config_with(&[]);
     let mut output = FinalizationOutputBuilder::new();
-    sb.run_finalization(&views, &mut output, &config).expect("run_finalization must succeed");
+    sb.run_finalization(&views, &mut output, &config)
+        .expect("run_finalization must succeed");
 
     let pushes = output.entity_pushes();
     let targeted: Vec<u32> = pushes.iter().map(|(li, _, _)| *li).collect();
     assert!(targeted.contains(&0), "layer 0 must be targeted");
     assert!(targeted.contains(&1), "layer 1 must be targeted");
     assert!(targeted.contains(&2), "layer 2 must be targeted");
-    assert!(!targeted.contains(&3), "layer 3 must not be targeted with skirt_height=3");
+    assert!(
+        !targeted.contains(&3),
+        "layer 3 must not be targeted with skirt_height=3"
+    );
 }
 
 // ─── AC-Neg: disabled or empty input emits no pushes ─────────────────────────
@@ -149,15 +195,30 @@ fn disabled_or_empty_input_emits_no_finalization_pushes() {
     let layer = make_layer(0, 0.2, vec![make_entity_at(0, 10.0, 10.0, 0.2)]);
     let views = vec![LayerCollectionView::new(layer)];
     let mut out1 = FinalizationOutputBuilder::new();
-    sb_disabled.run_finalization(&views, &mut out1, &config).expect("must not error");
-    assert!(out1.entity_pushes().is_empty(), "disabled: no entity pushes");
-    assert!(out1.synthetic_layers().is_empty(), "disabled: no synthetic layers");
+    sb_disabled
+        .run_finalization(&views, &mut out1, &config)
+        .expect("must not error");
+    assert!(
+        out1.entity_pushes().is_empty(),
+        "disabled: no entity pushes"
+    );
+    assert!(
+        out1.synthetic_layers().is_empty(),
+        "disabled: no synthetic layers"
+    );
 
     // Case 2: empty layer set
     let sb = skirt_brim_from(&[]);
     let views_empty: Vec<LayerCollectionView> = vec![];
     let mut out2 = FinalizationOutputBuilder::new();
-    sb.run_finalization(&views_empty, &mut out2, &config).expect("must not error");
-    assert!(out2.entity_pushes().is_empty(), "empty input: no entity pushes");
-    assert!(out2.synthetic_layers().is_empty(), "empty input: no synthetic layers");
+    sb.run_finalization(&views_empty, &mut out2, &config)
+        .expect("must not error");
+    assert!(
+        out2.entity_pushes().is_empty(),
+        "empty input: no entity pushes"
+    );
+    assert!(
+        out2.synthetic_layers().is_empty(),
+        "empty input: no synthetic layers"
+    );
 }

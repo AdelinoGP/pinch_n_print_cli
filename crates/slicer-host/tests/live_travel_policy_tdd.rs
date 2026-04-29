@@ -13,7 +13,9 @@
 #![allow(missing_docs)]
 
 use slicer_host::commit_layer_outputs_for_test;
-use slicer_host::wit_host::{ExtrusionRole, GcodeCommandCollected, GcodeMoveCmd, HostExecutionContext};
+use slicer_host::wit_host::{
+    ExtrusionRole, GcodeCommandCollected, GcodeMoveCmd, HostExecutionContext,
+};
 use slicer_host::LayerArena;
 use slicer_ir::{LayerCollectionIR, SemVer};
 
@@ -31,7 +33,11 @@ fn make_ctx(module_id: &str) -> HostExecutionContext {
 /// Simulate what layer_executor does: flush deferred queues into LayerCollectionIR.
 fn flush_to_layer_collection(arena: &mut LayerArena) -> slicer_ir::LayerCollectionIR {
     let mut layer_collection = slicer_ir::LayerCollectionIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![],
@@ -42,16 +48,33 @@ fn flush_to_layer_collection(arena: &mut LayerArena) -> slicer_ir::LayerCollecti
         travel_moves: vec![],
     };
     layer_collection.z_hops.extend(arena.take_deferred_z_hops());
-    layer_collection.retracts.extend(arena.take_deferred_retracts().into_iter().map(|r| slicer_ir::TravelRetract {
-        after_entity_index: r.after_entity_index,
-        length: r.length,
-        speed: r.speed,
-        is_unretract: r.is_unretract,
-    }));
-    layer_collection.travel_moves.extend(arena.take_deferred_travel_moves().into_iter().map(|m| slicer_ir::TravelMove {
-        after_entity_index: m.after_entity_index,
-        x: m.x, y: m.y, z: m.z, f: m.f,
-    }));
+    layer_collection
+        .retracts
+        .extend(
+            arena
+                .take_deferred_retracts()
+                .into_iter()
+                .map(|r| slicer_ir::TravelRetract {
+                    after_entity_index: r.after_entity_index,
+                    length: r.length,
+                    speed: r.speed,
+                    is_unretract: r.is_unretract,
+                }),
+        );
+    layer_collection
+        .travel_moves
+        .extend(
+            arena
+                .take_deferred_travel_moves()
+                .into_iter()
+                .map(|m| slicer_ir::TravelMove {
+                    after_entity_index: m.after_entity_index,
+                    x: m.x,
+                    y: m.y,
+                    z: m.z,
+                    f: m.f,
+                }),
+        );
     layer_collection
 }
 
@@ -66,21 +89,30 @@ fn retracting_travel_populates_matching_z_hop_and_retract_pair() {
 
     ctx.gcode_output
         .commands
-        .push(GcodeCommandCollected::Retract { length: 0.8, speed: 25.0 });
+        .push(GcodeCommandCollected::Retract {
+            length: 0.8,
+            speed: 25.0,
+        });
+    ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
+        after_entity_index: 0,
+        hop_height: 0.2,
+    });
     ctx.gcode_output
         .commands
-        .push(GcodeCommandCollected::ZHop { after_entity_index: 0, hop_height: 0.2 });
-    ctx.gcode_output.commands.push(GcodeCommandCollected::Move(GcodeMoveCmd {
-        x: Some(50.0),
-        y: Some(50.0),
-        z: None,
-        e: None,
-        f: None,
-        role: ExtrusionRole::Custom("travel".to_string()),
-    }));
+        .push(GcodeCommandCollected::Move(GcodeMoveCmd {
+            x: Some(50.0),
+            y: Some(50.0),
+            z: None,
+            e: None,
+            f: None,
+            role: ExtrusionRole::Custom("travel".to_string()),
+        }));
     ctx.gcode_output
         .commands
-        .push(GcodeCommandCollected::Unretract { length: 0.8, speed: 25.0 });
+        .push(GcodeCommandCollected::Unretract {
+            length: 0.8,
+            speed: 25.0,
+        });
 
     let mut arena = LayerArena::new();
 
@@ -154,9 +186,11 @@ fn retracting_travel_populates_matching_z_hop_and_retract_pair() {
 fn no_retract_policy_emits_no_orphan_retracts_or_z_hops() {
     let mut ctx = make_ctx("com.test.path-opt-no-retract");
 
-    ctx.gcode_output.commands.push(GcodeCommandCollected::Comment(
-        "path-optimization layer 0 regions=1 entities=2".to_string(),
-    ));
+    ctx.gcode_output
+        .commands
+        .push(GcodeCommandCollected::Comment(
+            "path-optimization layer 0 regions=1 entities=2".to_string(),
+        ));
 
     let mut arena = LayerArena::new();
 
@@ -198,22 +232,30 @@ fn travel_policy_is_deterministic_across_repeated_runs() {
         let mut ctx = make_ctx("com.test.path-opt-determ");
         ctx.gcode_output
             .commands
-            .push(GcodeCommandCollected::Retract { length: 0.5, speed: 30.0 });
+            .push(GcodeCommandCollected::Retract {
+                length: 0.5,
+                speed: 30.0,
+            });
         ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
             after_entity_index: 0,
             hop_height: 0.1,
         });
-        ctx.gcode_output.commands.push(GcodeCommandCollected::Move(GcodeMoveCmd {
-            x: Some(50.0),
-            y: Some(50.0),
-            z: None,
-            e: None,
-            f: None,
-            role: ExtrusionRole::Custom("travel".to_string()),
-        }));
         ctx.gcode_output
             .commands
-            .push(GcodeCommandCollected::Unretract { length: 0.5, speed: 30.0 });
+            .push(GcodeCommandCollected::Move(GcodeMoveCmd {
+                x: Some(50.0),
+                y: Some(50.0),
+                z: None,
+                e: None,
+                f: None,
+                role: ExtrusionRole::Custom("travel".to_string()),
+            }));
+        ctx.gcode_output
+            .commands
+            .push(GcodeCommandCollected::Unretract {
+                length: 0.5,
+                speed: 30.0,
+            });
         ctx
     };
 
@@ -272,37 +314,59 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
     // ZHop carries an arbitrary entity index (999) that the dispatch must override.
     ctx.gcode_output
         .commands
-        .push(GcodeCommandCollected::Retract { length: 0.8, speed: 25.0 });
+        .push(GcodeCommandCollected::Retract {
+            length: 0.8,
+            speed: 25.0,
+        });
     ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
         after_entity_index: 999,
         hop_height: 0.2,
     });
-    ctx.gcode_output.commands.push(GcodeCommandCollected::Move(GcodeMoveCmd {
-        x: Some(50.0),
-        y: Some(50.0),
-        z: None,
-        e: None,
-        f: None,
-        role: ExtrusionRole::Custom("travel".to_string()),
-    }));
     ctx.gcode_output
         .commands
-        .push(GcodeCommandCollected::Unretract { length: 0.8, speed: 25.0 });
+        .push(GcodeCommandCollected::Move(GcodeMoveCmd {
+            x: Some(50.0),
+            y: Some(50.0),
+            z: None,
+            e: None,
+            f: None,
+            role: ExtrusionRole::Custom("travel".to_string()),
+        }));
+    ctx.gcode_output
+        .commands
+        .push(GcodeCommandCollected::Unretract {
+            length: 0.8,
+            speed: 25.0,
+        });
 
     // Pre-stage 3 entities → entity_count=3, anchor=2 (last entity index).
     let entity = slicer_ir::PrintEntity {
         path: slicer_ir::ExtrusionPath3D {
-            points: vec![slicer_ir::Point3WithWidth { x: 0.0, y: 0.0, z: 0.2, width: 0.4, flow_factor: 1.0 }],
+            points: vec![slicer_ir::Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+            }],
             role: slicer_ir::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
         role: slicer_ir::ExtrusionRole::OuterWall,
-        region_key: slicer_ir::RegionKey { global_layer_index: 0, object_id: String::new(), region_id: 0 },
+        region_key: slicer_ir::RegionKey {
+            global_layer_index: 0,
+            object_id: String::new(),
+            region_id: 0,
+        },
         topo_order: 0,
     };
     let mut arena = LayerArena::new();
     arena.set_layer_collection(LayerCollectionIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![entity.clone(), entity.clone(), entity],

@@ -137,10 +137,16 @@ fn call_void_export_invokes_real_function() {
     let bytes = wat::parse_str(wat).expect("WAT parse failed");
     let component = engine.compile_component(&bytes).expect("compile failed");
     let state = HostState::new("call-test".to_string());
-    let mut instance = component.instantiate(&engine, state).expect("instantiate failed");
+    let mut instance = component
+        .instantiate(&engine, state)
+        .expect("instantiate failed");
 
     let result = instance.call_void_export("run-infill");
-    assert!(result.is_ok(), "call_void_export should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "call_void_export should succeed: {:?}",
+        result.err()
+    );
 }
 
 /// call_void_export on a missing export returns ExportNotFound.
@@ -151,12 +157,18 @@ fn call_void_export_missing_export_returns_error() {
     let bytes = wat::parse_str(wat).expect("WAT parse failed");
     let component = engine.compile_component(&bytes).expect("compile failed");
     let state = HostState::new("missing-export".to_string());
-    let mut instance = component.instantiate(&engine, state).expect("instantiate failed");
+    let mut instance = component
+        .instantiate(&engine, state)
+        .expect("instantiate failed");
 
     let result = instance.call_void_export("run-nonexistent");
     assert!(result.is_err());
     match result.unwrap_err() {
-        slicer_host::WasmCallError::ExportNotFound { module_id, export_name, .. } => {
+        slicer_host::WasmCallError::ExportNotFound {
+            module_id,
+            export_name,
+            ..
+        } => {
             assert_eq!(module_id, "missing-export");
             assert_eq!(export_name, "run-nonexistent");
         }
@@ -192,8 +204,14 @@ fn call_text_transform_invokes_real_function() {
     let bytes = wat::parse_str(wat).expect("WAT parse failed");
     let component = engine.compile_component(&bytes).expect("compile failed");
     let state = HostState::new("text-test".to_string());
-    let mut instance = component.instantiate(&engine, state).expect("instantiate failed");
+    let mut instance = component
+        .instantiate(&engine, state)
+        .expect("instantiate failed");
 
     let result = instance.call_text_transform("run-text-postprocess", "; some gcode\n");
-    assert!(result.is_ok(), "call_text_transform should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "call_text_transform should succeed: {:?}",
+        result.err()
+    );
 }

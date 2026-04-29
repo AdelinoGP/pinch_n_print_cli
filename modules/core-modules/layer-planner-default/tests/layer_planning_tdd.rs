@@ -250,8 +250,7 @@ fn test_multi_object_lcm_sync() {
     for layer in layers {
         for region in &layer.active_regions {
             assert_eq!(
-                region.region_id,
-                "0",
+                region.region_id, "0",
                 "layer planner must emit canonical decimal region ids on mixed-height paths"
             );
         }

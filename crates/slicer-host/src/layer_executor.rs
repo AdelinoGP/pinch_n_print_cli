@@ -198,7 +198,8 @@ pub fn execute_per_layer(
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
 ) -> Result<Vec<LayerCollectionIR>, LayerExecutionError> {
-    let (layers, _audits) = execute_per_layer_with_events(plan, blackboard, runner, &NoopLayerProgressSink)?;
+    let (layers, _audits) =
+        execute_per_layer_with_events(plan, blackboard, runner, &NoopLayerProgressSink)?;
     Ok(layers)
 }
 
@@ -225,14 +226,7 @@ pub fn execute_per_layer_with_events(
         global_layers
             .par_iter()
             .map(|layer| {
-                execute_single_layer(
-                    plan,
-                    blackboard,
-                    runner,
-                    sink,
-                    &required_semantics,
-                    layer,
-                )
+                execute_single_layer(plan, blackboard, runner, sink, &required_semantics, layer)
             })
             .collect();
 
@@ -348,15 +342,18 @@ fn execute_single_layer(
         }
         // Execute modules in topological order within each stage
         for module in &stage.modules {
-            let run_result = runner.run_stage(&stage.stage_id, layer, module, blackboard, &mut arena);
+            let run_result =
+                runner.run_stage(&stage.stage_id, layer, module, blackboard, &mut arena);
             let (stage_result, runtime_reads, runtime_writes) = match run_result {
                 Ok((output, reads, writes)) => (output, reads, writes),
-                Err(e) => return Err(LayerExecutionError::FatalLayer {
-                    layer_index: layer.index,
-                    stage_id: stage.stage_id.clone(),
-                    module_id: module.module_id.clone(),
-                    message: e.to_string(),
-                }),
+                Err(e) => {
+                    return Err(LayerExecutionError::FatalLayer {
+                        layer_index: layer.index,
+                        stage_id: stage.stage_id.clone(),
+                        module_id: module.module_id.clone(),
+                        message: e.to_string(),
+                    })
+                }
             };
 
             match stage_result {
@@ -366,7 +363,9 @@ fn execute_single_layer(
                     // use it directly. Otherwise fall back to the coarse
                     // ir_path_for_layer_stage mapping for non-instrumented stages.
                     let writes = if runtime_writes.is_empty() {
-                        ir_path_for_layer_stage(&stage.stage_id).map(|p| vec![p]).unwrap_or_default()
+                        ir_path_for_layer_stage(&stage.stage_id)
+                            .map(|p| vec![p])
+                            .unwrap_or_default()
                     } else {
                         runtime_writes.clone()
                     };
@@ -435,19 +434,33 @@ fn execute_single_layer(
         .annotations
         .extend(arena.take_deferred_annotations());
     layer_output.z_hops.extend(arena.take_deferred_z_hops());
-    layer_output.retracts.extend(arena.take_deferred_retracts().into_iter().map(|r| slicer_ir::TravelRetract {
-        after_entity_index: r.after_entity_index,
-        length: r.length,
-        speed: r.speed,
-        is_unretract: r.is_unretract,
-    }));
-    layer_output.travel_moves.extend(arena.take_deferred_travel_moves().into_iter().map(|m| slicer_ir::TravelMove {
-        after_entity_index: m.after_entity_index,
-        x: m.x,
-        y: m.y,
-        z: m.z,
-        f: m.f,
-    }));
+    layer_output
+        .retracts
+        .extend(
+            arena
+                .take_deferred_retracts()
+                .into_iter()
+                .map(|r| slicer_ir::TravelRetract {
+                    after_entity_index: r.after_entity_index,
+                    length: r.length,
+                    speed: r.speed,
+                    is_unretract: r.is_unretract,
+                }),
+        );
+    layer_output
+        .travel_moves
+        .extend(
+            arena
+                .take_deferred_travel_moves()
+                .into_iter()
+                .map(|m| slicer_ir::TravelMove {
+                    after_entity_index: m.after_entity_index,
+                    x: m.x,
+                    y: m.y,
+                    z: m.z,
+                    f: m.f,
+                }),
+        );
     Ok((layer_output, audits))
 }
 
@@ -471,7 +484,7 @@ fn execute_single_layer(
 /// excluded.
 pub fn ir_path_for_layer_stage(stage_id: &StageId) -> Option<String> {
     match stage_id.as_str() {
-        "Layer::Slice" => None, // host-built-in, not audited
+        "Layer::Slice" => None,            // host-built-in, not audited
         "Layer::SlicePostProcess" => None, // merges into existing SliceIR, not a primary commit
         "Layer::Perimeters" | "Layer::PerimetersPostProcess" => Some(String::from("PerimeterIR")),
         "Layer::Infill" | "Layer::InfillPostProcess" => Some(String::from("InfillIR")),

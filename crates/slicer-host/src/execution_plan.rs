@@ -5,14 +5,19 @@ use std::sync::Arc;
 
 use std::path::PathBuf;
 
-use slicer_ir::{ActiveRegion, ConfigKey, ConfigValue, ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan, StageId};
+use slicer_ir::{
+    ActiveRegion, ConfigKey, ConfigValue, ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan,
+    StageId,
+};
 
 use crate::dag::build_intra_stage_dag;
-use crate::instance_pool::{build_wasm_instance_pool, InstancePoolError, WasmArtifactMetadata, WasmInstancePool};
+use crate::instance_pool::{
+    build_wasm_instance_pool, InstancePoolError, WasmArtifactMetadata, WasmInstancePool,
+};
+use crate::manifest::DiagnosticLevel;
 use crate::manifest::{load_modules_from_roots, LoadDiagnostic, LoadError, LoadedModule};
 use crate::topology::topological_sort;
 use crate::validation::SchedulerError;
-use crate::manifest::DiagnosticLevel;
 use crate::wasm_instance::{WasmComponent, WasmEngine};
 
 /// Canonical scheduler stage ordering for the live host path
@@ -161,7 +166,10 @@ impl std::fmt::Display for ConfigSourceParseError {
         match self {
             Self::InvalidJson { message } => write!(f, "invalid JSON config: {message}"),
             Self::NotAnObject => {
-                write!(f, "top-level JSON config must be an object of key→value pairs")
+                write!(
+                    f,
+                    "top-level JSON config must be an object of key→value pairs"
+                )
             }
             Self::UnsupportedValue { key } => {
                 write!(f, "config key '{key}' has an unsupported JSON value (only bool, number, string, and homogeneous arrays are allowed)")
@@ -185,8 +193,10 @@ impl std::error::Error for ConfigSourceParseError {}
 pub fn parse_cli_config_source(
     json: &str,
 ) -> Result<HashMap<ConfigKey, ConfigValue>, ConfigSourceParseError> {
-    let value: serde_json::Value = serde_json::from_str(json)
-        .map_err(|e| ConfigSourceParseError::InvalidJson { message: e.to_string() })?;
+    let value: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| ConfigSourceParseError::InvalidJson {
+            message: e.to_string(),
+        })?;
     let object = match value {
         serde_json::Value::Object(m) => m,
         _ => return Err(ConfigSourceParseError::NotAnObject),
@@ -321,24 +331,23 @@ pub fn load_live_modules_for_plan(
     // with an Info diagnostic. Tests that intentionally load multiple
     // same-claim modules should either pick one via file layout or use
     // synthetic modules that declare no `holds`.
-    let filtered_modules =
-        dedup_same_claim_modules(&mut report.modules, &mut report.diagnostics);
+    let filtered_modules = dedup_same_claim_modules(&mut report.modules, &mut report.diagnostics);
     report.modules = filtered_modules;
 
     // Build per-stage topological orderings in canonical STAGE_ORDER.
     let mut sorted_stages = Vec::new();
     for stage in STAGE_ORDER {
         let stage_id = (*stage).to_string();
-        let nodes = build_intra_stage_dag(stage_id.clone(), &report.modules).map_err(|e| -> Box<LiveModuleLoadError> { Box::new(LiveModuleLoadError::Dag(*e)) })?;
+        let nodes = build_intra_stage_dag(stage_id.clone(), &report.modules)
+            .map_err(|e| -> Box<LiveModuleLoadError> { Box::new(LiveModuleLoadError::Dag(*e)) })?;
         if nodes.is_empty() {
             continue;
         }
-        let module_ids = topological_sort(&nodes).map_err(|unsorted| {
-            LiveModuleLoadError::Cycle {
+        let module_ids =
+            topological_sort(&nodes).map_err(|unsorted| LiveModuleLoadError::Cycle {
                 stage_id: stage_id.clone(),
                 unsorted,
-            }
-        })?;
+            })?;
         sorted_stages.push(SortedStageModules {
             stage_id,
             module_ids,
@@ -351,13 +360,12 @@ pub fn load_live_modules_for_plan(
     let mut diagnostics = report.diagnostics;
     let mut bindings = Vec::with_capacity(report.modules.len());
     for module in report.modules {
-        let pool = build_wasm_instance_pool(
-            &module,
-            host_parallelism,
-            WasmArtifactMetadata::default(),
-        ).map_err(|e| -> Box<LiveModuleLoadError> { Box::new(LiveModuleLoadError::InstancePool(e)) })?;
-        let wasm_component =
-            compile_module_component(engine.as_ref(), &module, &mut diagnostics);
+        let pool =
+            build_wasm_instance_pool(&module, host_parallelism, WasmArtifactMetadata::default())
+                .map_err(|e| -> Box<LiveModuleLoadError> {
+                    Box::new(LiveModuleLoadError::InstancePool(e))
+                })?;
+        let wasm_component = compile_module_component(engine.as_ref(), &module, &mut diagnostics);
         bindings.push(LiveModuleBinding {
             module,
             instance_pool: Arc::new(pool),
@@ -455,10 +463,7 @@ fn dedup_same_claim_modules(
             continue;
         }
         for claim in &module.claims {
-            winner_for.insert(
-                (module.stage.clone(), claim.clone()),
-                module.id.clone(),
-            );
+            winner_for.insert((module.stage.clone(), claim.clone()), module.id.clone());
         }
         kept.push(module);
     }
@@ -834,10 +839,7 @@ pub fn build_execution_plan(
         // time so any caller bypassing the helper still fails closed.
         for key in binding.config_view.keys() {
             if !config_key_declared(&binding.module.config_schema.entries, &key) {
-                return Err(ExecutionPlanError::UndeclaredConfigKey {
-                    module_id,
-                    key,
-                });
+                return Err(ExecutionPlanError::UndeclaredConfigKey { module_id, key });
             }
         }
         if bindings_by_module_id
@@ -938,7 +940,11 @@ pub fn build_execution_plan(
 
 impl ExecutionPlan {
     /// O(1) lookup of active regions for a (layer, module) pair via precomputed index.
-    pub fn resolve_active_regions(&self, layer: &GlobalLayer, module: &CompiledModule) -> &[ActiveRegion] {
+    pub fn resolve_active_regions(
+        &self,
+        layer: &GlobalLayer,
+        module: &CompiledModule,
+    ) -> &[ActiveRegion] {
         self.module_region_index
             .get(&(layer.index, module.module_id.clone()))
             .map(|v: &Vec<ActiveRegion>| v.as_slice())
@@ -953,12 +959,16 @@ mod dedup_tests {
     use slicer_ir::SemVer;
 
     use super::dedup_same_claim_modules;
-    use crate::manifest::{ConfigSchema, ConfigFieldEntry, LoadDiagnostic, LoadedModule};
+    use crate::manifest::{ConfigFieldEntry, ConfigSchema, LoadDiagnostic, LoadedModule};
 
     fn loaded(id: &str, stage: &str, holds: &[&str]) -> LoadedModule {
         LoadedModule {
             id: id.into(),
-            version: SemVer { major: 0, minor: 1, patch: 0 },
+            version: SemVer {
+                major: 0,
+                minor: 1,
+                patch: 0,
+            },
             stage: stage.into(),
             wit_world: "slicer:world-layer@1.0.0".into(),
             ir_reads: Vec::new(),
@@ -967,9 +977,21 @@ mod dedup_tests {
             requires_claims: Vec::new(),
             incompatible_with: Vec::new(),
             requires_modules: Vec::new(),
-            min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
-            min_ir_schema: SemVer { major: 1, minor: 0, patch: 0 },
-            max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
+            min_host_version: SemVer {
+                major: 0,
+                minor: 1,
+                patch: 0,
+            },
+            min_ir_schema: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            max_ir_schema: SemVer {
+                major: 2,
+                minor: 0,
+                patch: 0,
+            },
             config_schema: ConfigSchema::default(),
             overridable_per_region: Vec::new(),
             overridable_per_layer: Vec::new(),
@@ -987,8 +1009,16 @@ mod dedup_tests {
         // to the arena, producing a `LayerArenaError::SlotAlreadyOccupied`
         // masked as the generic string "arena commit failed".
         let mut modules = vec![
-            loaded("com.core.classic-perimeters", "Layer::Perimeters", &["perimeter-generator"]),
-            loaded("com.core.arachne-perimeters", "Layer::Perimeters", &["perimeter-generator"]),
+            loaded(
+                "com.core.classic-perimeters",
+                "Layer::Perimeters",
+                &["perimeter-generator"],
+            ),
+            loaded(
+                "com.core.arachne-perimeters",
+                "Layer::Perimeters",
+                &["perimeter-generator"],
+            ),
         ];
         let mut diagnostics: Vec<LoadDiagnostic> = Vec::new();
         let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics);
@@ -997,8 +1027,12 @@ mod dedup_tests {
         assert_eq!(kept[0].id, "com.core.arachne-perimeters");
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].message.contains("perimeter-generator"));
-        assert!(diagnostics[0].message.contains("com.core.classic-perimeters"));
-        assert!(diagnostics[0].message.contains("com.core.arachne-perimeters"));
+        assert!(diagnostics[0]
+            .message
+            .contains("com.core.classic-perimeters"));
+        assert!(diagnostics[0]
+            .message
+            .contains("com.core.arachne-perimeters"));
     }
 
     #[test]
@@ -1033,17 +1067,23 @@ mod dedup_tests {
         // `layer-planner-default.toml` declares `"object_height:*"`, and
         // the bound ConfigView must preserve every matching source key
         // that was explicitly provided to the host/runtime plan builder.
-        use std::collections::HashMap;
         use slicer_ir::ConfigValue;
+        use std::collections::HashMap;
 
         let mut module = loaded("planner", "PrePass::LayerPlanning", &[]);
         module.config_schema.entries.insert(
             "object_height:*".to_string(),
-            ConfigFieldEntry { field_type: "float".to_string(), ..Default::default() },
+            ConfigFieldEntry {
+                field_type: "float".to_string(),
+                ..Default::default()
+            },
         );
         module.config_schema.entries.insert(
             "layer_height".to_string(),
-            ConfigFieldEntry { field_type: "float".to_string(), ..Default::default() },
+            ConfigFieldEntry {
+                field_type: "float".to_string(),
+                ..Default::default()
+            },
         );
 
         let mut source: HashMap<String, ConfigValue> = HashMap::new();
@@ -1070,12 +1110,27 @@ mod dedup_tests {
     fn config_key_declared_accepts_exact_and_wildcard() {
         use std::collections::BTreeMap;
         let mut declared: BTreeMap<String, ConfigFieldEntry> = BTreeMap::new();
-        declared.insert("layer_height".into(), ConfigFieldEntry { field_type: "float".to_string(), ..Default::default() });
-        declared.insert("object_height:*".into(), ConfigFieldEntry { field_type: "float".to_string(), ..Default::default() });
+        declared.insert(
+            "layer_height".into(),
+            ConfigFieldEntry {
+                field_type: "float".to_string(),
+                ..Default::default()
+            },
+        );
+        declared.insert(
+            "object_height:*".into(),
+            ConfigFieldEntry {
+                field_type: "float".to_string(),
+                ..Default::default()
+            },
+        );
 
         assert!(super::config_key_declared(&declared, "layer_height"));
         assert!(super::config_key_declared(&declared, "object_height:a"));
-        assert!(super::config_key_declared(&declared, "object_height:long-uuid"));
+        assert!(super::config_key_declared(
+            &declared,
+            "object_height:long-uuid"
+        ));
         assert!(!super::config_key_declared(&declared, "object_height"));
         assert!(!super::config_key_declared(&declared, "random_key"));
     }
@@ -1085,24 +1140,55 @@ mod dedup_tests {
         // Mirrors what live module discovery finds under modules/core-modules/
         // and documents the canonical winner for each claim after dedup.
         let mut modules = vec![
-            loaded("com.core.arachne-perimeters", "Layer::Perimeters", &["perimeter-generator"]),
-            loaded("com.core.classic-perimeters", "Layer::Perimeters", &["perimeter-generator"]),
-            loaded("com.core.gyroid-infill", "Layer::Infill", &["infill-generator"]),
-            loaded("com.core.lightning-infill", "Layer::Infill", &["infill-generator"]),
-            loaded("com.core.rectilinear-infill", "Layer::Infill", &["infill-generator"]),
-            loaded("com.core.traditional-support", "Layer::Support", &["support-generator"]),
-            loaded("com.core.tree-support", "Layer::Support", &["support-generator"]),
+            loaded(
+                "com.core.arachne-perimeters",
+                "Layer::Perimeters",
+                &["perimeter-generator"],
+            ),
+            loaded(
+                "com.core.classic-perimeters",
+                "Layer::Perimeters",
+                &["perimeter-generator"],
+            ),
+            loaded(
+                "com.core.gyroid-infill",
+                "Layer::Infill",
+                &["infill-generator"],
+            ),
+            loaded(
+                "com.core.lightning-infill",
+                "Layer::Infill",
+                &["infill-generator"],
+            ),
+            loaded(
+                "com.core.rectilinear-infill",
+                "Layer::Infill",
+                &["infill-generator"],
+            ),
+            loaded(
+                "com.core.traditional-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
+            loaded(
+                "com.core.tree-support",
+                "Layer::Support",
+                &["support-generator"],
+            ),
         ];
         let mut diagnostics = Vec::new();
         let kept = dedup_same_claim_modules(&mut modules, &mut diagnostics);
 
         let ids: Vec<&str> = kept.iter().map(|m| m.id.as_str()).collect();
         // One holder per stage; alphabetically-first module id wins.
-        assert_eq!(ids, [
-            "com.core.arachne-perimeters",
-            "com.core.gyroid-infill",
-            "com.core.traditional-support",
-        ]);
+        assert_eq!(
+            ids,
+            [
+                "com.core.arachne-perimeters",
+                "com.core.gyroid-infill",
+                "com.core.traditional-support",
+            ]
+        );
         // Four modules dropped: one infill runner-up does not emit a
         // diagnostic for itself (the second lightning-infill is already
         // losing to gyroid, then rectilinear also loses) — three drops

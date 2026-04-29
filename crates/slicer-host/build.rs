@@ -48,15 +48,9 @@ fn main() {
             continue;
         }
 
-        let src_mtime = std::fs::metadata(&src)
-            .and_then(|m| m.modified())
-            .ok();
-        let toml_mtime = std::fs::metadata(&toml)
-            .and_then(|m| m.modified())
-            .ok();
-        let wasm_mtime = std::fs::metadata(&wasm)
-            .and_then(|m| m.modified())
-            .ok();
+        let src_mtime = std::fs::metadata(&src).and_then(|m| m.modified()).ok();
+        let toml_mtime = std::fs::metadata(&toml).and_then(|m| m.modified()).ok();
+        let wasm_mtime = std::fs::metadata(&wasm).and_then(|m| m.modified()).ok();
 
         if let (Some(wasm_t), Some(src_t)) = (wasm_mtime, src_mtime) {
             if src_t > wasm_t {

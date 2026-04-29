@@ -52,7 +52,7 @@ fn make_layer(index: u32, z: f32, tool_changes: Vec<ToolChange>) -> LayerCollect
 }
 
 fn empty_config() -> ConfigView {
-    ConfigView::from_map(HashMap::new(),)
+    ConfigView::from_map(HashMap::new())
 }
 
 fn enabled_config() -> ConfigView {

@@ -81,60 +81,79 @@ impl GcodeOutputBuilder {
 
     /// Push a move command.
     pub fn push_move(&mut self, cmd: GcodeMoveCmd) -> Result<(), String> {
-        self.commands.push(GcodeOutputCommand::Command(GCodeCommand::Move {
-            x: cmd.x,
-            y: cmd.y,
-            z: cmd.z,
-            e: cmd.e,
-            f: cmd.f,
-            role: cmd.role,
-        }));
+        self.commands
+            .push(GcodeOutputCommand::Command(GCodeCommand::Move {
+                x: cmd.x,
+                y: cmd.y,
+                z: cmd.z,
+                e: cmd.e,
+                f: cmd.f,
+                role: cmd.role,
+            }));
         Ok(())
     }
 
     /// Push a retract command.
     pub fn push_retract(&mut self, length: f32, speed: f32) -> Result<(), String> {
-        self.commands.push(GcodeOutputCommand::Command(GCodeCommand::Retract { length, speed }));
+        self.commands
+            .push(GcodeOutputCommand::Command(GCodeCommand::Retract {
+                length,
+                speed,
+            }));
         Ok(())
     }
 
     /// Push an unretract command.
     pub fn push_unretract(&mut self, length: f32, speed: f32) -> Result<(), String> {
-        self.commands.push(GcodeOutputCommand::Command(GCodeCommand::Unretract { length, speed }));
+        self.commands
+            .push(GcodeOutputCommand::Command(GCodeCommand::Unretract {
+                length,
+                speed,
+            }));
         Ok(())
     }
 
     /// Push a fan speed command.
     pub fn push_fan_speed(&mut self, value: u8) -> Result<(), String> {
-        self.commands.push(GcodeOutputCommand::Command(GCodeCommand::FanSpeed { value }));
+        self.commands
+            .push(GcodeOutputCommand::Command(GCodeCommand::FanSpeed {
+                value,
+            }));
         Ok(())
     }
 
     /// Push a temperature command.
     pub fn push_temperature(&mut self, tool: u32, celsius: f32, wait: bool) -> Result<(), String> {
-        self.commands.push(GcodeOutputCommand::Command(GCodeCommand::Temperature {
-            tool,
-            celsius,
-            wait,
-        }));
+        self.commands
+            .push(GcodeOutputCommand::Command(GCodeCommand::Temperature {
+                tool,
+                celsius,
+                wait,
+            }));
         Ok(())
     }
 
     /// Push a tool change command.
     pub fn push_tool_change(&mut self, from: u32, to: u32) -> Result<(), String> {
-        self.commands.push(GcodeOutputCommand::Command(GCodeCommand::ToolChange { from, to }));
+        self.commands
+            .push(GcodeOutputCommand::Command(GCodeCommand::ToolChange {
+                from,
+                to,
+            }));
         Ok(())
     }
 
     /// Push a comment command.
     pub fn push_comment(&mut self, text: String) -> Result<(), String> {
-        self.commands.push(GcodeOutputCommand::Command(GCodeCommand::Comment { text }));
+        self.commands
+            .push(GcodeOutputCommand::Command(GCodeCommand::Comment { text }));
         Ok(())
     }
 
     /// Push a raw GCode command.
     pub fn push_raw(&mut self, text: String) -> Result<(), String> {
-        self.commands.push(GcodeOutputCommand::Command(GCodeCommand::Raw { text }));
+        self.commands
+            .push(GcodeOutputCommand::Command(GCodeCommand::Raw { text }));
         Ok(())
     }
 

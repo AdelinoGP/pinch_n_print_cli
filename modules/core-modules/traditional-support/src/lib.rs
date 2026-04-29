@@ -24,8 +24,8 @@ use slicer_ir::{
     PaintSemantic, Point2, Point3WithWidth,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
-use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
@@ -314,18 +314,15 @@ impl TraditionalSupport {
                 let (edge_min_y, edge_max_y) = if ry1 < ry2 { (ry1, ry2) } else { (ry2, ry1) };
                 if centroid_y > edge_min_y && centroid_y < edge_max_y {
                     let x = rx1 as f64
-                        + (centroid_y - ry1) as f64 * (rx2 - rx1) as f64
-                            / (ry2 - ry1) as f64;
+                        + (centroid_y - ry1) as f64 * (rx2 - rx1) as f64 / (ry2 - ry1) as f64;
                     centroid_xs.push(x.round() as i64);
                 }
             }
             centroid_xs.sort();
             let mut i = 0;
             while i + 1 < centroid_xs.len() {
-                let (start_x, start_y) =
-                    rotate_point(centroid_xs[i], centroid_y, cos_a, sin_a);
-                let (end_x, end_y) =
-                    rotate_point(centroid_xs[i + 1], centroid_y, cos_a, sin_a);
+                let (start_x, start_y) = rotate_point(centroid_xs[i], centroid_y, cos_a, sin_a);
+                let (end_x, end_y) = rotate_point(centroid_xs[i + 1], centroid_y, cos_a, sin_a);
                 paths.push(ExtrusionPath3D {
                     points: vec![
                         Point3WithWidth {
@@ -397,7 +394,7 @@ mod tests {
 
     #[test]
     fn on_print_start_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new(),);
+        let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = TraditionalSupport::on_print_start(&config).unwrap();
         assert!(!module.enabled);
         assert!((module.density - 0.2).abs() < 0.001);

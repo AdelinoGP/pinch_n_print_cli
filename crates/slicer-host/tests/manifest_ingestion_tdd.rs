@@ -459,7 +459,13 @@ impl ModuleFixture {
 
 // ── Subdirectory discovery ──────────────────────────────────────────────
 
-fn write_module_in_subdir(root: &Path, dir_name: &str, stem: &str, manifest: &str, with_wasm: bool) -> PathBuf {
+fn write_module_in_subdir(
+    root: &Path,
+    dir_name: &str,
+    stem: &str,
+    manifest: &str,
+    with_wasm: bool,
+) -> PathBuf {
     let subdir = root.join(dir_name);
     fs::create_dir_all(&subdir).expect("create module subdirectory");
     write_module_in(&subdir, stem, manifest, with_wasm)
@@ -584,8 +590,8 @@ fn discovery_mixes_flat_and_subdirectory_manifests() {
 
 #[test]
 fn core_modules_directory_is_discoverable_and_all_load() {
-    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../modules/core-modules");
+    let core_modules_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules");
 
     if !core_modules_root.is_dir() {
         // Skip if running from a different context
@@ -632,25 +638,42 @@ fn core_modules_directory_is_discoverable_and_all_load() {
 
     // Verify we have modules covering key stages
     let stages: Vec<&str> = report.modules.iter().map(|m| m.stage.as_str()).collect();
-    assert!(stages.contains(&"Layer::Infill"), "should have infill modules");
-    assert!(stages.contains(&"Layer::Perimeters"), "should have perimeter modules");
-    assert!(stages.contains(&"Layer::Support"), "should have support modules");
-    assert!(stages.contains(&"PrePass::MeshSegmentation"), "should have mesh segmentation");
-    assert!(stages.contains(&"PrePass::LayerPlanning"), "should have layer planner");
-    assert!(stages.contains(&"PostPass::LayerFinalization"), "should have finalization modules");
+    assert!(
+        stages.contains(&"Layer::Infill"),
+        "should have infill modules"
+    );
+    assert!(
+        stages.contains(&"Layer::Perimeters"),
+        "should have perimeter modules"
+    );
+    assert!(
+        stages.contains(&"Layer::Support"),
+        "should have support modules"
+    );
+    assert!(
+        stages.contains(&"PrePass::MeshSegmentation"),
+        "should have mesh segmentation"
+    );
+    assert!(
+        stages.contains(&"PrePass::LayerPlanning"),
+        "should have layer planner"
+    );
+    assert!(
+        stages.contains(&"PostPass::LayerFinalization"),
+        "should have finalization modules"
+    );
 }
 
 #[test]
 fn core_module_ids_are_unique() {
-    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../modules/core-modules");
+    let core_modules_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules");
 
     if !core_modules_root.is_dir() {
         return;
     }
 
-    let report = load_modules_from_roots(&[core_modules_root])
-        .expect("core modules should load");
+    let report = load_modules_from_roots(&[core_modules_root]).expect("core modules should load");
 
     // No duplicate warnings should appear (all IDs are unique)
     let dup_warnings: Vec<_> = report
@@ -666,15 +689,14 @@ fn core_module_ids_are_unique() {
 
 #[test]
 fn core_finalization_modules_have_parallel_safe_false() {
-    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../modules/core-modules");
+    let core_modules_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules");
 
     if !core_modules_root.is_dir() {
         return;
     }
 
-    let report = load_modules_from_roots(&[core_modules_root])
-        .expect("core modules should load");
+    let report = load_modules_from_roots(&[core_modules_root]).expect("core modules should load");
 
     for module in &report.modules {
         if module.stage == "PostPass::LayerFinalization" {
@@ -767,8 +789,8 @@ fn real_wasm_is_not_flagged_as_placeholder() {
 
 #[test]
 fn core_modules_all_have_placeholder_wasm_flag_set() {
-    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../modules/core-modules");
+    let core_modules_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules");
 
     if !core_modules_root.is_dir() {
         return;
@@ -814,8 +836,8 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
 
 #[test]
 fn core_module_placeholder_warnings_include_module_ids() {
-    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../modules/core-modules");
+    let core_modules_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules");
 
     if !core_modules_root.is_dir() {
         return;
@@ -854,8 +876,8 @@ fn core_module_placeholder_warnings_include_module_ids() {
 
 #[test]
 fn discovery_order_is_deterministic_across_repeated_scans() {
-    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../modules/core-modules");
+    let core_modules_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules");
 
     if !core_modules_root.is_dir() {
         return;
@@ -886,21 +908,36 @@ fn discovery_order_is_lexicographic_by_manifest_path() {
         fixture.root(),
         "zzz-module",
         "zzz-module",
-        &valid_manifest_toml("com.test.zzz", "Layer::Support", "slicer:world-layer@1.0.0", true),
+        &valid_manifest_toml(
+            "com.test.zzz",
+            "Layer::Support",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
         true,
     );
     write_module_in_subdir(
         fixture.root(),
         "aaa-module",
         "aaa-module",
-        &valid_manifest_toml("com.test.aaa", "Layer::Infill", "slicer:world-layer@1.0.0", true),
+        &valid_manifest_toml(
+            "com.test.aaa",
+            "Layer::Infill",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
         true,
     );
     write_module_in_subdir(
         fixture.root(),
         "mmm-module",
         "mmm-module",
-        &valid_manifest_toml("com.test.mmm", "Layer::Perimeters", "slicer:world-layer@1.0.0", true),
+        &valid_manifest_toml(
+            "com.test.mmm",
+            "Layer::Perimeters",
+            "slicer:world-layer@1.0.0",
+            true,
+        ),
         true,
     );
 

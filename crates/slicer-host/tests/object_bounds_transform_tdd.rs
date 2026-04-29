@@ -6,9 +6,7 @@
 
 mod common;
 
-use common::{
-    assert_close, ctx_with_mesh, flat_plate_object, mesh_fixture, translation_transform,
-};
+use common::{assert_close, ctx_with_mesh, flat_plate_object, mesh_fixture, translation_transform};
 use slicer_host::wit_host::{
     finalization::slicer::world_finalization::host_services as fhs,
     layer::slicer::world_layer::host_services as lhs,

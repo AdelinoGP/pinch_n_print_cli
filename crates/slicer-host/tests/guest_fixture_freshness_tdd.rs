@@ -15,10 +15,19 @@ const GUESTS: &[(&str, &str)] = &[
     ("postpass-guest", "postpass-guest.component.wasm"),
     // TASK-109 round-trip witnesses — guests authored purely via the
     // macro-emitted wit_bindgen glue (no hand-rolled `wit_bindgen::generate!`).
-    ("sdk-postpass-text-guest", "sdk-postpass-text-guest.component.wasm"),
-    ("sdk-finalization-guest", "sdk-finalization-guest.component.wasm"),
+    (
+        "sdk-postpass-text-guest",
+        "sdk-postpass-text-guest.component.wasm",
+    ),
+    (
+        "sdk-finalization-guest",
+        "sdk-finalization-guest.component.wasm",
+    ),
     ("sdk-prepass-guest", "sdk-prepass-guest.component.wasm"),
-    ("sdk-layer-infill-guest", "sdk-layer-infill-guest.component.wasm"),
+    (
+        "sdk-layer-infill-guest",
+        "sdk-layer-infill-guest.component.wasm",
+    ),
 ];
 
 fn test_guests_dir() -> PathBuf {
@@ -51,7 +60,8 @@ fn all_guest_component_files_exist() {
         let src = dir.join(guest_name).join("src").join("lib.rs");
         assert!(
             src.exists(),
-            "Missing source for {guest_name}: expected {}", src.display()
+            "Missing source for {guest_name}: expected {}",
+            src.display()
         );
     }
 }

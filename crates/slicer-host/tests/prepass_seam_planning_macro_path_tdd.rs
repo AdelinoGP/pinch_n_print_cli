@@ -26,9 +26,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_host::{
-    build_wasm_instance_pool, execute_prepass_with_builtins,
-    instance_pool::WasmArtifactMetadata, Blackboard, CompiledModule, CompiledStage, ConfigSchema,
-    ExecutionPlan, IrAccessMask, LoadedModule, WasmEngine, WasmRuntimeDispatcher,
+    build_wasm_instance_pool, execute_prepass_with_builtins, instance_pool::WasmArtifactMetadata,
+    Blackboard, CompiledModule, CompiledStage, ConfigSchema, ExecutionPlan, IrAccessMask,
+    LoadedModule, WasmEngine, WasmRuntimeDispatcher,
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
@@ -36,15 +36,16 @@ use slicer_ir::{
 };
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn identity4() -> [f64; 16] {
     [
-        1.0, 0.0, 0.0, 0.0,
-        0.0, 1.0, 0.0, 0.0,
-        0.0, 0.0, 1.0, 0.0,
-        0.0, 0.0, 0.0, 1.0,
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
     ]
 }
 
@@ -67,33 +68,73 @@ fn cube_mesh() -> MeshIR {
             id: "cube".to_string(),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 1.0, y: 1.0, z: 0.0 },
-                    Point3 { x: 0.0, y: 1.0, z: 0.0 },
-                    Point3 { x: 0.0, y: 0.0, z: 1.0 },
-                    Point3 { x: 1.0, y: 0.0, z: 1.0 },
-                    Point3 { x: 1.0, y: 1.0, z: 1.0 },
-                    Point3 { x: 0.0, y: 1.0, z: 1.0 },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 1.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 1.0,
+                        y: 1.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 1.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 1.0,
+                    },
+                    Point3 {
+                        x: 1.0,
+                        y: 0.0,
+                        z: 1.0,
+                    },
+                    Point3 {
+                        x: 1.0,
+                        y: 1.0,
+                        z: 1.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 1.0,
+                        z: 1.0,
+                    },
                 ],
                 indices: vec![
-                    0, 2, 1, 0, 3, 2,
-                    4, 5, 6, 4, 6, 7,
-                    0, 1, 5, 0, 5, 4,
-                    1, 2, 6, 1, 6, 5,
-                    2, 3, 7, 2, 7, 6,
-                    3, 0, 4, 3, 4, 7,
+                    0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3,
+                    7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
                 ],
             },
-            transform: Transform3d { matrix: identity4() },
-            config: slicer_ir::ObjectConfig { data: HashMap::new() },
+            transform: Transform3d {
+                matrix: identity4(),
+            },
+            config: slicer_ir::ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     }
 }
@@ -136,14 +177,18 @@ fn compile_seam_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         )
     });
     let component = Arc::new(
-        engine.compile_component(&bytes).expect("seam-planner-default.wasm must compile"),
+        engine
+            .compile_component(&bytes)
+            .expect("seam-planner-default.wasm must compile"),
     );
     let loaded = loaded_seam_planner(wasm_path);
     let pool = Arc::new(
         build_wasm_instance_pool(
             &loaded,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .expect("instance pool must build"),
     );

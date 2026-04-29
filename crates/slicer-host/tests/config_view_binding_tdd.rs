@@ -17,13 +17,23 @@ use slicer_host::{bind_module_config_view, ConfigFieldEntry, ConfigSchema, Loade
 use slicer_ir::{ConfigValue, ConfigView, SemVer};
 
 fn sem() -> SemVer {
-    SemVer { major: 1, minor: 0, patch: 0 }
+    SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    }
 }
 
 fn module_with_config_keys(id: &str, keys: &[&str]) -> LoadedModule {
     let mut entries = BTreeMap::new();
     for k in keys {
-        entries.insert((*k).to_string(), ConfigFieldEntry { field_type: "float".to_string(), ..Default::default() });
+        entries.insert(
+            (*k).to_string(),
+            ConfigFieldEntry {
+                field_type: "float".to_string(),
+                ..Default::default()
+            },
+        );
     }
     LoadedModule {
         id: id.to_string(),
@@ -36,9 +46,17 @@ fn module_with_config_keys(id: &str, keys: &[&str]) -> LoadedModule {
         requires_claims: Vec::new(),
         incompatible_with: Vec::new(),
         requires_modules: Vec::new(),
-        min_host_version: SemVer { major: 0, minor: 1, patch: 0 },
+        min_host_version: SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
         min_ir_schema: sem(),
-        max_ir_schema: SemVer { major: 2, minor: 0, patch: 0 },
+        max_ir_schema: SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
         config_schema: ConfigSchema { entries },
         overridable_per_region: Vec::new(),
         overridable_per_layer: Vec::new(),
@@ -51,9 +69,15 @@ fn module_with_config_keys(id: &str, keys: &[&str]) -> LoadedModule {
 fn source() -> HashMap<String, ConfigValue> {
     let mut m = HashMap::new();
     m.insert("density".to_string(), ConfigValue::Float(0.25));
-    m.insert("pattern".to_string(), ConfigValue::String("gyroid".to_string()));
+    m.insert(
+        "pattern".to_string(),
+        ConfigValue::String("gyroid".to_string()),
+    );
     m.insert("fuzzy".to_string(), ConfigValue::Bool(true));
-    m.insert("secret".to_string(), ConfigValue::String("do-not-leak".to_string()));
+    m.insert(
+        "secret".to_string(),
+        ConfigValue::String("do-not-leak".to_string()),
+    );
     m
 }
 
@@ -109,7 +133,10 @@ fn typed_getters_preserve_semantics_and_subnormal_normalization() {
     assert_eq!(view.get_bool("b"), Some(true));
     assert_eq!(view.get_string("s"), Some("hello"));
     assert_eq!(view.get_float("subnormal"), Some(0.0));
-    assert!(view.get_int("f").is_none(), "wrong-type read must yield None");
+    assert!(
+        view.get_int("f").is_none(),
+        "wrong-type read must yield None"
+    );
     assert!(view.get_bool("i").is_none());
 }
 
@@ -185,15 +212,14 @@ use slicer_host::{
 };
 use slicer_ir::{RegionKey, RegionPlan};
 
-fn plan_request_for(
-    module: &LoadedModule,
-    config_view: Arc<ConfigView>,
-) -> ExecutionPlanRequest {
+fn plan_request_for(module: &LoadedModule, config_view: Arc<ConfigView>) -> ExecutionPlanRequest {
     let pool = Arc::new(
         build_wasm_instance_pool(
             module,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .expect("build pool"),
     );
@@ -289,11 +315,8 @@ fn main_production_entry_path_routes_through_build_live_execution_plan() {
     // canonical helper that routes every per-module ConfigView through
     // `bind_module_config_view`), not by assembling a raw `ExecutionPlan`
     // or calling `build_execution_plan` with hand-rolled bindings.
-    let main_src = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/main.rs"
-    ))
-    .expect("read main.rs");
+    let main_src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"))
+        .expect("read main.rs");
     assert!(
         main_src.contains("build_live_execution_plan("),
         "main.rs must construct its ExecutionPlan via build_live_execution_plan"
@@ -313,7 +336,9 @@ fn live_binding(module: &LoadedModule) -> LiveModuleBinding {
         build_wasm_instance_pool(
             module,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .expect("build pool"),
     );
@@ -401,9 +426,14 @@ fn parse_cli_config_source_maps_json_types_to_config_values() {
         "angles": [0.0, 45.0, 90.0]
     }"#;
     let parsed = parse_cli_config_source(json).unwrap();
-    assert!(matches!(parsed.get("enabled"), Some(ConfigValue::Bool(true))));
+    assert!(matches!(
+        parsed.get("enabled"),
+        Some(ConfigValue::Bool(true))
+    ));
     assert!(matches!(parsed.get("count"), Some(ConfigValue::Int(7))));
-    assert!(matches!(parsed.get("density"), Some(ConfigValue::Float(f)) if (f - 0.25).abs() < 1e-12));
+    assert!(
+        matches!(parsed.get("density"), Some(ConfigValue::Float(f)) if (f - 0.25).abs() < 1e-12)
+    );
     assert!(matches!(parsed.get("pattern"), Some(ConfigValue::String(s)) if s == "gyroid"));
     assert!(matches!(parsed.get("angles"), Some(ConfigValue::List(items)) if items.len() == 3));
 }

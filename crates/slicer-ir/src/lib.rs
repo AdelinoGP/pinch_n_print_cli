@@ -26,9 +26,9 @@ pub use slice_ir::{
     ExtrusionRole,
 
     FacetClass,
-    FacetPaintMark,
     // Paint types
     FacetPaintData,
+    FacetPaintMark,
     GCodeCommand,
     // GCode types
     GCodeIR,
@@ -45,8 +45,6 @@ pub use slice_ir::{
     LayerAnnotation,
     LayerAnnotationKind,
     LayerCollectionIR,
-    TravelRetract,
-    TravelMove,
     LayerPaintMap,
     // Layer planning types
     LayerPlanIR,
@@ -97,8 +95,8 @@ pub use slice_ir::{
     RegionMapIR,
     RegionPlan,
     ResolvedConfig,
-    SeamCandidate,
     ScoredSeamCandidate,
+    SeamCandidate,
     SeamPlanEntry,
     SeamPlanIR,
     SeamPosition,
@@ -123,6 +121,8 @@ pub use slice_ir::{
     SurfaceGroupId,
     ToolChange,
     Transform3d,
+    TravelMove,
+    TravelRetract,
     WallBoundaryType,
     WallFeatureFlags,
     // Wall generator

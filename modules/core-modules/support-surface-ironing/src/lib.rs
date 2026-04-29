@@ -10,8 +10,8 @@ use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point3WithWidth,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
-use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::slicer_module;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
@@ -236,7 +236,7 @@ mod tests {
 
     #[test]
     fn on_print_start_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new(),);
+        let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = SupportSurfaceIroning::on_print_start(&config).unwrap();
         assert!(!module.enabled);
         assert!((module.ironing_speed - 15.0).abs() < 0.001);

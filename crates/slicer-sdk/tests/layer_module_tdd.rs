@@ -30,7 +30,7 @@ impl LayerModule for TestModule {
 #[test]
 fn test_01_layer_module_trait_exists_with_lifecycle() {
     // Test that LayerModule trait can be implemented with on_print_start/on_print_end
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
 
     let module = TestModule::on_print_start(&config).expect("on_print_start should succeed");
     assert!(module.initialized, "module should be initialized");
@@ -120,7 +120,7 @@ impl LayerModule for InfillTestModule {
 
 #[test]
 fn test_06_run_infill_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = InfillTestModule::on_print_start(&config).unwrap();
     let regions: Vec<SliceRegionView> = vec![];
     let mut output = InfillOutputBuilder::new();
@@ -159,7 +159,7 @@ impl LayerModule for PerimeterTestModule {
 
 #[test]
 fn test_07_run_perimeters_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = PerimeterTestModule::on_print_start(&config).unwrap();
     let regions: Vec<SliceRegionView> = vec![];
     let paint = PaintRegionLayerView::new(0);
@@ -197,7 +197,7 @@ impl LayerModule for WallPostprocessTestModule {
 
 #[test]
 fn test_08_run_wall_postprocess_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = WallPostprocessTestModule::on_print_start(&config).unwrap();
     let regions: Vec<PerimeterRegionView> = vec![];
     let mut output = PerimeterOutputBuilder::new();
@@ -234,7 +234,7 @@ impl LayerModule for InfillPostprocessTestModule {
 
 #[test]
 fn test_09_run_infill_postprocess_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = InfillPostprocessTestModule::on_print_start(&config).unwrap();
     let regions: Vec<PerimeterRegionView> = vec![];
     let mut output = InfillOutputBuilder::new();
@@ -273,7 +273,7 @@ impl LayerModule for SlicePostprocessTestModule {
 
 #[test]
 fn test_10_run_slice_postprocess_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SlicePostprocessTestModule::on_print_start(&config).unwrap();
     let regions: Vec<SliceRegionView> = vec![];
     let paint = PaintRegionLayerView::new(0);
@@ -313,7 +313,7 @@ impl LayerModule for SupportTestModule {
 
 #[test]
 fn test_11_run_support_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SupportTestModule::on_print_start(&config).unwrap();
     let regions: Vec<SliceRegionView> = vec![];
     let paint = PaintRegionLayerView::new(0);
@@ -639,7 +639,7 @@ impl LayerModule for MinimalModule {
 
 #[test]
 fn test_31_default_on_print_end_implementation() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = MinimalModule::on_print_start(&config).unwrap();
 
     // Should use default implementation and succeed
@@ -675,7 +675,7 @@ impl LayerModule for SupportPostprocessTestModule {
 
 #[test]
 fn test_33_run_support_postprocess_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = SupportPostprocessTestModule::on_print_start(&config).unwrap();
     let regions: Vec<SliceRegionView> = vec![];
     let mut output = SupportOutputBuilder::new();
@@ -714,7 +714,7 @@ impl LayerModule for PathOptimizationTestModule {
 
 #[test]
 fn test_34_run_path_optimization_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = PathOptimizationTestModule::on_print_start(&config).unwrap();
     let regions: Vec<PerimeterRegionView> = vec![];
     let mut output = GcodeOutputBuilder::new();
@@ -759,7 +759,7 @@ fn set_entity_order_second_call_returns_err() {
 
 #[test]
 fn test_35_layer_module_defaults_do_not_panic() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = MinimalModule::on_print_start(&config).unwrap();
     let slice_regions: Vec<SliceRegionView> = vec![];
     let perim_regions: Vec<PerimeterRegionView> = vec![];
@@ -779,7 +779,12 @@ fn test_35_layer_module_defaults_do_not_panic() {
         )
         .is_ok());
     assert!(module
-        .run_wall_postprocess(0, &perim_regions, &mut PerimeterOutputBuilder::new(), &config)
+        .run_wall_postprocess(
+            0,
+            &perim_regions,
+            &mut PerimeterOutputBuilder::new(),
+            &config
+        )
         .is_ok());
     assert!(module
         .run_infill_postprocess(0, &perim_regions, &mut InfillOutputBuilder::new(), &config)
@@ -837,7 +842,7 @@ impl LayerModule for ModuleB {
 
 #[test]
 fn test_32_multiple_implementations_coexist() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
 
     let _a = ModuleA::on_print_start(&config).unwrap();
     let _b = ModuleB::on_print_start(&config).unwrap();

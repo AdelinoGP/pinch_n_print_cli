@@ -29,10 +29,7 @@ use slicer_ir::{
 fn identity_transform() -> Transform3d {
     Transform3d {
         matrix: [
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ],
     }
 }
@@ -41,10 +38,7 @@ fn identity_transform() -> Transform3d {
 fn translation_transform(tx: f64, ty: f64, tz: f64) -> Transform3d {
     Transform3d {
         matrix: [
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            tx, ty, tz, 1.0,
+            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, tx, ty, tz, 1.0,
         ],
     }
 }
@@ -52,14 +46,30 @@ fn translation_transform(tx: f64, ty: f64, tz: f64) -> Transform3d {
 /// Minimal mesh with one triangle and paint data.
 fn mesh_with_paint() -> MeshIR {
     MeshIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: vec![ObjectMesh {
             id: String::from("painted-object"),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 10.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 0.0, y: 10.0, z: 0.2 },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 10.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 10.0,
+                        z: 0.2,
+                    },
                 ],
                 indices: vec![0, 1, 2],
             },
@@ -78,8 +88,16 @@ fn mesh_with_paint() -> MeshIR {
             world_z_extent: None,
         }],
         build_volume: slicer_ir::BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     }
 }
@@ -87,7 +105,11 @@ fn mesh_with_paint() -> MeshIR {
 /// Layer plan with object participation on layers 0, 1, 2.
 fn layer_plan_with_participation() -> LayerPlanIR {
     LayerPlanIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         global_layers: vec![
             GlobalLayer {
                 index: 0,
@@ -146,9 +168,18 @@ fn object_mesh_transform_provides_non_identity_matrix() {
     let obj = &mesh.objects[0];
 
     // The mesh has a translation transform (5.0, 10.0, 0.0)
-    assert!((obj.transform.matrix[12] - 5.0).abs() < 1e-10, "TX should be 5.0");
-    assert!((obj.transform.matrix[13] - 10.0).abs() < 1e-10, "TY should be 10.0");
-    assert!((obj.transform.matrix[14] - 0.0).abs() < 1e-10, "TZ should be 0.0");
+    assert!(
+        (obj.transform.matrix[12] - 5.0).abs() < 1e-10,
+        "TX should be 5.0"
+    );
+    assert!(
+        (obj.transform.matrix[13] - 10.0).abs() < 1e-10,
+        "TY should be 10.0"
+    );
+    assert!(
+        (obj.transform.matrix[14] - 0.0).abs() < 1e-10,
+        "TZ should be 0.0"
+    );
 
     // This transform will be used as PaintSegmentationObjectView.transform_matrix
     // The SDK type (slicer_sdk::prepass_types::PaintSegmentationObjectView)
@@ -164,13 +195,19 @@ fn facet_paint_data_provides_paint_layers() {
     let mesh = mesh_with_paint();
     let obj = &mesh.objects[0];
 
-    let paint_data = obj.paint_data.as_ref().expect("mesh should have paint data");
+    let paint_data = obj
+        .paint_data
+        .as_ref()
+        .expect("mesh should have paint data");
     assert_eq!(paint_data.layers.len(), 1, "should have one paint layer");
 
     let layer = &paint_data.layers[0];
     assert!(matches!(layer.semantic, PaintSemantic::Material));
     assert_eq!(layer.facet_values.len(), 3, "should have 3 facet values");
-    assert!(matches!(layer.facet_values[0], Some(PaintValue::ToolIndex(2))));
+    assert!(matches!(
+        layer.facet_values[0],
+        Some(PaintValue::ToolIndex(2))
+    ));
 
     // The SDK type has paint_layers: Vec<PaintLayerView>
     // Each PaintLayerView has: semantic, facet_values, strokes
@@ -184,7 +221,8 @@ fn facet_paint_data_provides_paint_layers() {
 fn layer_plan_object_participation_provides_layer_indices() {
     let layer_plan = layer_plan_with_participation();
 
-    let participation = layer_plan.object_participation
+    let participation = layer_plan
+        .object_participation
         .get("painted-object")
         .expect("object should have participation data");
 
@@ -236,11 +274,29 @@ fn empty_participation_produces_diagnostic_missing() {
     let mesh = ObjectMesh {
         id: String::from("diag-test"),
         mesh: IndexedTriangleSet {
-            vertices: vec![Point3 { x: 0.0, y: 0.0, z: 0.0 }, Point3 { x: 1.0, y: 0.0, z: 0.0 }, Point3 { x: 0.0, y: 1.0, z: 0.0 }],
+            vertices: vec![
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+            ],
             indices: vec![0, 1, 2],
         },
         transform: translation_transform(0.0, 0.0, 0.0),
-        config: ObjectConfig { data: HashMap::new() },
+        config: ObjectConfig {
+            data: HashMap::new(),
+        },
         modifier_volumes: Vec::new(),
         paint_data: None,
         world_z_extent: None,
@@ -267,17 +323,33 @@ fn missing_transform_matrix_produces_diagnostic() {
     use slicer_host::wit_host::object_mesh_to_wit_paint_segmentation_view;
 
     // Mesh with zero transform (all zeros — no translation, no rotation)
-    let zero_transform = Transform3d {
-        matrix: [0.0; 16],
-    };
+    let zero_transform = Transform3d { matrix: [0.0; 16] };
     let mesh = ObjectMesh {
         id: String::from("zero-transform"),
         mesh: IndexedTriangleSet {
-            vertices: vec![Point3 { x: 0.0, y: 0.0, z: 0.0 }, Point3 { x: 1.0, y: 0.0, z: 0.0 }, Point3 { x: 0.0, y: 1.0, z: 0.0 }],
+            vertices: vec![
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+            ],
             indices: vec![0, 1, 2],
         },
         transform: zero_transform,
-        config: ObjectConfig { data: HashMap::new() },
+        config: ObjectConfig {
+            data: HashMap::new(),
+        },
         modifier_volumes: Vec::new(),
         paint_data: None,
         world_z_extent: None,
@@ -286,21 +358,40 @@ fn missing_transform_matrix_produces_diagnostic() {
     let view = object_mesh_to_wit_paint_segmentation_view(&mesh, &[0]);
     // Zero transform is detectable as a diagnostic condition
     let is_zero = view.transform_matrix.iter().all(|&v| v == 0.0);
-    assert!(is_zero, "view: transform matrix is all zeros (missing/identity-equivalent)");
+    assert!(
+        is_zero,
+        "view: transform matrix is all zeros (missing/identity-equivalent)"
+    );
 }
 
 /// Test 6: Mesh without paint data has None paint_data.
 #[test]
 fn mesh_without_paint_has_none_paint_data() {
     let mesh = MeshIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: vec![ObjectMesh {
             id: String::from("unpainted-object"),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 10.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 0.0, y: 10.0, z: 0.2 },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 10.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 10.0,
+                        z: 0.2,
+                    },
                 ],
                 indices: vec![0, 1, 2],
             },
@@ -313,13 +404,24 @@ fn mesh_without_paint_has_none_paint_data() {
             world_z_extent: None,
         }],
         build_volume: slicer_ir::BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     };
 
     let obj = &mesh.objects[0];
-    assert!(obj.paint_data.is_none(), "unpainted mesh should have None paint_data");
+    assert!(
+        obj.paint_data.is_none(),
+        "unpainted mesh should have None paint_data"
+    );
 
     // When paint_data is None, PaintSegmentationObjectView.paint_layers should be empty
 }
@@ -328,20 +430,38 @@ fn mesh_without_paint_has_none_paint_data() {
 #[test]
 fn multiple_objects_with_different_transforms() {
     let mesh = MeshIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: vec![
             ObjectMesh {
                 id: String::from("object-a"),
                 mesh: IndexedTriangleSet {
                     vertices: vec![
-                        Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                        Point3 { x: 10.0, y: 0.0, z: 0.0 },
-                        Point3 { x: 0.0, y: 10.0, z: 0.2 },
+                        Point3 {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 10.0,
+                            y: 0.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 0.0,
+                            y: 10.0,
+                            z: 0.2,
+                        },
                     ],
                     indices: vec![0, 1, 2],
                 },
                 transform: translation_transform(0.0, 0.0, 0.0), // No translation
-                config: ObjectConfig { data: HashMap::new() },
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
                 modifier_volumes: Vec::new(),
                 paint_data: None,
                 world_z_extent: None,
@@ -350,22 +470,44 @@ fn multiple_objects_with_different_transforms() {
                 id: String::from("object-b"),
                 mesh: IndexedTriangleSet {
                     vertices: vec![
-                        Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                        Point3 { x: 10.0, y: 0.0, z: 0.0 },
-                        Point3 { x: 0.0, y: 10.0, z: 0.2 },
+                        Point3 {
+                            x: 0.0,
+                            y: 0.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 10.0,
+                            y: 0.0,
+                            z: 0.0,
+                        },
+                        Point3 {
+                            x: 0.0,
+                            y: 10.0,
+                            z: 0.2,
+                        },
                     ],
                     indices: vec![0, 1, 2],
                 },
                 transform: translation_transform(50.0, 100.0, 25.0), // Has translation
-                config: ObjectConfig { data: HashMap::new() },
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
                 modifier_volumes: Vec::new(),
                 paint_data: None,
                 world_z_extent: None,
             },
         ],
         build_volume: slicer_ir::BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     };
 
@@ -391,14 +533,28 @@ fn paint_segmentation_view_flattens_each_stroke_triangle_vertex_in_order() {
         id: String::from("stroke-object"),
         mesh: IndexedTriangleSet {
             vertices: vec![
-                Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                Point3 { x: 0.0, y: 1.0, z: 0.0 },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
             ],
             indices: vec![0, 1, 2],
         },
         transform: identity_transform(),
-        config: ObjectConfig { data: HashMap::new() },
+        config: ObjectConfig {
+            data: HashMap::new(),
+        },
         modifier_volumes: Vec::new(),
         paint_data: Some(FacetPaintData {
             layers: vec![PaintLayer {
@@ -407,14 +563,38 @@ fn paint_segmentation_view_flattens_each_stroke_triangle_vertex_in_order() {
                 strokes: vec![PaintStroke {
                     triangles: vec![
                         [
-                            Point3 { x: 1.0, y: 2.0, z: 3.0 },
-                            Point3 { x: 4.0, y: 5.0, z: 6.0 },
-                            Point3 { x: 7.0, y: 8.0, z: 9.0 },
+                            Point3 {
+                                x: 1.0,
+                                y: 2.0,
+                                z: 3.0,
+                            },
+                            Point3 {
+                                x: 4.0,
+                                y: 5.0,
+                                z: 6.0,
+                            },
+                            Point3 {
+                                x: 7.0,
+                                y: 8.0,
+                                z: 9.0,
+                            },
                         ],
                         [
-                            Point3 { x: 10.0, y: 11.0, z: 12.0 },
-                            Point3 { x: 13.0, y: 14.0, z: 15.0 },
-                            Point3 { x: 16.0, y: 17.0, z: 18.0 },
+                            Point3 {
+                                x: 10.0,
+                                y: 11.0,
+                                z: 12.0,
+                            },
+                            Point3 {
+                                x: 13.0,
+                                y: 14.0,
+                                z: 15.0,
+                            },
+                            Point3 {
+                                x: 16.0,
+                                y: 17.0,
+                                z: 18.0,
+                            },
                         ],
                     ],
                     semantic: PaintSemantic::Material,
@@ -428,11 +608,33 @@ fn paint_segmentation_view_flattens_each_stroke_triangle_vertex_in_order() {
     let view = object_mesh_to_wit_paint_segmentation_view(&mesh, &[0]);
     let triangles = &view.paint_layers[0].strokes[0].triangles;
 
-    assert_eq!(triangles.len(), 6, "two triangles must flatten to six points");
-    assert_eq!((triangles[0].x, triangles[0].y, triangles[0].z), (1.0, 2.0, 3.0));
-    assert_eq!((triangles[1].x, triangles[1].y, triangles[1].z), (4.0, 5.0, 6.0));
-    assert_eq!((triangles[2].x, triangles[2].y, triangles[2].z), (7.0, 8.0, 9.0));
-    assert_eq!((triangles[3].x, triangles[3].y, triangles[3].z), (10.0, 11.0, 12.0));
-    assert_eq!((triangles[4].x, triangles[4].y, triangles[4].z), (13.0, 14.0, 15.0));
-    assert_eq!((triangles[5].x, triangles[5].y, triangles[5].z), (16.0, 17.0, 18.0));
+    assert_eq!(
+        triangles.len(),
+        6,
+        "two triangles must flatten to six points"
+    );
+    assert_eq!(
+        (triangles[0].x, triangles[0].y, triangles[0].z),
+        (1.0, 2.0, 3.0)
+    );
+    assert_eq!(
+        (triangles[1].x, triangles[1].y, triangles[1].z),
+        (4.0, 5.0, 6.0)
+    );
+    assert_eq!(
+        (triangles[2].x, triangles[2].y, triangles[2].z),
+        (7.0, 8.0, 9.0)
+    );
+    assert_eq!(
+        (triangles[3].x, triangles[3].y, triangles[3].z),
+        (10.0, 11.0, 12.0)
+    );
+    assert_eq!(
+        (triangles[4].x, triangles[4].y, triangles[4].z),
+        (13.0, 14.0, 15.0)
+    );
+    assert_eq!(
+        (triangles[5].x, triangles[5].y, triangles[5].z),
+        (16.0, 17.0, 18.0)
+    );
 }

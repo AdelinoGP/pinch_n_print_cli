@@ -34,18 +34,37 @@ fn raycast_invalid_object_returns_object_not_found_across_all_worlds() {
     let mut finalization_ctx = ctx_with_mesh("mesh-query.finalization.invalid", mesh.clone());
     let mut postpass_ctx = ctx_with_mesh("mesh-query.postpass.invalid", mesh.clone());
 
-    let layer_error = lhs::Host::raycast_z_down(&mut layer_ctx, "missing-object".to_string(), 5.0, 5.0, 10.0)
-        .expect_err("layer invalid-object raycast should error")
-        .to_string();
-    let prepass_error = phs::Host::raycast_z_down(&mut prepass_ctx, "missing-object".to_string(), 5.0, 5.0, 10.0)
-        .expect_err("prepass invalid-object raycast should error")
-        .to_string();
-    let finalization_error = fhs::Host::raycast_z_down(&mut finalization_ctx, "missing-object".to_string(), 5.0, 5.0, 10.0)
-        .expect_err("finalization invalid-object raycast should error")
-        .to_string();
-    let postpass_error = pphs::Host::raycast_z_down(&mut postpass_ctx, "missing-object".to_string(), 5.0, 5.0, 10.0)
-        .expect_err("postpass invalid-object raycast should error")
-        .to_string();
+    let layer_error =
+        lhs::Host::raycast_z_down(&mut layer_ctx, "missing-object".to_string(), 5.0, 5.0, 10.0)
+            .expect_err("layer invalid-object raycast should error")
+            .to_string();
+    let prepass_error = phs::Host::raycast_z_down(
+        &mut prepass_ctx,
+        "missing-object".to_string(),
+        5.0,
+        5.0,
+        10.0,
+    )
+    .expect_err("prepass invalid-object raycast should error")
+    .to_string();
+    let finalization_error = fhs::Host::raycast_z_down(
+        &mut finalization_ctx,
+        "missing-object".to_string(),
+        5.0,
+        5.0,
+        10.0,
+    )
+    .expect_err("finalization invalid-object raycast should error")
+    .to_string();
+    let postpass_error = pphs::Host::raycast_z_down(
+        &mut postpass_ctx,
+        "missing-object".to_string(),
+        5.0,
+        5.0,
+        10.0,
+    )
+    .expect_err("postpass invalid-object raycast should error")
+    .to_string();
 
     assert_object_not_found(&layer_error, "layer error");
     assert_object_not_found(&prepass_error, "prepass error");

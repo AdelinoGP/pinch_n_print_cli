@@ -19,8 +19,8 @@ use slicer_ir::{
     WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
-use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::slicer_module;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 

@@ -25,7 +25,11 @@ use slicer_ir::{ModifierScope, ModifierVolume, RegionKey, SemVer};
 // ── Shared fixtures ──────────────────────────────────────────────────────
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn loaded_module(id: &str, stage: &str, reads: &[&str], writes: &[&str]) -> LoadedModule {
@@ -53,7 +57,9 @@ fn loaded_module(id: &str, stage: &str, reads: &[&str], writes: &[&str]) -> Load
 }
 
 fn artifact_meta(shared_memory: bool) -> WasmArtifactMetadata {
-    WasmArtifactMetadata { uses_shared_memory: shared_memory }
+    WasmArtifactMetadata {
+        uses_shared_memory: shared_memory,
+    }
 }
 
 fn dag_request(modules: Vec<LoadedModule>, audits: Vec<ModuleAccessAudit>) -> DagValidationRequest {
@@ -73,7 +79,12 @@ fn dag_request(modules: Vec<LoadedModule>, audits: Vec<ModuleAccessAudit>) -> Da
 
 #[test]
 fn undeclared_runtime_read_emits_structured_diagnostic_with_module_path_and_kind() {
-    let m = loaded_module("com.test.r", "Layer::Support", &["A.declared"], &["A.placeholder"]);
+    let m = loaded_module(
+        "com.test.r",
+        "Layer::Support",
+        &["A.declared"],
+        &["A.placeholder"],
+    );
     let audit = ModuleAccessAudit {
         module_id: m.id.clone(),
         runtime_reads: vec!["A.undeclared.read".to_string()],
@@ -85,9 +96,17 @@ fn undeclared_runtime_read_emits_structured_diagnostic_with_module_path_and_kind
         .iter()
         .filter(|d| d.pass == DagValidationPass::UndeclaredAccess)
         .collect();
-    assert_eq!(hits.len(), 1, "exactly one undeclared-read diagnostic expected");
+    assert_eq!(
+        hits.len(),
+        1,
+        "exactly one undeclared-read diagnostic expected"
+    );
     match &hits[0].detail {
-        SchedulerError::UndeclaredAccess { module, access, path } => {
+        SchedulerError::UndeclaredAccess {
+            module,
+            access,
+            path,
+        } => {
             assert_eq!(module, "com.test.r");
             assert!(matches!(access, AccessKind::Read));
             assert_eq!(path, "A.undeclared.read");
@@ -143,8 +162,7 @@ fn declared_access_produces_no_undeclared_access_diagnostic() {
 fn parallel_safe_module_returns_distinct_slot_indices_across_threads() {
     let m = loaded_module("com.test.parallel", "Layer::Support", &[], &["A"]);
     let pool = Arc::new(
-        build_wasm_instance_pool(&m, 4, artifact_meta(false))
-            .expect("parallel pool should build"),
+        build_wasm_instance_pool(&m, 4, artifact_meta(false)).expect("parallel pool should build"),
     );
     assert_eq!(pool.mode(), InstancePoolMode::Parallel);
 
@@ -155,7 +173,11 @@ fn parallel_safe_module_returns_distinct_slot_indices_across_threads() {
     for l in &leases {
         seen.insert(l.slot_index());
     }
-    assert_eq!(seen.len(), 4, "parallel pool of size 4 must allocate 4 distinct slots");
+    assert_eq!(
+        seen.len(),
+        4,
+        "parallel pool of size 4 must allocate 4 distinct slots"
+    );
     drop(leases);
 
     // Concurrent re-acquisition must still terminate (no deadlock) — exercise
@@ -198,8 +220,13 @@ fn modifier(id: &str, priority: u32, scope: ModifierScope) -> ModifierVolume {
     use slicer_ir::{ConfigDelta, IndexedTriangleSet};
     ModifierVolume {
         id: id.to_string(),
-        mesh: IndexedTriangleSet { vertices: vec![], indices: vec![] },
-        config_delta: ConfigDelta { fields: HashMap::new() },
+        mesh: IndexedTriangleSet {
+            vertices: vec![],
+            indices: vec![],
+        },
+        config_delta: ConfigDelta {
+            fields: HashMap::new(),
+        },
         priority,
         applies_to: scope,
     }
@@ -237,7 +264,10 @@ fn modifier_resolution_breaks_priority_ties_deterministically_by_id() {
     let order_two = vec![b.clone(), a.clone()];
     let w1 = resolve_winner_for_scope(&order_one, ModifierScope::Infill).unwrap();
     let w2 = resolve_winner_for_scope(&order_two, ModifierScope::Infill).unwrap();
-    assert_eq!(w1.id, w2.id, "tie-break must be insertion-order-independent");
+    assert_eq!(
+        w1.id, w2.id,
+        "tie-break must be insertion-order-independent"
+    );
     assert_eq!(w1.id, "alpha");
 }
 
@@ -248,7 +278,10 @@ fn all_features_modifier_participates_in_every_scope_resolution() {
         modifier("infill-spec", 3, ModifierScope::Infill),
     ];
     let w = resolve_winner_for_scope(&mods, ModifierScope::Infill).unwrap();
-    assert_eq!(w.id, "global", "AllFeatures must compete in scope-specific resolution");
+    assert_eq!(
+        w.id, "global",
+        "AllFeatures must compete in scope-specific resolution"
+    );
 }
 
 // ── Canonical ID / numeric edge cases ───────────────────────────────────
@@ -305,8 +338,12 @@ fn region_key_distinguishes_layer_object_and_region_components() {
 // ── Operability: required progress-event set per slice ──────────────────
 // docs/12 §Operability "Required event set present for each run".
 
-fn ts() -> u64 { 1_000 }
-fn sid() -> String { "slice-1".to_string() }
+fn ts() -> u64 {
+    1_000
+}
+fn sid() -> String {
+    "slice-1".to_string()
+}
 
 #[test]
 fn required_event_set_is_present_for_a_minimal_run() {
@@ -319,13 +356,38 @@ fn required_event_set_is_present_for_a_minimal_run() {
         ProgressPhase::Postpass,
     ] {
         c.record(ProgressEvent::phase_start(sid(), phase, ts()));
-        c.record(ProgressEvent::phase_complete(sid(), phase, ts(), 5, ProgressStatus::Ok));
+        c.record(ProgressEvent::phase_complete(
+            sid(),
+            phase,
+            ts(),
+            5,
+            ProgressStatus::Ok,
+        ));
     }
-    c.record(ProgressEvent::layer_start(sid(), ProgressPhase::PerLayer, 0, ts()));
-    c.record(ProgressEvent::layer_complete(
-        sid(), ProgressPhase::PerLayer, 0, ts(), 1, ProgressStatus::Ok, false,
+    c.record(ProgressEvent::layer_start(
+        sid(),
+        ProgressPhase::PerLayer,
+        0,
+        ts(),
     ));
-    c.record(ProgressEvent::slice_complete(sid(), ts(), 10, ProgressStatus::Ok, false, 0, 0));
+    c.record(ProgressEvent::layer_complete(
+        sid(),
+        ProgressPhase::PerLayer,
+        0,
+        ts(),
+        1,
+        ProgressStatus::Ok,
+        false,
+    ));
+    c.record(ProgressEvent::slice_complete(
+        sid(),
+        ts(),
+        10,
+        ProgressStatus::Ok,
+        false,
+        0,
+        0,
+    ));
 
     let events = c.events();
     let kinds: Vec<&ProgressEventType> = events.iter().map(|e| &e.event).collect();
@@ -344,7 +406,10 @@ fn required_event_set_is_present_for_a_minimal_run() {
         );
     }
     assert_eq!(
-        kinds.iter().filter(|k| ***k == ProgressEventType::SliceComplete).count(),
+        kinds
+            .iter()
+            .filter(|k| ***k == ProgressEventType::SliceComplete)
+            .count(),
         1,
         "slice_complete must appear exactly once"
     );
@@ -356,7 +421,13 @@ fn json_lines_emitter_preserves_event_order_and_one_event_per_line() {
         ProgressEvent::phase_start(sid(), ProgressPhase::PerLayer, ts()),
         ProgressEvent::layer_start(sid(), ProgressPhase::PerLayer, 0, ts()),
         ProgressEvent::layer_complete(
-            sid(), ProgressPhase::PerLayer, 0, ts(), 1, ProgressStatus::Ok, false,
+            sid(),
+            ProgressPhase::PerLayer,
+            0,
+            ts(),
+            1,
+            ProgressStatus::Ok,
+            false,
         ),
     ];
     let mut buf: Vec<u8> = Vec::new();
@@ -393,7 +464,10 @@ fn progress_error_serde_round_trips_with_all_fields() {
     let back: ProgressError = serde_json::from_str(&json).unwrap();
     assert_eq!(back, e);
     // suggestion=None is skipped in serialization (per `skip_serializing_if`).
-    let no_suggestion = ProgressError { suggestion: None, ..e };
+    let no_suggestion = ProgressError {
+        suggestion: None,
+        ..e
+    };
     let json2 = serde_json::to_string(&no_suggestion).unwrap();
     assert!(!json2.contains("suggestion"));
 }

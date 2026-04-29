@@ -68,8 +68,16 @@ fn make_object(vertices: Vec<Point3>, matrix: [f64; 16]) -> ObjectMesh {
 #[test]
 fn identity_transform_world_z_equals_vertex_z() {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 0.0 },
-        Point3 { x: 10.0, y: 10.0, z: 20.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 10.0,
+            y: 10.0,
+            z: 20.0,
+        },
     ];
     let obj = make_object(vertices, identity_matrix());
     let (z_min, z_max) = object_world_z_extent(&obj)
@@ -95,12 +103,20 @@ fn identity_transform_world_z_equals_vertex_z() {
 #[test]
 fn z_translation_shifts_world_z_extent() {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 0.0 },
-        Point3 { x: 0.0, y: 0.0, z: 5.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 5.0,
+        },
     ];
     let obj = make_object(vertices, translation_matrix(0.0, 0.0, 15.0));
-    let (z_min, z_max) = object_world_z_extent(&obj)
-        .expect("translated object must yield an extent");
+    let (z_min, z_max) =
+        object_world_z_extent(&obj).expect("translated object must yield an extent");
 
     assert!(
         (z_min - 15.0).abs() < 1e-5,
@@ -117,13 +133,21 @@ fn z_translation_shifts_world_z_extent() {
 #[test]
 fn negative_z_translation_gives_negative_world_z() {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 10.0 },
-        Point3 { x: 0.0, y: 0.0, z: 20.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 10.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 20.0,
+        },
     ];
     // Shift down by 25 mm → world Z spans [-15, -5].
     let obj = make_object(vertices, translation_matrix(0.0, 0.0, -25.0));
-    let (z_min, z_max) = object_world_z_extent(&obj)
-        .expect("downward-translated object must yield an extent");
+    let (z_min, z_max) =
+        object_world_z_extent(&obj).expect("downward-translated object must yield an extent");
 
     assert!(
         (z_min - (-15.0)).abs() < 1e-5,
@@ -155,8 +179,8 @@ fn full_vertex_span_covered_by_world_z_extent() {
     let expected_z_max = 10.0 * 4.8_f32;
 
     let obj = make_object(vertices, identity_matrix());
-    let (z_min, z_max) = object_world_z_extent(&obj)
-        .expect("multi-vertex object must yield an extent");
+    let (z_min, z_max) =
+        object_world_z_extent(&obj).expect("multi-vertex object must yield an extent");
 
     assert!(
         (z_min - expected_z_min).abs() < 1e-4,
@@ -178,8 +202,16 @@ fn full_vertex_span_covered_by_world_z_extent() {
 #[test]
 fn zero_matrix_treated_as_identity_canonical_surface() {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 3.0 },
-        Point3 { x: 0.0, y: 0.0, z: 11.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 3.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 11.0,
+        },
     ];
     let obj = make_object(vertices, [0.0f64; 16]);
     let (z_min, z_max) = object_world_z_extent(&obj)
@@ -204,12 +236,20 @@ fn zero_matrix_treated_as_identity_canonical_surface() {
 #[test]
 fn xy_translation_does_not_change_world_z() {
     let vertices = vec![
-        Point3 { x: 0.0, y: 0.0, z: 2.0 },
-        Point3 { x: 0.0, y: 0.0, z: 8.0 },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 2.0,
+        },
+        Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 8.0,
+        },
     ];
     let obj = make_object(vertices, translation_matrix(100.0, 50.0, 0.0));
-    let (z_min, z_max) = object_world_z_extent(&obj)
-        .expect("XY-translated object must yield an extent");
+    let (z_min, z_max) =
+        object_world_z_extent(&obj).expect("XY-translated object must yield an extent");
 
     assert!(
         (z_min - 2.0).abs() < 1e-5,

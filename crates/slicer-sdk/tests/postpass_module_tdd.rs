@@ -30,7 +30,7 @@ impl PostpassModule for TestPostpassModule {
 #[test]
 fn test_01_postpass_module_trait_exists_with_lifecycle() {
     // Test that PostpassModule trait can be implemented with on_print_start/on_print_end
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
 
     let module =
         TestPostpassModule::on_print_start(&config).expect("on_print_start should succeed");
@@ -53,8 +53,14 @@ fn test_02_gcode_command_enum_has_all_variants() {
         f: Some(1200.0),
         role: ExtrusionRole::OuterWall,
     };
-    let retract = GcodeCommand::Retract { length: 1.0, speed: 30.0 };
-    let unretract = GcodeCommand::Unretract { length: 1.0, speed: 30.0 };
+    let retract = GcodeCommand::Retract {
+        length: 1.0,
+        speed: 30.0,
+    };
+    let unretract = GcodeCommand::Unretract {
+        length: 1.0,
+        speed: 30.0,
+    };
     let fan_speed = GcodeCommand::FanSpeed { value: 255 };
     let temperature = GcodeCommand::Temperature {
         tool: 0,
@@ -95,7 +101,14 @@ fn test_03_gcode_command_preserves_payload_fields() {
     };
 
     match command {
-        GcodeCommand::Move { x, y, z, e, f, role } => {
+        GcodeCommand::Move {
+            x,
+            y,
+            z,
+            e,
+            f,
+            role,
+        } => {
             assert_eq!(x, Some(42.0));
             assert_eq!(y, None);
             assert_eq!(z, Some(0.2));
@@ -286,7 +299,7 @@ impl PostpassModule for GcodePostprocessTestModule {
 
 #[test]
 fn test_12_run_gcode_postprocess_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = GcodePostprocessTestModule::on_print_start(&config).unwrap();
     let commands = vec![
         GcodeCommand::Move {
@@ -331,7 +344,7 @@ impl PostpassModule for TextPostprocessTestModule {
 
 #[test]
 fn test_13_run_text_postprocess_signature_matches_wit() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = TextPostprocessTestModule::on_print_start(&config).unwrap();
     let input = "G28\nG1 X10 Y20\n";
 
@@ -357,7 +370,7 @@ impl PostpassModule for MinimalPostpassModule {
 
 #[test]
 fn test_14_default_implementations_exist() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = MinimalPostpassModule::on_print_start(&config).unwrap();
     let commands = vec![GcodeCommand::Raw {
         text: "G28".to_string(),

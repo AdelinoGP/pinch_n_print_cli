@@ -457,10 +457,7 @@ impl ConfigView {
     /// accessors will return `None`, matching the undeclared/missing
     /// semantics modules already observe).
     #[must_use]
-    pub fn from_declared<'a, I>(
-        source: &HashMap<ConfigKey, ConfigValue>,
-        declared: I,
-    ) -> Self
+    pub fn from_declared<'a, I>(source: &HashMap<ConfigKey, ConfigValue>, declared: I) -> Self
     where
         I: IntoIterator<Item = &'a str>,
     {

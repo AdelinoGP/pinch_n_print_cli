@@ -120,7 +120,7 @@ impl ConfigViewBuilder {
     /// ```
     #[must_use]
     pub fn build(self) -> ConfigView {
-        ConfigView::from_map(self.fields,)
+        ConfigView::from_map(self.fields)
     }
 }
 

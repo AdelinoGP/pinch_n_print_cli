@@ -15,14 +15,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_host::{
-    build_wasm_instance_pool, execute_prepass, Blackboard, ConfigSchema,
-    CompiledModule, CompiledStage, ExecutionModuleBinding, ExecutionPlan, PrepassStageOutput,
-    PrepassStageRunner, WasmArtifactMetadata,
+    build_wasm_instance_pool, execute_prepass, Blackboard, CompiledModule, CompiledStage,
+    ConfigSchema, ExecutionModuleBinding, ExecutionPlan, PrepassStageOutput, PrepassStageRunner,
+    WasmArtifactMetadata,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigView, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectConfig, ObjectMesh, ObjectSurfaceData, PaintRegionIR, Point3, RegionMapIR, SemVer,
-    SurfaceClassificationIR, Transform3d,
+    BoundingBox3, ConfigView, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectConfig, ObjectMesh,
+    ObjectSurfaceData, PaintRegionIR, Point3, RegionMapIR, SemVer, SurfaceClassificationIR,
+    Transform3d,
 };
 
 /// Vertical rod mesh: two vertices at local Z=0 and Z=10, one triangle.
@@ -37,23 +37,47 @@ fn vertical_rod_mesh() -> MeshIR {
             id: String::from("vertical-rod"),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 { x: 0.0, y: 0.0, z: 0.0 },   // bottom at local Z=0, Y=0
-                    Point3 { x: 0.0, y: 0.0, z: 10.0 },  // top at local Z=10, Y=0
-                    Point3 { x: 0.0, y: 0.0, z: 5.0 },  // third vertex also at Y=0 (zero-thickness)
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    }, // bottom at local Z=0, Y=0
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 10.0,
+                    }, // top at local Z=10, Y=0
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 5.0,
+                    }, // third vertex also at Y=0 (zero-thickness)
                 ],
                 indices: vec![0, 1, 2],
             },
             // rotate_x(90°): (x, y, z) → (x, -z, y)
             // After rotation: both y=0 vertices have world Z = 0
-            transform: Transform3d { matrix: rotate_x_90() },
-            config: ObjectConfig { data: HashMap::new() },
+            transform: Transform3d {
+                matrix: rotate_x_90(),
+            },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: -200.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: -200.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     }
 }
@@ -213,7 +237,10 @@ struct ScriptedRunner {
 impl ScriptedRunner {
     fn new(
         expected_order: &[&str],
-        scripted: Vec<(String, Result<PrepassStageOutput, slicer_host::PrepassExecutionError>)>,
+        scripted: Vec<(
+            String,
+            Result<PrepassStageOutput, slicer_host::PrepassExecutionError>,
+        )>,
         expected_mesh_ptr: usize,
     ) -> Self {
         Self {
@@ -242,8 +269,7 @@ impl PrepassStageRunner for ScriptedRunner {
         let observed_mesh_ptr = Arc::as_ptr(blackboard.mesh()) as usize;
         if self.expected_mesh_ptr != 0 {
             assert_eq!(
-                observed_mesh_ptr,
-                self.expected_mesh_ptr,
+                observed_mesh_ptr, self.expected_mesh_ptr,
                 "ScriptedRunner should receive the expected rotated mesh"
             );
         }
@@ -323,9 +349,9 @@ fn rotated_object_world_extent_is_degenerate() {
             ),
             (
                 String::from("com.example.region-mapping"),
-                Ok(PrepassStageOutput::RegionMap(Arc::new(
-                    region_map_fixture(),
-                ))),
+                Ok(PrepassStageOutput::RegionMap(
+                    Arc::new(region_map_fixture()),
+                )),
             ),
         ],
         Arc::as_ptr(&mesh) as usize,
@@ -346,8 +372,7 @@ fn rotated_object_world_extent_is_degenerate() {
     );
 
     // CORE ASSERTION 1: object_world_z_extent is None for rotate_x(90deg)
-    let extent =
-        slicer_host::model_loader::object_world_z_extent(&mesh.objects[0]);
+    let extent = slicer_host::model_loader::object_world_z_extent(&mesh.objects[0]);
     assert!(
         extent.is_none(),
         "rotate_x(90deg) vertical rod must have degenerate world Z extent (None), got {:?}",
@@ -355,7 +380,9 @@ fn rotated_object_world_extent_is_degenerate() {
     );
 
     // CORE ASSERTION 2: The committed LayerPlanIR has no global_layers
-    let layer_plan = blackboard.layer_plan().expect("layer plan must be committed");
+    let layer_plan = blackboard
+        .layer_plan()
+        .expect("layer plan must be committed");
     assert!(
         layer_plan.global_layers.is_empty(),
         "Degenerate world Z extent must result in zero global_layers, got {} layers",
@@ -382,9 +409,9 @@ fn rotated_object_world_extent_is_degenerate() {
 /// For new_z = y: m[2]*x + m[6]*y + m[10]*z + m[14] = y → m[6]=1
 fn rotate_x_90() -> [f64; 16] {
     let mut m = [0.0f64; 16];
-    m[0] = 1.0;  // col 0 row 0: X → X
+    m[0] = 1.0; // col 0 row 0: X → X
     m[9] = -1.0; // col 1 row 2: new_y = -z (so +z gives -y in output)
-    m[6] = 1.0;  // col 2 row 1: new_z = +y
+    m[6] = 1.0; // col 2 row 1: new_z = +y
     m[15] = 1.0; // homogeneous w
     m
 }

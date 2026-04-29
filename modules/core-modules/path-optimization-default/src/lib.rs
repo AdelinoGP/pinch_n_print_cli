@@ -18,6 +18,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
+use slicer_ir::{ConfigValue, ConfigView, ExtrusionRole};
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::postpass_builders::{GcodeMoveCmd, GcodeOutputBuilder};
@@ -25,7 +26,6 @@ use slicer_sdk::slicer_module;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::OrderedEntityView;
 use slicer_sdk::views::PerimeterRegionView;
-use slicer_ir::{ConfigValue, ConfigView, ExtrusionRole};
 
 const DEFAULT_RETRACT_LENGTH: f32 = 0.8;
 const DEFAULT_RETRACT_SPEED: f32 = 25.0;
@@ -90,7 +90,10 @@ fn nearest_neighbor_permutation(entities: &[OrderedEntityView]) -> Vec<(u32, boo
         }
 
         used[best_idx] = true;
-        let (nx, ny) = (entities[best_idx].end_point.x, entities[best_idx].end_point.y);
+        let (nx, ny) = (
+            entities[best_idx].end_point.x,
+            entities[best_idx].end_point.y,
+        );
         cur_x = nx;
         cur_y = ny;
         result.push((entities[best_idx].original_index, false));
@@ -126,7 +129,12 @@ impl LayerModule for PathOptimizationDefault {
             Some(ConfigValue::Float(f)) => *f as f32,
             _ => DEFAULT_TRAVEL_Z_HOP,
         };
-        Ok(Self { emit_layer_markers, retract_length, retract_speed, travel_z_hop })
+        Ok(Self {
+            emit_layer_markers,
+            retract_length,
+            retract_speed,
+            travel_z_hop,
+        })
     }
 
     fn run_path_optimization(
@@ -140,7 +148,9 @@ impl LayerModule for PathOptimizationDefault {
         let snapshot = collection.get_ordered_entities();
         if !snapshot.is_empty() {
             let items = nearest_neighbor_permutation(snapshot);
-            collection.set_entity_order(items).map_err(|e| ModuleError::fatal(6, e))?;
+            collection
+                .set_entity_order(items)
+                .map_err(|e| ModuleError::fatal(6, e))?;
         }
 
         if self.emit_layer_markers {
@@ -207,10 +217,10 @@ impl LayerModule for PathOptimizationDefault {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
     use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
     use slicer_sdk::postpass_builders::GcodeOutputBuilder;
     use slicer_sdk::traits::LayerModule;
+    use std::collections::HashMap;
 
     #[test]
     fn defaults_emit_layer_markers_true() {

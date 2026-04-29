@@ -21,8 +21,11 @@
 #![allow(missing_docs)]
 
 use slicer_host::dispatch::commit_layer_outputs_for_test;
-use slicer_host::wit_host::{ExtrusionRole, HostExecutionContext, Point3WithWidth, WallFeatureFlag, WallLoopView, WallLoopType, Point3};
 use slicer_host::wit_host::layer::slicer::world_layer::ir_handles::HostPerimeterOutputBuilder;
+use slicer_host::wit_host::{
+    ExtrusionRole, HostExecutionContext, Point3, Point3WithWidth, WallFeatureFlag, WallLoopType,
+    WallLoopView,
+};
 
 /// Helper: make a 2-point horizontal wall loop at a given Z.
 fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) -> WallLoopView {
@@ -31,8 +34,20 @@ fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) 
         loop_type: WallLoopType::Outer,
         path: slicer_host::wit_host::ExtrusionPath3d {
             points: vec![
-                Point3WithWidth { x: x1, y: y1, z: layer_z, width, flow_factor: 1.0 },
-                Point3WithWidth { x: x2, y: y2, z: layer_z, width, flow_factor: 1.0 },
+                Point3WithWidth {
+                    x: x1,
+                    y: y1,
+                    z: layer_z,
+                    width,
+                    flow_factor: 1.0,
+                },
+                Point3WithWidth {
+                    x: x2,
+                    y: y2,
+                    z: layer_z,
+                    width,
+                    flow_factor: 1.0,
+                },
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -72,22 +87,32 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
     let mut ctx = HostExecutionContext::new(
         module_id.to_string(),
         layer_z,
-        0.2,   // effective_layer_height
-        None,  // catchup_z_bottom
-        None,  // mesh_ir
+        0.2,  // effective_layer_height
+        None, // catchup_z_bottom
+        None, // mesh_ir
     );
 
     // Simulate seam-placer output: one wall loop + seam candidates.
     // (resolved_seam would be set via SDK's set_resolved_seam() if WIT allowed it)
-    ctx.perimeter_output.wall_loops.push(make_wall_loop(layer_z, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx.perimeter_output.wall_loop_origins.push(Some((String::new(), 0)));
+    ctx.perimeter_output
+        .wall_loops
+        .push(make_wall_loop(layer_z, 0.0, 0.0, 10.0, 0.0, 0.4));
+    ctx.perimeter_output
+        .wall_loop_origins
+        .push(Some((String::new(), 0)));
 
     // Seam candidates (pos, score).
     let candidate_pos = Point3 {
-        x: 5.0, y: 0.0, z: layer_z,
+        x: 5.0,
+        y: 0.0,
+        z: layer_z,
     };
-    ctx.perimeter_output.seam_candidates.push((candidate_pos, 1.0));
-    ctx.perimeter_output.seam_candidate_origins.push(Some((String::new(), 0)));
+    ctx.perimeter_output
+        .seam_candidates
+        .push((candidate_pos, 1.0));
+    ctx.perimeter_output
+        .seam_candidate_origins
+        .push(Some((String::new(), 0)));
 
     ctx.current_perimeter_region = Some((String::new(), 0));
     ctx.push_resolved_seam(Resource::new_own(0), candidate_pos, 0)
@@ -109,7 +134,8 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
         .perimeter()
         .expect("PerimeterIR must be set after WallPostProcess commit");
 
-    let resolved = &perimeter_ir.regions
+    let resolved = &perimeter_ir
+        .regions
         .first()
         .expect("at least one region")
         .resolved_seam;
@@ -140,13 +166,7 @@ fn empty_perimeter_output_for_wallpostprocess_skips_commit() {
     let module_id = "com.test.empty-perimeter";
     let layer_index = 0u32;
 
-    let ctx = HostExecutionContext::new(
-        module_id.to_string(),
-        0.2,
-        0.2,
-        None,
-        None,
-    );
+    let ctx = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
     // All three collections empty — perimeter disabled or no eligible regions.
 
     let mut arena = slicer_host::LayerArena::new();
@@ -186,13 +206,7 @@ fn resolved_seam_is_applied_only_to_origin_region() {
     let layer_index = 0u32;
     let layer_z = 0.2;
 
-    let mut ctx = HostExecutionContext::new(
-        module_id.to_string(),
-        layer_z,
-        0.2,
-        None,
-        None,
-    );
+    let mut ctx = HostExecutionContext::new(module_id.to_string(), layer_z, 0.2, None, None);
 
     ctx.perimeter_output
         .wall_loops
@@ -271,19 +285,24 @@ fn resolved_seam_is_applied_only_to_origin_region() {
 /// overrides documented for LayerCollectionIR.
 #[test]
 fn path_optimization_stays_comment_only_after_seam_resolution() {
-    use std::sync::Arc;
-    use slicer_host::{Blackboard, CompiledModule, IrAccessMask, LayerArena, LayerStageRunner, WasmEngine, WasmRuntimeDispatcher};
     use slicer_host::instance_pool::build_wasm_instance_pool;
     use slicer_host::manifest::LoadedModule;
-    use slicer_ir::{BoundingBox3, GlobalLayer, LayerCollectionIR, LayerAnnotationKind, Point3};
+    use slicer_host::{
+        Blackboard, CompiledModule, IrAccessMask, LayerArena, LayerStageRunner, WasmEngine,
+        WasmRuntimeDispatcher,
+    };
+    use slicer_ir::{BoundingBox3, GlobalLayer, LayerAnnotationKind, LayerCollectionIR, Point3};
+    use std::sync::Arc;
 
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     // Load the real path-optimization-default.wasm module.
     let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap() // crates/slicer-host
-        .parent().unwrap() // pinch_n_print
+        .parent()
+        .unwrap() // crates/slicer-host
+        .parent()
+        .unwrap() // pinch_n_print
         .join("modules/core-modules/path-optimization-default/path-optimization-default.wasm");
     let bytes = std::fs::read(&wasm_path).unwrap_or_else(|_| {
         panic!(
@@ -292,12 +311,19 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
             wasm_path.display()
         )
     });
-    let component = Arc::new(engine.compile_component(&bytes)
-        .expect("path-optimization-default.wasm must compile"));
+    let component = Arc::new(
+        engine
+            .compile_component(&bytes)
+            .expect("path-optimization-default.wasm must compile"),
+    );
 
     let loaded = LoadedModule {
         id: "com.core.path-optimization-default".to_string(),
-        version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         stage: "Layer::PathOptimization".to_string(),
         wit_world: "slicer:world-layer@1.0.0".to_string(),
         ir_reads: vec!["PerimeterIR".to_string()],
@@ -306,9 +332,21 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         requires_claims: vec![],
         incompatible_with: vec![],
         requires_modules: vec![],
-        min_host_version: slicer_ir::SemVer { major: 0, minor: 1, patch: 0 },
-        min_ir_schema: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
-        max_ir_schema: slicer_ir::SemVer { major: 2, minor: 0, patch: 0 },
+        min_host_version: slicer_ir::SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
+        min_ir_schema: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        max_ir_schema: slicer_ir::SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        },
         config_schema: Default::default(),
         overridable_per_region: vec![],
         overridable_per_layer: vec![],
@@ -317,61 +355,105 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         placeholder_wasm: false,
     };
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, slicer_host::instance_pool::WasmArtifactMetadata { uses_shared_memory: false })
-            .expect("instance pool must build")
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            slicer_host::instance_pool::WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("instance pool must build"),
     );
     let module = CompiledModule {
         module_id: loaded.id.clone(),
         instance_pool: pool,
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(slicer_ir::ConfigView::from_map(std::collections::HashMap::new())),
+        config_view: Arc::new(slicer_ir::ConfigView::from_map(
+            std::collections::HashMap::new(),
+        )),
         wasm_component: Some(component),
     };
 
     // Build PerimeterIR with resolved_seam set on one wall loop.
     let layer_z = 0.2;
     let perimeter_ir = slicer_ir::PerimeterIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         global_layer_index: 0,
-        regions: vec![
-            slicer_ir::PerimeterRegion {
-                object_id: "test-object".to_string(),
-                region_id: 0,
-                walls: vec![
-                    slicer_ir::WallLoop {
-                        perimeter_index: 0,
-                        loop_type: slicer_ir::LoopType::Outer,
-                        path: slicer_ir::ExtrusionPath3D {
-                            points: vec![
-                                slicer_ir::Point3WithWidth { x: 0.0, y: 0.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
-                                slicer_ir::Point3WithWidth { x: 10.0, y: 0.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
-                                slicer_ir::Point3WithWidth { x: 10.0, y: 10.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
-                                slicer_ir::Point3WithWidth { x: 0.0, y: 10.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
-                            ],
-                            role: slicer_ir::ExtrusionRole::OuterWall,
-                            speed_factor: 1.0,
+        regions: vec![slicer_ir::PerimeterRegion {
+            object_id: "test-object".to_string(),
+            region_id: 0,
+            walls: vec![slicer_ir::WallLoop {
+                perimeter_index: 0,
+                loop_type: slicer_ir::LoopType::Outer,
+                path: slicer_ir::ExtrusionPath3D {
+                    points: vec![
+                        slicer_ir::Point3WithWidth {
+                            x: 0.0,
+                            y: 0.0,
+                            z: layer_z,
+                            width: 0.4,
+                            flow_factor: 1.0,
                         },
-                        width_profile: slicer_ir::WidthProfile { widths: vec![0.4; 4] },
-                        feature_flags: vec![],
-                        boundary_type: slicer_ir::WallBoundaryType::Interior,
-                    },
-                ],
-                infill_areas: vec![],
-                seam_candidates: vec![],
-                resolved_seam: Some(slicer_ir::SeamPosition {
-                    point: slicer_ir::Point3WithWidth { x: 5.0, y: 0.0, z: layer_z, width: 0.0, flow_factor: 1.0 },
-                    wall_index: 0,
-                }),
-            },
-        ],
+                        slicer_ir::Point3WithWidth {
+                            x: 10.0,
+                            y: 0.0,
+                            z: layer_z,
+                            width: 0.4,
+                            flow_factor: 1.0,
+                        },
+                        slicer_ir::Point3WithWidth {
+                            x: 10.0,
+                            y: 10.0,
+                            z: layer_z,
+                            width: 0.4,
+                            flow_factor: 1.0,
+                        },
+                        slicer_ir::Point3WithWidth {
+                            x: 0.0,
+                            y: 10.0,
+                            z: layer_z,
+                            width: 0.4,
+                            flow_factor: 1.0,
+                        },
+                    ],
+                    role: slicer_ir::ExtrusionRole::OuterWall,
+                    speed_factor: 1.0,
+                },
+                width_profile: slicer_ir::WidthProfile {
+                    widths: vec![0.4; 4],
+                },
+                feature_flags: vec![],
+                boundary_type: slicer_ir::WallBoundaryType::Interior,
+            }],
+            infill_areas: vec![],
+            seam_candidates: vec![],
+            resolved_seam: Some(slicer_ir::SeamPosition {
+                point: slicer_ir::Point3WithWidth {
+                    x: 5.0,
+                    y: 0.0,
+                    z: layer_z,
+                    width: 0.0,
+                    flow_factor: 1.0,
+                },
+                wall_index: 0,
+            }),
+        }],
     };
 
     // Stage PerimeterIR + empty LayerCollectionIR into arena.
     let mut arena = LayerArena::new();
     arena.set_perimeter(perimeter_ir).unwrap();
     arena.set_layer_collection(LayerCollectionIR {
-        schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         global_layer_index: 0,
         z: layer_z,
         ordered_entities: vec![],
@@ -384,9 +466,24 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
 
     let blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
-            schema_version: slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: slicer_ir::SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             objects: vec![],
-            build_volume: BoundingBox3 { min: Point3 { x: 0.0, y: 0.0, z: 0.0 }, max: Point3 { x: 200.0, y: 200.0, z: 10.0 } },
+            build_volume: BoundingBox3 {
+                min: Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                max: Point3 {
+                    x: 200.0,
+                    y: 200.0,
+                    z: 10.0,
+                },
+            },
         }),
         1,
     );
@@ -408,16 +505,18 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         &module,
         &blackboard,
         &mut arena,
-    ).expect("PathOptimization dispatch must succeed");
+    )
+    .expect("PathOptimization dispatch must succeed");
 
     // Take deferred annotations and verify none of them is a Raw G1 move.
     let annotations = arena.take_deferred_annotations();
-    let raw_g1_count = annotations.iter().filter(|ann| {
-        match &ann.kind {
+    let raw_g1_count = annotations
+        .iter()
+        .filter(|ann| match &ann.kind {
             LayerAnnotationKind::Raw(text) => text.starts_with("G1"),
             _ => false,
-        }
-    }).count();
+        })
+        .count();
 
     // After the Option B fix, PathOptimization does NOT replay wall loops.
     // PerimeterIR already contains seam-first geometry committed by seam-placer.
@@ -439,13 +538,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
     let layer_index = 0u32;
     let layer_z = 0.2;
 
-    let mut ctx = HostExecutionContext::new(
-        module_id.to_string(),
-        layer_z,
-        0.2,
-        None,
-        None,
-    );
+    let mut ctx = HostExecutionContext::new(module_id.to_string(), layer_z, 0.2, None, None);
 
     // Build a wall loop view with 3 points but only 2 feature flags
     // (intentionally mismatched — violates the cardinality invariant).
@@ -454,9 +547,27 @@ fn rotated_points_cardinality_mismatch_rejected() {
         loop_type: WallLoopType::Outer,
         path: slicer_host::wit_host::ExtrusionPath3d {
             points: vec![
-                Point3WithWidth { x: 0.0, y: 0.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
-                Point3WithWidth { x: 5.0, y: 0.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
-                Point3WithWidth { x: 10.0, y: 0.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
+                Point3WithWidth {
+                    x: 0.0,
+                    y: 0.0,
+                    z: layer_z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
+                Point3WithWidth {
+                    x: 5.0,
+                    y: 0.0,
+                    z: layer_z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
+                Point3WithWidth {
+                    x: 10.0,
+                    y: 0.0,
+                    z: layer_z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -483,20 +594,24 @@ fn rotated_points_cardinality_mismatch_rejected() {
     };
 
     let _seam_pos = Point3WithWidth {
-        x: 5.0, y: 0.0, z: layer_z, width: 0.4, flow_factor: 1.0,
+        x: 5.0,
+        y: 0.0,
+        z: layer_z,
+        width: 0.4,
+        flow_factor: 1.0,
     };
 
     // Inject the bad wall loop directly into PerimeterOutputCollected.
     // This bypasses the WIT boundary but verifies that convert_perimeter_output
     // rejects mismatched cardinality (feature_flags.len() != path.points.len()).
     ctx.perimeter_output.rotated_wall_loops.push(bad_wall_loop);
-    ctx.perimeter_output.rotated_wall_loop_origins.push(Some((String::new(), 0)));
+    ctx.perimeter_output
+        .rotated_wall_loop_origins
+        .push(Some((String::new(), 0)));
 
     // convert_perimeter_output should reject the mismatched cardinality.
-    let result = slicer_host::wit_host::convert_perimeter_output(
-        &ctx.perimeter_output,
-        layer_index,
-    );
+    let result =
+        slicer_host::wit_host::convert_perimeter_output(&ctx.perimeter_output, layer_index);
 
     assert!(
         result.is_err(),
@@ -538,8 +653,20 @@ fn seam_z_outside_layer_envelope_rejected() {
         loop_type: WallLoopType::Outer,
         path: slicer_host::wit_host::ExtrusionPath3d {
             points: vec![
-                Point3WithWidth { x: 0.0, y: 0.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
-                Point3WithWidth { x: 5.0, y: 0.0, z: layer_z, width: 0.4, flow_factor: 1.0 },
+                Point3WithWidth {
+                    x: 0.0,
+                    y: 0.0,
+                    z: layer_z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
+                Point3WithWidth {
+                    x: 5.0,
+                    y: 0.0,
+                    z: layer_z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -596,9 +723,9 @@ fn seam_z_outside_layer_envelope_rejected() {
     // - Ok(Err("Z_ENVELOPE_VIOLATION")) = operation rejected (what we want)
     // - Err(wasmtime::Error) = wasmtime itself failed
     let inner_err: Option<&String> = match &result {
-        Ok(Ok(())) => None,                       // success
-        Ok(Err(e)) => Some(e),                   // operation rejected
-        Err(_) => None,                           // wasmtime failed (not our case)
+        Ok(Ok(())) => None,    // success
+        Ok(Err(e)) => Some(e), // operation rejected
+        Err(_) => None,        // wasmtime failed (not our case)
     };
 
     assert!(
@@ -607,7 +734,9 @@ fn seam_z_outside_layer_envelope_rejected() {
     );
     let err_msg = inner_err.unwrap();
     assert!(
-        err_msg.contains("Z_ENVELOPE") || err_msg.contains("envelope") || err_msg.contains("ceiling"),
+        err_msg.contains("Z_ENVELOPE")
+            || err_msg.contains("envelope")
+            || err_msg.contains("ceiling"),
         "error must mention Z_ENVELOPE or envelope or ceiling, got: {err_msg}"
     );
 
@@ -635,27 +764,28 @@ fn seam_z_outside_layer_envelope_rejected() {
 ///   `commit_layer_outputs_for_test` → PerimeterIR in arena.
 #[test]
 fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
-    use std::sync::Arc;
-    use slicer_host::{
-        Blackboard, CompiledModule, IrAccessMask, LayerArena, LayerStageRunner,
-        WasmEngine, WasmRuntimeDispatcher,
-    };
     use slicer_host::instance_pool::build_wasm_instance_pool;
     use slicer_host::manifest::LoadedModule;
-    use slicer_ir::{
-        BoundingBox3, GlobalLayer, PerimeterIR, PerimeterRegion, LoopType,
-        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, RegionKey,
-        SeamPosition, SeamPlanEntry, SeamPlanIR, SemVer, WallBoundaryType,
-        WallFeatureFlags, WallLoop, WidthProfile, RegionId,
+    use slicer_host::{
+        Blackboard, CompiledModule, IrAccessMask, LayerArena, LayerStageRunner, WasmEngine,
+        WasmRuntimeDispatcher,
     };
+    use slicer_ir::{
+        BoundingBox3, ExtrusionPath3D, ExtrusionRole, GlobalLayer, LoopType, PerimeterIR,
+        PerimeterRegion, Point3WithWidth, RegionId, RegionKey, SeamPlanEntry, SeamPlanIR,
+        SeamPosition, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
+    };
+    use std::sync::Arc;
 
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     // Load the real seam-placer.wasm module.
     let wasm_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap() // crates/slicer-host
-        .parent().unwrap() // pinch_n_print
+        .parent()
+        .unwrap() // crates/slicer-host
+        .parent()
+        .unwrap() // pinch_n_print
         .join("modules/core-modules/seam-placer/seam-placer.wasm");
     let bytes = std::fs::read(&wasm_path).unwrap_or_else(|_| {
         panic!(
@@ -680,7 +810,10 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         stage: "Layer::PerimetersPostProcess".to_string(),
         wit_world: "slicer:world-layer@1.0.0".to_string(),
         ir_reads: vec!["PerimeterIR".to_string()],
-        ir_writes: vec!["PerimeterIR.resolved-seam".to_string(), "PerimeterIR.regions.walls".to_string()],
+        ir_writes: vec![
+            "PerimeterIR.resolved-seam".to_string(),
+            "PerimeterIR.regions.walls".to_string(),
+        ],
         claims: vec!["seam-placer".to_string()],
         requires_claims: vec![],
         incompatible_with: vec![],
@@ -883,20 +1016,31 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     // Inside dispatch_layer_call, push_perimeter_regions is called with
     // seam_plan_ir from blackboard, and resolved_seam is injected into
     // PerimeterRegionData before the WASM guest receives the view.
-    eprintln!("DEBUG: before run_stage: seam_plan entries={}", seam_plan_ir.entries.len());
+    eprintln!(
+        "DEBUG: before run_stage: seam_plan entries={}",
+        seam_plan_ir.entries.len()
+    );
     if let Some(entry) = seam_plan_ir.entries.first() {
-        eprintln!("DEBUG: seam_plan entry[0]: layer={}, obj={}, region={}, seam=({:.3},{:.3},{:.3})",
+        eprintln!(
+            "DEBUG: seam_plan entry[0]: layer={}, obj={}, region={}, seam=({:.3},{:.3},{:.3})",
             entry.region_key.global_layer_index,
             entry.region_key.object_id,
             entry.region_key.region_id,
             entry.chosen_candidate.point.x,
             entry.chosen_candidate.point.y,
-            entry.chosen_candidate.point.z);
+            entry.chosen_candidate.point.z
+        );
     }
-    eprintln!("DEBUG: perimeter region: obj={}, region={}", object_id, region_id);
+    eprintln!(
+        "DEBUG: perimeter region: obj={}, region={}",
+        object_id, region_id
+    );
 
     // Check that blackboard has seam_plan BEFORE dispatch
-    eprintln!("DEBUG: blackboard.seam_plan() before run_stage: {:?}", blackboard.seam_plan().is_some());
+    eprintln!(
+        "DEBUG: blackboard.seam_plan() before run_stage: {:?}",
+        blackboard.seam_plan().is_some()
+    );
     if let Some(sp) = blackboard.seam_plan() {
         eprintln!("DEBUG: blackboard seam_plan entries: {}", sp.entries.len());
     }
@@ -910,7 +1054,10 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     )
     .expect("PerimetersPostProcess dispatch must succeed");
 
-    eprintln!("DEBUG: after run_stage, arena.perimeter()={:?}", arena.perimeter().is_some());
+    eprintln!(
+        "DEBUG: after run_stage, arena.perimeter()={:?}",
+        arena.perimeter().is_some()
+    );
 
     // Verify that PerimeterIR in arena now has resolved_seam set
     // from the SeamPlanIR entry.
@@ -925,8 +1072,14 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
 
     if region.resolved_seam.is_none() {
         eprintln!("DEBUG: PerimeterIR.resolved_seam is None after PerimetersPostProcess");
-        eprintln!("DEBUG: region object_id={}, region_id={}", region.object_id, region.region_id);
-        eprintln!("DEBUG: perimeter_ir_after.global_layer_index={}", perimeter_ir_after.global_layer_index);
+        eprintln!(
+            "DEBUG: region object_id={}, region_id={}",
+            region.object_id, region.region_id
+        );
+        eprintln!(
+            "DEBUG: perimeter_ir_after.global_layer_index={}",
+            perimeter_ir_after.global_layer_index
+        );
         eprintln!("DEBUG: seam_placer output: wall_loops={}, seam_candidates={}, resolved_seam_set_by_guest={}",
             perimeter_ir_after.regions.first().map(|r| r.walls.len()).unwrap_or(0),
             perimeter_ir_after.regions.first().map(|r| r.seam_candidates.len()).unwrap_or(0),
@@ -934,7 +1087,16 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         // Also check the raw wall loop vertices
         if let Some(r) = perimeter_ir_after.regions.first() {
             for (wi, loop_) in r.walls.iter().enumerate() {
-                eprintln!("DEBUG: wall[{}] points: {:?}", wi, loop_.path.points.iter().map(|p| (p.x, p.y, p.z)).collect::<Vec<_>>());
+                eprintln!(
+                    "DEBUG: wall[{}] points: {:?}",
+                    wi,
+                    loop_
+                        .path
+                        .points
+                        .iter()
+                        .map(|p| (p.x, p.y, p.z))
+                        .collect::<Vec<_>>()
+                );
             }
         }
     }

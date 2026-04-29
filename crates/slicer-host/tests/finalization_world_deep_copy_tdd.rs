@@ -19,7 +19,11 @@ const FINALIZATION_GUEST_COMPONENT: &str = concat!(
 );
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
@@ -27,8 +31,16 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
         schema_version: semver(1, 0, 0),
         objects: Vec::new(),
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     })
 }
@@ -41,7 +53,11 @@ fn load_guest(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {
         path.display()
     );
     let bytes = std::fs::read(&path).expect("read finalization guest component");
-    Arc::new(engine.compile_component(&bytes).expect("compile finalization guest component"))
+    Arc::new(
+        engine
+            .compile_component(&bytes)
+            .expect("compile finalization guest component"),
+    )
 }
 
 fn make_loaded_module(id: &str) -> LoadedModule {
@@ -71,8 +87,14 @@ fn make_loaded_module(id: &str) -> LoadedModule {
 fn make_module(id: &str, component: Arc<slicer_host::WasmComponent>) -> CompiledModule {
     let loaded = make_loaded_module(id);
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .expect("build instance pool"),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("build instance pool"),
     );
     CompiledModule {
         module_id: id.to_string(),
@@ -86,7 +108,10 @@ fn make_module(id: &str, component: Arc<slicer_host::WasmComponent>) -> Compiled
 
 fn witness_entity(layer: &LayerCollectionIR) -> &PrintEntity {
     // Finalization entity pushes are batch-prepended so the witness appears first.
-    layer.ordered_entities.first().expect("witness entity prepended")
+    layer
+        .ordered_entities
+        .first()
+        .expect("witness entity prepended")
 }
 
 fn make_entity(

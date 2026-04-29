@@ -14,14 +14,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_host::{
-    build_wasm_instance_pool, execute_prepass, Blackboard, ConfigSchema,
-    CompiledModule, CompiledStage, ExecutionModuleBinding, ExecutionPlan, PrepassStageOutput,
-    PrepassStageRunner, WasmArtifactMetadata,
+    build_wasm_instance_pool, execute_prepass, Blackboard, CompiledModule, CompiledStage,
+    ConfigSchema, ExecutionModuleBinding, ExecutionPlan, PrepassStageOutput, PrepassStageRunner,
+    WasmArtifactMetadata,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectConfig, ObjectLayerRef, ObjectMesh, ObjectSurfaceData, PaintRegionIR, Point3,
-    RegionMapIR, SemVer, SurfaceClassificationIR, Transform3d,
+    BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectConfig,
+    ObjectLayerRef, ObjectMesh, ObjectSurfaceData, PaintRegionIR, Point3, RegionMapIR, SemVer,
+    SurfaceClassificationIR, Transform3d,
 };
 
 /// Canned layer-plan fixture representing the EXPECTED output of
@@ -52,8 +52,16 @@ fn translated_layer_plan_fixture() -> LayerPlanIR {
         object_participation: HashMap::from([(
             String::from("translated-obj"),
             vec![
-                ObjectLayerRef { local_layer_index: 0, global_layer_index: 0, effective_layer_height: 0.2 },
-                ObjectLayerRef { local_layer_index: 1, global_layer_index: 1, effective_layer_height: 0.2 },
+                ObjectLayerRef {
+                    local_layer_index: 0,
+                    global_layer_index: 0,
+                    effective_layer_height: 0.2,
+                },
+                ObjectLayerRef {
+                    local_layer_index: 1,
+                    global_layer_index: 1,
+                    effective_layer_height: 0.2,
+                },
             ],
         )]),
     }
@@ -209,7 +217,10 @@ struct ScriptedRunner {
 impl ScriptedRunner {
     fn new(
         expected_order: &[&str],
-        scripted: Vec<(String, Result<PrepassStageOutput, slicer_host::PrepassExecutionError>)>,
+        scripted: Vec<(
+            String,
+            Result<PrepassStageOutput, slicer_host::PrepassExecutionError>,
+        )>,
         expected_mesh_ptr: usize,
     ) -> Self {
         Self {
@@ -238,8 +249,7 @@ impl PrepassStageRunner for ScriptedRunner {
         let observed_mesh_ptr = Arc::as_ptr(blackboard.mesh()) as usize;
         if self.expected_mesh_ptr != 0 {
             assert_eq!(
-                observed_mesh_ptr,
-                self.expected_mesh_ptr,
+                observed_mesh_ptr, self.expected_mesh_ptr,
                 "ScriptedRunner should receive the expected transformed mesh"
             );
         }
@@ -321,9 +331,9 @@ fn translated_object_z_floor_world_z_anchor() {
             ),
             (
                 String::from("com.example.region-mapping"),
-                Ok(PrepassStageOutput::RegionMap(Arc::new(
-                    region_map_fixture(),
-                ))),
+                Ok(PrepassStageOutput::RegionMap(
+                    Arc::new(region_map_fixture()),
+                )),
             ),
         ],
         Arc::as_ptr(&mesh) as usize,
@@ -351,7 +361,9 @@ fn translated_object_z_floor_world_z_anchor() {
 
     // CORE ASSERTION: world-space Z anchor is preserved through the pipeline.
     // global_layers[0].z == 10.2mm (10mm floor + 0.2mm layer height) ≥ 10.0mm.
-    let layer_plan = blackboard.layer_plan().expect("layer plan must be committed");
+    let layer_plan = blackboard
+        .layer_plan()
+        .expect("layer plan must be committed");
     assert!(
         !layer_plan.global_layers.is_empty(),
         "layer plan must have at least one global layer"
@@ -383,21 +395,43 @@ fn world_z_zero_translated_mesh() -> MeshIR {
             id: String::from("translated-obj"),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 0.0, y: 1.0, z: 1.0 }, // z=1 in local → z=11 in world
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 1.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 1.0,
+                        z: 1.0,
+                    }, // z=1 in local → z=11 in world
                 ],
                 indices: vec![0, 1, 2],
             },
             transform: Transform3d { matrix: t },
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: Vec::new(),
             paint_data: None,
             world_z_extent: None, // recomputed on load; None is safe for fresh mesh
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 10.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 10.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     }
 }

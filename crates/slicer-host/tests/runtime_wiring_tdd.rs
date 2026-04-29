@@ -41,8 +41,16 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
         schema_version: semver(1, 0, 0),
         objects: Vec::new(),
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 0.0, y: 0.0, z: 0.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
         },
     })
 }
@@ -193,7 +201,11 @@ layer-parallel-safe = {parallel_safe}
 "#
     );
     fs::write(subdir.join(format!("{stem}.toml")), manifest).unwrap();
-    fs::write(subdir.join(format!("{stem}.wasm")), b"\x00asm\x01\x00\x00\x00").unwrap();
+    fs::write(
+        subdir.join(format!("{stem}.wasm")),
+        b"\x00asm\x01\x00\x00\x00",
+    )
+    .unwrap();
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
@@ -203,20 +215,40 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
     let tmp = TempDir::new().unwrap();
 
     write_module_fixture(
-        tmp.path(), "infill-mod", "infill-mod",
-        "com.test.infill", "Layer::Infill", "slicer:world-layer@1.0.0", true,
+        tmp.path(),
+        "infill-mod",
+        "infill-mod",
+        "com.test.infill",
+        "Layer::Infill",
+        "slicer:world-layer@1.0.0",
+        true,
     );
     write_module_fixture(
-        tmp.path(), "support-mod", "support-mod",
-        "com.test.support", "Layer::Support", "slicer:world-layer@1.0.0", true,
+        tmp.path(),
+        "support-mod",
+        "support-mod",
+        "com.test.support",
+        "Layer::Support",
+        "slicer:world-layer@1.0.0",
+        true,
     );
     write_module_fixture(
-        tmp.path(), "mesh-mod", "mesh-mod",
-        "com.test.mesh", "PrePass::MeshAnalysis", "slicer:world-prepass@1.0.0", true,
+        tmp.path(),
+        "mesh-mod",
+        "mesh-mod",
+        "com.test.mesh",
+        "PrePass::MeshAnalysis",
+        "slicer:world-prepass@1.0.0",
+        true,
     );
     write_module_fixture(
-        tmp.path(), "wipe-mod", "wipe-mod",
-        "com.test.wipe", "PostPass::LayerFinalization", "slicer:world-finalization@1.0.0", false,
+        tmp.path(),
+        "wipe-mod",
+        "wipe-mod",
+        "com.test.wipe",
+        "PostPass::LayerFinalization",
+        "slicer:world-finalization@1.0.0",
+        false,
     );
 
     let report = load_modules_from_roots(&[tmp.path().to_path_buf()]).unwrap();
@@ -251,7 +283,9 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
                 build_wasm_instance_pool(
                     m,
                     parallelism,
-                    WasmArtifactMetadata { uses_shared_memory: false },
+                    WasmArtifactMetadata {
+                        uses_shared_memory: false,
+                    },
                 )
                 .unwrap(),
             );
@@ -294,8 +328,13 @@ fn manifest_driven_pipeline_runs_to_completion() {
     let tmp = TempDir::new().unwrap();
 
     write_module_fixture(
-        tmp.path(), "infill-mod", "infill-mod",
-        "com.test.infill", "Layer::Infill", "slicer:world-layer@1.0.0", true,
+        tmp.path(),
+        "infill-mod",
+        "infill-mod",
+        "com.test.infill",
+        "Layer::Infill",
+        "slicer:world-layer@1.0.0",
+        true,
     );
 
     let report = load_modules_from_roots(&[tmp.path().to_path_buf()]).unwrap();
@@ -304,13 +343,24 @@ fn manifest_driven_pipeline_runs_to_completion() {
     // Build a minimal plan with the loaded module
     let m = &report.modules[0];
     let pool = Arc::new(
-        build_wasm_instance_pool(m, 4, WasmArtifactMetadata { uses_shared_memory: false }).unwrap(),
+        build_wasm_instance_pool(
+            m,
+            4,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .unwrap(),
     );
     let compiled_module = CompiledModule {
         module_id: m.id.clone(),
         instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: m.ir_reads.clone() },
-        ir_write_mask: IrAccessMask { paths: m.ir_writes.clone() },
+        ir_read_mask: IrAccessMask {
+            paths: m.ir_reads.clone(),
+        },
+        ir_write_mask: IrAccessMask {
+            paths: m.ir_writes.clone(),
+        },
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         wasm_component: None,
     };
@@ -348,7 +398,11 @@ fn manifest_driven_pipeline_runs_to_completion() {
     };
 
     let result = run_pipeline(config);
-    assert!(result.is_ok(), "manifest-driven pipeline should complete: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "manifest-driven pipeline should complete: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -356,8 +410,13 @@ fn config_schema_json_is_empty_array_for_modules_without_config() {
     let tmp = TempDir::new().unwrap();
 
     write_module_fixture(
-        tmp.path(), "infill-mod", "infill-mod",
-        "com.test.infill", "Layer::Infill", "slicer:world-layer@1.0.0", true,
+        tmp.path(),
+        "infill-mod",
+        "infill-mod",
+        "com.test.infill",
+        "Layer::Infill",
+        "slicer:world-layer@1.0.0",
+        true,
     );
 
     let report = load_modules_from_roots(&[tmp.path().to_path_buf()]).unwrap();
@@ -436,7 +495,11 @@ layer-parallel-safe = true
 
     let json = build_config_schema_json(&report.modules);
     let schema = json.get("schema").unwrap().as_array().unwrap();
-    assert_eq!(schema.len(), 1, "module with config should appear in schema");
+    assert_eq!(
+        schema.len(),
+        1,
+        "module with config should appear in schema"
+    );
     assert_eq!(schema[0]["module"], "com.test.configured");
     let fields = schema[0]["fields"].as_array().unwrap();
     assert_eq!(fields.len(), 2, "should have 2 config fields");
@@ -452,15 +515,22 @@ fn config_schema_json_matches_documented_shape() {
     // Per docs/01_system_architecture.md, the response shape is:
     // {"schema": [{"module": "...", "fields": [{"key": "...", "type": "..."}]}]}
     let json = build_config_schema_json(&[]);
-    assert!(json.get("schema").is_some(), "response must have 'schema' key");
+    assert!(
+        json.get("schema").is_some(),
+        "response must have 'schema' key"
+    );
     assert!(json["schema"].is_array(), "'schema' must be an array");
-    assert_eq!(json["schema"].as_array().unwrap().len(), 0, "empty modules = empty schema array");
+    assert_eq!(
+        json["schema"].as_array().unwrap().len(),
+        0,
+        "empty modules = empty schema array"
+    );
 }
 
 #[test]
 fn core_modules_build_a_multi_tier_execution_plan() {
-    let core_modules_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../modules/core-modules");
+    let core_modules_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../modules/core-modules");
 
     if !core_modules_root.is_dir() {
         return;
@@ -469,16 +539,39 @@ fn core_modules_build_a_multi_tier_execution_plan() {
     let report = load_modules_from_roots(&[core_modules_root]).unwrap();
 
     // Group by stage prefix to verify tier coverage
-    let prepass_count = report.modules.iter().filter(|m| m.stage.starts_with("PrePass::")).count();
-    let layer_count = report.modules.iter().filter(|m| m.stage.starts_with("Layer::")).count();
-    let finalization_count = report.modules.iter().filter(|m| m.stage == "PostPass::LayerFinalization").count();
-    let postpass_count = report.modules.iter().filter(|m| {
-        m.stage.starts_with("PostPass::") && m.stage != "PostPass::LayerFinalization"
-    }).count();
+    let prepass_count = report
+        .modules
+        .iter()
+        .filter(|m| m.stage.starts_with("PrePass::"))
+        .count();
+    let layer_count = report
+        .modules
+        .iter()
+        .filter(|m| m.stage.starts_with("Layer::"))
+        .count();
+    let finalization_count = report
+        .modules
+        .iter()
+        .filter(|m| m.stage == "PostPass::LayerFinalization")
+        .count();
+    let postpass_count = report
+        .modules
+        .iter()
+        .filter(|m| m.stage.starts_with("PostPass::") && m.stage != "PostPass::LayerFinalization")
+        .count();
 
-    assert!(prepass_count >= 2, "should have prepass modules, got {prepass_count}");
-    assert!(layer_count >= 5, "should have layer modules, got {layer_count}");
-    assert!(finalization_count >= 1, "should have finalization modules, got {finalization_count}");
+    assert!(
+        prepass_count >= 2,
+        "should have prepass modules, got {prepass_count}"
+    );
+    assert!(
+        layer_count >= 5,
+        "should have layer modules, got {layer_count}"
+    );
+    assert!(
+        finalization_count >= 1,
+        "should have finalization modules, got {finalization_count}"
+    );
     // postpass modules are optional in core set
     let _ = postpass_count;
 
@@ -491,7 +584,9 @@ fn core_modules_build_a_multi_tier_execution_plan() {
                 build_wasm_instance_pool(
                     m,
                     if m.layer_parallel_safe { 4 } else { 1 },
-                    WasmArtifactMetadata { uses_shared_memory: false },
+                    WasmArtifactMetadata {
+                        uses_shared_memory: false,
+                    },
                 )
                 .unwrap(),
             );

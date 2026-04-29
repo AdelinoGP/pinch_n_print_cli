@@ -5,8 +5,7 @@
 //! operations fail diagnostically, and that timing is monotonic.
 
 use slicer_host::wit_host::{
-    HostExecutionContext,
-    ir_clip_polygons, ir_offset_polygons, ir_simplify_polygon,
+    ir_clip_polygons, ir_offset_polygons, ir_simplify_polygon, HostExecutionContext,
 };
 
 fn make_square_ir(x: i64, y: i64, size: i64) -> slicer_ir::ExPolygon {
@@ -15,7 +14,10 @@ fn make_square_ir(x: i64, y: i64, size: i64) -> slicer_ir::ExPolygon {
             points: vec![
                 slicer_ir::Point2 { x, y },
                 slicer_ir::Point2 { x: x + size, y },
-                slicer_ir::Point2 { x: x + size, y: y + size },
+                slicer_ir::Point2 {
+                    x: x + size,
+                    y: y + size,
+                },
                 slicer_ir::Point2 { x, y: y + size },
             ],
         },
@@ -32,17 +34,19 @@ fn clip_union_merges_overlapping_squares() {
     let a = make_square_ir(0, 0, 100_000); // 10mm square
     let b = make_square_ir(50_000, 0, 100_000); // offset by 5mm
 
-    let result = ir_clip_polygons(
-        &[a],
-        &[b],
-        slicer_core::polygon_ops::ClipOperation::Union,
-    );
+    let result = ir_clip_polygons(&[a], &[b], slicer_core::polygon_ops::ClipOperation::Union);
 
     // Union of two overlapping squares produces at least one polygon
-    assert!(!result.is_empty(), "union should produce at least one polygon");
+    assert!(
+        !result.is_empty(),
+        "union should produce at least one polygon"
+    );
     // The union polygon should have more than 4 points (it's not just one square)
     let total_points: usize = result.iter().map(|p| p.contour.points.len()).sum();
-    assert!(total_points >= 6, "union of overlapping squares should have >=6 vertices, got {total_points}");
+    assert!(
+        total_points >= 6,
+        "union of overlapping squares should have >=6 vertices, got {total_points}"
+    );
 }
 
 #[test]
@@ -56,10 +60,17 @@ fn clip_intersection_produces_overlap_region() {
         slicer_core::polygon_ops::ClipOperation::Intersection,
     );
 
-    assert!(!result.is_empty(), "intersection of overlapping squares should produce output");
+    assert!(
+        !result.is_empty(),
+        "intersection of overlapping squares should produce output"
+    );
     // Intersection should be smaller than either input
     let pts = &result[0].contour.points;
-    assert_eq!(pts.len(), 4, "intersection of two overlapping squares is a rectangle");
+    assert_eq!(
+        pts.len(),
+        4,
+        "intersection of two overlapping squares is a rectangle"
+    );
 }
 
 #[test]
@@ -85,7 +96,10 @@ fn clip_with_empty_clip_set_returns_subject() {
         slicer_core::polygon_ops::ClipOperation::Union,
     );
 
-    assert!(!result.is_empty(), "union with empty clip should return subject");
+    assert!(
+        !result.is_empty(),
+        "union with empty clip should return subject"
+    );
 }
 
 // ── B. Offset polygons — real Clipper2 results ─────────────────────────
@@ -101,11 +115,15 @@ fn offset_positive_expands_polygon() {
 
     assert!(!result.is_empty(), "offset should produce output");
     // Expanded polygon should have larger extents
-    let max_x = result.iter()
+    let max_x = result
+        .iter()
         .flat_map(|p| p.contour.points.iter().map(|pt| pt.x))
         .max()
         .unwrap();
-    assert!(max_x > 100_000, "offset +1mm should expand beyond 10mm, got max_x={max_x}");
+    assert!(
+        max_x > 100_000,
+        "offset +1mm should expand beyond 10mm, got max_x={max_x}"
+    );
 }
 
 #[test]
@@ -117,12 +135,19 @@ fn offset_negative_shrinks_polygon() {
         slicer_core::polygon_ops::OffsetJoinType::Miter,
     );
 
-    assert!(!result.is_empty(), "inward offset of large polygon should still produce output");
-    let max_x = result.iter()
+    assert!(
+        !result.is_empty(),
+        "inward offset of large polygon should still produce output"
+    );
+    let max_x = result
+        .iter()
         .flat_map(|p| p.contour.points.iter().map(|pt| pt.x))
         .max()
         .unwrap();
-    assert!(max_x < 100_000, "offset -1mm should shrink below 10mm, got max_x={max_x}");
+    assert!(
+        max_x < 100_000,
+        "offset -1mm should shrink below 10mm, got max_x={max_x}"
+    );
 }
 
 // ── C. Simplify polygon — collinearity removal ────────────────────────
@@ -132,14 +157,19 @@ fn simplify_removes_collinear_points() {
     // A square with an extra collinear point on one edge
     let pts = vec![
         slicer_ir::Point2 { x: 0, y: 0 },
-        slicer_ir::Point2 { x: 50, y: 0 },  // collinear with neighbors
+        slicer_ir::Point2 { x: 50, y: 0 }, // collinear with neighbors
         slicer_ir::Point2 { x: 100, y: 0 },
         slicer_ir::Point2 { x: 100, y: 100 },
         slicer_ir::Point2 { x: 0, y: 100 },
     ];
 
     let result = ir_simplify_polygon(pts);
-    assert_eq!(result.len(), 4, "collinear point should be removed, got {}", result.len());
+    assert_eq!(
+        result.len(),
+        4,
+        "collinear point should be removed, got {}",
+        result.len()
+    );
 }
 
 #[test]
@@ -174,9 +204,15 @@ fn object_bounds_fails_with_diagnostic_when_mesh_not_wired() {
     let mut ctx = HostExecutionContext::new("test-mod".into(), 0.0, 0.0, None, None);
 
     let result = hs::Host::object_bounds(&mut ctx, "obj-1".to_string());
-    assert!(result.is_err(), "object_bounds should fail when mesh is not wired");
+    assert!(
+        result.is_err(),
+        "object_bounds should fail when mesh is not wired"
+    );
     let msg = result.unwrap_err().to_string();
-    assert!(msg.contains("not yet wired"), "error should say 'not yet wired': {msg}");
+    assert!(
+        msg.contains("not yet wired"),
+        "error should say 'not yet wired': {msg}"
+    );
     assert!(msg.contains("obj-1"), "error should name the object: {msg}");
 }
 
@@ -188,7 +224,11 @@ fn raycast_returns_none_when_mesh_not_wired() {
 
     let result = hs::Host::raycast_z_down(&mut ctx, "obj-1".to_string(), 5.0, 5.0, 10.0);
     assert!(result.is_ok(), "raycast should succeed (returning None)");
-    assert_eq!(result.unwrap(), None, "raycast should return None when mesh not wired");
+    assert_eq!(
+        result.unwrap(),
+        None,
+        "raycast should return None when mesh not wired"
+    );
 }
 
 // ── E. Timing semantics ───────────────────────────────────────────────
@@ -225,6 +265,12 @@ fn clip_result_changes_when_clip_polygon_moves() {
         slicer_core::polygon_ops::ClipOperation::Intersection,
     );
 
-    assert!(!result_near.is_empty(), "near clip should produce intersection");
-    assert!(result_far.is_empty(), "far clip should produce empty intersection");
+    assert!(
+        !result_near.is_empty(),
+        "near clip should produce intersection"
+    );
+    assert!(
+        result_far.is_empty(),
+        "far clip should produce empty intersection"
+    );
 }

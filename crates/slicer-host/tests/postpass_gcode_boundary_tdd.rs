@@ -10,8 +10,8 @@ use slicer_host::{
     WasmEngine, WasmRuntimeDispatcher,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigValue, ConfigView, ExtrusionRole, GCodeCommand, GCodeIR, MeshIR,
-    Point3, PrintMetadata, SemVer, StageId,
+    BoundingBox3, ConfigValue, ConfigView, ExtrusionRole, GCodeCommand, GCodeIR, MeshIR, Point3,
+    PrintMetadata, SemVer, StageId,
 };
 
 const POSTPASS_GUEST_COMPONENT: &str = concat!(
@@ -20,7 +20,11 @@ const POSTPASS_GUEST_COMPONENT: &str = concat!(
 );
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
@@ -28,8 +32,16 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
         schema_version: semver(1, 0, 0),
         objects: Vec::new(),
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     })
 }
@@ -60,9 +72,17 @@ fn make_loaded_module(id: &str) -> LoadedModule {
 
 fn load_postpass_guest(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {
     let path = PathBuf::from(POSTPASS_GUEST_COMPONENT);
-    assert!(path.exists(), "postpass guest component missing at {}", path.display());
+    assert!(
+        path.exists(),
+        "postpass guest component missing at {}",
+        path.display()
+    );
     let bytes = std::fs::read(&path).expect("read postpass guest component");
-    Arc::new(engine.compile_component(&bytes).expect("compile postpass guest component"))
+    Arc::new(
+        engine
+            .compile_component(&bytes)
+            .expect("compile postpass guest component"),
+    )
 }
 
 fn make_module_with_config(
@@ -72,8 +92,14 @@ fn make_module_with_config(
 ) -> CompiledModule {
     let loaded = make_loaded_module(module_id);
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .expect("build instance pool"),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("build instance pool"),
     );
     CompiledModule {
         module_id: module_id.to_string(),

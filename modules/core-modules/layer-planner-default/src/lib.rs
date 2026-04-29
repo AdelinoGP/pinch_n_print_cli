@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn on_print_start_defaults() {
-        let config = ConfigView::from_map(HashMap::new(),);
+        let config = ConfigView::from_map(HashMap::new());
         let planner = DefaultLayerPlanner::on_print_start(&config).unwrap();
         assert!((planner.layer_height - 0.2).abs() < 1e-6);
         assert!((planner.first_layer_height - 0.2).abs() < 1e-6);

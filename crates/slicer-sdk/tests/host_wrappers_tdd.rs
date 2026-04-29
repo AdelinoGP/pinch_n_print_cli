@@ -101,17 +101,33 @@ fn object_bounds_returns_host_unavailable_without_source() {
 fn raycast_and_normal_route_through_installed_mesh_source() {
     test_support::install_mesh_source(StubMesh {
         bounds: BoundingBox3 {
-            min: Point3 { x: -1.0, y: -2.0, z: 0.0 },
-            max: Point3 { x: 1.0, y: 2.0, z: 5.0 },
+            min: Point3 {
+                x: -1.0,
+                y: -2.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 2.0,
+                z: 5.0,
+            },
         },
         z_hit: Some(3.25),
-        normal: Some(Point3 { x: 0.0, y: 0.0, z: 1.0 }),
+        normal: Some(Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 1.0,
+        }),
     });
 
     assert_eq!(host::raycast_z_down("obj-1", 0.0, 0.0, 10.0), Some(3.25));
     assert_eq!(
         host::surface_normal_at("obj-1", 0.0, 0.0, 0.0),
-        Some(Point3 { x: 0.0, y: 0.0, z: 1.0 })
+        Some(Point3 {
+            x: 0.0,
+            y: 0.0,
+            z: 1.0
+        })
     );
     let bb = host::object_bounds("obj-1").expect("bounds available");
     assert_eq!(bb.max.z, 5.0);
@@ -162,7 +178,10 @@ fn offset_polygons_shrinks_and_grows() {
     let grown = host::offset_polygons(&a, 1.0, OffsetJoinType::Miter);
     let shrunk = host::offset_polygons(&a, -1.0, OffsetJoinType::Miter);
     assert!(!grown.is_empty(), "positive offset must produce output");
-    assert!(!shrunk.is_empty(), "negative offset within bounds must produce output");
+    assert!(
+        !shrunk.is_empty(),
+        "negative offset within bounds must produce output"
+    );
 }
 
 #[test]
@@ -173,7 +192,10 @@ fn simplify_polygon_drops_collinear_vertices() {
             Point2 { x: 0, y: 0 },
             Point2 { x: 50_000, y: 0 }, // collinear with neighbors
             Point2 { x: 100_000, y: 0 },
-            Point2 { x: 100_000, y: 100_000 },
+            Point2 {
+                x: 100_000,
+                y: 100_000,
+            },
             Point2 { x: 0, y: 100_000 },
         ],
     };
@@ -202,5 +224,8 @@ fn now_us_is_monotonic_within_a_thread() {
     let a = host::now_us();
     let b = host::now_us();
     let c = host::now_us();
-    assert!(a <= b && b <= c, "now_us must be non-decreasing: {a},{b},{c}");
+    assert!(
+        a <= b && b <= c,
+        "now_us must be non-decreasing: {a},{b},{c}"
+    );
 }

@@ -27,7 +27,9 @@ fn config_view_backing_map_stays_private() {
     // Find the `pub struct ConfigView { ... }` block and assert no `pub`
     // field inside it. We look for the literal declaration since the
     // grep needs to ignore unrelated structs in the same file.
-    let start = text.find("pub struct ConfigView").expect("ConfigView struct present");
+    let start = text
+        .find("pub struct ConfigView")
+        .expect("ConfigView struct present");
     let tail = &text[start..];
     let brace_open = tail.find('{').expect("ConfigView struct open brace");
     // Walk to the matching close brace.

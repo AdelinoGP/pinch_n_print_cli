@@ -471,7 +471,8 @@ fn postpass_executor_continues_after_nonfatal_text_postprocess_error() {
 
     let emitter = StubEmitter::new();
     let serializer = StubSerializer::new();
-    let mut runner = NonFatalErrorRunner::nonfatal_text_at("com.example.nonfatal-text", "final output");
+    let mut runner =
+        NonFatalErrorRunner::nonfatal_text_at("com.example.nonfatal-text", "final output");
 
     let result = execute_postpass(
         &plan,

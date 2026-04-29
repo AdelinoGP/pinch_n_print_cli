@@ -32,8 +32,12 @@ fn single_object_mesh(its: IndexedTriangleSet) -> MeshIR {
         let mut z_min = f32::INFINITY;
         let mut z_max = f32::NEG_INFINITY;
         for v in &its.vertices {
-            if v.z < z_min { z_min = v.z; }
-            if v.z > z_max { z_max = v.z; }
+            if v.z < z_min {
+                z_min = v.z;
+            }
+            if v.z > z_max {
+                z_max = v.z;
+            }
         }
         if z_min.is_finite() && z_max.is_finite() && z_max > z_min {
             Some((z_min, z_max))

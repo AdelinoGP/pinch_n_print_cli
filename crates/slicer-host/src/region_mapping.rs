@@ -58,12 +58,25 @@ pub enum RegionMappingError {
 impl std::fmt::Display for RegionMappingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::CapExceeded { entry_count, cap, top_contributors, remediation } => {
-                write!(f, "region map has {entry_count} entries, exceeding cap of {cap}; ")?;
+            Self::CapExceeded {
+                entry_count,
+                cap,
+                top_contributors,
+                remediation,
+            } => {
+                write!(
+                    f,
+                    "region map has {entry_count} entries, exceeding cap of {cap}; "
+                )?;
                 if !top_contributors.is_empty() {
                     let contribs: Vec<String> = top_contributors
                         .iter()
-                        .map(|c| format!("{}({} regions, {} layers)", c.object_id, c.region_count, c.layer_count))
+                        .map(|c| {
+                            format!(
+                                "{}({} regions, {} layers)",
+                                c.object_id, c.region_count, c.layer_count
+                            )
+                        })
                         .collect();
                     write!(f, "top contributors: {}; ", contribs.join(", "))?;
                 }
@@ -120,7 +133,11 @@ pub fn execute_region_mapping_with_cap(
             .take(5)
             .map(|(object_id, region_count)| {
                 let layer_count = layer_counts.len();
-                TopContributor { object_id, region_count, layer_count }
+                TopContributor {
+                    object_id,
+                    region_count,
+                    layer_count,
+                }
             })
             .collect();
         let remediation = "reduce region granularity, raise cap, or split job".to_string();

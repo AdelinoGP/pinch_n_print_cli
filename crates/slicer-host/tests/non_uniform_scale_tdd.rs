@@ -42,9 +42,9 @@ fn identity_matrix() -> [f64; 16] {
 /// Column-major 4×4: diagonal entries are (sx, sy, sz, 1).
 fn scale_matrix(sx: f64, sy: f64, sz: f64) -> [f64; 16] {
     let mut m = [0.0f64; 16];
-    m[0] = sx;   // col 0, row 0
-    m[5] = sy;   // col 1, row 1
-    m[10] = sz;  // col 2, row 2
+    m[0] = sx; // col 0, row 0
+    m[5] = sy; // col 1, row 1
+    m[10] = sz; // col 2, row 2
     m[15] = 1.0;
     m
 }
@@ -54,8 +54,16 @@ fn make_object(matrix: [f64; 16]) -> ObjectMesh {
         id: "test-object".to_string(),
         mesh: IndexedTriangleSet {
             vertices: vec![
-                Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                Point3 { x: 1.0, y: 1.0, z: 1.0 },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 1.0,
+                    z: 1.0,
+                },
             ],
             indices: vec![],
         },
@@ -112,7 +120,10 @@ fn non_uniform_scale_x_ne_y_is_rejected() {
         "scale_x=2.0, scale_y=1.0, scale_z=2.0 should be Err, got Ok"
     );
     assert!(
-        matches!(result, Err(ModelLoadError::NonUniformScaleUnsupported { .. })),
+        matches!(
+            result,
+            Err(ModelLoadError::NonUniformScaleUnsupported { .. })
+        ),
         "error should be NonUniformScaleUnsupported, got: {result:?}"
     );
 }
@@ -132,7 +143,10 @@ fn non_uniform_scale_y_ne_z_is_rejected() {
         "scale_x=1.0, scale_y=1.0, scale_z=3.0 should be Err, got Ok"
     );
     assert!(
-        matches!(result, Err(ModelLoadError::NonUniformScaleUnsupported { .. })),
+        matches!(
+            result,
+            Err(ModelLoadError::NonUniformScaleUnsupported { .. })
+        ),
         "error should be NonUniformScaleUnsupported, got: {result:?}"
     );
 }
@@ -151,7 +165,12 @@ fn non_uniform_scale_all_axes_different_is_rejected() {
         result.is_err(),
         "non-uniform scale (1.5, 2.0, 3.0) should be Err, got Ok"
     );
-    if let Err(ModelLoadError::NonUniformScaleUnsupported { scale_x, scale_y, scale_z }) = &result {
+    if let Err(ModelLoadError::NonUniformScaleUnsupported {
+        scale_x,
+        scale_y,
+        scale_z,
+    }) = &result
+    {
         assert!(
             (scale_x - 1.5).abs() < 1e-5,
             "scale_x should be ~1.5, got {scale_x}"

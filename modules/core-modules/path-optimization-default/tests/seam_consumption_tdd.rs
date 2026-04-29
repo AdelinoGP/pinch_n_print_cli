@@ -26,13 +26,23 @@ use slicer_sdk::prelude::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
 /// Helper: make a 2-point horizontal wall loop.
-fn make_wall_loop(
-    x1: f32, y1: f32, x2: f32, y2: f32, z: f32, width: f32,
-) -> WallLoop {
+fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32, width: f32) -> WallLoop {
     let path = slicer_ir::ExtrusionPath3D {
         points: vec![
-            Point3WithWidth { x: x1, y: y1, z, width, flow_factor: 1.0 },
-            Point3WithWidth { x: x2, y: y2, z, width, flow_factor: 1.0 },
+            Point3WithWidth {
+                x: x1,
+                y: y1,
+                z,
+                width,
+                flow_factor: 1.0,
+            },
+            Point3WithWidth {
+                x: x2,
+                y: y2,
+                z,
+                width,
+                flow_factor: 1.0,
+            },
         ],
         role: ExtrusionRole::OuterWall,
         speed_factor: 1.0,
@@ -61,7 +71,11 @@ fn no_move_commands_emitted_when_perimeter_already_rotated() {
     let wall_loop = make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2, 0.4);
     let resolved_seam = SeamPosition {
         point: Point3WithWidth {
-            x: 5.0, y: 0.0, z: 0.2, width: 0.0, flow_factor: 1.0,
+            x: 5.0,
+            y: 0.0,
+            z: 0.2,
+            width: 0.0,
+            flow_factor: 1.0,
         },
         wall_index: 0,
     };
@@ -82,18 +96,27 @@ fn no_move_commands_emitted_when_perimeter_already_rotated() {
     let mut output = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
     let mut collection = slicer_sdk::LayerCollectionBuilder::new();
     module
-        .run_path_optimization(7, &[region], &mut output, &mut collection, &slicer_ir::ConfigView::default())
+        .run_path_optimization(
+            7,
+            &[region],
+            &mut output,
+            &mut collection,
+            &slicer_ir::ConfigView::default(),
+        )
         .expect("run_path_optimization must succeed");
 
     let commands = output.commands();
-    let move_count = commands.iter().filter(|c| {
-        matches!(
-            c,
-            slicer_sdk::postpass_types::GcodeOutputCommand::Command(
-                slicer_sdk::postpass_types::GcodeCommand::Move { .. }
+    let move_count = commands
+        .iter()
+        .filter(|c| {
+            matches!(
+                c,
+                slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                    slicer_sdk::postpass_types::GcodeCommand::Move { .. }
+                )
             )
-        )
-    }).count();
+        })
+        .count();
 
     assert_eq!(
         move_count, 0,
@@ -101,14 +124,17 @@ fn no_move_commands_emitted_when_perimeter_already_rotated() {
     );
 
     // But the marker comment must be present.
-    let comment_count = commands.iter().filter(|c| {
-        matches!(
-            c,
-            slicer_sdk::postpass_types::GcodeOutputCommand::Command(
-                slicer_sdk::postpass_types::GcodeCommand::Comment { .. }
+    let comment_count = commands
+        .iter()
+        .filter(|c| {
+            matches!(
+                c,
+                slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                    slicer_sdk::postpass_types::GcodeCommand::Comment { .. }
+                )
             )
-        )
-    }).count();
+        })
+        .count();
     assert!(
         comment_count > 0,
         "path-optimization-default must emit the per-layer marker comment"
@@ -136,20 +162,29 @@ fn missing_resolved_seam_leaves_wall_loop_order_unchanged() {
     let mut output = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
     let mut collection = slicer_sdk::LayerCollectionBuilder::new();
     module
-        .run_path_optimization(7, &[region], &mut output, &mut collection, &slicer_ir::ConfigView::default())
+        .run_path_optimization(
+            7,
+            &[region],
+            &mut output,
+            &mut collection,
+            &slicer_ir::ConfigView::default(),
+        )
         .expect("run_path_optimization must succeed");
 
     let commands = output.commands();
 
     // Without resolved_seam, NO Move commands should be emitted (only the comment).
-    let move_count = commands.iter().filter(|c| {
-        matches!(
-            c,
-            slicer_sdk::postpass_types::GcodeOutputCommand::Command(
-                slicer_sdk::postpass_types::GcodeCommand::Move { .. }
+    let move_count = commands
+        .iter()
+        .filter(|c| {
+            matches!(
+                c,
+                slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                    slicer_sdk::postpass_types::GcodeCommand::Move { .. }
+                )
             )
-        )
-    }).count();
+        })
+        .count();
     assert_eq!(
         move_count, 0,
         "absent resolved_seam must not cause Move fabrication, got {move_count} Move commands"
@@ -162,7 +197,11 @@ fn seam_started_wall_replay_is_deterministic() {
     let wall_loop = make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2, 0.4);
     let resolved_seam = SeamPosition {
         point: Point3WithWidth {
-            x: 5.0, y: 0.0, z: 0.2, width: 0.0, flow_factor: 1.0,
+            x: 5.0,
+            y: 0.0,
+            z: 0.2,
+            width: 0.0,
+            flow_factor: 1.0,
         },
         wall_index: 0,
     };
@@ -183,13 +222,25 @@ fn seam_started_wall_replay_is_deterministic() {
     let mut output1 = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
     let mut collection1 = slicer_sdk::LayerCollectionBuilder::new();
     module
-        .run_path_optimization(7, &[region.clone()], &mut output1, &mut collection1, &slicer_ir::ConfigView::default())
+        .run_path_optimization(
+            7,
+            &[region.clone()],
+            &mut output1,
+            &mut collection1,
+            &slicer_ir::ConfigView::default(),
+        )
         .expect("first run must succeed");
 
     let mut output2 = slicer_sdk::postpass_builders::GcodeOutputBuilder::new();
     let mut collection2 = slicer_sdk::LayerCollectionBuilder::new();
     module
-        .run_path_optimization(7, &[region.clone()], &mut output2, &mut collection2, &slicer_ir::ConfigView::default())
+        .run_path_optimization(
+            7,
+            &[region.clone()],
+            &mut output2,
+            &mut collection2,
+            &slicer_ir::ConfigView::default(),
+        )
         .expect("second run must succeed");
 
     let cmds1 = output1.commands();

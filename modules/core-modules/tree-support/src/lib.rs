@@ -19,8 +19,8 @@ use slicer_ir::{
     PaintSemantic, Point2, Point3WithWidth,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
-use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
@@ -140,8 +140,8 @@ impl LayerModule for TreeSupport {
             // branch geometry directly and skip the per-layer grid-MST
             // fill. The grid-MST filler remains the fallback path when
             // no planner module is installed.
-            let planned_segments = paint
-                .support_plan_segments_for(region.object_id().as_str(), *region.region_id());
+            let planned_segments =
+                paint.support_plan_segments_for(region.object_id().as_str(), *region.region_id());
             if !planned_segments.is_empty() {
                 for segment in planned_segments {
                     let mut path = segment.clone();
@@ -558,7 +558,7 @@ mod tests {
 
     #[test]
     fn on_print_start_defaults() {
-        let config = ConfigView::from_map(std::collections::HashMap::new(),);
+        let config = ConfigView::from_map(std::collections::HashMap::new());
         let module = TreeSupport::on_print_start(&config).unwrap();
         assert!(!module.enabled);
         assert!((module.density - 0.2).abs() < 0.001);

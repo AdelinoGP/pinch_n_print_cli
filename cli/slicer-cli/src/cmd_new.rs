@@ -7,9 +7,7 @@ use std::fmt;
 use std::fs;
 use std::path::Path;
 
-use slicer_schema::{
-    lifecycle_exports_for_world, stage_by_id, STAGES,
-};
+use slicer_schema::{lifecycle_exports_for_world, stage_by_id, STAGES};
 
 #[cfg(test)]
 use slicer_schema::world_for_stage_id;
@@ -202,8 +200,7 @@ fn generate_manifest(name: &str, stage: &str) -> String {
     // (lifecycle exports for the world + the detected stage export).
     // Kept as TOML comments so it stays valid TOML without requiring a
     // new manifest schema field.
-    let mut expected_exports: Vec<&str> =
-        lifecycle_exports_for_world(wit_world).to_vec();
+    let mut expected_exports: Vec<&str> = lifecycle_exports_for_world(wit_world).to_vec();
     expected_exports.push(spec.wit_export);
     let expected_exports_line = expected_exports.join(", ");
 
@@ -362,7 +359,11 @@ fn trait_info_for_stage(stage: &str) -> (&'static str, &'static str, &'static st
     let fn_signature = stage_fn_signature(stage);
     match stage_by_id(stage) {
         Some(spec) => (spec.trait_name, spec.method, fn_signature),
-        None => ("LayerModule", "run", "fn run(&self) -> Result<(), ModuleError>"),
+        None => (
+            "LayerModule",
+            "run",
+            "fn run(&self) -> Result<(), ModuleError>",
+        ),
     }
 }
 

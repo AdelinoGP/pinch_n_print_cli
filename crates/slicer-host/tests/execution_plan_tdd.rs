@@ -5,12 +5,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_host::{
-    build_execution_plan, build_wasm_instance_pool, CompiledModule, ConfigFieldEntry,
-    ConfigSchema, ExecutionModuleBinding, ExecutionPlanRequest, SortedStageModules,
-    WasmArtifactMetadata,
+    build_execution_plan, build_wasm_instance_pool, CompiledModule, ConfigFieldEntry, ConfigSchema,
+    ExecutionModuleBinding, ExecutionPlanRequest, SortedStageModules, WasmArtifactMetadata,
 };
 use slicer_ir::{
-    ActiveRegion, ConfigValue, ConfigView, GlobalLayer, RegionKey, RegionPlan, ResolvedConfig, SemVer,
+    ActiveRegion, ConfigValue, ConfigView, GlobalLayer, RegionKey, RegionPlan, ResolvedConfig,
+    SemVer,
 };
 
 #[test]
@@ -178,10 +178,13 @@ fn bound_module(
     // the synthetic fixture. This mirrors the production contract where
     // live views come from `bind_module_config_view(module, source)`.
     for key in config_view.keys() {
-        module
-            .config_schema
-            .entries
-            .insert(key.clone(), ConfigFieldEntry { field_type: "bool".to_string(), ..Default::default() });
+        module.config_schema.entries.insert(
+            key.clone(),
+            ConfigFieldEntry {
+                field_type: "bool".to_string(),
+                ..Default::default()
+            },
+        );
     }
 
     let instance_pool = Arc::new(
@@ -211,10 +214,12 @@ fn sorted_stage(stage_id: &str, module_ids: &[&str]) -> SortedStageModules {
 }
 
 fn config_view(entries: &[(&str, ConfigValue)]) -> ConfigView {
-    ConfigView::from_map(entries
+    ConfigView::from_map(
+        entries
             .iter()
             .map(|(key, value)| (String::from(*key), value.clone()))
-            .collect(),)
+            .collect(),
+    )
 }
 
 fn loaded_module(
@@ -282,7 +287,10 @@ fn layer_index_at_budget_boundary_is_rejected() {
     let err = build_execution_plan(&request)
         .expect_err("layer index at budget boundary should be rejected");
     match err {
-        ExecutionPlanError::LayerIndexBudgetExceeded { layer_index, budget } => {
+        ExecutionPlanError::LayerIndexBudgetExceeded {
+            layer_index,
+            budget,
+        } => {
             assert_eq!(layer_index, MAX_LAYER_INDEX);
             assert_eq!(budget, MAX_LAYER_INDEX);
         }
@@ -373,8 +381,8 @@ fn region_map_exceeding_cap_is_rejected() {
         region_plans: Arc::new(entries),
     };
 
-    let err = build_execution_plan(&request)
-        .expect_err("region map exceeding cap should be rejected");
+    let err =
+        build_execution_plan(&request).expect_err("region map exceeding cap should be rejected");
     match err {
         ExecutionPlanError::RegionMapCapExceeded { entry_count, cap } => {
             assert!(entry_count > DEFAULT_REGION_MAP_CAP);
@@ -451,8 +459,20 @@ fn plan_construction_is_deterministic_across_repeated_calls() {
             sorted_stages: vec![sorted_stage("Layer::Infill", &["com.test.infill"])],
             module_bindings: vec![module],
             global_layers: Arc::new(vec![
-                GlobalLayer { index: 0, z: 0.2, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false },
-                GlobalLayer { index: 1, z: 0.4, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false },
+                GlobalLayer {
+                    index: 0,
+                    z: 0.2,
+                    active_regions: Vec::new(),
+                    has_nonplanar: false,
+                    is_sync_layer: false,
+                },
+                GlobalLayer {
+                    index: 1,
+                    z: 0.4,
+                    active_regions: Vec::new(),
+                    has_nonplanar: false,
+                    is_sync_layer: false,
+                },
             ]),
             region_plans: Arc::new(HashMap::new()),
         }
@@ -489,7 +509,10 @@ fn layer_index_u32_max_is_rejected_with_budget_error() {
     };
 
     match build_execution_plan(&request).expect_err("u32::MAX must be rejected") {
-        ExecutionPlanError::LayerIndexBudgetExceeded { layer_index, budget } => {
+        ExecutionPlanError::LayerIndexBudgetExceeded {
+            layer_index,
+            budget,
+        } => {
             assert_eq!(layer_index, u32::MAX);
             assert_eq!(budget, MAX_LAYER_INDEX);
         }
@@ -531,9 +554,27 @@ fn layer_budget_reports_first_offending_layer_deterministically() {
         sorted_stages: Vec::new(),
         module_bindings: Vec::new(),
         global_layers: Arc::new(vec![
-            GlobalLayer { index: MAX_LAYER_INDEX,     z: 0.0, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false },
-            GlobalLayer { index: MAX_LAYER_INDEX + 1, z: 0.2, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false },
-            GlobalLayer { index: u32::MAX,           z: 0.4, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false },
+            GlobalLayer {
+                index: MAX_LAYER_INDEX,
+                z: 0.0,
+                active_regions: Vec::new(),
+                has_nonplanar: false,
+                is_sync_layer: false,
+            },
+            GlobalLayer {
+                index: MAX_LAYER_INDEX + 1,
+                z: 0.2,
+                active_regions: Vec::new(),
+                has_nonplanar: false,
+                is_sync_layer: false,
+            },
+            GlobalLayer {
+                index: u32::MAX,
+                z: 0.4,
+                active_regions: Vec::new(),
+                has_nonplanar: false,
+                is_sync_layer: false,
+            },
         ]),
         region_plans: Arc::new(HashMap::new()),
     };
@@ -590,18 +631,20 @@ fn region_map_cap_reports_exact_computed_entry_count() {
 fn duplicate_module_binding_rejected_with_stable_diagnostic() {
     use slicer_host::ExecutionPlanError;
 
-    let mk_binding = || bound_module(
-        loaded_module(
-            "com.test.dup",
-            "Layer::Infill",
-            &[],
-            &[],
-            true,
-            "slicer:world-layer@1.0.0",
-        ),
-        ConfigView::from_map(HashMap::new()),
-        2,
-    );
+    let mk_binding = || {
+        bound_module(
+            loaded_module(
+                "com.test.dup",
+                "Layer::Infill",
+                &[],
+                &[],
+                true,
+                "slicer:world-layer@1.0.0",
+            ),
+            ConfigView::from_map(HashMap::new()),
+            2,
+        )
+    };
     let request = ExecutionPlanRequest {
         sorted_stages: vec![sorted_stage("Layer::Infill", &["com.test.dup"])],
         module_bindings: vec![mk_binding(), mk_binding()],
@@ -628,10 +671,7 @@ fn resolve_active_regions_uses_precomputed_index() {
         GlobalLayer {
             index: 0,
             z: 0.2,
-            active_regions: vec![
-                active_region("cube", 1),
-                active_region("cube", 2),
-            ],
+            active_regions: vec![active_region("cube", 1), active_region("cube", 2)],
             has_nonplanar: false,
             is_sync_layer: false,
         },
@@ -646,18 +686,62 @@ fn resolve_active_regions_uses_precomputed_index() {
 
     // Three region plans across two layers and two objects.
     let region_plans = Arc::new(HashMap::from([
-        (RegionKey { global_layer_index: 0, object_id: "cube".into(), region_id: 1 }, RegionPlan { config: ResolvedConfig::default(), stage_modules: HashMap::new() }),
-        (RegionKey { global_layer_index: 0, object_id: "cube".into(), region_id: 2 }, RegionPlan { config: ResolvedConfig::default(), stage_modules: HashMap::new() }),
-        (RegionKey { global_layer_index: 1, object_id: "cube".into(), region_id: 1 }, RegionPlan { config: ResolvedConfig::default(), stage_modules: HashMap::new() }),
+        (
+            RegionKey {
+                global_layer_index: 0,
+                object_id: "cube".into(),
+                region_id: 1,
+            },
+            RegionPlan {
+                config: ResolvedConfig::default(),
+                stage_modules: HashMap::new(),
+            },
+        ),
+        (
+            RegionKey {
+                global_layer_index: 0,
+                object_id: "cube".into(),
+                region_id: 2,
+            },
+            RegionPlan {
+                config: ResolvedConfig::default(),
+                stage_modules: HashMap::new(),
+            },
+        ),
+        (
+            RegionKey {
+                global_layer_index: 1,
+                object_id: "cube".into(),
+                region_id: 1,
+            },
+            RegionPlan {
+                config: ResolvedConfig::default(),
+                stage_modules: HashMap::new(),
+            },
+        ),
     ]));
 
     let mod_a = bound_module(
-        loaded_module("mod.a", "Layer::Perimeters", &[], &[], true, "slicer:world-layer@1.0.0"),
+        loaded_module(
+            "mod.a",
+            "Layer::Perimeters",
+            &[],
+            &[],
+            true,
+            "slicer:world-layer@1.0.0",
+        ),
         ConfigView::from_map(HashMap::new()),
         4,
     );
     let mod_b = bound_module(
-        loaded_module("mod.b", "Layer::Infill", &[], &[], true, "slicer:world-layer@1.0.0"),
+        loaded_module(
+            "mod.b",
+            "Layer::Infill",
+            &[],
+            &[],
+            true,
+            "slicer:world-layer@1.0.0",
+        ),
         ConfigView::from_map(HashMap::new()),
         4,
     );
@@ -677,16 +761,28 @@ fn resolve_active_regions_uses_precomputed_index() {
     // mod.a on layer 0 → 2 regions
     let layer0 = &global_layers[0];
     let result = plan.resolve_active_regions(layer0, &plan.per_layer_stages[0].modules[0]);
-    let region_keys: Vec<_> = result.iter().map(|r| (r.object_id.clone(), r.region_id)).collect();
-    assert_eq!(region_keys, &[("cube".into(), 1), ("cube".into(), 2)],
-        "mod.a on layer 0 must find 2 regions");
+    let region_keys: Vec<_> = result
+        .iter()
+        .map(|r| (r.object_id.clone(), r.region_id))
+        .collect();
+    assert_eq!(
+        region_keys,
+        &[("cube".into(), 1), ("cube".into(), 2)],
+        "mod.a on layer 0 must find 2 regions"
+    );
 
     // mod.a on layer 1 → 1 region
     let layer1 = &global_layers[1];
     let result = plan.resolve_active_regions(layer1, &plan.per_layer_stages[0].modules[0]);
-    let region_keys: Vec<_> = result.iter().map(|r| (r.object_id.clone(), r.region_id)).collect();
-    assert_eq!(region_keys, &[("cube".into(), 1)],
-        "mod.a on layer 1 must find 1 region");
+    let region_keys: Vec<_> = result
+        .iter()
+        .map(|r| (r.object_id.clone(), r.region_id))
+        .collect();
+    assert_eq!(
+        region_keys,
+        &[("cube".into(), 1)],
+        "mod.a on layer 1 must find 1 region"
+    );
 }
 
 #[test]
@@ -703,7 +799,14 @@ fn resolve_active_regions_returns_empty_when_module_has_no_regions() {
     let region_plans = Arc::new(HashMap::new()); // no region plans
 
     let mod_a = bound_module(
-        loaded_module("mod.a", "Layer::Perimeters", &[], &[], true, "slicer:world-layer@1.0.0"),
+        loaded_module(
+            "mod.a",
+            "Layer::Perimeters",
+            &[],
+            &[],
+            true,
+            "slicer:world-layer@1.0.0",
+        ),
         ConfigView::from_map(HashMap::new()),
         4,
     );
@@ -717,8 +820,12 @@ fn resolve_active_regions_returns_empty_when_module_has_no_regions() {
 
     let plan = build_execution_plan(&request).expect("plan should build");
 
-    let result = plan.resolve_active_regions(&global_layers[0], &plan.per_layer_stages[0].modules[0]);
-    assert!(result.is_empty(), "empty result for module with no regions must be an empty slice, not an error");
+    let result =
+        plan.resolve_active_regions(&global_layers[0], &plan.per_layer_stages[0].modules[0]);
+    assert!(
+        result.is_empty(),
+        "empty result for module with no regions must be an empty slice, not an error"
+    );
 }
 
 fn active_region(object_id: &str, region_id: u64) -> ActiveRegion {

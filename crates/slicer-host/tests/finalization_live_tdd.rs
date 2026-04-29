@@ -38,7 +38,11 @@ const WIPE_TOWER_WASM: &str = concat!(
 );
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
@@ -46,27 +50,50 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
         schema_version: semver(1, 0, 0),
         objects: vec![ObjectMesh {
             id: "cube".to_string(),
-            mesh: slicer_ir::IndexedTriangleSet { vertices: vec![], indices: vec![] },
-            transform: Transform3d {
-                matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            mesh: slicer_ir::IndexedTriangleSet {
+                vertices: vec![],
+                indices: vec![],
             },
-            config: slicer_ir::ObjectConfig { data: std::collections::HashMap::new() },
+            transform: Transform3d {
+                matrix: [
+                    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+                ],
+            },
+            config: slicer_ir::ObjectConfig {
+                data: std::collections::HashMap::new(),
+            },
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     })
 }
 
 fn load_guest(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {
     let path = PathBuf::from(SDK_FINALIZATION_GUEST);
-    assert!(path.exists(), "sdk-finalization-guest missing at {}", path.display());
+    assert!(
+        path.exists(),
+        "sdk-finalization-guest missing at {}",
+        path.display()
+    );
     let bytes = std::fs::read(&path).expect("read sdk-finalization-guest");
-    Arc::new(engine.compile_component(&bytes).expect("compile sdk-finalization-guest"))
+    Arc::new(
+        engine
+            .compile_component(&bytes)
+            .expect("compile sdk-finalization-guest"),
+    )
 }
 
 fn make_loaded_module(id: &str) -> LoadedModule {
@@ -96,8 +123,14 @@ fn make_loaded_module(id: &str) -> LoadedModule {
 fn make_module(id: &str, component: Arc<slicer_host::WasmComponent>) -> CompiledModule {
     let loaded = make_loaded_module(id);
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .expect("build instance pool"),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("build instance pool"),
     );
     CompiledModule {
         module_id: id.to_string(),
@@ -113,8 +146,20 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
     PrintEntity {
         path: ExtrusionPath3D {
             points: vec![
-                Point3WithWidth { x: 10.0, y: 10.0, z, width: 0.4, flow_factor: 1.0 },
-                Point3WithWidth { x: 20.0, y: 20.0, z, width: 0.4, flow_factor: 1.0 },
+                Point3WithWidth {
+                    x: 10.0,
+                    y: 10.0,
+                    z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
+                Point3WithWidth {
+                    x: 20.0,
+                    y: 20.0,
+                    z,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
             ],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -145,9 +190,17 @@ fn make_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollection
 
 fn load_wipe_tower(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {
     let path = PathBuf::from(WIPE_TOWER_WASM);
-    assert!(path.exists(), "wipe-tower.wasm missing at {}", path.display());
+    assert!(
+        path.exists(),
+        "wipe-tower.wasm missing at {}",
+        path.display()
+    );
     let bytes = std::fs::read(&path).expect("read wipe-tower.wasm");
-    Arc::new(engine.compile_component(&bytes).expect("compile wipe-tower.wasm"))
+    Arc::new(
+        engine
+            .compile_component(&bytes)
+            .expect("compile wipe-tower.wasm"),
+    )
 }
 
 fn make_module_with_config(
@@ -157,8 +210,14 @@ fn make_module_with_config(
 ) -> CompiledModule {
     let loaded = make_loaded_module(id);
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .expect("build instance pool"),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("build instance pool"),
     );
     CompiledModule {
         module_id: id.to_string(),
@@ -176,7 +235,11 @@ fn make_layer_with_tool_change(index: u32, z: f32) -> LayerCollectionIR {
         global_layer_index: index,
         z,
         ordered_entities: vec![model_entity(index, z)],
-        tool_changes: vec![ToolChange { after_entity_index: 0, from_tool: 0, to_tool: 1 }],
+        tool_changes: vec![ToolChange {
+            after_entity_index: 0,
+            from_tool: 0,
+            to_tool: 1,
+        }],
         z_hops: vec![],
         annotations: vec![],
         retracts: vec![],
@@ -205,7 +268,8 @@ fn live_finalization_dispatch_merges_skirt_brim_entity_pushes() {
     let mut layers = vec![make_layer(0, 0.2, vec![model_entity(0, 0.2)])];
 
     assert_eq!(
-        layers[0].ordered_entities.len(), 1,
+        layers[0].ordered_entities.len(),
+        1,
         "layer 0 must have exactly 1 model entity before finalization"
     );
     assert_eq!(
@@ -222,7 +286,8 @@ fn live_finalization_dispatch_merges_skirt_brim_entity_pushes() {
 
     // The batch-prepend fix places the witness entity FIRST.
     assert_eq!(
-        layers[0].ordered_entities.len(), 2,
+        layers[0].ordered_entities.len(),
+        2,
         "layer 0 must have 2 entities after finalization (witness + model)"
     );
 
@@ -261,7 +326,10 @@ fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
 
     let mut config_map = std::collections::HashMap::new();
     config_map.insert("wipe_tower_enabled".to_string(), ConfigValue::Bool(true));
-    config_map.insert("wipe_tower_purge_volume".to_string(), ConfigValue::Float(70.0));
+    config_map.insert(
+        "wipe_tower_purge_volume".to_string(),
+        ConfigValue::Float(70.0),
+    );
     config_map.insert("wipe_tower_width".to_string(), ConfigValue::Float(60.0));
     config_map.insert("line_width".to_string(), ConfigValue::Float(0.4));
     let config = ConfigView::from_map(config_map);
@@ -273,8 +341,15 @@ fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
     // One layer with a model entity and one ToolChange — must trigger WipeTower output.
     let mut layers = vec![make_layer_with_tool_change(0, 0.2)];
 
-    assert_eq!(layers[0].ordered_entities.len(), 1, "layer must start with exactly 1 model entity");
-    assert!(!layers[0].tool_changes.is_empty(), "layer must have at least one ToolChange");
+    assert_eq!(
+        layers[0].ordered_entities.len(),
+        1,
+        "layer must start with exactly 1 model entity"
+    );
+    assert!(
+        !layers[0].tool_changes.is_empty(),
+        "layer must have at least one ToolChange"
+    );
 
     dispatcher
         .run_stage(&stage, &module, &blackboard, &mut layers)
@@ -295,5 +370,8 @@ fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
         .ordered_entities
         .iter()
         .any(|e| e.role == ExtrusionRole::OuterWall);
-    assert!(has_outer_wall, "original OuterWall model entity must still be present after finalization");
+    assert!(
+        has_outer_wall,
+        "original OuterWall model entity must still be present after finalization"
+    );
 }

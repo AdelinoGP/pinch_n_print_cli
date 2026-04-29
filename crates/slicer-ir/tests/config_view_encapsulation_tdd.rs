@@ -17,7 +17,10 @@ fn source() -> HashMap<String, ConfigValue> {
     let mut m = HashMap::new();
     m.insert("declared_a".into(), ConfigValue::Float(1.25));
     m.insert("declared_b".into(), ConfigValue::Int(42));
-    m.insert("undeclared_secret".into(), ConfigValue::String("no peek".into()));
+    m.insert(
+        "undeclared_secret".into(),
+        ConfigValue::String("no peek".into()),
+    );
     m
 }
 
@@ -56,7 +59,10 @@ fn keys_is_sorted_and_deterministic() {
     let keys_a = view.keys();
     let keys_b = view.keys();
     assert_eq!(keys_a, keys_b);
-    assert_eq!(keys_a, vec!["alpha".to_string(), "mu".to_string(), "zebra".to_string()]);
+    assert_eq!(
+        keys_a,
+        vec!["alpha".to_string(), "mu".to_string(), "zebra".to_string()]
+    );
 }
 
 #[test]
@@ -65,7 +71,11 @@ fn typed_getters_preserve_subnormal_normalization() {
     m.insert("sub".into(), ConfigValue::Float(f64::from_bits(1))); // smallest subnormal
     m.insert("normal".into(), ConfigValue::Float(1.5));
     let view = ConfigView::from_map(m);
-    assert_eq!(view.get_float("sub"), Some(0.0), "subnormals must coerce to 0.0");
+    assert_eq!(
+        view.get_float("sub"),
+        Some(0.0),
+        "subnormals must coerce to 0.0"
+    );
     assert_eq!(view.get_float("normal"), Some(1.5));
 }
 

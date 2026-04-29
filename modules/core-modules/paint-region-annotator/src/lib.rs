@@ -19,8 +19,8 @@ use std::collections::HashMap;
 use slicer_core::paint_region::{point_in_paint_region, BoundaryInclusion, PaintRegionQueryError};
 use slicer_ir::{ConfigView, PaintSemantic, PaintValue, RegionKey};
 use slicer_sdk::builders::SlicePostprocessBuilder;
-use slicer_sdk::slicer_module;
 use slicer_sdk::error::ModuleError;
+use slicer_sdk::slicer_module;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 

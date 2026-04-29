@@ -36,16 +36,19 @@ use slicer_ir::SemVer;
 // which is robust against refinement (e.g. `SliceIR.regions.polygons`
 // counts as a `SliceIR` read).
 
-fn required_contract_for_stage(stage: &str) -> Option<(&'static [&'static str], &'static [&'static str])> {
+fn required_contract_for_stage(
+    stage: &str,
+) -> Option<(&'static [&'static str], &'static [&'static str])> {
     match stage {
         "PrePass::MeshSegmentation" => Some((&["MeshIR"], &["MeshIR"])),
         "PrePass::MeshAnalysis" => Some((&["MeshIR"], &["SurfaceClassificationIR"])),
         "PrePass::LayerPlanning" => {
             Some((&["MeshIR", "SurfaceClassificationIR"], &["LayerPlanIR"]))
         }
-        "PrePass::SeamPlanning" => {
-            Some((&["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"], &["SeamPlanIR"]))
-        }
+        "PrePass::SeamPlanning" => Some((
+            &["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"],
+            &["SeamPlanIR"],
+        )),
         "PrePass::PaintSegmentation" => Some((
             &["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"],
             &["PaintRegionIR"],
@@ -64,9 +67,7 @@ fn required_contract_for_stage(stage: &str) -> Option<(&'static [&'static str], 
             &["PerimeterIR", "InfillIR", "SupportIR"],
             &["LayerCollectionIR"],
         )),
-        "PostPass::LayerFinalization" => {
-            Some((&["LayerCollectionIR"], &["LayerCollectionIR"]))
-        }
+        "PostPass::LayerFinalization" => Some((&["LayerCollectionIR"], &["LayerCollectionIR"])),
         _ => None,
     }
 }
@@ -91,7 +92,11 @@ fn discover_core_manifests() -> Vec<(String, LoadedModule)> {
         if !path.is_dir() {
             continue;
         }
-        let stem = path.file_name().and_then(|s| s.to_str()).unwrap().to_string();
+        let stem = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap()
+            .to_string();
         let manifest = path.join(format!("{stem}.toml"));
         let wasm = path.join(format!("{stem}.wasm"));
         if !manifest.exists() || !wasm.exists() {
@@ -133,10 +138,16 @@ fn every_core_module_declares_non_empty_ir_access_per_docs_01() {
             continue;
         }
         if module.ir_reads.is_empty() {
-            offenders.push(format!("{stem} (stage {}): empty ir-access.reads", module.stage));
+            offenders.push(format!(
+                "{stem} (stage {}): empty ir-access.reads",
+                module.stage
+            ));
         }
         if module.ir_writes.is_empty() {
-            offenders.push(format!("{stem} (stage {}): empty ir-access.writes", module.stage));
+            offenders.push(format!(
+                "{stem} (stage {}): empty ir-access.writes",
+                module.stage
+            ));
         }
     }
 
@@ -214,12 +225,8 @@ fn core_module_reads_are_restricted_to_upstream_ir_root_set() {
             "PrePass::MeshSegmentation" => &["MeshIR"],
             "PrePass::MeshAnalysis" => &["MeshIR"],
             "PrePass::LayerPlanning" => &["MeshIR", "SurfaceClassificationIR"],
-            "PrePass::SeamPlanning" => {
-                &["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"]
-            }
-            "PrePass::PaintSegmentation" => {
-                &["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"]
-            }
+            "PrePass::SeamPlanning" => &["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"],
+            "PrePass::PaintSegmentation" => &["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"],
             "Layer::SlicePostProcess" => &[
                 "SliceIR",
                 "PaintRegionIR",
@@ -244,9 +251,7 @@ fn core_module_reads_are_restricted_to_upstream_ir_root_set() {
                 "RegionMapIR",
             ],
             "Layer::SupportPostProcess" => &["SupportIR", "RegionMapIR"],
-            "Layer::PathOptimization" => {
-                &["PerimeterIR", "InfillIR", "SupportIR", "RegionMapIR"]
-            }
+            "Layer::PathOptimization" => &["PerimeterIR", "InfillIR", "SupportIR", "RegionMapIR"],
             "PostPass::LayerFinalization" => &[
                 "LayerCollectionIR",
                 "LayerPlanIR",
@@ -315,7 +320,10 @@ fn seam_planner_default_declares_prepass_contract_roots() {
     }
 
     assert!(
-        module.ir_writes.iter().any(|p| path_mentions_root(p, "SeamPlanIR")),
+        module
+            .ir_writes
+            .iter()
+            .any(|p| path_mentions_root(p, "SeamPlanIR")),
         "seam-planner-default must declare write root 'SeamPlanIR'"
     );
 }
@@ -326,10 +334,14 @@ fn seam_planner_default_declares_prepass_contract_roots() {
 // AC-6: fallback when stage not instrumented → coarse fallback without panic
 // ═══════════════════════════════════════════════════════════════════════════
 
-use slicer_host::validation::{DagValidationRequest, ModuleAccessAudit, validate_startup_dag};
+use slicer_host::validation::{validate_startup_dag, DagValidationRequest, ModuleAccessAudit};
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 /// AC-5: seam-placer module with narrow manifest write "PerimeterIR.resolved-seam"
@@ -349,7 +361,10 @@ fn seam_placer_narrow_manifest_write_validates() {
         stage: "Layer::PerimetersPostProcess".into(),
         wit_world: "slicer:world-layer@1.0.0".into(),
         ir_reads: vec!["PerimeterIR".into()],
-        ir_writes: vec!["PerimeterIR.resolved-seam".into(), "PerimeterIR.regions.walls".into()],
+        ir_writes: vec![
+            "PerimeterIR.resolved-seam".into(),
+            "PerimeterIR.regions.walls".into(),
+        ],
         claims: vec!["seam-placer".into()],
         requires_claims: vec![],
         incompatible_with: vec![],
@@ -391,7 +406,12 @@ fn seam_placer_narrow_manifest_write_validates() {
     let undeclared_errors: Vec<_> = report
         .errors
         .iter()
-        .filter(|d| matches!(d.detail, slicer_host::SchedulerError::UndeclaredAccess { .. }))
+        .filter(|d| {
+            matches!(
+                d.detail,
+                slicer_host::SchedulerError::UndeclaredAccess { .. }
+            )
+        })
         .collect();
 
     assert!(
@@ -458,7 +478,8 @@ fn coarse_write_rejected_against_narrow_manifest() {
     assert!(
         !undeclared_errors.is_empty(),
         "coarse write 'PerimeterIR' not in narrow manifest must produce undeclared-access error. \
-         Report errors: {:?}", report.errors
+         Report errors: {:?}",
+        report.errors
     );
 }
 
@@ -508,7 +529,12 @@ fn perimeter_narrow_write_audit() {
     let undeclared_errors: Vec<_> = report
         .errors
         .iter()
-        .filter(|d| matches!(d.detail, slicer_host::SchedulerError::UndeclaredAccess { .. }))
+        .filter(|d| {
+            matches!(
+                d.detail,
+                slicer_host::SchedulerError::UndeclaredAccess { .. }
+            )
+        })
         .collect();
 
     assert!(

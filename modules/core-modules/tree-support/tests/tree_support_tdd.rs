@@ -44,7 +44,7 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
 /// Test 1: on_print_start with empty config uses defaults.
 #[test]
 fn on_print_start_defaults() {
-    let config = ConfigView::from_map(HashMap::new(),);
+    let config = ConfigView::from_map(HashMap::new());
     let module = TreeSupport::on_print_start(&config).unwrap();
     assert!(!module.enabled());
     assert!((module.density() - 0.2).abs() < 0.001);

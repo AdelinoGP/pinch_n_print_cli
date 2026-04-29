@@ -243,10 +243,7 @@ impl Blackboard {
     }
 
     /// Commit `SupportPlanIR` exactly once.
-    pub fn commit_support_plan(
-        &mut self,
-        ir: Arc<SupportPlanIR>,
-    ) -> Result<(), BlackboardError> {
+    pub fn commit_support_plan(&mut self, ir: Arc<SupportPlanIR>) -> Result<(), BlackboardError> {
         commit_prepass(
             &mut self.support_plan,
             ir,

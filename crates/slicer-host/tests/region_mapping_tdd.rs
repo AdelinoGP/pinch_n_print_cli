@@ -75,16 +75,14 @@ fn region_mapping_builtin_runs_after_user_layer_planning_and_is_visible_to_downs
     // RegionPlan.stage_modules so downstream can resolve active regions.
     // Build the LoadedModule + pool + binding via the same pattern used
     // by the rest of the test suite (not struct-literal ExecutionPlan).
-    let walls_loaded = loaded_module(
-        "Layer::Perimeters",
-        "com.example.walls",
-        amp_cfg(0.7),
-    );
+    let walls_loaded = loaded_module("Layer::Perimeters", "com.example.walls", amp_cfg(0.7));
     let pool = Arc::new(
         build_wasm_instance_pool(
             &walls_loaded,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .unwrap(),
     );
@@ -166,7 +164,11 @@ fn region_mapping_cap_exceeded_is_structured_fatal() {
 
     let err = execute_region_mapping_with_cap(&layer_plan, &plan, 2).expect_err("must fail");
     match err {
-        RegionMappingError::CapExceeded { entry_count: 3, cap: 2, .. } => {}
+        RegionMappingError::CapExceeded {
+            entry_count: 3,
+            cap: 2,
+            ..
+        } => {}
         other => panic!("expected CapExceeded {{3,2,..}}, got {other:?}"),
     }
 }
@@ -183,10 +185,7 @@ fn region_mapping_cap_exceeded_surfaces_top_contributors_and_remediation() {
             GlobalLayer {
                 index: 0,
                 z: 0.2,
-                active_regions: vec![
-                    active_region("cube", 1),
-                    active_region("cube", 2),
-                ],
+                active_regions: vec![active_region("cube", 1), active_region("cube", 2)],
                 has_nonplanar: false,
                 is_sync_layer: false,
             },
@@ -209,15 +208,27 @@ fn region_mapping_cap_exceeded_surfaces_top_contributors_and_remediation() {
 
     let err = execute_region_mapping_with_cap(&layer_plan, &plan, 5).expect_err("must fail");
     match err {
-        RegionMappingError::CapExceeded { entry_count, cap, top_contributors, remediation } => {
+        RegionMappingError::CapExceeded {
+            entry_count,
+            cap,
+            top_contributors,
+            remediation,
+        } => {
             assert_eq!(entry_count, 6);
             assert_eq!(cap, 5);
-            assert!(!top_contributors.is_empty(), "must surface top contributors");
+            assert!(
+                !top_contributors.is_empty(),
+                "must surface top contributors"
+            );
             // "cube" should be the top contributor (5 regions vs sphere's 1).
             assert_eq!(top_contributors[0].object_id, "cube");
             assert_eq!(top_contributors[0].region_count, 5);
-            assert!(remediation.contains("reduce") || remediation.contains("raise") || remediation.contains("split"),
-                "must include remediation hint: {remediation}");
+            assert!(
+                remediation.contains("reduce")
+                    || remediation.contains("raise")
+                    || remediation.contains("split"),
+                "must include remediation hint: {remediation}"
+            );
         }
         other => panic!("expected CapExceeded, got {other:?}"),
     }
@@ -327,16 +338,16 @@ fn region_mapping_builtin_commit_failure_surfaces_via_prepass_error() {
         .expect("seed layer plan");
     // Manually commit a region map first so the built-in becomes a no-op;
     // then verify it was not overwritten. (Idempotency contract.)
-    let preexisting = Arc::new(execute_region_mapping(&layer_plan, &empty_execution_plan()).unwrap());
-    blackboard.commit_region_map(Arc::clone(&preexisting)).unwrap();
+    let preexisting =
+        Arc::new(execute_region_mapping(&layer_plan, &empty_execution_plan()).unwrap());
+    blackboard
+        .commit_region_map(Arc::clone(&preexisting))
+        .unwrap();
 
     let plan = empty_execution_plan();
     execute_prepass_with_builtins(&plan, &mut blackboard, &NoopRunner).expect("ok (idempotent)");
 
-    assert!(Arc::ptr_eq(
-        blackboard.region_map().unwrap(),
-        &preexisting
-    ));
+    assert!(Arc::ptr_eq(blackboard.region_map().unwrap(), &preexisting));
 }
 
 // ----------------------------------------------------------------------
@@ -361,7 +372,11 @@ fn region_mapping_is_deterministic_for_same_input() {
 // ----------------------------------------------------------------------
 
 fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn sorted_stage(stage_id: &str, module_ids: &[&str]) -> SortedStageModules {
@@ -388,9 +403,21 @@ fn single_object_mesh(id: &str) -> MeshIR {
             id: id.to_string(),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                    Point3 { x: 0.0, y: 1.0, z: 0.0 },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 1.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 1.0,
+                        z: 0.0,
+                    },
                 ],
                 indices: vec![0, 1, 2],
             },
@@ -399,14 +426,24 @@ fn single_object_mesh(id: &str) -> MeshIR {
                     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 ],
             },
-            config: ObjectConfig { data: HashMap::new() },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
             modifier_volumes: vec![],
             paint_data: None,
             world_z_extent: None,
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 200.0, y: 200.0, z: 200.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 200.0,
+                y: 200.0,
+                z: 200.0,
+            },
         },
     }
 }
@@ -431,10 +468,7 @@ fn plan_two_layers_two_regions() -> LayerPlanIR {
             GlobalLayer {
                 index: 0,
                 z: 0.2,
-                active_regions: vec![
-                    active_region("cube", 1),
-                    active_region("cube", 2),
-                ],
+                active_regions: vec![active_region("cube", 1), active_region("cube", 2)],
                 has_nonplanar: false,
                 is_sync_layer: false,
             },
@@ -467,7 +501,10 @@ fn user_stage(stage: &str, modules: &[(&str, ConfigView)]) -> CompiledStage {
 }
 
 fn layer_planning_stage_with_module(module_id: &str) -> CompiledStage {
-    user_stage("PrePass::LayerPlanning", &[(module_id, ConfigView::from_map(HashMap::new()))])
+    user_stage(
+        "PrePass::LayerPlanning",
+        &[(module_id, ConfigView::from_map(HashMap::new()))],
+    )
 }
 
 fn loaded_module(stage: &str, module_id: &str, config: ConfigView) -> slicer_host::LoadedModule {
@@ -548,7 +585,9 @@ fn compiled_module(stage: &str, module_id: &str, config: ConfigView) -> Compiled
         build_wasm_instance_pool(
             &loaded,
             1,
-            WasmArtifactMetadata { uses_shared_memory: false },
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
         )
         .unwrap(),
     );

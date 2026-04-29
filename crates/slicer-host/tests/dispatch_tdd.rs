@@ -102,19 +102,31 @@ const WAT_TEXT_POSTPROCESS: &str = r#"
 const WAT_EMPTY_COMPONENT: &str = r#"(component)"#;
 
 /// Path to the pre-built test guest component implementing the layer-module world.
-const GUEST_COMPONENT_PATH: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-guests/layer-infill-guest.component.wasm");
-const PREPASS_GUEST_PATH: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-guests/prepass-guest.component.wasm");
-const FINALIZATION_GUEST_PATH: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-guests/finalization-guest.component.wasm");
-const POSTPASS_GUEST_PATH: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-guests/postpass-guest.component.wasm");
+const GUEST_COMPONENT_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../test-guests/layer-infill-guest.component.wasm"
+);
+const PREPASS_GUEST_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../test-guests/prepass-guest.component.wasm"
+);
+const FINALIZATION_GUEST_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../test-guests/finalization-guest.component.wasm"
+);
+const POSTPASS_GUEST_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../test-guests/postpass-guest.component.wasm"
+);
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
@@ -122,8 +134,16 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
         schema_version: semver(1, 0, 0),
         objects: Vec::new(),
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 0.0, y: 0.0, z: 0.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
         },
     })
 }
@@ -143,14 +163,21 @@ fn minimal_gcode_ir() -> GCodeIR {
 
 fn compile_wat(engine: &WasmEngine, wat: &str) -> Arc<slicer_host::WasmComponent> {
     let bytes = wat::parse_str(wat).expect("WAT parse should succeed");
-    Arc::new(engine.compile_component(&bytes).expect("WAT compilation should succeed"))
+    Arc::new(
+        engine
+            .compile_component(&bytes)
+            .expect("WAT compilation should succeed"),
+    )
 }
 
 fn load_guest_component(engine: &WasmEngine, path: &str) -> Arc<slicer_host::WasmComponent> {
-    let bytes = std::fs::read(path).unwrap_or_else(|e| {
-        panic!("Test guest component not found at {path}: {e}")
-    });
-    Arc::new(engine.compile_component(&bytes).expect("guest compilation should succeed"))
+    let bytes = std::fs::read(path)
+        .unwrap_or_else(|e| panic!("Test guest component not found at {path}: {e}"));
+    Arc::new(
+        engine
+            .compile_component(&bytes)
+            .expect("guest compilation should succeed"),
+    )
 }
 
 fn load_test_guest(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {
@@ -190,12 +217,7 @@ fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
     }
 }
 
-fn make_compiled_module(
-    engine: &WasmEngine,
-    id: &str,
-    stage: &str,
-    wat: &str,
-) -> CompiledModule {
+fn make_compiled_module(engine: &WasmEngine, id: &str, stage: &str, wat: &str) -> CompiledModule {
     make_compiled_module_with(id, stage, compile_wat(engine, wat))
 }
 
@@ -215,8 +237,14 @@ fn make_compiled_module_with_config(
 ) -> CompiledModule {
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .unwrap(),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .unwrap(),
     );
     CompiledModule {
         module_id: id.to_string(),
@@ -231,8 +259,14 @@ fn make_compiled_module_with_config(
 fn make_compiled_module_no_wasm(id: &str, stage: &str) -> CompiledModule {
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .unwrap(),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .unwrap(),
     );
     CompiledModule {
         module_id: id.to_string(),
@@ -310,9 +344,7 @@ fn prepass_runner_invokes_wasm_export() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_prepass_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.mesh", "PrePass::MeshAnalysis", component,
-    );
+    let module = make_compiled_module_with("com.test.mesh", "PrePass::MeshAnalysis", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let result = PrepassStageRunner::run_stage(
@@ -322,7 +354,11 @@ fn prepass_runner_invokes_wasm_export() {
         &blackboard,
     );
 
-    assert!(result.is_ok(), "prepass dispatch should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "prepass dispatch should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -331,9 +367,7 @@ fn layer_runner_invokes_typed_wasm_export() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     // Use the real test guest that implements the full layer-module world.
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.infill", "Layer::Infill", component,
-    );
+    let module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
@@ -354,7 +388,11 @@ fn layer_runner_invokes_typed_wasm_export() {
         &mut arena,
     );
 
-    assert!(result.is_ok(), "typed layer dispatch should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "typed layer dispatch should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -362,9 +400,8 @@ fn finalization_runner_invokes_wasm_export() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_finalization_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.wipe", "PostPass::LayerFinalization", component,
-    );
+    let module =
+        make_compiled_module_with("com.test.wipe", "PostPass::LayerFinalization", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let mut layers = Vec::new();
@@ -377,7 +414,11 @@ fn finalization_runner_invokes_wasm_export() {
         &mut layers,
     );
 
-    assert!(result.is_ok(), "finalization dispatch should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "finalization dispatch should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -385,9 +426,8 @@ fn postpass_gcode_runner_invokes_wasm_export() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_postpass_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.gpost", "PostPass::GCodePostProcess", component,
-    );
+    let module =
+        make_compiled_module_with("com.test.gpost", "PostPass::GCodePostProcess", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let mut gcode_ir = minimal_gcode_ir();
@@ -399,7 +439,11 @@ fn postpass_gcode_runner_invokes_wasm_export() {
         &mut gcode_ir,
     );
 
-    assert!(result.is_ok(), "gcode postpass dispatch should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "gcode postpass dispatch should succeed: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -407,9 +451,8 @@ fn postpass_text_runner_invokes_wasm_export() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_postpass_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.tpost", "PostPass::TextPostProcess", component,
-    );
+    let module =
+        make_compiled_module_with("com.test.tpost", "PostPass::TextPostProcess", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let result = dispatcher.run_text_postprocess(
@@ -419,7 +462,11 @@ fn postpass_text_runner_invokes_wasm_export() {
         "; some gcode".to_string(),
     );
 
-    assert!(result.is_ok(), "text postpass dispatch should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "text postpass dispatch should succeed: {:?}",
+        result.err()
+    );
 }
 
 // ── C. Error-path coverage ──────────────────────────────────────────────
@@ -431,7 +478,10 @@ fn typed_instantiation_failure_produces_structured_error() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let module = make_compiled_module(
-        &engine, "com.test.empty", "Layer::Infill", WAT_EMPTY_COMPONENT,
+        &engine,
+        "com.test.empty",
+        "Layer::Infill",
+        WAT_EMPTY_COMPONENT,
     );
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
@@ -453,9 +503,15 @@ fn typed_instantiation_failure_produces_structured_error() {
         &mut arena,
     );
 
-    assert!(result.is_err(), "should fail when component doesn't implement layer world");
+    assert!(
+        result.is_err(),
+        "should fail when component doesn't implement layer world"
+    );
     let msg = format!("{}", result.unwrap_err());
-    assert!(msg.contains("com.test.empty"), "error should name the module: {msg}");
+    assert!(
+        msg.contains("com.test.empty"),
+        "error should name the module: {msg}"
+    );
     assert!(
         msg.contains("TypedInstantiation") || msg.contains("Layer::Infill"),
         "error should reference typed instantiation or stage: {msg}"
@@ -512,16 +568,17 @@ fn pool_slot_released_after_successful_typed_call() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.infill", "Layer::Infill", component,
-    );
+    let module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
 
     // The module pool has size 1. If the slot isn't released, the second
     // call would deadlock.
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
 
     for i in 0..3 {
@@ -534,7 +591,12 @@ fn pool_slot_released_after_successful_typed_call() {
             &blackboard,
             &mut arena,
         );
-        assert!(result.is_ok(), "call #{} should succeed (pool reuse): {:?}", i, result.err());
+        assert!(
+            result.is_ok(),
+            "call #{} should succeed (pool reuse): {:?}",
+            i,
+            result.err()
+        );
     }
 }
 
@@ -544,13 +606,19 @@ fn pool_slot_released_after_failed_typed_call() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     // Empty component — will fail at typed instantiation
     let module = make_compiled_module(
-        &engine, "com.test.empty", "Layer::Infill", WAT_EMPTY_COMPONENT,
+        &engine,
+        "com.test.empty",
+        "Layer::Infill",
+        WAT_EMPTY_COMPONENT,
     );
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
 
     // Call should fail but not deadlock — pool slot must be released
@@ -578,14 +646,15 @@ fn typed_layer_dispatch_creates_fresh_context_per_call() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.infill", "Layer::Infill", component,
-    );
+    let module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
 
     for i in 0..3 {
@@ -613,9 +682,7 @@ fn full_pipeline_with_typed_layer_dispatch() {
     let engine = Arc::new(WasmEngine::new());
 
     let component = load_test_guest(&engine);
-    let layer_module = make_compiled_module_with(
-        "com.test.infill", "Layer::Infill", component,
-    );
+    let layer_module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
 
     let plan = ExecutionPlan {
         prepass_stages: Vec::new(),
@@ -662,16 +729,21 @@ fn full_pipeline_multi_tier_with_typed_layer() {
     let engine = Arc::new(WasmEngine::new());
 
     let prepass_module = make_compiled_module_with(
-        "com.test.mesh", "PrePass::MeshAnalysis", load_prepass_guest(&engine),
+        "com.test.mesh",
+        "PrePass::MeshAnalysis",
+        load_prepass_guest(&engine),
     );
-    let layer_module = make_compiled_module_with(
-        "com.test.infill", "Layer::Infill", load_test_guest(&engine),
-    );
+    let layer_module =
+        make_compiled_module_with("com.test.infill", "Layer::Infill", load_test_guest(&engine));
     let fin_module = make_compiled_module_with(
-        "com.test.wipe", "PostPass::LayerFinalization", load_finalization_guest(&engine),
+        "com.test.wipe",
+        "PostPass::LayerFinalization",
+        load_finalization_guest(&engine),
     );
     let gcode_module = make_compiled_module_with(
-        "com.test.gpost", "PostPass::GCodePostProcess", load_postpass_guest(&engine),
+        "com.test.gpost",
+        "PostPass::GCodePostProcess",
+        load_postpass_guest(&engine),
     );
 
     let plan = ExecutionPlan {
@@ -692,8 +764,11 @@ fn full_pipeline_multi_tier_with_typed_layer() {
             modules: vec![gcode_module],
         }],
         global_layers: Arc::new(vec![GlobalLayer {
-            index: 0, z: 0.2, active_regions: Vec::new(),
-            has_nonplanar: false, is_sync_layer: false,
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: false,
         }]),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
@@ -729,9 +804,7 @@ fn guest_infill_output_committed_to_arena() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.infill", "Layer::Infill", component,
-    );
+    let module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
@@ -752,16 +825,26 @@ fn guest_infill_output_committed_to_arena() {
         &blackboard,
         &mut arena,
     );
-    assert!(result.is_ok(), "dispatch should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "dispatch should succeed: {:?}",
+        result.err()
+    );
 
     // Verify the infill slot is populated
-    let infill = arena.infill().expect("infill arena slot should be populated");
+    let infill = arena
+        .infill()
+        .expect("infill arena slot should be populated");
     assert_eq!(infill.global_layer_index, 7, "layer index should match");
     assert_eq!(infill.regions.len(), 1, "should have 1 region");
     let region = &infill.regions[0];
     assert_eq!(region.sparse_infill.len(), 1, "should have 1 sparse path");
     // The test guest creates a path with 2 points
-    assert_eq!(region.sparse_infill[0].points.len(), 2, "path should have 2 points");
+    assert_eq!(
+        region.sparse_infill[0].points.len(),
+        2,
+        "path should have 2 points"
+    );
     // The test guest sets role to SparseInfill
     assert_eq!(
         region.sparse_infill[0].role,
@@ -778,7 +861,9 @@ fn empty_guest_output_does_not_populate_arena() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
-        "com.test.support-pp", "Layer::SupportPostProcess", component,
+        "com.test.support-pp",
+        "Layer::SupportPostProcess",
+        component,
     );
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
@@ -799,10 +884,17 @@ fn empty_guest_output_does_not_populate_arena() {
         &blackboard,
         &mut arena,
     );
-    assert!(result.is_ok(), "dispatch should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "dispatch should succeed: {:?}",
+        result.err()
+    );
 
     // Support slot should remain empty because guest produced no output
-    assert!(arena.support().is_none(), "support slot should be empty for no-op stage");
+    assert!(
+        arena.support().is_none(),
+        "support slot should be empty for no-op stage"
+    );
 }
 
 #[test]
@@ -812,14 +904,15 @@ fn output_commitment_deterministic_across_repeated_runs() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.infill", "Layer::Infill", component,
-    );
+    let module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
 
     let mut results = Vec::new();
@@ -849,7 +942,10 @@ fn invalid_nan_output_rejected_with_diagnostic() {
     // Test the conversion validation directly since we can't make the test
     // guest produce NaN (it produces valid data). We test the validation
     // layer by calling convert_infill_output with crafted invalid data.
-    use slicer_host::wit_host::{convert_infill_output, InfillOutputCollected, ExtrusionPath3d, Point3WithWidth, ExtrusionRole};
+    use slicer_host::wit_host::{
+        convert_infill_output, ExtrusionPath3d, ExtrusionRole, InfillOutputCollected,
+        Point3WithWidth,
+    };
 
     let bad_output = InfillOutputCollected {
         sparse_paths: vec![ExtrusionPath3d {
@@ -872,7 +968,10 @@ fn invalid_nan_output_rejected_with_diagnostic() {
     assert!(result.is_err(), "NaN output should be rejected");
     let msg = result.unwrap_err();
     assert!(msg.contains("NaN"), "error should mention NaN: {msg}");
-    assert!(msg.contains("point[0]"), "error should identify the point index: {msg}");
+    assert!(
+        msg.contains("point[0]"),
+        "error should identify the point index: {msg}"
+    );
 }
 
 #[test]
@@ -883,9 +982,7 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
     let engine = Arc::new(WasmEngine::new());
 
     let component = load_test_guest(&engine);
-    let layer_module = make_compiled_module_with(
-        "com.test.infill", "Layer::Infill", component,
-    );
+    let layer_module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
 
     let plan = ExecutionPlan {
         prepass_stages: Vec::new(),
@@ -897,12 +994,18 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![
             GlobalLayer {
-                index: 0, z: 0.2, active_regions: Vec::new(),
-                has_nonplanar: false, is_sync_layer: false,
+                index: 0,
+                z: 0.2,
+                active_regions: Vec::new(),
+                has_nonplanar: false,
+                is_sync_layer: false,
             },
             GlobalLayer {
-                index: 1, z: 0.4, active_regions: Vec::new(),
-                has_nonplanar: false, is_sync_layer: false,
+                index: 1,
+                z: 0.4,
+                active_regions: Vec::new(),
+                has_nonplanar: false,
+                is_sync_layer: false,
             },
         ]),
         region_plans: Arc::new(HashMap::new()),
@@ -940,10 +1043,22 @@ fn dispatch_error_display_includes_all_diagnostic_fields() {
         reason: "function not found".to_string(),
     };
     let display = format!("{err}");
-    assert!(display.contains("com.test.mod"), "should include module_id: {display}");
-    assert!(display.contains("Layer::Infill"), "should include stage_id: {display}");
-    assert!(display.contains("run-infill"), "should include export_name: {display}");
-    assert!(display.contains("function not found"), "should include reason: {display}");
+    assert!(
+        display.contains("com.test.mod"),
+        "should include module_id: {display}"
+    );
+    assert!(
+        display.contains("Layer::Infill"),
+        "should include stage_id: {display}"
+    );
+    assert!(
+        display.contains("run-infill"),
+        "should include export_name: {display}"
+    );
+    assert!(
+        display.contains("function not found"),
+        "should include reason: {display}"
+    );
 }
 
 // ── H. Perimeter output commit tests ──────────────────────────────────
@@ -951,9 +1066,8 @@ fn dispatch_error_display_includes_all_diagnostic_fields() {
 #[test]
 fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
     use slicer_host::wit_host::{
-        convert_perimeter_output, ExtrusionPath3d, ExtrusionRole,
-        PerimeterOutputCollected, Point3, Point3WithWidth, WallFeatureFlag,
-        WallLoopType, WallLoopView,
+        convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, PerimeterOutputCollected, Point3,
+        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
     };
 
     let output = PerimeterOutputCollected {
@@ -962,19 +1076,52 @@ fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
             loop_type: WallLoopType::Outer,
             path: ExtrusionPath3d {
                 points: vec![
-                    Point3WithWidth { x: 0.0, y: 0.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
-                    Point3WithWidth { x: 10.0, y: 0.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
+                    Point3WithWidth {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.2,
+                        width: 0.4,
+                        flow_factor: 1.0,
+                    },
+                    Point3WithWidth {
+                        x: 10.0,
+                        y: 0.0,
+                        z: 0.2,
+                        width: 0.4,
+                        flow_factor: 1.0,
+                    },
                 ],
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
             },
             feature_flags: vec![
-                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
-                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
+                WallFeatureFlag {
+                    tool_index: None,
+                    fuzzy_skin: false,
+                    is_bridge: false,
+                    is_thin_wall: false,
+                    skip_ironing: false,
+                    custom: vec![],
+                },
+                WallFeatureFlag {
+                    tool_index: None,
+                    fuzzy_skin: false,
+                    is_bridge: false,
+                    is_thin_wall: false,
+                    skip_ironing: false,
+                    custom: vec![],
+                },
             ],
         }],
         infill_areas: Vec::new(),
-        seam_candidates: vec![(Point3 { x: 5.0, y: 0.0, z: 0.2 }, 0.8)],
+        seam_candidates: vec![(
+            Point3 {
+                x: 5.0,
+                y: 0.0,
+                z: 0.2,
+            },
+            0.8,
+        )],
         ..Default::default()
     };
 
@@ -993,9 +1140,8 @@ fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
 #[test]
 fn perimeter_output_rejects_nan_in_wall_loop_path() {
     use slicer_host::wit_host::{
-        convert_perimeter_output, ExtrusionPath3d, ExtrusionRole,
-        PerimeterOutputCollected, Point3WithWidth, WallFeatureFlag,
-        WallLoopType, WallLoopView,
+        convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, PerimeterOutputCollected,
+        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
     };
 
     let output = PerimeterOutputCollected {
@@ -1004,14 +1150,23 @@ fn perimeter_output_rejects_nan_in_wall_loop_path() {
             loop_type: WallLoopType::Outer,
             path: ExtrusionPath3d {
                 points: vec![Point3WithWidth {
-                    x: f32::NAN, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0,
+                    x: f32::NAN,
+                    y: 0.0,
+                    z: 0.0,
+                    width: 0.4,
+                    flow_factor: 1.0,
                 }],
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
             },
-            feature_flags: vec![
-                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
-            ],
+            feature_flags: vec![WallFeatureFlag {
+                tool_index: None,
+                fuzzy_skin: false,
+                is_bridge: false,
+                is_thin_wall: false,
+                skip_ironing: false,
+                custom: vec![],
+            }],
         }],
         infill_areas: Vec::new(),
         seam_candidates: Vec::new(),
@@ -1027,9 +1182,8 @@ fn perimeter_output_rejects_nan_in_wall_loop_path() {
 #[test]
 fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
     use slicer_host::wit_host::{
-        convert_perimeter_output, ExtrusionPath3d, ExtrusionRole,
-        PerimeterOutputCollected, Point3WithWidth, WallFeatureFlag,
-        WallLoopType, WallLoopView,
+        convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, PerimeterOutputCollected,
+        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
     };
 
     // 2 points but only 1 feature flag → cardinality mismatch per docs/03
@@ -1039,14 +1193,33 @@ fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
             loop_type: WallLoopType::Outer,
             path: ExtrusionPath3d {
                 points: vec![
-                    Point3WithWidth { x: 0.0, y: 0.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
-                    Point3WithWidth { x: 10.0, y: 0.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
+                    Point3WithWidth {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.2,
+                        width: 0.4,
+                        flow_factor: 1.0,
+                    },
+                    Point3WithWidth {
+                        x: 10.0,
+                        y: 0.0,
+                        z: 0.2,
+                        width: 0.4,
+                        flow_factor: 1.0,
+                    },
                 ],
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
             },
             feature_flags: vec![
-                WallFeatureFlag { tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
+                WallFeatureFlag {
+                    tool_index: None,
+                    fuzzy_skin: false,
+                    is_bridge: false,
+                    is_thin_wall: false,
+                    skip_ironing: false,
+                    custom: vec![],
+                },
                 // Missing second flag
             ],
         }],
@@ -1056,7 +1229,10 @@ fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
     };
 
     let result = convert_perimeter_output(&output, 0);
-    assert!(result.is_err(), "feature flag cardinality mismatch should be rejected");
+    assert!(
+        result.is_err(),
+        "feature flag cardinality mismatch should be rejected"
+    );
     let msg = result.unwrap_err();
     assert!(
         msg.contains("feature_flags length") && msg.contains("path points length"),
@@ -1071,14 +1247,24 @@ fn perimeter_output_rejects_nan_seam_candidate() {
     let output = PerimeterOutputCollected {
         wall_loops: Vec::new(),
         infill_areas: Vec::new(),
-        seam_candidates: vec![(Point3 { x: f32::NAN, y: 0.0, z: 0.0 }, 1.0)],
+        seam_candidates: vec![(
+            Point3 {
+                x: f32::NAN,
+                y: 0.0,
+                z: 0.0,
+            },
+            1.0,
+        )],
         ..Default::default()
     };
 
     let result = convert_perimeter_output(&output, 0);
     assert!(result.is_err(), "NaN seam candidate should be rejected");
     let msg = result.unwrap_err();
-    assert!(msg.contains("seam_candidate"), "error should identify seam: {msg}");
+    assert!(
+        msg.contains("seam_candidate"),
+        "error should identify seam: {msg}"
+    );
     assert!(msg.contains("NaN"), "error should mention NaN: {msg}");
 }
 
@@ -1088,14 +1274,15 @@ fn empty_perimeter_output_does_not_populate_arena() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.perim", "Layer::Perimeters", component,
-    );
+    let module = make_compiled_module_with("com.test.perim", "Layer::Perimeters", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
 
@@ -1107,8 +1294,15 @@ fn empty_perimeter_output_does_not_populate_arena() {
         &blackboard,
         &mut arena,
     );
-    assert!(result.is_ok(), "empty perimeter dispatch should succeed: {:?}", result.err());
-    assert!(arena.perimeter().is_none(), "perimeter slot should be empty for no-op");
+    assert!(
+        result.is_ok(),
+        "empty perimeter dispatch should succeed: {:?}",
+        result.err()
+    );
+    assert!(
+        arena.perimeter().is_none(),
+        "perimeter slot should be empty for no-op"
+    );
 }
 
 // ── I. Slice postprocess output commit tests ──────────────────────────
@@ -1143,9 +1337,17 @@ fn slice_postprocess_merge_replaces_polygons_preserving_identity() {
         path_z_updates: Vec::new(),
     };
 
-    let merged = merge_slice_postprocess_into(existing.clone(), &output).expect("merge should succeed");
-    assert_eq!(merged.regions.len(), 2, "all regions preserved (not flattened)");
-    assert_eq!(merged.regions[0], existing.regions[0], "untouched region unchanged");
+    let merged =
+        merge_slice_postprocess_into(existing.clone(), &output).expect("merge should succeed");
+    assert_eq!(
+        merged.regions.len(),
+        2,
+        "all regions preserved (not flattened)"
+    );
+    assert_eq!(
+        merged.regions[0], existing.regions[0],
+        "untouched region unchanged"
+    );
     assert_eq!(merged.regions[1].object_id, existing.regions[1].object_id);
     assert_eq!(merged.regions[1].region_id, existing.regions[1].region_id);
     assert_eq!(merged.regions[1].polygons[0].contour.points.len(), 3);
@@ -1192,7 +1394,10 @@ fn slice_postprocess_rejects_unknown_region_key() {
     };
 
     let result = merge_slice_postprocess_into(existing, &output);
-    assert!(result.is_err(), "unknown region key must fail with structured diagnostic");
+    assert!(
+        result.is_err(),
+        "unknown region key must fail with structured diagnostic"
+    );
     let msg = result.unwrap_err();
     assert!(
         msg.contains("unknown region") && msg.contains("does-not-exist"),
@@ -1206,14 +1411,16 @@ fn empty_slice_postprocess_does_not_populate_arena() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.slicepp", "Layer::SlicePostProcess", component,
-    );
+    let module =
+        make_compiled_module_with("com.test.slicepp", "Layer::SlicePostProcess", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
 
@@ -1225,8 +1432,15 @@ fn empty_slice_postprocess_does_not_populate_arena() {
         &blackboard,
         &mut arena,
     );
-    assert!(result.is_ok(), "empty slicepp dispatch should succeed: {:?}", result.err());
-    assert!(arena.slice().is_none(), "slice slot should be empty for no-op");
+    assert!(
+        result.is_ok(),
+        "empty slicepp dispatch should succeed: {:?}",
+        result.err()
+    );
+    assert!(
+        arena.slice().is_none(),
+        "slice slot should be empty for no-op"
+    );
 }
 
 // ── J. Determinism and isolation for perimeter commit ──────────────────
@@ -1234,9 +1448,8 @@ fn empty_slice_postprocess_does_not_populate_arena() {
 #[test]
 fn perimeter_conversion_deterministic_across_repeated_calls() {
     use slicer_host::wit_host::{
-        convert_perimeter_output, ExtrusionPath3d, ExtrusionRole,
-        PerimeterOutputCollected, Point3, Point3WithWidth, WallFeatureFlag,
-        WallLoopType, WallLoopView,
+        convert_perimeter_output, ExtrusionPath3d, ExtrusionRole, PerimeterOutputCollected, Point3,
+        Point3WithWidth, WallFeatureFlag, WallLoopType, WallLoopView,
     };
 
     let mk_output = || PerimeterOutputCollected {
@@ -1245,19 +1458,52 @@ fn perimeter_conversion_deterministic_across_repeated_calls() {
             loop_type: WallLoopType::Outer,
             path: ExtrusionPath3d {
                 points: vec![
-                    Point3WithWidth { x: 1.0, y: 2.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
-                    Point3WithWidth { x: 3.0, y: 4.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
+                    Point3WithWidth {
+                        x: 1.0,
+                        y: 2.0,
+                        z: 0.2,
+                        width: 0.4,
+                        flow_factor: 1.0,
+                    },
+                    Point3WithWidth {
+                        x: 3.0,
+                        y: 4.0,
+                        z: 0.2,
+                        width: 0.4,
+                        flow_factor: 1.0,
+                    },
                 ],
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
             },
             feature_flags: vec![
-                WallFeatureFlag { tool_index: Some(0), fuzzy_skin: true, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
-                WallFeatureFlag { tool_index: Some(0), fuzzy_skin: true, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![] },
+                WallFeatureFlag {
+                    tool_index: Some(0),
+                    fuzzy_skin: true,
+                    is_bridge: false,
+                    is_thin_wall: false,
+                    skip_ironing: false,
+                    custom: vec![],
+                },
+                WallFeatureFlag {
+                    tool_index: Some(0),
+                    fuzzy_skin: true,
+                    is_bridge: false,
+                    is_thin_wall: false,
+                    skip_ironing: false,
+                    custom: vec![],
+                },
             ],
         }],
         infill_areas: Vec::new(),
-        seam_candidates: vec![(Point3 { x: 2.0, y: 1.0, z: 0.2 }, 0.9)],
+        seam_candidates: vec![(
+            Point3 {
+                x: 2.0,
+                y: 1.0,
+                z: 0.2,
+            },
+            0.9,
+        )],
         ..Default::default()
     };
 
@@ -1279,14 +1525,16 @@ fn failed_commit_does_not_leak_into_next_call() {
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
 
     // First call: infill (produces output)
-    let infill_module = make_compiled_module_with(
-        "com.test.infill", "Layer::Infill", Arc::clone(&component),
-    );
+    let infill_module =
+        make_compiled_module_with("com.test.infill", "Layer::Infill", Arc::clone(&component));
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
     let r1 = LayerStageRunner::run_stage(
@@ -1302,7 +1550,9 @@ fn failed_commit_does_not_leak_into_next_call() {
 
     // Second call: perimeters (no-op — should not contaminate anything)
     let perim_module = make_compiled_module_with(
-        "com.test.perim", "Layer::Perimeters", Arc::clone(&component),
+        "com.test.perim",
+        "Layer::Perimeters",
+        Arc::clone(&component),
     );
     let r2 = LayerStageRunner::run_stage(
         &dispatcher,
@@ -1314,8 +1564,14 @@ fn failed_commit_does_not_leak_into_next_call() {
     );
     assert!(r2.is_ok(), "perimeters should succeed");
     // Perimeter slot should be empty (no-op guest), infill slot unchanged.
-    assert!(arena.perimeter().is_none(), "perimeter slot should stay empty");
-    assert!(arena.infill().is_some(), "infill slot should still be populated");
+    assert!(
+        arena.perimeter().is_none(),
+        "perimeter slot should stay empty"
+    );
+    assert!(
+        arena.infill().is_some(),
+        "infill slot should still be populated"
+    );
 }
 
 // ── K. Real config wiring through production dispatch ──────────────────
@@ -1333,14 +1589,16 @@ fn real_config_visible_through_production_layer_dispatch() {
     fields.insert("infill-spacing".into(), ConfigValue::Float(5.0));
     let config = ConfigView::from_map(fields);
 
-    let module = make_compiled_module_with_config(
-        "com.test.infill", "Layer::Infill", component, config,
-    );
+    let module =
+        make_compiled_module_with_config("com.test.infill", "Layer::Infill", component, config);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
@@ -1353,7 +1611,11 @@ fn real_config_visible_through_production_layer_dispatch() {
         &blackboard,
         &mut arena,
     );
-    assert!(result.is_ok(), "dispatch with config should succeed: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "dispatch with config should succeed: {:?}",
+        result.err()
+    );
 
     let infill = arena.infill().expect("infill slot should be populated");
     let path = &infill.regions[0].sparse_infill[0];
@@ -1375,14 +1637,21 @@ fn different_configs_produce_different_output() {
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
 
     // Config A: spacing=3.0 → x=30.0
-    let config_a = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(3.0))].into(),);
+    let config_a =
+        ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(3.0))].into());
     let mod_a = make_compiled_module_with_config(
-        "com.test.infill-a", "Layer::Infill", Arc::clone(&component), config_a,
+        "com.test.infill-a",
+        "Layer::Infill",
+        Arc::clone(&component),
+        config_a,
     );
     let mut arena_a = LayerArena::new();
     arena_a.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
@@ -1397,9 +1666,13 @@ fn different_configs_produce_different_output() {
     .expect("dispatch A should succeed");
 
     // Config B: spacing=7.0 → x=70.0
-    let config_b = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(7.0))].into(),);
+    let config_b =
+        ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(7.0))].into());
     let mod_b = make_compiled_module_with_config(
-        "com.test.infill-b", "Layer::Infill", Arc::clone(&component), config_b,
+        "com.test.infill-b",
+        "Layer::Infill",
+        Arc::clone(&component),
+        config_b,
     );
     let mut arena_b = LayerArena::new();
     arena_b.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
@@ -1418,7 +1691,10 @@ fn different_configs_produce_different_output() {
 
     assert_eq!(x_a, 30.0, "config A spacing=3.0 → x=30.0, got {x_a}");
     assert_eq!(x_b, 70.0, "config B spacing=7.0 → x=70.0, got {x_b}");
-    assert_ne!(x_a, x_b, "different configs should produce different output");
+    assert_ne!(
+        x_a, x_b,
+        "different configs should produce different output"
+    );
 }
 
 #[test]
@@ -1429,14 +1705,21 @@ fn repeated_identical_config_produces_deterministic_output() {
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
 
     let mk_module = || {
-        let config = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(4.0))].into(),);
+        let config =
+            ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(4.0))].into());
         make_compiled_module_with_config(
-            "com.test.infill", "Layer::Infill", Arc::clone(&component), config,
+            "com.test.infill",
+            "Layer::Infill",
+            Arc::clone(&component),
+            config,
         )
     };
 
@@ -1471,14 +1754,20 @@ fn config_isolation_across_sequential_calls() {
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
 
     // First call: spacing=6.0
-    let config1 = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(6.0))].into(),);
+    let config1 = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(6.0))].into());
     let mod1 = make_compiled_module_with_config(
-        "com.test.infill", "Layer::Infill", Arc::clone(&component), config1,
+        "com.test.infill",
+        "Layer::Infill",
+        Arc::clone(&component),
+        config1,
     );
     let mut arena1 = LayerArena::new();
     arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
@@ -1493,9 +1782,12 @@ fn config_isolation_across_sequential_calls() {
     .unwrap();
 
     // Second call: spacing=2.0 (must not see 6.0)
-    let config2 = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(2.0))].into(),);
+    let config2 = ConfigView::from_map([("infill-spacing".into(), ConfigValue::Float(2.0))].into());
     let mod2 = make_compiled_module_with_config(
-        "com.test.infill2", "Layer::Infill", Arc::clone(&component), config2,
+        "com.test.infill2",
+        "Layer::Infill",
+        Arc::clone(&component),
+        config2,
     );
     let mut arena2 = LayerArena::new();
     arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
@@ -1534,7 +1826,10 @@ fn make_paint_region_ir(
                         points: vec![
                             Point2 { x: 0, y: 0 },
                             Point2 { x: 10_000, y: 0 },
-                            Point2 { x: 10_000, y: 10_000 },
+                            Point2 {
+                                x: 10_000,
+                                y: 10_000,
+                            },
                             Point2 { x: 0, y: 10_000 },
                         ],
                     },
@@ -1592,11 +1887,8 @@ fn real_paint_region_data_visible_through_production_support_dispatch() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.support",
-        "Layer::Support",
-        Arc::clone(&component),
-    );
+    let module =
+        make_compiled_module_with("com.test.support", "Layer::Support", Arc::clone(&component));
 
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let paint_ir = make_paint_region_ir(7, 3, 1);
@@ -1626,16 +1918,8 @@ fn real_paint_region_data_visible_through_production_support_dispatch() {
 
     let support = arena.support().expect("support should be populated");
     let p = &support.support_paths[0].points[0];
-    assert_eq!(
-        p.x, 3.0,
-        "enforcer count should be 3, got {}",
-        p.x
-    );
-    assert_eq!(
-        p.y, 1.0,
-        "blocker count should be 1, got {}",
-        p.y
-    );
+    assert_eq!(p.x, 3.0, "enforcer count should be 3, got {}", p.x);
+    assert_eq!(p.y, 1.0, "blocker count should be 1, got {}", p.y);
     assert_eq!(
         p.flow_factor, 7.0,
         "paint layer index should match layer.index=7, got {}",
@@ -1651,11 +1935,8 @@ fn no_paint_region_ir_produces_empty_paint_view() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.support",
-        "Layer::Support",
-        Arc::clone(&component),
-    );
+    let module =
+        make_compiled_module_with("com.test.support", "Layer::Support", Arc::clone(&component));
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
@@ -1691,11 +1972,8 @@ fn paint_region_layer_mismatch_produces_empty_view() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.support",
-        "Layer::Support",
-        Arc::clone(&component),
-    );
+    let module =
+        make_compiled_module_with("com.test.support", "Layer::Support", Arc::clone(&component));
 
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let paint_ir = make_paint_region_ir(5, 2, 0); // paint at layer 5
@@ -1744,11 +2022,8 @@ fn paint_region_isolation_across_sequential_dispatches() {
     let mut bb1 = Blackboard::new(empty_mesh_ir(), 1);
     bb1.commit_paint_regions(Arc::new(make_paint_region_ir(0, 3, 0)))
         .unwrap();
-    let module1 = make_compiled_module_with(
-        "com.test.support",
-        "Layer::Support",
-        Arc::clone(&component),
-    );
+    let module1 =
+        make_compiled_module_with("com.test.support", "Layer::Support", Arc::clone(&component));
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
@@ -1853,11 +2128,8 @@ fn non_paint_stage_not_affected_by_blackboard_paint_data() {
 
     // Run without paint
     let bb_no_paint = Blackboard::new(empty_mesh_ir(), 1);
-    let module1 = make_compiled_module_with(
-        "com.test.infill",
-        "Layer::Infill",
-        Arc::clone(&component),
-    );
+    let module1 =
+        make_compiled_module_with("com.test.infill", "Layer::Infill", Arc::clone(&component));
     let layer = GlobalLayer {
         index: 0,
         z: 0.2,
@@ -1882,11 +2154,8 @@ fn non_paint_stage_not_affected_by_blackboard_paint_data() {
     bb_with_paint
         .commit_paint_regions(Arc::new(make_paint_region_ir(0, 5, 3)))
         .unwrap();
-    let module2 = make_compiled_module_with(
-        "com.test.infill2",
-        "Layer::Infill",
-        Arc::clone(&component),
-    );
+    let module2 =
+        make_compiled_module_with("com.test.infill2", "Layer::Infill", Arc::clone(&component));
     let mut arena2 = LayerArena::new();
     arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
     LayerStageRunner::run_stage(
@@ -1902,15 +2171,19 @@ fn non_paint_stage_not_affected_by_blackboard_paint_data() {
     let infill1 = arena1.infill().unwrap();
     let infill2 = arena2.infill().unwrap();
     assert_eq!(
-        infill1.regions[0].sparse_infill[0].points,
-        infill2.regions[0].sparse_infill[0].points,
+        infill1.regions[0].sparse_infill[0].points, infill2.regions[0].sparse_infill[0].points,
         "infill output should be identical regardless of paint presence"
     );
 }
 
 // ── I. Slice-region wiring tests ────────────────────────────────────────
 
-fn make_slice_ir(layer_index: u32, z: f32, region_count: usize, polys_per_region: usize) -> SliceIR {
+fn make_slice_ir(
+    layer_index: u32,
+    z: f32,
+    region_count: usize,
+    polys_per_region: usize,
+) -> SliceIR {
     let regions = (0..region_count)
         .map(|i| SlicedRegion {
             object_id: format!("obj-{i}"),
@@ -1921,7 +2194,10 @@ fn make_slice_ir(layer_index: u32, z: f32, region_count: usize, polys_per_region
                         points: vec![
                             Point2 { x: 0, y: 0 },
                             Point2 { x: 10_000, y: 0 },
-                            Point2 { x: 10_000, y: 10_000 },
+                            Point2 {
+                                x: 10_000,
+                                y: 10_000,
+                            },
                             Point2 { x: 0, y: 10_000 },
                         ],
                     },
@@ -1952,11 +2228,8 @@ fn real_slice_region_data_visible_through_production_infill_dispatch() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.infill",
-        "Layer::Infill",
-        Arc::clone(&component),
-    );
+    let module =
+        make_compiled_module_with("com.test.infill", "Layer::Infill", Arc::clone(&component));
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
@@ -2008,11 +2281,8 @@ fn empty_arena_produces_no_slice_regions() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.infill",
-        "Layer::Infill",
-        Arc::clone(&component),
-    );
+    let module =
+        make_compiled_module_with("com.test.infill", "Layer::Infill", Arc::clone(&component));
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
@@ -2035,7 +2305,10 @@ fn empty_arena_produces_no_slice_regions() {
     )
     .unwrap();
 
-    assert!(arena.infill().is_none(), "no slice regions → empty bypass preserved");
+    assert!(
+        arena.infill().is_none(),
+        "no slice regions → empty bypass preserved"
+    );
 }
 
 #[test]
@@ -2055,11 +2328,8 @@ fn slice_region_isolation_across_sequential_dispatches() {
     };
 
     // First dispatch: 3 regions, 2 polygons each
-    let module1 = make_compiled_module_with(
-        "com.test.infill1",
-        "Layer::Infill",
-        Arc::clone(&component),
-    );
+    let module1 =
+        make_compiled_module_with("com.test.infill1", "Layer::Infill", Arc::clone(&component));
     let mut arena1 = LayerArena::new();
     arena1.set_slice(make_slice_ir(0, 0.2, 3, 2)).unwrap();
     LayerStageRunner::run_stage(
@@ -2073,11 +2343,8 @@ fn slice_region_isolation_across_sequential_dispatches() {
     .unwrap();
 
     // Second dispatch: 1 region, 5 polygons
-    let module2 = make_compiled_module_with(
-        "com.test.infill2",
-        "Layer::Infill",
-        Arc::clone(&component),
-    );
+    let module2 =
+        make_compiled_module_with("com.test.infill2", "Layer::Infill", Arc::clone(&component));
     let mut arena2 = LayerArena::new();
     arena2.set_slice(make_slice_ir(0, 0.2, 1, 5)).unwrap();
     LayerStageRunner::run_stage(
@@ -2147,11 +2414,8 @@ fn slice_and_paint_both_visible_in_same_support_dispatch() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.support",
-        "Layer::Support",
-        Arc::clone(&component),
-    );
+    let module =
+        make_compiled_module_with("com.test.support", "Layer::Support", Arc::clone(&component));
 
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     blackboard
@@ -2229,12 +2493,18 @@ fn infill_output_correct_when_slice_regions_present() {
     let infill = arena.infill().expect("infill should be populated");
     let path = &infill.regions[0].sparse_infill[0];
     // Config spacing=3.0 → second point x = 30.0
-    assert_eq!(path.points[1].x, 30.0, "config wiring still works with slice regions present");
+    assert_eq!(
+        path.points[1].x, 30.0,
+        "config wiring still works with slice regions present"
+    );
     // First point encodes region data: z from slice, region_count=1, poly_count=2
     assert_eq!(path.points[0].z, 1.0, "z from slice region");
     assert_eq!(path.points[0].flow_factor, 1.0, "1 region visible");
     assert_eq!(path.points[0].width, 2.0, "2 polygons visible");
-    assert_eq!(infill.global_layer_index, 5, "layer index preserved in output");
+    assert_eq!(
+        infill.global_layer_index, 5,
+        "layer index preserved in output"
+    );
 }
 
 // ── L. Perimeter-region wiring tests ────────────────────────────────────
@@ -2242,8 +2512,11 @@ fn infill_output_correct_when_slice_regions_present() {
 fn make_wall_loop(perimeter_index: u32, point_count: usize, z: f32) -> slicer_ir::WallLoop {
     let points = (0..point_count)
         .map(|i| slicer_ir::Point3WithWidth {
-            x: i as f32, y: 0.0, z,
-            width: 0.4, flow_factor: 1.0,
+            x: i as f32,
+            y: 0.0,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
         })
         .collect::<Vec<_>>();
     let flags = (0..point_count)
@@ -2272,7 +2545,12 @@ fn make_wall_loop(perimeter_index: u32, point_count: usize, z: f32) -> slicer_ir
     }
 }
 
-fn make_perimeter_ir(layer_index: u32, regions: usize, walls_per_region: u32, infill_polys: usize) -> slicer_ir::PerimeterIR {
+fn make_perimeter_ir(
+    layer_index: u32,
+    regions: usize,
+    walls_per_region: u32,
+    infill_polys: usize,
+) -> slicer_ir::PerimeterIR {
     let wall_z = if layer_index == 0 {
         0.2
     } else {
@@ -2317,14 +2595,16 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.infill-pp", "Layer::InfillPostProcess", component,
-    );
+    let module =
+        make_compiled_module_with("com.test.infill-pp", "Layer::InfillPostProcess", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 2, z: 0.4, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 2,
+        z: 0.4,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(2, 3, 2, 4)).unwrap();
@@ -2332,8 +2612,12 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::InfillPostProcess".to_string(),
-        &layer, &module, &blackboard, &mut arena,
-    ).unwrap();
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 
     let infill = arena.infill().expect("infill slot should be populated");
     assert_eq!(infill.regions.len(), 3, "one InfillRegion per input region");
@@ -2353,13 +2637,18 @@ fn real_perimeter_region_data_visible_through_wall_postprocess_dispatch() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
-        "com.test.perim-pp", "Layer::PerimetersPostProcess", component,
+        "com.test.perim-pp",
+        "Layer::PerimetersPostProcess",
+        component,
     );
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 1, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 1,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(1, 2, 3, 1)).unwrap();
@@ -2367,13 +2656,23 @@ fn real_perimeter_region_data_visible_through_wall_postprocess_dispatch() {
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::PerimetersPostProcess".to_string(),
-        &layer, &module, &blackboard, &mut arena,
-    ).unwrap();
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 
     // Post-process replaces perimeter slot with guest's committed output;
     // each input region produces its own committed PerimeterRegion.
-    let perim = arena.perimeter().expect("perimeter slot should be populated");
-    assert_eq!(perim.regions.len(), 2, "one PerimeterRegion per input region");
+    let perim = arena
+        .perimeter()
+        .expect("perimeter slot should be populated");
+    assert_eq!(
+        perim.regions.len(),
+        2,
+        "one PerimeterRegion per input region"
+    );
     for (i, r) in perim.regions.iter().enumerate() {
         assert_eq!(r.object_id, format!("obj-{i}"), "object_id preserved");
         assert_eq!(r.region_id, i as u64, "region_id preserved");
@@ -2394,14 +2693,16 @@ fn path_optimization_receives_real_perimeter_regions() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.pathopt", "Layer::PathOptimization", component,
-    );
+    let module =
+        make_compiled_module_with("com.test.pathopt", "Layer::PathOptimization", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(0, 4, 2, 0)).unwrap();
@@ -2409,9 +2710,16 @@ fn path_optimization_receives_real_perimeter_regions() {
     let r = LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::PathOptimization".to_string(),
-        &layer, &module, &blackboard, &mut arena,
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
     );
-    assert!(r.is_ok(), "path-optimization with real perimeter regions should succeed: {:?}", r.err());
+    assert!(
+        r.is_ok(),
+        "path-optimization with real perimeter regions should succeed: {:?}",
+        r.err()
+    );
 }
 
 #[test]
@@ -2423,13 +2731,18 @@ fn empty_perimeter_input_valid_for_infill_postprocess() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
-        "com.test.infill-pp-empty", "Layer::InfillPostProcess", component,
+        "com.test.infill-pp-empty",
+        "Layer::InfillPostProcess",
+        component,
     );
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
     // Do not stage any perimeter IR.
@@ -2437,10 +2750,17 @@ fn empty_perimeter_input_valid_for_infill_postprocess() {
     LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::InfillPostProcess".to_string(),
-        &layer, &module, &blackboard, &mut arena,
-    ).unwrap();
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 
-    assert!(arena.infill().is_none(), "no input regions → no output → empty bypass");
+    assert!(
+        arena.infill().is_none(),
+        "no input regions → no output → empty bypass"
+    );
 }
 
 #[test]
@@ -2450,19 +2770,46 @@ fn perimeter_region_isolation_across_sequential_dispatches() {
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
 
-    let m1 = make_compiled_module_with("com.test.ipp1", "Layer::InfillPostProcess", Arc::clone(&component));
+    let m1 = make_compiled_module_with(
+        "com.test.ipp1",
+        "Layer::InfillPostProcess",
+        Arc::clone(&component),
+    );
     let mut a1 = LayerArena::new();
     a1.set_perimeter(make_perimeter_ir(0, 5, 1, 2)).unwrap();
-    LayerStageRunner::run_stage(&dispatcher, &"Layer::InfillPostProcess".to_string(), &layer, &m1, &blackboard, &mut a1).unwrap();
+    LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::InfillPostProcess".to_string(),
+        &layer,
+        &m1,
+        &blackboard,
+        &mut a1,
+    )
+    .unwrap();
 
-    let m2 = make_compiled_module_with("com.test.ipp2", "Layer::InfillPostProcess", Arc::clone(&component));
+    let m2 = make_compiled_module_with(
+        "com.test.ipp2",
+        "Layer::InfillPostProcess",
+        Arc::clone(&component),
+    );
     let mut a2 = LayerArena::new();
     a2.set_perimeter(make_perimeter_ir(0, 1, 7, 3)).unwrap();
-    LayerStageRunner::run_stage(&dispatcher, &"Layer::InfillPostProcess".to_string(), &layer, &m2, &blackboard, &mut a2).unwrap();
+    LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::InfillPostProcess".to_string(),
+        &layer,
+        &m2,
+        &blackboard,
+        &mut a2,
+    )
+    .unwrap();
 
     let i1 = a1.infill().unwrap();
     let i2 = a2.infill().unwrap();
@@ -2483,8 +2830,11 @@ fn perimeter_region_deterministic_across_repeated_dispatches() {
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
 
     let mut results = Vec::new();
@@ -2497,9 +2847,14 @@ fn perimeter_region_deterministic_across_repeated_dispatches() {
         let mut arena = LayerArena::new();
         arena.set_perimeter(make_perimeter_ir(0, 2, 3, 4)).unwrap();
         LayerStageRunner::run_stage(
-            &dispatcher, &"Layer::InfillPostProcess".to_string(),
-            &layer, &module, &blackboard, &mut arena,
-        ).unwrap();
+            &dispatcher,
+            &"Layer::InfillPostProcess".to_string(),
+            &layer,
+            &module,
+            &blackboard,
+            &mut arena,
+        )
+        .unwrap();
         results.push(arena.take_infill().unwrap());
     }
     assert_eq!(results[0], results[1]);
@@ -2514,32 +2869,46 @@ fn stage_without_perimeter_input_does_not_see_perimeter_state() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.infill-no-perim", "Layer::Infill", component,
-    );
+    let module = make_compiled_module_with("com.test.infill-no-perim", "Layer::Infill", component);
 
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
     // Stage perimeter data only; no slice data.
     arena.set_perimeter(make_perimeter_ir(0, 4, 2, 5)).unwrap();
 
     LayerStageRunner::run_stage(
-        &dispatcher, &"Layer::Infill".to_string(),
-        &layer, &module, &blackboard, &mut arena,
-    ).unwrap();
+        &dispatcher,
+        &"Layer::Infill".to_string(),
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 
     // No infill output confirms perimeter state was not misrouted into the
     // slice-region view.
-    assert!(arena.infill().is_none(), "Infill stage must not see perimeter data as slice regions");
+    assert!(
+        arena.infill().is_none(),
+        "Infill stage must not see perimeter data as slice regions"
+    );
 }
 
 // ── M. Identity-preservation tests for post-process commit ─────────────
 
-fn make_perimeter_ir_with_ids(layer_index: u32, ids: &[(&str, u64)], walls_per: u32, infill_per: usize) -> slicer_ir::PerimeterIR {
+fn make_perimeter_ir_with_ids(
+    layer_index: u32,
+    ids: &[(&str, u64)],
+    walls_per: u32,
+    infill_per: usize,
+) -> slicer_ir::PerimeterIR {
     let wall_z = if layer_index == 0 {
         0.2
     } else {
@@ -2556,7 +2925,11 @@ fn make_perimeter_ir_with_ids(layer_index: u32, ids: &[(&str, u64)], walls_per: 
             infill_areas: (0..infill_per)
                 .map(|_| ExPolygon {
                     contour: Polygon {
-                        points: vec![Point2 { x: 0, y: 0 }, Point2 { x: 1, y: 0 }, Point2 { x: 1, y: 1 }],
+                        points: vec![
+                            Point2 { x: 0, y: 0 },
+                            Point2 { x: 1, y: 0 },
+                            Point2 { x: 1, y: 1 },
+                        ],
                     },
                     holes: Vec::new(),
                 })
@@ -2578,27 +2951,53 @@ fn perimeter_postprocess_commit_preserves_distinct_region_identities() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
-        "com.test.perim-pp-ids", "Layer::PerimetersPostProcess", component,
+        "com.test.perim-pp-ids",
+        "Layer::PerimetersPostProcess",
+        component,
     );
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let layer = GlobalLayer { index: 0, z: 0.2, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false };
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
     let ids = [("alpha", 11u64), ("beta", 22u64), ("gamma", 33u64)];
     let mut arena = LayerArena::new();
-    arena.set_perimeter(make_perimeter_ir_with_ids(0, &ids, 2, 1)).unwrap();
+    arena
+        .set_perimeter(make_perimeter_ir_with_ids(0, &ids, 2, 1))
+        .unwrap();
 
     LayerStageRunner::run_stage(
-        &dispatcher, &"Layer::PerimetersPostProcess".to_string(),
-        &layer, &module, &blackboard, &mut arena,
-    ).unwrap();
+        &dispatcher,
+        &"Layer::PerimetersPostProcess".to_string(),
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 
     let perim = arena.perimeter().expect("perimeter populated");
-    assert_eq!(perim.regions.len(), 3, "3 distinct regions preserved (not flattened)");
-    let observed: Vec<(String, u64)> = perim.regions.iter()
-        .map(|r| (r.object_id.clone(), r.region_id)).collect();
+    assert_eq!(
+        perim.regions.len(),
+        3,
+        "3 distinct regions preserved (not flattened)"
+    );
+    let observed: Vec<(String, u64)> = perim
+        .regions
+        .iter()
+        .map(|r| (r.object_id.clone(), r.region_id))
+        .collect();
     let expected: Vec<(String, u64)> = ids.iter().map(|(o, r)| (o.to_string(), *r)).collect();
     assert_eq!(observed, expected, "identities preserved in input order");
     for r in &perim.regions {
-        assert_eq!(r.walls.len(), 1, "each committed region got its own wall-loop");
+        assert_eq!(
+            r.walls.len(),
+            1,
+            "each committed region got its own wall-loop"
+        );
     }
 }
 
@@ -2608,23 +3007,41 @@ fn infill_postprocess_commit_preserves_distinct_region_identities() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
-        "com.test.infill-pp-ids", "Layer::InfillPostProcess", component,
+        "com.test.infill-pp-ids",
+        "Layer::InfillPostProcess",
+        component,
     );
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let layer = GlobalLayer { index: 0, z: 0.2, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false };
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
     let ids = [("part-A", 7u64), ("part-B", 9u64)];
     let mut arena = LayerArena::new();
-    arena.set_perimeter(make_perimeter_ir_with_ids(0, &ids, 1, 1)).unwrap();
+    arena
+        .set_perimeter(make_perimeter_ir_with_ids(0, &ids, 1, 1))
+        .unwrap();
 
     LayerStageRunner::run_stage(
-        &dispatcher, &"Layer::InfillPostProcess".to_string(),
-        &layer, &module, &blackboard, &mut arena,
-    ).unwrap();
+        &dispatcher,
+        &"Layer::InfillPostProcess".to_string(),
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 
     let infill = arena.infill().expect("infill populated");
     assert_eq!(infill.regions.len(), 2, "2 distinct regions preserved");
-    let observed: Vec<(String, u64)> = infill.regions.iter()
-        .map(|r| (r.object_id.clone(), r.region_id)).collect();
+    let observed: Vec<(String, u64)> = infill
+        .regions
+        .iter()
+        .map(|r| (r.object_id.clone(), r.region_id))
+        .collect();
     let expected: Vec<(String, u64)> = ids.iter().map(|(o, r)| (o.to_string(), *r)).collect();
     assert_eq!(observed, expected, "identities preserved in input order");
 }
@@ -2635,20 +3052,34 @@ fn perimeter_postprocess_identity_preservation_deterministic() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let layer = GlobalLayer { index: 0, z: 0.2, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false };
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
     let ids = [("x", 1u64), ("y", 2u64), ("z", 3u64), ("w", 4u64)];
     let mut results = Vec::new();
     for i in 0..3 {
         let module = make_compiled_module_with(
             &format!("com.test.perim-pp-det-{i}"),
-            "Layer::PerimetersPostProcess", Arc::clone(&component),
+            "Layer::PerimetersPostProcess",
+            Arc::clone(&component),
         );
         let mut arena = LayerArena::new();
-        arena.set_perimeter(make_perimeter_ir_with_ids(0, &ids, 2, 0)).unwrap();
+        arena
+            .set_perimeter(make_perimeter_ir_with_ids(0, &ids, 2, 0))
+            .unwrap();
         LayerStageRunner::run_stage(
-            &dispatcher, &"Layer::PerimetersPostProcess".to_string(),
-            &layer, &module, &blackboard, &mut arena,
-        ).unwrap();
+            &dispatcher,
+            &"Layer::PerimetersPostProcess".to_string(),
+            &layer,
+            &module,
+            &blackboard,
+            &mut arena,
+        )
+        .unwrap();
         results.push(arena.take_perimeter().unwrap());
     }
     assert_eq!(results[0], results[1]);
@@ -2661,25 +3092,72 @@ fn perimeter_postprocess_identity_isolation_across_dispatches() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let layer = GlobalLayer { index: 0, z: 0.2, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false };
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
 
-    let m1 = make_compiled_module_with("com.test.iso1", "Layer::PerimetersPostProcess", Arc::clone(&component));
+    let m1 = make_compiled_module_with(
+        "com.test.iso1",
+        "Layer::PerimetersPostProcess",
+        Arc::clone(&component),
+    );
     let mut a1 = LayerArena::new();
-    a1.set_perimeter(make_perimeter_ir_with_ids(0, &[("first", 100), ("second", 200)], 1, 0)).unwrap();
-    LayerStageRunner::run_stage(&dispatcher, &"Layer::PerimetersPostProcess".to_string(), &layer, &m1, &blackboard, &mut a1).unwrap();
+    a1.set_perimeter(make_perimeter_ir_with_ids(
+        0,
+        &[("first", 100), ("second", 200)],
+        1,
+        0,
+    ))
+    .unwrap();
+    LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::PerimetersPostProcess".to_string(),
+        &layer,
+        &m1,
+        &blackboard,
+        &mut a1,
+    )
+    .unwrap();
 
-    let m2 = make_compiled_module_with("com.test.iso2", "Layer::PerimetersPostProcess", Arc::clone(&component));
+    let m2 = make_compiled_module_with(
+        "com.test.iso2",
+        "Layer::PerimetersPostProcess",
+        Arc::clone(&component),
+    );
     let mut a2 = LayerArena::new();
-    a2.set_perimeter(make_perimeter_ir_with_ids(0, &[("alt", 999)], 1, 0)).unwrap();
-    LayerStageRunner::run_stage(&dispatcher, &"Layer::PerimetersPostProcess".to_string(), &layer, &m2, &blackboard, &mut a2).unwrap();
+    a2.set_perimeter(make_perimeter_ir_with_ids(0, &[("alt", 999)], 1, 0))
+        .unwrap();
+    LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::PerimetersPostProcess".to_string(),
+        &layer,
+        &m2,
+        &blackboard,
+        &mut a2,
+    )
+    .unwrap();
 
     let p1 = a1.perimeter().unwrap();
     let p2 = a2.perimeter().unwrap();
-    assert_eq!(p1.regions.iter().map(|r| (r.object_id.clone(), r.region_id)).collect::<Vec<_>>(),
-               vec![("first".to_string(), 100), ("second".to_string(), 200)]);
-    assert_eq!(p2.regions.iter().map(|r| (r.object_id.clone(), r.region_id)).collect::<Vec<_>>(),
-               vec![("alt".to_string(), 999)],
-               "no leak from prior dispatch's identities");
+    assert_eq!(
+        p1.regions
+            .iter()
+            .map(|r| (r.object_id.clone(), r.region_id))
+            .collect::<Vec<_>>(),
+        vec![("first".to_string(), 100), ("second".to_string(), 200)]
+    );
+    assert_eq!(
+        p2.regions
+            .iter()
+            .map(|r| (r.object_id.clone(), r.region_id))
+            .collect::<Vec<_>>(),
+        vec![("alt".to_string(), 999)],
+        "no leak from prior dispatch's identities"
+    );
 }
 
 #[test]
@@ -2689,12 +3167,30 @@ fn support_postprocess_empty_bypass_when_no_slice_regions() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with("com.test.spp-empty", "Layer::SupportPostProcess", component);
+    let module =
+        make_compiled_module_with("com.test.spp-empty", "Layer::SupportPostProcess", component);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let layer = GlobalLayer { index: 0, z: 0.2, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false };
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
     let mut arena = LayerArena::new();
-    LayerStageRunner::run_stage(&dispatcher, &"Layer::SupportPostProcess".to_string(), &layer, &module, &blackboard, &mut arena).unwrap();
-    assert!(arena.support().is_none(), "empty-input post-process: empty bypass preserved");
+    LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::SupportPostProcess".to_string(),
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
+    assert!(
+        arena.support().is_none(),
+        "empty-input post-process: empty bypass preserved"
+    );
 }
 
 #[test]
@@ -2713,12 +3209,23 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
             perimeter_index: 0,
             loop_type: WallLoopType::Outer,
             path: ExtrusionPath3d {
-                points: vec![Point3WithWidth { x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0 }],
+                points: vec![Point3WithWidth {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                }],
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
             },
             feature_flags: vec![WallFeatureFlag {
-                tool_index: None, fuzzy_skin: false, is_bridge: false, is_thin_wall: false, skip_ironing: false, custom: vec![],
+                tool_index: None,
+                fuzzy_skin: false,
+                is_bridge: false,
+                is_thin_wall: false,
+                skip_ironing: false,
+                custom: vec![],
             }],
         }],
         wall_loop_origins: vec![None],
@@ -2738,8 +3245,10 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
     let result = convert_perimeter_output(&output, 0);
     assert!(result.is_err(), "untagged push in identity mode must fail");
     let msg = result.unwrap_err();
-    assert!(msg.contains("active perimeter source region") || msg.contains("without an active"),
-            "diagnostic should explain missing region context: {msg}");
+    assert!(
+        msg.contains("active perimeter source region") || msg.contains("without an active"),
+        "diagnostic should explain missing region context: {msg}"
+    );
 }
 
 // ── K. SlicePostProcess / SupportPostProcess identity-preserving commit ─
@@ -2750,34 +3259,62 @@ fn slice_postprocess_commit_preserves_distinct_region_identities() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
-        "com.test.slice-pp-ids", "Layer::SlicePostProcess", component,
+        "com.test.slice-pp-ids",
+        "Layer::SlicePostProcess",
+        component,
     );
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
     // Three distinct slice regions (object_id varies via make_slice_ir: obj-0..obj-2)
     arena.set_slice(make_slice_ir(0, 0.2, 3, 1)).unwrap();
 
     LayerStageRunner::run_stage(
-        &dispatcher, &"Layer::SlicePostProcess".to_string(),
-        &layer, &module, &blackboard, &mut arena,
-    ).unwrap();
+        &dispatcher,
+        &"Layer::SlicePostProcess".to_string(),
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 
-    let slice = arena.slice().expect("slice populated after post-process merge");
-    assert_eq!(slice.regions.len(), 3, "all three source regions preserved (not flattened)");
-    let observed: Vec<(String, u64)> = slice.regions.iter()
-        .map(|r| (r.object_id.clone(), r.region_id)).collect();
+    let slice = arena
+        .slice()
+        .expect("slice populated after post-process merge");
+    assert_eq!(
+        slice.regions.len(),
+        3,
+        "all three source regions preserved (not flattened)"
+    );
+    let observed: Vec<(String, u64)> = slice
+        .regions
+        .iter()
+        .map(|r| (r.object_id.clone(), r.region_id))
+        .collect();
     let expected: Vec<(String, u64)> = vec![
-        ("obj-0".into(), 0), ("obj-1".into(), 1), ("obj-2".into(), 2),
+        ("obj-0".into(), 0),
+        ("obj-1".into(), 1),
+        ("obj-2".into(), 2),
     ];
-    assert_eq!(observed, expected, "identities preserved in input order after merge");
+    assert_eq!(
+        observed, expected,
+        "identities preserved in input order after merge"
+    );
     // Guest replaced each region's polygons with a triangle (3 points).
     for r in &slice.regions {
         assert_eq!(r.polygons.len(), 1);
-        assert_eq!(r.polygons[0].contour.points.len(), 3, "guest polygon replacement applied per region");
+        assert_eq!(
+            r.polygons[0].contour.points.len(),
+            3,
+            "guest polygon replacement applied per region"
+        );
     }
 }
 
@@ -2787,12 +3324,17 @@ fn support_postprocess_commit_preserves_distinct_region_identities() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
-        "com.test.support-pp-ids", "Layer::SupportPostProcess", component,
+        "com.test.support-pp-ids",
+        "Layer::SupportPostProcess",
+        component,
     );
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
     // Two distinct slice regions: (obj-0, 0), (obj-1, 1). Guest pushes one
@@ -2801,15 +3343,32 @@ fn support_postprocess_commit_preserves_distinct_region_identities() {
     arena.set_slice(make_slice_ir(0, 0.2, 2, 1)).unwrap();
 
     LayerStageRunner::run_stage(
-        &dispatcher, &"Layer::SupportPostProcess".to_string(),
-        &layer, &module, &blackboard, &mut arena,
-    ).unwrap();
+        &dispatcher,
+        &"Layer::SupportPostProcess".to_string(),
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 
-    let support = arena.support().expect("support populated after post-process");
-    assert_eq!(support.support_paths.len(), 2, "two origin-tagged paths preserved");
+    let support = arena
+        .support()
+        .expect("support populated after post-process");
+    assert_eq!(
+        support.support_paths.len(),
+        2,
+        "two origin-tagged paths preserved"
+    );
     // First-seen ordering by origin is stable; each path encodes poly count.
-    assert_eq!(support.support_paths[0].points[0].x, 1.0, "region 0 has 1 polygon");
-    assert_eq!(support.support_paths[1].points[0].x, 1.0, "region 1 has 1 polygon");
+    assert_eq!(
+        support.support_paths[0].points[0].x, 1.0,
+        "region 0 has 1 polygon"
+    );
+    assert_eq!(
+        support.support_paths[1].points[0].x, 1.0,
+        "region 1 has 1 polygon"
+    );
 }
 
 #[test]
@@ -2819,21 +3378,30 @@ fn slice_postprocess_identity_preservation_deterministic() {
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut results = Vec::new();
     for i in 0..3 {
         let module = make_compiled_module_with(
             &format!("com.test.spp-det-{i}"),
-            "Layer::SlicePostProcess", Arc::clone(&component),
+            "Layer::SlicePostProcess",
+            Arc::clone(&component),
         );
         let mut arena = LayerArena::new();
         arena.set_slice(make_slice_ir(0, 0.2, 4, 1)).unwrap();
         LayerStageRunner::run_stage(
-            &dispatcher, &"Layer::SlicePostProcess".to_string(),
-            &layer, &module, &blackboard, &mut arena,
-        ).unwrap();
+            &dispatcher,
+            &"Layer::SlicePostProcess".to_string(),
+            &layer,
+            &module,
+            &blackboard,
+            &mut arena,
+        )
+        .unwrap();
         results.push(arena.take_slice().unwrap());
     }
     assert_eq!(results[0], results[1]);
@@ -2847,22 +3415,57 @@ fn support_postprocess_identity_isolation_across_dispatches() {
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
 
-    let m1 = make_compiled_module_with("com.test.spp-iso1", "Layer::SupportPostProcess", Arc::clone(&component));
+    let m1 = make_compiled_module_with(
+        "com.test.spp-iso1",
+        "Layer::SupportPostProcess",
+        Arc::clone(&component),
+    );
     let mut a1 = LayerArena::new();
     a1.set_slice(make_slice_ir(0, 0.2, 3, 2)).unwrap();
-    LayerStageRunner::run_stage(&dispatcher, &"Layer::SupportPostProcess".to_string(), &layer, &m1, &blackboard, &mut a1).unwrap();
+    LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::SupportPostProcess".to_string(),
+        &layer,
+        &m1,
+        &blackboard,
+        &mut a1,
+    )
+    .unwrap();
 
-    let m2 = make_compiled_module_with("com.test.spp-iso2", "Layer::SupportPostProcess", Arc::clone(&component));
+    let m2 = make_compiled_module_with(
+        "com.test.spp-iso2",
+        "Layer::SupportPostProcess",
+        Arc::clone(&component),
+    );
     let mut a2 = LayerArena::new();
     a2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    LayerStageRunner::run_stage(&dispatcher, &"Layer::SupportPostProcess".to_string(), &layer, &m2, &blackboard, &mut a2).unwrap();
+    LayerStageRunner::run_stage(
+        &dispatcher,
+        &"Layer::SupportPostProcess".to_string(),
+        &layer,
+        &m2,
+        &blackboard,
+        &mut a2,
+    )
+    .unwrap();
 
-    assert_eq!(a1.support().unwrap().support_paths.len(), 3, "dispatch 1 kept its 3 regions");
-    assert_eq!(a2.support().unwrap().support_paths.len(), 1, "dispatch 2 kept its 1 region (no leak)");
+    assert_eq!(
+        a1.support().unwrap().support_paths.len(),
+        3,
+        "dispatch 1 kept its 3 regions"
+    );
+    assert_eq!(
+        a2.support().unwrap().support_paths.len(),
+        1,
+        "dispatch 2 kept its 1 region (no leak)"
+    );
 }
 
 #[test]
@@ -2875,7 +3478,13 @@ fn support_output_rejects_untagged_push_in_identity_mode() {
         SupportOutputCollected,
     };
     let mk_path = || ExtrusionPath3d {
-        points: vec![Point3WithWidth { x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0 }],
+        points: vec![Point3WithWidth {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            width: 0.4,
+            flow_factor: 1.0,
+        }],
         role: ExtrusionRole::SupportMaterial,
         speed_factor: 1.0,
     };
@@ -2890,8 +3499,10 @@ fn support_output_rejects_untagged_push_in_identity_mode() {
     let result = convert_support_output(&output, 0);
     assert!(result.is_err(), "untagged push in identity mode must fail");
     let msg = result.unwrap_err();
-    assert!(msg.contains("active slice source region") || msg.contains("without an active"),
-            "diagnostic should explain missing region context: {msg}");
+    assert!(
+        msg.contains("active slice source region") || msg.contains("without an active"),
+        "diagnostic should explain missing region context: {msg}"
+    );
 }
 
 #[test]
@@ -2904,29 +3515,56 @@ fn slice_postprocess_downstream_propagation_preserves_per_region_shape() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let spp = make_compiled_module_with("com.test.spp-prop", "Layer::SlicePostProcess", Arc::clone(&component));
+    let spp = make_compiled_module_with(
+        "com.test.spp-prop",
+        "Layer::SlicePostProcess",
+        Arc::clone(&component),
+    );
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
-    let layer = GlobalLayer { index: 0, z: 0.2, active_regions: Vec::new(), has_nonplanar: false, is_sync_layer: false };
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
 
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 3, 1)).unwrap();
     LayerStageRunner::run_stage(
-        &dispatcher, &"Layer::SlicePostProcess".to_string(),
-        &layer, &spp, &blackboard, &mut arena,
-    ).unwrap();
+        &dispatcher,
+        &"Layer::SlicePostProcess".to_string(),
+        &layer,
+        &spp,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 
     // Now dispatch a downstream stage that consumes slice regions (Support).
     // The test guest's run_support observes paint data, but the key proof is
     // that push_slice_regions sees all three regions after SlicePostProcess.
-    let sup = make_compiled_module_with("com.test.sup-prop", "Layer::SupportPostProcess", Arc::clone(&component));
+    let sup = make_compiled_module_with(
+        "com.test.sup-prop",
+        "Layer::SupportPostProcess",
+        Arc::clone(&component),
+    );
     LayerStageRunner::run_stage(
-        &dispatcher, &"Layer::SupportPostProcess".to_string(),
-        &layer, &sup, &blackboard, &mut arena,
-    ).unwrap();
+        &dispatcher,
+        &"Layer::SupportPostProcess".to_string(),
+        &layer,
+        &sup,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 
-    let support = arena.support().expect("support populated via propagated slice regions");
+    let support = arena
+        .support()
+        .expect("support populated via propagated slice regions");
     assert_eq!(
-        support.support_paths.len(), 3,
+        support.support_paths.len(),
+        3,
         "downstream stage saw all 3 per-region identities preserved by SlicePostProcess merge",
     );
 }
@@ -2940,21 +3578,28 @@ fn path_optimization_commit_folds_tool_changes_into_deferred_queue() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
-    let module = make_compiled_module_with(
-        "com.test.pathopt-tc", "Layer::PathOptimization", component,
-    );
+    let module =
+        make_compiled_module_with("com.test.pathopt-tc", "Layer::PathOptimization", component);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let layer = GlobalLayer {
-        index: 0, z: 0.2, active_regions: Vec::new(),
-        has_nonplanar: false, is_sync_layer: false,
+        index: 0,
+        z: 0.2,
+        active_regions: Vec::new(),
+        has_nonplanar: false,
+        is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(0, 3, 1, 0)).unwrap();
 
     LayerStageRunner::run_stage(
-        &dispatcher, &"Layer::PathOptimization".to_string(),
-        &layer, &module, &blackboard, &mut arena,
-    ).unwrap();
+        &dispatcher,
+        &"Layer::PathOptimization".to_string(),
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
 
     let tcs = arena.take_deferred_tool_changes();
     assert_eq!(tcs.len(), 3, "three tool-changes routed to deferred queue");
@@ -2982,18 +3627,29 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
         per_layer_stages: vec![
             slicer_host::CompiledStage {
                 stage_id: "Layer::Perimeters".into(),
-                modules: vec![make_compiled_module_with("com.test.pathopt-seed", "Layer::Perimeters", Arc::clone(&component))],
+                modules: vec![make_compiled_module_with(
+                    "com.test.pathopt-seed",
+                    "Layer::Perimeters",
+                    Arc::clone(&component),
+                )],
             },
             slicer_host::CompiledStage {
                 stage_id: "Layer::PathOptimization".into(),
-                modules: vec![make_compiled_module_with("com.test.pathopt-e2e", "Layer::PathOptimization", Arc::clone(&component))],
+                modules: vec![make_compiled_module_with(
+                    "com.test.pathopt-e2e",
+                    "Layer::PathOptimization",
+                    Arc::clone(&component),
+                )],
             },
         ],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![GlobalLayer {
-            index: 0, z: 0.2, active_regions: Vec::new(),
-            has_nonplanar: false, is_sync_layer: false,
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: false,
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
@@ -3033,11 +3689,13 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
     assert_eq!(layers.len(), 1);
     let l = &layers[0];
     assert_eq!(
-        l.ordered_entities.len(), 2,
+        l.ordered_entities.len(),
+        2,
         "ordered_entities pre-staged from assembly visible at end",
     );
     assert_eq!(
-        l.tool_changes.len(), 2,
+        l.tool_changes.len(),
+        2,
         "guest-emitted tool-change overrides folded into LayerCollectionIR",
     );
     // Region identity preserved through the loop.
@@ -3064,13 +3722,20 @@ fn path_optimization_empty_input_is_no_op() {
         prepass_stages: Vec::new(),
         per_layer_stages: vec![slicer_host::CompiledStage {
             stage_id: "Layer::PathOptimization".into(),
-            modules: vec![make_compiled_module_with("com.test.pathopt-empty", "Layer::PathOptimization", component)],
+            modules: vec![make_compiled_module_with(
+                "com.test.pathopt-empty",
+                "Layer::PathOptimization",
+                component,
+            )],
         }],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![GlobalLayer {
-            index: 0, z: 0.2, active_regions: Vec::new(),
-            has_nonplanar: false, is_sync_layer: false,
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: false,
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
@@ -3116,18 +3781,29 @@ fn path_optimization_deterministic_across_repeated_runs() {
         per_layer_stages: vec![
             slicer_host::CompiledStage {
                 stage_id: "Layer::Perimeters".into(),
-                modules: vec![make_compiled_module_with("com.test.pathopt-det-seed", "Layer::Perimeters", Arc::clone(&component))],
+                modules: vec![make_compiled_module_with(
+                    "com.test.pathopt-det-seed",
+                    "Layer::Perimeters",
+                    Arc::clone(&component),
+                )],
             },
             slicer_host::CompiledStage {
                 stage_id: "Layer::PathOptimization".into(),
-                modules: vec![make_compiled_module_with("com.test.pathopt-det", "Layer::PathOptimization", component)],
+                modules: vec![make_compiled_module_with(
+                    "com.test.pathopt-det",
+                    "Layer::PathOptimization",
+                    component,
+                )],
             },
         ],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![GlobalLayer {
-            index: 0, z: 0.2, active_regions: Vec::new(),
-            has_nonplanar: false, is_sync_layer: false,
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: false,
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
@@ -3140,7 +3816,9 @@ fn path_optimization_deterministic_across_repeated_runs() {
             inner: &dispatcher,
             perim: Mutex::new(Some(make_perimeter_ir(0, 3, 1, 0))),
         };
-        results.push(execute_per_layer(&make_plan(Arc::clone(&component)), &blackboard, &runner).unwrap());
+        results.push(
+            execute_per_layer(&make_plan(Arc::clone(&component)), &blackboard, &runner).unwrap(),
+        );
     }
     assert_eq!(results[0], results[1]);
     assert_eq!(results[1], results[2]);
@@ -3151,19 +3829,44 @@ fn path_optimization_rejects_move_override_without_layer_collection_mapping() {
     // Per docs/03 § Path Optimization Output Contract, push-move has no
     // documented LayerCollectionIR mapping and must fail as a fatal module
     // error instead of being lowered into an annotation.
-    use slicer_host::wit_host::{GcodeCommandCollected, GcodeMoveCmd, ExtrusionRole, HostExecutionContext};
-    let mut ctx = HostExecutionContext::new("com.test.pathopt-bad".to_string(), 0.0, 0.0, None, None);
-    ctx.gcode_output.commands.push(GcodeCommandCollected::Move(GcodeMoveCmd {
-        x: Some(1.0), y: Some(2.0), z: None, e: None, f: None,
-        role: ExtrusionRole::OuterWall,
-    }));
+    use slicer_host::wit_host::{
+        ExtrusionRole, GcodeCommandCollected, GcodeMoveCmd, HostExecutionContext,
+    };
+    let mut ctx =
+        HostExecutionContext::new("com.test.pathopt-bad".to_string(), 0.0, 0.0, None, None);
+    ctx.gcode_output
+        .commands
+        .push(GcodeCommandCollected::Move(GcodeMoveCmd {
+            x: Some(1.0),
+            y: Some(2.0),
+            z: None,
+            e: None,
+            f: None,
+            role: ExtrusionRole::OuterWall,
+        }));
     let mut arena = LayerArena::new();
     let err = slicer_host::commit_layer_outputs_for_test(
-        "Layer::PathOptimization", "com.test.pathopt-bad", 0, &ctx, &mut arena, None,).expect_err("move override must be rejected");
+        "Layer::PathOptimization",
+        "com.test.pathopt-bad",
+        0,
+        &ctx,
+        &mut arena,
+        None,
+    )
+    .expect_err("move override must be rejected");
     let msg = err.to_string();
-    assert!(msg.contains("push-move"), "diagnostic should name the rejected method: {msg}");
-    assert!(msg.contains("no documented LayerCollectionIR mapping exists"), "diagnostic should explain the contract violation: {msg}");
-    assert!(arena.take_deferred_annotations().is_empty(), "rejected move override must not enqueue annotations");
+    assert!(
+        msg.contains("push-move"),
+        "diagnostic should name the rejected method: {msg}"
+    );
+    assert!(
+        msg.contains("no documented LayerCollectionIR mapping exists"),
+        "diagnostic should explain the contract violation: {msg}"
+    );
+    assert!(
+        arena.take_deferred_annotations().is_empty(),
+        "rejected move override must not enqueue annotations"
+    );
 }
 
 #[test]
@@ -3175,13 +3878,25 @@ fn path_optimization_commit_routes_comment_and_raw_to_deferred_annotations() {
     use slicer_host::wit_host::{GcodeCommandCollected, HostExecutionContext};
     use slicer_ir::LayerAnnotationKind;
 
-    let mut ctx = HostExecutionContext::new("com.test.pathopt-ann".to_string(), 0.0, 0.0, None, None);
-    ctx.gcode_output.commands.push(GcodeCommandCollected::Comment("hello".into()));
-    ctx.gcode_output.commands.push(GcodeCommandCollected::Raw("M117 hi".into()));
+    let mut ctx =
+        HostExecutionContext::new("com.test.pathopt-ann".to_string(), 0.0, 0.0, None, None);
+    ctx.gcode_output
+        .commands
+        .push(GcodeCommandCollected::Comment("hello".into()));
+    ctx.gcode_output
+        .commands
+        .push(GcodeCommandCollected::Raw("M117 hi".into()));
 
     let mut arena = LayerArena::new();
     slicer_host::commit_layer_outputs_for_test(
-        "Layer::PathOptimization", "com.test.pathopt-ann", 0, &ctx, &mut arena, None,).expect("comment/raw must commit successfully");
+        "Layer::PathOptimization",
+        "com.test.pathopt-ann",
+        0,
+        &ctx,
+        &mut arena,
+        None,
+    )
+    .expect("comment/raw must commit successfully");
 
     let anns = arena.take_deferred_annotations();
     assert_eq!(anns.len(), 2, "both annotations are committed");
@@ -3199,10 +3914,20 @@ fn path_optimization_commit_is_deterministic_across_repeats() {
     use slicer_host::wit_host::{GcodeCommandCollected, HostExecutionContext};
 
     let mk_ctx = || {
-        let mut c = HostExecutionContext::new("com.test.pathopt-det2".to_string(), 0.0, 0.0, None, None);
-        c.gcode_output.commands.push(GcodeCommandCollected::ToolChange { from_tool: 0, to_tool: 1 });
-        c.gcode_output.commands.push(GcodeCommandCollected::Comment("a".into()));
-        c.gcode_output.commands.push(GcodeCommandCollected::Raw("b".into()));
+        let mut c =
+            HostExecutionContext::new("com.test.pathopt-det2".to_string(), 0.0, 0.0, None, None);
+        c.gcode_output
+            .commands
+            .push(GcodeCommandCollected::ToolChange {
+                from_tool: 0,
+                to_tool: 1,
+            });
+        c.gcode_output
+            .commands
+            .push(GcodeCommandCollected::Comment("a".into()));
+        c.gcode_output
+            .commands
+            .push(GcodeCommandCollected::Raw("b".into()));
         c
     };
 
@@ -3211,8 +3936,18 @@ fn path_optimization_commit_is_deterministic_across_repeats() {
         let mut arena = LayerArena::new();
         let ctx = mk_ctx();
         slicer_host::commit_layer_outputs_for_test(
-            "Layer::PathOptimization", "com.test.pathopt-det2", 0, &ctx, &mut arena, None,).unwrap();
-        snapshots.push((arena.take_deferred_tool_changes(), arena.take_deferred_annotations()));
+            "Layer::PathOptimization",
+            "com.test.pathopt-det2",
+            0,
+            &ctx,
+            &mut arena,
+            None,
+        )
+        .unwrap();
+        snapshots.push((
+            arena.take_deferred_tool_changes(),
+            arena.take_deferred_annotations(),
+        ));
     }
     assert_eq!(snapshots[0], snapshots[1]);
     assert_eq!(snapshots[1], snapshots[2]);
@@ -3226,13 +3961,27 @@ fn path_optimization_commit_routes_z_hops_to_deferred_queue() {
     // per-layer deferred z-hop queue, preserving guest call order.
     use slicer_host::wit_host::{GcodeCommandCollected, HostExecutionContext};
 
-    let mut ctx = HostExecutionContext::new("com.test.pathopt-zhop".to_string(), 0.0, 0.0, None, None);
-    ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index: 0, hop_height: 0.5 });
-    ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index: 0, hop_height: 0.75 });
+    let mut ctx =
+        HostExecutionContext::new("com.test.pathopt-zhop".to_string(), 0.0, 0.0, None, None);
+    ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
+        after_entity_index: 0,
+        hop_height: 0.5,
+    });
+    ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
+        after_entity_index: 0,
+        hop_height: 0.75,
+    });
 
     let mut arena = LayerArena::new();
     slicer_host::commit_layer_outputs_for_test(
-        "Layer::PathOptimization", "com.test.pathopt-zhop", 0, &ctx, &mut arena, None,).expect("z-hop must commit");
+        "Layer::PathOptimization",
+        "com.test.pathopt-zhop",
+        0,
+        &ctx,
+        &mut arena,
+        None,
+    )
+    .expect("z-hop must commit");
 
     let zhops = arena.take_deferred_z_hops();
     assert_eq!(zhops.len(), 2);
@@ -3246,42 +3995,93 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
     // Module-supplied after_entity_index is ignored; the dispatch normalizes all
     // ZHop/Retract/Move commands to the same global anchor so gcode_emit.rs can
     // emit them as a coherent Retract→ZHop→Travel→Unretract sequence.
-    use slicer_host::wit_host::{GcodeCommandCollected, ExtrusionRole as WitRole, GcodeMoveCmd, HostExecutionContext};
+    use slicer_host::wit_host::{
+        ExtrusionRole as WitRole, GcodeCommandCollected, GcodeMoveCmd, HostExecutionContext,
+    };
     use slicer_ir::{LayerCollectionIR, SemVer};
 
-    let mut ctx = HostExecutionContext::new("com.test.pathopt-zhop-norm".to_string(), 0.0, 0.0, None, None);
+    let mut ctx = HostExecutionContext::new(
+        "com.test.pathopt-zhop-norm".to_string(),
+        0.0,
+        0.0,
+        None,
+        None,
+    );
     // Emit a full travel sequence; ZHop uses an arbitrary (formerly-rejected) index.
-    ctx.gcode_output.commands.push(GcodeCommandCollected::Retract { length: 0.8, speed: 25.0 });
-    ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index: 999, hop_height: 0.2 });
-    ctx.gcode_output.commands.push(GcodeCommandCollected::Move(GcodeMoveCmd {
-        x: Some(50.0), y: Some(50.0), z: None, e: None, f: None,
-        role: WitRole::Custom("travel".to_string()),
-    }));
-    ctx.gcode_output.commands.push(GcodeCommandCollected::Unretract { length: 0.8, speed: 25.0 });
+    ctx.gcode_output
+        .commands
+        .push(GcodeCommandCollected::Retract {
+            length: 0.8,
+            speed: 25.0,
+        });
+    ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
+        after_entity_index: 999,
+        hop_height: 0.2,
+    });
+    ctx.gcode_output
+        .commands
+        .push(GcodeCommandCollected::Move(GcodeMoveCmd {
+            x: Some(50.0),
+            y: Some(50.0),
+            z: None,
+            e: None,
+            f: None,
+            role: WitRole::Custom("travel".to_string()),
+        }));
+    ctx.gcode_output
+        .commands
+        .push(GcodeCommandCollected::Unretract {
+            length: 0.8,
+            speed: 25.0,
+        });
 
     let mut arena = LayerArena::new();
     // Pre-stage 2 entities so entity_count=2, anchor=1 (last entity index).
     let entity = slicer_ir::PrintEntity {
         path: slicer_ir::ExtrusionPath3D {
-            points: vec![slicer_ir::Point3WithWidth { x: 0.0, y: 0.0, z: 0.2, width: 0.4, flow_factor: 1.0 }],
+            points: vec![slicer_ir::Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+            }],
             role: slicer_ir::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
         role: slicer_ir::ExtrusionRole::OuterWall,
-        region_key: slicer_ir::RegionKey { global_layer_index: 0, object_id: String::new(), region_id: 0 },
+        region_key: slicer_ir::RegionKey {
+            global_layer_index: 0,
+            object_id: String::new(),
+            region_id: 0,
+        },
         topo_order: 0,
     };
     arena.set_layer_collection(LayerCollectionIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
-        global_layer_index: 0, z: 0.2,
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        global_layer_index: 0,
+        z: 0.2,
         ordered_entities: vec![entity.clone(), entity],
-        tool_changes: Vec::new(), z_hops: Vec::new(), annotations: Vec::new(),
-        retracts: vec![], travel_moves: vec![],
+        tool_changes: Vec::new(),
+        z_hops: Vec::new(),
+        annotations: Vec::new(),
+        retracts: vec![],
+        travel_moves: vec![],
     });
 
     slicer_host::commit_layer_outputs_for_test(
-        "Layer::PathOptimization", "com.test.pathopt-zhop-norm", 0, &ctx, &mut arena, None,
-    ).expect("ZHop with arbitrary entity index must be accepted and normalized to anchor");
+        "Layer::PathOptimization",
+        "com.test.pathopt-zhop-norm",
+        0,
+        &ctx,
+        &mut arena,
+        None,
+    )
+    .expect("ZHop with arbitrary entity index must be accepted and normalized to anchor");
 
     let zhops = arena.take_deferred_z_hops();
     assert_eq!(zhops.len(), 1);
@@ -3293,12 +4093,21 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
 
     let retracts = arena.take_deferred_retracts();
     assert_eq!(retracts.len(), 2, "Retract + Unretract = 2");
-    assert_eq!(retracts[0].after_entity_index, 1, "Retract must share anchor with ZHop");
-    assert_eq!(retracts[1].after_entity_index, 1, "Unretract must share anchor with ZHop");
+    assert_eq!(
+        retracts[0].after_entity_index, 1,
+        "Retract must share anchor with ZHop"
+    );
+    assert_eq!(
+        retracts[1].after_entity_index, 1,
+        "Unretract must share anchor with ZHop"
+    );
 
     let travels = arena.take_deferred_travel_moves();
     assert_eq!(travels.len(), 1);
-    assert_eq!(travels[0].after_entity_index, 1, "TravelMove must share anchor with ZHop");
+    assert_eq!(
+        travels[0].after_entity_index, 1,
+        "TravelMove must share anchor with ZHop"
+    );
 }
 
 #[test]
@@ -3306,12 +4115,31 @@ fn path_optimization_z_hop_rejects_invalid_hop_height() {
     use slicer_host::wit_host::{GcodeCommandCollected, HostExecutionContext};
 
     for bad in [0.0_f32, -1.0, f32::NAN, f32::INFINITY] {
-        let mut ctx = HostExecutionContext::new("com.test.pathopt-zhop-bad".to_string(), 0.0, 0.0, None, None);
-        ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop { after_entity_index: 0, hop_height: bad });
+        let mut ctx = HostExecutionContext::new(
+            "com.test.pathopt-zhop-bad".to_string(),
+            0.0,
+            0.0,
+            None,
+            None,
+        );
+        ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
+            after_entity_index: 0,
+            hop_height: bad,
+        });
         let mut arena = LayerArena::new();
         let err = slicer_host::commit_layer_outputs_for_test(
-            "Layer::PathOptimization", "com.test.pathopt-zhop-bad", 0, &ctx, &mut arena, None,).expect_err("bad hop_height must fail");
-        assert!(err.to_string().contains("hop-height"), "diagnostic should name field for {bad}: {err}");
+            "Layer::PathOptimization",
+            "com.test.pathopt-zhop-bad",
+            0,
+            &ctx,
+            &mut arena,
+            None,
+        )
+        .expect_err("bad hop_height must fail");
+        assert!(
+            err.to_string().contains("hop-height"),
+            "diagnostic should name field for {bad}: {err}"
+        );
     }
 }
 
@@ -3329,18 +4157,29 @@ fn path_optimization_end_to_end_populates_z_hops() {
         per_layer_stages: vec![
             slicer_host::CompiledStage {
                 stage_id: "Layer::Perimeters".into(),
-                modules: vec![make_compiled_module_with("com.test.zhop-seed", "Layer::Perimeters", Arc::clone(&component))],
+                modules: vec![make_compiled_module_with(
+                    "com.test.zhop-seed",
+                    "Layer::Perimeters",
+                    Arc::clone(&component),
+                )],
             },
             slicer_host::CompiledStage {
                 stage_id: "Layer::PathOptimization".into(),
-                modules: vec![make_compiled_module_with("com.test.zhop-e2e", "Layer::PathOptimization", Arc::clone(&component))],
+                modules: vec![make_compiled_module_with(
+                    "com.test.zhop-e2e",
+                    "Layer::PathOptimization",
+                    Arc::clone(&component),
+                )],
             },
         ],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![GlobalLayer {
-            index: 0, z: 0.2, active_regions: Vec::new(),
-            has_nonplanar: false, is_sync_layer: false,
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: false,
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
@@ -3351,9 +4190,14 @@ fn path_optimization_end_to_end_populates_z_hops() {
         perim: Mutex<Option<slicer_ir::PerimeterIR>>,
     }
     impl<'a> LayerStageRunner for SeedingRunner<'a> {
-        fn run_stage(&self, stage_id: &StageId, layer: &GlobalLayer, module: &CompiledModule,
-                     blackboard: &Blackboard, arena: &mut LayerArena)
-                     -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
+        fn run_stage(
+            &self,
+            stage_id: &StageId,
+            layer: &GlobalLayer,
+            module: &CompiledModule,
+            blackboard: &Blackboard,
+            arena: &mut LayerArena,
+        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
             if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
                 if let Some(p) = self.perim.lock().unwrap().take() {
                     arena.set_perimeter(p).unwrap();
@@ -3405,18 +4249,29 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
         per_layer_stages: vec![
             slicer_host::CompiledStage {
                 stage_id: "Layer::Perimeters".into(),
-                modules: vec![make_compiled_module_with("com.test.zhop-emit-seed", "Layer::Perimeters", Arc::clone(&component))],
+                modules: vec![make_compiled_module_with(
+                    "com.test.zhop-emit-seed",
+                    "Layer::Perimeters",
+                    Arc::clone(&component),
+                )],
             },
             slicer_host::CompiledStage {
                 stage_id: "Layer::PathOptimization".into(),
-                modules: vec![make_compiled_module_with("com.test.zhop-emit", "Layer::PathOptimization", Arc::clone(&component))],
+                modules: vec![make_compiled_module_with(
+                    "com.test.zhop-emit",
+                    "Layer::PathOptimization",
+                    Arc::clone(&component),
+                )],
             },
         ],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
         global_layers: Arc::new(vec![GlobalLayer {
-            index: 0, z: 0.2, active_regions: Vec::new(),
-            has_nonplanar: false, is_sync_layer: false,
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: false,
         }]),
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
@@ -3427,9 +4282,14 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
         perim: Mutex<Option<slicer_ir::PerimeterIR>>,
     }
     impl<'a> LayerStageRunner for SeedingRunner<'a> {
-        fn run_stage(&self, stage_id: &StageId, layer: &GlobalLayer, module: &CompiledModule,
-                     blackboard: &Blackboard, arena: &mut LayerArena)
-                     -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
+        fn run_stage(
+            &self,
+            stage_id: &StageId,
+            layer: &GlobalLayer,
+            module: &CompiledModule,
+            blackboard: &Blackboard,
+            arena: &mut LayerArena,
+        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
             if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
                 if let Some(p) = self.perim.lock().unwrap().take() {
                     arena.set_perimeter(p).unwrap();
@@ -3452,10 +4312,15 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
     let mut hop_lifts = 0;
     for c in &gcode.commands {
         if let slicer_ir::GCodeCommand::Move { z: Some(z), .. } = c {
-            if (*z - 0.7).abs() < 1e-4 { hop_lifts += 1; }
+            if (*z - 0.7).abs() < 1e-4 {
+                hop_lifts += 1;
+            }
         }
     }
-    assert!(hop_lifts >= 1, "default emitter must lift to layer.z + hop_height for committed z_hops");
+    assert!(
+        hop_lifts >= 1,
+        "default emitter must lift to layer.z + hop_height for committed z_hops"
+    );
 }
 
 // ── R. Layer-plan harvest tests ────────────────────────────────────────────
@@ -3471,8 +4336,10 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
 // TASK-107 is not yet wired — an empty plan is structurally valid, and
 // the dispatcher must return `LayerPlan(empty_ir)` NOT `None`.
 
-const LAYER_PLANNER_DEFAULT_PATH: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../modules/core-modules/layer-planner-default/layer-planner-default.wasm");
+const LAYER_PLANNER_DEFAULT_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../modules/core-modules/layer-planner-default/layer-planner-default.wasm"
+);
 
 /// Load the real `layer-planner-default.wasm` component using the same engine
 /// that the dispatcher will use.  Returns `None` and skips via `#[test]`
@@ -3528,7 +4395,11 @@ fn layer_planning_dispatch_returns_layer_plan_variant() {
             // with object data is wired.
             assert_eq!(
                 ir.schema_version,
-                SemVer { major: 1, minor: 0, patch: 0 },
+                SemVer {
+                    major: 1,
+                    minor: 0,
+                    patch: 0
+                },
                 "harvested LayerPlanIR must carry schema_version 1.0.0"
             );
             // Zero proposals → zero global layers (not a failure).
@@ -3585,7 +4456,11 @@ fn layer_plan_committed_to_blackboard_after_execute_prepass() {
     // error.
     blackboard
         .commit_surface_classification(Arc::new(SurfaceClassificationIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             per_object: HashMap::new(),
         }))
         .expect("pre-seed SurfaceClassificationIR");
@@ -3608,7 +4483,11 @@ fn layer_plan_committed_to_blackboard_after_execute_prepass() {
     let ir = blackboard.layer_plan().unwrap();
     assert_eq!(
         ir.schema_version,
-        SemVer { major: 1, minor: 0, patch: 0 },
+        SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0
+        },
         "committed LayerPlanIR must carry schema_version 1.0.0"
     );
 }
@@ -3733,21 +4612,25 @@ fn layer_planning_module_error_propagates_as_fatal_prepass_error() {
     );
 
     match result.unwrap_err() {
-        PrepassExecutionError::FatalModule { stage_id, module_id, message } => {
+        PrepassExecutionError::FatalModule {
+            stage_id,
+            module_id,
+            message,
+        } => {
             assert_eq!(stage_id, "PrePass::LayerPlanning");
             assert!(
                 module_id.contains("layer-planner-default"),
                 "error must name the failing module: {module_id}"
             );
             assert!(
-                message.contains("layer_height") || message.contains("positive") || message.contains("module error"),
+                message.contains("layer_height")
+                    || message.contains("positive")
+                    || message.contains("module error"),
                 "error message must describe the root cause: {message}"
             );
         }
         other => {
-            panic!(
-                "expected FatalModule error variant, got: {other}"
-            );
+            panic!("expected FatalModule error variant, got: {other}");
         }
     }
 }
@@ -3806,7 +4689,14 @@ fn mesh_segmentation_dispatch_returns_empty_ir_for_unpainted_mesh() {
 
     match result.0 {
         PrepassStageOutput::MeshSegmentation(ir) => {
-            assert_eq!(ir.schema_version, SemVer { major: 1, minor: 0, patch: 0 });
+            assert_eq!(
+                ir.schema_version,
+                SemVer {
+                    major: 1,
+                    minor: 0,
+                    patch: 0
+                }
+            );
             assert!(
                 ir.marks.is_empty(),
                 "unpainted mesh must produce zero marks, got {}",
@@ -3860,23 +4750,29 @@ fn mesh_segmentation_collects_config_driven_marks() {
         "com.test.mesh-seg-marks",
         "PrePass::MeshSegmentation",
         component,
-        ConfigView::from_declared(
-            &fields,
-            fields.keys().map(|s| s.as_str()),
-        ),
+        ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str())),
     );
 
     // Pre-seed mesh with two object ids matching the config keys so the
     // guest's `object_index` sort key finds them.
     let mesh = Arc::new(slicer_ir::MeshIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
-        objects: vec![
-            make_object("benchy"),
-            make_object("other-obj"),
-        ],
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        objects: vec![make_object("benchy"), make_object("other-obj")],
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: slicer_ir::Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: slicer_ir::Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     });
     let blackboard = Blackboard::new(mesh, 0);
@@ -3900,7 +4796,12 @@ fn mesh_segmentation_collects_config_driven_marks() {
     // Deterministic ordering: (object_index_in_objects, facet asc, semantic asc).
     // benchy comes first (index 0): fuzzy_skin@facet 2, material@facet 5.
     // other-obj (index 1): material@facet 0.
-    assert_eq!(ir.marks.len(), 3, "expected 3 marks, got {}", ir.marks.len());
+    assert_eq!(
+        ir.marks.len(),
+        3,
+        "expected 3 marks, got {}",
+        ir.marks.len()
+    );
     assert_eq!(ir.marks[0].object_id, "benchy");
     assert_eq!(ir.marks[0].facet_index, 2);
     assert_eq!(ir.marks[0].semantic, "fuzzy_skin");
@@ -3944,11 +4845,23 @@ fn mesh_segmentation_dispatch_is_deterministic() {
     );
     let cfg = ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str()));
     let mesh = Arc::new(slicer_ir::MeshIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: vec![make_object("obj-a")],
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: slicer_ir::Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: slicer_ir::Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     });
     let blackboard = Blackboard::new(mesh, 0);
@@ -3974,7 +4887,10 @@ fn mesh_segmentation_dispatch_is_deterministic() {
     };
     let a = run();
     let b = run();
-    assert_eq!(a, b, "two identical dispatches must produce identical marks");
+    assert_eq!(
+        a, b,
+        "two identical dispatches must produce identical marks"
+    );
 }
 
 /// The `HostMeshSegmentationOutput::mark_triangle_paint` validation
@@ -3982,11 +4898,12 @@ fn mesh_segmentation_dispatch_is_deterministic() {
 /// diagnostic. This is the invariant every routed guest relies on.
 #[test]
 fn mesh_segmentation_output_rejects_invalid_marks() {
-    use slicer_host::wit_host::HostExecutionContext;
     use slicer_host::wit_host::prepass::{self as pm, HostMeshSegmentationOutput};
+    use slicer_host::wit_host::HostExecutionContext;
     use wasmtime::component::Resource;
 
-    let mut ctx = HostExecutionContext::new("com.test.mesh-seg-validate".into(), 0.0, 0.0, None, None);
+    let mut ctx =
+        HostExecutionContext::new("com.test.mesh-seg-validate".into(), 0.0, 0.0, None, None);
     let handle = ctx.push_mesh_segmentation_output().expect("push resource");
 
     // obj empty
@@ -4078,7 +4995,11 @@ fn mesh_segmentation_commits_through_execute_prepass() {
         .expect("mesh-segmentation IR must be committed after execute_prepass");
     assert_eq!(
         ir.schema_version,
-        SemVer { major: 1, minor: 0, patch: 0 }
+        SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0
+        }
     );
     assert!(ir.marks.is_empty(), "empty mesh → zero marks");
 }
@@ -4134,7 +5055,14 @@ fn paint_segmentation_dispatch_returns_empty_paint_regions_for_unpainted_mesh() 
 
     match result.0 {
         PrepassStageOutput::PaintRegions(ir) => {
-            assert_eq!(ir.schema_version, SemVer { major: 1, minor: 0, patch: 0 });
+            assert_eq!(
+                ir.schema_version,
+                SemVer {
+                    major: 1,
+                    minor: 0,
+                    patch: 0
+                }
+            );
             assert!(
                 ir.per_layer.is_empty(),
                 "unpainted mesh must produce zero per-layer entries"
@@ -4192,11 +5120,23 @@ fn paint_segmentation_collects_config_driven_regions() {
     );
 
     let mesh = Arc::new(slicer_ir::MeshIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: vec![make_object("benchy")],
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: slicer_ir::Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: slicer_ir::Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     });
     let blackboard = Blackboard::new(mesh, 0);
@@ -4216,13 +5156,12 @@ fn paint_segmentation_collects_config_driven_regions() {
 
     // Layer 3 must hold the two semantics; layer 5 holds the third.
     assert_eq!(ir.per_layer.len(), 2, "two distinct layers expected");
-    let l3 = ir
-        .per_layer
-        .get(&3)
-        .expect("layer 3 must be present");
+    let l3 = ir.per_layer.get(&3).expect("layer 3 must be present");
     assert_eq!(l3.global_layer_index, 3);
     assert_eq!(
-        l3.semantic_regions.get(&PaintSemantic::Material).map(|v| v.len()),
+        l3.semantic_regions
+            .get(&PaintSemantic::Material)
+            .map(|v| v.len()),
         Some(1),
         "material region on layer 3 missing"
     );
@@ -4259,7 +5198,11 @@ fn paint_segmentation_collects_config_driven_regions() {
         }
     }
     orders.sort();
-    assert_eq!(orders, vec![0, 1, 2], "paint_order must be dense and unique");
+    assert_eq!(
+        orders,
+        vec![0, 1, 2],
+        "paint_order must be dense and unique"
+    );
 }
 
 #[test]
@@ -4288,11 +5231,23 @@ fn paint_segmentation_dispatch_is_deterministic() {
     );
     let cfg = ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str()));
     let mesh = Arc::new(slicer_ir::MeshIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: vec![make_object("obj")],
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: slicer_ir::Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: slicer_ir::Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     });
     let blackboard = Blackboard::new(mesh, 0);
@@ -4367,7 +5322,9 @@ fn paint_segmentation_malformed_config_emits_structured_diagnostic() {
     .expect_err("malformed config must produce a dispatch error");
 
     match err {
-        PrepassExecutionError::FatalModule { stage_id, message, .. } => {
+        PrepassExecutionError::FatalModule {
+            stage_id, message, ..
+        } => {
             assert_eq!(stage_id, "PrePass::PaintSegmentation");
             assert!(
                 message.contains("notalayer") || message.contains("layer_index"),
@@ -4380,12 +5337,13 @@ fn paint_segmentation_malformed_config_emits_structured_diagnostic() {
 
 #[test]
 fn paint_segmentation_output_rejects_invalid_entries() {
-    use slicer_host::wit_host::HostExecutionContext;
-    use slicer_host::wit_host::prepass::{self as pm, HostPaintSegmentationOutput};
     use slicer_host::wit_host::prepass::slicer::world_prepass::geometry as geo;
+    use slicer_host::wit_host::prepass::{self as pm, HostPaintSegmentationOutput};
+    use slicer_host::wit_host::HostExecutionContext;
     use wasmtime::component::Resource;
 
-    let mut ctx = HostExecutionContext::new("com.test.paint-seg-validate".into(), 0.0, 0.0, None, None);
+    let mut ctx =
+        HostExecutionContext::new("com.test.paint-seg-validate".into(), 0.0, 0.0, None, None);
     let handle = ctx.push_paint_segmentation_output().expect("push resource");
 
     let valid_poly = vec![geo::ExPolygon {
@@ -4509,13 +5467,21 @@ fn paint_segmentation_commits_through_execute_prepass() {
     // stage without hitting a missing-prerequisite error.
     blackboard
         .commit_surface_classification(Arc::new(slicer_ir::SurfaceClassificationIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             per_object: HashMap::new(),
         }))
         .unwrap();
     blackboard
         .commit_layer_plan(Arc::new(slicer_ir::LayerPlanIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             global_layers: Vec::new(),
             object_participation: HashMap::new(),
         }))
@@ -4524,7 +5490,14 @@ fn paint_segmentation_commits_through_execute_prepass() {
     let ir = blackboard
         .paint_regions()
         .expect("paint_regions must be committed after execute_prepass");
-    assert_eq!(ir.schema_version, SemVer { major: 1, minor: 0, patch: 0 });
+    assert_eq!(
+        ir.schema_version,
+        SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0
+        }
+    );
     assert!(ir.per_layer.is_empty(), "unpainted mesh → empty per_layer");
 }
 
@@ -4587,14 +5560,34 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
         loop_type: slicer_ir::LoopType::Outer,
         path: slicer_ir::ExtrusionPath3D {
             points: vec![
-                slicer_ir::Point3WithWidth { x: 0.0, y: 0.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
-                slicer_ir::Point3WithWidth { x: 1.0, y: 0.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
-                slicer_ir::Point3WithWidth { x: 0.0, y: 1.0, z: 0.2, width: 0.4, flow_factor: 1.0 },
+                slicer_ir::Point3WithWidth {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.2,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
+                slicer_ir::Point3WithWidth {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.2,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
+                slicer_ir::Point3WithWidth {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.2,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                },
             ],
             role: slicer_ir::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
-        width_profile: slicer_ir::WidthProfile { widths: vec![0.4; 3] },
+        width_profile: slicer_ir::WidthProfile {
+            widths: vec![0.4; 3],
+        },
         feature_flags: vec![
             slicer_ir::WallFeatureFlags {
                 tool_index: None,
@@ -4609,7 +5602,11 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
         boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
     };
     let perim = slicer_ir::PerimeterIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         global_layer_index: 7,
         regions: vec![slicer_ir::PerimeterRegion {
             object_id: "obj".into(),
@@ -4667,7 +5664,6 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
         }
         other => panic!("expected Comment annotation, got {other:?}"),
     }
-
 }
 
 /// Two back-to-back dispatches with the same arena seed produce
@@ -4847,16 +5843,32 @@ fn make_object(id: &str) -> slicer_ir::ObjectMesh {
         id: id.to_string(),
         mesh: slicer_ir::IndexedTriangleSet {
             vertices: vec![
-                slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                slicer_ir::Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                slicer_ir::Point3 { x: 0.0, y: 1.0, z: 0.0 },
+                slicer_ir::Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                slicer_ir::Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                slicer_ir::Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
             ],
             indices: vec![0, 1, 2],
         },
         transform: slicer_ir::Transform3d {
-            matrix: [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            matrix: [
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
         },
-        config: slicer_ir::ObjectConfig { data: HashMap::new() },
+        config: slicer_ir::ObjectConfig {
+            data: HashMap::new(),
+        },
         modifier_volumes: Vec::new(),
         paint_data: None,
         world_z_extent: None,
@@ -4878,14 +5890,21 @@ fn make_object(id: &str) -> slicer_ir::ObjectMesh {
 /// Build a Blackboard whose mesh carries `object_ids` so the prepass
 /// runner forwards them to the guest's `run-layer-planning` export.
 fn blackboard_with_objects(object_ids: &[&str]) -> Blackboard {
-    let objects: Vec<slicer_ir::ObjectMesh> =
-        object_ids.iter().map(|id| make_object(id)).collect();
+    let objects: Vec<slicer_ir::ObjectMesh> = object_ids.iter().map(|id| make_object(id)).collect();
     let mesh = Arc::new(MeshIR {
         schema_version: semver(1, 0, 0),
         objects,
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     });
     Blackboard::new(mesh, 0)
@@ -4903,10 +5922,7 @@ fn layer_planner_config(
         ConfigValue::Float(first_layer_height),
     );
     for (id, h) in object_heights {
-        m.insert(
-            format!("object_height:{}", id),
-            ConfigValue::Float(*h),
-        );
+        m.insert(format!("object_height:{}", id), ConfigValue::Float(*h));
     }
     ConfigView::from_map(m)
 }
@@ -4924,9 +5940,7 @@ fn layer_planner_default_macro_path_emits_real_proposals() {
     let component = match load_layer_planner_default(&engine) {
         Some(c) => c,
         None => {
-            eprintln!(
-                "SKIP: layer-planner-default.wasm not found — rebuild core modules"
-            );
+            eprintln!("SKIP: layer-planner-default.wasm not found — rebuild core modules");
             return;
         }
     };
@@ -5008,9 +6022,7 @@ fn layer_planner_default_macro_path_is_deterministic() {
     let component = match load_layer_planner_default(&engine) {
         Some(c) => c,
         None => {
-            eprintln!(
-                "SKIP: layer-planner-default.wasm not found — rebuild core modules"
-            );
+            eprintln!("SKIP: layer-planner-default.wasm not found — rebuild core modules");
             return;
         }
     };
@@ -5391,9 +6403,7 @@ fn mesh_segmentation_macro_path_drain_preserves_push_order() {
     let component = match load_mesh_segmentation_default(&engine) {
         Some(c) => c,
         None => {
-            eprintln!(
-                "SKIP: mesh-segmentation.wasm missing — rebuild core modules"
-            );
+            eprintln!("SKIP: mesh-segmentation.wasm missing — rebuild core modules");
             return;
         }
     };
@@ -5408,14 +6418,8 @@ fn mesh_segmentation_macro_path_drain_preserves_push_order() {
         "mesh_seg_mark:obj-A:1:seam".into(),
         ConfigValue::String("x".into()),
     );
-    fields.insert(
-        "mesh_seg_mark:obj-B:0:material".into(),
-        ConfigValue::Int(5),
-    );
-    fields.insert(
-        "mesh_seg_mark:obj-B:2:seam".into(),
-        ConfigValue::Bool(true),
-    );
+    fields.insert("mesh_seg_mark:obj-B:0:material".into(), ConfigValue::Int(5));
+    fields.insert("mesh_seg_mark:obj-B:2:seam".into(), ConfigValue::Bool(true));
     let module = make_compiled_module_with_config(
         "com.test.mesh-seg-step-h",
         "PrePass::MeshSegmentation",
@@ -5423,11 +6427,23 @@ fn mesh_segmentation_macro_path_drain_preserves_push_order() {
         ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str())),
     );
     let mesh = Arc::new(slicer_ir::MeshIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         objects: vec![make_object("obj-B"), make_object("obj-A")],
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: slicer_ir::Point3 { x: 1.0, y: 1.0, z: 1.0 },
+            min: slicer_ir::Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: slicer_ir::Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
         },
     });
     let blackboard = Blackboard::new(mesh, 0);
@@ -5464,8 +6480,18 @@ fn mesh_segmentation_macro_path_drain_preserves_push_order() {
         keys,
         vec![
             // obj-B (host index 0) first, ordered by (facet asc, semantic asc):
-            ("obj-B".to_string(), 0, "material".to_string(), "5".to_string()),
-            ("obj-B".to_string(), 2, "seam".to_string(), "true".to_string()),
+            (
+                "obj-B".to_string(),
+                0,
+                "material".to_string(),
+                "5".to_string()
+            ),
+            (
+                "obj-B".to_string(),
+                2,
+                "seam".to_string(),
+                "true".to_string()
+            ),
             // obj-A (host index 1) last:
             ("obj-A".to_string(), 1, "seam".to_string(), "x".to_string()),
         ],
@@ -5513,7 +6539,11 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
 
     // Build a minimal valid SeamPosition for the chosen_candidate field.
     let dummy_position = slicer_ir::Point3WithWidth {
-        x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0,
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+        width: 0.4,
+        flow_factor: 1.0,
     };
     let seam_position = SeamPosition {
         point: dummy_position,
@@ -5522,7 +6552,11 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
 
     // First commit with valid unique entries.
     let seam_plan = SeamPlanIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         entries: vec![
             SeamPlanEntry {
                 region_key: RegionKey {
@@ -5547,23 +6581,28 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
 
     // Commit once — should succeed.
     let result = blackboard.commit_seam_plan(std::sync::Arc::new(seam_plan));
-    assert!(result.is_ok(), "first commit with unique keys should succeed");
+    assert!(
+        result.is_ok(),
+        "first commit with unique keys should succeed"
+    );
 
     // Second commit — same region key (global_layer_index=0, obj-A, region_id=1)
     // is a duplicate and must be rejected.
     let duplicate_seam_plan = SeamPlanIR {
-        schema_version: SemVer { major: 1, minor: 0, patch: 0 },
-        entries: vec![
-            SeamPlanEntry {
-                region_key: RegionKey {
-                    global_layer_index: 0,
-                    object_id: "obj-A".to_string(),
-                    region_id: 1, // duplicate of above
-                },
-                chosen_candidate: seam_position,
-                scored_candidates: vec![],
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        entries: vec![SeamPlanEntry {
+            region_key: RegionKey {
+                global_layer_index: 0,
+                object_id: "obj-A".to_string(),
+                region_id: 1, // duplicate of above
             },
-        ],
+            chosen_candidate: seam_position,
+            scored_candidates: vec![],
+        }],
     };
     let result2 = blackboard.commit_seam_plan(std::sync::Arc::new(duplicate_seam_plan));
     assert!(
@@ -5600,7 +6639,11 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
             return;
         }
         let bytes = std::fs::read(path).expect("read seam-planner-default.wasm");
-        Arc::new(engine.compile_component(&bytes).expect("compile seam-planner-default"))
+        Arc::new(
+            engine
+                .compile_component(&bytes)
+                .expect("compile seam-planner-default"),
+        )
     };
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -5608,8 +6651,14 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
     // Build a loaded + compiled module for SeamPlanning.
     let loaded = make_loaded_module("com.test.seam-planner", "PrePass::SeamPlanning");
     let pool = Arc::new(
-        build_wasm_instance_pool(&loaded, 1, WasmArtifactMetadata { uses_shared_memory: false })
-            .unwrap(),
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .unwrap(),
     );
     let compiled = CompiledModule {
         module_id: "com.test.seam-planner".to_string(),
@@ -5628,7 +6677,11 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
     let mut blackboard = Blackboard::new(Arc::clone(&empty_mesh), 0);
     blackboard
         .commit_layer_plan(Arc::new(LayerPlanIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             global_layers: vec![],
             object_participation: Default::default(),
         }))
@@ -5637,7 +6690,11 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
     // Also commit SurfaceClassificationIR (MeshAnalysis output that other stages need).
     blackboard
         .commit_surface_classification(Arc::new(SurfaceClassificationIR {
-            schema_version: SemVer { major: 1, minor: 0, patch: 0 },
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
             per_object: Default::default(),
         }))
         .expect("commit surface classification for required slot");
@@ -5653,14 +6710,24 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
         Ok((PrepassStageOutput::SeamPlan(ir), _)) => {
             assert_eq!(
                 ir.schema_version,
-                SemVer { major: 1, minor: 0, patch: 0 },
+                SemVer {
+                    major: 1,
+                    minor: 0,
+                    patch: 0
+                },
                 "SeamPlanIR schema_version must be 1.0.0"
             );
             // seam-planner-default emits seam entries for objects with mesh geometry.
             // Entries may be empty if the blackboard mesh has no objects.
             for entry in &ir.entries {
-                assert!(!entry.region_key.object_id.is_empty(), "region_key.object_id must be non-empty");
-                assert!(entry.region_key.global_layer_index < 1000, "global_layer_index must be reasonable");
+                assert!(
+                    !entry.region_key.object_id.is_empty(),
+                    "region_key.object_id must be non-empty"
+                );
+                assert!(
+                    entry.region_key.global_layer_index < 1000,
+                    "global_layer_index must be reasonable"
+                );
                 // Verify the chosen position is valid.
                 assert!(entry.chosen_candidate.point.x.is_finite());
                 assert!(entry.chosen_candidate.point.y.is_finite());
@@ -5675,7 +6742,10 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
                     entry.chosen_candidate.point.width
                 );
             }
-            eprintln!("DEBUG: prepass_seam_planning_commits_seam_plan_ir — SeamPlanIR entry count = {}", ir.entries.len());
+            eprintln!(
+                "DEBUG: prepass_seam_planning_commits_seam_plan_ir — SeamPlanIR entry count = {}",
+                ir.entries.len()
+            );
         }
         Ok((other, _)) => panic!(
             "expected PrepassStageOutput::SeamPlan, got {:?}",

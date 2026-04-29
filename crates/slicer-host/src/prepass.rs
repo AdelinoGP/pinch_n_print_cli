@@ -4,8 +4,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use slicer_ir::{
-    LayerPlanIR, MeshSegmentationIR, ModuleId, PaintRegionIR, RegionMapIR, SeamPlanIR,
-    StageId, SupportPlanIR, SurfaceClassificationIR,
+    LayerPlanIR, MeshSegmentationIR, ModuleId, PaintRegionIR, RegionMapIR, SeamPlanIR, StageId,
+    SupportPlanIR, SurfaceClassificationIR,
 };
 
 use crate::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
@@ -308,9 +308,7 @@ pub fn ensure_stage_prerequisites(
             BlackboardPrepassSlot::SurfaceClassification => {
                 blackboard.surface_classification().is_some()
             }
-            BlackboardPrepassSlot::MeshSegmentation => {
-                blackboard.mesh_segmentation().is_some()
-            }
+            BlackboardPrepassSlot::MeshSegmentation => blackboard.mesh_segmentation().is_some(),
             BlackboardPrepassSlot::LayerPlan => blackboard.layer_plan().is_some(),
             BlackboardPrepassSlot::PaintRegions => blackboard.paint_regions().is_some(),
             BlackboardPrepassSlot::RegionMap => blackboard.region_map().is_some(),

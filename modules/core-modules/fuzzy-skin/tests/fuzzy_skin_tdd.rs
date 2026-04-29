@@ -130,7 +130,7 @@ fn region_with_walls(walls: Vec<WallLoop>) -> PerimeterRegionView {
 
 /// Helper: default config (no overrides).
 fn default_config() -> ConfigView {
-    ConfigView::from_map(HashMap::new(),)
+    ConfigView::from_map(HashMap::new())
 }
 
 /// Helper: config with apply-to-all = true.
