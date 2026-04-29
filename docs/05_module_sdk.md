@@ -253,6 +253,15 @@ For native host-side tests, `SliceRegionView` also exposes a convenience
 `boundary_paint()` accessor over the documented WIT `boundary-paint` data so
 perimeter generators can consume contour-parallel annotations ergonomically.
 
+### Layer Stage Module Surface Rejections
+
+Not all module surfaces are supported on the live execution path. Fan-speed and
+cooling overrides are intentionally unsupported on the live Layer::PathOptimization
+surface (TASK-152c). Module authors seeking to modulate cooling behavior during
+path optimization should emit their intent as part of the entity sequence
+decision (e.g. via role annotations) rather than via direct fan-speed control,
+since the live surface does not expose a cooling override mechanism.
+
 ### Host Service Wrappers
 
 Direct calls to host services are ergonomic:

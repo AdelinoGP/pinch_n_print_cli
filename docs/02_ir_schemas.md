@@ -777,7 +777,9 @@ current layer and cannot see or modify any other layer's `LayerCollectionIR`.
 ```rust
 pub struct LayerCollectionIR {
     pub schema_version: SemVer,
-    pub global_layer_index: u32,
+    /// Signed to support raft prefix layers. Raft entries use negative indices                                                                       
+    /// (`-1, -2, ..., -raft_layers`) so raft always sorts before model layers.                                                                       
+    pub global_layer_index: i32, 
     pub z: f32,
     /// Ordered, ready-to-emit extrusion entities.
     /// Produced by travel minimization + DAG topo sort.
