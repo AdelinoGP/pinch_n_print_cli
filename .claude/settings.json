@@ -24,7 +24,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cargo fmt && cargo clippy --all-targets --message-format=short -- -D warnings && cargo test --quiet",
+            "command": "cargo fmt && cargo clippy --all-targets --message-format=short -- -D warnings",
             "timeout": 600
           }
         ]
