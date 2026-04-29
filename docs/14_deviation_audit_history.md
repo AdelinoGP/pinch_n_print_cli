@@ -1,6 +1,6 @@
 # Deviation Audit History
 
-Last updated: 2026-04-16
+Last updated: 2026-04-28 (DEV-032 chronology entry added)
 
 ## Purpose
 
@@ -50,6 +50,10 @@ Use this file for provenance, chronology, and legacy-reference lookup only.
 - Feature parity and live-path behavior: `DEV-009`, `DEV-023`, `DEV-024`
 - Governance and planning closure: `DEV-010`, `DEV-020`, `DEV-030`
 
+## Chronology
+
+- **2026-04-28 — DEV-032 resolved**: Entity-ordering algorithm migrated from `slicer-host::layer_executor::order_entities_by_nearest_neighbor` into `path-optimization-default::run_path_optimization` via the packet-32 `layer-collection-builder` WIT surface (`set-entity-order`/`get-ordered-entities`). The NN heuristic (start at `(0,0)`, Euclidean distance to `start_point`, 0.001mm equality tiebreak, BridgeInfill priority, lower `original_index` stable tiebreak, reversal `false`) is preserved bit-identically. Host helper deleted; fallback behavior is now raw `assemble_ordered_entities` order. Packet 18 (`18_path-optimization-entity-ordering`) marked `superseded`. Tracked by `TASK-152g` (closed) and `TASK-152h` (closed); parent `TASK-152` stays `[~]`.
+
 ## Legacy Backlog Crosswalk
 
 The status backlog previously referenced XML-era labels such as `deviation #14b` and `deviation #23`. Those labels were retired because the audit cleanup merged several historical entries and rewrote the live registry around stable `DEV-###` rows.
@@ -68,6 +72,7 @@ Use the topic-based mapping below when reading older notes or commit history.
 | Progress-event evidence and Python bridge follow-up                   | `#23`, `#24`                          | `DEV-010`, `DEV-024`, `TASK-136`, `TASK-137`             |
 | Phase G status drift and dead `Noop*Runner` cleanup                   | `#12`                                 | `DEV-020`, `TASK-139`                                    |
 | Acceptance-gate closure and deviation-registry hygiene                | `#15`, `#16`                          | `DEV-010`, `DEV-026`, `DEV-030`, `TASK-140`, `TASK-141`  |
+| Entity-ordering algorithm relocation (host helper → path-optimization-default) | —                                 | `DEV-032` (packet 18 → packet 33 via packet 32 WIT surface) |
 
 ## Deletion Rationale
 
