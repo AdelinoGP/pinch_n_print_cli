@@ -12,7 +12,7 @@ mod tests {
     macro_rules! test_serde_roundtrip {
         ($value:expr) => {
             let serialized = bincode::serialize(&$value).unwrap();
-            let deserialized: _ = bincode::deserialize(&serialized).unwrap();
+            let deserialized = bincode::deserialize(&serialized).unwrap();
             assert_eq!($value, deserialized);
         };
     }
@@ -383,7 +383,6 @@ mod tests {
 
     #[test]
     fn test_semantic_region() {
-        use std::collections::HashMap;
         let region = SemanticRegion {
             object_id: "obj-1".to_string(),
             polygons: vec![],
@@ -503,7 +502,11 @@ mod tests {
             speed: 30.0
         });
         test_serde_roundtrip!(GCodeCommand::FanSpeed { value: 255 });
-        test_serde_roundtrip!(GCodeCommand::ToolChange { from: 0, to: 1 });
+        test_serde_roundtrip!(GCodeCommand::ToolChange {
+            after_entity_index: 0,
+            from: 0,
+            to: 1
+        });
         test_serde_roundtrip!(GCodeCommand::Comment {
             text: "test".to_string()
         });

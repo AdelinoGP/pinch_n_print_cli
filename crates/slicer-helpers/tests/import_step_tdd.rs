@@ -179,7 +179,7 @@ fn import_step_invalid_file_error() {
     ensure_fixtures();
     let path = resources_dir().join("garbage.bin");
     // Write binary garbage.
-    std::fs::write(&path, &[0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02, 0x03]).unwrap();
+    std::fs::write(&path, [0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02, 0x03]).unwrap();
 
     let result = import_step(&path);
     assert!(

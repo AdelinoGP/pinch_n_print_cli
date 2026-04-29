@@ -3,7 +3,7 @@
 //! Fixtures are written to `tests/resources/` on first use. Once generated
 //! they are stable — delete the directory to regenerate.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Once;
 
 use truck_modeling::*;
@@ -72,7 +72,7 @@ fn solids_to_step(solids: &[Solid]) -> String {
 // ---------------------------------------------------------------------------
 // cube.step — single 10 mm cube, mm units
 // ---------------------------------------------------------------------------
-fn write_cube_mm(dir: &PathBuf) {
+fn write_cube_mm(dir: &Path) {
     let path = dir.join("cube.step");
     if path.exists() {
         return;
@@ -86,7 +86,7 @@ fn write_cube_mm(dir: &PathBuf) {
 // ---------------------------------------------------------------------------
 // cube_metres.step — 10 mm cube in metre units (size = 0.01 m)
 // ---------------------------------------------------------------------------
-fn write_cube_metres(dir: &PathBuf) {
+fn write_cube_metres(dir: &Path) {
     let path = dir.join("cube_metres.step");
     if path.exists() {
         return;
@@ -102,7 +102,7 @@ fn write_cube_metres(dir: &PathBuf) {
 // ---------------------------------------------------------------------------
 // assembly.step — two distinct solids
 // ---------------------------------------------------------------------------
-fn write_assembly(dir: &PathBuf) {
+fn write_assembly(dir: &Path) {
     let path = dir.join("assembly.step");
     if path.exists() {
         return;
@@ -116,7 +116,7 @@ fn write_assembly(dir: &PathBuf) {
 // ---------------------------------------------------------------------------
 // step_open_face.step — cube with one face removed (open shell)
 // ---------------------------------------------------------------------------
-fn write_open_face(dir: &PathBuf) {
+fn write_open_face(dir: &Path) {
     let path = dir.join("step_open_face.step");
     if path.exists() {
         return;
@@ -135,7 +135,7 @@ fn write_open_face(dir: &PathBuf) {
 // ---------------------------------------------------------------------------
 // no_unit.step — STEP with no unit declaration
 // ---------------------------------------------------------------------------
-fn write_no_unit(dir: &PathBuf) {
+fn write_no_unit(dir: &Path) {
     let path = dir.join("no_unit.step");
     if path.exists() {
         return;
@@ -157,15 +157,8 @@ fn write_no_unit(dir: &PathBuf) {
                 || upper.contains("GLOBAL_UNIT_ASSIGNED_CONTEXT"))
         })
         .collect();
-    // Also strip the REPRESENTATION_CONTEXT line that references unit context
-    let lines: Vec<&str> = lines
-        .into_iter()
-        .map(|line| {
-            // Replace REPRESENTATION_CONTEXT entries that reference removed unit entities
-            // by leaving them as-is — the parser should still work.
-            line
-        })
-        .collect();
+    // Also strip the REPRESENTATION_CONTEXT line that references unit context.
+    // Lines are left as-is — the parser should still work.
     step = lines.join("\n") + "\n";
     std::fs::write(&path, step).unwrap();
 }

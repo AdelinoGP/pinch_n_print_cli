@@ -1,5 +1,7 @@
 //! `slicer-cli` — developer CLI library for the ModularSlicer module SDK.
 
+#![allow(missing_docs)]
+
 pub mod cmd_build;
 pub mod cmd_new;
 pub mod cmd_run;
