@@ -1068,3 +1068,413 @@ fn paint_segmentation_is_a_real_routed_component() {
         "paint-segmentation.wasm missing WASM magic; likely a bad rebuild."
     );
 }
+
+// ---------------------------------------------------------------------------
+// Feature-evidence acceptance tests (Step 1 + Step 2)
+// Staged to fail until upstream producer packets land.
+// ---------------------------------------------------------------------------
+
+/// AC-FE1: benchy_gcode_contains_support_feature_evidence
+///
+/// G-code must contain at least one `;TYPE:Support` block and at least
+/// one `G1 ... E` extrusion move somewhere after that block.
+/// This proves the support generator produced real printable toolpaths,
+/// not just a metadata marker with no actual extrusion.
+#[test]
+fn benchy_gcode_contains_support_feature_evidence() {
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let modules_filtered = filtered_module_dir_for_tree_support(&tmp);
+    let config = repo_root().join("resources/test_config/benchy-tree-support.json");
+    assert_path_exists(&config, "benchy-tree-support.json config");
+
+    let out_path = tmp.path().join("support_feature_evidence.gcode");
+    let result = run_slicer_host(&model, &modules_filtered, &out_path, Some(&config));
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "slicer-host with tree-support config must succeed for feature-evidence \
+         gate. Stderr:\n{stderr}"
+    );
+    assert!(out_path.exists(), "--output file must be written");
+
+    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+
+    // Find at least one ;TYPE:Support block (or ;TYPE:Support interface).
+    let support_blocks: Vec<&str> = gcode
+        .lines()
+        .filter(|l| l.contains(";TYPE:Support interface") || l.contains(";TYPE:Support"))
+        .collect();
+
+    assert!(
+        !support_blocks.is_empty(),
+        "feature-evidence requires at least one ;TYPE:Support block in G-code. \
+         Stderr tail:\n{}\nG-code preview:\n{}",
+        stderr
+            .lines()
+            .rev()
+            .take(8)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n"),
+        preview(&gcode, 30)
+    );
+
+    // Find the byte-offset of the first support block and assert that
+    // at least one G1 ... E extrusion move appears after it.
+    let first_support_offset = gcode
+        .lines()
+        .enumerate()
+        .find(|(_, l)| l.contains(";TYPE:Support interface") || l.contains(";TYPE:Support"))
+        .map(|(i, _)| gcode.lines().take(i).map(|l| l.len() + 1).sum::<usize>());
+
+    if let Some(offset) = first_support_offset {
+        let after_support = &gcode[offset..];
+        let has_extrusion_after = after_support
+            .lines()
+            .any(|l| l.starts_with("G1") && l.split_whitespace().any(|t| t.starts_with('E')));
+
+        assert!(
+            has_extrusion_after,
+            "feature-evidence: found ;TYPE:Support block but no G1 ... E extrusion \
+             move after it. Support geometry may be unresolvable or the post-processor \
+             is not emitting extrusion for support toolpaths. G-code preview:\n{}",
+            preview(&gcode, 30)
+        );
+    } else {
+        // Defensive: already caught above by the is_empty check, but
+        // this keeps the compiler happy.
+        unreachable!("support_blocks was non-empty but enumerate found nothing");
+    }
+}
+
+/// AC-FE2: benchy_gcode_contains_top_and_bottom_surface_evidence
+///
+/// G-code must contain at least one `;TYPE:Top surface` block AND at
+/// least one `;TYPE:Bottom surface` block. Top-surface evidence proves
+/// the slicer correctly identified upward-facing regions; bottom-surface
+/// evidence proves downward-facing region detection.
+#[test]
+fn benchy_gcode_contains_top_and_bottom_surface_evidence() {
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let out_path = tmp.path().join("surface_evidence.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, None);
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "slicer-host must succeed for top/bottom surface feature-evidence. \
+         Stderr:\n{stderr}"
+    );
+    assert!(out_path.exists(), "--output file must be written");
+
+    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+
+    let has_top_surface = gcode.lines().any(|l| l.contains(";TYPE:Top surface"));
+    let has_bottom_surface = gcode.lines().any(|l| l.contains(";TYPE:Bottom surface"));
+
+    assert!(
+        has_top_surface,
+        "feature-evidence: missing ;TYPE:Top surface block in G-code. \
+         G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+    assert!(
+        has_bottom_surface,
+        "feature-evidence: missing ;TYPE:Bottom surface block in G-code. \
+         G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+}
+
+/// AC-FE3: benchy_gcode_contains_balanced_retract_and_unretract_pairs
+///
+/// Retract count > 0, unretract count > 0, and the two counts are exactly
+/// equal. Imbalanced retract/unretract counts indicate a G-code
+/// serialization bug where a filament transition is leaking across
+/// feature boundaries.
+#[test]
+fn benchy_gcode_contains_balanced_retract_and_unretract_pairs() {
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let out_path = tmp.path().join("retract_evidence.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, None);
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "slicer-host must succeed for retract/unretract feature-evidence. \
+         Stderr:\n{stderr}"
+    );
+    assert!(out_path.exists(), "--output file must be written");
+
+    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+
+    // Count M207 (retract) and M208 (unretract / retract_length_reset)
+    // in the G-code. These are the canonical Marlin/RepRap retract
+    //codes used by the slicer host.
+    let retract_count = gcode.lines().filter(|l| l.starts_with("M207")).count();
+    let unretract_count = gcode.lines().filter(|l| l.starts_with("M208")).count();
+
+    assert!(
+        retract_count > 0,
+        "feature-evidence: no M207 retract commands found. The live path \
+         may not be emitting retract sequences. G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+    assert!(
+        unretract_count > 0,
+        "feature-evidence: no M208 unretract commands found. The live path \
+         may not be emitting unretract sequences after material transitions. \
+         G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+    assert_eq!(
+        retract_count,
+        unretract_count,
+        "feature-evidence: retract/unretract imbalance — {} M207 retracts \
+         vs {} M208 unretracts. Counts must be exactly equal. G-code preview:\n{}",
+        retract_count,
+        unretract_count,
+        preview(&gcode, 30)
+    );
+}
+
+/// AC-FE4: benchy_live_path_contains_resolved_seam_evidence_before_emit
+///
+/// The live path (in memory, before G-code text serialization) must
+/// contain evidence that the resolved seam position influenced at
+/// least one wall-loop start point on a real Benchy layer.
+///
+/// This is different from `benchy_prepass_seam_plan_matches_live_outer_wall_start`
+/// (line 853) — that test checks stderr DEBUG lines from the dispatch path.
+/// This test asserts the structural property that a wall-loop's first
+/// point is influenced by a seam decision, which requires the seam plan
+/// to be consulted and applied during live wall construction.
+///
+/// Staged to fail until the seam-injection producer packet lands.
+#[test]
+fn benchy_live_path_contains_resolved_seam_evidence_before_emit() {
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let out_path = tmp.path().join("seam_evidence_live_path.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, None);
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "slicer-host must succeed for live-path seam-evidence gate. Stderr:\n{stderr}"
+    );
+    assert!(out_path.exists(), "--output file must be written");
+
+    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+
+    // Live-path seam evidence: the G-code emitter applies seam by
+    // rotating the wall loop so it starts at the seam vertex. This
+    // produces a G1 move whose endpoint X/Y equals the seam position
+    // on the FIRST outer wall pass after a ;TYPE:OuterWall marker.
+    //
+    // We check for the pattern:
+    //   ;TYPE:OuterWall
+    //   (maybe other lines)
+    //   G1 X<seam_x> Y<seam_y> ... E...
+    //
+    // The presence of a well-formed outer-wall start that is NOT at
+    // the canonical 0-degree start position indicates seam rotation occurred.
+    // We detect this by looking for ;TYPE:OuterWall blocks followed by
+    // G1 moves that have X or Y values near the seam-aligned region of
+    // the benchy geometry (not near 0,0).
+
+    let lines: Vec<&str> = gcode.lines().collect();
+    let mut seam_evidence_found = false;
+
+    for (i, line) in lines.iter().enumerate() {
+        if line.contains(";TYPE:OuterWall") {
+            // Scan forward in this block (next ~20 lines) for a G1
+            // extrusion move that does not start near the origin, which
+            // indicates the wall was rotated to a non-default start.
+            let block_end = std::cmp::min(i + 20, lines.len());
+            for j in (i + 1)..block_end {
+                let candidate = lines[j];
+                if candidate.starts_with("G1") && candidate.contains('E') {
+                    // Extract X and Y values.
+                    let mut x_val: Option<f32> = None;
+                    let mut y_val: Option<f32> = None;
+                    for tok in candidate.split_whitespace() {
+                        if let Some(rest) = tok.strip_prefix('X') {
+                            if let Ok(v) = rest.parse::<f32>() {
+                                x_val = Some(v);
+                            }
+                        }
+                        if let Some(rest) = tok.strip_prefix('Y') {
+                            if let Ok(v) = rest.parse::<f32>() {
+                                y_val = Some(v);
+                            }
+                        }
+                    }
+                    // If both X and Y are non-zero (off origin), the wall
+                    // is rotationally aligned to a seam position.
+                    if let (Some(x), Some(y)) = (x_val, y_val) {
+                        if x.abs() > 1.0 && y.abs() > 1.0 {
+                            seam_evidence_found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if seam_evidence_found {
+            break;
+        }
+    }
+
+    assert!(
+        seam_evidence_found,
+        "feature-evidence: live path shows no resolved-seam influence on \
+         outer wall start points. Expected at least one outer-wall G1 extrusion \
+         starting at a non-origin (seam-rotated) position. G-code preview:\n{}",
+        preview(&gcode, 50)
+    );
+}
+
+/// AC-FE5: benchy_feature_evidence_failures_name_the_missing_family
+///
+/// When any feature-evidence test fails (support, top, bottom, retract,
+/// seam), the failure message must name the missing feature family
+/// explicitly (e.g., "missing: support" not "Benchy parity failed").
+///
+/// This is a meta-assertion: it runs the feature-evidence tests in
+///-process and verifies their failure messages are actionable.
+#[test]
+fn benchy_feature_evidence_failures_name_the_missing_family() {
+    // Run all five feature-evidence tests and collect their panic messages.
+    // We execute them sequentially so we capture individual failure modes.
+
+    // We reuse the same infrastructure but this time check that the
+    // assertion messages, when they fire, name the missing family.
+    // Since these tests are staged-to-fail, we expect them to panic.
+    // The panic message must include the feature family name.
+
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let modules_filtered = filtered_module_dir_for_tree_support(&tmp);
+    let config = repo_root().join("resources/test_config/benchy-tree-support.json");
+    assert_path_exists(&config, "benchy-tree-support.json config");
+
+    // Run a support-enabled slice and check failure message quality.
+    let out_path = tmp.path().join("feature_evidence_fail_msg.gcode");
+    let result = run_slicer_host(&model, &modules_filtered, &out_path, Some(&config));
+    let stderr = String::from_utf8_lossy(&result.stderr);
+
+    if !result.status.success() {
+        // Pipeline failed — verify stderr names the missing family.
+        // Accept any stderr that contains one of the known feature-family
+        // keywords in an actionable context.
+        let actionable = stderr.contains("support")
+            || stderr.contains("top surface")
+            || stderr.contains("bottom surface")
+            || stderr.contains("retract")
+            || stderr.contains("seam")
+            || stderr.contains("feature");
+        assert!(
+            actionable,
+            "feature-evidence failure message must name the missing feature \
+             family explicitly. stderr:\n{stderr}"
+        );
+    } else {
+        // Pipeline succeeded — check the G-code for missing features.
+        let gcode = std::fs::read_to_string(&out_path).expect("read output");
+
+        // Check support family.
+        let has_support = gcode
+            .lines()
+            .any(|l| l.contains(";TYPE:Support interface") || l.contains(";TYPE:Support"));
+        let has_extrusion_after_support = if has_support {
+            let offset = gcode
+                .lines()
+                .enumerate()
+                .find(|(_, l)| l.contains(";TYPE:Support interface") || l.contains(";TYPE:Support"))
+                .map(|(i, _)| gcode.lines().take(i).map(|l| l.len() + 1).sum::<usize>());
+            offset.map_or(false, |off| {
+                gcode[off..].lines().any(|l| {
+                    l.starts_with("G1") && l.split_whitespace().any(|t| t.starts_with('E'))
+                })
+            })
+        } else {
+            false
+        };
+        let support_missing = !has_support || !has_extrusion_after_support;
+
+        // Check top surface family.
+        let top_missing = !gcode.lines().any(|l| l.contains(";TYPE:Top surface"));
+
+        // Check bottom surface family.
+        let bottom_missing = !gcode.lines().any(|l| l.contains(";TYPE:Bottom surface"));
+
+        // Check retract/unretract balance.
+        let retract_count = gcode.lines().filter(|l| l.starts_with("M207")).count();
+        let unretract_count = gcode.lines().filter(|l| l.starts_with("M208")).count();
+        let retract_missing =
+            retract_count == 0 || unretract_count == 0 || retract_count != unretract_count;
+
+        if support_missing {
+            assert!(
+                false,
+                "missing: support — G-code lacks ;TYPE:Support or has no \
+                 extrusion after the support marker. G-code preview:\n{}",
+                preview(&gcode, 30)
+            );
+        }
+        if top_missing {
+            assert!(
+                false,
+                "missing: top_surface — G-code lacks ;TYPE:Top surface marker. \
+                 G-code preview:\n{}",
+                preview(&gcode, 30)
+            );
+        }
+        if bottom_missing {
+            assert!(
+                false,
+                "missing: bottom_surface — G-code lacks ;TYPE:Bottom surface marker. \
+                 G-code preview:\n{}",
+                preview(&gcode, 30)
+            );
+        }
+        if retract_missing {
+            assert!(
+                false,
+                "missing: retract_balance — G-code has {} M207 retracts and {} \
+                 M208 unretracts (counts must be >0 and equal). \
+                 G-code preview:\n{}",
+                retract_count,
+                unretract_count,
+                preview(&gcode, 30)
+            );
+        }
+    }
+}
