@@ -34,7 +34,7 @@ impl LayerModule for SdkLayerPathoptGuest {
 
         for index in 0..regions.len() as u32 {
             output
-                .push_tool_change(index, index + 1)
+                .push_tool_change(index, index, index + 1)
                 .map_err(|message| ModuleError::fatal(1, message))?;
             output
                 .push_z_hop(0, 0.5)

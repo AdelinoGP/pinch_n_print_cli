@@ -102,7 +102,7 @@ wit_bindgen::generate!({
                 push-retract:     func(length: f32, speed: f32) -> result<_, string>;
                 push-fan-speed:   func(value: u8) -> result<_, string>;
                 push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-                push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
+                push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
                 push-comment:     func(text: string) -> result<_, string>;
                 push-raw:         func(text: string) -> result<_, string>;
                 push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
@@ -371,7 +371,7 @@ impl Guest for Component {
         // Emit one deterministic tool-change override per active region so the
         // host commit path can fold it into LayerCollectionIR.tool_changes.
         for i in 0..region_count as u32 {
-            output.push_tool_change(i, i + 1).expect("push tool_change failed");
+            output.push_tool_change(i, i, i + 1).expect("push tool_change failed");
         }
         // Emit one z-hop per region, all anchored
         // at entity index 0. Using a fixed anchor keeps direct-dispatch tests

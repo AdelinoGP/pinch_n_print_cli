@@ -58,14 +58,14 @@ wit_bindgen::generate!({
             record gcode-retract-cmd { length: f32, speed: f32 }
             record gcode-fan-speed-cmd { value: u8 }
             record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
-            record gcode-tool-change-cmd { from-tool: u32, to-tool: u32 }
+            record gcode-tool-change-cmd { after-entity-index: u32, from-tool: u32, to-tool: u32 }
             resource gcode-output-builder {
                 push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
                 push-retract:     func(length: f32, speed: f32) -> result<_, string>;
                 push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
                 push-fan-speed:   func(value: u8) -> result<_, string>;
                 push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-                push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
+                push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
                 push-comment:     func(text: string) -> result<_, string>;
                 push-raw:         func(text: string) -> result<_, string>;
                 push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
@@ -106,7 +106,7 @@ fn echo_command(command: &GcodeCommand, output: &GcodeOutputBuilder) -> Result<(
         GcodeCommand::Unretract(cmd) => output.push_unretract(cmd.length, cmd.speed),
         GcodeCommand::FanSpeed(cmd) => output.push_fan_speed(cmd.value),
         GcodeCommand::Temperature(cmd) => output.push_temperature(cmd.tool, cmd.celsius, cmd.wait),
-        GcodeCommand::ToolChange(cmd) => output.push_tool_change(cmd.from_tool, cmd.to_tool),
+        GcodeCommand::ToolChange(cmd) => output.push_tool_change(cmd.after_entity_index, cmd.from_tool, cmd.to_tool),
         GcodeCommand::Comment(text) => output.push_comment(text),
         GcodeCommand::Raw(text) => output.push_raw(text),
     }
@@ -139,7 +139,7 @@ impl Guest for Component {
                 output.push_unretract(0.8, 35.0).map_err(|message| ModuleError { code: 4, message, fatal: true })?;
                 output.push_fan_speed(200).map_err(|message| ModuleError { code: 5, message, fatal: true })?;
                 output.push_temperature(1, 215.0, false).map_err(|message| ModuleError { code: 6, message, fatal: true })?;
-                output.push_tool_change(1, 2).map_err(|message| ModuleError { code: 7, message, fatal: true })?;
+                output.push_tool_change(0, 1, 2).map_err(|message| ModuleError { code: 7, message, fatal: true })?;
                 output.push_comment("sample comment").map_err(|message| ModuleError { code: 8, message, fatal: true })?;
                 output.push_raw("M117 sample raw").map_err(|message| ModuleError { code: 9, message, fatal: true })?;
             }
