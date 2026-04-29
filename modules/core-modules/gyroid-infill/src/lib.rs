@@ -572,7 +572,15 @@ mod tests {
     #[test]
     fn gyroid_f_no_nan() {
         // Test the gyroid function at various z values to ensure no NaN
-        for z in [0.0_f64, 0.5, 1.0, 1.5707, 3.14159, 6.28, 100.0] {
+        for z in [
+            0.0_f64,
+            0.5,
+            1.0,
+            std::f64::consts::FRAC_PI_2,
+            std::f64::consts::PI,
+            std::f64::consts::TAU,
+            100.0,
+        ] {
             let z_sin = z.sin();
             let z_cos = z.cos();
             for x in [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0] {

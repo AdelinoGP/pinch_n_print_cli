@@ -312,7 +312,7 @@ mod tests {
         let mut r = Rng::new(123);
         for _ in 0..1000 {
             let v = r.next_f32();
-            assert!(v >= -1.0 && v <= 1.0, "RNG out of range: {v}");
+            assert!((-1.0..=1.0).contains(&v), "RNG out of range: {v}");
         }
     }
 }
