@@ -12,9 +12,9 @@ use std::path::Path;
 use slicer_host::{
     get_advanced_fields, get_basic_fields, get_field_schema, group_fields_by_ui_group,
     parse_config_schema, query_config_schema, validate_config, validate_field_value,
-    ConfigFieldSchema, ConfigFieldType, ConfigSchemaParseError, ConfigSchemaParseErrorKind,
-    ConfigUnit, ConfigValidationError, ConfigValidationErrorKind, ConfigValue, CrossValidateRule,
-    CrossValidateSeverity, FullConfigSchema,
+    ConfigFieldSchema, ConfigFieldType, ConfigSchemaParseErrorKind, ConfigUnit,
+    ConfigValidationErrorKind, ConfigValue, CrossValidateRule, CrossValidateSeverity,
+    FullConfigSchema,
 };
 
 // ============================================================================
@@ -573,7 +573,7 @@ fn parse_cross_validate_rules() {
     .parse()
     .expect("toml should parse");
 
-    let schema_section = toml.get("schema").expect("schema section");
+    let _schema_section = toml.get("schema").expect("schema section");
 
     // For this test, we need to also pass the cross-validate section
     // The parse function should handle the full config section

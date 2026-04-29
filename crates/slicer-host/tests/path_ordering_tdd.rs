@@ -23,7 +23,7 @@ const PATH_OPT_WASM: &str = concat!(
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigView, ExtrusionPath3D, ExtrusionRole, GlobalLayer,
     IndexedTriangleSet, InfillIR, InfillRegion, MeshIR, ObjectConfig, ObjectMesh, Point3,
-    Point3WithWidth, PrintEntity, RegionKey, ResolvedConfig, SemVer, StageId, Transform3d,
+    Point3WithWidth, ResolvedConfig, SemVer, StageId, Transform3d,
 };
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -44,37 +44,6 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
         width: 0.4,
         flow_factor: 1.0,
     }
-}
-
-fn entity_at(
-    x: f32,
-    y: f32,
-    role: ExtrusionRole,
-    object_id: &str,
-    original_idx: u32,
-) -> PrintEntity {
-    PrintEntity {
-        path: ExtrusionPath3D {
-            points: vec![pt(x, y)],
-            role: role.clone(),
-            speed_factor: 1.0,
-        },
-        role,
-        region_key: RegionKey {
-            global_layer_index: 0,
-            object_id: object_id.to_string(),
-            region_id: 0,
-        },
-        topo_order: original_idx,
-    }
-}
-
-fn sparse(x: f32, y: f32, object_id: &str, idx: u32) -> PrintEntity {
-    entity_at(x, y, ExtrusionRole::SparseInfill, object_id, idx)
-}
-
-fn bridge(x: f32, y: f32, object_id: &str, idx: u32) -> PrintEntity {
-    entity_at(x, y, ExtrusionRole::BridgeInfill, object_id, idx)
 }
 
 // ── AC-1: same-object nearest-neighbor ordering ───────────────────────────────
@@ -269,16 +238,19 @@ impl LayerStageRunner for LiveDispatcherWithInfill {
     }
 }
 
-// ── AC-2: cross-object ordering ───────────────────────────────────────────────
+// ── AC-2: cross-tool ordering ────────────────────────────────────────────────
 
-/// AC-2: Given a mixed-object layer whose raw order is [A1(0,0), A2(0,100),
-/// B1(1,0), B2(1,1)] but nearest-travel interleaves objects, the live WASM
-/// dispatch produces x sequence [0.0, 1.0, 1.0, 0.0] — matching travel cost
-/// ordering A1→B1→B2→A2 (not the raw assembled order).
+/// AC-2: Given a mixed-tool layer (tool = region_id) whose raw order is
+/// [A1(0,0), A2(0,100), B1(1,0), B2(1,1)], the live WASM dispatch groups by
+/// tool_index first, then applies nearest-neighbor within each cluster.
+/// Result: tool-0 cluster [A1, A2] then tool-1 cluster [B1, B2] → x = [0.0, 0.0, 1.0, 1.0].
+/// Within-cluster NN still applies (A1 before A2, B1 before B2).
 #[test]
 fn cross_object_ordering_resequences_entities_by_travel_cost() {
     // A1(0,0) A2(0,100) B1(1,0) B2(1,1) — raw order is all A then all B.
-    // NN from (0,0): A1(d=0)→B1(d=1 from 0,0)→B2(d=1 from 1,0)→A2(d=100 last).
+    // Tool grouping: cluster 0 [A1, A2], cluster 1 [B1, B2].
+    // Within cluster 0 (NN from 0,0): A1→A2 (both in same cluster).
+    // Within cluster 1 (NN from 0,0): B1→B2 (B1 nearest to 0,0, B2 nearest to B1).
     let infill = InfillIR {
         schema_version: semver(),
         global_layer_index: 0,
@@ -380,11 +352,11 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         .iter()
         .map(|e| e.path.points[0].x)
         .collect();
-    // A1(0,0)→B1(1,0)→B2(1,1)→A2(0,100): x = [0.0, 1.0, 1.0, 0.0]
+    // Grouped: [A1(0,0), A2(0,100), B1(1,0), B2(1,1)]: x = [0.0, 0.0, 1.0, 1.0]
     assert_eq!(
         xs,
-        vec![0.0_f32, 1.0, 1.0, 0.0],
-        "expected travel-cost ordering [0.0, 1.0, 1.0, 0.0], got {xs:?}"
+        vec![0.0_f32, 0.0, 1.0, 1.0],
+        "expected grouped-tool ordering [0.0, 0.0, 1.0, 1.0], got {xs:?}"
     );
 }
 

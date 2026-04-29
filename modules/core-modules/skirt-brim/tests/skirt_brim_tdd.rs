@@ -1,3 +1,5 @@
+#![allow(missing_docs)]
+
 use std::collections::HashMap;
 
 use skirt_brim::SkirtBrim;
@@ -252,8 +254,8 @@ fn skirt_height_multiple_layers() {
     sb.process(&mut layers).unwrap();
 
     // First 3 layers should have skirt
-    for i in 0..3 {
-        let has_skirt = layers[i]
+    for (i, layer) in layers.iter().enumerate().take(3) {
+        let has_skirt = layer
             .ordered_entities
             .iter()
             .any(|e| e.role == ExtrusionRole::Skirt);

@@ -1,7 +1,6 @@
 //! TDD tests for paint-segmentation prepass module.
 
 use slicer_sdk::prelude::*;
-use std::collections::HashMap;
 
 use paint_segmentation::PaintSegmentation;
 

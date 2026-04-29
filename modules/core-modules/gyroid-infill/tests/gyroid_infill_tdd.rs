@@ -1,3 +1,5 @@
+//! TDD tests for the gyroid-infill module.
+
 use std::collections::HashMap;
 
 use slicer_ir::{ConfigValue, ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon};

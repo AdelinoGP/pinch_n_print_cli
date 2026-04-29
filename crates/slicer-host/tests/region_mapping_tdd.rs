@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+#![allow(missing_docs, dead_code)]
 
 //! TDD tests for TASK-106: host-built-in `PrePass::RegionMapping`.
 //!

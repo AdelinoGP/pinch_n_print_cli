@@ -8,7 +8,7 @@
 //! the full layer-module WIT world) and go through the typed boundary.
 //! Non-layer tests use minimal WAT fixtures on the legacy untyped path.
 
-#![allow(missing_docs)]
+#![allow(missing_docs, dead_code, unused_imports, unused_variables)]
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -3703,10 +3703,14 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
         assert_eq!(e.region_key.global_layer_index, 0);
         assert_eq!(e.topo_order, i as u32);
     }
-    // after_entity_index anchored at the last pre-assembled entity.
-    let anchor = (l.ordered_entities.len() - 1) as u32;
-    for tc in &l.tool_changes {
-        assert_eq!(tc.after_entity_index, anchor);
+    // Verify each tool-change's after_entity_index matches its region index,
+    // matching the guest's per-region anchoring (region i emits tool-change
+    // after entity index i).
+    for (i, tc) in l.tool_changes.iter().enumerate() {
+        assert_eq!(
+            tc.after_entity_index, i as u32,
+            "tool-change {i} should anchor at region index {i}"
+        );
     }
 }
 
@@ -3919,6 +3923,7 @@ fn path_optimization_commit_is_deterministic_across_repeats() {
         c.gcode_output
             .commands
             .push(GcodeCommandCollected::ToolChange {
+                after_entity_index: 0,
                 from_tool: 0,
                 to_tool: 1,
             });

@@ -11,8 +11,8 @@ use slicer_host::{
     FinalizationOutput, FinalizationStageRunner, WasmArtifactMetadata,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigValue, ConfigView, LayerCollectionIR, MeshIR, ModuleId, ObjectMesh, Point3,
-    SemVer, StageId, Transform3d,
+    BoundingBox3, ConfigView, LayerCollectionIR, MeshIR, ObjectMesh, Point3, SemVer, StageId,
+    Transform3d,
 };
 
 #[test]

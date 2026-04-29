@@ -178,7 +178,11 @@ fn postpass_gcode_output_preserves_command_order_and_content() {
                 celsius: 215.0,
                 wait: false,
             },
-            GCodeCommand::ToolChange { from: 1, to: 2 },
+            GCodeCommand::ToolChange {
+                after_entity_index: 0,
+                from: 1,
+                to: 2
+            },
             GCodeCommand::Comment {
                 text: "sample comment".to_string(),
             },

@@ -389,7 +389,11 @@ fn emit_tool_change_at_correct_position() {
 
     // Command 6 should be ToolChange
     match &gcode_ir.commands[6] {
-        GCodeCommand::ToolChange { from, to } => {
+        GCodeCommand::ToolChange {
+            after_entity_index: _,
+            from,
+            to,
+        } => {
             assert_eq!(*from, 0);
             assert_eq!(*to, 1);
         }
@@ -662,7 +666,11 @@ fn serialize_temperature_command_with_wait() {
 fn serialize_tool_change_command() {
     let serializer = DefaultGCodeSerializer::new();
 
-    let gcode_ir = gcode_ir_fixture(vec![GCodeCommand::ToolChange { from: 0, to: 1 }]);
+    let gcode_ir = gcode_ir_fixture(vec![GCodeCommand::ToolChange {
+        after_entity_index: 0,
+        from: 0,
+        to: 1,
+    }]);
 
     let result = serializer.serialize_gcode(&gcode_ir);
 

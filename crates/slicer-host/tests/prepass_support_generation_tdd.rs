@@ -445,7 +445,7 @@ fn prepass_support_generation_fails_without_layer_plan() {
         &["com.test.support-planner"],
     )]);
 
-    let runner = NullRunner::default();
+    let runner = NullRunner;
 
     let err = execute_prepass(&plan, &mut blackboard, &runner).unwrap_err();
     match err {

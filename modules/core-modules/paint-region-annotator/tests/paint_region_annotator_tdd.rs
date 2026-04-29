@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigView, ExPolygon, LayerPaintMap, ObjectId, PaintRegionIR, PaintSemantic, PaintValue,
-    Point2, Polygon, RegionId, RegionKey, SemVer, SemanticRegion,
+    ConfigView, ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, Point2,
+    Polygon, RegionId, RegionKey, SemVer, SemanticRegion,
 };
 use slicer_sdk::builders::SlicePostprocessBuilder;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};

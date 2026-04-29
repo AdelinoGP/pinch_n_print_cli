@@ -1,4 +1,4 @@
-#![allow(missing_docs)]
+#![allow(missing_docs, dead_code, unused_imports)]
 
 //! TDD red tests for TASK-033: PostPass executor API.
 //!

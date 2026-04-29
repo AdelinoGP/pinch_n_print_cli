@@ -197,7 +197,11 @@ fn postpass_gcode_boundary_carries_all_payload_variants_into_guest() {
             celsius: 212.5,
             wait: true,
         },
-        GCodeCommand::ToolChange { from: 1, to: 2 },
+        GCodeCommand::ToolChange {
+            after_entity_index: 0,
+            from: 1,
+            to: 2,
+        },
         GCodeCommand::Comment {
             text: "boundary comment".to_string(),
         },

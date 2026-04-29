@@ -223,7 +223,7 @@ fn write_conflict_orderable_is_false_when_neither_module_reads_conflicting_field
                     && (*module_a == "com.example.alpha" || *module_b == "com.example.alpha")
                     && (*module_a == "com.example.beta" || *module_b == "com.example.beta")
                     && s == stage
-                    && *orderable == false
+                    && !*orderable
             }
             _ => false,
         }
