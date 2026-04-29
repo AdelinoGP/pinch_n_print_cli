@@ -5,6 +5,8 @@
 //!
 //! All tests must compile and run.
 
+#![allow(missing_docs, clippy::new_without_default)]
+
 use slicer_macros::slicer_module;
 
 // ============================================================================

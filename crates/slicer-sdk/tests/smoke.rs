@@ -1,3 +1,5 @@
+//! Smoke tests for the slicer-sdk crate.
+
 use slicer_sdk::coords::{mm_to_units, units_to_mm, SCALING_FACTOR};
 use slicer_sdk::host;
 use slicer_sdk::prelude::*;

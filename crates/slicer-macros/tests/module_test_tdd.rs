@@ -6,6 +6,12 @@
 //!
 //! All tests must compile and run. Tests fail only on explicit todo! stubs.
 
+#![allow(
+    clippy::assertions_on_constants,
+    clippy::nonminimal_bool,
+    clippy::overly_complex_bool_expr
+)]
+
 use slicer_macros::module_test;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 

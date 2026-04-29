@@ -67,7 +67,11 @@ fn test_02_gcode_command_enum_has_all_variants() {
         celsius: 210.0,
         wait: true,
     };
-    let tool_change = GcodeCommand::ToolChange { from: 0, to: 1 };
+    let tool_change = GcodeCommand::ToolChange {
+        after_entity_index: 0,
+        from: 0,
+        to: 1,
+    };
     let comment = GcodeCommand::Comment {
         text: "layer change".to_string(),
     };
@@ -232,7 +236,7 @@ fn test_08_gcode_output_builder_push_temperature() {
 fn test_09_gcode_output_builder_push_tool_change() {
     let mut builder = GcodeOutputBuilder::new();
 
-    let result = builder.push_tool_change(0, 1);
+    let result = builder.push_tool_change(0, 0, 1);
     assert!(result.is_ok());
     assert_eq!(builder.commands().len(), 1);
 }

@@ -604,7 +604,7 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                 push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
                 push-fan-speed:   func(value: u8) -> result<_, string>;
                 push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-                push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
+                push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
                 push-comment:     func(text: string) -> result<_, string>;
                 push-raw:         func(text: string) -> result<_, string>;
                 push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
@@ -813,9 +813,9 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                             let _ = wit.push_temperature(*tool, *celsius, *wait);
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
-                            ::slicer_sdk::postpass_types::GcodeCommand::ToolChange { from, to }
+                            ::slicer_sdk::postpass_types::GcodeCommand::ToolChange { after_entity_index, from, to }
                         ) => {
-                            let _ = wit.push_tool_change(*from, *to);
+                            let _ = wit.push_tool_change(*after_entity_index, *from, *to);
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
                             ::slicer_sdk::postpass_types::GcodeCommand::Comment { text }
@@ -2715,9 +2715,9 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                             let _ = wit.push_temperature(*tool, *celsius, *wait);
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
-                            ::slicer_sdk::postpass_types::GcodeCommand::ToolChange { from, to }
+                            ::slicer_sdk::postpass_types::GcodeCommand::ToolChange { after_entity_index, from, to }
                         ) => {
-                            let _ = wit.push_tool_change(*from, *to);
+                            let _ = wit.push_tool_change(*after_entity_index, *from, *to);
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
                             ::slicer_sdk::postpass_types::GcodeCommand::Comment { text }

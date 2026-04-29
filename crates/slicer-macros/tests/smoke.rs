@@ -2,6 +2,8 @@
 //!
 //! These tests verify basic macro compilation and usage.
 
+#![allow(missing_docs, clippy::result_unit_err)]
+
 use slicer_macros::{module_test, slicer_module};
 
 // ============================================================================

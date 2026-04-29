@@ -62,7 +62,7 @@ impl GcodeMoveCmd {
 ///     push-retract:     func(length: f32, speed: f32) -> result<_, string>;
 ///     push-fan-speed:   func(value: u8) -> result<_, string>;
 ///     push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-///     push-tool-change: func(from: u32, to: u32) -> result<_, string>;
+///     push-tool-change: func(after-entity-index: u32, from: u32, to: u32) -> result<_, string>;
 ///     push-comment:     func(text: string) -> result<_, string>;
 ///     push-raw:         func(text: string) -> result<_, string>;
 /// }
@@ -134,9 +134,15 @@ impl GcodeOutputBuilder {
     }
 
     /// Push a tool change command.
-    pub fn push_tool_change(&mut self, from: u32, to: u32) -> Result<(), String> {
+    pub fn push_tool_change(
+        &mut self,
+        after_entity_index: u32,
+        from: u32,
+        to: u32,
+    ) -> Result<(), String> {
         self.commands
             .push(GcodeOutputCommand::Command(GCodeCommand::ToolChange {
+                after_entity_index,
                 from,
                 to,
             }));
