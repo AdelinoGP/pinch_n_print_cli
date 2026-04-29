@@ -207,6 +207,24 @@ wit_bindgen::generate!({
                 output: seam-planning-output,
                 config: config-view,
             ) -> result<_, module-error>;
+
+            // SupportGeneration stage — paint-segmentation owns no support
+            // logic, but the host's typed prepass world requires every
+            // export be present, so we emit a deterministic no-op stub.
+            record support-plan-entry {
+                global-layer-index: u32,
+                object-id: object-id,
+                region-id: region-id,
+                branch-segments: list<list<point3-with-width>>,
+            }
+            resource support-generation-output {
+                push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
+            }
+            export run-support-generation: func(
+                objects: list<mesh-object-view>,
+                output: support-generation-output,
+                config: config-view,
+            ) -> result<_, module-error>;
         }
     "#,
     world: "prepass-module",
@@ -387,6 +405,14 @@ impl Guest for Component {
     fn run_seam_planning(
         _objects: Vec<MeshObjectView>,
         _output: SeamPlanningOutput,
+        _config: ConfigView,
+    ) -> Result<(), ModuleError> {
+        Ok(())
+    }
+
+    fn run_support_generation(
+        _objects: Vec<MeshObjectView>,
+        _output: SupportGenerationOutput,
         _config: ConfigView,
     ) -> Result<(), ModuleError> {
         Ok(())

@@ -20,3 +20,6 @@ slicer-ir = { path = "../../../crates/slicer-ir" }
 wit-bindgen = "0.24"
 
 [dev-dependencies]
+
+[lints]
+workspace = true

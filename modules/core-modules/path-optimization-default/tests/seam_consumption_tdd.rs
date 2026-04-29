@@ -224,7 +224,7 @@ fn seam_started_wall_replay_is_deterministic() {
     module
         .run_path_optimization(
             7,
-            &[region.clone()],
+            std::slice::from_ref(&region),
             &mut output1,
             &mut collection1,
             &slicer_ir::ConfigView::default(),
@@ -236,7 +236,7 @@ fn seam_started_wall_replay_is_deterministic() {
     module
         .run_path_optimization(
             7,
-            &[region.clone()],
+            std::slice::from_ref(&region),
             &mut output2,
             &mut collection2,
             &slicer_ir::ConfigView::default(),

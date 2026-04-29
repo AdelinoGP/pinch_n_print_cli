@@ -40,7 +40,7 @@ const DEFAULT_TRAVEL_Z_HOP: f32 = 0.0;
 /// Further ties go to the lower `original_index`. After selection the cursor
 /// advances to the picked entity's `end_point`. The reversal flag is always
 /// `false`. Output is keyed on `view.original_index`.
-fn nearest_neighbor_permutation(entities: &[OrderedEntityView]) -> Vec<(u32, bool)> {
+fn nearest_neighbor_permutation(entities: &[&OrderedEntityView]) -> Vec<(u32, bool)> {
     let n = entities.len();
     if n == 0 {
         return Vec::new();
@@ -102,6 +102,82 @@ fn nearest_neighbor_permutation(entities: &[OrderedEntityView]) -> Vec<(u32, boo
     result
 }
 
+/// Extracts tool_index from an OrderedEntityView.
+///
+/// Tool index is propagated through `region_key.region_id` at assembly time
+/// via the host's per-region ActiveRegion.tool_index.
+fn tool_index_of(entity: &OrderedEntityView) -> u32 {
+    entity.region_key.region_id as u32
+}
+
+/// Tool change record emitted at a tool-index boundary during path optimization.
+#[derive(Debug, Clone, Copy)]
+struct ToolChangeRecord {
+    /// Entity index in the final permutation after which this change occurs.
+    after_entity_index: u32,
+    from_tool: u32,
+    to_tool: u32,
+}
+
+/// Groups entities by tool_index, preserving raw assembly order within each
+/// cluster, then applies nearest-neighbor ordering within each cluster and
+/// concatenates the results in ascending tool_index order.
+///
+/// Returns the permutation `(original_index, reversal)` ordered by tool and
+/// a vector of `ToolChangeRecord` describing each tool-index boundary with
+/// correct **global** after_entity_index in the final concatenated permutation.
+fn group_then_nearest_neighbor(
+    entities: &[OrderedEntityView],
+) -> (Vec<(u32, bool)>, Vec<ToolChangeRecord>) {
+    if entities.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+
+    // Cluster by tool_index; each cluster preserves original assembly order.
+    let mut clusters: std::collections::BTreeMap<u32, Vec<&OrderedEntityView>> =
+        std::collections::BTreeMap::new();
+    for entity in entities {
+        clusters
+            .entry(tool_index_of(entity))
+            .or_default()
+            .push(entity);
+    }
+
+    // Pass 1: build final permutation and track global position of each entity.
+    let mut final_permutation: Vec<(u32, bool)> = Vec::with_capacity(entities.len());
+    // Maps original_index -> global position in final_permutation
+    let mut global_position: std::collections::HashMap<u32, usize> =
+        std::collections::HashMap::new();
+    for (&_tool_idx, cluster_entities) in &clusters {
+        for (orig_idx, reversal) in nearest_neighbor_permutation(cluster_entities) {
+            global_position.insert(orig_idx, final_permutation.len());
+            final_permutation.push((orig_idx, reversal));
+        }
+    }
+
+    // Pass 2: emit tool-change records at tool-index boundaries, using global positions.
+    let mut tool_change_records: Vec<ToolChangeRecord> = Vec::new();
+    let mut prev_tool = None;
+    let mut prev_global_pos = 0usize;
+
+    for (global_pos, &(orig_idx, _)) in final_permutation.iter().enumerate() {
+        let current_tool = tool_index_of(&entities[orig_idx as usize]);
+        if let Some(prev) = prev_tool {
+            if current_tool != prev {
+                tool_change_records.push(ToolChangeRecord {
+                    after_entity_index: prev_global_pos as u32,
+                    from_tool: prev,
+                    to_tool: current_tool,
+                });
+            }
+        }
+        prev_tool = Some(current_tool);
+        prev_global_pos = global_pos;
+    }
+
+    (final_permutation, tool_change_records)
+}
+
 /// Default path-optimization module.
 pub struct PathOptimizationDefault {
     emit_layer_markers: bool,
@@ -147,10 +223,17 @@ impl LayerModule for PathOptimizationDefault {
     ) -> Result<(), ModuleError> {
         let snapshot = collection.get_ordered_entities();
         if !snapshot.is_empty() {
-            let items = nearest_neighbor_permutation(snapshot);
+            let (items, tool_changes) = group_then_nearest_neighbor(snapshot);
             collection
                 .set_entity_order(items)
                 .map_err(|e| ModuleError::fatal(6, e))?;
+
+            // Emit deferred tool changes at each tool-index boundary.
+            for record in tool_changes {
+                output
+                    .push_tool_change(record.after_entity_index, record.from_tool, record.to_tool)
+                    .map_err(|e| ModuleError::fatal(7, e))?;
+            }
         }
 
         if self.emit_layer_markers {
