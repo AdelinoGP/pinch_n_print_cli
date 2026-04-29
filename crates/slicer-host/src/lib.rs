@@ -66,8 +66,8 @@ pub use dispatch::{
 };
 pub use layer_executor::{
     execute_per_layer, execute_per_layer_with_events, ir_path_for_layer_stage,
-    order_entities_by_nearest_neighbor, LayerExecutionError, LayerProgressSink, LayerStageError,
-    LayerStageOutput, LayerStageRunner, NoopLayerProgressSink,
+    LayerExecutionError, LayerProgressSink, LayerStageError, LayerStageOutput, LayerStageRunner,
+    NoopLayerProgressSink,
 };
 pub use layer_finalization::{
     execute_layer_finalization, FinalizationError, FinalizationOutput, FinalizationOutputBuilder,
