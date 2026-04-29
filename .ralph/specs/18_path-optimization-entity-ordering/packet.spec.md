@@ -1,5 +1,5 @@
 ---
-status: implemented
+status: superseded
 packet: path-optimization-entity-ordering
 task_ids:
   - TASK-152
@@ -67,6 +67,10 @@ Replace the current mostly pass-through entity ordering on the live path with on
 - `docs/02_ir_schemas.md` — `LayerCollectionIR`, `PrintEntity`, and `ExtrusionRole`
 - `docs/04_host_scheduler.md` — host ordering and per-layer execution order
 - `docs/07_implementation_status.md` — TASK-152a / TASK-152d / TASK-152e scope
+
+## Superseded By
+
+Packet 33 (33_path-optimization-module-ordering) moved the entity-ordering algorithm from the host helper into path-optimization-default via the layer-collection-builder WIT surface introduced by packet 32. The algorithm is preserved; only its location moved.
 
 ## OrcaSlicer Reference Obligations
 

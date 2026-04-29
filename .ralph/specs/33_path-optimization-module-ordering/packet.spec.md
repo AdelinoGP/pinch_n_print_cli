@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: path-optimization-module-ordering
 task_ids:
   - TASK-152h
