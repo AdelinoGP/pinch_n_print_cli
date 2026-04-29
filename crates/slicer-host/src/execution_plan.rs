@@ -590,6 +590,7 @@ impl Default for ExecutionPlan {
 impl ExecutionPlan {
     /// Build an ExecutionPlan with a precomputed module_region_index.
     #[cfg(test)]
+    #[allow(dead_code)]
     pub(crate) fn build_with_index(
         prepass_stages: Vec<CompiledStage>,
         per_layer_stages: Vec<CompiledStage>,
@@ -1093,7 +1094,7 @@ mod dedup_tests {
         source.insert("unrelated_key".into(), ConfigValue::Float(1.0));
 
         let view = super::bind_module_config_view(&module, &source);
-        let mut keys: Vec<String> = view.keys().iter().cloned().collect();
+        let mut keys: Vec<String> = view.keys().to_vec();
         keys.sort();
         assert_eq!(
             keys,

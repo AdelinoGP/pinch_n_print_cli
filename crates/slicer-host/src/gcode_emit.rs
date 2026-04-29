@@ -233,6 +233,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 // Check for tool change after this entity
                 if let Some(tc) = tool_changes.get(&entity_idx) {
                     commands.push(GCodeCommand::ToolChange {
+                        after_entity_index: tc.after_entity_index,
                         from: tc.from_tool,
                         to: tc.to_tool,
                     });

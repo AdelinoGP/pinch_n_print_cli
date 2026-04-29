@@ -176,12 +176,15 @@ fn convert_gcode_command_to_postpass_wit(
                 wait: *wait,
             })
         }
-        GCodeCommand::ToolChange { from, to } => {
-            wit_host::postpass::GcodeCommand::ToolChange(wit_host::postpass::GcodeToolChangeCmd {
-                from_tool: *from,
-                to_tool: *to,
-            })
-        }
+        GCodeCommand::ToolChange {
+            after_entity_index,
+            from,
+            to,
+        } => wit_host::postpass::GcodeCommand::ToolChange(wit_host::postpass::GcodeToolChangeCmd {
+            after_entity_index: *after_entity_index,
+            from_tool: *from,
+            to_tool: *to,
+        }),
         GCodeCommand::Comment { text } => wit_host::postpass::GcodeCommand::Comment(text.clone()),
         GCodeCommand::Raw { text } => wit_host::postpass::GcodeCommand::Raw(text.clone()),
     }
@@ -227,12 +230,15 @@ fn collect_postpass_output(
                 celsius: *celsius,
                 wait: *wait,
             },
-            wit_host::GcodeCommandCollected::ToolChange { from_tool, to_tool } => {
-                GCodeCommand::ToolChange {
-                    from: *from_tool,
-                    to: *to_tool,
-                }
-            }
+            wit_host::GcodeCommandCollected::ToolChange {
+                after_entity_index,
+                from_tool,
+                to_tool,
+            } => GCodeCommand::ToolChange {
+                after_entity_index: *after_entity_index,
+                from: *from_tool,
+                to: *to_tool,
+            },
             wit_host::GcodeCommandCollected::Comment(text) => {
                 GCodeCommand::Comment { text: text.clone() }
             }
@@ -800,7 +806,7 @@ impl WasmRuntimeDispatcher {
                     .mesh()
                     .objects
                     .iter()
-                    .map(|obj| wit_host::object_mesh_to_wit_mesh_object_view(obj))
+                    .map(wit_host::object_mesh_to_wit_mesh_object_view)
                     .collect();
                 let output = store
                     .data_mut()
@@ -855,7 +861,7 @@ impl WasmRuntimeDispatcher {
                     .mesh()
                     .objects
                     .iter()
-                    .map(|obj| wit_host::object_mesh_to_wit_mesh_object_view(obj))
+                    .map(wit_host::object_mesh_to_wit_mesh_object_view)
                     .collect();
                 let output = store
                     .data_mut()
@@ -875,7 +881,7 @@ impl WasmRuntimeDispatcher {
                     .mesh()
                     .objects
                     .iter()
-                    .map(|obj| wit_host::object_mesh_to_wit_mesh_object_view(obj))
+                    .map(wit_host::object_mesh_to_wit_mesh_object_view)
                     .collect();
                 let output = store
                     .data_mut()
@@ -2573,9 +2579,13 @@ fn commit_layer_outputs(
             let mut accepted_travel_moves: Vec<crate::blackboard::DeferredTravelMove> = Vec::new();
             for (i, cmd) in ctx.gcode_output.commands.iter().enumerate() {
                 match cmd {
-                    GcodeCommandCollected::ToolChange { from_tool, to_tool } => {
+                    GcodeCommandCollected::ToolChange {
+                        after_entity_index,
+                        from_tool,
+                        to_tool,
+                    } => {
                         accepted.push(slicer_ir::ToolChange {
-                            after_entity_index: anchor,
+                            after_entity_index: *after_entity_index,
                             from_tool: *from_tool,
                             to_tool: *to_tool,
                         });
