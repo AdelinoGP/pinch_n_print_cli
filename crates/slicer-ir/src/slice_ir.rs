@@ -1438,6 +1438,8 @@ pub enum GCodeCommand {
     },
     /// Tool change command
     ToolChange {
+        /// Entity index after which this tool change occurs
+        after_entity_index: u32,
         /// Tool index to change from
         from: u32,
         /// Tool index to change to

@@ -109,7 +109,7 @@ interface ir-handles {
         push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
         push-fan-speed:   func(value: u8) -> result<_, string>;
         push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-        push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
+        push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
         push-comment:     func(text: string) -> result<_, string>;
         push-raw:         func(text: string) -> result<_, string>;
         // Accepted only at Layer::PathOptimization; commits onto

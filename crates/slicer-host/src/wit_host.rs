@@ -333,7 +333,7 @@ pub mod layer {
                     push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
                     push-fan-speed:   func(value: u8) -> result<_, string>;
                     push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-                    push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
+                    push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
                     push-comment:     func(text: string) -> result<_, string>;
                     push-raw:         func(text: string) -> result<_, string>;
                     push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
@@ -966,14 +966,14 @@ pub mod postpass {
                 record gcode-retract-cmd { length: f32, speed: f32 }
                 record gcode-fan-speed-cmd { value: u8 }
                 record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
-                record gcode-tool-change-cmd { from-tool: u32, to-tool: u32 }
+                record gcode-tool-change-cmd { after-entity-index: u32, from-tool: u32, to-tool: u32 }
                 resource gcode-output-builder {
                     push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
                     push-retract:     func(length: f32, speed: f32) -> result<_, string>;
                     push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
                     push-fan-speed:   func(value: u8) -> result<_, string>;
                     push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-                    push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
+                    push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
                     push-comment:     func(text: string) -> result<_, string>;
                     push-raw:         func(text: string) -> result<_, string>;
                     push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
@@ -1108,7 +1108,11 @@ pub enum GcodeCommandCollected {
     /// Temperature.
     Temperature { tool: u32, celsius: f32, wait: bool },
     /// Tool change.
-    ToolChange { from_tool: u32, to_tool: u32 },
+    ToolChange {
+        after_entity_index: u32,
+        from_tool: u32,
+        to_tool: u32,
+    },
     /// Comment.
     Comment(String),
     /// Raw G-code.
@@ -3095,12 +3099,17 @@ impl ir::HostGcodeOutputBuilder for HostExecutionContext {
     fn push_tool_change(
         &mut self,
         _self_: Resource<GcodeOutputBuilderData>,
+        after_entity_index: u32,
         from_tool: u32,
         to_tool: u32,
     ) -> wasmtime::Result<Result<(), String>> {
         self.gcode_output
             .commands
-            .push(GcodeCommandCollected::ToolChange { from_tool, to_tool });
+            .push(GcodeCommandCollected::ToolChange {
+                after_entity_index,
+                from_tool,
+                to_tool,
+            });
         Ok(Ok(()))
     }
     fn push_comment(
@@ -4652,12 +4661,17 @@ mod postpass_impls {
         fn push_tool_change(
             &mut self,
             _: Resource<ppm::GcodeOutputBuilder>,
+            after_entity_index: u32,
             from_tool: u32,
             to_tool: u32,
         ) -> wasmtime::Result<Result<(), String>> {
             self.gcode_output
                 .commands
-                .push(GcodeCommandCollected::ToolChange { from_tool, to_tool });
+                .push(GcodeCommandCollected::ToolChange {
+                    after_entity_index,
+                    from_tool,
+                    to_tool,
+                });
             Ok(Ok(()))
         }
         fn push_comment(

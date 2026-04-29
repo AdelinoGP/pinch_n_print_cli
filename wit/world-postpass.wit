@@ -50,7 +50,7 @@ interface gcode-output-interface {
     // Push a temperature setting
     push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
     // Push a tool change
-    push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
+    push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
     // Push a comment
     push-comment: func(text: string) -> result<_, string>;
     // Push a raw gcode line
