@@ -17,6 +17,8 @@
 - Files expected to change: none.
 - Authoritative docs: `docs/02_ir_schemas.md`, `docs/03_wit_and_manifest.md`, `docs/04_host_scheduler.md`, `docs/05_module_sdk.md`.
 - OrcaSlicer refs: none.
+- Expected sub-agent dispatches: none (read-only discovery; planner owns).
+- Context cost: S
 - Verification: `git status` clean for packet-relevant files.
 - Exit condition: Engineer can sketch `project_layer_plan_view` and `project_region_segmentation_view` signatures from memory and name the existing projector helper they mirror.
 
@@ -28,6 +30,8 @@
 - Postcondition: Types defined with `Debug + Clone + PartialEq + Serialize + Deserialize`. `cargo build -p slicer-sdk` succeeds.
 - Files expected to change: `crates/slicer-sdk/src/prepass_types.rs`, `crates/slicer-sdk/src/prelude.rs`.
 - Authoritative docs: `docs/02_ir_schemas.md`, `docs/05_module_sdk.md`.
+- Expected sub-agent dispatches: none.
+- Context cost: M
 - Verification: `grep -nE 'pub struct LayerPlanView\b|pub struct RegionSegmentationView\b' crates/slicer-sdk/src/prepass_types.rs` returns 2 matches; `cargo build -p slicer-sdk 2>&1 | tail -5` exits 0.
 - Exit condition: Build green; types reachable from `slicer_sdk::prelude::*`.
 
@@ -39,6 +43,8 @@
 - Postcondition: `wit/world-prepass.wit` contains the new records; `cargo build --workspace 2>&1 | tail -10` exits 0 (host + macro consume the new world cleanly even before guest changes — the dispatcher Step 5 may temporarily be a `todo!()`).
 - Files expected to change: `wit/world-prepass.wit`.
 - Authoritative docs: `docs/03_wit_and_manifest.md`.
+- Expected sub-agent dispatches: none.
+- Context cost: M
 - Verification: `grep -nE 'record layer-plan-view-entry|record layer-plan-view\b|record region-segmentation-view-entry|record region-segmentation-view\b|layer-plan: layer-plan-view|region-segmentation: region-segmentation-view' wit/world-prepass.wit` returns ≥6 matches.
 - Exit condition: Workspace build green with the extended WIT.
 
@@ -49,6 +55,9 @@
 - Precondition: Step 3.
 - Postcondition: Other prepass modules (`seam-planner-default`, `mesh-segmentation`, etc.) compile unchanged. `cargo build --workspace` succeeds.
 - Files expected to change: `crates/slicer-sdk/src/traits.rs`, `crates/slicer-macros/src/lib.rs`.
+- Authoritative docs: `docs/03_wit_and_manifest.md`, `docs/05_module_sdk.md`.
+- Expected sub-agent dispatches: none.
+- Context cost: M
 - Verification: `grep -nA8 'fn run_support_generation' crates/slicer-sdk/src/traits.rs | head -12` shows the new 5-parameter signature; `cargo build --workspace 2>&1 | tail -5` exits 0.
 - Exit condition: Build green; macro routes the new args.
 
@@ -59,6 +68,9 @@
 - Precondition: Step 4.
 - Postcondition: `WasmRuntimeDispatcher` invokes the support-generation export with the new args. The packet 28 tests in `prepass_support_generation_tdd.rs` continue passing because they use single-layer-height + single-region fixtures and the projector hands those through unchanged.
 - Files expected to change: `crates/slicer-host/src/wit_host.rs` (and any small follow-on in `crates/slicer-host/src/dispatch.rs` for exhaustive matches).
+- Authoritative docs: `docs/03_wit_and_manifest.md`, `docs/04_host_scheduler.md`.
+- Expected sub-agent dispatches: none.
+- Context cost: M
 - Verification: `cargo test -p slicer-host --test prepass_support_generation_tdd -- --test-threads=1 2>&1 | tail -10` shows all 7 packet-28 tests passing.
 - Exit condition: Packet-28 regression suite green; new dispatcher path covered by Step 8 tests next.
 
@@ -69,6 +81,9 @@
 - Precondition: Step 5.
 - Postcondition: Negative AC `prepass_support_generation_fails_without_region_map` will eventually prove the slot is required. Packet 28's `prepass_support_generation_fails_without_layer_plan` still passes because `LayerPlan` precedes `RegionMap` in the slice.
 - Files expected to change: `crates/slicer-host/src/prepass.rs`.
+- Authoritative docs: `docs/04_host_scheduler.md`.
+- Expected sub-agent dispatches: none.
+- Context cost: S
 - Verification: `grep -nA4 '"PrePass::SupportGeneration"' crates/slicer-host/src/prepass.rs | head -8` shows three slot entries in the documented order.
 - Exit condition: Packet-28 regression suite still green.
 
@@ -79,6 +94,9 @@
 - Precondition: Step 6.
 - Postcondition: Manifest declares the runtime reads the planner will exercise after Step 9.
 - Files expected to change: `modules/core-modules/support-planner/support-planner.toml`.
+- Authoritative docs: `docs/03_wit_and_manifest.md`.
+- Expected sub-agent dispatches: none.
+- Context cost: S
 - Verification: `grep -nE 'reads  = \["MeshIR", "SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "PaintRegionIR"\]' modules/core-modules/support-planner/support-planner.toml` returns 1 match; `! grep -n 'layer-height-agnostic' modules/core-modules/support-planner/support-planner.toml`.
 - Exit condition: Manifest reads list and comment scrubbed as specified.
 
@@ -89,6 +107,9 @@
 - Precondition: Steps 5–7 complete.
 - Postcondition: Compile-clean; the variable-height and multi-region tests fail; the missing-RegionMap negative passes (host already enforces it post-Step 6); empty-region-map passes if the planner's behaviour matches; empty-layer-plan-view fails until Step 9.
 - Files expected to change: `crates/slicer-host/tests/prepass_support_generation_layer_plan_tdd.rs` (new), `crates/slicer-host/tests/live_support_generation_tdd.rs` (extension).
+- Authoritative docs: `docs/02_ir_schemas.md`, `docs/04_host_scheduler.md`.
+- Expected sub-agent dispatches: none.
+- Context cost: M
 - Verification: `cargo test -p slicer-host --test prepass_support_generation_layer_plan_tdd -- --test-threads=1 2>&1 | tail -20` runs; `planner_walks_real_layer_plan_with_variable_layer_heights`, `planner_emits_one_entry_per_region_in_region_map`, and `host_projector_orders_region_segmentation_deterministically` fail; `prepass_support_generation_fails_without_region_map` passes.
 - Exit condition: TDD scaffolding green/red as expected; no implementation yet.
 
@@ -105,6 +126,9 @@
 - Precondition: Step 8 (failing tests in place).
 - Postcondition: All Step 8 tests pass. Packet 28's tests continue passing (single-layer-height + single-region fixtures still work because the planner now reads the same Z values the projector hands it).
 - Files expected to change: `modules/core-modules/support-planner/src/lib.rs`, `modules/core-modules/support-planner/wit-guest/src/lib.rs` (regenerate guest re-export).
+- Authoritative docs: `docs/05_module_sdk.md`.
+- Expected sub-agent dispatches: none.
+- Context cost: M
 - Verification: `cargo test -p slicer-host --test prepass_support_generation_layer_plan_tdd -- --test-threads=1 2>&1 | tail -20` reports all five tests passing; `cargo test -p support-planner --lib 2>&1 | tail -10` passes including `empty_layer_plan_view_returns_fatal_module_error`.
 - Exit condition: All packet-30 prepass-stage ACs green.
 
@@ -115,6 +139,9 @@
 - Precondition: Step 9.
 - Postcondition: The new test passes. All other live-dispatch tests continue passing.
 - Files expected to change: `crates/slicer-host/tests/live_support_generation_tdd.rs`.
+- Authoritative docs: `docs/04_host_scheduler.md`.
+- Expected sub-agent dispatches: none.
+- Context cost: M
 - Verification: `cargo test -p slicer-host --test live_support_generation_tdd -- --test-threads=1 2>&1 | tail -20` reports the new test passing alongside the existing 13 (14 total).
 - Exit condition: Live dispatch suite green.
 
@@ -125,6 +152,9 @@
 - Precondition: Steps 9–10 complete.
 - Postcondition: Every `.wasm` under `modules/core-modules/*/` rebuilt without errors. `bash modules/core-modules/build-core-modules.sh --check` reports no `STALE` lines.
 - Files expected to change: every `modules/core-modules/*/wit-guest/target/` and the `.wasm` artifacts (no source change for non-support-planner modules).
+- Authoritative docs: `docs/03_wit_and_manifest.md`.
+- Expected sub-agent dispatches: none.
+- Context cost: S
 - Verification: `bash modules/core-modules/build-core-modules.sh 2>&1 | tail -20` exits 0; `bash modules/core-modules/build-core-modules.sh --check 2>&1 | grep -E 'STALE'` returns 0 matches.
 - Exit condition: Cascade rebuild green.
 
@@ -135,6 +165,9 @@
 - Precondition: Step 11.
 - Postcondition: `docs/07_implementation_status.md` contains exactly one row matching `^- \[.\] TASK-162 ` with body mentioning `LayerPlanIR`, `RegionMapIR`, and the slug `30_support-planner-prepass-wit-plumbing`.
 - Files expected to change: `docs/07_implementation_status.md`.
+- Authoritative docs: none.
+- Expected sub-agent dispatches: none.
+- Context cost: S
 - Verification: `grep -nE '^- \[.\] TASK-162 .*LayerPlanIR.*RegionMapIR.*30_support-planner-prepass-wit-plumbing' docs/07_implementation_status.md` returns 1 match.
 - Exit condition: Backlog reflects the packet's deliverable.
 
@@ -145,6 +178,9 @@
 - Precondition: Steps 1–12 complete.
 - Postcondition: All gate commands exit 0.
 - Files expected to change: none.
+- Authoritative docs: `docs/11_operational_governance_and_acceptance_gate.md`, `docs/12_architecture_gate_metrics.md`.
+- Expected sub-agent dispatches: none.
+- Context cost: S
 - Verification:
   ```
   cargo test -p slicer-host --test prepass_support_generation_tdd -- --test-threads=1 --nocapture 2>&1 | tail -10
@@ -170,4 +206,4 @@
 
 - Re-run every `|`-suffixed verification command from `packet.spec.md` (10 ACs + 3 negative ACs = 13 commands) and confirm green.
 - Confirm packet-level verification commands are green.
-- Record any remaining packet-local risk (e.g., known-incomplete branch geometry across multi-region objects — covered explicitly by packet `31`'s scope).
+- Record any remaining packet-local risk (e.g., known-incomplete branch geometry across multi-region objects — covered explicitly by packet `31b`'s scope).

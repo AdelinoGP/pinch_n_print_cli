@@ -53,8 +53,8 @@
   - `OrcaSlicerDocumented/src/libslic3r/GCode/WipeTower.cpp`
   - `OrcaSlicerDocumented/src/libslic3r/GCode.cpp`
 - Verification:
-  - `cargo test -p slicer-host --test finalization_aware_travel_tdd wipe_tower_geometry_is_included_in_travel_reconciliation -- --exact --nocapture`
   - `cargo test -p slicer-host --test finalization_aware_travel_tdd brim_geometry_changes_first_model_travel_transition -- --exact --nocapture`
+  - `cargo test -p slicer-host --test finalization_aware_travel_tdd wipe_tower_geometry_is_included_in_travel_reconciliation -- --exact --nocapture`
 - Exit condition:
   Both focused reconciliation tests are green.
 

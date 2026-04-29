@@ -1,52 +1,67 @@
-# Task Map: 31_support-planner-orca-algorithmic-parity → docs/07
+# Task Map: 31b_support-planner-algorithmic-parity → docs/07
 
-This packet closes the five algorithmic v1 limitations of `support-planner` left after packet `30_support-planner-prepass-wit-plumbing` plumbed the layer plan and region segmentation through the prepass WIT. It is additive — packets 26, 28, and 30 stay `implemented` and are not superseded.
+This packet closes the five algorithmic v1 limitations of `support-planner` (gaps 3–7 from packet 28) using the architectural foundation established by packet `31a_support-geometry-prepass-and-layer-height`. It is additive — packets 26, 28, 30, and 31a stay `implemented` and are not superseded.
 
 ## Task ID Mapping
 
 | docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `TASK-163` | Step 1 | `docs/01`–`docs/05`, `docs/08`, `docs/09` | none | `TreeSupport.cpp` 720–800, 1460–1700, 1913, 2625–2860; `TreeSupport.hpp`; `TreeModelVolumes.cpp` | Read-only discovery of OrcaSlicer reference + packet-30 projector pattern. |
-| `TASK-163` | Step 2 | `docs/04` | `.ralph/specs/31_support-planner-orca-algorithmic-parity/design.md` | none | Resolve open question Q3. |
-| `TASK-163` | Step 3 | `docs/02` | `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-ir/src/lib.rs` | none | New `SlicePreviewIR` type. |
-| `TASK-163` | Step 4 | `docs/01`, `docs/04` | `crates/slicer-host/src/prepass.rs`, `crates/slicer-host/src/blackboard.rs`, optional `modules/core-modules/slice-preview/*` | none | New `PrePass::SlicePreview` stage (built-in or user, per Q3). |
-| `TASK-163` | Step 5 | `docs/03` | `wit/world-prepass.wit` | none | New WIT records + extended export signature. |
-| `TASK-163` | Step 6 | `docs/03`, `docs/05` | `crates/slicer-sdk/src/prepass_types.rs`, `crates/slicer-sdk/src/prelude.rs`, `crates/slicer-sdk/src/traits.rs`, `crates/slicer-macros/src/lib.rs`, `crates/slicer-host/src/wit_host.rs` | none | SDK + macro + projector + dispatcher. |
-| `TASK-163` | Step 7 | `docs/04` | `crates/slicer-host/src/prepass.rs` | none | `required_slots` extension. |
-| `TASK-163` | Step 8 | `docs/05` | `.ralph/specs/31_support-planner-orca-algorithmic-parity/design.md` | none | Resolve open question Q4. |
-| `TASK-163` | Step 9 | `docs/02`, `docs/04` | `crates/slicer-host/tests/prepass_support_generation_orca_parity_tdd.rs` (new) | `TreeSupport.cpp` 720–800, 2625–2860 | Failing TDD tests covering the new ACs. |
-| `TASK-163` | Step 10 | `docs/05`, `docs/08` | `modules/core-modules/support-planner/src/lib.rs`, `crates/slicer-helpers/src/geometry.rs` | `TreeSupport.cpp` 720–800, 2625–2860; `TreeModelVolumes.cpp` | Avoidance, collision, wall-count move, radius tapering. |
-| `TASK-163` | Step 11 | `docs/02` | `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-host/src/dispatch.rs`, `modules/core-modules/tree-support/src/lib.rs`, `modules/core-modules/support-planner/src/lib.rs` | `TreeSupport.cpp` 1460–1700, 1913 | Resolve Q2; raft + interface densification. |
-| `TASK-163` | Step 12 | `docs/03` | `modules/core-modules/support-planner/support-planner.toml` | none | Config schema rewrite. |
-| `TASK-163` | Step 13 | `docs/03`, `docs/05` | `crates/slicer-host/tests/prepass_support_generation_orca_parity_tdd.rs` | none | Config-validation negatives. |
-| `TASK-163` | Step 14 | `docs/02`, `docs/12` | `resources/golden/benchy_tree_support_orca_branch_count.txt` (new), `resources/golden/benchy_tree_support_orca_endpoints.txt` (new), `crates/slicer-host/tests/prepass_support_generation_orca_parity_tdd.rs` | `TreeSupport.cpp` overall | Resolve Q5; Benchy OrcaSlicer parity check. |
-| `TASK-163` | Step 15 | `docs/05` | `modules/core-modules/support-planner/src/lib.rs` | none | Remove v1 module-level doc bullets for limits 3–7. |
-| `TASK-163` | Step 16 | `docs/03` | every `modules/core-modules/*/wit-guest/`, every `*.wasm` | none | Cascade rebuild. |
-| `TASK-163` | Step 17 | `docs/07` | `docs/07_implementation_status.md` | none | Backlog row. |
-| `TASK-163` | Step 18 | `docs/11`, `docs/12` | none | none | Packet completion gate. |
+| `TASK-163` (algo) | Step 1 | `docs/01`–`docs/05`, `docs/08`, `docs/09` | none | `TreeSupport.cpp` 720–800, 1460–1700, 1913, 2625–2860; `TreeSupport.hpp`; `TreeModelVolumes.cpp` | Read-only discovery of OrcaSlicer references + confirmation of `SupportGeometryView` shape from 31a. |
+| `TASK-163` (algo) | Step 2 | `docs/02` | `.ralph/specs/31b_support-planner-algorithmic-parity/design.md` | none | Resolve Q2 (raft Z convention, inherited from 31a). |
+| `TASK-163` (algo) | Step 3 | `docs/03` | `modules/core-modules/support-planner/support-planner.toml` | none | Config schema rewrite (4 dropped, 9 added). |
+| `TASK-163` (algo) | Step 4 | `docs/02`, `docs/04` | `crates/slicer-host/tests/prepass_support_generation_orca_parity_tdd.rs` (new) | `TreeSupport.cpp` 720–800, 2625–2860 | Failing TDD tests covering the new ACs. |
+| `TASK-163` (algo) | Step 5 | `docs/05`, `docs/08` | `modules/core-modules/support-planner/src/lib.rs`, `crates/slicer-helpers/src/geometry.rs` | `TreeSupport.cpp` 720–800, 2625–2860; `TreeModelVolumes.cpp` | Avoidance, collision, wall-count move, radius tapering. Consumes `SupportGeometryView` from 31a. |
+| `TASK-163` (algo) | Step 6 | `docs/02` | `crates/slicer-ir/src/slice_ir.rs`, `crates/slicer-host/src/dispatch.rs`, `modules/core-modules/tree-support/src/lib.rs`, `modules/core-modules/support-planner/src/lib.rs` | `TreeSupport.cpp` 1460–1700, 1913 | Raft + interface densification. |
+| `TASK-163` (algo) | Step 7 | `docs/03` | none (config schema bounds only) | none | Config-validation negatives (bounds in toml). |
+| `TASK-163` (algo) | Step 8 | `docs/02`, `docs/12` | `resources/golden/benchy_tree_support_orca_branch_count.txt` (new), `resources/golden/benchy_tree_support_orca_endpoints.txt` (new), `crates/slicer-host/tests/prepass_support_generation_orca_parity_tdd.rs` | `TreeSupport.cpp` overall | Resolve Q3; Benchy OrcaSlicer parity check. |
+| `TASK-163` (algo) | Step 9 | `docs/05` | `modules/core-modules/support-planner/src/lib.rs` | none | Remove v1 module-level doc bullets for limits 3–7. |
+| `TASK-163` (algo) | Step 10 | `docs/03` | `modules/core-modules/support-planner/wit-guest/target/`, `support-planner.wasm` | none | Rebuild support-planner.wasm only (no WIT change — 31a already extended the WIT). |
+| `TASK-163` (algo) | Step 11 | `docs/07` | `docs/07_implementation_status.md` | none | Backlog row. |
+| `TASK-163` (algo) | Step 12 | `docs/11`, `docs/12` | none | none | Packet completion gate. |
 
 ## Superseding Relationship
 
-Packet 31 does **not** supersede any prior packet.
+Packet 31b does **not** supersede any prior packet.
 
-- Packet `28_tree-support-multi-layer-propagation` (status: `implemented`). Documented all seven v1 limitations. Packets 30 + 31 close them additively.
-- Packet `30_support-planner-prepass-wit-plumbing` (status will be `implemented` before packet 31 activates). Closed limits 1 + 2. Packet 31 picks up the remaining five.
+- Packet `28_tree-support-multi-layer-propagation` (status: `implemented`). Documented all seven v1 limitations. Packets 30, 31a, and 31b close them additively.
+- Packet `30_support-planner-prepass-wit-plumbing` (status: `implemented`). Closed limits 1 + 2 (layer-height-agnostic and single-region). Unchanged by 31b.
+- Packet `31a_support-geometry-prepass-and-layer-height` (status: `implemented` before 31b activates). Established the architectural foundation: `SupportGeometryIR`, `PrePass::SupportGeometry`, `support_layer_height_mm`, `support_top_z_distance_mm`. 31b consumes `SupportGeometryView` and the new config keys.
 - Packet `26_live-support-module-evidence` (status: `implemented`). Unchanged — the grid-MST fallback path is independent of all v2 algorithmic work.
+
+## What Changed vs Prior Packet 31 Draft
+
+The prior packet 31 design attempted to read `SliceIR` (Tier 2 data) during `PrePass::SupportGeneration` (Tier 1). This violated the project architecture — `SliceIR` is produced by `Layer::Slice` which runs after all prepass stages.
+
+The revised 31a + 31b structure:
+
+1. **Packet 31a** (architectural foundation): `PrePass::SupportGeometry` is a host-built-in prepass that computes coarse support outlines at support layer resolution using `LayerPlanIR` before any slicing. `SupportGeometryIR` is committed to the blackboard. `support_layer_height_mm` enables variable-height supports (a genuine ModularSlicer differentiator vs OrcaSlicer which ties support resolution to model resolution).
+2. **Packet 31b** (algorithmic): The support-planner reads `SupportGeometryView` (projected from `SupportGeometryIR`) for avoidance/collision at support resolution. Near model contact zones, `SupportGeometryView` carries intermediate model-resolution layers (from 31a's `support_top_z_distance` refinement), so collision is accurate where it matters most.
+
+This makes ModularSlicer strictly better than OrcaSlicer for high-resolution prints: supports use coarse resolution (3× fewer layers for a 0.3mm support layer height vs 0.1mm model), dramatically reducing compute while maintaining support quality.
 
 ## docs/07 Reconciliation Note
 
-`TASK-163` is a new task added by this packet. Draft line for `docs/07_implementation_status.md` Workstream 3:
+`TASK-163` is partially fulfilled by 31a (architecture) and 31b (algorithms). Draft lines for `docs/07_implementation_status.md` Workstream 3:
 
+**31a line:**
 ```
-- [ ] TASK-163 Close the five algorithmic v1 limitations of `support-planner` (avoidance/collision cache, radius tapering, raft + interface layers, wall-count-aware move scaling, OrcaSlicer config keys) by introducing `PrePass::SlicePreview` + `SlicePreviewIR` and consuming the per-layer outlines through a new `slice-preview-view` on `run-support-generation`. Continues TASK-120 acceptance evidence. Wired by packet `31_support-planner-orca-algorithmic-parity`.
+- [ ] TASK-163 (partial) Establish `SupportGeometryIR`, `PrePass::SupportGeometry`, `support_layer_height_mm`, and `support_top_z_distance_mm` as the architectural foundation for variable-height support planning. Support planner emits at coarse support resolution; emitter interpolates to model resolution near column tops. Continues TASK-120 acceptance evidence. Wired by packet `31a_support-geometry-prepass-and-layer-height`.
 ```
 
-`TASK-120` (Phase H acceptance with tree supports) and `TASK-120b` (live support generation evidence) are not closed by this packet but receive substantial new evidence:
+**31b line (addendum):**
+```
+- [ ] TASK-163 (algorithmic) Close the five algorithmic v1 limitations (avoidance/collision cache from SupportGeometryView, radius tapering, raft + interface layers, wall-count-aware move scaling, OrcaSlicer config keys) on the foundation established by packet `31a_support-geometry-prepass-and-layer-height`. Continues TASK-120 acceptance evidence. Wired by packet `31b_support-planner-algorithmic-parity`.
+```
 
-- After Step 14 lands, the Benchy OrcaSlicer parity check provides the strongest piece of TASK-120 evidence to date. A short closure-block addendum may optionally be appended to `TASK-120` — optional, since TASK-120's text remains broader than this packet's deliverable.
+`TASK-120` (Phase H acceptance with tree supports) receives substantial new evidence after 31b lands.
 
-`TASK-161` (packet 28) and `TASK-162` (packet 30) are unchanged.
+## Open Questions to Resolve Before Activation
+
+All open questions resolved:
+- **Q2 (resolved):** Raft Z convention — signed `global_layer_index` (`i32`). Raft entries use `global_layer_index = -1, -2, ..., -raft_layers`.
+- **Q3 (resolved):** Numerical tolerance — both branch count within ±10% **and** endpoint Hausdorff distance ≤ 0.5mm must hold. Either failing fails the test.
+- Q1 (resolved by 31a): Support layer boundary — accumulator approach. Q2 (intermediate model-resolution layers for `support_top_z_distance`). Q3 (sentinel = 0.0 for model layer height). Q4 (SupportGeometryIR is Tier-1-only).
 
 ## Parallelism Note
 
-Packet 31 is serial by construction. It must run after packet 30 closes. No parallel tracks. Steps 4, 8, 11, and 14 each block on an open question (Q3, Q4, Q2, Q5 respectively); these must be resolved sequentially before the corresponding step starts.
+Packet 31b is serial by construction. It must run after packet 31a closes. No parallel tracks. All open questions resolved before activation — no step blocks on an unresolved question.

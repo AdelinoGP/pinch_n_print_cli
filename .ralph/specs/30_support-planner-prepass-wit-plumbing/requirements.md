@@ -16,7 +16,7 @@ Packet `28_tree-support-multi-layer-propagation` introduced `PrePass::SupportGen
 
 Both gaps are correctness bugs (not just incomplete OrcaSlicer parity) and both block the algorithmic packets that follow: the avoidance/collision cache needs the real layer plan, and any geometry-aware multi-region branch placement needs real region IDs on each entry.
 
-This packet closes both gaps by extending `run-support-generation` to receive a `layer-plan-view` and a `region-segmentation-view` projected from the committed `LayerPlanIR.layers` and `RegionMapIR.entries`. The planner walks the real layer plan and emits one `SupportPlanEntry` per `(layer, object, region)` triple that exists in `RegionMapIR`. Branch geometry remains object-wide for now — every region under one object on a layer receives the same branch segments — because true geometry-aware multi-region placement requires per-layer slice polygons that are deferred to packet `31`.
+This packet closes both gaps by extending `run-support-generation` to receive a `layer-plan-view` and a `region-segmentation-view` projected from the committed `LayerPlanIR.layers` and `RegionMapIR.entries`. The planner walks the real layer plan and emits one `SupportPlanEntry` per `(layer, object, region)` triple that exists in `RegionMapIR`. Branch geometry remains object-wide for now — every region under one object on a layer receives the same branch segments — because true geometry-aware multi-region placement requires per-layer slice polygons that are deferred to packet `31b`.
 
 This packet does **not** supersede packet 28; it extends the v1 contract additively and removes the documented v1 carve-outs.
 
@@ -36,12 +36,12 @@ This packet does **not** supersede packet 28; it extends the v1 contract additiv
 
 ## Out of Scope
 
-- Per-layer geometry-aware branch placement when an object has multiple regions: branches remain object-wide and are duplicated across each region the object owns on a layer. Packet `31` adds avoidance/collision and per-region geometry separation.
+- Per-layer geometry-aware branch placement when an object has multiple regions: branches remain object-wide and are duplicated across each region the object owns on a layer. Packets `31a` and `31b` add `SupportGeometryView`-based avoidance/collision and per-region geometry separation.
 - `TreeSupportData` avoidance and collision caches.
 - Per-node radius tapering along `tan(angle) * dist_to_top`.
 - Raft prefix layers and interface-layer densification.
 - Wall-count-aware `max_move_distance` scaling.
-- The three OrcaSlicer config keys `tree_support_branch_angle`, `tree_support_branch_diameter`, `tree_support_branch_distance` (added in packet `31`).
+- The three OrcaSlicer config keys `tree_support_branch_angle`, `tree_support_branch_diameter`, `tree_support_branch_distance` (added in packet `31b`).
 - Replacing `MinimumSpanningTree::prim` with a heap-based variant.
 - Catchup / variable-per-region effective layer heights interacting with branch propagation — this packet honors `LayerPlanIR.layers[*].effective_layer_height` per-layer but does not recompute per-region effective heights mid-walk.
 - Changes to `Layer::Support` scheduling order or claim layout.
@@ -56,7 +56,7 @@ This packet does **not** supersede packet 28; it extends the v1 contract additiv
 
 ## OrcaSlicer Reference Obligations
 
-- None new. The WIT plumbing is repo-internal; the algorithmic OrcaSlicer parity continues in packet `31`.
+- None new. The WIT plumbing is repo-internal; the algorithmic OrcaSlicer parity continues in packets `31a` and `31b`.
 
 ## Acceptance Summary
 
@@ -81,7 +81,7 @@ This packet does **not** supersede packet 28; it extends the v1 contract additiv
   - `live_support_generation_tdd::planner_consuming_tier` adds at least 1 new test, passing.
   - All 7 tests in `prepass_support_generation_tdd.rs` (packet 28) continue passing.
   - All 13 tests in `live_support_generation_tdd.rs` (packets 26 + 28) continue passing.
-- **Cross-packet impact:** Unblocks packet `31_support-planner-orca-algorithmic-parity`. Adds `RegionMap` to the `PrePass::SupportGeneration` prerequisite slice — any other packet that schedules `SupportGeneration` must now also schedule `RegionMapping`.
+- **Cross-packet impact:** Unblocks packet `31a_support-geometry-prepass-and-layer-height`. Adds `RegionMap` to the `PrePass::SupportGeneration` prerequisite slice — any other packet that schedules `SupportGeneration` must now also schedule `RegionMapping`.
 
 Draft line to paste into `docs/07_implementation_status.md` under Workstream 3:
 
@@ -93,7 +93,7 @@ Draft line to paste into `docs/07_implementation_status.md` under Workstream 3:
 
 - **Depends on:** `28_tree-support-multi-layer-propagation` (must be `implemented`, not `active`, when this packet activates).
 - **Does not supersede:** anything. Additive correction of v1 carve-outs.
-- **Unblocks:** `31_support-planner-orca-algorithmic-parity`.
+- **Unblocks:** `31a_support-geometry-prepass-and-layer-height` (which in turn unblocks `31b_support-planner-algorithmic-parity`).
 
 ## Verification Commands
 

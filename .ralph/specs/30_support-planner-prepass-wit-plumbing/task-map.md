@@ -39,4 +39,4 @@ Packet 30 does **not** supersede any prior packet.
 
 ## Parallelism Note
 
-Packet 30 is serial by construction. It must run after packet 28 closes and before packet 31 activates. No parallel tracks.
+Packet 30 is serial by construction. It must run after packet 28 closes and before packet 31a activates. No parallel tracks.
