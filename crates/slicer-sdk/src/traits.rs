@@ -19,7 +19,9 @@ use crate::prepass_builders::{
     LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput, PaintSegmentationOutput,
     SeamPlanningOutput, SupportGenerationOutput,
 };
-use crate::prepass_types::{MeshObjectView, ObjectId, PaintSegmentationObjectView};
+use crate::prepass_types::{
+    LayerPlanView, MeshObjectView, ObjectId, PaintSegmentationObjectView, RegionSegmentationView,
+};
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
     ConfigView, ExtrusionPath3D, LayerCollectionIR, PaintRegionIR, PaintSemantic, RegionKey,
@@ -464,14 +466,18 @@ pub trait PrepassModule: Sized {
     /// paint regions top-down through the layer stack, grouping and merging via
     /// per-layer minimum spanning trees. Emits branch segments that per-layer
     /// `Layer::Support` modules (notably `tree-support`) can consume directly.
-    /// Default implementation does nothing.
+    /// Default implementation returns `unimplemented`.
     fn run_support_generation(
         &self,
         _objects: &[MeshObjectView],
+        _layer_plan: &LayerPlanView,
+        _region_segmentation: &RegionSegmentationView,
         _output: &mut SupportGenerationOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        Ok(())
+        Err(ModuleError::from_str(
+            "run_support_generation is not implemented",
+        ))
     }
 }
 

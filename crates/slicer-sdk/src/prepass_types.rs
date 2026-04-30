@@ -325,3 +325,39 @@ pub struct SupportPlanEntry {
     /// polyline branch (typically a two-point MST edge).
     pub branch_segments: Vec<Vec<Point3WithWidth>>,
 }
+
+/// Entry in the layer plan view, representing one layer's metadata.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LayerPlanViewEntry {
+    /// Global layer index (0-based).
+    pub global_layer_index: u32,
+    /// Z coordinate of this layer in mm.
+    pub z: f32,
+    /// Effective layer height for this layer in mm.
+    pub effective_layer_height: f32,
+}
+
+/// Read-only view of the committed LayerPlanIR layers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LayerPlanView {
+    /// Ordered list of layer entries (ascending by global_layer_index).
+    pub layers: Vec<LayerPlanViewEntry>,
+}
+
+/// Entry in the region segmentation view, listing regions for one (object, layer) pair.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RegionSegmentationViewEntry {
+    /// Object this entry belongs to.
+    pub object_id: ObjectId,
+    /// Global layer index.
+    pub layer_index: u32,
+    /// Region IDs active for this object on this layer (ascending order).
+    pub region_ids: Vec<RegionId>,
+}
+
+/// Read-only view of the committed RegionMapIR entries.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RegionSegmentationView {
+    /// Ordered list of entries (ascending by (layer_index, object_id)).
+    pub entries: Vec<RegionSegmentationViewEntry>,
+}

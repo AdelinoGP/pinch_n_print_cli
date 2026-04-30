@@ -31,9 +31,10 @@ pub use crate::prepass_builders::{
     TrianglePaintMark,
 };
 pub use crate::prepass_types::{
-    FacetAnnotation, FacetClass, LayerProposal, MeshObjectView, ObjectId, PaintLayerView,
-    PaintSegmentationObjectView, PaintStrokeView, PaintValueView, RegionId as PrepassRegionId,
-    RegionLayerProposal, ScoredSeamCandidate, SeamPlanEntry, SeamReason, SupportPlanEntry,
+    FacetAnnotation, FacetClass, LayerPlanView, LayerPlanViewEntry, LayerProposal, MeshObjectView,
+    ObjectId, PaintLayerView, PaintSegmentationObjectView, PaintStrokeView, PaintValueView,
+    RegionId as PrepassRegionId, RegionLayerProposal, RegionSegmentationView,
+    RegionSegmentationViewEntry, ScoredSeamCandidate, SeamPlanEntry, SeamReason, SupportPlanEntry,
     SurfaceGroupProposal,
 };
 
