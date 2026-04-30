@@ -33,7 +33,7 @@ pub fn export_name_for_stage(stage_id: &str) -> Option<&'static str> {
         "PrePass::MeshAnalysis" => Some("run-mesh-analysis"),
         "PrePass::LayerPlanning" => Some("run-layer-planning"),
         "PrePass::SeamPlanning" => Some("run-seam-planning"),
-        "PrePass::SupportGeneration" => Some("run-support-generation"),
+        "PrePass::SupportGeometry" => Some("run-support-geometry"),
         "PrePass::PaintSegmentation" => Some("run-paint-segmentation"),
         "Layer::Slice" => Some("run-slice"),
         "Layer::SlicePostProcess" => Some("run-slice-postprocess"),
@@ -876,7 +876,7 @@ impl WasmRuntimeDispatcher {
                     )
                     .map_err(mk_call_err)
             }
-            "PrePass::SupportGeneration" => {
+            "PrePass::SupportGeometry" => {
                 let mesh_object_views: Vec<_> = blackboard
                     .mesh()
                     .objects
@@ -893,20 +893,33 @@ impl WasmRuntimeDispatcher {
                     .unwrap_or_else(|| wit_host::prepass::RegionSegmentationView {
                         entries: Vec::new(),
                     });
-                let output = store
-                    .data_mut()
-                    .push_support_generation_output()
-                    .map_err(mk_ctx_err)?;
-                bindings
-                    .call_run_support_generation(
+                let support_geometry_view = blackboard
+                    .support_geometry()
+                    .map(|sg| wit_host::project_support_geometry_view(sg))
+                    .unwrap_or_else(|| wit_host::prepass::SupportGeometryView {
+                        entries: Vec::new(),
+                    });
+                // run-support-geometry returns support-geometry-output directly
+                // (no output resource, no config param; returns record not result).
+                // The returned support-plan-entries are stashed on the context
+                // by push_support_geometry_result so harvest_support_plan_ir
+                // can drain them after the call returns.
+                let sg_output = bindings
+                    .call_run_support_geometry(
                         &mut store,
                         &mesh_object_views,
                         &layer_plan_view,
                         &region_segmentation_view,
-                        own(output),
-                        own(config_handle),
+                        &support_geometry_view,
                     )
-                    .map_err(mk_call_err)
+                    .map_err(mk_call_err)?;
+                store
+                    .data_mut()
+                    .push_support_geometry_result(sg_output)
+                    .map_err(mk_ctx_err)?;
+                // Synthesise a success result matching the outer call_result type
+                // (other arms return Result<Result<(), ModuleError>, DispatchError>).
+                Ok::<Result<(), wit_host::prepass::ModuleError>, DispatchError>(Ok(()))
             }
             _ => Err(DispatchError {
                 module_id: module.module_id.clone(),
@@ -1735,7 +1748,7 @@ fn harvest_seam_plan_ir(
 // ── Support-plan harvest ───────────────────────────────────────────────────
 
 /// Convert WIT `SupportPlanEntry` records collected by a
-/// `PrePass::SupportGeneration` call into a host-side
+/// `PrePass::SupportGeometry` call into a host-side
 /// [`slicer_ir::SupportPlanIR`].
 ///
 /// Entries are preserved in push order (the harvester does not deduplicate —
@@ -2054,9 +2067,9 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
             return Ok((PrepassStageOutput::SeamPlan(Arc::new(ir)), runtime_reads));
         }
 
-        // For the SupportGeneration stage, convert collected support-plan
+        // For the SupportGeometry stage, convert collected support-plan
         // entries to SupportPlanIR.
-        if stage_id == "PrePass::SupportGeneration" {
+        if stage_id == "PrePass::SupportGeometry" {
             let ir = harvest_support_plan_ir(stage_id, &module.module_id, ctx).map_err(|e| {
                 PrepassExecutionError::FatalModule {
                     stage_id: stage_id.clone(),

@@ -5,11 +5,12 @@ use std::sync::Arc;
 
 use slicer_ir::{
     LayerPlanIR, MeshSegmentationIR, ModuleId, PaintRegionIR, RegionMapIR, SeamPlanIR, StageId,
-    SupportPlanIR, SurfaceClassificationIR,
+    SupportGeometryIR, SupportPlanIR, SurfaceClassificationIR,
 };
 
 use crate::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
 use crate::region_mapping::{commit_region_mapping_builtin, RegionMappingBuiltinError};
+use crate::support_geometry::SupportGeometryBuiltinError;
 use crate::validation::ModuleAccessAudit;
 use crate::{Blackboard, BlackboardError, BlackboardPrepassSlot, CompiledModule, ExecutionPlan};
 
@@ -32,6 +33,8 @@ pub enum PrepassStageOutput {
     PaintRegions(Arc<PaintRegionIR>),
     /// Stage produced `RegionMapIR`.
     RegionMap(Arc<RegionMapIR>),
+    /// Stage produced `SupportGeometryIR`.
+    SupportGeometry(Arc<SupportGeometryIR>),
     /// Guest-emitted mesh-analysis pushes collected via the
     /// `mesh-analysis-output` WIT resource. This variant carries the raw
     /// `(object_id, FacetAnnotation)` / `(object_id, SurfaceGroupProposal)`
@@ -153,6 +156,11 @@ pub enum PrepassExecutionError {
         /// Underlying region-mapping failure.
         source: RegionMappingBuiltinError,
     },
+    /// The host-built-in `PrePass::SupportGeometry` stage failed.
+    SupportGeometry {
+        /// Underlying support geometry failure.
+        source: SupportGeometryBuiltinError,
+    },
 }
 
 impl fmt::Display for PrepassExecutionError {
@@ -182,6 +190,9 @@ impl fmt::Display for PrepassExecutionError {
             }
             Self::RegionMapping { source } => {
                 write!(f, "built-in PrePass::RegionMapping failed: {source}")
+            }
+            Self::SupportGeometry { source } => {
+                write!(f, "built-in PrePass::SupportGeometry failed: {source}")
             }
         }
     }
@@ -249,6 +260,7 @@ fn ir_path_for_prepass_output(output: &PrepassStageOutput) -> Option<String> {
         PrepassStageOutput::SupportPlan(_) => Some(String::from("SupportPlanIR")),
         PrepassStageOutput::PaintRegions(_) => Some(String::from("PaintRegionIR")),
         PrepassStageOutput::RegionMap(_) => Some(String::from("RegionMapIR")),
+        PrepassStageOutput::SupportGeometry(_) => Some(String::from("SupportGeometryIR")),
         // MeshAnalysisAuxiliary is auxiliary data, not a primary IR commit.
         PrepassStageOutput::MeshAnalysisAuxiliary(_) => None,
     }
@@ -283,16 +295,64 @@ pub fn execute_prepass_with_builtins(
                 source,
             })?;
     }
-    let audits = execute_prepass(plan, blackboard, runner)?;
-
-    // Host-built-in PrePass::RegionMapping runs last (docs/04 §Full
-    // Lifecycle), after any user PrePass::LayerPlanning module has
-    // committed the layer plan. Skipped if a LayerPlanIR was never
-    // committed (e.g. empty prepass in unit tests) or if region_map is
-    // already present.
+    // Host-built-in PrePass::SupportGeometry runs before user prepass stages
+    // so that SupportGeometryIR is available as a prerequisite slot.
+    // Skip if already committed (idempotent per blackboard contract).
+    if blackboard.support_geometry().is_none() && blackboard.layer_plan().is_some() {
+        use crate::support_geometry::commit_support_geometry_builtin;
+        commit_support_geometry_builtin(blackboard)
+            .map_err(|source| PrepassExecutionError::SupportGeometry { source })?;
+    }
+    // RegionMapping needs LayerPlanIR to exist. Two cases:
+    // 1. LayerPlanIR exists before execute_prepass → run RegionMapping now (phase-1).
+    // 2. LayerPlanIR does NOT exist → run execute_prepass first so user
+    //    LayerPlanning commits it, then run RegionMapping (phase-2). Late stages
+    //    (those requiring RegionMap) run in phase-2 after RegionMapping.
+    let layer_plan_existed = blackboard.layer_plan().is_some();
+    if layer_plan_existed && blackboard.region_map().is_none() {
+        commit_region_mapping_builtin(plan, blackboard)
+            .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
+    }
+    // Phase-1: early stages that don't require RegionMap.
+    let early_stages: Vec<_> = plan
+        .prepass_stages
+        .iter()
+        .filter(|s| !stage_requires_region_map(&s.stage_id))
+        .collect();
+    let mut audits = Vec::new();
+    if !early_stages.is_empty() {
+        let early_plan = ExecutionPlan {
+            prepass_stages: early_stages.into_iter().cloned().collect(),
+            ..plan.clone()
+        };
+        audits = execute_prepass(&early_plan, blackboard, runner)?;
+    }
+    // Phase-2 setup: if LayerPlanIR was committed during phase-1, run the
+    // support-geometry built-in (needs LayerPlan, no RegionMap required) and
+    // then RegionMapping (needs LayerPlan). Both are skipped gracefully when
+    // LayerPlan is still absent (e.g. empty module-dir run).
+    if blackboard.support_geometry().is_none() && blackboard.layer_plan().is_some() {
+        use crate::support_geometry::commit_support_geometry_builtin;
+        commit_support_geometry_builtin(blackboard)
+            .map_err(|source| PrepassExecutionError::SupportGeometry { source })?;
+    }
     if blackboard.layer_plan().is_some() && blackboard.region_map().is_none() {
         commit_region_mapping_builtin(plan, blackboard)
             .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
+    }
+    // Phase-2: late stages that require RegionMap.
+    let late_stages: Vec<_> = plan
+        .prepass_stages
+        .iter()
+        .filter(|s| stage_requires_region_map(&s.stage_id))
+        .collect();
+    if !late_stages.is_empty() {
+        let late_plan = ExecutionPlan {
+            prepass_stages: late_stages.into_iter().cloned().collect(),
+            ..plan.clone()
+        };
+        let late_audits = execute_prepass(&late_plan, blackboard, runner)?;
+        audits.extend(late_audits);
     }
     Ok(audits)
 }
@@ -314,6 +374,7 @@ pub fn ensure_stage_prerequisites(
             BlackboardPrepassSlot::RegionMap => blackboard.region_map().is_some(),
             BlackboardPrepassSlot::SeamPlan => blackboard.seam_plan().is_some(),
             BlackboardPrepassSlot::SupportPlan => blackboard.support_plan().is_some(),
+            BlackboardPrepassSlot::SupportGeometry => blackboard.support_geometry().is_some(),
         };
 
         if !present {
@@ -332,10 +393,11 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
         "PrePass::MeshAnalysis" => &[],
         "PrePass::LayerPlanning" => &[BlackboardPrepassSlot::SurfaceClassification],
         "PrePass::SeamPlanning" => &[BlackboardPrepassSlot::LayerPlan],
-        "PrePass::SupportGeneration" => &[
+        "PrePass::SupportGeometry" => &[
             BlackboardPrepassSlot::SurfaceClassification,
             BlackboardPrepassSlot::LayerPlan,
             BlackboardPrepassSlot::RegionMap,
+            BlackboardPrepassSlot::SupportGeometry,
         ],
         "PrePass::PaintSegmentation" => &[
             BlackboardPrepassSlot::SurfaceClassification,
@@ -344,6 +406,12 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
         "PrePass::RegionMapping" => &[BlackboardPrepassSlot::LayerPlan],
         _ => &[],
     }
+}
+
+/// Returns true if a stage requires RegionMap as a prerequisite.
+/// Used to split execution into early (pre-RegionMapping) and late (post-RegionMapping) phases.
+fn stage_requires_region_map(stage_id: &StageId) -> bool {
+    required_slots(stage_id).contains(&BlackboardPrepassSlot::RegionMap)
 }
 
 fn commit_stage_output(
@@ -363,6 +431,7 @@ fn commit_stage_output(
         PrepassStageOutput::SupportPlan(ir) => blackboard.commit_support_plan(ir),
         PrepassStageOutput::PaintRegions(ir) => blackboard.commit_paint_regions(ir),
         PrepassStageOutput::RegionMap(ir) => blackboard.commit_region_map(ir),
+        PrepassStageOutput::SupportGeometry(ir) => blackboard.commit_support_geometry(ir),
         // Mesh-analysis auxiliary pushes are surfaced for observability
         // but do not commit to the blackboard. The production
         // SurfaceClassificationIR slot is still owned by the host

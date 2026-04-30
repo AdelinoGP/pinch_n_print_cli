@@ -27,6 +27,7 @@ pub mod progress_events;
 pub mod python_bridge;
 pub mod region_mapping;
 pub mod slice_postprocess;
+pub mod support_geometry;
 pub mod topology;
 pub mod validation;
 pub mod wasm_instance;
@@ -101,6 +102,9 @@ pub use slice_postprocess::{
     SlicePostProcessPaintAnnotationError, SlicePostProcessPaintAnnotationRequest,
     SlicePostProcessPaintAnnotationResult, SlicePostProcessPaintAnnotationWarning,
     SlicePostProcessPaintAnnotationWarningReason,
+};
+pub use support_geometry::{
+    commit_support_geometry_builtin, execute_support_geometry, SupportGeometryBuiltinError,
 };
 pub use topology::topological_sort;
 pub use validation::{

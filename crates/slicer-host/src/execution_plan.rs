@@ -29,7 +29,7 @@ pub const STAGE_ORDER: &[&str] = &[
     "PrePass::MeshAnalysis",
     "PrePass::LayerPlanning",
     "PrePass::SeamPlanning",
-    "PrePass::SupportGeneration",
+    "PrePass::SupportGeometry",
     "PrePass::PaintSegmentation",
     "PrePass::RegionMapping",
     "Layer::Slice",
