@@ -456,13 +456,14 @@ pub struct PaintSegmentationOutputData;
 /// This struct is just a table-entry tag so the resource-handle lifecycle
 /// works; the actual data lives on the context.
 pub struct SeamPlanningOutputData;
-/// Backing data for prepass `support-generation-output` resource.
+/// Marker type kept for table-management symmetry.
 ///
-/// Support-plan entries emitted by `push-support-plan` during a WIT prepass
-/// invocation are stored on `HostExecutionContext::support_plan_entries`.
-/// This struct is just a table-entry tag so the resource-handle lifecycle
-/// works; the actual data lives on the context.
-pub struct SupportGenerationOutputData;
+/// The `SupportGeometry` prepass stage returns a `support-geometry-output`
+/// record directly (no resource handle); this stub is no longer needed.
+/// Retained as a zero-size placeholder so reference-count tracking in the
+/// surrounding table code continues to compile without churn.
+#[allow(dead_code)]
+pub struct SupportGeometryOutputData;
 
 #[allow(missing_docs)]
 pub mod prepass {
@@ -670,7 +671,7 @@ pub mod prepass {
                     config: config-view,
                 ) -> result<_, module-error>;
 
-                // SupportGeneration stage
+                // SupportGeometry stage
                 record support-plan-entry {
                     global-layer-index: layer-idx,
                     object-id: object-id,
@@ -680,7 +681,7 @@ pub mod prepass {
 
                 // ── Layer plan & region segmentation views ─────────────────
                 // Read-only views of the committed LayerPlanIR and RegionMapIR
-                // for support-generation modules.
+                // for support-geometry modules.
 
                 record layer-plan-view-entry {
                     global-layer-index: layer-idx,
@@ -699,17 +700,26 @@ pub mod prepass {
                     entries: list<region-segmentation-view-entry>,
                 }
 
-                resource support-generation-output {
-                    push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
+                record support-geometry-view-entry {
+                    global-support-layer-index: layer-idx,
+                    object-id: object-id,
+                    region-id: region-id,
+                    outlines: list<ex-polygon>,
+                }
+                record support-geometry-view {
+                    entries: list<support-geometry-view-entry>,
                 }
 
-                export run-support-generation: func(
+                record support-geometry-output {
+                    support-plan-entries: list<support-plan-entry>,
+                }
+
+                export run-support-geometry: func(
                     objects: list<mesh-object-view>,
                     layer-plan: layer-plan-view,
                     region-segmentation: region-segmentation-view,
-                    output: support-generation-output,
-                    config: config-view,
-                ) -> result<_, module-error>;
+                    support-geometry: support-geometry-view,
+                ) -> support-geometry-output;
             }
         "#,
         world: "prepass-module",
@@ -1242,7 +1252,7 @@ pub struct HostExecutionContext {
     pub seam_plan_entries: Vec<prepass::SeamPlanEntry>,
 
     /// Support-plan entries collected during a prepass
-    /// `run-support-generation` invocation. Stored as raw
+    /// `run-support-geometry` invocation. Stored as raw
     /// `prepass::SupportPlanEntry` records so the harvest helper can convert
     /// them to `SupportPlanIR` without losing any field. Empty for all
     /// non-prepass stages.
@@ -1536,16 +1546,19 @@ impl HostExecutionContext {
         Ok(Resource::new_own(rep.rep()))
     }
 
-    /// Push a support-generation-output resource (prepass world). The
-    /// returned handle is what the host passes into
-    /// `run-support-generation`; guest calls to `push-support-plan` go
-    /// through `HostSupportGenerationOutput::push_support_plan` below,
-    /// which appends entries to `support_plan_entries`.
-    pub fn push_support_generation_output(
+    /// Stage `support-geometry-output` returned by `run-support-geometry`.
+    ///
+    /// Drains `output.support_plan_entries` into `self.support_plan_entries`
+    /// so the dispatcher can later commit them as `SupportPlanIR`.
+    /// The `run-support-geometry` export returns a plain record (not a
+    /// resource), so no resource-table entry is involved here.
+    pub fn push_support_geometry_result(
         &mut self,
-    ) -> wasmtime::Result<Resource<prepass::SupportGenerationOutput>> {
-        let rep = self.table.push(SupportGenerationOutputData)?;
-        Ok(Resource::new_own(rep.rep()))
+        output: prepass::SupportGeometryOutput,
+    ) -> wasmtime::Result<()> {
+        self.support_plan_entries
+            .extend(output.support_plan_entries);
+        Ok(())
     }
 
     // ── Finalization world resource pushers ─────────────────────────
@@ -2091,6 +2104,37 @@ fn ir_to_wit_expolygon(ep: &slicer_ir::ExPolygon) -> ExPolygon {
     }
 }
 
+/// Convert slicer-ir ExPolygons to WIT ExPolygons for the prepass world.
+fn ir_to_wit_expolygons_prepass(eps: &[slicer_ir::ExPolygon]) -> Vec<prepass::ExPolygon> {
+    eps.iter().map(ir_to_wit_expolygon_prepass).collect()
+}
+
+/// Convert slicer-ir ExPolygon to WIT ExPolygon for the prepass world.
+fn ir_to_wit_expolygon_prepass(ep: &slicer_ir::ExPolygon) -> prepass::ExPolygon {
+    use prepass::slicer::world_prepass::geometry as pgeo;
+    prepass::ExPolygon {
+        contour: pgeo::Polygon {
+            points: ep
+                .contour
+                .points
+                .iter()
+                .map(|p| pgeo::Point2 { x: p.x, y: p.y })
+                .collect(),
+        },
+        holes: ep
+            .holes
+            .iter()
+            .map(|h| pgeo::Polygon {
+                points: h
+                    .points
+                    .iter()
+                    .map(|p| pgeo::Point2 { x: p.x, y: p.y })
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
 /// Convert slicer-ir ExPolygons to WIT ExPolygons.
 fn ir_to_wit_expolygons(eps: &[slicer_ir::ExPolygon]) -> Vec<ExPolygon> {
     eps.iter().map(ir_to_wit_expolygon).collect()
@@ -2363,6 +2407,45 @@ pub fn project_region_segmentation_view(
             .then_with(|| a.object_id.cmp(&b.object_id))
     });
     prepass::RegionSegmentationView { entries }
+}
+
+/// Project `SupportGeometryIR` into a deterministic WIT `SupportGeometryView`.
+///
+/// Entries are sorted by `(global_support_layer_index ASC, object_id ASC, region_id ASC)`.
+/// This mirrors the RegionSegmentationView ordering pattern.
+pub fn project_support_geometry_view(
+    support_geometry_ir: &slicer_ir::SupportGeometryIR,
+) -> prepass::SupportGeometryView {
+    use std::collections::BTreeMap;
+    let mut sorted_entries: Vec<prepass::SupportGeometryViewEntry> = {
+        let mut btree: BTreeMap<(u32, String, String), prepass::SupportGeometryViewEntry> =
+            BTreeMap::new();
+        for (key, polygons) in &support_geometry_ir.entries {
+            btree.insert(
+                (
+                    key.global_support_layer_index,
+                    key.object_id.clone(),
+                    key.region_id.to_string(),
+                ),
+                prepass::SupportGeometryViewEntry {
+                    global_support_layer_index: key.global_support_layer_index,
+                    object_id: key.object_id.clone(),
+                    region_id: key.region_id.to_string(),
+                    outlines: ir_to_wit_expolygons_prepass(polygons),
+                },
+            );
+        }
+        btree.into_values().collect()
+    };
+    sorted_entries.sort_by(|a, b| {
+        a.global_support_layer_index
+            .cmp(&b.global_support_layer_index)
+            .then_with(|| a.object_id.cmp(&b.object_id))
+            .then_with(|| a.region_id.cmp(&b.region_id))
+    });
+    prepass::SupportGeometryView {
+        entries: sorted_entries,
+    }
 }
 
 /// Convert a slicer-ir `ObjectMesh` to a WIT `PaintSegmentationObjectView` for PaintSegmentation.
@@ -3837,45 +3920,9 @@ mod prepass_impls {
         }
     }
 
-    impl pm::HostSupportGenerationOutput for HostExecutionContext {
-        fn push_support_plan(
-            &mut self,
-            _handle: Resource<pm::SupportGenerationOutput>,
-            entry: pm::SupportPlanEntry,
-        ) -> wasmtime::Result<Result<(), String>> {
-            if entry.object_id.is_empty() {
-                return Ok(Err(String::from(
-                    "support-generation-output: object-id must be non-empty",
-                )));
-            }
-            if entry.region_id.is_empty() {
-                return Ok(Err(String::from(
-                    "support-generation-output: region-id must be non-empty",
-                )));
-            }
-            for segment in &entry.branch_segments {
-                if segment.len() < 2 {
-                    return Ok(Err(String::from(
-                        "support-generation-output: each branch segment must have at least two points",
-                    )));
-                }
-                for pt in segment {
-                    if !pt.x.is_finite() || !pt.y.is_finite() || !pt.z.is_finite() {
-                        return Ok(Err(String::from(
-                            "support-generation-output: branch segment points must have finite coordinates",
-                        )));
-                    }
-                }
-            }
-            self.support_plan_entries.push(entry);
-            Ok(Ok(()))
-        }
-        fn drop(&mut self, rep: Resource<pm::SupportGenerationOutput>) -> wasmtime::Result<()> {
-            let typed: Resource<SupportGenerationOutputData> = Resource::new_own(rep.rep());
-            self.table.delete(typed)?;
-            Ok(())
-        }
-    }
+    // The SupportGeometry stage now returns `support-geometry-output` as a plain
+    // record (no resource). Entries are staged via
+    // HostExecutionContext::push_support_geometry_result.
 
     impl pm::HostMeshSegmentationOutput for HostExecutionContext {
         fn mark_triangle_paint(
