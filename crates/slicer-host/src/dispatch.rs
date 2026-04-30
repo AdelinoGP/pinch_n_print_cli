@@ -883,6 +883,16 @@ impl WasmRuntimeDispatcher {
                     .iter()
                     .map(wit_host::object_mesh_to_wit_mesh_object_view)
                     .collect();
+                let layer_plan_view = blackboard
+                    .layer_plan()
+                    .map(|lp| wit_host::project_layer_plan_view(lp))
+                    .unwrap_or_else(|| wit_host::prepass::LayerPlanView { layers: Vec::new() });
+                let region_segmentation_view = blackboard
+                    .region_map()
+                    .map(|rm| wit_host::project_region_segmentation_view(rm))
+                    .unwrap_or_else(|| wit_host::prepass::RegionSegmentationView {
+                        entries: Vec::new(),
+                    });
                 let output = store
                     .data_mut()
                     .push_support_generation_output()
@@ -891,6 +901,8 @@ impl WasmRuntimeDispatcher {
                     .call_run_support_generation(
                         &mut store,
                         &mesh_object_views,
+                        &layer_plan_view,
+                        &region_segmentation_view,
                         own(output),
                         own(config_handle),
                     )

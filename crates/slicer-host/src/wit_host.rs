@@ -678,12 +678,35 @@ pub mod prepass {
                     branch-segments: list<list<point3-with-width>>,
                 }
 
+                // ── Layer plan & region segmentation views ─────────────────
+                // Read-only views of the committed LayerPlanIR and RegionMapIR
+                // for support-generation modules.
+
+                record layer-plan-view-entry {
+                    global-layer-index: layer-idx,
+                    z: f32,
+                    effective-layer-height: f32,
+                }
+                record layer-plan-view {
+                    layers: list<layer-plan-view-entry>,
+                }
+                record region-segmentation-view-entry {
+                    object-id: object-id,
+                    layer-index: layer-idx,
+                    region-ids: list<region-id>,
+                }
+                record region-segmentation-view {
+                    entries: list<region-segmentation-view-entry>,
+                }
+
                 resource support-generation-output {
                     push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
                 }
 
                 export run-support-generation: func(
                     objects: list<mesh-object-view>,
+                    layer-plan: layer-plan-view,
+                    region-segmentation: region-segmentation-view,
                     output: support-generation-output,
                     config: config-view,
                 ) -> result<_, module-error>;
@@ -2270,6 +2293,76 @@ pub fn object_mesh_to_wit_mesh_object_view(
         triangles,
         paint_layers,
     }
+}
+
+/// Project `LayerPlanIR` into a deterministic WIT `LayerPlanView`.
+///
+/// Layers are sorted by `global_layer_index ASC`. The effective layer height
+/// per global layer is the maximum across all objects at that layer index
+/// (from `object_participation`).
+pub fn project_layer_plan_view(layer_plan_ir: &slicer_ir::LayerPlanIR) -> prepass::LayerPlanView {
+    let mut entries: Vec<prepass::LayerPlanViewEntry> = layer_plan_ir
+        .global_layers
+        .iter()
+        .map(|gl| {
+            // Derive effective_layer_height: max across all objects at this global layer.
+            let effective_layer_height = layer_plan_ir
+                .object_participation
+                .values()
+                .filter_map(|refs| {
+                    refs.iter()
+                        .find(|r| r.global_layer_index == gl.index)
+                        .map(|r| r.effective_layer_height)
+                })
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                .unwrap_or(0.2); // fallback to default if no participation found
+            prepass::LayerPlanViewEntry {
+                global_layer_index: gl.index,
+                z: gl.z,
+                effective_layer_height,
+            }
+        })
+        .collect();
+    // Already sorted by index since global_layers is ordered, but sort to be safe.
+    entries.sort_by_key(|a| a.global_layer_index);
+    prepass::LayerPlanView { layers: entries }
+}
+
+/// Project `RegionMapIR` into a deterministic WIT `RegionSegmentationView`.
+///
+/// Entries are sorted by `(global_layer_index ASC, object_id ASC)` with each
+/// entry's `region_ids` sorted ASC. This ensures byte-identical projections
+/// across consecutive runs.
+pub fn project_region_segmentation_view(
+    region_map_ir: &slicer_ir::RegionMapIR,
+) -> prepass::RegionSegmentationView {
+    // Group by (global_layer_index, object_id).
+    use std::collections::BTreeMap;
+    let mut grouped: BTreeMap<(u32, String), Vec<String>> = BTreeMap::new();
+    for key in region_map_ir.entries.keys() {
+        let entry = grouped
+            .entry((key.global_layer_index, key.object_id.clone()))
+            .or_default();
+        entry.push(key.region_id.to_string());
+    }
+    let mut entries: Vec<prepass::RegionSegmentationViewEntry> = grouped
+        .into_iter()
+        .map(|((layer_index, object_id), mut region_ids)| {
+            region_ids.sort(); // ASC by region_id string
+            prepass::RegionSegmentationViewEntry {
+                object_id,
+                layer_index,
+                region_ids,
+            }
+        })
+        .collect();
+    // Already sorted by BTreeMap key order, but explicit sort for clarity.
+    entries.sort_by(|a, b| {
+        a.layer_index
+            .cmp(&b.layer_index)
+            .then_with(|| a.object_id.cmp(&b.object_id))
+    });
+    prepass::RegionSegmentationView { entries }
 }
 
 /// Convert a slicer-ir `ObjectMesh` to a WIT `PaintSegmentationObjectView` for PaintSegmentation.

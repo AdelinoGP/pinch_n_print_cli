@@ -335,6 +335,7 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
         "PrePass::SupportGeneration" => &[
             BlackboardPrepassSlot::SurfaceClassification,
             BlackboardPrepassSlot::LayerPlan,
+            BlackboardPrepassSlot::RegionMap,
         ],
         "PrePass::PaintSegmentation" => &[
             BlackboardPrepassSlot::SurfaceClassification,
