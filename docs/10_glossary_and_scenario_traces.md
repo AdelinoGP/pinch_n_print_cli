@@ -25,7 +25,7 @@ This document is normative for term definitions and end-to-end behavior traces u
 | feature_flags | Segment-level wall metadata propagated from boundary paint. | Length and indexing must remain deterministic through wall transforms. |
 | paint_order | Deterministic tie-break key for paint overlap resolution. | Equal-precedence conflicting values are fatal. |
 | boundary_paint | Per-contour-point semantic paint annotations in `SlicedRegion`. | Must exist (possibly defaulted) before `Layer::Perimeters` consumption. |
-| SupportPlanIR | Per-(layer, object, region) organic tree-support branch geometry produced once by `PrePass::SupportGeneration` and stored on the Blackboard. | Treated read-only in Tier 2; only modules that declare the read see it. Optional — absent when no `support-planner` module is loaded. |
+| SupportPlanIR | Per-(layer, object, region) organic tree-support branch geometry emitted by guests of `PrePass::SupportGeometry` via `run-support-geometry` and stored on the Blackboard; the host built-in commits `SupportGeometryIR` first within the same stage. | Treated read-only in Tier 2; only modules that declare the read see it. Optional — absent when no `support-planner` module is loaded. |
 | support-planner | Claim held by the single PrePass module producing `SupportPlanIR`. Orthogonal to `support-generator` (which is held in `Layer::Support`). | Non-transitionable across layers; first-winner alphabetical dedup if two modules declare it. |
 | Planner-consuming tier | The `Layer::Support` execution mode where a `support-generator` module emits committed `SupportPlanIR` branches directly instead of running its own per-layer filler. | Triggered per `(layer, object, region)` only when an entry exists for that triple in `SupportPlanIR`. Modules whose algorithm is inherently per-layer (e.g. `traditional-support`) intentionally do not declare the read and never enter this tier. |
 
@@ -128,7 +128,7 @@ This document is normative for term definitions and end-to-end behavior traces u
 
 1. `PrePass::MeshAnalysis` populates `SurfaceClassificationIR` (host built-in).
 2. `PrePass::LayerPlanning` commits `LayerPlanIR`.
-3. `PrePass::SupportGeneration` runs the `support-planner`:
+3. `PrePass::SupportGeometry` runs the `support-planner`; the host built-in commits `SupportGeometryIR` first, then guests emit `SupportPlanIR` via `run-support-geometry`:
    - `detect_overhangs` extracts contact points from overhang/bridge facets and
      `SupportEnforcer` paint regions (drops contacts inside `SupportBlocker`).
    - Top-down propagation (per-layer Prim MST merge-then-move) produces
@@ -154,7 +154,7 @@ This document is normative for term definitions and end-to-end behavior traces u
 
 - Empty overhangs + no enforcer paint → `SupportPlanIR.entries` is empty and
   the planner returns `Ok(())` (no `ModuleError`).
-- `PrePass::SupportGeneration` scheduled before `LayerPlanIR` is committed →
+- `PrePass::SupportGeometry` scheduled before `LayerPlanIR` is committed →
   `PrepassExecutionError::MissingRequiredPrepass { slot: LayerPlan }` aborts
   the prepass before any module runs.
 - Two modules declaring `holds = ["support-planner"]` on the same stage →

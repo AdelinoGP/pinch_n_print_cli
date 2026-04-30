@@ -104,21 +104,6 @@ PrePass::PaintSegmentation
              SupportBlocker  → blocked support regions (consumed by Layer::Support)
              Custom(id)     → passed through for the registering module to consume
 
-PrePass::SupportGeneration  [optional — installed when a `support-planner` module is loaded]
-  Input:  MeshIR
-          SurfaceClassificationIR
-          LayerPlanIR
-          PaintRegionIR (SupportEnforcer/SupportBlocker semantics)
-  Output: SupportPlanIR
-  Purpose: Multi-layer organic tree-support planning. Walks layers top-to-bottom,
-           extracts contact points from overhang/bridge facets and SupportEnforcer
-           paint, and propagates them through a per-layer Prim minimum spanning
-           tree (simplified port of OrcaSlicer `TreeSupport::drop_nodes`). Emits
-           per-(layer, object, region) branch geometry that `Layer::Support`
-           modules consume directly when present. When no support-planner module
-           is installed this stage is absent and tree-support falls back to its
-           per-layer grid-MST filler.
-
 PrePass::RegionMapping  [host-built-in, not a module stage]
   Input:  LayerPlanIR + LoadedModules + ResolvedConfig
   Output: RegionMapIR
@@ -127,6 +112,36 @@ PrePass::RegionMapping  [host-built-in, not a module stage]
            - What config each module receives (pre-filtered view)
            - Which claims are active
            Pre-computed so per-layer hot path has zero config resolution work.
+
+PrePass::SupportGeometry  [host built-in always runs; guest optional]
+  Input  (host built-in): LayerPlanIR + MeshIR
+  Input  (guest, if a `support-planner` module is loaded):
+                          MeshIR
+                          SurfaceClassificationIR
+                          LayerPlanIR
+                          RegionMapIR
+                          SupportGeometryIR (just committed by the host built-in)
+                          PaintRegionIR (SupportEnforcer/SupportBlocker semantics)
+  Output (host built-in): SupportGeometryIR
+  Output (guest):         SupportPlanIR
+  Purpose: Phase 1 — the host built-in computes coarse support column outlines
+           via plane-triangle intersection at support layer boundaries. Support
+           layer height is controlled by `support_layer_height_mm`
+           (default 0 = model layer height). Near model contact zones
+           (`support_top_z_distance_mm`), adds intermediate layers at model
+           resolution so the top distance is honored precisely. Runs after
+           `execute_prepass` so `LayerPlanIR` is always committed first.
+           Phase 2 — when a `support-planner` guest is loaded, the host invokes
+           it via the WIT export `run-support-geometry` after Phase 1's
+           `SupportGeometryIR` is on the blackboard. The guest performs
+           multi-layer organic tree-support planning: walks layers top-to-bottom,
+           extracts contact points from overhang/bridge facets and SupportEnforcer
+           paint, and propagates them through a per-layer Prim minimum spanning
+           tree (simplified port of OrcaSlicer `TreeSupport::drop_nodes`). Emits
+           per-(layer, object, region) branch geometry as `SupportPlanIR` that
+           `Layer::Support` modules consume directly when present. When no
+           support-planner module is installed only Phase 1 runs and
+           tree-support falls back to its per-layer grid-MST filler.
 ```
 
 #### Catch-Up Layer Semantics (Authoritative)
@@ -211,7 +226,7 @@ Layer::Support
           SurfaceClassificationIR
           PaintRegionIR (read-only — SupportEnforcer and SupportBlocker semantics)
           SupportPlanIR (read-only, optional — only modules that declare the
-                         read consume it; produced by PrePass::SupportGeneration)
+                         read consume it; produced by PrePass::SupportGeometry)
   Output: SupportIR
   Purpose: Traditional or tree support geometry generation.
            Enforcer/blocker priority rules (applied in this order):
@@ -363,8 +378,8 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 | `PrePass::MeshAnalysis`                  | `MeshIR`                                                           | `SurfaceClassificationIR`                                           |
 | `PrePass::LayerPlanning`                 | `MeshIR`, `SurfaceClassificationIR`, global/object/modifier config | `LayerPlanIR`                                                       |
 | `PrePass::PaintSegmentation`             | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR`                 | `PaintRegionIR`                                                     |
-| `PrePass::SupportGeneration` (optional)  | `MeshIR`, `SurfaceClassificationIR`, `LayerPlanIR`, `PaintRegionIR`| `SupportPlanIR`                                                     |
 | `PrePass::RegionMapping` (host-built-in) | `LayerPlanIR`, loaded modules, resolved config                     | `RegionMapIR`                                                       |
+| `PrePass::SupportGeometry` (optional)   | `MeshIR`, `LayerPlanIR`, `RegionMapIR`, `SupportGeometryIR`        | `SupportGeometryIR` (host-committed), `SupportPlanIR` (guest-emitted) |
 | `Layer::Slice`                           | `MeshIR`, `LayerPlanIR`                                            | `SliceIR`                                                           |
 | `Layer::SlicePostProcess`                | `SliceIR`, `PaintRegionIR`                                         | `SliceIR` (polygon edits, `boundary_paint`)                         |
 | `Layer::Perimeters`                      | `SliceIR`, `PaintRegionIR`                                         | `PerimeterIR` (`feature_flags`, seam candidates, boundary metadata) |
@@ -518,7 +533,7 @@ Built-in claim names:
   infill-generator        — generates infill paths for a region
   support-generator       — generates support structures (Layer::Support)
   support-planner         — plans multi-layer support branches in PrePass
-                            (PrePass::SupportGeneration; orthogonal to
+                            (PrePass::SupportGeometry; orthogonal to
                             support-generator)
   seam-placer             — resolves seam position
   layer-planner           — contributes to Z-plane sequence

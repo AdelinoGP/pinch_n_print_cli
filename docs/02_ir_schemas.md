@@ -681,10 +681,12 @@ pub struct SupportIR {
 
 ## IR 9b — SupportPlanIR
 
-**Stage:** Output of `PrePass::SupportGeneration` (optional; only present when a
+**Stage:** Output of `PrePass::SupportGeometry` (optional; only present when a
 `support-planner` module is loaded)
 
-**Producer:** A module holding the `support-planner` claim on `PrePass::SupportGeneration`
+**Producer:** A module holding the `support-planner` claim on `PrePass::SupportGeometry`;
+guests of `PrePass::SupportGeometry` emit `SupportPlanIR` via `run-support-geometry`;
+the host built-in commits `SupportGeometryIR` first within the same stage
 (e.g. the bundled `support-planner` core module — a simplified port of OrcaSlicer's
 `TreeSupport::detect_overhangs` + `TreeSupport::drop_nodes`).
 

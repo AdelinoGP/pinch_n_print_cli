@@ -551,13 +551,13 @@ world prepass-module {
         branch-segments: list<list<point3-with-width>>,
     }
 
-    resource support-generation-output {
+    resource support-geometry-output {
         push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
     }
 
-    export run-support-generation: func(
+    export run-support-geometry: func(
         objects: list<mesh-object-view>,
-        output: support-generation-output,
+        output: support-geometry-output,
         config: config-view,
     ) -> result<_, module-error>;
 }

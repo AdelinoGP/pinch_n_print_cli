@@ -130,9 +130,9 @@ only needs to override the one for its own stage.
 | `PrePass::LayerPlanning`          | `run_layer_planning`                          | `LayerPlanOutput`           |
 | `PrePass::PaintSegmentation`      | `run_paint_segmentation`                      | `PaintSegmentationOutput`   |
 | `PrePass::SeamPlanning`           | `run_seam_planning`                           | `SeamPlanningOutput`        |
-| `PrePass::SupportGeneration`      | `run_support_generation`                      | `SupportGenerationOutput`   |
+| `PrePass::SupportGeometry`        | `run_support_geometry`                        | `SupportGeometryOutput`     |
 
-Example: a `PrePass::SupportGeneration` module that emits one branch entry
+Example: a `PrePass::SupportGeometry` module that emits one branch entry
 per overhanging facet.
 
 ```rust
@@ -146,10 +146,11 @@ impl PrepassModule for MySupportPlanner {
         Ok(Self)
     }
 
-    fn run_support_generation(
+    fn run_support_geometry(
         &self,
         objects: &[MeshObjectView],
-        output: &mut SupportGenerationOutput,
+        support_geometry: SupportGeometryView,
+        output: &mut SupportGeometryOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         for obj in objects {
@@ -172,7 +173,7 @@ impl PrepassModule for MySupportPlanner {
 }
 ```
 
-The matching manifest declares `[stage] id = "PrePass::SupportGeneration"`,
+The matching manifest declares `[stage] id = "PrePass::SupportGeometry"`,
 `[claims] holds = ["support-planner"]`, `[ir-access] reads = ["MeshIR",
 "SurfaceClassificationIR", "LayerPlanIR", "PaintRegionIR"]`, `writes =
 ["SupportPlanIR"]`, and `[module] wit-world = "slicer:world-prepass@1.0.0"`.
@@ -198,7 +199,7 @@ pub use slicer_wit::layer_module::{
 // PrePass module authoring:
 pub use slicer_sdk::prepass_builders::{
     LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput,
-    PaintSegmentationOutput, SeamPlanningOutput, SupportGenerationOutput,
+    PaintSegmentationOutput, SeamPlanningOutput, SupportGeometryOutput,
 };
 pub use slicer_sdk::prepass_types::{
     MeshObjectView, PaintLayerView, PaintSegmentationObjectView, SeamPlanEntry,
@@ -214,7 +215,7 @@ pub use slicer_sdk::host;          // host service wrappers (log, raycast, clip_
 ### Consuming a PrePass IR from a Layer Stage
 
 `Layer::Support` modules that want to emit pre-planned tree-support branches
-(produced by `PrePass::SupportGeneration`) read from `SupportPlanIR` via the
+(produced by guests of `PrePass::SupportGeometry`) read from `SupportPlanIR` via the
 `PaintRegionLayerView` accessor:
 
 ```rust

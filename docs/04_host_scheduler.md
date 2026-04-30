@@ -99,7 +99,7 @@ pub static STAGE_ORDER: &[StageId] = &[
     StageId::PrePassMeshAnalysis,
     StageId::PrePassLayerPlanning,
     StageId::PrePassSeamPlanning,        // optional; runs when a seam-planner module is loaded
-    StageId::PrePassSupportGeneration,   // optional; runs when a support-planner module is loaded
+    StageId::PrePassSupportGeometry,     // optional; runs when a support-planner module is loaded
     StageId::PrePassPaintSegmentation,
     StageId::PrePassRegionMapping,   // host-built-in, not a module stage
     StageId::LayerSlice,             // host-built-in
@@ -659,14 +659,14 @@ Each PrePass stage declares which already-committed Blackboard slots it
 requires. The `required_slots()` table is the single source of truth — modules
 must not run their own ad-hoc presence checks for these slots.
 
-| Stage                          | Required Slots                                       |
-|--------------------------------|------------------------------------------------------|
-| `PrePass::MeshAnalysis`        | (none)                                               |
-| `PrePass::LayerPlanning`       | `SurfaceClassification`                              |
-| `PrePass::SeamPlanning`        | `LayerPlan`                                          |
-| `PrePass::SupportGeneration`   | `SurfaceClassification`, `LayerPlan`                 |
-| `PrePass::PaintSegmentation`   | `SurfaceClassification`, `LayerPlan`                 |
-| `PrePass::RegionMapping`       | `LayerPlan`                                          |
+| Stage                              | Required Slots                                               |
+|------------------------------------|--------------------------------------------------------------|
+| `PrePass::MeshAnalysis`            | (none)                                                       |
+| `PrePass::LayerPlanning`           | `SurfaceClassification`                                      |
+| `PrePass::SeamPlanning`            | `LayerPlan`                                                  |
+| `PrePass::PaintSegmentation`       | `SurfaceClassification`, `LayerPlan`                        |
+| `PrePass::RegionMapping`           | `LayerPlan`                                                  |
+| `PrePass::SupportGeometry`         | `MeshIR`, `LayerPlan`, `RegionMap`, `SupportGeometry`        |
 
 A stage scheduled before its prerequisites are committed produces
 `PrepassExecutionError::MissingRequiredPrepass { stage_id, slot }` and aborts
@@ -910,7 +910,7 @@ slice command
     │    ├─ PrePassMeshAnalysis     → SurfaceClassificationIR   → Blackboard
     │    ├─ PrePassLayerPlanning    → LayerPlanIR               → Blackboard
     │    ├─ PrePassSeamPlanning     → SeamPlanIR                → Blackboard  (optional)
-    │    ├─ PrePassSupportGeneration→ SupportPlanIR             → Blackboard  (optional)
+    │    ├─ PrePassSupportGeometry  → SupportGeometryIR+SupportPlanIR → Blackboard  (optional)
         │    ├─ PrePassPaintSegmentation→ PaintRegionIR             → Blackboard
     │    └─ PrePassRegionMapping    → RegionMapIR               → Blackboard
   ├─ execute_per_layer()  [rayon::par_iter]
