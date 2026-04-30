@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: finalization-aware-travel-coordination
 task_ids:
   - TASK-152
@@ -44,7 +44,7 @@ Coordinate live travel decisions with finalization-generated `Skirt` and `WipeTo
 ## Negative Test Cases
 
 - **Given** a finalized layer with finalization geometry present, **when** the reconciliation pass runs, **then** it does not reorder model extrusion entities relative to one another; it only changes travel transitions and their paired policy markers. | `cargo test -p slicer-host --test finalization_aware_travel_tdd reconciliation_preserves_model_extrusion_entity_order -- --exact --nocapture`
-- **Given** a finalized layer with `ExtrusionRole::WipeTower` entities present, **when** the reconciliation pass runs, **then** the wipe tower block is included in the travel detour sequence without altering the relative order of model extrusion entities. | `cargo test -p slicer-host --test finalization_aware_travel_tdd reconciliation_preserves_model_extrusion_entity_order -- --exact --nocapture`
+- **Given** a finalized layer with `ExtrusionRole::WipeTower` entities present, **when** the reconciliation pass runs, **then** the wipe tower block is included in the travel detour sequence without altering the relative order of model extrusion entities. | `cargo test -p slicer-host --test finalization_aware_travel_tdd reconciliation_preserves_model_extrusion_entity_order_with_wipe_tower -- --exact --nocapture`
 
 ## Verification
 
@@ -52,6 +52,7 @@ Coordinate live travel decisions with finalization-generated `Skirt` and `WipeTo
 - `cargo test -p slicer-host --test finalization_aware_travel_tdd wipe_tower_geometry_is_included_in_travel_reconciliation -- --exact --nocapture`
 - `cargo test -p slicer-host --test finalization_aware_travel_tdd no_finalization_geometry_is_a_reconciliation_no_op -- --exact --nocapture`
 - `cargo test -p slicer-host --test finalization_aware_travel_tdd reconciliation_preserves_model_extrusion_entity_order -- --exact --nocapture`
+- `cargo test -p slicer-host --test finalization_aware_travel_tdd reconciliation_preserves_model_extrusion_entity_order_with_wipe_tower -- --exact --nocapture`
 - `cargo clippy --workspace -- -D warnings`
 
 ## Authoritative Docs

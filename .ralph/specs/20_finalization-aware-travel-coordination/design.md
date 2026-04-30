@@ -22,7 +22,7 @@
   - `crates/slicer-host/src/gcode_emit.rs`
   - `crates/slicer-host/src/postpass.rs`
   - `crates/slicer-host/tests/finalization_aware_travel_tdd.rs`
-  - `crates/slicer-host/tests/finalization_live_tdd.rs`
+  - Note: `finalization_live_tdd.rs` is intentionally unchanged — unit-level coverage in `finalization_aware_travel_tdd.rs` exercises the reconciliation pass directly; live-path integration for reconciliation is deferred to packet 21 (Benchy evidence).
 - Rejected alternatives that were considered and why they were not chosen:
   - moving finalization geometry prediction earlier into `path-optimization-default`: rejected because the geometry does not exist yet at that stage
   - bundling the work into packet `15`: rejected because packet `15` intentionally stops at base travel policy before finalization entities appear
