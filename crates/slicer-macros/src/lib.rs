@@ -1346,11 +1346,17 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 region-id: region-id,
                 branch-segments: list<list<point3-with-width>>,
             }
+            record layer-plan-view-entry { global-layer-index: u32, z: f32, effective-layer-height: f32 }
+            record layer-plan-view { layers: list<layer-plan-view-entry> }
+            record region-segmentation-view-entry { object-id: object-id, layer-index: u32, region-ids: list<region-id> }
+            record region-segmentation-view { entries: list<region-segmentation-view-entry> }
             resource support-generation-output {
                 push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
             }
             export run-support-generation: func(
                 objects: list<mesh-object-view>,
+                layer-plan: layer-plan-view,
+                region-segmentation: region-segmentation-view,
                 output: support-generation-output,
                 config: config-view,
             ) -> result<_, module-error>;
@@ -1808,9 +1814,23 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                         .into_iter()
                         .map(__slicer_mesh_object_from_wit)
                         .collect();
+                    let sdk_layer_plan = ::slicer_sdk::prepass_types::LayerPlanView {
+                        layers: _layer_plan.layers.iter().map(|e| ::slicer_sdk::prepass_types::LayerPlanViewEntry {
+                            global_layer_index: e.global_layer_index,
+                            z: e.z,
+                            effective_layer_height: e.effective_layer_height,
+                        }).collect(),
+                    };
+                    let sdk_region_segmentation = ::slicer_sdk::prepass_types::RegionSegmentationView {
+                        entries: _region_segmentation.entries.iter().map(|e| ::slicer_sdk::prepass_types::RegionSegmentationViewEntry {
+                            object_id: e.object_id.clone(),
+                            layer_index: e.layer_index,
+                            region_ids: e.region_ids.clone(),
+                        }).collect(),
+                    };
                     let mut sdk_output = ::slicer_sdk::prepass_builders::SupportGenerationOutput::new();
                     let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_generation(
-                        &module, &sdk_objects, &mut sdk_output, &ir_config,
+                        &module, &sdk_objects, &sdk_layer_plan, &sdk_region_segmentation, &mut sdk_output, &ir_config,
                     );
                     for __slicer_entry in sdk_output.entries() {
                         // Construct the wit-bindgen Point3WithWidth inline.
@@ -1916,6 +1936,8 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 }
                 fn run_support_generation(
                     _objects: Vec<MeshObjectView>,
+                    _layer_plan: LayerPlanView,
+                    _region_segmentation: RegionSegmentationView,
                     _output: SupportGenerationOutput,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> {

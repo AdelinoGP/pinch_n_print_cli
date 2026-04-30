@@ -121,12 +121,19 @@ world prepass-module {
         branch-segments: list<list<point3-with-width>>,
     }
 
+    record layer-plan-view-entry { global-layer-index: layer-idx, z: f32, effective-layer-height: f32 }
+    record layer-plan-view { layers: list<layer-plan-view-entry> }
+    record region-segmentation-view-entry { object-id: object-id, layer-index: layer-idx, region-ids: list<region-id> }
+    record region-segmentation-view { entries: list<region-segmentation-view-entry> }
+
     resource support-generation-output {
         push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
     }
 
     export run-support-generation: func(
         objects: list<mesh-object-view>,
+        layer-plan: layer-plan-view,
+        region-segmentation: region-segmentation-view,
         output: support-generation-output,
         config: config-view,
     ) -> result<_, module-error>;
