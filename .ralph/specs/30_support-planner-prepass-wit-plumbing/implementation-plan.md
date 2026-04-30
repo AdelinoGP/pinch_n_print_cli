@@ -104,7 +104,7 @@
 
 - Task IDs: `TASK-162`
 - Objective: Create `crates/slicer-host/tests/prepass_support_generation_layer_plan_tdd.rs` with the five tests listed in the packet ACs. Tests must compile against the SDK changes from Steps 2–4 and the host changes from Steps 5–6, and they must fail because the planner stub still uses the v1 derivation. Also add `planner_consuming_tier::tree_support_live_dispatch_finds_branches_for_real_region_id` to `crates/slicer-host/tests/live_support_generation_tdd.rs` Section C.
-- Precondition: Steps 5–7 complete.
+- Precondition: Steps 2–4 (SDK types + trait signature) and Steps 5–7 (host projectors, required_slots, manifest) complete. The new test file imports `LayerPlanView` / `RegionSegmentationView` from the SDK prelude and calls `execute_prepass_with_builtins` which exercises the host dispatcher path from Steps 5–6.
 - Postcondition: Compile-clean; the variable-height and multi-region tests fail; the missing-RegionMap negative passes (host already enforces it post-Step 6); empty-region-map passes if the planner's behaviour matches; empty-layer-plan-view fails until Step 9.
 - Files expected to change: `crates/slicer-host/tests/prepass_support_generation_layer_plan_tdd.rs` (new), `crates/slicer-host/tests/live_support_generation_tdd.rs` (extension).
 - Authoritative docs: `docs/02_ir_schemas.md`, `docs/04_host_scheduler.md`.
@@ -123,6 +123,7 @@
   - Replace the bounds-derived `num_layers`/`layer_height` block in `plan_for_object` with `layer_plan.layers` indexing. Per-layer Z and effective height come from `layer_plan_view`.
   - Replace the hard-coded `region_id: "0".to_string()` site with a loop over the `region_ids` for the current `(layer_index, object_id)` from `region_segmentation_view`. Skip the object entirely when no entry exists for it.
   - Add an early `return Err(ModuleError::fatal(_, "empty layer-plan-view"))` when `layer_plan_view.layers.is_empty()`.
+  - Regenerate `modules/core-modules/support-planner/wit-guest/src/lib.rs` to match the extended WIT export from Step 3. The guest shim must accept the two new parameters and forward them to the trait method.
 - Precondition: Step 8 (failing tests in place).
 - Postcondition: All Step 8 tests pass. Packet 28's tests continue passing (single-layer-height + single-region fixtures still work because the planner now reads the same Z values the projector hands it).
 - Files expected to change: `modules/core-modules/support-planner/src/lib.rs`, `modules/core-modules/support-planner/wit-guest/src/lib.rs` (regenerate guest re-export).
