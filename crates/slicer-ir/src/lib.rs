@@ -110,6 +110,8 @@ pub use slice_ir::{
     SlicedRegion,
     StageId,
     // Support types
+    SupportGeometryIR,
+    SupportGeometryKey,
     SupportIR,
     SupportPlanEntry,
     SupportPlanIR,

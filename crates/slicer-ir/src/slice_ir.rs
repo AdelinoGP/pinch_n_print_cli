@@ -783,7 +783,7 @@ pub struct SeamPlanIR {
 /// One entry in the global support plan.
 ///
 /// Produced once per `(global_layer_index, object_id, region_id)` triple
-/// by `PrePass::SupportGeneration` and stored immutably on the blackboard.
+/// by `PrePass::SupportGeometry` and stored immutably on the blackboard.
 /// Consumed at dispatch time by `Layer::Support` modules (notably
 /// `tree-support`) that emit pre-planned organic branch geometry instead
 /// of running a per-layer filler.
@@ -802,7 +802,7 @@ pub struct SupportPlanEntry {
 }
 
 /// Support plan IR — committed once to the blackboard by
-/// `PrePass::SupportGeneration`.
+/// `PrePass::SupportGeometry`.
 ///
 /// Carries per-layer organic branch geometry produced by a simplified
 /// OrcaSlicer-style top-down propagation (see the `support-planner`
@@ -818,6 +818,34 @@ pub struct SupportPlanIR {
     /// planned branches. Multiple entries may share `(layer, object)` when
     /// a single object has multiple regions on the same layer.
     pub entries: Vec<SupportPlanEntry>,
+}
+
+// ============================================================================
+// Support Geometry IR Types
+// ============================================================================
+
+/// Key uniquely identifying one support geometry entry.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct SupportGeometryKey {
+    /// u32::MAX sentinel = intermediate model-resolution layer.
+    pub global_support_layer_index: u32,
+    /// Object this entry belongs to.
+    pub object_id: ObjectId,
+    /// Region identifier within the object.
+    pub region_id: RegionId,
+}
+
+/// Support geometry IR — coarse outline prepass results.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportGeometryIR {
+    /// Schema version of this IR.
+    pub schema_version: SemVer,
+    /// 0.0 = use model layer height (config schema enforces min > 0).
+    pub support_layer_height_mm: f32,
+    /// Distance in mm from column tops to add intermediate model layers.
+    pub support_top_z_distance_mm: f32,
+    /// Per-(layer, object, region) coarse outline polygons.
+    pub entries: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
 }
 
 // ============================================================================

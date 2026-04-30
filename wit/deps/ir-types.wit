@@ -176,7 +176,7 @@ interface ir-handles {
 
         /// Returns the pre-planned support-branch segments for the
         /// `(this layer, object-id, region-id)` triple, sourced from a
-        /// `SupportPlanIR` committed by `PrePass::SupportGeneration`.
+        /// `SupportPlanIR` committed by `PrePass::SupportGeometry`.
         ///
         /// Each inner list is one polyline branch (typically a 2-point
         /// MST edge). Returns an empty list when no plan is committed,

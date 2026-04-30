@@ -108,7 +108,7 @@ world prepass-module {
         config: config-view,
     ) -> result<_, module-error>;
 
-    // SupportGeneration stage
+    // SupportGeometry stage
     // Performs multi-layer top-down propagation of organic tree-support
     // branches (simplified port of OrcaSlicer TreeSupport::drop_nodes).
     // Writes per-(layer, object, region) branch geometry that Layer::Support
@@ -126,15 +126,23 @@ world prepass-module {
     record region-segmentation-view-entry { object-id: object-id, layer-index: layer-idx, region-ids: list<region-id> }
     record region-segmentation-view { entries: list<region-segmentation-view-entry> }
 
-    resource support-generation-output {
-        push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
+    // SupportGeometry view — coarse outline prepass results consumed by run-support-geometry
+    record support-geometry-view-entry {
+      global-support-layer-index: layer-idx,
+      object-id: object-id,
+      region-id: region-id,
+      outlines: list<ex-polygon>,
+    }
+    record support-geometry-view { entries: list<support-geometry-view-entry> }
+
+    record support-geometry-output {
+        support-plan-entries: list<support-plan-entry>,
     }
 
-    export run-support-generation: func(
+    export run-support-geometry: func(
         objects: list<mesh-object-view>,
         layer-plan: layer-plan-view,
         region-segmentation: region-segmentation-view,
-        output: support-generation-output,
-        config: config-view,
-    ) -> result<_, module-error>;
+        support-geometry: support-geometry-view,
+    ) -> support-geometry-output;
 }
