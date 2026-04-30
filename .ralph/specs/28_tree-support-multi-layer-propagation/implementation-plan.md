@@ -22,14 +22,14 @@
 **Exit**: Build green; both types reachable as `slicer_ir::SupportPlanIR` and `slicer_ir::SupportPlanEntry`.
 **OrcaSlicer refs**: None (IR layout is repo-internal).
 
-## Step 3 — Extend `wit/world-prepass.wit` with `run-support-generation`
+## Step 3 — Extend `wit/world-prepass.wit` with `run-support-geometry`
 
 **Task IDs**: TASK-161
-**Objective**: Add the `support-generation-output` resource, `support-plan-entry` record, and `export run-support-generation: func(objects: list<mesh-object-view>, output: support-generation-output, config: config-view) -> result<_, module-error>;` to the canonical prepass world. Mirror the shape of `run-seam-planning`.
+**Objective**: Add the `support-geometry-output` resource, `support-plan-entry` record, and `export run-support-geometry: func(objects: list<mesh-object-view>, output: support-geometry-output, config: config-view) -> result<_, module-error>;` to the canonical prepass world. Mirror the shape of `run-seam-planning`.
 **Precondition**: Step 2 complete.
 **Postcondition**: `wit/world-prepass.wit` contains the new records and export; all WIT consumers still parse it (wit-parser passes on the file).
 **Files**: `wit/world-prepass.wit`.
-**Verification**: `grep -nE 'run-support-generation|support-generation-output|support-plan-entry|push-support-plan|branch-segments' wit/world-prepass.wit` returns ≥5 matches; `cargo build --workspace 2>&1 | tail -10` exits 0 (WIT host + macro must consume the new world cleanly).
+**Verification**: `grep -nE 'run-support-geometry|support-geometry-output|support-plan-entry|push-support-plan|branch-segments' wit/world-prepass.wit` returns ≥5 matches; `cargo build --workspace 2>&1 | tail -10` exits 0 (WIT host + macro must consume the new world cleanly).
 **Exit**: Build green with the extended WIT.
 **OrcaSlicer refs**: None (WIT is repo-internal).
 
@@ -44,42 +44,42 @@
 - `commit_stage_output` routes the variant into a new `Blackboard::commit_support_plan`.
 - `Blackboard::support_plan()` accessor returns `Option<Arc<SupportPlanIR>>`.
 - `BlackboardPrepassSlot::SupportPlan` variant added and included in every exhaustive match.
-- `ensure_stage_prerequisites` returns `&[BlackboardPrepassSlot::SurfaceClassification, BlackboardPrepassSlot::LayerPlan]` for `"PrePass::SupportGeneration"`.
+- `ensure_stage_prerequisites` returns `&[BlackboardPrepassSlot::SurfaceClassification, BlackboardPrepassSlot::LayerPlan]` for `"PrePass::SupportGeometry"`.
 **Files**: `crates/slicer-host/src/prepass.rs`, `crates/slicer-host/src/blackboard.rs`.
 **Verification**: `grep -nE 'SupportPlan\(Arc<SupportPlanIR>\)|"SupportPlanIR"|commit_support_plan|BlackboardPrepassSlot::SupportPlan' crates/slicer-host/src/prepass.rs crates/slicer-host/src/blackboard.rs` returns ≥6 matches; `cargo test -p slicer-host --lib 2>&1 | tail -10` exits 0.
 **Exit**: Host library tests still pass; new variants reachable.
 **OrcaSlicer refs**: None.
 
-## Step 5 — Implement the host-side WIT dispatcher for `run-support-generation`
+## Step 5 — Implement the host-side WIT dispatcher for `run-support-geometry`
 
 **Task IDs**: TASK-161
-**Objective**: In the prepass runtime dispatcher (see `crates/slicer-host/src/wit_host.rs` and the prepass entry in `WasmRuntimeDispatcher`), add the glue that calls the `run-support-generation` export of a PrePass module: feed `list<MeshObjectView>` + a `support-generation-output` resource implementation, collect pushed `support-plan-entry` values into a `SupportPlanIR`, return as `PrepassStageOutput::SupportPlan(Arc::new(ir))`.
+**Objective**: In the prepass runtime dispatcher (see `crates/slicer-host/src/wit_host.rs` and the prepass entry in `WasmRuntimeDispatcher`), add the glue that calls the `run-support-geometry` export of a PrePass module: feed `list<MeshObjectView>` + a `support-geometry-output` resource implementation, collect pushed `support-plan-entry` values into a `SupportPlanIR`, return as `PrepassStageOutput::SupportPlan(Arc::new(ir))`.
 **Precondition**: Step 4 complete.
-**Postcondition**: `WasmRuntimeDispatcher` routes `PrePass::SupportGeneration` to the new glue; a minimal test-guest component that pushes one `support-plan-entry` produces a committed `SupportPlanIR` via `execute_prepass`.
+**Postcondition**: `WasmRuntimeDispatcher` routes `PrePass::SupportGeometry` to the new glue; a minimal test-guest component that pushes one `support-plan-entry` produces a committed `SupportPlanIR` via `execute_prepass`.
 **Files**: `crates/slicer-host/src/wit_host.rs`, `crates/slicer-host/src/dispatch.rs` (or whichever file hosts the prepass branch — follow the `run-seam-planning` precedent).
 **Verification**: `cargo test -p slicer-host --lib prepass 2>&1 | tail -20` runs with new variant coverage; `cargo build --workspace 2>&1 | tail -5` exits 0.
-**Exit**: Build green; `execute_prepass` path is callable end-to-end for a `PrePass::SupportGeneration` stage.
+**Exit**: Build green; `execute_prepass` path is callable end-to-end for a `PrePass::SupportGeometry` stage.
 **OrcaSlicer refs**: None.
 
-## Step 6 — Extend the SDK `PrepassModule` trait with `run_support_generation`
+## Step 6 — Extend the SDK `PrepassModule` trait with `run_support_geometry`
 
 **Task IDs**: TASK-161
-**Objective**: Add `fn run_support_generation(&self, ...) -> Result<(), ModuleError>` to the `PrepassModule` trait in `slicer-sdk`, with a default body that returns `Err(ModuleError::unimplemented("run_support_generation"))`. Extend the `#[slicer_module]` macro's stage map so that a module whose manifest declares `stage.id = "PrePass::SupportGeneration"` routes to this method. Provide a matching builder (`SupportPlanOutputBuilder` or equivalent — follow the existing builder pattern in `crates/slicer-sdk/src/builders.rs`).
+**Objective**: Add `fn run_support_geometry(&self, ...) -> Result<(), ModuleError>` to the `PrepassModule` trait in `slicer-sdk`, with a default body that returns `Err(ModuleError::unimplemented("run_support_geometry"))`. Extend the `#[slicer_module]` macro's stage map so that a module whose manifest declares `stage.id = "PrePass::SupportGeometry"` routes to this method. Provide a matching builder (`SupportPlanOutputBuilder` or equivalent — follow the existing builder pattern in `crates/slicer-sdk/src/builders.rs`).
 **Precondition**: Step 5 complete.
 **Postcondition**: Existing prepass modules (e.g. `seam-planner-default`) still compile without change. A new core-module crate declaring the new stage routes to the new method.
 **Files**: `crates/slicer-sdk/src/traits.rs`, `crates/slicer-sdk/src/builders.rs`, `crates/slicer-macros/src/lib.rs` (if the stage map lives there).
-**Verification**: `cargo build --workspace 2>&1 | tail -5` exits 0; `grep -nE 'run_support_generation' crates/slicer-sdk/src/traits.rs crates/slicer-macros/src/lib.rs` returns ≥2 matches.
+**Verification**: `cargo build --workspace 2>&1 | tail -5` exits 0; `grep -nE 'run_support_geometry' crates/slicer-sdk/src/traits.rs crates/slicer-macros/src/lib.rs` returns ≥2 matches.
 **Exit**: Build green; SDK exposes the new hook.
 **OrcaSlicer refs**: None.
 
 ## Step 7 — Create `modules/core-modules/support-planner/` crate
 
 **Task IDs**: TASK-161
-**Objective**: Scaffold the new core-module crate with Cargo manifest, module manifest, `wit-guest/` shim, and an `impl PrepassModule for SupportPlanner` that stubs `run_support_generation` with an empty `Ok(())`. Add the entry to `build-core-modules.sh`.
+**Objective**: Scaffold the new core-module crate with Cargo manifest, module manifest, `wit-guest/` shim, and an `impl PrepassModule for SupportPlanner` that stubs `run_support_geometry` with an empty `Ok(())`. Add the entry to `build-core-modules.sh`.
 **Precondition**: Step 6 complete.
-**Postcondition**: `bash modules/core-modules/build-core-modules.sh` builds `support-planner.wasm` without error; manifest declares `PrePass::SupportGeneration`, `support-planner` claim, reads `MeshIR`+`SurfaceClassificationIR`+`LayerPlanIR`+`PaintRegionIR`, writes `SupportPlanIR`; `bash modules/core-modules/build-core-modules.sh --check` reports the artifact up to date.
+**Postcondition**: `bash modules/core-modules/build-core-modules.sh` builds `support-planner.wasm` without error; manifest declares `PrePass::SupportGeometry`, `support-planner` claim, reads `MeshIR`+`SurfaceClassificationIR`+`LayerPlanIR`+`PaintRegionIR`, writes `SupportPlanIR`; `bash modules/core-modules/build-core-modules.sh --check` reports the artifact up to date.
 **Files**: `modules/core-modules/support-planner/Cargo.toml`, `modules/core-modules/support-planner/support-planner.toml`, `modules/core-modules/support-planner/src/lib.rs`, `modules/core-modules/support-planner/wit-guest/Cargo.toml`, `modules/core-modules/support-planner/wit-guest/src/lib.rs`, `modules/core-modules/build-core-modules.sh`.
-**Verification**: `grep -E 'id = "PrePass::SupportGeneration"|holds    = \["support-planner"\]|writes = \["SupportPlanIR"\]|wit-world    = "slicer:world-prepass@1.0.0"' modules/core-modules/support-planner/support-planner.toml` returns 4 matches; `grep -E '"support-planner:support_planner_guest"' modules/core-modules/build-core-modules.sh` returns 1 match; `bash modules/core-modules/build-core-modules.sh 2>&1 | tail -10` exits 0.
+**Verification**: `grep -E 'id = "PrePass::SupportGeometry"|holds    = \["support-planner"\]|writes = \["SupportPlanIR"\]|wit-world    = "slicer:world-prepass@1.0.0"' modules/core-modules/support-planner/support-planner.toml` returns 4 matches; `grep -E '"support-planner:support_planner_guest"' modules/core-modules/build-core-modules.sh` returns 1 match; `bash modules/core-modules/build-core-modules.sh 2>&1 | tail -10` exits 0.
 **Exit**: Artifact builds; stub returns empty plan.
 **OrcaSlicer refs**: None.
 
@@ -154,7 +154,7 @@
 **Task IDs**: TASK-161
 **Objective**: Add the TASK-161 row (draft line is in `requirements.md`). Do not modify TASK-120 or TASK-120b — this packet neither closes nor supersedes them.
 **Precondition**: Steps 1–13 complete.
-**Postcondition**: `docs/07_implementation_status.md` contains a `TASK-161` row under Workstream 3 mentioning `PrePass::SupportGeneration` and `SupportPlanIR`.
+**Postcondition**: `docs/07_implementation_status.md` contains a `TASK-161` row under Workstream 3 mentioning `PrePass::SupportGeometry` and `SupportPlanIR`.
 **Files**: `docs/07_implementation_status.md`.
 **Verification**: `grep -n '^- \[.\] TASK-161' docs/07_implementation_status.md` returns exactly 1 match.
 **Exit**: Backlog reflects the packet's deliverable.

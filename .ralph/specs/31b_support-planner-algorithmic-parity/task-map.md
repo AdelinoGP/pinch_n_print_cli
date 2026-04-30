@@ -30,7 +30,7 @@ Packet 31b does **not** supersede any prior packet.
 
 ## What Changed vs Prior Packet 31 Draft
 
-The prior packet 31 design attempted to read `SliceIR` (Tier 2 data) during `PrePass::SupportGeneration` (Tier 1). This violated the project architecture — `SliceIR` is produced by `Layer::Slice` which runs after all prepass stages.
+The prior packet 31 design attempted to read `SliceIR` (Tier 2 data) during the now-removed support-generation prepass slot (Tier 1). This violated the project architecture — `SliceIR` is produced by `Layer::Slice` which runs after all prepass stages.
 
 The revised 31a + 31b structure:
 

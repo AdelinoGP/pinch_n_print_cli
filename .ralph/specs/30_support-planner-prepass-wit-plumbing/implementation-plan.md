@@ -38,7 +38,7 @@
 ### Step 3: Extend the WIT prepass world
 
 - Task IDs: `TASK-162`
-- Objective: Add the four new records to `wit/world-prepass.wit` (alongside `support-plan-entry`) and extend `export run-support-generation` parameters to `(objects, layer-plan, region-segmentation, output, config)`.
+- Objective: Add the four new records to `wit/world-prepass.wit` (alongside `support-plan-entry`) and extend `export run-support-geometry` parameters to `(objects, layer-plan, region-segmentation, output, config)`.
 - Precondition: Step 2.
 - Postcondition: `wit/world-prepass.wit` contains the new records; `cargo build --workspace 2>&1 | tail -10` exits 0 (host + macro consume the new world cleanly even before guest changes — the dispatcher Step 5 may temporarily be a `todo!()`).
 - Files expected to change: `wit/world-prepass.wit`.
@@ -51,20 +51,20 @@
 ### Step 4: Extend the SDK trait and the `#[slicer_module]` macro
 
 - Task IDs: `TASK-162`
-- Objective: Update `PrepassModule::run_support_generation` to accept `&LayerPlanView, &RegionSegmentationView`. Default body still returns `Err(ModuleError::unimplemented(...))`. Update `crates/slicer-macros/src/lib.rs` to thread the two new args from the generated WIT shim into the trait method when `stage.id == "PrePass::SupportGeneration"`.
+- Objective: Update `PrepassModule::run_support_geometry` to accept `&LayerPlanView, &RegionSegmentationView`. Default body still returns `Err(ModuleError::unimplemented(...))`. Update `crates/slicer-macros/src/lib.rs` to thread the two new args from the generated WIT shim into the trait method when `stage.id == "PrePass::SupportGeometry"`.
 - Precondition: Step 3.
 - Postcondition: Other prepass modules (`seam-planner-default`, `mesh-segmentation`, etc.) compile unchanged. `cargo build --workspace` succeeds.
 - Files expected to change: `crates/slicer-sdk/src/traits.rs`, `crates/slicer-macros/src/lib.rs`.
 - Authoritative docs: `docs/03_wit_and_manifest.md`, `docs/05_module_sdk.md`.
 - Expected sub-agent dispatches: none.
 - Context cost: M
-- Verification: `grep -nA8 'fn run_support_generation' crates/slicer-sdk/src/traits.rs | head -12` shows the new 5-parameter signature; `cargo build --workspace 2>&1 | tail -5` exits 0.
+- Verification: `grep -nA8 'fn run_support_geometry' crates/slicer-sdk/src/traits.rs | head -12` shows the new 5-parameter signature; `cargo build --workspace 2>&1 | tail -5` exits 0.
 - Exit condition: Build green; macro routes the new args.
 
 ### Step 5: Implement host-side projectors and dispatcher wiring
 
 - Task IDs: `TASK-162`
-- Objective: Add `project_layer_plan_view(layer_plan_ir: &LayerPlanIR) -> wit_host::LayerPlanView` and `project_region_segmentation_view(region_map_ir: &RegionMapIR) -> wit_host::RegionSegmentationView` in `crates/slicer-host/src/wit_host.rs`. Both projectors sort their outputs deterministically: `LayerPlanView.layers` by `global_layer_index ASC`; `RegionSegmentationView.entries` by `(global_layer_index ASC, object_id ASC)` with each entry's `region_ids` sorted ASC. Wire both into the prepass dispatcher's `run-support-generation` arm (call the projectors before invoking the export). Region IDs are emitted as canonical decimal strings.
+- Objective: Add `project_layer_plan_view(layer_plan_ir: &LayerPlanIR) -> wit_host::LayerPlanView` and `project_region_segmentation_view(region_map_ir: &RegionMapIR) -> wit_host::RegionSegmentationView` in `crates/slicer-host/src/wit_host.rs`. Both projectors sort their outputs deterministically: `LayerPlanView.layers` by `global_layer_index ASC`; `RegionSegmentationView.entries` by `(global_layer_index ASC, object_id ASC)` with each entry's `region_ids` sorted ASC. Wire both into the prepass dispatcher's `run-support-geometry` arm (call the projectors before invoking the export). Region IDs are emitted as canonical decimal strings.
 - Precondition: Step 4.
 - Postcondition: `WasmRuntimeDispatcher` invokes the support-generation export with the new args. The packet 28 tests in `prepass_support_generation_tdd.rs` continue passing because they use single-layer-height + single-region fixtures and the projector hands those through unchanged.
 - Files expected to change: `crates/slicer-host/src/wit_host.rs` (and any small follow-on in `crates/slicer-host/src/dispatch.rs` for exhaustive matches).
@@ -74,7 +74,7 @@
 - Verification: `cargo test -p slicer-host --test prepass_support_generation_tdd -- --test-threads=1 2>&1 | tail -10` shows all 7 packet-28 tests passing.
 - Exit condition: Packet-28 regression suite green; new dispatcher path covered by Step 8 tests next.
 
-### Step 6: Extend `required_slots` for `PrePass::SupportGeneration`
+### Step 6: Extend `required_slots` for `PrePass::SupportGeometry`
 
 - Task IDs: `TASK-162`
 - Objective: Add `BlackboardPrepassSlot::RegionMap` to the prerequisite slice in `crates/slicer-host/src/prepass.rs::required_slots`. Order: `[SurfaceClassification, LayerPlan, RegionMap]`.
@@ -84,7 +84,7 @@
 - Authoritative docs: `docs/04_host_scheduler.md`.
 - Expected sub-agent dispatches: none.
 - Context cost: S
-- Verification: `grep -nA4 '"PrePass::SupportGeneration"' crates/slicer-host/src/prepass.rs | head -8` shows three slot entries in the documented order.
+- Verification: `grep -nA4 '"PrePass::SupportGeometry"' crates/slicer-host/src/prepass.rs | head -8` shows three slot entries in the documented order.
 - Exit condition: Packet-28 regression suite still green.
 
 ### Step 7: Update `support-planner` manifest
@@ -119,7 +119,7 @@
 - Objective: In `modules/core-modules/support-planner/src/lib.rs`:
   - Drop module-level v1 doc bullets for layer-height-agnostic and single-region.
   - Remove the `DEFAULT_LAYER_HEIGHT_MM` constant.
-  - Change the `run_support_generation` signature to accept `&LayerPlanView, &RegionSegmentationView`.
+  - Change the `run_support_geometry` signature to accept `&LayerPlanView, &RegionSegmentationView`.
   - Replace the bounds-derived `num_layers`/`layer_height` block in `plan_for_object` with `layer_plan.layers` indexing. Per-layer Z and effective height come from `layer_plan_view`.
   - Replace the hard-coded `region_id: "0".to_string()` site with a loop over the `region_ids` for the current `(layer_index, object_id)` from `region_segmentation_view`. Skip the object entirely when no entry exists for it.
   - Add an early `return Err(ModuleError::fatal(_, "empty layer-plan-view"))` when `layer_plan_view.layers.is_empty()`.

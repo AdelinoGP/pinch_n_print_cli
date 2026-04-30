@@ -43,7 +43,7 @@ After this packet, `support-planner` produces output matching OrcaSlicer's `Tree
 - `docs/01_system_architecture.md` — Tier 1 PrePass (sequential).
 - `docs/02_ir_schemas.md` — `SupportGeometryIR` (from 31a), `SupportPlanIR`.
 - `docs/03_wit_and_manifest.md` — manifest `[ir-access].reads`, config-schema validation.
-- `docs/04_host_scheduler.md` — `PrePass::SupportGeneration` prerequisite chain.
+- `docs/04_host_scheduler.md` — `PrePass::SupportGeometry` prerequisite chain.
 - `docs/05_module_sdk.md` — config schema bounds enforcement.
 - `docs/08_coordinate_system.md` — mm convention for radius, raft Z values.
 - `docs/09_progress_events.md` — diagnostic emission contract.

@@ -1,10 +1,12 @@
 ---
-status: draft
+status: superseded
 packet: 31a_support-geometry-prepass-and-layer-height
 task_ids:
   - TASK-163
 backlog_source: docs/07_implementation_status.md
 ---
+
+> **Superseded by 31a-REV2.** Substantive ACs absorbed: `SupportGeometryIR` shape and `u32::MAX` sentinel; `BlackboardPrepassSlot::SupportGeometry` roundtrip; host built-in coarse polygons; `support-geometry-view-entry`/`support-geometry-view` WIT records; `support_layer_height_mm` and `support_top_z_distance_mm` config keys on both `support-planner` and `tree-support` manifests. The `PrePass::SupportGeneration` stage references in this packet's body do NOT survive into the implementation; see 31a-REV2 ACs for the consolidated stage routing under `PrePass::SupportGeometry`. No substantive work lost — body preserved verbatim for historical record.
 
 # Packet Contract: 31a_support-geometry-prepass-and-layer-height
 

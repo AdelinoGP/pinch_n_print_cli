@@ -9,25 +9,25 @@
 
 ## Problem Statement
 
-Packet `28_tree-support-multi-layer-propagation` introduced `PrePass::SupportGeneration`, the `SupportPlanIR` blackboard contract, and the `support-planner` core module. To stay inside one bounded slice, packet 28 deliberately accepted two correctness gaps as v1 limitations and documented them in `modules/core-modules/support-planner/src/lib.rs`:
+Packet `28_tree-support-multi-layer-propagation` introduced `PrePass::SupportGeometry`, the `SupportPlanIR` blackboard contract, and the `support-planner` core module. To stay inside one bounded slice, packet 28 deliberately accepted two correctness gaps as v1 limitations and documented them in `modules/core-modules/support-planner/src/lib.rs`:
 
 1. **Layer-height-agnostic.** The planner walks `(bmax[2] - bmin[2]) / DEFAULT_LAYER_HEIGHT_MM` instead of consulting the committed `LayerPlanIR.layers`. This works for the test fixtures that use a uniform 0.2 mm layer height but silently produces wrong layer counts and Z-values for any object configured with variable layer heights. `LayerPlanIR` was dropped from the planner's manifest `[ir-access].reads` because the prepass WIT does not surface it to the guest.
 2. **Single-region per object.** Every emitted `SupportPlanEntry` uses the canonical `region_id = "0"` bucket because `MeshObjectView` does not carry per-region segmentation. Single-region fixtures match correctly because tree-support invokes `support_plan_segments_for(object_id, 0)`; multi-region objects collapse all branches into the first region.
 
 Both gaps are correctness bugs (not just incomplete OrcaSlicer parity) and both block the algorithmic packets that follow: the avoidance/collision cache needs the real layer plan, and any geometry-aware multi-region branch placement needs real region IDs on each entry.
 
-This packet closes both gaps by extending `run-support-generation` to receive a `layer-plan-view` and a `region-segmentation-view` projected from the committed `LayerPlanIR.layers` and `RegionMapIR.entries`. The planner walks the real layer plan and emits one `SupportPlanEntry` per `(layer, object, region)` triple that exists in `RegionMapIR`. Branch geometry remains object-wide for now — every region under one object on a layer receives the same branch segments — because true geometry-aware multi-region placement requires per-layer slice polygons that are deferred to packet `31b`.
+This packet closes both gaps by extending `run-support-geometry` to receive a `layer-plan-view` and a `region-segmentation-view` projected from the committed `LayerPlanIR.layers` and `RegionMapIR.entries`. The planner walks the real layer plan and emits one `SupportPlanEntry` per `(layer, object, region)` triple that exists in `RegionMapIR`. Branch geometry remains object-wide for now — every region under one object on a layer receives the same branch segments — because true geometry-aware multi-region placement requires per-layer slice polygons that are deferred to packet `31b`.
 
 This packet does **not** supersede packet 28; it extends the v1 contract additively and removes the documented v1 carve-outs.
 
 ## In Scope
 
-- WIT extension: `wit/world-prepass.wit` adds `layer-plan-view-entry` + `layer-plan-view` records, `region-segmentation-view-entry` + `region-segmentation-view` records, and threads both as new positional parameters of `export run-support-generation` between `objects` and `output`.
+- WIT extension: `wit/world-prepass.wit` adds `layer-plan-view-entry` + `layer-plan-view` records, `region-segmentation-view-entry` + `region-segmentation-view` records, and threads both as new positional parameters of `export run-support-geometry` between `objects` and `output`.
 - SDK types: `crates/slicer-sdk/src/prepass_types.rs` defines matching host-side `LayerPlanView`, `LayerPlanViewEntry`, `RegionSegmentationView`, `RegionSegmentationViewEntry` structs, all re-exported from `crates/slicer-sdk/src/prelude.rs`.
-- SDK trait: `PrepassModule::run_support_generation` in `crates/slicer-sdk/src/traits.rs` takes the two new args; default body still returns `Err(ModuleError::unimplemented(...))` so other prepass modules continue to compile.
-- Macro: `#[slicer_module]` in `crates/slicer-macros/src/lib.rs` threads the two new args from the WIT export to the trait method when the manifest's `stage.id == "PrePass::SupportGeneration"`.
+- SDK trait: `PrepassModule::run_support_geometry` in `crates/slicer-sdk/src/traits.rs` takes the two new args; default body still returns `Err(ModuleError::unimplemented(...))` so other prepass modules continue to compile.
+- Macro: `#[slicer_module]` in `crates/slicer-macros/src/lib.rs` threads the two new args from the WIT export to the trait method when the manifest's `stage.id == "PrePass::SupportGeometry"`.
 - Host glue: `crates/slicer-host/src/wit_host.rs` projects `LayerPlanIR.layers` and `RegionMapIR.entries` into the WIT views and passes them when invoking the support-generation export.
-- Host scheduler: `crates/slicer-host/src/prepass.rs::required_slots("PrePass::SupportGeneration")` returns `&[SurfaceClassification, LayerPlan, RegionMap]`.
+- Host scheduler: `crates/slicer-host/src/prepass.rs::required_slots("PrePass::SupportGeometry")` returns `&[SurfaceClassification, LayerPlan, RegionMap]`.
 - Manifest: `modules/core-modules/support-planner/support-planner.toml` `[ir-access].reads` becomes `["MeshIR", "SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "PaintRegionIR"]` and the v1 layer-height-agnostic comment block is removed.
 - Planner code: `modules/core-modules/support-planner/src/lib.rs` removes `DEFAULT_LAYER_HEIGHT_MM`, walks `layer_plan_view.layers` (using `effective_layer_height` per-layer for the `tan(angle) * h` move step and `z` for entry coordinates), and emits one entry per `(layer, object, region)` triple from `region_segmentation_view`. Module-level v1 doc comments for limits (1) and (2) are removed.
 - Tests: new file `crates/slicer-host/tests/prepass_support_generation_layer_plan_tdd.rs` covering variable-layer-height walk, multi-region entry emission, missing-RegionMap prerequisite, empty-region-map skip, empty-layer-plan-view fatal. Existing tests in `crates/slicer-host/tests/prepass_support_generation_tdd.rs` and `crates/slicer-host/tests/live_support_generation_tdd.rs` extended where needed; new live test `planner_consuming_tier::tree_support_live_dispatch_finds_branches_for_real_region_id` covers the multi-region tree-support path.
@@ -48,7 +48,7 @@ This packet does **not** supersede packet 28; it extends the v1 contract additiv
 
 ## Authoritative Docs
 
-- `docs/01_system_architecture.md` — Pipeline tiers, Stage I/O Contract for `PrePass::SupportGeneration`.
+- `docs/01_system_architecture.md` — Pipeline tiers, Stage I/O Contract for `PrePass::SupportGeometry`.
 - `docs/02_ir_schemas.md` — `LayerPlanIR.layers` shape (Z + effective layer height per layer), `RegionMapIR.entries` keyed by `RegionKey`, `SupportPlanIR.entries` keying.
 - `docs/03_wit_and_manifest.md` — Prepass world, host-boundary enforcement, manifest schema, **additive WIT change rebuild rule** (every prepass `.wasm` must be rebuilt).
 - `docs/04_host_scheduler.md` — `ensure_stage_prerequisites`, sequential PrePass execution.
@@ -61,7 +61,7 @@ This packet does **not** supersede packet 28; it extends the v1 contract additiv
 ## Acceptance Summary
 
 - **Positive cases:**
-  - WIT records and `run-support-generation` export shape exact (AC-1).
+  - WIT records and `run-support-geometry` export shape exact (AC-1).
   - SDK types defined and re-exported (AC-2).
   - SDK trait signature updated (AC-3).
   - Host-side prerequisite slice extended with `RegionMap` (AC-4).
@@ -81,7 +81,7 @@ This packet does **not** supersede packet 28; it extends the v1 contract additiv
   - `live_support_generation_tdd::planner_consuming_tier` adds at least 1 new test, passing.
   - All 7 tests in `prepass_support_generation_tdd.rs` (packet 28) continue passing.
   - All 13 tests in `live_support_generation_tdd.rs` (packets 26 + 28) continue passing.
-- **Cross-packet impact:** Unblocks packet `31a_support-geometry-prepass-and-layer-height`. Adds `RegionMap` to the `PrePass::SupportGeneration` prerequisite slice — any other packet that schedules `SupportGeneration` must now also schedule `RegionMapping`.
+- **Cross-packet impact:** Unblocks packet `31a_support-geometry-prepass-and-layer-height`. Adds `RegionMap` to the `PrePass::SupportGeometry` prerequisite slice — any other packet that schedules `SupportGeneration` must now also schedule `RegionMapping`.
 
 Draft line to paste into `docs/07_implementation_status.md` under Workstream 3:
 

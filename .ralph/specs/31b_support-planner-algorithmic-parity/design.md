@@ -18,7 +18,7 @@
 ## Architecture Constraints
 
 - **`SupportGeometryView` is at support resolution, not model resolution.** The avoidance/collision polygons are built from coarse support layer outlines. The planner's propagation loop operates at support layer granularity. Near model contact zones, `SupportGeometryView` carries intermediate model-resolution layers (from 31a Q2 resolution), so collision is accurate at the critical interface.
-- **No new WIT change in this packet.** Packet 31a already added `SupportGeometryView` as a WIT parameter on `run-support-generation`. This packet only consumes it.
+- **No new WIT change in this packet.** Packet 31a already added `SupportGeometryView` as a WIT parameter on `run-support-geometry`. This packet only consumes it.
 - **No new IR type.** `SupportPlanIR` is unchanged; the algorithmic changes affect only how the planner computes and emits entries.
 - **Determinism.** The `SupportGeometryView` projection from 31a is already deterministic (sorted by `(global_support_layer_index, object_id, region_id)`). The avoidance polygon union uses deterministic Clipper-style operations.
 - **Schema bump.** If Q2 (raft Z convention) resolves to signed `global_layer_index`.

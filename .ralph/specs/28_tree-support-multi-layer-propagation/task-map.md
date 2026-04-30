@@ -1,6 +1,6 @@
 # Task Map: 28_tree-support-multi-layer-propagation → docs/07
 
-This packet introduces `PrePass::SupportGeneration` + `SupportPlanIR` plus a new core module (`support-planner`) and updates `tree-support` to consume the plan. It does not supersede any prior packet.
+This packet introduces `PrePass::SupportGeometry` + `SupportPlanIR` plus a new core module (`support-planner`) and updates `tree-support` to consume the plan. It does not supersede any prior packet.
 
 ## Task ID Mapping
 
@@ -8,7 +8,7 @@ This packet introduces `PrePass::SupportGeneration` + `SupportPlanIR` plus a new
 |---|---|---|
 | Step 1 | TASK-161 | Read-only discovery of PrePass precedent (packet `23-rev1`) and OrcaSlicer `TreeSupport::drop_nodes`. |
 | Step 2 | TASK-161 | Add `SupportPlanIR`, `SupportPlanEntry` to `slicer-ir`. |
-| Step 3 | TASK-161 | Extend `wit/world-prepass.wit` with `run-support-generation`. |
+| Step 3 | TASK-161 | Extend `wit/world-prepass.wit` with `run-support-geometry`. |
 | Step 4 | TASK-161 | Host plumbing in `prepass.rs` + `blackboard.rs`. |
 | Step 5 | TASK-161 | Host WIT dispatcher for the new export. |
 | Step 6 | TASK-161 | SDK `PrepassModule` trait + macro stage map. |
@@ -34,7 +34,7 @@ Packet 28 does **not** supersede any prior packet.
 TASK-161 is a new task added specifically for this packet's deliverable. Draft line to paste into `docs/07_implementation_status.md` under Workstream 3:
 
 ```
-- [ ] TASK-161 Introduce `PrePass::SupportGeneration` plus a canonical `SupportPlanIR` blackboard contract so tree-support branches can be planned across layers (simplified port of OrcaSlicer `TreeSupport::drop_nodes`) and emitted by `Layer::Support` from pre-planned geometry. Continues DEV-009, deepens Orca parity, and supports TASK-120.
+- [ ] TASK-161 Introduce `PrePass::SupportGeometry` plus a canonical `SupportPlanIR` blackboard contract so tree-support branches can be planned across layers (simplified port of OrcaSlicer `TreeSupport::drop_nodes`) and emitted by `Layer::Support` from pre-planned geometry. Continues DEV-009, deepens Orca parity, and supports TASK-120.
 ```
 
 TASK-120 and TASK-120b are not modified by this packet:

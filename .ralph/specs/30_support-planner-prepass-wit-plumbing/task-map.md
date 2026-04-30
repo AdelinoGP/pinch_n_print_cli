@@ -8,7 +8,7 @@ This packet closes the two correctness carve-outs documented as v1 limitations i
 | --- | --- | --- | --- | --- | --- |
 | `TASK-162` | Step 1 | `docs/02`, `docs/03`, `docs/04`, `docs/05` | none | none | Read-only discovery of existing prepass projector pattern. |
 | `TASK-162` | Step 2 | `docs/05` | `crates/slicer-sdk/src/prepass_types.rs`, `crates/slicer-sdk/src/prelude.rs` | none | New host-side types + re-exports. |
-| `TASK-162` | Step 3 | `docs/03` | `wit/world-prepass.wit` | none | Add 4 records and extend `run-support-generation` parameters. |
+| `TASK-162` | Step 3 | `docs/03` | `wit/world-prepass.wit` | none | Add 4 records and extend `run-support-geometry` parameters. |
 | `TASK-162` | Step 4 | `docs/03`, `docs/05` | `crates/slicer-sdk/src/traits.rs`, `crates/slicer-macros/src/lib.rs` | none | Trait signature + macro arg threading. |
 | `TASK-162` | Step 5 | `docs/03`, `docs/04` | `crates/slicer-host/src/wit_host.rs`, `crates/slicer-host/src/dispatch.rs` | none | Deterministic projectors + dispatcher wiring. |
 | `TASK-162` | Step 6 | `docs/04` | `crates/slicer-host/src/prepass.rs` | none | `required_slots` extension. |

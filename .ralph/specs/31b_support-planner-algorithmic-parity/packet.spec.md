@@ -6,6 +6,8 @@ task_ids:
 backlog_source: docs/07_implementation_status.md
 ---
 
+> **Dependency rebased onto 31a-REV2** (which superseded 31a / 31a-REV1). Stage references normalized to `PrePass::SupportGeometry` / `run-support-geometry`; algorithmic content unchanged. This packet remains `status: draft`; activation criteria unaffected by the rename.
+
 # Packet Contract: 31b_support-planner-algorithmic-parity
 
 ## Goal
@@ -79,7 +81,7 @@ Close the five algorithmic v1 limitations of `support-planner` (gaps 3–7 from 
 - `docs/01_system_architecture.md` — Tier 1 PrePass.
 - `docs/02_ir_schemas.md` — `SupportGeometryIR` (31a), `SupportPlanIR`.
 - `docs/03_wit_and_manifest.md` — config-schema validation.
-- `docs/04_host_scheduler.md` — `PrePass::SupportGeneration` prerequisites.
+- `docs/04_host_scheduler.md` — `PrePass::SupportGeometry` prerequisites.
 - `docs/05_module_sdk.md` — config schema bounds enforcement.
 - `docs/08_coordinate_system.md` — mm convention.
 - `docs/09_progress_events.md` — `support-planner.node-clamped-out` diagnostic.

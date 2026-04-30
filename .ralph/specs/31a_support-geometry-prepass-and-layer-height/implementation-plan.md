@@ -16,10 +16,14 @@
 - Precondition: Packet 30 closed.
 - Postcondition: Engineer can sketch `support_layer_boundaries(layers, support_height_mm) -> Vec<SupportLayerBoundary>` signature and explain how catch-up layers are handled.
 - Files expected to change: none.
-- Authoritative docs: `docs/02_ir_schemas.md` (LayerPlanIR), `docs/01_system_architecture.md` (Tier 1 prepass).
+- Authoritative docs:
+  - `docs/02_ir_schemas.md` (LayerPlanIR)
+  - `docs/01_system_architecture.md` (Tier 1 prepass)
+  - `modules/core-modules/support-planner/support-planner.toml`
+  - Reading Guidance: Do NOT read docs/02_ir_schemas.md in full. Read ONLY the `LayerPlanIR` subsection (≈50 lines starting at the `LayerPlanIR` struct definition). Similarly, skim docs/01_system_architecture.md — focus on Tier 1 PrePass section only.
 - OrcaSlicer refs: none (this is a ModularSlicer innovation).
 - Verification: `git status` clean.
-- Context cost: S
+- Context cost: M
 - Exit condition: Engineer can describe support layer boundary computation from memory.
 
 ### Step 2: Confirm Q1, Q2, Q3 resolutions (already resolved)
@@ -44,15 +48,27 @@
 - Context cost: S
 - Exit condition: Build green; type reachable.
 
+### Step 4: Extend WIT + SDK types for SupportGeometry
+
+- Task IDs: `TASK-163`
+- Objective: Add `record support-geometry-view-entry` and `record support-geometry-view` stub records to `wit/world-prepass.wit`. Add `SupportGeometryView` + `SupportGeometryViewEntry` types to `crates/slicer-sdk/src/prepass_types.rs`. Re-export from `crates/slicer-sdk/src/prelude.rs`. The WIT parameter on `run-support-generation` is added in Step 7 (after the host projector is ready); this step creates the SDK side only.
+- Precondition: Step 3.
+- Postcondition: `cargo build -p slicer-sdk 2>&1 | tail -3` exits 0.
+- Files expected to change: `crates/slicer-sdk/src/prepass_types.rs`, `crates/slicer-sdk/src/prelude.rs`.
+- Authoritative docs: `docs/03_wit_and_manifest.md` (WIT naming conventions), `.ralph/specs/30_support-planner-prepass-wit-plumbing/design.md` (view pattern reference).
+- Verification: `grep -nE 'SupportGeometryView|SupportGeometryViewEntry' crates/slicer-sdk/src/prepass_types.rs` returns ≥2 matches.
+- Context cost: S
+- Exit condition: SDK types compile; WIT records stubbed for Step 7 extension.
+
 ### Step 5: Add Blackboard slot and accessor for SupportGeometryIR
 
 - Task IDs: `TASK-163`
-- Objective: Add `BlackboardPrepassSlot::SupportGeometry` to `crates/slicer-host/src/blackboard.rs`. Add `commit_support_geometry(&self, ir: Arc<SupportGeometryIR>)` and `fn support_geometry(&self) -> Option<Arc<SupportGeometryIR>>`.
-- Precondition: Step 3.
+- Objective: Add `BlackboardPreprepSlot::SupportGeometry` to `crates/slicer-host/src/blackboard.rs`. Add `commit_support_geometry(&self, ir: Arc<SupportGeometryIR>)` and `fn support_geometry(&self) -> Option<Arc<SupportGeometryIR>>`.
+- Precondition: Step 4.
 - Postcondition: `cargo build -p slicer-host 2>&1 | tail -5` exits 0.
 - Files expected to change: `crates/slicer-host/src/blackboard.rs`.
 - Verification: `grep -nE 'SupportGeometry' crates/slicer-host/src/blackboard.rs` returns ≥3 matches.
-- Context cost: S
+- Context cost: M
 - Exit condition: Build green; slot accessible.
 
 ### Step 6: Implement `PrePass::SupportGeometry` built-in in prepass.rs
@@ -65,7 +81,7 @@
   - Union polygons per `(object_id, region_id)` to produce coarse outlines.
   - Add intermediate model-resolution outline layers at every model layer within `support_top_z_distance_mm` of column tops (these use `global_support_layer_index = u32::MAX` sentinel to mark them as model layers, not support layers).
   - Commit `SupportGeometryIR` to blackboard.
-- Precondition: Steps 3 and 5.
+- Precondition: Step 3 and Step 4.
 - Postcondition: A unit test in `crates/slicer-host/src/prepass.rs::tests` (or the new test file) commits a `SupportGeometryIR` for a 2-layer fixture and asserts correct coarse outline count.
 - Files expected to change: `crates/slicer-host/src/prepass.rs`.
 - Verification: `cargo test -p slicer-host support_geometry 2>&1 | tail -15` passes.
@@ -76,7 +92,7 @@
 
 - Task IDs: `TASK-163`
 - Objective: Add `record support-geometry-view-entry`, `record support-geometry-view`, and a `support-geometry: support-geometry-view` parameter to `export run-support-generation` in `wit/world-prepass.wit` (between `region-segmentation` and `output`).
-- Precondition: Step 6.
+- Precondition: Step 4 and Step 6.
 - Postcondition: `cargo build --workspace 2>&1 | tail -10` exits 0 (with the dispatcher Step 9 temporarily passing an empty view).
 - Files expected to change: `wit/world-prepass.wit`.
 - Verification: `grep -nE 'record support-geometry-view-entry|record support-geometry-view\b|support-geometry: support-geometry-view' wit/world-prepass.wit` returns ≥3 matches.
@@ -147,7 +163,7 @@
   - In the propagation loop, use coarse `SupportGeometryView` outlines for collision (no per-model-layer collision in this packet — that comes in 31b).
   - When emitting `SupportPlanEntry` records, interpolate to model resolution near column tops: for each support layer, if model's top layers are within `support_top_z_distance_mm`, emit additional entries at model layer Z values with interpolated outline data.
   - Each emitted `SupportPlanEntry` carries model-layer Z and effective height (not support layer indices).
-- Precondition: Step 10 (failing tests in place).
+- Precondition: Steps 10–11.
 - Postcondition: AC-8, AC-9, AC-10 pass. The planner emits at model resolution even when support resolution is coarser.
 - Files expected to change: `modules/core-modules/support-planner/src/lib.rs`.
 - Context cost: M
@@ -168,7 +184,7 @@
 
 - Task IDs: `TASK-163`
 - Objective: Cascade rebuild after the WIT change. Verify `--check` reports every `.wasm` up to date.
-- Precondition: Steps 11–14 complete.
+- Precondition: Steps 12–14 complete.
 - Postcondition: Every `.wasm` rebuilt; `--check` clean.
 - Files expected to change: every `modules/core-modules/*/wit-guest/target/` and `.wasm` artifacts.
 - Verification: `bash modules/core-modules/build-core-modules.sh 2>&1 | tail -10 && bash modules/core-modules/build-core-modules.sh --check 2>&1 | grep -E 'STALE'` returns no `STALE` matches.
