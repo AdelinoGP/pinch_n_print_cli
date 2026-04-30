@@ -3,7 +3,7 @@ name = "support-planner"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
-description = "Multi-layer organic tree-support planner for PrePass::SupportGeneration"
+description = "Emits SupportPlanIR from coarse SupportGeometryIR inside PrePass::SupportGeometry"
 
 [dependencies]
 slicer-sdk = { path = "../../../crates/slicer-sdk" }
