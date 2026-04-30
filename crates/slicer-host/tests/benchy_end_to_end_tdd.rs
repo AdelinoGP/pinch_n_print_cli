@@ -908,8 +908,8 @@ fn benchy_prepass_seam_plan_matches_live_outer_wall_start() {
     // The fact that this line appears at all proves the seam_plan_ir infrastructure
     // is wired and consulted during the live dispatch path. The count may be 0
     // (module didn't produce entries for this geometry) or >0 (entries found).
-    let has_seam_plan_lookup = stderr.contains("seam_plan_ir has ")
-        && (stderr.contains("entries, looking for layer="));
+    let has_seam_plan_lookup =
+        stderr.contains("seam_plan_ir has ") && (stderr.contains("entries, looking for layer="));
     assert!(
         has_seam_plan_lookup,
         "stderr must contain 'seam_plan_ir has ... entries, looking for layer=' — proves \
