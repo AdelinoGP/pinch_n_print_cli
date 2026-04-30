@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use slicer_ir::{
     InfillIR, LayerAnnotation, LayerCollectionIR, LayerPlanIR, MeshIR, MeshSegmentationIR,
-    PaintRegionIR, PerimeterIR, RegionMapIR, SeamPlanIR, SliceIR, SupportIR, SupportPlanIR,
-    SurfaceClassificationIR, ToolChange, ZHop,
+    PaintRegionIR, PerimeterIR, RegionMapIR, SeamPlanIR, SliceIR, SupportGeometryIR, SupportIR,
+    SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
 /// A retract or unretract decision collected from `Layer::PathOptimization`.
@@ -57,6 +57,7 @@ pub struct Blackboard {
     support_plan: Option<Arc<SupportPlanIR>>,
     paint_regions: Option<Arc<PaintRegionIR>>,
     region_map: Option<Arc<RegionMapIR>>,
+    support_geometry: Option<Arc<SupportGeometryIR>>,
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
 }
 
@@ -137,12 +138,14 @@ pub enum BlackboardPrepassSlot {
     LayerPlan,
     /// Seam plan produced by `PrePass::SeamPlanning`.
     SeamPlan,
-    /// Support plan produced by `PrePass::SupportGeneration`.
+    /// Support plan produced by `PrePass::SupportGeometry`.
     SupportPlan,
     /// Paint regions produced by `PrePass::PaintSegmentation`.
     PaintRegions,
     /// Region map produced by `PrePass::RegionMapping`.
     RegionMap,
+    /// Support geometry coarse outlines produced by `PrePass::SupportGeometry`.
+    SupportGeometry,
 }
 
 impl fmt::Display for BlackboardPrepassSlot {
@@ -155,6 +158,7 @@ impl fmt::Display for BlackboardPrepassSlot {
             Self::SupportPlan => "support-plan",
             Self::PaintRegions => "paint-regions",
             Self::RegionMap => "region-map",
+            Self::SupportGeometry => "support-geometry",
         };
 
         f.write_str(name)
@@ -174,6 +178,7 @@ impl Blackboard {
             support_plan: None,
             paint_regions: None,
             region_map: None,
+            support_geometry: None,
             layer_outputs: Some((0..layer_count).map(|_| None).collect()),
         }
     }
@@ -281,6 +286,24 @@ impl Blackboard {
     #[must_use]
     pub fn region_map(&self) -> Option<&Arc<RegionMapIR>> {
         self.region_map.as_ref()
+    }
+
+    /// Commit `SupportGeometryIR` exactly once.
+    pub fn commit_support_geometry(
+        &mut self,
+        ir: Arc<SupportGeometryIR>,
+    ) -> Result<(), BlackboardError> {
+        commit_prepass(
+            &mut self.support_geometry,
+            ir,
+            BlackboardPrepassSlot::SupportGeometry,
+        )
+    }
+
+    /// Return the committed support geometry, if available.
+    #[must_use]
+    pub fn support_geometry(&self) -> Option<&Arc<SupportGeometryIR>> {
+        self.support_geometry.as_ref()
     }
 
     /// Commit one `LayerCollectionIR` into its write-once layer slot.
