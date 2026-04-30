@@ -1492,4 +1492,144 @@ mod planner_consuming_tier {
             }
         }
     }
+
+    /// AC-9: tree-support live dispatch — when SupportPlanIR carries entries
+    /// for multiple region_ids, dispatching against a LayerView whose
+    /// region_id matches a specific entry picks up only that entry's
+    /// branch segments.
+    #[test]
+    fn tree_support_live_dispatch_finds_branches_for_real_region_id() {
+        use slicer_ir::{
+            ExPolygon, ExtrusionRole as IrExtrusionRole, Point2, Polygon, SliceIR, SlicedRegion,
+        };
+
+        let layer_z = 0.2f32;
+        let layer_index = 0u32;
+        let target_region_id: u64 = 42;
+        let other_region_id: u64 = 7;
+
+        // Build two planned segments for the two different region_ids.
+        let seg_for = |_rid: u64, z: f32| -> ExtrusionPath3D {
+            ExtrusionPath3D {
+                points: vec![
+                    Point3WithWidth {
+                        x: 1.0,
+                        y: 2.0,
+                        z,
+                        width: 0.4,
+                        flow_factor: 1.0,
+                    },
+                    Point3WithWidth {
+                        x: 7.0,
+                        y: 8.0,
+                        z,
+                        width: 0.4,
+                        flow_factor: 1.0,
+                    },
+                ],
+                role: IrExtrusionRole::SupportMaterial,
+                speed_factor: 1.0,
+            }
+        };
+
+        let plan = Arc::new(SupportPlanIR {
+            schema_version: semver(1, 0, 0),
+            entries: vec![
+                SupportPlanEntry {
+                    global_layer_index: layer_index,
+                    object_id: "obj-0".to_string(),
+                    region_id: other_region_id,
+                    branch_segments: vec![seg_for(other_region_id, layer_z)],
+                },
+                SupportPlanEntry {
+                    global_layer_index: layer_index,
+                    object_id: "obj-0".to_string(),
+                    region_id: target_region_id,
+                    branch_segments: vec![seg_for(target_region_id, layer_z)],
+                },
+            ],
+        });
+
+        // Build a SliceIR whose single region has region_id = 42.
+        let extent = slicer_ir::mm_to_units(10.0);
+        let slice_ir = SliceIR {
+            schema_version: semver(1, 0, 0),
+            global_layer_index: layer_index,
+            z: layer_z,
+            regions: vec![SlicedRegion {
+                object_id: "obj-0".to_string(),
+                region_id: target_region_id,
+                polygons: vec![ExPolygon {
+                    contour: Polygon {
+                        points: vec![
+                            Point2 { x: 0, y: 0 },
+                            Point2 { x: extent, y: 0 },
+                            Point2 {
+                                x: extent,
+                                y: extent,
+                            },
+                            Point2 { x: 0, y: extent },
+                        ],
+                    },
+                    holes: vec![],
+                }],
+                infill_areas: vec![],
+                nonplanar_surface: None,
+                effective_layer_height: 0.2,
+                boundary_paint: std::collections::HashMap::new(),
+            }],
+        };
+
+        // Dispatch tree-support with the multi-region plan.
+        let engine = Arc::new(WasmEngine::new());
+        let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+        let wasm_path = tree_support_wasm();
+        let loaded = loaded_support_module(
+            "com.core.tree-support",
+            wasm_path.clone(),
+            vec![
+                "SliceIR",
+                "SurfaceClassificationIR",
+                "PaintRegionIR",
+                "SupportPlanIR",
+            ],
+        );
+        let module = compile_module(&engine, loaded, &wasm_path);
+
+        let blackboard = empty_blackboard_with_support_plan(Some(Arc::clone(&plan)));
+
+        let layer = GlobalLayer {
+            index: layer_index,
+            z: layer_z,
+            active_regions: vec![],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        };
+
+        let mut arena = LayerArena::new();
+        arena.set_slice(slice_ir).unwrap();
+        LayerStageRunner::run_stage(
+            &dispatcher,
+            &"Layer::Support".to_string(),
+            &layer,
+            &module,
+            &blackboard,
+            &mut arena,
+        )
+        .expect("Layer::Support dispatch must succeed");
+
+        let support_ir = arena.take_support().expect("SupportIR must be committed");
+
+        assert!(
+            !support_ir.support_paths.is_empty(),
+            "tree-support must find branches for region_id={target_region_id}; got 0 paths"
+        );
+        for path in &support_ir.support_paths {
+            assert_eq!(
+                path.role,
+                IrExtrusionRole::SupportMaterial,
+                "all support paths must carry SupportMaterial role"
+            );
+        }
+    }
 }

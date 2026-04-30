@@ -33,7 +33,8 @@ use slicer_host::{
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectMesh, Point3, SemVer, SupportPlanIR, SurfaceClassificationIR, Transform3d,
+    ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SupportPlanIR,
+    SurfaceClassificationIR, Transform3d,
 };
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
@@ -317,14 +318,62 @@ fn execution_plan_with_support_generation(module: CompiledModule) -> ExecutionPl
 /// passes). `SurfaceClassificationIR` is committed by
 /// `execute_prepass_with_builtins`'s built-in mesh-analysis step.
 fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
+    // Build a LayerPlanIR with uniform 0.2mm layers covering z=0..2.0.
+    // The overhang fixture spans z=0..2.0, so 10 layers at 0.2mm each.
+    let num_layers = 10u32;
+    let layer_height = 0.2f32;
+    let global_layers: Vec<GlobalLayer> = (0..num_layers)
+        .map(|i| GlobalLayer {
+            index: i,
+            z: (i + 1) as f32 * layer_height,
+            active_regions: vec![],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        })
+        .collect();
+    let mut object_participation = HashMap::new();
+    for obj in &mesh.objects {
+        object_participation.insert(
+            obj.id.clone(),
+            (0..num_layers)
+                .map(|i| slicer_ir::ObjectLayerRef {
+                    local_layer_index: i,
+                    global_layer_index: i,
+                    effective_layer_height: layer_height,
+                })
+                .collect(),
+        );
+    }
+    // Build RegionMapIR entries: one region per (layer, object) pair.
+    let mut region_entries = HashMap::new();
+    for obj in &mesh.objects {
+        for i in 0..num_layers {
+            region_entries.insert(
+                RegionKey {
+                    global_layer_index: i,
+                    object_id: obj.id.clone(),
+                    region_id: 0,
+                },
+                RegionPlan {
+                    config: slicer_ir::ResolvedConfig::default(),
+                    stage_modules: HashMap::new(),
+                },
+            );
+        }
+    }
     let mesh_arc = Arc::new(mesh);
     let mut bb = Blackboard::new(mesh_arc, 0);
     bb.commit_layer_plan(Arc::new(LayerPlanIR {
         schema_version: semver(1, 0, 0),
-        global_layers: Vec::new(),
-        object_participation: HashMap::new(),
+        global_layers,
+        object_participation,
     }))
     .expect("commit_layer_plan must succeed");
+    bb.commit_region_map(Arc::new(RegionMapIR {
+        schema_version: semver(1, 0, 0),
+        entries: region_entries,
+    }))
+    .expect("commit_region_map must succeed");
     bb
 }
 
@@ -547,6 +596,12 @@ fn layer_plan_committed_plus_support_generation_proceeds() {
             schema_version: semver(1, 0, 0),
             global_layers: Vec::new(),
             object_participation: HashMap::new(),
+        }))
+        .unwrap();
+    blackboard
+        .commit_region_map(Arc::new(RegionMapIR {
+            schema_version: semver(1, 0, 0),
+            entries: HashMap::new(),
         }))
         .unwrap();
 
