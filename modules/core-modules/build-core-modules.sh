@@ -24,6 +24,21 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Compute the newest mtime across the workspace's WIT files. Any WIT change
+# invalidates every guest's wit-bindgen output, so a guest WASM is stale if
+# its mtime is older than any WIT file even when the guest's own source is
+# unchanged. Without this, a packet that edits `wit/*.wit` but does not
+# touch every guest's `src/lib.rs` leaves stale guest WASMs that import the
+# pre-edit WIT shape and fail typed instantiation at runtime.
+WIT_DIR="$SCRIPT_DIR/../../wit"
+wit_mtime=0
+if [[ -d "$WIT_DIR" ]]; then
+    while IFS= read -r -d '' wit_file; do
+        m=$(stat -c %Y "$wit_file" 2>/dev/null || stat -f %m "$wit_file" 2>/dev/null || echo 0)
+        (( m > wit_mtime )) && wit_mtime=$m
+    done < <(find "$WIT_DIR" -type f -name '*.wit' -print0)
+fi
+
 # Entries: "<module-dir>:<guest-crate-lib-name>"
 # The produced component is copied to "<module-dir>/<module-dir>.wasm".
 MODULES=(
@@ -98,6 +113,7 @@ for entry in "${MODULES[@]}"; do
             [[ $cargo_mtime -gt $newest_src ]] && newest_src=$cargo_mtime
             [[ $mod_src_mtime -gt $newest_src ]] && newest_src=$mod_src_mtime
             [[ $mod_cargo_mtime -gt $newest_src ]] && newest_src=$mod_cargo_mtime
+            [[ $wit_mtime -gt $newest_src ]] && newest_src=$wit_mtime
             if (( newest_src <= wasm_mtime )); then
                 if $check_only; then
                     echo "  ok: $dir_name.wasm is up to date"

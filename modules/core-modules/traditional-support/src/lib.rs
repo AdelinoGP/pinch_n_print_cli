@@ -10,7 +10,7 @@
 //! horizontal passes with no cross-layer dependency — each layer is a fresh
 //! scan at a rotated angle, deterministic from the layer index alone. It
 //! therefore does **not** declare `SupportPlanIR` as a read in its manifest
-//! and does **not** consume `PrePass::SupportGeneration` output. The
+//! and does **not** consume `PrePass::SupportGeometry` output. The
 //! planner-consuming tier is limited to `tree-support`, whose organic
 //! branches require multi-layer top-down propagation; see packet
 //! `28_tree-support-multi-layer-propagation` and docs/01 §Layer::Support.

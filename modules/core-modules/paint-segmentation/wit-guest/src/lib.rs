@@ -208,7 +208,13 @@ wit_bindgen::generate!({
                 config: config-view,
             ) -> result<_, module-error>;
 
-            // SupportGeneration stage — paint-segmentation owns no support
+            // LayerPlan and RegionSegmentation view types (used by run-support-geometry)
+            record layer-plan-view-entry { global-layer-index: u32, z: f32, effective-layer-height: f32 }
+            record layer-plan-view { layers: list<layer-plan-view-entry> }
+            record region-segmentation-view-entry { object-id: object-id, layer-index: u32, region-ids: list<region-id> }
+            record region-segmentation-view { entries: list<region-segmentation-view-entry> }
+
+            // SupportGeometry stage — paint-segmentation owns no support
             // logic, but the host's typed prepass world requires every
             // export be present, so we emit a deterministic no-op stub.
             record support-plan-entry {
@@ -217,14 +223,22 @@ wit_bindgen::generate!({
                 region-id: region-id,
                 branch-segments: list<list<point3-with-width>>,
             }
-            resource support-generation-output {
-                push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
+            record support-geometry-view-entry {
+                global-support-layer-index: u32,
+                object-id: object-id,
+                region-id: region-id,
+                outlines: list<ex-polygon>,
             }
-            export run-support-generation: func(
+            record support-geometry-view { entries: list<support-geometry-view-entry> }
+            record support-geometry-output {
+                support-plan-entries: list<support-plan-entry>,
+            }
+            export run-support-geometry: func(
                 objects: list<mesh-object-view>,
-                output: support-generation-output,
-                config: config-view,
-            ) -> result<_, module-error>;
+                layer-plan: layer-plan-view,
+                region-segmentation: region-segmentation-view,
+                support-geometry: support-geometry-view,
+            ) -> support-geometry-output;
         }
     "#,
     world: "prepass-module",
@@ -410,12 +424,15 @@ impl Guest for Component {
         Ok(())
     }
 
-    fn run_support_generation(
+    fn run_support_geometry(
         _objects: Vec<MeshObjectView>,
-        _output: SupportGenerationOutput,
-        _config: ConfigView,
-    ) -> Result<(), ModuleError> {
-        Ok(())
+        _layer_plan: LayerPlanView,
+        _region_segmentation: RegionSegmentationView,
+        _support_geometry: SupportGeometryView,
+    ) -> SupportGeometryOutput {
+        SupportGeometryOutput {
+            support_plan_entries: vec![],
+        }
     }
 }
 

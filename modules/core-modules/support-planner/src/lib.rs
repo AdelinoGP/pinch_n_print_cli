@@ -1,4 +1,4 @@
-//! Multi-layer organic tree-support planner for `PrePass::SupportGeneration`.
+//! Multi-layer organic tree-support planner for `PrePass::SupportGeometry`.
 //!
 //! Simplified port of OrcaSlicer's `TreeSupport::detect_overhangs` +
 //! `TreeSupport::drop_nodes` (see `OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp`):
@@ -84,12 +84,13 @@ impl PrepassModule for SupportPlanner {
         })
     }
 
-    fn run_support_generation(
+    fn run_support_geometry(
         &self,
         objects: &[MeshObjectView],
         layer_plan: &LayerPlanView,
         region_segmentation: &RegionSegmentationView,
-        output: &mut SupportGenerationOutput,
+        _support_geometry: &SupportGeometryView,
+        output: &mut SupportGeometryOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         if !self.enabled {
@@ -113,7 +114,7 @@ impl SupportPlanner {
         obj: &MeshObjectView,
         layer_plan: &LayerPlanView,
         region_segmentation: &RegionSegmentationView,
-        output: &mut SupportGenerationOutput,
+        output: &mut SupportGeometryOutput,
     ) -> Result<(), ModuleError> {
         if obj.triangles.is_empty() {
             return Ok(());
@@ -352,7 +353,7 @@ impl SupportPlanner {
         // Emit entries in top-to-bottom order.
         for entry in entries_in_order {
             output
-                .push_support_plan(entry)
+                .push_support_plan_entry(entry)
                 .map_err(|e| ModuleError::fatal(1, format!("push_support_plan failed: {e}")))?;
         }
         Ok(())
@@ -597,9 +598,10 @@ mod tests {
         let planner = default_planner();
         let lp = default_layer_plan(10, 0.0, 0.2);
         let rs = default_region_segmentation("plate", 10);
-        let mut output = SupportGenerationOutput::new();
+        let sg = SupportGeometryView { entries: vec![] };
+        let mut output = SupportGeometryOutput::new();
         planner
-            .run_support_generation(&[], &lp, &rs, &mut output, &ConfigView::default())
+            .run_support_geometry(&[], &lp, &rs, &sg, &mut output, &ConfigView::default())
             .unwrap();
         assert!(output.entries().is_empty());
     }
@@ -641,9 +643,10 @@ mod tests {
         let planner = default_planner();
         let lp = default_layer_plan(10, 0.0, 0.2);
         let rs = default_region_segmentation("cube", 10);
-        let mut output = SupportGenerationOutput::new();
+        let sg = SupportGeometryView { entries: vec![] };
+        let mut output = SupportGeometryOutput::new();
         planner
-            .run_support_generation(&[obj], &lp, &rs, &mut output, &ConfigView::default())
+            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::default())
             .unwrap();
         assert!(
             output.entries().is_empty(),
@@ -683,9 +686,10 @@ mod tests {
         let planner = default_planner();
         let lp = default_layer_plan(10, 0.0, 0.2);
         let rs = default_region_segmentation("plate", 10);
-        let mut output = SupportGenerationOutput::new();
+        let sg = SupportGeometryView { entries: vec![] };
+        let mut output = SupportGeometryOutput::new();
         planner
-            .run_support_generation(&[obj], &lp, &rs, &mut output, &ConfigView::default())
+            .run_support_geometry(&[obj], &lp, &rs, &sg, &mut output, &ConfigView::default())
             .unwrap();
         assert!(
             !output.entries().is_empty(),
@@ -718,9 +722,16 @@ mod tests {
         };
         let lp = LayerPlanView { layers: vec![] };
         let rs = RegionSegmentationView { entries: vec![] };
-        let mut output = SupportGenerationOutput::new();
-        let result =
-            planner.run_support_generation(&[obj], &lp, &rs, &mut output, &ConfigView::default());
+        let sg = SupportGeometryView { entries: vec![] };
+        let mut output = SupportGeometryOutput::new();
+        let result = planner.run_support_geometry(
+            &[obj],
+            &lp,
+            &rs,
+            &sg,
+            &mut output,
+            &ConfigView::default(),
+        );
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
