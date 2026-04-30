@@ -452,6 +452,90 @@ impl GCodeSerializer for DefaultGCodeSerializer {
     }
 }
 
+/// Reconcile travel moves to route through finalization geometry (Skirt/Brim,
+/// WipeTower) without modifying `ordered_entities`.
+///
+/// This pass runs on each `LayerCollectionIR` *before* `emit_gcode` so that
+/// travel transitions correctly incorporate finalization geometry.
+///
+/// Invariants:
+/// - `ordered_entities` is never modified.
+/// - Only `travel_moves` is mutated (new entries appended).
+/// - If no Skirt or WipeTower entities exist, the layer is unchanged (no-op).
+pub fn reconcile_finalization_travel(layer: &mut LayerCollectionIR) {
+    use slicer_ir::TravelMove;
+
+    let entities = &layer.ordered_entities;
+
+    // Collect indices of finalization entities
+    let skirt_indices: Vec<usize> = entities
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.role == ExtrusionRole::Skirt)
+        .map(|(i, _)| i)
+        .collect();
+    let wipe_indices: Vec<usize> = entities
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.role == ExtrusionRole::WipeTower)
+        .map(|(i, _)| i)
+        .collect();
+
+    if skirt_indices.is_empty() && wipe_indices.is_empty() {
+        return; // no-op
+    }
+
+    // Find the first model (non-finalization) entity index
+    let first_model = entities.iter().enumerate().find_map(|(i, e)| {
+        if e.role != ExtrusionRole::Skirt && e.role != ExtrusionRole::WipeTower {
+            Some(i)
+        } else {
+            None
+        }
+    });
+
+    // AC1: If skirt entities exist before model entities, add a travel move
+    // from the last skirt entity's endpoint to the first model entity's start.
+    if let (Some(&last_skirt_idx), Some(model_idx)) = (skirt_indices.last(), first_model) {
+        if last_skirt_idx < model_idx {
+            let skirt_entity = &entities[last_skirt_idx];
+            let model_entity = &entities[model_idx];
+            if let (Some(_skirt_end), Some(model_start)) = (
+                skirt_entity.path.points.last(),
+                model_entity.path.points.first(),
+            ) {
+                layer.travel_moves.push(TravelMove {
+                    after_entity_index: last_skirt_idx as u32,
+                    x: Some(model_start.x),
+                    y: Some(model_start.y),
+                    z: None,
+                    f: None,
+                });
+            }
+        }
+    }
+
+    // AC2: If wipe tower entities exist, add travel moves that route to the
+    // wipe tower start from the preceding entity.
+    for &wipe_idx in &wipe_indices {
+        if wipe_idx > 0 {
+            let wipe_entity = &entities[wipe_idx];
+            if let Some(wipe_start) = wipe_entity.path.points.first() {
+                layer.travel_moves.push(TravelMove {
+                    after_entity_index: (wipe_idx - 1) as u32,
+                    x: Some(wipe_start.x),
+                    y: Some(wipe_start.y),
+                    z: None,
+                    f: None,
+                });
+            }
+        }
+    }
+
+    // Keep travel_moves sorted by after_entity_index for deterministic emission.
+    layer.travel_moves.sort_by_key(|tm| tm.after_entity_index);
+}
+
 /// Format a coordinate value, trimming unnecessary trailing zeros.
 fn format_coord(value: f32) -> String {
     // Format with enough precision, then trim trailing zeros

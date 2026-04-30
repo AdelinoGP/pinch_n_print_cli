@@ -168,8 +168,16 @@ pub fn execute_postpass(
     serializer: &dyn GCodeSerializer,
     runner: &mut dyn PostpassStageRunner,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
-    // Step 1: Emit initial GCodeIR from layers
-    let mut gcode_ir = emitter.emit_gcode(layer_irs, blackboard)?;
+    // Step 1a: Reconcile finalization-aware travel moves before emission.
+    // This adjusts travel_moves to route through Skirt/Brim and WipeTower
+    // geometry without modifying ordered_entities.
+    let mut reconciled_layers: Vec<LayerCollectionIR> = layer_irs.to_vec();
+    for layer in &mut reconciled_layers {
+        crate::gcode_emit::reconcile_finalization_travel(layer);
+    }
+
+    // Step 1b: Emit initial GCodeIR from (reconciled) layers
+    let mut gcode_ir = emitter.emit_gcode(&reconciled_layers, blackboard)?;
     let mut audits = Vec::new();
 
     // Step 2: Run all GCodePostProcess modules sequentially
