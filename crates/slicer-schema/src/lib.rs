@@ -124,9 +124,9 @@ pub const STAGES: &[StageSpec] = &[
         trait_name: "PrepassModule",
     },
     StageSpec {
-        method: "run_support_generation",
-        stage_id: "PrePass::SupportGeneration",
-        wit_export: "run-support-generation",
+        method: "run_support_geometry",
+        stage_id: "PrePass::SupportGeometry",
+        wit_export: "run-support-geometry",
         world_id: "slicer:world-prepass@1.0.0",
         trait_name: "PrepassModule",
     },
