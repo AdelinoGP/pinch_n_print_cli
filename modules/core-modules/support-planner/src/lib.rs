@@ -8,24 +8,12 @@
 //! range. Per-layer merging uses a Prim minimum spanning tree — the same
 //! O(V²) complexity class as OrcaSlicer's `MinimumSpanningTree::prim`.
 //!
-//! # v1 limitations (deferred to follow-up packets)
+//! The planner reads real `LayerPlanView` (per-layer Z and effective height)
+//! and `RegionSegmentationView` (per-object, per-layer region IDs) to
+//! produce per-region `SupportPlanEntry` records.
 //!
-//! - **Layer-height-agnostic.** The planner walks the object's bounding-box
-//!   Z range at a fixed `DEFAULT_LAYER_HEIGHT_MM` (0.2 mm) rather than
-//!   reading `LayerPlanIR.layers`. `LayerPlanIR` is a host-side scheduling
-//!   prerequisite (see `ensure_stage_prerequisites` for
-//!   `PrePass::SupportGeneration`) but is not surfaced to the prepass guest
-//!   today, so it is not listed in this module's manifest
-//!   `[ir-access].reads`. Variable-height layer plans will silently
-//!   misalign until a follow-up packet plumbs `LayerPlanIR.layers` through
-//!   the prepass WIT.
-//! - **Single-region per object.** `MeshObjectView` does not currently
-//!   carry per-region segmentation, so every emitted `SupportPlanEntry`
-//!   uses the canonical `region_id = "0"` bucket. Single-region objects
-//!   (the Benchy fixture and the live-dispatch test geometries) work
-//!   correctly because `tree-support`'s `support_plan_segments_for` is
-//!   invoked with `region_id = 0` for those regions; multi-region objects
-//!   will collapse all branches under the first region.
+//! # Remaining limitations (deferred to follow-up packets)
+//!
 //! - **No avoidance / collision caches** (`TreeSupportData`).
 //! - **No radius tapering** along `tan(angle) * height`.
 //! - **No raft / interface-layer stacking.**
@@ -41,7 +29,6 @@ const DEFAULT_BRANCH_ANGLE_DEG: f32 = 45.0;
 const DEFAULT_MERGE_DISTANCE_MM: f32 = 0.8;
 const DEFAULT_MAX_BRANCHES_PER_LAYER: usize = 1024;
 const DEFAULT_LINE_WIDTH_MM: f32 = 0.4;
-const DEFAULT_LAYER_HEIGHT_MM: f32 = 0.2;
 /// Overhang detection threshold: triangles whose normal z-component is below
 /// `-sin(OVERHANG_THRESHOLD_DEG)` are flagged as overhang facets. Matches
 /// OrcaSlicer's default `support_threshold_angle = 45°`.
@@ -100,6 +87,8 @@ impl PrepassModule for SupportPlanner {
     fn run_support_generation(
         &self,
         objects: &[MeshObjectView],
+        layer_plan: &LayerPlanView,
+        region_segmentation: &RegionSegmentationView,
         output: &mut SupportGenerationOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -107,8 +96,12 @@ impl PrepassModule for SupportPlanner {
             return Ok(());
         }
 
+        if layer_plan.layers.is_empty() {
+            return Err(ModuleError::fatal(1, "empty layer-plan-view"));
+        }
+
         for obj in objects {
-            self.plan_for_object(obj, output)?;
+            self.plan_for_object(obj, layer_plan, region_segmentation, output)?;
         }
         Ok(())
     }
@@ -118,33 +111,34 @@ impl SupportPlanner {
     fn plan_for_object(
         &self,
         obj: &MeshObjectView,
+        layer_plan: &LayerPlanView,
+        region_segmentation: &RegionSegmentationView,
         output: &mut SupportGenerationOutput,
     ) -> Result<(), ModuleError> {
         if obj.triangles.is_empty() {
             return Ok(());
         }
 
-        // ── Bounds + layer range ────────────────────────────────────────
-        // v1 is layer-height-agnostic: we walk the object's bounding-box
-        // Z range at a fixed `DEFAULT_LAYER_HEIGHT_MM` rather than
-        // consulting `LayerPlanIR.layers`. `LayerPlanIR` is a host-side
-        // scheduling prerequisite but is not surfaced to the prepass
-        // guest today (see module-level docs). A follow-up packet will
-        // plumb the real layer plan through the prepass WIT.
-        let (bmin, bmax) = match compute_bounds(&obj.vertices) {
-            Some(b) => b,
-            None => return Ok(()),
-        };
-
-        let object_height = (bmax[2] - bmin[2]).max(0.0);
-        let layer_height = DEFAULT_LAYER_HEIGHT_MM;
-        if object_height <= 0.0 || layer_height <= 0.0 {
-            return Ok(());
-        }
-        let num_layers = (object_height / layer_height).ceil() as u32;
+        // ── Layer range from committed layer plan ────────────────────────
+        let num_layers = layer_plan.layers.len() as u32;
         if num_layers == 0 {
             return Ok(());
         }
+
+        // Skip objects with no region segmentation entries.
+        let has_regions = region_segmentation
+            .entries
+            .iter()
+            .any(|e| e.object_id == obj.object_id);
+        if !has_regions {
+            return Ok(());
+        }
+
+        // Bounds are still needed for build-plate proximity checks.
+        let (bmin, _bmax) = match compute_bounds(&obj.vertices) {
+            Some(b) => b,
+            None => return Ok(()),
+        };
 
         // ── Step 9: simplified detect_overhangs ──────────────────────────
         let overhang_facets = detect_overhang_facets(obj, OVERHANG_THRESHOLD_DEG);
@@ -168,12 +162,19 @@ impl SupportPlanner {
             // Overhangs whose centroid sits on the build plate (layer 0 ±
             // half a layer) do not need tree supports — OrcaSlicer's
             // detect_overhangs short-circuits the same case.
+            let first_layer_height = layer_plan.layers[0].effective_layer_height;
             let rel_z = (centroid[2] - bmin[2]).max(0.0);
-            if rel_z < layer_height * 0.5 {
+            if rel_z < first_layer_height * 0.5 {
                 continue;
             }
-            let layer_idx = (rel_z / layer_height).floor() as usize;
-            let layer_idx = layer_idx.min(num_layers as usize - 1);
+            // Find the layer whose Z range contains the centroid Z.
+            // Layer Z values represent the top of each layer, so the first
+            // layer with z >= centroid_z is the one containing the overhang.
+            let layer_idx = layer_plan
+                .layers
+                .iter()
+                .position(|l| l.z >= centroid[2])
+                .unwrap_or(layer_plan.layers.len() - 1);
             if contacts_by_layer[layer_idx].len() >= self.max_branches_per_layer {
                 continue;
             }
@@ -207,7 +208,6 @@ impl SupportPlanner {
         //   d) move each surviving node toward its MST neighbor by step_xy
         //   e) pass surviving nodes down to layer (l-1)
         let tan_angle = self.branch_angle_deg.to_radians().tan();
-        let step_xy = (tan_angle * layer_height).max(0.0);
 
         let mut active_nodes: Vec<PlannedSupportNode> = Vec::new();
 
@@ -218,6 +218,7 @@ impl SupportPlanner {
         // Iterate top → bottom.
         let top = num_layers as usize;
         for layer_rev in (0..top).rev() {
+            let current_global_layer_index = layer_plan.layers[layer_rev].global_layer_index;
             // Merge freshly-detected contacts at this layer.
             active_nodes.extend(std::mem::take(&mut contacts_by_layer[layer_rev]));
             if active_nodes.is_empty() {
@@ -249,7 +250,9 @@ impl SupportPlanner {
 
             // Record the committed edges as branch segments (mm-space) on
             // this layer. Points sit at this layer's Z.
-            let z_current = bmin[2] + (layer_rev as f32) * layer_height;
+            let effective_height = layer_plan.layers[layer_rev].effective_layer_height;
+            let step_xy = (tan_angle * effective_height).max(0.0);
+            let z_current = layer_plan.layers[layer_rev].z;
             let mut branch_segments: Vec<Vec<Point3WithWidth>> = Vec::new();
             for (a, b, _) in &mst_edges {
                 let na = &active_nodes[*a];
@@ -273,17 +276,23 @@ impl SupportPlanner {
             }
 
             if !branch_segments.is_empty() {
-                // v1 single-region: `MeshObjectView` does not surface
-                // per-region segmentation, so every entry is keyed under
-                // the canonical `region_id = "0"` bucket. Single-region
-                // objects match correctly; multi-region objects collapse.
-                // See module-level docs.
-                entries_in_order.push(SupportPlanEntry {
-                    global_layer_index: layer_rev as u32,
-                    object_id: obj.object_id.clone(),
-                    region_id: "0".to_string(),
-                    branch_segments,
-                });
+                // Find all regions for this (layer, object) pair.
+                let regions_for_this: Vec<_> = region_segmentation
+                    .entries
+                    .iter()
+                    .filter(|e| {
+                        e.object_id == obj.object_id && e.layer_index == current_global_layer_index
+                    })
+                    .flat_map(|e| e.region_ids.iter())
+                    .collect();
+                for region_id in regions_for_this {
+                    entries_in_order.push(SupportPlanEntry {
+                        global_layer_index: current_global_layer_index,
+                        object_id: obj.object_id.clone(),
+                        region_id: region_id.clone(),
+                        branch_segments: branch_segments.clone(),
+                    });
+                }
             }
 
             // Build the "moved" node set for the next (lower) layer.
@@ -559,12 +568,38 @@ mod tests {
         }
     }
 
+    fn default_layer_plan(num_layers: u32, base_z: f32, layer_height: f32) -> LayerPlanView {
+        LayerPlanView {
+            layers: (0..num_layers)
+                .map(|i| LayerPlanViewEntry {
+                    global_layer_index: i,
+                    z: base_z + (i as f32 + 1.0) * layer_height,
+                    effective_layer_height: layer_height,
+                })
+                .collect(),
+        }
+    }
+
+    fn default_region_segmentation(object_id: &str, num_layers: u32) -> RegionSegmentationView {
+        RegionSegmentationView {
+            entries: (0..num_layers)
+                .map(|i| RegionSegmentationViewEntry {
+                    object_id: object_id.to_string(),
+                    layer_index: i,
+                    region_ids: vec!["0".to_string()],
+                })
+                .collect(),
+        }
+    }
+
     #[test]
     fn empty_objects_emits_nothing() {
         let planner = default_planner();
+        let lp = default_layer_plan(10, 0.0, 0.2);
+        let rs = default_region_segmentation("plate", 10);
         let mut output = SupportGenerationOutput::new();
         planner
-            .run_support_generation(&[], &mut output, &ConfigView::default())
+            .run_support_generation(&[], &lp, &rs, &mut output, &ConfigView::default())
             .unwrap();
         assert!(output.entries().is_empty());
     }
@@ -604,9 +639,11 @@ mod tests {
             paint_layers: vec![],
         };
         let planner = default_planner();
+        let lp = default_layer_plan(10, 0.0, 0.2);
+        let rs = default_region_segmentation("cube", 10);
         let mut output = SupportGenerationOutput::new();
         planner
-            .run_support_generation(&[obj], &mut output, &ConfigView::default())
+            .run_support_generation(&[obj], &lp, &rs, &mut output, &ConfigView::default())
             .unwrap();
         assert!(
             output.entries().is_empty(),
@@ -644,9 +681,11 @@ mod tests {
             paint_layers: vec![],
         };
         let planner = default_planner();
+        let lp = default_layer_plan(10, 0.0, 0.2);
+        let rs = default_region_segmentation("plate", 10);
         let mut output = SupportGenerationOutput::new();
         planner
-            .run_support_generation(&[obj], &mut output, &ConfigView::default())
+            .run_support_generation(&[obj], &lp, &rs, &mut output, &ConfigView::default())
             .unwrap();
         assert!(
             !output.entries().is_empty(),
@@ -666,5 +705,27 @@ mod tests {
         assert_eq!(edges[0].0, 0);
         assert_eq!(edges[0].1, 1);
         assert!((edges[0].2 - 5.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn empty_layer_plan_view_returns_fatal_module_error() {
+        let planner = default_planner();
+        let obj = MeshObjectView {
+            object_id: "test".to_string(),
+            vertices: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            triangles: vec![[0, 1, 2]],
+            paint_layers: vec![],
+        };
+        let lp = LayerPlanView { layers: vec![] };
+        let rs = RegionSegmentationView { entries: vec![] };
+        let mut output = SupportGenerationOutput::new();
+        let result =
+            planner.run_support_generation(&[obj], &lp, &rs, &mut output, &ConfigView::default());
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("empty layer-plan-view"),
+            "error was: {err}"
+        );
     }
 }

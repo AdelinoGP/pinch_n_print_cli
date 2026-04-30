@@ -11,13 +11,7 @@ wit-world    = "slicer:world-prepass@1.0.0"
 id = "PrePass::SupportGeneration"
 
 [ir-access]
-# `LayerPlanIR` is a host-side scheduling prerequisite (see
-# `ensure_stage_prerequisites` for `PrePass::SupportGeneration`) but is not
-# read at runtime: v1 propagation is layer-height-agnostic and walks the
-# object's mesh bounds at the WIT-exposed `MeshObjectView` granularity. A
-# follow-up packet that surfaces `LayerPlanIR` to the prepass guest will add
-# it back to this list.
-reads  = ["MeshIR", "SurfaceClassificationIR", "PaintRegionIR"]
+reads  = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR", "RegionMapIR", "PaintRegionIR"]
 writes = ["SupportPlanIR"]
 
 [claims]
