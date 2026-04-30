@@ -17,10 +17,11 @@ use crate::postpass_builders::GcodeOutputBuilder;
 use crate::postpass_types::GcodeCommand;
 use crate::prepass_builders::{
     LayerPlanOutput, MeshAnalysisOutput, MeshSegmentationOutput, PaintSegmentationOutput,
-    SeamPlanningOutput, SupportGenerationOutput,
+    SeamPlanningOutput, SupportGeometryOutput,
 };
 use crate::prepass_types::{
     LayerPlanView, MeshObjectView, ObjectId, PaintSegmentationObjectView, RegionSegmentationView,
+    SupportGeometryView,
 };
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
@@ -460,23 +461,35 @@ pub trait PrepassModule: Sized {
         Ok(())
     }
 
-    /// Run support generation to compute multi-layer organic branch geometry.
+    /// Run support geometry to compute multi-layer organic branch geometry.
     ///
     /// Propagates contact points from overhang/bridge facets and support-enforcer
     /// paint regions top-down through the layer stack, grouping and merging via
     /// per-layer minimum spanning trees. Emits branch segments that per-layer
     /// `Layer::Support` modules (notably `tree-support`) can consume directly.
-    /// Default implementation returns `unimplemented`.
-    fn run_support_generation(
+    ///
+    /// Per docs/03_wit_and_manifest.md (world-prepass.wit):
+    /// ```wit
+    /// export run-support-geometry: func(
+    ///     objects: list<mesh-object-view>,
+    ///     layer-plan: layer-plan-view,
+    ///     region-segmentation: region-segmentation-view,
+    ///     support-geometry: support-geometry-view,
+    /// ) -> support-geometry-output;
+    /// ```
+    ///
+    /// Corresponds to `PrePass::SupportGeometry`. Default implementation returns `unimplemented`.
+    fn run_support_geometry(
         &self,
         _objects: &[MeshObjectView],
         _layer_plan: &LayerPlanView,
         _region_segmentation: &RegionSegmentationView,
-        _output: &mut SupportGenerationOutput,
+        _support_geometry: &SupportGeometryView,
+        _output: &mut SupportGeometryOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
         Err(ModuleError::from_str(
-            "run_support_generation is not implemented",
+            "run_support_geometry is not implemented",
         ))
     }
 }

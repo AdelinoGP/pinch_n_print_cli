@@ -361,3 +361,23 @@ pub struct RegionSegmentationView {
     /// Ordered list of entries (ascending by (layer_index, object_id)).
     pub entries: Vec<RegionSegmentationViewEntry>,
 }
+
+/// Entry in the support geometry view, listing coarse outlines for one support layer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportGeometryViewEntry {
+    /// u32::MAX sentinel = intermediate model-resolution layer
+    pub global_support_layer_index: u32,
+    /// Object this entry belongs to.
+    pub object_id: ObjectId,
+    /// Region identifier within the object.
+    pub region_id: RegionId,
+    /// Coarse support outlines at this support layer boundary.
+    pub outlines: Vec<slicer_ir::ExPolygon>,
+}
+
+/// Read-only view of the committed SupportGeometryIR.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SupportGeometryView {
+    /// Ordered list of entries (ascending by (global_support_layer_index, object_id, region_id)).
+    pub entries: Vec<SupportGeometryViewEntry>,
+}
