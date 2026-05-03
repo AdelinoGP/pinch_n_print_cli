@@ -57,7 +57,11 @@ wit_bindgen::generate!({
             use geometry.{ex-polygon, extrusion-path3d, point3, extrusion-role};
             type object-id = string;
             type region-id = string;
-            type layer-idx = u32;
+            // Signed because raft entries committed by `PrePass::SupportGeometry`
+            // carry negative `global_layer_index`. Layer-module exports always
+            // pass non-negative values; conversion to host u32 happens at the
+            // boundary.
+            type layer-idx = s32;
             record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
             record wall-feature-flag { tool-index: option<u32>, fuzzy-skin: bool, is-bridge: bool, is-thin-wall: bool, skip-ironing: bool, custom: list<tuple<string, paint-value>> }
             record wall-loop-view { perimeter-index: u32, loop-type: wall-loop-type, path: extrusion-path3d, feature-flags: list<wall-feature-flag> }

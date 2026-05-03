@@ -217,8 +217,10 @@ wit_bindgen::generate!({
             // SupportGeometry stage — paint-segmentation owns no support
             // logic, but the host's typed prepass world requires every
             // export be present, so we emit a deterministic no-op stub.
+            // global-layer-index is signed because raft prefix entries
+            // committed by `PrePass::SupportGeometry` carry negative indices.
             record support-plan-entry {
-                global-layer-index: u32,
+                global-layer-index: s32,
                 object-id: object-id,
                 region-id: region-id,
                 branch-segments: list<list<point3-with-width>>,
