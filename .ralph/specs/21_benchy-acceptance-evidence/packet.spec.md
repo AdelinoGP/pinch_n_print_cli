@@ -1,17 +1,9 @@
 ---
-status: superseded
+status: draft
 packet: benchy-acceptance-evidence
 task_ids:
   - TASK-135
 backlog_source: docs/07_implementation_status.md
-superseded_by: 34_retraction-mode-firmware-vs-gcode
-superseded_reason: |
-  AC-3 here asserted balanced M207/M208 retract/unretract pairs, but M207/M208
-  are Marlin firmware-retraction *configuration* setters, not the retract action.
-  OrcaSlicer parity for firmware retraction is G10/G11. Packet 34 absorbs the
-  retract/unretract acceptance evidence, adds a retract_mode toggle (gcode default,
-  firmware optional), reframes the failing assertion against G1 E- pairs, and
-  adds a separate firmware-mode test that asserts balanced G10/G11.
 ---
 
 # Packet Contract: benchy-acceptance-evidence
