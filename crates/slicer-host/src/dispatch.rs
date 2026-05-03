@@ -473,7 +473,7 @@ impl WasmRuntimeDispatcher {
                     .bindings
                     .call_run_infill(
                         config.store,
-                        params.layer_index,
+                        params.layer_index as i32,
                         &region_handles,
                         own(output),
                         own(config.config_handle),
@@ -493,7 +493,7 @@ impl WasmRuntimeDispatcher {
                     .bindings
                     .call_run_infill_postprocess(
                         config.store,
-                        params.layer_index,
+                        params.layer_index as i32,
                         &region_handles,
                         own(output),
                         own(config.config_handle),
@@ -518,7 +518,7 @@ impl WasmRuntimeDispatcher {
                     .bindings
                     .call_run_slice_postprocess(
                         config.store,
-                        params.layer_index,
+                        params.layer_index as i32,
                         &region_handles,
                         own(paint),
                         own(output),
@@ -544,7 +544,7 @@ impl WasmRuntimeDispatcher {
                     .bindings
                     .call_run_perimeters(
                         config.store,
-                        params.layer_index,
+                        params.layer_index as i32,
                         &region_handles,
                         own(paint),
                         own(output),
@@ -569,7 +569,7 @@ impl WasmRuntimeDispatcher {
                     .bindings
                     .call_run_wall_postprocess(
                         config.store,
-                        params.layer_index,
+                        params.layer_index as i32,
                         &region_handles,
                         own(output),
                         own(config.config_handle),
@@ -598,7 +598,7 @@ impl WasmRuntimeDispatcher {
                     .bindings
                     .call_run_support(
                         config.store,
-                        params.layer_index,
+                        params.layer_index as i32,
                         &region_handles,
                         own(paint),
                         own(output),
@@ -618,7 +618,7 @@ impl WasmRuntimeDispatcher {
                     .bindings
                     .call_run_support_postprocess(
                         config.store,
-                        params.layer_index,
+                        params.layer_index as i32,
                         &region_handles,
                         own(output),
                         own(config.config_handle),
@@ -644,7 +644,7 @@ impl WasmRuntimeDispatcher {
                     .bindings
                     .call_run_path_optimization(
                         config.store,
-                        params.layer_index,
+                        params.layer_index as i32,
                         &region_handles,
                         own(output),
                         own(collection),
@@ -1418,7 +1418,7 @@ fn build_paint_layer_data_with_plan(
     };
     if let Some(plan) = support_plan_ir {
         for entry in &plan.entries {
-            if entry.global_layer_index != layer_index {
+            if entry.global_layer_index != layer_index as i32 {
                 continue;
             }
             let key = (entry.object_id.clone(), entry.region_id.to_string());
