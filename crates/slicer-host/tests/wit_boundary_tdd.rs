@@ -371,7 +371,7 @@ fn repeated_calls_produce_independent_outputs() {
         bindings
             .call_run_infill(
                 &mut store,
-                i as u32,
+                i as i32,
                 &[resource_to_own(region_handle)],
                 resource_to_own(output_handle),
                 resource_to_own(config_handle),

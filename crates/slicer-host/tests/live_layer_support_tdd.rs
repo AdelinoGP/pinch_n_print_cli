@@ -1360,7 +1360,7 @@ mod planner_consuming_tier {
         Arc::new(SupportPlanIR {
             schema_version: semver(1, 0, 0),
             entries: vec![SupportPlanEntry {
-                global_layer_index: layer_index,
+                global_layer_index: layer_index as i32,
                 object_id: "obj-0".to_string(),
                 region_id: 0,
                 branch_segments: vec![make_planned_segment(layer_z)],
@@ -1537,13 +1537,13 @@ mod planner_consuming_tier {
             schema_version: semver(1, 0, 0),
             entries: vec![
                 SupportPlanEntry {
-                    global_layer_index: layer_index,
+                    global_layer_index: layer_index as i32,
                     object_id: "obj-0".to_string(),
                     region_id: other_region_id,
                     branch_segments: vec![seg_for(other_region_id, layer_z)],
                 },
                 SupportPlanEntry {
-                    global_layer_index: layer_index,
+                    global_layer_index: layer_index as i32,
                     object_id: "obj-0".to_string(),
                     region_id: target_region_id,
                     branch_segments: vec![seg_for(target_region_id, layer_z)],
