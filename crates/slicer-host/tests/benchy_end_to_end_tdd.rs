@@ -1291,16 +1291,16 @@ fn benchy_live_path_contains_resolved_seam_evidence_before_emit() {
     // Live-path seam evidence: the G-code emitter applies seam by
     // rotating the wall loop so it starts at the seam vertex. This
     // produces a G1 move whose endpoint X/Y equals the seam position
-    // on the FIRST outer wall pass after a ;TYPE:OuterWall marker.
+    // on the FIRST outer wall pass after a ;TYPE:Outer wall marker.
     //
     // We check for the pattern:
-    //   ;TYPE:OuterWall
+    //   ;TYPE:Outer wall
     //   (maybe other lines)
     //   G1 X<seam_x> Y<seam_y> ... E...
     //
     // The presence of a well-formed outer-wall start that is NOT at
     // the canonical 0-degree start position indicates seam rotation occurred.
-    // We detect this by looking for ;TYPE:OuterWall blocks followed by
+    // We detect this by looking for ;TYPE:Outer wall blocks followed by
     // G1 moves that have X or Y values near the seam-aligned region of
     // the benchy geometry (not near 0,0).
 
@@ -1308,7 +1308,7 @@ fn benchy_live_path_contains_resolved_seam_evidence_before_emit() {
     let mut seam_evidence_found = false;
 
     for (i, line) in lines.iter().enumerate() {
-        if line.contains(";TYPE:OuterWall") {
+        if line.contains(";TYPE:Outer wall") {
             // Scan forward in this block (next ~20 lines) for a G1
             // extrusion move that does not start near the origin, which
             // indicates the wall was rotated to a non-default start.
