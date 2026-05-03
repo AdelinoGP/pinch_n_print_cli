@@ -7,10 +7,10 @@
   - `modules/core-modules/support-planner/src/lib.rs` — avoidance/collision build from `SupportGeometryView`, radius tapering, raft prefix, interface densification, wall-count move scaling, `dist_to_top` tracking, `MAX_BRANCH_RADIUS` constant, v1 doc bullet removal.
   - `crates/slicer-helpers/src/geometry.rs` — `polygon_inflate`, `point_in_polygons`, `hausdorff_distance` helpers.
 - **Neighboring tests or fixtures:**
-  - `crates/slicer-host/tests/prepass_support_generation_tdd.rs` (packet 28) — must remain green.
-  - `crates/slicer-host/tests/prepass_support_generation_layer_plan_tdd.rs` (packet 30) — must remain green.
+  - `crates/slicer-host/tests/prepass_support_geometry_tdd.rs` (packet 28) — must remain green.
+  - `crates/slicer-host/tests/prepass_support_geometry_layer_plan_tdd.rs` (packet 30) — must remain green.
   - `crates/slicer-host/tests/support_geometry_prepass_tdd.rs` (packet 31a) — must remain green.
-  - `crates/slicer-host/tests/live_support_generation_tdd.rs` — must remain green.
+  - `crates/slicer-host/tests/live_layer_support_tdd.rs` — must remain green.
   - `crates/slicer-host/tests/benchy_end_to_end_tdd.rs` — must remain green.
   - new file: `crates/slicer-host/tests/prepass_support_generation_orca_parity_tdd.rs`.
   - new fixtures: `resources/golden/benchy_tree_support_orca_branch_count.txt`, `resources/golden/benchy_tree_support_orca_endpoints.txt`.
@@ -21,7 +21,7 @@
 - **No new WIT change in this packet.** Packet 31a already added `SupportGeometryView` as a WIT parameter on `run-support-geometry`. This packet only consumes it.
 - **No new IR type.** `SupportPlanIR` is unchanged; the algorithmic changes affect only how the planner computes and emits entries.
 - **Determinism.** The `SupportGeometryView` projection from 31a is already deterministic (sorted by `(global_support_layer_index, object_id, region_id)`). The avoidance polygon union uses deterministic Clipper-style operations.
-- **Schema bump.** If Q2 (raft Z convention) resolves to signed `global_layer_index`.
+- **Schema bump:** `SupportPlanEntry.global_layer_index` widened `u32` → `i32` (Q2 resolved path a).
 
 ## Code Change Surface
 
@@ -62,6 +62,7 @@ The planner reads `SupportGeometryView.outlines` at support resolution. Per supp
 - **Wall-count move formula:** `max_move_distance = tan(branch_angle_rad) * effective_layer_height * tree_support_wall_count.max(1)`.
 - **`SupportPlanIR.global_layer_index`** resolves to `i32` if Q2 (raft Z convention from 31a) resolves to path (a); otherwise the host adds a `raft_layers` field and index is `u32`.
 - **Diagnostic shape:** `Diagnostic { level: Warn, code: "support-planner.node-clamped-out", message: format!("node ({:.3},{:.3}) clamped-out at support layer {} after avoidance/collision check", x, y, layer), source: ModuleId("com.core.support-planner") }`.
+- **Diagnostic delivery (v1).** No typed `Diagnostic` channel exists between guest WASM modules and the host yet, so the AC-N3 warning is emitted via `slicer_sdk::host::log(LogLevel::Warn, ...)` with the canonical `support-planner.node-clamped-out:` prefix carrying layer/object/position fields. Tests assert on the captured log via `slicer_sdk::host::test_support::install_log_capture`. Promoting this to a structured `Diagnostic` over the prepass output WIT is tracked as `TASK-163b` in `docs/07_implementation_status.md`.
 
 ## Locked Assumptions and Invariants
 
@@ -77,7 +78,7 @@ The planner reads `SupportGeometryView.outlines` at support resolution. Per supp
 
 ## Risks and Tradeoffs
 
-- **Risk: Benchy parity tolerance too tight or loose.** Q3 resolution decides; the packet stays draft until decided.
+- **Risk: regression-anchor goldens drift with intentional algorithmic improvements.** Mitigation: when an intentional improvement changes branch shape, re-capture goldens and explicitly note the re-capture in the packet that introduces the change.
 - **Risk: avoidance projection produces oscillatory results.** Mitigation: clamp projected target to line segment between current node and original target; if outside avoidance_polys, drop the node and emit diagnostic.
 - **Tradeoff: interface densification doubles entry count for top/bottom layers of every column.** Acceptable; tree-support emitter handles the count.
 - **Tradeoff: coarse support resolution (from 31a) means fewer collision samples than model resolution.** Acceptable for v2. The `support_top_z_distance` refinement provides high-resolution collision near the model where it matters most.
@@ -88,4 +89,4 @@ All open questions are resolved.
 
 - **Q1 (resolved by 31a):** Support layer boundary — accumulator approach. Q2 (intermediate model-resolution layers for `support_top_z_distance`). Q3 (sentinel = 0.0 for model layer height).
 - **Q2 (resolved):** Raft Z convention — **(a) Signed `global_layer_index` (`i32`)**. Simpler than a separate `raft_layers` field on `SupportPlanIR`. Raft entries use `global_layer_index = -1, -2, ..., -raft_layers` with Z values `z_bed - (i+1) * raft_layer_height_mm`. Host `harvest_support_plan_ir` and tree-support's `support_plan_segments_for` handle negative indices.
-- **Q3 (resolved):** Numerical tolerance for Benchy parity check — **(c) Both must hold**: branch count within ±10% **AND** endpoint Hausdorff distance ≤ 0.5mm. Either failing means the test fails.
+- **Q3 (resolved):** Numerical tolerance for the regression-anchor check — **(c) Both must hold**: branch count within ±10% **AND** endpoint Hausdorff distance ≤ 0.5mm. Either failing means the test fails. The check anchors `support-planner`'s output against drift, not against external OrcaSlicer output.

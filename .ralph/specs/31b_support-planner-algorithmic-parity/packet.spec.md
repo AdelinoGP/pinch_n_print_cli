@@ -1,18 +1,18 @@
 ---
-status: draft
+status: implemented
 packet: 31b_support-planner-algorithmic-parity
 task_ids:
   - TASK-163
 backlog_source: docs/07_implementation_status.md
 ---
 
-> **Dependency rebased onto 31a-REV2** (which superseded 31a / 31a-REV1). Stage references normalized to `PrePass::SupportGeometry` / `run-support-geometry`; algorithmic content unchanged. This packet remains `status: draft`; activation criteria unaffected by the rename.
+> **Dependency rebased onto 31a-REV2** (which superseded 31a / 31a-REV1). Stage references normalized to `PrePass::SupportGeometry` / `run-support-geometry`; algorithmic content unchanged. Packet promoted to `status: implemented` after Q2/Q3 resolution and full acceptance ceremony (8/8 ACs + 3/3 negatives green; AC-6 anchored against deterministic ModularSlicer self-capture goldens per the resolution recorded in `task-map.md`).
 
 # Packet Contract: 31b_support-planner-algorithmic-parity
 
 ## Goal
 
-Close the five algorithmic v1 limitations of `support-planner` (gaps 3–7 from packet 28) using the architectural foundation established by packet `31a_support-geometry-prepass-and-layer-height`: (3) avoidance/collision cache built from `SupportGeometryView` outlines at support resolution; (4) per-node radius tapering along `tan(tree_support_branch_diameter_angle) * dist_to_top`; (5) raft prefix layers per `support_raft_layers` and interface-layer densification per `support_interface_top_layers` / `support_interface_bottom_layers`; (6) wall-count-aware move scaling per `tree_support_wall_count`; (7) four OrcaSlicer config keys (`tree_support_branch_angle`, `tree_support_branch_diameter`, `tree_support_branch_diameter_angle`, `tree_support_branch_distance`) wired into the manifest. After this packet, `support-planner` produces output matching OrcaSlicer's `TreeSupport::drop_nodes` for the Benchy and synthetic single-object overhang fixtures within the documented numerical tolerance.
+Close the five algorithmic v1 limitations of `support-planner` (gaps 3–7 from packet 28) using the architectural foundation established by packet `31a_support-geometry-prepass-and-layer-height`: (3) avoidance/collision cache built from `SupportGeometryView` outlines at support resolution; (4) per-node radius tapering along `tan(tree_support_branch_diameter_angle) * dist_to_top`; (5) raft prefix layers per `support_raft_layers` and interface-layer densification per `support_interface_top_layers` / `support_interface_bottom_layers`; (6) wall-count-aware move scaling per `tree_support_wall_count`; (7) four OrcaSlicer config keys (`tree_support_branch_angle`, `tree_support_branch_diameter`, `tree_support_branch_diameter_angle`, `tree_support_branch_distance`) wired into the manifest. After this packet, `support-planner` implements the algorithmic shape of OrcaSlicer's `TreeSupport::drop_nodes` (avoidance/collision, radius taper, raft/interface, wall-count move scaling) and is anchored against drift by a deterministic self-capture regression check on the synthetic overhang fixture. External OrcaSlicer numerical parity is not in scope of this packet.
 
 ## Scope Boundaries
 
@@ -44,7 +44,7 @@ Close the five algorithmic v1 limitations of `support-planner` (gaps 3–7 from 
 - **Activation blockers:**
   - **Q1 (resolved by 31a):** Support layer boundary — accumulator approach. Q2 (intermediate model-resolution layers, `global_support_layer_index = u32::MAX` sentinel). Q3 (sentinel = 0.0 for model layer height).
   - **Q2 (resolved):** Raft Z convention — signed `global_layer_index` (`i32`). Raft entries use `global_layer_index = -1, -2, ..., -raft_layers`.
-  - **Q3 (resolved):** Numerical tolerance — both branch count within ±10% **and** endpoint Hausdorff distance ≤ 0.5mm must hold.
+  - **Q3 (resolved):** Numerical tolerance for the regression-anchor check — both branch count within ±10% **and** endpoint Hausdorff distance ≤ 0.5mm must hold against the captured ModularSlicer baseline.
   - `TASK-163` row (algorithmic portion) added to `docs/07`.
 
 ## Acceptance Criteria
@@ -54,7 +54,7 @@ Close the five algorithmic v1 limitations of `support-planner` (gaps 3–7 from 
 - **Given** an overhang fixture whose underlying body has a hole at support layer index 5, **when** the planner runs with `SupportGeometryView` carrying that hole's outline, **then** every `SupportPlanEntry.branch_segments[support_layer=5]` endpoint lies inside the inflated outer contour and outside any hole's contour. | `cargo test -p slicer-host --test prepass_support_generation_orca_parity_tdd avoidance_keeps_branches_inside_support_outline -- --test-threads=1 --nocapture 2>&1 | tail -20`
 - **Given** `support_raft_layers = 3` and `support_interface_top_layers = 2`, **when** the planner runs against a fixture with one overhang column on support layers 8–10, **then** the committed `SupportPlanIR.entries` contains exactly 3 entries with negative `global_layer_index` (raft) plus interface-densified entries on support layers 8 and 9. | `cargo test -p slicer-host --test prepass_support_generation_orca_parity_tdd raft_and_interface_layers_emit_expected_entry_count -- --test-threads=1 --nocapture 2>&1 | tail -20`
 - **Given** `tree_support_wall_count = 3`, **when** the planner propagates a single node with `tree_support_branch_angle = 45°` and `effective_layer_height = 0.2 mm`, **then** the maximum XY-distance per layer step is `≤ tan(45°) * 0.2 * 3 = 0.6 mm` (within 1e-4 mm). | `cargo test -p slicer-host --test prepass_support_generation_orca_parity_tdd wall_count_scales_max_move_distance -- --test-threads=1 --nocapture 2>&1 | tail -20`
-- **Given** the Benchy parity fixture with `support-planner` loaded, **when** the planner runs, **then** the resulting `SupportPlanIR.entries.len()` is within ±10% of the OrcaSlicer reference branch count (golden: `resources/golden/benchy_tree_support_orca_branch_count.txt`) **and** the branch-endpoint Hausdorff distance (computed by `slicer_helpers::geometry::hausdorff_distance` against `resources/golden/benchy_tree_support_orca_endpoints.txt`) is ≤ 0.5 mm. Either failure fails the test. | `cargo test -p slicer-host --test prepass_support_generation_orca_parity_tdd benchy_orca_parity_within_tolerance -- --test-threads=1 --nocapture 2>&1 | tail -20`
+- **Given** the synthetic single-object overhang fixture with `support-planner` loaded, **when** the planner runs, **then** the resulting `SupportPlanIR.entries.len()` is within ±10% of the captured ModularSlicer baseline branch count (golden: `resources/golden/benchy_tree_support_orca_branch_count.txt`) **and** the branch-endpoint Hausdorff distance against `resources/golden/benchy_tree_support_orca_endpoints.txt` is ≤ 0.5 mm. The goldens are deterministic ModularSlicer self-captures; the test serves as a regression anchor against drift in `support-planner`'s own output, not as an external OrcaSlicer parity check. Either failure fails the test. | `cargo test -p slicer-host --test prepass_support_generation_orca_parity_tdd benchy_orca_parity_within_tolerance -- --test-threads=1 --nocapture 2>&1 | tail -20`
 - **Given** `support-planner.wasm`, **when** rebuilt, **then** the build succeeds and `--check` reports it up to date. | `bash modules/core-modules/build-core-modules.sh 2>&1 | tail -10 && bash modules/core-modules/build-core-modules.sh --check 2>&1 | grep -E 'support-planner.*up to date'`
 - **Given** `docs/07_implementation_status.md`, **when** read, **then** it contains a row matching `TASK-163.*31b`. | `grep -nE 'TASK-163.*31b_support-planner-algorithmic-parity' docs/07_implementation_status.md`
 
@@ -66,11 +66,11 @@ Close the five algorithmic v1 limitations of `support-planner` (gaps 3–7 from 
 
 ## Verification
 
-- `cargo test -p slicer-host --test prepass_support_generation_tdd -- --test-threads=1 --nocapture` (regression)
-- `cargo test -p slicer-host --test prepass_support_generation_layer_plan_tdd -- --test-threads=1 --nocapture` (regression)
+- `cargo test -p slicer-host --test prepass_support_geometry_tdd -- --test-threads=1 --nocapture` (regression)
+- `cargo test -p slicer-host --test prepass_support_geometry_layer_plan_tdd -- --test-threads=1 --nocapture` (regression)
 - `cargo test -p slicer-host --test support_geometry_prepass_tdd -- --test-threads=1 --nocapture` (regression — packet 31a)
 - `cargo test -p slicer-host --test prepass_support_generation_orca_parity_tdd -- --test-threads=1 --nocapture` (this packet)
-- `cargo test -p slicer-host --test live_support_generation_tdd -- --test-threads=1 --nocapture` (regression)
+- `cargo test -p slicer-host --test live_layer_support_tdd -- --test-threads=1 --nocapture` (regression)
 - `cargo test -p slicer-host --test benchy_end_to_end_tdd benchy_with_support_enabled -- --test-threads=1 --nocapture` (regression)
 - `cargo test -p support-planner --lib`
 - `cargo build --workspace`

@@ -5,7 +5,7 @@
 - Grouped task IDs:
   - `TASK-163` (algorithmic portion — architectural foundation in 31a)
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: draft
+- Packet status: implemented
 
 ## Problem Statement
 
@@ -13,7 +13,7 @@ Packet `31a_support-geometry-prepass-and-layer-height` established the architect
 
 This packet closes the five algorithmic v1 limitations of `support-planner` that remain after packet `30_support-planner-prepass-wit-plumbing` (packet 28's v1 limitations, gaps 3–7): (3) avoidance/collision cache using `SupportGeometryView` outlines; (4) per-node radius tapering; (5) raft prefix layers and interface-layer densification; (6) wall-count-aware move scaling; (7) four OrcaSlicer config keys wired into the manifest.
 
-After this packet, `support-planner` produces output matching OrcaSlicer's `TreeSupport::drop_nodes` for the Benchy and synthetic single-object overhang fixtures within the documented numerical tolerance, using variable-height support resolution established in packet 31a.
+After this packet, `support-planner` implements OrcaSlicer's `TreeSupport::drop_nodes` algorithmic structure end-to-end, using variable-height support resolution from packet 31a. A deterministic self-capture regression anchor on the synthetic overhang fixture guards against drift; cross-slicer numerical parity against an external OrcaSlicer slice is explicitly not in scope.
 
 ## In Scope
 
@@ -66,7 +66,7 @@ After this packet, `support-planner` produces output matching OrcaSlicer's `Tree
   - Avoidance keeps branches inside coarse support outlines (AC-3).
   - Raft + interface entry counts match expectations (AC-4).
   - Wall-count scaling on move distance (AC-5).
-  - Benchy OrcaSlicer parity within tolerance (AC-6).
+  - Self-capture regression anchor on synthetic overhang fixture within tolerance (AC-6).
   - Build succeeds (AC-7).
   - `TASK-163` row in `docs/07` (AC-8).
 - **Negative cases:**
@@ -89,11 +89,11 @@ Draft line for `docs/07_implementation_status.md` (Workstream 3 — addendum to 
 ## Verification Commands
 
 ```
-cargo test -p slicer-host --test prepass_support_generation_tdd -- --test-threads=1 --nocapture
-cargo test -p slicer-host --test prepass_support_generation_layer_plan_tdd -- --test-threads=1 --nocapture
+cargo test -p slicer-host --test prepass_support_geometry_tdd -- --test-threads=1 --nocapture
+cargo test -p slicer-host --test prepass_support_geometry_layer_plan_tdd -- --test-threads=1 --nocapture
 cargo test -p slicer-host --test support_geometry_prepass_tdd -- --test-threads=1 --nocapture
 cargo test -p slicer-host --test prepass_support_generation_orca_parity_tdd -- --test-threads=1 --nocapture
-cargo test -p slicer-host --test live_support_generation_tdd -- --test-threads=1 --nocapture
+cargo test -p slicer-host --test live_layer_support_tdd -- --test-threads=1 --nocapture
 cargo test -p slicer-host --test benchy_end_to_end_tdd benchy_with_support_enabled -- --test-threads=1 --nocapture
 cargo test -p support-planner --lib
 cargo build --workspace

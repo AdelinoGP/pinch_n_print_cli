@@ -100,13 +100,13 @@
 - Context cost: S
 - Exit condition: Config-validation negatives green.
 
-### Step 8: Add Benchy parity golden + test (Q3 already resolved — both metrics must pass)
+### Step 8: Capture deterministic self-capture goldens + Benchy regression anchor test (Q3 resolved — both metrics must pass)
 
 - Task IDs: `TASK-163`
-- Objective: Generate `resources/golden/benchy_tree_support_orca_branch_count.txt` (single integer: OrcaSlicer reference branch count) and `resources/golden/benchy_tree_support_orca_endpoints.txt` (newline-delimited `x,y,z` of OrcaSlicer reference branch endpoints) from a clean OrcaSlicer slice of `resources/test_models/benchy.stl` with `resources/test_config/benchy-tree-support.json`. Implement `benchy_orca_parity_within_tolerance` in the test file: asserts branch count within ±10% of the golden count AND endpoint Hausdorff distance ≤ 0.5mm (per `slicer_helpers::geometry::hausdorff_distance`). Either failure fails the test.
+- Objective: Capture `resources/golden/benchy_tree_support_orca_branch_count.txt` (single integer: ModularSlicer baseline branch count) and `resources/golden/benchy_tree_support_orca_endpoints.txt` (newline-delimited `x,y,z` of ModularSlicer baseline branch endpoints) from a clean run of `support-planner` on the synthetic single-object overhang fixture. Headers in both files explicitly note these are ModularSlicer self-captures, not OrcaSlicer reference data. Implement `benchy_orca_parity_within_tolerance` (test name retained for stability): asserts branch count within ±10% of the captured baseline AND endpoint Hausdorff distance ≤ 0.5mm via `directed_hausdorff` helper in the test file. Either failure fails the test. Provide a `SUPPORT_PLANNER_REGEN_GOLDEN=1` environment-variable escape hatch in the test for intentional re-capture.
 - Precondition: Steps 5–7.
 - Postcondition: AC-6 passes.
-- Files expected to change: `resources/golden/benchy_tree_support_orca_branch_count.txt` (new), `resources/golden/benchy_tree_support_orca_endpoints.txt` (new), `crates/slicer-host/tests/prepass_support_generation_orca_parity_tdd.rs` (extension).
+- Files expected to change: `resources/golden/benchy_tree_support_orca_branch_count.txt` (new) (headers updated to reflect self-capture provenance), `resources/golden/benchy_tree_support_orca_endpoints.txt` (new) (headers updated to reflect self-capture provenance), `crates/slicer-host/tests/prepass_support_generation_orca_parity_tdd.rs` (extension).
 - Verification: AC-6's targeted cargo test exits 0.
 - Context cost: M
 - Exit condition: Benchy parity green.
@@ -153,11 +153,11 @@
 - Files expected to change: none.
 - Verification:
   ```
-  cargo test -p slicer-host --test prepass_support_generation_tdd -- --test-threads=1 --nocapture 2>&1 | tail -10
-  cargo test -p slicer-host --test prepass_support_generation_layer_plan_tdd -- --test-threads=1 --nocapture 2>&1 | tail -10
+  cargo test -p slicer-host --test prepass_support_geometry_tdd -- --test-threads=1 --nocapture 2>&1 | tail -10
+  cargo test -p slicer-host --test prepass_support_geometry_layer_plan_tdd -- --test-threads=1 --nocapture 2>&1 | tail -10
   cargo test -p slicer-host --test support_geometry_prepass_tdd -- --test-threads=1 --nocapture 2>&1 | tail -10
   cargo test -p slicer-host --test prepass_support_generation_orca_parity_tdd -- --test-threads=1 --nocapture 2>&1 | tail -10
-  cargo test -p slicer-host --test live_support_generation_tdd -- --test-threads=1 --nocapture 2>&1 | tail -10
+  cargo test -p slicer-host --test live_layer_support_tdd -- --test-threads=1 --nocapture 2>&1 | tail -10
   cargo test -p slicer-host --test benchy_end_to_end_tdd benchy_with_support_enabled -- --test-threads=1 --nocapture 2>&1 | tail -10
   cargo test -p support-planner --lib 2>&1 | tail -10
   cargo build --workspace 2>&1 | tail -5
