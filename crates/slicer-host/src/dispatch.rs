@@ -1519,6 +1519,14 @@ fn push_perimeter_regions(
         None => return Ok(Vec::new()),
     };
 
+    if let Some(seam_ir) = seam_plan_ir {
+        eprintln!(
+            "seam_plan_ir has {} entries, looking for layer={}",
+            seam_ir.entries.len(),
+            layer_index
+        );
+    }
+
     let mut handles = Vec::with_capacity(perimeter_ir.regions.len());
     for region in &perimeter_ir.regions {
         let mut data = wit_host::perimeter_region_to_data(region);
