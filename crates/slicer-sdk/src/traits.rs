@@ -129,7 +129,7 @@ impl PaintRegionLayerView {
         plan.entries
             .iter()
             .filter(|entry| {
-                entry.global_layer_index == self.layer_index
+                entry.global_layer_index == self.layer_index as i32
                     && entry.object_id == object_id
                     && entry.region_id == region_id
             })
