@@ -30,6 +30,9 @@ wat = "1.0"
 tempfile = "3"
 serde_json = "1.0"
 slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk" }
+
+[dev-dependencies.support-planner]
+path = "../../modules/core-modules/support-planner"
 # NOTE: no module crate dev-dependencies. SDK-level trait tests belong in
 # the module's own `tests/` directory; host-level tests must exercise
 # either pure host plumbing (blackboard, dispatch routing, claim dedup)

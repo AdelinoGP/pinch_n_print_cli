@@ -2183,6 +2183,7 @@ dependencies = [
  "slicer-ir",
  "slicer-sdk",
  "stl_io",
+ "support-planner",
  "tempfile",
  "tobj",
  "toml 0.8.23",
