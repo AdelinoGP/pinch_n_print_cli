@@ -787,10 +787,16 @@ pub struct SeamPlanIR {
 /// Consumed at dispatch time by `Layer::Support` modules (notably
 /// `tree-support`) that emit pre-planned organic branch geometry instead
 /// of running a per-layer filler.
+///
+/// `global_layer_index` uses a signed integer to support raft prefix layers:
+/// raft entries carry negative indices (`-1, -2, ..., -raft_layers`) so raft
+/// always sorts before model layers (which use `0, 1, 2, ...`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SupportPlanEntry {
     /// Global (inter-object) layer index this entry applies to.
-    pub global_layer_index: u32,
+    /// Negative values (`-1`, `-2`, ...) are reserved for raft prefix layers.
+    /// Non-negative values (`0`, `1`, ...) refer to model layers.
+    pub global_layer_index: i32,
     /// Object the branches belong to.
     pub object_id: ObjectId,
     /// Region inside the object the branches belong to.

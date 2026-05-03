@@ -316,7 +316,9 @@ pub struct SeamPlanEntry {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SupportPlanEntry {
     /// Global layer index for this support plan entry.
-    pub global_layer_index: u32,
+    /// Negative values (`-1`, `-2`, ...) are reserved for raft prefix layers.
+    /// Non-negative values (`0`, `1`, ...) refer to model layers.
+    pub global_layer_index: i32,
     /// Object this entry belongs to.
     pub object_id: ObjectId,
     /// Region identifier within the object.
