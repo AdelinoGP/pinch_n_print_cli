@@ -1341,7 +1341,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
 
             // SupportGeometry stage
             record support-plan-entry {
-                global-layer-index: u32,
+                global-layer-index: s32,
                 object-id: object-id,
                 region-id: region-id,
                 branch-segments: list<list<point3-with-width>>,
@@ -2002,6 +2002,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 
     let slice_postprocess_arm = if detected_stage == "Layer::SlicePostProcess" {
         quote! {
+            let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
             let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
                 Ok(m) => m,
@@ -2022,6 +2023,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 
     let perimeters_arm = if detected_stage == "Layer::Perimeters" {
         quote! {
+            let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
             let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
                 Ok(m) => m,
@@ -2042,6 +2044,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 
     let wall_postprocess_arm = if detected_stage == "Layer::PerimetersPostProcess" {
         quote! {
+            let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
             let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
                 Ok(m) => m,
@@ -2061,6 +2064,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 
     let infill_arm = if detected_stage == "Layer::Infill" {
         quote! {
+            let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
             let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
                 Ok(m) => m,
@@ -2080,6 +2084,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 
     let infill_postprocess_arm = if detected_stage == "Layer::InfillPostProcess" {
         quote! {
+            let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
             let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
                 Ok(m) => m,
@@ -2099,6 +2104,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 
     let support_arm = if detected_stage == "Layer::Support" {
         quote! {
+            let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
             let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
                 Ok(m) => m,
@@ -2135,6 +2141,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 
     let support_postprocess_arm = if detected_stage == "Layer::SupportPostProcess" {
         quote! {
+            let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
             let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
                 Ok(m) => m,
@@ -2154,6 +2161,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 
     let path_opt_arm = if detected_stage == "Layer::PathOptimization" {
         quote! {
+            let layer_index = layer_index as u32;
             let ir_config = __slicer_adapt_config(&config);
             let module = match <#self_ty as ::slicer_sdk::traits::LayerModule>::on_print_start(&ir_config) {
                 Ok(m) => m,
@@ -2427,7 +2435,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 paint: &PaintRegionLayerView,
             ) -> ::slicer_sdk::traits::PaintRegionLayerView {
                 use ::std::collections::HashMap;
-                let layer_idx = paint.layer_index();
+                let layer_idx = paint.layer_index() as u32;
                 let mut semantic_regions: HashMap<
                     ::slicer_ir::PaintSemantic,
                     ::std::vec::Vec<::slicer_ir::SemanticRegion>,
@@ -2538,7 +2546,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         })
                         .collect();
                     entries.push(::slicer_ir::SupportPlanEntry {
-                        global_layer_index: layer_idx,
+                        global_layer_index: layer_idx as i32,
                         object_id: object_id.clone(),
                         region_id: *region_id,
                         branch_segments,
@@ -2631,7 +2639,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             }
             fn __slicer_ir_region_key_to_wit(k: &::slicer_ir::RegionKey) -> WitRegionKey {
                 WitRegionKey {
-                    layer_index: k.global_layer_index,
+                    layer_index: k.global_layer_index as i32,
                     object_id: k.object_id.clone(),
                     region_id: k.region_id.to_string(),
                 }
@@ -2806,7 +2814,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     .map(|e| ::slicer_sdk::OrderedEntityView {
                         original_index: e.original_index,
                         region_key: ::slicer_ir::RegionKey {
-                            global_layer_index: e.region_key.layer_index,
+                            global_layer_index: e.region_key.layer_index as u32,
                             object_id: e.region_key.object_id,
                             region_id: e.region_key.region_id.parse().unwrap_or(0),
                         },
@@ -2832,7 +2840,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 fn on_print_end() -> Result<(), ModuleError> { Ok(()) }
 
                 fn run_slice_postprocess(
-                    layer_index: u32,
+                    layer_index: i32,
                     regions: Vec<SliceRegionView>,
                     paint: PaintRegionLayerView,
                     output: SlicePostprocessBuilder,
@@ -2840,7 +2848,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 ) -> Result<(), ModuleError> { #slice_postprocess_arm }
 
                 fn run_perimeters(
-                    layer_index: u32,
+                    layer_index: i32,
                     regions: Vec<SliceRegionView>,
                     paint: PaintRegionLayerView,
                     output: PerimeterOutputBuilder,
@@ -2848,28 +2856,28 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 ) -> Result<(), ModuleError> { #perimeters_arm }
 
                 fn run_wall_postprocess(
-                    layer_index: u32,
+                    layer_index: i32,
                     regions: Vec<PerimeterRegionView>,
                     output: PerimeterOutputBuilder,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> { #wall_postprocess_arm }
 
                 fn run_infill(
-                    layer_index: u32,
+                    layer_index: i32,
                     regions: Vec<SliceRegionView>,
                     output: InfillOutputBuilder,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> { #infill_arm }
 
                 fn run_infill_postprocess(
-                    layer_index: u32,
+                    layer_index: i32,
                     regions: Vec<PerimeterRegionView>,
                     output: InfillOutputBuilder,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> { #infill_postprocess_arm }
 
                 fn run_support(
-                    layer_index: u32,
+                    layer_index: i32,
                     regions: Vec<SliceRegionView>,
                     paint: PaintRegionLayerView,
                     output: SupportOutputBuilder,
@@ -2877,14 +2885,14 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 ) -> Result<(), ModuleError> { #support_arm }
 
                 fn run_support_postprocess(
-                    layer_index: u32,
+                    layer_index: i32,
                     regions: Vec<SliceRegionView>,
                     output: SupportOutputBuilder,
                     config: ConfigView,
                 ) -> Result<(), ModuleError> { #support_postprocess_arm }
 
                 fn run_path_optimization(
-                    layer_index: u32,
+                    layer_index: i32,
                     regions: Vec<PerimeterRegionView>,
                     output: GcodeOutputBuilder,
                     collection: LayerCollectionBuilder,
