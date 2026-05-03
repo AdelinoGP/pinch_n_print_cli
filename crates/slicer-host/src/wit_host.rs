@@ -283,7 +283,11 @@ pub mod layer {
                 use geometry.{ex-polygon, extrusion-path3d, point3, point3-with-width, extrusion-role};
                 type object-id = string;
                 type region-id = string;
-                type layer-idx = u32;
+                // Signed because raft entries committed by `PrePass::SupportGeometry`
+                // carry negative `global_layer_index`. Layer-module exports always
+                // pass non-negative values; host conversion sites use `as u32` /
+                // `as i32` at the boundary to round-trip into u32-keyed IR types.
+                type layer-idx = s32;
                 record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
                 record wall-feature-flag { tool-index: option<u32>, fuzzy-skin: bool, is-bridge: bool, is-thin-wall: bool, skip-ironing: bool, custom: list<tuple<string, paint-value>> }
                 record wall-loop-view { perimeter-index: u32, loop-type: wall-loop-type, path: extrusion-path3d, feature-flags: list<wall-feature-flag> }
@@ -671,9 +675,12 @@ pub mod prepass {
                     config: config-view,
                 ) -> result<_, module-error>;
 
-                // SupportGeometry stage
+                // SupportGeometry stage. global-layer-index is signed because
+                // raft prefix layers carry negative indices (-1, -2, ...).
+                // The other layer-idx fields in this world are model-layer-only
+                // and stay u32 via the hand-rolled `type layer-idx = u32`.
                 record support-plan-entry {
-                    global-layer-index: layer-idx,
+                    global-layer-index: s32,
                     object-id: object-id,
                     region-id: region-id,
                     branch-segments: list<list<point3-with-width>>,
@@ -3356,7 +3363,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
             .map(|v| ir::OrderedEntityView {
                 original_index: v.original_index,
                 region_key: ir::RegionKey {
-                    layer_index: v.region_key.global_layer_index,
+                    layer_index: v.region_key.global_layer_index as i32,
                     object_id: v.region_key.object_id.clone(),
                     region_id: v.region_key.region_id.to_string(),
                 },
@@ -3485,9 +3492,9 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
             .cloned()
             .unwrap_or_default())
     }
-    fn layer_index(&mut self, self_: Resource<PaintRegionLayerData>) -> wasmtime::Result<u32> {
+    fn layer_index(&mut self, self_: Resource<PaintRegionLayerData>) -> wasmtime::Result<i32> {
         self.runtime_reads.push(String::from("PaintRegionIR"));
-        Ok(self.table.get(&self_)?.layer_index)
+        Ok(self.table.get(&self_)?.layer_index as i32)
     }
     fn support_plan_segments(
         &mut self,
