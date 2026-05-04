@@ -228,12 +228,14 @@ fn wipe_tower_geometry_is_included_in_travel_reconciliation() {
             length: 1.0,
             speed: 30.0,
             is_unretract: false, // retract
+            mode: slicer_ir::RetractMode::Gcode,
         },
         TravelRetract {
             after_entity_index: 0,
             length: 1.0,
             speed: 30.0,
             is_unretract: true, // unretract
+            mode: slicer_ir::RetractMode::Gcode,
         },
     ];
 

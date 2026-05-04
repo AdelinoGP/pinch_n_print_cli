@@ -17,7 +17,7 @@ use slicer_host::wit_host::{
     ExtrusionRole, GcodeCommandCollected, GcodeMoveCmd, HostExecutionContext,
 };
 use slicer_host::LayerArena;
-use slicer_ir::{LayerCollectionIR, SemVer};
+use slicer_ir::{LayerCollectionIR, RetractMode, SemVer};
 
 /// Helper: make a fresh `HostExecutionContext` for PathOptimization tests.
 fn make_ctx(module_id: &str) -> HostExecutionContext {
@@ -59,6 +59,7 @@ fn flush_to_layer_collection(arena: &mut LayerArena) -> slicer_ir::LayerCollecti
                     length: r.length,
                     speed: r.speed,
                     is_unretract: r.is_unretract,
+                    mode: r.mode,
                 }),
         );
     layer_collection
@@ -92,6 +93,7 @@ fn retracting_travel_populates_matching_z_hop_and_retract_pair() {
         .push(GcodeCommandCollected::Retract {
             length: 0.8,
             speed: 25.0,
+            mode: RetractMode::Gcode,
         });
     ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
         after_entity_index: 0,
@@ -112,6 +114,7 @@ fn retracting_travel_populates_matching_z_hop_and_retract_pair() {
         .push(GcodeCommandCollected::Unretract {
             length: 0.8,
             speed: 25.0,
+            mode: RetractMode::Gcode,
         });
 
     let mut arena = LayerArena::new();
@@ -235,6 +238,7 @@ fn travel_policy_is_deterministic_across_repeated_runs() {
             .push(GcodeCommandCollected::Retract {
                 length: 0.5,
                 speed: 30.0,
+                mode: RetractMode::Gcode,
             });
         ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
             after_entity_index: 0,
@@ -255,6 +259,7 @@ fn travel_policy_is_deterministic_across_repeated_runs() {
             .push(GcodeCommandCollected::Unretract {
                 length: 0.5,
                 speed: 30.0,
+                mode: RetractMode::Gcode,
             });
         ctx
     };
@@ -317,6 +322,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
         .push(GcodeCommandCollected::Retract {
             length: 0.8,
             speed: 25.0,
+            mode: RetractMode::Gcode,
         });
     ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
         after_entity_index: 999,
@@ -337,6 +343,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
         .push(GcodeCommandCollected::Unretract {
             length: 0.8,
             speed: 25.0,
+            mode: RetractMode::Gcode,
         });
 
     // Pre-stage 3 entities → entity_count=3, anchor=2 (last entity index).

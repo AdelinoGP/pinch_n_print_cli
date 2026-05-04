@@ -11,7 +11,7 @@ use slicer_host::{
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExtrusionRole, GCodeCommand, GCodeIR, MeshIR, Point3,
-    PrintMetadata, SemVer, StageId,
+    PrintMetadata, RetractMode, SemVer, StageId,
 };
 
 const POSTPASS_GUEST_COMPONENT: &str = concat!(
@@ -186,10 +186,12 @@ fn postpass_gcode_boundary_carries_all_payload_variants_into_guest() {
         GCodeCommand::Retract {
             length: 0.8,
             speed: 30.0,
+            mode: RetractMode::Gcode,
         },
         GCodeCommand::Unretract {
             length: 0.8,
             speed: 30.0,
+            mode: RetractMode::Gcode,
         },
         GCodeCommand::FanSpeed { value: 180 },
         GCodeCommand::Temperature {

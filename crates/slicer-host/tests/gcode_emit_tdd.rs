@@ -31,7 +31,7 @@ use slicer_host::{
 use slicer_ir::{
     BoundingBox3, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, IndexedTriangleSet,
     LayerCollectionIR, MeshIR, ObjectConfig, ObjectId, ObjectMesh, Point3, Point3WithWidth,
-    PrintEntity, PrintMetadata, RegionKey, SemVer, ToolChange, Transform3d, ZHop,
+    PrintEntity, PrintMetadata, RegionKey, RetractMode, SemVer, ToolChange, Transform3d, ZHop,
 };
 
 // ============================================================================
@@ -753,10 +753,12 @@ fn serialize_retract_unretract_commands() {
         GCodeCommand::Retract {
             length: 0.8,
             speed: 2400.0,
+            mode: RetractMode::Gcode,
         },
         GCodeCommand::Unretract {
             length: 0.8,
             speed: 2400.0,
+            mode: RetractMode::Gcode,
         },
     ]);
 
@@ -1222,6 +1224,7 @@ fn serializes_retract_travel_and_z_hop_in_canonical_order() {
         GCodeCommand::Retract {
             length: 0.8,
             speed: 1800.0,
+            mode: RetractMode::Gcode,
         },
         GCodeCommand::Move {
             x: None,
@@ -1250,6 +1253,7 @@ fn serializes_retract_travel_and_z_hop_in_canonical_order() {
         GCodeCommand::Unretract {
             length: 0.8,
             speed: 1800.0,
+            mode: RetractMode::Gcode,
         },
     ];
 
@@ -1354,5 +1358,92 @@ fn omits_absent_role_labels_and_retraction_lines() {
     assert!(
         !text.contains("E-"),
         "must not emit retract lines when no retract was queued"
+    );
+}
+
+// ============================================================================
+// AC-5 (packet 34): Per-command retract-mode dispatch in DefaultGCodeSerializer
+// ============================================================================
+
+#[test]
+fn gcode_emit_dispatches_per_command_retract_mode() {
+    // A synthetic GCodeIR containing one Retract { mode: Gcode, .. } followed by
+    // one Retract { mode: Firmware, .. } must produce exactly:
+    //   - one `G1 E-...` line (G-code-mode branch)
+    //   - one `G10` line (firmware-mode branch)
+    // in that order, with no cross-mode bleed.
+    let serializer = DefaultGCodeSerializer::new();
+
+    let gcode_ir = gcode_ir_fixture(vec![
+        GCodeCommand::Retract {
+            length: 0.8,
+            speed: 1800.0,
+            mode: RetractMode::Gcode,
+        },
+        GCodeCommand::Retract {
+            length: 0.8,
+            speed: 1800.0,
+            mode: RetractMode::Firmware,
+        },
+    ]);
+
+    let text = serializer
+        .serialize_gcode(&gcode_ir)
+        .expect("serialize_gcode should succeed");
+    let lines: Vec<&str> = text.lines().collect();
+
+    let g1_eneg_lines: Vec<(usize, &&str)> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| l.starts_with("G1 E-"))
+        .collect();
+    let g10_lines: Vec<(usize, &&str)> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| l.trim() == "G10")
+        .collect();
+
+    assert_eq!(
+        g1_eneg_lines.len(),
+        1,
+        "expected exactly one `G1 E-` line, got {}: {:?}",
+        g1_eneg_lines.len(),
+        lines
+    );
+    assert_eq!(
+        g10_lines.len(),
+        1,
+        "expected exactly one `G10` line, got {}: {:?}",
+        g10_lines.len(),
+        lines
+    );
+
+    let g1_idx = g1_eneg_lines[0].0;
+    let g10_idx = g10_lines[0].0;
+    assert!(
+        g1_idx < g10_idx,
+        "expected `G1 E-` (idx {}) to precede `G10` (idx {}): {:?}",
+        g1_idx,
+        g10_idx,
+        lines
+    );
+
+    // No cross-mode bleed: the firmware-mode line must be EXACTLY `G10`
+    // (no parameters, no comments, no trailing whitespace) and the G-code-mode
+    // line must not be a bare `G10`.
+    assert_eq!(
+        *g10_lines[0].1, "G10",
+        "firmware-mode retract must be exactly `G10`, got {:?}",
+        g10_lines[0].1
+    );
+    // No additional retract-style lines (no extra `G1 E-`, no extra `G10`/`G11`).
+    let total_retractish = lines
+        .iter()
+        .filter(|l| l.starts_with("G1 E-") || l.trim() == "G10" || l.trim() == "G11")
+        .count();
+    assert_eq!(
+        total_retractish, 2,
+        "expected exactly 2 retract-related lines, got {}: {:?}",
+        total_retractish, lines
     );
 }

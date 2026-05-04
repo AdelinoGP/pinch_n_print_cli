@@ -595,6 +595,71 @@ fn parse_cross_validate_rules() {
 }
 
 // ============================================================================
+// Manifest Enum Validation Tests (packet 34)
+// ============================================================================
+
+#[test]
+fn config_schema_rejects_unknown_retract_mode() {
+    // Loads the real path-optimization-default manifest, parses its
+    // [config.schema] section, then asserts that a config value of
+    // `retract_mode = "marlin"` (an out-of-enum value) is rejected by the
+    // host config validator. The diagnostic must name both the field key
+    // (`retract_mode`) and the offending value (`marlin`).
+    let manifest_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("modules")
+        .join("core-modules")
+        .join("path-optimization-default")
+        .join("path-optimization-default.toml");
+
+    let manifest_text =
+        std::fs::read_to_string(&manifest_path).expect("read path-optimization-default.toml");
+    let root: toml::Value = manifest_text
+        .parse()
+        .expect("path-optimization-default.toml must be valid TOML");
+
+    let schema_section = root
+        .get("config")
+        .and_then(|c| c.get("schema"))
+        .expect("manifest must have [config.schema] section");
+
+    let schema = parse_config_schema(schema_section, &manifest_path).expect("schema should parse");
+
+    // Sanity: the manifest declares retract_mode as an enum with gcode|firmware.
+    let retract_mode_field = schema
+        .fields
+        .get("retract_mode")
+        .expect("manifest must declare retract_mode field");
+    assert_eq!(retract_mode_field.field_type, ConfigFieldType::Enum);
+    assert_eq!(
+        retract_mode_field.enum_values.as_deref(),
+        Some(&["gcode".to_string(), "firmware".to_string()][..])
+    );
+
+    // Now attempt to validate a config that sets retract_mode = "marlin".
+    let mut values: BTreeMap<String, ConfigValue> = BTreeMap::new();
+    values.insert("retract_mode".into(), ConfigValue::String("marlin".into()));
+
+    let errors = validate_config(&schema, &values);
+    let enum_error = errors
+        .iter()
+        .find(|e| e.kind == ConfigValidationErrorKind::InvalidEnumValue)
+        .expect("validator must reject retract_mode = \"marlin\"");
+
+    assert!(
+        enum_error.message.contains("retract_mode"),
+        "diagnostic must name the field 'retract_mode'; got: {}",
+        enum_error.message
+    );
+    assert!(
+        enum_error.message.contains("marlin"),
+        "diagnostic must name the offending value 'marlin'; got: {}",
+        enum_error.message
+    );
+}
+
+// ============================================================================
 // UI Grouping Tests
 // ============================================================================
 

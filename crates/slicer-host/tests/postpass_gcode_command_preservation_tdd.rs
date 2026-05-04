@@ -11,7 +11,7 @@ use slicer_host::{
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExtrusionRole, GCodeCommand, GCodeIR, MeshIR, Point3,
-    PrintMetadata, SemVer, StageId,
+    PrintMetadata, RetractMode, SemVer, StageId,
 };
 
 const POSTPASS_GUEST_COMPONENT: &str = concat!(
@@ -167,10 +167,12 @@ fn postpass_gcode_output_preserves_command_order_and_content() {
             GCodeCommand::Retract {
                 length: 0.8,
                 speed: 35.0,
+                mode: RetractMode::Gcode,
             },
             GCodeCommand::Unretract {
                 length: 0.8,
                 speed: 35.0,
+                mode: RetractMode::Gcode,
             },
             GCodeCommand::FanSpeed { value: 200 },
             GCodeCommand::Temperature {

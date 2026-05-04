@@ -4003,7 +4003,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
     use slicer_host::wit_host::{
         ExtrusionRole as WitRole, GcodeCommandCollected, GcodeMoveCmd, HostExecutionContext,
     };
-    use slicer_ir::{LayerCollectionIR, SemVer};
+    use slicer_ir::{LayerCollectionIR, RetractMode, SemVer};
 
     let mut ctx = HostExecutionContext::new(
         "com.test.pathopt-zhop-norm".to_string(),
@@ -4018,6 +4018,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
         .push(GcodeCommandCollected::Retract {
             length: 0.8,
             speed: 25.0,
+            mode: RetractMode::Gcode,
         });
     ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
         after_entity_index: 999,
@@ -4038,6 +4039,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
         .push(GcodeCommandCollected::Unretract {
             length: 0.8,
             speed: 25.0,
+            mode: RetractMode::Gcode,
         });
 
     let mut arena = LayerArena::new();

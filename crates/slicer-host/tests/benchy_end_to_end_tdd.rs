@@ -1225,32 +1225,141 @@ fn benchy_gcode_contains_balanced_retract_and_unretract_pairs() {
 
     let gcode = std::fs::read_to_string(&out_path).expect("read output");
 
-    // Count M207 (retract) and M208 (unretract / retract_length_reset)
-    // in the G-code. These are the canonical Marlin/RepRap retract
-    //codes used by the slicer host.
-    let retract_count = gcode.lines().filter(|l| l.starts_with("M207")).count();
-    let unretract_count = gcode.lines().filter(|l| l.starts_with("M208")).count();
+    // Default retract_mode is `Gcode`, so the emitter writes:
+    //   retract   = `G1 E-{length} F{speed}`
+    //   unretract = `G1 E{length} F{speed}`     (positive E, with F field)
+    // Firmware-mode opcodes (`G10` / `G11`) MUST NOT appear under the
+    // default config (NC-1 zero-bleed invariant).
+    let retract_count = gcode.lines().filter(|l| l.starts_with("G1 E-")).count();
+    let unretract_count = gcode
+        .lines()
+        .filter(|l| {
+            let t = l.trim_start();
+            t.starts_with("G1 E") && !t.starts_with("G1 E-") && t.contains(" F")
+        })
+        .count();
+    let firmware_opcode_count = gcode
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            t == "G10" || t == "G11"
+        })
+        .count();
 
     assert!(
         retract_count > 0,
-        "feature-evidence: no M207 retract commands found. The live path \
-         may not be emitting retract sequences. G-code preview:\n{}",
+        "feature-evidence: no `G1 E-<len> F<speed>` retract commands found \
+         under default (Gcode-mode) config. The live path may not be emitting \
+         retract sequences. G-code preview:\n{}",
         preview(&gcode, 30)
     );
     assert!(
         unretract_count > 0,
-        "feature-evidence: no M208 unretract commands found. The live path \
-         may not be emitting unretract sequences after material transitions. \
-         G-code preview:\n{}",
+        "feature-evidence: no `G1 E<len> F<speed>` unretract commands found \
+         under default (Gcode-mode) config. The live path may not be emitting \
+         unretract sequences after material transitions. G-code preview:\n{}",
         preview(&gcode, 30)
     );
     assert_eq!(
         retract_count,
         unretract_count,
-        "feature-evidence: retract/unretract imbalance — {} M207 retracts \
-         vs {} M208 unretracts. Counts must be exactly equal. G-code preview:\n{}",
+        "feature-evidence: retract/unretract imbalance — {} `G1 E-` retracts \
+         vs {} `G1 E<positive> F` unretracts. Counts must be exactly equal. \
+         G-code preview:\n{}",
         retract_count,
         unretract_count,
+        preview(&gcode, 30)
+    );
+    assert_eq!(
+        firmware_opcode_count,
+        0,
+        "feature-evidence: firmware-opcode bleed (NC-1) — found {} `G10`/`G11` \
+         lines under default Gcode-mode config. Firmware retract opcodes must \
+         NOT appear unless retract_mode = Firmware is configured. G-code preview:\n{}",
+        firmware_opcode_count,
+        preview(&gcode, 30)
+    );
+}
+
+/// AC-2 (packet 34): firmware-retraction E2E
+///
+/// Same Benchy fixture as `benchy_gcode_contains_balanced_retract_and_unretract_pairs`,
+/// but overrides the path-optimization-default module's `retract_mode`
+/// config field to `"firmware"`. Asserts:
+///
+///   * count(`G10`) > 0 and count(`G11`) > 0
+///   * count(`G10`) == count(`G11`) (balanced firmware retract/unretract pairs)
+///   * count(`G1 E-`) == 0 (NC-2: no inline-E retract bleed under firmware mode)
+///
+/// The override flows: JSON `--config` → `parse_cli_config_source` →
+/// `bind_module_config_view` filters per-module by declared schema →
+/// path-optimization-default reads `retract_mode` from its bound
+/// ConfigView in `on_print_start` and threads `RetractMode::Firmware`
+/// into every emitted Retract/Unretract IR command.
+#[test]
+fn benchy_gcode_firmware_retraction_emits_balanced_g10_g11() {
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let config_path = tmp.path().join("firmware_retract.json");
+    std::fs::write(&config_path, "{\n  \"retract_mode\": \"firmware\"\n}\n")
+        .expect("write firmware-retract config");
+
+    let out_path = tmp.path().join("retract_firmware_evidence.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, Some(&config_path));
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "slicer-host must succeed for firmware-retract feature-evidence. \
+         Stderr:\n{stderr}"
+    );
+    assert!(out_path.exists(), "--output file must be written");
+
+    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+
+    // Firmware-mode opcodes: bare `G10` and `G11` lines (no inline-E).
+    let count_g10 = gcode.lines().filter(|l| l.trim() == "G10").count();
+    let count_g11 = gcode.lines().filter(|l| l.trim() == "G11").count();
+    let inline_retract_count = gcode.lines().filter(|l| l.starts_with("G1 E-")).count();
+
+    assert!(
+        count_g10 > 0,
+        "feature-evidence: no `G10` firmware-retract opcodes found under \
+         retract_mode = firmware config. The live path may not be propagating \
+         `RetractMode::Firmware` from path-optimization-default's ConfigView \
+         through to the G-code emitter. G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+    assert!(
+        count_g11 > 0,
+        "feature-evidence: no `G11` firmware-unretract opcodes found under \
+         retract_mode = firmware config. Retract was emitted but unretract \
+         is missing — the unretract emit path may still be falling back to \
+         Gcode mode. G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+    assert_eq!(
+        count_g10,
+        count_g11,
+        "feature-evidence: firmware retract/unretract imbalance — {} `G10` \
+         retracts vs {} `G11` unretracts. Counts must be exactly equal under \
+         retract_mode = firmware. G-code preview:\n{}",
+        count_g10,
+        count_g11,
+        preview(&gcode, 30)
+    );
+    assert_eq!(
+        inline_retract_count,
+        0,
+        "feature-evidence: NC-2 inline-E retract bleed — found {} `G1 E-...` \
+         lines under retract_mode = firmware config. Inline-E retract moves \
+         must NOT appear when firmware mode is active; all retracts must be \
+         delegated to bare `G10` opcodes. G-code preview:\n{}",
+        inline_retract_count,
         preview(&gcode, 30)
     );
 }
