@@ -331,10 +331,11 @@ pub mod layer {
                     set-path-z:   func(region: region-key, path-idx: u32, vertex-idx: u32, z: f32) -> result<_, string>;
                 }
                 record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
+                variant retract-mode { gcode, firmware }
                 resource gcode-output-builder {
                     push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
-                    push-retract:     func(length: f32, speed: f32) -> result<_, string>;
-                    push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
+                    push-retract:     func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
+                    push-unretract:   func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
                     push-fan-speed:   func(value: u8) -> result<_, string>;
                     push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
                     push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
@@ -420,6 +421,10 @@ pub use layer::slicer::world_layer::geometry::{
     BoundingBox3, ExPolygon, ExtrusionPath3d, ExtrusionRole, Point2, Point3, Point3WithWidth,
     Polygon,
 };
+/// Re-export of the layer-module WIT `retract-mode` variant. Used by host-side
+/// `gcode-output-builder` handlers and `dispatch.rs` converters to forward the
+/// `RetractMode` end-to-end across the guest→host boundary.
+pub use layer::slicer::world_layer::ir_handles::RetractMode as WitRetractMode;
 pub use layer::slicer::world_layer::ir_handles::{
     BoundaryPaintEntry, BoundaryPaintPolygon, GcodeMoveCmd, HostPerimeterOutputBuilder,
     PaintSemantic, PaintValue, RegionKey, SeamPosition, SemanticRegion, WallFeatureFlag,
@@ -1003,14 +1008,15 @@ pub mod postpass {
                 record module-error { code: u32, message: string, fatal: bool }
 
                 record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
-                record gcode-retract-cmd { length: f32, speed: f32 }
+                variant retract-mode { gcode, firmware }
+                record gcode-retract-cmd { length: f32, speed: f32, mode: retract-mode }
                 record gcode-fan-speed-cmd { value: u8 }
                 record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
                 record gcode-tool-change-cmd { after-entity-index: u32, from-tool: u32, to-tool: u32 }
                 resource gcode-output-builder {
                     push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
-                    push-retract:     func(length: f32, speed: f32) -> result<_, string>;
-                    push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
+                    push-retract:     func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
+                    push-unretract:   func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
                     push-fan-speed:   func(value: u8) -> result<_, string>;
                     push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
                     push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
@@ -1139,10 +1145,18 @@ pub struct GcodeOutputCollected {
 pub enum GcodeCommandCollected {
     /// Move command.
     Move(GcodeMoveCmd),
-    /// Retract.
-    Retract { length: f32, speed: f32 },
-    /// Unretract.
-    Unretract { length: f32, speed: f32 },
+    /// Retract. `mode` carries the WIT retract-mode variant verbatim from the guest.
+    Retract {
+        length: f32,
+        speed: f32,
+        mode: slicer_ir::RetractMode,
+    },
+    /// Unretract. `mode` carries the WIT retract-mode variant verbatim from the guest.
+    Unretract {
+        length: f32,
+        speed: f32,
+        mode: slicer_ir::RetractMode,
+    },
     /// Fan speed.
     FanSpeed(u8),
     /// Temperature.
@@ -3236,10 +3250,15 @@ impl ir::HostGcodeOutputBuilder for HostExecutionContext {
         _self_: Resource<GcodeOutputBuilderData>,
         length: f32,
         speed: f32,
+        mode: WitRetractMode,
     ) -> wasmtime::Result<Result<(), String>> {
         self.gcode_output
             .commands
-            .push(GcodeCommandCollected::Retract { length, speed });
+            .push(GcodeCommandCollected::Retract {
+                length,
+                speed,
+                mode: convert_layer_retract_mode(&mode),
+            });
         Ok(Ok(()))
     }
     fn push_unretract(
@@ -3247,10 +3266,15 @@ impl ir::HostGcodeOutputBuilder for HostExecutionContext {
         _self_: Resource<GcodeOutputBuilderData>,
         length: f32,
         speed: f32,
+        mode: WitRetractMode,
     ) -> wasmtime::Result<Result<(), String>> {
         self.gcode_output
             .commands
-            .push(GcodeCommandCollected::Unretract { length, speed });
+            .push(GcodeCommandCollected::Unretract {
+                length,
+                speed,
+                mode: convert_layer_retract_mode(&mode),
+            });
         Ok(Ok(()))
     }
     fn push_fan_speed(
@@ -4762,10 +4786,15 @@ mod postpass_impls {
             _: Resource<ppm::GcodeOutputBuilder>,
             length: f32,
             speed: f32,
+            mode: ppm::RetractMode,
         ) -> wasmtime::Result<Result<(), String>> {
             self.gcode_output
                 .commands
-                .push(GcodeCommandCollected::Retract { length, speed });
+                .push(GcodeCommandCollected::Retract {
+                    length,
+                    speed,
+                    mode: convert_postpass_retract_mode(&mode),
+                });
             Ok(Ok(()))
         }
         fn push_unretract(
@@ -4773,10 +4802,15 @@ mod postpass_impls {
             _: Resource<ppm::GcodeOutputBuilder>,
             length: f32,
             speed: f32,
+            mode: ppm::RetractMode,
         ) -> wasmtime::Result<Result<(), String>> {
             self.gcode_output
                 .commands
-                .push(GcodeCommandCollected::Unretract { length, speed });
+                .push(GcodeCommandCollected::Unretract {
+                    length,
+                    speed,
+                    mode: convert_postpass_retract_mode(&mode),
+                });
             Ok(Ok(()))
         }
         fn push_fan_speed(
@@ -4864,6 +4898,13 @@ mod postpass_impls {
 
     impl ppm::PostpassModuleImports for HostExecutionContext {}
 
+    fn convert_postpass_retract_mode(mode: &ppm::RetractMode) -> slicer_ir::RetractMode {
+        match mode {
+            ppm::RetractMode::Gcode => slicer_ir::RetractMode::Gcode,
+            ppm::RetractMode::Firmware => slicer_ir::RetractMode::Firmware,
+        }
+    }
+
     fn convert_postpass_role(role: &ppgeo::ExtrusionRole) -> ExtrusionRole {
         match role {
             ppgeo::ExtrusionRole::OuterWall => ExtrusionRole::OuterWall,
@@ -4930,6 +4971,18 @@ pub fn convert_extrusion_role(role: &ExtrusionRole) -> slicer_ir::ExtrusionRole 
             slicer_ir::ExtrusionRole::Skirt
         }
         ExtrusionRole::Custom(s) => slicer_ir::ExtrusionRole::Custom(s.clone()),
+    }
+}
+
+/// Convert the layer-module WIT `retract-mode` variant to `slicer_ir::RetractMode`.
+///
+/// Used by `gcode-output-builder` host handlers to forward the retract emission
+/// mode declared by guest modules (e.g. `path-optimization-default`) into the
+/// host-side `GcodeCommandCollected` queue.
+pub fn convert_layer_retract_mode(mode: &WitRetractMode) -> slicer_ir::RetractMode {
+    match mode {
+        WitRetractMode::Gcode => slicer_ir::RetractMode::Gcode,
+        WitRetractMode::Firmware => slicer_ir::RetractMode::Firmware,
     }
 }
 

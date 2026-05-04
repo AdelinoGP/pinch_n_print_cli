@@ -14,7 +14,9 @@ use std::sync::Arc;
 
 use wasmtime::component::Resource;
 
-use slicer_ir::{GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, SeamPosition, StageId};
+use slicer_ir::{
+    GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, RetractMode, SeamPosition, StageId,
+};
 
 use crate::wit_host::{self, ConfigViewData, HostExecutionContext, PaintRegionLayerData};
 use crate::{
@@ -129,6 +131,16 @@ fn convert_postpass_role_to_wit(
     }
 }
 
+/// Convert host-side `slicer_ir::RetractMode` to the WIT enum used by the
+/// postpass-module bindings (host→guest direction).
+fn retract_mode_to_postpass_wit(mode: RetractMode) -> wit_host::postpass::RetractMode {
+    use wit_host::postpass::RetractMode as PostpassRetractMode;
+    match mode {
+        RetractMode::Gcode => PostpassRetractMode::Gcode,
+        RetractMode::Firmware => PostpassRetractMode::Firmware,
+    }
+}
+
 fn convert_gcode_command_to_postpass_wit(
     command: &GCodeCommand,
 ) -> wit_host::postpass::GcodeCommand {
@@ -148,18 +160,24 @@ fn convert_gcode_command_to_postpass_wit(
             f: *f,
             role: convert_postpass_role_to_wit(role),
         }),
-        GCodeCommand::Retract { length, speed } => {
-            wit_host::postpass::GcodeCommand::Retract(wit_host::postpass::GcodeRetractCmd {
-                length: *length,
-                speed: *speed,
-            })
-        }
-        GCodeCommand::Unretract { length, speed } => {
-            wit_host::postpass::GcodeCommand::Unretract(wit_host::postpass::GcodeRetractCmd {
-                length: *length,
-                speed: *speed,
-            })
-        }
+        GCodeCommand::Retract {
+            length,
+            speed,
+            mode,
+        } => wit_host::postpass::GcodeCommand::Retract(wit_host::postpass::GcodeRetractCmd {
+            length: *length,
+            speed: *speed,
+            mode: retract_mode_to_postpass_wit(*mode),
+        }),
+        GCodeCommand::Unretract {
+            length,
+            speed,
+            mode,
+        } => wit_host::postpass::GcodeCommand::Unretract(wit_host::postpass::GcodeRetractCmd {
+            length: *length,
+            speed: *speed,
+            mode: retract_mode_to_postpass_wit(*mode),
+        }),
         GCodeCommand::FanSpeed { value } => {
             wit_host::postpass::GcodeCommand::FanSpeed(wit_host::postpass::GcodeFanSpeedCmd {
                 value: *value,
@@ -208,16 +226,24 @@ fn collect_postpass_output(
                 f: cmd.f,
                 role: wit_host::convert_extrusion_role(&cmd.role),
             },
-            wit_host::GcodeCommandCollected::Retract { length, speed } => GCodeCommand::Retract {
+            wit_host::GcodeCommandCollected::Retract {
+                length,
+                speed,
+                mode,
+            } => GCodeCommand::Retract {
                 length: *length,
                 speed: *speed,
+                mode: *mode,
             },
-            wit_host::GcodeCommandCollected::Unretract { length, speed } => {
-                GCodeCommand::Unretract {
-                    length: *length,
-                    speed: *speed,
-                }
-            }
+            wit_host::GcodeCommandCollected::Unretract {
+                length,
+                speed,
+                mode,
+            } => GCodeCommand::Unretract {
+                length: *length,
+                speed: *speed,
+                mode: *mode,
+            },
             wit_host::GcodeCommandCollected::FanSpeed(value) => {
                 GCodeCommand::FanSpeed { value: *value }
             }
@@ -2668,20 +2694,36 @@ fn commit_layer_outputs(
                             hop_height: *hop_height,
                         });
                     }
-                    GcodeCommandCollected::Retract { length, speed } => {
+                    GcodeCommandCollected::Retract {
+                        length,
+                        speed,
+                        mode,
+                    } => {
+                        // Packet 34: `mode` is now threaded onto `DeferredRetract`
+                        // so the gcode_emit stage can materialize the correct
+                        // opcode (`G1 E-...` for `Gcode`, bare `G10` for
+                        // `Firmware`). The value originates from the
+                        // path-optimization-default module's `retract_mode`
+                        // ConfigView field.
                         accepted_retracts.push(crate::blackboard::DeferredRetract {
                             after_entity_index: anchor,
                             length: *length,
                             speed: *speed,
                             is_unretract: false,
+                            mode: *mode,
                         });
                     }
-                    GcodeCommandCollected::Unretract { length, speed } => {
+                    GcodeCommandCollected::Unretract {
+                        length,
+                        speed,
+                        mode,
+                    } => {
                         accepted_retracts.push(crate::blackboard::DeferredRetract {
                             after_entity_index: anchor,
                             length: *length,
                             speed: *speed,
                             is_unretract: true,
+                            mode: *mode,
                         });
                     }
                     other => {

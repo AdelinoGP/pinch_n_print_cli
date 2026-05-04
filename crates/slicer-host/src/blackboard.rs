@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use slicer_ir::{
     InfillIR, LayerAnnotation, LayerCollectionIR, LayerPlanIR, MeshIR, MeshSegmentationIR,
-    PaintRegionIR, PerimeterIR, RegionMapIR, SeamPlanIR, SliceIR, SupportGeometryIR, SupportIR,
-    SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
+    PaintRegionIR, PerimeterIR, RegionMapIR, RetractMode, SeamPlanIR, SliceIR, SupportGeometryIR,
+    SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
 /// A retract or unretract decision collected from `Layer::PathOptimization`.
@@ -26,6 +26,11 @@ pub struct DeferredRetract {
     pub speed: f32,
     /// `true` = Unretract; `false` = Retract.
     pub is_unretract: bool,
+    /// Selects whether the emitter materializes this as an inline-E `G1`
+    /// move (`Gcode`) or a bare `G10`/`G11` firmware opcode (`Firmware`).
+    /// Threaded from `path-optimization-default`'s `retract_mode` config
+    /// through `Layer::PathOptimization` dispatch into `gcode_emit`.
+    pub mode: RetractMode,
 }
 
 /// A travel move decision collected from `Layer::PathOptimization`.
