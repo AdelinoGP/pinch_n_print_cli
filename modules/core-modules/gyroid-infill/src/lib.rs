@@ -125,8 +125,24 @@ impl LayerModule for GyroidInfill {
 
             let z = region.z();
 
+            // Determine fill role based on surface classification.
+            // Priority: bridge > top > bottom > sparse.
+            let role = if region.is_bridge() {
+                ExtrusionRole::BridgeInfill
+            } else if region.is_top_surface() {
+                ExtrusionRole::TopSolidInfill
+            } else if region.is_bottom_surface() {
+                ExtrusionRole::BottomSolidInfill
+            } else {
+                ExtrusionRole::SparseInfill
+            };
+
             for expoly in infill_areas {
-                let paths = self.fill_expolygon(expoly, z, speed_factor);
+                let mut paths = self.fill_expolygon(expoly, z, speed_factor);
+                // Override the role on all generated paths to reflect surface classification.
+                for path in &mut paths {
+                    path.role = role.clone();
+                }
                 for path in paths {
                     let _ = output.push_sparse_path(path);
                 }

@@ -2394,7 +2394,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         .region_id()
                         .parse()
                         .unwrap_or(0);
-                    let sdk_view = ::slicer_sdk::views::SliceRegionView::with_boundary_paint(
+                    let mut sdk_view = ::slicer_sdk::views::SliceRegionView::with_boundary_paint(
                         r.object_id(),
                         region_id,
                         polys,
@@ -2404,6 +2404,9 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         r.has_nonplanar(),
                         boundary_paint,
                     );
+                    sdk_view.set_is_top_surface(r.is_top_surface());
+                    sdk_view.set_is_bottom_surface(r.is_bottom_surface());
+                    sdk_view.set_is_bridge(r.is_bridge());
                     out.push(sdk_view);
                 }
                 out
