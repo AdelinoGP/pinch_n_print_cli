@@ -2208,6 +2208,9 @@ fn make_slice_ir(
             nonplanar_surface: None,
             effective_layer_height: 0.2,
             boundary_paint: HashMap::new(),
+            is_top_surface: false,
+            is_bottom_surface: false,
+            is_bridge: false,
         })
         .collect();
 

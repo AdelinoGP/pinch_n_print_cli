@@ -142,7 +142,7 @@ fn layer_slice_builtin_produces_real_polygons_from_mesh() {
     let mesh = tetra_mesh_ir("obj-a");
     let layer = layer_at(0, 0.1, "obj-a");
 
-    let slice = execute_layer_slice(&mesh, &layer).expect("slice ok");
+    let slice = execute_layer_slice(&mesh, &layer, None, None, None).expect("slice ok");
     assert_eq!(slice.global_layer_index, 0);
     assert!((slice.z - 0.1).abs() < 1e-6);
     assert_eq!(slice.regions.len(), 1);
@@ -156,7 +156,7 @@ fn layer_slice_builtin_rejects_unknown_object_with_structured_diagnostic() {
     let mesh = tetra_mesh_ir("real-object");
     let layer = layer_at(0, 0.1, "missing-object");
 
-    let err = execute_layer_slice(&mesh, &layer).expect_err("should fail");
+    let err = execute_layer_slice(&mesh, &layer, None, None, None).expect_err("should fail");
     match err {
         LayerSliceError::UnknownObject {
             layer_index,
@@ -253,8 +253,10 @@ fn per_layer_executor_produces_deterministic_slice_across_runs() {
         }
     }
 
-    let slice_a = execute_layer_slice(mesh.as_ref(), &plan1.global_layers[0]).unwrap();
-    let slice_b = execute_layer_slice(mesh.as_ref(), &plan2.global_layers[0]).unwrap();
+    let slice_a =
+        execute_layer_slice(mesh.as_ref(), &plan1.global_layers[0], None, None, None).unwrap();
+    let slice_b =
+        execute_layer_slice(mesh.as_ref(), &plan2.global_layers[0], None, None, None).unwrap();
     assert_eq!(slice_a, slice_b, "repeated slices must be byte-identical");
 
     let a = execute_per_layer(&plan1, &bb1, &Noop).unwrap();
@@ -316,7 +318,7 @@ fn layer_slice_builtin_produces_real_polygons_for_benchy_mesh() {
             has_nonplanar: false,
             is_sync_layer: false,
         };
-        let slice = execute_layer_slice(&mesh, &layer).expect("slice ok");
+        let slice = execute_layer_slice(&mesh, &layer, None, None, None).expect("slice ok");
         assert_eq!(slice.z, z);
         assert_eq!(slice.regions.len(), 1);
         let region = &slice.regions[0];
@@ -366,8 +368,8 @@ fn layer_slice_builtin_is_deterministic_for_benchy_mesh() {
         has_nonplanar: false,
         is_sync_layer: false,
     };
-    let a = execute_layer_slice(&mesh, &layer).expect("slice a");
-    let b = execute_layer_slice(&mesh, &layer).expect("slice b");
+    let a = execute_layer_slice(&mesh, &layer, None, None, None).expect("slice a");
+    let b = execute_layer_slice(&mesh, &layer, None, None, None).expect("slice b");
     assert_eq!(
         a, b,
         "two slices of the same mesh at the same Z must be byte-identical"
@@ -441,7 +443,7 @@ fn layer_slice_builtin_preserves_effective_layer_height_for_catchup_regions() {
         is_sync_layer: false,
     };
 
-    let slice = execute_layer_slice(&mesh, &layer).expect("slice ok");
+    let slice = execute_layer_slice(&mesh, &layer, None, None, None).expect("slice ok");
 
     // effective_layer_height must be preserved from the source ActiveRegion
     // into the downstream SlicedRegion.

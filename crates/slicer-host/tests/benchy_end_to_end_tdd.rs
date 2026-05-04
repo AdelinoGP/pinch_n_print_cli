@@ -1543,9 +1543,18 @@ fn benchy_feature_evidence_failures_name_the_missing_family() {
         // Check bottom surface family.
         let bottom_missing = !gcode.lines().any(|l| l.contains(";TYPE:Bottom surface"));
 
-        // Check retract/unretract balance.
-        let retract_count = gcode.lines().filter(|l| l.starts_with("M207")).count();
-        let unretract_count = gcode.lines().filter(|l| l.starts_with("M208")).count();
+        // Check retract/unretract balance (gcode-mode: default config has no retract_mode key).
+        // The default retract mode is Gcode, which emits `G1 E-...` retracts and
+        // `G1 E<pos> F<speed>` unretracts. M207/M208 are firmware-mode setup commands
+        // that MUST NOT appear with the default gcode-mode config.
+        let retract_count = gcode.lines().filter(|l| l.starts_with("G1 E-")).count();
+        let unretract_count = gcode
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                t.starts_with("G1 E") && !t.starts_with("G1 E-") && t.contains(" F")
+            })
+            .count();
         let retract_missing =
             retract_count == 0 || unretract_count == 0 || retract_count != unretract_count;
 
@@ -1576,8 +1585,8 @@ fn benchy_feature_evidence_failures_name_the_missing_family() {
         if retract_missing {
             assert!(
                 false,
-                "missing: retract_balance — G-code has {} M207 retracts and {} \
-                 M208 unretracts (counts must be >0 and equal). \
+                "missing: retract_balance — G-code has {} `G1 E-` retracts and {} \
+                 `G1 E<pos> F` unretracts (counts must be >0 and equal). \
                  G-code preview:\n{}",
                 retract_count,
                 unretract_count,
