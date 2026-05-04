@@ -267,6 +267,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         commands.push(GCodeCommand::Retract {
                             length: r.length,
                             speed: r.speed,
+                            mode: r.mode,
                         });
                     }
                 }
@@ -309,6 +310,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         commands.push(GCodeCommand::Unretract {
                             length: r.length,
                             speed: r.speed,
+                            mode: r.mode,
                         });
                     }
                 }
@@ -407,24 +409,42 @@ impl GCodeSerializer for DefaultGCodeSerializer {
                     }
                     writeln!(output).unwrap();
                 }
-                GCodeCommand::Retract { length, speed } => {
-                    writeln!(
-                        output,
-                        "G1 E-{} F{}",
-                        format_coord(*length),
-                        format_coord(*speed)
-                    )
-                    .unwrap();
-                }
-                GCodeCommand::Unretract { length, speed } => {
-                    writeln!(
-                        output,
-                        "G1 E{} F{}",
-                        format_coord(*length),
-                        format_coord(*speed)
-                    )
-                    .unwrap();
-                }
+                GCodeCommand::Retract {
+                    length,
+                    speed,
+                    mode,
+                } => match mode {
+                    slicer_ir::RetractMode::Gcode => {
+                        writeln!(
+                            output,
+                            "G1 E-{} F{}",
+                            format_coord(*length),
+                            format_coord(*speed)
+                        )
+                        .unwrap();
+                    }
+                    slicer_ir::RetractMode::Firmware => {
+                        writeln!(output, "G10").unwrap();
+                    }
+                },
+                GCodeCommand::Unretract {
+                    length,
+                    speed,
+                    mode,
+                } => match mode {
+                    slicer_ir::RetractMode::Gcode => {
+                        writeln!(
+                            output,
+                            "G1 E{} F{}",
+                            format_coord(*length),
+                            format_coord(*speed)
+                        )
+                        .unwrap();
+                    }
+                    slicer_ir::RetractMode::Firmware => {
+                        writeln!(output, "G11").unwrap();
+                    }
+                },
                 GCodeCommand::FanSpeed { value } => {
                     writeln!(output, "M106 S{}", value).unwrap();
                 }

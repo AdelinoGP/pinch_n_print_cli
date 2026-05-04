@@ -445,6 +445,7 @@ fn execute_single_layer(
                     length: r.length,
                     speed: r.speed,
                     is_unretract: r.is_unretract,
+                    mode: r.mode,
                 }),
         );
     layer_output
