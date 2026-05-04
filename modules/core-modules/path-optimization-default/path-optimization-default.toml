@@ -53,6 +53,13 @@ default = 0.0
 display = "Z-Hop Height (mm, 0 = disabled)"
 group   = "Travel Retraction"
 
+[config.schema.retract_mode]
+type    = "enum"
+values  = ["gcode", "firmware"]
+default = "gcode"
+display = "Retraction Mode"
+group   = "Travel Retraction"
+
 [config.overridable-per-region]
 keys = []
 

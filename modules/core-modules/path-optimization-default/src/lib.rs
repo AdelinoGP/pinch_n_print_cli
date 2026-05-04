@@ -18,7 +18,7 @@
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
-use slicer_ir::{ConfigValue, ConfigView, ExtrusionRole};
+use slicer_ir::{ConfigValue, ConfigView, ExtrusionRole, RetractMode};
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::postpass_builders::{GcodeMoveCmd, GcodeOutputBuilder};
@@ -184,6 +184,7 @@ pub struct PathOptimizationDefault {
     retract_length: f32,
     retract_speed: f32,
     travel_z_hop: f32,
+    retract_mode: RetractMode,
 }
 
 #[slicer_module]
@@ -205,11 +206,25 @@ impl LayerModule for PathOptimizationDefault {
             Some(ConfigValue::Float(f)) => *f as f32,
             _ => DEFAULT_TRAVEL_Z_HOP,
         };
+        let retract_mode = match config.get("retract_mode") {
+            Some(ConfigValue::String(s)) => match s.as_str() {
+                "gcode" => RetractMode::Gcode,
+                "firmware" => RetractMode::Firmware,
+                other => {
+                    return Err(ModuleError::fatal(
+                        8,
+                        format!("invalid retract_mode '{other}'; expected 'gcode' or 'firmware'"),
+                    ));
+                }
+            },
+            _ => RetractMode::default(),
+        };
         Ok(Self {
             emit_layer_markers,
             retract_length,
             retract_speed,
             travel_z_hop,
+            retract_mode,
         })
     }
 
@@ -246,6 +261,26 @@ impl LayerModule for PathOptimizationDefault {
                 .map_err(|e| ModuleError::fatal(1, e))?;
         }
 
+        // Emit inter-layer travel retract for any non-first layer (packet 34, Issue #1).
+        // Without this, single-region per-layer prints (e.g. Benchy perimeters) emit zero
+        // retracts in the live G-code path. Safer-variant first cut: retract → unretract
+        // only (no z-hop, no travel move) since the layer planner already handles the
+        // Z transition and the move to the first entity start.
+        if layer_index > 0
+            && regions
+                .first()
+                .and_then(|r| r.wall_loops().first())
+                .and_then(|w| w.path.points.first())
+                .is_some()
+        {
+            output
+                .push_retract(self.retract_length, self.retract_speed, self.retract_mode)
+                .map_err(|e| ModuleError::fatal(8, e))?;
+            output
+                .push_unretract(self.retract_length, self.retract_speed, self.retract_mode)
+                .map_err(|e| ModuleError::fatal(9, e))?;
+        }
+
         // Emit inter-region travel retract decisions (external travel).
         // Each gap between consecutive PerimeterRegionView instances is an external
         // travel: the path crosses outside the current region boundary.
@@ -267,7 +302,7 @@ impl LayerModule for PathOptimizationDefault {
 
             if let (Some(_from), Some(to)) = (from_pt, to_pt) {
                 output
-                    .push_retract(self.retract_length, self.retract_speed)
+                    .push_retract(self.retract_length, self.retract_speed, self.retract_mode)
                     .map_err(|e| ModuleError::fatal(2, e))?;
                 // ZHop before the travel move (OrcaSlicer canonical: lift, then move).
                 // The entity index is normalized to the global anchor by the host dispatch
@@ -288,7 +323,7 @@ impl LayerModule for PathOptimizationDefault {
                     ))
                     .map_err(|e| ModuleError::fatal(4, e))?;
                 output
-                    .push_unretract(self.retract_length, self.retract_speed)
+                    .push_unretract(self.retract_length, self.retract_speed, self.retract_mode)
                     .map_err(|e| ModuleError::fatal(5, e))?;
             }
         }
