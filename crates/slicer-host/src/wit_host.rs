@@ -136,6 +136,8 @@ pub struct SliceRegionData {
     pub has_nonplanar: bool,
     /// Boundary paint data.
     pub boundary_paint: Vec<layer::slicer::world_layer::ir_handles::BoundaryPaintEntry>,
+    /// True when this region is support-eligible (from SurfaceClassificationIR).
+    pub needs_support: bool,
     /// True when this region is classified as a top surface.
     pub is_top_surface: bool,
     /// True when this region is classified as a bottom surface.
@@ -305,6 +307,10 @@ pub mod layer {
                     z: func() -> f32;
                     has-nonplanar: func() -> bool;
                     boundary-paint: func() -> list<boundary-paint-entry>;
+                    needs-support: func() -> bool;
+                    is-top-surface: func() -> bool;
+                    is-bottom-surface: func() -> bool;
+                    is-bridge: func() -> bool;
                 }
                 record seam-position { point: point3-with-width, wall-index: u32 }
                 resource perimeter-region-view {
@@ -2556,9 +2562,10 @@ pub fn sliced_region_to_data(region: &slicer_ir::SlicedRegion, z: f32) -> SliceR
         z,
         has_nonplanar: region.nonplanar_surface.is_some(),
         boundary_paint,
-        is_top_surface: false,
-        is_bottom_surface: false,
-        is_bridge: false,
+        needs_support: true,
+        is_top_surface: region.is_top_surface,
+        is_bottom_surface: region.is_bottom_surface,
+        is_bridge: region.is_bridge,
     }
 }
 
@@ -2631,6 +2638,7 @@ mod region_origin_tests {
                 z: 0.2,
                 has_nonplanar: false,
                 boundary_paint: Vec::new(),
+                needs_support: true,
                 is_top_surface: false,
                 is_bottom_surface: false,
                 is_bridge: false,
@@ -2969,6 +2977,22 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     ) -> wasmtime::Result<Vec<BoundaryPaintEntry>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.boundary_paint.clone())
+    }
+    fn needs_support(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<bool> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.needs_support)
+    }
+    fn is_top_surface(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<bool> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.is_top_surface)
+    }
+    fn is_bottom_surface(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<bool> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.is_bottom_surface)
+    }
+    fn is_bridge(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<bool> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.is_bridge)
     }
     fn drop(&mut self, rep: Resource<SliceRegionData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

@@ -293,13 +293,25 @@ fn execute_single_layer(
     // Layer::SlicePostProcess module runs. Skipped if a caller has already
     // pre-seeded a slice (e.g. integration tests).
     if arena.slice().is_none() {
-        let slice_ir =
-            execute_layer_slice(blackboard.mesh().as_ref(), layer).map_err(|source| {
-                LayerExecutionError::LayerSlice {
-                    layer_index: layer.index,
-                    source,
-                }
-            })?;
+        let layer_idx = layer.index as usize;
+        let global_layers = &plan.global_layers;
+        let next_layer_z = global_layers.get(layer_idx + 1).map(|l| l.z);
+        let prev_layer_z = layer_idx
+            .checked_sub(1)
+            .and_then(|i| global_layers.get(i))
+            .map(|l| l.z);
+        let surface_class = blackboard.surface_classification().map(|arc| arc.as_ref());
+        let slice_ir = execute_layer_slice(
+            blackboard.mesh().as_ref(),
+            layer,
+            surface_class,
+            next_layer_z,
+            prev_layer_z,
+        )
+        .map_err(|source| LayerExecutionError::LayerSlice {
+            layer_index: layer.index,
+            source,
+        })?;
         arena
             .set_slice(slice_ir)
             .map_err(|_| LayerExecutionError::FatalLayer {
