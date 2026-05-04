@@ -103,10 +103,14 @@ interface ir-handles {
         set-path-z:   func(region: region-key, path-idx: u32, vertex-idx: u32, z: f32) -> result<_, string>;
     }
 
+    /// Retract emission mode. `gcode` = explicit `G1 E...` extruder move;
+    /// `firmware` = printer-side firmware retract (`G10`/`G11`).
+    variant retract-mode { gcode, firmware }
+
     resource gcode-output-builder {
         push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
-        push-retract:     func(length: f32, speed: f32) -> result<_, string>;
-        push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
+        push-retract:     func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
+        push-unretract:   func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
         push-fan-speed:   func(value: u8) -> result<_, string>;
         push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
         push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
