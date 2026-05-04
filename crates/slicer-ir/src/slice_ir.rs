@@ -1018,6 +1018,15 @@ pub struct SlicedRegion {
     pub effective_layer_height: f32,
     /// Paint region membership for points on polygon contour boundaries
     pub boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    /// True if this region is an exposed top surface
+    #[serde(default)]
+    pub is_top_surface: bool,
+    /// True if this region is an exposed bottom surface
+    #[serde(default)]
+    pub is_bottom_surface: bool,
+    /// True if this region spans an unsupported gap (bridge)
+    #[serde(default)]
+    pub is_bridge: bool,
 }
 
 /// Slice IR

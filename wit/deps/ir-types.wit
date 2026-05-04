@@ -66,6 +66,12 @@ interface ir-handles {
         // modules consult this as the default-eligibility predicate when neither
         // SupportEnforcer nor SupportBlocker paint applies.
         needs-support:          func() -> bool;
+        // SurfaceClassificationIR surface-classification flags projected per region.
+        // Infill modules consult these to choose TopSolidInfill / BottomSolidInfill /
+        // BridgeInfill instead of SparseInfill.
+        is-top-surface:         func() -> bool;
+        is-bottom-surface:      func() -> bool;
+        is-bridge:              func() -> bool;
     }
 
     resource perimeter-region-view {

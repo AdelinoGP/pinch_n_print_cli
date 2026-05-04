@@ -444,6 +444,9 @@ mod tests {
             nonplanar_surface: None,
             effective_layer_height: 0.2,
             boundary_paint: std::collections::HashMap::new(),
+            is_top_surface: false,
+            is_bottom_surface: false,
+            is_bridge: false,
         };
 
         test_serde_roundtrip!(region);
@@ -588,4 +591,26 @@ mod tests {
         // We'll verify it compiles and serde works
         // test_serde_roundtrip!(InfillType::Grid);
     }
+}
+
+#[test]
+fn slice_ir_schema_version_is_one_one_zero() {
+    let slice = SliceIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 1,
+            patch: 0,
+        },
+        global_layer_index: 0,
+        z: 0.0,
+        regions: vec![],
+    };
+    assert_eq!(
+        (
+            slice.schema_version.major,
+            slice.schema_version.minor,
+            slice.schema_version.patch
+        ),
+        (1, 1, 0)
+    );
 }
