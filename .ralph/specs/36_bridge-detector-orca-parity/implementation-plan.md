@@ -216,6 +216,7 @@
 - OrcaSlicer refs: none.
 - Verification: every AC command from `packet.spec.md`.
 - Exit condition: every AC PASSES; deviation log retires the two 12-rev1 entries; `docs/07` carries TASK-166.
+  - Update `docs/DEVIATION_LOG.md`: flip DEV-035 (any-vertex-in-polygon approximation) and DEV-036 (empty `bridge_regions` in production) from `Open` to `Closed`, citing the relevant new code paths (`assemble_bridge_areas` and `execute_mesh_analysis_with`).
 
 ## Per-Step Budget Roll-Up
 

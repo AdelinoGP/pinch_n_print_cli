@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: external-surface-classification-at-slice
 task_ids:
   - TASK-164

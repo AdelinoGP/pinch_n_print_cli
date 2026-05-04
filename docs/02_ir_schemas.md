@@ -479,6 +479,8 @@ pub struct ModuleInvocation {
 
 **Stage:** Output of `Layer::Slice`, mutated by `Layer::SlicePostProcess`
 
+**Current schema_version: 1.1.0** (additive-minor bump from 1.0.0 in packet `12-rev1_external-surface-classification-at-slice`; new fields default `false` when classification data is absent or the region falls outside the Z window).
+
 ```rust
 pub struct SliceIR {
     pub schema_version: SemVer,
@@ -503,6 +505,24 @@ pub struct SlicedRegion {
     /// Inner value: the paint value at that point for this semantic, or None.
     /// Empty map if no paint data applies to this region at this layer.
     pub boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    /// True when this region lies on the topmost exposed surface of the object
+    /// at this layer (i.e. at least one mesh facet classed TopSurface has a
+    /// vertex inside the region polygon and the layer falls within the
+    /// top-surface Z window).  Written by `classify_region_surfaces` in
+    /// `crates/slicer-host/src/layer_slice.rs`.  Defaults `false` when
+    /// `SurfaceClassificationIR` is absent or the region is out of window.
+    pub is_top_surface: bool,
+    /// True when this region lies on the bottommost exposed surface of the
+    /// object at this layer (same vertex-in-polygon test against BottomSurface
+    /// facets and the bottom-surface Z window).  Defaults `false`.
+    pub is_bottom_surface: bool,
+    /// True when this region spans a bridge gap at this layer (at least one
+    /// `BridgeRegion` Z span covers the layer and a region vertex falls inside
+    /// the bridge polygon).  Defaults `false`.  Note: `bridge_regions` is
+    /// currently initialized empty in
+    /// `crates/slicer-host/src/mesh_analysis.rs:213`; production runs always
+    /// see `false` until packet 36 populates bridge detection (see DEV-035).
+    pub is_bridge: bool,
 }
 
 /// Polygon with holes. Contour is CCW; holes are CW.

@@ -6,6 +6,8 @@ task_ids:
 backlog_source: docs/07_implementation_status.md
 ---
 
+> Note: host-side flag-population gap closed by packet 12-rev1_external-surface-classification-at-slice (2026-05-03).
+
 # Packet Contract: live-top-bottom-surface-fill
 
 ## Goal

@@ -43,6 +43,7 @@ Replace packet 12-rev1's coarse `is_bridge: bool` heuristic with full Orca-parit
   - packet `35_multi-layer-top-bottom-thickness` (provides the `RegionMapIR` + config plumbing pattern this packet reuses for `MeshAnalysisConfig`)
 - Unblocks:
   - none directly; packet 37 and 38 are independent of bridge polygon details
+  - Deviation closure: closes DEV-035 and DEV-036 registered by packet `12-rev1_external-surface-classification-at-slice`
 - Activation blockers:
   - packets 12-rev1 and 35 must be `implemented`
   - confirm `slicer-helpers` exposes a Minkowski/polygon-offset utility (FACT in Step 0); else add one in scope of this packet
