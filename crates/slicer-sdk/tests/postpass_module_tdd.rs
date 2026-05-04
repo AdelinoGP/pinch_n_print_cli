@@ -56,10 +56,12 @@ fn test_02_gcode_command_enum_has_all_variants() {
     let retract = GcodeCommand::Retract {
         length: 1.0,
         speed: 30.0,
+        mode: slicer_ir::RetractMode::Gcode,
     };
     let unretract = GcodeCommand::Unretract {
         length: 1.0,
         speed: 30.0,
+        mode: slicer_ir::RetractMode::Gcode,
     };
     let fan_speed = GcodeCommand::FanSpeed { value: 255 };
     let temperature = GcodeCommand::Temperature {
@@ -188,7 +190,7 @@ fn test_05_gcode_output_builder_push_move() {
 fn test_06_gcode_output_builder_push_retract() {
     let mut builder = GcodeOutputBuilder::new();
 
-    let result = builder.push_retract(1.0, 30.0);
+    let result = builder.push_retract(1.0, 30.0, slicer_ir::RetractMode::Gcode);
     assert!(result.is_ok());
     assert_eq!(builder.commands().len(), 1);
 }
@@ -197,7 +199,7 @@ fn test_06_gcode_output_builder_push_retract() {
 fn test_06b_gcode_output_builder_push_unretract() {
     let mut builder = GcodeOutputBuilder::new();
 
-    let result = builder.push_unretract(1.0, 30.0);
+    let result = builder.push_unretract(1.0, 30.0, slicer_ir::RetractMode::Gcode);
     assert!(result.is_ok());
     assert_eq!(builder.commands().len(), 1);
 }
@@ -415,6 +417,7 @@ fn test_15b_prelude_types_are_constructible() {
     let _command = GcodeCommand::Retract {
         length: 1.0,
         speed: 30.0,
+        mode: slicer_ir::RetractMode::Gcode,
     };
     let _output_command = GcodeOutputCommand::ZHop {
         after_entity_index: 0,

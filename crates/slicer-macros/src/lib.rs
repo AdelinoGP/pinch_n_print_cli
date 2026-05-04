@@ -734,6 +734,20 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                 }
             }
 
+            fn __slicer_retract_mode_ir_to_wit(mode: &::slicer_ir::RetractMode) -> RetractMode {
+                match mode {
+                    ::slicer_ir::RetractMode::Gcode => RetractMode::Gcode,
+                    ::slicer_ir::RetractMode::Firmware => RetractMode::Firmware,
+                }
+            }
+
+            fn __slicer_retract_mode_wit_to_ir(mode: &RetractMode) -> ::slicer_ir::RetractMode {
+                match mode {
+                    RetractMode::Gcode => ::slicer_ir::RetractMode::Gcode,
+                    RetractMode::Firmware => ::slicer_ir::RetractMode::Firmware,
+                }
+            }
+
             fn __slicer_adapt_postpass_command(command: &GcodeCommand) -> ::slicer_sdk::postpass_types::GcodeCommand {
                 match command {
                     GcodeCommand::Move(cmd) => ::slicer_sdk::postpass_types::GcodeCommand::Move {
@@ -747,10 +761,12 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                     GcodeCommand::Retract(cmd) => ::slicer_sdk::postpass_types::GcodeCommand::Retract {
                         length: cmd.length,
                         speed: cmd.speed,
+                        mode: __slicer_retract_mode_wit_to_ir(&cmd.mode),
                     },
                     GcodeCommand::Unretract(cmd) => ::slicer_sdk::postpass_types::GcodeCommand::Unretract {
                         length: cmd.length,
                         speed: cmd.speed,
+                        mode: __slicer_retract_mode_wit_to_ir(&cmd.mode),
                     },
                     GcodeCommand::FanSpeed(cmd) => ::slicer_sdk::postpass_types::GcodeCommand::FanSpeed {
                         value: cmd.value,
@@ -793,14 +809,14 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                             let _ = wit.push_move(wit_cmd);
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
-                            ::slicer_sdk::postpass_types::GcodeCommand::Retract { length, speed }
+                            ::slicer_sdk::postpass_types::GcodeCommand::Retract { length, speed, mode }
                         ) => {
-                            let _ = wit.push_retract(*length, *speed);
+                            let _ = wit.push_retract(*length, *speed, __slicer_retract_mode_ir_to_wit(mode));
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
-                            ::slicer_sdk::postpass_types::GcodeCommand::Unretract { length, speed }
+                            ::slicer_sdk::postpass_types::GcodeCommand::Unretract { length, speed, mode }
                         ) => {
-                            let _ = wit.push_unretract(*length, *speed);
+                            let _ = wit.push_unretract(*length, *speed, __slicer_retract_mode_ir_to_wit(mode));
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
                             ::slicer_sdk::postpass_types::GcodeCommand::FanSpeed { value }
@@ -2222,6 +2238,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 OrderedEntityView as WitOrderedEntityView,
                 PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
                 RegionKey as WitRegionKey,
+                RetractMode as WitRetractMode,
                 SeamPosition as WitSeamPosition,
                 SemanticRegion as WitSemanticRegion,
                 WallFeatureFlag as WitWallFeatureFlag,
@@ -2582,6 +2599,12 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     }
                 }
             }
+            fn __slicer_retract_mode_ir_to_wit_layer(mode: &::slicer_ir::RetractMode) -> WitRetractMode {
+                match mode {
+                    ::slicer_ir::RetractMode::Gcode => WitRetractMode::Gcode,
+                    ::slicer_ir::RetractMode::Firmware => WitRetractMode::Firmware,
+                }
+            }
             fn __slicer_ir_path_to_wit(p: &::slicer_ir::ExtrusionPath3D) -> WitExtrusionPath3d {
                 WitExtrusionPath3d {
                     points: p.points.iter().map(|pt| WitPoint3WithWidth {
@@ -2747,14 +2770,14 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                             let _ = wit.push_move(&wit_cmd);
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
-                            ::slicer_sdk::postpass_types::GcodeCommand::Retract { length, speed }
+                            ::slicer_sdk::postpass_types::GcodeCommand::Retract { length, speed, mode }
                         ) => {
-                            let _ = wit.push_retract(*length, *speed);
+                            let _ = wit.push_retract(*length, *speed, __slicer_retract_mode_ir_to_wit_layer(mode));
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
-                            ::slicer_sdk::postpass_types::GcodeCommand::Unretract { length, speed }
+                            ::slicer_sdk::postpass_types::GcodeCommand::Unretract { length, speed, mode }
                         ) => {
-                            let _ = wit.push_unretract(*length, *speed);
+                            let _ = wit.push_unretract(*length, *speed, __slicer_retract_mode_ir_to_wit_layer(mode));
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
                             ::slicer_sdk::postpass_types::GcodeCommand::FanSpeed { value }

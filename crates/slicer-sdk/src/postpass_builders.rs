@@ -4,7 +4,7 @@
 //! They are used by PostpassModule implementations to emit gcode postprocessing output.
 
 use crate::postpass_types::GcodeOutputCommand;
-use slicer_ir::{ExtrusionRole, GCodeCommand};
+use slicer_ir::{ExtrusionRole, GCodeCommand, RetractMode};
 
 /// Move command parameters for the GCode output builder.
 ///
@@ -94,21 +94,43 @@ impl GcodeOutputBuilder {
     }
 
     /// Push a retract command.
-    pub fn push_retract(&mut self, length: f32, speed: f32) -> Result<(), String> {
+    ///
+    /// `mode` selects whether the downstream emitter should serialise this as
+    /// G-code-driven retraction (`RetractMode::Gcode`) or firmware-driven
+    /// retraction (`RetractMode::Firmware`). Callers that pre-date packet-34
+    /// should pass `RetractMode::Gcode` to preserve historical behaviour.
+    pub fn push_retract(
+        &mut self,
+        length: f32,
+        speed: f32,
+        mode: RetractMode,
+    ) -> Result<(), String> {
         self.commands
             .push(GcodeOutputCommand::Command(GCodeCommand::Retract {
                 length,
                 speed,
+                mode,
             }));
         Ok(())
     }
 
     /// Push an unretract command.
-    pub fn push_unretract(&mut self, length: f32, speed: f32) -> Result<(), String> {
+    ///
+    /// `mode` selects whether the downstream emitter should serialise this as
+    /// G-code-driven retraction (`RetractMode::Gcode`) or firmware-driven
+    /// retraction (`RetractMode::Firmware`). Callers that pre-date packet-34
+    /// should pass `RetractMode::Gcode` to preserve historical behaviour.
+    pub fn push_unretract(
+        &mut self,
+        length: f32,
+        speed: f32,
+        mode: RetractMode,
+    ) -> Result<(), String> {
         self.commands
             .push(GcodeOutputCommand::Command(GCodeCommand::Unretract {
                 length,
                 speed,
+                mode,
             }));
         Ok(())
     }
