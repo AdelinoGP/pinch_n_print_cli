@@ -1348,6 +1348,11 @@ pub struct TravelRetract {
     pub speed: f32,
     /// `true` = Unretract; `false` = Retract.
     pub is_unretract: bool,
+    /// Emit-mode: `Gcode` materializes as inline-E `G1` moves; `Firmware`
+    /// materializes as bare `G10`/`G11` opcodes. Defaults to `Gcode` for
+    /// callers that haven't been migrated to thread the mode field.
+    #[serde(default)]
+    pub mode: RetractMode,
 }
 
 /// Travel move destination from `Layer::PathOptimization`, keyed by entity anchor.
@@ -1424,6 +1429,18 @@ pub struct LayerCollectionIR {
 // GCode IR Types
 // ============================================================================
 
+/// Selects whether retract/unretract commands are emitted as explicit G-code
+/// extruder moves (`Gcode`) or delegated to the printer firmware via `G10`/`G11`
+/// (`Firmware`). Default callers pass `Gcode` to preserve packet-15 behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+pub enum RetractMode {
+    /// Slicer emits retract/unretract as explicit `G1 E...` moves.
+    #[default]
+    Gcode,
+    /// Slicer emits firmware retract/unretract (`G10`/`G11`).
+    Firmware,
+}
+
 /// GCode command
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum GCodeCommand {
@@ -1448,6 +1465,8 @@ pub enum GCodeCommand {
         length: f32,
         /// Retraction speed
         speed: f32,
+        /// Retract emission mode (G-code vs. firmware)
+        mode: RetractMode,
     },
     /// Unretract command
     Unretract {
@@ -1455,6 +1474,8 @@ pub enum GCodeCommand {
         length: f32,
         /// Unretraction speed
         speed: f32,
+        /// Retract emission mode (G-code vs. firmware)
+        mode: RetractMode,
     },
     /// Fan speed command
     FanSpeed {

@@ -95,6 +95,7 @@ pub use slice_ir::{
     RegionMapIR,
     RegionPlan,
     ResolvedConfig,
+    RetractMode,
     ScoredSeamCandidate,
     SeamCandidate,
     SeamPlanEntry,

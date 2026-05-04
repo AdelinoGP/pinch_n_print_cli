@@ -499,7 +499,8 @@ mod tests {
 
         test_serde_roundtrip!(GCodeCommand::Retract {
             length: 1.0,
-            speed: 30.0
+            speed: 30.0,
+            mode: RetractMode::Gcode,
         });
         test_serde_roundtrip!(GCodeCommand::FanSpeed { value: 255 });
         test_serde_roundtrip!(GCodeCommand::ToolChange {
