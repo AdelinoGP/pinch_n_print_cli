@@ -29,6 +29,18 @@
           }
         ]
       }
-    ]
+    ],
+    "TaskCompleted": [
+        {
+          "matcher": "",
+          "hooks": [
+            {
+              "type": "command",
+              "timeout": 30,
+              "command": "bash -c 'cd \"$CLAUDE_PROJECT_DIR\" && { ./modules/core-modules/build-core-modules.sh --check && ./test-guests/build-test-guests.sh --check; } 1>&2 || exit 2'"
+            }
+          ]
+        }
+      ]
   }
 }

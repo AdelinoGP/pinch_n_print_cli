@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: retraction-mode-firmware-vs-gcode
 task_ids:
   - TASK-120d2
