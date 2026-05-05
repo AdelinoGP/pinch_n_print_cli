@@ -996,3 +996,115 @@ validate = "value >= 0.01 && value <= 10.0"
 rule     = "outer_wall_speed <= inner_wall_speed * 1.5"
 rule     = "min(layer_height, 0.35) == layer_height"
 ```
+
+---
+
+## Test Guest Fixtures (Informative)
+
+`test-guests/` holds minimal WASM components used as fixtures by host
+integration tests under `crates/slicer-host/tests/`. They exercise the
+WIT boundary with real `wasm32-unknown-unknown` artifacts, complementing
+the in-process mock host shipped to module authors via `slicer-test`
+(see `docs/05_module_sdk.md` § `slicer-test` Crate). The two paths
+target different concerns and are not interchangeable:
+
+| Concern                                                  | Vehicle                          |
+|----------------------------------------------------------|----------------------------------|
+| Module author unit-tests their stage logic               | `slicer-test` mock host (no WASM) |
+| Host verifies dispatch, IR resources, ABI, surface drift | `test-guests/*.component.wasm`   |
+
+### Layout
+
+Each guest is a standalone Cargo crate with its own `[workspace]` (it
+targets `wasm32-unknown-unknown`, so it cannot live inside the host
+workspace) and `crate-type = ["cdylib"]`. The build pipeline produces
+`<guest>.component.wasm` next to the source directory; that file is the
+artifact host tests load via `include_bytes!` / `std::fs::read`.
+
+```
+test-guests/
+├── build-test-guests.sh                # build + freshness checker
+├── layer-infill-guest/
+│   ├── Cargo.toml                      # standalone workspace, cdylib
+│   └── src/lib.rs
+├── layer-infill-guest.component.wasm   # built artifact, checked in
+├── …
+└── sdk-prepass-guest/
+    └── …
+```
+
+### Two families
+
+**Hand-rolled WIT guests** spell the WIT inline via
+`wit_bindgen::generate!({ inline: r#"…"# })` rather than referencing
+the canonical `wit/`. They are deliberately decoupled from the canonical
+surface so host instantiation will fail loudly if `wit/` drifts in a way
+that breaks ABI compatibility. They are the primary regression vehicle
+for type-identity, resource-handle, and dispatch correctness.
+
+| Guest                | World                       | Verifies                                                                  |
+|----------------------|-----------------------------|---------------------------------------------------------------------------|
+| `layer-infill-guest` | `slicer:world-layer`        | All Layer-stage exports, output builders, paint queries, region-key commit |
+| `prepass-guest`      | `slicer:world-prepass`      | PrePass exports (mesh segmentation/analysis, paint, seam, support)        |
+| `finalization-guest` | `slicer:world-finalization` | `LayerCollectionView` reads + `FinalizationOutputBuilder` writes          |
+| `postpass-guest`     | `slicer:world-postpass`     | `gcode-command` round-trip + text postprocess                             |
+
+**SDK round-trip witnesses** are authored *purely* through the
+`#[slicer_module]` proc-macro from `slicer-sdk`. They contain no inline
+WIT and no manual `wit_bindgen` glue; the macro must emit every binding
+for the binary to link. They prove the SDK codegen path produces valid
+guests against the canonical `wit/`.
+
+| Guest                          | Stage                         | Notes                                                                                           |
+|--------------------------------|-------------------------------|-------------------------------------------------------------------------------------------------|
+| `sdk-prepass-guest`            | `PrePass::MeshAnalysis`       | Macro-only PrePass round-trip witness                                                            |
+| `sdk-layer-infill-guest`       | `Layer::Infill`               | Macro-only Layer round-trip witness                                                              |
+| `sdk-layer-pathopt-guest`      | `Layer::PathOptimization`     | Macro-only PathOptimization witness                                                              |
+| `sdk-finalization-guest`       | `PostPass::LayerFinalization` | Macro-only finalization witness                                                                  |
+| `sdk-postpass-text-guest`      | `PostPass::GCodeText`         | Macro-only text-postprocess witness                                                              |
+| `path-optimization-multi-read` | `Layer::PathOptimization`     | Asserts the macro `get-ordered-entities`-call-once cache contract; counterpart to the host counter `HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS` |
+
+### Build & Freshness Contract (Normative)
+
+`test-guests/build-test-guests.sh` builds every guest with
+`cargo build --target wasm32-unknown-unknown --release` and runs
+`wasm-tools component new` to produce the `.component.wasm` artifact.
+
+- `./test-guests/build-test-guests.sh` — build any stale guests.
+- `./test-guests/build-test-guests.sh --check` — verify only; exit 1
+  if any source is newer than its artifact.
+
+Freshness is enforced from the host workspace by
+`crates/slicer-host/tests/guest_fixture_freshness_tdd.rs`, which fails
+when:
+
+- An expected `.component.wasm` is missing.
+- An artifact is suspiciously small (< 100 bytes — i.e. not a real
+  component).
+- A guest's `src/lib.rs` is newer than its artifact.
+
+Prerequisites for rebuilding (`rustup target add wasm32-unknown-unknown`
+and `cargo install wasm-tools`) are required only when modifying a guest.
+Contributors who do not touch `test-guests/` can run
+`cargo test --workspace` against an unmodified tree because the
+`.component.wasm` artifacts are committed.
+
+### Signal-Encoding Convention
+
+Test guests have no real geometry to emit. To make boundary semantics
+observable from host-side asserts, they encode inputs into the spare
+fields of output records. The recurring pattern across the hand-rolled
+guests is:
+
+- `point3-with-width.z`           — echo of input `region.z`.
+- `point3-with-width.flow_factor` — input region count or layer index.
+- `point3-with-width.width`       — total polygon count across regions.
+- A single `push-comment("regions=N walls=M infill=K")` per layer.
+- One `push-tool-change` per active region for ordering proofs.
+
+Host tests then assert against `ExtrusionPathIR.points[0]` (or the
+flushed `LayerCollectionIR.tool_changes` / `annotations`) to verify
+that data crossed the boundary intact, paint queries were honoured,
+and per-region identity (`region-key`) survived the commit path.
+This convention is *informative* — guest authors are free to encode
+signals differently as long as the matching host test reads them back.
