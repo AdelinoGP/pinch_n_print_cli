@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 35a_resolved-config-propagation
 task_ids:
   - TASK-166
