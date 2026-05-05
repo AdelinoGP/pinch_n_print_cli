@@ -13,11 +13,12 @@
 //! those are higher-level rewrites of the active-modules list, not of
 //! the region-map shape.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::{
-    LayerPlanIR, ModuleInvocation, RegionKey, RegionMapIR, RegionPlan, SemVer, StageId,
+    LayerPlanIR, ModuleInvocation, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer,
+    StageId,
 };
 
 use crate::execution_plan::DEFAULT_REGION_MAP_CAP;
@@ -209,9 +210,17 @@ pub fn execute_region_mapping_with_cap(
 
 /// Commit the built-in region map into the blackboard (idempotent — if a
 /// caller has already committed a map, the function is a no-op).
+///
+/// `resolved_configs` is a per-object map keyed by `object_id` that supplies
+/// the authoritative [`ResolvedConfig`] for each object.  When an object has
+/// no entry in the map, `default_resolved_config` is used as the fallback.
+/// The host (not the module-emitted `region.resolved_config`) is now the
+/// stamping authority for `RegionPlan.config`.
 pub fn commit_region_mapping_builtin(
     plan: &ExecutionPlan,
     blackboard: &mut crate::Blackboard,
+    resolved_configs: &BTreeMap<String, ResolvedConfig>,
+    default_resolved_config: &ResolvedConfig,
 ) -> Result<(), RegionMappingBuiltinError> {
     if blackboard.region_map().is_some() {
         return Ok(());
@@ -219,8 +228,19 @@ pub fn commit_region_mapping_builtin(
     let Some(layer_plan) = blackboard.layer_plan().cloned() else {
         return Err(RegionMappingBuiltinError::MissingLayerPlan);
     };
-    let ir = execute_region_mapping(layer_plan.as_ref(), plan)
+    let mut ir = execute_region_mapping(layer_plan.as_ref(), plan)
         .map_err(RegionMappingBuiltinError::Mapping)?;
+
+    // Stamp each RegionPlan.config from the per-object map, falling back to
+    // the caller-supplied default when the object has no dedicated entry.
+    for (key, region_plan) in ir.entries.iter_mut() {
+        let config = resolved_configs
+            .get(&key.object_id)
+            .cloned()
+            .unwrap_or_else(|| default_resolved_config.clone());
+        region_plan.config = config;
+    }
+
     blackboard
         .commit_region_map(Arc::new(ir))
         .map_err(|source| RegionMappingBuiltinError::Blackboard { source })?;
