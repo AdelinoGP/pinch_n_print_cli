@@ -9,54 +9,52 @@
 
 ## Steps
 
-### Step 0: FACT-confirm config schema and Orca defaults
+### Step 0: FACT-confirm config schema and Orca defaults — DONE
 
 - Task IDs:
   - `TASK-165`
-- Objective: read-only discovery — confirm whether `top_solid_layers` and `bottom_solid_layers` config keys exist in the central config schema, and confirm Orca's numeric defaults.
+- Objective: read-only discovery — confirm whether `top_shell_layers` and `bottom_shell_layers` config keys exist in the central config schema, and confirm Orca's numeric defaults.
 - Precondition: Step 0 not yet run.
-- Postcondition: two recorded FACTs — (a) "keys present in `<file>:<line>`" or "keys missing"; (b) "Orca default = 3 for both".
+- Postcondition: **Step 0 complete. FACTs recorded: (a) keys exist as `top_shell_layers` / `bottom_shell_layers` at `crates/slicer-ir/src/slice_ir.rs:610,612`, default `3, 3` at `:657-658`; (b) Orca defaults are `4, 3` per `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp:6355,1112`; codebase deviation accepted.**
 - Files allowed to read: none directly (delegate dispatches only).
 - Files allowed to edit (≤ 3): none.
 - Files explicitly out-of-bounds for this step: all production code.
 - Expected sub-agent dispatches:
-  - "Are `top_solid_layers` and `bottom_solid_layers` declared in `crates/slicer-ir/src/` or `crates/slicer-host/src/` config schemas? Return FACT yes/no with file:line each."
-  - "Confirm Orca defaults for `top_solid_layers` and `bottom_solid_layers` from `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` and config-option defaults. Return FACT numeric values only."
+  - "Are `top_shell_layers` and `bottom_shell_layers` declared in `crates/slicer-ir/src/` or `crates/slicer-host/src/` config schemas? Return FACT yes/no with file:line each."
+  - "Confirm Orca defaults for `top_shell_layers` and `bottom_shell_layers` from `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` and config-option defaults. Return FACT numeric values only."
 - Context cost: `S`.
 - Authoritative docs:
   - `docs/03_wit_and_manifest.md` — config-key declaration rules (delegate FACT).
 - OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` — `discover_horizontal_shells()`; defaults section.
-- Verification: the two FACTs.
-- Exit condition: both FACTs recorded; Step 1 plan firmed up based on outcomes.
+  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` — defaults section (lines 6355, 1112).
+- Verification: the two FACTs (recorded above in Postcondition).
+- Exit condition: both FACTs recorded; Step 1 plan firmed up based on outcomes. **EXIT CONDITION MET.**
 
-### Step 1: Add config keys (if absent) and update doc
+### Step 1: Add config keys (if absent) and update doc — NO-OP
 
 - Task IDs:
   - `TASK-165`
-- Objective: if Step 0 FACT (a) reported the keys absent, add `top_solid_layers: u32` and `bottom_solid_layers: u32` to the central config schema. Document defaults in `docs/02_ir_schemas.md` or `docs/03_wit_and_manifest.md` per repository convention. If Step 0 FACT (a) reported keys present, this step is a no-op; record that and proceed.
+- Objective: **No-op. Step 0 confirmed `top_shell_layers` / `bottom_shell_layers` already exist on `ResolvedConfig` with defaults `3, 3`. Skip schema and doc edits. Proceed to Step 2.**
 - Precondition: Step 0 complete.
-- Postcondition: keys present in the schema with Orca defaults; workspace builds.
+- Postcondition: **No edits performed.**
 - Files allowed to read:
-  - the schema file identified in Step 0 (range-read; ≤ 60 lines).
-- Files allowed to edit (≤ 3):
-  - the schema file.
-  - `docs/02_ir_schemas.md` or `docs/03_wit_and_manifest.md` (whichever owns config schema).
+  - `crates/slicer-ir/src/slice_ir.rs` — lines `570-660` (ResolvedConfig struct + Default impl).
+- Files allowed to edit (≤ 3): none.
 - Files explicitly out-of-bounds for this step: all unrelated crates.
-- Expected sub-agent dispatches:
-  - "Run `cargo build --workspace`; return FACT pass/fail."
+- Expected sub-agent dispatches: none.
 - Context cost: `S`.
 - Authoritative docs:
   - `docs/03_wit_and_manifest.md`.
 - OrcaSlicer refs: none.
-- Verification: `cargo build --workspace`.
-- Exit condition: workspace builds; keys exist; defaults documented.
+- Verification: **n/a.**
+- Exit condition: **documented as no-op.**
 
 ### Step 2: Author the failing TDD file
 
 - Task IDs:
   - `TASK-165`
 - Objective: create `crates/slicer-host/tests/multi_layer_thickness_tdd.rs` with the exact test names from `packet.spec.md` (Acceptance and Negative cases). Tests fail until Steps 3–4 land. Add `benchy_multi_layer_top_bottom_evidence` test to `crates/slicer-host/tests/benchy_end_to_end_tdd.rs`.
+  - Test names: `top_shell_layers_three_flags_three_layers`, `bottom_shell_layers_three_flags_three_layers`, `window_truncates_at_object_extent`, `missing_config_uses_default_three`, `execute_layer_slice_honors_region_map_top_shell_layers`, `none_region_map_uses_orca_defaults`, `zero_top_shell_layers_disables_flag`.
 - Precondition: Step 1 complete.
 - Postcondition: every new test compiles and FAILS.
 - Files allowed to read:
@@ -79,18 +77,18 @@
 
 - Task IDs:
   - `TASK-165`
-- Objective: in `crates/slicer-host/src/layer_slice.rs`, extend `classify_region_surfaces` to take `top_solid_layers: u32, bottom_solid_layers: u32` and walk `LayerPlanIR.global_layers` to compute the multi-layer Z window. Pass `LayerPlanIR` borrow into the helper or thread it via a helper struct.
+- Objective: in `crates/slicer-host/src/layer_slice.rs`, extend `classify_region_surfaces` to take `top_shell_layers: u32, bottom_shell_layers: u32` and walk `LayerPlanIR.global_layers` to compute the multi-layer Z window. Pass `LayerPlanIR` borrow into the helper or thread it via a helper struct.
 - Precondition: Step 2 complete.
 - Postcondition: helper-level multi-layer tests in `multi_layer_thickness_tdd.rs` PASS; `external_surface_classification_tdd.rs` (12-rev1) remains green.
 - Files allowed to read:
   - `crates/slicer-host/src/layer_slice.rs` — full file.
-  - `crates/slicer-ir/src/slice_ir.rs` — lines `680-740` (LayerPlanIR / GlobalLayer).
+  - `crates/slicer-ir/src/slice_ir.rs` — lines `570-660` (ResolvedConfig struct + Default impl, existing `top_shell_layers` / `bottom_shell_layers` fields) and lines `680-740` (LayerPlanIR / GlobalLayer).
 - Files allowed to edit (≤ 3):
   - `crates/slicer-host/src/layer_slice.rs`
 - Files explicitly out-of-bounds for this step:
   - `crates/slicer-host/src/dispatch.rs`, `wit/`, `crates/slicer-sdk/`.
 - Expected sub-agent dispatches:
-  - "Run `cargo test -p slicer-host --test multi_layer_thickness_tdd top_solid_layers_three_flags_three_layers bottom_solid_layers_three_flags_three_layers window_truncates_at_object_extent missing_config_uses_default_three zero_top_solid_layers_disables_flag none_region_map_uses_orca_defaults -- --exact`; return FACT pass/fail per test."
+  - "Run `cargo test -p slicer-host --test multi_layer_thickness_tdd top_shell_layers_three_flags_three_layers bottom_shell_layers_three_flags_three_layers window_truncates_at_object_extent missing_config_uses_default_three zero_top_shell_layers_disables_flag none_region_map_uses_orca_defaults -- --exact`; return FACT pass/fail per test."
   - "Run `cargo test -p slicer-host --test external_surface_classification_tdd`; return FACT pass/fail."
 - Context cost: `M`.
 - Authoritative docs:
@@ -98,7 +96,7 @@
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` — already FACTed in Step 0; no re-read.
 - Verification:
-  - `cargo test -p slicer-host --test multi_layer_thickness_tdd <unit-tests> -- --exact`
+  - `cargo test -p slicer-host --test multi_layer_thickness_tdd top_shell_layers_three_flags_three_layers bottom_shell_layers_three_flags_three_layers window_truncates_at_object_extent missing_config_uses_default_three zero_top_shell_layers_disables_flag none_region_map_uses_orca_defaults -- --exact`
   - `cargo test -p slicer-host --test external_surface_classification_tdd`
 - Exit condition: helper tests PASS; 12-rev1 tests still PASS.
 
@@ -106,9 +104,9 @@
 
 - Task IDs:
   - `TASK-165`
-- Objective: extend `execute_layer_slice` signature with `region_map: Option<&RegionMapIR>` (and `layer_plan: Option<&LayerPlanIR>` if not already present from Step 3). Inside the region loop, look up `(top_solid_layers, bottom_solid_layers)` per `(layer_idx, object_id, region_id)` from `region_map.entries[*].config` with Orca defaults when absent. Update the production caller `crates/slicer-host/src/layer_executor.rs:295-310` to forward `blackboard.region_map()` and `blackboard.layer_plan()`.
+- Objective: extend `execute_layer_slice` signature with `region_map: Option<&RegionMapIR>` (and `layer_plan: Option<&LayerPlanIR>` if not already present from Step 3). Inside the region loop, look up `(top_shell_layers, bottom_shell_layers)` per `(layer_idx, object_id, region_id)` from `region_map.entries[*].config` with codebase defaults (`3, 3`) when absent. Update the production caller `crates/slicer-host/src/layer_executor.rs:295-310` to forward `blackboard.region_map()` and `blackboard.layer_plan()`.
 - Precondition: Step 3 complete (helper supports the wide window).
-- Postcondition: `execute_layer_slice_honors_region_map_top_solid_layers` PASSES; `none_region_map_uses_orca_defaults` PASSES; `cargo build --workspace` succeeds.
+- Postcondition: `execute_layer_slice_honors_region_map_top_shell_layers` PASSES; `none_region_map_uses_orca_defaults` PASSES; `cargo build --workspace` succeeds.
 - Files allowed to read:
   - `crates/slicer-host/src/blackboard.rs` — lines `192-220` only.
   - `crates/slicer-host/src/region_mapping.rs` — public API only (range-read).
@@ -120,7 +118,7 @@
   - `crates/slicer-host/src/dispatch.rs`, `crates/slicer-host/src/prepass.rs`, `wit/`.
 - Expected sub-agent dispatches:
   - "Find every caller of `execute_layer_slice` in `crates/`; return LOCATIONS."
-  - "Run `cargo test -p slicer-host --test multi_layer_thickness_tdd execute_layer_slice_honors_region_map_top_solid_layers none_region_map_uses_orca_defaults -- --exact`; return FACT pass/fail."
+  - "Run `cargo test -p slicer-host --test multi_layer_thickness_tdd execute_layer_slice_honors_region_map_top_shell_layers none_region_map_uses_orca_defaults -- --exact`; return FACT pass/fail."
 - Context cost: `M`.
 - Authoritative docs:
   - `docs/04_host_scheduler.md` — § Per-Layer Execution + § Blackboard Structure.
@@ -153,7 +151,7 @@
 
 - Task IDs:
   - `TASK-165`
-- Objective: confirm `benchy_multi_layer_top_bottom_evidence` PASSES at `top_solid_layers = 4`, `bottom_solid_layers = 4`; confirm `cargo test --workspace` PASSES; confirm `cargo clippy --workspace -- -D warnings` PASSES; update `docs/07_implementation_status.md`.
+- Objective: confirm `benchy_multi_layer_top_bottom_evidence` PASSES at `top_shell_layers = 4`, `bottom_shell_layers = 4`; confirm `cargo test --workspace` PASSES; confirm `cargo clippy --workspace -- -D warnings` PASSES; update `docs/07_implementation_status.md`.
 - Precondition: Step 5 complete.
 - Postcondition: every AC verification command in `packet.spec.md` PASSES; backlog updated.
 - Files allowed to read: none directly (dispatch only).
@@ -196,7 +194,7 @@ Aggregate: `M`. No single step is `L`.
 - Every pipe-suffixed AC verification command in `packet.spec.md` PASSES.
 - `docs/07_implementation_status.md` carries TASK-165 (delegated edit).
 - `docs/02_ir_schemas.md` documents the new config keys (if Step 1 added them).
-- `packet.spec.md` ready to move to `status: implemented`.
+- `packet.spec.md` status flipped to `implemented`.
 
 ## Acceptance Ceremony
 

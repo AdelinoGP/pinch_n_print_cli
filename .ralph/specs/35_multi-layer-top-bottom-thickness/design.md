@@ -16,15 +16,15 @@
 - **No new fine-layer-height slicing pass** (same constraint inherited from 12-rev1).
 - **No change to per-layer parallel execution.**
 - **Use `RegionMapIR` from blackboard** as the per-region resolved-config source. `RegionMapIR` is produced by host-built-in `PrePass::RegionMapping`; immutable post-prepass.
-- **Per-region config keys reuse existing schema where possible.** Confirm in Step 0 whether `top_solid_layers` and `bottom_solid_layers` are already declared in the central config schema (`docs/03_wit_and_manifest.md`); add them if absent.
-- **Defaults match Orca**: `top_solid_layers = 3`, `bottom_solid_layers = 3`. Verified via OrcaSlicer FACT delegation.
+- **Per-region config keys reuse existing `ResolvedConfig.top_shell_layers` and `ResolvedConfig.bottom_shell_layers` fields** (already present at `crates/slicer-ir/src/slice_ir.rs:610,612`, defaults `3, 3` at `:657-658`). No schema additions required (Step 0 FACT confirmed).
+- **Defaults match the existing codebase**: `top_shell_layers = 3`, `bottom_shell_layers = 3`. **Deviation**: Orca's defaults are `4 / 3`; the codebase intentionally uses `3 / 3` (matches Bambu/Prusa convention; not changed by this packet).
 
 ## Code Change Surface
 
 - Selected approach:
-  - Extend `classify_region_surfaces` to take `top_solid_layers: u32` and `bottom_solid_layers: u32` (resolved at the call site from `RegionMapIR`). The function computes the window by walking `LayerPlanIR.global_layers` from the current index. Window truncation at object/global extent yields `f32::INFINITY` (top) or `f32::NEG_INFINITY` (bottom), preserving the existing single-layer semantics as the `N=1` case.
+  - Extend `classify_region_surfaces` to take `top_shell_layers: u32` and `bottom_shell_layers: u32` (resolved at the call site from `RegionMapIR`). The function computes the window by walking `LayerPlanIR.global_layers` from the current index. Window truncation at object/global extent yields `f32::INFINITY` (top) or `f32::NEG_INFINITY` (bottom), preserving the existing single-layer semantics as the `N=1` case.
   - Extend `execute_layer_slice` signature with `region_map: Option<&RegionMapIR>` and (new) `layer_plan: Option<&LayerPlanIR>` so the helper can walk multi-layer windows. Caller already has both available.
-  - Inside `execute_layer_slice`'s region loop: resolve `(top_solid_layers, bottom_solid_layers)` per `(layer_idx, object_id, region_id)` from `region_map.entries[*].config`; use Orca defaults when missing.
+  - Inside `execute_layer_slice`'s region loop: resolve `(top_shell_layers, bottom_shell_layers)` per `(layer_idx, object_id, region_id)` from `region_map.entries[*].config`; use codebase defaults (`3, 3`) when missing.
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
   - `crates/slicer-host/src/layer_slice.rs` — extend `execute_layer_slice` signature; widen window in `classify_region_surfaces`; resolve config per region.
   - `crates/slicer-host/src/layer_executor.rs:295-310` — pass `blackboard.region_map()` and `blackboard.layer_plan()` references.
@@ -33,7 +33,7 @@
   - mechanical: existing `execute_layer_slice` test callers in `crates/slicer-host/tests/layer_slice_tdd.rs` get a `None` for the new `region_map` parameter (and `layer_plan` if added).
 - Rejected alternatives that were considered and why they were not chosen:
   - **Compute the window from `N × layer_height`** — rejected: incorrect for variable layer height, which is supported by `LayerPlanIR.global_layers[*].z`. Walking the actual `z` array is correct.
-  - **Pass `top_solid_layers` / `bottom_solid_layers` as direct function arguments to `execute_layer_slice`** — rejected: per-region resolution belongs inside the function, not at every caller. `RegionMapIR` is the right abstraction.
+  - **Pass `top_shell_layers` / `bottom_shell_layers` as direct function arguments to `execute_layer_slice`** — rejected: per-region resolution belongs inside the function, not at every caller. `RegionMapIR` is the right abstraction.
   - **Bake defaults into `mesh_analysis.rs`** — rejected: defaults are config concerns, not classification concerns; mesh-analysis stays config-free.
 
 ## Files in Scope (read + edit)
@@ -47,7 +47,7 @@
 
 - `crates/slicer-host/src/blackboard.rs` — read lines `192-220` only — purpose: confirm `region_map()` accessor pattern.
 - `crates/slicer-host/src/region_mapping.rs` — read only the public `RegionMapIR` access surface and `entries[*].config` lookup helpers (range-read; do NOT load whole file).
-- `crates/slicer-ir/src/slice_ir.rs` — read lines `680-740` (`LayerPlanIR.global_layers` and `RegionPlan` definitions).
+- `crates/slicer-ir/src/slice_ir.rs` — read lines `570-660` (`ResolvedConfig` struct + Default impl, existing `top_shell_layers` / `bottom_shell_layers` fields) and lines `680-740` (`LayerPlanIR.global_layers` and `RegionPlan` definitions).
 - `docs/02_ir_schemas.md` — `RegionMapIR` section.
 - `docs/04_host_scheduler.md` — § "RegionMapIR Compilation"; § "Per-Layer Execution"; § "Blackboard Structure" (delegate SUMMARY).
 
@@ -63,18 +63,19 @@
 
 ## Expected Sub-Agent Dispatches
 
-- "Are `top_solid_layers` and `bottom_solid_layers` already declared in the central config schema (search `crates/slicer-ir/src/` and `crates/slicer-host/src/` for the keys); return FACT yes/no with file:line evidence" — purpose: validate Step 0.
+- "Are `top_shell_layers` and `bottom_shell_layers` already declared in the central config schema (search `crates/slicer-ir/src/` and `crates/slicer-host/src/` for the keys); return FACT yes/no with file:line evidence" — purpose: validate Step 0 (recorded: yes, at `slice_ir.rs:610,612`).
 - "Run `cargo test -p slicer-host --test multi_layer_thickness_tdd`; return FACT pass/fail with the failing test list" — purpose: validate Steps 2–3.
 - "Run `cargo test -p slicer-host --test external_surface_classification_tdd`; return FACT pass/fail" — purpose: confirm 12-rev1 regression-safe.
 - "Run `cargo test -p slicer-host --test benchy_end_to_end_tdd benchy_multi_layer_top_bottom_evidence`; return FACT pass/fail" — purpose: validate Step 4.
-- "Summarize `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp::discover_horizontal_shells` defaults for `top_solid_layers` and `bottom_solid_layers`; return FACT (numeric defaults only)" — purpose: confirm Orca-default values for Step 1.
+- "Summarize `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp::discover_horizontal_shells` defaults for `top_shell_layers` and `bottom_shell_layers` (Orca calls these `top_solid_layers` / `bottom_solid_layers`); return FACT (numeric defaults only)" — purpose: confirm Orca-default values (recorded in Step 0: `4 / 3`).
 
 ## Data and Contract Notes
 
 - IR or manifest contracts touched:
   - `RegionMapIR.entries[*].config` — read-only consumer; no schema change.
-  - Config schema may need `top_solid_layers` and `bottom_solid_layers` keys added (Step 0 FACT decides).
+  - Config schema — no additions required; `top_shell_layers` and `bottom_shell_layers` already declared (Step 0 FACT confirmed).
   - `SliceIR.schema_version` — no further bump (12-rev1 already moved to `1.1.0`; this packet's behavior is value-driven, not schema-driven).
+  - Config schema — no additions required; `top_shell_layers` and `bottom_shell_layers` already present (Step 0 FACT confirmed).
 - WIT boundary considerations: none.
 - Determinism or scheduler constraints:
   - `RegionMapIR.entries[*].config` is `Arc`-shared from PrePass; read-only across rayon workers; deterministic.
@@ -83,14 +84,15 @@
 
 - `LayerPlanIR.global_layers[*].z` is sorted ascending and represents the actual sliced layer Z values (variable-height friendly).
 - `RegionMapIR.entries` indexed by `(global_layer_index, object_id, region_id)` — same key shape used by 12-rev1 lookups.
-- `top_solid_layers = 3`, `bottom_solid_layers = 3` are Orca defaults (confirm via FACT in Step 0).
+- `top_shell_layers = 3`, `bottom_shell_layers = 3` are the codebase defaults (Step 0 FACT confirmed; Orca's defaults are `4 / 3`, deviation is intentional).
 - An object's "topmost active layer" is implicit — when the window walk truncates at the global layer count, the upper-Z bound becomes `f32::INFINITY`, which makes any TopSurface facet above the layer fall inside the window. This correctly captures objects that end at the global slice ceiling.
 
 ## Risks and Tradeoffs
 
-- **`top_solid_layers = 0` (user explicitly disables)**: requires an early-return in the helper. Tested in negative case.
+- **`top_shell_layers = 0` (user explicitly disables)**: requires an early-return in the helper. Tested in negative case.
 - **Window walks across object boundaries**: if two objects are stacked and `LayerPlanIR.global_layers[i+1]` is the first layer of object B (not the next layer of object A), the helper still uses `global_layers[i+1].z` as the upper bound. This is correct for the FACET-projection algorithm because the facet itself belongs to a specific object — `classify_region_surfaces` already filters facets by `region.object_id`. No cross-object contamination.
 - **Variable layer height + tall windows**: walking `global_layers` always uses the actual stored Z, so variable height is honored automatically.
+- **Empty slice polygons** (flat top/bottom geometry): when `slice_mesh_ex` yields zero polygons for a layer, `execute_layer_slice` synthesizes a bounding-box polygon from the object mesh vertex extents for the XY-containment guard. Registered as a packet-local deviation in `docs/DEVIATION_LOG.md`.
 
 ## Context Cost Estimate
 
@@ -100,7 +102,4 @@
 
 ## Open Questions
 
-- Step 0 dispatch resolves: are `top_solid_layers` and `bottom_solid_layers` already in the config schema? If yes, no schema work; if no, add them (still S cost).
-- Step 0 dispatch resolves: confirm Orca defaults are exactly `3` (not `4` or `5`). If a different default, update the constants.
-
-Both open questions are answered by Step-0 FACT dispatches; neither blocks activation conceptually — they only affect Step 1's exact line count.
+Resolved by Step 0 FACT dispatches (2026-05-04): keys exist as `top_shell_layers` / `bottom_shell_layers` with default `3, 3`. Orca defaults are `4, 3`; codebase deviation is intentional.
