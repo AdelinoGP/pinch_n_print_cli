@@ -158,17 +158,17 @@ fn far_triangle(z: f32) -> IndexedTriangleSet {
             Point3 {
                 x: 95.0,
                 y: 95.0,
-                z: z,
+                z,
             },
             Point3 {
                 x: 105.0,
                 y: 95.0,
-                z: z,
+                z,
             },
             Point3 {
                 x: 100.0,
                 y: 105.0,
-                z: z,
+                z,
             },
         ],
         indices: vec![0, 1, 2],
@@ -315,6 +315,8 @@ fn top_surface_facet_within_window_flags_top() {
         1.0,       // layer_z
         Some(1.2), // next_layer_z
         Some(0.8), // prev_layer_z
+        1,         // top_shell_layers
+        1,         // bottom_shell_layers
     );
 
     assert!(is_top, "expected is_top_surface=true");
@@ -340,6 +342,8 @@ fn bottom_surface_facet_within_window_flags_bottom() {
         1.0,       // layer_z
         Some(1.2), // next_layer_z
         Some(0.8), // prev_layer_z
+        1,         // top_shell_layers
+        1,         // bottom_shell_layers
     );
 
     assert!(!is_top, "expected is_top_surface=false");
@@ -364,6 +368,8 @@ fn bridge_facet_in_z_span_flags_bridge() {
         1.0,       // layer_z
         Some(1.2), // next_layer_z
         Some(0.8), // prev_layer_z
+        1,         // top_shell_layers
+        1,         // bottom_shell_layers
     );
 
     assert!(!is_top, "expected is_top_surface=false");
@@ -388,6 +394,8 @@ fn top_facet_outside_polygon_does_not_flag_top() {
         1.0,       // layer_z
         Some(1.2), // next_layer_z
         Some(0.8), // prev_layer_z
+        1,         // top_shell_layers
+        1,         // bottom_shell_layers
     );
 
     assert!(
@@ -415,6 +423,8 @@ fn top_facet_outside_z_window_does_not_flag_top() {
         1.0,       // layer_z
         Some(1.2), // next_layer_z
         Some(0.8), // prev_layer_z
+        1,         // top_shell_layers
+        1,         // bottom_shell_layers
     );
 
     assert!(
@@ -550,6 +560,8 @@ fn execute_layer_slice_writes_top_flag_on_sliced_region() {
         Some(&surface_class), // surface_class: Option<&SurfaceClassificationIR>
         Some(1.1_f32),        // next_layer_z
         Some(0.7_f32),        // prev_layer_z
+        None,                 // region_map
+        None,                 // layer_plan
     )
     .expect("slice should succeed");
 
@@ -605,6 +617,8 @@ fn execute_layer_slice_without_classification_keeps_flags_false() {
         &mesh_ir, &layer, None, // surface_class
         None, // next_layer_z
         None, // prev_layer_z
+        None, // region_map
+        None, // layer_plan
     )
     .expect("slice should succeed");
 
