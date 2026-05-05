@@ -4,17 +4,18 @@
 //! slicing pipeline: prepass → per-layer → finalization → postpass → gcode output.
 //! All stage runners are injectable via traits for testability.
 
+use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
-use slicer_ir::MeshIR;
+use slicer_ir::{MeshIR, ResolvedConfig};
 
 use crate::{
     execute_layer_finalization, execute_per_layer_with_events, execute_postpass,
-    execute_prepass_with_builtins, Blackboard, ExecutionPlan, FinalizationError,
-    FinalizationStageRunner, GCodeEmitter, GCodeSerializer, LayerExecutionError, LayerProgressSink,
-    LayerStageRunner, ModuleAccessAudit, NoopLayerProgressSink, PostpassError, PostpassStageRunner,
-    PrepassExecutionError, PrepassStageRunner,
+    prepass::execute_prepass_with_builtins_configured, Blackboard, ExecutionPlan,
+    FinalizationError, FinalizationStageRunner, GCodeEmitter, GCodeSerializer, LayerExecutionError,
+    LayerProgressSink, LayerStageRunner, ModuleAccessAudit, NoopLayerProgressSink, PostpassError,
+    PostpassStageRunner, PrepassExecutionError, PrepassStageRunner,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -41,6 +42,15 @@ pub struct PipelineConfig {
     pub plan: ExecutionPlan,
     /// Injectable stage runners.
     pub runners: PipelineStageRunners,
+    /// Per-object resolved configs, keyed by `ObjectMesh.id`.
+    ///
+    /// Produced by [`crate::resolve_per_object_configs`] from the user-supplied CLI
+    /// config source.  An empty map is valid (all objects fall back to
+    /// `default_resolved_config`).
+    pub resolved_configs: Arc<BTreeMap<String, ResolvedConfig>>,
+    /// Global fallback [`ResolvedConfig`] used for objects not present in
+    /// `resolved_configs` and passed as the default to the RegionMapping built-in.
+    pub default_resolved_config: Arc<ResolvedConfig>,
 }
 
 /// Output produced by a successful pipeline run.
@@ -135,6 +145,8 @@ pub fn run_pipeline_with_events(
         mesh_ir,
         mut plan,
         mut runners,
+        resolved_configs,
+        default_resolved_config,
     } = config;
 
     // Step 1: Create blackboard with the loaded mesh. Layer count is not known
@@ -145,8 +157,14 @@ pub fn run_pipeline_with_events(
     let mut blackboard = Blackboard::new(mesh_ir, 0);
 
     // Step 2: Execute prepass stages sequentially, collecting runtime audits.
-    let prepass_audits =
-        execute_prepass_with_builtins(&plan, &mut blackboard, runners.prepass.as_ref())?;
+    // Pass the resolved configs so the RegionMapping built-in can use them.
+    let prepass_audits = execute_prepass_with_builtins_configured(
+        &plan,
+        &mut blackboard,
+        runners.prepass.as_ref(),
+        &resolved_configs,
+        &default_resolved_config,
+    )?;
 
     // Step 2b: Promote the LayerPlanIR committed by prepass into the execution
     // plan so that the per-layer loop iterates real layers. The plan is built

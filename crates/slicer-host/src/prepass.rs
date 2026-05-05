@@ -279,10 +279,39 @@ fn ir_path_for_prepass_output(output: &PrepassStageOutput) -> Option<String> {
 /// Returns collected runtime access audits from user prepass modules.
 /// Host built-ins (MeshAnalysis, RegionMapping) are not audited as they are
 /// not subject to the module access contract.
+///
+/// This is the backwards-compatible public entry point. It delegates to
+/// [`execute_prepass_with_builtins_configured`] with empty per-object configs and
+/// a default global config, which preserves the existing behaviour for all callers
+/// that do not yet supply resolved configs (e.g. test helpers).
 pub fn execute_prepass_with_builtins(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
+) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
+    let empty_resolved: std::collections::BTreeMap<String, slicer_ir::ResolvedConfig> =
+        std::collections::BTreeMap::new();
+    let default_resolved = slicer_ir::ResolvedConfig::default();
+    execute_prepass_with_builtins_configured(
+        plan,
+        blackboard,
+        runner,
+        &empty_resolved,
+        &default_resolved,
+    )
+}
+
+/// Like [`execute_prepass_with_builtins`] but threads per-object resolved configs
+/// into the RegionMapping built-in so region plans carry live config values.
+///
+/// This is the authoritative implementation; the public wrapper above forwards
+/// to this with empty / default values for backwards compatibility.
+pub(crate) fn execute_prepass_with_builtins_configured(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+    resolved_configs: &std::collections::BTreeMap<String, slicer_ir::ResolvedConfig>,
+    default_resolved_config: &slicer_ir::ResolvedConfig,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     if blackboard.surface_classification().is_none() {
         let ir = execute_mesh_analysis(blackboard.mesh().as_ref())
@@ -310,7 +339,7 @@ pub fn execute_prepass_with_builtins(
     //    (those requiring RegionMap) run in phase-2 after RegionMapping.
     let layer_plan_existed = blackboard.layer_plan().is_some();
     if layer_plan_existed && blackboard.region_map().is_none() {
-        commit_region_mapping_builtin(plan, blackboard)
+        commit_region_mapping_builtin(plan, blackboard, resolved_configs, default_resolved_config)
             .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
     }
     // Phase-1: early stages that don't require RegionMap.
@@ -337,7 +366,7 @@ pub fn execute_prepass_with_builtins(
             .map_err(|source| PrepassExecutionError::SupportGeometry { source })?;
     }
     if blackboard.layer_plan().is_some() && blackboard.region_map().is_none() {
-        commit_region_mapping_builtin(plan, blackboard)
+        commit_region_mapping_builtin(plan, blackboard, resolved_configs, default_resolved_config)
             .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
     }
     // Phase-2: late stages that require RegionMap.
