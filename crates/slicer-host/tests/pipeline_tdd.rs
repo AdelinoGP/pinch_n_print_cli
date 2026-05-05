@@ -254,6 +254,8 @@ fn run_pipeline_empty_modules() {
         mesh_ir: empty_mesh_ir(),
         plan: empty_execution_plan(),
         runners: noop_runners(),
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
@@ -287,6 +289,8 @@ fn run_pipeline_returns_gcode_string() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MarkerSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let output = run_pipeline(config).unwrap();
@@ -336,6 +340,8 @@ fn run_pipeline_propagates_prepass_error() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
@@ -391,6 +397,8 @@ fn run_pipeline_propagates_layer_error() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
@@ -428,6 +436,8 @@ fn run_pipeline_propagates_postpass_error() {
             emitter: Box::new(FailingEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
@@ -530,6 +540,8 @@ fn run_pipeline_calls_stages_in_order() {
             emitter: Box::new(OrderTrackingEmitter(call_log.clone())),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
@@ -590,6 +602,8 @@ fn run_pipeline_propagates_finalization_error() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
@@ -648,6 +662,8 @@ fn run_pipeline_with_layers_produces_output() {
             emitter: Box::new(LayerCountEmitter),
             serializer: Box::new(CountingSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let output = run_pipeline(config).unwrap();
@@ -731,6 +747,8 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
@@ -802,6 +820,8 @@ fn prepass_audits_live_path() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -901,6 +921,8 @@ fn layer_audits_live_path() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -995,6 +1017,8 @@ fn access_audits_live_path() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1152,6 +1176,8 @@ fn access_audits_live_path_read_performing() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");

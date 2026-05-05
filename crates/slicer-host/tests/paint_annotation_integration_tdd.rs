@@ -530,6 +530,8 @@ fn run_pipeline_with_events_on_empty_plan_emits_no_spurious_events() {
         mesh_ir: Arc::new(tetra_mesh_ir("obj-a")),
         plan,
         runners: minimal_runners(),
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(ResolvedConfig::default()),
     };
     run_pipeline_with_events(config, &sink).expect("empty pipeline must succeed");
 

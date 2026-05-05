@@ -714,6 +714,8 @@ fn full_pipeline_with_typed_layer_dispatch() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
@@ -785,6 +787,8 @@ fn full_pipeline_multi_tier_with_typed_layer() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
@@ -1023,6 +1027,8 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);

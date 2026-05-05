@@ -186,6 +186,8 @@ fn e2e_load_stl_empty_plan() {
         mesh_ir: Arc::new(mesh_ir),
         plan: empty_plan(),
         runners: default_runners(),
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
@@ -207,6 +209,8 @@ fn e2e_deterministic_output() {
         mesh_ir: mesh1,
         plan: empty_plan(),
         runners: default_runners(),
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     })
     .unwrap();
 
@@ -214,6 +218,8 @@ fn e2e_deterministic_output() {
         mesh_ir: mesh2,
         plan: empty_plan(),
         runners: default_runners(),
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     })
     .unwrap();
 
@@ -296,6 +302,8 @@ fn e2e_with_layers() {
             emitter: Box::new(LayerCountEmitter),
             serializer: Box::new(DefaultGCodeSerializer::new()),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let output = run_pipeline(config).unwrap();
@@ -334,6 +342,8 @@ fn e2e_pipeline_uses_real_mesh() {
         mesh_ir: mesh_clone,
         plan: empty_plan(),
         runners: noop_runners(),
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
@@ -353,6 +363,8 @@ fn e2e_output_to_file() {
         mesh_ir,
         plan: empty_plan(),
         runners: default_runners(),
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let output = run_pipeline(config).unwrap();

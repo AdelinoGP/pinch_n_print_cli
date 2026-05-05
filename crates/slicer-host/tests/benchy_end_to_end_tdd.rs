@@ -1838,3 +1838,124 @@ fn benchy_multi_layer_top_bottom_evidence() {
         preview(&gcode, 30)
     );
 }
+
+/// AC-5 (packet 35a): resolved-config propagation — top/bottom shell layer count
+/// flows through the binary from `--config` to the emitted G-code.
+///
+/// Runs the Benchy STL twice:
+///   Run 1: top_shell_layers=1 / bottom_shell_layers=1
+///   Run 2: top_shell_layers=4 / bottom_shell_layers=4
+///
+/// Asserts strict inequality:
+///   - count(`;TYPE:Top surface`) in run-2 > run-1
+///   - count(`;TYPE:Bottom surface`) in run-2 > run-1
+#[test]
+fn benchy_user_top_shell_layers_propagates_through_binary() {
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    // --- Run 1: N=1 ---
+    let config1_path = tmp.path().join("shell_n1.json");
+    std::fs::write(
+        &config1_path,
+        "{\n  \"top_shell_layers\": 1,\n  \"bottom_shell_layers\": 1\n}\n",
+    )
+    .expect("write n1 config");
+    let out1_path = tmp.path().join("propagation_n1.gcode");
+    let result1 = run_slicer_host(&model, &modules, &out1_path, Some(&config1_path));
+    let stderr1 = String::from_utf8_lossy(&result1.stderr);
+    assert!(
+        result1.status.success(),
+        "slicer-host must succeed for N=1 run. Stderr:\n{stderr1}"
+    );
+    assert!(
+        out1_path.exists(),
+        "--output file must be written for N=1 run"
+    );
+    let gcode1 = std::fs::read_to_string(&out1_path).expect("read N=1 gcode");
+    let top1 = gcode1.matches(";TYPE:Top surface").count();
+    let bot1 = gcode1.matches(";TYPE:Bottom surface").count();
+
+    // --- Run 2: N=4 ---
+    let config4_path = tmp.path().join("shell_n4.json");
+    std::fs::write(
+        &config4_path,
+        "{\n  \"top_shell_layers\": 4,\n  \"bottom_shell_layers\": 4\n}\n",
+    )
+    .expect("write n4 config");
+    let out4_path = tmp.path().join("propagation_n4.gcode");
+    let result4 = run_slicer_host(&model, &modules, &out4_path, Some(&config4_path));
+    let stderr4 = String::from_utf8_lossy(&result4.stderr);
+    assert!(
+        result4.status.success(),
+        "slicer-host must succeed for N=4 run. Stderr:\n{stderr4}"
+    );
+    assert!(
+        out4_path.exists(),
+        "--output file must be written for N=4 run"
+    );
+    let gcode4 = std::fs::read_to_string(&out4_path).expect("read N=4 gcode");
+    let top4 = gcode4.matches(";TYPE:Top surface").count();
+    let bot4 = gcode4.matches(";TYPE:Bottom surface").count();
+
+    // Strict inequality: wider window must produce more type-blocks.
+    assert!(
+        top4 > top1,
+        "AC-5 FAILED: N=4 top-surface block count ({top4}) must exceed N=1 count ({top1}). \
+         Resolved config may not be propagating top_shell_layers to the emitter."
+    );
+    assert!(
+        bot4 > bot1,
+        "AC-5 FAILED: N=4 bottom-surface block count ({bot4}) must exceed N=1 count ({bot1}). \
+         Resolved config may not be propagating bottom_shell_layers to the emitter."
+    );
+}
+
+/// NC-2 (packet 35a): the binary must reject a config with a type-mismatch
+/// (e.g. `top_shell_layers: "four"`) before writing any output.
+///
+/// Asserts:
+///   - process exits non-zero
+///   - the `--output` file is NOT written
+///   - stderr contains the literal substrings `top_shell_layers` and `expected Int`
+#[test]
+fn cli_rejects_top_shell_layers_string() {
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let bad_config_path = tmp.path().join("bad_shell_type.json");
+    std::fs::write(&bad_config_path, "{\n  \"top_shell_layers\": \"four\"\n}\n")
+        .expect("write bad config");
+
+    let out_path = tmp.path().join("should_not_exist.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, Some(&bad_config_path));
+    let stderr = String::from_utf8_lossy(&result.stderr);
+
+    assert!(
+        !result.status.success(),
+        "NC-2 FAILED: slicer-host must exit non-zero for a type-mismatched config. \
+         Stderr:\n{stderr}"
+    );
+    assert!(
+        !out_path.exists(),
+        "NC-2 FAILED: --output file must NOT be written when config resolution fails. \
+         Stderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("top_shell_layers"),
+        "NC-2 FAILED: stderr must name the offending key `top_shell_layers`. \
+         Actual stderr:\n{stderr}"
+    );
+    assert!(
+        stderr.contains("expected Int"),
+        "NC-2 FAILED: stderr must contain the literal `expected Int` variant substring. \
+         Actual stderr:\n{stderr}"
+    );
+}

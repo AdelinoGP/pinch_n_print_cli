@@ -395,6 +395,8 @@ fn manifest_driven_pipeline_runs_to_completion() {
             emitter: Box::new(MinimalEmitter),
             serializer: Box::new(MinimalSerializer),
         },
+        resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
     };
 
     let result = run_pipeline(config);
