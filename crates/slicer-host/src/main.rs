@@ -14,7 +14,8 @@ use slicer_host::progress_events::{
 };
 use slicer_host::{
     build_config_schema_json, build_live_execution_plan, load_live_modules_for_plan,
-    load_modules_from_roots, parse_cli_config_source, DefaultGCodeEmitter, DefaultGCodeSerializer,
+    load_modules_from_roots, parse_cli_config_source, resolve_global_config,
+    resolve_per_object_configs, ConfigResolutionError, DefaultGCodeEmitter, DefaultGCodeSerializer,
     HostCli, HostCommands,
 };
 
@@ -164,6 +165,42 @@ fn main() {
                 }
             }
 
+            // Resolve the global fallback config and per-object overlays from the
+            // raw config source.  Resolution is strict: a wrong-typed value
+            // (e.g. `top_shell_layers: "four"`) exits immediately with a message
+            // that includes the offending key and expected variant (NC-2 pin).
+            let default_resolved_config = match resolve_global_config(&config_source) {
+                Ok(cfg) => cfg,
+                Err(ConfigResolutionError::TypeMismatch {
+                    ref key,
+                    expected,
+                    ref actual,
+                }) => {
+                    eprintln!(
+                        "error: config resolution failed: key '{key}' expected {expected}, got {actual}"
+                    );
+                    std::process::exit(1);
+                }
+            };
+            let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
+            let resolved_configs_map = match resolve_per_object_configs(
+                &default_resolved_config,
+                &config_source,
+                &object_ids,
+            ) {
+                Ok(map) => map,
+                Err(ConfigResolutionError::TypeMismatch {
+                    ref key,
+                    expected,
+                    ref actual,
+                }) => {
+                    eprintln!(
+                            "error: config resolution failed: key '{key}' expected {expected}, got {actual}"
+                        );
+                    std::process::exit(1);
+                }
+            };
+
             // Discover and plan every module under --module-dir. Modules
             // are topologically sorted within each stage and laid out in
             // the canonical STAGE_ORDER. Non-fatal discovery diagnostics
@@ -226,6 +263,8 @@ fn main() {
                     emitter: Box::new(DefaultGCodeEmitter::new("slicer-host 0.1.0".into())),
                     serializer: Box::new(DefaultGCodeSerializer::new()),
                 },
+                resolved_configs: Arc::new(resolved_configs_map),
+                default_resolved_config: Arc::new(default_resolved_config),
             };
 
             // Route per-layer progress events (including host-built-in
