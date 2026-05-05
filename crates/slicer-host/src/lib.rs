@@ -6,6 +6,7 @@
 
 pub mod blackboard;
 pub mod cli;
+pub mod config_resolution;
 pub mod config_schema;
 pub mod dag;
 pub mod dispatch;
@@ -38,6 +39,9 @@ pub use blackboard::{
     LayerArena, LayerArenaError, LayerArenaSlot,
 };
 pub use cli::{validate_run_options, CliError, HostCli, HostCommands, HostRunOptions};
+pub use config_resolution::{
+    resolve_global_config, resolve_per_object_configs, ConfigResolutionError,
+};
 pub use config_schema::{
     build_config_schema_json, get_advanced_fields, get_basic_fields, get_field_schema,
     group_fields_by_ui_group, parse_config_schema, query_config_schema, validate_config,
