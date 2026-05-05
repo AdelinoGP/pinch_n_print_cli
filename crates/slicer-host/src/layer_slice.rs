@@ -11,8 +11,8 @@ use std::fmt;
 use slicer_core::slice_mesh_ex;
 use slicer_ir::{FacetClass, Point2, Point3};
 use slicer_ir::{
-    GlobalLayer, MeshIR, ObjectId, ObjectMesh, ObjectSurfaceData, Polygon, SemVer, SliceIR,
-    SlicedRegion, SurfaceClassificationIR, Transform3d,
+    GlobalLayer, LayerPlanIR, MeshIR, ObjectId, ObjectMesh, ObjectSurfaceData, Polygon, RegionKey,
+    RegionMapIR, SemVer, SliceIR, SlicedRegion, SurfaceClassificationIR, Transform3d,
 };
 
 /// Structured failures for the host-built-in `Layer::Slice` stage.
@@ -125,6 +125,8 @@ pub fn classify_region_surfaces(
     layer_z: f32,
     next_layer_z: Option<f32>,
     prev_layer_z: Option<f32>,
+    top_shell_layers: u32,
+    bottom_shell_layers: u32,
 ) -> (bool, bool, bool) {
     let mesh = &object_mesh.mesh;
     let t = &object_mesh.transform;
@@ -133,6 +135,11 @@ pub fn classify_region_surfaces(
     let mut is_top = false;
     let mut is_bot = false;
     let mut is_bridge = false;
+
+    // N=0 short-circuit: disable the respective flag regardless of geometry.
+    // The loop still runs for bridge detection.
+    let top_enabled = top_shell_layers > 0;
+    let bot_enabled = bottom_shell_layers > 0;
 
     // Build a fast lookup set for bridge facet indices.
     let bridge_set: std::collections::HashSet<u32> = surface_data
@@ -167,7 +174,8 @@ pub fn classify_region_surfaces(
         // Top surface check.
         // Window: facet z_min ∈ [layer_z, next_layer_z) — inclusive low, exclusive high.
         // When next_layer_z is None the window is [layer_z, ∞).
-        if !is_top {
+        // top_shell_layers=0 disables this check entirely.
+        if !is_top && top_enabled {
             if let Some(FacetClass::TopSurface) = facet_class {
                 let in_window = match next_layer_z {
                     Some(nz) => layer_z <= fz_min && fz_min < nz,
@@ -190,7 +198,8 @@ pub fn classify_region_surfaces(
         // Bottom surface check.
         // Window: facet z_max ∈ (prev_layer_z, layer_z] — exclusive low, inclusive high.
         // When prev_layer_z is None the window is (-∞, layer_z].
-        if !is_bot {
+        // bottom_shell_layers=0 disables this check entirely.
+        if !is_bot && bot_enabled {
             if let Some(FacetClass::BottomSurface) = facet_class {
                 let in_window = match prev_layer_z {
                     Some(pz) => pz < fz_max && fz_max <= layer_z,
@@ -250,7 +259,11 @@ pub fn execute_layer_slice(
     surface_class: Option<&SurfaceClassificationIR>,
     next_layer_z: Option<f32>,
     prev_layer_z: Option<f32>,
+    region_map: Option<&RegionMapIR>,
+    layer_plan: Option<&LayerPlanIR>,
 ) -> Result<SliceIR, LayerSliceError> {
+    let layer_idx = layer.index as usize;
+
     let mut regions = Vec::with_capacity(layer.active_regions.len());
     for active in &layer.active_regions {
         let object = mesh
@@ -265,17 +278,111 @@ pub fn execute_layer_slice(
         let mut sliced = slice_mesh_ex(&object.mesh, &[layer.z]);
         let polygons = sliced.pop().unwrap_or_default();
 
+        // Resolve per-region shell counts from RegionMapIR, or use defaults.
+        let (top_shell_layers, bottom_shell_layers) = {
+            let resolved = region_map.and_then(|rm| {
+                let key = RegionKey {
+                    global_layer_index: layer.index,
+                    object_id: active.object_id.clone(),
+                    region_id: active.region_id,
+                };
+                rm.entries.get(&key)
+            });
+            match resolved {
+                Some(plan) => (
+                    plan.config.top_shell_layers,
+                    plan.config.bottom_shell_layers,
+                ),
+                None => (3u32, 3u32),
+            }
+        };
+
+        // Compute next/prev layer Z boundaries.
+        // When layer_plan is Some, walk the window; otherwise fall back to caller-supplied values.
+        let effective_next_z = if let Some(lp) = layer_plan {
+            if top_shell_layers == 0 {
+                // Window disabled; sentinel not used but provide a safe value.
+                None
+            } else {
+                let ahead_idx = layer_idx + top_shell_layers as usize;
+                match lp.global_layers.get(ahead_idx) {
+                    Some(gl) => Some(gl.z),
+                    None => Some(f32::INFINITY),
+                }
+            }
+        } else {
+            // No layer_plan: preserve single-layer semantics via caller-supplied value.
+            next_layer_z
+        };
+
+        let effective_prev_z = if let Some(lp) = layer_plan {
+            if bottom_shell_layers == 0 {
+                None
+            } else if layer_idx < bottom_shell_layers as usize {
+                Some(f32::NEG_INFINITY)
+            } else {
+                lp.global_layers
+                    .get(layer_idx - bottom_shell_layers as usize)
+                    .map(|gl| gl.z)
+                    .or(Some(f32::NEG_INFINITY))
+            }
+        } else {
+            // No layer_plan: preserve single-layer semantics via caller-supplied value.
+            prev_layer_z
+        };
+
         // Extract region contours for classification (ExPolygon → Polygon).
+        // When the slice produces no polygons (e.g. flat/horizontal triangles are
+        // skipped by the slicer), fall back to a bounding-box polygon derived from
+        // the object mesh's XY extents so that the XY containment check does not
+        // incorrectly exclude surface-classified facets.
         let (is_top_surface, is_bottom_surface, is_bridge) = if let Some(sc) = surface_class {
             if let Some(obj_data) = sc.per_object.get(&active.object_id) {
-                let contours: Vec<Polygon> = polygons.iter().map(|ep| ep.contour.clone()).collect();
+                let contours: Vec<Polygon> = if polygons.is_empty() {
+                    // Derive XY bounding box from the untransformed mesh vertices.
+                    let verts = &object.mesh.vertices;
+                    if verts.is_empty() {
+                        Vec::new()
+                    } else {
+                        let mut min_x = verts[0].x;
+                        let mut max_x = verts[0].x;
+                        let mut min_y = verts[0].y;
+                        let mut max_y = verts[0].y;
+                        for v in verts.iter().skip(1) {
+                            if v.x < min_x {
+                                min_x = v.x;
+                            }
+                            if v.x > max_x {
+                                max_x = v.x;
+                            }
+                            if v.y < min_y {
+                                min_y = v.y;
+                            }
+                            if v.y > max_y {
+                                max_y = v.y;
+                            }
+                        }
+                        vec![Polygon {
+                            points: vec![
+                                Point2::from_mm(min_x, min_y),
+                                Point2::from_mm(max_x, min_y),
+                                Point2::from_mm(max_x, max_y),
+                                Point2::from_mm(min_x, max_y),
+                            ],
+                        }]
+                    }
+                } else {
+                    polygons.iter().map(|ep| ep.contour.clone()).collect()
+                };
                 classify_region_surfaces(
                     object,
                     obj_data,
                     &contours,
                     layer.z,
-                    next_layer_z,
-                    prev_layer_z,
+                    effective_next_z,
+                    effective_prev_z,
+                    top_shell_layers,
+                    bottom_shell_layers,
                 )
             } else {
                 (false, false, false)

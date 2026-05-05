@@ -307,6 +307,8 @@ fn execute_single_layer(
             surface_class,
             next_layer_z,
             prev_layer_z,
+            blackboard.region_map().map(|arc| arc.as_ref()),
+            blackboard.layer_plan().map(|arc| arc.as_ref()),
         )
         .map_err(|source| LayerExecutionError::LayerSlice {
             layer_index: layer.index,
