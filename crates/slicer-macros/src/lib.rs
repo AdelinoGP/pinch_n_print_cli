@@ -593,15 +593,16 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
             use geometry.{extrusion-role};
             record module-error { code: u32, message: string, fatal: bool }
 
+            variant retract-mode { gcode, firmware }
             record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
-            record gcode-retract-cmd { length: f32, speed: f32 }
+            record gcode-retract-cmd { length: f32, speed: f32, mode: retract-mode }
             record gcode-fan-speed-cmd { value: u8 }
             record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
-            record gcode-tool-change-cmd { from-tool: u32, to-tool: u32 }
+            record gcode-tool-change-cmd { after-entity-index: u32, from-tool: u32, to-tool: u32 }
             resource gcode-output-builder {
                 push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
-                push-retract:     func(length: f32, speed: f32) -> result<_, string>;
-                push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
+                push-retract:     func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
+                push-unretract:   func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
                 push-fan-speed:   func(value: u8) -> result<_, string>;
                 push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
                 push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
@@ -777,6 +778,7 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                         wait: cmd.wait,
                     },
                     GcodeCommand::ToolChange(cmd) => ::slicer_sdk::postpass_types::GcodeCommand::ToolChange {
+                        after_entity_index: cmd.after_entity_index,
                         from: cmd.from_tool,
                         to: cmd.to_tool,
                     },
@@ -806,7 +808,7 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                                 f: *f,
                                 role: __slicer_sdk_role_to_wit(role),
                             };
-                            let _ = wit.push_move(wit_cmd);
+                            let _ = wit.push_move(&wit_cmd);
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
                             ::slicer_sdk::postpass_types::GcodeCommand::Retract { length, speed, mode }

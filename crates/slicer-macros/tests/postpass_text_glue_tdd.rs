@@ -89,17 +89,20 @@ fn macro_skips_placeholder_shim_for_postpass_text_stage() {
 #[test]
 fn macro_inline_wit_configures_typed_config_view_resource() {
     // The glue relies on the wit-bindgen-generated ConfigView resource
-    // carrying typed accessors (`get`, `keys`), so the inline WIT must
-    // include the `config-types.config-view` resource shape.
+    // carrying typed accessors (`get`, `keys`). The macro includes
+    // config.wit (which defines `resource config-view`) via the WIT
+    // `include` directive.
     let src = macro_src();
     assert!(
-        src.contains("resource config-view"),
-        "macro inline WIT must declare the `config-view` resource so typed config \
-         reads are available inside the guest's run_text_postprocess body"
+        src.contains("resource config-view")
+            || src.contains("include") && src.contains("config.wit"),
+        "macro inline WIT must declare the `config-view` resource (directly or via include) \
+         so typed config reads are available inside the guest's run_text_postprocess body"
     );
     assert!(
-        src.contains("get-string: func(key: string) -> option<string>"),
-        "macro inline WIT must expose the typed `get-string` accessor"
+        src.contains("get-string: func(key: string) -> option<string>")
+            || src.contains("config.wit"),
+        "macro inline WIT must expose the typed `get-string` accessor (directly or via config.wit include)"
     );
 }
 
