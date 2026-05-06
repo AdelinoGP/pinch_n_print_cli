@@ -109,6 +109,78 @@ pub fn xor(subject: &[ExPolygon], clip: &[ExPolygon]) -> Vec<ExPolygon> {
     clip_polygons(subject, clip, ClipOperation::Xor)
 }
 
+/// Returned by [`validate_polygon_simplicity`] when a polygon fails the simplicity
+/// check. `contour_indices` lists the indices of contours (outer = 0; holes = 1..)
+/// that failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PolygonSimplicityError {
+    /// Indices of the contours that failed the simplicity check.
+    /// Index 0 is the outer contour; indices 1.. are holes in order.
+    pub contour_indices: Vec<usize>,
+}
+
+/// Verify that every contour of `poly` is simple (no self-intersections, no
+/// duplicate-vertex degeneracies that would break clipper2 set-ops). Wraps the
+/// clipper2-rust simplicity primitive: a polygon-set passed through clipper2's
+/// union with itself produces the same area iff every contour is simple. We use
+/// the more direct route — re-running the input through clipper2's union and
+/// comparing contour count + signed area per contour.
+///
+/// Returns `Ok(())` for simple polygons; `Err(PolygonSimplicityError { contour_indices })`
+/// listing the failing contour indices when invalid.
+pub fn validate_polygon_simplicity(poly: &ExPolygon) -> Result<(), PolygonSimplicityError> {
+    use clipper2_rust::core::FillRule;
+    use clipper2_rust::{area, union_64};
+
+    // Epsilon for area comparison: 1.0 in workspace units² (1 unit = 100 nm).
+    // Self-intersecting contours (e.g. bowties) lose significant area after
+    // union cleans them, so 1.0 unit² is a conservative but safe threshold.
+    const AREA_EPSILON: f64 = 1.0;
+
+    // Build a flat iterator of (index, path) for outer contour + holes.
+    let outer_path: Vec<Point64> = polygon_to_path(&poly.contour);
+    let all_contours: Vec<(usize, Vec<Point64>)> = std::iter::once((0usize, outer_path))
+        .chain(
+            poly.holes
+                .iter()
+                .enumerate()
+                .map(|(i, h)| (i + 1, polygon_to_path(h))),
+        )
+        .collect();
+
+    let mut failing: Vec<usize> = Vec::new();
+
+    for (idx, path) in &all_contours {
+        let original_area = area(path).abs();
+
+        // Self-union a single contour; a simple ring stays as one ring with
+        // the same area. A bowtie or self-crossing ring splits into 2+ rings
+        // or the area changes significantly.
+        let subject: Vec<Vec<Point64>> = vec![path.clone()];
+        let clip: Vec<Vec<Point64>> = Vec::new();
+        let result = union_64(&subject, &clip, FillRule::NonZero);
+
+        let changed = if result.len() != 1 {
+            true
+        } else {
+            let result_area = area(&result[0]).abs();
+            (result_area - original_area).abs() > AREA_EPSILON
+        };
+
+        if changed {
+            failing.push(*idx);
+        }
+    }
+
+    if failing.is_empty() {
+        Ok(())
+    } else {
+        Err(PolygonSimplicityError {
+            contour_indices: failing,
+        })
+    }
+}
+
 /// Offsets polygons by `delta_mm` millimeters.
 pub fn offset(polygons: &[ExPolygon], delta_mm: f32, join: OffsetJoinType) -> Vec<ExPolygon> {
     use clipper2_rust::inflate_paths_64;
@@ -153,10 +225,44 @@ pub fn offset(polygons: &[ExPolygon], delta_mm: f32, join: OffsetJoinType) -> Ve
 
 #[cfg(test)]
 mod tests {
-    use super::ClipOperation;
+    use super::{validate_polygon_simplicity, ClipOperation};
+    use slicer_ir::{ExPolygon, Point2, Polygon};
 
     #[test]
     fn clip_operation_variants_are_distinct() {
         assert_ne!(ClipOperation::Union, ClipOperation::Difference);
+    }
+
+    fn make_polygon(pts: &[(i64, i64)]) -> Polygon {
+        Polygon {
+            points: pts.iter().map(|&(x, y)| Point2 { x, y }).collect(),
+        }
+    }
+
+    #[test]
+    fn validate_polygon_simplicity_accepts_simple_square() {
+        // A 10x10 square (in workspace units: 10 units per side).
+        let square = ExPolygon {
+            contour: make_polygon(&[(0, 0), (10, 0), (10, 10), (0, 10)]),
+            holes: Vec::new(),
+        };
+        assert!(validate_polygon_simplicity(&square).is_ok());
+    }
+
+    #[test]
+    fn validate_polygon_simplicity_rejects_bowtie() {
+        // Bowtie: self-intersecting quad (0,0) → (10,10) → (10,0) → (0,10) → back.
+        // The crossing at the centre causes clipper2's union to split it.
+        let bowtie = ExPolygon {
+            contour: make_polygon(&[(0, 0), (10, 10), (10, 0), (0, 10)]),
+            holes: Vec::new(),
+        };
+        let result = validate_polygon_simplicity(&bowtie);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contour_indices.contains(&0),
+            "outer contour (index 0) must be flagged"
+        );
     }
 }
