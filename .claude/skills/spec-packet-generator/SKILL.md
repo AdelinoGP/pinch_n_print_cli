@@ -172,6 +172,10 @@ Before writing any packet file, verify each AC meets the rules below. If any ite
 - [ ] Config field keys spelled exactly as in the module's `.toml` manifest.
 - [ ] If a count is asserted (e.g., "all six fields"), list the field names inline.
 
+**Workspace test discipline**
+- [ ] No AC's pipe-suffixed verification command is `cargo test --workspace`. The full suite is >1000 tests / ≥11 minutes — ACs must verify with a targeted `cargo test -p <crate> --test <file>` (optionally `-- <test_name>`) so the implementer can falsify them in seconds, not minutes.
+- [ ] At most one packet-level entry under `Verification` in `packet.spec.md` lists `cargo test --workspace`, and only when the packet explicitly requires a workspace-wide gate at closure. Otherwise omit it entirely. Use targeted per-crate commands plus `cargo check --workspace` and `cargo clippy --workspace -- -D warnings` instead.
+
 See `references/acceptance-criteria-examples.md` for a compliant and a non-compliant AC.
 
 ### 6. Create Packet Structure

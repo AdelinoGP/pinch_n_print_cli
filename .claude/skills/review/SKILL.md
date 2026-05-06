@@ -186,19 +186,13 @@ If `$ARGUMENTS` is "all-changes" or empty, the git diff defines the review scope
 
 ## Automated Checks
 
-Run these automated checks and include results in the review:
+Run these automated checks and include results in the review. **Do not run `cargo test --workspace` by default** — the suite is >1000 tests and takes ≥11 minutes. Pick targeted tests for the changed surface; only run the full workspace when the user explicitly asks or this is a packet-close acceptance review.
 
 ```bash
 cargo build --workspace
 ```
 
 Builds all crates. Any build failure is a blocking issue.
-
-```bash
-cargo test --workspace
-```
-
-Runs all tests. Test failures are blocking issues.
 
 ```bash
 cargo clippy --workspace -- -D warnings
@@ -210,7 +204,23 @@ Lint checks. Warnings become errors with `-D warnings`. Any clippy issues are bl
 cargo check --workspace --all-features
 ```
 
-Additional type checking with all feature flags.
+Additional type checking with all feature flags. Fast — runs in seconds, no test execution.
+
+### Test selection (this is the part agents most often get wrong)
+
+From `git diff --stat`, identify the changed crates and modules. Then run **the narrowest test that proves the change**:
+
+- Single test:    `cargo test -p <crate> --test <file> -- <test_name> --nocapture`
+- One test file:  `cargo test -p <crate> --test <file>`
+- One crate:      `cargo test -p <crate>`
+
+For a multi-crate change, run one targeted command per affected crate — that is still vastly cheaper than `--workspace`. If you cannot identify a narrow test that exercises the change, say so explicitly in the review output rather than falling back to the full suite.
+
+`cargo test --workspace` is reserved for:
+1. The user explicitly asks for it, OR
+2. A packet acceptance ceremony / completion gate before status flips to `implemented`, AND every narrower test on the changed surface has already passed.
+
+When you do run it, dispatch to a sub-agent with the contract: *"Run `cargo test --workspace`; return FACT pass/fail; on failure return SNIPPETS with failing test name + assertion + ≤20 lines of relevant code."* Never paste the full log into your context.
 
 ---
 
@@ -238,7 +248,7 @@ Additional type checking with all feature flags.
 | Check | Status | Details |
 |-------|--------|---------|
 | Build | PASS/FAIL | ... |
-| Tests | PASS/FAIL | X passed, Y failed |
+| Tests (targeted) | PASS/FAIL | crates/files exercised, X passed, Y failed |
 | Clippy | PASS/FAIL | ... |
 | Check (all-features) | PASS/FAIL | ... |
 
@@ -255,6 +265,7 @@ Additional type checking with all feature flags.
 - **Be pragmatic on Medium and Low dimensions** — note but don't block
 - **Never flag issues already caught by clippy** — clippy handles those
 - **Always run automated checks** — don't rely on manual inspection alone
+- **Run targeted tests, not the full workspace** — the suite is >1000 tests / ≥11 minutes; only run `cargo test --workspace` when the user asks or a packet-close acceptance review demands it
 - **Provide specific fix suggestions** — not vague "improve this"
 - **Acknowledge good code** — positive reinforcement matters
 - **Reference authoritative docs** — cite `docs/01_system_architecture.md`, `docs/02_ir_schemas.md`, etc. for architecture claims

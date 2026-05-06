@@ -232,6 +232,8 @@ Return format: FACT (pass) or SNIPPETS (fail).
 - **Full review**: dispatch all packet ACs and packet-level commands needed for closure.
 - **Delta review**: dispatch only commands affected by `changed_steps` / `changed_files` / impacted ACs, unless a broader rerun is needed to disambiguate a regression.
 
+**`cargo test --workspace` is run at most once, only when the packet's acceptance ceremony or completion gate requires it for closure.** The suite is >1000 tests and takes ≥11 minutes — do not dispatch it speculatively, and never use it as a substitute for the packet's targeted verification commands. If a delta review touches no closure gate, do not run it at all. Do not re-dispatch it across review iterations: one pass at the end is the contract.
+
 Other dispatched (not direct) checks: `git status` summary on expected files (FACT); expected directory structure (FACT or LOCATIONS).
 
 ## Output
@@ -267,6 +269,7 @@ Do not repeat large packet excerpts or full build logs unless the caller asks.
 - **Dispatch, don't read** — every code/cargo/doc check goes to a sub-agent. The 5 packet files are the only direct reads.
 - **Trace every requirement** — if you cannot trace it via returned LOCATIONS, it is not done.
 - **Run verification commands via dispatch** — never absorb their full log.
+- **Do not run `cargo test --workspace` speculatively** — it is >1000 tests / ≥11 minutes; reserve it for the single acceptance-ceremony gate when the packet requires it.
 - **Document all deviations** — undocumented deviations are issues.
 - **Acknowledge good work** — positive observations matter.
 - **Provide specific fixes** — vague "improve this" is not actionable.

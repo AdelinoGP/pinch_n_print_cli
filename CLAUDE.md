@@ -8,12 +8,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 cargo build --workspace
-cargo test --workspace
 cargo clippy --workspace -- -D warnings              # required before committing
-cargo test -p slicer-host --test core_module_ir_access_contract_tdd   # single test example
+cargo test -p slicer-host --test core_module_ir_access_contract_tdd   # narrow, targeted run (preferred)
 ./modules/core-modules/build-core-modules.sh         # build WASM core modules (needs wasm32 target)
 cargo run --bin slicer-cli --release --slice --input model.stl --output model.gcode
 ```
+
+## Test Discipline (agents must follow)
+
+**Do not run `cargo test --workspace` by default.** The full suite is >1000 tests and takes ≥11 minutes — running it speculatively or "to be safe" wastes time and tokens.
+
+Default to the narrowest test that proves the change:
+- A single test:        `cargo test -p <crate> --test <file> -- <test_name> --nocapture`
+- One test file:        `cargo test -p <crate> --test <file>`
+- One crate:            `cargo test -p <crate>`
+- Type-check only:      `cargo check --workspace` (seconds, not minutes)
+
+`cargo test --workspace` is permitted **only** when:
+1. The user explicitly asks for it, OR
+2. A packet's acceptance ceremony / completion gate (`packet.spec.md` / `implementation-plan.md`) requires it for closure, AND every narrower verification command on that packet has already passed.
+
+When a packet does require it, dispatch it to a sub-agent with a `FACT pass/fail` return — never absorb the full output. See `.claude/skills/swarm/SKILL.md` and `.claude/skills/spec-review/SKILL.md` for the dispatch contract.
 
 ## Coordinate System Hazard
 
@@ -29,7 +44,7 @@ When modifying WIT types or interface definitions:
 
 ## Ralph Agent Workflow
 
-Implementation work is organized into spec packets under `.ralph/specs/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Backpressure gates require `cargo build`, `cargo test`, and `cargo clippy` to pass before a packet can be closed.
+Implementation work is organized into spec packets under `.ralph/specs/<NN>_<slug>/`, each containing `packet.spec.md`, `requirements.md`, `design.md`, and `implementation-plan.md`. The active packet is the one whose `packet.spec.md` has `status: active` (grep for it). Backpressure gates require `cargo build`, the packet's narrow verification commands, and `cargo clippy` to pass before a packet can be closed; the full `cargo test --workspace` runs only at the packet-close acceptance ceremony, not during implementation iterations (see Test Discipline above).
 
 ## Doc Index
 

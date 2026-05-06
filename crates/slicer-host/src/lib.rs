@@ -80,7 +80,7 @@ pub use manifest::{
     load_module_from_paths, load_modules_from_roots, ConfigFieldEntry, ConfigSchema,
     DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport, LoadedModule,
 };
-pub use mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
+pub use mesh_analysis::{execute_mesh_analysis, MeshAnalysisConfig, MeshAnalysisError};
 pub use mesh_segmentation::{
     execute_mesh_segmentation, DegenerateStrokeReason, MeshSegmentationError,
 };

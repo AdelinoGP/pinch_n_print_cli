@@ -1,11 +1,16 @@
 ---
-status: draft
+status: superseded
+superseded_by: 36-rev1_bridge-detector-orca-parity-fixes
 packet: bridge-detector-orca-parity
 task_ids:
   - TASK-166
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
+
+> **Superseded by `36-rev1_bridge-detector-orca-parity-fixes` on 2026-05-05.**
+>
+> Spec review found the algorithmic implementations behind this packet's green tests were heuristic stubs: mesh-adjacency clustered the wrong facet class (`TopSurface` instead of down-facing overhangs), `anchor_width_mm` and `xy_footprint` were bbox approximations, `bridge_direction_deg` was hardcoded 0°/90°, the `infill_areas \ bridge_areas` set difference in `rectilinear-infill` was a centroid heuristic, the schema-version test was tautological, and the sharp-anchor self-intersection test used a rectangle. DEV-035 and DEV-036 were closed with rationale that did not hold up under audit. Packet `36-rev1` reopens DEV-035, DEV-036, and TASK-167; rewrites the algorithms; and replaces the broken AC tests. The IR / WIT / SDK plumbing introduced here is preserved.
 
 # Packet Contract: bridge-detector-orca-parity
 

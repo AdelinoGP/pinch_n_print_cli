@@ -233,6 +233,8 @@ Validation order:
 
 Do not replace packet-specific commands with generic workspace tests. Use the manifest's command registry so later iterations rerun only the commands affected by `changed_steps`/`changed_files`.
 
+**`cargo test --workspace` is forbidden during implementation iterations.** The suite is >1000 tests and takes ≥11 minutes per run — running it inside a fix loop burns budget without adding signal beyond the targeted command. It runs at most once, in Phase 5.1's acceptance ceremony, and only if the packet itself lists it as a closure gate. Targeted commands (`cargo test -p <crate> --test <file>` / `-- <test_name>`) and `cargo check --workspace` are the workhorses; reach for `--workspace` test runs deliberately, never reflexively.
+
 **4.2 Review.** After the implementation pass, dispatch a single review worker bound by `.claude/skills/spec-review/SKILL.md` with the same context-discipline reminders.
 
 Treat findings in two buckets:
