@@ -195,7 +195,8 @@ Worked example (invalid):
 ## IR 2 — SurfaceClassificationIR
 
 **Stage:** Output of `PrePass::MeshAnalysis`  
-**Lifetime:** Blackboard (immutable after PrePass)
+**Lifetime:** Blackboard (immutable after PrePass)  
+**Current schema_version: 1.1.0** (Bumped to 1.1.0 by packet 36 — new struct `BridgeRegion` and field `bridge_regions: Vec<BridgeRegion>` on `SurfaceClassificationIR`.)
 
 ```rust
 pub struct SurfaceClassificationIR {
@@ -234,6 +235,11 @@ pub struct BridgeRegion {
     pub id: BridgeRegionId,
     pub facet_indices: Vec<u32>,
     pub bridge_direction_deg: f32,        // optimal bridge angle
+    pub anchor_width_mm: f32,             // shortest perpendicular run of contiguous anchor edges (mm)
+    pub bridge_length_mm: f32,            // longest unsupported span across the cluster (mm)
+    pub expansion_margin_mm: f32,         // frozen at PrePass from MeshAnalysisConfig (mm)
+    pub is_valid: bool,                   // pass/fail of min-length + anchor-width filters
+    pub xy_footprint: Vec<ExPolygon>,     // facet-cluster XY projection in 100 nm units
 }
 
 pub struct OverhangRegion {
@@ -479,7 +485,7 @@ pub struct ModuleInvocation {
 
 **Stage:** Output of `Layer::Slice`, mutated by `Layer::SlicePostProcess`
 
-**Current schema_version: 1.1.0** (additive-minor bump from 1.0.0 in packet `12-rev1_external-surface-classification-at-slice`; new fields default `false` when classification data is absent or the region falls outside the Z window).
+**Current schema_version: 1.2.0** (additive-minor bump from 1.0.0 in packet `12-rev1_external-surface-classification-at-slice`; new fields default `false` when classification data is absent or the region falls outside the Z window. Bumped to 1.2.0 by packet 36 — new fields on `SlicedRegion`: `bridge_areas`, `bridge_orientation_deg`.)
 
 ```rust
 pub struct SliceIR {
@@ -516,13 +522,13 @@ pub struct SlicedRegion {
     /// object at this layer (same vertex-in-polygon test against BottomSurface
     /// facets and the bottom-surface Z window).  Defaults `false`.
     pub is_bottom_surface: bool,
-    /// True when this region spans a bridge gap at this layer (at least one
-    /// `BridgeRegion` Z span covers the layer and a region vertex falls inside
-    /// the bridge polygon).  Defaults `false`.  Note: `bridge_regions` is
-    /// currently initialized empty in
-    /// `crates/slicer-host/src/mesh_analysis.rs:213`; production runs always
-    /// see `false` until packet 36 populates bridge detection (see DEV-035).
+    /// True when this region spans a bridge gap at this layer.  Defaults `false`.
+    /// Populated by mesh analysis (packet 36 / 36-rev1).
     pub is_bridge: bool,
+    /// Per-layer expanded bridge polygons (in 100 nm units).  Added in packet 36.
+    pub bridge_areas: Vec<ExPolygon>,
+    /// Best bridge direction across all valid bridge regions (degrees).  Added in packet 36.
+    pub bridge_orientation_deg: f32,
 }
 
 /// Polygon with holes. Contour is CCW; holes are CW.
