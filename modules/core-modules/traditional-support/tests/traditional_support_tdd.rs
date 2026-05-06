@@ -67,7 +67,7 @@ fn support_disabled_no_output() {
 /// Test 2: Enabled support with a 10mm square region produces paths.
 #[test]
 fn single_region_generates_support() {
-    let config = make_config(true, 0.2, 0.0, 50.0, 0.4);
+    let config = make_config(true, 20.0, 0.0, 50.0, 0.4);
     let module = TraditionalSupport::on_print_start(&config).unwrap();
 
     let region = make_square_region(10.0, 0.3);
@@ -138,8 +138,8 @@ fn speed_factor_from_config() {
 /// Test 5: Higher density produces more lines.
 #[test]
 fn density_affects_line_count() {
-    let config_low = make_config(true, 0.2, 0.0, 50.0, 0.4);
-    let config_high = make_config(true, 0.5, 0.0, 50.0, 0.4);
+    let config_low = make_config(true, 20.0, 0.0, 50.0, 0.4);
+    let config_high = make_config(true, 50.0, 0.0, 50.0, 0.4);
 
     let module_low = TraditionalSupport::on_print_start(&config_low).unwrap();
     let module_high = TraditionalSupport::on_print_start(&config_high).unwrap();
