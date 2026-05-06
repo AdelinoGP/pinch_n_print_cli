@@ -315,6 +315,8 @@ fn region_fixture(object_id: &str, region_id: u64, polygons: Vec<ExPolygon>) -> 
         is_top_surface: false,
         is_bottom_surface: false,
         is_bridge: false,
+        bridge_areas: vec![],
+        bridge_orientation_deg: 0.0,
     }
 }
 

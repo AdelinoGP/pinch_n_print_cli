@@ -120,11 +120,15 @@ fn commit_stamps_per_object_resolved_config() {
 
     // Build per-object resolved configs:
     // obj-A.top_shell_layers = 5, obj-B.top_shell_layers = 3.
-    let mut config_a = ResolvedConfig::default();
-    config_a.top_shell_layers = 5;
+    let config_a = ResolvedConfig {
+        top_shell_layers: 5,
+        ..ResolvedConfig::default()
+    };
 
-    let mut config_b = ResolvedConfig::default();
-    config_b.top_shell_layers = 3;
+    let config_b = ResolvedConfig {
+        top_shell_layers: 3,
+        ..ResolvedConfig::default()
+    };
 
     let mut resolved_configs: BTreeMap<String, ResolvedConfig> = BTreeMap::new();
     resolved_configs.insert("obj-A".to_string(), config_a);

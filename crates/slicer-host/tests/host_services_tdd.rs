@@ -210,8 +210,8 @@ fn object_bounds_fails_with_diagnostic_when_mesh_not_wired() {
     );
     let msg = result.unwrap_err().to_string();
     assert!(
-        msg.contains("not yet wired"),
-        "error should say 'not yet wired': {msg}"
+        msg.contains("OBJECT_NOT_FOUND") || msg.contains("object-bounds"),
+        "error should identify the missing object: {msg}"
     );
     assert!(msg.contains("obj-1"), "error should name the object: {msg}");
 }

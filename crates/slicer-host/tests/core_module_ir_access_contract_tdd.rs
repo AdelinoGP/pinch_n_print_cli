@@ -248,6 +248,7 @@ fn core_module_reads_are_restricted_to_upstream_ir_root_set() {
                 "SliceIR",
                 "SurfaceClassificationIR",
                 "PaintRegionIR",
+                "SupportPlanIR",
                 "RegionMapIR",
             ],
             "Layer::SupportPostProcess" => &["SupportIR", "RegionMapIR"],

@@ -2217,6 +2217,8 @@ fn make_slice_ir(
             is_top_surface: false,
             is_bottom_surface: false,
             is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
         })
         .collect();
 
@@ -3839,24 +3841,16 @@ fn path_optimization_deterministic_across_repeated_runs() {
 
 #[test]
 fn path_optimization_rejects_move_override_without_layer_collection_mapping() {
-    // Per docs/03 § Path Optimization Output Contract, push-move has no
+    // Per docs/03 § Path Optimization Output Contract, push-fan-speed has no
     // documented LayerCollectionIR mapping and must fail as a fatal module
     // error instead of being lowered into an annotation.
-    use slicer_host::wit_host::{
-        ExtrusionRole, GcodeCommandCollected, GcodeMoveCmd, HostExecutionContext,
-    };
+    // (push-move is now accepted as a deferred travel move.)
+    use slicer_host::wit_host::{GcodeCommandCollected, HostExecutionContext};
     let mut ctx =
         HostExecutionContext::new("com.test.pathopt-bad".to_string(), 0.0, 0.0, None, None);
     ctx.gcode_output
         .commands
-        .push(GcodeCommandCollected::Move(GcodeMoveCmd {
-            x: Some(1.0),
-            y: Some(2.0),
-            z: None,
-            e: None,
-            f: None,
-            role: ExtrusionRole::OuterWall,
-        }));
+        .push(GcodeCommandCollected::FanSpeed(128));
     let mut arena = LayerArena::new();
     let err = slicer_host::commit_layer_outputs_for_test(
         "Layer::PathOptimization",
@@ -3866,19 +3860,15 @@ fn path_optimization_rejects_move_override_without_layer_collection_mapping() {
         &mut arena,
         None,
     )
-    .expect_err("move override must be rejected");
+    .expect_err("fan-speed override must be rejected");
     let msg = err.to_string();
     assert!(
-        msg.contains("push-move"),
-        "diagnostic should name the rejected method: {msg}"
-    );
-    assert!(
-        msg.contains("no documented LayerCollectionIR mapping exists"),
-        "diagnostic should explain the contract violation: {msg}"
+        msg.contains("unsupported GCode command"),
+        "diagnostic should describe the rejection: {msg}"
     );
     assert!(
         arena.take_deferred_annotations().is_empty(),
-        "rejected move override must not enqueue annotations"
+        "rejected command must not enqueue annotations"
     );
 }
 
@@ -4239,7 +4229,8 @@ fn path_optimization_end_to_end_populates_z_hops() {
     assert_eq!(l.ordered_entities.len(), 2);
     assert_eq!(l.z_hops.len(), 2, "guest emits one z-hop per region");
     for zh in &l.z_hops {
-        assert_eq!(zh.after_entity_index, 0);
+        // anchor = ordered_entities.len().saturating_sub(1) = 2 - 1 = 1
+        assert_eq!(zh.after_entity_index, 1);
         assert_eq!(zh.hop_height, 0.5);
     }
     // Existing tool-change/comment behaviour unchanged.

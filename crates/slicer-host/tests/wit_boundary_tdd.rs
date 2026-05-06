@@ -84,6 +84,8 @@ fn guest_reads_config_value_and_uses_it_in_output() {
             is_top_surface: false,
             is_bottom_surface: false,
             is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
         })
         .unwrap();
 
@@ -166,6 +168,8 @@ fn guest_reads_region_z_from_ir_view() {
             is_top_surface: false,
             is_bottom_surface: false,
             is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -224,6 +228,8 @@ fn guest_emits_output_via_infill_builder() {
             is_top_surface: false,
             is_bottom_surface: false,
             is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -294,6 +300,8 @@ fn guest_logs_via_host_services() {
             is_top_surface: false,
             is_bottom_surface: false,
             is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -366,6 +374,8 @@ fn repeated_calls_produce_independent_outputs() {
                 is_top_surface: false,
                 is_bottom_surface: false,
                 is_bridge: false,
+                bridge_areas: vec![],
+                bridge_orientation_deg: 0.0,
             })
             .unwrap();
         let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -409,8 +419,8 @@ fn repeated_calls_produce_independent_outputs() {
 
 // ── F: Empty region list handled correctly ──────────────────────────────
 
-/// When no regions are provided, the guest still runs and produces output
-/// with z=0.0 (the fallback).
+/// When no regions are provided, the guest returns Ok without pushing any
+/// output (early-exit path in run_infill when regions is empty).
 #[test]
 fn empty_region_list_handled_gracefully() {
     let wasm_bytes = load_guest_component();
@@ -432,7 +442,7 @@ fn empty_region_list_handled_gracefully() {
     let mut store = wasmtime::Store::new(&engine, ctx);
     let bindings = LayerModule::instantiate(&mut store, &component, &linker).unwrap();
 
-    // Call with empty regions list
+    // Call with empty regions list — guest returns Ok immediately, no paths pushed.
     bindings
         .call_run_infill(
             &mut store,
@@ -445,10 +455,7 @@ fn empty_region_list_handled_gracefully() {
         .unwrap();
 
     let ctx = store.into_data();
-    assert_eq!(ctx.infill_output.sparse_paths.len(), 1);
-    // z should be 0.0 (fallback when no regions)
-    let z = ctx.infill_output.sparse_paths[0].points[0].z;
-    assert!((z - 0.0).abs() < 0.001, "z should be 0.0, got {z}");
+    assert_eq!(ctx.infill_output.sparse_paths.len(), 0);
 }
 
 // ── Helper: convert Resource to the right type ──────────────────────────

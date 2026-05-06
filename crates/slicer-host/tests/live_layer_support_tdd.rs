@@ -497,6 +497,8 @@ fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
             is_top_surface: false,
             is_bottom_surface: false,
             is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
         })
         .collect();
 
@@ -1265,6 +1267,8 @@ mod planner_consuming_tier {
             is_top_surface: false,
             is_bottom_surface: false,
             is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
         };
         slicer_ir::SliceIR {
             schema_version: semver(1, 0, 0),
@@ -1587,6 +1591,8 @@ mod planner_consuming_tier {
                 is_top_surface: false,
                 is_bottom_surface: false,
                 is_bridge: false,
+                bridge_areas: vec![],
+                bridge_orientation_deg: 0.0,
             }],
         };
 

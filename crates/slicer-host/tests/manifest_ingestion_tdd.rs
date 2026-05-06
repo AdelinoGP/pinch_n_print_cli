@@ -601,12 +601,11 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 17 core modules (16 historical + Step D
-    // adding `path-optimization-default` on 2026-04-15).
+    // We expect exactly 19 core modules as of 2026-05-05.
     assert_eq!(
         report.modules.len(),
-        17,
-        "expected 17 core modules, got {}: {:?}",
+        19,
+        "expected 19 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| &m.id).collect::<Vec<_>>()
     );
@@ -818,6 +817,8 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
         "com.core.tree-support",
         "com.core.paint-region-annotator",
         "com.core.seam-placer",
+        "com.core.seam-planner-default",
+        "com.core.support-planner",
         "com.core.fuzzy-skin",
         "com.core.support-surface-ironing",
         "com.core.skirt-brim",

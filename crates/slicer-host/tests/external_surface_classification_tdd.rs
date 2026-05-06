@@ -239,6 +239,11 @@ fn make_surface_class(
             id: 0,
             facet_indices: indices,
             bridge_direction_deg: 0.0,
+            anchor_width_mm: 0.0,
+            bridge_length_mm: 0.0,
+            expansion_margin_mm: 0.0,
+            is_valid: false,
+            xy_footprint: vec![],
         }],
         None => vec![],
     };

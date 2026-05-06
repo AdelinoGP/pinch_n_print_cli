@@ -448,6 +448,8 @@ fn slice_ir_with_regions(
             is_top_surface: false,
             is_bottom_surface: false,
             is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
         })
         .collect();
     SliceIR {

@@ -284,14 +284,16 @@ fn layer_world_builder_commit_preserves_entities_tool_changes_and_z_hops() {
 
     assert_eq!(layer.tool_changes.len(), 2);
     for (index, tool_change) in layer.tool_changes.iter().enumerate() {
-        assert_eq!(tool_change.after_entity_index, 1);
+        // guest emits push_tool_change(i, i, i+1) so after_entity_index = i
+        assert_eq!(tool_change.after_entity_index, index as u32);
         assert_eq!(tool_change.from_tool, index as u32);
         assert_eq!(tool_change.to_tool, index as u32 + 1);
     }
 
     assert_eq!(layer.z_hops.len(), 2);
     for z_hop in &layer.z_hops {
-        assert_eq!(z_hop.after_entity_index, 0);
+        // host normalizes z-hop anchor to ordered_entities.len()-1 = 1
+        assert_eq!(z_hop.after_entity_index, 1);
         assert!((z_hop.hop_height - 0.5).abs() < 1e-6);
     }
 }
