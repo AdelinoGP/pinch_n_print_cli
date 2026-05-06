@@ -306,6 +306,11 @@ mod tests {
             id: 100,
             facet_indices: vec![0, 1, 2],
             bridge_direction_deg: 90.0,
+            anchor_width_mm: 0.0,
+            bridge_length_mm: 0.0,
+            expansion_margin_mm: 0.0,
+            is_valid: false,
+            xy_footprint: vec![],
         };
 
         test_serde_roundtrip!(region);
@@ -447,6 +452,8 @@ mod tests {
             is_top_surface: false,
             is_bottom_surface: false,
             is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
         };
 
         test_serde_roundtrip!(region);
@@ -612,5 +619,53 @@ fn slice_ir_schema_version_is_one_one_zero() {
             slice.schema_version.patch
         ),
         (1, 1, 0)
+    );
+}
+
+/// AC-10 (packet 36-rev1): bridge_detector_schema_versions_are_constant_sourced
+///
+/// Asserts that:
+///   (a) CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION == SemVer { 1, 1, 0 }
+///   (b) CURRENT_SLICE_IR_SCHEMA_VERSION == SemVer { 1, 2, 0 }
+///   (c) SurfaceClassificationIR::default().schema_version == CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION
+///   (d) SliceIR::default().schema_version == CURRENT_SLICE_IR_SCHEMA_VERSION
+#[test]
+fn bridge_detector_schema_versions_are_constant_sourced() {
+    // (a)
+    assert_eq!(
+        slicer_ir::CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
+        slicer_ir::SemVer {
+            major: 1,
+            minor: 1,
+            patch: 0
+        },
+        "CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION must be (1, 1, 0)"
+    );
+
+    // (b)
+    assert_eq!(
+        slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+        slicer_ir::SemVer {
+            major: 1,
+            minor: 2,
+            patch: 0
+        },
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (1, 2, 0)"
+    );
+
+    // (c)
+    let surf_ir = SurfaceClassificationIR::default();
+    assert_eq!(
+        surf_ir.schema_version,
+        slicer_ir::CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
+        "SurfaceClassificationIR::default() schema_version must equal the constant"
+    );
+
+    // (d)
+    let slice_ir = SliceIR::default();
+    assert_eq!(
+        slice_ir.schema_version,
+        slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+        "SliceIR::default() schema_version must equal the constant"
     );
 }
