@@ -9,6 +9,7 @@ description = "Rectilinear sparse infill generator implementing LayerModule for 
 slicer-sdk = { path = "../../../crates/slicer-sdk" }
 slicer-schema = { path = "../../../crates/slicer-schema" }
 slicer-ir = { path = "../../../crates/slicer-ir" }
+slicer-core = { path = "../../../crates/slicer-core" }
 
 [dev-dependencies]
 

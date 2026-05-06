@@ -100,33 +100,64 @@ impl LayerModule for RectilinearInfill {
             }
 
             let z = region.z();
+            let bridge_areas = region.bridge_areas();
+            let has_bridge = !bridge_areas.is_empty();
 
-            // Determine fill role based on surface classification.
-            // Priority: bridge > top > bottom > sparse.
-            // Top/bottom surfaces get solid fill; bridge gets bridge fill;
-            // everything else gets sparse infill.
-            let role = if region.is_bridge() {
-                ExtrusionRole::BridgeInfill
-            } else if region.is_top_surface() {
-                ExtrusionRole::TopSolidInfill
-            } else if region.is_bottom_surface() {
-                ExtrusionRole::BottomSolidInfill
+            // Compute bridge fill angle when bridging is active.
+            // Falls back to the standard alternating angle if bridge_areas is empty.
+            let (bridge_cos_a, bridge_sin_a, _bridge_angle_rad) = if has_bridge {
+                let deg = region.bridge_orientation_deg() as f64;
+                let rad = deg.to_radians();
+                (rad.cos(), rad.sin(), rad)
             } else {
-                ExtrusionRole::SparseInfill
+                (cos_a, sin_a, angle_rad)
             };
 
+            // Standard non-bridge angle (0 or 90 degrees alternation).
+            let (std_cos_a, std_sin_a) = (cos_a, sin_a);
+
             for expoly in infill_areas {
-                let paths = self.fill_expolygon(
-                    expoly,
-                    line_spacing,
-                    cos_a,
-                    sin_a,
-                    z,
-                    speed_factor,
-                    role.clone(),
-                );
-                for path in paths {
-                    let _ = output.push_sparse_path(path);
+                let (bridge_parts, non_bridge_parts) =
+                    partition_expoly_by_bridges(expoly, bridge_areas);
+
+                // Emit bridge fill at bridge_orientation_deg over bridge areas.
+                if !bridge_parts.is_empty() {
+                    let paths = self.fill_expolygon_multi(
+                        &bridge_parts,
+                        line_spacing,
+                        bridge_cos_a,
+                        bridge_sin_a,
+                        z,
+                        speed_factor,
+                        ExtrusionRole::BridgeInfill,
+                    );
+                    for path in paths {
+                        let _ = output.push_sparse_path(path);
+                    }
+                }
+
+                // Emit standard fill (SparseInfill / TopSolidInfill / BottomSolidInfill)
+                // over non-bridge areas, respecting surface flags.
+                if !non_bridge_parts.is_empty() {
+                    let role = if region.is_top_surface() {
+                        ExtrusionRole::TopSolidInfill
+                    } else if region.is_bottom_surface() {
+                        ExtrusionRole::BottomSolidInfill
+                    } else {
+                        ExtrusionRole::SparseInfill
+                    };
+                    let paths = self.fill_expolygon_multi(
+                        &non_bridge_parts,
+                        line_spacing,
+                        std_cos_a,
+                        std_sin_a,
+                        z,
+                        speed_factor,
+                        role,
+                    );
+                    for path in paths {
+                        let _ = output.push_sparse_path(path);
+                    }
                 }
             }
         }
@@ -136,11 +167,11 @@ impl LayerModule for RectilinearInfill {
 }
 
 impl RectilinearInfill {
-    /// Generate fill lines for a single ExPolygon.
+    /// Generate fill lines for multiple ExPolygons with a shared role and angle.
     #[allow(clippy::too_many_arguments)]
-    fn fill_expolygon(
+    fn fill_expolygon_multi(
         &self,
-        expoly: &ExPolygon,
+        expolies: &[ExPolygon],
         line_spacing: i64,
         cos_a: f64,
         sin_a: f64,
@@ -148,14 +179,20 @@ impl RectilinearInfill {
         speed_factor: f32,
         role: ExtrusionRole,
     ) -> Vec<ExtrusionPath3D> {
-        // Collect all edges (contour + holes)
+        // Collect all edges (contour + holes) from all expolygons.
         let mut edges: Vec<(i64, i64, i64, i64)> = Vec::new();
-        collect_edges(&expoly.contour.points, &mut edges);
-        for hole in &expoly.holes {
-            collect_edges(&hole.points, &mut edges);
+        for expoly in expolies {
+            collect_edges(&expoly.contour.points, &mut edges);
+            for hole in &expoly.holes {
+                collect_edges(&hole.points, &mut edges);
+            }
         }
 
-        // Rotate all edge endpoints by -angle into working space
+        if edges.is_empty() {
+            return Vec::new();
+        }
+
+        // Rotate all edge endpoints by -angle into working space.
         let rotated_edges: Vec<(i64, i64, i64, i64)> = edges
             .iter()
             .map(|&(x1, y1, x2, y2)| {
@@ -165,7 +202,7 @@ impl RectilinearInfill {
             })
             .collect();
 
-        // Compute bounding box in rotated space
+        // Compute bounding box in rotated space across all polygons.
         let (mut min_y, mut max_y) = (i64::MAX, i64::MIN);
         for &(_, ry1, _, ry2) in &rotated_edges {
             min_y = min_y.min(ry1).min(ry2);
@@ -176,18 +213,18 @@ impl RectilinearInfill {
             return Vec::new();
         }
 
-        // Generate scan lines
+        // Generate scan lines.
         let mut paths = Vec::new();
         let mut scan_y = min_y + line_spacing;
 
         while scan_y < max_y {
-            // Find intersections with all edges
+            // Find intersections with all edges.
             let mut x_intersections: Vec<i64> = Vec::new();
 
             for &(rx1, ry1, rx2, ry2) in &rotated_edges {
                 let (edge_min_y, edge_max_y) = if ry1 < ry2 { (ry1, ry2) } else { (ry2, ry1) };
 
-                // Strictly between
+                // Strictly between.
                 if scan_y > edge_min_y && scan_y < edge_max_y {
                     let x = rx1 as f64
                         + (scan_y - ry1) as f64 * (rx2 - rx1) as f64 / (ry2 - ry1) as f64;
@@ -197,13 +234,13 @@ impl RectilinearInfill {
 
             x_intersections.sort();
 
-            // Pair intersections as enter/exit segments
+            // Pair intersections as enter/exit segments.
             let mut i = 0;
             while i + 1 < x_intersections.len() {
                 let x_start = x_intersections[i];
                 let x_end = x_intersections[i + 1];
 
-                // Rotate back by +angle
+                // Rotate back by +angle.
                 let (start_x, start_y) = rotate_point(x_start, scan_y, cos_a, sin_a);
                 let (end_x, end_y) = rotate_point(x_end, scan_y, cos_a, sin_a);
 
@@ -248,6 +285,23 @@ fn collect_edges(points: &[slicer_ir::Point2], edges: &mut Vec<(i64, i64, i64, i
         let j = (i + 1) % n;
         edges.push((points[i].x, points[i].y, points[j].x, points[j].y));
     }
+}
+
+/// Partition an ExPolygon into (bridge_parts, non_bridge_parts) using bridge_areas.
+/// Bridge parts are the intersection of `expoly` with `bridge_areas`.
+/// Non-bridge parts are the set difference of `expoly` minus `bridge_areas`.
+fn partition_expoly_by_bridges(
+    expoly: &ExPolygon,
+    bridge_areas: &[ExPolygon],
+) -> (Vec<ExPolygon>, Vec<ExPolygon>) {
+    if bridge_areas.is_empty() {
+        // Defensive: is_bridge implies non-empty bridge_areas after the new assemble_bridge_areas; this branch is unreachable in practice.
+        return (Vec::new(), vec![expoly.clone()]);
+    }
+    let subject = [expoly.clone()];
+    let bridge_parts = slicer_core::polygon_ops::intersection(&subject, bridge_areas);
+    let non_bridge_parts = slicer_core::polygon_ops::difference(&subject, bridge_areas);
+    (bridge_parts, non_bridge_parts)
 }
 
 /// Rotate a point by angle. cos_a, sin_a are cos/sin of the rotation angle.
