@@ -82,7 +82,7 @@ fn orca_type_label(role: &ExtrusionRole) -> &'static str {
         ExtrusionRole::TopSolidInfill => ";TYPE:Top surface",
         ExtrusionRole::BottomSolidInfill => ";TYPE:Bottom surface",
         ExtrusionRole::SparseInfill => ";TYPE:Sparse infill",
-        ExtrusionRole::BridgeInfill => ";TYPE:Bridge",
+        ExtrusionRole::BridgeInfill => ";TYPE:Bridge infill",
         ExtrusionRole::SupportMaterial => ";TYPE:Support",
         ExtrusionRole::SupportInterface => ";TYPE:Support interface",
         ExtrusionRole::Skirt => ";TYPE:Skirt/Brim",

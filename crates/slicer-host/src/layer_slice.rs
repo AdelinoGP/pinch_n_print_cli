@@ -8,12 +8,14 @@
 use std::collections::HashMap;
 use std::fmt;
 
+use slicer_core::polygon_ops::{intersection, offset, OffsetJoinType};
 use slicer_core::slice_mesh_ex;
-use slicer_ir::{FacetClass, Point2, Point3};
 use slicer_ir::{
-    GlobalLayer, LayerPlanIR, MeshIR, ObjectId, ObjectMesh, ObjectSurfaceData, Polygon, RegionKey,
-    RegionMapIR, SemVer, SliceIR, SlicedRegion, SurfaceClassificationIR, Transform3d,
+    ExPolygon, GlobalLayer, LayerPlanIR, MeshIR, ObjectId, ObjectMesh, ObjectSurfaceData, Polygon,
+    RegionKey, RegionMapIR, SliceIR, SlicedRegion, SurfaceClassificationIR, Transform3d,
+    CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
+use slicer_ir::{FacetClass, Point2, Point3};
 
 /// Structured failures for the host-built-in `Layer::Slice` stage.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -240,6 +242,84 @@ pub fn classify_region_surfaces(
 }
 
 // ============================================================================
+// assemble_bridge_areas
+// ============================================================================
+
+/// Assemble expanded bridge polygons for a slice region.
+///
+/// For each valid `BridgeRegion` whose `xy_footprint` overlaps the region's
+/// infill areas, computes:
+///
+/// `bridge_polygon = (xy_footprint ∩ infill_areas) ⊕ expansion_margin_mm`
+/// `bridge_polygon = bridge_polygon ∩ infill_areas`
+///
+/// where `⊕` is Minkowski expansion via polygon offset. The result populates
+/// `SlicedRegion.bridge_areas`. The `bridge_orientation_deg` is set to the
+/// `bridge_direction_deg` of the intersecting bridge region with the largest
+/// `bridge_length_mm`.
+///
+/// Requires `surface_class` to access `bridge_regions` with their `xy_footprint`
+/// and `expansion_margin_mm`.
+pub fn assemble_bridge_areas(
+    region: &mut SlicedRegion,
+    surface_class: Option<&SurfaceClassificationIR>,
+) {
+    let Some(sc) = surface_class else {
+        return;
+    };
+    let Some(obj_data) = sc.per_object.get(&region.object_id) else {
+        return;
+    };
+
+    let mut best_orientation_deg = 0.0_f32;
+    let mut best_bridge_length = 0.0_f32;
+
+    for br in &obj_data.bridge_regions {
+        if !br.is_valid {
+            continue;
+        }
+        if br.xy_footprint.is_empty() {
+            continue;
+        }
+        if !br.expansion_margin_mm.is_finite() || br.expansion_margin_mm < 0.0 {
+            continue;
+        }
+
+        // Check if xy_footprint overlaps region.infill_areas
+        let footprint_as_expoly: Vec<ExPolygon> = br.xy_footprint.to_vec();
+        let intersection_result = intersection(&footprint_as_expoly, &region.infill_areas);
+        if intersection_result.is_empty() {
+            continue;
+        }
+
+        // Offset by +expansion_margin_mm (Minkowski expansion)
+        let expanded: Vec<ExPolygon> = offset(
+            &intersection_result,
+            br.expansion_margin_mm,
+            OffsetJoinType::Miter,
+        );
+
+        // Intersect expanded result back with infill_areas to keep inside region
+        let final_polys = intersection(&expanded, &region.infill_areas);
+
+        if final_polys.is_empty() {
+            continue;
+        }
+
+        // Accumulate the bridge polygons
+        region.bridge_areas.extend(final_polys);
+
+        // Track best orientation (largest bridge_length_mm wins)
+        if br.bridge_length_mm > best_bridge_length {
+            best_bridge_length = br.bridge_length_mm;
+            best_orientation_deg = br.bridge_direction_deg;
+        }
+    }
+
+    region.bridge_orientation_deg = best_orientation_deg;
+}
+
+// ============================================================================
 // execute_layer_slice
 // ============================================================================
 
@@ -391,7 +471,7 @@ pub fn execute_layer_slice(
             (false, false, false)
         };
 
-        regions.push(SlicedRegion {
+        let mut sliced_region = SlicedRegion {
             object_id: active.object_id.clone(),
             region_id: active.region_id,
             polygons: polygons.clone(),
@@ -402,15 +482,18 @@ pub fn execute_layer_slice(
             is_top_surface,
             is_bottom_surface,
             is_bridge,
-        });
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
+        };
+
+        // Assemble expanded bridge polygons using bridge regions from surface classification.
+        assemble_bridge_areas(&mut sliced_region, surface_class);
+
+        regions.push(sliced_region);
     }
 
     Ok(SliceIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 1,
-            patch: 0,
-        },
+        schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
         global_layer_index: layer.index,
         z: layer.z,
         regions,

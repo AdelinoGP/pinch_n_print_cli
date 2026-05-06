@@ -144,6 +144,10 @@ pub struct SliceRegionData {
     pub is_bottom_surface: bool,
     /// True when this region is classified as a bridge region.
     pub is_bridge: bool,
+    /// Per-layer expanded bridge polygons (empty if not a bridge region).
+    pub bridge_areas: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
+    /// Best bridge direction across all valid bridge regions (degrees).
+    pub bridge_orientation_deg: f32,
 }
 
 /// Backing data for a `perimeter-region-view` resource handle.
@@ -311,6 +315,8 @@ pub mod layer {
                     is-top-surface: func() -> bool;
                     is-bottom-surface: func() -> bool;
                     is-bridge: func() -> bool;
+                    bridge-areas: func() -> list<ex-polygon>;
+                    bridge-orientation-deg: func() -> f32;
                 }
                 record seam-position { point: point3-with-width, wall-index: u32 }
                 resource perimeter-region-view {
@@ -2566,6 +2572,8 @@ pub fn sliced_region_to_data(region: &slicer_ir::SlicedRegion, z: f32) -> SliceR
         is_top_surface: region.is_top_surface,
         is_bottom_surface: region.is_bottom_surface,
         is_bridge: region.is_bridge,
+        bridge_areas: ir_to_wit_expolygons(&region.bridge_areas),
+        bridge_orientation_deg: region.bridge_orientation_deg,
     }
 }
 
@@ -2642,6 +2650,8 @@ mod region_origin_tests {
                 is_top_surface: false,
                 is_bottom_surface: false,
                 is_bridge: false,
+                bridge_areas: Vec::new(),
+                bridge_orientation_deg: 0.0,
             })
             .expect("push slice region");
 
@@ -2993,6 +3003,21 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     fn is_bridge(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<bool> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.is_bridge)
+    }
+    fn bridge_areas(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<ExPolygon>> {
+        self.runtime_reads
+            .push(String::from("SliceIR.regions.bridge-areas"));
+        Ok(self.table.get(&self_)?.bridge_areas.clone())
+    }
+    fn bridge_orientation_deg(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<f32> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.bridge_orientation_deg)
     }
     fn drop(&mut self, rep: Resource<SliceRegionData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;
