@@ -167,10 +167,32 @@ wit_bindgen::generate!({
                 push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
             }
             export run-seam-planning: func(
-                objects: list<object-id>,
+                objects: list<mesh-object-view>,
                 output: seam-planning-output,
                 config: config-view,
             ) -> result<_, module-error>;
+
+            // SupportGeometry stage
+            record support-plan-entry {
+                global-layer-index: s32,
+                object-id: object-id,
+                region-id: region-id,
+                branch-segments: list<list<point3-with-width>>,
+            }
+            record layer-plan-view-entry { global-layer-index: u32, z: f32, effective-layer-height: f32 }
+            record layer-plan-view { layers: list<layer-plan-view-entry> }
+            record region-segmentation-view-entry { object-id: object-id, layer-index: u32, region-ids: list<region-id> }
+            record region-segmentation-view { entries: list<region-segmentation-view-entry> }
+            record support-geometry-view-entry { global-support-layer-index: u32, object-id: object-id, region-id: region-id, outlines: list<ex-polygon> }
+            record support-geometry-view { entries: list<support-geometry-view-entry> }
+            record support-geometry-output { support-plan-entries: list<support-plan-entry> }
+
+            export run-support-geometry: func(
+                objects: list<mesh-object-view>,
+                layer-plan: layer-plan-view,
+                region-segmentation: region-segmentation-view,
+                support-geometry: support-geometry-view,
+            ) -> support-geometry-output;
         }
     "#,
     world: "prepass-module",
@@ -191,8 +213,16 @@ impl Guest for Component {
     fn run_paint_segmentation(_objects: Vec<PaintSegmentationObjectView>, _output: PaintSegmentationOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
     }
-    fn run_seam_planning(_objects: Vec<ObjectId>, _output: SeamPlanningOutput, _config: ConfigView) -> Result<(), ModuleError> {
+    fn run_seam_planning(_objects: Vec<MeshObjectView>, _output: SeamPlanningOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
+    }
+    fn run_support_geometry(
+        _objects: Vec<MeshObjectView>,
+        _layer_plan: LayerPlanView,
+        _region_segmentation: RegionSegmentationView,
+        _support_geometry: SupportGeometryView,
+    ) -> SupportGeometryOutput {
+        SupportGeometryOutput { support_plan_entries: vec![] }
     }
 }
 
