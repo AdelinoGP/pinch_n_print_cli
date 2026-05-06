@@ -137,7 +137,10 @@ fn bottom_surface_region_emits_bottom_solid_infill() {
 #[test]
 fn bridge_surface_region_emits_bridge_infill_role() {
     let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
-    let region = make_test_region(false, false, true);
+    let mut region = make_test_region(false, false, true);
+    // rev1 contract: is_bridge requires non-empty bridge_areas to emit BridgeInfill.
+    region.set_bridge_areas(vec![make_square_expolygon()]);
+    region.set_bridge_orientation_deg(0.0);
     let mut output = InfillOutputBuilder::new();
 
     module

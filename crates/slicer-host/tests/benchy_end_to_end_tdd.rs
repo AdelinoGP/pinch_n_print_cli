@@ -1959,3 +1959,38 @@ fn cli_rejects_top_shell_layers_string() {
          Actual stderr:\n{stderr}"
     );
 }
+
+/// AC-11 (packet 36-rev1): benchy_gcode_contains_exact_bridge_infill_marker
+///
+/// Runs slicer on Benchy STL with default config.
+/// Asserts output G-code contains at least one line equal to `;TYPE:Bridge infill`
+/// (exact trimmed match), confirming the bridge infill pipeline is wired end-to-end.
+#[test]
+fn benchy_gcode_contains_exact_bridge_infill_marker() {
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let out_path = tmp.path().join("bridge_evidence.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, None);
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "slicer-host must succeed for bridge infill evidence gate. Stderr:\n{stderr}"
+    );
+    assert!(out_path.exists(), "--output file must be written");
+
+    let gcode = std::fs::read_to_string(&out_path).expect("read output gcode");
+
+    let has_bridge = gcode.lines().any(|l| l.trim() == ";TYPE:Bridge infill");
+    assert!(
+        has_bridge,
+        "AC-11 FAILED: G-code must contain a line exactly equal to `;TYPE:Bridge infill`. \
+         Bridge detection or rectilinear-infill emission may not be wired. \
+         G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+}
