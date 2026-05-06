@@ -72,6 +72,10 @@ interface ir-handles {
         is-top-surface:         func() -> bool;
         is-bottom-surface:      func() -> bool;
         is-bridge:              func() -> bool;
+        // Expanded bridge polygons at this layer (empty if not a bridge region).
+        bridge-areas:           func() -> list<ex-polygon>;
+        // Best bridge direction across all valid bridge regions (degrees).
+        bridge-orientation-deg: func() -> f32;
     }
 
     resource perimeter-region-view {

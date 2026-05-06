@@ -39,6 +39,10 @@ pub struct SliceRegionView {
     /// True when this region is classified as a bridge region by SurfaceClassificationIR.
     /// Indicates the region needs BridgeInfill fill and cannot rely on support below.
     is_bridge: bool,
+    /// Per-layer expanded bridge polygons (empty if not a bridge region).
+    bridge_areas: Vec<ExPolygon>,
+    /// Best bridge direction across all valid bridge regions (degrees).
+    bridge_orientation_deg: f32,
 }
 
 impl SliceRegionView {
@@ -66,6 +70,8 @@ impl SliceRegionView {
             is_top_surface: false,
             is_bottom_surface: false,
             is_bridge: false,
+            bridge_areas: Vec::new(),
+            bridge_orientation_deg: 0.0,
         }
     }
 
@@ -95,6 +101,8 @@ impl SliceRegionView {
             is_top_surface: false,
             is_bottom_surface: false,
             is_bridge: false,
+            bridge_areas: Vec::new(),
+            bridge_orientation_deg: 0.0,
         }
     }
 
@@ -138,6 +146,18 @@ impl SliceRegionView {
     #[doc(hidden)]
     pub fn set_is_bridge(&mut self, is_bridge: bool) {
         self.is_bridge = is_bridge;
+    }
+
+    /// Override the bridge areas (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_bridge_areas(&mut self, bridge_areas: Vec<ExPolygon>) {
+        self.bridge_areas = bridge_areas;
+    }
+
+    /// Override the bridge orientation (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_bridge_orientation_deg(&mut self, bridge_orientation_deg: f32) {
+        self.bridge_orientation_deg = bridge_orientation_deg;
     }
 
     /// Returns the SurfaceClassificationIR-derived support eligibility flag.
@@ -216,6 +236,18 @@ impl SliceRegionView {
     /// if no paint data applies to this region.
     pub fn boundary_paint(&self) -> &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> {
         &self.boundary_paint
+    }
+
+    /// Returns the per-layer expanded bridge polygons.
+    ///
+    /// Empty if this region is not classified as a bridge region.
+    pub fn bridge_areas(&self) -> &[ExPolygon] {
+        &self.bridge_areas
+    }
+
+    /// Returns the best bridge direction across all valid bridge regions (degrees).
+    pub fn bridge_orientation_deg(&self) -> f32 {
+        self.bridge_orientation_deg
     }
 }
 

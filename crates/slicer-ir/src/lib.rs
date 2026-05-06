@@ -140,4 +140,7 @@ pub use slice_ir::{
     // Helper functions for Point2 coordinate conversion
     mm_to_units,
     units_to_mm,
+    // Schema-version constants
+    CURRENT_SLICE_IR_SCHEMA_VERSION,
+    CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
 };

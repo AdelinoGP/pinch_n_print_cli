@@ -142,6 +142,22 @@ impl std::fmt::Display for SemVer {
     }
 }
 
+/// Schema version for `SurfaceClassificationIR`. Single source of truth — production
+/// constructors must use this constant, not literal `SemVer { ... }` values.
+pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 1,
+    patch: 0,
+};
+
+/// Schema version for `SliceIR`. Single source of truth — production constructors
+/// must use this constant, not literal `SemVer { ... }` values.
+pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 2,
+    patch: 0,
+};
+
 // ============================================================================
 // Mesh IR Types
 // ============================================================================
@@ -341,6 +357,21 @@ pub struct BridgeRegion {
     pub facet_indices: Vec<u32>,
     /// Optimal bridge angle in degrees
     pub bridge_direction_deg: f32,
+    /// Shortest perpendicular run of contiguous anchor edges (mm)
+    #[serde(default)]
+    pub anchor_width_mm: f32,
+    /// Longest unsupported span across the cluster (mm)
+    #[serde(default)]
+    pub bridge_length_mm: f32,
+    /// Frozen at PrePass from MeshAnalysisConfig (mm)
+    #[serde(default)]
+    pub expansion_margin_mm: f32,
+    /// Pass/fail of min-length + anchor-width filters
+    #[serde(default)]
+    pub is_valid: bool,
+    /// Facet-cluster XY projection in 100 nm units
+    #[serde(default)]
+    pub xy_footprint: Vec<ExPolygon>,
 }
 
 /// Overhang region
@@ -376,6 +407,15 @@ pub struct SurfaceClassificationIR {
     pub schema_version: SemVer,
     /// Per-object surface data
     pub per_object: HashMap<ObjectId, ObjectSurfaceData>,
+}
+
+impl Default for SurfaceClassificationIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
+            per_object: HashMap::new(),
+        }
+    }
 }
 
 // ============================================================================
@@ -1027,6 +1067,12 @@ pub struct SlicedRegion {
     /// True if this region spans an unsupported gap (bridge)
     #[serde(default)]
     pub is_bridge: bool,
+    /// Per-layer expanded bridge polygons
+    #[serde(default)]
+    pub bridge_areas: Vec<ExPolygon>,
+    /// Best bridge direction across all valid bridge regions (degrees)
+    #[serde(default)]
+    pub bridge_orientation_deg: f32,
 }
 
 /// Slice IR
@@ -1040,6 +1086,17 @@ pub struct SliceIR {
     pub z: f32,
     /// Sliced regions in this layer
     pub regions: Vec<SlicedRegion>,
+}
+
+impl Default for SliceIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            z: 0.0,
+            regions: Vec::new(),
+        }
+    }
 }
 
 // ============================================================================
