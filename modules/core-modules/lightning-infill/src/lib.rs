@@ -102,6 +102,14 @@ impl LayerModule for LightningInfill {
                 continue;
             }
 
+            // Held-claim filter (packet 37): lightning only declares
+            // `claim:sparse-fill`, so it skips entirely when the host
+            // resolver excluded it from this region. Empty held set = legacy
+            // fail-open default.
+            if !region.should_emit(ExtrusionRole::SparseInfill) {
+                continue;
+            }
+
             let z = region.z();
 
             for expoly in infill_areas {

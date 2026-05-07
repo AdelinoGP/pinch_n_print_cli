@@ -15,7 +15,7 @@ reads  = ["SliceIR"]
 writes = ["InfillIR"]
 
 [claims]
-holds    = ["infill-generator"]
+holds    = ["infill-generator", "claim:sparse-fill"]
 requires = []
 
 [compatibility]

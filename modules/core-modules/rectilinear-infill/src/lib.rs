@@ -121,7 +121,7 @@ impl LayerModule for RectilinearInfill {
                     partition_expoly_by_bridges(expoly, bridge_areas);
 
                 // Emit bridge fill at bridge_orientation_deg over bridge areas.
-                if !bridge_parts.is_empty() {
+                if !bridge_parts.is_empty() && region.should_emit(ExtrusionRole::BridgeInfill) {
                     let paths = self.fill_expolygon_multi(
                         &bridge_parts,
                         line_spacing,
@@ -137,7 +137,7 @@ impl LayerModule for RectilinearInfill {
                 }
 
                 // Emit standard fill (SparseInfill / TopSolidInfill / BottomSolidInfill)
-                // over non-bridge areas, respecting surface flags.
+                // over non-bridge areas, respecting surface flags and held claims.
                 if !non_bridge_parts.is_empty() {
                     let role = if region.is_top_surface() {
                         ExtrusionRole::TopSolidInfill
@@ -146,17 +146,27 @@ impl LayerModule for RectilinearInfill {
                     } else {
                         ExtrusionRole::SparseInfill
                     };
-                    let paths = self.fill_expolygon_multi(
-                        &non_bridge_parts,
-                        line_spacing,
-                        std_cos_a,
-                        std_sin_a,
-                        z,
-                        speed_factor,
-                        role,
-                    );
-                    for path in paths {
-                        let _ = output.push_sparse_path(path);
+                    if region.should_emit(role.clone()) {
+                        let paths = self.fill_expolygon_multi(
+                            &non_bridge_parts,
+                            line_spacing,
+                            std_cos_a,
+                            std_sin_a,
+                            z,
+                            speed_factor,
+                            role.clone(),
+                        );
+                        for path in paths {
+                            match role {
+                                ExtrusionRole::TopSolidInfill
+                                | ExtrusionRole::BottomSolidInfill => {
+                                    let _ = output.push_solid_path(path);
+                                }
+                                _ => {
+                                    let _ = output.push_sparse_path(path);
+                                }
+                            }
+                        }
                     }
                 }
             }

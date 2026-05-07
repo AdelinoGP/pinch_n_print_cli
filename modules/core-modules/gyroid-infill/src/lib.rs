@@ -137,6 +137,13 @@ impl LayerModule for GyroidInfill {
                 ExtrusionRole::SparseInfill
             };
 
+            // Held-claim filter (packet 37): skip emission for roles this
+            // module is not the configured holder for. Empty held set = legacy
+            // fail-open default (all four roles allowed).
+            if !region.should_emit(role.clone()) {
+                continue;
+            }
+
             for expoly in infill_areas {
                 let mut paths = self.fill_expolygon(expoly, z, speed_factor);
                 // Override the role on all generated paths to reflect surface classification.
