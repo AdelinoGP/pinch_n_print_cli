@@ -371,6 +371,7 @@ fn compiled_module(stage_id: &str, module_id: &str, config: ConfigView) -> Compi
         ir_read_mask: slicer_host::IrAccessMask { paths: vec![] },
         ir_write_mask: slicer_host::IrAccessMask { paths: vec![] },
         config_view: Arc::new(config),
+        claims: Vec::new(),
         wasm_component: None,
     }
 }

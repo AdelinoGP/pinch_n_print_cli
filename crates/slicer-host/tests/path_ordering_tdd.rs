@@ -142,6 +142,7 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
+        claims: Vec::new(),
         wasm_component: Some(path_opt_component),
     });
 
@@ -337,6 +338,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
+        claims: Vec::new(),
         wasm_component: Some(path_opt_component),
     });
 
@@ -448,6 +450,7 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
+        claims: Vec::new(),
         wasm_component: Some(path_opt_component),
     });
 
@@ -557,6 +560,7 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             ir_read_mask: IrAccessMask { paths: vec![] },
             ir_write_mask: IrAccessMask { paths: vec![] },
             config_view: Arc::new(ConfigView::from_map(HashMap::new())),
+            claims: Vec::new(),
             wasm_component: Some(path_opt_component),
         });
 
@@ -661,6 +665,7 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
+        claims: Vec::new(),
         wasm_component: Some(path_opt_component),
     });
 
@@ -935,6 +940,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
         config_view: Arc::clone(&binding.config_view),
+        claims: Vec::new(),
         wasm_component: None,
     }
 }

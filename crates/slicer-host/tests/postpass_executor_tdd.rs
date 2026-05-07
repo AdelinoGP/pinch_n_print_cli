@@ -685,6 +685,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
             paths: binding.module.ir_writes.clone(),
         },
         config_view: Arc::clone(&binding.config_view),
+        claims: Vec::new(),
         wasm_component: None,
     }
 }

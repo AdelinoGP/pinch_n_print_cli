@@ -128,6 +128,7 @@ fn make_module_with_config(
         ir_read_mask: IrAccessMask { paths: Vec::new() },
         ir_write_mask: IrAccessMask { paths: Vec::new() },
         config_view: Arc::new(config),
+        claims: Vec::new(),
         wasm_component: Some(component),
     }
 }

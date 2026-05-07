@@ -252,6 +252,7 @@ fn make_compiled_module_with_config(
         ir_read_mask: IrAccessMask { paths: Vec::new() },
         ir_write_mask: IrAccessMask { paths: Vec::new() },
         config_view: Arc::new(config),
+        claims: Vec::new(),
         wasm_component: Some(component),
     }
 }
@@ -274,6 +275,7 @@ fn make_compiled_module_no_wasm(id: &str, stage: &str) -> CompiledModule {
         ir_read_mask: IrAccessMask { paths: Vec::new() },
         ir_write_mask: IrAccessMask { paths: Vec::new() },
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
+        claims: Vec::new(),
         wasm_component: None,
     }
 }
@@ -6673,6 +6675,7 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
         ir_read_mask: Default::default(),
         ir_write_mask: Default::default(),
         config_view: Arc::new(ConfigView::from_map(Default::default())),
+        claims: Vec::new(),
         wasm_component: Some(component),
     };
 

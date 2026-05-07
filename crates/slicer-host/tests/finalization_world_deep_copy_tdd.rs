@@ -102,6 +102,7 @@ fn make_module(id: &str, component: Arc<slicer_host::WasmComponent>) -> Compiled
         ir_read_mask: IrAccessMask { paths: Vec::new() },
         ir_write_mask: IrAccessMask { paths: Vec::new() },
         config_view: Arc::new(ConfigView::new()),
+        claims: Vec::new(),
         wasm_component: Some(component),
     }
 }

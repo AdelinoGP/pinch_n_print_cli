@@ -14,8 +14,8 @@ use slicer_host::{
     LayerExecutionError, LayerSliceError, LayerStageError, LayerStageOutput, LayerStageRunner,
 };
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, InfillType, MeshIR, ObjectConfig,
-    ObjectMesh, Point3, ResolvedConfig, SemVer, StageId, SupportType, Transform3d, WallGenerator,
+    ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh,
+    Point3, ResolvedConfig, SemVer, StageId, Transform3d,
 };
 
 fn unit_tetra() -> IndexedTriangleSet {
@@ -47,33 +47,7 @@ fn unit_tetra() -> IndexedTriangleSet {
 }
 
 fn default_resolved() -> ResolvedConfig {
-    ResolvedConfig {
-        layer_height: 0.2,
-        first_layer_height: 0.2,
-        line_width: 0.4,
-        first_layer_line_width: 0.4,
-        wall_count: 2,
-        outer_wall_speed: 50.0,
-        inner_wall_speed: 50.0,
-        wall_generator: WallGenerator::Classic,
-        arachne_min_feature_size: None,
-        infill_type: InfillType::Grid,
-        infill_density: 0.2,
-        infill_angle: 45.0,
-        infill_speed: 50.0,
-        solid_infill_speed: 50.0,
-        top_shell_layers: 3,
-        bottom_shell_layers: 3,
-        support_enabled: false,
-        support_type: SupportType::Traditional,
-        support_overhang_angle: 45.0,
-        nonplanar_max_angle_deg: None,
-        nonplanar_shell_count: None,
-        nonplanar_amplitude: None,
-        smoothificator_target_height: None,
-        smoothificator_adaptive: None,
-        extensions: HashMap::new(),
-    }
+    ResolvedConfig::default()
 }
 
 fn identity_transform() -> Transform3d {

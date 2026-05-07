@@ -114,6 +114,7 @@ fn make_compiled_module_with(
         ir_read_mask: IrAccessMask { paths: Vec::new() },
         ir_write_mask: IrAccessMask { paths: Vec::new() },
         config_view: Arc::new(ConfigView::from_map(std::collections::HashMap::new())),
+        claims: Vec::new(),
         wasm_component: Some(component),
     }
 }

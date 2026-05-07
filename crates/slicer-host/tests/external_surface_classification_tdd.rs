@@ -19,10 +19,9 @@ use std::collections::HashMap;
 use slicer_host::execute_layer_slice; // Step 4 will extend this signature
 use slicer_host::layer_slice::classify_region_surfaces; // Step 3 will implement this
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, BridgeRegion, FacetClass, GlobalLayer, IndexedTriangleSet,
-    InfillType, MeshIR, ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3, Polygon,
-    ResolvedConfig, SemVer, SupportType, SurfaceClassificationIR, SurfaceGroup, Transform3d,
-    WallGenerator,
+    ActiveRegion, BoundingBox3, BridgeRegion, FacetClass, GlobalLayer, IndexedTriangleSet, MeshIR,
+    ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3, Polygon, ResolvedConfig, SemVer,
+    SurfaceClassificationIR, SurfaceGroup, Transform3d,
 };
 
 // ============================================================================
@@ -41,33 +40,7 @@ fn identity_transform() -> Transform3d {
 
 /// Minimal resolved config (copied from layer_slice_tdd.rs pattern).
 fn default_resolved() -> ResolvedConfig {
-    ResolvedConfig {
-        layer_height: 0.2,
-        first_layer_height: 0.2,
-        line_width: 0.4,
-        first_layer_line_width: 0.4,
-        wall_count: 2,
-        outer_wall_speed: 50.0,
-        inner_wall_speed: 50.0,
-        wall_generator: WallGenerator::Classic,
-        arachne_min_feature_size: None,
-        infill_type: InfillType::Grid,
-        infill_density: 0.2,
-        infill_angle: 45.0,
-        infill_speed: 50.0,
-        solid_infill_speed: 50.0,
-        top_shell_layers: 3,
-        bottom_shell_layers: 3,
-        support_enabled: false,
-        support_type: SupportType::Traditional,
-        support_overhang_angle: 45.0,
-        nonplanar_max_angle_deg: None,
-        nonplanar_shell_count: None,
-        nonplanar_amplitude: None,
-        smoothificator_target_height: None,
-        smoothificator_adaptive: None,
-        extensions: HashMap::new(),
-    }
+    ResolvedConfig::default()
 }
 
 /// A flat horizontal triangle at Z=`z_top` with vertices in the XY plane

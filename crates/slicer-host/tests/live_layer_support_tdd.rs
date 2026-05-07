@@ -467,6 +467,7 @@ fn compile_support_module(
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
         config_view: Arc::new(slicer_ir::ConfigView::from_map(config_map)),
+        claims: Vec::new(),
         wasm_component: Some(component),
     }
 }
@@ -986,6 +987,7 @@ fn support_enforcer_blocker_paint_precedence() {
         config_view: Arc::new(slicer_ir::ConfigView::from_map(
             std::collections::HashMap::new(),
         )),
+        claims: Vec::new(),
         wasm_component: Some(component),
     };
 
@@ -1237,6 +1239,7 @@ mod planner_consuming_tier {
             ir_read_mask: IrAccessMask { paths: vec![] },
             ir_write_mask: IrAccessMask { paths: vec![] },
             config_view: Arc::new(ConfigView::from_map(config_map)),
+            claims: Vec::new(),
             wasm_component: Some(component),
         }
     }

@@ -349,6 +349,7 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
                 ir_read_mask: Default::default(),
                 ir_write_mask: Default::default(),
                 config_view: Arc::new(slicer_ir::ConfigView::new()),
+                claims: Vec::new(),
             };
 
             // Build minimal MeshIR and Blackboard for dispatch call.

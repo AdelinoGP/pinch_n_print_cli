@@ -203,6 +203,7 @@ fn compile_seam_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
         config_view: Arc::new(ConfigView::from_map(config_map)),
+        claims: Vec::new(),
         wasm_component: Some(component),
     }
 }

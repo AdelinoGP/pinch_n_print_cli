@@ -243,6 +243,7 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
         ir_read_mask: IrAccessMask { paths: Vec::new() },
         ir_write_mask: IrAccessMask { paths: Vec::new() },
         config_view: Arc::new(ConfigView::new()),
+        claims: Vec::new(),
         wasm_component: None,
     }
 }

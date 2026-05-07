@@ -706,6 +706,7 @@ fn compiled_layer_planning_module() -> CompiledModule {
             paths: binding.module.ir_writes.clone(),
         },
         config_view: Arc::clone(&binding.config_view),
+        claims: Vec::new(),
         wasm_component: None,
     }
 }
@@ -816,28 +817,6 @@ fn resolved_config_for_height(layer_height: f32) -> ResolvedConfig {
     ResolvedConfig {
         layer_height,
         first_layer_height: layer_height,
-        line_width: 0.4,
-        first_layer_line_width: 0.4,
-        wall_count: 2,
-        outer_wall_speed: 50.0,
-        inner_wall_speed: 50.0,
-        wall_generator: slicer_ir::WallGenerator::Classic,
-        arachne_min_feature_size: None,
-        infill_type: slicer_ir::InfillType::Grid,
-        infill_density: 0.2,
-        infill_angle: 45.0,
-        infill_speed: 50.0,
-        solid_infill_speed: 50.0,
-        top_shell_layers: 3,
-        bottom_shell_layers: 3,
-        support_enabled: false,
-        support_type: slicer_ir::SupportType::Traditional,
-        support_overhang_angle: 45.0,
-        nonplanar_max_angle_deg: None,
-        nonplanar_shell_count: None,
-        nonplanar_amplitude: None,
-        smoothificator_target_height: None,
-        smoothificator_adaptive: None,
-        extensions: HashMap::new(),
+        ..ResolvedConfig::default()
     }
 }

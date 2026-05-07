@@ -362,6 +362,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
             paths: m.ir_writes.clone(),
         },
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
+        claims: Vec::new(),
         wasm_component: None,
     };
 

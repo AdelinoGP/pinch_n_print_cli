@@ -180,6 +180,7 @@ fn compiled_stub_module(stage_id: &str, module_id: &str) -> CompiledModule {
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
+        claims: Vec::new(),
         wasm_component: None,
     }
 }

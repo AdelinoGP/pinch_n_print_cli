@@ -138,6 +138,7 @@ fn make_module(id: &str, component: Arc<slicer_host::WasmComponent>) -> Compiled
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
         config_view: Arc::new(ConfigView::new()),
+        claims: Vec::new(),
         wasm_component: Some(component),
     }
 }
@@ -225,6 +226,7 @@ fn make_module_with_config(
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
         config_view: Arc::new(config),
+        claims: Vec::new(),
         wasm_component: Some(component),
     }
 }

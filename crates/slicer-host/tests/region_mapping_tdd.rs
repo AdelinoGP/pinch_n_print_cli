@@ -597,6 +597,7 @@ fn compiled_module(stage: &str, module_id: &str, config: ConfigView) -> Compiled
         ir_read_mask: IrAccessMask { paths: vec![] },
         ir_write_mask: IrAccessMask { paths: vec![] },
         config_view: Arc::new(config),
+        claims: Vec::new(),
         wasm_component: None,
     }
 }

@@ -372,6 +372,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         config_view: Arc::new(slicer_ir::ConfigView::from_map(
             std::collections::HashMap::new(),
         )),
+        claims: Vec::new(),
         wasm_component: Some(component),
     };
 
@@ -858,6 +859,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         config_view: Arc::new(slicer_ir::ConfigView::from_map(
             std::collections::HashMap::new(),
         )),
+        claims: Vec::new(),
         wasm_component: Some(component),
     };
 
