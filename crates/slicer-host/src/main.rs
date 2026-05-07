@@ -392,6 +392,7 @@ mod _stale_build_plan {
                             paths: m.ir_writes.clone(),
                         },
                         config_view: Arc::new(ConfigView::new()),
+                        claims: m.claims.clone(),
                         wasm_component,
                     }
                 })

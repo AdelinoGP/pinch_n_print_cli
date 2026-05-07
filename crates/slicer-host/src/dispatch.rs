@@ -402,6 +402,49 @@ impl WasmRuntimeDispatcher {
         );
         let mut store = wasmtime::Store::new(engine, ctx);
 
+        // Resolve fill-role held claims per region for this module call. The
+        // resolver intersects the module's manifest `[claims].holds` with the
+        // per-region `ResolvedConfig.{top,bottom,bridge,sparse}_fill_holder`
+        // selection so each region carries the authoritative effective set
+        // (packet 37). Stages without a staged `SliceIR` get an empty map.
+        let held_claims_map: std::collections::HashMap<(String, String), Vec<String>> =
+            if let Some(slice_ir) = arena.slice() {
+                slice_ir
+                    .regions
+                    .iter()
+                    .map(|region| {
+                        let key = slicer_ir::RegionKey {
+                            global_layer_index: layer_index,
+                            object_id: region.object_id.clone(),
+                            region_id: region.region_id,
+                        };
+                        let config = blackboard
+                            .region_map()
+                            .and_then(|map| map.entries.get(&key))
+                            .map(|plan| plan.config.clone())
+                            .unwrap_or_default();
+                        let holders = crate::validation::FillHolders {
+                            top: &config.top_fill_holder,
+                            bottom: &config.bottom_fill_holder,
+                            bridge: &config.bridge_fill_holder,
+                            sparse: &config.sparse_fill_holder,
+                        };
+                        let held = crate::validation::resolve_held_claims(
+                            &module.module_id,
+                            &module.claims,
+                            &holders,
+                        );
+                        (
+                            (region.object_id.clone(), region.region_id.to_string()),
+                            held,
+                        )
+                    })
+                    .collect()
+            } else {
+                std::collections::HashMap::new()
+            };
+        store.data_mut().set_held_claims_per_region(held_claims_map);
+
         // Push config-view resource from the module's frozen config.
         let config_handle = store
             .data_mut()
@@ -1522,7 +1565,11 @@ fn push_slice_regions(
 
     let mut handles = Vec::with_capacity(slice_ir.regions.len());
     for region in &slice_ir.regions {
-        let data = wit_host::sliced_region_to_data(region, layer_z);
+        let held_claims = store
+            .data()
+            .held_claims_for(&region.object_id, &region.region_id.to_string())
+            .to_vec();
+        let data = wit_host::sliced_region_to_data(region, layer_z, held_claims);
         let handle = store.data_mut().push_slice_region(data)?;
         handles.push(handle);
     }

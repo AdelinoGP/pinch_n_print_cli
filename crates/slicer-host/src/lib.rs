@@ -112,9 +112,9 @@ pub use support_geometry::{
 };
 pub use topology::topological_sort;
 pub use validation::{
-    validate_startup_dag, AccessKind, ClaimHolder, ConflictScope, DagValidationDiagnostic,
-    DagValidationPass, DagValidationReport, DagValidationRequest, ModuleAccessAudit,
-    SchedulerError, StageDag,
+    resolve_held_claims, validate_startup_dag, AccessKind, ClaimHolder, ConflictScope,
+    DagValidationDiagnostic, DagValidationPass, DagValidationReport, DagValidationRequest,
+    FillHolders, ModuleAccessAudit, SchedulerError, StageDag, FILL_CLAIM_IDS,
 };
 pub use wasm_instance::{WasmCallError, WasmComponent, WasmEngine, WasmInstance, WasmLoadError};
 pub use wit_host::HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS;
