@@ -2048,3 +2048,66 @@ fn benchy_default_claims_emit_all_role_families() {
         preview(&gcode, 30)
     );
 }
+
+/// AC-TSI-E2E (packet 38): benchy_gcode_contains_ironing_evidence
+///
+/// Runs the real Benchy STL through the full slicer pipeline with
+/// `ironing: true` injected via a JSON config file.
+///
+/// Asserts:
+///   - at least one `;TYPE:Ironing` block appears in the produced G-code
+///   - at least one `;TYPE:Top surface` block also appears (confirming the
+///     top-surface pipeline that ironing depends on is active)
+///
+/// This test is expected to FAIL (assertion, not compile error) until the
+/// `top-surface-ironing` WASM module is built and present in the
+/// `modules/core-modules/` directory AND the G-code emitter maps
+/// `ExtrusionRole::Ironing` to the `;TYPE:Ironing` comment.
+#[test]
+fn benchy_gcode_contains_ironing_evidence() {
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    // Write a minimal JSON config that enables ironing with sensible defaults.
+    let config_path = tmp.path().join("ironing_enabled.json");
+    std::fs::write(
+        &config_path,
+        "{\n  \"ironing\": true,\n  \"ironing_flow\": 0.15,\n  \"ironing_speed\": 15.0,\n  \"ironing_spacing\": 0.2\n}\n",
+    )
+    .expect("write ironing config");
+
+    let out_path = tmp.path().join("ironing_evidence.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, Some(&config_path));
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "slicer-host must succeed for ironing evidence gate. Stderr:\n{stderr}"
+    );
+    assert!(out_path.exists(), "--output file must be written");
+
+    let gcode = std::fs::read_to_string(&out_path).expect("read output gcode");
+
+    let has_top_surface = gcode.lines().any(|l| l.contains(";TYPE:Top surface"));
+    assert!(
+        has_top_surface,
+        "AC-TSI-E2E FAILED: G-code must contain at least one `;TYPE:Top surface` block \
+         (the ironing pass depends on top-surface detection being active). \
+         G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+
+    let has_ironing = gcode.lines().any(|l| l.trim() == ";TYPE:Ironing");
+    assert!(
+        has_ironing,
+        "AC-TSI-E2E FAILED: G-code must contain at least one `;TYPE:Ironing` block \
+         when slicing Benchy with ironing: true. The top-surface-ironing module may not \
+         be built, discovered, or emitting ironing paths. \
+         G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+}

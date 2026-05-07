@@ -601,11 +601,11 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 19 core modules as of 2026-05-05.
+    // We expect exactly 20 core modules as of 2026-05-07.
     assert_eq!(
         report.modules.len(),
-        19,
-        "expected 19 core modules, got {}: {:?}",
+        20,
+        "expected 20 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| &m.id).collect::<Vec<_>>()
     );
@@ -822,6 +822,7 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
         "com.core.fuzzy-skin",
         "com.core.support-surface-ironing",
         "com.core.skirt-brim",
+        "com.core.top-surface-ironing",
         "com.core.wipe-tower",
     ];
 
