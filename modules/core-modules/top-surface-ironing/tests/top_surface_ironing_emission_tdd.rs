@@ -51,6 +51,7 @@ fn rect_entity(role: ExtrusionRole, z: f32, region_id: u64) -> PrintEntity {
         flow_factor: 1.0,
     };
     PrintEntity {
+        entity_id: 1,
         path: ExtrusionPath3D {
             points: vec![
                 mk(0.0, 0.0),

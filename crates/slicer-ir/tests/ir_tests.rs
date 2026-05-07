@@ -646,11 +646,11 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {
-            major: 1,
-            minor: 2,
+            major: 2,
+            minor: 0,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (1, 2, 0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (2, 0, 0)"
     );
 
     // (c)

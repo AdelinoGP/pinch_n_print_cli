@@ -20,6 +20,7 @@ fn semver() -> SemVer {
 
 fn make_entity_at(x: f32, y: f32, z: f32) -> PrintEntity {
     PrintEntity {
+        entity_id: 1,
         path: ExtrusionPath3D {
             points: vec![Point3WithWidth {
                 x,
