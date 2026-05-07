@@ -106,6 +106,7 @@ Per Step 0:
 - "FACT: in `modules/core-modules/top-surface-ironing/src/lib.rs`, quote the existing `output.push_entity_to_layer(...)` call ≤ 5 lines (file:line). Confirm there is exactly one such call site."
 - "FACT: search `wit/` and `crates/slicer-host/src/wit_host.rs` for any reference to `FinalizationOutputBuilder` or its method names. If positive, the WIT boundary is involved and packet scope expands; report. If negative, return `no WIT exposure`."
 - "FACT: in `docs/05_module_sdk.md`, what does the existing `FinalizationOutputBuilder` doc section say about mutation / reorder? Quote the relevant paragraph (≤ 10 lines)."
+- "LOCATIONS: enumerate every direct `PrintEntity { ... }` struct-literal construction across `modules/core-modules/`. Use ripgrep `'PrintEntity \\{'` with `--type rust` restricted to `modules/core-modules/`. For each match: file:line + ≤ 1-line snippet + whether the surrounding code instantiates a local `LayerEntityIdGen` (Packet 39 carry-forward — see `## Migration Obligations Inherited from Packet 39`) or already uses a builder method. These sites are this packet's Step 5+ migration targets."
 
 Per Step 1: cargo-build/test FACT after authoring (compile-fail expected on the new test files until Steps 2–4 land).
 
@@ -140,7 +141,20 @@ Per Step 6: cargo-test FACT for the workspace gate; one delegated insertion of t
 - `FinalizationOutputBuilder` lives host-side / SDK-side only (no WIT mirror).
 - `gcode_emit.rs` does NOT re-sort `ordered_entities`; the order at emit time is the order produced by the merge sequence.
 
-## Risks and Tradeoffs
+## Migration Obligations Inherited from Packet 39
+
+Packet `39_stable-entity-ids` made `entity_id: u64` a mandatory field on `PrintEntity`. Two core modules construct `PrintEntity` directly (bypassing `FinalizationOutputBuilder::push_entity_to_layer`) and were updated as out-of-scope deviations: each instantiates a local `slicer_ir::LayerEntityIdGen` and stamps IDs itself. These provisional inserts (logged retroactively in `docs/14_deviation_audit_history.md` DEV-039) are not intended to be permanent.
+
+- `modules/core-modules/wipe-tower/src/lib.rs`
+- `modules/core-modules/skirt-brim/src/lib.rs`
+
+When this packet lands `push_entity_with_priority`, the two sites above should be migrated so that:
+
+1. Module code no longer reaches into `slicer-ir` for `LayerEntityIdGen`.
+2. `entity_id`s are issued by the host-side merge sequence (using the per-layer `LayerEntityIdGen` already owned by `dispatch.rs` post-Packet-39).
+3. The direct `PrintEntity { ... }` struct literals are replaced with builder method calls (`push_entity_to_layer` for skirt-brim's prepend-priority-0 semantics; `push_entity_with_priority` for wipe-tower if it needs a non-default priority).
+
+This is a **Step 5+ obligation** — it cannot start before Step 3 lands the builder API. Track as part of Step 5 ("Top-surface-ironing migration") or a new Step 5b. If migrating the two sites threatens regression (skirt-brim is a documented canary), defer to a follow-up packet and leave a TODO comment in the module sources referencing DEV-039.
 
 - **Producer-order vs priority-order mismatch**. If any producer in `layer_executor.rs` emits in an order that does NOT match `default_priority` ordering, the post-merge stable-sort will reorder them, changing G-code output. **Mitigation**: Step 1's `default_priority_orders_correctly` test explicitly validates the table matches producer-emit order. Step 4's `cargo test -p slicer-host --test benchy_end_to_end_tdd` regression catches any divergence (existing assertions stay green).
 - **Closure storage in `MergeOp`**. `Box<dyn FnOnce(...)>` is the natural shape for `modify_entity` and `sort_layer_by`, but FnOnce is not object-safe in stable Rust without workarounds (`Box<dyn FnOnce(...) + Send>` works on stable; otherwise `FnMut` or an enum dispatch). Step 1 chooses based on stable Rust's current capabilities and the type's `Send`/`Sync` requirements (PostPass is sequential, so `Send`/`Sync` are not required, but library hygiene may want them).
