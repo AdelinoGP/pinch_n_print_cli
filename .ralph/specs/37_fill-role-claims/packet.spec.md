@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: fill-role-claims
 task_ids:
   - TASK-167

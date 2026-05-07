@@ -716,6 +716,33 @@ writes = ["InfillIR.regions.sparse_infill"]
 holds    = ["infill-generator"]   # exclusive slot; one module per region
 requires = []                     # claim slots that MUST be held by another module
 
+### Known claim IDs
+
+The following claim IDs are registered for fill-role module selection:
+
+| Claim ID             | Purpose                          |
+|----------------------|----------------------------------|
+| `claim:top-fill`     | Top solid infill paths           |
+| `claim:bottom-fill`  | Bottom solid infill paths        |
+| `claim:bridge-fill` | Bridge infill paths              |
+| `claim:sparse-fill`  | Sparse infill paths              |
+
+The configured holder per claim is selected by four `ResolvedConfig` keys —
+`top_fill_holder`, `bottom_fill_holder`, `bridge_fill_holder`,
+`sparse_fill_holder` — each defaulting to `"rectilinear-infill"`. Per-region
+overrides flow through `RegionMapIR.entries[*].config` (reused from
+packet 35). At dispatch time the host computes the effective held set per
+region by intersecting each module's manifest `[claims].holds` with the
+configured holders (see `slicer_host::resolve_held_claims`).
+
+The set is exposed across the WIT boundary via
+`slice-region-view.held-claims` and consumed by guest modules through
+`SliceRegionView::should_emit(role)`. Convention: an **empty held-claims
+list is treated as "holds all four"** so test fixtures and code paths that
+bypass `dispatch_layer_call` retain the pre-packet-37 default behavior.
+Production dispatch always populates the set authoritatively, so `should_emit`
+returns the configured truth in real runs.
+
 # ── Compatibility ─────────────────────────────────────────────────────────────
 [compatibility]
 incompatible-with = []            # module IDs or globs that cannot coexist in same region
