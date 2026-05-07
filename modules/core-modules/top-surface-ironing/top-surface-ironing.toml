@@ -1,0 +1,73 @@
+[module]
+id           = "com.core.top-surface-ironing"
+version      = "0.1.0"
+display-name = "Top Surface Ironing"
+description  = "Core top surface ironing module"
+author       = "modular-slicer"
+license      = "MIT"
+wit-world    = "slicer:world-finalization@1.0.0"
+
+[stage]
+id = "PostPass::LayerFinalization"
+
+[ir-access]
+reads  = ["LayerCollectionIR"]
+writes = ["LayerCollectionIR.ironing"]
+
+[claims]
+holds    = []
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "2.0.0"
+
+[config.schema]
+[config.schema.ironing]
+type    = "bool"
+default = false
+display = "Ironing"
+group   = "TopSurface"
+
+[config.schema.ironing_speed]
+type    = "float"
+default = 20.0
+min     = 1.0
+max     = 300.0
+display = "Ironing Speed"
+group   = "TopSurface"
+
+[config.schema.ironing_flow]
+type    = "float"
+default = 0.10
+min     = 0.01
+max     = 1.0
+display = "Ironing Flow"
+group   = "TopSurface"
+
+[config.schema.ironing_spacing]
+type    = "float"
+default = 0.1
+min     = 0.01
+max     = 1.0
+display = "Ironing Spacing"
+group   = "TopSurface"
+
+[config.schema.ironing_pattern]
+type    = "string"
+default = "rectilinear"
+display = "Ironing Pattern"
+group   = "TopSurface"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 10
+layer-parallel-safe    = false
