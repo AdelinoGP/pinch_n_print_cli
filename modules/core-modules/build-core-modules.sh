@@ -57,6 +57,7 @@ MODULES=(
     "skirt-brim:skirt_brim_guest"
     "support-planner:support_planner_guest"
     "support-surface-ironing:support_surface_ironing_guest"
+    "top-surface-ironing:top_surface_ironing_guest"
     "traditional-support:traditional_support_guest"
     "tree-support:tree_support_guest"
     "wipe-tower:wipe_tower_guest"
