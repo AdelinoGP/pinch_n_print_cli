@@ -76,6 +76,10 @@ interface ir-handles {
         bridge-areas:           func() -> list<ex-polygon>;
         // Best bridge direction across all valid bridge regions (degrees).
         bridge-orientation-deg: func() -> f32;
+        // Fill-role claim IDs held by the module that produced this region.
+        // A module may only emit TopSolidInfill if it holds claim:top-fill, etc.
+        // Empty list means the module holds all four fill-role claims.
+        held-claims:            func() -> list<string>;
     }
 
     resource perimeter-region-view {
