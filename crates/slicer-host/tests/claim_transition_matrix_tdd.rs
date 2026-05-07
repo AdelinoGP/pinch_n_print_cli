@@ -250,6 +250,31 @@ fn stable_holder_across_layers_is_valid_for_non_transitionable_claim() {
                 module_id: alpha.id.clone(),
                 scope: region_scope_at(10),
             },
+            // Packet 37 fill-role coverage: every fill-role claim must have
+            // a holder for `validate_claim_conflicts(global_only=true)`. The
+            // test's purpose is non-transitionable-claim cross-layer
+            // stability for perimeter-generator; satisfying these is
+            // sufficient for global startup validation.
+            ClaimHolder {
+                claim: String::from("claim:top-fill"),
+                module_id: alpha.id.clone(),
+                scope: ConflictScope::Global,
+            },
+            ClaimHolder {
+                claim: String::from("claim:bottom-fill"),
+                module_id: alpha.id.clone(),
+                scope: ConflictScope::Global,
+            },
+            ClaimHolder {
+                claim: String::from("claim:bridge-fill"),
+                module_id: alpha.id.clone(),
+                scope: ConflictScope::Global,
+            },
+            ClaimHolder {
+                claim: String::from("claim:sparse-fill"),
+                module_id: alpha.id.clone(),
+                scope: ConflictScope::Global,
+            },
         ],
         access_audits: Vec::new(),
     };
