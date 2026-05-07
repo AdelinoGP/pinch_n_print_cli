@@ -148,6 +148,8 @@ pub struct SliceRegionData {
     pub bridge_areas: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).
     pub bridge_orientation_deg: f32,
+    /// Fill-role claim IDs held by the module that produced this region.
+    pub held_claims: Vec<String>,
 }
 
 /// Backing data for a `perimeter-region-view` resource handle.
@@ -317,6 +319,7 @@ pub mod layer {
                     is-bridge: func() -> bool;
                     bridge-areas: func() -> list<ex-polygon>;
                     bridge-orientation-deg: func() -> f32;
+                    held-claims: func() -> list<string>;
                 }
                 record seam-position { point: point3-with-width, wall-index: u32 }
                 resource perimeter-region-view {
@@ -1339,6 +1342,15 @@ pub struct HostExecutionContext {
     catchup_z_bottom: Option<f32>,
     /// Host-owned mesh IR used by mesh-query host services.
     pub mesh_ir: Option<Arc<MeshIR>>,
+
+    /// Fill-role claim IDs held by `module_id` per `(object_id, region_id)`,
+    /// resolved by `validation::resolve_held_claims` against the per-region
+    /// `ResolvedConfig.{top,bottom,bridge,sparse}_fill_holder` keys before
+    /// the WIT call. Looked up by `push_slice_regions` to populate
+    /// `SliceRegionData.held_claims`. Empty for non-`Layer::Infill` calls
+    /// (the WIT accessor returns the empty list, which the SDK convention
+    /// treats as "holds all" — packet 36 / 12-rev1 behavior).
+    pub held_claims_per_region: std::collections::HashMap<(String, String), Vec<String>>,
 }
 
 impl HostExecutionContext {
@@ -1382,7 +1394,27 @@ impl HostExecutionContext {
             effective_layer_height,
             catchup_z_bottom,
             mesh_ir,
+            held_claims_per_region: std::collections::HashMap::new(),
         }
+    }
+
+    /// Replace the per-region held-claim map. Called by the dispatcher after
+    /// resolving each region's `ResolvedConfig.{top,bottom,bridge,sparse}_fill_holder`
+    /// against the active module's manifest claims.
+    pub fn set_held_claims_per_region(
+        &mut self,
+        map: std::collections::HashMap<(String, String), Vec<String>>,
+    ) {
+        self.held_claims_per_region = map;
+    }
+
+    /// Look up the held-claim set for a specific region. Returns `&[]` when no
+    /// entry exists (treated as "holds all" by the SDK convention).
+    pub fn held_claims_for(&self, object_id: &str, region_id: &str) -> &[String] {
+        self.held_claims_per_region
+            .get(&(object_id.to_string(), region_id.to_string()))
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
     }
 
     /// Returns the Z envelope floor for this layer.
@@ -2541,7 +2573,18 @@ pub fn object_mesh_to_wit_paint_segmentation_view(
 }
 
 /// Convert a `SlicedRegion` from the IR into a `SliceRegionData` for the WIT resource.
-pub fn sliced_region_to_data(region: &slicer_ir::SlicedRegion, z: f32) -> SliceRegionData {
+///
+/// `held_claims` is the resolved fill-role claim set for this module on this
+/// region, computed by `validation::resolve_held_claims` against the region's
+/// `ResolvedConfig.{top,bottom,bridge,sparse}_fill_holder`. The dispatcher
+/// builds the `(ObjectId, RegionId) -> Vec<String>` map on
+/// `HostExecutionContext.held_claims_per_region` before the WIT call;
+/// `push_slice_regions` looks up each region and passes the slice in here.
+pub fn sliced_region_to_data(
+    region: &slicer_ir::SlicedRegion,
+    z: f32,
+    held_claims: Vec<String>,
+) -> SliceRegionData {
     let boundary_paint: Vec<BoundaryPaintEntry> = region
         .boundary_paint
         .iter()
@@ -2574,6 +2617,7 @@ pub fn sliced_region_to_data(region: &slicer_ir::SlicedRegion, z: f32) -> SliceR
         is_bridge: region.is_bridge,
         bridge_areas: ir_to_wit_expolygons(&region.bridge_areas),
         bridge_orientation_deg: region.bridge_orientation_deg,
+        held_claims,
     }
 }
 
@@ -2652,6 +2696,7 @@ mod region_origin_tests {
                 is_bridge: false,
                 bridge_areas: Vec::new(),
                 bridge_orientation_deg: 0.0,
+                held_claims: Vec::new(),
             })
             .expect("push slice region");
 
@@ -3018,6 +3063,10 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     ) -> wasmtime::Result<f32> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.bridge_orientation_deg)
+    }
+    fn held_claims(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<Vec<String>> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.held_claims.clone())
     }
     fn drop(&mut self, rep: Resource<SliceRegionData>) -> wasmtime::Result<()> {
         self.table.delete(rep)?;

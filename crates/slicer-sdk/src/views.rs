@@ -43,6 +43,10 @@ pub struct SliceRegionView {
     bridge_areas: Vec<ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).
     bridge_orientation_deg: f32,
+    /// Claim IDs held by the module that produced this region.
+    /// Modules may only emit fill paths for roles they hold; empty means
+    /// the full set (rectilinear default emits all four).
+    held_claims: Vec<String>,
 }
 
 impl SliceRegionView {
@@ -72,6 +76,7 @@ impl SliceRegionView {
             is_bridge: false,
             bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
+            held_claims: Vec::new(),
         }
     }
 
@@ -103,6 +108,7 @@ impl SliceRegionView {
             is_bridge: false,
             bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
+            held_claims: Vec::new(),
         }
     }
 
@@ -248,6 +254,58 @@ impl SliceRegionView {
     /// Returns the best bridge direction across all valid bridge regions (degrees).
     pub fn bridge_orientation_deg(&self) -> f32 {
         self.bridge_orientation_deg
+    }
+
+    /// Override the held-claims set (host-only, for testing).
+    ///
+    /// Modules only emit fill paths for roles they hold. Empty means the
+    /// module holds all four fill-role claims (rectilinear default).
+    #[doc(hidden)]
+    pub fn set_held_claims(&mut self, held_claims: Vec<String>) {
+        self.held_claims = held_claims;
+    }
+
+    /// Returns the set of fill-role claim IDs held by the module that
+    /// produced this region.
+    ///
+    /// Used by the infill stage to gate path emission: a module may only
+    /// emit TopSolidInfill if it holds `claim:top-fill`, etc.
+    /// Empty means the module holds all four fill-role claims (legacy
+    /// fail-open default for paths that bypass the host resolver — see
+    /// `should_emit` for the convention).
+    pub fn held_claims(&self) -> &[String] {
+        &self.held_claims
+    }
+
+    /// Returns true if this module is allowed to emit `role` for this region.
+    ///
+    /// Mapping:
+    /// - `TopSolidInfill`     ↔ `claim:top-fill`
+    /// - `BottomSolidInfill`  ↔ `claim:bottom-fill`
+    /// - `BridgeInfill`       ↔ `claim:bridge-fill`
+    /// - `SparseInfill`       ↔ `claim:sparse-fill`
+    ///
+    /// Roles outside the four fill claims (walls, support, ironing, …) are
+    /// always allowed — `should_emit` returns true for them.
+    ///
+    /// Convention: an empty `held_claims` is treated as "holds all four"
+    /// so test fixtures and code paths that bypass `dispatch_layer_call`
+    /// keep the pre-packet-37 default behavior. Production dispatch
+    /// populates the set authoritatively via
+    /// `validation::resolve_held_claims`, after which `should_emit`
+    /// reflects the configured holder per role.
+    pub fn should_emit(&self, role: ExtrusionRole) -> bool {
+        let claim = match role {
+            ExtrusionRole::TopSolidInfill => "claim:top-fill",
+            ExtrusionRole::BottomSolidInfill => "claim:bottom-fill",
+            ExtrusionRole::BridgeInfill => "claim:bridge-fill",
+            ExtrusionRole::SparseInfill => "claim:sparse-fill",
+            _ => return true,
+        };
+        if self.held_claims.is_empty() {
+            return true;
+        }
+        self.held_claims.iter().any(|c| c == claim)
     }
 }
 
