@@ -7,6 +7,76 @@ use slicer_ir::{ModuleId, SemVer, StageId};
 use crate::dag::ModuleNode;
 use crate::manifest::{DiagnosticLevel, LoadedModule};
 
+/// The four fill-role claim IDs registered by packet 37.
+pub const FILL_CLAIM_IDS: &[&str] = &[
+    "claim:top-fill",
+    "claim:bottom-fill",
+    "claim:bridge-fill",
+    "claim:sparse-fill",
+];
+
+/// Per-claim configured holders — one module ID per fill-role claim.
+///
+/// Built from `ResolvedConfig.{top,bottom,bridge,sparse}_fill_holder` and
+/// passed to `resolve_held_claims` to filter a module's declared `[claims].holds`
+/// down to the set actually in effect for the current call.
+#[derive(Debug, Clone)]
+pub struct FillHolders<'a> {
+    /// Module ID configured to hold `claim:top-fill`.
+    pub top: &'a str,
+    /// Module ID configured to hold `claim:bottom-fill`.
+    pub bottom: &'a str,
+    /// Module ID configured to hold `claim:bridge-fill`.
+    pub bridge: &'a str,
+    /// Module ID configured to hold `claim:sparse-fill`.
+    pub sparse: &'a str,
+}
+
+impl<'a> FillHolders<'a> {
+    /// Returns the configured module ID for the given fill claim, or `None` if
+    /// the claim is not one of the four fill-role claims.
+    pub fn holder_for(&self, claim: &str) -> Option<&str> {
+        match claim {
+            "claim:top-fill" => Some(self.top),
+            "claim:bottom-fill" => Some(self.bottom),
+            "claim:bridge-fill" => Some(self.bridge),
+            "claim:sparse-fill" => Some(self.sparse),
+            _ => None,
+        }
+    }
+}
+
+/// Resolve the set of fill-role claims a module effectively holds for the
+/// current call.
+///
+/// Inputs:
+/// - `module_id` — short module name (e.g. `"rectilinear-infill"`). Matched
+///   case-sensitively against `holders.holder_for(claim)`.
+/// - `declared` — raw `[claims].holds` array from the module manifest. Entries
+///   that are not in `FILL_CLAIM_IDS` (e.g. `"infill-generator"`) are ignored
+///   for fill-role purposes; only the four fill claims gate emission.
+/// - `holders` — global (or per-region) configured holder per claim.
+///
+/// Output: the subset of declared fill-role claims that this module actually
+/// holds in this scope. An empty slice means "this module holds nothing for
+/// fill roles" — the SDK's `should_emit` convention then suppresses emission.
+///
+/// Note: the empty-set "holds all" convention applied at the SDK boundary is
+/// driven by whether `held_claims` was *populated at all*; this resolver is the
+/// host-side population step, so an empty result here means a real "holds none".
+pub fn resolve_held_claims(
+    module_id: &str,
+    declared: &[String],
+    holders: &FillHolders<'_>,
+) -> Vec<String> {
+    declared
+        .iter()
+        .filter(|claim| FILL_CLAIM_IDS.contains(&claim.as_str()))
+        .filter(|claim| holders.holder_for(claim).is_some_and(|h| h == module_id))
+        .cloned()
+        .collect()
+}
+
 /// Structured scheduler error surfaced by DAG validation and DAG construction APIs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SchedulerError {
@@ -387,6 +457,26 @@ fn validate_claim_conflicts(
             .entry((holder.claim.clone(), use_scope_key))
             .or_default()
             .push(holder.module_id.clone());
+    }
+
+    // ── Packet 37 fill-role claim coverage check ────────────────────────
+    // Every fill-role claim must have at least one holder or the print is
+    // impossible to produce — emit MissingDependency for each uncovered ID.
+    if global_only {
+        for fill_claim in FILL_CLAIM_IDS {
+            let has_holder = holders_by_claim
+                .keys()
+                .any(|(claim, _)| claim == *fill_claim);
+            if !has_holder {
+                report.push_error(
+                    DagValidationPass::GlobalClaimConflicts,
+                    SchedulerError::MissingDependency {
+                        module: format!("fill-role-claim:{}", fill_claim),
+                        requires: format!("no module holds {}", fill_claim),
+                    },
+                );
+            }
+        }
     }
 
     for ((claim, scope_key_value), modules) in holders_by_claim {

@@ -651,6 +651,19 @@ pub struct ResolvedConfig {
     /// Number of bottom shell layers
     pub bottom_shell_layers: u32,
 
+    // Fill-role holders (packet 37). Each names the module ID that holds the
+    // corresponding `claim:*-fill`. Default is "rectilinear-infill" for all
+    // four (matches today's behavior). Per-region overrides flow through
+    // `RegionMapIR.entries[*].config`.
+    /// Module ID holding `claim:top-fill`.
+    pub top_fill_holder: String,
+    /// Module ID holding `claim:bottom-fill`.
+    pub bottom_fill_holder: String,
+    /// Module ID holding `claim:bridge-fill`.
+    pub bridge_fill_holder: String,
+    /// Module ID holding `claim:sparse-fill`.
+    pub sparse_fill_holder: String,
+
     // Support
     /// Whether support is enabled
     pub support_enabled: bool,
@@ -696,6 +709,10 @@ impl Default for ResolvedConfig {
             solid_infill_speed: 50.0,
             top_shell_layers: 3,
             bottom_shell_layers: 3,
+            top_fill_holder: String::from("rectilinear-infill"),
+            bottom_fill_holder: String::from("rectilinear-infill"),
+            bridge_fill_holder: String::from("rectilinear-infill"),
+            sparse_fill_holder: String::from("rectilinear-infill"),
             support_enabled: false,
             support_type: SupportType::Traditional,
             support_overhang_angle: 45.0,

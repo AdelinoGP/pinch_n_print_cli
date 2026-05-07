@@ -645,6 +645,10 @@ pub struct CompiledModule {
     pub ir_write_mask: IrAccessMask,
     /// Frozen module-specific config view.
     pub config_view: Arc<ConfigView>,
+    /// Frozen `[claims].holds` from the manifest. Used by the host's
+    /// fill-role resolver (`validation::resolve_held_claims`) to compute the
+    /// per-call effective held set for `Layer::Infill`.
+    pub claims: Vec<String>,
     /// Compiled WASM component for runtime instantiation.
     /// `None` only during test fixtures that don't exercise real WASM dispatch.
     pub wasm_component: Option<Arc<WasmComponent>>,
@@ -885,6 +889,7 @@ pub fn build_execution_plan(
                     paths: binding.module.ir_writes.clone(),
                 },
                 config_view: Arc::clone(&binding.config_view),
+                claims: binding.module.claims.clone(),
                 wasm_component: binding.wasm_component.clone(),
             });
         }

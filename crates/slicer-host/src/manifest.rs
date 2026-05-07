@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 use slicer_ir::{ModuleId, SemVer, StageId};
 use toml::Value;
 
+use crate::validation::FILL_CLAIM_IDS;
+
 /// Helper for serde skip_serializing_if on bool.
 fn is_false(b: &bool) -> bool {
     !*b
@@ -291,7 +293,10 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
             wit_world,
             ir_reads: required_string_array(&root, manifest_path, "ir-access.reads")?,
             ir_writes: required_string_array(&root, manifest_path, "ir-access.writes")?,
-            claims: required_string_array(&root, manifest_path, "claims.holds")?,
+            claims: validate_claim_ids(
+                &required_string_array(&root, manifest_path, "claims.holds")?,
+                manifest_path,
+            )?,
             requires_claims: required_string_array(&root, manifest_path, "claims.requires")?,
             incompatible_with: required_string_array(
                 &root,
@@ -327,6 +332,35 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
         },
         diagnostics,
     })
+}
+
+/// Validates that all held claim IDs are known fill-role claims.
+/// Unknown claim IDs cause a LoadError with kind Validation.
+/// Fill-style claims (prefix `claim:`) are validated against FILL_CLAIM_IDS.
+/// Non-fill claims (e.g. `perimeter-generator`) are always accepted.
+fn validate_claim_ids(holds: &[String], manifest_path: &Path) -> Result<Vec<String>, LoadError> {
+    for claim in holds {
+        // Non-fill claim — always accept.
+        if !claim.starts_with("claim:") {
+            continue;
+        }
+        // Fill-style claim: accept if in FILL_CLAIM_IDS, otherwise accept for
+        // forward-compatibility (future fill claims extend the set).
+        if FILL_CLAIM_IDS.contains(&claim.as_str()) {
+            continue;
+        }
+        // Not a known fill claim — reject it.
+        return Err(LoadError {
+            path: manifest_path.to_path_buf(),
+            field: Some(String::from("claims.holds")),
+            kind: LoadErrorKind::Validation,
+            message: format!(
+                "unknown claim ID '{claim}' — expected one of: \
+                 [\"claim:top-fill\", \"claim:bottom-fill\", \"claim:bridge-fill\", \"claim:sparse-fill\"]"
+            ),
+        });
+    }
+    Ok(holds.to_vec())
 }
 
 fn discover_manifest_paths(root: &Path) -> Result<Vec<PathBuf>, LoadError> {
