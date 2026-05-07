@@ -153,8 +153,8 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// Schema version for `SliceIR`. Single source of truth — production constructors
 /// must use this constant, not literal `SemVer { ... }` values.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
-    minor: 2,
+    major: 2,
+    minor: 0,
     patch: 0,
 };
 
@@ -1441,8 +1441,9 @@ pub struct TravelRetract {
 /// Travel move destination from `Layer::PathOptimization`, keyed by entity anchor.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TravelMove {
-    /// Index of the entity after which this travel move is anchored.
-    pub after_entity_index: u32,
+    /// Stable identifier of the entity in `LayerCollectionIR.ordered_entities` after which this
+    /// travel is emitted. Resolved at emit time via a per-layer `HashMap<u64, usize>` lookup.
+    pub entity_id: u64,
     /// X destination (module coordinate units, 100 nm).
     pub x: Option<f32>,
     /// Y destination (module coordinate units, 100 nm).
@@ -1456,6 +1457,9 @@ pub struct TravelMove {
 /// Print entity
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrintEntity {
+    /// Per-layer-monotonic stable identifier issued by `LayerEntityIdGen` at construction.
+    /// Reserved value `0` MAY be used as uninitialized sentinel; valid IDs start at 1.
+    pub entity_id: u64,
     /// Extrusion path
     pub path: ExtrusionPath3D,
     /// Role of the entity

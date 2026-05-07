@@ -11,6 +11,7 @@ bincode = { workspace = true, optional = true }
 
 [dev-dependencies]
 bincode = { workspace = true }
+static_assertions = "1"
 
 [features]
 default = []

@@ -7,7 +7,12 @@
 #![warn(unused_imports)]
 #![warn(unused_must_use)]
 
+pub mod entity_id;
 pub mod slice_ir;
+pub mod validation;
+
+pub use entity_id::LayerEntityIdGen;
+pub use validation::validate_travel_anchors;
 
 pub use slice_ir::{
     ActiveRegion,
