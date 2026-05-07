@@ -13,7 +13,8 @@
 //!
 //! Serialize behavior:
 //! - Convert `GCodeIR.commands` → text G-code string
-//! - Format: `G1 X... Y... Z... E... F...` with appropriate precision
+//! - Extrusion moves emit `G1 X... Y... Z... E... F...`; travel moves
+//!   (`ExtrusionRole::Custom("Travel")`) emit `G0 X... Y... Z... F...` with no `E`.
 //! - Handle all GCodeCommand variants (Move, Retract, Unretract, FanSpeed, Temperature,
 //!   ToolChange, Comment, Raw)
 //!
@@ -166,14 +167,14 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     .or_default()
                     .push(r);
             }
-            // travel_moves: per entity index, collect all in order
+            // travel_moves: per entity_id, collect all in order
             let mut travel_moves_by_entity: std::collections::HashMap<
-                u32,
+                u64,
                 Vec<&slicer_ir::TravelMove>,
             > = std::collections::HashMap::new();
             for tm in &layer.travel_moves {
                 travel_moves_by_entity
-                    .entry(tm.after_entity_index)
+                    .entry(tm.entity_id)
                     .or_default()
                     .push(tm);
             }
@@ -259,7 +260,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
 
                 // Emit canonical retract/z-hop/travel/unretract sequence after this entity.
                 let entity_retracts = retracts_by_entity.get(&entity_idx);
-                let entity_travels = travel_moves_by_entity.get(&entity_idx);
+                let entity_travels = travel_moves_by_entity.get(&entity.entity_id);
                 let entity_z_hop = z_hops.get(&entity_idx);
 
                 if let Some(retracts) = entity_retracts {
@@ -284,6 +285,11 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 }
                 if let Some(travels) = entity_travels {
                     for tm in travels.iter() {
+                        debug_assert!(
+                            tm.entity_id == entity.entity_id,
+                            "dangling travel anchor: entity_id={}",
+                            tm.entity_id
+                        );
                         commands.push(GCodeCommand::Move {
                             x: tm.x,
                             y: tm.y,
@@ -390,8 +396,19 @@ impl GCodeSerializer for DefaultGCodeSerializer {
 
         for command in &gcode_ir.commands {
             match command {
-                GCodeCommand::Move { x, y, z, e, f, .. } => {
-                    write!(output, "G1").unwrap();
+                GCodeCommand::Move {
+                    x,
+                    y,
+                    z,
+                    e,
+                    f,
+                    role,
+                    ..
+                } => {
+                    // Emit G0 for travel moves (Custom("Travel") role), G1 for extrusion moves.
+                    let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
+                    let cmd = if is_travel { "G0" } else { "G1" };
+                    write!(output, "{cmd}").unwrap();
                     if let Some(x_val) = x {
                         write!(output, " X{}", format_coord(*x_val)).unwrap();
                     }
@@ -525,7 +542,7 @@ pub fn reconcile_finalization_travel(layer: &mut LayerCollectionIR) {
                 model_entity.path.points.first(),
             ) {
                 layer.travel_moves.push(TravelMove {
-                    after_entity_index: last_skirt_idx as u32,
+                    entity_id: entities[last_skirt_idx].entity_id,
                     x: Some(model_start.x),
                     y: Some(model_start.y),
                     z: None,
@@ -542,7 +559,7 @@ pub fn reconcile_finalization_travel(layer: &mut LayerCollectionIR) {
             let wipe_entity = &entities[wipe_idx];
             if let Some(wipe_start) = wipe_entity.path.points.first() {
                 layer.travel_moves.push(TravelMove {
-                    after_entity_index: (wipe_idx - 1) as u32,
+                    entity_id: entities[wipe_idx - 1].entity_id,
                     x: Some(wipe_start.x),
                     y: Some(wipe_start.y),
                     z: None,
@@ -552,8 +569,15 @@ pub fn reconcile_finalization_travel(layer: &mut LayerCollectionIR) {
         }
     }
 
-    // Keep travel_moves sorted by after_entity_index for deterministic emission.
-    layer.travel_moves.sort_by_key(|tm| tm.after_entity_index);
+    // Keep travel_moves sorted by anchored entity position for deterministic emission.
+    let id_to_idx: std::collections::HashMap<u64, usize> = entities
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.entity_id, i))
+        .collect();
+    layer
+        .travel_moves
+        .sort_by_key(|tm| id_to_idx.get(&tm.entity_id).copied().unwrap_or(usize::MAX));
 }
 
 /// Format a coordinate value, trimming unnecessary trailing zeros.

@@ -2860,6 +2860,7 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                     let role = path.role.clone();
                     entity_pushes_by_layer.entry(layer_index).or_default().push(
                         slicer_ir::PrintEntity {
+                            entity_id: 0, // sentinel; overwritten during finalization merge
                             path,
                             role,
                             region_key,
@@ -2872,8 +2873,21 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
         }
 
         // Batch-prepend finalization entities before existing model entities.
+        // Stamp each finalization entity with a unique entity_id that does not
+        // collide with IDs already assigned to the layer's existing entities.
         for layer in layers.iter_mut() {
-            if let Some(fin_entities) = entity_pushes_by_layer.remove(&layer.global_layer_index) {
+            if let Some(mut fin_entities) = entity_pushes_by_layer.remove(&layer.global_layer_index)
+            {
+                let next_base = layer
+                    .ordered_entities
+                    .iter()
+                    .map(|e| e.entity_id)
+                    .max()
+                    .unwrap_or(0)
+                    + 1;
+                for (i, e) in fin_entities.iter_mut().enumerate() {
+                    e.entity_id = next_base + i as u64;
+                }
                 layer.ordered_entities.splice(0..0, fin_entities);
             }
         }
@@ -2882,12 +2896,14 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
         for push in synthetic_pushes {
             if let wit_host::FinalizationBuilderPush::SyntheticLayer { z, paths } = push {
                 let new_index = layers.len() as u32;
+                let id_gen = slicer_ir::LayerEntityIdGen::new();
                 let entities: Vec<_> = paths
                     .into_iter()
                     .enumerate()
                     .map(|(i, path)| {
                         let role = path.role.clone();
                         slicer_ir::PrintEntity {
+                            entity_id: id_gen.next(),
                             path,
                             role,
                             region_key: slicer_ir::RegionKey {

@@ -9,8 +9,8 @@ use std::fmt;
 
 use rayon::prelude::*;
 use slicer_ir::{
-    GlobalLayer, InfillIR, LayerCollectionIR, ModuleId, PaintRegionIR, PaintSemantic, PerimeterIR,
-    PrintEntity, RegionKey, SemVer, StageId, SupportIR,
+    GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen, ModuleId, PaintRegionIR,
+    PaintSemantic, PerimeterIR, PrintEntity, RegionKey, SemVer, StageId, SupportIR,
 };
 
 use crate::layer_slice::{execute_layer_slice, LayerSliceError};
@@ -462,20 +462,24 @@ fn execute_single_layer(
                     mode: r.mode,
                 }),
         );
-    layer_output
-        .travel_moves
-        .extend(
-            arena
-                .take_deferred_travel_moves()
-                .into_iter()
-                .map(|m| slicer_ir::TravelMove {
-                    after_entity_index: m.after_entity_index,
-                    x: m.x,
-                    y: m.y,
-                    z: m.z,
-                    f: m.f,
-                }),
-        );
+    {
+        let raw_travels = arena.take_deferred_travel_moves();
+        let mapped: Vec<slicer_ir::TravelMove> = raw_travels
+            .into_iter()
+            .map(|m| slicer_ir::TravelMove {
+                entity_id: layer_output
+                    .ordered_entities
+                    .get(m.after_entity_index as usize)
+                    .map(|e| e.entity_id)
+                    .unwrap_or(0),
+                x: m.x,
+                y: m.y,
+                z: m.z,
+                f: m.f,
+            })
+            .collect();
+        layer_output.travel_moves.extend(mapped);
+    }
     Ok((layer_output, audits))
 }
 
@@ -589,12 +593,14 @@ pub(crate) fn assemble_ordered_entities(
     support: Option<&SupportIR>,
 ) -> Vec<PrintEntity> {
     let mut out: Vec<PrintEntity> = Vec::new();
+    let id_gen = LayerEntityIdGen::new();
     let push = |path: slicer_ir::ExtrusionPath3D,
                 role: slicer_ir::ExtrusionRole,
                 key: RegionKey,
                 acc: &mut Vec<PrintEntity>| {
         let topo_order = acc.len() as u32;
         acc.push(PrintEntity {
+            entity_id: id_gen.next(),
             path,
             role,
             region_key: key,
