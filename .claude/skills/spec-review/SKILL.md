@@ -105,6 +105,7 @@ Packet-authoring defects are global; you cannot scope them away. For every AC in
 - Command uses correct paths, flags, module names; runnable as-is.
 - Names exact assertion content, not generic phrases ("all required fields", "correct diagnostics").
 - Command is delegation-friendly — small, parseable output on success (not >200-line logs).
+- **AC test exercises the production code path it describes.** A test that ends in placeholder asserts (e.g. only checks pre-existing fixture data) or contains comments like `// TBD`, `// not yet implemented`, `// DOCUMENTED EXPECTATION` is **not** evidence the AC is met. Dispatch a `SNIPPETS` read of the test body and confirm its assertions reference the symbols / IR fields named in the Given/When/Then. If the test is a placeholder, log a **HIGH** finding (packet-authoring defect — same severity as a missing runnable command) and treat the AC as `PARTIAL/INCOMPLETE` regardless of test-pass status.
 
 Packet-quality preflight:
 
