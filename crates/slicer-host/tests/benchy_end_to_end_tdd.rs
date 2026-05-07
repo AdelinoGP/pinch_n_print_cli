@@ -1994,3 +1994,57 @@ fn benchy_gcode_contains_exact_bridge_infill_marker() {
         preview(&gcode, 30)
     );
 }
+
+/// AC (packet 37): default rectilinear holds all four claims — Benchy G-code
+/// must contain all four role-family markers: Top surface, Bottom surface,
+/// Bridge infill, Sparse infill.
+#[test]
+fn benchy_default_claims_emit_all_role_families() {
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let out_path = tmp.path().join("all_role_families.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, None);
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "slicer-host must succeed for role-families gate. Stderr:\n{stderr}"
+    );
+    assert!(out_path.exists(), "--output file must be written");
+
+    let gcode = std::fs::read_to_string(&out_path).expect("read output gcode");
+
+    let has_top = gcode.lines().any(|l| l.trim() == ";TYPE:Top surface");
+    let has_bottom = gcode.lines().any(|l| l.trim() == ";TYPE:Bottom surface");
+    let has_bridge = gcode.lines().any(|l| l.trim() == ";TYPE:Bridge infill");
+    let has_sparse = gcode.lines().any(|l| l.trim() == ";TYPE:Sparse infill");
+
+    assert!(
+        has_top,
+        "FILL-ROLE-AC-FC1 FAILED: G-code must contain `;TYPE:Top surface`. \
+         G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+    assert!(
+        has_bottom,
+        "FILL-ROLE-AC-FC2 FAILED: G-code must contain `;TYPE:Bottom surface`. \
+         G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+    assert!(
+        has_bridge,
+        "FILL-ROLE-AC-FC3 FAILED: G-code must contain `;TYPE:Bridge infill`. \
+         G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+    assert!(
+        has_sparse,
+        "FILL-ROLE-AC-FC4 FAILED: G-code must contain `;TYPE:Sparse infill`. \
+         G-code preview:\n{}",
+        preview(&gcode, 30)
+    );
+}

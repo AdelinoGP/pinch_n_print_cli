@@ -86,10 +86,9 @@ fn guest_reads_config_value_and_uses_it_in_output() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            held_claims: Vec::new(),
         })
         .unwrap();
-
-    // Provide infill output builder
     let output_handle = ctx.push_infill_output_builder().unwrap();
 
     let mut store = wasmtime::Store::new(&engine, ctx);
@@ -170,6 +169,7 @@ fn guest_reads_region_z_from_ir_view() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            held_claims: Vec::new(),
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -230,6 +230,7 @@ fn guest_emits_output_via_infill_builder() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            held_claims: Vec::new(),
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -302,6 +303,7 @@ fn guest_logs_via_host_services() {
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
+            held_claims: Vec::new(),
         })
         .unwrap();
     let output_handle = ctx.push_infill_output_builder().unwrap();
@@ -376,6 +378,7 @@ fn repeated_calls_produce_independent_outputs() {
                 is_bridge: false,
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
+                held_claims: Vec::new(),
             })
             .unwrap();
         let output_handle = ctx.push_infill_output_builder().unwrap();
