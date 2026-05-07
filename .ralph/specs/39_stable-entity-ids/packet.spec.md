@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: stable-entity-ids
 task_ids:
   - TASK-170
