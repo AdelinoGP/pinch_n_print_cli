@@ -908,6 +908,7 @@ pub mod finalization {
                 }
 
                 record print-entity-view {
+                    entity-id: u64,
                     path: extrusion-path3d,
                     role: extrusion-role,
                     region-key: region-key,
@@ -4470,6 +4471,7 @@ mod finalization_impls {
                 .ordered_entities
                 .iter()
                 .map(|entity| fm::PrintEntityView {
+                    entity_id: entity.entity_id,
                     path: finalization_path_ir_to_wit(&entity.path),
                     role: finalization_role_ir_to_wit(&entity.role),
                     region_key: fm::RegionKey {

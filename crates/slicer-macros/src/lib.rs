@@ -924,6 +924,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
             }
 
             record print-entity-view {
+                entity-id: u64,
                 path: extrusion-path-3d,
                 role: extrusion-role,
                 region-key: region-key,
@@ -1115,6 +1116,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             };
 
                             ordered_entities.push(::slicer_ir::PrintEntity {
+                                entity_id: entity.entity_id,
                                 path: __slicer_path_wit_to_ir(&entity.path),
                                 role: __slicer_role_wit_to_ir(entity.role),
                                 region_key: ::slicer_ir::RegionKey {

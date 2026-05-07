@@ -17,6 +17,7 @@ world finalization-module {
     }
 
     record print-entity-view {
+        entity-id: u64,
         path: extrusion-path-3d,
         role: extrusion-role,
         region-key: region-key,
