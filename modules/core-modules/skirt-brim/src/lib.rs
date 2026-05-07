@@ -8,8 +8,8 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
-    PrintEntity, RegionKey,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, LayerEntityIdGen,
+    Point3WithWidth, PrintEntity, RegionKey,
 };
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
@@ -149,6 +149,7 @@ impl SkirtBrim {
         global_layer_index: u32,
     ) -> Vec<PrintEntity> {
         let mut entities = Vec::new();
+        let id_gen = LayerEntityIdGen::new();
 
         for i in 0..self.skirt_loops {
             let offset = self.skirt_distance + (i as f32) * self.line_width;
@@ -166,6 +167,7 @@ impl SkirtBrim {
             };
 
             entities.push(PrintEntity {
+                entity_id: id_gen.next(),
                 path,
                 role: ExtrusionRole::Skirt,
                 region_key,
@@ -185,6 +187,7 @@ impl SkirtBrim {
     ) -> Vec<PrintEntity> {
         let num_loops = (self.brim_width / self.line_width).ceil() as u32;
         let mut entities = Vec::new();
+        let id_gen = LayerEntityIdGen::new();
 
         for i in 0..num_loops {
             // Brim loops go from outermost inward toward the object
@@ -207,6 +210,7 @@ impl SkirtBrim {
             };
 
             entities.push(PrintEntity {
+                entity_id: id_gen.next(),
                 path,
                 role: ExtrusionRole::Skirt,
                 region_key,

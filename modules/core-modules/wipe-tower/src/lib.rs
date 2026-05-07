@@ -9,8 +9,8 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
-    PrintEntity, RegionKey,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, LayerEntityIdGen,
+    Point3WithWidth, PrintEntity, RegionKey,
 };
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
@@ -141,6 +141,7 @@ impl WipeTower {
         let y_max = self.tower_y + purge_depth;
 
         let mut entities = Vec::new();
+        let id_gen = LayerEntityIdGen::new();
         let mut y = y_min + self.line_width / 2.0;
         let mut forward = true;
 
@@ -179,6 +180,7 @@ impl WipeTower {
             };
 
             entities.push(PrintEntity {
+                entity_id: id_gen.next(),
                 path,
                 role: ExtrusionRole::WipeTower,
                 region_key,
