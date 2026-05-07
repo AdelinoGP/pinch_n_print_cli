@@ -1,11 +1,14 @@
 ---
-status: draft
+status: superseded
+superseded_by: 38-rev1_top-surface-ironing
 packet: top-surface-ironing
 task_ids:
   - TASK-168
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
+
+> **Note on supersession (added 2026-05-07):** This packet placed the module at `Layer::InfillPostProcess`, a rayon-parallel per-layer stage with no cross-layer look-ahead. The intended `is_top_surface` detection mechanism is set on `SliceRegionView` at slice time and does not propagate to `PerimeterRegionView` (the InfillPostProcess parameter type), so the implementation fell back to a structurally incorrect `infill_areas.is_empty()` proxy that could not distinguish topmost-of-stack from interior top-solid layers. The Benchy E2E acceptance criterion never produced `;TYPE:Ironing` end-to-end. Replacement packet `38-rev1_top-surface-ironing` (TASK-169) relocates the module to `PostPass::LayerFinalization` (object-scope, sequential, full `Vec<LayerCollectionIR>` visibility) and aligns defaults with OrcaSlicer. The predecessor's TASK-168 also collided with the already-closed packet 36-rev1 row at `docs/07_implementation_status.md:81`; the rev1 packet uses TASK-169 to avoid that collision. The source files this packet touched in `modules/core-modules/top-surface-ironing/` are kept in place and rewritten in-place by the rev1 implementation pass.
 
 # Packet Contract: top-surface-ironing
 
