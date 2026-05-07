@@ -4046,6 +4046,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
     let mut arena = LayerArena::new();
     // Pre-stage 2 entities so entity_count=2, anchor=1 (last entity index).
     let entity = slicer_ir::PrintEntity {
+        entity_id: 1,
         path: slicer_ir::ExtrusionPath3D {
             points: vec![slicer_ir::Point3WithWidth {
                 x: 0.0,

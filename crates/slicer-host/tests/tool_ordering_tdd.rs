@@ -60,6 +60,7 @@ fn entity_with_tool(
     original_idx: u32,
 ) -> PrintEntity {
     PrintEntity {
+        entity_id: (original_idx as u64) + 1,
         path: ExtrusionPath3D {
             points: vec![pt(x, y)],
             role: ExtrusionRole::SparseInfill,

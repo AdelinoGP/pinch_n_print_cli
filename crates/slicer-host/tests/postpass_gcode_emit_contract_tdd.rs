@@ -68,6 +68,7 @@ fn print_entity_fixture(
     role: ExtrusionRole,
 ) -> slicer_ir::PrintEntity {
     slicer_ir::PrintEntity {
+        entity_id: 1,
         path: slicer_ir::ExtrusionPath3D {
             points,
             role: role.clone(),

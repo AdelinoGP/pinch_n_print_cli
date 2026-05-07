@@ -48,6 +48,7 @@ fn pt(x: f32, y: f32, z: f32) -> Point3WithWidth {
 fn entity_with_points(points: Vec<Point3WithWidth>, original_idx: u32) -> PrintEntity {
     let role = ExtrusionRole::SparseInfill;
     PrintEntity {
+        entity_id: (original_idx as u64) + 1,
         path: ExtrusionPath3D {
             points,
             role: role.clone(),
@@ -248,6 +249,7 @@ fn entity_with_points_and_role(
     role: ExtrusionRole,
 ) -> PrintEntity {
     PrintEntity {
+        entity_id: (original_idx as u64) + 1,
         path: ExtrusionPath3D {
             points,
             role: role.clone(),

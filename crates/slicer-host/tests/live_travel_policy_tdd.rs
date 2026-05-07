@@ -32,6 +32,13 @@ fn make_ctx(module_id: &str) -> HostExecutionContext {
 
 /// Simulate what layer_executor does: flush deferred queues into LayerCollectionIR.
 fn flush_to_layer_collection(arena: &mut LayerArena) -> slicer_ir::LayerCollectionIR {
+    // Snapshot the staged ordered_entities for entity_id lookup (mirrors
+    // production layer_executor behaviour).
+    let staged_entities: Vec<_> = arena
+        .layer_collection()
+        .map(|lc| lc.ordered_entities.clone())
+        .unwrap_or_default();
+
     let mut layer_collection = slicer_ir::LayerCollectionIR {
         schema_version: slicer_ir::SemVer {
             major: 1,
@@ -64,18 +71,18 @@ fn flush_to_layer_collection(arena: &mut LayerArena) -> slicer_ir::LayerCollecti
         );
     layer_collection
         .travel_moves
-        .extend(
-            arena
-                .take_deferred_travel_moves()
-                .into_iter()
-                .map(|m| slicer_ir::TravelMove {
-                    after_entity_index: m.after_entity_index,
-                    x: m.x,
-                    y: m.y,
-                    z: m.z,
-                    f: m.f,
-                }),
-        );
+        .extend(arena.take_deferred_travel_moves().into_iter().map(|m| {
+            slicer_ir::TravelMove {
+                entity_id: staged_entities
+                    .get(m.after_entity_index as usize)
+                    .map(|e| e.entity_id)
+                    .unwrap_or(0),
+                x: m.x,
+                y: m.y,
+                z: m.z,
+                f: m.f,
+            }
+        }));
     layer_collection
 }
 
@@ -346,8 +353,9 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
             mode: RetractMode::Gcode,
         });
 
-    // Pre-stage 3 entities → entity_count=3, anchor=2 (last entity index).
-    let entity = slicer_ir::PrintEntity {
+    // Pre-stage 3 entities → entity_count=3, anchor=2 (last entity index, entity_id=3).
+    let make_entity = |id: u64| slicer_ir::PrintEntity {
+        entity_id: id,
         path: slicer_ir::ExtrusionPath3D {
             points: vec![slicer_ir::Point3WithWidth {
                 x: 0.0,
@@ -376,7 +384,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
         },
         global_layer_index: 0,
         z: 0.2,
-        ordered_entities: vec![entity.clone(), entity.clone(), entity],
+        ordered_entities: vec![make_entity(1), make_entity(2), make_entity(3)],
         tool_changes: vec![],
         z_hops: vec![],
         annotations: vec![],
@@ -395,25 +403,26 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
     .expect("commit must succeed with pre-staged entities");
 
     let layer_collection = flush_to_layer_collection(&mut arena);
-    let expected_anchor = 2u32; // entity_count=3, anchor = 3-1 = 2
+    let expected_anchor_idx = 2u32; // entity_count=3, anchor = 3-1 = 2
+    let expected_travel_entity_id = 3u64; // entity at index 2 has entity_id=3
 
     let z_hops = &layer_collection.z_hops;
     assert_eq!(z_hops.len(), 1, "expected one ZHop");
     assert_eq!(
-        z_hops[0].after_entity_index, expected_anchor,
-        "ZHop must be normalized to global anchor {expected_anchor}, got {}",
+        z_hops[0].after_entity_index, expected_anchor_idx,
+        "ZHop must be normalized to global anchor {expected_anchor_idx}, got {}",
         z_hops[0].after_entity_index
     );
 
     let retracts = &layer_collection.retracts;
     assert_eq!(retracts.len(), 2, "expected Retract + Unretract");
     assert_eq!(
-        retracts[0].after_entity_index, expected_anchor,
+        retracts[0].after_entity_index, expected_anchor_idx,
         "Retract anchor must match ZHop anchor, got {}",
         retracts[0].after_entity_index
     );
     assert_eq!(
-        retracts[1].after_entity_index, expected_anchor,
+        retracts[1].after_entity_index, expected_anchor_idx,
         "Unretract anchor must match ZHop anchor, got {}",
         retracts[1].after_entity_index
     );
@@ -421,8 +430,8 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
     let travel_moves = &layer_collection.travel_moves;
     assert_eq!(travel_moves.len(), 1, "expected one TravelMove");
     assert_eq!(
-        travel_moves[0].after_entity_index, expected_anchor,
-        "TravelMove anchor must match ZHop anchor, got {}",
-        travel_moves[0].after_entity_index
+        travel_moves[0].entity_id, expected_travel_entity_id,
+        "TravelMove entity_id must be the entity_id of the last entity (index 2 → id 3), got {}",
+        travel_moves[0].entity_id
     );
 }

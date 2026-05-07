@@ -360,6 +360,7 @@ fn layer_collection_fixture(global_layer_index: u32, z: f32) -> LayerCollectionI
         global_layer_index,
         z,
         ordered_entities: vec![PrintEntity {
+            entity_id: 1,
             path: ExtrusionPath3D {
                 points: vec![Point3WithWidth {
                     x: 0.0,

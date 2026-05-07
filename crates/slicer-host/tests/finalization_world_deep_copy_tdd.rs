@@ -122,6 +122,7 @@ fn make_entity(
     speed_factor: f32,
 ) -> PrintEntity {
     PrintEntity {
+        entity_id: (topo_order as u64) + 1,
         path: ExtrusionPath3D {
             points: (0..point_count)
                 .map(|index| Point3WithWidth {

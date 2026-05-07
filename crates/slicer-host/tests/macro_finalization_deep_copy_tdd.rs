@@ -137,6 +137,7 @@ fn layer_ir(
     let mut ordered_entities = Vec::with_capacity(entity_count);
     for i in 0..entity_count {
         ordered_entities.push(PrintEntity {
+            entity_id: (i as u64) + 1,
             path: slicer_ir::ExtrusionPath3D {
                 points: Vec::new(),
                 role: ExtrusionRole::Custom(String::new()),

@@ -54,6 +54,7 @@ fn make_entity(
     object_id: &str,
 ) -> PrintEntity {
     PrintEntity {
+        entity_id: 1,
         path: ExtrusionPath3D {
             points,
             role: role.clone(),
@@ -129,15 +130,15 @@ fn brim_geometry_changes_first_model_travel_transition() {
         "reconciliation must add at least one travel_move when skirt entities precede model entities"
     );
 
-    // The travel move must be anchored after the skirt entity (index 0)
+    // The travel move must be anchored after the skirt entity (entity_id=1)
     let skirt_travel: Vec<_> = layer
         .travel_moves
         .iter()
-        .filter(|tm| tm.after_entity_index == 0)
+        .filter(|tm| tm.entity_id == 1u64)
         .collect();
     assert!(
         !skirt_travel.is_empty(),
-        "a travel_move must be anchored after entity 0 (the last skirt entity)"
+        "a travel_move must be anchored after the skirt entity (entity_id=1)"
     );
 
     // The travel move must target the model entity's start position
@@ -274,13 +275,13 @@ fn wipe_tower_geometry_is_included_in_travel_reconciliation() {
         layer.travel_moves
     );
 
-    // The wipe-tower travel move must be anchored between the tool change
-    // entity (index 0) and the wipe tower entity (index 1).
+    // The wipe-tower travel move must be anchored between the entity before
+    // the wipe tower (entity_id=1, which is model1 at index 0).
     let wipe_detour = wipe_travel[0];
     assert!(
-        wipe_detour.after_entity_index == 0,
-        "wipe-tower detour must be anchored after entity 0 (before wipe tower), got after_entity_index={}",
-        wipe_detour.after_entity_index
+        wipe_detour.entity_id == 1u64,
+        "wipe-tower detour must be anchored after model1 (entity_id=1, before wipe tower), got entity_id={}",
+        wipe_detour.entity_id
     );
 
     // Retract/unretract pairing from packet 15 must be preserved unchanged.

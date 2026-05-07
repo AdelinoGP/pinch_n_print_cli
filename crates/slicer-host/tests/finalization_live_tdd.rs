@@ -145,6 +145,7 @@ fn make_module(id: &str, component: Arc<slicer_host::WasmComponent>) -> Compiled
 
 fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
     PrintEntity {
+        entity_id: 1,
         path: ExtrusionPath3D {
             points: vec![
                 Point3WithWidth {

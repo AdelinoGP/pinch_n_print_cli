@@ -130,6 +130,7 @@ fn region_key_fixture() -> RegionKey {
 
 fn print_entity_fixture(points: Vec<Point3WithWidth>, role: ExtrusionRole) -> PrintEntity {
     PrintEntity {
+        entity_id: 1,
         path: ExtrusionPath3D {
             points,
             role: role.clone(),
