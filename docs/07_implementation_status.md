@@ -68,6 +68,7 @@ Last updated: 2026-04-29
 - [~] TASK-130 Finish the `#[slicer_module]` prepass segmentation bridge for macro-authored modules. Covers DEV-025.
 - [ ] TASK-130a Drain `PaintSegmentationOutput` back through WIT `push-paint-region` so macro-authored modules can emit paint regions without hand-written `wit-guest` glue. Covers DEV-025.
 - [ ] TASK-130b Add end-to-end macro-path regression tests proving `MeshSegmentation` and `PaintSegmentation` round-trip real data through WIT. Continues DEV-025.
+- [x] TASK-130c Widen paint-region transport (SDK ExPolygon-bearing, WIT typed paint-value-input variant, host harvest 1:1) so paint regions carry hole-bearing polygons and Custom/typed values without coercion. Covers DEV-025. **Closed 2026-05-08 — packet 42 paint-region-transport-widening acceptance; all 10 ACs + 4 negative tests pass; DEV-025 mismatches 4 (paint value channel string-coerced) and 5 (SDK paint-region polygons hole-blind) closed; mismatch 3 remains open (closes in packet 43).**
 - [x] TASK-131 Add a regression guard for the documented `resolve_active_regions` O(1) contract. Scheduler performance guard needed for runtime-budget evidence.
 - [x] TASK-132 Add structured RegionMap overflow coverage for the 1000-entry cap, including top-contributor and remediation messaging. Hardens the existing bounds path needed for DEV-026 evidence.
 - [x] TASK-133 Add a pool-behavior test proving `layer_parallel_safe = false` serializes concurrent WASM acquisition. Scheduler concurrency guard for the docs/04 instance-pool contract.

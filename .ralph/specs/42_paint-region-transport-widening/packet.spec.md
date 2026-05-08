@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: paint-region-transport-widening
 task_ids:
   - TASK-130c

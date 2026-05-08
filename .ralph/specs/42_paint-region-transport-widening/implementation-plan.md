@@ -266,3 +266,14 @@ Aggregate: **M**. No single step is L. If during execution any step trends towar
 - Confirm packet-level Verification commands are GREEN (one workspace `cargo build`, one `cargo clippy --workspace`, one `cargo test --workspace` — the latter only at this ceremony).
 - Confirm the implementer's peak context usage stayed under 70%; if not, log a packet-authoring lesson for future spec-packet-generator runs (e.g., "wit_host.rs line-range hints insufficient — split Step 5").
 - Record any remaining packet-local risk (most likely: any test that relied on the old string-coerced fallback path that the regression sweep didn't surface).
+
+## Step 0 Notes (locked 2026-05-08)
+
+The six Step-0 FACT dispatches returned the following binary answers:
+
+1. **paint-value-input variant in `wit/deps/ir-types.wit`**: NOT_FOUND. The existing `paint-value` (lines 38-42) and `paint-value-view` (lines 216-220) declare only 3 cases (`flag` / `scalar` / `tool-index`); neither has `custom`. **Decision**: ADD a new variant `paint-value-input { flag(bool), scalar(f32), tool-index(u32), custom(string) }` — do not extend the existing read-side variants.
+2. **`PaintRegionEntry::paint_order` readers**: NOT droppable. Production readers exist at `crates/slicer-host/src/paint_segmentation.rs:166,191,262` (conflict detection + deterministic sort). **Decision**: KEEP `paint_order` parameter on `push_paint_region` and field on `PaintRegionEntry`.
+3. **`slicer_ir::ExPolygon` re-export viability**: cannot re-export. `ExPolygon` stores `Vec<Polygon>`/`Vec<Point2{i64,i64}>` in 100nm units; SDK boundary uses `Vec<[f64;2]>` in mm. **Decision**: define a wrapper `ExPolygonView { contour: Vec<[f64;2]>, holes: Vec<Vec<[f64;2]>> }` in `crates/slicer-sdk/src/prepass_builders.rs`.
+4. **`PaintValue::Custom(String)` IR variant**: missing in `slicer-ir`. `PaintSemantic::Custom(String)` already exists, but the value channel needs structured Custom payload to satisfy AC-5 / NEG-2 (Custom must round-trip without coercion to `ToolIndex(0)`). **Decision**: ADD `PaintValue::Custom(String)` as an additive IR variant; document the mapping `paint-value-input::custom(s)` → `PaintValue::Custom(s)` in `harvest_paint_segmentation_ir` as a top-of-function doc comment.
+5. **docs/07_implementation_status.md insertion lines**: insert TASK-130c row after line 70 (sibling of 130a/130b); append `TASK-130c` to the blocker list at line 180.
+6. **wasm32 / wasm-tools toolchain**: wasm32 target is installed; `cargo-component` is NOT installed but `build-test-guests.sh` does not need it (uses `cargo build --target wasm32-unknown-unknown` + `wasm-tools component new`). bash from Git for Windows is available; wasm-tools availability is being verified in parallel by the planner. If wasm-tools is missing, Step 7 dispatches the rebuild via WSL or records a CI handoff.
