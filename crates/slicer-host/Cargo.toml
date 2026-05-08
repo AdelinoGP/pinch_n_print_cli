@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 slicer-ir = { path = "../slicer-ir" }
 slicer-core = { path = "../slicer-core" }
+slicer-sdk = { path = "../slicer-sdk" }
 toml = "0.8"
 rayon = "1.10"
 serde = { workspace = true, features = ["derive"] }

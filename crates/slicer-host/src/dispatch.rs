@@ -2829,26 +2829,25 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
 
         // Apply guest-emitted pushes to the downstream layer collection.
         //
-        // EntityToLayer pushes are batch-collected per layer and then spliced
-        // at position 0 so that finalization entities (skirt, brim) precede
-        // the original model entities — matching the legacy process() ordering
-        // where skirt/brim appear before model paths (docs/03
-        // world-finalization.wit §finalization-output-builder).
+        // All variants (EntityToLayer, EntityToLayerWithPriority, ModifyEntity,
+        // SortLayerBy, InsertSyntheticLayerAfter, SyntheticLayer) are forwarded
+        // to the SDK FinalizationOutputBuilder and applied via apply_to(), which
+        // runs the full 5-phase merge sequence:
+        //   1. Append pushed entities + stamp entity_ids.
+        //   2. Stable-sort each modified layer by (effective_priority, original_index).
+        //   3. Apply ModifyEntity ops in record order.
+        //   4. Apply SortLayer ops in record order.
+        //   5. Apply InsertSynthLayer ops in record order.
         //
-        // Within each layer the guest's emission order is preserved because
-        // pushes accumulate into a Vec in arrival order; the HashMap keying is
-        // by layer_index, so HashMap iteration order never affects intra-layer
-        // ordering. The splice loop itself walks `layers` in slice order
-        // (deterministic), so cross-layer ordering is also stable.
-        // Using splice(0..0, ...) rather than repeated insert(0, ...) avoids
-        // reversing the emission order within a layer.
+        // Legacy EntityToLayer pushes (priority = 0) preserve skirt/brim prepend
+        // semantics: after the priority-based sort they land before producer-emitted
+        // entities whose role.default_priority() > 0.
         //
-        // SyntheticLayer pushes are new layers and are appended as before.
-        let mut entity_pushes_by_layer: std::collections::HashMap<
-            u32,
-            Vec<slicer_ir::PrintEntity>,
-        > = std::collections::HashMap::new();
-        let mut synthetic_pushes: Vec<wit_host::FinalizationBuilderPush> = Vec::new();
+        // Legacy SyntheticLayer (append-to-end) pushes are collected separately
+        // because the SDK apply_to() does not process the synthetic_layers backcompat
+        // field; they are appended to `layers` after apply_to() completes.
+        let mut sdk_builder = slicer_sdk::traits::FinalizationOutputBuilder::new();
+        let mut legacy_synthetic_layers: Vec<(f32, Vec<slicer_ir::ExtrusionPath3D>)> = Vec::new();
 
         for push in pushes {
             match push {
@@ -2857,80 +2856,184 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                     path,
                     region_key,
                 } => {
-                    let role = path.role.clone();
-                    entity_pushes_by_layer.entry(layer_index).or_default().push(
-                        slicer_ir::PrintEntity {
-                            entity_id: 0, // sentinel; overwritten during finalization merge
-                            path,
-                            role,
-                            region_key,
-                            topo_order: 0,
-                        },
-                    );
+                    // Legacy alias: priority = 0 (sorts before all producer entities).
+                    sdk_builder
+                        .push_entity_to_layer(layer_index, path, region_key)
+                        .unwrap_or_else(|e| {
+                            log::warn!("finalization: push_entity_to_layer rejected: {e}")
+                        });
                 }
-                synthetic => synthetic_pushes.push(synthetic),
-            }
-        }
-
-        // Batch-prepend finalization entities before existing model entities.
-        // Stamp each finalization entity with a unique entity_id that does not
-        // collide with IDs already assigned to the layer's existing entities.
-        for layer in layers.iter_mut() {
-            if let Some(mut fin_entities) = entity_pushes_by_layer.remove(&layer.global_layer_index)
-            {
-                let next_base = layer
-                    .ordered_entities
-                    .iter()
-                    .map(|e| e.entity_id)
-                    .max()
-                    .unwrap_or(0)
-                    + 1;
-                for (i, e) in fin_entities.iter_mut().enumerate() {
-                    e.entity_id = next_base + i as u64;
+                wit_host::FinalizationBuilderPush::EntityToLayerWithPriority {
+                    layer_index,
+                    path,
+                    region_key,
+                    priority,
+                } => {
+                    sdk_builder
+                        .push_entity_with_priority(layer_index, path, region_key, priority)
+                        .unwrap_or_else(|e| {
+                            log::warn!("finalization: push_entity_with_priority rejected: {e}")
+                        });
                 }
-                layer.ordered_entities.splice(0..0, fin_entities);
-            }
-        }
-
-        // Append any synthetic layers.
-        for push in synthetic_pushes {
-            if let wit_host::FinalizationBuilderPush::SyntheticLayer { z, paths } = push {
-                let new_index = layers.len() as u32;
-                let id_gen = slicer_ir::LayerEntityIdGen::new();
-                let entities: Vec<_> = paths
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, path)| {
-                        let role = path.role.clone();
-                        slicer_ir::PrintEntity {
-                            entity_id: id_gen.next(),
-                            path,
-                            role,
-                            region_key: slicer_ir::RegionKey {
-                                global_layer_index: new_index,
-                                object_id: String::new(),
-                                region_id: 0,
-                            },
-                            topo_order: i as u32,
+                wit_host::FinalizationBuilderPush::ModifyEntity {
+                    layer_index,
+                    entity_id,
+                    mutation,
+                } => {
+                    let op: Box<dyn FnOnce(&mut slicer_ir::PrintEntity) + 'static> = match mutation
+                    {
+                        wit_host::WitEntityMutation::SetSpeedFactor(v) => {
+                            Box::new(move |e: &mut slicer_ir::PrintEntity| {
+                                e.path.speed_factor = v;
+                            })
                         }
-                    })
-                    .collect();
-                layers.push(LayerCollectionIR {
-                    schema_version: slicer_ir::SemVer {
-                        major: 1,
-                        minor: 0,
-                        patch: 0,
-                    },
-                    global_layer_index: new_index,
-                    z,
-                    ordered_entities: entities,
-                    tool_changes: Vec::new(),
-                    z_hops: Vec::new(),
-                    annotations: Vec::new(),
-                    retracts: vec![],
-                    travel_moves: vec![],
-                });
+                        wit_host::WitEntityMutation::SetExtrusionRole(role) => {
+                            Box::new(move |e: &mut slicer_ir::PrintEntity| {
+                                e.path.role = role.clone();
+                                e.role = role;
+                            })
+                        }
+                    };
+                    sdk_builder
+                        .modify_entity(layer_index, entity_id, op)
+                        .unwrap_or_else(|e| {
+                            log::warn!("finalization: modify_entity rejected: {e}")
+                        });
+                }
+                wit_host::FinalizationBuilderPush::SortLayerBy { layer_index, key } => match key {
+                    wit_host::WitSortKey::ByPriorityAndEntityId => {
+                        sdk_builder
+                                .sort_layer_by(layer_index, |e: &slicer_ir::PrintEntity| {
+                                    (e.role.default_priority(), e.entity_id)
+                                })
+                                .unwrap_or_else(|err| {
+                                    log::warn!(
+                                        "finalization: sort_layer_by(ByPriorityAndEntityId) rejected: {err}"
+                                    )
+                                });
+                    }
+                    wit_host::WitSortKey::ByEntityId => {
+                        sdk_builder
+                            .sort_layer_by(layer_index, |e: &slicer_ir::PrintEntity| e.entity_id)
+                            .unwrap_or_else(|err| {
+                                log::warn!(
+                                    "finalization: sort_layer_by(ByEntityId) rejected: {err}"
+                                )
+                            });
+                    }
+                    wit_host::WitSortKey::ByObjectIdThenPriority => {
+                        sdk_builder
+                                .sort_layer_by(layer_index, |e: &slicer_ir::PrintEntity| {
+                                    (
+                                        e.region_key.object_id.clone(),
+                                        e.role.default_priority(),
+                                    )
+                                })
+                                .unwrap_or_else(|err| {
+                                    log::warn!(
+                                        "finalization: sort_layer_by(ByObjectIdThenPriority) rejected: {err}"
+                                    )
+                                });
+                    }
+                },
+                wit_host::FinalizationBuilderPush::InsertSyntheticLayerAfter { idx, z, paths } => {
+                    let new_index = idx + 1;
+                    let id_gen = slicer_ir::LayerEntityIdGen::new();
+                    let entities: Vec<_> = paths
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, path)| {
+                            let role = path.role.clone();
+                            slicer_ir::PrintEntity {
+                                entity_id: id_gen.next(),
+                                path,
+                                role,
+                                region_key: slicer_ir::RegionKey {
+                                    global_layer_index: new_index,
+                                    object_id: String::new(),
+                                    region_id: 0,
+                                },
+                                topo_order: i as u32,
+                            }
+                        })
+                        .collect();
+                    let new_layer = LayerCollectionIR {
+                        schema_version: slicer_ir::SemVer {
+                            major: 1,
+                            minor: 0,
+                            patch: 0,
+                        },
+                        global_layer_index: new_index,
+                        z,
+                        ordered_entities: entities,
+                        tool_changes: Vec::new(),
+                        z_hops: Vec::new(),
+                        annotations: Vec::new(),
+                        retracts: vec![],
+                        travel_moves: vec![],
+                    };
+                    sdk_builder
+                        .insert_synthetic_layer_after(idx, new_layer)
+                        .unwrap_or_else(|e| {
+                            log::warn!("finalization: insert_synthetic_layer_after rejected: {e}")
+                        });
+                }
+                wit_host::FinalizationBuilderPush::SyntheticLayer { z, paths } => {
+                    // Legacy append-to-end: collected here and appended after apply_to().
+                    legacy_synthetic_layers.push((z, paths));
+                }
             }
+        }
+
+        // Run the full merge sequence (all 5 phases) once across the whole layer vec.
+        sdk_builder
+            .apply_to(layers)
+            .map_err(|msg| FinalizationError::FatalModule {
+                stage_id: stage_id.clone(),
+                module_id: module.module_id.clone(),
+                message: format!("finalization merge failed: {msg}"),
+            })?;
+
+        // Append legacy SyntheticLayer pushes to the end of the layer collection.
+        // These use the old WIT `insert-synthetic-layer(z, paths)` call which
+        // semantically appends; they run after apply_to() so InsertSyntheticLayerAfter
+        // ops (which can affect layers.len()) have already settled.
+        for (z, paths) in legacy_synthetic_layers {
+            let new_index = layers.len() as u32;
+            let id_gen = slicer_ir::LayerEntityIdGen::new();
+            let entities: Vec<_> = paths
+                .into_iter()
+                .enumerate()
+                .map(|(i, path)| {
+                    let role = path.role.clone();
+                    slicer_ir::PrintEntity {
+                        entity_id: id_gen.next(),
+                        path,
+                        role,
+                        region_key: slicer_ir::RegionKey {
+                            global_layer_index: new_index,
+                            object_id: String::new(),
+                            region_id: 0,
+                        },
+                        topo_order: i as u32,
+                    }
+                })
+                .collect();
+            layers.push(LayerCollectionIR {
+                schema_version: slicer_ir::SemVer {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
+                global_layer_index: new_index,
+                z,
+                ordered_entities: entities,
+                tool_changes: Vec::new(),
+                z_hops: Vec::new(),
+                annotations: Vec::new(),
+                retracts: vec![],
+                travel_moves: vec![],
+            });
         }
 
         Ok(FinalizationOutput::Success)

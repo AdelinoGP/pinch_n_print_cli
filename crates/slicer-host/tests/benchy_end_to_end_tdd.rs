@@ -2111,3 +2111,121 @@ fn benchy_gcode_contains_ironing_evidence() {
         preview(&gcode, 30)
     );
 }
+
+/// AC-6 (packet 40): benchy_top_surface_precedes_ironing
+///
+/// Given the Benchy STL sliced end-to-end with `ironing: true`, within every
+/// layer of produced G-code that contains BOTH a `;TYPE:Top surface` line AND
+/// a `;TYPE:Ironing` line, the `;TYPE:Top surface` line must appear BEFORE the
+/// `;TYPE:Ironing` line (i.e., top-surface paths are emitted before ironing
+/// paths within the same layer).
+///
+/// This test is expected to FAIL (assertion, not compile error) until Step 5
+/// of packet 40 migrates the finalization ordering in dispatch.rs so that
+/// top-surface entities precede ironing entities.
+#[test]
+fn benchy_top_surface_precedes_ironing() {
+    let model = fixture_stl();
+    let modules = core_modules_dir();
+    assert_path_exists(&model, "Benchy STL");
+    assert_path_exists(&modules, "core-modules directory");
+
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    // Same config as benchy_gcode_contains_ironing_evidence.
+    let config_path = tmp.path().join("ironing_enabled.json");
+    std::fs::write(
+        &config_path,
+        "{\n  \"ironing\": true,\n  \"ironing_flow\": 0.15,\n  \"ironing_speed\": 15.0,\n  \"ironing_spacing\": 0.2\n}\n",
+    )
+    .expect("write ironing config");
+
+    let out_path = tmp.path().join("ordering_check.gcode");
+    let result = run_slicer_host(&model, &modules, &out_path, Some(&config_path));
+
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        result.status.success(),
+        "AC-6 FAILED: slicer-host must succeed. Stderr:\n{stderr}"
+    );
+    assert!(out_path.exists(), "--output file must be written");
+
+    let gcode = std::fs::read_to_string(&out_path).expect("read output gcode");
+
+    // Split the G-code into per-layer chunks.  A new layer begins at any line
+    // that starts with ";LAYER_CHANGE" or ";LAYER:" (either convention).
+    let lines: Vec<&str> = gcode.lines().collect();
+    let mut layer_starts: Vec<usize> = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim();
+        if t.starts_with(";LAYER_CHANGE") || t.starts_with(";LAYER:") {
+            layer_starts.push(i);
+        }
+    }
+
+    // If no layer markers exist, treat the whole file as one layer so the
+    // ordering check still runs.
+    if layer_starts.is_empty() {
+        layer_starts.push(0);
+    }
+
+    let total_layers = layer_starts.len();
+
+    // Collect indices of layers that contain BOTH marker types.
+    let mut mixed_layers: Vec<usize> = Vec::new(); // layer index
+    let mut violation: Option<String> = None;
+
+    for (layer_idx, &start) in layer_starts.iter().enumerate() {
+        let end = if layer_idx + 1 < total_layers {
+            layer_starts[layer_idx + 1]
+        } else {
+            lines.len()
+        };
+
+        let layer_lines = &lines[start..end];
+
+        // Find first occurrence of each marker within this layer's lines.
+        let top_surface_pos = layer_lines
+            .iter()
+            .position(|l| l.contains(";TYPE:Top surface"));
+        let ironing_pos = layer_lines.iter().position(|l| l.trim() == ";TYPE:Ironing");
+
+        if let (Some(ts_pos), Some(ir_pos)) = (top_surface_pos, ironing_pos) {
+            mixed_layers.push(layer_idx);
+            if ts_pos >= ir_pos {
+                // Violation: ironing appears at or before top-surface.
+                violation = Some(format!(
+                    "AC-6 ORDERING VIOLATION in layer {} (G-code lines {}..{}): \
+                     `;TYPE:Top surface` at layer-relative line {} (absolute line {}), \
+                     `;TYPE:Ironing` at layer-relative line {} (absolute line {}). \
+                     Top surface MUST precede ironing within the same layer.",
+                    layer_idx,
+                    start,
+                    end,
+                    ts_pos,
+                    start + ts_pos,
+                    ir_pos,
+                    start + ir_pos,
+                ));
+                break; // Report first violation immediately.
+            }
+        }
+    }
+
+    // Guard: the test must not silently pass because the slicer produced no
+    // layer with both blocks.  If mixed_layers is empty the feature is absent.
+    assert!(
+        !mixed_layers.is_empty(),
+        "AC-6 FAILED: no layer in the Benchy G-code contains BOTH `;TYPE:Top surface` \
+         AND `;TYPE:Ironing`. The ironing pipeline may not be active or the G-code \
+         emitter is not emitting the expected type comments. \
+         Total layers detected: {}. \
+         G-code preview:\n{}",
+        total_layers,
+        preview(&gcode, 30)
+    );
+
+    if let Some(msg) = violation {
+        panic!("{}", msg);
+    }
+}
