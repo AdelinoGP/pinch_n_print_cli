@@ -808,8 +808,8 @@ impl LayerCollectionViewData {
 pub enum WitEntityMutation {
     /// Set the `speed_factor` on the matched entity's path.
     SetSpeedFactor(f32),
-    /// Set the `role` on the matched entity's path.
-    SetExtrusionRole(slicer_ir::ExtrusionRole),
+    /// Set the per-point `flow_factor` on the matched entity's path.
+    SetFlowFactor(f32),
 }
 
 /// Sort key selector (mirrors WIT `sort-key` enum).
@@ -989,7 +989,7 @@ pub mod finalization {
 
                 variant entity-mutation {
                     set-speed-factor(f32),
-                    set-extrusion-role(extrusion-role),
+                    set-flow-factor(f32),
                 }
 
                 enum sort-key {
@@ -4674,9 +4674,7 @@ mod finalization_impls {
             let data = self.table.get_mut(&typed)?;
             let wit_mutation = match mutation {
                 fm::EntityMutation::SetSpeedFactor(v) => WitEntityMutation::SetSpeedFactor(v),
-                fm::EntityMutation::SetExtrusionRole(r) => {
-                    WitEntityMutation::SetExtrusionRole(finalization_role_wit_to_ir(&r))
-                }
+                fm::EntityMutation::SetFlowFactor(v) => WitEntityMutation::SetFlowFactor(v),
             };
             data.pushes.push(FinalizationBuilderPush::ModifyEntity {
                 layer_index,

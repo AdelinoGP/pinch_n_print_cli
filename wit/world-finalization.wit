@@ -42,7 +42,7 @@ world finalization-module {
     // Serializable mutation descriptor — substitutes for closures across the WIT boundary.
     variant entity-mutation {
         set-speed-factor(f32),
-        set-extrusion-role(extrusion-role),
+        set-flow-factor(f32),
     }
 
     // Sort key selector — substitutes for key-function closures across the WIT boundary.
