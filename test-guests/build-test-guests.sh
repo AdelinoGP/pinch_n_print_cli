@@ -25,6 +25,7 @@ GUESTS=(
     "sdk-layer-infill-guest:sdk_layer_infill_guest"
     "sdk-layer-pathopt-guest:sdk_layer_pathopt_guest"
     "path-optimization-multi-read:path_optimization_multi_read_guest"
+    "finalization-mutation-roundtrip-guest:finalization_mutation_roundtrip_guest"
 )
 
 check_only=false
