@@ -1788,16 +1788,8 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 quote! { Ok(()) },
                 quote! { Ok(()) },
                 quote! { Ok(()) },
-                // Same disconnect as MeshSegmentation: the SDK
-                // `PaintSegmentationOutput` builder operates on an in-Rust
-                // tree of `(layer, semantic, object, paint-order)` tuples
-                // that doesn't map 1:1 back to the WIT `push-paint-region`
-                // calls. Canonical modules implement the WIT world
-                // directly in their `wit-guest/` subcrate (pattern shared
-                // with `layer-planner-default` and `mesh-segmentation`);
-                // the macro path is kept alive for `#[slicer_module]`
-                // authoring of PaintSegmentation-stage modules where
-                // lifecycle-only behavior is acceptable.
+                // Drain SDK PaintSegmentationOutput::regions() back through
+                // the WIT paint-segmentation-output::push-paint-region resource.
                 quote! {
                     let ir_config = __slicer_adapt_config(&config);
                     let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
@@ -1812,6 +1804,44 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_paint_segmentation(
                         &module, &sdk_objects, &mut sdk_output, &ir_config,
                     );
+                    for __slicer_region in sdk_output.regions() {
+                        let __slicer_wit_value = match &__slicer_region.value {
+                            ::slicer_sdk::prepass_builders::PaintValueInput::Flag(b) => PaintValueInput::Flag(*b),
+                            ::slicer_sdk::prepass_builders::PaintValueInput::Scalar(s) => PaintValueInput::Scalar(*s),
+                            ::slicer_sdk::prepass_builders::PaintValueInput::ToolIndex(t) => PaintValueInput::ToolIndex(*t),
+                            ::slicer_sdk::prepass_builders::PaintValueInput::Custom(c) => PaintValueInput::Custom(c.clone()),
+                        };
+                        let __slicer_wit_polygons: ::std::vec::Vec<ExPolygon> = __slicer_region.polygons.iter().map(|ep| {
+                            ExPolygon {
+                                contour: Polygon {
+                                    points: ep.contour.iter().map(|pt| Point2 {
+                                        x: (pt[0] * 10_000.0) as i64,
+                                        y: (pt[1] * 10_000.0) as i64,
+                                    }).collect(),
+                                },
+                                holes: ep.holes.iter().map(|hole| Polygon {
+                                    points: hole.iter().map(|pt| Point2 {
+                                        x: (pt[0] * 10_000.0) as i64,
+                                        y: (pt[1] * 10_000.0) as i64,
+                                    }).collect(),
+                                }).collect(),
+                            }
+                        }).collect();
+                        let __slicer_wit_entry = PaintRegionEntry {
+                            object_id: __slicer_region.object_id.clone(),
+                            layer_index: __slicer_region.layer_index as i32,
+                            semantic: __slicer_region.semantic.clone(),
+                            polygons: __slicer_wit_polygons,
+                            value: __slicer_wit_value,
+                        };
+                        if let Err(e) = _output.push_paint_region(&__slicer_wit_entry) {
+                            return Err(ModuleError {
+                                code: 10,
+                                message: e,
+                                fatal: true,
+                            });
+                        }
+                    }
                     match out {
                         Ok(()) => Ok(()),
                         Err(e) => Err(__slicer_error_out(e)),
