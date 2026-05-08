@@ -945,8 +945,31 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                 z-hops: func() -> list<z-hop-view>;
             }
 
+            // Serializable mutation descriptor — substitutes for closures across the WIT boundary.
+            variant entity-mutation {
+                set-speed-factor(f32),
+                set-extrusion-role(extrusion-role),
+            }
+
+            // Sort key selector — substitutes for key-function closures across the WIT boundary.
+            enum sort-key {
+                by-priority-and-entity-id,
+                by-entity-id,
+                by-object-id-then-priority,
+            }
+
+            // Minimal descriptor for an inserted synthetic layer.
+            record synthetic-layer-data {
+                z: f32,
+                paths: list<extrusion-path-3d>,
+            }
+
             resource finalization-output-builder {
                 push-entity-to-layer: func(layer-index: layer-idx, path: extrusion-path-3d, region-key: region-key) -> result<_, string>;
+                push-entity-with-priority: func(layer-index: layer-idx, path: extrusion-path-3d, region-key: region-key, priority: u32) -> result<_, string>;
+                modify-entity: func(layer-index: u32, entity-id: u64, mutation: entity-mutation) -> result<_, string>;
+                sort-layer-by: func(layer-index: u32, key: sort-key) -> result<_, string>;
+                insert-synthetic-layer-after: func(idx: u32, layer-data: synthetic-layer-data) -> result<_, string>;
                 insert-synthetic-layer: func(z: f32, paths: list<extrusion-path-3d>) -> result<_, string>;
             }
 
@@ -1172,15 +1195,23 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                     // §finalization-output-builder). Order is
                     // preserved: entity pushes first in SDK-emission
                     // order, then synthetic-layer inserts.
-                    for (layer_index, path, region_key) in sdk_output.entity_pushes() {
+                    // Drain ALL pushes via priority_pushes() so that explicit priorities
+                    // (e.g. top-surface-ironing's priority=6000) are forwarded across the
+                    // WIT boundary. entity_pushes() is NOT iterated here to avoid
+                    // double-replay (all pushes, including legacy priority=0 ones, appear
+                    // in priority_pushes()).
+                    for (layer_index, path, region_key, priority) in sdk_output.priority_pushes() {
                         let wit_path = __slicer_path_ir_to_wit(path);
                         let wit_region_key = RegionKey {
                             layer_index: region_key.global_layer_index,
                             object_id: region_key.object_id.clone(),
                             region_id: region_key.region_id.to_string(),
                         };
-                        let _ = output.push_entity_to_layer(*layer_index, &wit_path, &wit_region_key);
+                        let _ = output.push_entity_with_priority(layer_index, &wit_path, &wit_region_key, priority);
                     }
+                    // TODO(packet-40 follow-up): replay merge_ops across WIT for modules
+                    // that record modify_entity / sort_layer_by / insert_synthetic_layer_after.
+                    // apply_to() handles empty merge_ops fine so this is safe to defer.
                     for (z, paths) in sdk_output.synthetic_layers() {
                         let wit_paths: ::std::vec::Vec<ExtrusionPath3d> =
                             paths.iter().map(__slicer_path_ir_to_wit).collect();

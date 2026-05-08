@@ -801,6 +801,28 @@ impl LayerCollectionViewData {
     }
 }
 
+/// Serializable entity mutation (mirrors WIT `entity-mutation` variant).
+/// Used to carry guest-side mutation requests across the WIT boundary; the
+/// host translates these into closures before forwarding to the SDK builder.
+#[derive(Clone, Debug)]
+pub enum WitEntityMutation {
+    /// Set the `speed_factor` on the matched entity's path.
+    SetSpeedFactor(f32),
+    /// Set the `role` on the matched entity's path.
+    SetExtrusionRole(slicer_ir::ExtrusionRole),
+}
+
+/// Sort key selector (mirrors WIT `sort-key` enum).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WitSortKey {
+    /// Sort by (priority, entity_id) ascending — mirrors AC-3 expected ordering.
+    ByPriorityAndEntityId,
+    /// Sort by entity_id ascending.
+    ByEntityId,
+    /// Sort by (object_id, priority) — forward-looking for SequentialPrintOrder.
+    ByObjectIdThenPriority,
+}
+
 /// Captured `finalization-output-builder` side effect emitted by a
 /// guest during `run-finalization`. Stored by resource rep so the
 /// post-call drain in `FinalizationStageRunner` can apply them.
@@ -814,6 +836,42 @@ pub enum FinalizationBuilderPush {
         path: slicer_ir::ExtrusionPath3D,
         /// Region key for ordering / provenance.
         region_key: slicer_ir::RegionKey,
+    },
+    /// Guest requested `push-entity-with-priority(layer_index, path, region_key, priority)`.
+    EntityToLayerWithPriority {
+        /// Layer index the entity was pushed to.
+        layer_index: u32,
+        /// Extrusion path content.
+        path: slicer_ir::ExtrusionPath3D,
+        /// Region key for ordering / provenance.
+        region_key: slicer_ir::RegionKey,
+        /// Merge priority (lower = earlier in sorted output).
+        priority: u32,
+    },
+    /// Guest requested `modify-entity(layer_index, entity_id, mutation)`.
+    ModifyEntity {
+        /// Layer index containing the entity to mutate.
+        layer_index: u32,
+        /// Stable entity identifier of the target entity.
+        entity_id: u64,
+        /// Serializable mutation to apply.
+        mutation: WitEntityMutation,
+    },
+    /// Guest requested `sort-layer-by(layer_index, key)`.
+    SortLayerBy {
+        /// Layer index to sort.
+        layer_index: u32,
+        /// Key selector to use for the sort.
+        key: WitSortKey,
+    },
+    /// Guest requested `insert-synthetic-layer-after(idx, layer_data)`.
+    InsertSyntheticLayerAfter {
+        /// Insert after this position in the outer `Vec<LayerCollectionIR>`.
+        idx: u32,
+        /// Z height of the new synthetic layer.
+        z: f32,
+        /// Extrusion paths to place into the new layer.
+        paths: Vec<slicer_ir::ExtrusionPath3D>,
     },
     /// Guest requested `insert-synthetic-layer(z, paths)`.
     SyntheticLayer {
@@ -929,11 +987,46 @@ pub mod finalization {
                     z-hops: func() -> list<z-hop-view>;
                 }
 
+                variant entity-mutation {
+                    set-speed-factor(f32),
+                    set-extrusion-role(extrusion-role),
+                }
+
+                enum sort-key {
+                    by-priority-and-entity-id,
+                    by-entity-id,
+                    by-object-id-then-priority,
+                }
+
+                record synthetic-layer-data {
+                    z: f32,
+                    paths: list<extrusion-path3d>,
+                }
+
                 resource finalization-output-builder {
                     push-entity-to-layer: func(
                         layer-index: layer-idx,
                         path: extrusion-path3d,
                         region-key: region-key,
+                    ) -> result<_, string>;
+                    push-entity-with-priority: func(
+                        layer-index: layer-idx,
+                        path: extrusion-path3d,
+                        region-key: region-key,
+                        priority: u32,
+                    ) -> result<_, string>;
+                    modify-entity: func(
+                        layer-index: u32,
+                        entity-id: u64,
+                        mutation: entity-mutation,
+                    ) -> result<_, string>;
+                    sort-layer-by: func(
+                        layer-index: u32,
+                        key: sort-key,
+                    ) -> result<_, string>;
+                    insert-synthetic-layer-after: func(
+                        idx: u32,
+                        layer-data: synthetic-layer-data,
                     ) -> result<_, string>;
                     insert-synthetic-layer: func(
                         z: f32,
@@ -4535,6 +4628,100 @@ mod finalization_impls {
                 path: finalization_path_wit_to_ir(&path),
                 region_key: ir_region_key,
             });
+            Ok(Ok(()))
+        }
+        fn push_entity_with_priority(
+            &mut self,
+            self_: Resource<fm::FinalizationOutputBuilder>,
+            layer_index: u32,
+            path: fgeo::ExtrusionPath3d,
+            region_key: fm::RegionKey,
+            priority: u32,
+        ) -> wasmtime::Result<Result<(), String>> {
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get_mut(&typed)?;
+            let region_id = match super::parse_canonical_region_id(&region_key.region_id) {
+                Ok(region_id) => region_id,
+                Err(reason) => {
+                    return Ok(Err(format!(
+                        "finalization-output-builder: region '{}'/'{}' has invalid region-id: {reason}",
+                        region_key.object_id, region_key.region_id
+                    )));
+                }
+            };
+            let ir_region_key = slicer_ir::RegionKey {
+                global_layer_index: region_key.layer_index,
+                object_id: region_key.object_id,
+                region_id,
+            };
+            data.pushes
+                .push(FinalizationBuilderPush::EntityToLayerWithPriority {
+                    layer_index,
+                    path: finalization_path_wit_to_ir(&path),
+                    region_key: ir_region_key,
+                    priority,
+                });
+            Ok(Ok(()))
+        }
+        fn modify_entity(
+            &mut self,
+            self_: Resource<fm::FinalizationOutputBuilder>,
+            layer_index: u32,
+            entity_id: u64,
+            mutation: fm::EntityMutation,
+        ) -> wasmtime::Result<Result<(), String>> {
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get_mut(&typed)?;
+            let wit_mutation = match mutation {
+                fm::EntityMutation::SetSpeedFactor(v) => WitEntityMutation::SetSpeedFactor(v),
+                fm::EntityMutation::SetExtrusionRole(r) => {
+                    WitEntityMutation::SetExtrusionRole(finalization_role_wit_to_ir(&r))
+                }
+            };
+            data.pushes.push(FinalizationBuilderPush::ModifyEntity {
+                layer_index,
+                entity_id,
+                mutation: wit_mutation,
+            });
+            Ok(Ok(()))
+        }
+        fn sort_layer_by(
+            &mut self,
+            self_: Resource<fm::FinalizationOutputBuilder>,
+            layer_index: u32,
+            key: fm::SortKey,
+        ) -> wasmtime::Result<Result<(), String>> {
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get_mut(&typed)?;
+            let wit_key = match key {
+                fm::SortKey::ByPriorityAndEntityId => WitSortKey::ByPriorityAndEntityId,
+                fm::SortKey::ByEntityId => WitSortKey::ByEntityId,
+                fm::SortKey::ByObjectIdThenPriority => WitSortKey::ByObjectIdThenPriority,
+            };
+            data.pushes.push(FinalizationBuilderPush::SortLayerBy {
+                layer_index,
+                key: wit_key,
+            });
+            Ok(Ok(()))
+        }
+        fn insert_synthetic_layer_after(
+            &mut self,
+            self_: Resource<fm::FinalizationOutputBuilder>,
+            idx: u32,
+            layer_data: fm::SyntheticLayerData,
+        ) -> wasmtime::Result<Result<(), String>> {
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get_mut(&typed)?;
+            data.pushes
+                .push(FinalizationBuilderPush::InsertSyntheticLayerAfter {
+                    idx,
+                    z: layer_data.z,
+                    paths: layer_data
+                        .paths
+                        .iter()
+                        .map(finalization_path_wit_to_ir)
+                        .collect(),
+                });
             Ok(Ok(()))
         }
         fn insert_synthetic_layer(

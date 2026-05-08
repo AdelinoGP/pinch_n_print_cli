@@ -39,6 +39,25 @@ world finalization-module {
         z-hops: func() -> list<z-hop-view>;
     }
 
+    // Serializable mutation descriptor — substitutes for closures across the WIT boundary.
+    variant entity-mutation {
+        set-speed-factor(f32),
+        set-extrusion-role(extrusion-role),
+    }
+
+    // Sort key selector — substitutes for key-function closures across the WIT boundary.
+    enum sort-key {
+        by-priority-and-entity-id,
+        by-entity-id,
+        by-object-id-then-priority,
+    }
+
+    // Minimal descriptor for an inserted synthetic layer.
+    record synthetic-layer-data {
+        z: f32,
+        paths: list<extrusion-path-3d>,
+    }
+
     // Output builder — may append to existing layers or insert synthetic ones.
     resource finalization-output-builder {
         // Append extrusion paths to an existing layer.
@@ -46,6 +65,33 @@ world finalization-module {
             layer-index: layer-idx,
             path: extrusion-path-3d,
             region-key: region-key,
+        ) -> result<_, string>;
+
+        // Append extrusion paths with an explicit merge priority (lower = earlier).
+        push-entity-with-priority: func(
+            layer-index: layer-idx,
+            path: extrusion-path-3d,
+            region-key: region-key,
+            priority: u32,
+        ) -> result<_, string>;
+
+        // Apply a serializable mutation to a single entity identified by entity-id.
+        modify-entity: func(
+            layer-index: u32,
+            entity-id: u64,
+            mutation: entity-mutation,
+        ) -> result<_, string>;
+
+        // Sort all entities in a layer by the given key selector.
+        sort-layer-by: func(
+            layer-index: u32,
+            key: sort-key,
+        ) -> result<_, string>;
+
+        // Insert a fully-formed synthetic layer immediately after position idx.
+        insert-synthetic-layer-after: func(
+            idx: u32,
+            layer-data: synthetic-layer-data,
         ) -> result<_, string>;
 
         // Insert a new synthetic layer at an arbitrary Z.
