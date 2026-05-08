@@ -17,6 +17,7 @@ use wasmtime::component::Resource;
 use slicer_ir::{
     GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, RetractMode, SeamPosition, StageId,
 };
+use slicer_sdk::traits::{EntityMutation, SortKey, SyntheticLayerData};
 
 use crate::wit_host::{self, ConfigViewData, HostExecutionContext, PaintRegionLayerData};
 use crate::{
@@ -2880,22 +2881,16 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                     entity_id,
                     mutation,
                 } => {
-                    let op: Box<dyn FnOnce(&mut slicer_ir::PrintEntity) + 'static> = match mutation
-                    {
+                    let sdk_mutation = match mutation {
                         wit_host::WitEntityMutation::SetSpeedFactor(v) => {
-                            Box::new(move |e: &mut slicer_ir::PrintEntity| {
-                                e.path.speed_factor = v;
-                            })
+                            EntityMutation::SetSpeedFactor(v)
                         }
-                        wit_host::WitEntityMutation::SetExtrusionRole(role) => {
-                            Box::new(move |e: &mut slicer_ir::PrintEntity| {
-                                e.path.role = role.clone();
-                                e.role = role;
-                            })
+                        wit_host::WitEntityMutation::SetFlowFactor(v) => {
+                            EntityMutation::SetFlowFactor(v)
                         }
                     };
                     sdk_builder
-                        .modify_entity(layer_index, entity_id, op)
+                        .modify_entity(layer_index, entity_id, sdk_mutation)
                         .unwrap_or_else(|e| {
                             log::warn!("finalization: modify_entity rejected: {e}")
                         });
@@ -2903,18 +2898,16 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                 wit_host::FinalizationBuilderPush::SortLayerBy { layer_index, key } => match key {
                     wit_host::WitSortKey::ByPriorityAndEntityId => {
                         sdk_builder
-                                .sort_layer_by(layer_index, |e: &slicer_ir::PrintEntity| {
-                                    (e.role.default_priority(), e.entity_id)
-                                })
-                                .unwrap_or_else(|err| {
-                                    log::warn!(
-                                        "finalization: sort_layer_by(ByPriorityAndEntityId) rejected: {err}"
-                                    )
-                                });
+                            .sort_layer_by(layer_index, SortKey::ByPriorityAndEntityId)
+                            .unwrap_or_else(|err| {
+                                log::warn!(
+                                    "finalization: sort_layer_by(ByPriorityAndEntityId) rejected: {err}"
+                                )
+                            });
                     }
                     wit_host::WitSortKey::ByEntityId => {
                         sdk_builder
-                            .sort_layer_by(layer_index, |e: &slicer_ir::PrintEntity| e.entity_id)
+                            .sort_layer_by(layer_index, SortKey::ByEntityId)
                             .unwrap_or_else(|err| {
                                 log::warn!(
                                     "finalization: sort_layer_by(ByEntityId) rejected: {err}"
@@ -2923,57 +2916,17 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                     }
                     wit_host::WitSortKey::ByObjectIdThenPriority => {
                         sdk_builder
-                                .sort_layer_by(layer_index, |e: &slicer_ir::PrintEntity| {
-                                    (
-                                        e.region_key.object_id.clone(),
-                                        e.role.default_priority(),
-                                    )
-                                })
-                                .unwrap_or_else(|err| {
-                                    log::warn!(
-                                        "finalization: sort_layer_by(ByObjectIdThenPriority) rejected: {err}"
-                                    )
-                                });
+                            .sort_layer_by(layer_index, SortKey::ByObjectIdThenPriority)
+                            .unwrap_or_else(|err| {
+                                log::warn!(
+                                    "finalization: sort_layer_by(ByObjectIdThenPriority) rejected: {err}"
+                                )
+                            });
                     }
                 },
                 wit_host::FinalizationBuilderPush::InsertSyntheticLayerAfter { idx, z, paths } => {
-                    let new_index = idx + 1;
-                    let id_gen = slicer_ir::LayerEntityIdGen::new();
-                    let entities: Vec<_> = paths
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, path)| {
-                            let role = path.role.clone();
-                            slicer_ir::PrintEntity {
-                                entity_id: id_gen.next(),
-                                path,
-                                role,
-                                region_key: slicer_ir::RegionKey {
-                                    global_layer_index: new_index,
-                                    object_id: String::new(),
-                                    region_id: 0,
-                                },
-                                topo_order: i as u32,
-                            }
-                        })
-                        .collect();
-                    let new_layer = LayerCollectionIR {
-                        schema_version: slicer_ir::SemVer {
-                            major: 1,
-                            minor: 0,
-                            patch: 0,
-                        },
-                        global_layer_index: new_index,
-                        z,
-                        ordered_entities: entities,
-                        tool_changes: Vec::new(),
-                        z_hops: Vec::new(),
-                        annotations: Vec::new(),
-                        retracts: vec![],
-                        travel_moves: vec![],
-                    };
                     sdk_builder
-                        .insert_synthetic_layer_after(idx, new_layer)
+                        .insert_synthetic_layer_after(idx, SyntheticLayerData { z, paths })
                         .unwrap_or_else(|e| {
                             log::warn!("finalization: insert_synthetic_layer_after rejected: {e}")
                         });
