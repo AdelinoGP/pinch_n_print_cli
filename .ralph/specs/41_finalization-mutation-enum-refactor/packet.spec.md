@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: finalization-mutation-enum-refactor
 task_ids:
   - TASK-172
