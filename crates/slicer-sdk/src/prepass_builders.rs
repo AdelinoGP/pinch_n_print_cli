@@ -267,6 +267,41 @@ impl std::fmt::Debug for MeshSegmentationOutput {
     }
 }
 
+/// A 2-D polygon with an outer contour and optional holes, expressed in mm (f64).
+///
+/// This is the SDK-side view type bridging WIT `expolygon` (which uses i64 100 nm units
+/// internally) to f64 mm values for module authors. Cannot re-export `slicer_ir::ExPolygon`
+/// directly because of the unit mismatch.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExPolygonView {
+    /// Outer contour vertices as `[x_mm, y_mm]` pairs.
+    pub contour: Vec<[f64; 2]>,
+    /// Zero or more hole contours, each as `[x_mm, y_mm]` pairs.
+    pub holes: Vec<Vec<[f64; 2]>>,
+}
+
+impl ExPolygonView {
+    /// Construct an `ExPolygonView` from a contour and a list of holes.
+    pub fn new(contour: Vec<[f64; 2]>, holes: Vec<Vec<[f64; 2]>>) -> Self {
+        Self { contour, holes }
+    }
+}
+
+/// Typed paint value carried by a `PaintRegionEntry`.
+///
+/// Mirrors the WIT `paint-value-input` variant being added in Step 4.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PaintValueInput {
+    /// Boolean flag (e.g. on/off for support enforcer).
+    Flag(bool),
+    /// Floating-point scalar (e.g. flow multiplier).
+    Scalar(f32),
+    /// Zero-based tool/extruder index.
+    ToolIndex(u32),
+    /// Arbitrary string payload for extension semantics.
+    Custom(String),
+}
+
 /// A single paint region entry produced by paint segmentation.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PaintRegionEntry {
@@ -276,12 +311,12 @@ pub struct PaintRegionEntry {
     pub semantic: String,
     /// Object this region belongs to.
     pub object_id: String,
-    /// The paint value for this region.
-    pub value: PaintValueView,
+    /// Typed paint value for this region.
+    pub value: PaintValueInput,
     /// Order of the paint layer (used for precedence).
     pub paint_order: u64,
-    /// 2D projected contour points (scaled i64 as f64).
-    pub contour_points: Vec<[f64; 2]>,
+    /// One or more projected polygons (contour + holes) for this region.
+    pub polygons: Vec<ExPolygonView>,
 }
 
 /// Output builder for paint segmentation stage.
@@ -305,9 +340,9 @@ impl PaintSegmentationOutput {
         layer_index: u32,
         semantic: String,
         object_id: String,
-        value: PaintValueView,
         paint_order: u64,
-        contour_points: Vec<[f64; 2]>,
+        value: PaintValueInput,
+        polygons: Vec<ExPolygonView>,
     ) {
         self.regions.push(PaintRegionEntry {
             layer_index,
@@ -315,7 +350,7 @@ impl PaintSegmentationOutput {
             object_id,
             value,
             paint_order,
-            contour_points,
+            polygons,
         });
     }
 

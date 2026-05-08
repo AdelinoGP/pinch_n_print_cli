@@ -1316,12 +1316,21 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
 
             use geometry.{ex-polygon};
 
+            type layer-idx = s32;
+
+            variant paint-value-input {
+                flag(bool),
+                scalar(f32),
+                tool-index(u32),
+                custom(string),
+            }
+
             record paint-region-entry {
                 object-id: object-id,
-                layer-index: u32,
+                layer-index: layer-idx,
                 semantic: string,
                 polygons: list<ex-polygon>,
-                value: string,
+                value: paint-value-input,
             }
             resource paint-segmentation-output {
                 push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
@@ -2408,6 +2417,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     ::slicer_ir::PaintValue::Flag(b) => WitPaintValue::Flag(*b),
                     ::slicer_ir::PaintValue::Scalar(f) => WitPaintValue::Scalar(*f),
                     ::slicer_ir::PaintValue::ToolIndex(i) => WitPaintValue::ToolIndex(*i),
+                    ::slicer_ir::PaintValue::Custom(_) => unreachable!("PaintValue::Custom rides on the paint-region transport (paint-value-input variant); it cannot appear in the boundary-paint read path"),
                 }
             }
             fn __slicer_boundary_paint_to_ir(
