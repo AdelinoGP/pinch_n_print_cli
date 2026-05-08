@@ -948,7 +948,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
             // Serializable mutation descriptor — substitutes for closures across the WIT boundary.
             variant entity-mutation {
                 set-speed-factor(f32),
-                set-extrusion-role(extrusion-role),
+                set-flow-factor(f32),
             }
 
             // Sort key selector — substitutes for key-function closures across the WIT boundary.
@@ -1209,9 +1209,31 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                         };
                         let _ = output.push_entity_with_priority(layer_index, &wit_path, &wit_region_key, priority);
                     }
-                    // TODO(packet-40 follow-up): replay merge_ops across WIT for modules
-                    // that record modify_entity / sort_layer_by / insert_synthetic_layer_after.
-                    // apply_to() handles empty merge_ops fine so this is safe to defer.
+                    for op in sdk_output.merge_ops() {
+                        match op {
+                            ::slicer_sdk::traits::MergeOp::ModifyEntity { layer, entity_id, mutation } => {
+                                let wit_mutation = match mutation {
+                                    ::slicer_sdk::traits::EntityMutation::SetSpeedFactor(v) => EntityMutation::SetSpeedFactor(*v),
+                                    ::slicer_sdk::traits::EntityMutation::SetFlowFactor(v) => EntityMutation::SetFlowFactor(*v),
+                                };
+                                let _ = output.modify_entity(*layer, *entity_id, wit_mutation);
+                            }
+                            ::slicer_sdk::traits::MergeOp::SortLayer { layer, key } => {
+                                let wit_key = match key {
+                                    ::slicer_sdk::traits::SortKey::ByPriorityAndEntityId => SortKey::ByPriorityAndEntityId,
+                                    ::slicer_sdk::traits::SortKey::ByEntityId => SortKey::ByEntityId,
+                                    ::slicer_sdk::traits::SortKey::ByObjectIdThenPriority => SortKey::ByObjectIdThenPriority,
+                                };
+                                let _ = output.sort_layer_by(*layer, wit_key);
+                            }
+                            ::slicer_sdk::traits::MergeOp::InsertSynthLayer { idx, data } => {
+                                let wit_paths: ::std::vec::Vec<ExtrusionPath3d> =
+                                    data.paths.iter().map(__slicer_path_ir_to_wit).collect();
+                                let wit_data = SyntheticLayerData { z: data.z, paths: wit_paths };
+                                let _ = output.insert_synthetic_layer_after(*idx, &wit_data);
+                            }
+                        }
+                    }
                     for (z, paths) in sdk_output.synthetic_layers() {
                         let wit_paths: ::std::vec::Vec<ExtrusionPath3d> =
                             paths.iter().map(__slicer_path_ir_to_wit).collect();
