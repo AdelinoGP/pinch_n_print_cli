@@ -9,8 +9,8 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, LayerEntityIdGen,
-    Point3WithWidth, PrintEntity, RegionKey,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
+    PrintEntity, RegionKey,
 };
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
@@ -109,23 +109,37 @@ impl WipeTower {
 
             let global_layer_index = layers[layer_idx].global_layer_index;
             for tc in &tool_changes {
-                let entities =
-                    self.generate_purge_entities(z, layer_height, global_layer_index, tc);
-                layers[layer_idx].ordered_entities.extend(entities);
+                let pairs = self.generate_purge_paths(z, layer_height, global_layer_index, tc);
+                for (path, region_key) in pairs {
+                    let role = path.role.clone();
+                    // TODO(packet-41/DEV-039): retire this legacy `process()` path;
+                    // live path is `run_finalization` which routes through
+                    // `push_entity_with_priority(..., WipeTower.default_priority())`.
+                    layers[layer_idx].ordered_entities.push(PrintEntity {
+                        entity_id: 0,
+                        path,
+                        role,
+                        region_key,
+                        topo_order: 0,
+                    });
+                }
             }
         }
 
         Ok(())
     }
 
-    /// Generate purge entities for a single tool change.
-    fn generate_purge_entities(
+    /// Generate purge paths for a single tool change.
+    ///
+    /// Returns `(ExtrusionPath3D, RegionKey)` pairs without assigning entity IDs;
+    /// callers are responsible for stamping IDs or routing through the builder API.
+    fn generate_purge_paths(
         &self,
         z: f32,
         layer_height: f32,
         global_layer_index: u32,
         _tc: &slicer_ir::ToolChange,
-    ) -> Vec<PrintEntity> {
+    ) -> Vec<(ExtrusionPath3D, RegionKey)> {
         // purge_depth = purge_volume / (line_width * layer_height * tower_width)
         let cross_section = self.line_width * layer_height * self.tower_width;
         if cross_section <= 0.0 {
@@ -140,8 +154,7 @@ impl WipeTower {
         let y_min = self.tower_y;
         let y_max = self.tower_y + purge_depth;
 
-        let mut entities = Vec::new();
-        let id_gen = LayerEntityIdGen::new();
+        let mut pairs = Vec::new();
         let mut y = y_min + self.line_width / 2.0;
         let mut forward = true;
 
@@ -179,19 +192,13 @@ impl WipeTower {
                 region_id: 0,
             };
 
-            entities.push(PrintEntity {
-                entity_id: id_gen.next(),
-                path,
-                role: ExtrusionRole::WipeTower,
-                region_key,
-                topo_order: 0,
-            });
+            pairs.push((path, region_key));
 
             forward = !forward;
             y += self.line_width;
         }
 
-        entities
+        pairs
     }
 
     /// Whether the wipe tower is enabled.
@@ -268,10 +275,15 @@ impl FinalizationModule for WipeTower {
 
             let tool_changes = view.tool_changes().to_vec();
             for tc in &tool_changes {
-                let entities = self.generate_purge_entities(z, layer_height, layer_index, tc);
-                for entity in entities {
+                let pairs = self.generate_purge_paths(z, layer_height, layer_index, tc);
+                for (path, region_key) in pairs {
                     output
-                        .push_entity_to_layer(layer_index, entity.path, entity.region_key)
+                        .push_entity_with_priority(
+                            layer_index,
+                            path,
+                            region_key,
+                            ExtrusionRole::WipeTower.default_priority(),
+                        )
                         .map_err(|e| ModuleError::fatal(1, e))?;
                 }
             }

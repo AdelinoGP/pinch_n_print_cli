@@ -310,7 +310,12 @@ impl FinalizationModule for TopSurfaceIroning {
                     region_id,
                 };
                 output
-                    .push_entity_to_layer(layer_index, path, region_key)
+                    .push_entity_with_priority(
+                        layer_index,
+                        path,
+                        region_key,
+                        ExtrusionRole::Ironing.default_priority(),
+                    )
                     .map_err(|e| ModuleError::fatal(3, e))?;
             }
         }

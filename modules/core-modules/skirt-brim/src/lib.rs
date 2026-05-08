@@ -8,8 +8,8 @@
 #![warn(unused_imports)]
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, LayerEntityIdGen,
-    Point3WithWidth, PrintEntity, RegionKey,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
+    PrintEntity, RegionKey,
 };
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
@@ -89,10 +89,24 @@ impl SkirtBrim {
 
         // Generate skirt on first N layers
         for layer in layers.iter_mut().take(max_layer) {
-            let skirt_entities =
+            let skirt_pairs =
                 self.generate_skirt_entities(&bbox, layer.z, layer.global_layer_index);
-            // Prepend skirt entities
-            let mut new_entities = skirt_entities;
+            // Prepend skirt entities (entity_id=0 sentinel; process() is test-only)
+            // TODO(packet-41/DEV-039): retire this legacy `process()` path; live
+            // path is `run_finalization` which routes through the builder API.
+            let mut new_entities: Vec<PrintEntity> = skirt_pairs
+                .into_iter()
+                .map(|(path, region_key)| {
+                    let role = path.role.clone();
+                    PrintEntity {
+                        entity_id: 0,
+                        path,
+                        role,
+                        region_key,
+                        topo_order: 0,
+                    }
+                })
+                .collect();
             new_entities.append(&mut layer.ordered_entities);
             layer.ordered_entities = new_entities;
         }
@@ -101,9 +115,23 @@ impl SkirtBrim {
         if self.brim_width > 0.0 {
             let z = layers[0].z;
             let global_layer_index = layers[0].global_layer_index;
-            let brim_entities = self.generate_brim_entities(&bbox, z, global_layer_index);
+            let brim_pairs = self.generate_brim_entities(&bbox, z, global_layer_index);
             // Prepend brim entities (before skirt which is already prepended)
-            let mut new_entities = brim_entities;
+            // TODO(packet-41/DEV-039): retire this legacy `process()` path; live
+            // path is `run_finalization` which routes through the builder API.
+            let mut new_entities: Vec<PrintEntity> = brim_pairs
+                .into_iter()
+                .map(|(path, region_key)| {
+                    let role = path.role.clone();
+                    PrintEntity {
+                        entity_id: 0,
+                        path,
+                        role,
+                        region_key,
+                        topo_order: 0,
+                    }
+                })
+                .collect();
             new_entities.append(&mut layers[0].ordered_entities);
             layers[0].ordered_entities = new_entities;
         }
@@ -141,15 +169,14 @@ impl SkirtBrim {
         bbox
     }
 
-    /// Generate skirt loop entities around the bounding box.
+    /// Generate skirt loop path-region pairs around the bounding box.
     fn generate_skirt_entities(
         &self,
         bbox: &BBox2D,
         z: f32,
         global_layer_index: u32,
-    ) -> Vec<PrintEntity> {
-        let mut entities = Vec::new();
-        let id_gen = LayerEntityIdGen::new();
+    ) -> Vec<(ExtrusionPath3D, RegionKey)> {
+        let mut pairs = Vec::new();
 
         for i in 0..self.skirt_loops {
             let offset = self.skirt_distance + (i as f32) * self.line_width;
@@ -166,28 +193,21 @@ impl SkirtBrim {
                 region_id: 0,
             };
 
-            entities.push(PrintEntity {
-                entity_id: id_gen.next(),
-                path,
-                role: ExtrusionRole::Skirt,
-                region_key,
-                topo_order: 0,
-            });
+            pairs.push((path, region_key));
         }
 
-        entities
+        pairs
     }
 
-    /// Generate brim entities around the bounding box (layer 0 only).
+    /// Generate brim path-region pairs around the bounding box (layer 0 only).
     fn generate_brim_entities(
         &self,
         bbox: &BBox2D,
         z: f32,
         global_layer_index: u32,
-    ) -> Vec<PrintEntity> {
+    ) -> Vec<(ExtrusionPath3D, RegionKey)> {
         let num_loops = (self.brim_width / self.line_width).ceil() as u32;
-        let mut entities = Vec::new();
-        let id_gen = LayerEntityIdGen::new();
+        let mut pairs = Vec::new();
 
         for i in 0..num_loops {
             // Brim loops go from outermost inward toward the object
@@ -209,16 +229,10 @@ impl SkirtBrim {
                 region_id: 0,
             };
 
-            entities.push(PrintEntity {
-                entity_id: id_gen.next(),
-                path,
-                role: ExtrusionRole::Skirt,
-                region_key,
-                topo_order: 0,
-            });
+            pairs.push((path, region_key));
         }
 
-        entities
+        pairs
     }
 
     /// Create a closed rectangular extrusion loop.
@@ -347,9 +361,9 @@ impl FinalizationModule for SkirtBrim {
         for view in layers.iter().take(max_layer) {
             let layer_index = view.layer_index();
             let z = view.z();
-            for entity in self.generate_skirt_entities(&bbox, z, layer_index) {
+            for (path, region_key) in self.generate_skirt_entities(&bbox, z, layer_index) {
                 output
-                    .push_entity_to_layer(layer_index, entity.path, entity.region_key)
+                    .push_entity_to_layer(layer_index, path, region_key)
                     .map_err(|e| ModuleError::fatal(1, e))?;
             }
         }
@@ -359,9 +373,9 @@ impl FinalizationModule for SkirtBrim {
             if let Some(view) = layers.first() {
                 let layer_index = view.layer_index();
                 let z = view.z();
-                for entity in self.generate_brim_entities(&bbox, z, layer_index) {
+                for (path, region_key) in self.generate_brim_entities(&bbox, z, layer_index) {
                     output
-                        .push_entity_to_layer(layer_index, entity.path, entity.region_key)
+                        .push_entity_to_layer(layer_index, path, region_key)
                         .map_err(|e| ModuleError::fatal(1, e))?;
                 }
             }
