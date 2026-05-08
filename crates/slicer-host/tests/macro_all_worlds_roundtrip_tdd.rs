@@ -804,6 +804,7 @@ fn wall_feature_flags_custom_payload_roundtrip() {
                         slicer_ir::PaintValue::Flag(b) => WitPaintValue::Flag(*b),
                         slicer_ir::PaintValue::Scalar(s) => WitPaintValue::Scalar(*s),
                         slicer_ir::PaintValue::ToolIndex(t) => WitPaintValue::ToolIndex(*t),
+                        slicer_ir::PaintValue::Custom(_) => WitPaintValue::ToolIndex(0),
                     };
                     (k.clone(), wit_v)
                 })
@@ -869,6 +870,7 @@ fn wall_feature_flags_custom_multiple_entries_roundtrip() {
                         slicer_ir::PaintValue::Flag(b) => WitPaintValue::Flag(*b),
                         slicer_ir::PaintValue::Scalar(s) => WitPaintValue::Scalar(*s),
                         slicer_ir::PaintValue::ToolIndex(t) => WitPaintValue::ToolIndex(*t),
+                        slicer_ir::PaintValue::Custom(_) => WitPaintValue::ToolIndex(0),
                     };
                     (k.clone(), wit_v)
                 })

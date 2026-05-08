@@ -5376,7 +5376,7 @@ fn paint_segmentation_output_rejects_invalid_entries() {
             layer_index: 0,
             semantic: "material".into(),
             polygons: valid_poly.clone(),
-            value: "1".into(),
+            value: pm::PaintValueInput::ToolIndex(1),
         },
     )
     .expect("wasmtime call");
@@ -5394,7 +5394,7 @@ fn paint_segmentation_output_rejects_invalid_entries() {
             layer_index: 0,
             semantic: String::new(),
             polygons: valid_poly.clone(),
-            value: "1".into(),
+            value: pm::PaintValueInput::ToolIndex(1),
         },
     )
     .expect("wasmtime call");
@@ -5412,7 +5412,7 @@ fn paint_segmentation_output_rejects_invalid_entries() {
             layer_index: 0,
             semantic: "material".into(),
             polygons: vec![],
-            value: "1".into(),
+            value: pm::PaintValueInput::ToolIndex(1),
         },
     )
     .expect("wasmtime call");
@@ -5430,7 +5430,7 @@ fn paint_segmentation_output_rejects_invalid_entries() {
             layer_index: 7,
             semantic: "material".into(),
             polygons: valid_poly,
-            value: "3".into(),
+            value: pm::PaintValueInput::ToolIndex(3),
         },
     )
     .expect("wasmtime call");

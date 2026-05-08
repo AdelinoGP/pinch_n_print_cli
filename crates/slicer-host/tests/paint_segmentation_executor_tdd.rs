@@ -153,7 +153,7 @@ fn semantic_values(
     paint_regions
         .get(layer_index, semantic)
         .iter()
-        .map(|region| region.value)
+        .map(|region| region.value.clone())
         .collect()
 }
 

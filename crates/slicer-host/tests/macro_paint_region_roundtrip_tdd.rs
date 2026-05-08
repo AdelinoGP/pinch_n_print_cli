@@ -90,8 +90,8 @@ fn paint_region_ir_material_semantic_roundtrip() {
     assert_eq!(ir_regions[0].polygons.len(), 1);
     assert!(!ir_regions[0].polygons[0].contour.points.is_empty());
 
-    match ir_regions[0].value {
-        PaintValue::ToolIndex(idx) => assert_eq!(idx, 2),
+    match &ir_regions[0].value {
+        PaintValue::ToolIndex(idx) => assert_eq!(*idx, 2),
         other => panic!("expected ToolIndex(2), got {:?}", other),
     }
 
@@ -221,8 +221,8 @@ fn paint_region_ir_get_accessor_after_roundtrip() {
     let material_get = ir.get(0, &PaintSemantic::Material);
     assert_eq!(material_get.len(), 1);
     assert_eq!(material_get[0].object_id, "obj-1");
-    match material_get[0].value {
-        PaintValue::ToolIndex(idx) => assert_eq!(idx, 3),
+    match &material_get[0].value {
+        PaintValue::ToolIndex(idx) => assert_eq!(*idx, 3),
         other => panic!("expected ToolIndex(3), got {:?}", other),
     }
 
@@ -345,14 +345,14 @@ fn paint_region_ir_multiple_regions_same_semantic_roundtrip() {
     sorted.sort_by_key(|r| r.paint_order);
 
     assert_eq!(sorted[0].paint_order, 0);
-    match sorted[0].value {
-        PaintValue::ToolIndex(idx) => assert_eq!(idx, 0),
+    match &sorted[0].value {
+        PaintValue::ToolIndex(idx) => assert_eq!(*idx, 0),
         other => panic!("expected ToolIndex(0), got {:?}", other),
     }
 
     assert_eq!(sorted[1].paint_order, 1);
-    match sorted[1].value {
-        PaintValue::ToolIndex(idx) => assert_eq!(idx, 1),
+    match &sorted[1].value {
+        PaintValue::ToolIndex(idx) => assert_eq!(*idx, 1),
         other => panic!("expected ToolIndex(1), got {:?}", other),
     }
 }
