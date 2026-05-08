@@ -42,7 +42,7 @@
 - Task IDs: `TASK-172`
 - Objective: migrate the 8 existing `finalization_builder_tdd` tests from closure-form to enum-form (compile-fail expected) AND author the new host-side round-trip test file (assertion-fail expected). Author the new WASM test guest skeleton.
 - Three test scopes:
-  - `crates/slicer-sdk/tests/finalization_builder_tdd.rs` — migrate 8 closure-form tests; add `modify_entity_set_speed_factor_applies` (AC-1), `modify_entity_set_extrusion_width_factor_applies` (AC-2), `closure_api_is_fully_removed` (NEG-4).
+  - `crates/slicer-sdk/tests/finalization_builder_tdd.rs` — migrate 8 closure-form tests; add `modify_entity_set_speed_factor_applies` (AC-1), `modify_entity_set_flow_factor_applies` (AC-2 — per-point flow_factor multiplier; the path-level `SetExtrusionWidthFactor` was rejected because `ExtrusionPath3D` carries no such field today and IR shape changes are out of scope), `closure_api_is_fully_removed` (NEG-4).
   - `crates/slicer-host/tests/finalization_mutation_roundtrip_tdd.rs` (NEW) — three tests: `modify_entity_round_trips_through_wit`, `modify_entity_unknown_id_round_trips_error`, `drain_back_forwards_merge_ops`.
   - `test-guests/finalization-mutation-roundtrip-guest/` (NEW crate) — `Cargo.toml` + `src/lib.rs` skeleton implementing `FinalizationModule`. The `run_finalization` body calls `output.modify_entity(layer, 1, EntityMutation::SetSpeedFactor(0.5))` (and optionally a second variant for the unknown-id NEG via a config switch or sibling impl).
 - Precondition: Step 0 complete; locked variant lists in hand.
@@ -53,15 +53,17 @@
   - `test-guests/sdk-finalization-guest/Cargo.toml` and `src/lib.rs` (full read — small precedent for the new guest).
   - `crates/slicer-host/tests/manifest_ingestion_tdd.rs` (narrow — for module-loading helper conventions on the host side).
   - `crates/slicer-ir/src/slice_ir.rs` (narrow — `PrintEntity`, `ExtrusionPath3D`, `LayerCollectionIR` shapes).
-- Files allowed to edit (≤ 4 — exception to ≤ 3 because the new guest is a multi-file scaffold; can split into Step 1a / Step 1b if scope is too tight):
+- Files allowed to edit (≤ 5 — exception to ≤ 3 because the new guest is a multi-file scaffold AND the `test-guests/build-test-guests.sh` GUESTS array MUST be updated; can split into Step 1a / Step 1b if scope is too tight):
   - `crates/slicer-sdk/tests/finalization_builder_tdd.rs` (migration + 3 new tests)
   - `crates/slicer-host/tests/finalization_mutation_roundtrip_tdd.rs` (NEW)
   - `test-guests/finalization-mutation-roundtrip-guest/Cargo.toml` (NEW)
   - `test-guests/finalization-mutation-roundtrip-guest/src/lib.rs` (NEW)
+  - `test-guests/build-test-guests.sh` (one-line addition to the `GUESTS=(...)` array — `test-guests/*` are NOT workspace members, so this script is the only path that produces the `.component.wasm` the host test loads)
 - Expected sub-agent dispatches:
   - "Run `cargo test -p slicer-sdk --test finalization_builder_tdd 2>&1 | tail -50`; FACT compile-fail or assertion-fail. Document each failure mode."
   - "Run `cargo test -p slicer-host --test finalization_mutation_roundtrip_tdd 2>&1 | tail -30`; FACT compile-fail expected (the new test guest's WIT bindings + `EntityMutation` symbols don't yet exist)."
-  - "Run `cargo build -p finalization-mutation-roundtrip-guest 2>&1 | tail -15`; FACT compile-fail or compile-pass. Compile-fail with `EntityMutation not found` is the expected state."
+  - "Confirm `test-guests/build-test-guests.sh` `GUESTS=(...)` array now contains an entry for `finalization-mutation-roundtrip-guest:finalization_mutation_roundtrip_guest`. Quote the line. FACT pass/fail. (`test-guests/*` are NOT workspace members; the script is the only build path.)"
+  - "Run `./test-guests/build-test-guests.sh 2>&1 | tail -20`; FACT compile-fail expected (guest references `EntityMutation` / WIT bindings that don't yet exist) — the goal at Step 1 is just to confirm the script picks up the new entry, not that it builds clean."
 - Context cost: `M`.
 - Authoritative docs: `docs/02_ir_schemas.md`, `docs/05_module_sdk.md`, `docs/03_wit_and_manifest.md`.
 - OrcaSlicer refs: none.
@@ -167,12 +169,13 @@
   - `crates/slicer-host/tests/finalization_mutation_roundtrip_tdd.rs` (real assertions)
 - Expected sub-agent dispatches:
   - "Run `cargo build --workspace 2>&1 | tail -15`; FACT pass/fail."
-  - "Run `./modules/core-modules/build-core-modules.sh 2>&1 | tail -15`; FACT pass/fail (rebuilds may also include the new test guest if its manifest registers it; otherwise the guest is built separately by the host test)."
-  - "Run `cargo build -p finalization-mutation-roundtrip-guest 2>&1 | tail -10`; FACT pass/fail."
+  - "Confirm `test-guests/build-test-guests.sh` `GUESTS=(...)` array (lines 17–28 baseline) contains an entry for `finalization-mutation-roundtrip-guest`. Quote the relevant line as FACT. (`test-guests/*` are NOT workspace members; this script is the only build path.)"
+  - "Run `./test-guests/build-test-guests.sh 2>&1 | tail -25`; FACT pass/fail. Must produce a `.component.wasm` artifact for `finalization-mutation-roundtrip-guest` at the path expected by the host test."
+  - "Run `./modules/core-modules/build-core-modules.sh 2>&1 | tail -15`; FACT pass/fail (core-modules WASM rebuild canary; does NOT build test guests)."
   - "Run `cargo test -p slicer-host --test finalization_mutation_roundtrip_tdd 2>&1 | tail -30`; FACT pass/fail per test (≥ 3 tests)."
   - "Run `cargo test -p slicer-host --test benchy_end_to_end_tdd 2>&1 | tail -25`; FACT regression."
   - "Run `cargo test -p slicer-sdk --test finalization_builder_tdd 2>&1 | tail -25`; FACT regression."
-  - "Grep `crates/slicer-macros/src/lib.rs` for `merge_ops` iteration pattern and for any surviving `silently no-op` / `DEV-041` strings; FACT — must show iteration site present and no surviving stale-comment strings."
+  - "Grep `crates/slicer-macros/src/lib.rs` for the AC-7 iteration pattern (regex `for\\s+\\w+\\s+in\\s+[^{]*merge_ops` OR `merge_ops\\(\\)\\s*\\.\\s*iter\\(\\)`), AND for any surviving `silently no-op` / `DEV-041` / TODO comment strings referencing `merge_ops`; FACT — must show a real iteration site is present (not a struct-field reference) and no surviving stale-comment strings remain (pre-implementation, two TODO matches at `lib.rs:1212`/`:1214` exist; both must be deleted)."
 - Context cost: `M`.
 - Authoritative docs: `docs/04_host_scheduler.md` lines 309–317.
 - OrcaSlicer refs: none.
@@ -187,25 +190,25 @@
 ### Step 6: Acceptance ceremony + docs/07 row + DEV-041 closure
 
 - Task IDs: `TASK-172`
-- Objective: re-run every acceptance command from `packet.spec.md`; run workspace gates; insert `TASK-172` row; append `DEV-041 closed` line to `docs/14_deviation_audit_history.md`.
+- Objective: re-run every acceptance command from `packet.spec.md`; run workspace gates; insert `TASK-172` row; annotate the existing `DEV-041` row in `docs/DEVIATION_LOG.md` as closed.
 - Precondition: Step 5 complete.
-- Postcondition: every AC PASSES; backlog updated; workspace closure gate PASSES; clippy clean; `DEV-041` annotated as closed.
+- Postcondition: every AC PASSES; backlog updated; workspace closure gate PASSES; clippy clean; `DEV-041` annotated as closed in `docs/DEVIATION_LOG.md`.
 - Files allowed to read: none directly (dispatch only).
 - Files allowed to edit (≤ 2):
   - `docs/07_implementation_status.md` (delegated insertion)
-  - `docs/14_deviation_audit_history.md` (delegated append)
+  - `docs/DEVIATION_LOG.md` (delegated edit to the existing DEV-041 row at line 47 — change Status column from "Open" to "Closed YYYY-MM-DD" with a one-paragraph closure note referencing TASK-172). The legacy `docs/14_deviation_audit_history.md` is NOT edited.
 - Expected sub-agent dispatches:
   - 12 narrow AC commands from `packet.spec.md` `## Acceptance Criteria` (8) and `## Negative Test Cases` (4), each as a separate FACT pass/fail.
   - "Run `cargo test --workspace --no-fail-fast 2>&1 | tail -40`; FACT pass/fail with failing test list (≤ 20 lines)."
   - "Run `cargo clippy --workspace -- -D warnings 2>&1 | tail -20`; FACT pass/fail."
   - "Run `./modules/core-modules/build-core-modules.sh 2>&1 | tail -15`; FACT pass/fail."
   - "Insert a TASK-172 row into `docs/07_implementation_status.md`. Return the inserted line as FACT (file:line, contents). Do NOT load the whole file."
-  - "Append a `DEV-041 closed` line to the chronology section of `docs/14_deviation_audit_history.md`, dated at acceptance. Return the appended lines as FACT. Do NOT modify any other DEV-XXX entry."
+  - "In `docs/DEVIATION_LOG.md`, locate the DEV-041 row (currently at line 47) and update its Status column from `Open` to `Closed YYYY-MM-DD` with a one-paragraph closure note that references TASK-172 and packet `41_finalization-mutation-enum-refactor`. Return the before/after of that row only as FACT. Do NOT modify any other DEV-XXX row, and do NOT touch `docs/14_deviation_audit_history.md`."
 - Context cost: `S`.
-- Authoritative docs: `docs/07_implementation_status.md` (delegated-only); `docs/14_deviation_audit_history.md` (delegated-only).
+- Authoritative docs: `docs/07_implementation_status.md` (delegated-only); `docs/DEVIATION_LOG.md` (delegated-only).
 - OrcaSlicer refs: none.
 - Verification: every pipe-suffixed AC command from `packet.spec.md`.
-- Exit condition: every AC PASSES; `cargo test --workspace` PASSES; `cargo clippy --workspace -- -D warnings` PASSES; `docs/07` carries TASK-172; `docs/14` shows `DEV-041 closed`; packet ready to move to `status: implemented`.
+- Exit condition: every AC PASSES; `cargo test --workspace` PASSES; `cargo clippy --workspace -- -D warnings` PASSES; `docs/07` carries TASK-172; `docs/DEVIATION_LOG.md` shows `DEV-041` as closed; packet ready to move to `status: implemented`.
 
 ## Per-Step Budget Roll-Up
 
@@ -232,7 +235,7 @@ Aggregate: `M`. No single step is `L`.
 - `cargo test -p slicer-host --test benchy_end_to_end_tdd` PASSES (Packet 40 print-quality fix preserved).
 - `cargo test -p slicer-sdk --test finalization_builder_tdd closure_api_is_fully_removed` PASSES (NEG-4: closure API genuinely removed).
 - `docs/07_implementation_status.md` carries TASK-172.
-- `docs/14_deviation_audit_history.md` shows `DEV-041 closed`.
+- `docs/DEVIATION_LOG.md` row for `DEV-041` shows Status = `Closed YYYY-MM-DD` with closure note. (`docs/14_deviation_audit_history.md` is NOT edited; it is an archive only.)
 - `packet.spec.md` ready to move to `status: implemented`.
 
 ## Acceptance Ceremony

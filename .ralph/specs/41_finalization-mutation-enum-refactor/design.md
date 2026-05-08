@@ -44,7 +44,7 @@
 - Exact functions, traits, manifests, tests expected to change:
   - `crates/slicer-sdk/src/traits.rs` — `FinalizationOutputBuilder` impl block: replace three method bodies + signatures; refactor `MergeOp` enum; rewrite `apply_to`'s match arms for each `MergeOp` variant. Add a `merge_ops()` accessor returning `&[MergeOp]` if not already present (Packet 40 Step 3b-fix added `priority_pushes()`; check for `merge_ops()` symmetry).
   - `crates/slicer-sdk/src/lib.rs` — re-export `EntityMutation`, `SortKey`, `SyntheticLayerData` if not already accessible via prelude.
-  - `crates/slicer-sdk/tests/finalization_builder_tdd.rs` — migrate the 8 existing tests; rename `modify_entity_by_id_applies_closure` → `modify_entity_by_id_applies` (or split into per-variant tests); rename `sort_layer_by_applies_comparator` → `sort_layer_by_applies` or per-variant; add `modify_entity_set_speed_factor_applies` and `modify_entity_set_extrusion_width_factor_applies` for AC-1 and AC-2 explicit coverage; add `closure_api_is_fully_removed` for NEG-4.
+  - `crates/slicer-sdk/tests/finalization_builder_tdd.rs` — migrate the 8 existing tests; rename `modify_entity_by_id_applies_closure` → `modify_entity_by_id_applies` (or split into per-variant tests); rename `sort_layer_by_applies_comparator` → `sort_layer_by_applies` or per-variant; add `modify_entity_set_speed_factor_applies` and `modify_entity_set_flow_factor_applies` for AC-1 and AC-2 explicit coverage; add `closure_api_is_fully_removed` for NEG-4.
   - `wit/world-finalization.wit` — alignment check; rename WIT types only if drift requires it. Most likely no edit if Packet 40 Step 3b's names already match this packet's intent.
   - `crates/slicer-host/src/wit_host.rs` — `HostFinalizationOutputBuilder` impl: replace the three closure-construction methods with direct forwards. Confirm `WitEntityMutation` / `WitSortKey` types are aligned with SDK's `EntityMutation` / `SortKey`; if Packet 40 used distinct names, decide whether to converge.
   - `crates/slicer-macros/src/lib.rs` — `run_finalization` glue: extend drain-back to iterate `sdk_output.merge_ops()` after the existing `priority_pushes()` iteration. For each variant, call the WIT-bound method on `output`. Inline WIT in `build_finalization_world_glue` — alignment check, no edit if names match.
@@ -52,7 +52,7 @@
   - `test-guests/finalization-mutation-roundtrip-guest/src/lib.rs` (new file) — implement `FinalizationModule`; in `run_finalization` call `output.modify_entity(layer, 1, EntityMutation::SetSpeedFactor(0.5))`. The guest may also accept a config flag (or have a sibling impl) that calls with unknown id `99` for NEG-3; alternatively two separate guests if a single one can't toggle behavior.
   - `crates/slicer-host/tests/finalization_mutation_roundtrip_tdd.rs` (new file) — host-side end-to-end test using the new guest. At least three test functions per the AC list.
   - `docs/07_implementation_status.md` — one new row for `TASK-172`.
-  - `docs/14_deviation_audit_history.md` — append `DEV-041 closed` line in chronology section.
+  - `docs/DEVIATION_LOG.md` — append a closure note to the existing `DEV-041` row at line 47 (or append a `DEV-041 closed` chronology line in the appropriate section). The legacy `docs/14_deviation_audit_history.md` is an archive only and is NOT touched.
 - Test files added by this packet:
   - `crates/slicer-host/tests/finalization_mutation_roundtrip_tdd.rs`
   - (No new SDK test file; the existing `finalization_builder_tdd.rs` is migrated, not duplicated.)
@@ -67,7 +67,7 @@ Primary edit targets per step (≤ 3 per step):
 - Step 3 ("SDK API replacement"): `crates/slicer-sdk/src/traits.rs` + `crates/slicer-sdk/src/lib.rs` (re-exports if needed) (≤ 2 files).
 - Step 4 ("WIT alignment + host-impl simplification"): `wit/world-finalization.wit` (alignment) + `crates/slicer-host/src/wit_host.rs` + `crates/slicer-macros/src/lib.rs` inline WIT only (≤ 3 files; keep edits narrow).
 - Step 5 ("Drain-back wiring + WASM round-trip test"): `crates/slicer-macros/src/lib.rs` drain-back loop + `test-guests/finalization-mutation-roundtrip-guest/src/lib.rs` + `crates/slicer-host/tests/finalization_mutation_roundtrip_tdd.rs` (≤ 3 files). The macro change is the substantive fix; the guest + host test are the substantive validation.
-- Step 6 ("Acceptance + docs"): `docs/07_implementation_status.md` (delegated insertion) + `docs/14_deviation_audit_history.md` (closure note) (≤ 2 files).
+- Step 6 ("Acceptance + docs"): `docs/07_implementation_status.md` (delegated insertion) + `docs/DEVIATION_LOG.md` (delegated edit to the existing DEV-041 row at line 47) (≤ 2 files). `docs/14_deviation_audit_history.md` is NOT edited.
 
 ## Read-Only Context
 
@@ -82,7 +82,7 @@ Primary edit targets per step (≤ 3 per step):
 - `wit/world-finalization.wit` — full read OK (~80 lines after Packet 40).
 - `test-guests/sdk-finalization-guest/{Cargo.toml,src/lib.rs}` — full read (small; precedent for the new guest).
 - `.ralph/specs/40_finalization-mutation-builder/design.md` — narrow (Open Questions section listing future modules).
-- `docs/14_deviation_audit_history.md` — narrow (DEV-041 entry).
+- `docs/DEVIATION_LOG.md` — narrow (DEV-041 entry at line 47). The legacy `docs/14_deviation_audit_history.md` is the archive of retired audit artifacts and does NOT carry the live DEV-041 row; do not read it for DEV-041 context.
 
 ## Out-of-Bounds Files
 
@@ -131,10 +131,18 @@ Per Step 6: cargo-test FACT for the workspace gate; one delegated insertion of t
   - Stable-sort is mandatory (Packet 40 invariant; preserved here).
   - Multiple `merge_ops` of the same kind apply in record-order (preserved from Packet 40).
 
+## Test-Guest Build Pipeline (mandatory for any new test-guest crate)
+
+`test-guests/*` are NOT workspace members (verified: `Cargo.toml` `[workspace].members` does not list them and there is no `[workspace].exclude` block — they are simply omitted). They are built by `test-guests/build-test-guests.sh`, which iterates over a hard-coded `GUESTS=(...)` array (lines 17–28 today) of `(<dir-name>:<crate-name-with-underscores>)` pairs.
+
+For this packet, after authoring `test-guests/finalization-mutation-roundtrip-guest/` (Step 1), the implementer MUST also add the corresponding line to that GUESTS array — concretely a single new entry of the shape `"finalization-mutation-roundtrip-guest:finalization_mutation_roundtrip_guest"` — and run `./test-guests/build-test-guests.sh` so the `.component.wasm` artifact lands at the path the host-side test (`crates/slicer-host/tests/finalization_mutation_roundtrip_tdd.rs`) loads. Skipping this step makes the host test fail with a missing-component error that is easy to misdiagnose as a WIT bindgen problem.
+
+The new test-guest is NOT added to the root `Cargo.toml` workspace `members` array; it stays excluded like every other entry in `test-guests/`.
+
 ## Locked Assumptions and Invariants
 
 - `PrintEntity` shape is unchanged from Packet 39+40. `entity_id`, `path`, `role`, `region_membership`, `travel_moves` are the relevant fields.
-- `ExtrusionPath3D` carries `speed_factor: f32`, `extrusion_width_factor: f32`, and the nested `Point3WithWidth.flow_factor` for per-point flow. `EntityMutation::SetSpeedFactor` and `SetExtrusionWidthFactor` mutate the path-level fields. `SetFlowFactor` semantics: Step 0 audit decides whether this is per-path (apply to every point's `flow_factor`) or per-point (variant carries an index). Recommend per-path for the initial variant set; per-point can be added in a future packet.
+- `ExtrusionPath3D` carries exactly three fields today: `points: Vec<Point3WithWidth>`, `role: ExtrusionRole`, `speed_factor: f32` (`crates/slicer-ir/src/slice_ir.rs:1285-1293`). There is **no** `extrusion_width_factor` field at the path level; per-point geometry lives on `Point3WithWidth { x, y, z, width: f32, flow_factor: f32 }` (`crates/slicer-ir/src/slice_ir.rs:1212-1224`). `EntityMutation::SetSpeedFactor(f32)` mutates the single path-level `speed_factor` field. `EntityMutation::SetFlowFactor(f32)` is **per-point**: `apply_to` walks `path.points` and assigns the supplied factor to every `Point3WithWidth.flow_factor`. This is the volumetric lever (matches `E_delta = distance × point.width × point.flow_factor` in `crates/slicer-host/src/gcode_emit.rs`) and is the correct hook for `FlushVolumeCalculator`. A path-level `SetExtrusionWidthFactor` was considered and explicitly rejected for this packet — `ExtrusionPath3D` carries no such field, OrcaSlicer does not carry a path-level width-factor either (it uses role-based `flow_ratio` on `mm3_per_mm` at G-code time), and adding a new IR field is outside this packet's scope. Defer until a real consumer surfaces.
 - `apply_to`'s 5-phase merge order is preserved.
 - The `push_entity_with_priority` method from Packet 40 is unchanged — closure-free already.
 - The `push_entity_to_layer` legacy alias is unchanged.
@@ -164,7 +172,7 @@ None. Packet 40's follow-up session migrated `skirt-brim` and `wipe-tower` to th
 
 - 🔍 Final `EntityMutation` variant list — Step 0 audit decision.
 - 🔍 Final `SortKey` variant list — Step 0 audit decision.
-- 🔍 `EntityMutation::SetFlowFactor` semantics (per-path vs per-point) — Step 0 decision.
+- ✅ `EntityMutation::SetFlowFactor` semantics — locked here as **per-point**: `apply_to` walks `path.points` and assigns the supplied factor to every `Point3WithWidth.flow_factor`. Rationale recorded in `## Locked Assumptions and Invariants` above. (G-code emit at `crates/slicer-host/src/gcode_emit.rs` consumes per-point `flow_factor` directly via `E_delta = distance × point.width × point.flow_factor`; per-path semantics would have no emit-time effect.) Step 0 confirms via FACT but does not re-decide.
 - 🔍 Whether to keep WIT-side `WitEntityMutation` prefix or rename to match SDK — Step 4 decision.
 - 🔍 Whether `merge_ops()` accessor exists on the SDK builder today — Step 0 FACT.
 - 🔍 Whether the new test guest needs a separate manifest entry — Step 0 FACT (compare to sdk-finalization-guest).

@@ -34,7 +34,7 @@ The fix is structural, not patchwork. Closures cannot cross WIT; the SDK API mus
 5. Migrates the 8 existing `crates/slicer-sdk/tests/finalization_builder_tdd.rs` tests from closure-form to enum-form.
 6. Extends the `slicer-macros` drain-back loop to forward `merge_ops` via WIT.
 7. Adds a tiny new test guest at `test-guests/finalization-mutation-roundtrip-guest/` and a host-side end-to-end test that proves a guest's `modify_entity` call actually mutates the host IR — the substantive validation absent today.
-8. Closes `DEV-041` in `docs/14_deviation_audit_history.md`.
+8. Closes `DEV-041` in `docs/DEVIATION_LOG.md` (the live registry; the row currently sits at line 47). The legacy `docs/14_deviation_audit_history.md` is an archive and is not edited.
 
 The result: WASM modules and native test fixtures share one API shape. The drain-back loop is straight-line forwarding, no impedance mismatch. The four future PostPass modules can be authored against a contract that actually delivers what it promises.
 
@@ -50,7 +50,7 @@ The result: WASM modules and native test fixtures share one API shape. The drain
   - Re-export the new types from `crates/slicer-sdk/src/lib.rs` if necessary.
 - `crates/slicer-sdk/tests/finalization_builder_tdd.rs`:
   - Migrate the existing 8 tests from closure-form to enum-form.
-  - Add new tests for the explicit `Set*` variants (AC-1, AC-2 verifying speed_factor and extrusion_width_factor).
+  - Add new tests for the explicit `Set*` variants: AC-1 verifying path-level `speed_factor` and AC-2 verifying per-point `flow_factor` (the volumetric lever; `ExtrusionPath3D` carries no path-level `extrusion_width_factor` field today, so a `SetExtrusionWidthFactor` variant was considered and rejected for this packet).
   - Add a `closure_api_is_fully_removed` regression test that grep-asserts the closure-bound generic signatures are absent (NEG-4 / closure-removal contract).
 - `wit/world-finalization.wit`:
   - Reconcile names with the new SDK types if drift is found. Packet 40 already added `entity-mutation`, `sort-key`, `synthetic-layer-data` shapes; verify they align with this packet's `EntityMutation`/`SortKey`/`SyntheticLayerData` and rename if needed for clarity.
@@ -68,8 +68,8 @@ The result: WASM modules and native test fixtures share one API shape. The drain
   - At least 3 tests: `modify_entity_round_trips_through_wit`, `modify_entity_unknown_id_round_trips_error`, `drain_back_forwards_merge_ops` (the last is a code-shape assertion via grep or a no-op-merge-op canary that proves the macro change took effect).
 - `docs/07_implementation_status.md`:
   - Insert one new row for `TASK-172`.
-- `docs/14_deviation_audit_history.md`:
-  - Append a `DEV-041 closed` line in the chronology section, dated at packet acceptance.
+- `docs/DEVIATION_LOG.md`:
+  - Update the existing `DEV-041` row at line 47 — change Status column from `Open` to `Closed YYYY-MM-DD` (date at packet acceptance) with a one-paragraph closure note. The legacy `docs/14_deviation_audit_history.md` is an archive only and is NOT touched.
 
 ## Out of Scope
 
@@ -92,7 +92,7 @@ The result: WASM modules and native test fixtures share one API shape. The drain
 - `docs/02_ir_schemas.md` — `PrintEntity`, `ExtrusionPath3D`, `LayerCollectionIR`, `TravelMove` shapes. Direct read; narrow.
 - `docs/04_host_scheduler.md` lines 309–317, 680–717 — composable multi-writer patterns; PostPass scheduler shape. Direct read.
 - `.ralph/specs/40_finalization-mutation-builder/design.md` — predecessor's "Open Questions" + future-module list. Direct read; narrow.
-- `docs/14_deviation_audit_history.md` — `DEV-041` entry. Direct read; narrow.
+- `docs/DEVIATION_LOG.md` — `DEV-041` entry (line 47). Direct read; narrow. The legacy `docs/14_deviation_audit_history.md` is the archive and does NOT carry the live DEV-041 row.
 
 ## OrcaSlicer Reference Obligations
 
@@ -102,7 +102,7 @@ None required. If parity is challenged for the speed/flow factor variants, deleg
 
 - Positive cases:
   1. `modify_entity(EntityMutation::SetSpeedFactor)` mutates the named entity (AC-1).
-  2. `modify_entity(EntityMutation::SetExtrusionWidthFactor)` mutates the named entity (AC-2).
+  2. `modify_entity(EntityMutation::SetFlowFactor)` mutates every per-point `flow_factor` on the named entity's path (AC-2 — the volumetric lever; the previously-considered `SetExtrusionWidthFactor` was rejected because `ExtrusionPath3D` carries no such field today and an IR shape change is out of scope for this packet).
   3. `sort_layer_by(SortKey::ByPriorityAndEntityId)` sorts the layer with travel-anchor preservation (AC-3).
   4. `insert_synthetic_layer_after(SyntheticLayerData)` inserts a layer with default sibling fields (AC-4).
   5. **WASM round-trip**: a guest module's `modify_entity` call mutates the host-side IR (AC-5 — substantive `DEV-041` closure validation).
@@ -122,7 +122,7 @@ None required. If parity is challenged for the speed/flow factor variants, deleg
   - `./modules/core-modules/build-core-modules.sh` PASS.
   - `cargo clippy --workspace -- -D warnings` PASS.
   - `cargo test --workspace` PASS at acceptance ceremony.
-  - `DEV-041` row in `docs/14_deviation_audit_history.md` annotated as closed at acceptance date.
+  - `DEV-041` row in `docs/DEVIATION_LOG.md` annotated as `Closed YYYY-MM-DD` at acceptance date. (`docs/14_deviation_audit_history.md` is NOT modified — it is an archive only.)
 - Cross-packet impact:
   - Closes `DEV-041`.
   - Provides the round-trip-validated mutation API surface that the four future PostPass modules will consume.

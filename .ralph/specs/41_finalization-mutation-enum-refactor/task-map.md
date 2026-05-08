@@ -10,7 +10,7 @@
 
 - This packet does NOT supersede any prior packet.
 - It depends on `40_finalization-mutation-builder` (`TASK-171`) being `implemented`. Step 0 explicitly verifies via FACT.
-- It closes `DEV-041`, which was registered at packet 40's acceptance (2026-05-07) as an "open" deviation tracking the silent-no-op WIT gap. Step 6 appends a closure note to `docs/14_deviation_audit_history.md`. The TASK-171 row at `docs/07_implementation_status.md:85` is NOT touched (closed work belongs to its own packet).
+- It closes `DEV-041`, which was registered at packet 40's acceptance (2026-05-07) as an "Open" deviation tracking the silent-no-op WIT gap. The live row sits at `docs/DEVIATION_LOG.md:47`. Step 6 updates that row's Status column from `Open` to `Closed YYYY-MM-DD` with a one-paragraph closure note. The legacy `docs/14_deviation_audit_history.md` is an archive only and is NOT edited. The TASK-171 row at `docs/07_implementation_status.md:85` is NOT touched (closed work belongs to its own packet).
 
 ## docs/07 Edit Plan
 
@@ -18,22 +18,23 @@
 - Status flag set when Step 6 acceptance ceremony PASSES.
 - DO NOT edit, modify, or annotate any existing row.
 
-## docs/14 Edit Plan
+## docs/DEVIATION_LOG.md Edit Plan
 
-- Append ONE new line in the chronology section: `**YYYY-MM-DD — DEV-041 closed**` (date at acceptance ceremony) with a one-paragraph closure note describing the SDK API refactor, the drain-back fix, and the WASM round-trip validation. Reference TASK-172 and packet `41_finalization-mutation-enum-refactor`.
-- DO NOT modify any other DEV-XXX entry. DO NOT alter the `Outcome Summary` or `Audit Method Summary` sections.
+- Locate the `DEV-041` row (currently at `docs/DEVIATION_LOG.md:47`). Edit ONLY that row's `Status` column: replace the current `Open — future-packet obligation; SDK closure path fully functional; WIT-boundary path silently no-ops for the three recorded ops` text with `Closed YYYY-MM-DD` (date at acceptance ceremony) plus a one-paragraph closure note describing the SDK API refactor, the drain-back fix, and the WASM round-trip validation. Reference TASK-172 and packet `41_finalization-mutation-enum-refactor`.
+- DO NOT modify any other DEV-XXX entry. DO NOT alter the `Outcome Summary` or `Audit Method Summary` sections of any file.
+- DO NOT touch `docs/14_deviation_audit_history.md` — that file is an archive of retired audit artifacts (deviationList.xml, audit-tasks files) and does not carry the live DEV-041 row.
 
 ## Authoritative Docs Per Step
 
 | Step | Primary docs | Notes |
 | --- | --- | --- |
-| Step 0 | `.ralph/specs/40_finalization-mutation-builder/design.md` (narrow), `docs/14_deviation_audit_history.md` (narrow) | Discovery dispatches: Packet 40 status, future-module audit, DEV-041 entry. |
+| Step 0 | `.ralph/specs/40_finalization-mutation-builder/design.md` (narrow), `docs/DEVIATION_LOG.md` (narrow — DEV-041 row at line 47) | Discovery dispatches: Packet 40 status, future-module audit, DEV-041 entry. |
 | Step 1 | `docs/02_ir_schemas.md`, `docs/05_module_sdk.md`, `docs/03_wit_and_manifest.md` | Test fixture pattern; PrintEntity/ExtrusionPath3D/LayerCollectionIR shapes; WIT conventions for the new test guest. |
 | Step 2 | `docs/02_ir_schemas.md` | New SDK types use `ExtrusionPath3D` from slicer-ir. |
 | Step 3 | `docs/05_module_sdk.md` | FinalizationOutputBuilder API contract. |
 | Step 4 | `docs/03_wit_and_manifest.md` | WIT shape conventions. |
 | Step 5 | `docs/04_host_scheduler.md` § 309–317, 680–717 | PostPass scheduler; multi-writer composition. |
-| Step 6 | `docs/07_implementation_status.md`, `docs/14_deviation_audit_history.md` | Backlog row + DEV-041 closure (delegated edits). |
+| Step 6 | `docs/07_implementation_status.md`, `docs/DEVIATION_LOG.md` (DEV-041 row at line 47) | Backlog row + DEV-041 closure (delegated edits). `docs/14_deviation_audit_history.md` is NOT touched. |
 
 ## OrcaSlicer Refs Per Step
 
@@ -46,7 +47,7 @@ None required. If parity is challenged for `EntityMutation::SetSpeedFactor` sema
 - **Unblocks** future PostPass mutation modules (each a separate future packet):
   - `SequentialPrintOrder` — uses `sort_layer_by(SortKey::ByObjectIdThenPriority)` to group entities by `object_id`.
   - `MinLayerTimeEnforcer` — uses `modify_entity(EntityMutation::SetSpeedFactor)` to slow specific extrusions on fast-printing layers; potentially `insert_synthetic_layer_after` for cooling pauses.
-  - `FlushVolumeCalculator` — uses `modify_entity(EntityMutation::SetExtrusionWidthFactor)` (or similar `Set*` variant) on wipe-tower entities.
+  - `FlushVolumeCalculator` — uses `modify_entity(EntityMutation::SetFlowFactor)` on wipe-tower entities. (Packet 41 evaluated and rejected a path-level `SetExtrusionWidthFactor` — `ExtrusionPath3D` carries no such field today, OrcaSlicer's parity uses volumetric `flow_ratio` not a width-factor, and Packet 40's wording is "adjusts wipe-tower flow," which is volumetric, not geometric.)
   - `PrimeTower` — uses `push_entity_with_priority(..., PrimeTower.default_priority())` per layer (already round-trips via Packet 40); may also use `modify_entity` for prime-amount adjustments.
 
 ## Migration Obligations Inherited
