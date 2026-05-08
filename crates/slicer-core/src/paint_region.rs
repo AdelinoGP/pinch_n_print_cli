@@ -51,7 +51,7 @@ pub fn point_in_paint_region(
         }
     }
 
-    Ok(winner.map(|(value, _)| *value))
+    Ok(winner.map(|(value, _)| value.clone()))
 }
 
 fn semantic_region_contains_point(
