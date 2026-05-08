@@ -39,6 +39,36 @@ if [[ -d "$WIT_DIR" ]]; then
     done < <(find "$WIT_DIR" -type f -name '*.wit' -print0)
 fi
 
+# Compute the newest mtime across workspace crates that get baked into
+# every guest .wasm. The proc-macro in slicer-macros emits all wit-bindgen
+# glue; slicer-sdk / slicer-ir / slicer-schema are universal guest deps
+# with no `cfg(target_arch = "wasm32")` gates, so their source edits
+# propagate directly into guest wasm bytes. Without this, editing any of
+# these crates leaves stale guest WASMs that fail typed instantiation at
+# runtime. slicer-core is intentionally NOT tracked: only 6 of 20 guests
+# depend on it, so global tracking would force spurious rebuilds for the
+# other 14. slicer-helpers is host-only and not a guest dep.
+SHARED_GUEST_CRATES=(
+    "$SCRIPT_DIR/../../crates/slicer-macros"
+    "$SCRIPT_DIR/../../crates/slicer-sdk"
+    "$SCRIPT_DIR/../../crates/slicer-ir"
+    "$SCRIPT_DIR/../../crates/slicer-schema"
+)
+shared_guest_mtime=0
+for crate_dir in "${SHARED_GUEST_CRATES[@]}"; do
+    if [[ -d "$crate_dir/src" ]]; then
+        while IFS= read -r -d '' f; do
+            m=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
+            (( m > shared_guest_mtime )) && shared_guest_mtime=$m
+        done < <(find "$crate_dir/src" -type f -print0)
+    fi
+    cargo_toml="$crate_dir/Cargo.toml"
+    if [[ -f "$cargo_toml" ]]; then
+        m=$(stat -c %Y "$cargo_toml" 2>/dev/null || stat -f %m "$cargo_toml" 2>/dev/null || echo 0)
+        (( m > shared_guest_mtime )) && shared_guest_mtime=$m
+    fi
+done
+
 # Entries: "<module-dir>:<guest-crate-lib-name>"
 # The produced component is copied to "<module-dir>/<module-dir>.wasm".
 MODULES=(
@@ -115,6 +145,7 @@ for entry in "${MODULES[@]}"; do
             [[ $mod_src_mtime -gt $newest_src ]] && newest_src=$mod_src_mtime
             [[ $mod_cargo_mtime -gt $newest_src ]] && newest_src=$mod_cargo_mtime
             [[ $wit_mtime -gt $newest_src ]] && newest_src=$wit_mtime
+            [[ $shared_guest_mtime -gt $newest_src ]] && newest_src=$shared_guest_mtime
             if (( newest_src <= wasm_mtime )); then
                 if $check_only; then
                     echo "  ok: $dir_name.wasm is up to date"
