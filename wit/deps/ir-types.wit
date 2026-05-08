@@ -41,6 +41,15 @@ interface ir-handles {
         tool-index(u32),
     }
 
+    /// Input variant for paint values written by PrePass::PaintSegmentation modules.
+    /// Extends paint-value with a custom(string) case for module-defined values.
+    variant paint-value-input {
+        flag(bool),
+        scalar(f32),
+        tool-index(u32),
+        custom(string),
+    }
+
     record boundary-paint-polygon {
         values: list<option<paint-value>>,
     }

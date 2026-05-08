@@ -11,7 +11,7 @@ world prepass-module {
     // Clips triangles at sub-facet stroke boundaries so every triangle has
     // exactly one paint value per semantic.  No-op if no sub-facet strokes.
     resource mesh-segmentation-output {
-        mark-triangle-paint: func(obj: object-id, facet-index: u32, semantic: string, value: string) -> result<_, string>;
+        mark-triangle-paint: func(obj: object-id, facet-index: u32, semantic: string, paint: string) -> result<_, string>;
     }
 
     export run-mesh-segmentation: func(
@@ -57,7 +57,7 @@ world prepass-module {
     // PaintSegmentation stage
     // For every layer Z and paint semantic, computes 2D polygon regions
     // carrying that semantic's paint value.
-    use slicer:ir-types/ir-handles.{layer-idx};
+    use slicer:ir-types/ir-handles.{layer-idx, paint-value-input};
     use slicer:types/geometry.{ex-polygon};
 
     record paint-region-entry {
@@ -65,7 +65,7 @@ world prepass-module {
         layer-index: layer-idx,
         semantic: string,
         polygons: list<ex-polygon>,
-        value: string,
+        value: paint-value-input,
     }
 
     resource paint-segmentation-output {
