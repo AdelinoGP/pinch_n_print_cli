@@ -44,14 +44,14 @@
 **Exit**: All tests pass.
 **OrcaSlicer refs**: None.
 
-## Step 5 — Run `live_support_generation_tdd`
+## Step 5 — Run `live_layer_support_tdd`
 
 **Task IDs**: TASK-120, TASK-120b
-**Objective**: Run the live support generation test suite including the new real live-dispatch tier.
+**Objective**: Run the live support generation test suite including the real live-dispatch tier. This file replaced the deleted `live_support_generation_tdd.rs` after the prepass-stage rename to `SupportGeometry` (commit `b6fb366`, 2026-04-30); the four named live-dispatch tests (`tree_support_live_dispatch_produces_non_empty_support_ir`, `traditional_support_live_dispatch_produces_non_empty_support_ir`, `support_deterministic_across_repeated_runs`, `support_enforcer_blocker_paint_precedence`) now live here.
 **Precondition**: Step 4 complete.
-**Postcondition**: All tests in `live_support_generation_tdd.rs` pass, both tiers.
-**Files**: `crates/slicer-host/tests/live_support_generation_tdd.rs`
-**Verification**: `cargo test -p slicer-host --test live_support_generation_tdd -- --nocapture 2>&1 | tail -10`
+**Postcondition**: All tests in `live_layer_support_tdd.rs` pass (Sections A/B/C: commit-helper tier, real live-dispatch tier, planner-consuming tier).
+**Files**: `crates/slicer-host/tests/live_layer_support_tdd.rs`
+**Verification**: `cargo test -p slicer-host --test live_layer_support_tdd -- --nocapture 2>&1 | tail -10`
 **Exit**: All tests pass.
 **OrcaSlicer refs**: None.
 
@@ -99,15 +99,18 @@
 **Exit**: Exit 0, no warnings.
 **OrcaSlicer refs**: None.
 
-## Step 10 — Update `docs/07_implementation_status.md`
+## Step 10 — Verify TASK-120b citation, close TASK-120
 
 **Task IDs**: TASK-120, TASK-120b
-**Objective**: Update TASK-120b entry to cite the real live support-module evidence from Packet 26. Add TASK-120b1 (or equivalent) to track the true Benchy-with-tree-support acceptance harness. Update Workstream 3 to explicitly track the acceptance check.
-**Precondition**: Steps 1–9 complete.
-**Postcondition**: TASK-120b entry cites new real evidence; Workstream 3 tracks the acceptance check.
+**Objective**: TASK-120b's live-evidence citation was already added by packet 26 (closed 2026-04-24); confirm it is still intact and names both live-dispatch tests. Confirm the TASK-120 family still names the three Benchy-with-tree-support acceptance tests. Then mark TASK-120 itself complete (`[x]`) with a closure note citing this packet, and update the "Phase H remains open …" sentence near the top of the document accordingly. Do NOT create a TASK-120b1 entry — it was never created and its tracking was folded into TASK-120b.
+**Precondition**: Steps 1–9 complete (all verification commands green).
+**Postcondition**: TASK-120b citation verified intact; TASK-120 marked `[x]` with closure note; Phase H header updated.
 **Files**: `docs/07_implementation_status.md`
-**Verification**: `grep -B2 -A8 'TASK-120' docs/07_implementation_status.md | head -40`
-**Exit**: Doc updated.
+**Verification**:
+1. `grep -A5 'TASK-120b ' docs/07_implementation_status.md | grep -E 'tree_support_live_dispatch_produces_non_empty_support_ir|traditional_support_live_dispatch_produces_non_empty_support_ir'` (TASK-120b live-evidence citation intact)
+2. `grep -A20 'TASK-120b ' docs/07_implementation_status.md | grep -E 'benchy_with_support_enabled|benchy_support_marker_present|benchy_support_deterministic'` (Benchy-with-tree-support acceptance tests named)
+3. `grep -E '^\- \[x\] TASK-120 ' docs/07_implementation_status.md` (TASK-120 closed)
+**Exit**: All three verification greps return non-empty.
 **OrcaSlicer refs**: None.
 
 ## Step 11 — Packet completion gate

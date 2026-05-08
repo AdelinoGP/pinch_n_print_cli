@@ -10,10 +10,10 @@ This packet maps to Workstream 3 task TASK-120 (Phase H final validation and Ben
 | Step 2 | TASK-120, TASK-124 | Run `core_module_ir_access_contract_tdd` |
 | Step 3 | TASK-120, TASK-123b | Run `pipeline_tdd` |
 | Step 4 | TASK-120, TASK-145 | Run `wit_drift_detection_tdd` |
-| Step 5 | TASK-120, TASK-120b | Run `live_support_generation_tdd` |
+| Step 5 | TASK-120, TASK-120b | Run `live_layer_support_tdd` (replaces deleted `live_support_generation_tdd`, see commit `b6fb366` 2026-04-30) |
 | Step 6 | TASK-120, TASK-120c | Run `live_seam_path_tdd` |
 | Step 7 | TASK-120, TASK-120b | Run `benchy_end_to_end_tdd` |
-| Step 10 | TASK-120, TASK-120b | Update `docs/07_implementation_status.md` TASK-120/TASK-120b status |
+| Step 10 | TASK-120, TASK-120b | Verify TASK-120b live-evidence citation (added by packet 26) intact; mark TASK-120 `[x]`; update Phase H header in `docs/07_implementation_status.md` |
 
 ## Dependency Note
 
