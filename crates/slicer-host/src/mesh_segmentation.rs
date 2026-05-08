@@ -97,7 +97,7 @@ fn normalize_object(
                     layer_index,
                     facet_index,
                     split,
-                    stroke.value,
+                    stroke.value.clone(),
                 );
             }
         }
@@ -270,11 +270,11 @@ fn apply_triangle_split(
     );
 
     for (layer_index, layer) in paint_data.layers.iter_mut().enumerate() {
-        let original_value = layer.facet_values[facet_index];
+        let original_value = layer.facet_values[facet_index].clone();
         let replacement = if layer_index == target_layer_index {
-            [Some(paint_value), original_value]
+            [Some(paint_value.clone()), original_value]
         } else {
-            [original_value, original_value]
+            [original_value.clone(), original_value]
         };
         layer
             .facet_values

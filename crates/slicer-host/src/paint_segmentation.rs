@@ -124,7 +124,7 @@ pub fn execute_paint_segmentation(
                             &object.id,
                             object_layer.global_layer_index,
                             &layer.semantic,
-                            *value,
+                            value.clone(),
                             paint_order as u64,
                             &polygon,
                             semantic_regions,
@@ -134,7 +134,7 @@ pub fn execute_paint_segmentation(
                     push_polygon_region(
                         semantic_regions,
                         &object.id,
-                        *value,
+                        value.clone(),
                         paint_order as u64,
                         polygon.clone(),
                     );
@@ -260,19 +260,22 @@ fn compare_semantic_regions(left: &SemanticRegion, right: &SemanticRegion) -> Or
     left.object_id
         .cmp(&right.object_id)
         .then_with(|| left.paint_order.cmp(&right.paint_order))
-        .then_with(|| compare_paint_values(left.value, right.value))
+        .then_with(|| compare_paint_values(&left.value, &right.value))
         .then_with(|| compare_polygon_sets(&left.polygons, &right.polygons))
 }
 
-fn compare_paint_values(left: PaintValue, right: PaintValue) -> Ordering {
+fn compare_paint_values(left: &PaintValue, right: &PaintValue) -> Ordering {
     match (left, right) {
-        (PaintValue::Flag(left), PaintValue::Flag(right)) => left.cmp(&right),
+        (PaintValue::Flag(l), PaintValue::Flag(r)) => l.cmp(r),
         (PaintValue::Flag(_), _) => Ordering::Less,
         (_, PaintValue::Flag(_)) => Ordering::Greater,
-        (PaintValue::Scalar(left), PaintValue::Scalar(right)) => left.total_cmp(&right),
+        (PaintValue::Scalar(l), PaintValue::Scalar(r)) => l.total_cmp(r),
         (PaintValue::Scalar(_), PaintValue::ToolIndex(_)) => Ordering::Less,
         (PaintValue::ToolIndex(_), PaintValue::Scalar(_)) => Ordering::Greater,
-        (PaintValue::ToolIndex(left), PaintValue::ToolIndex(right)) => left.cmp(&right),
+        (PaintValue::ToolIndex(l), PaintValue::ToolIndex(r)) => l.cmp(r),
+        (PaintValue::Custom(l), PaintValue::Custom(r)) => l.cmp(r),
+        (PaintValue::Custom(_), _) => Ordering::Greater,
+        (_, PaintValue::Custom(_)) => Ordering::Less,
     }
 }
 

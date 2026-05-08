@@ -185,7 +185,7 @@ pub enum PaintSemantic {
 }
 
 /// Paint value types
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PaintValue {
     /// Boolean flag
     Flag(bool),
@@ -193,6 +193,9 @@ pub enum PaintValue {
     Scalar(f32),
     /// Tool/material index
     ToolIndex(u32),
+    /// Community-defined or module-defined string value.
+    /// Used when none of the typed variants is appropriate.
+    Custom(String),
 }
 
 /// Paint stroke (3D triangles defining painted region)

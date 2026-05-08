@@ -1952,12 +1952,22 @@ mod tests {
 ///
 /// Unknown semantic strings map to `PaintSemantic::Custom(name)` so
 /// guests can introduce new semantics without host-side changes.
+///
+/// # WIT PaintValueInput → IR PaintValue mapping
+///
+/// | WIT `paint-value-input` variant | IR `PaintValue` variant       |
+/// |----------------------------------|-------------------------------|
+/// | `flag(bool)`                     | `PaintValue::Flag(bool)`      |
+/// | `scalar(f32)`                    | `PaintValue::Scalar(f32)`     |
+/// | `tool-index(u32)`                | `PaintValue::ToolIndex(u32)`  |
+/// | `custom(string)`                 | `PaintValue::Custom(String)`  |
 fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_ir::PaintRegionIR {
     use slicer_ir::{
         ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon,
         SemVer, SemanticRegion,
     };
     use std::collections::HashMap;
+    use wit_host::prepass::PaintValueInput;
 
     let parse_semantic = |s: &str| -> PaintSemantic {
         match s {
@@ -1966,24 +1976,6 @@ fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_
             "support_enforcer" | "SupportEnforcer" => PaintSemantic::SupportEnforcer,
             "support_blocker" | "SupportBlocker" => PaintSemantic::SupportBlocker,
             other => PaintSemantic::Custom(other.to_string()),
-        }
-    };
-    // WIT value → IR PaintValue. The IR enum has `Flag(bool)`,
-    // `Scalar(f32)`, `ToolIndex(u32)` — no free-form string variant.
-    // Guests that need named values should emit them as ToolIndex or
-    // Scalar; unrecognized strings degrade to ToolIndex(0) so the
-    // channel stays observable.
-    let parse_value = |s: &str| -> PaintValue {
-        if s.eq_ignore_ascii_case("true") {
-            PaintValue::Flag(true)
-        } else if s.eq_ignore_ascii_case("false") {
-            PaintValue::Flag(false)
-        } else if let Ok(n) = s.parse::<u32>() {
-            PaintValue::ToolIndex(n)
-        } else if let Ok(f) = s.parse::<f32>() {
-            PaintValue::Scalar(f)
-        } else {
-            PaintValue::ToolIndex(0)
         }
     };
 
@@ -2022,7 +2014,12 @@ fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_
                     .collect(),
             })
             .collect();
-        let value = parse_value(&entry.value);
+        let value = match entry.value {
+            PaintValueInput::Flag(b) => PaintValue::Flag(b),
+            PaintValueInput::Scalar(f) => PaintValue::Scalar(f),
+            PaintValueInput::ToolIndex(n) => PaintValue::ToolIndex(n),
+            PaintValueInput::Custom(s) => PaintValue::Custom(s),
+        };
         layer
             .semantic_regions
             .entry(semantic)
@@ -2043,6 +2040,15 @@ fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_
         },
         per_layer,
     }
+}
+
+/// Public façade over [`harvest_paint_segmentation_ir`] for integration tests.
+///
+/// Exposed via `crate::dispatch_helpers::harvest_paint_segmentation_ir_from_ctx`.
+pub fn harvest_paint_segmentation_ir_pub(
+    ctx: wit_host::HostExecutionContext,
+) -> slicer_ir::PaintRegionIR {
+    harvest_paint_segmentation_ir(ctx)
 }
 
 /// Harvest `mark-triangle-paint` tuples collected by a prepass

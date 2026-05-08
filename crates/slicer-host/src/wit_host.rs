@@ -572,12 +572,19 @@ pub mod prepass {
 
                 use geometry.{ex-polygon};
 
+                variant paint-value-input {
+                    flag(bool),
+                    scalar(f32),
+                    tool-index(u32),
+                    custom(string),
+                }
+
                 record paint-region-entry {
                     object-id: object-id,
                     layer-index: u32,
                     semantic: string,
                     polygons: list<ex-polygon>,
-                    value: string,
+                    value: paint-value-input,
                 }
                 resource paint-segmentation-output {
                     push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
@@ -2300,11 +2307,16 @@ fn ir_to_wit_expolygons(eps: &[slicer_ir::ExPolygon]) -> Vec<ExPolygon> {
 }
 
 /// Convert slicer-ir PaintValue to WIT PaintValue.
+/// Note: `PaintValue::Custom` has no WIT counterpart in the output type
+/// (`PaintValue` in ir-types.wit has only flag/scalar/tool-index).
+/// Custom values are represented as ToolIndex(0) on the WIT output side;
+/// the lossless form is only available via PaintValueInput on the input path.
 fn ir_to_wit_paint_value(v: &slicer_ir::PaintValue) -> PaintValue {
     match v {
         slicer_ir::PaintValue::Flag(b) => PaintValue::Flag(*b),
         slicer_ir::PaintValue::Scalar(s) => PaintValue::Scalar(*s),
         slicer_ir::PaintValue::ToolIndex(t) => PaintValue::ToolIndex(*t),
+        slicer_ir::PaintValue::Custom(_) => PaintValue::ToolIndex(0),
     }
 }
 
@@ -2410,11 +2422,14 @@ fn paint_semantic_to_string(s: &slicer_ir::PaintSemantic) -> String {
 }
 
 /// Convert a slicer-ir `PaintValue` to a WIT `PaintValueView` variant.
+/// `PaintValue::Custom` has no WIT view counterpart; it is represented as
+/// ToolIndex(0) on the view path (the Custom variant only exists on the input path).
 fn ir_to_wit_paint_value_view(v: &slicer_ir::PaintValue) -> prepass::PaintValueView {
     match v {
         slicer_ir::PaintValue::Flag(b) => prepass::PaintValueView::Flag(*b),
         slicer_ir::PaintValue::Scalar(s) => prepass::PaintValueView::Scalar(*s),
         slicer_ir::PaintValue::ToolIndex(idx) => prepass::PaintValueView::ToolIndex(*idx),
+        slicer_ir::PaintValue::Custom(_) => prepass::PaintValueView::ToolIndex(0),
     }
 }
 
@@ -2865,6 +2880,7 @@ fn ir_to_wit_wall_feature_flag(f: &slicer_ir::WallFeatureFlags) -> WallFeatureFl
                 slicer_ir::PaintValue::Flag(b) => PaintValue::Flag(*b),
                 slicer_ir::PaintValue::Scalar(s) => PaintValue::Scalar(*s),
                 slicer_ir::PaintValue::ToolIndex(t) => PaintValue::ToolIndex(*t),
+                slicer_ir::PaintValue::Custom(_) => PaintValue::ToolIndex(0),
             };
             (k.clone(), pv)
         })
@@ -4096,6 +4112,15 @@ mod prepass_impls {
                 return Ok(Err(String::from(
                     "paint-segmentation-output: polygons list must not be empty",
                 )));
+            }
+            for (i, ep) in entry.polygons.iter().enumerate() {
+                if ep.contour.points.len() < 3 {
+                    return Ok(Err(format!(
+                        "paint-segmentation-output: polygon[{i}] contour must have \
+                         at least 3 points (got {})",
+                        ep.contour.points.len()
+                    )));
+                }
             }
             self.paint_region_entries.push(entry);
             Ok(Ok(()))

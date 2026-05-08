@@ -285,6 +285,7 @@ pub fn execute_slice_postprocess_paint_annotation(
                                         *point,
                                     ) {
                                         let fallback_value = default_fallback_value(semantic);
+                                        point_paint.push(Some(fallback_value.clone()));
                                         warnings.push(SlicePostProcessPaintAnnotationWarning {
                                             code: 504,
                                             global_layer_index: layer_index,
@@ -298,7 +299,6 @@ pub fn execute_slice_postprocess_paint_annotation(
                                                 SlicePostProcessPaintAnnotationWarningReason::NumericalEdgeAmbiguity,
                                         });
                                         degraded = true;
-                                        point_paint.push(Some(fallback_value));
                                     } else {
                                         // Point is clearly outside all regions
                                         // For built-in semantics with required_semantics,
@@ -307,7 +307,7 @@ pub fn execute_slice_postprocess_paint_annotation(
                                         let regions = paint_regions.get(layer_index, semantic);
                                         if !regions.is_empty() {
                                             // Use the first region's value as the default
-                                            point_paint.push(Some(regions[0].value));
+                                            point_paint.push(Some(regions[0].value.clone()));
                                         } else {
                                             point_paint.push(None);
                                         }
