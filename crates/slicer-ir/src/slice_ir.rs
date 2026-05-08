@@ -1256,6 +1256,31 @@ pub enum ExtrusionRole {
     Custom(String),
 }
 
+impl ExtrusionRole {
+    /// Returns the default print priority for this role.
+    /// Values mirror the canonical producer-emit order used by Packet 40's
+    /// stable-sort merge: lower = printed first, gaps ≥ 100 guarantee
+    /// unambiguous slot insertion for finalization-pushed entities.
+    pub const fn default_priority(&self) -> u32 {
+        match self {
+            Self::Skirt => 0,
+            Self::OuterWall => 1000,
+            Self::InnerWall => 1500,
+            Self::ThinWall => 1700,
+            Self::SparseInfill => 3000,
+            Self::BridgeInfill => 3500,
+            Self::BottomSolidInfill => 4000,
+            Self::TopSolidInfill => 4500,
+            Self::SupportMaterial => 5000,
+            Self::SupportInterface => 5500,
+            Self::Ironing => 6000,
+            Self::WipeTower => 8000,
+            Self::PrimeTower => 8500,
+            Self::Custom(_) => 9000,
+        }
+    }
+}
+
 /// 3D extrusion path
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExtrusionPath3D {
