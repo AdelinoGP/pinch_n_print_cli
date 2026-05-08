@@ -1,6 +1,7 @@
 //! TDD tests for paint-segmentation prepass module.
 
 use slicer_sdk::prelude::*;
+use slicer_sdk::prepass_builders::PaintValueInput;
 
 use paint_segmentation::PaintSegmentation;
 
@@ -129,10 +130,13 @@ fn single_facet_single_layer() {
     assert_eq!(region.layer_index, 0);
     assert_eq!(region.semantic, "support_enforcer");
     assert_eq!(region.object_id, "obj1");
-    assert_eq!(region.value.kind, "flag");
-    assert_eq!(region.value.flag, Some(true));
+    assert_eq!(region.value, PaintValueInput::Flag(true));
     assert_eq!(region.paint_order, 0);
-    assert_eq!(region.contour_points.len(), 3, "triangle has 3 vertices");
+    assert_eq!(
+        region.polygons[0].contour.len(),
+        3,
+        "triangle has 3 vertices"
+    );
 }
 
 #[test]
@@ -172,8 +176,8 @@ fn projects_through_transform() {
         .run_paint_segmentation(&objects_translated, &mut output_translated, &config)
         .unwrap();
 
-    let id_pts = &output_identity.regions()[0].contour_points;
-    let tr_pts = &output_translated.regions()[0].contour_points;
+    let id_pts = &output_identity.regions()[0].polygons[0].contour;
+    let tr_pts = &output_translated.regions()[0].polygons[0].contour;
 
     // Each translated point should be offset by (10, 20) from the identity point
     for i in 0..3 {

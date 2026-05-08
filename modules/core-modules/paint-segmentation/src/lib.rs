@@ -16,6 +16,7 @@
 //!      - For each participating_layer_index, push the region
 
 use slicer_sdk::prelude::*;
+use slicer_sdk::prepass_builders::{ExPolygonView, PaintValueInput};
 
 /// Paint segmentation prepass module.
 ///
@@ -66,15 +67,19 @@ impl PrepassModule for PaintSegmentation {
                         &object.triangles[facet_index],
                         &object.transform_matrix,
                     );
+                    let paint_value = paint_value_view_to_input(value);
 
                     for &layer_index in &object.participating_layer_indices {
                         output.push_paint_region(
                             layer_index,
                             paint_layer.semantic.clone(),
                             object.object_id.clone(),
-                            value.clone(),
                             paint_order as u64,
-                            contour.clone(),
+                            paint_value.clone(),
+                            vec![ExPolygonView {
+                                contour: contour.clone(),
+                                holes: vec![],
+                            }],
                         );
                     }
                 }
@@ -82,6 +87,16 @@ impl PrepassModule for PaintSegmentation {
         }
 
         Ok(())
+    }
+}
+
+/// Convert a `PaintValueView` (SDK input type) to `PaintValueInput` (output type).
+fn paint_value_view_to_input(v: &PaintValueView) -> PaintValueInput {
+    match v.kind.as_str() {
+        "flag" => PaintValueInput::Flag(v.flag.unwrap_or(false)),
+        "scalar" => PaintValueInput::Scalar(v.scalar.unwrap_or(0.0)),
+        "tool_index" => PaintValueInput::ToolIndex(v.tool_index.unwrap_or(0)),
+        other => PaintValueInput::Custom(other.to_string()),
     }
 }
 

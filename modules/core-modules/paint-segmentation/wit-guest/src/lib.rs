@@ -113,12 +113,19 @@ wit_bindgen::generate!({
 
             use geometry.{ex-polygon};
 
+            variant paint-value-input {
+                flag(bool),
+                scalar(f32),
+                tool-index(u32),
+                custom(string),
+            }
+
             record paint-region-entry {
                 object-id: object-id,
                 layer-index: u32,
                 semantic: string,
                 polygons: list<ex-polygon>,
-                value: string,
+                value: paint-value-input,
             }
             resource paint-segmentation-output {
                 push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
@@ -256,7 +263,7 @@ struct ParsedEntry {
     object_id: String,
     layer_index: u32,
     semantic: String,
-    value: String,
+    value: PaintValueInput,
     polygon: Polygon,
 }
 
@@ -285,6 +292,22 @@ fn parse_polygon(s: &str) -> Result<Polygon, String> {
         ));
     }
     Ok(Polygon { points })
+}
+
+fn parse_value_tag(tag: &str) -> PaintValueInput {
+    if tag == "true" {
+        return PaintValueInput::Flag(true);
+    }
+    if tag == "false" {
+        return PaintValueInput::Flag(false);
+    }
+    if let Ok(n) = tag.parse::<u32>() {
+        return PaintValueInput::ToolIndex(n);
+    }
+    if let Ok(f) = tag.parse::<f32>() {
+        return PaintValueInput::Scalar(f);
+    }
+    PaintValueInput::Custom(tag.to_string())
 }
 
 fn parse_entry(key: &str, value: &ConfigValue) -> Option<Result<ParsedEntry, String>> {
@@ -323,9 +346,18 @@ fn parse_entry(key: &str, value: &ConfigValue) -> Option<Result<ParsedEntry, Str
         object_id,
         layer_index,
         semantic,
-        value: val_tag,
+        value: parse_value_tag(&val_tag),
         polygon,
     }))
+}
+
+fn value_sort_key(v: &PaintValueInput) -> String {
+    match v {
+        PaintValueInput::Flag(b) => format!("flag:{b}"),
+        PaintValueInput::Scalar(f) => format!("scalar:{f}"),
+        PaintValueInput::ToolIndex(n) => format!("tool_index:{n}"),
+        PaintValueInput::Custom(s) => format!("custom:{s}"),
+    }
 }
 
 impl Guest for Component {
@@ -389,7 +421,7 @@ impl Guest for Component {
                 .then_with(|| a.object_id.cmp(&b.object_id))
                 .then_with(|| a.layer_index.cmp(&b.layer_index))
                 .then_with(|| a.semantic.cmp(&b.semantic))
-                .then_with(|| a.value.cmp(&b.value))
+                .then_with(|| value_sort_key(&a.value).cmp(&value_sort_key(&b.value)))
         });
 
         for entry in parsed {
@@ -410,7 +442,8 @@ impl Guest for Component {
                     code: 2,
                     message: format!(
                         "push_paint_region rejected {}/{}/{}/{}: {}",
-                        entry.object_id, entry.layer_index, entry.semantic, entry.value, e
+                        entry.object_id, entry.layer_index, entry.semantic,
+                        value_sort_key(&entry.value), e
                     ),
                     fatal: true,
                 })?;
