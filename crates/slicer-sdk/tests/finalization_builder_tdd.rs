@@ -1,18 +1,17 @@
-//! TDD tests for the new FinalizationOutputBuilder methods (Packet 40).
+//! TDD tests for the new FinalizationOutputBuilder methods (Packet 40 / 41).
 //!
-//! These tests will FAIL TO COMPILE until Step 3a lands the following methods:
-//!   - push_entity_with_priority(layer, path, region, priority) -> Result<(), String>
-//!   - modify_entity(layer, entity_id, closure) -> Result<(), String>
-//!   - sort_layer_by(layer, key_fn) -> Result<(), String>
-//!   - insert_synthetic_layer_after(idx, LayerCollectionIR) -> Result<(), String>
-//!   - apply_to(self, &mut Vec<LayerCollectionIR>) -> Result<(), String>
-//!   - ExtrusionRole::default_priority() -> u32
+//! Packet 41 migrates the three closure-typed methods to enum-typed forms:
+//!   - modify_entity(layer, entity_id, EntityMutation)
+//!   - sort_layer_by(layer, SortKey)
+//!   - insert_synthetic_layer_after(idx, SyntheticLayerData)
 //!
-//! Compile-fail with "no method named …" is the EXPECTED state for Step 1B.
+//! Compile-fail with "cannot find type `EntityMutation`" (and similar) is the
+//! EXPECTED state for Step 1A.  Steps 2–3 define the types.
 //! exit_condition_met = true.
 
 use slicer_ir::{LayerCollectionIR, PrintEntity, SemVer, TravelMove};
 use slicer_sdk::prelude::*;
+use slicer_sdk::{EntityMutation, SortKey, SyntheticLayerData};
 
 // =============================================================================
 // Fixture helpers
@@ -22,6 +21,30 @@ use slicer_sdk::prelude::*;
 fn make_path(role: ExtrusionRole) -> ExtrusionPath3D {
     ExtrusionPath3D {
         points: vec![],
+        role,
+        speed_factor: 1.0,
+    }
+}
+
+/// Build a dummy `ExtrusionPath3D` with per-point flow_factors set.
+fn make_path_with_flow(role: ExtrusionRole, flow_factor: f32) -> ExtrusionPath3D {
+    ExtrusionPath3D {
+        points: vec![
+            slicer_ir::Point3WithWidth {
+                x: 0.0,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor,
+            },
+            slicer_ir::Point3WithWidth {
+                x: 1.0,
+                y: 0.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor,
+            },
+        ],
         role,
         speed_factor: 1.0,
     }
@@ -110,14 +133,14 @@ fn push_with_priority_lands_at_sorted_position() {
 }
 
 // =============================================================================
-// AC-2: modify_entity_by_id_applies_closure
+// AC-2: modify_entity_by_id_applies (migrated from closure to enum form)
 // =============================================================================
 
 /// Given a layer with three entities (ids 1, 2, 3), entity_id==2 has speed_factor==1.0.
-/// After modify_entity(layer=0, entity_id=2, |e| e.path.speed_factor = 0.5) and apply_to,
-/// entity_id==2 has speed_factor==0.5 and others unchanged at 1.0.
+/// After modify_entity(layer=0, entity_id=2, EntityMutation::SetSpeedFactor(0.5)) and
+/// apply_to, entity_id==2 has speed_factor==0.5 and others unchanged at 1.0.
 #[test]
-fn modify_entity_by_id_applies_closure() {
+fn modify_entity_by_id_applies() {
     let entities = vec![
         make_entity(1, ExtrusionRole::OuterWall),
         make_entity(2, ExtrusionRole::InnerWall),
@@ -127,9 +150,7 @@ fn modify_entity_by_id_applies_closure() {
 
     let mut builder = FinalizationOutputBuilder::new();
     builder
-        .modify_entity(0, 2, |e| {
-            e.path.speed_factor = 0.5;
-        })
+        .modify_entity(0, 2, EntityMutation::SetSpeedFactor(0.5))
         .expect("modify_entity should succeed");
 
     builder
@@ -155,16 +176,16 @@ fn modify_entity_by_id_applies_closure() {
 }
 
 // =============================================================================
-// AC-3: sort_layer_by_applies_comparator
+// AC-3: sort_layer_by_priority_and_entity_id (migrated from closure to enum form)
 // =============================================================================
 
-/// With 5 entities at varying roles, after sort_layer_by(|e| (e.path.role.default_priority(),
-/// e.entity_id)) and apply_to, the layer is sorted ascending by that key.
+/// With 5 entities at varying roles, after sort_layer_by(SortKey::ByPriorityAndEntityId)
+/// and apply_to, the layer is sorted ascending by (role.default_priority(), entity_id).
 /// Travel-anchor regression check: TravelMoves are populated with entity_id anchors that
 /// include both forward references (entity later in pre-sort order) and backward references
 /// (entity earlier in pre-sort order), so the assertion is non-trivial.
 #[test]
-fn sort_layer_by_applies_comparator() {
+fn sort_layer_by_priority_and_entity_id() {
     // Intentionally out of sorted order to make the sort observable.
     // Pre-sort order: [id=5/SparseInfill, id=1/OuterWall, id=3/Ironing, id=2/InnerWall, id=4/TopSolidInfill]
     let entities = vec![
@@ -221,7 +242,7 @@ fn sort_layer_by_applies_comparator() {
 
     let mut builder = FinalizationOutputBuilder::new();
     builder
-        .sort_layer_by(0, |e| (e.path.role.default_priority(), e.entity_id))
+        .sort_layer_by(0, SortKey::ByPriorityAndEntityId)
         .expect("sort_layer_by should succeed");
 
     builder
@@ -272,14 +293,14 @@ fn sort_layer_by_applies_comparator() {
 }
 
 // =============================================================================
-// AC-4: insert_synthetic_layer_inserts_at_position
+// AC-4: insert_synthetic_layer_after_inserts_at_position (migrated to SyntheticLayerData)
 // =============================================================================
 
-/// With 3 layers, after insert_synthetic_layer_after(0, synth) and apply_to,
-/// the vec becomes [layers[0], synth, layers[1], layers[2]].
+/// With 3 layers, after insert_synthetic_layer_after(0, SyntheticLayerData { z, paths })
+/// and apply_to, the vec becomes [layers[0], synth, layers[1], layers[2]].
 /// The synth layer's entity_id namespace does not collide with neighbors.
 #[test]
-fn insert_synthetic_layer_inserts_at_position() {
+fn insert_synthetic_layer_after_inserts_at_position() {
     let mut layers = make_layers(3);
     // Give layers[0] an entity with id=1, layers[1] id=2, layers[2] id=3
     layers[0]
@@ -292,10 +313,12 @@ fn insert_synthetic_layer_inserts_at_position() {
         .ordered_entities
         .push(make_entity(3, ExtrusionRole::OuterWall));
 
-    // Synth layer uses a distinct entity_id namespace (100+)
-    let synth_entity = make_entity(100, ExtrusionRole::Ironing);
-    let synth = make_layer(99, 0.15, vec![synth_entity]);
-    let synth_global_idx = synth.global_layer_index;
+    // Synth layer specifies z and one path; host stamps entity_ids.
+    let synth_path = make_path(ExtrusionRole::Ironing);
+    let synth = SyntheticLayerData {
+        z: 0.15,
+        paths: vec![synth_path],
+    };
 
     let mut builder = FinalizationOutputBuilder::new();
     builder
@@ -308,9 +331,11 @@ fn insert_synthetic_layer_inserts_at_position() {
 
     assert_eq!(layers.len(), 4, "should have 4 layers after insertion");
     assert_eq!(layers[0].global_layer_index, 0);
-    assert_eq!(
-        layers[1].global_layer_index, synth_global_idx,
-        "synth should be at index 1"
+    // The inserted synth layer is at index 1; its z should match what was specified
+    assert!(
+        (layers[1].z - 0.15).abs() < 1e-6,
+        "synth layer z should be 0.15, got {}",
+        layers[1].z
     );
     assert_eq!(layers[2].global_layer_index, 1);
     assert_eq!(layers[3].global_layer_index, 2);
@@ -394,9 +419,7 @@ fn modify_entity_unknown_id_errors() {
 
     let mut builder = FinalizationOutputBuilder::new();
     builder
-        .modify_entity(0, 99, |e| {
-            e.path.speed_factor = 0.1;
-        })
+        .modify_entity(0, 99, EntityMutation::SetSpeedFactor(0.1))
         .expect("recording modify_entity should succeed (error deferred to apply_to)");
 
     let result = builder.apply_to(&mut layers);
@@ -440,7 +463,10 @@ fn modify_entity_unknown_id_errors() {
 #[test]
 fn insert_synthetic_layer_out_of_bounds_errors() {
     let mut layers = make_layers(3);
-    let synth = make_layer(99, 0.15, vec![]);
+    let synth = SyntheticLayerData {
+        z: 0.15,
+        paths: vec![],
+    };
 
     let mut builder = FinalizationOutputBuilder::new();
     builder.insert_synthetic_layer_after(99, synth).expect(
@@ -530,5 +556,147 @@ fn ties_preserve_insertion_order() {
         (sf1 - 0.6).abs() < 1e-6,
         "second entity should be ironing B (speed_factor=0.6), got {}",
         sf1
+    );
+}
+
+// =============================================================================
+// NEW AC-1: modify_entity_set_speed_factor_applies
+// =============================================================================
+
+/// Explicit fixture test for EntityMutation::SetSpeedFactor (AC-1 per packet.spec.md).
+/// Three entities (ids 1, 2, 3); entity 2 starts at speed_factor==1.0.
+/// After SetSpeedFactor(0.5) on entity 2, entity 2 has speed_factor==0.5 and
+/// entities 1 and 3 are byte-unchanged (speed_factor still 1.0).
+#[test]
+fn modify_entity_set_speed_factor_applies() {
+    let entities = vec![
+        make_entity(1, ExtrusionRole::OuterWall),
+        make_entity(2, ExtrusionRole::InnerWall),
+        make_entity(3, ExtrusionRole::SparseInfill),
+    ];
+    let mut layers = vec![make_layer(0, 0.2, entities)];
+
+    let mut builder = FinalizationOutputBuilder::new();
+    builder
+        .modify_entity(0, 2, EntityMutation::SetSpeedFactor(0.5))
+        .expect("modify_entity should succeed");
+
+    builder
+        .apply_to(&mut layers)
+        .expect("apply_to should succeed");
+
+    for entity in &layers[0].ordered_entities {
+        if entity.entity_id == 2 {
+            assert!(
+                (entity.path.speed_factor - 0.5).abs() < 1e-6,
+                "entity_id=2 should have speed_factor 0.5, got {}",
+                entity.path.speed_factor
+            );
+        } else {
+            assert!(
+                (entity.path.speed_factor - 1.0).abs() < 1e-6,
+                "entity_id={} should have speed_factor 1.0 (unchanged), got {}",
+                entity.entity_id,
+                entity.path.speed_factor
+            );
+        }
+    }
+}
+
+// =============================================================================
+// NEW AC-2: modify_entity_set_flow_factor_applies
+// =============================================================================
+
+/// Explicit fixture test for EntityMutation::SetFlowFactor (AC-2 per packet.spec.md).
+/// Three entities (ids 1, 2, 3); entity 2 has two Point3WithWidth points each with
+/// flow_factor==1.0.  After SetFlowFactor(0.7) on entity 2, EVERY points[i].flow_factor
+/// for entity 2 is 0.7.  Entities 1 and 3 per-point flow_factors are unchanged.
+#[test]
+fn modify_entity_set_flow_factor_applies() {
+    let entity1 = PrintEntity {
+        entity_id: 1,
+        path: make_path_with_flow(ExtrusionRole::OuterWall, 1.0),
+        role: ExtrusionRole::OuterWall,
+        region_key: make_region_key(),
+        topo_order: 0,
+    };
+    let entity2 = PrintEntity {
+        entity_id: 2,
+        path: make_path_with_flow(ExtrusionRole::InnerWall, 1.0),
+        role: ExtrusionRole::InnerWall,
+        region_key: make_region_key(),
+        topo_order: 1,
+    };
+    let entity3 = PrintEntity {
+        entity_id: 3,
+        path: make_path_with_flow(ExtrusionRole::SparseInfill, 1.0),
+        role: ExtrusionRole::SparseInfill,
+        region_key: make_region_key(),
+        topo_order: 2,
+    };
+
+    let mut layers = vec![make_layer(0, 0.2, vec![entity1, entity2, entity3])];
+
+    let mut builder = FinalizationOutputBuilder::new();
+    builder
+        .modify_entity(0, 2, EntityMutation::SetFlowFactor(0.7))
+        .expect("modify_entity should succeed");
+
+    builder
+        .apply_to(&mut layers)
+        .expect("apply_to should succeed");
+
+    for entity in &layers[0].ordered_entities {
+        if entity.entity_id == 2 {
+            assert!(
+                !entity.path.points.is_empty(),
+                "entity_id=2 should have points"
+            );
+            for (i, pt) in entity.path.points.iter().enumerate() {
+                assert!(
+                    (pt.flow_factor - 0.7).abs() < 1e-6,
+                    "entity_id=2 points[{}].flow_factor should be 0.7, got {}",
+                    i,
+                    pt.flow_factor
+                );
+            }
+        } else {
+            for (i, pt) in entity.path.points.iter().enumerate() {
+                assert!(
+                    (pt.flow_factor - 1.0).abs() < 1e-6,
+                    "entity_id={} points[{}].flow_factor should be 1.0 (unchanged), got {}",
+                    entity.entity_id,
+                    i,
+                    pt.flow_factor
+                );
+            }
+        }
+    }
+}
+
+// =============================================================================
+// NEW NEG-4: closure_api_is_fully_removed
+// =============================================================================
+
+/// Grep regression: asserts that after Step 3 lands, the closure-based generic
+/// bounds for `FnOnce(&mut PrintEntity)` and `Fn(&PrintEntity)` are gone from
+/// the FinalizationOutputBuilder impl block in traits.rs.
+///
+/// This test FAILS NOW (Step 1A red-bar) because those bounds still exist.
+/// It will pass once Step 3 removes the closure-typed method signatures.
+#[test]
+fn closure_api_is_fully_removed() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let traits_path = format!("{}/src/traits.rs", manifest_dir);
+    let source = std::fs::read_to_string(&traits_path)
+        .unwrap_or_else(|e| panic!("could not read {}: {}", traits_path, e));
+
+    assert!(
+        !source.contains("F: FnOnce(&mut PrintEntity)"),
+        "closure bound 'F: FnOnce(&mut PrintEntity)' must be removed from traits.rs"
+    );
+    assert!(
+        !source.contains("F: Fn(&PrintEntity)"),
+        "closure bound 'F: Fn(&PrintEntity)' must be removed from traits.rs"
     );
 }

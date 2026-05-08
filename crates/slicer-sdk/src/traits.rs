@@ -631,25 +631,71 @@ impl LayerCollectionView {
 // merge applier `apply_to` that drives the full host-side merge sequence.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Step-2 types: EntityMutation, SortKey, SyntheticLayerData
+// These are the locked variant lists from packet 41. Step 3 will wire them
+// into FinalizationOutputBuilder's API; for now they just need to exist and
+// compile so that the SDK test file can import them.
+// ---------------------------------------------------------------------------
+
+/// A discrete mutation to apply to a `PrintEntity` during finalization merge.
+#[derive(Debug, Clone)]
+pub enum EntityMutation {
+    /// Set the path-level speed factor for an entity.
+    SetSpeedFactor(f32),
+    /// Set the flow factor for every point on an entity's path.
+    SetFlowFactor(f32),
+}
+
+/// Ordering key for sorting entities within a layer during finalization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortKey {
+    /// Sort by priority first, then by entity id (stable tiebreak).
+    ByPriorityAndEntityId,
+    /// Sort by entity id only.
+    ByEntityId,
+    /// Sort by object id, then by priority within the same object.
+    /// Resolves the per-entity object id via `PrintEntity.region_key.object_id`
+    /// (PrintEntity carries no direct `object_id` field).
+    ByObjectIdThenPriority,
+}
+
+/// A fully-formed synthetic layer ready to be inserted into the layer collection.
+#[derive(Debug, Clone)]
+pub struct SyntheticLayerData {
+    /// Z coordinate of the synthetic layer (same unit system as the rest of the IR).
+    pub z: f32,
+    /// Extrusion paths that make up this synthetic layer.
+    pub paths: Vec<ExtrusionPath3D>,
+}
+
 // Internal operation log — deferred until apply_to() is called.
 
 /// A pending mutation recorded by the builder and applied in `apply_to`.
-enum MergeOp {
+#[derive(Debug)]
+pub enum MergeOp {
     /// Mutate a single entity by id.
     ModifyEntity {
+        /// Layer index where the target entity lives.
         layer: u32,
+        /// Stable entity identifier within that layer.
         entity_id: u64,
-        op: Box<dyn FnOnce(&mut PrintEntity) + 'static>,
+        /// Mutation to apply to the matched entity.
+        mutation: EntityMutation,
     },
-    /// Sort an entire layer's entity vec.
+    /// Sort an entire layer's entity vec by a named key.
     SortLayer {
+        /// Layer index whose entities are to be reordered.
         layer: u32,
-        sort_fn: Box<dyn FnOnce(&mut Vec<PrintEntity>) + 'static>,
+        /// Sort key applied via stable sort.
+        key: SortKey,
     },
-    /// Insert a fully-formed layer after `idx` in the outer Vec.
+    /// Insert a synthetic layer after `idx` in the outer Vec.
     InsertSynthLayer {
+        /// Insert the synthetic layer immediately after this layer index.
         idx: u32,
-        new_layer: LayerCollectionIR,
+        /// Minimal payload (`z` plus extrusion paths) used to construct the new layer.
+        data: SyntheticLayerData,
     },
 }
 
@@ -734,57 +780,43 @@ impl FinalizationOutputBuilder {
         Ok(())
     }
 
-    /// Record a closure that mutates a single `PrintEntity` (identified by
-    /// `entity_id`) in `layer_index`.  The closure is deferred and applied by
+    /// Record a discrete mutation to apply to a single `PrintEntity` (identified
+    /// by `entity_id`) in `layer_index`.  The mutation is deferred and applied by
     /// `apply_to`; if the entity is not found at that time an error is returned.
-    pub fn modify_entity<F>(
+    pub fn modify_entity(
         &mut self,
         layer_index: u32,
         entity_id: u64,
-        op: F,
-    ) -> Result<(), String>
-    where
-        F: FnOnce(&mut PrintEntity) + 'static,
-    {
+        mutation: EntityMutation,
+    ) -> Result<(), String> {
         self.merge_ops.push(MergeOp::ModifyEntity {
             layer: layer_index,
             entity_id,
-            op: Box::new(op),
+            mutation,
         });
         Ok(())
     }
 
-    /// Record a sort key function for an entire layer.
+    /// Record a sort key for an entire layer's entity vec.
     ///
-    /// `key_fn` is called once per entity to produce an `Ord` sort key; the
-    /// layer is stable-sorted ascending by that key during `apply_to`.
-    pub fn sort_layer_by<F, K>(&mut self, layer_index: u32, key_fn: F) -> Result<(), String>
-    where
-        F: Fn(&PrintEntity) -> K + 'static,
-        K: Ord + 'static,
-    {
-        // Wrap the key_fn in a closure that operates on the whole Vec so we can
-        // box it as a single `FnOnce(&mut Vec<PrintEntity>)`.
-        let sort_fn = move |entities: &mut Vec<PrintEntity>| {
-            entities.sort_by_key(|e| key_fn(e));
-        };
+    /// The layer is stable-sorted ascending by the named key during `apply_to`.
+    pub fn sort_layer_by(&mut self, layer_index: u32, key: SortKey) -> Result<(), String> {
         self.merge_ops.push(MergeOp::SortLayer {
             layer: layer_index,
-            sort_fn: Box::new(sort_fn),
+            key,
         });
         Ok(())
     }
 
-    /// Record the insertion of a fully-formed synthetic layer immediately after
-    /// position `idx` in the outer `Vec<LayerCollectionIR>`.  Bounds checking
-    /// is deferred to `apply_to`.
+    /// Record the insertion of a synthetic layer immediately after position `idx`
+    /// in the outer `Vec<LayerCollectionIR>`.  Bounds checking is deferred to
+    /// `apply_to`; the `LayerCollectionIR` is constructed from `data` at apply time.
     pub fn insert_synthetic_layer_after(
         &mut self,
         idx: u32,
-        new_layer: LayerCollectionIR,
+        data: SyntheticLayerData,
     ) -> Result<(), String> {
-        self.merge_ops
-            .push(MergeOp::InsertSynthLayer { idx, new_layer });
+        self.merge_ops.push(MergeOp::InsertSynthLayer { idx, data });
         Ok(())
     }
 
@@ -828,6 +860,16 @@ impl FinalizationOutputBuilder {
         self.priority_pushes
             .iter()
             .map(|p| (p.layer_index, &p.path, &p.region_key, p.priority))
+    }
+
+    /// Get all recorded merge operations (for drain-back in slicer-macros Step 5).
+    ///
+    /// Returns an iterator over all deferred `MergeOp` records in record order.
+    /// The macro drain-back loop (Step 5) iterates over this to relay operations
+    /// across the WIT boundary.
+    #[doc(hidden)]
+    pub fn merge_ops(&self) -> impl Iterator<Item = &MergeOp> {
+        self.merge_ops.iter()
     }
 
     // -----------------------------------------------------------------------
@@ -959,7 +1001,7 @@ impl FinalizationOutputBuilder {
                 MergeOp::ModifyEntity {
                     layer: layer_idx,
                     entity_id,
-                    op: closure,
+                    mutation,
                 } => {
                     let layer = layers
                         .iter_mut()
@@ -971,7 +1013,16 @@ impl FinalizationOutputBuilder {
                             .find(|e| e.entity_id == entity_id)
                     });
                     match entity {
-                        Some(e) => closure(e),
+                        Some(e) => match mutation {
+                            EntityMutation::SetSpeedFactor(v) => {
+                                e.path.speed_factor = v;
+                            }
+                            EntityMutation::SetFlowFactor(v) => {
+                                for pt in e.path.points.iter_mut() {
+                                    pt.flow_factor = v;
+                                }
+                            }
+                        },
                         None => {
                             return Err(format!(
                                 "modify_entity: entity_id {} not found in layer {}",
@@ -983,27 +1034,97 @@ impl FinalizationOutputBuilder {
 
                 MergeOp::SortLayer {
                     layer: layer_idx,
-                    sort_fn,
+                    key,
                 } => {
                     if let Some(layer) = layers
                         .iter_mut()
                         .find(|l| l.global_layer_index == layer_idx)
                     {
-                        sort_fn(&mut layer.ordered_entities);
+                        match key {
+                            SortKey::ByPriorityAndEntityId => {
+                                layer
+                                    .ordered_entities
+                                    .sort_by_key(|e| (e.role.default_priority(), e.entity_id));
+                            }
+                            SortKey::ByEntityId => {
+                                layer.ordered_entities.sort_by_key(|e| e.entity_id);
+                            }
+                            SortKey::ByObjectIdThenPriority => {
+                                layer.ordered_entities.sort_by(|a, b| {
+                                    let key_a =
+                                        (&a.region_key.object_id, a.role.default_priority());
+                                    let key_b =
+                                        (&b.region_key.object_id, b.role.default_priority());
+                                    key_a.cmp(&key_b)
+                                });
+                            }
+                        }
+                        // Packet-39 travel-anchor invariant: travel_moves reference
+                        // entity_ids by value; sort only reorders entities in the vec,
+                        // it does NOT re-aim travel_moves. The entity_ids themselves are
+                        // preserved, so the anchor invariant is maintained automatically.
                     }
                     // Layer not found → no-op (matches ModifyEntity layer-not-found skip).
                 }
 
-                MergeOp::InsertSynthLayer { idx, new_layer } => {
+                MergeOp::InsertSynthLayer { idx, data } => {
                     // Validate bounds: idx must be a valid existing position.
                     if idx as usize >= layers.len() {
                         return Err(format!(
-                            "insert_synthetic_layer: synthetic insert idx {} out of bounds; layers.len()={}",
+                            "insert_synthetic_layer: synthetic layer insert idx {} out of bounds (layers.len() = {})",
                             idx,
                             layers.len()
                         ));
                     }
-                    layers.insert((idx + 1) as usize, new_layer);
+                    // Build a fresh LayerCollectionIR from SyntheticLayerData.
+                    // The insertion index in the outer vec (post-insert) is idx + 1.
+                    let insert_pos = (idx + 1) as usize;
+                    let global_layer_index = insert_pos as u32;
+                    // Compute global max entity_id across all existing layers so that
+                    // synth-layer IDs don't collide with any neighbor.
+                    let max_existing_id = layers
+                        .iter()
+                        .flat_map(|l| l.ordered_entities.iter().map(|e| e.entity_id))
+                        .max()
+                        .unwrap_or(0);
+                    let mut next_synth_id = max_existing_id + 1;
+                    let ordered_entities: Vec<PrintEntity> = data
+                        .paths
+                        .into_iter()
+                        .enumerate()
+                        .map(|(topo_order, path)| {
+                            let entity_id = next_synth_id;
+                            next_synth_id += 1;
+                            let role = path.role.clone();
+                            PrintEntity {
+                                entity_id,
+                                path,
+                                role,
+                                region_key: RegionKey {
+                                    global_layer_index,
+                                    object_id: String::new(),
+                                    region_id: 0,
+                                },
+                                topo_order: topo_order as u32,
+                            }
+                        })
+                        .collect();
+                    let new_layer = LayerCollectionIR {
+                        schema_version: SemVer {
+                            major: 1,
+                            minor: 0,
+                            patch: 0,
+                        },
+                        global_layer_index,
+                        z: data.z,
+                        ordered_entities,
+                        tool_changes: Vec::new(),
+                        z_hops: Vec::new(),
+                        annotations: Vec::new(),
+                        retracts: Vec::new(),
+                        travel_moves: Vec::new(),
+                    };
+                    layers.insert(insert_pos, new_layer);
                 }
             }
         }
