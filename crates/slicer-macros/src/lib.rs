@@ -1314,7 +1314,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 config: config-view,
             ) -> result<_, module-error>;
 
-            use geometry.{ex-polygon};
+            use geometry.{ex-polygon, polygon, point2};
 
             type layer-idx = s32;
 
@@ -1448,6 +1448,16 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
 
     let preamble = emit_world_preamble("prepass-module", "world_prepass", wit_inline);
     let segmentation_helpers = quote! {
+        // Bring polygon / point2 sub-types into scope explicitly.
+        // wit-bindgen 0.24 only generates flat type aliases for world-level
+        // `use geometry.{...}` imports whose TypeInfo is marked owned/borrowed;
+        // because the alias TypeId is separate from the underlying geometry
+        // interface TypeId, `polygon` and `point2` may not be marked and thus
+        // not re-exported by `generate!`. The explicit `use` mirrors the
+        // finalization world pattern (see build_finalization_world_glue line ~998).
+        use self::slicer::world_prepass::geometry::Polygon;
+        use self::slicer::world_prepass::geometry::Point2;
+
         fn __slicer_paint_value_from_wit(
             value: PaintValueView,
         ) -> ::slicer_sdk::prepass_types::PaintValueView {

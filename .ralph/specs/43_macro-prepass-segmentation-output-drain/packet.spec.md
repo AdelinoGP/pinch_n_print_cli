@@ -1,5 +1,6 @@
 ---
-status: draft
+status: superseded
+superseded_by: 43-rev1_macro-prepass-segmentation-output-drain
 packet: macro-prepass-segmentation-output-drain
 task_ids:
   - TASK-130
@@ -8,6 +9,9 @@ task_ids:
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
+
+> **Superseded by `43-rev1_macro-prepass-segmentation-output-drain`.** This packet's `design.md` rejected the two-crate alternative on scaffolding-economy grounds without verifying that one `#[slicer_module]` impl can host two stage methods. It cannot — `crates/slicer-macros/src/lib.rs:43-52` enforces single-stage per impl and line `:2024` hardcodes `__slicer_prepass_world_export`. Steps 1 and 2 from this packet (round-trip TDD authoring + macro arm drain) landed in master commits `0c4e8b2` and `46aed61` and are kept. Step 3 (multi-stage rewrite of `sdk-prepass-guest` to raw `wit_bindgen::generate!`) silently demoted two pre-existing macro-arm tests; the rev1 packet reverts that and adds two macro sibling crates (`sdk-prepass-paintseg-guest`, `sdk-prepass-meshseg-guest`). See `.ralph/specs/43-rev1_macro-prepass-segmentation-output-drain/` for the corrected approach and audit trail.
+
 
 # Packet Contract: macro-prepass-segmentation-output-drain
 

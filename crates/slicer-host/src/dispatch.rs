@@ -1981,7 +1981,7 @@ fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_
 
     let mut per_layer: HashMap<u32, LayerPaintMap> = HashMap::new();
     for (idx, entry) in ctx.paint_region_entries.into_iter().enumerate() {
-        let layer_index = entry.layer_index;
+        let layer_index = entry.layer_index as u32; // validator at wit_host.rs push_paint_region rejects negative
         let layer = per_layer
             .entry(layer_index)
             .or_insert_with(|| LayerPaintMap {

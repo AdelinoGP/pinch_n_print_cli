@@ -540,7 +540,7 @@ pub mod prepass {
                 import config-types;
                 type object-id = string;
                 type region-id = string;
-                type layer-idx = u32;
+                type layer-idx = s32;
                 record module-error { code: u32, message: string, fatal: bool }
 
                 enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
@@ -581,7 +581,7 @@ pub mod prepass {
 
                 record paint-region-entry {
                     object-id: object-id,
-                    layer-index: u32,
+                    layer-index: layer-idx,
                     semantic: string,
                     polygons: list<ex-polygon>,
                     value: paint-value-input,
@@ -684,7 +684,7 @@ pub mod prepass {
                     reason: seam-reason,
                 }
                 record seam-plan-entry {
-                    global-layer-index: layer-idx,
+                    global-layer-index: u32,
                     object-id: object-id,
                     region-id: region-id,
                     chosen-position: point3-with-width,
@@ -704,8 +704,8 @@ pub mod prepass {
 
                 // SupportGeometry stage. global-layer-index is signed because
                 // raft prefix layers carry negative indices (-1, -2, ...).
-                // The other layer-idx fields in this world are model-layer-only
-                // and stay u32 via the hand-rolled `type layer-idx = u32`.
+                // `type layer-idx = s32` (line above) already covers all signed
+                // uses in this world, including seam-plan-entry and view records.
                 record support-plan-entry {
                     global-layer-index: s32,
                     object-id: object-id,
@@ -718,7 +718,7 @@ pub mod prepass {
                 // for support-geometry modules.
 
                 record layer-plan-view-entry {
-                    global-layer-index: layer-idx,
+                    global-layer-index: u32,
                     z: f32,
                     effective-layer-height: f32,
                 }
@@ -727,7 +727,7 @@ pub mod prepass {
                 }
                 record region-segmentation-view-entry {
                     object-id: object-id,
-                    layer-index: layer-idx,
+                    layer-index: u32,
                     region-ids: list<region-id>,
                 }
                 record region-segmentation-view {
@@ -735,7 +735,7 @@ pub mod prepass {
                 }
 
                 record support-geometry-view-entry {
-                    global-support-layer-index: layer-idx,
+                    global-support-layer-index: u32,
                     object-id: object-id,
                     region-id: region-id,
                     outlines: list<ex-polygon>,
@@ -4098,6 +4098,12 @@ mod prepass_impls {
             // because the guest is required to emit one region entry
             // per (layer, semantic, object, value) group — zero-polygon
             // entries are never correct per docs/02 §Paint Region IR.
+            if entry.layer_index < 0 {
+                return Ok(Err(format!(
+                    "paint-segmentation-output: layer-index must be non-negative (got {})",
+                    entry.layer_index
+                )));
+            }
             if entry.object_id.is_empty() {
                 return Ok(Err(String::from(
                     "paint-segmentation-output: object-id must be non-empty",
