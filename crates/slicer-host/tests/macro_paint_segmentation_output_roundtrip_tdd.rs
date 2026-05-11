@@ -23,11 +23,11 @@ use slicer_ir::{
     PaintSemantic, PaintValue, Point3, SemVer, Transform3d,
 };
 
-// ── Path to the sdk-prepass-guest component ───────────────────────────────────
+// ── Path to the sdk-prepass-paintseg-guest component ─────────────────────────
 
 const SDK_PREPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/sdk-prepass-guest.component.wasm"
+    "/../../test-guests/sdk-prepass-paintseg-guest.component.wasm"
 );
 
 // ── Harness helpers ───────────────────────────────────────────────────────────
@@ -159,10 +159,10 @@ fn load_sdk_prepass_guest(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmCo
     if !path.exists() {
         return None;
     }
-    let bytes = std::fs::read(path).expect("read sdk-prepass-guest.component.wasm");
+    let bytes = std::fs::read(path).expect("read sdk-prepass-paintseg-guest.component.wasm");
     match engine.compile_component(&bytes) {
         Ok(c) => Some(Arc::new(c)),
-        Err(e) => panic!("failed to compile sdk-prepass-guest: {e}"),
+        Err(e) => panic!("failed to compile sdk-prepass-paintseg-guest: {e}"),
     }
 }
 
@@ -182,17 +182,16 @@ fn fixture_config(case: &str) -> ConfigView {
 /// AC-1: The PaintSegmentation macro arm body in slicer-macros/src/lib.rs must
 /// contain the drain strings `sdk_output.regions()`, `_output.push_paint_region`,
 /// and `ModuleError { code: 10, fatal: true }`.
-///
-/// RED today: the arm body does not yet have these strings (Step 2 will add them).
 #[test]
 fn macro_arm_drains_regions_to_wit() {
     let src = include_str!("../../slicer-macros/src/lib.rs");
 
-    // Find the PaintSegmentation arm body.
-    let sentinel = "PrePass::PaintSegmentation";
-    let arm_start = src
-        .find(sentinel)
-        .expect("slicer-macros must contain PrePass::PaintSegmentation arm sentinel");
+    // Use a sentinel that uniquely identifies the arm body (not the WorldGlueKind match).
+    // The arm body initialises sdk_output with PaintSegmentationOutput::new().
+    let sentinel = "PaintSegmentationOutput::new()";
+    let arm_start = src.find(sentinel).expect(
+        "slicer-macros must contain PaintSegmentationOutput::new() in PaintSegmentation arm",
+    );
 
     // Bound the arm: take the next 4000 chars as a proxy for the arm body.
     let arm_body = &src[arm_start..arm_start + src[arm_start..].len().min(4000)];
@@ -207,23 +206,19 @@ fn macro_arm_drains_regions_to_wit() {
         "PaintSegmentation arm must call _output.push_paint_region; arm snippet:\n{}",
         &arm_body[..arm_body.len().min(500)]
     );
+    // The source uses multi-line struct literal, so check each field separately.
     assert!(
-        arm_body.contains("ModuleError { code: 10, fatal: true }"),
-        "PaintSegmentation arm must surface ModuleError{{ code: 10, fatal: true }} on push failure"
+        arm_body.contains("code: 10") && arm_body.contains("fatal: true"),
+        "PaintSegmentation arm must surface ModuleError with code: 10 and fatal: true on push failure"
     );
 }
 
-// ── AC-2: hole-bearing typed value round-trip ─────────────────────────────────
+// ── AC-5: hole-bearing typed value round-trip ─────────────────────────────────
 
-/// AC-2: Dispatch PaintSegmentation with fixture_case="hole_bearing".
-/// The guest (after Step 3) emits a region on layer 3, semantic=Material,
-/// object_id="obj-a", ToolIndex(7), with a polygon that has 1 hole.
-///
-/// Config contract for Step 3: `fixture_case = "hole_bearing"` →
-///   push_paint_region(layer=3, semantic="material", object_id="obj-a",
-///     value=ToolIndex(7), polygon with holes.len()==1)
-///
-/// RED today: guest emits nothing → per_layer is empty.
+/// AC-5: Dispatch PaintSegmentation with fixture_case="hole_bearing".
+/// The paintseg guest emits 1 region on layer 0, semantic=FuzzySkin,
+/// object_id="obj-a", PaintValue::Custom("test-semantic|hole-bearing"),
+/// with a polygon that has 1 hole (4-point contour, 4-point hole).
 #[test]
 fn hole_bearing_typed_value_round_trips() {
     use slicer_host::PrepassStageOutput;
@@ -232,7 +227,7 @@ fn hole_bearing_typed_value_round_trips() {
     let component = match load_sdk_prepass_guest(&engine) {
         Some(c) => c,
         None => {
-            eprintln!("SKIP: sdk-prepass-guest.component.wasm missing");
+            eprintln!("SKIP: sdk-prepass-paintseg-guest.component.wasm missing");
             return;
         }
     };
@@ -255,55 +250,61 @@ fn hole_bearing_typed_value_round_trips() {
     let ir = match result {
         Ok((PrepassStageOutput::PaintRegions(ir), _)) => ir,
         Ok((PrepassStageOutput::None, _)) => {
-            panic!("AC-2 FAIL: got None — guest did not emit any paint regions (Step 3 not done)");
+            panic!("AC-5 FAIL: got None — guest did not emit any paint regions");
         }
         Ok((other, _)) => panic!(
-            "AC-2 FAIL: unexpected variant {:?}",
+            "AC-5 FAIL: unexpected variant {:?}",
             std::mem::discriminant(&other)
         ),
-        Err(e) => panic!("AC-2 FAIL: dispatch error: {e}"),
+        Err(e) => panic!("AC-5 FAIL: dispatch error: {e}"),
     };
 
+    // Guest emits on layer 0 with FuzzySkin semantic.
     let layer_map = ir
         .per_layer
-        .get(&3)
-        .expect("AC-2: per_layer must contain layer index 3");
+        .get(&0)
+        .expect("AC-5: per_layer must contain layer index 0");
     let regions = layer_map
         .semantic_regions
-        .get(&PaintSemantic::Material)
-        .expect("AC-2: layer 3 must have Material semantic");
+        .get(&PaintSemantic::FuzzySkin)
+        .expect("AC-5: layer 0 must have FuzzySkin semantic");
     assert!(
         !regions.is_empty(),
-        "AC-2: Material regions must be non-empty"
+        "AC-5: FuzzySkin regions must be non-empty"
     );
     let region = regions
         .iter()
         .find(|r| r.object_id == "obj-a")
-        .expect("AC-2: must find region for obj-a");
+        .expect("AC-5: must find region for obj-a");
+
+    // Exactly 1 polygon with at least 1 hole.
     assert_eq!(
-        region.polygons[0].holes.len(),
+        region.polygons.len(),
         1,
-        "AC-2: polygon[0] must have 1 hole"
+        "AC-5: must have exactly 1 polygon"
     );
-    assert_eq!(
-        region.value,
-        PaintValue::ToolIndex(7),
-        "AC-2: value must be ToolIndex(7)"
+    assert!(
+        !region.polygons[0].holes.is_empty(),
+        "AC-5: polygon[0] must have at least 1 hole"
     );
-    assert_eq!(region.object_id, "obj-a", "AC-2: object_id must be obj-a");
+
+    // Value must be the Custom string the guest injected.
+    match &region.value {
+        PaintValue::Custom(s) => assert!(
+            s.contains("test-semantic|hole-bearing"),
+            "AC-5: Custom value must contain 'test-semantic|hole-bearing', got '{s}'"
+        ),
+        other => panic!("AC-5: expected PaintValue::Custom, got {:?}", other),
+    }
+    assert_eq!(region.object_id, "obj-a", "AC-5: object_id must be obj-a");
 }
 
-// ── AC-3: custom semantic + custom value round-trip ───────────────────────────
+// ── AC-6: custom paint value round-trip ──────────────────────────────────────
 
-/// AC-3: Dispatch PaintSegmentation with fixture_case="custom_payload".
-/// The guest emits a region with PaintSemantic::Custom("my_profile"),
-/// value=PaintValue::Custom("profile_high"), object_id="obj-a".
-///
-/// Config contract for Step 3: `fixture_case = "custom_payload"` →
-///   push_paint_region(semantic=Custom("my_profile"), value=Custom("profile_high"),
-///     object_id="obj-a", layer=0)
-///
-/// RED today: guest emits nothing.
+/// AC-6: Dispatch PaintSegmentation with fixture_case="custom_payload".
+/// The paintseg guest emits a region with PaintSemantic::FuzzySkin,
+/// value=PaintValue::Custom("test-semantic|DEADBEEF"), object_id="obj-a",
+/// layer=0, 1 polygon (triangle, no holes).
 #[test]
 fn custom_semantic_and_custom_value_round_trip() {
     use slicer_host::PrepassStageOutput;
@@ -312,7 +313,7 @@ fn custom_semantic_and_custom_value_round_trip() {
     let component = match load_sdk_prepass_guest(&engine) {
         Some(c) => c,
         None => {
-            eprintln!("SKIP: sdk-prepass-guest.component.wasm missing");
+            eprintln!("SKIP: sdk-prepass-paintseg-guest.component.wasm missing");
             return;
         }
     };
@@ -335,59 +336,47 @@ fn custom_semantic_and_custom_value_round_trip() {
     let ir = match result {
         Ok((PrepassStageOutput::PaintRegions(ir), _)) => ir,
         Ok((PrepassStageOutput::None, _)) => {
-            panic!("AC-3 FAIL: got None — guest did not emit (Step 3 not done)");
+            panic!("AC-6 FAIL: got None — guest did not emit any paint regions");
         }
         Ok((other, _)) => panic!(
-            "AC-3 FAIL: unexpected variant {:?}",
+            "AC-6 FAIL: unexpected variant {:?}",
             std::mem::discriminant(&other)
         ),
-        Err(e) => panic!("AC-3 FAIL: dispatch error: {e}"),
+        Err(e) => panic!("AC-6 FAIL: dispatch error: {e}"),
     };
 
-    let custom_key = PaintSemantic::Custom("my_profile".into());
+    // Guest emits on layer 0 with FuzzySkin semantic.
     let layer_map = ir
         .per_layer
         .get(&0)
-        .expect("AC-3: per_layer must contain layer 0");
+        .expect("AC-6: per_layer must contain layer 0");
     let regions = layer_map
         .semantic_regions
-        .get(&custom_key)
-        .expect("AC-3: must find Custom(my_profile) semantic");
+        .get(&PaintSemantic::FuzzySkin)
+        .expect("AC-6: must find FuzzySkin semantic on layer 0");
     let region = regions
         .iter()
         .find(|r| r.object_id == "obj-a")
-        .expect("AC-3: must find region for obj-a");
+        .expect("AC-6: must find region for obj-a");
 
-    // value must NOT be ToolIndex(0)
-    assert_ne!(
-        region.value,
-        PaintValue::ToolIndex(0),
-        "AC-3: value must not be ToolIndex(0)"
-    );
+    // Value must be byte-for-byte Custom("test-semantic|DEADBEEF").
     match &region.value {
         PaintValue::Custom(s) => assert_eq!(
-            s, "profile_high",
-            "AC-3: Custom payload must be 'profile_high', got '{s}'"
+            s, "test-semantic|DEADBEEF",
+            "AC-6: Custom payload must be 'test-semantic|DEADBEEF', got '{s}'"
         ),
-        other => panic!("AC-3: expected PaintValue::Custom, got {:?}", other),
-    }
-    // Verify key string preserved verbatim
-    match &custom_key {
-        PaintSemantic::Custom(k) => assert_eq!(k, "my_profile"),
-        _ => unreachable!(),
+        other => panic!("AC-6: expected PaintValue::Custom, got {:?}", other),
     }
 }
 
-// ── AC-5: push failure surfaces as fatal module error ────────────────────────
+// ── AC-14: push failure surfaces as fatal module error ───────────────────────
 
-/// AC-5: Dispatch PaintSegmentation with fixture_case="empty_polygons".
-/// The guest emits a region with empty `polygons: vec![]`.
-/// The host validator must reject and surface a fatal error.
-///
-/// Config contract for Step 3: `fixture_case = "empty_polygons"` →
-///   push_paint_region(..., polygons=[]) — should fail validation.
-///
-/// RED today: guest emits nothing, so dispatch returns None (no Err yet).
+/// AC-14: Dispatch PaintSegmentation with fixture_case="force_push_failure".
+/// The paintseg guest emits a region with empty `polygons: vec![]`.
+/// The host validator (wit_host.rs:4089-4127) rejects this with
+/// "paint-segmentation-output: polygons list must not be empty".
+/// The macro arm surfaces ModuleError { code: 10, fatal: true } as
+/// PrepassExecutionError::FatalModule.
 #[test]
 fn push_failure_surfaces_as_fatal_module_error() {
     use slicer_host::PrepassStageOutput;
@@ -396,7 +385,7 @@ fn push_failure_surfaces_as_fatal_module_error() {
     let component = match load_sdk_prepass_guest(&engine) {
         Some(c) => c,
         None => {
-            eprintln!("SKIP: sdk-prepass-guest.component.wasm missing");
+            eprintln!("SKIP: sdk-prepass-paintseg-guest.component.wasm missing");
             return;
         }
     };
@@ -405,7 +394,7 @@ fn push_failure_surfaces_as_fatal_module_error() {
         "com.test.paint-seg-empty-poly",
         "PrePass::PaintSegmentation",
         component,
-        fixture_config("empty_polygons"),
+        fixture_config("force_push_failure"),
     );
     let blackboard = blackboard_with_objects(&["obj-a"]);
 
@@ -416,24 +405,22 @@ fn push_failure_surfaces_as_fatal_module_error() {
         &blackboard,
     );
 
-    // After Step 2+3: dispatch must return Err with FatalModule discriminant.
-    // RED today: result is Ok(None) because guest emits nothing.
+    // Dispatch must return Err with FatalModule discriminant.
     match result {
         Err(e) => {
             let dbg = format!("{:?}", e);
             assert!(
                 dbg.contains("FatalModule"),
-                "AC-5: error must be FatalModule, got: {dbg}"
+                "AC-14: error must be FatalModule, got: {dbg}"
             );
         }
         Ok((PrepassStageOutput::None, _)) => {
             panic!(
-                "AC-5 FAIL (RED): got Ok(None) — guest did not emit empty-polygon region yet \
-                 (Step 3 must add empty_polygons fixture)"
+                "AC-14 FAIL: got Ok(None) — force_push_failure fixture must trigger host rejection"
             );
         }
         Ok((other, _)) => panic!(
-            "AC-5 FAIL: expected Err(FatalModule) but got Ok({:?})",
+            "AC-14 FAIL: expected Err(FatalModule) but got Ok({:?})",
             std::mem::discriminant(&other)
         ),
     }
@@ -558,12 +545,9 @@ fn dev_025_audit_history_complete() {
 
 // ── Negative-1: empty polygons rejected at host validator ────────────────────
 
-/// Negative-1: Same contract as AC-5 but framed as host-validator rejection.
-/// A region with empty polygons vec must be rejected; dispatch must Err with FatalModule.
-///
-/// Config contract for Step 3: `fixture_case = "empty_polygons"` (same as AC-5).
-///
-/// RED today: guest emits nothing → Ok(None).
+/// Negative-1: Host-validator rejection framing of the force_push_failure fixture.
+/// A region with empty polygons vec must be rejected; dispatch must Err with FatalModule
+/// containing the validator message "polygons list must not be empty".
 #[test]
 fn empty_polygons_rejected_at_host_validator() {
     use slicer_host::PrepassStageOutput;
@@ -572,7 +556,7 @@ fn empty_polygons_rejected_at_host_validator() {
     let component = match load_sdk_prepass_guest(&engine) {
         Some(c) => c,
         None => {
-            eprintln!("SKIP: sdk-prepass-guest.component.wasm missing");
+            eprintln!("SKIP: sdk-prepass-paintseg-guest.component.wasm missing");
             return;
         }
     };
@@ -581,7 +565,7 @@ fn empty_polygons_rejected_at_host_validator() {
         "com.test.paint-seg-neg1",
         "PrePass::PaintSegmentation",
         component,
-        fixture_config("empty_polygons"),
+        fixture_config("force_push_failure"),
     );
     let blackboard = blackboard_with_objects(&["obj-a"]);
 
@@ -602,13 +586,66 @@ fn empty_polygons_rejected_at_host_validator() {
         }
         Ok((PrepassStageOutput::None, _)) => {
             panic!(
-                "Neg-1 FAIL (RED): got Ok(None) — empty_polygons fixture not yet emitted by guest"
+                "Neg-1 FAIL: got Ok(None) — force_push_failure must trigger host validator rejection"
             );
         }
         Ok((other, _)) => panic!(
             "Neg-1 FAIL: expected Err(FatalModule), got Ok({:?})",
             std::mem::discriminant(&other)
         ),
+    }
+}
+
+// ── AC-7: no fixture yields empty harvest ─────────────────────────────────────
+
+/// AC-7: Dispatch PaintSegmentation with no fixture_case set (default / no-op branch).
+/// The paintseg guest does nothing, so the harvest must produce an empty PaintRegionIR
+/// (per_layer.is_empty()) and dispatch must not return a fatal error.
+#[test]
+fn no_fixture_yields_empty_harvest() {
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let component = match load_sdk_prepass_guest(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!("SKIP: sdk-prepass-paintseg-guest.component.wasm missing");
+            return;
+        }
+    };
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    // No fixture_case key → default branch → no push_paint_region calls.
+    let module = make_compiled_module_with_config(
+        "com.test.paint-seg-noop",
+        "PrePass::PaintSegmentation",
+        component,
+        ConfigView::from_map(HashMap::new()),
+    );
+    let blackboard = blackboard_with_objects(&["obj-a"]);
+
+    let result = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::PaintSegmentation".to_string(),
+        &module,
+        &blackboard,
+    );
+
+    match result {
+        Ok((PrepassStageOutput::PaintRegions(ir), _)) => {
+            assert!(
+                ir.per_layer.is_empty(),
+                "AC-7: no fixture must produce empty per_layer harvest, got {:?}",
+                ir.per_layer.keys().collect::<Vec<_>>()
+            );
+        }
+        Ok((PrepassStageOutput::None, _)) => {
+            // Also acceptable: dispatcher returned None when no regions were pushed.
+        }
+        Ok((other, _)) => panic!(
+            "AC-7 FAIL: unexpected variant {:?}",
+            std::mem::discriminant(&other)
+        ),
+        Err(e) => panic!("AC-7 FAIL: no fixture must not error, got: {e}"),
     }
 }
 

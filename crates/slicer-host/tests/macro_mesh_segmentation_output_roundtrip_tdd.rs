@@ -1,10 +1,7 @@
-//! TDD harness for MeshSegmentation macro-path output round-trip (Packet-43).
+//! TDD harness for MeshSegmentation macro-path output round-trip (Packet-43-rev1).
 //!
-//! Tests in this file are RED today:
-//! - The sdk-prepass-guest does not yet emit mesh-segmentation fixtures under
-//!   fixture_case="marks_basic", so harvested MeshSegmentationIR.marks is empty.
-//!
-//! After Step 3 (guest fixture), this test should be GREEN.
+//! Loads sdk-prepass-meshseg-guest.component.wasm (authored in Step 4).
+//! fixture_case="marks_basic" → guest marks triangle index 12 on "obj-a" → AC-8 GREEN.
 //!
 //! Verification: cargo test -p slicer-host --test macro_mesh_segmentation_output_roundtrip_tdd
 
@@ -26,7 +23,7 @@ use slicer_ir::{
 
 const SDK_PREPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/sdk-prepass-guest.component.wasm"
+    "/../../test-guests/sdk-prepass-meshseg-guest.component.wasm"
 );
 
 // ── Harness helpers ───────────────────────────────────────────────────────────
@@ -158,30 +155,28 @@ fn load_sdk_prepass_guest(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmCo
     if !path.exists() {
         return None;
     }
-    let bytes = std::fs::read(path).expect("read sdk-prepass-guest.component.wasm");
+    let bytes = std::fs::read(path).expect("read sdk-prepass-meshseg-guest.component.wasm");
     match engine.compile_component(&bytes) {
         Ok(c) => Some(Arc::new(c)),
-        Err(e) => panic!("failed to compile sdk-prepass-guest: {e}"),
+        Err(e) => panic!("failed to compile sdk-prepass-meshseg-guest: {e}"),
     }
 }
 
 // ── AC-4: MeshSegmentation marks round-trip ──────────────────────────────────
 
-/// AC-4: Dispatch MeshSegmentation with fixture_case="marks_basic".
-/// The guest (after Step 3) emits:
-///   mark_triangle_paint(object_id="obj-a", facet_index=12, semantic="material", value="3")
+/// AC-8: Dispatch MeshSegmentation with fixture_case="marks_basic".
+/// The guest (sdk-prepass-meshseg-guest) emits:
+///   mark_triangle_paint(object_id="obj-a", facet_index=12, semantic="material", value="1")
 ///
-/// Config contract for Step 3: `fixture_case = "marks_basic"` →
+/// Config contract: `fixture_case = "marks_basic"` →
 ///   call mark-triangle-paint once with (object_id="obj-a", facet_index=12,
-///     semantic="material", value="3") on the MeshSegmentationOutput resource.
+///     semantic="material", value="1") on the MeshSegmentationOutput resource.
 ///
-/// After Step 3, MeshSegmentationIR.marks must contain an entry satisfying:
+/// After retargeting, MeshSegmentationIR.marks must contain an entry satisfying:
 ///   - object_id == "obj-a"
 ///   - facet_index == 12
-///   - semantic string derived from PaintSemantic::Material (i.e. "material")
-///   - value == "3"
-///
-/// RED today: guest emits nothing → marks is empty.
+///   - semantic string == "material"
+///   - value == "1"
 #[test]
 fn mesh_segmentation_marks_round_trip() {
     use slicer_host::PrepassStageOutput;
@@ -190,14 +185,14 @@ fn mesh_segmentation_marks_round_trip() {
     let component = match load_sdk_prepass_guest(&engine) {
         Some(c) => c,
         None => {
-            eprintln!("SKIP: sdk-prepass-guest.component.wasm missing");
+            eprintln!("SKIP: sdk-prepass-meshseg-guest.component.wasm missing");
             return;
         }
     };
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     // Config contract: fixture_case="marks_basic" drives the guest to emit
-    // mark_triangle_paint(object_id="obj-a", facet_index=12, semantic="material", value="3")
+    // mark_triangle_paint(object_id="obj-a", facet_index=12, semantic="material", value="1")
     let mut config_map = HashMap::new();
     config_map.insert(
         "fixture_case".to_string(),
@@ -224,15 +219,14 @@ fn mesh_segmentation_marks_round_trip() {
         Ok((PrepassStageOutput::MeshSegmentation(ir), _)) => ir,
         Ok((PrepassStageOutput::None, _)) => {
             panic!(
-                "AC-4 FAIL (RED): got None — sdk-prepass-guest does not yet emit marks_basic \
-                 fixture (Step 3 must add it)"
+                "AC-8 FAIL: got None — sdk-prepass-meshseg-guest did not emit marks_basic fixture"
             );
         }
         Ok((other, _)) => panic!(
-            "AC-4 FAIL: unexpected variant {:?}",
+            "AC-8 FAIL: unexpected variant {:?}",
             std::mem::discriminant(&other)
         ),
-        Err(e) => panic!("AC-4 FAIL: dispatch error: {e}"),
+        Err(e) => panic!("AC-8 FAIL: dispatch error: {e}"),
     };
 
     // Find the mark for obj-a.
@@ -249,10 +243,10 @@ fn mesh_segmentation_marks_round_trip() {
             )
         });
 
-    assert_eq!(mark.facet_index, 12, "AC-4: facet_index must be 12");
+    assert_eq!(mark.facet_index, 12, "AC-8: facet_index must be 12");
     assert_eq!(
         mark.semantic, "material",
-        "AC-4: semantic must be 'material' (PaintSemantic::Material serialisation)"
+        "AC-8: semantic must be 'material'"
     );
-    assert_eq!(mark.value, "3", "AC-4: value must be '3'");
+    assert_eq!(mark.value, "1", "AC-8: value must be '1'");
 }
