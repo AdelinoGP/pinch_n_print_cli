@@ -178,6 +178,46 @@ The matching manifest declares `[stage] id = "PrePass::SupportGeometry"`,
 "SurfaceClassificationIR", "LayerPlanIR", "PaintRegionIR"]`, `writes =
 ["SupportPlanIR"]`, and `[module] wit-world = "slicer:world-prepass@1.0.0"`.
 
+### Single-Stage-Per-Impl Constraint
+
+`#[slicer_module]` is single-stage per impl block. The macro at
+`crates/slicer-macros/src/lib.rs:43-52` raises a `compile_error!` when
+`detect_stage_methods()` (lib.rs:106-119) finds more than one stage method on
+the impl. There is no `#[slicer_module(stage = "...")]` attribute argument —
+the only stage selector is the method name lookup against the `STAGES` table
+in `crates/slicer-schema/src/lib.rs`. Additionally, the macro hardcodes the
+WIT export module name per world (e.g.
+`__slicer_prepass_world_export` at lib.rs:2024;
+`__slicer_postpass_world_export` at lib.rs:689;
+`__slicer_finalization_world_export` at lib.rs:989;
+`__slicer_layer_world_export` at lib.rs:2306). Two `#[slicer_module]` impl
+blocks in the same crate that target the same world will fail to link with
+duplicate-symbol errors.
+
+Workaround: when one trait permits multiple stages (e.g. `PrepassModule`
+permits `run_mesh_analysis`, `run_paint_segmentation`, `run_mesh_segmentation`,
+`run_layer_planning`, `run_seam_planning`, `run_support_geometry`), author one
+sibling crate per stage. Each sibling overrides only the one stage method it
+implements and relies on the trait's default `Ok(())` bodies for the rest. The
+test guests `test-guests/sdk-prepass-paintseg-guest/` and
+`test-guests/sdk-prepass-meshseg-guest/` are reference exemplars: each is a
+standalone crate (empty `[workspace]` table; lists `slicer-sdk`, `slicer-ir`,
+`slicer-schema`, `wit-bindgen` as deps) with exactly one `#[slicer_module]
+impl PrepassModule for ...` block overriding `on_print_start` plus the one
+prepass stage method.
+
+Macro authors note (relevant when the prepass world inline WIT or the
+`segmentation_helpers` quote block in `build_prepass_world_glue` is touched):
+wit-bindgen 0.24 does not generate flat type re-exports for world-level `use`
+items whose alias `TypeId` lacks `TypeInfo.owned`/`borrowed` (i.e. `modes_of()`
+returns empty). The prepass world's paint_seg_arm constructs WIT geometry via
+bare `Polygon { ... }` and `Point2 { ... }` names; for those names to resolve,
+the inline WIT needs `use geometry.{ex-polygon, polygon, point2};` (declarative
+intent) AND the `segmentation_helpers` quote block needs explicit
+`use self::slicer::world_prepass::geometry::{Polygon, Point2};` statements
+(matching the finalization-world pattern at lib.rs:998). Both are required;
+the WIT-level fix alone is insufficient under wit-bindgen 0.24.
+
 ### SDK Type Re-Exports
 
 The SDK re-exports all WIT-generated types under clean names:

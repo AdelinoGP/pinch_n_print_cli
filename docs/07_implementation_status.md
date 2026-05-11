@@ -13,7 +13,7 @@ Last updated: 2026-05-08
 - MVP status: COMPLETE.
 - Historical implementation phases A through G are complete.
 - This document now tracks the remaining work: OrcaSlicer feature parity, architecture-conformance cleanup, and acceptance-gate evidence.
-- Phase H acceptance gate review unblocked 2026-05-08 by packet `27_phase-h-final-validation` (TASK-120 closed). Remaining Phase H items (TASK-120c live seam placement, TASK-130 macro segmentation bridge) are tracked separately and do not block acceptance-gate review entry.
+- Phase H acceptance gate review unblocked 2026-05-08 by packet `27_phase-h-final-validation` (TASK-120 closed). Remaining Phase H items (TASK-120c live seam placement, TASK-130 macro segmentation bridge [x] closed 2026-05-08 by packet 43-rev1) are tracked separately and do not block acceptance-gate review entry.
 
 ## Milestone Summary
 
@@ -65,9 +65,9 @@ Last updated: 2026-05-08
 - [x] TASK-129a Pass real postpass GCode command lists into `dispatch_postpass_gcode_call` and add coverage for per-command content crossing the WIT boundary. Covers DEV-006.
 - [x] TASK-129b Add live-path boundary coverage for layer-world deep-copy behavior outside native fallback code. Continues DEV-006.
 - [x] TASK-129c Add live-path boundary coverage for finalization-world deep-copy behavior outside native fallback code. Continues DEV-006.
-- [~] TASK-130 Finish the `#[slicer_module]` prepass segmentation bridge for macro-authored modules. Covers DEV-025.
-- [ ] TASK-130a Drain `PaintSegmentationOutput` back through WIT `push-paint-region` so macro-authored modules can emit paint regions without hand-written `wit-guest` glue. Covers DEV-025.
-- [ ] TASK-130b Add end-to-end macro-path regression tests proving `MeshSegmentation` and `PaintSegmentation` round-trip real data through WIT. Continues DEV-025.
+- [x] TASK-130 Finish the `#[slicer_module]` prepass segmentation bridge for macro-authored modules. Covers DEV-025. **Closed 2026-05-08 — packet 43-rev1 macro-prepass-segmentation-output-drain; full PaintSegmentation drain wired; DEV-025 mismatch 3 closed.**
+- [x] TASK-130a Drain `PaintSegmentationOutput` back through WIT `push-paint-region` so macro-authored modules can emit paint regions without hand-written `wit-guest` glue. Covers DEV-025. **Closed 2026-05-08 — packet 43-rev1; drain loop in `build_prepass_world_glue` iterates `sdk_output.regions()` and calls `_output.push_paint_region`; Step 2.5 fixed macro inline-WIT scope; Step 2.6 fixed host `layer-idx` alias drift.**
+- [x] TASK-130b Add end-to-end macro-path regression tests proving `MeshSegmentation` and `PaintSegmentation` round-trip real data through WIT. Continues DEV-025. **Closed 2026-05-08 — packet 43-rev1; `macro_paint_segmentation_output_roundtrip_tdd.rs` (AC-5, AC-6, AC-7, AC-8, AC-9, AC-14, NEG-1, NEG-2) and multi-stage fixture tests all pass.**
 - [x] TASK-130c Widen paint-region transport (SDK ExPolygon-bearing, WIT typed paint-value-input variant, host harvest 1:1) so paint regions carry hole-bearing polygons and Custom/typed values without coercion. Covers DEV-025. **Closed 2026-05-08 — packet 42 paint-region-transport-widening acceptance; all 10 ACs + 4 negative tests pass; DEV-025 mismatches 4 (paint value channel string-coerced) and 5 (SDK paint-region polygons hole-blind) closed; mismatch 3 remains open (closes in packet 43).**
 - [x] TASK-131 Add a regression guard for the documented `resolve_active_regions` O(1) contract. Scheduler performance guard needed for runtime-budget evidence.
 - [x] TASK-132 Add structured RegionMap overflow coverage for the 1000-entry cap, including top-contributor and remediation messaging. Hardens the existing bounds path needed for DEV-026 evidence.
@@ -163,11 +163,13 @@ Use `docs/14_deviation_audit_history.md` only for retired XML-era numbering and 
 - DEV-020 — Phase G still overstates completion because dead `Noop*Runner` code remains.
 - DEV-023 — PathOptimization remains an MVP slot-filler rather than a real optimization stage.
 - DEV-024 — Python postpass support exists but is not on the live path.
-- DEV-025 — Prepass segmentation SDK↔WIT shapes are still misaligned.
+- ~~DEV-025~~ — **Closed 2026-05-08.** All five SDK↔WIT prepass segmentation mismatches resolved: mismatches 1+2 by TASK-128a/128b, mismatch 3 by packet `43-rev1_macro-prepass-segmentation-output-drain` (TASK-130a/130b), mismatches 4+5 by packet 42 (TASK-130c).
 - DEV-026 — Host semver, manifest-schema validation, and runtime budget evidence remain incomplete.
 - ~~DEV-027~~ — **Closed 2026-04-21.** `ObjectMesh.world_z_extent` added as first-class derived IR field; 7 integration fixture tests and transform error paths added (TASK-157–158, packet `10_transform-aware-world-z`).
 - DEV-030 — Planning and remediation docs still lag the real dependency graph.
 - DEV-040 — User-supplied config silently ignored in `RegionMapIR` builder; `ResolvedConfig::default()` unconditionally used; packets 36/37 and future tunable-behavior work blocked (TASK-166).
+- DEV-044 — Paint data has no user-reachable input surface on the live binary path: `load_3mf` parses geometry only and silently discards Bambu/Orca paint metadata; no CLI paint flag exists. PaintSegmentation contract is green (DEV-025 closed) but unfalsifiable end-to-end. Closure: Packet 50 (`paint-input-3mf-ingestion`).
+- DEV-045 — RegionMap is paint-blind: no `paint_config:<semantic>:<key>` namespace in `config_resolution.rs`; `RegionPlan` has no paint-semantic dimension; per-paint settings cannot differentiate GCode. Closure: Packet 51 (`paint-semantic-region-overrides`). Depends on DEV-044.
 
 ## Tests Added as Gap Locks
 
@@ -178,7 +180,7 @@ Use `docs/14_deviation_audit_history.md` only for retired XML-era numbering and 
 ## Architecture Acceptance Gate
 
 - Status: BLOCKED BY OPEN REMEDIATION TASKS
-- Blocking tasks: TASK-120c, TASK-130a, TASK-130b, TASK-136, TASK-140, TASK-154, TASK-155, TASK-156
+- Blocking tasks: TASK-120c, TASK-136, TASK-140, TASK-154, TASK-155, TASK-156
 
 ### Evidence Links
 
