@@ -1,13 +1,21 @@
 ---
-status: active
+status: draft
 packet: 50b_paint-input-3mf-mmu-supports
 task_ids:
   - TASK-180b
 backlog_source: docs/07_implementation_status.md
 predecessor: 50_paint-input-3mf-ingestion
+blocker: benchy_4color.3mf contains TriangleSelector subdivision data (hex length 391) rejected by parser; fixture incompatible with whole-facet paint path
 ---
 
 # Packet 50b — Paint Input: 3MF MMU + Support Co-Presence Tests
+
+## Blocker
+
+`benchy_4color.3mf` triggers the subdivision rejection guard in `model_loader.rs`: `load_model` returns `Err(PaintMetadata { reason: "TriangleSelector hex string length 391 indicates subdivision, which is not supported" })`. The fixture uses per-triangle subdivision encoding (hex strings > 2 nibbles), which is explicitly out of scope for this packet. The packet cannot proceed until either:
+
+1. A whole-facet (non-subdivision) 3MF fixture with both MMU color and support paint channels is provided, OR
+2. The packet scope is expanded to include subdivision TriangleSelector support (would require a new design).
 
 ## Goal
 
