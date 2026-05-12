@@ -57,12 +57,12 @@
   - `cargo test -p slicer-host --test benchy_painted_e2e_tdd painted_3mf_fixture_is_committed -- --exact --nocapture` PASS.
 - Exit condition: AC-2 GREEN; fixture committed; README documents reproduction.
 
-### Step 3: Extend `parse_3mf_model_xml` to decode `fuzzy_skin_facets`
+### Step 3: Extend `parse_3mf_model_xml` to decode all four per-triangle paint channels
 
 - Task IDs: `TASK-180`
-- Objective: Add the per-triangle attribute scanner; decode the whole-facet (unsubdivided) bitstream; populate `FacetPaintData::layers` (or whatever shape Step 1 grounded); add `ModelLoadError::PaintMetadata { reason, byte_offset }`; replace `model_loader.rs:150` `paint_data: None` with the decoder's output.
-- Precondition: Step 2 fixture exists; Step 1 grounded the FacetPaintData shape and the attribute name.
-- Postcondition: `parse_3mf_model_xml` returns populated paint_data for the painted fixture; AC-1 positive test passes against the new model_loader_tdd test.
+- Objective: Add the per-triangle attribute scanner covering all four channels (`paint_fuzzy_skin`, `paint_supports`, `paint_seam`, `paint_color`); add the shared `decode_paint_hex_state` helper (1- and 2-nibble hex, 0xC continuation marker, subdivision rejection); populate `FacetPaintData::layers` with one `PaintLayer` per active channel per the design.md mapping table; add `ModelLoadError::PaintMetadata { reason, byte_offset }`; replace `model_loader.rs:150` `paint_data: None` with the decoder's output.
+- Precondition: Step 2 fixture exists; Step 1 grounded the FacetPaintData shape and the attribute names.
+- Postcondition: `parse_3mf_model_xml` returns populated paint_data for the painted fixture; AC-1..AC-4 positive tests pass against the new model_loader_tdd tests.
 - Files allowed to read:
   - `crates/slicer-host/src/model_loader.rs` (entire file; ≤ 600 lines expected).
   - `crates/slicer-ir/src/slice_ir.rs` (only the FacetPaintData section; line range from Step 1 grounding).
@@ -80,12 +80,20 @@
   - `cargo build --workspace` PASS.
 - Exit condition: model_loader.rs compiles; `load_model` returns `Some(FacetPaintData)` when fed the painted fixture.
 
-### Step 4: Add three model_loader_tdd tests (positive + 2 negatives)
+### Step 4: Add eight model_loader_tdd tests (4 channel-positive + 4 negative)
 
 - Task IDs: `TASK-180`
-- Objective: Add three tests to `crates/slicer-host/tests/model_loader_tdd.rs`: `load_3mf_extracts_fuzzy_skin_facets` (positive — calls `load_model` on the fixture, asserts `paint_data` is `Some(FacetPaintData)` with `layers.len() == 1`, the layer's `semantic == PaintSemantic::FuzzySkin`, `facet_values.len() == mesh.indices.len() / 3`, and at least one `Some(PaintValue::Flag(true))` entry), `load_3mf_malformed_fuzzy_skin_rejects` (negative — synthetic malformed attribute covering at least one of: non-hex chars, odd nibble count, length-mismatch vs `<triangle>` count, or a nibble in {2..15} indicating subdivision; expects `Err(ModelLoadError::PaintMetadata { .. })`), `load_3mf_without_paint_returns_none` (negative — load a 3MF with no paint attribute, expects `paint_data == None` and no warning).
-- Precondition: Step 3 complete; decoder works on the real fixture.
-- Postcondition: All three new tests GREEN; AC-1, AC-NEG-1, AC-NEG-2 all GREEN.
+- Objective: Add eight tests to `crates/slicer-host/tests/model_loader_tdd.rs`:
+  - `load_3mf_extracts_fuzzy_skin_facets` (positive — calls `load_model` on the `benchy_painted.3mf` fixture; asserts `paint_data` is `Some(FacetPaintData)` with `layers.len() == 1`, layer `semantic == PaintSemantic::FuzzySkin`, `facet_values.len() == mesh.indices.len() / 3`, and at least one `Some(PaintValue::Flag(true))`).
+  - `load_3mf_extracts_support_facets` (positive — synthetic in-test XML; asserts `SupportEnforcer` and/or `SupportBlocker` layers with `Flag(true)` on the painted triangles).
+  - `load_3mf_extracts_seam_facets` (positive — synthetic in-test XML; asserts `Custom("seam_enforcer")` and/or `Custom("seam_blocker")` layers with `Flag(true)`).
+  - `load_3mf_extracts_mmu_color` (positive — synthetic in-test XML; asserts `Material` layer with `ToolIndex(N)` matching the encoded state).
+  - `load_3mf_malformed_fuzzy_skin_rejects` (negative — synthetic malformed `paint_fuzzy_skin` value; expects `Err(ModelLoadError::PaintMetadata { .. })`).
+  - `load_3mf_malformed_support_value_rejects` (negative — `paint_supports` value > 2; expects `Err(ModelLoadError::PaintMetadata { .. })`).
+  - `load_3mf_subdivision_paint_rejects` (negative — hex string indicating subdivision (split bits ≠ 0 or > 2 chars); expects `Err(ModelLoadError::PaintMetadata { .. })`).
+  - `load_3mf_without_paint_returns_none` (negative — load a 3MF with no paint attribute; expects `paint_data == None` and no warning).
+- Precondition: Step 3 complete; decoder works on the real fixture and on synthetic XML for all four channels.
+- Postcondition: All eight new tests GREEN; AC-1..AC-4 and NEG-1..NEG-4 all GREEN.
 - Files allowed to read:
   - `crates/slicer-host/tests/model_loader_tdd.rs` (full file; expected ≤ 400 lines).
 - Files allowed to edit (≤ 1):
@@ -104,7 +112,7 @@
 ### Step 5: Flip the failing E2E benchy tests GREEN
 
 - Task IDs: `TASK-180`
-- Objective: Run the existing failing tests at `crates/slicer-host/tests/benchy_painted_e2e_tdd.rs` and confirm they go GREEN with no changes to the test file. The test assertions must not be weakened.
+- Objective: Run the existing failing tests at `crates/slicer-host/tests/benchy_painted_e2e_tdd.rs` and confirm they go GREEN with no changes to the test file. The test assertions must not be weakened. (Note: these tests use the `benchy_painted.3mf` fixture, which carries fuzzy-skin paint only; that is sufficient to prove paint reaches PaintSegmentation end-to-end.)
 - Precondition: Steps 3 and 4 complete; decoder works; fixture exists.
 - Postcondition: Both E2E tests GREEN; backward-compat regression check confirms `benchy_e2e_real_pipeline_produces_gcode` stays GREEN.
 - Files allowed to read:
@@ -164,7 +172,7 @@
 - Authoritative docs: the three docs being edited.
 - OrcaSlicer refs: none.
 - Verification:
-  - `rg -q '3MF paint-metadata extraction' docs/02_ir_schemas.md` and `rg -q 'fuzzy_skin_facets' docs/02_ir_schemas.md`.
+  - `rg -q '3MF paint-metadata extraction' docs/02_ir_schemas.md` and `rg -q 'paint_fuzzy_skin' docs/02_ir_schemas.md` and `rg -q 'paint_supports' docs/02_ir_schemas.md` and `rg -q 'paint_seam' docs/02_ir_schemas.md` and `rg -q 'paint_color' docs/02_ir_schemas.md`.
   - `rg -q '^\| DEV-044.*Closed' docs/DEVIATION_LOG.md`.
   - `rg -q '\[x\] TASK-180' docs/07_implementation_status.md`.
   - `rg -q '2026-...DEV-044' docs/14_deviation_audit_history.md` (or equivalent date string).
@@ -184,11 +192,11 @@
 - Expected sub-agent dispatches:
   - One dispatch per AC (re-run each pipe-suffixed command). Each returns FACT pass/fail.
   - Final dispatch: `cargo clippy --workspace -- -D warnings`. Return FACT pass/fail.
-- Context cost: M (8 ACs + 2 negs + clippy = 11 FACT dispatches).
+- Context cost: M (11 positive ACs + 4 negs + clippy = 16 FACT dispatches).
 - Authoritative docs: none.
 - OrcaSlicer refs: none.
 - Verification: all AC commands return PASS; clippy GREEN.
-- Exit condition: all 10 ACs (8 positive + 2 negative) GREEN; clippy GREEN; packet ready for implementer to set `status: implemented`.
+- Exit condition: all 15 ACs (11 positive + 4 negative) GREEN; clippy GREEN; packet ready for implementer to set `status: implemented`.
 
 ## Per-Step Budget Roll-Up
 
@@ -197,7 +205,7 @@
 | 1 | S | Four FACT/SNIPPET dispatches; activation gate. |
 | 2 | S | Binary fixture authoring + one inspection dispatch. |
 | 3 | M | Decoder implementation in model_loader.rs. |
-| 4 | S | Three new tests added; one cargo test dispatch. |
+| 4 | S | Eight new tests added (4 channel-positive + 4 negative); one cargo test dispatch. |
 | 5 | S | Re-run pre-existing E2E tests; no edits. |
 | 6 | S | Five regression dispatches. |
 | 7 | M | Three docs (all delegated reads); clippy. |
@@ -209,7 +217,7 @@ Aggregate: M. No step is L. If any step measures L during execution, split befor
 
 - All 8 steps complete.
 - Every step's exit condition met.
-- All 10 ACs (8 positive + 2 negative) green.
+- All 15 ACs (11 positive + 4 negative) green.
 - `cargo clippy --workspace -- -D warnings` green.
 - DEV-044 flipped to Closed in `docs/DEVIATION_LOG.md`.
 - TASK-180 closed `[x]` in `docs/07_implementation_status.md`.

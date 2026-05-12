@@ -17,38 +17,43 @@ DEV-044 (registered 2026-05-10, see `docs/DEVIATION_LOG.md`) records that `PrePa
 
 Downstream of `paint_data`, the pipeline is correctly wired (`paint_segmentation.rs:70-130`, `wit_host.rs:2498/2653`, layer-world `paint-region-layer-view` at `wit/deps/ir-types.wit:194-218`), but every code path along it operates on always-`None` input on the live binary path.
 
-This packet closes the loader-side gap for one channel (`fuzzy_skin_facets`), commits the fixture needed to verify it end-to-end, and documents the decode contract in `docs/02_ir_schemas.md`. The other three paint channels and full TriangleSelector subdivision decoding are explicitly deferred to follow-up packets.
+This packet closes the loader-side gap for **all four OrcaSlicer per-triangle paint channels** (`paint_fuzzy_skin`, `paint_supports`, `paint_seam`, `paint_color`), commits a fuzzy-skin-paint binary fixture needed to verify the end-to-end painted slice, and documents the decode contract in `docs/02_ir_schemas.md`. The supports/seam/color positive tests are exercised via synthetic in-test XML buffers; a four-color binary fixture (`benchy_4color.3mf`) is reserved for follow-up Packet 50b. Full TriangleSelector subdivision decoding (hex strings > 2 chars or split bits ≠ 0) is explicitly deferred to a later follow-up packet.
+
+**Scope expansion note (2026-05-12):** This packet was originally scoped to `paint_fuzzy_skin` only; mid-implementation the scope was intentionally widened to all four channels because the per-triangle attribute decoder is channel-agnostic and absorbing the other three at once costs little extra LOC. `packet.spec.md` and this file (along with `design.md`, `implementation-plan.md`, `task-map.md`) were resynced to that scope after the implementation landed.
 
 ## Task Mapping
 
 - **TASK-180** (new — to be added to `docs/07_implementation_status.md` at Step 7):
-  *"Wire 3MF `fuzzy_skin_facets` paint metadata through the host loader so PaintSegmentation has a user-reachable input on the live binary path. Covers DEV-044."*
-  → Closes when AC-1 through AC-8 (plus both negative tests) are all green.
+  *"Wire 3MF per-triangle paint metadata (`paint_fuzzy_skin`, `paint_supports`, `paint_seam`, `paint_color`) through the host loader so PaintSegmentation has a user-reachable input on the live binary path. Covers DEV-044."*
+  → Closes when AC-1 through AC-11 (plus all four negative tests) are all green.
 
 ## In Scope
 
 - `crates/slicer-host/src/model_loader.rs`:
-  - Extend `parse_3mf_model_xml` to detect and decode the `fuzzy_skin_facets` (or equivalent — see Q3 below) attribute on `<triangle>` elements (or whatever 3MF host element Step 1 grounding determines is correct).
-  - Decode whole-facet TriangleSelector bitstreams (state-0 = unpainted, state-1 = painted; reject any nibble pair indicating recursive subdivision with a typed error).
+  - Extend `parse_3mf_model_xml` to detect and decode all four OrcaSlicer per-triangle paint attributes on `<triangle>` elements: `paint_fuzzy_skin`, `paint_supports`, `paint_seam`, `paint_color`.
+  - Decode whole-facet TriangleSelector hex states (1- and 2-nibble; accept 0xC continuation marker; reject any nibble pair indicating recursive subdivision with a typed error).
+  - Channel → IR mapping: `paint_fuzzy_skin` → `PaintSemantic::FuzzySkin` with `PaintValue::Flag(true)`; `paint_supports` → `SupportEnforcer`/`SupportBlocker` (state 1/2) with `Flag(true)`; `paint_seam` → `Custom("seam_enforcer")`/`Custom("seam_blocker")` (state 1/2) with `Flag(true)`; `paint_color` → `Material` with `ToolIndex(N)`.
+  - Emit one `PaintLayer` per active channel into `FacetPaintData::layers`; `facet_values.len() == mesh.indices.len() / 3` enforced by the consumer (`paint_segmentation.rs:88-101`).
   - Replace the line-150 `paint_data: None` literal with the loader's discovered value.
   - Add `ModelLoadError::PaintMetadata { reason: String, byte_offset: usize }` variant.
-- `resources/benchy_painted.3mf` — committed binary fixture. Smokestack triangles painted with the `fuzzy_skin_facets` channel. Authoring procedure documented in companion README.
+- `resources/benchy_painted.3mf` — committed binary fixture. Smokestack triangles painted with the `paint_fuzzy_skin` channel only. Authoring procedure documented in companion README. (A multi-channel `benchy_4color.3mf` binary fixture is reserved for Packet 50b.)
 - `resources/benchy_painted.README.md` — authoring tool, steps, expected attribute names. Enables future regeneration.
-- `docs/02_ir_schemas.md` — new "3MF paint-metadata extraction" subsection under FacetPaintData provenance.
+- `crates/slicer-host/tests/model_loader_tdd.rs` — eight new tests (see Acceptance Summary below).
+- `docs/02_ir_schemas.md` — new "3MF paint-metadata extraction" subsection under FacetPaintData provenance, naming all four supported attributes.
 - `docs/07_implementation_status.md` — add TASK-180; close it at packet close.
 - `docs/DEVIATION_LOG.md` — flip DEV-044 to `Closed — Packet 50, 2026-MM-DD`.
 - `docs/14_deviation_audit_history.md` — chronology entry recording DEV-044 closure.
 
 ## Out of Scope
 
-- The other three OrcaSlicer paint channels: `supported_facets`, `seam_facets`, `mmu_segmentation_facets`. Each becomes its own packet.
-- Full TriangleSelector recursive subdivision decoding. This packet rejects any subdivided facet with a typed error.
+- Full TriangleSelector recursive subdivision decoding (hex strings > 2 chars; or 2-nibble hex with second nibble ≠ 0xC and split bits ≠ 0). This packet rejects any subdivided facet with a typed error.
+- A multi-channel binary 3MF fixture (e.g., `benchy_4color.3mf`). Deferred to Packet 50b (`paint-input-3mf-mmu-supports`). The supports/seam/mmu_color positive tests in this packet use synthetic in-test XML buffers.
 - Any CLI flag additions. Paint enters exclusively via the 3MF.
 - Any change to PaintSegmentation, RegionMap, host validators, harvest code, WIT files, or the macros crate.
 - Any change to `crates/slicer-ir/src/slice_ir.rs::FacetPaintData` shape (this packet only populates it).
 - STL paint-sidecar ingestion (YAGNI per user direction 2026-05-10).
 - 3MF write/export support.
-- Multi-extruder paint→tool_index resolution.
+- Multi-extruder paint→tool_index resolution downstream of the loader (the loader emits `PaintValue::ToolIndex(N)` per the `paint_color` state; downstream resolution to physical extruders is a separate packet).
 
 ## Authoritative Docs
 
@@ -63,22 +68,23 @@ This packet closes the loader-side gap for one channel (`fuzzy_skin_facets`), co
 - `OrcaSlicerDocumented/generated_documentation/04_refactoring_hazards.md` — H524, H1105: bitstream format and re-indexing hazards.
 - `OrcaSlicerDocumented/generated_documentation/pseudocode_multimaterial_segmentation.md` — state-index semantics.
 - `OrcaSlicerDocumented/generated_documentation/02_core_data_structures.md:516` — TriangleSelector + ModelVolume painted-state ownership.
-- **External documentation gap:** the literal 3MF XML attribute name and `xmlns:` URI are NOT in `OrcaSlicerDocumented/`. Implementer must dispatch a Step-1 documentation search against the 3MF Consortium core spec (https://github.com/3MFConsortium/spec_core) and/or the PrusaSlicer `Slic3r_PE_namespace` extension documentation. Do NOT read OrcaSlicer C++ source directly.
+- **External documentation gap (resolved 2026-05-11):** the literal 3MF XML attribute names were not in `OrcaSlicerDocumented/`. Resolved by inspecting OrcaSlicer-exported fixture XML: attributes are unprefixed `paint_fuzzy_skin`, `paint_supports`, `paint_seam`, `paint_color` (no `xmlns:` URI). Values are 1-2 hex nibbles encoding TriangleSelector state; subdivision (hex strings > 2 chars or split bits ≠ 0) is rejected.
 
 ## Acceptance Summary
 
 The packet is complete when:
 
-1. `parse_3mf_model_xml` decodes `fuzzy_skin_facets` whole-facet paint into a populated `FacetPaintData`; `model_loader.rs:150` no longer hardcodes `paint_data: None`.
-2. `resources/benchy_painted.3mf` is committed and parseable; `resources/benchy_painted.README.md` documents reproduction.
-3. `painted_benchy_3mf_reaches_paint_segmentation` (RED today) goes GREEN: painted-Benchy GCode is observably different from unpainted-Benchy GCode after normalization.
-4. `painted_3mf_fixture_is_committed` (RED today) goes GREEN.
-5. `benchy_e2e_real_pipeline_produces_gcode` stays GREEN (backward compat).
-6. The five Packet-43-rev1 regression-defense commands all stay GREEN.
-7. Two negative tests pass: malformed metadata rejected with typed `PaintMetadata` error; no-paint 3MF returns `paint_data: None` with no warning.
-8. `docs/02_ir_schemas.md` documents the decode contract and explicitly lists deferred channels.
-9. `cargo clippy --workspace -- -D warnings` is green.
-10. DEV-044 flipped to `Closed`; TASK-180 closed in `docs/07_implementation_status.md`; chronology entry added in `docs/14`.
+1. `parse_3mf_model_xml` decodes all four per-triangle paint attributes (`paint_fuzzy_skin`, `paint_supports`, `paint_seam`, `paint_color`) into populated `FacetPaintData::layers`; `model_loader.rs:150` no longer hardcodes `paint_data: None`.
+2. Four channel-positive `model_loader_tdd` tests pass: `load_3mf_extracts_fuzzy_skin_facets`, `load_3mf_extracts_support_facets`, `load_3mf_extracts_seam_facets`, `load_3mf_extracts_mmu_color`.
+3. Four negative `model_loader_tdd` tests pass: `load_3mf_malformed_fuzzy_skin_rejects`, `load_3mf_malformed_support_value_rejects`, `load_3mf_subdivision_paint_rejects`, `load_3mf_without_paint_returns_none`.
+4. `resources/benchy_painted.3mf` is committed and parseable; `resources/benchy_painted.README.md` documents reproduction.
+5. `painted_3mf_fixture_is_committed` (RED today) goes GREEN.
+6. `painted_benchy_3mf_reaches_paint_segmentation` (RED today) goes GREEN: painted-Benchy GCode is observably different from unpainted-Benchy GCode after normalization.
+7. `benchy_e2e_real_pipeline_produces_gcode` stays GREEN (backward compat).
+8. The five Packet-43-rev1 regression-defense commands all stay GREEN.
+9. `docs/02_ir_schemas.md` documents the decode contract for all four channels and explicitly lists deferred work (subdivision; multi-channel binary fixture).
+10. `cargo clippy --workspace -- -D warnings` is green.
+11. DEV-044 flipped to `Closed`; TASK-180 closed in `docs/07_implementation_status.md`; chronology entry added in `docs/14`.
 
 ## Cross-Packet Dependencies
 
