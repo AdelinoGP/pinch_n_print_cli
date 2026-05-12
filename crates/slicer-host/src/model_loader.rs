@@ -12,7 +12,8 @@ use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 
 use slicer_ir::{
-    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
+    BoundingBox3, FacetPaintData, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, PaintLayer,
+    PaintSemantic, PaintValue, Point3, SemVer, Transform3d,
 };
 
 /// Detected model file format.
@@ -57,6 +58,13 @@ pub enum ModelLoadError {
         /// The minimum world-space Z found on the object (negative).
         z_min: f32,
     },
+    /// 3MF paint metadata is malformed or contains an unrecognized value.
+    PaintMetadata {
+        /// Human-readable reason for the failure.
+        reason: String,
+        /// Byte offset into the XML stream where the malformed attribute was found.
+        byte_offset: usize,
+    },
 }
 
 impl fmt::Display for ModelLoadError {
@@ -74,6 +82,10 @@ impl fmt::Display for ModelLoadError {
             Self::WorldZBelowFloor { z_min } => write!(
                 f,
                 "WORLD_Z_BELOW_FLOOR: object world-space Z minimum {z_min} mm is below print floor 0.0 mm"
+            ),
+            Self::PaintMetadata { reason, byte_offset } => write!(
+                f,
+                "paint metadata error at byte {byte_offset}: {reason}"
             ),
         }
     }
@@ -120,9 +132,9 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
     let file = std::fs::File::open(path)?;
     let mut reader = BufReader::new(file);
 
-    let its = match format {
-        ModelFormat::Stl => load_stl(&mut reader)?,
-        ModelFormat::Obj => load_obj(path)?,
+    let (its, paint_data) = match format {
+        ModelFormat::Stl => (load_stl(&mut reader)?, None),
+        ModelFormat::Obj => (load_obj(path)?, None),
         ModelFormat::ThreeMf => load_3mf(&mut reader)?,
     };
 
@@ -147,7 +159,7 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
             data: HashMap::new(),
         },
         modifier_volumes: Vec::new(),
-        paint_data: None,
+        paint_data,
         world_z_extent,
     };
 
@@ -242,8 +254,10 @@ fn load_obj(path: &Path) -> Result<IndexedTriangleSet, ModelLoadError> {
 // 3MF loader
 // ---------------------------------------------------------------------------
 
-/// Load 3MF and return IndexedTriangleSet from the first object.
-fn load_3mf(reader: &mut (impl Read + Seek)) -> Result<IndexedTriangleSet, ModelLoadError> {
+/// Load 3MF and return IndexedTriangleSet and optional FacetPaintData from the first object.
+fn load_3mf(
+    reader: &mut (impl Read + Seek),
+) -> Result<(IndexedTriangleSet, Option<FacetPaintData>), ModelLoadError> {
     let mut archive =
         zip::ZipArchive::new(reader).map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
 
@@ -276,8 +290,17 @@ fn find_model_path<R: Read + Seek>(archive: &zip::ZipArchive<R>) -> Result<Strin
     ))
 }
 
-/// Parse 3MF model XML into IndexedTriangleSet.
-fn parse_3mf_model_xml(xml_bytes: &[u8]) -> Result<IndexedTriangleSet, ModelLoadError> {
+/// Parse 3MF model XML into IndexedTriangleSet and optional FacetPaintData.
+///
+/// Recognizes the four per-triangle paint attributes emitted by
+/// OrcaSlicer/BambuStudio: `paint_fuzzy_skin`, `paint_supports`,
+/// `paint_seam`, and `paint_color`.  Painted triangles carry hex-encoded
+/// state strings; unpainted triangles omit the attribute.  Subdivision
+/// (strings longer than two hex characters or split bits ≠ 0) raises
+/// `ModelLoadError::PaintMetadata`.
+fn parse_3mf_model_xml(
+    xml_bytes: &[u8],
+) -> Result<(IndexedTriangleSet, Option<FacetPaintData>), ModelLoadError> {
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
@@ -288,6 +311,11 @@ fn parse_3mf_model_xml(xml_bytes: &[u8]) -> Result<IndexedTriangleSet, ModelLoad
     let mut indices = Vec::new();
     let mut buf = Vec::new();
     let mut in_mesh = false;
+    let mut has_any_paint = false;
+    let mut fuzzy_states: Vec<Option<u32>> = Vec::new();
+    let mut support_states: Vec<Option<u32>> = Vec::new();
+    let mut seam_states: Vec<Option<u32>> = Vec::new();
+    let mut color_states: Vec<Option<u32>> = Vec::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -315,14 +343,145 @@ fn parse_3mf_model_xml(xml_bytes: &[u8]) -> Result<IndexedTriangleSet, ModelLoad
                         vertices.push(Point3 { x, y, z });
                     }
                     b"triangle" if in_mesh => {
+                        let mut v1: Option<u32> = None;
+                        let mut v2: Option<u32> = None;
+                        let mut v3: Option<u32> = None;
+                        let mut fuzzy_state: Option<u32> = None;
+                        let mut support_state: Option<u32> = None;
+                        let mut seam_state: Option<u32> = None;
+                        let mut color_state: Option<u32> = None;
+
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"v1" => indices.push(parse_u32(&attr.value)?),
-                                b"v2" => indices.push(parse_u32(&attr.value)?),
-                                b"v3" => indices.push(parse_u32(&attr.value)?),
+                                b"v1" => v1 = Some(parse_u32(&attr.value)?),
+                                b"v2" => v2 = Some(parse_u32(&attr.value)?),
+                                b"v3" => v3 = Some(parse_u32(&attr.value)?),
+                                b"paint_fuzzy_skin" => {
+                                    let value_str =
+                                        std::str::from_utf8(&attr.value).map_err(|_| {
+                                            ModelLoadError::PaintMetadata {
+                                                reason: "paint_fuzzy_skin value is not valid UTF-8"
+                                                    .into(),
+                                                byte_offset: reader.error_position() as usize,
+                                            }
+                                        })?;
+                                    let state = decode_paint_hex_state(
+                                        value_str,
+                                        reader.error_position() as usize,
+                                    )?;
+                                    if state > 1 {
+                                        return Err(ModelLoadError::PaintMetadata {
+                                            reason: format!(
+                                                "paint_fuzzy_skin state {state} is not supported \
+                                                 (only state 1 is valid)"
+                                            ),
+                                            byte_offset: reader.error_position() as usize,
+                                        });
+                                    }
+                                    if state == 1 {
+                                        fuzzy_state = Some(state);
+                                        has_any_paint = true;
+                                    }
+                                }
+                                b"paint_supports" => {
+                                    let value_str =
+                                        std::str::from_utf8(&attr.value).map_err(|_| {
+                                            ModelLoadError::PaintMetadata {
+                                                reason: "paint_supports value is not valid UTF-8"
+                                                    .into(),
+                                                byte_offset: reader.error_position() as usize,
+                                            }
+                                        })?;
+                                    let state = decode_paint_hex_state(
+                                        value_str,
+                                        reader.error_position() as usize,
+                                    )?;
+                                    if state > 2 {
+                                        return Err(ModelLoadError::PaintMetadata {
+                                            reason: format!(
+                                                "paint_supports state {state} is not supported \
+                                                 (only states 1-2 are valid)"
+                                            ),
+                                            byte_offset: reader.error_position() as usize,
+                                        });
+                                    }
+                                    if state > 0 {
+                                        support_state = Some(state);
+                                        has_any_paint = true;
+                                    }
+                                }
+                                b"paint_seam" => {
+                                    let value_str =
+                                        std::str::from_utf8(&attr.value).map_err(|_| {
+                                            ModelLoadError::PaintMetadata {
+                                                reason: "paint_seam value is not valid UTF-8"
+                                                    .into(),
+                                                byte_offset: reader.error_position() as usize,
+                                            }
+                                        })?;
+                                    let state = decode_paint_hex_state(
+                                        value_str,
+                                        reader.error_position() as usize,
+                                    )?;
+                                    if state > 2 {
+                                        return Err(ModelLoadError::PaintMetadata {
+                                            reason: format!(
+                                                "paint_seam state {state} is not supported (only \
+                                                 states 1-2 are valid)"
+                                            ),
+                                            byte_offset: reader.error_position() as usize,
+                                        });
+                                    }
+                                    if state > 0 {
+                                        seam_state = Some(state);
+                                        has_any_paint = true;
+                                    }
+                                }
+                                b"paint_color" => {
+                                    let value_str =
+                                        std::str::from_utf8(&attr.value).map_err(|_| {
+                                            ModelLoadError::PaintMetadata {
+                                                reason: "paint_color value is not valid UTF-8"
+                                                    .into(),
+                                                byte_offset: reader.error_position() as usize,
+                                            }
+                                        })?;
+                                    let state = decode_paint_hex_state(
+                                        value_str,
+                                        reader.error_position() as usize,
+                                    )?;
+                                    if state > 16 {
+                                        return Err(ModelLoadError::PaintMetadata {
+                                            reason: format!(
+                                                "paint_color state {state} is not supported (only \
+                                                 states 1-16 are valid)"
+                                            ),
+                                            byte_offset: reader.error_position() as usize,
+                                        });
+                                    }
+                                    if state > 0 {
+                                        color_state = Some(state);
+                                        has_any_paint = true;
+                                    }
+                                }
                                 _ => {}
                             }
                         }
+
+                        indices.push(v1.ok_or_else(|| {
+                            ModelLoadError::ThreeMfParse("triangle missing v1".into())
+                        })?);
+                        indices.push(v2.ok_or_else(|| {
+                            ModelLoadError::ThreeMfParse("triangle missing v2".into())
+                        })?);
+                        indices.push(v3.ok_or_else(|| {
+                            ModelLoadError::ThreeMfParse("triangle missing v3".into())
+                        })?);
+
+                        fuzzy_states.push(fuzzy_state);
+                        support_states.push(support_state);
+                        seam_states.push(seam_state);
+                        color_states.push(color_state);
                     }
                     _ => {}
                 }
@@ -348,7 +507,202 @@ fn parse_3mf_model_xml(xml_bytes: &[u8]) -> Result<IndexedTriangleSet, ModelLoad
         return Err(ModelLoadError::ThreeMfParse("no geometry found".into()));
     }
 
-    Ok(IndexedTriangleSet { vertices, indices })
+    let its = IndexedTriangleSet { vertices, indices };
+
+    let paint_data = if has_any_paint {
+        let facet_count = its.indices.len() / 3;
+        let mut layers = Vec::new();
+
+        if fuzzy_states.iter().any(|s| s == &Some(1)) {
+            layers.push(PaintLayer {
+                semantic: PaintSemantic::FuzzySkin,
+                facet_values: fuzzy_states
+                    .iter()
+                    .map(|s| {
+                        if *s == Some(1) {
+                            Some(PaintValue::Flag(true))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                strokes: Vec::new(),
+            });
+        }
+
+        if support_states.iter().any(|s| s == &Some(1)) {
+            layers.push(PaintLayer {
+                semantic: PaintSemantic::SupportEnforcer,
+                facet_values: support_states
+                    .iter()
+                    .map(|s| {
+                        if *s == Some(1) {
+                            Some(PaintValue::Flag(true))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                strokes: Vec::new(),
+            });
+        }
+
+        if support_states.iter().any(|s| s == &Some(2)) {
+            layers.push(PaintLayer {
+                semantic: PaintSemantic::SupportBlocker,
+                facet_values: support_states
+                    .iter()
+                    .map(|s| {
+                        if *s == Some(2) {
+                            Some(PaintValue::Flag(true))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                strokes: Vec::new(),
+            });
+        }
+
+        if seam_states.iter().any(|s| s == &Some(1)) {
+            layers.push(PaintLayer {
+                semantic: PaintSemantic::Custom("seam_enforcer".into()),
+                facet_values: seam_states
+                    .iter()
+                    .map(|s| {
+                        if *s == Some(1) {
+                            Some(PaintValue::Flag(true))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                strokes: Vec::new(),
+            });
+        }
+
+        if seam_states.iter().any(|s| s == &Some(2)) {
+            layers.push(PaintLayer {
+                semantic: PaintSemantic::Custom("seam_blocker".into()),
+                facet_values: seam_states
+                    .iter()
+                    .map(|s| {
+                        if *s == Some(2) {
+                            Some(PaintValue::Flag(true))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                strokes: Vec::new(),
+            });
+        }
+
+        if color_states.iter().any(|s| s.is_some()) {
+            layers.push(PaintLayer {
+                semantic: PaintSemantic::Material,
+                facet_values: color_states
+                    .iter()
+                    .map(|&s| s.map(PaintValue::ToolIndex))
+                    .collect(),
+                strokes: Vec::new(),
+            });
+        }
+
+        for layer in &layers {
+            if layer.facet_values.len() != facet_count {
+                return Err(ModelLoadError::PaintMetadata {
+                    reason: format!(
+                        "paint layer {:?} facet_values length {} does not match triangle count {}",
+                        layer.semantic,
+                        layer.facet_values.len(),
+                        facet_count
+                    ),
+                    byte_offset: 0,
+                });
+            }
+        }
+
+        Some(FacetPaintData { layers })
+    } else {
+        None
+    };
+
+    Ok((its, paint_data))
+}
+
+/// Decode a single hex digit (0-9, A-F, a-f).
+fn hex_nibble(c: u8) -> Result<u32, ModelLoadError> {
+    match c {
+        b'0'..=b'9' => Ok((c - b'0') as u32),
+        b'A'..=b'F' => Ok((c - b'A' + 10) as u32),
+        b'a'..=b'f' => Ok((c - b'a' + 10) as u32),
+        _ => Err(ModelLoadError::ThreeMfParse(format!(
+            "invalid hex digit: {}",
+            c as char
+        ))),
+    }
+}
+
+/// Decode a TriangleSelector hex-encoded state string.
+///
+/// - Empty string → state 0 (unpainted).
+/// - 1 hex char: nibble >> 2 = state, lower 2 bits = split (must be 0).
+/// - 2 hex chars: state = first_nibble + 3, second_nibble must be 0xC.
+/// - >2 chars: subdivision not supported.
+fn decode_paint_hex_state(hex_str: &str, byte_offset: usize) -> Result<u32, ModelLoadError> {
+    let hex_str = hex_str.trim();
+    if hex_str.is_empty() {
+        return Ok(0);
+    }
+    let bytes = hex_str.as_bytes();
+    if bytes.len() == 1 {
+        let nibble = hex_nibble(bytes[0]).map_err(|e| ModelLoadError::PaintMetadata {
+            reason: format!("invalid hex digit in paint state: {e}"),
+            byte_offset,
+        })?;
+        let split = nibble & 0x3;
+        if split != 0 {
+            return Err(ModelLoadError::PaintMetadata {
+                reason: "TriangleSelector subdivision is not supported".into(),
+                byte_offset,
+            });
+        }
+        Ok(nibble >> 2)
+    } else if bytes.len() == 2 {
+        let first = hex_nibble(bytes[0]).map_err(|e| ModelLoadError::PaintMetadata {
+            reason: format!("invalid hex digit in paint state: {e}"),
+            byte_offset,
+        })?;
+        let second = hex_nibble(bytes[1]).map_err(|e| ModelLoadError::PaintMetadata {
+            reason: format!("invalid hex digit in paint state: {e}"),
+            byte_offset,
+        })?;
+        if second != 0xC {
+            let split = second & 0x3;
+            if split != 0 {
+                return Err(ModelLoadError::PaintMetadata {
+                    reason: "TriangleSelector subdivision is not supported".into(),
+                    byte_offset,
+                });
+            }
+            return Err(ModelLoadError::PaintMetadata {
+                reason: format!(
+                    "invalid 2-char TriangleSelector encoding: second nibble must be 0xC, got 0x{second:X}"
+                ),
+                byte_offset,
+            });
+        }
+        Ok(first + 3)
+    } else {
+        Err(ModelLoadError::PaintMetadata {
+            reason: format!(
+                "TriangleSelector hex string length {} indicates subdivision, which is not supported",
+                bytes.len()
+            ),
+            byte_offset,
+        })
+    }
 }
 
 /// Extract local name from a possibly-namespaced XML tag.
