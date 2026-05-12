@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use tempfile::NamedTempFile;
 
 use slicer_host::model_loader::{detect_format, load_model, ModelFormat, ModelLoadError};
+use slicer_ir::{PaintSemantic, PaintValue};
 
 // ---------------------------------------------------------------------------
 // Helper: generate a minimal binary STL cube (12 triangles, 8 unique vertices)
@@ -189,6 +190,48 @@ fn threemf_cube_file() -> NamedTempFile {
     f
 }
 
+fn threemf_custom_paint_file(vertices_xml: &str, triangle_xml: &str) -> NamedTempFile {
+    use std::io::Cursor;
+    let model_xml = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <mesh>
+        <vertices>
+{vertices_xml}
+        </vertices>
+        <triangles>
+{triangle_xml}
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build>
+    <item objectid="1" />
+  </build>
+</model>"#
+    );
+
+    let mut buf = Vec::new();
+    {
+        let cursor = Cursor::new(&mut buf);
+        let mut zip_writer = zip::ZipWriter::new(cursor);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip_writer.start_file("3D/3dmodel.model", options).unwrap();
+        zip_writer.write_all(model_xml.as_bytes()).unwrap();
+        zip_writer.finish().unwrap();
+    }
+
+    let mut f = tempfile::Builder::new().suffix(".3mf").tempfile().unwrap();
+    f.write_all(&buf).unwrap();
+    f.flush().unwrap();
+    f
+}
+
+// ---------------------------------------------------------------------------
+// 3MF paint_fuzzy_skin tests
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -295,4 +338,248 @@ fn pipeline_config_accepts_mesh_ir() {
     assert!(!mesh_ir.objects.is_empty());
     // The MeshIR is compatible with Arc wrapping for pipeline use
     let _arc = std::sync::Arc::new(mesh_ir);
+}
+
+// ---------------------------------------------------------------------------
+// 3MF paint_fuzzy_skin tests
+// ---------------------------------------------------------------------------
+
+fn threemf_paint_file(triangle_xml: &str) -> NamedTempFile {
+    use std::io::Cursor;
+    let model_xml = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">
+  <resources>
+    <object id="1" type="model">
+      <mesh>
+        <vertices>
+          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="1" y="1" z="0" />
+          <vertex x="0" y="1" z="0" />
+        </vertices>
+        <triangles>
+{triangle_xml}
+        </triangles>
+      </mesh>
+    </object>
+  </resources>
+  <build>
+    <item objectid="1" />
+  </build>
+</model>"#
+    );
+
+    let mut buf = Vec::new();
+    {
+        let cursor = Cursor::new(&mut buf);
+        let mut zip_writer = zip::ZipWriter::new(cursor);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip_writer.start_file("3D/3dmodel.model", options).unwrap();
+        zip_writer.write_all(model_xml.as_bytes()).unwrap();
+        zip_writer.finish().unwrap();
+    }
+
+    let mut f = tempfile::Builder::new().suffix(".3mf").tempfile().unwrap();
+    f.write_all(&buf).unwrap();
+    f.flush().unwrap();
+    f
+}
+
+#[test]
+fn load_3mf_extracts_fuzzy_skin_facets() {
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_fuzzy_skin="4" />
+          <triangle v1="0" v2="2" v3="3" />"#;
+    let f = threemf_paint_file(triangle_xml);
+    let mesh_ir = load_model(f.path()).unwrap();
+    assert_eq!(mesh_ir.objects.len(), 1);
+
+    let paint_data = mesh_ir.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint_data should be present");
+    assert_eq!(paint_data.layers.len(), 1);
+    assert_eq!(paint_data.layers[0].semantic, PaintSemantic::FuzzySkin);
+
+    let its = &mesh_ir.objects[0].mesh;
+    let facet_count = its.indices.len() / 3;
+    assert_eq!(paint_data.layers[0].facet_values.len(), facet_count);
+    assert_eq!(facet_count, 2);
+
+    let has_painted = paint_data.layers[0]
+        .facet_values
+        .iter()
+        .any(|v| matches!(v, Some(PaintValue::Flag(true))));
+    assert!(has_painted, "at least one facet should be painted");
+    assert!(paint_data.layers[0].strokes.is_empty());
+}
+
+#[test]
+fn load_3mf_malformed_fuzzy_skin_rejects() {
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_fuzzy_skin="999" />"#;
+    let f = threemf_paint_file(triangle_xml);
+    let err = load_model(f.path()).unwrap_err();
+    assert!(
+        matches!(err, ModelLoadError::PaintMetadata { .. }),
+        "expected PaintMetadata error, got {:?}",
+        err
+    );
+}
+
+#[test]
+fn load_3mf_without_paint_returns_none() {
+    let f = threemf_cube_file();
+    let mesh_ir = load_model(f.path()).unwrap();
+    assert_eq!(mesh_ir.objects.len(), 1);
+    assert!(
+        mesh_ir.objects[0].paint_data.is_none(),
+        "paint_data should be None when no paint attributes are present"
+    );
+}
+
+#[test]
+fn load_3mf_extracts_support_facets() {
+    let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="1" y="1" z="0" />
+          <vertex x="0" y="1" z="0" />
+          <vertex x="0" y="0" z="1" />
+          <vertex x="1" y="0" z="1" />
+          <vertex x="1" y="1" z="1" />"#;
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_supports="4" />
+          <triangle v1="0" v2="2" v3="3" paint_supports="8" />
+          <triangle v1="4" v2="5" v3="6" />"#;
+    let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
+    let mesh_ir = load_model(f.path()).unwrap();
+    assert_eq!(mesh_ir.objects.len(), 1);
+
+    let paint_data = mesh_ir.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint_data should be present");
+    assert_eq!(paint_data.layers.len(), 2);
+
+    let its = &mesh_ir.objects[0].mesh;
+    let facet_count = its.indices.len() / 3;
+    assert_eq!(facet_count, 3);
+
+    let enforcer_layer = paint_data
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::SupportEnforcer)
+        .expect("SupportEnforcer layer should exist");
+    assert_eq!(enforcer_layer.facet_values.len(), facet_count);
+    assert_eq!(enforcer_layer.facet_values[0], Some(PaintValue::Flag(true)));
+    assert_eq!(enforcer_layer.facet_values[1], None);
+    assert_eq!(enforcer_layer.facet_values[2], None);
+
+    let blocker_layer = paint_data
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::SupportBlocker)
+        .expect("SupportBlocker layer should exist");
+    assert_eq!(blocker_layer.facet_values.len(), facet_count);
+    assert_eq!(blocker_layer.facet_values[0], None);
+    assert_eq!(blocker_layer.facet_values[1], Some(PaintValue::Flag(true)));
+    assert_eq!(blocker_layer.facet_values[2], None);
+}
+
+#[test]
+fn load_3mf_extracts_seam_facets() {
+    let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="1" y="1" z="0" />
+          <vertex x="0" y="1" z="0" />"#;
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_seam="4" />
+          <triangle v1="0" v2="2" v3="3" />"#;
+    let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
+    let mesh_ir = load_model(f.path()).unwrap();
+    assert_eq!(mesh_ir.objects.len(), 1);
+
+    let paint_data = mesh_ir.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint_data should be present");
+
+    let its = &mesh_ir.objects[0].mesh;
+    let facet_count = its.indices.len() / 3;
+    assert_eq!(facet_count, 2);
+
+    let seam_layer = paint_data
+        .layers
+        .iter()
+        .find(|l| matches!(l.semantic, PaintSemantic::Custom(ref s) if s == "seam_enforcer"))
+        .expect("seam_enforcer layer should exist");
+    assert_eq!(seam_layer.facet_values.len(), facet_count);
+    assert_eq!(seam_layer.facet_values[0], Some(PaintValue::Flag(true)));
+    assert_eq!(seam_layer.facet_values[1], None);
+}
+
+#[test]
+fn load_3mf_extracts_mmu_color() {
+    let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="1" y="1" z="0" />
+          <vertex x="0" y="1" z="0" />
+          <vertex x="0" y="0" z="1" />
+          <vertex x="1" y="0" z="1" />
+          <vertex x="1" y="1" z="1" />"#;
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_color="4" />
+          <triangle v1="0" v2="2" v3="3" paint_color="8" />
+          <triangle v1="4" v2="5" v3="6" />"#;
+    let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
+    let mesh_ir = load_model(f.path()).unwrap();
+    assert_eq!(mesh_ir.objects.len(), 1);
+
+    let paint_data = mesh_ir.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint_data should be present");
+
+    let its = &mesh_ir.objects[0].mesh;
+    let facet_count = its.indices.len() / 3;
+    assert_eq!(facet_count, 3);
+
+    let color_layer = paint_data
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::Material)
+        .expect("Material layer should exist");
+    assert_eq!(color_layer.facet_values.len(), facet_count);
+    assert_eq!(color_layer.facet_values[0], Some(PaintValue::ToolIndex(1)));
+    assert_eq!(color_layer.facet_values[1], Some(PaintValue::ToolIndex(2)));
+    assert_eq!(color_layer.facet_values[2], None);
+}
+
+#[test]
+fn load_3mf_malformed_support_value_rejects() {
+    let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="1" y="1" z="0" />
+          <vertex x="0" y="1" z="0" />"#;
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_supports="16" />"#;
+    let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
+    let err = load_model(f.path()).unwrap_err();
+    assert!(
+        matches!(err, ModelLoadError::PaintMetadata { .. }),
+        "expected PaintMetadata error, got {:?}",
+        err
+    );
+}
+
+#[test]
+fn load_3mf_subdivision_paint_rejects() {
+    let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="1" y="1" z="0" />
+          <vertex x="0" y="1" z="0" />"#;
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_fuzzy_skin="5" />"#;
+    let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
+    let err = load_model(f.path()).unwrap_err();
+    assert!(
+        matches!(err, ModelLoadError::PaintMetadata { .. }),
+        "expected PaintMetadata error, got {:?}",
+        err
+    );
 }
