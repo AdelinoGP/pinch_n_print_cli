@@ -13,7 +13,7 @@ use std::path::Path;
 
 use slicer_ir::{
     BoundingBox3, FacetPaintData, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, PaintLayer,
-    PaintSemantic, PaintValue, Point3, SemVer, Transform3d,
+    PaintSemantic, PaintStroke, PaintValue, Point3, SemVer, Transform3d,
 };
 
 /// Detected model file format.
@@ -316,6 +316,9 @@ fn parse_3mf_model_xml(
     let mut support_states: Vec<Option<u32>> = Vec::new();
     let mut seam_states: Vec<Option<u32>> = Vec::new();
     let mut color_states: Vec<Option<u32>> = Vec::new();
+    let mut color_strokes: Vec<PaintStroke> = Vec::new();
+    let mut support_strokes_enforcer: Vec<PaintStroke> = Vec::new();
+    let mut support_strokes_blocker: Vec<PaintStroke> = Vec::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -350,6 +353,10 @@ fn parse_3mf_model_xml(
                         let mut support_state: Option<u32> = None;
                         let mut seam_state: Option<u32> = None;
                         let mut color_state: Option<u32> = None;
+                        let mut color_hex: Option<String> = None;
+                        let mut color_byte_offset: usize = 0;
+                        let mut support_hex: Option<String> = None;
+                        let mut support_byte_offset: usize = 0;
 
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
@@ -392,6 +399,8 @@ fn parse_3mf_model_xml(
                                                 byte_offset: reader.error_position() as usize,
                                             }
                                         })?;
+                                    support_hex = Some(value_str.to_string());
+                                    support_byte_offset = reader.error_position() as usize;
                                     let state = decode_paint_hex_state(
                                         value_str,
                                         reader.error_position() as usize,
@@ -446,6 +455,8 @@ fn parse_3mf_model_xml(
                                                 byte_offset: reader.error_position() as usize,
                                             }
                                         })?;
+                                    color_hex = Some(value_str.to_string());
+                                    color_byte_offset = reader.error_position() as usize;
                                     let state = decode_paint_hex_state(
                                         value_str,
                                         reader.error_position() as usize,
@@ -465,6 +476,59 @@ fn parse_3mf_model_xml(
                                     }
                                 }
                                 _ => {}
+                            }
+                        }
+
+                        // Decode strokes for subdivided paint channels (hex len > 2 only).
+                        if let Some(hex) = &color_hex {
+                            if hex.len() > 2 && color_state.map_or(false, |s| s != 0) {
+                                let v1_idx = v1.unwrap_or(0) as usize;
+                                let v2_idx = v2.unwrap_or(0) as usize;
+                                let v3_idx = v3.unwrap_or(0) as usize;
+                                let tri_verts =
+                                    [vertices[v1_idx], vertices[v2_idx], vertices[v3_idx]];
+                                if let Ok(pairs) =
+                                    decode_paint_hex_strokes(hex, tri_verts, color_byte_offset)
+                                {
+                                    for (sub_verts, sub_state) in pairs {
+                                        color_strokes.push(PaintStroke {
+                                            triangles: vec![sub_verts],
+                                            semantic: PaintSemantic::Material,
+                                            value: PaintValue::ToolIndex(
+                                                sub_state.saturating_sub(1),
+                                            ),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(hex) = &support_hex {
+                            if hex.len() > 2 && support_state.map_or(false, |s| s != 0) {
+                                let v1_idx = v1.unwrap_or(0) as usize;
+                                let v2_idx = v2.unwrap_or(0) as usize;
+                                let v3_idx = v3.unwrap_or(0) as usize;
+                                let tri_verts =
+                                    [vertices[v1_idx], vertices[v2_idx], vertices[v3_idx]];
+                                if let Ok(pairs) =
+                                    decode_paint_hex_strokes(hex, tri_verts, support_byte_offset)
+                                {
+                                    for (sub_verts, sub_state) in pairs {
+                                        let stroke = PaintStroke {
+                                            triangles: vec![sub_verts],
+                                            semantic: if sub_state == 1 {
+                                                PaintSemantic::SupportEnforcer
+                                            } else {
+                                                PaintSemantic::SupportBlocker
+                                            },
+                                            value: PaintValue::Flag(true),
+                                        };
+                                        if sub_state == 1 {
+                                            support_strokes_enforcer.push(stroke);
+                                        } else if sub_state == 2 {
+                                            support_strokes_blocker.push(stroke);
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -543,7 +607,7 @@ fn parse_3mf_model_xml(
                         }
                     })
                     .collect(),
-                strokes: Vec::new(),
+                strokes: support_strokes_enforcer,
             });
         }
 
@@ -560,7 +624,7 @@ fn parse_3mf_model_xml(
                         }
                     })
                     .collect(),
-                strokes: Vec::new(),
+                strokes: support_strokes_blocker,
             });
         }
 
@@ -605,7 +669,7 @@ fn parse_3mf_model_xml(
                     .iter()
                     .map(|&s| s.map(PaintValue::ToolIndex))
                     .collect(),
-                strokes: Vec::new(),
+                strokes: color_strokes,
             });
         }
 
@@ -642,6 +706,227 @@ fn hex_nibble(c: u8) -> Result<u32, ModelLoadError> {
             c as char
         ))),
     }
+}
+
+fn parse_nibbles(hex: &str, byte_offset: usize) -> Result<Vec<u8>, ModelLoadError> {
+    // OrcaSlicer stores the bitstream in reversed nibble order (last nibble first).
+    // Reverse the hex string to restore the original bitstream order.
+    hex.bytes()
+        .rev()
+        .map(|b| {
+            hex_nibble(b)
+                .map(|n| n as u8)
+                .map_err(|e| ModelLoadError::PaintMetadata {
+                    reason: format!("invalid hex digit in paint state: {e}"),
+                    byte_offset,
+                })
+        })
+        .collect()
+}
+
+fn walk_triangle_selector_tree(
+    nibbles: &[u8],
+    pos: &mut usize,
+    states: &mut Vec<u32>,
+    byte_offset: usize,
+    depth: u32,
+) -> Result<(), ModelLoadError> {
+    if depth > 64 {
+        return Err(ModelLoadError::PaintMetadata {
+            reason: "TriangleSelector tree exceeds maximum depth".into(),
+            byte_offset,
+        });
+    }
+    if *pos >= nibbles.len() {
+        return Err(ModelLoadError::PaintMetadata {
+            reason: "unexpected end of TriangleSelector tree data".into(),
+            byte_offset,
+        });
+    }
+    let nibble = nibbles[*pos];
+    *pos += 1;
+    let split_type = nibble & 0x3;
+    let state_bits = nibble >> 2;
+
+    if split_type == 0 {
+        // Leaf node
+        let state = if state_bits == 3 {
+            // Extended state: next nibble holds (state - 3)
+            if *pos >= nibbles.len() {
+                return Err(ModelLoadError::PaintMetadata {
+                    reason:
+                        "unexpected end of TriangleSelector tree: missing extended state nibble"
+                            .into(),
+                    byte_offset,
+                });
+            }
+            let ext = nibbles[*pos] as u32;
+            *pos += 1;
+            ext + 3
+        } else {
+            state_bits as u32
+        };
+        states.push(state);
+    } else {
+        // Non-leaf: recurse into split_type + 1 children
+        let num_children = (split_type + 1) as usize;
+        for _ in 0..num_children {
+            walk_triangle_selector_tree(nibbles, pos, states, byte_offset, depth + 1)?;
+        }
+    }
+    Ok(())
+}
+
+fn dominant_paint_state(states: &[u32]) -> u32 {
+    let mut counts = std::collections::HashMap::new();
+    for &s in states {
+        if s != 0 {
+            *counts.entry(s).or_insert(0u32) += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .max_by_key(|&(_, c)| c)
+        .map(|(s, _)| s)
+        .unwrap_or(0)
+}
+
+fn midpoint(a: Point3, b: Point3) -> Point3 {
+    Point3 {
+        x: (a.x + b.x) * 0.5,
+        y: (a.y + b.y) * 0.5,
+        z: (a.z + b.z) * 0.5,
+    }
+}
+
+/// Split a triangle into child sub-triangles based on split_type and special_side.
+/// Returns child triangle vertices and placeholder special_sides (each child reads
+/// its own special_side from the bitstream during DFS deserialization).
+fn split_triangle_strokes(
+    verts: [Point3; 3],
+    split_type: u8,
+    special_side: u8,
+    byte_offset: usize,
+) -> Result<(Vec<[Point3; 3]>, Vec<u8>), ModelLoadError> {
+    let i = special_side as usize;
+    let j = ((special_side + 1) % 3) as usize;
+    let k = ((special_side + 2) % 3) as usize;
+
+    let child_verts = match split_type {
+        1 => {
+            let m_jk = midpoint(verts[j], verts[k]);
+            vec![[verts[i], verts[j], m_jk], [m_jk, verts[k], verts[i]]]
+        }
+        2 => {
+            let m_ij = midpoint(verts[i], verts[j]);
+            let m_ik = midpoint(verts[i], verts[k]);
+            vec![
+                [verts[i], m_ij, m_ik],
+                [m_ij, verts[j], m_ik],
+                [verts[j], verts[k], m_ik],
+            ]
+        }
+        3 => {
+            if special_side != 0 {
+                return Err(ModelLoadError::PaintMetadata {
+                    reason: format!(
+                        "split_sides=3 requires special_side=0, got {}",
+                        special_side
+                    ),
+                    byte_offset,
+                });
+            }
+            let m_01 = midpoint(verts[0], verts[1]);
+            let m_12 = midpoint(verts[1], verts[2]);
+            let m_20 = midpoint(verts[2], verts[0]);
+            vec![
+                [verts[0], m_01, m_20],
+                [m_01, verts[1], m_12],
+                [m_12, verts[2], m_20],
+                [m_01, m_12, m_20],
+            ]
+        }
+        // split_type is nibble & 0x3; leaf (0) handled before this call — 1/2/3 are exhaustive
+        _ => unreachable!("split_type={} outside valid range 1–3", split_type),
+    };
+
+    let child_special_sides = vec![0u8; child_verts.len()];
+    Ok((child_verts, child_special_sides))
+}
+
+fn walk_triangle_selector_strokes(
+    nibbles: &[u8],
+    pos: &mut usize,
+    verts: [Point3; 3],
+    _special_side: u8,
+    out: &mut Vec<([Point3; 3], u32)>,
+    byte_offset: usize,
+    depth: u32,
+) -> Result<(), ModelLoadError> {
+    if depth > 64 {
+        return Err(ModelLoadError::PaintMetadata {
+            reason: "TriangleSelector tree exceeds maximum depth".into(),
+            byte_offset,
+        });
+    }
+    if *pos >= nibbles.len() {
+        return Err(ModelLoadError::PaintMetadata {
+            reason: "unexpected end of TriangleSelector tree data".into(),
+            byte_offset,
+        });
+    }
+    let nibble = nibbles[*pos];
+    *pos += 1;
+    let split_type = nibble & 0x3;
+
+    if split_type == 0 {
+        // Leaf node
+        let state_bits = nibble >> 2;
+        let state = if state_bits == 3 {
+            if *pos >= nibbles.len() {
+                return Err(ModelLoadError::PaintMetadata {
+                    reason:
+                        "unexpected end of TriangleSelector tree: missing extended state nibble"
+                            .into(),
+                    byte_offset,
+                });
+            }
+            let ext = nibbles[*pos] as u32;
+            *pos += 1;
+            ext + 3
+        } else {
+            state_bits as u32
+        };
+        if state != 0 {
+            out.push((verts, state));
+        }
+    } else {
+        // Non-leaf: special_side is encoded in the upper bits of this nibble.
+        let special_side = nibble >> 2;
+        let (child_verts, _) =
+            split_triangle_strokes(verts, split_type, special_side, byte_offset)?;
+        for child in child_verts {
+            walk_triangle_selector_strokes(nibbles, pos, child, 0, out, byte_offset, depth + 1)?;
+        }
+    }
+    Ok(())
+}
+
+/// Decode a TriangleSelector hex-encoded state string into leaf sub-triangles and their states.
+pub fn decode_paint_hex_strokes(
+    hex: &str,
+    verts: [Point3; 3],
+    byte_offset: usize,
+) -> Result<Vec<([Point3; 3], u32)>, ModelLoadError> {
+    let hex = hex.trim();
+    if hex.is_empty() {
+        return Ok(vec![]);
+    }
+    let nibbles = parse_nibbles(hex, byte_offset)?;
+    let mut pos = 0;
+    let mut out = Vec::new();
+    walk_triangle_selector_strokes(&nibbles, &mut pos, verts, 0, &mut out, byte_offset, 0)?;
+    Ok(out)
 }
 
 /// Decode a TriangleSelector hex-encoded state string.
@@ -695,13 +980,12 @@ fn decode_paint_hex_state(hex_str: &str, byte_offset: usize) -> Result<u32, Mode
         }
         Ok(first + 3)
     } else {
-        Err(ModelLoadError::PaintMetadata {
-            reason: format!(
-                "TriangleSelector hex string length {} indicates subdivision, which is not supported",
-                bytes.len()
-            ),
-            byte_offset,
-        })
+        // TriangleSelector subdivision tree: walk DFS, return dominant state
+        let nibbles = parse_nibbles(hex_str, byte_offset)?;
+        let mut pos = 0;
+        let mut states = Vec::new();
+        walk_triangle_selector_tree(&nibbles, &mut pos, &mut states, byte_offset, 0)?;
+        Ok(dominant_paint_state(&states))
     }
 }
 
