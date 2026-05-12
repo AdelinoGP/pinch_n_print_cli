@@ -100,6 +100,57 @@ pub struct PaintLayer {
     pub strokes: Vec<PaintStroke>,
 }
 
+```
+
+### 3MF paint-metadata extraction
+
+The host 3MF loader (`model_loader.rs::parse_3mf_model_xml`) recognizes four
+paint attributes on `<triangle>` elements in 3MF model XML. Each attribute
+maps to one or more `PaintSemantic` layers via the TriangleSelector hex-encoded
+state values described below.
+
+#### TriangleSelector hex-encoded state values
+
+The attribute string is decoded as a whole-facet state value:
+
+- Empty string (attribute present but empty) → state 0 (unpainted; treated as `None`).
+- Single hex character:
+  - `"4"` → state 1
+  - `"8"` → state 2
+- Two hex characters (encoded as `byte = nibble_high << 4 | nibble_low`):
+  - `"0C"` → state 3, `"1C"` → state 4, `"2C"` → state 5, … up to `"DC"` → state 16.
+- Strings longer than two characters represent subdivision and are rejected with
+  `ModelLoadError::PaintMetadata`.
+- Any hex nibble with non-zero split bits (subdivision markers) is likewise rejected.
+
+#### Channel decode contracts
+
+| 3MF attribute | Valid states | `PaintSemantic` mapping |
+|---|---|---|
+| `paint_fuzzy_skin` | 1 only | state 1 → `PaintValue::Flag(true)` (`PaintSemantic::FuzzySkin`) |
+| `paint_supports` | 1, 2 | state 1 → `PaintSemantic::SupportEnforcer`; state 2 → `PaintSemantic::SupportBlocker` |
+| `paint_seam` | 1, 2 | state 1 → `PaintSemantic::Custom("seam_enforcer")`; state 2 → `PaintSemantic::Custom("seam_blocker")` |
+| `paint_color` | 1–16 | state N → `PaintValue::ToolIndex(N)` (`PaintSemantic::Material`) |
+
+Channel-specific constraints:
+
+- `paint_fuzzy_skin`: only state 1 is valid; any other state is rejected with `ModelLoadError::PaintMetadata`.
+- `paint_supports`: only states 1 and 2 are valid; any other state is rejected.
+- `paint_seam`: only states 1 and 2 are valid; any other state is rejected.
+- `paint_color`: states 1–16 are valid (extruder indices). States greater than 16 and subdivision strings are rejected.
+
+#### Multiple layers
+
+`paint_supports` can produce up to two `PaintLayer` entries
+(`SupportEnforcer` + `SupportBlocker`).
+`paint_seam` can produce up to two `PaintLayer` entries
+(`Custom("seam_enforcer")` + `Custom("seam_blocker")`).
+All other channels produce at most one layer.
+
+Whole-facet painting only is currently supported; `TriangleSelector` subdivision
+is deferred to a future packet.
+
+```rust
 pub enum PaintSemantic {
     /// Which tool/filament to use for this surface region.
     Material,
