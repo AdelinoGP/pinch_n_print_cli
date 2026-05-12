@@ -569,12 +569,28 @@ fn load_3mf_malformed_support_value_rejects() {
 }
 
 #[test]
-fn load_3mf_subdivision_paint_rejects() {
+fn load_3mf_truncated_paint_tree_rejects() {
     let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
           <vertex x="1" y="0" z="0" />
           <vertex x="1" y="1" z="0" />
           <vertex x="0" y="1" z="0" />"#;
-    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_fuzzy_skin="5" />"#;
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_color="101" />"#;
+    let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
+    let err = load_model(f.path()).unwrap_err();
+    assert!(
+        err.to_string().contains("unexpected end"),
+        "expected truncated tree error, got {:?}",
+        err
+    );
+}
+
+#[test]
+fn load_3mf_invalid_paint_hex_rejects() {
+    let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="1" y="1" z="0" />
+          <vertex x="0" y="1" z="0" />"#;
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_fuzzy_skin="GG" />"#;
     let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
     let err = load_model(f.path()).unwrap_err();
     assert!(
@@ -582,4 +598,130 @@ fn load_3mf_subdivision_paint_rejects() {
         "expected PaintMetadata error, got {:?}",
         err
     );
+    assert!(
+        err.to_string().contains("invalid hex digit"),
+        "expected 'invalid hex digit' in error message, got {:?}",
+        err
+    );
+}
+
+#[test]
+fn load_3mf_subdivision_dominant_state() {
+    let vertices_xml = r#"          <vertex x="0" y="0" z="0" />
+          <vertex x="1" y="0" z="0" />
+          <vertex x="1" y="1" z="0" />
+          <vertex x="0" y="1" z="0" />"#;
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_color="401" />"#;
+    let f = threemf_custom_paint_file(vertices_xml, triangle_xml);
+    let mesh_ir = load_model(f.path()).unwrap();
+    let paint_data = mesh_ir.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint data should exist");
+    let material_layer = paint_data
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::Material)
+        .expect("Material layer should exist");
+    assert_eq!(material_layer.facet_values.len(), 1);
+    assert!(
+        matches!(
+            material_layer.facet_values[0],
+            Some(PaintValue::ToolIndex(1))
+        ),
+        "expected dominant state to map to ToolIndex(1), got {:?}",
+        material_layer.facet_values[0]
+    );
+}
+
+#[test]
+fn load_3mf_benchy_4color_loads() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../resources/benchy_4color.3mf"
+    );
+    let result = load_model(&PathBuf::from(path));
+    assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+    let objects = result.unwrap();
+    // AC-2: Material layer present with at least one ToolIndex
+    let has_material = objects.objects.iter().any(|obj| {
+        obj.paint_data.as_ref().map_or(false, |pd| {
+            pd.layers.iter().any(|l| {
+                matches!(l.semantic, PaintSemantic::Material)
+                    && l.facet_values
+                        .iter()
+                        .any(|v| matches!(v, Some(PaintValue::ToolIndex(_))))
+            })
+        })
+    });
+    assert!(
+        has_material,
+        "expected Material layer with ToolIndex entries"
+    );
+    // AC-3: SupportEnforcer layer present
+    let has_support = objects.objects.iter().any(|obj| {
+        obj.paint_data.as_ref().map_or(false, |pd| {
+            pd.layers.iter().any(|l| {
+                matches!(l.semantic, PaintSemantic::SupportEnforcer)
+                    && l.facet_values
+                        .iter()
+                        .any(|v| matches!(v, Some(PaintValue::Flag(true))))
+            })
+        })
+    });
+    assert!(
+        has_support,
+        "expected SupportEnforcer layer with Flag(true) entries"
+    );
+}
+
+#[test]
+fn load_3mf_benchy_4color_strokes_populated() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../resources/benchy_4color.3mf"
+    );
+    let mesh_ir = load_model(&PathBuf::from(path)).expect("should load without error");
+    let has_strokes = mesh_ir.objects.iter().any(|obj| {
+        obj.paint_data.as_ref().map_or(false, |pd| {
+            pd.layers
+                .iter()
+                .any(|l| matches!(l.semantic, PaintSemantic::Material) && !l.strokes.is_empty())
+        })
+    });
+    assert!(has_strokes, "expected non-empty strokes in Material layer");
+    // AC-8: all stroke triangles are non-degenerate
+    for obj in &mesh_ir.objects {
+        if let Some(pd) = &obj.paint_data {
+            for layer in &pd.layers {
+                for stroke in &layer.strokes {
+                    for tri in &stroke.triangles {
+                        let [a, b, c] = tri;
+                        assert!(
+                            a != b && b != c && a != c,
+                            "degenerate stroke triangle found"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn load_3mf_wholefacet_has_no_strokes() {
+    let triangle_xml = r#"          <triangle v1="0" v2="1" v3="2" paint_color="4" />"#;
+    let f = threemf_paint_file(triangle_xml);
+    let mesh_ir = load_model(f.path()).expect("should load");
+    for obj in &mesh_ir.objects {
+        if let Some(pd) = &obj.paint_data {
+            for layer in &pd.layers {
+                assert!(
+                    layer.strokes.is_empty(),
+                    "whole-facet paint should produce no strokes, semantic={:?}",
+                    layer.semantic
+                );
+            }
+        }
+    }
 }
