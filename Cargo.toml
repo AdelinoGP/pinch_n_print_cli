@@ -29,6 +29,7 @@ members = [
     "modules/core-modules/path-optimization-default",
     "modules/core-modules/seam-planner-default",
     "modules/core-modules/support-planner",
+    "modules/core-modules/part-cooling",
 ]
 resolver = "2"
 
