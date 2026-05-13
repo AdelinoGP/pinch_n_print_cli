@@ -182,19 +182,15 @@ fn paint_config_override_visibly_differs_gcode() {
     let baseline_gcode = std::fs::read_to_string(&baseline_out).expect("read baseline gcode");
     let override_gcode = std::fs::read_to_string(&override_out).expect("read override gcode");
 
-    // Z-band corrected (packet 51):
-    //   (a) The painted Benchy 3MF geometry occupies Z=[−24, +24] in model
-    //       space; after slicing (Z >= 0), the live slice range is [0, 24].
-    //       The previous value of (40.0, 48.0) was dead space — no layers
-    //       are emitted there — so baseline_loops and override_loops were
-    //       both 0 and assert_ne! always failed.
-    //   (b) The 3MF <build>/<item> transform carries a +24 mm Z-translation
-    //       that the current model_loader.rs does NOT apply.  That is a
-    //       pre-existing deviation in the 3MF loader and is OUT OF SCOPE for
-    //       Packet 51 (this packet does not own model_loader.rs).  It should
-    //       be filed as a follow-up deviation against Packet 50b-rev or as
-    //       its own dedicated packet.
-    let (z_lo, z_hi) = (0.2_f32, 24.0_f32);
+    // Z-band corrected (packet 51→46):
+    //   (a) The 3MF loader now applies the <build>/<item> transform
+    //       (DEV-046 closed). The painted Benchy 3MF Z-range is [0, 48] mm
+    //       after transform baking, so the smokestack at Z≈40–48 mm has
+    //       sliced layers.
+    //   (b) The paint_config:<semantic>:<key> override system is now wired
+    //       (Packet 51 closed). Regions carrying fuzzy_skin paint semantic
+    //       receive wall_count=5 instead of the global wall_count=2.
+    let (z_lo, z_hi) = (40.0_f32, 48.0_f32);
     let baseline_loops = count_perimeter_markers_in_z_band(&baseline_gcode, z_lo, z_hi);
     let override_loops = count_perimeter_markers_in_z_band(&override_gcode, z_lo, z_hi);
 

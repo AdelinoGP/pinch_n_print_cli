@@ -132,36 +132,64 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
     let file = std::fs::File::open(path)?;
     let mut reader = BufReader::new(file);
 
-    let (its, paint_data) = match format {
-        ModelFormat::Stl => (load_stl(&mut reader)?, None),
-        ModelFormat::Obj => (load_obj(path)?, None),
-        ModelFormat::ThreeMf => load_3mf(&mut reader)?,
-    };
-
-    let build_volume = compute_bounding_box(&its);
-
-    let transform = identity_transform();
-    let world_z_extent = {
-        // Apply identity transform (zero-matrix fallback) to extract Z range.
-        // Safe because transform is identity — z_min/z_max of mesh == world z range.
-        let identity = transform.matrix.iter().all(|v| *v == 0.0);
-        if identity {
-            compute_z_extent_from_mesh(&its)
-        } else {
-            object_world_z_extent_from_mesh_and_transform(&its, &transform)
+    let objects: Vec<ObjectMesh> = match format {
+        ModelFormat::Stl => {
+            let its = load_stl(&mut reader)?;
+            let world_z_extent = compute_z_extent_from_mesh(&its);
+            vec![ObjectMesh {
+                id: uuid::Uuid::new_v4().to_string(),
+                mesh: its,
+                transform: identity_transform(),
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
+                modifier_volumes: Vec::new(),
+                paint_data: None,
+                world_z_extent,
+            }]
+        }
+        ModelFormat::Obj => {
+            let its = load_obj(path)?;
+            let world_z_extent = compute_z_extent_from_mesh(&its);
+            vec![ObjectMesh {
+                id: uuid::Uuid::new_v4().to_string(),
+                mesh: its,
+                transform: identity_transform(),
+                config: ObjectConfig {
+                    data: HashMap::new(),
+                },
+                modifier_volumes: Vec::new(),
+                paint_data: None,
+                world_z_extent,
+            }]
+        }
+        ModelFormat::ThreeMf => {
+            let items = load_3mf(&mut reader)?;
+            items
+                .into_iter()
+                .map(|(its, paint_data)| {
+                    let world_z_extent = compute_z_extent_from_mesh(&its);
+                    ObjectMesh {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        mesh: its,
+                        transform: identity_transform(),
+                        config: ObjectConfig {
+                            data: HashMap::new(),
+                        },
+                        modifier_volumes: Vec::new(),
+                        paint_data,
+                        world_z_extent,
+                    }
+                })
+                .collect()
         }
     };
-    let object = ObjectMesh {
-        id: uuid::Uuid::new_v4().to_string(),
-        mesh: its,
-        transform,
-        config: ObjectConfig {
-            data: HashMap::new(),
-        },
-        modifier_volumes: Vec::new(),
-        paint_data,
-        world_z_extent,
-    };
+
+    if objects.is_empty() {
+        return Err(ModelLoadError::ThreeMfParse("no objects in model".into()));
+    }
+
+    let build_volume = compute_bounding_box_union(objects.iter().map(|o| &o.mesh));
 
     Ok(MeshIR {
         schema_version: SemVer {
@@ -169,7 +197,7 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
             minor: 0,
             patch: 0,
         },
-        objects: vec![object],
+        objects,
         build_volume,
     })
 }
@@ -254,14 +282,282 @@ fn load_obj(path: &Path) -> Result<IndexedTriangleSet, ModelLoadError> {
 // 3MF loader
 // ---------------------------------------------------------------------------
 
-/// Load 3MF and return IndexedTriangleSet and optional FacetPaintData from the first object.
+struct Parsed3mfObject {
+    mesh: Option<(IndexedTriangleSet, Option<FacetPaintData>)>,
+    components: Vec<ParsedComponent>,
+    transform: Option<[f64; 16]>,
+}
+
+struct ParsedComponent {
+    objectid: u32,
+    transform: Option<[f64; 16]>,
+}
+
+struct ParsedBuildItem {
+    objectid: u32,
+    transform: Option<[f64; 16]>,
+}
+
+struct MeshCollector {
+    vertices: Vec<Point3>,
+    indices: Vec<u32>,
+    has_any_paint: bool,
+    fuzzy_states: Vec<Option<u32>>,
+    support_states: Vec<Option<u32>>,
+    seam_states: Vec<Option<u32>>,
+    color_states: Vec<Option<u32>>,
+    color_strokes: Vec<PaintStroke>,
+    support_strokes_enforcer: Vec<PaintStroke>,
+    support_strokes_blocker: Vec<PaintStroke>,
+}
+
+impl MeshCollector {
+    fn new() -> Self {
+        Self {
+            vertices: Vec::new(),
+            indices: Vec::new(),
+            has_any_paint: false,
+            fuzzy_states: Vec::new(),
+            support_states: Vec::new(),
+            seam_states: Vec::new(),
+            color_states: Vec::new(),
+            color_strokes: Vec::new(),
+            support_strokes_enforcer: Vec::new(),
+            support_strokes_blocker: Vec::new(),
+        }
+    }
+}
+
+fn parse_3mf_transform(attr: &[u8]) -> Result<[f64; 16], ModelLoadError> {
+    let s = std::str::from_utf8(attr).map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
+    let parts: Vec<&str> = s.split_whitespace().collect();
+    if parts.len() != 12 {
+        return Err(ModelLoadError::ThreeMfParse(format!(
+            "3MF transform must have 12 floats, got {}",
+            parts.len()
+        )));
+    }
+    let floats: Vec<f64> = parts
+        .iter()
+        .map(|p| {
+            p.parse::<f64>().map_err(|e| {
+                ModelLoadError::ThreeMfParse(format!("invalid float in 3MF transform: {e}"))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    // 3MF Core spec §4.4: the 12 floats are a 4x3 matrix in row-major order
+    // applied in row-vector convention v_new = v · M_row. To consume through
+    // `apply_transform_to_vertex` (column-vector v_new = M_col · v, m[16] in
+    // column-major storage) we need M_col = M_row^T. M_row[r][c] = floats[r*3 + c]
+    // lands at m[c*4 + r] = M_col[r][c]. For r ∈ {0..2}, c ∈ {0..2} that's
+    // m[r + 4*c] = floats[r*3 + c]; for the 3x3 rotation/scale block this is
+    // an identity copy when written column-by-column. The translation row
+    // (r=3) maps to m[12..15].
+    let mut m = [0.0f64; 16];
+    m[0] = floats[0];
+    m[1] = floats[1];
+    m[2] = floats[2];
+    m[3] = 0.0;
+    m[4] = floats[3];
+    m[5] = floats[4];
+    m[6] = floats[5];
+    m[7] = 0.0;
+    m[8] = floats[6];
+    m[9] = floats[7];
+    m[10] = floats[8];
+    m[11] = 0.0;
+    m[12] = floats[9];
+    m[13] = floats[10];
+    m[14] = floats[11];
+    m[15] = 1.0;
+    Ok(m)
+}
+
+fn compose_transforms(a: &[f64; 16], b: &[f64; 16]) -> [f64; 16] {
+    let mut result = [0.0f64; 16];
+    for col in 0..4 {
+        for row in 0..4 {
+            let mut sum = 0.0;
+            for k in 0..4 {
+                sum += a[k * 4 + row] * b[col * 4 + k];
+            }
+            result[col * 4 + row] = sum;
+        }
+    }
+    result
+}
+
+fn identity_3mf_transform() -> [f64; 16] {
+    let mut m = [0.0f64; 16];
+    m[0] = 1.0;
+    m[5] = 1.0;
+    m[10] = 1.0;
+    m[15] = 1.0;
+    m
+}
+
+fn apply_transform_to_vertex(v: &Point3, m: &[f64; 16]) -> Point3 {
+    let x = v.x as f64;
+    let y = v.y as f64;
+    let z = v.z as f64;
+    Point3 {
+        x: (m[0] * x + m[4] * y + m[8] * z + m[12]) as f32,
+        y: (m[1] * x + m[5] * y + m[9] * z + m[13]) as f32,
+        z: (m[2] * x + m[6] * y + m[10] * z + m[14]) as f32,
+    }
+}
+
+fn apply_transform_to_mesh(mesh: &mut IndexedTriangleSet, m: &[f64; 16]) {
+    for v in &mut mesh.vertices {
+        *v = apply_transform_to_vertex(v, m);
+    }
+}
+
+fn apply_transform_to_paint_data(pd: &mut FacetPaintData, m: &[f64; 16]) {
+    for layer in &mut pd.layers {
+        for stroke in &mut layer.strokes {
+            for tri in &mut stroke.triangles {
+                *tri = [
+                    apply_transform_to_vertex(&tri[0], m),
+                    apply_transform_to_vertex(&tri[1], m),
+                    apply_transform_to_vertex(&tri[2], m),
+                ];
+            }
+        }
+    }
+}
+
+fn resolve_object(
+    object_id: u32,
+    incoming_transform: &[f64; 16],
+    objects: &HashMap<u32, Parsed3mfObject>,
+    visited: &mut Vec<u32>,
+) -> Result<(IndexedTriangleSet, Option<FacetPaintData>), ModelLoadError> {
+    if visited.contains(&object_id) {
+        return Err(ModelLoadError::ThreeMfParse(format!(
+            "3MF circular component reference detected for object {object_id}"
+        )));
+    }
+    visited.push(object_id);
+
+    let obj = objects.get(&object_id).ok_or_else(|| {
+        ModelLoadError::ThreeMfParse(format!("3MF references undefined object id {object_id}"))
+    })?;
+
+    let effective_transform = if let Some(ref t) = obj.transform {
+        compose_transforms(incoming_transform, t)
+    } else {
+        *incoming_transform
+    };
+
+    if let Some((ref mesh, ref paint)) = obj.mesh {
+        let mut result_mesh = mesh.clone();
+        apply_transform_to_mesh(&mut result_mesh, &effective_transform);
+        let mut result_paint = paint.clone();
+        if let Some(ref mut pd) = result_paint {
+            apply_transform_to_paint_data(pd, &effective_transform);
+        }
+        visited.pop();
+        Ok((result_mesh, result_paint))
+    } else if !obj.components.is_empty() {
+        let mut merged_vertices = Vec::new();
+        let mut merged_indices = Vec::new();
+        let mut merged_paint: Option<FacetPaintData> = None;
+        let mut accumulated_facet_count: usize = 0;
+
+        for comp in &obj.components {
+            let comp_transform = if let Some(ref t) = comp.transform {
+                compose_transforms(&effective_transform, t)
+            } else {
+                effective_transform
+            };
+            let (comp_mesh, comp_paint) =
+                resolve_object(comp.objectid, &comp_transform, objects, visited)?;
+            let comp_facet_count = comp_mesh.indices.len() / 3;
+
+            let offset = merged_vertices.len() as u32;
+            merged_vertices.extend(comp_mesh.vertices);
+            merged_indices.extend(comp_mesh.indices.iter().map(|&i| i + offset));
+
+            // Per-semantic alignment: every layer in merged_paint must end up with
+            // facet_values.len() == accumulated_facet_count + comp_facet_count.
+            // Components missing a semantic contribute None × comp_facet_count;
+            // semantics first appearing in this component are back-padded with None
+            // × accumulated_facet_count.
+            if merged_paint.is_none() && comp_paint.is_some() {
+                merged_paint = Some(FacetPaintData { layers: Vec::new() });
+            }
+            if let Some(ref mut merged) = merged_paint {
+                let comp_layers = comp_paint
+                    .as_ref()
+                    .map(|pd| pd.layers.as_slice())
+                    .unwrap_or(&[]);
+                for layer in merged.layers.iter_mut() {
+                    if let Some(comp_layer) =
+                        comp_layers.iter().find(|l| l.semantic == layer.semantic)
+                    {
+                        layer
+                            .facet_values
+                            .extend(comp_layer.facet_values.iter().cloned());
+                        layer.strokes.extend(comp_layer.strokes.iter().cloned());
+                    } else {
+                        layer
+                            .facet_values
+                            .extend(std::iter::repeat_n(None, comp_facet_count));
+                    }
+                }
+                for comp_layer in comp_layers {
+                    let already = merged
+                        .layers
+                        .iter()
+                        .any(|l| l.semantic == comp_layer.semantic);
+                    if !already {
+                        let mut new_layer = PaintLayer {
+                            semantic: comp_layer.semantic.clone(),
+                            facet_values: vec![None; accumulated_facet_count],
+                            strokes: Vec::new(),
+                        };
+                        new_layer
+                            .facet_values
+                            .extend(comp_layer.facet_values.iter().cloned());
+                        new_layer.strokes.extend(comp_layer.strokes.iter().cloned());
+                        merged.layers.push(new_layer);
+                    }
+                }
+            }
+
+            accumulated_facet_count += comp_facet_count;
+        }
+
+        if merged_vertices.is_empty() {
+            return Err(ModelLoadError::ThreeMfParse(
+                "no geometry in 3MF component chain".into(),
+            ));
+        }
+
+        visited.pop();
+        Ok((
+            IndexedTriangleSet {
+                vertices: merged_vertices,
+                indices: merged_indices,
+            },
+            merged_paint,
+        ))
+    } else {
+        visited.pop();
+        Err(ModelLoadError::ThreeMfParse(format!(
+            "3MF object {object_id} has neither mesh nor components"
+        )))
+    }
+}
+
+/// Load 3MF and return a list of (IndexedTriangleSet, optional paint data) per build item.
 fn load_3mf(
     reader: &mut (impl Read + Seek),
-) -> Result<(IndexedTriangleSet, Option<FacetPaintData>), ModelLoadError> {
+) -> Result<Vec<(IndexedTriangleSet, Option<FacetPaintData>)>, ModelLoadError> {
     let mut archive =
         zip::ZipArchive::new(reader).map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
 
-    // Find the 3D model file — standard path is "3D/3dmodel.model"
     let model_path = find_model_path(&archive)?;
     let mut model_file = archive
         .by_name(&model_path)
@@ -290,35 +586,35 @@ fn find_model_path<R: Read + Seek>(archive: &zip::ZipArchive<R>) -> Result<Strin
     ))
 }
 
-/// Parse 3MF model XML into IndexedTriangleSet and optional FacetPaintData.
+/// Parse 3MF model XML into a list of (IndexedTriangleSet, optional paint data)
+/// per build item.
 ///
-/// Recognizes the four per-triangle paint attributes emitted by
-/// OrcaSlicer/BambuStudio: `paint_fuzzy_skin`, `paint_supports`,
-/// `paint_seam`, and `paint_color`.  Painted triangles carry hex-encoded
-/// state strings; unpainted triangles omit the attribute.  Subdivision
-/// (strings longer than two hex characters or split bits ≠ 0) raises
-/// `ModelLoadError::PaintMetadata`.
+/// Recognizes `<build>/<item>` and nested `<component>` transforms,
+/// composes them, and bakes the composed transform into mesh vertices and
+/// paint stroke vertices. The returned objects have identity transform
+/// (transform baked into geometry).
+///
+/// Malformed transform strings (wrong count or non-numeric) produce
+/// `ModelLoadError::ThreeMfParse`.
 fn parse_3mf_model_xml(
     xml_bytes: &[u8],
-) -> Result<(IndexedTriangleSet, Option<FacetPaintData>), ModelLoadError> {
+) -> Result<Vec<(IndexedTriangleSet, Option<FacetPaintData>)>, ModelLoadError> {
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
     let mut reader = Reader::from_reader(xml_bytes);
     reader.config_mut().trim_text(true);
 
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
+    let mut objects: HashMap<u32, Parsed3mfObject> = HashMap::new();
+    let mut build_items: Vec<ParsedBuildItem> = Vec::new();
+
+    let mut current_object_id: Option<u32> = None;
+    let mut current_mesh: Option<MeshCollector> = None;
+    let mut current_components: Vec<ParsedComponent> = Vec::new();
+    let mut current_object_transform: Option<[f64; 16]> = None;
+    let mut in_components = false;
+    let mut in_build = false;
     let mut buf = Vec::new();
-    let mut in_mesh = false;
-    let mut has_any_paint = false;
-    let mut fuzzy_states: Vec<Option<u32>> = Vec::new();
-    let mut support_states: Vec<Option<u32>> = Vec::new();
-    let mut seam_states: Vec<Option<u32>> = Vec::new();
-    let mut color_states: Vec<Option<u32>> = Vec::new();
-    let mut color_strokes: Vec<PaintStroke> = Vec::new();
-    let mut support_strokes_enforcer: Vec<PaintStroke> = Vec::new();
-    let mut support_strokes_blocker: Vec<PaintStroke> = Vec::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -326,234 +622,355 @@ fn parse_3mf_model_xml(
                 let name_bytes = e.name().as_ref().to_vec();
                 let local = local_name(&name_bytes);
                 match local {
-                    b"mesh" => in_mesh = true,
-                    b"vertex" if in_mesh => {
-                        let (mut x, mut y, mut z) = (0.0f32, 0.0f32, 0.0f32);
+                    b"object" => {
+                        let mut id: Option<u32> = None;
+                        let mut transform: Option<[f64; 16]> = None;
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"x" => {
-                                    x = parse_f32(&attr.value)?;
+                                b"id" => {
+                                    id = Some(parse_u32(&attr.value)?);
                                 }
-                                b"y" => {
-                                    y = parse_f32(&attr.value)?;
-                                }
-                                b"z" => {
-                                    z = parse_f32(&attr.value)?;
+                                b"transform" => {
+                                    transform = Some(parse_3mf_transform(&attr.value)?);
                                 }
                                 _ => {}
                             }
                         }
-                        vertices.push(Point3 { x, y, z });
+                        let object_id = id.ok_or_else(|| {
+                            ModelLoadError::ThreeMfParse("3MF object missing id attribute".into())
+                        })?;
+                        current_object_id = Some(object_id);
+                        current_mesh = None;
+                        current_components = Vec::new();
+                        current_object_transform = transform;
                     }
-                    b"triangle" if in_mesh => {
-                        let mut v1: Option<u32> = None;
-                        let mut v2: Option<u32> = None;
-                        let mut v3: Option<u32> = None;
-                        let mut fuzzy_state: Option<u32> = None;
-                        let mut support_state: Option<u32> = None;
-                        let mut seam_state: Option<u32> = None;
-                        let mut color_state: Option<u32> = None;
-                        let mut color_hex: Option<String> = None;
-                        let mut color_byte_offset: usize = 0;
-                        let mut support_hex: Option<String> = None;
-                        let mut support_byte_offset: usize = 0;
-
-                        for attr in e.attributes().flatten() {
-                            match attr.key.as_ref() {
-                                b"v1" => v1 = Some(parse_u32(&attr.value)?),
-                                b"v2" => v2 = Some(parse_u32(&attr.value)?),
-                                b"v3" => v3 = Some(parse_u32(&attr.value)?),
-                                b"paint_fuzzy_skin" => {
-                                    let value_str =
-                                        std::str::from_utf8(&attr.value).map_err(|_| {
-                                            ModelLoadError::PaintMetadata {
-                                                reason: "paint_fuzzy_skin value is not valid UTF-8"
-                                                    .into(),
-                                                byte_offset: reader.error_position() as usize,
-                                            }
-                                        })?;
-                                    let state = decode_paint_hex_state(
-                                        value_str,
-                                        reader.error_position() as usize,
-                                    )?;
-                                    if state > 1 {
-                                        return Err(ModelLoadError::PaintMetadata {
-                                            reason: format!(
-                                                "paint_fuzzy_skin state {state} is not supported \
-                                                 (only state 1 is valid)"
-                                            ),
-                                            byte_offset: reader.error_position() as usize,
-                                        });
+                    b"mesh" if current_object_id.is_some() => {
+                        current_mesh = Some(MeshCollector::new());
+                    }
+                    b"vertex" => {
+                        if let Some(ref mut mc) = current_mesh {
+                            let (mut x, mut y, mut z) = (0.0f32, 0.0f32, 0.0f32);
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"x" => {
+                                        x = parse_f32(&attr.value)?;
                                     }
-                                    if state == 1 {
-                                        fuzzy_state = Some(state);
-                                        has_any_paint = true;
+                                    b"y" => {
+                                        y = parse_f32(&attr.value)?;
                                     }
-                                }
-                                b"paint_supports" => {
-                                    let value_str =
-                                        std::str::from_utf8(&attr.value).map_err(|_| {
-                                            ModelLoadError::PaintMetadata {
-                                                reason: "paint_supports value is not valid UTF-8"
-                                                    .into(),
-                                                byte_offset: reader.error_position() as usize,
-                                            }
-                                        })?;
-                                    support_hex = Some(value_str.to_string());
-                                    support_byte_offset = reader.error_position() as usize;
-                                    let state = decode_paint_hex_state(
-                                        value_str,
-                                        reader.error_position() as usize,
-                                    )?;
-                                    if state > 2 {
-                                        return Err(ModelLoadError::PaintMetadata {
-                                            reason: format!(
-                                                "paint_supports state {state} is not supported \
-                                                 (only states 1-2 are valid)"
-                                            ),
-                                            byte_offset: reader.error_position() as usize,
-                                        });
+                                    b"z" => {
+                                        z = parse_f32(&attr.value)?;
                                     }
-                                    if state > 0 {
-                                        support_state = Some(state);
-                                        has_any_paint = true;
-                                    }
-                                }
-                                b"paint_seam" => {
-                                    let value_str =
-                                        std::str::from_utf8(&attr.value).map_err(|_| {
-                                            ModelLoadError::PaintMetadata {
-                                                reason: "paint_seam value is not valid UTF-8"
-                                                    .into(),
-                                                byte_offset: reader.error_position() as usize,
-                                            }
-                                        })?;
-                                    let state = decode_paint_hex_state(
-                                        value_str,
-                                        reader.error_position() as usize,
-                                    )?;
-                                    if state > 2 {
-                                        return Err(ModelLoadError::PaintMetadata {
-                                            reason: format!(
-                                                "paint_seam state {state} is not supported (only \
-                                                 states 1-2 are valid)"
-                                            ),
-                                            byte_offset: reader.error_position() as usize,
-                                        });
-                                    }
-                                    if state > 0 {
-                                        seam_state = Some(state);
-                                        has_any_paint = true;
-                                    }
-                                }
-                                b"paint_color" => {
-                                    let value_str =
-                                        std::str::from_utf8(&attr.value).map_err(|_| {
-                                            ModelLoadError::PaintMetadata {
-                                                reason: "paint_color value is not valid UTF-8"
-                                                    .into(),
-                                                byte_offset: reader.error_position() as usize,
-                                            }
-                                        })?;
-                                    color_hex = Some(value_str.to_string());
-                                    color_byte_offset = reader.error_position() as usize;
-                                    let state = decode_paint_hex_state(
-                                        value_str,
-                                        reader.error_position() as usize,
-                                    )?;
-                                    if state > 16 {
-                                        return Err(ModelLoadError::PaintMetadata {
-                                            reason: format!(
-                                                "paint_color state {state} is not supported (only \
-                                                 states 1-16 are valid)"
-                                            ),
-                                            byte_offset: reader.error_position() as usize,
-                                        });
-                                    }
-                                    if state > 0 {
-                                        color_state = Some(state);
-                                        has_any_paint = true;
-                                    }
-                                }
-                                _ => {}
-                            }
-                        }
-
-                        // Decode strokes for subdivided paint channels (hex len > 2 only).
-                        if let Some(hex) = &color_hex {
-                            if hex.len() > 2 && color_state.map_or(false, |s| s != 0) {
-                                let v1_idx = v1.unwrap_or(0) as usize;
-                                let v2_idx = v2.unwrap_or(0) as usize;
-                                let v3_idx = v3.unwrap_or(0) as usize;
-                                let tri_verts =
-                                    [vertices[v1_idx], vertices[v2_idx], vertices[v3_idx]];
-                                if let Ok(pairs) =
-                                    decode_paint_hex_strokes(hex, tri_verts, color_byte_offset)
-                                {
-                                    for (sub_verts, sub_state) in pairs {
-                                        color_strokes.push(PaintStroke {
-                                            triangles: vec![sub_verts],
-                                            semantic: PaintSemantic::Material,
-                                            value: PaintValue::ToolIndex(
-                                                sub_state.saturating_sub(1),
-                                            ),
-                                        });
-                                    }
+                                    _ => {}
                                 }
                             }
+                            mc.vertices.push(Point3 { x, y, z });
                         }
-                        if let Some(hex) = &support_hex {
-                            if hex.len() > 2 && support_state.map_or(false, |s| s != 0) {
-                                let v1_idx = v1.unwrap_or(0) as usize;
-                                let v2_idx = v2.unwrap_or(0) as usize;
-                                let v3_idx = v3.unwrap_or(0) as usize;
-                                let tri_verts =
-                                    [vertices[v1_idx], vertices[v2_idx], vertices[v3_idx]];
-                                if let Ok(pairs) =
-                                    decode_paint_hex_strokes(hex, tri_verts, support_byte_offset)
-                                {
-                                    for (sub_verts, sub_state) in pairs {
-                                        let stroke = PaintStroke {
-                                            triangles: vec![sub_verts],
-                                            semantic: if sub_state == 1 {
-                                                PaintSemantic::SupportEnforcer
-                                            } else {
-                                                PaintSemantic::SupportBlocker
-                                            },
-                                            value: PaintValue::Flag(true),
-                                        };
-                                        if sub_state == 1 {
-                                            support_strokes_enforcer.push(stroke);
-                                        } else if sub_state == 2 {
-                                            support_strokes_blocker.push(stroke);
+                    }
+                    b"triangle" => {
+                        if let Some(ref mut mc) = current_mesh {
+                            let mut v1: Option<u32> = None;
+                            let mut v2: Option<u32> = None;
+                            let mut v3: Option<u32> = None;
+                            let mut fuzzy_state: Option<u32> = None;
+                            let mut support_state: Option<u32> = None;
+                            let mut seam_state: Option<u32> = None;
+                            let mut color_state: Option<u32> = None;
+                            let mut color_hex: Option<String> = None;
+                            let mut color_byte_offset: usize = 0;
+                            let mut support_hex: Option<String> = None;
+                            let mut support_byte_offset: usize = 0;
+
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"v1" => v1 = Some(parse_u32(&attr.value)?),
+                                    b"v2" => v2 = Some(parse_u32(&attr.value)?),
+                                    b"v3" => v3 = Some(parse_u32(&attr.value)?),
+                                    b"paint_fuzzy_skin" => {
+                                        let value_str =
+                                            std::str::from_utf8(&attr.value).map_err(|_| {
+                                                ModelLoadError::PaintMetadata {
+                                                    reason:
+                                                        "paint_fuzzy_skin value is not valid UTF-8"
+                                                            .into(),
+                                                    byte_offset: reader.error_position() as usize,
+                                                }
+                                            })?;
+                                        let state = decode_paint_hex_state(
+                                            value_str,
+                                            reader.error_position() as usize,
+                                        )?;
+                                        if state > 1 {
+                                            return Err(ModelLoadError::PaintMetadata {
+                                                reason: format!(
+                                                    "paint_fuzzy_skin state {state} is not supported \
+                                                     (only state 1 is valid)"
+                                                ),
+                                                byte_offset: reader.error_position() as usize,
+                                            });
+                                        }
+                                        if state == 1 {
+                                            fuzzy_state = Some(state);
+                                            mc.has_any_paint = true;
+                                        }
+                                    }
+                                    b"paint_supports" => {
+                                        let value_str =
+                                            std::str::from_utf8(&attr.value).map_err(|_| {
+                                                ModelLoadError::PaintMetadata {
+                                                    reason:
+                                                        "paint_supports value is not valid UTF-8"
+                                                            .into(),
+                                                    byte_offset: reader.error_position() as usize,
+                                                }
+                                            })?;
+                                        support_hex = Some(value_str.to_string());
+                                        support_byte_offset = reader.error_position() as usize;
+                                        let state = decode_paint_hex_state(
+                                            value_str,
+                                            reader.error_position() as usize,
+                                        )?;
+                                        if state > 2 {
+                                            return Err(ModelLoadError::PaintMetadata {
+                                                reason: format!(
+                                                    "paint_supports state {state} is not supported \
+                                                     (only states 1-2 are valid)"
+                                                ),
+                                                byte_offset: reader.error_position() as usize,
+                                            });
+                                        }
+                                        if state > 0 {
+                                            support_state = Some(state);
+                                            mc.has_any_paint = true;
+                                        }
+                                    }
+                                    b"paint_seam" => {
+                                        let value_str =
+                                            std::str::from_utf8(&attr.value).map_err(|_| {
+                                                ModelLoadError::PaintMetadata {
+                                                    reason: "paint_seam value is not valid UTF-8"
+                                                        .into(),
+                                                    byte_offset: reader.error_position() as usize,
+                                                }
+                                            })?;
+                                        let state = decode_paint_hex_state(
+                                            value_str,
+                                            reader.error_position() as usize,
+                                        )?;
+                                        if state > 2 {
+                                            return Err(ModelLoadError::PaintMetadata {
+                                                reason: format!(
+                                                    "paint_seam state {state} is not supported (only \
+                                                     states 1-2 are valid)"
+                                                ),
+                                                byte_offset: reader.error_position() as usize,
+                                            });
+                                        }
+                                        if state > 0 {
+                                            seam_state = Some(state);
+                                            mc.has_any_paint = true;
+                                        }
+                                    }
+                                    b"paint_color" => {
+                                        let value_str =
+                                            std::str::from_utf8(&attr.value).map_err(|_| {
+                                                ModelLoadError::PaintMetadata {
+                                                    reason: "paint_color value is not valid UTF-8"
+                                                        .into(),
+                                                    byte_offset: reader.error_position() as usize,
+                                                }
+                                            })?;
+                                        color_hex = Some(value_str.to_string());
+                                        color_byte_offset = reader.error_position() as usize;
+                                        let state = decode_paint_hex_state(
+                                            value_str,
+                                            reader.error_position() as usize,
+                                        )?;
+                                        if state > 16 {
+                                            return Err(ModelLoadError::PaintMetadata {
+                                                reason: format!(
+                                                    "paint_color state {state} is not supported (only \
+                                                     states 1-16 are valid)"
+                                                ),
+                                                byte_offset: reader.error_position() as usize,
+                                            });
+                                        }
+                                        if state > 0 {
+                                            color_state = Some(state);
+                                            mc.has_any_paint = true;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            if let Some(hex) = &color_hex {
+                                if hex.len() > 2 && color_state.map_or(false, |s| s != 0) {
+                                    let v1_idx = v1.unwrap_or(0) as usize;
+                                    let v2_idx = v2.unwrap_or(0) as usize;
+                                    let v3_idx = v3.unwrap_or(0) as usize;
+                                    let tri_verts = [
+                                        mc.vertices[v1_idx],
+                                        mc.vertices[v2_idx],
+                                        mc.vertices[v3_idx],
+                                    ];
+                                    if let Ok(pairs) =
+                                        decode_paint_hex_strokes(hex, tri_verts, color_byte_offset)
+                                    {
+                                        for (sub_verts, sub_state) in pairs {
+                                            mc.color_strokes.push(PaintStroke {
+                                                triangles: vec![sub_verts],
+                                                semantic: PaintSemantic::Material,
+                                                value: PaintValue::ToolIndex(
+                                                    sub_state.saturating_sub(1),
+                                                ),
+                                            });
                                         }
                                     }
                                 }
                             }
+                            if let Some(hex) = &support_hex {
+                                if hex.len() > 2 && support_state.map_or(false, |s| s != 0) {
+                                    let v1_idx = v1.unwrap_or(0) as usize;
+                                    let v2_idx = v2.unwrap_or(0) as usize;
+                                    let v3_idx = v3.unwrap_or(0) as usize;
+                                    let tri_verts = [
+                                        mc.vertices[v1_idx],
+                                        mc.vertices[v2_idx],
+                                        mc.vertices[v3_idx],
+                                    ];
+                                    if let Ok(pairs) = decode_paint_hex_strokes(
+                                        hex,
+                                        tri_verts,
+                                        support_byte_offset,
+                                    ) {
+                                        for (sub_verts, sub_state) in pairs {
+                                            let stroke = PaintStroke {
+                                                triangles: vec![sub_verts],
+                                                semantic: if sub_state == 1 {
+                                                    PaintSemantic::SupportEnforcer
+                                                } else {
+                                                    PaintSemantic::SupportBlocker
+                                                },
+                                                value: PaintValue::Flag(true),
+                                            };
+                                            if sub_state == 1 {
+                                                mc.support_strokes_enforcer.push(stroke);
+                                            } else if sub_state == 2 {
+                                                mc.support_strokes_blocker.push(stroke);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            mc.indices.push(v1.ok_or_else(|| {
+                                ModelLoadError::ThreeMfParse("triangle missing v1".into())
+                            })?);
+                            mc.indices.push(v2.ok_or_else(|| {
+                                ModelLoadError::ThreeMfParse("triangle missing v2".into())
+                            })?);
+                            mc.indices.push(v3.ok_or_else(|| {
+                                ModelLoadError::ThreeMfParse("triangle missing v3".into())
+                            })?);
+
+                            mc.fuzzy_states.push(fuzzy_state);
+                            mc.support_states.push(support_state);
+                            mc.seam_states.push(seam_state);
+                            mc.color_states.push(color_state);
                         }
-
-                        indices.push(v1.ok_or_else(|| {
-                            ModelLoadError::ThreeMfParse("triangle missing v1".into())
-                        })?);
-                        indices.push(v2.ok_or_else(|| {
-                            ModelLoadError::ThreeMfParse("triangle missing v2".into())
-                        })?);
-                        indices.push(v3.ok_or_else(|| {
-                            ModelLoadError::ThreeMfParse("triangle missing v3".into())
-                        })?);
-
-                        fuzzy_states.push(fuzzy_state);
-                        support_states.push(support_state);
-                        seam_states.push(seam_state);
-                        color_states.push(color_state);
+                    }
+                    b"components" if current_object_id.is_some() => {
+                        in_components = true;
+                    }
+                    b"component" if in_components => {
+                        let mut objectid: Option<u32> = None;
+                        let mut transform: Option<[f64; 16]> = None;
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"objectid" => {
+                                    objectid = Some(parse_u32(&attr.value)?);
+                                }
+                                b"transform" => {
+                                    transform = Some(parse_3mf_transform(&attr.value)?);
+                                }
+                                _ => {}
+                            }
+                        }
+                        let oid = objectid.ok_or_else(|| {
+                            ModelLoadError::ThreeMfParse("3MF component missing objectid".into())
+                        })?;
+                        current_components.push(ParsedComponent {
+                            objectid: oid,
+                            transform,
+                        });
+                    }
+                    b"build" => {
+                        in_build = true;
+                    }
+                    b"item" if in_build => {
+                        let mut objectid: Option<u32> = None;
+                        let mut transform: Option<[f64; 16]> = None;
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"objectid" => {
+                                    objectid = Some(parse_u32(&attr.value)?);
+                                }
+                                b"transform" => {
+                                    transform = Some(parse_3mf_transform(&attr.value)?);
+                                }
+                                _ => {}
+                            }
+                        }
+                        let oid = objectid.ok_or_else(|| {
+                            ModelLoadError::ThreeMfParse("3MF item missing objectid".into())
+                        })?;
+                        build_items.push(ParsedBuildItem {
+                            objectid: oid,
+                            transform,
+                        });
                     }
                     _ => {}
                 }
             }
             Ok(Event::End(ref e)) => {
                 let name_bytes = e.name().as_ref().to_vec();
-                if local_name(&name_bytes) == b"mesh" {
-                    in_mesh = false;
+                let local = local_name(&name_bytes);
+                match local {
+                    b"object" => {
+                        if let Some(object_id) = current_object_id.take() {
+                            let mesh_data = match current_mesh.take() {
+                                Some(mut mc) if !mc.vertices.is_empty() => {
+                                    let facet_count = mc.indices.len() / 3;
+                                    let has_paint = mc.has_any_paint;
+                                    let vertices = std::mem::take(&mut mc.vertices);
+                                    let indices = std::mem::take(&mut mc.indices);
+                                    let paint_data = if has_paint {
+                                        Some(mc.build_paint_data(facet_count)?)
+                                    } else {
+                                        None
+                                    };
+                                    Some((IndexedTriangleSet { vertices, indices }, paint_data))
+                                }
+                                _ => None,
+                            };
+                            objects.insert(
+                                object_id,
+                                Parsed3mfObject {
+                                    mesh: mesh_data,
+                                    components: std::mem::take(&mut current_components),
+                                    transform: current_object_transform.take(),
+                                },
+                            );
+                        }
+                    }
+                    b"components" => {
+                        in_components = false;
+                    }
+                    b"build" => {
+                        in_build = false;
+                    }
+                    _ => {}
                 }
             }
             Ok(Event::Eof) => break,
@@ -567,20 +984,44 @@ fn parse_3mf_model_xml(
         buf.clear();
     }
 
-    if vertices.is_empty() {
-        return Err(ModelLoadError::ThreeMfParse("no geometry found".into()));
+    if build_items.is_empty() {
+        let first_obj = objects
+            .values()
+            .find(|o| o.mesh.is_some())
+            .ok_or_else(|| ModelLoadError::ThreeMfParse("no geometry found in 3MF".into()))?;
+        let (its, paint) = first_obj
+            .mesh
+            .clone()
+            .ok_or_else(|| ModelLoadError::ThreeMfParse("no geometry found in 3MF".into()))?;
+        return Ok(vec![(its, paint)]);
     }
 
-    let its = IndexedTriangleSet { vertices, indices };
+    let mut results = Vec::new();
+    for item in &build_items {
+        let item_transform = item.transform.unwrap_or_else(identity_3mf_transform);
+        let (its, paint) =
+            resolve_object(item.objectid, &item_transform, &objects, &mut Vec::new())?;
+        results.push((its, paint));
+    }
 
-    let paint_data = if has_any_paint {
-        let facet_count = its.indices.len() / 3;
+    if results.is_empty() {
+        return Err(ModelLoadError::ThreeMfParse(
+            "no geometry in 3MF build items".into(),
+        ));
+    }
+
+    Ok(results)
+}
+
+impl MeshCollector {
+    fn build_paint_data(self, facet_count: usize) -> Result<FacetPaintData, ModelLoadError> {
         let mut layers = Vec::new();
 
-        if fuzzy_states.iter().any(|s| s == &Some(1)) {
+        if self.fuzzy_states.iter().any(|s| s == &Some(1)) {
             layers.push(PaintLayer {
                 semantic: PaintSemantic::FuzzySkin,
-                facet_values: fuzzy_states
+                facet_values: self
+                    .fuzzy_states
                     .iter()
                     .map(|s| {
                         if *s == Some(1) {
@@ -594,10 +1035,11 @@ fn parse_3mf_model_xml(
             });
         }
 
-        if support_states.iter().any(|s| s == &Some(1)) {
+        if self.support_states.iter().any(|s| s == &Some(1)) {
             layers.push(PaintLayer {
                 semantic: PaintSemantic::SupportEnforcer,
-                facet_values: support_states
+                facet_values: self
+                    .support_states
                     .iter()
                     .map(|s| {
                         if *s == Some(1) {
@@ -607,14 +1049,15 @@ fn parse_3mf_model_xml(
                         }
                     })
                     .collect(),
-                strokes: support_strokes_enforcer,
+                strokes: self.support_strokes_enforcer.clone(),
             });
         }
 
-        if support_states.iter().any(|s| s == &Some(2)) {
+        if self.support_states.iter().any(|s| s == &Some(2)) {
             layers.push(PaintLayer {
                 semantic: PaintSemantic::SupportBlocker,
-                facet_values: support_states
+                facet_values: self
+                    .support_states
                     .iter()
                     .map(|s| {
                         if *s == Some(2) {
@@ -624,14 +1067,15 @@ fn parse_3mf_model_xml(
                         }
                     })
                     .collect(),
-                strokes: support_strokes_blocker,
+                strokes: self.support_strokes_blocker.clone(),
             });
         }
 
-        if seam_states.iter().any(|s| s == &Some(1)) {
+        if self.seam_states.iter().any(|s| s == &Some(1)) {
             layers.push(PaintLayer {
                 semantic: PaintSemantic::Custom("seam_enforcer".into()),
-                facet_values: seam_states
+                facet_values: self
+                    .seam_states
                     .iter()
                     .map(|s| {
                         if *s == Some(1) {
@@ -645,10 +1089,11 @@ fn parse_3mf_model_xml(
             });
         }
 
-        if seam_states.iter().any(|s| s == &Some(2)) {
+        if self.seam_states.iter().any(|s| s == &Some(2)) {
             layers.push(PaintLayer {
                 semantic: PaintSemantic::Custom("seam_blocker".into()),
-                facet_values: seam_states
+                facet_values: self
+                    .seam_states
                     .iter()
                     .map(|s| {
                         if *s == Some(2) {
@@ -662,14 +1107,15 @@ fn parse_3mf_model_xml(
             });
         }
 
-        if color_states.iter().any(|s| s.is_some()) {
+        if self.color_states.iter().any(|s| s.is_some()) {
             layers.push(PaintLayer {
                 semantic: PaintSemantic::Material,
-                facet_values: color_states
+                facet_values: self
+                    .color_states
                     .iter()
                     .map(|&s| s.map(|v| PaintValue::ToolIndex(v.saturating_sub(1))))
                     .collect(),
-                strokes: color_strokes,
+                strokes: self.color_strokes.clone(),
             });
         }
 
@@ -687,12 +1133,8 @@ fn parse_3mf_model_xml(
             }
         }
 
-        Some(FacetPaintData { layers })
-    } else {
-        None
-    };
-
-    Ok((its, paint_data))
+        Ok(FacetPaintData { layers })
+    }
 }
 
 /// Decode a single hex digit (0-9, A-F, a-f).
@@ -1018,8 +1460,32 @@ fn parse_u32(bytes: &[u8]) -> Result<u32, ModelLoadError> {
 // ---------------------------------------------------------------------------
 
 /// Compute the axis-aligned bounding box of an IndexedTriangleSet.
-fn compute_bounding_box(its: &IndexedTriangleSet) -> BoundingBox3 {
-    if its.vertices.is_empty() {
+fn compute_bounding_box_union<'a>(
+    meshes: impl IntoIterator<Item = &'a IndexedTriangleSet>,
+) -> BoundingBox3 {
+    let mut min = Point3 {
+        x: f32::INFINITY,
+        y: f32::INFINITY,
+        z: f32::INFINITY,
+    };
+    let mut max = Point3 {
+        x: f32::NEG_INFINITY,
+        y: f32::NEG_INFINITY,
+        z: f32::NEG_INFINITY,
+    };
+    let mut any = false;
+    for its in meshes {
+        for v in &its.vertices {
+            any = true;
+            min.x = min.x.min(v.x);
+            min.y = min.y.min(v.y);
+            min.z = min.z.min(v.z);
+            max.x = max.x.max(v.x);
+            max.y = max.y.max(v.y);
+            max.z = max.z.max(v.z);
+        }
+    }
+    if !any {
         return BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -1033,27 +1499,6 @@ fn compute_bounding_box(its: &IndexedTriangleSet) -> BoundingBox3 {
             },
         };
     }
-
-    let mut min = Point3 {
-        x: f32::INFINITY,
-        y: f32::INFINITY,
-        z: f32::INFINITY,
-    };
-    let mut max = Point3 {
-        x: f32::NEG_INFINITY,
-        y: f32::NEG_INFINITY,
-        z: f32::NEG_INFINITY,
-    };
-
-    for v in &its.vertices {
-        min.x = min.x.min(v.x);
-        min.y = min.y.min(v.y);
-        min.z = min.z.min(v.z);
-        max.x = max.x.max(v.x);
-        max.y = max.y.max(v.y);
-        max.z = max.z.max(v.z);
-    }
-
     BoundingBox3 { min, max }
 }
 
@@ -1088,6 +1533,7 @@ fn compute_z_extent_from_mesh(mesh: &IndexedTriangleSet) -> Option<(f32, f32)> {
 }
 
 /// Compute the world-space Z extent of a mesh given an explicit transform.
+#[allow(dead_code)]
 fn object_world_z_extent_from_mesh_and_transform(
     mesh: &IndexedTriangleSet,
     transform: &Transform3d,
@@ -1232,9 +1678,36 @@ mod tests {
             vertices: vec![],
             indices: vec![],
         };
-        let bb = compute_bounding_box(&its);
+        let bb = compute_bounding_box_union(std::iter::once(&its));
         assert_eq!(bb.min.x, 0.0);
         assert_eq!(bb.max.x, 0.0);
+    }
+
+    #[test]
+    fn bounding_box_union_spans_all_meshes() {
+        let m1 = IndexedTriangleSet {
+            vertices: vec![Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            }],
+            indices: vec![],
+        };
+        let m2 = IndexedTriangleSet {
+            vertices: vec![Point3 {
+                x: 10.0,
+                y: -5.0,
+                z: 7.0,
+            }],
+            indices: vec![],
+        };
+        let bb = compute_bounding_box_union([&m1, &m2]);
+        assert_eq!(bb.min.x, 0.0);
+        assert_eq!(bb.min.y, -5.0);
+        assert_eq!(bb.min.z, 0.0);
+        assert_eq!(bb.max.x, 10.0);
+        assert_eq!(bb.max.y, 0.0);
+        assert_eq!(bb.max.z, 7.0);
     }
 
     fn make_object(id: &str, vertices: Vec<Point3>, transform: Transform3d) -> ObjectMesh {
