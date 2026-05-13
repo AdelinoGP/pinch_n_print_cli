@@ -122,7 +122,7 @@ fn brim_geometry_changes_first_model_travel_transition() {
         "precondition: no travel_moves before reconciliation"
     );
 
-    reconcile_finalization_travel(&mut layer);
+    reconcile_finalization_travel(&mut layer, None);
 
     // After reconciliation: at least one travel_move routing from skirt to model
     assert!(
@@ -250,7 +250,7 @@ fn wipe_tower_geometry_is_included_in_travel_reconciliation() {
         "precondition: no travel_moves before reconciliation"
     );
 
-    reconcile_finalization_travel(&mut layer);
+    reconcile_finalization_travel(&mut layer, None);
 
     // After reconciliation: travel_moves must exist routing to/from wipe tower
     assert!(
@@ -346,7 +346,7 @@ fn no_finalization_geometry_is_a_reconciliation_no_op() {
     let pre_travel_count = layer.travel_moves.len();
     let pre_retract_count = layer.retracts.len();
 
-    reconcile_finalization_travel(&mut layer);
+    reconcile_finalization_travel(&mut layer, None);
 
     assert_eq!(
         layer.travel_moves.len(),
@@ -441,7 +441,7 @@ fn reconciliation_preserves_model_extrusion_entity_order() {
         .collect();
     let pre_len = layer.ordered_entities.len();
 
-    reconcile_finalization_travel(&mut layer);
+    reconcile_finalization_travel(&mut layer, None);
 
     // Length must be unchanged
     assert_eq!(
@@ -536,7 +536,7 @@ fn reconciliation_preserves_model_extrusion_entity_order_with_wipe_tower() {
         .map(|e| (e.path.points[0].x, e.path.points[0].y))
         .collect();
 
-    reconcile_finalization_travel(&mut layer);
+    reconcile_finalization_travel(&mut layer, None);
 
     // Length unchanged
     assert_eq!(
