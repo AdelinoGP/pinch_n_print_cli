@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Type Check
+        run: cargo check --workspace
+      - name: Build
+        run: cargo build --workspace
+      - name: Test Core (narrow)
+        run: cargo test -p slicer-host --test core_module_ir_access_contract_tdd
+      - name: Test All Crates (not workspace)
+        run: cargo test -p slicer-host && cargo test -p slicer-cli && cargo test -p slicer-helpers
+
+  wasm:
+    name: WASM Modules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-tools
+        run: cargo install wasm-tools
+      - name: Build core modules
+        run: bash modules/core-modules/build-core-modules.sh
+      - name: Check freshness
+        run: bash modules/core-modules/build-core-modules.sh --check
+
+  test-guests:
+    name: Test Guests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-tools
+        run: cargo install wasm-tools
+      - name: Build test guests
+        run: bash test-guests/build-test-guests.sh
