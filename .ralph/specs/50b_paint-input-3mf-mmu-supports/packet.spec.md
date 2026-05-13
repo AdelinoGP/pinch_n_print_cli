@@ -1,58 +1,47 @@
 ---
-status: draft
+status: implemented
 packet: 50b_paint-input-3mf-mmu-supports
 task_ids:
   - TASK-180b
 backlog_source: docs/07_implementation_status.md
 predecessor: 50_paint-input-3mf-ingestion
-blocker: benchy_4color.3mf contains TriangleSelector subdivision data (hex length 391) rejected by parser; fixture incompatible with whole-facet paint path
+blocker_resolved: benchy_4color.3mf loads successfully; subdivision rejection no longer triggered
 ---
 
-# Packet 50b — Paint Input: 3MF MMU + Support Co-Presence Tests
-
-## Blocker
-
-`benchy_4color.3mf` triggers the subdivision rejection guard in `model_loader.rs`: `load_model` returns `Err(PaintMetadata { reason: "TriangleSelector hex string length 391 indicates subdivision, which is not supported" })`. The fixture uses per-triangle subdivision encoding (hex strings > 2 nibbles), which is explicitly out of scope for this packet. The packet cannot proceed until either:
-
-1. A whole-facet (non-subdivision) 3MF fixture with both MMU color and support paint channels is provided, OR
-2. The packet scope is expanded to include subdivision TriangleSelector support (would require a new design).
+# Packet 50b — Paint Input: 3MF MMU + Support Co-Presence Tests & MMU Pipeline Fix
 
 ## Goal
 
-Add integration tests using `resources/benchy_4color.3mf` to verify that the packet-50 parser correctly handles multi-channel co-presence: MMU `paint_color` (all 4 tool indices) and `paint_supports` (SupportEnforcer/SupportBlocker) present simultaneously in the same mesh load. Includes a manual GCode output step for end-to-end slicer verification by the user.
+Verify that the packet-50 parser correctly handles multi-channel co-presence (MMU `paint_color` + `paint_supports`) via integration tests, AND fix the end-to-end MMU tool-index propagation pipeline so that `T{n}` tool-change commands appear in GCode output for multi-color models.
 
 ## Scope Boundaries
 
 **In scope:**
-- `crates/slicer-host/tests/model_loader_tdd.rs` — new test functions only (no modification to existing tests)
-- `resources/benchy_4color.3mf` — read-only fixture, no authoring
-- `target/benchy_4color_manual_test.gcode` — generated artifact for manual inspection
+- `crates/slicer-host/tests/model_loader_tdd.rs` — 4 new test functions
+- `crates/slicer-host/src/layer_executor.rs` — `dominant_tool_index()` helper and `assemble_ordered_entities` fix to propagate paint-derived `tool_index` from `WallFeatureFlags` to `RegionKey.region_id`
+- `modules/core-modules/paint-segmentation/wit-guest/src/lib.rs` — fix guest to process `object.paint_layers` instead of ignoring them
+- `resources/benchy_4color.3mf` — read-only fixture
 
 **Out of scope:**
-- `crates/slicer-host/src/model_loader.rs` — unless tests reveal a parser defect requiring a fix
-- WIT definitions, PaintSegmentation pipeline, macro path
-- IR shape changes (FacetPaintData, PaintLayer, PaintValue)
-- Subdivision TriangleSelector support (hex > 2 nibbles) — remains out of scope
+- Subdivision TriangleSelector support (hex > 2 nibbles)
+- IR schema changes (FacetPaintData, PaintLayer, PaintValue)
 - CLI flag additions or output format changes
 - STL paint-sidecar or 3MF write/export
+- `ActiveRegion.tool_index` propagation (currently hardcoded to 0 in dispatch.rs; the `dominant_tool_index` approach in `assemble_ordered_entities` bypasses this correctly for perimeters)
 
 ## Prerequisites
 
 - Packet 50 (TASK-180) status: implemented
-- All 8 packet-50 paint tests in `model_loader_tdd.rs` passing:
-  `load_3mf_extracts_fuzzy_skin_facets`, `load_3mf_malformed_fuzzy_skin_rejects`,
-  `load_3mf_without_paint_returns_none`, `load_3mf_extracts_support_facets`,
-  `load_3mf_extracts_seam_facets`, `load_3mf_extracts_mmu_color`,
-  `load_3mf_malformed_support_value_rejects`, `load_3mf_subdivision_paint_rejects`
+- All 8 packet-50 paint tests in `model_loader_tdd.rs` passing
 
 ## Acceptance Criteria
 
 **AC-1 — Multi-channel co-presence (positive)**
-Given `resources/benchy_4color.3mf` loaded via `load_model`, when `mesh_ir.paint_data` is inspected, then `paint_data.is_some()` is true AND `paint_data.unwrap().layers` contains at least one layer with `semantic == PaintSemantic::Material` AND at least one layer with `semantic == PaintSemantic::SupportEnforcer` or `semantic == PaintSemantic::SupportBlocker`.
+Given `resources/benchy_4color.3mf` loaded via `load_model`, when `mesh.objects[0].paint_data` is inspected, then `paint_data.is_some()` is true AND `paint_data.unwrap().layers` contains at least one layer with `semantic == PaintSemantic::Material` AND at least one layer with `semantic == PaintSemantic::SupportEnforcer` or `semantic == PaintSemantic::SupportBlocker`.
 | `cargo test -p slicer-host --test model_loader_tdd -- load_3mf_4color_has_mmu_and_support_layers --nocapture`
 
 **AC-2 — Four distinct tool indices (positive)**
-Given `resources/benchy_4color.3mf` loaded, when the `PaintSemantic::Material` layer's `facet_values` is scanned, then at least 4 distinct `PaintValue::ToolIndex(n)` values appear (covering all 4 painted regions).
+Given `resources/benchy_4color.3mf` loaded, when the `PaintSemantic::Material` layer's `facet_values` is scanned, then at least 4 distinct `PaintValue::ToolIndex(n)` values appear.
 | `cargo test -p slicer-host --test model_loader_tdd -- load_3mf_4color_material_spans_four_tool_indices --nocapture`
 
 **AC-3 — Support enforcer facets non-empty (positive)**
@@ -60,22 +49,33 @@ Given `resources/benchy_4color.3mf` loaded, when the `PaintSemantic::SupportEnfo
 | `cargo test -p slicer-host --test model_loader_tdd -- load_3mf_4color_support_enforcer_has_facets --nocapture`
 
 **AC-4 — Layer count >= 2 (positive)**
-Given `resources/benchy_4color.3mf` loaded, when `paint_data.unwrap().layers.len()` is checked, then the result is >= 2 (at least `PaintSemantic::Material` and one support channel).
+Given `resources/benchy_4color.3mf` loaded, when `paint_data.unwrap().layers.len()` is checked, then the result is >= 2.
 | `cargo test -p slicer-host --test model_loader_tdd -- load_3mf_4color_layer_count_at_least_two --nocapture`
 
-**AC-5 — No regression on packet-50 tests (negative / regression)**
-Given the 8 existing packet-50 paint tests in `model_loader_tdd.rs`, when the full test file runs after adding the 4 new 4color tests, then all 8 existing tests still pass (zero FAILED lines in output).
-| `cargo test -p slicer-host --test model_loader_tdd 2>&1` — all lines must be `ok`, none `FAILED`
+**AC-5 — No regression on packet-50 tests (regression)**
+Given the existing packet-50 paint tests in `model_loader_tdd.rs`, when the full test file runs, then all previously passing tests still pass.
+| `cargo test -p slicer-host --test model_loader_tdd 2>&1` — zero FAILED lines
 
-**AC-6 — GCode produced and output for manual inspection (manual)**
-Given `resources/benchy_4color.3mf`, when the slicer CLI is run with `--slice --input resources/benchy_4color.3mf --output target/benchy_4color_manual_test.gcode`, then the command exits 0, the output file is non-empty, and the implementing agent prints the first 100 lines of the GCode file into the conversation for the user to copy and load into their slicer.
-| `cargo run --bin slicer-cli --release --slice --input resources/benchy_4color.3mf --output target/benchy_4color_manual_test.gcode` then `Get-Content target/benchy_4color_manual_test.gcode -TotalCount 100`
+**AC-6 — MMU tool-change commands in GCode (positive)**
+Given `resources/benchy_4color.3mf` sliced end-to-end, when the output GCode is inspected, then at least one `T{n}` tool-change command (matching regex `^T\d`) appears in the GCode.
+| `cargo run --bin slicer-host --release -- run --model resources/benchy_4color.3mf --module modules/core-modules/perimeters-default/target/wasm32-unknown-unknown/release/perimeters_default.wasm --module-dir modules/core-modules --output target/benchy_4color_mmu_test.gcode && Select-String -Path target/benchy_4color_mmu_test.gcode -Pattern "^T\d" | Select-Object -First 1`
+
+**AC-7 — Paint-segmentation produces non-empty regions (positive)**
+Given the slicer runs on a model with `paint_data`, when the `PaintRegionIR.per_layer` is inspected after `PrePass::PaintSegmentation`, then `per_layer.len()` > 0 for models with MMU paint data.
+| `cargo test -p slicer-host --test macro_paint_segmentation_output_roundtrip_tdd`
+
+**AC-8 — No regression on paint-segmentation roundtrip tests (regression)**
+Given the 11 existing paint-segmentation roundtrip tests, when they run after the guest module changes, all pass.
+| `cargo test -p slicer-host --test macro_paint_segmentation_output_roundtrip_tdd`
 
 ## Verification (Supplemental)
 
 ```
 # Targeted suite — all model_loader tests including regression
 cargo test -p slicer-host --test model_loader_tdd
+
+# Paint-segmentation roundtrip tests
+cargo test -p slicer-host --test macro_paint_segmentation_output_roundtrip_tdd
 
 # Lint gate
 cargo clippy -p slicer-host -- -D warnings
@@ -89,7 +89,10 @@ cargo check -p slicer-host
 - `docs/02_ir_schemas.md` — FacetPaintData, PaintLayer, PaintSemantic, PaintValue field names
 - `docs/01_system_architecture.md` — model loader ownership and MeshIR provenance
 - `crates/slicer-ir/src/slice_ir.rs:188-199` — PaintValue enum definition
+- `crates/slicer-ir/src/slice_ir.rs:734-751` — ActiveRegion (tool_index field)
+- `crates/slicer-ir/src/slice_ir.rs:1192-1205` — WallFeatureFlags (tool_index field)
+- `crates/slicer-host/src/layer_executor.rs` — assemble_ordered_entities, dominant_tool_index
 
 ## OrcaSlicer Reference Obligations
 
-Not required — benchy_4color.3mf is an existing binary fixture, not a re-implementation of OrcaSlicer logic. Parser behavior was established in packet 50 (TASK-180).
+Not required — benchy_4color.3mf is an existing binary fixture, not a re-implementation of OrcaSlicer logic. Parser behavior was established in packet 50 (TASK-180). The paint-segmentation guest logic projects per-triangle facet data onto per-layer polygons using Z-intersection geometry that is slicer-specific.

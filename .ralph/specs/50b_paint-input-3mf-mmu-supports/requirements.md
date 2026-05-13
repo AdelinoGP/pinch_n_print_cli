@@ -1,56 +1,65 @@
-# Requirements — 50b: Paint Input 3MF MMU + Support Co-Presence Tests
+# Requirements — 50b: Paint Input 3MF MMU + Support Co-Presence Tests & Pipeline Fix
 
 ## Problem Statement
 
-Packet 50 (TASK-180) implemented parsing for all four OrcaSlicer paint channels (`paint_fuzzy_skin`, `paint_supports`, `paint_seam`, `paint_color`) but explicitly deferred multi-channel co-presence tests using `benchy_4color.3mf` to "Packet 50b". The existing 8 paint tests each isolate a single channel using `benchy_painted.3mf`. No test verifies that both `PaintSemantic::Material` (MMU color, 4 tool indices) and `PaintSemantic::SupportEnforcer`/`SupportBlocker` co-exist correctly in a single mesh load from a real-world fixture. Additionally, the slicer has not been run end-to-end on a multi-color painted model; the user requires a GCode artifact to manually verify feature support in their slicer.
+Packet 50 (TASK-180) implemented parsing for all four OrcaSlicer paint channels but explicitly deferred multi-channel co-presence tests to "Packet 50b". Additionally, during implementation of those tests, a gap was discovered in the MMU tool-index propagation pipeline: `ObjectMesh.paint_data` was parsed correctly (verified by tests), but `PaintRegionIR.per_layer` was always empty because the `paint-segmentation` WASM guest ignored the `paint_layers` input parameter and only read `paint_region:*` config keys. Furthermore, `assemble_ordered_entities` in `layer_executor.rs` used `region.region_id` directly as the entity's `region_key.region_id` without considering paint-derived `WallFeatureFlags.tool_index`, so even if paint data were segmented, it would never produce tool-change commands in GCode.
+
+The pipeline gap chain was:
+1. `paint-segmentation` guest: ignored `object.paint_layers` → produced empty `PaintRegionIR`
+2. Empty `PaintRegionIR` → `boundary_paint` never populated → `WallFeatureFlags.tool_index` always `None`
+3. `assemble_ordered_entities`: used `region.region_id` directly → paint-derived tool index never reached `RegionKey.region_id`
+4. `path-optimization-default`: grouped by `region_key.region_id as u32` → all entities same region → zero tool changes
+5. `gcode_emit`: emitted no `T{n}` commands
 
 ## Task IDs
 
 - **TASK-180b** — deferred sub-task of TASK-180 (packet 50 / `50_paint-input-3mf-ingestion`)
-- No separate `docs/07_implementation_status.md` entry; tracked as a packet-50 deferred item.
 
 ## In Scope
 
 - 4 new test functions in `crates/slicer-host/tests/model_loader_tdd.rs`
+- `crates/slicer-host/src/layer_executor.rs` — `dominant_tool_index()` helper and `assemble_ordered_entities` modification
+- `modules/core-modules/paint-segmentation/wit-guest/src/lib.rs` — process `object.paint_layers` for 3D-to-2D projection
 - `resources/benchy_4color.3mf` as read-only test fixture
-- Manual GCode output via slicer CLI for user inspection
-- Bug fixes in `model_loader.rs` only if tests reveal a parser defect
 
 ## Out of Scope
 
-- Authoring or modifying `resources/benchy_4color.3mf`
-- WIT, PaintSegmentation, macro path, IR schema changes
-- Subdivision TriangleSelector (hex > 2 nibbles) — remains an explicit non-goal
+- Subdivision TriangleSelector (hex > 2 nibbles)
+- `ActiveRegion.tool_index` propagation in `dispatch.rs` (hardcoded to 0; `dominant_tool_index` bypasses this)
 - Adding new CLI flags or output formats
-- Downstream tool_index → extruder resolution
+- STL paint-sidecar or 3MF write/export
 
 ## Authoritative Docs
 
 | Doc | Relevance |
 |-----|-----------|
 | `docs/02_ir_schemas.md` | FacetPaintData, PaintLayer, PaintSemantic, PaintValue exact field names |
-| `docs/01_system_architecture.md` | MeshIR ownership, model loader boundary |
-| `crates/slicer-ir/src/slice_ir.rs:188-199` | PaintValue enum variants (Flag, Scalar, ToolIndex, Custom) |
+| `docs/01_system_architecture.md` | MeshIR ownership, model loader boundary, per-layer execution |
+| `crates/slicer-ir/src/slice_ir.rs:188-199` | PaintValue enum variants |
+| `crates/slicer-ir/src/slice_ir.rs:734-751` | ActiveRegion struct with `tool_index: u32` |
+| `crates/slicer-ir/src/slice_ir.rs:1192-1205` | WallFeatureFlags struct with `tool_index: Option<u32>` |
+| `crates/slicer-host/src/layer_executor.rs` | `assemble_ordered_entities`, `dominant_tool_index` |
 
 ## OrcaSlicer Obligations
 
-None. Parser parity was established in packet 50. This packet adds test coverage for an existing fixture.
+None. The paint-segmentation guest's Z-intersection projection is slicer-specific; OrcaSlicer uses a different projection strategy via its own TriangleSelector module.
 
 ## Acceptance Summary
 
 | AC | Type | Measurable Outcome |
 |----|------|--------------------|
-| AC-1 | Positive | `paint_data.layers` contains both `Material` and `SupportEnforcer`/`SupportBlocker` semantics from `benchy_4color.3mf` |
+| AC-1 | Positive | `paint_data.layers` contains both `Material` and `SupportEnforcer`/`SupportBlocker` semantics |
 | AC-2 | Positive | Material layer `facet_values` contains ≥4 distinct `ToolIndex(n)` values |
 | AC-3 | Positive | SupportEnforcer layer has ≥1 `Some(PaintValue::Flag(true))` facet |
 | AC-4 | Positive | `paint_data.layers.len()` ≥ 2 |
-| AC-5 | Regression/Negative | All 8 packet-50 paint tests still pass after adding new tests |
-| AC-6 | Manual | CLI exits 0 on `benchy_4color.3mf`; first 100 GCode lines printed in conversation |
+| AC-5 | Regression | All existing packet-50 paint tests still pass |
+| AC-6 | Positive | GCode output contains ≥1 `T{n}` tool-change command |
+| AC-7 | Positive | `PaintRegionIR.per_layer.len()` > 0 for MMU-painted models |
+| AC-8 | Regression | All 11 paint-segmentation roundtrip tests pass |
 
 ## Cross-Packet Dependencies
 
 - **Depends on:** Packet 50 (TASK-180) — implemented; its parser is the code under test here.
-- **Unblocks:** TASK-136 (progress-event failure codes for paint annotations 501-504) — that task can be addressed in packet 51 or later once multi-channel parsing is verified.
 
 ## Verification Commands
 
@@ -60,5 +69,6 @@ cargo test -p slicer-host --test model_loader_tdd -- load_3mf_4color_material_sp
 cargo test -p slicer-host --test model_loader_tdd -- load_3mf_4color_support_enforcer_has_facets --nocapture
 cargo test -p slicer-host --test model_loader_tdd -- load_3mf_4color_layer_count_at_least_two --nocapture
 cargo test -p slicer-host --test model_loader_tdd
+cargo test -p slicer-host --test macro_paint_segmentation_output_roundtrip_tdd
 cargo clippy -p slicer-host -- -D warnings
 ```
