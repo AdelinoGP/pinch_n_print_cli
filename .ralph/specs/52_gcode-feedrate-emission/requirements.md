@@ -58,7 +58,7 @@ All reads delegated.
 
 - `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` — borrow the per-role speed lookup pattern in `GCode::extrude_loop` / `extrude_path`; we are NOT borrowing the AdaptivePA hooks.
 - `OrcaSlicerDocumented/src/libslic3r/GCodeWriter.cpp` — borrow the `set_speed` mm/s → mm/min conversion (`* 60`) and integer rounding rule. Record verbatim in design.md.
-- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.hpp`/`.cpp` — borrow the default values for the eight registered keys. The delegation MUST return a FACT block of the form `key = <number> mm/s` for each.
+- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.hpp`/`.cpp` — borrow the default values for the twenty-six registered keys. The delegation MUST return a FACT block of the form `key = <number> mm/s` for each.
 - `OrcaSlicerDocumented/src/libslic3r/GCode/AdaptivePAProcessor.cpp` — explicitly NOT ported; the SUMMARY return must confirm we are skipping it.
 
 ## Acceptance Summary
@@ -70,7 +70,7 @@ Positive outcomes (each falsifiable in `gcode_feedrate_emission_tdd.rs`):
 - `outer_wall_speed = 30 mm/s` produces `F1800` on the first wall move; `inner_wall_speed = 60 mm/s` → `F3600`; `sparse_infill_speed = 120 mm/s` → `F7200`. Conversion rule: `f_value_mm_per_min = round(speed_mm_per_s * 60 * speed_factor)`.
 - `speed_factor = 0.5` halves the resolved F value.
 - Module-supplied `f: Some(...)` is preserved verbatim and not overridden by the role default.
-- All eight speed keys registered as `ConfigValue::Float` with OrcaSlicer defaults (defaults to be recorded verbatim in `design.md` once the delegated FACT lookup returns).
+- All twenty-six speed keys registered as `ConfigValue::Float` with OrcaSlicer defaults (defaults recorded in `design.md`; percentage-based defaults pre-resolved to absolute mm/s since the frontend handles derivation; overhang defaults = 0 = disabled; filament_ironing_speed = per-tool modifier defaulting to 0 = use global ironing_speed). Keys: outer_wall_speed, inner_wall_speed, thin_wall_speed, top_surface_speed, bottom_surface_speed, sparse_infill_speed, bridge_speed, internal_bridge_speed, support_speed, support_interface_speed, gap_infill_speed, ironing_speed, skirt_speed, wipe_tower_speed, prime_tower_speed, travel_speed, travel_speed_z, initial_layer_speed, initial_layer_infill_speed, initial_layer_travel_speed, wipe_speed, overhang_1_4_speed, overhang_2_4_speed, overhang_3_4_speed, overhang_4_4_speed, filament_ironing_speed.
 
 Negative outcomes:
 
@@ -81,8 +81,8 @@ Negative outcomes:
 Measurable outcomes:
 
 - File: `gcode_feedrate_emission_tdd.rs` — at least 8 test functions, one per acceptance criterion and negative case above.
-- `gcode_emit.rs` — the three `f: None` literals at `:228`, `:282`, `:309` are gone; replaced by a single `resolve_feedrate(role, speed_factor, &config)` helper.
-- `config_schema.rs` — eight new `ConfigField` entries, each with `default: ConfigValue::Float(_)` and validation rejecting non-float values.
+- `gcode_emit.rs` — the three `f: None` literals at `:228`, `:282`, `:309` are gone; replaced by `resolve_feedrate(role, speed_factor, &config)` helper that maps all 13 ExtrusionRole variants + travel to the 26 registered speed keys.
+- `config_schema.rs` — twenty-six new `ConfigField` entries, each with `default: ConfigValue::Float(_)` and validation rejecting non-float values.
 
 Cross-packet impact:
 
@@ -92,7 +92,7 @@ Cross-packet impact:
 ## Verification Commands
 
 - `cargo test -p slicer-host --test gcode_feedrate_emission_tdd` — primary acceptance gate.
-- `cargo test -p slicer-host --test orca_comment_contract_tdd` — regression; ensures `;TYPE:` labels are still emitted alongside the new F-tokens.
+- `cargo test -p slicer-host --test gcode_emit_tdd` — regression; ensures `;TYPE:` labels and OrcaSlicer-canonical headers are still emitted alongside the new F-tokens (covers former TASK-119 / `emits_orca_*` cases).
 - `cargo check --workspace` — fast type-check gate.
 - `cargo clippy -p slicer-host -- -D warnings`.
 
@@ -107,7 +107,7 @@ For each step in `implementation-plan.md`:
 
 ## Context Discipline Notes
 
-- `OrcaSlicerDocumented/` MUST be delegated. The OrcaSlicer default-table lookup is the highest-risk dispatch — it MUST return as a FACT block listing `key = <number> mm/s` for each of the eight keys, never as a code snippet.
+- `OrcaSlicerDocumented/` MUST be delegated. The OrcaSlicer default-table lookup is the highest-risk dispatch — it MUST return as a FACT block listing `key = <number> mm/s` for each of the twenty-six keys, never as a code snippet.
 - `crates/slicer-host/src/gcode_emit.rs` is > 600 lines; the implementer must range-read around `:200-:320` (move builders) and `:380-:480` (serializer) — never load in full.
 - `crates/slicer-ir/src/slice_ir.rs` is > 1500 lines; range-read `:1280-:1330` (ExtrusionPath3D) and `:1460-:1530` (TravelMove + LayerCollectionIR) only.
 - Likely temptation reads to skip: `crates/slicer-host/src/dispatch.rs` (large; not on this packet's path), `OrcaSlicerDocumented/src/libslic3r/GCode/SeamPlacer*` (unrelated), the full `docs/07_implementation_status.md` (delegate via subject query only).

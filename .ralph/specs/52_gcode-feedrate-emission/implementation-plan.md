@@ -12,7 +12,7 @@
 ### Step 1: Discovery — confirm config threading and OrcaSlicer defaults
 
 - Task IDs: `TASK-153`
-- Objective: Establish (a) what handle (`&ConfigView` / `&ResolvedConfig` / `&HashMap<ConfigKey, ConfigValue>`) the gcode-emit builder receives today, and (b) the OrcaSlicer default values + rounding rule for the eight speed keys.
+- Objective: Establish (a) what handle (`&ConfigView` / `&ResolvedConfig` / `&HashMap<ConfigKey, ConfigValue>`) the gcode-emit builder receives today, and (b) the OrcaSlicer default values + rounding rule for the twenty-six speed keys.
 - Precondition: Packet activated; reconnaissance dispatches in `design.md` not yet executed.
 - Postcondition: Both questions answered as FACTs; values recorded in this packet's `design.md` "Locked Assumptions" section by editing that file.
 - Files allowed to read: none directly. Pure-dispatch step.
@@ -20,13 +20,13 @@
 - Files explicitly out-of-bounds for this step: `OrcaSlicerDocumented/*` (delegated), `crates/slicer-host/src/dispatch.rs`.
 - Expected sub-agent dispatches:
   - "What concrete type is passed as the config handle to the function that builds `GCodeCommand`s from `LayerCollectionIR` in `crates/slicer-host/src/gcode_emit.rs`? Return: FACT, one line with the type name and the function signature."
-  - "Return verbatim the OrcaSlicer default values (mm/s) for the eight speed keys named in `requirements.md`. Scope: `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`. Return: FACT, one row per key (`key = <number> mm/s`), ≤ 12 lines."
+  - "Return verbatim the OrcaSlicer default values (mm/s) for the twenty-six speed keys named in `requirements.md`. Scope: `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp`. Return: FACT, one row per key (`key = <number> mm/s`), ≤ 30 lines."
   - "What rounding rule does `OrcaSlicerDocumented/src/libslic3r/GCodeWriter.cpp::set_speed` use to convert mm/s to mm/min G-code value? Return: FACT, ≤ 3 lines."
 - Context cost: S.
 - Authoritative docs: none in this step.
 - OrcaSlicer refs: as above, delegated.
 - Verification: dispatches return well-formed FACT blocks; if any return SUMMARY or SNIPPETS instead, re-dispatch with tightened scope.
-- Exit condition: design.md has the eight default values written in, plus the rounding rule (e.g. "round-half-to-even, integer mm/min").
+- Exit condition: design.md has the twenty-six default values written in, plus the rounding rule (e.g. "round-half-to-even, integer mm/min").
 
 ### Step 2: Add failing TDD tests
 
@@ -34,7 +34,7 @@
 - Objective: Write `crates/slicer-host/tests/gcode_feedrate_emission_tdd.rs` containing all 8 acceptance tests + 3 negative tests from `packet.spec.md`. Tests must fail at red, not panic.
 - Precondition: Step 1 complete; defaults known.
 - Postcondition: `cargo test -p slicer-host --test gcode_feedrate_emission_tdd` runs and every assertion fails with a clear message (no panics from missing types).
-- Files allowed to read: `crates/slicer-host/src/gcode_emit.rs` (range `:200-:320` and `:380-:480`); `crates/slicer-host/src/config_schema.rs` (full, < 300 lines); `crates/slicer-ir/src/slice_ir.rs` (range `:1280-:1330`, `:1460-:1530`); `crates/slicer-host/tests/orca_comment_contract_tdd.rs` (full — small reference test for the IR-construction idiom).
+- Files allowed to read: `crates/slicer-host/src/gcode_emit.rs` (range `:200-:320` and `:380-:480`); `crates/slicer-host/src/config_schema.rs` (full, < 300 lines); `crates/slicer-ir/src/slice_ir.rs` (range `:1280-:1330`, `:1460-:1530`); `crates/slicer-host/tests/gcode_emit_tdd.rs` (range-read — small reference test for the IR-construction idiom; covers the former Orca contract suite).
 - Files allowed to edit (≤ 3): `crates/slicer-host/tests/gcode_feedrate_emission_tdd.rs` (new).
 - Files explicitly out-of-bounds for this step: `crates/slicer-host/src/pipeline.rs`, `crates/slicer-host/src/dispatch.rs`, all of `modules/`.
 - Expected sub-agent dispatches:
@@ -46,10 +46,10 @@
 - Verification: `cargo test -p slicer-host --test gcode_feedrate_emission_tdd` runs to red. No panic stacks.
 - Exit condition: every named test from `packet.spec.md` exists and is at red.
 
-### Step 3: Register the eight speed config keys
+### Step 3: Register the twenty-six speed config keys
 
 - Task IDs: `TASK-153`
-- Objective: Add eight `ConfigField` entries to `config_schema.rs` with the OrcaSlicer defaults from Step 1's FACT. Each registered as `ConfigValue::Float`. Validation rejects non-float supplied values with `ConfigValidationError` naming the key.
+- Objective: Add twenty-six `ConfigField` entries to `config_schema.rs` with the OrcaSlicer defaults from Step 1's FACT. Each registered as `ConfigValue::Float`. Validation rejects non-float supplied values with `ConfigValidationError` naming the key.
 - Precondition: Step 2 complete; specifically `speed_keys_registered_with_defaults` and `rejects_non_float_speed_config` tests are red.
 - Postcondition: Those two tests pass; the rest still fail (until Step 4 wires the resolver).
 - Files allowed to read: `crates/slicer-host/src/config_schema.rs` (full).
@@ -69,18 +69,18 @@
 - Task IDs: `TASK-153`
 - Objective: Add the `resolve_feedrate(role, speed_factor, &config) -> Option<f32>` helper to `gcode_emit.rs`; replace the three `f: None` literals at `:228`, `:282`, `:309` with calls to the helper. Travel-move builder gains a fallback to `resolve_feedrate(&ExtrusionRole::Custom("Travel"), 1.0, &config)` when `tm.f` is `None`.
 - Precondition: Step 3 complete; config keys are registered.
-- Postcondition: All eight acceptance tests + three negative tests pass; `orca_comment_contract_tdd` still passes.
+- Postcondition: All eight acceptance tests + three negative tests pass; `gcode_emit_tdd` (the OrcaSlicer-comment regression suite) still passes.
 - Files allowed to read: `crates/slicer-host/src/gcode_emit.rs` (range `:200-:480`); `crates/slicer-host/src/config_schema.rs` (full); `crates/slicer-ir/src/slice_ir.rs` (`:1280-:1330`, `:1460-:1530`).
 - Files allowed to edit (≤ 3): `crates/slicer-host/src/gcode_emit.rs`.
 - Files explicitly out-of-bounds for this step: pipeline.rs, dispatch.rs, all module crates.
 - Expected sub-agent dispatches:
   - "Run `cargo test -p slicer-host --test gcode_feedrate_emission_tdd`; return FACT (all pass) or SNIPPETS for any failing test (≤ 20 lines)."
-  - "Run `cargo test -p slicer-host --test orca_comment_contract_tdd`; return FACT pass/fail."
+  - "Run `cargo test -p slicer-host --test gcode_emit_tdd`; return FACT pass/fail."
   - "Run `cargo clippy -p slicer-host -- -D warnings`; return FACT pass/fail and SNIPPETS for any lint."
 - Context cost: M.
 - Authoritative docs: `docs/08_coordinate_system.md` — read directly, confirm mm/min convention.
 - OrcaSlicer refs: rounding rule already extracted in Step 1.
-- Verification: `cargo test -p slicer-host --test gcode_feedrate_emission_tdd` → all green; `cargo test -p slicer-host --test orca_comment_contract_tdd` → green.
+- Verification: `cargo test -p slicer-host --test gcode_feedrate_emission_tdd` → all green; `cargo test -p slicer-host --test gcode_emit_tdd` → green.
 - Exit condition: every test from this packet passes; regression test green; clippy clean.
 
 ### Step 5: Backlog hygiene and deviation note
@@ -117,7 +117,7 @@ Aggregate: M. No step is L.
 
 - All five steps complete with exit conditions met.
 - `cargo test -p slicer-host --test gcode_feedrate_emission_tdd` — every test green (dispatched as FACT).
-- `cargo test -p slicer-host --test orca_comment_contract_tdd` — green (regression).
+- `cargo test -p slicer-host --test gcode_emit_tdd` — green (regression; covers the former Orca comment-contract suite).
 - `cargo check --workspace` — green.
 - `cargo clippy -p slicer-host -- -D warnings` — green.
 - `docs/07_implementation_status.md` updated for TASK-153 (via worker dispatch — never load the full backlog).

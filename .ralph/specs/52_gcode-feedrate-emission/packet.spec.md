@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 52_gcode-feedrate-emission
 task_ids:
   - TASK-153
@@ -17,7 +17,7 @@ Wire a per-role feedrate (F-token) into every emitted `G0`/`G1` print and travel
 
 - In scope:
   - Replace the three `f: None` assignments in `crates/slicer-host/src/gcode_emit.rs` (the print-move builder, the z-hop-up builder, the z-hop-down builder) with a resolved feedrate sourced from the per-role speed configuration.
-  - Register per-role speed config keys in `crates/slicer-host/src/config_schema.rs` (`outer_wall_speed`, `inner_wall_speed`, `sparse_infill_speed`, `internal_solid_infill_speed`, `top_surface_speed`, `travel_speed`, `initial_layer_speed`, `initial_layer_travel_speed`) as `ConfigValue::Float` (mm/s) with OrcaSlicer-derived defaults.
+  - Register per-role speed config keys in `crates/slicer-host/src/config_schema.rs` (outer_wall_speed, inner_wall_speed, thin_wall_speed, top_surface_speed, bottom_surface_speed, sparse_infill_speed, bridge_speed, internal_bridge_speed, support_speed, support_interface_speed, gap_infill_speed, ironing_speed, skirt_speed, wipe_tower_speed, prime_tower_speed, travel_speed, travel_speed_z, initial_layer_speed, initial_layer_infill_speed, initial_layer_travel_speed, wipe_speed, overhang_1_4_speed, overhang_2_4_speed, overhang_3_4_speed, overhang_4_4_speed, filament_ironing_speed) as `ConfigValue::Float` (mm/s) with OrcaSlicer-derived defaults (percentage-based defaults pre-resolved to absolute mm/s; overhang defaults = 0 = disabled; filament_ironing_speed = per-tool modifier defaulting to 0 = use global ironing_speed).
   - Consume `ExtrusionPath3D.speed_factor` (`slice_ir.rs:1297`) when resolving the F token, so module-side speed overrides flow through.
   - Add a TDD test file `crates/slicer-host/tests/gcode_feedrate_emission_tdd.rs` covering positive and negative cases.
 - Out of scope:
@@ -39,7 +39,9 @@ Wire a per-role feedrate (F-token) into every emitted `G0`/`G1` print and travel
 - **Given** a `ConfigView` that sets `outer_wall_speed = 30.0`, `inner_wall_speed = 60.0`, `sparse_infill_speed = 120.0`, **when** the serializer emits a perimeter region followed by an infill region, **then** the first `G1` of the outer-wall region carries `F1800`, the first `G1` of the inner-wall region carries `F3600`, and the first `G1` of the sparse-infill region carries `F7200`. | `cargo test -p slicer-host --test gcode_feedrate_emission_tdd -- per_role_speed_resolves_to_f_token --nocapture`
 - **Given** a `PrintEntity` whose `path.speed_factor = 0.5`, **when** that entity is serialized under a `outer_wall_speed = 60.0` config, **then** the emitted F is `F1800` (i.e. `60 * 60 * 0.5`). | `cargo test -p slicer-host --test gcode_feedrate_emission_tdd -- speed_factor_modulates_role_speed --nocapture`
 - **Given** a travel move carrying `f: Some(7200.0)` from an upstream module, **when** serialized, **then** the F-token equals `F7200` verbatim and the role-default `travel_speed` is not substituted. | `cargo test -p slicer-host --test gcode_feedrate_emission_tdd -- module_supplied_f_wins --nocapture`
-- **Given** `config_schema.rs`, **when** queried for `outer_wall_speed`, `inner_wall_speed`, `sparse_infill_speed`, `internal_solid_infill_speed`, `top_surface_speed`, `travel_speed`, `initial_layer_speed`, `initial_layer_travel_speed`, **then** each is registered as `ConfigValue::Float` with the OrcaSlicer default (mm/s) recorded in this packet's `requirements.md` Acceptance Summary. | `cargo test -p slicer-host --test gcode_feedrate_emission_tdd -- speed_keys_registered_with_defaults --nocapture`
+- **Given** `config_schema.rs`, **when** queried for `outer_wall_speed`, `inner_wall_speed`, `thin_wall_speed`, `top_surface_speed`, `bottom_surface_speed`, `sparse_infill_speed`, `bridge_speed`, `internal_bridge_speed`, `support_speed`, `support_interface_speed`, `gap_infill_speed`, `ironing_speed`, `skirt_speed`, `wipe_tower_speed`, `prime_tower_speed`, `travel_speed`, `travel_speed_z`, `initial_layer_speed`, `initial_layer_infill_speed`, `initial_layer_travel_speed`, `wipe_speed`, `overhang_1_4_speed`, `overhang_2_4_speed`, `overhang_3_4_speed`, `overhang_4_4_speed`, `filament_ironing_speed`, **then** each is registered as `ConfigValue::Float` with the OrcaSlicer default (mm/s) recorded in this packet's `requirements.md` Acceptance Summary. | `cargo test -p slicer-host --test gcode_feedrate_emission_tdd -- speed_keys_registered_with_defaults --nocapture`
+- **Given** a config where `filament_ironing_speed = 15.0` and `ironing_speed = 20.0`, **when** an Ironing role entity is serialized, **then** the emitted F uses `filament_ironing_speed` (F900) rather than `ironing_speed` (F1200). | `cargo test -p slicer-host --test gcode_feedrate_emission_tdd -- filament_ironing_overrides_global_ironing --nocapture`
+- **Given** a config where `wipe_speed = 96.0`, **when** a Custom("Wipe") role entity is serialized, **then** the emitted F is `F5760` (96 * 60). | `cargo test -p slicer-host --test gcode_feedrate_emission_tdd -- wipe_speed_resolves_correctly --nocapture`
 
 ## Negative Test Cases
 
@@ -51,7 +53,7 @@ Wire a per-role feedrate (F-token) into every emitted `G0`/`G1` print and travel
 
 - `cargo build -p slicer-host`
 - `cargo test -p slicer-host --test gcode_feedrate_emission_tdd`
-- `cargo test -p slicer-host --test orca_comment_contract_tdd` (regression: ensure `;TYPE:` labels and F-tokens both appear)
+- `cargo test -p slicer-host --test gcode_emit_tdd` (regression: ensure existing G-code emission tests still pass with F-tokens)
 - `cargo clippy -p slicer-host -- -D warnings`
 
 ## Authoritative Docs
