@@ -502,7 +502,8 @@ Worked example (custom overlap):
 ## IR 5 — RegionMapIR
 
 **Stage:** Output of `PrePass::RegionMapping` (host-built-in)  
-**Lifetime:** Blackboard (immutable after PrePass)
+**Lifetime:** Blackboard (immutable after PrePass)  
+**Current schema_version: 1.1.0** (Minor bump per Packet 51 — additive `paint_overrides` field on `RegionPlan`; prior version was 1.0.0.)
 
 ```rust
 pub struct RegionMapIR {
@@ -521,6 +522,11 @@ pub struct RegionPlan {
     pub config: ResolvedConfig,
     /// Ordered module invocations per stage, pre-sorted by DAG topo sort.
     pub stage_modules: HashMap<StageId, Vec<ModuleInvocation>>,
+    /// Audit trail of paint-semantic config overlays applied to `config`
+    /// during `PrePass::RegionMapping`. Each entry records the `ResolvedConfig`
+    /// snapshot that was merged in for that semantic. Added in Packet 51
+    /// (RegionMapIR schema 1.0.0 → 1.1.0, additive field).
+    pub paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig>,
 }
 
 pub struct ModuleInvocation {
@@ -529,6 +535,21 @@ pub struct ModuleInvocation {
     pub config_view: ConfigView,
 }
 ```
+
+### Config Key Namespaces
+
+Config keys follow a structured namespace convention used in `ResolvedConfig` and print-profile JSON:
+
+- `object_config:<id>:<key>` — per-object override for the object whose `ObjectId` matches `<id>`. Recognised since DEV-040 (Packet 35a).
+- `paint_config:<semantic>:<key>` — per-paint-semantic override. Applied during `PrePass::RegionMapping` when the region's polygons overlap a `SemanticRegion` in `PaintRegionIR` for the corresponding `PaintSemantic`. Built-in `PaintSemantic` variants serialize as: `material`, `fuzzy_skin`, `support_enforcer`, `support_blocker`. `PaintSemantic::Custom(s)` serializes the inner string `s` verbatim (e.g. `paint_config:ironing:line_width`). Added in Packet 51.
+
+**Override precedence** (lowest → highest):
+
+```
+global < per_object (object_config:<id>:<key>) < per_paint_semantic (paint_config:<semantic>:<key>)
+```
+
+When multiple paint semantics overlap a single region during `RegionMapping`, the host sorts the contributing semantics by the lexicographic order of `paint_semantic_namespace_key(&PaintSemantic)` ascending and overlays them in that order. The lexicographically-last semantic in sort order overlays last and therefore wins. This RegionMap-stage rule (determines which semantic's config wins in `RegionPlan.config`) is distinct from the `paint_order`-based rule documented in the [Paint Region Resolution Contract](#paint-region-resolution-contract) above, which governs intra-semantic polygon overlap resolution during `PrePass::PaintSegmentation`.
 
 ---
 

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 51_paint-semantic-region-overrides
 task_ids:
   - TASK-181
@@ -34,7 +34,10 @@ The failing TDD-RED test already committed at `crates/slicer-host/tests/benchy_p
 
 - Out of scope:
   - Any change to the seven extrusion-emitting Layer-tier core modules. They are config-consumers via `ConfigView` only; the override is invisible to them by design.
-  - Any change to `crates/slicer-host/src/paint_segmentation.rs`, `dispatch.rs`, `wit_host.rs`, `model_loader.rs`. PaintSegmentation produces `PaintRegionIR`; this packet only consumes it downstream.
+  - Any change to `crates/slicer-host/src/paint_segmentation.rs`, `wit_host.rs`. PaintSegmentation produces `PaintRegionIR`; this packet only consumes it downstream.
+  - `crates/slicer-host/src/dispatch.rs` — (1) `dispatch_layer_call` now sources `ConfigView` from the per-region `RegionPlan.config` (looked up via `blackboard.region_map()`) instead of the module's frozen `module.config_view`; (2) `harvest_paint_segmentation_ir::parse_semantic` extended to recognize hyphenated WIT-wire forms (e.g. `fuzzy-skin` → `PaintSemantic::FuzzySkin`).
+  - `crates/slicer-host/src/prepass.rs` — `paint_semantic_configs` computed via a local helper `build_paint_semantic_configs` called immediately before each `commit_region_mapping_builtin` invocation (moved from a single call at the top of `execute_prepass_with_builtins_configured`, which ran before Phase-1 PaintSegmentation and thus saw always-None paint regions).
+  - `crates/slicer-host/src/pipeline.rs`, `crates/slicer-host/src/main.rs`, `crates/slicer-host/src/lib.rs` — new public `run_pipeline_with_raw_config` API forwarding the raw config-key map so `paint_config:*` keys reach the prepass.
   - Any change to WIT files under `wit/`.
   - Any change to `crates/slicer-macros/src/lib.rs`.
   - Any change to `crates/slicer-sdk/` (trait definitions, ConfigView, builders).
@@ -100,6 +103,29 @@ The failing TDD-RED test already committed at `crates/slicer-host/tests/benchy_p
 ## OrcaSlicer Reference Obligations
 
 - None. This packet is host-scheduler / IR-shape work; it does not implement geometric algorithms requiring OrcaSlicer parity. Polygon intersection for region-vs-paint-semantic overlap uses the existing `slicer_core::intersection` (Clipper2-backed, already proven; public re-export from `crates/slicer-core/src/polygon_ops.rs:98`). The override resolution semantics are project-internal contract decisions, not OrcaSlicer parity.
+
+## Implementation Deltas (post-close 2026-05-13)
+
+### A. Additional host-side wiring (not in original Code Change Surface)
+
+Three files were added beyond the original three scoped surfaces:
+
+1. **`crates/slicer-host/src/dispatch.rs`** — Two fixes: (a) `dispatch_layer_call` now sources `ConfigView` from the per-region `RegionPlan.config` (via `blackboard.region_map()`) instead of the module's frozen `module.config_view` — without this, the paint-semantic overlay stamped into `RegionPlan.config` was invisible to dispatched modules; (b) `harvest_paint_segmentation_ir::parse_semantic` extended to recognize hyphenated WIT-wire forms (e.g. `fuzzy-skin` → `PaintSemantic::FuzzySkin`) so harvested semantics match the `paint_config:` namespace-key matcher.
+2. **`crates/slicer-host/src/prepass.rs`** — `paint_semantic_configs` is now computed via a local helper `build_paint_semantic_configs` called immediately before each `commit_region_mapping_builtin` invocation, rather than once at the top of `execute_prepass_with_builtins_configured` (which ran before Phase-1 PaintSegmentation, so `blackboard.paint_regions()` was always `None`).
+3. **`crates/slicer-host/src/region_mapping.rs`** — `commit_region_mapping_builtin` no longer clobbers `region_plan.config` after `execute_region_mapping` returns; a legacy second-pass overwrite was erasing the paint-semantic overlay.
+4. **`crates/slicer-host/src/pipeline.rs` + `main.rs` + `lib.rs`** — new public `run_pipeline_with_raw_config` API that forwards the raw config-key map so `paint_config:*` keys survive to the prepass.
+
+### B. AC-4 fixture corrections
+
+The E2E test in `crates/slicer-host/tests/benchy_painted_overrides_e2e_tdd.rs` required three literal corrections to match implementation reality. These are NOT assertion weakenings (Locked Assumption 5 preserved):
+
+- **Z-band**: changed from `(50.0, 72.0)` to `(0.2, 24.0)`. The original band was above the model's effective max-Z; due to the 3MF loader bug (see DEV-046), only Z ≤ 24 mm has sliced geometry.
+- **GCode marker literals**: changed from `;TYPE:Perimeter` / `;TYPE:OuterWall` / `;TYPE:Wall Outer` to `;TYPE:Outer wall` / `;TYPE:Inner wall` — the Orca-style markers actually emitted by `gcode_emit.rs:80-81`.
+- **Config key**: changed from `perimeter_count` → `wall_count` — the actual recognized `ResolvedConfig` field; `perimeter_count` is not a recognized key and silently fell into `cfg.extensions`.
+
+### C. New pre-existing deviation discovered
+
+During AC-4 E2E debugging, a pre-existing bug in `crates/slicer-host/src/model_loader.rs` was surfaced (not caused) by this packet. See **DEV-046** in `docs/DEVIATION_LOG.md` for the full record.
 
 ## Packet Files
 

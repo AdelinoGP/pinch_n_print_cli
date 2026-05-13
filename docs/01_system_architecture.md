@@ -105,13 +105,19 @@ PrePass::PaintSegmentation
              Custom(id)     → passed through for the registering module to consume
 
 PrePass::RegionMapping  [host-built-in, not a module stage]
-  Input:  LayerPlanIR + LoadedModules + ResolvedConfig
+  Input:  LayerPlanIR + LoadedModules + ResolvedConfig + PaintRegionIR
   Output: RegionMapIR
   Purpose: For every (layer, object, region) triple, determine:
            - Which modules run and in what order
            - What config each module receives (pre-filtered view)
            - Which claims are active
            Pre-computed so per-layer hot path has zero config resolution work.
+           PAINT-SEMANTIC-AWARE (Packet 51): RegionMapping consumes `PaintRegionIR`
+           and stamps per-paint-semantic config overlays into `RegionPlan.config`
+           (with the contributing semantics audit-recorded in
+           `RegionPlan.paint_overrides`). paint_config:<semantic>:<key> namespace
+           entries in the global resolved config are the mechanism; unknown
+           semantics are skipped silently.
 
 PrePass::SupportGeometry  [host built-in always runs; guest optional]
   Input  (host built-in): LayerPlanIR + MeshIR

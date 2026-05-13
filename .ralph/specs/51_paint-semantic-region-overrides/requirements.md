@@ -3,7 +3,6 @@
 ## Packet Metadata
 
 - Slug: `51_paint-semantic-region-overrides`
-- Status: `draft`
 - Task IDs: `TASK-181`
 - Backlog source: `docs/07_implementation_status.md`
 

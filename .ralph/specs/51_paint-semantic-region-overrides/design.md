@@ -111,14 +111,19 @@ Primary editing surfaces:
 
 1. `crates/slicer-host/src/config_resolution.rs` (extend prefix parser; add `resolve_per_paint_semantic_configs`).
 2. `crates/slicer-ir/src/slice_ir.rs` (add `paint_overrides` field to `RegionPlan`; export `BTreeMap` import if not already).
-3. `crates/slicer-host/src/region_mapping.rs` (read `PaintRegionIR`; overlap loop; overlay; schema-version bump).
-4. `crates/slicer-host/tests/config_resolution_paint_semantic_tdd.rs` (new test file).
-5. `crates/slicer-host/tests/region_mapping_paint_semantic_tdd.rs` (new test file).
-6. `docs/01_system_architecture.md` (RegionMapping bullet update).
-7. `docs/02_ir_schemas.md` (paint_config namespace; schema bump; precedence rules; paint_overrides field).
-8. `docs/07_implementation_status.md` (add + close TASK-181 — via worker dispatch).
-9. `docs/DEVIATION_LOG.md` (flip DEV-045 — via worker dispatch).
-10. `docs/14_deviation_audit_history.md` (chronology entry — via worker dispatch).
+3. `crates/slicer-host/src/region_mapping.rs` (read `PaintRegionIR`; overlap loop; overlay; schema-version bump; legacy config-clobber removed — see Implementation Notes §4).
+4. `crates/slicer-host/src/dispatch.rs` (ConfigView sourcing fix in `dispatch_layer_call`; hyphenated-name recognition in `parse_semantic` — see Implementation Notes §1 and §3).
+5. `crates/slicer-host/src/prepass.rs` (paint_semantic_configs timing fix — see Implementation Notes §2).
+6. `crates/slicer-host/src/pipeline.rs` (new `run_pipeline_with_raw_config` API).
+7. `crates/slicer-host/src/main.rs` (wire `run_pipeline_with_raw_config`).
+8. `crates/slicer-host/src/lib.rs` (export `run_pipeline_with_raw_config`).
+9. `crates/slicer-host/tests/config_resolution_paint_semantic_tdd.rs` (new test file).
+10. `crates/slicer-host/tests/region_mapping_paint_semantic_tdd.rs` (new test file).
+11. `docs/01_system_architecture.md` (RegionMapping bullet update).
+12. `docs/02_ir_schemas.md` (paint_config namespace; schema bump; precedence rules; paint_overrides field).
+13. `docs/07_implementation_status.md` (add + close TASK-181 — via worker dispatch).
+14. `docs/DEVIATION_LOG.md` (flip DEV-045; register DEV-046 — via worker dispatch).
+15. `docs/14_deviation_audit_history.md` (chronology entry — via worker dispatch).
 
 No step opens more than 3 of these files at once.
 
@@ -159,20 +164,43 @@ No step opens more than 3 of these files at once.
 - **Tradeoff: schema_version bump.** Minor bump is correct per the additive-field rule, but consumers reading old `RegionMapIR` snapshots will see `paint_overrides: BTreeMap::new()` (default) — no breakage, but tests/fixtures that hash the full `RegionPlan` value need re-blessing. Step 1 inventories these.
 - **Tradeoff: deterministic precedence by lex order.** Some users may expect a "first paint wins" or "last paint wins" semantic. Lex order is the simplest deterministic rule and matches the spirit of `docs/02_ir_schemas.md:436`. Documented explicitly so future packets don't second-guess.
 
+## Implementation Notes (post-close 2026-05-13)
+
+Four scope expansions were discovered during implementation that are not reflected in the original design. All are bounded host-internal plumbing changes; no module, WIT, or SDK file was touched.
+
+1. **`dispatch.rs::dispatch_layer_call` ConfigView sourcing.** The original design assumed that passing the already-overlaid `RegionPlan.config` to modules was automatic. In practice, `dispatch_layer_call` was sourcing `ConfigView` from the module's frozen `module.config_view` (bound at module-load time), not from the per-region `RegionPlan.config` looked up via `blackboard.region_map()`. Without this fix, the paint-semantic overlay stamped into `RegionPlan.config` was invisible to every dispatched module. Fixed by looking up `RegionPlan.config` for the current `(layer, object, region_id)` and constructing `ConfigView` from it in `dispatch_layer_call`.
+
+2. **`prepass.rs` paint_semantic_configs timing.** `paint_semantic_configs` was originally computed once at the top of `execute_prepass_with_builtins_configured`, before Phase-1 PaintSegmentation ran. At that point `blackboard.paint_regions()` was always `None`, so the computed map was always empty. Fixed by computing `paint_semantic_configs` via a local helper `build_paint_semantic_configs` called immediately before each `commit_region_mapping_builtin` invocation, after Phase-1 has populated the blackboard.
+
+3. **`dispatch.rs::harvest_paint_segmentation_ir::parse_semantic` hyphenated-name recognition.** The WIT wire encodes variant names in hyphenated kebab-case (e.g. `fuzzy-skin`), but `parse_semantic` only recognized underscore/CamelCase forms. Without this fix, semantics harvested from the WIT boundary did not match the `paint_config:fuzzy_skin:*` namespace-key matcher in `config_resolution.rs`. Extended `parse_semantic` to map hyphenated WIT-wire forms to the corresponding `PaintSemantic` variants.
+
+4. **`region_mapping.rs::commit_region_mapping_builtin` legacy config-clobber removed.** After `execute_region_mapping` returned the newly-computed `RegionPlan` (with the paint-semantic overlay stamped into `.config`), a legacy second-pass in `commit_region_mapping_builtin` was overwriting `region_plan.config` with the pre-overlay `per_object_config`. This silently erased the paint-semantic overlay. The second-pass overwrite was a historical artifact with no current purpose; it was removed.
+
 ## Open Questions
 
-These must be resolved before activation (status: draft → active):
+Resolved at Step 1 (2026-05-12) — packet flipped from `draft` → `active`.
 
-- **Q1**: confirm schema-version bump from 1.0.0 → 1.1.0 for `RegionMapIR`. Recommend yes (minor, additive per `docs/02_ir_schemas.md` versioning rules).
-- **Q2**: confirm override precedence: `global < per_object < per_paint_semantic`. Recommend yes.
-- **Q3**: confirm unknown-semantic emits warning vs silent drop. Recommend warn. Which progress-event code? (Reuse paint-annotation warning surface; code TBD by Step 1 grounding of the existing paint-annotation event family.)
-- **Q4**: confirm multi-semantic overlap precedence: lexicographic by `PaintSemantic` string repr, later overlay wins. This is a **new** RegionMap-stage rule (not the `:436` rule, which is `paint_order`-based and applies to PaintSegmentation). Step 6 commits to adding the new rule to `docs/02_ir_schemas.md` under the RegionMap section. Recommend yes.
+- **Q1 — RESOLVED YES.** `RegionMapIR.schema_version` bumps from `SemVer { major:1, minor:0, patch:0 }` → `minor:1`. Justified by additive `paint_overrides` field per `docs/02_ir_schemas.md` minor-bump rule.
+- **Q2 — RESOLVED YES.** Override precedence: `global < per_object < per_paint_semantic`. Per-paint-semantic always wins over per-object.
+- **Q3 — RESOLVED WARN.** Unknown semantics produce a non-fatal `ProgressEvent::module_error` warning (matching the precedent at `crates/slicer-host/src/slice_postprocess.rs:130-165` for `paint_annotation_warning_to_progress_event`). No new event-type variant required. `resolve_per_paint_semantic_configs` returns `(BTreeMap, Vec<UnknownSemanticWarning>)`; the caller (host) forwards warnings to the progress-event sink. The slice does NOT fail.
+- **Q4 — RESOLVED YES.** Multi-semantic overlap precedence: deterministic lexicographic ascending by a `paint_semantic_sort_key` helper. Built-in variants serialize as `material`/`fuzzy_skin`/`support_enforcer`/`support_blocker` (snake_case, matching the `paint_config:<semantic>:<key>` namespace); `Custom(s)` serializes as the raw `s`. Lexicographically-LAST in sort order overlays LAST (wins). This rule is **new** at the RegionMap stage and is distinct from `docs/02_ir_schemas.md:436` (paint_order-based, governs `PrePass::PaintSegmentation`). Step 6 adds the rule under the RegionMap section of `docs/02_ir_schemas.md`.
+
+## Step 1 Grounding Outcomes (2026-05-12)
+
+- **Function signature & PaintRegionIR plumbing.** `execute_region_mapping(layer_plan: &LayerPlanIR, plan: &ExecutionPlan) -> Result<RegionMapIR, RegionMappingError>` at `crates/slicer-host/src/region_mapping.rs:103-107` does NOT currently receive `PaintRegionIR`. Its caller `commit_region_mapping_builtin(plan, blackboard: &mut Blackboard, resolved_configs, default_resolved_config)` at `:219-224` already has `blackboard`, which exposes `paint_regions()` at `crates/slicer-host/src/blackboard.rs:281`. Plumbing approach: extend `execute_region_mapping` to accept `paint_regions: Option<&PaintRegionIR>` (Option to keep `None` viable for callers that don't have it yet, e.g. early-phase tests) and pass `blackboard.paint_regions()` from `commit_region_mapping_builtin`. `commit_region_mapping_builtin` also needs the per-paint-semantic resolved configs; thread an additional `paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>` parameter, populated by the caller in `prepass.rs:369`.
+- **Scheduler order.** `PaintSegmentation` runs in Phase-1 at `crates/slicer-host/src/prepass.rs:345-357`; `commit_region_mapping_builtin` runs at `:368-370` AFTER Phase-1 completes. `PaintRegionIR` is guaranteed available on the blackboard at RegionMapping time.
+- **Polygon intersection symbol path.** `slicer_core::intersection(subject: &[ExPolygon], clip: &[ExPolygon]) -> Vec<ExPolygon>` (re-exported in `crates/slicer-core/src/lib.rs:16-18`). `slicer-helpers` does NOT re-export it.
+- **`PaintSemantic` enum shape.** `Material | FuzzySkin | SupportEnforcer | SupportBlocker | Custom(String)` at `crates/slicer-ir/src/slice_ir.rs:172-185`. No `Display`/`AsRef<str>` impl — a `paint_semantic_sort_key(&PaintSemantic) -> String` helper will be defined alongside `resolve_per_paint_semantic_configs` (single source of truth for both the `paint_config:<semantic>` namespace serialization and the lex-precedence sort key).
+- **Warning surface.** Reuse `ProgressEvent::module_error` with `fatal: false`. No new variant on `ProgressEventType`. Define an `UnknownSemanticWarning { name: String, key: String }` struct in `config_resolution.rs` that `resolve_per_paint_semantic_configs` returns; the host turns each into a `ProgressEvent::module_error` at emission time.
+- **`RegionPlan` struct (verbatim baseline).** `pub struct RegionPlan { pub config: ResolvedConfig, pub stage_modules: HashMap<StageId, Vec<ModuleInvocation>> }` at `crates/slicer-ir/src/slice_ir.rs:1028-1033`. Add `pub paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig>` as the third field.
+- **`resolve_per_object_configs` template.** Returns `Result<BTreeMap<String, ResolvedConfig>, ConfigResolutionError>` with prefix-strip + `apply_overlay` pattern at `:186-216`. `resolve_per_paint_semantic_configs` mirrors this with `present_semantics: &[PaintSemantic]` keyed by a stringified prefix.
+- **Determinism fixtures requiring re-bless.** (a) `crates/slicer-host/tests/region_mapping_tdd.rs:366-367` (`region_mapping_is_deterministic_for_same_input` — full-struct `RegionMapIR` equality). (b) `crates/slicer-ir/tests/ir_tests.rs:402-413` (`test_region_map_ir` — bincode serde roundtrip; the empty fixture should be backward-compatible because `paint_overrides` defaults to empty `BTreeMap`, but the test may construct an empty `RegionPlan` explicitly — re-verify at Step 4). No other tests do full-struct comparison.
 
 ## Locked Assumptions and Invariants
 
 The implementation must preserve these invariants. If any one is violated, the change is rejected.
 
-1. `crates/slicer-macros/src/lib.rs`, `crates/slicer-sdk/`, all `modules/core-modules/*` Layer-tier crates, `crates/slicer-host/src/paint_segmentation.rs`, `dispatch.rs`, `wit_host.rs`, `model_loader.rs`, and all `wit/` files are unchanged after this packet.
+1. `crates/slicer-macros/src/lib.rs`, `crates/slicer-sdk/`, all `modules/core-modules/*` Layer-tier crates, `crates/slicer-host/src/paint_segmentation.rs`, `wit_host.rs`, `model_loader.rs`, and all `wit/` files are unchanged after this packet. Note: `dispatch.rs` and `prepass.rs` WERE edited as structural necessities — the original design's claim that "the host passes a region's `RegionPlan.config` that already incorporates the paint-semantic overlay" and "modules naturally honor it" required explicit wiring in `dispatch_layer_call` (ConfigView was frozen at module-bind time, not sourced per-region) and a timing fix in `prepass.rs` (paint_semantic_configs computed before paint regions were available). These are bounded host-internal plumbing changes consistent with the no-module-changes intent of this assumption; see Implementation Notes below.
 2. `RegionPlan.paint_overrides` is the ONLY new field on `RegionPlan`; no existing field is removed or renamed.
 3. `RegionMapIR.schema_version` bumps to 1.1.0 minor; no other version bump.
 4. A region with no overlapping paint semantics produces a `RegionPlan` whose `config` is byte-identical to the pre-packet output for the same input.
