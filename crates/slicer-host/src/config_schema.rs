@@ -181,6 +181,99 @@ impl Default for FullConfigSchema {
             );
         }
 
+        let cooling_int_keys = [
+            ("fan_speed_min", 51i64, Some(255.0)),
+            ("fan_speed_max", 255i64, Some(255.0)),
+            ("disable_fan_first_layers", 1i64, None),
+            ("overhang_fan_speed", 100i64, Some(100.0)),
+        ];
+
+        for (key, default_val, max) in cooling_int_keys {
+            fields.insert(
+                key.to_string(),
+                ConfigFieldSchema {
+                    key: key.to_string(),
+                    field_type: ConfigFieldType::Int,
+                    default: Some(ConfigValue::Int(default_val)),
+                    display: None,
+                    description: None,
+                    group: Some("Cooling".to_string()),
+                    unit: ConfigUnit::None,
+                    advanced: false,
+                    min: Some(0.0),
+                    max,
+                    step: None,
+                    max_length: None,
+                    enum_values: None,
+                    min_list_length: None,
+                    max_list_length: None,
+                    validate: None,
+                },
+            );
+        }
+
+        let cooling_bool_keys = [
+            ("enable_overhang_fan", true),
+            ("slow_down_for_layer_cooling", true),
+        ];
+
+        for (key, default_val) in cooling_bool_keys {
+            fields.insert(
+                key.to_string(),
+                ConfigFieldSchema {
+                    key: key.to_string(),
+                    field_type: ConfigFieldType::Bool,
+                    default: Some(ConfigValue::Bool(default_val)),
+                    display: None,
+                    description: None,
+                    group: Some("Cooling".to_string()),
+                    unit: ConfigUnit::None,
+                    advanced: false,
+                    min: None,
+                    max: None,
+                    step: None,
+                    max_length: None,
+                    enum_values: None,
+                    min_list_length: None,
+                    max_list_length: None,
+                    validate: None,
+                },
+            );
+        }
+
+        let cooling_float_keys = [
+            (
+                "slow_down_min_speed",
+                10.0,
+                ConfigUnit::MillimetersPerSecond,
+            ),
+            ("slow_down_layer_time", 5.0, ConfigUnit::None),
+        ];
+
+        for (key, default_val, unit) in cooling_float_keys {
+            fields.insert(
+                key.to_string(),
+                ConfigFieldSchema {
+                    key: key.to_string(),
+                    field_type: ConfigFieldType::Float,
+                    default: Some(ConfigValue::Float(default_val)),
+                    display: None,
+                    description: None,
+                    group: Some("Cooling".to_string()),
+                    unit,
+                    advanced: false,
+                    min: Some(0.0),
+                    max: None,
+                    step: None,
+                    max_length: None,
+                    enum_values: None,
+                    min_list_length: None,
+                    max_list_length: None,
+                    validate: None,
+                },
+            );
+        }
+
         Self {
             fields,
             cross_validate: Vec::new(),
