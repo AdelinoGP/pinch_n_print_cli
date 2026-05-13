@@ -130,6 +130,12 @@ pub trait GCodeEmitter {
         layer_irs: &[LayerCollectionIR],
         blackboard: &Blackboard,
     ) -> Result<GCodeIR, PostpassError>;
+
+    /// Resolved travel feedrate in mm/min for finalization-aware travel inserts.
+    /// `None` means the caller should fall back to whatever resolution path it owns.
+    fn travel_feedrate_mm_per_min(&self) -> Option<f32> {
+        None
+    }
 }
 
 /// Trait for GCode serialization (host-built-in).
@@ -172,8 +178,9 @@ pub fn execute_postpass(
     // This adjusts travel_moves to route through Skirt/Brim and WipeTower
     // geometry without modifying ordered_entities.
     let mut reconciled_layers: Vec<LayerCollectionIR> = layer_irs.to_vec();
+    let travel_f = emitter.travel_feedrate_mm_per_min();
     for layer in &mut reconciled_layers {
-        crate::gcode_emit::reconcile_finalization_travel(layer);
+        crate::gcode_emit::reconcile_finalization_travel(layer, travel_f);
     }
 
     // Step 1b: Emit initial GCodeIR from (reconciled) layers

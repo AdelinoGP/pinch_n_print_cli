@@ -117,12 +117,75 @@ pub enum ConfigValue {
 }
 
 /// Full configuration schema for a module.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FullConfigSchema {
     /// Field schemas keyed by field name.
     pub fields: BTreeMap<String, ConfigFieldSchema>,
     /// Cross-field validation rules.
     pub cross_validate: Vec<CrossValidateRule>,
+}
+
+impl Default for FullConfigSchema {
+    fn default() -> Self {
+        let mut fields = BTreeMap::new();
+        let speed_keys = [
+            ("outer_wall_speed", 60.0),
+            ("inner_wall_speed", 60.0),
+            ("thin_wall_speed", 30.0),
+            ("top_surface_speed", 100.0),
+            ("bottom_surface_speed", 100.0),
+            ("sparse_infill_speed", 100.0),
+            ("bridge_speed", 25.0),
+            ("internal_bridge_speed", 37.5),
+            ("support_speed", 80.0),
+            ("support_interface_speed", 80.0),
+            ("gap_infill_speed", 30.0),
+            ("ironing_speed", 20.0),
+            ("skirt_speed", 50.0),
+            ("wipe_tower_speed", 90.0),
+            ("prime_tower_speed", 90.0),
+            ("travel_speed", 120.0),
+            ("travel_speed_z", 0.0),
+            ("initial_layer_speed", 30.0),
+            ("initial_layer_infill_speed", 60.0),
+            ("initial_layer_travel_speed", 120.0),
+            ("wipe_speed", 96.0),
+            ("overhang_1_4_speed", 0.0),
+            ("overhang_2_4_speed", 0.0),
+            ("overhang_3_4_speed", 0.0),
+            ("overhang_4_4_speed", 0.0),
+            ("filament_ironing_speed", 0.0),
+        ];
+
+        for (key, default_val) in speed_keys {
+            fields.insert(
+                key.to_string(),
+                ConfigFieldSchema {
+                    key: key.to_string(),
+                    field_type: ConfigFieldType::Float,
+                    default: Some(ConfigValue::Float(default_val)),
+                    display: None,
+                    description: None,
+                    group: Some("Speed".to_string()),
+                    unit: ConfigUnit::MillimetersPerSecond,
+                    advanced: false,
+                    min: Some(0.0),
+                    max: None,
+                    step: None,
+                    max_length: None,
+                    enum_values: None,
+                    min_list_length: None,
+                    max_list_length: None,
+                    validate: None,
+                },
+            );
+        }
+
+        Self {
+            fields,
+            cross_validate: Vec::new(),
+        }
+    }
 }
 
 /// Error returned when configuration validation fails.

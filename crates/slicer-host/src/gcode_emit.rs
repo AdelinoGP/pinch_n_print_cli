@@ -32,6 +32,96 @@ use slicer_ir::{
 
 use crate::{Blackboard, GCodeEmitter, GCodeSerializer, PostpassError};
 
+/// Feedrate configuration holding mm/s speed values.
+#[derive(Debug, Clone)]
+pub struct FeedrateConfig {
+    /// Speed for outer walls.
+    pub outer_wall_speed: f32,
+    /// Speed for inner walls.
+    pub inner_wall_speed: f32,
+    /// Speed for thin walls.
+    pub thin_wall_speed: f32,
+    /// Speed for top solid infill.
+    pub top_surface_speed: f32,
+    /// Speed for bottom solid infill.
+    pub bottom_surface_speed: f32,
+    /// Speed for sparse infill.
+    pub sparse_infill_speed: f32,
+    /// Speed for bridging.
+    pub bridge_speed: f32,
+    /// Speed for internal bridging.
+    pub internal_bridge_speed: f32,
+    /// Speed for support material.
+    pub support_speed: f32,
+    /// Speed for support interface.
+    pub support_interface_speed: f32,
+    /// Speed for gap infill.
+    pub gap_infill_speed: f32,
+    /// Speed for ironing.
+    pub ironing_speed: f32,
+    /// Speed for skirt/brim.
+    pub skirt_speed: f32,
+    /// Speed for wipe tower.
+    pub wipe_tower_speed: f32,
+    /// Speed for prime tower.
+    pub prime_tower_speed: f32,
+    /// Speed for non-printing travel moves.
+    pub travel_speed: f32,
+    /// Speed for Z-hop moves (if different from XY).
+    pub travel_speed_z: f32,
+    /// Base speed for initial layer.
+    pub initial_layer_speed: f32,
+    /// Infill speed for initial layer.
+    pub initial_layer_infill_speed: f32,
+    /// Travel speed for initial layer.
+    pub initial_layer_travel_speed: f32,
+    /// Speed for wipe moves.
+    pub wipe_speed: f32,
+    /// Speed for overhang 1/4.
+    pub overhang_1_4_speed: f32,
+    /// Speed for overhang 2/4.
+    pub overhang_2_4_speed: f32,
+    /// Speed for overhang 3/4.
+    pub overhang_3_4_speed: f32,
+    /// Speed for overhang 4/4.
+    pub overhang_4_4_speed: f32,
+    /// Speed for filament ironing override.
+    pub filament_ironing_speed: f32,
+}
+
+impl Default for FeedrateConfig {
+    fn default() -> Self {
+        Self {
+            outer_wall_speed: 60.0,
+            inner_wall_speed: 60.0,
+            thin_wall_speed: 30.0,
+            top_surface_speed: 100.0,
+            bottom_surface_speed: 100.0,
+            sparse_infill_speed: 100.0,
+            bridge_speed: 25.0,
+            internal_bridge_speed: 37.5,
+            support_speed: 80.0,
+            support_interface_speed: 80.0,
+            gap_infill_speed: 30.0,
+            ironing_speed: 20.0,
+            skirt_speed: 50.0,
+            wipe_tower_speed: 90.0,
+            prime_tower_speed: 90.0,
+            travel_speed: 120.0,
+            travel_speed_z: 0.0,
+            initial_layer_speed: 30.0,
+            initial_layer_infill_speed: 60.0,
+            initial_layer_travel_speed: 120.0,
+            wipe_speed: 96.0,
+            overhang_1_4_speed: 0.0,
+            overhang_2_4_speed: 0.0,
+            overhang_3_4_speed: 0.0,
+            overhang_4_4_speed: 0.0,
+            filament_ironing_speed: 0.0,
+        }
+    }
+}
+
 /// Default GCode emitter (host-built-in).
 ///
 /// Converts `LayerCollectionIR` to `GCodeIR` by walking layers in Z-sorted order,
@@ -39,12 +129,62 @@ use crate::{Blackboard, GCodeEmitter, GCodeSerializer, PostpassError};
 pub struct DefaultGCodeEmitter {
     /// Slicer version string to include in metadata.
     slicer_version: String,
+    /// Feedrate configuration.
+    feedrate_config: FeedrateConfig,
 }
 
 impl DefaultGCodeEmitter {
     /// Creates a new `DefaultGCodeEmitter` with the given slicer version.
     pub fn new(slicer_version: String) -> Self {
-        Self { slicer_version }
+        Self {
+            slicer_version,
+            feedrate_config: FeedrateConfig::default(),
+        }
+    }
+
+    /// Creates a new `DefaultGCodeEmitter` with explicit configuration.
+    pub fn new_with_config(slicer_version: String, feedrate_config: FeedrateConfig) -> Self {
+        Self {
+            slicer_version,
+            feedrate_config,
+        }
+    }
+
+    /// Resolves the feedrate (in mm/min) for a given extrusion role and speed factor multiplier.
+    pub fn resolve_feedrate(&self, role: &ExtrusionRole, speed_factor: f32) -> Option<f32> {
+        let base_speed = match role {
+            ExtrusionRole::OuterWall => self.feedrate_config.outer_wall_speed,
+            ExtrusionRole::InnerWall => self.feedrate_config.inner_wall_speed,
+            ExtrusionRole::ThinWall => self.feedrate_config.thin_wall_speed,
+            ExtrusionRole::TopSolidInfill => self.feedrate_config.top_surface_speed,
+            ExtrusionRole::BottomSolidInfill => self.feedrate_config.bottom_surface_speed,
+            ExtrusionRole::SparseInfill => self.feedrate_config.sparse_infill_speed,
+            ExtrusionRole::BridgeInfill => self.feedrate_config.bridge_speed,
+            ExtrusionRole::SupportMaterial => self.feedrate_config.support_speed,
+            ExtrusionRole::SupportInterface => self.feedrate_config.support_interface_speed,
+            ExtrusionRole::Skirt => self.feedrate_config.skirt_speed,
+            ExtrusionRole::WipeTower => self.feedrate_config.wipe_tower_speed,
+            ExtrusionRole::PrimeTower => self.feedrate_config.prime_tower_speed,
+            ExtrusionRole::Ironing => {
+                if self.feedrate_config.filament_ironing_speed > 0.0 {
+                    self.feedrate_config.filament_ironing_speed
+                } else {
+                    self.feedrate_config.ironing_speed
+                }
+            }
+            ExtrusionRole::Custom(s) => match s.as_str() {
+                "Travel" => self.feedrate_config.travel_speed,
+                "Wipe" => self.feedrate_config.wipe_speed,
+                "GapInfill" => self.feedrate_config.gap_infill_speed,
+                "InternalBridge" => self.feedrate_config.internal_bridge_speed,
+                _ => self.feedrate_config.outer_wall_speed,
+            },
+        };
+
+        let clamped_factor = speed_factor.clamp(0.05, 5.0);
+        let f_value = base_speed * 60.0 * clamped_factor;
+        let rounded = (f_value * 1000.0).round() / 1000.0;
+        Some(rounded)
     }
 
     /// Returns the slicer version string.
@@ -245,7 +385,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         } else {
                             None
                         },
-                        f: None, // Feed rate could be calculated, but tests don't require it
+                        f: self.resolve_feedrate(role, entity.path.speed_factor),
                         role: role.clone(),
                     });
 
@@ -300,7 +440,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         y: None,
                         z: Some(hop_z),
                         e: None,
-                        f: None,
+                        f: self.resolve_feedrate(&ExtrusionRole::Custom("Travel".to_string()), 1.0),
                         role: ExtrusionRole::Custom("Travel".to_string()),
                     });
                 }
@@ -316,7 +456,12 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                             y: tm.y,
                             z: None,
                             e: None,
-                            f: tm.f,
+                            f: tm.f.or_else(|| {
+                                self.resolve_feedrate(
+                                    &ExtrusionRole::Custom("Travel".to_string()),
+                                    1.0,
+                                )
+                            }),
                             role: ExtrusionRole::Custom("Travel".to_string()),
                         });
                     }
@@ -327,7 +472,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         y: None,
                         z: Some(layer_z),
                         e: None,
-                        f: None,
+                        f: self.resolve_feedrate(&ExtrusionRole::Custom("Travel".to_string()), 1.0),
                         role: ExtrusionRole::Custom("Travel".to_string()),
                     });
                     let _ = zh;
@@ -389,6 +534,10 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 slicer_version: self.slicer_version.clone(),
             },
         })
+    }
+
+    fn travel_feedrate_mm_per_min(&self) -> Option<f32> {
+        Some(self.feedrate_config.travel_speed * 60.0)
     }
 }
 
@@ -520,7 +669,10 @@ impl GCodeSerializer for DefaultGCodeSerializer {
 /// - `ordered_entities` is never modified.
 /// - Only `travel_moves` is mutated (new entries appended).
 /// - If no Skirt or WipeTower entities exist, the layer is unchanged (no-op).
-pub fn reconcile_finalization_travel(layer: &mut LayerCollectionIR) {
+pub fn reconcile_finalization_travel(
+    layer: &mut LayerCollectionIR,
+    travel_f_mm_per_min: Option<f32>,
+) {
     use slicer_ir::TravelMove;
 
     let entities = &layer.ordered_entities;
@@ -567,7 +719,7 @@ pub fn reconcile_finalization_travel(layer: &mut LayerCollectionIR) {
                     x: Some(model_start.x),
                     y: Some(model_start.y),
                     z: None,
-                    f: None,
+                    f: travel_f_mm_per_min,
                 });
             }
         }
@@ -584,7 +736,7 @@ pub fn reconcile_finalization_travel(layer: &mut LayerCollectionIR) {
                     x: Some(wipe_start.x),
                     y: Some(wipe_start.y),
                     z: None,
-                    f: None,
+                    f: travel_f_mm_per_min,
                 });
             }
         }
