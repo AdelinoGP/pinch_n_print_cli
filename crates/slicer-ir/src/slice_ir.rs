@@ -5,7 +5,7 @@
 //! - units → mm: `mm = units / 10_000.0`.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 // ============================================================================
 // ID Types
@@ -170,7 +170,7 @@ pub struct ObjectConfig {
 }
 
 /// Paint semantic types
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum PaintSemantic {
     /// Which tool/filament to use for this surface region
     Material,
@@ -1030,6 +1030,8 @@ pub struct RegionPlan {
     pub config: ResolvedConfig,
     /// Module invocations per stage
     pub stage_modules: HashMap<StageId, Vec<ModuleInvocation>>,
+    /// Per-paint-semantic config overrides (empty when no paint overrides apply)
+    pub paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig>,
 }
 
 /// Region map IR
