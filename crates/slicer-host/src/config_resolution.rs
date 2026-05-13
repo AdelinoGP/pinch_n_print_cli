@@ -13,7 +13,106 @@
 
 use std::collections::{BTreeMap, HashMap};
 
-use slicer_ir::{ConfigKey, ConfigValue, ResolvedConfig};
+use slicer_ir::{ConfigKey, ConfigValue, PaintSemantic, ResolvedConfig};
+
+/// Diagnostic returned when a `paint_config:<semantic>:<key>` entry references
+/// a semantic not present in the model. Non-fatal; forwarded to the progress
+/// event sink by the host caller.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownSemanticWarning {
+    /// The unrecognised semantic name from the config key.
+    pub semantic_name: String,
+    /// The config sub-key (after the semantic part).
+    pub key: String,
+}
+
+impl UnknownSemanticWarning {
+    /// Returns `true` if `pattern` is contained in either `semantic_name` or `key`.
+    pub fn contains(&self, pattern: &str) -> bool {
+        self.semantic_name.contains(pattern) || self.key.contains(pattern)
+    }
+}
+
+/// Map a [`PaintSemantic`] to the snake_case string used in the
+/// `paint_config:<semantic>:<key>` namespace.
+///
+/// Built-in variants serialize as `material`/`fuzzy_skin`/`support_enforcer`/
+/// `support_blocker`; `Custom(s)` serializes as the raw `s`.
+pub fn paint_semantic_namespace_key(s: &PaintSemantic) -> String {
+    match s {
+        PaintSemantic::Material => "material".to_string(),
+        PaintSemantic::FuzzySkin => "fuzzy_skin".to_string(),
+        PaintSemantic::SupportEnforcer => "support_enforcer".to_string(),
+        PaintSemantic::SupportBlocker => "support_blocker".to_string(),
+        PaintSemantic::Custom(name) => name.clone(),
+    }
+}
+
+/// Resolve `paint_config:<semantic>:<key>` overlays into per-semantic configs.
+///
+/// Mirrors [`resolve_per_object_configs`]: starts each per-semantic config from
+/// `global` and applies the overlay from keys matching the
+/// `paint_config:<namespace_key>:` prefix.
+///
+/// Returns `(map, warnings)`:
+/// - `map` keyed by [`PaintSemantic`] from `present_semantics` that had at
+///   least one matching override key.
+/// - `warnings` for `paint_config:NAME:<key>` entries whose NAME is not in
+///   `present_semantics`. The call does NOT fail; the caller forwards these.
+pub fn resolve_per_paint_semantic_configs(
+    global: &ResolvedConfig,
+    source: &HashMap<ConfigKey, ConfigValue>,
+    present_semantics: &[PaintSemantic],
+) -> Result<
+    (
+        BTreeMap<PaintSemantic, ResolvedConfig>,
+        Vec<UnknownSemanticWarning>,
+    ),
+    ConfigResolutionError,
+> {
+    let mut result: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
+    let mut warnings: Vec<UnknownSemanticWarning> = Vec::new();
+
+    // Collect all paint_config: keys from the source.
+    const PREFIX: &str = "paint_config:";
+    for (key, value) in source {
+        if let Some(rest) = key.strip_prefix(PREFIX) {
+            // rest is "<semantic>:<sub_key>"
+            if let Some(colon_pos) = rest.find(':') {
+                let semantic_name = &rest[..colon_pos];
+                let sub_key = &rest[colon_pos + 1..];
+
+                // Try to match semantic_name against a present semantic.
+                let matched = present_semantics
+                    .iter()
+                    .find(|s| paint_semantic_namespace_key(s) == semantic_name);
+
+                match matched {
+                    Some(semantic) => {
+                        // Clone semantic for map key use.
+                        let sem_key = semantic.clone();
+                        let entry = result
+                            .entry(sem_key.clone())
+                            .or_insert_with(|| global.clone());
+                        // Apply this single override key to the entry.
+                        let single: HashMap<String, ConfigValue> =
+                            [(sub_key.to_string(), value.clone())].into();
+                        let updated = apply_overlay(entry, &single)?;
+                        *entry = updated;
+                    }
+                    None => {
+                        warnings.push(UnknownSemanticWarning {
+                            semantic_name: semantic_name.to_string(),
+                            key: sub_key.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok((result, warnings))
+}
 
 /// Errors produced during config resolution.
 #[derive(Debug, Clone, PartialEq)]
@@ -82,6 +181,10 @@ pub fn resolve_global_config(
     for (key, value) in source {
         // Skip per-object overlay keys — handled by resolve_per_object_configs.
         if key.starts_with("object_config:") {
+            continue;
+        }
+        // Skip per-paint-semantic overlay keys — handled by resolve_per_paint_semantic_configs.
+        if key.starts_with("paint_config:") {
             continue;
         }
         // Skip host-injected object_height keys.
