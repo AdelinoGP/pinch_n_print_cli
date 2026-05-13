@@ -145,6 +145,27 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 text: format!(";HEIGHT:{}", format_coord(height_delta)),
             });
 
+            // Cross-layer tool reset: path-optimization-default only records
+            // intra-layer tool transitions, so layer N+1's first cluster
+            // inherits whatever tool layer N ended on. Without this reset,
+            // unpainted (T0) body extrusions are silently emitted under the
+            // last painted tool of the previous layer. By host convention,
+            // each ordered entity's `region_key.region_id` is its required
+            // tool index (see layer_executor::assemble_ordered_entities and
+            // path-optimization-default::tool_index_of). Emit a tool change
+            // before the first entity whenever it differs from `current_tool`.
+            if let Some(first_entity) = layer.ordered_entities.first() {
+                let required_tool = first_entity.region_key.region_id as u32;
+                if required_tool != current_tool {
+                    commands.push(GCodeCommand::ToolChange {
+                        after_entity_index: u32::MAX,
+                        from: current_tool,
+                        to: required_tool,
+                    });
+                    current_tool = required_tool;
+                }
+            }
+
             // Build lookup maps for tool_changes and z_hops by after_entity_index
             let tool_changes: HashMap<u32, &_> = layer
                 .tool_changes

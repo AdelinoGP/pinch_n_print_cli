@@ -124,7 +124,12 @@ fn region_key_fixture() -> RegionKey {
     RegionKey {
         global_layer_index: 0,
         object_id: ObjectId::from("test-object"),
-        region_id: 1u64,
+        // region_id == 0 represents the default tool / unpainted region by
+        // host convention (layer_executor::assemble_ordered_entities and
+        // path-optimization-default::tool_index_of). A nonzero placeholder
+        // would trigger the cross-layer tool reset in gcode_emit at the
+        // very first entity, inflating command counts in fixture-based tests.
+        region_id: 0u64,
     }
 }
 
@@ -1446,5 +1451,139 @@ fn gcode_emit_dispatches_per_command_retract_mode() {
         total_retractish, 2,
         "expected exactly 2 retract-related lines, got {}: {:?}",
         total_retractish, lines
+    );
+}
+
+// ============================================================================
+// Cross-layer tool reset: T0 default must be re-emitted when layer N+1 starts
+// with the default tool after layer N ended on a painted tool.
+// ============================================================================
+
+fn entity_with_region_id(id: u64) -> PrintEntity {
+    PrintEntity {
+        entity_id: 1,
+        path: ExtrusionPath3D {
+            points: vec![point3_with_width(0.0, 0.0, 0.0)],
+            role: ExtrusionRole::OuterWall,
+            speed_factor: 1.0,
+        },
+        role: ExtrusionRole::OuterWall,
+        region_key: RegionKey {
+            global_layer_index: 0,
+            object_id: ObjectId::from("test-object"),
+            region_id: id,
+        },
+        topo_order: 0,
+    }
+}
+
+#[test]
+fn layer_boundary_emits_t0_when_returning_to_default_tool() {
+    // Layer 0: ends on tool 2 (painted region). Layer 1: first entity is
+    // tool 0 (unpainted body). Without the cross-layer reset, layer 1
+    // silently inherits T2 and the body is extruded with the wrong filament.
+    let layer0 = LayerCollectionIR {
+        schema_version: semver_fixture(),
+        global_layer_index: 0,
+        z: 0.2,
+        ordered_entities: vec![entity_with_region_id(2)],
+        tool_changes: vec![],
+        z_hops: vec![],
+        annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
+    };
+    let layer1 = LayerCollectionIR {
+        schema_version: semver_fixture(),
+        global_layer_index: 1,
+        z: 0.4,
+        ordered_entities: vec![entity_with_region_id(0)],
+        tool_changes: vec![],
+        z_hops: vec![],
+        annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
+    };
+
+    let blackboard = blackboard_fixture();
+    let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
+    let result = emitter
+        .emit_gcode(&[layer0, layer1], &blackboard)
+        .expect("emit_gcode");
+
+    let tool_changes: Vec<(u32, u32)> = result
+        .commands
+        .iter()
+        .filter_map(|cmd| match cmd {
+            GCodeCommand::ToolChange { from, to, .. } => Some((*from, *to)),
+            _ => None,
+        })
+        .collect();
+    // Layer 0 starts on T0 (initial), switches implicitly to T2 (no entry
+    // before first entity needed because current_tool=0 already, but the
+    // first entity's region_id=2 triggers our cross-layer reset which on
+    // layer 0 is technically the first-entity reset). Layer 1's first
+    // entity is T0, so a 2→0 transition must appear.
+    assert!(
+        tool_changes.contains(&(0, 2)),
+        "expected initial 0→2 transition at layer 0 start, got {:?}",
+        tool_changes,
+    );
+    assert!(
+        tool_changes.contains(&(2, 0)),
+        "expected 2→0 transition at layer-1 boundary so the unpainted body \
+         uses the default extruder, got {:?}",
+        tool_changes,
+    );
+}
+
+#[test]
+fn layer_boundary_no_redundant_tool_change_when_tool_unchanged() {
+    // Both layers start on tool 1: no cross-layer ToolChange should appear,
+    // even though current_tool initially defaults to 0 (the very first
+    // layer's first entity legitimately triggers 0→1; the second layer must
+    // NOT trigger 1→1).
+    let layer0 = LayerCollectionIR {
+        schema_version: semver_fixture(),
+        global_layer_index: 0,
+        z: 0.2,
+        ordered_entities: vec![entity_with_region_id(1)],
+        tool_changes: vec![],
+        z_hops: vec![],
+        annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
+    };
+    let layer1 = LayerCollectionIR {
+        schema_version: semver_fixture(),
+        global_layer_index: 1,
+        z: 0.4,
+        ordered_entities: vec![entity_with_region_id(1)],
+        tool_changes: vec![],
+        z_hops: vec![],
+        annotations: vec![],
+        retracts: vec![],
+        travel_moves: vec![],
+    };
+
+    let blackboard = blackboard_fixture();
+    let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
+    let result = emitter
+        .emit_gcode(&[layer0, layer1], &blackboard)
+        .expect("emit_gcode");
+
+    let tool_changes: Vec<(u32, u32)> = result
+        .commands
+        .iter()
+        .filter_map(|cmd| match cmd {
+            GCodeCommand::ToolChange { from, to, .. } => Some((*from, *to)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        tool_changes,
+        vec![(0, 1)],
+        "only the layer-0 initial transition 0→1 should fire; layer 1 is \
+         already on T1, so no redundant tool change should be emitted",
     );
 }
