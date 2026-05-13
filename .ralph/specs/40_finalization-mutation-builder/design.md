@@ -143,7 +143,7 @@ Per Step 6: cargo-test FACT for the workspace gate; one delegated insertion of t
 
 ## Migration Obligations Inherited from Packet 39
 
-Packet `39_stable-entity-ids` made `entity_id: u64` a mandatory field on `PrintEntity`. Two core modules construct `PrintEntity` directly (bypassing `FinalizationOutputBuilder::push_entity_to_layer`) and were updated as out-of-scope deviations: each instantiates a local `slicer_ir::LayerEntityIdGen` and stamps IDs itself. These provisional inserts (logged retroactively in `docs/14_deviation_audit_history.md` DEV-039) are not intended to be permanent.
+Packet `39_stable-entity-ids` made `entity_id: u64` a mandatory field on `PrintEntity`. Two core modules construct `PrintEntity` directly (bypassing `FinalizationOutputBuilder::push_entity_to_layer`) and were updated as out-of-scope deviations: each instantiates a local `slicer_ir::LayerEntityIdGen` and stamps IDs itself. These provisional inserts (logged retroactively in `docs/14_deviation_audit_history.md` DEV-047; originally registered as DEV-039 and renumbered 2026-05-13 to resolve a collision with the canonical DEV-039 packet-35 bbox-fallback entry) are not intended to be permanent.
 
 - `modules/core-modules/wipe-tower/src/lib.rs`
 - `modules/core-modules/skirt-brim/src/lib.rs`
@@ -154,7 +154,7 @@ When this packet lands `push_entity_with_priority`, the two sites above should b
 2. `entity_id`s are issued by the host-side merge sequence (using the per-layer `LayerEntityIdGen` already owned by `dispatch.rs` post-Packet-39).
 3. The direct `PrintEntity { ... }` struct literals are replaced with builder method calls (`push_entity_to_layer` for skirt-brim's prepend-priority-0 semantics; `push_entity_with_priority` for wipe-tower if it needs a non-default priority).
 
-This is a **Step 5+ obligation** — it cannot start before Step 3 lands the builder API. Track as part of Step 5 ("Top-surface-ironing migration") or a new Step 5b. If migrating the two sites threatens regression (skirt-brim is a documented canary), defer to a follow-up packet and leave a TODO comment in the module sources referencing DEV-039.
+This is a **Step 5+ obligation** — it cannot start before Step 3 lands the builder API. Track as part of Step 5 ("Top-surface-ironing migration") or a new Step 5b. If migrating the two sites threatens regression (skirt-brim is a documented canary), defer to a follow-up packet and leave a TODO comment in the module sources referencing DEV-047 (originally DEV-039; see renumbering note above).
 
 - **Producer-order vs priority-order mismatch**. If any producer in `layer_executor.rs` emits in an order that does NOT match `default_priority` ordering, the post-merge stable-sort will reorder them, changing G-code output. **Mitigation**: Step 1's `default_priority_orders_correctly` test explicitly validates the table matches producer-emit order. Step 4's `cargo test -p slicer-host --test benchy_end_to_end_tdd` regression catches any divergence (existing assertions stay green).
 - **Closure storage in `MergeOp`**. `Box<dyn FnOnce(...)>` is the natural shape for `modify_entity` and `sort_layer_by`, but FnOnce is not object-safe in stable Rust without workarounds (`Box<dyn FnOnce(...) + Send>` works on stable; otherwise `FnMut` or an enum dispatch). Step 1 chooses based on stable Rust's current capabilities and the type's `Send`/`Sync` requirements (PostPass is sequential, so `Send`/`Sync` are not required, but library hygiene may want them).

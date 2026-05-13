@@ -92,7 +92,7 @@ impl SkirtBrim {
             let skirt_pairs =
                 self.generate_skirt_entities(&bbox, layer.z, layer.global_layer_index);
             // Prepend skirt entities (entity_id=0 sentinel; process() is test-only)
-            // TODO(packet-41/DEV-039): retire this legacy `process()` path; live
+            // TODO(packet-41/DEV-047): retire this legacy `process()` path; live
             // path is `run_finalization` which routes through the builder API.
             let mut new_entities: Vec<PrintEntity> = skirt_pairs
                 .into_iter()
@@ -117,7 +117,7 @@ impl SkirtBrim {
             let global_layer_index = layers[0].global_layer_index;
             let brim_pairs = self.generate_brim_entities(&bbox, z, global_layer_index);
             // Prepend brim entities (before skirt which is already prepended)
-            // TODO(packet-41/DEV-039): retire this legacy `process()` path; live
+            // TODO(packet-41/DEV-047): retire this legacy `process()` path; live
             // path is `run_finalization` which routes through the builder API.
             let mut new_entities: Vec<PrintEntity> = brim_pairs
                 .into_iter()

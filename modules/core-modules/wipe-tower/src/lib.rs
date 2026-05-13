@@ -112,7 +112,7 @@ impl WipeTower {
                 let pairs = self.generate_purge_paths(z, layer_height, global_layer_index, tc);
                 for (path, region_key) in pairs {
                     let role = path.role.clone();
-                    // TODO(packet-41/DEV-039): retire this legacy `process()` path;
+                    // TODO(packet-41/DEV-047): retire this legacy `process()` path;
                     // live path is `run_finalization` which routes through
                     // `push_entity_with_priority(..., WipeTower.default_priority())`.
                     layers[layer_idx].ordered_entities.push(PrintEntity {

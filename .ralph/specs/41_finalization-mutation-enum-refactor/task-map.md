@@ -52,7 +52,7 @@ None required. If parity is challenged for `EntityMutation::SetSpeedFactor` sema
 
 ## Migration Obligations Inherited
 
-None. Packet 40 follow-up (2026-05-07 session) closed the DEV-039 carry-forward by migrating `skirt-brim` and `wipe-tower` to the builder API. No further module-side migration owed by this packet.
+None. Packet 40 follow-up (2026-05-07 session) closed the DEV-047 carry-forward (renumbered 2026-05-13 from DEV-039; see `docs/DEVIATION_LOG.md` DEV-047 for renumbering rationale) by migrating `skirt-brim` and `wipe-tower` to the builder API. No further module-side migration owed by this packet.
 
 ## Notes on Step Sequencing
 
