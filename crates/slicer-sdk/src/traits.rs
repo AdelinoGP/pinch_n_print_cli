@@ -25,8 +25,8 @@ use crate::prepass_types::{
 };
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
-    ConfigView, ExtrusionPath3D, LayerCollectionIR, PaintRegionIR, PaintSemantic, PrintEntity,
-    RegionKey, SemVer, SemanticRegion, SupportPlanIR,
+    ConfigView, ExtrusionPath3D, LayerAnnotation, LayerAnnotationKind, LayerCollectionIR,
+    PaintRegionIR, PaintSemantic, PrintEntity, RegionKey, SemVer, SemanticRegion, SupportPlanIR,
 };
 
 /// Paint region layer view for accessing painted regions.
@@ -717,6 +717,8 @@ pub struct FinalizationOutputBuilder {
     priority_pushes: Vec<PriorityPush>,
     /// Deferred operations applied by `apply_to`.
     merge_ops: Vec<MergeOp>,
+    /// Per-layer annotations (raw GCode / comments) to splice into the emitted output.
+    annotations: Vec<(u32, LayerAnnotation)>,
 }
 
 impl FinalizationOutputBuilder {
@@ -727,6 +729,7 @@ impl FinalizationOutputBuilder {
             synthetic_layers: Vec::new(),
             priority_pushes: Vec::new(),
             merge_ops: Vec::new(),
+            annotations: Vec::new(),
         }
     }
 
@@ -830,6 +833,35 @@ impl FinalizationOutputBuilder {
         Ok(())
     }
 
+    /// Push a layer annotation (comment or raw GCode line).
+    pub fn push_annotation(
+        &mut self,
+        layer_index: u32,
+        annotation: LayerAnnotation,
+    ) -> Result<(), String> {
+        self.annotations.push((layer_index, annotation));
+        Ok(())
+    }
+
+    /// Push a fan speed command as a raw GCode annotation.
+    ///
+    /// `value` 0 emits `M107`; any other value emits `M106 S{value}`.
+    pub fn push_fan_speed(&mut self, layer_index: u32, value: u8) -> Result<(), String> {
+        let text = if value == 0 {
+            "M107".to_string()
+        } else {
+            format!("M106 S{}", value)
+        };
+        self.annotations.push((
+            layer_index,
+            LayerAnnotation {
+                after_entity_index: 0,
+                kind: LayerAnnotationKind::Raw(text),
+            },
+        ));
+        Ok(())
+    }
+
     /// Get all entity pushes (for testing / wit_host backcompat).
     ///
     /// Returns ALL pushes regardless of which recording method was used
@@ -845,6 +877,12 @@ impl FinalizationOutputBuilder {
     #[doc(hidden)]
     pub fn synthetic_layers(&self) -> &[(f32, Vec<ExtrusionPath3D>)] {
         &self.synthetic_layers
+    }
+
+    /// Get all annotations (for testing).
+    #[doc(hidden)]
+    pub fn annotations(&self) -> &[(u32, LayerAnnotation)] {
+        &self.annotations
     }
 
     /// Get all priority-aware pushes as flat tuples `(layer_index, path, region_key, priority)`.
@@ -1126,6 +1164,16 @@ impl FinalizationOutputBuilder {
                     };
                     layers.insert(insert_pos, new_layer);
                 }
+            }
+        }
+
+        // Merge guest-emitted annotations into target layers.
+        for (layer_index, annotation) in &self.annotations {
+            if let Some(layer) = layers
+                .iter_mut()
+                .find(|l| l.global_layer_index == *layer_index)
+            {
+                layer.annotations.push(annotation.clone());
             }
         }
 
