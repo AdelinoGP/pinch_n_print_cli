@@ -1,13 +1,16 @@
 //! PrePass execution contracts.
 
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::sync::Arc;
 
 use slicer_ir::{
-    LayerPlanIR, MeshSegmentationIR, ModuleId, PaintRegionIR, RegionMapIR, SeamPlanIR, StageId,
-    SupportGeometryIR, SupportPlanIR, SurfaceClassificationIR,
+    ConfigKey, ConfigValue, LayerPlanIR, MeshSegmentationIR, ModuleId, PaintRegionIR,
+    PaintSemantic, RegionMapIR, ResolvedConfig, SeamPlanIR, StageId, SupportGeometryIR,
+    SupportPlanIR, SurfaceClassificationIR,
 };
 
+use crate::config_resolution::resolve_per_paint_semantic_configs;
 use crate::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
 use crate::region_mapping::{commit_region_mapping_builtin, RegionMappingBuiltinError};
 use crate::support_geometry::SupportGeometryBuiltinError;
@@ -289,15 +292,16 @@ pub fn execute_prepass_with_builtins(
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
-    let empty_resolved: std::collections::BTreeMap<String, slicer_ir::ResolvedConfig> =
-        std::collections::BTreeMap::new();
-    let default_resolved = slicer_ir::ResolvedConfig::default();
+    let empty_resolved: BTreeMap<String, ResolvedConfig> = BTreeMap::new();
+    let default_resolved = ResolvedConfig::default();
+    let empty_raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
     execute_prepass_with_builtins_configured(
         plan,
         blackboard,
         runner,
         &empty_resolved,
         &default_resolved,
+        &empty_raw,
     )
 }
 
@@ -310,8 +314,9 @@ pub(crate) fn execute_prepass_with_builtins_configured(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
-    resolved_configs: &std::collections::BTreeMap<String, slicer_ir::ResolvedConfig>,
-    default_resolved_config: &slicer_ir::ResolvedConfig,
+    resolved_configs: &BTreeMap<String, ResolvedConfig>,
+    default_resolved_config: &ResolvedConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     if blackboard.surface_classification().is_none() {
         let ir = execute_mesh_analysis(blackboard.mesh().as_ref())
@@ -332,6 +337,54 @@ pub(crate) fn execute_prepass_with_builtins_configured(
         commit_support_geometry_builtin(blackboard)
             .map_err(|source| PrepassExecutionError::SupportGeometry { source })?;
     }
+    /// Gather paint semantics from the blackboard and resolve per-semantic
+    /// config overrides from the raw config source.  Called immediately
+    /// before each `commit_region_mapping_builtin` invocation so that any
+    /// `PaintRegionIR` committed during phase-1 user-prepass stages is
+    /// visible (packet 51 — AC-4 ordering fix).
+    fn build_paint_semantic_configs(
+        blackboard: &Blackboard,
+        default_resolved_config: &ResolvedConfig,
+        raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    ) -> BTreeMap<PaintSemantic, ResolvedConfig> {
+        let Some(paint_ir) = blackboard.paint_regions() else {
+            return BTreeMap::new();
+        };
+        let present_semantics: Vec<PaintSemantic> = {
+            let mut seen: std::collections::BTreeSet<PaintSemantic> =
+                std::collections::BTreeSet::new();
+            for layer_map in paint_ir.per_layer.values() {
+                for sem in layer_map.semantic_regions.keys() {
+                    seen.insert(sem.clone());
+                }
+            }
+            seen.into_iter().collect()
+        };
+        match resolve_per_paint_semantic_configs(
+            default_resolved_config,
+            raw_config_source,
+            &present_semantics,
+        ) {
+            Ok((map, warnings)) => {
+                for w in warnings {
+                    log::warn!(
+                        "paint_config: unknown semantic '{}' in config key '{}' — ignored",
+                        w.semantic_name,
+                        w.key,
+                    );
+                }
+                map
+            }
+            Err(e) => {
+                log::warn!(
+                    "paint_config: resolution failed ({}), paint overrides skipped",
+                    e,
+                );
+                BTreeMap::new()
+            }
+        }
+    }
+
     // RegionMapping needs LayerPlanIR to exist. Two cases:
     // 1. LayerPlanIR exists before execute_prepass → run RegionMapping now (phase-1).
     // 2. LayerPlanIR does NOT exist → run execute_prepass first so user
@@ -339,8 +392,16 @@ pub(crate) fn execute_prepass_with_builtins_configured(
     //    (those requiring RegionMap) run in phase-2 after RegionMapping.
     let layer_plan_existed = blackboard.layer_plan().is_some();
     if layer_plan_existed && blackboard.region_map().is_none() {
-        commit_region_mapping_builtin(plan, blackboard, resolved_configs, default_resolved_config)
-            .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
+        let paint_semantic_configs =
+            build_paint_semantic_configs(blackboard, default_resolved_config, raw_config_source);
+        commit_region_mapping_builtin(
+            plan,
+            blackboard,
+            resolved_configs,
+            default_resolved_config,
+            &paint_semantic_configs,
+        )
+        .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
     }
     // Phase-1: early stages that don't require RegionMap.
     let early_stages: Vec<_> = plan
@@ -360,14 +421,25 @@ pub(crate) fn execute_prepass_with_builtins_configured(
     // support-geometry built-in (needs LayerPlan, no RegionMap required) and
     // then RegionMapping (needs LayerPlan). Both are skipped gracefully when
     // LayerPlan is still absent (e.g. empty module-dir run).
+    // NOTE: paint_semantic_configs is recomputed HERE so that PaintRegionIR
+    // committed by phase-1 user-prepass stages (e.g. PrePass::PaintSegmentation)
+    // is visible to the RegionMapping built-in (packet 51 — AC-4 ordering fix).
     if blackboard.support_geometry().is_none() && blackboard.layer_plan().is_some() {
         use crate::support_geometry::commit_support_geometry_builtin;
         commit_support_geometry_builtin(blackboard)
             .map_err(|source| PrepassExecutionError::SupportGeometry { source })?;
     }
     if blackboard.layer_plan().is_some() && blackboard.region_map().is_none() {
-        commit_region_mapping_builtin(plan, blackboard, resolved_configs, default_resolved_config)
-            .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
+        let paint_semantic_configs =
+            build_paint_semantic_configs(blackboard, default_resolved_config, raw_config_source);
+        commit_region_mapping_builtin(
+            plan,
+            blackboard,
+            resolved_configs,
+            default_resolved_config,
+            &paint_semantic_configs,
+        )
+        .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
     }
     // Phase-2: late stages that require RegionMap.
     let late_stages: Vec<_> = plan

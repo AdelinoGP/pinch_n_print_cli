@@ -446,10 +446,35 @@ impl WasmRuntimeDispatcher {
             };
         store.data_mut().set_held_claims_per_region(held_claims_map);
 
-        // Push config-view resource from the module's frozen config.
+        // Push config-view resource derived from the per-region overlay config.
+        //
+        // Packet 51: the ConfigView handed to each layer-tier module must come
+        // from the already-overlaid `RegionPlan.config` stored in the
+        // `RegionMapIR`, NOT from the module's frozen base `config_view`.  We
+        // pick the first region on this layer as the representative config
+        // (single-object models have exactly one; multi-object models share the
+        // same paint semantic coverage, so any region is equivalent for the
+        // per-call single config handle).  Fall back to the module's frozen
+        // config when no region map or no entry is found.
+        let effective_config_view: slicer_ir::ConfigView = blackboard
+            .region_map()
+            .and_then(|map| {
+                map.entries
+                    .iter()
+                    .find(|(key, _)| key.global_layer_index == layer_index)
+                    .map(|(_, plan)| {
+                        let region_map = resolved_config_to_map(&plan.config);
+                        let declared_keys = module.config_view.keys();
+                        slicer_ir::ConfigView::from_declared(
+                            &region_map,
+                            declared_keys.iter().map(String::as_str),
+                        )
+                    })
+            })
+            .unwrap_or_else(|| module.config_view.as_ref().clone());
         let config_handle = store
             .data_mut()
-            .push_config_view(wit_host::config_view_to_data(&module.config_view))
+            .push_config_view(wit_host::config_view_to_data(&effective_config_view))
             .map_err(|e| DispatchError {
                 module_id: module.module_id.clone(),
                 stage_id: stage_id.clone(),
@@ -1972,9 +1997,16 @@ fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_
     let parse_semantic = |s: &str| -> PaintSemantic {
         match s {
             "material" | "Material" => PaintSemantic::Material,
-            "fuzzy_skin" | "FuzzySkin" => PaintSemantic::FuzzySkin,
-            "support_enforcer" | "SupportEnforcer" => PaintSemantic::SupportEnforcer,
-            "support_blocker" | "SupportBlocker" => PaintSemantic::SupportBlocker,
+            // Accept both underscore (canonical IR) and hyphen (WIT wire format
+            // produced by `paint_semantic_to_string`) so that modules which
+            // echo back the WIT-serialised name are correctly round-tripped.
+            "fuzzy_skin" | "FuzzySkin" | "fuzzy-skin" => PaintSemantic::FuzzySkin,
+            "support_enforcer" | "SupportEnforcer" | "support-enforcer" => {
+                PaintSemantic::SupportEnforcer
+            }
+            "support_blocker" | "SupportBlocker" | "support-blocker" => {
+                PaintSemantic::SupportBlocker
+            }
             other => PaintSemantic::Custom(other.to_string()),
         }
     };
@@ -3068,3 +3100,114 @@ impl PostpassStageRunner for WasmRuntimeDispatcher {
 // Safety: WasmRuntimeDispatcher is Sync because WasmEngine (wrapping wasmtime::Engine)
 // is Send+Sync, and all mutable state is created per-call (not shared).
 unsafe impl Sync for WasmRuntimeDispatcher {}
+
+/// Convert a [`ResolvedConfig`] struct into a flat `HashMap<ConfigKey, ConfigValue>`.
+///
+/// Used by the layer dispatch path (packet 51) to build a per-region `ConfigView`
+/// from the already-overlaid `RegionPlan.config` rather than from the module's
+/// frozen base config.  Only the fields that map to canonical config keys are
+/// emitted; extension keys are passed through unchanged.
+fn resolved_config_to_map(
+    cfg: &slicer_ir::ResolvedConfig,
+) -> std::collections::HashMap<String, slicer_ir::ConfigValue> {
+    use slicer_ir::ConfigValue;
+    let mut m = std::collections::HashMap::new();
+    m.insert(
+        "layer_height".to_string(),
+        ConfigValue::Float(cfg.layer_height as f64),
+    );
+    m.insert(
+        "line_width".to_string(),
+        ConfigValue::Float(cfg.line_width as f64),
+    );
+    m.insert(
+        "first_layer_height".to_string(),
+        ConfigValue::Float(cfg.first_layer_height as f64),
+    );
+    m.insert(
+        "first_layer_line_width".to_string(),
+        ConfigValue::Float(cfg.first_layer_line_width as f64),
+    );
+    m.insert(
+        "wall_count".to_string(),
+        ConfigValue::Int(cfg.wall_count as i64),
+    );
+    m.insert(
+        "outer_wall_speed".to_string(),
+        ConfigValue::Float(cfg.outer_wall_speed as f64),
+    );
+    m.insert(
+        "inner_wall_speed".to_string(),
+        ConfigValue::Float(cfg.inner_wall_speed as f64),
+    );
+    if let Some(v) = cfg.arachne_min_feature_size {
+        m.insert(
+            "arachne_min_feature_size".to_string(),
+            ConfigValue::Float(v as f64),
+        );
+    }
+    m.insert(
+        "infill_density".to_string(),
+        ConfigValue::Float(cfg.infill_density as f64),
+    );
+    m.insert(
+        "infill_angle".to_string(),
+        ConfigValue::Float(cfg.infill_angle as f64),
+    );
+    m.insert(
+        "infill_speed".to_string(),
+        ConfigValue::Float(cfg.infill_speed as f64),
+    );
+    m.insert(
+        "solid_infill_speed".to_string(),
+        ConfigValue::Float(cfg.solid_infill_speed as f64),
+    );
+    m.insert(
+        "top_shell_layers".to_string(),
+        ConfigValue::Int(cfg.top_shell_layers as i64),
+    );
+    m.insert(
+        "bottom_shell_layers".to_string(),
+        ConfigValue::Int(cfg.bottom_shell_layers as i64),
+    );
+    m.insert(
+        "support_enabled".to_string(),
+        ConfigValue::Bool(cfg.support_enabled),
+    );
+    m.insert(
+        "support_overhang_angle".to_string(),
+        ConfigValue::Float(cfg.support_overhang_angle as f64),
+    );
+    if let Some(v) = cfg.nonplanar_max_angle_deg {
+        m.insert(
+            "nonplanar_max_angle_deg".to_string(),
+            ConfigValue::Float(v as f64),
+        );
+    }
+    if let Some(v) = cfg.nonplanar_shell_count {
+        m.insert(
+            "nonplanar_shell_count".to_string(),
+            ConfigValue::Int(v as i64),
+        );
+    }
+    if let Some(v) = cfg.nonplanar_amplitude {
+        m.insert(
+            "nonplanar_amplitude".to_string(),
+            ConfigValue::Float(v as f64),
+        );
+    }
+    if let Some(v) = cfg.smoothificator_target_height {
+        m.insert(
+            "smoothificator_target_height".to_string(),
+            ConfigValue::Float(v as f64),
+        );
+    }
+    if let Some(v) = cfg.smoothificator_adaptive {
+        m.insert("smoothificator_adaptive".to_string(), ConfigValue::Bool(v));
+    }
+    // Pass extension keys through unchanged.
+    for (k, v) in &cfg.extensions {
+        m.insert(k.clone(), v.clone());
+    }
+    m
+}
