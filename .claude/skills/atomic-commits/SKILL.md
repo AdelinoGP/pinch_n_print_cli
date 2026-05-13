@@ -139,7 +139,6 @@ For each group in order:
 
    <optional body paragraph>
 
-   Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
    EOF
    )"
    ```
