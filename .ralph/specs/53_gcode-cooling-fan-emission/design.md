@@ -3,8 +3,8 @@
 ## Controlling Code Paths
 
 - Primary code path:
-  - **NEW** `modules/core-modules/cooling/` — new finalization-stage module crate, structured exactly like `modules/core-modules/skirt-brim/` (the reference template).
-  - `crates/slicer-host/src/dispatch.rs` around `:2854` — `dispatch_finalization_call` site; one new match arm or registration entry that loads `cooling.wasm` and invokes its `run_finalization` entry point.
+  - **NEW** `modules/core-modules/part-cooling/` — new finalization-stage module crate, structured exactly like `modules/core-modules/skirt-brim/` (the reference template).
+  - `crates/slicer-host/src/dispatch.rs` around `:2854` — `dispatch_finalization_call` site; one new match arm or registration entry that loads `part-cooling.wasm` and invokes its `run_finalization` entry point.
   - `crates/slicer-host/src/config_schema.rs:104-176` — register eight cooling-profile keys.
   - `crates/slicer-host/src/gcode_emit.rs:466` — UNCHANGED. The `M106` serializer already exists. This packet only PRODUCES `GCodeCommand::FanSpeed` events; serialization is already wired.
 - Neighboring tests or fixtures:
@@ -24,21 +24,22 @@
   - layer `>= disable_fan_first_layers` → emit `M106 S<fan_speed_max>` at layer start.
   - Overhang region detected (`PrintEntity` with role tag indicating overhang) → emit `M106 S<scale(overhang_fan_speed, fan_speed_max)>` at region start, restore prior at region end.
   - Last layer end → emit `M107`.
-- The path-optimization rejection in `docs/05_module_sdk.md` remains. Only an ADDITION is made: a pointer to "the cooling module on the finalization stage is the correct surface".
+- The cooling rejection snippet in `docs/05_module_sdk.md` § "Layer Stage Module Surface Rejections" is removed entirely — cooling is now supported via the finalization-stage module, making the old "unsupported" wording misleading.
 
 ## Code Change Surface
 
 - Selected approach: **finalization-stage WASM module + dispatcher wiring + config keys.** Mirrors the existing `SkirtBrim` shape exactly.
 - Exact files / functions / fixtures expected to change:
-  - **NEW** `modules/core-modules/cooling/Cargo.toml` — new crate manifest, identical structure to `modules/core-modules/skirt-brim/Cargo.toml`.
-  - **NEW** `modules/core-modules/cooling/cooling.toml` — module manifest (TOML), declares `stage = "finalization"`, capability set, the 8 config keys it reads.
-  - **NEW** `modules/core-modules/cooling/src/lib.rs` — implements `pub struct Cooling`, `from_config`, `run_finalization`. Uses the same `FinalizationOutputBuilder` API as skirt-brim. ≤ 250 lines target.
+  - **NEW** `modules/core-modules/part-cooling/Cargo.toml` — new crate manifest, identical structure to `modules/core-modules/skirt-brim/Cargo.toml`.
+  - **NEW** `modules/core-modules/part-cooling/part-cooling.toml` — module manifest (TOML), declares `stage = "finalization"`, capability set, the 8 config keys it reads.
+  - **NEW** `modules/core-modules/part-cooling/src/lib.rs` — implements `pub struct Cooling`, `from_config`, `run_finalization`. Uses the same `FinalizationOutputBuilder` API as skirt-brim. ≤ 250 lines target.
   - **EDITED** `crates/slicer-host/src/dispatch.rs` — one new arm in the finalization dispatcher near `:2854`. ≤ 15 lines added.
   - **EDITED** `crates/slicer-host/src/config_schema.rs` — eight new field registrations.
-  - **EDITED** `docs/05_module_sdk.md` — add a 3-5 line pointer in the existing Rejections section: "Cooling on the path-optimization surface remains unsupported; see TASK-152d / packet 53 for the accepted finalization-stage surface."
+  - **EDITED** `docs/05_module_sdk.md` — remove the cooling rejection snippet entirely from the Layer Stage Module Surface Rejections section (cooling is now supported via the finalization-stage module; the old "unsupported" wording is misleading).
   - **EDITED** `docs/07_implementation_status.md` — TASK-152c gets a Superseded marker; new TASK-152d and TASK-154 rows.
   - **EDITED** `docs/DEVIATION_LOG.md` — supersession + DEV-009 progress.
-  - **NEW** `crates/slicer-host/tests/gcode_cooling_fan_emission_tdd.rs` — TDD test file.
+  - **EDITED** `docs/14_deviation_audit_history.md` — DEV-009 remediation progress note.
+  - **NEW** `crates/slicer-host/tests/gcode_part_cooling_emission_tdd.rs` — TDD test file.
   - **EDITED** `modules/core-modules/build-core-modules.sh` — add the `cooling` crate to the build list (one-line edit).
 - Rejected alternatives:
   - **Embed cooling directly in `gcode_emit.rs`.** Rejected: violates the modular-slicer architecture (`docs/00`) and couples emit to policy; if a user wants a different cooling policy they'd have to fork the host.
@@ -47,11 +48,11 @@
 
 ## Files in Scope (read + edit)
 
-- `modules/core-modules/cooling/src/lib.rs` — primary edit (new); ≤ 250 lines.
+- `modules/core-modules/part-cooling/src/lib.rs` — primary edit (new); ≤ 250 lines.
 - `crates/slicer-host/src/dispatch.rs` — range-edit `:2840-:2900` only; ≤ 15 lines added.
 - `crates/slicer-host/src/config_schema.rs` — edit; eight new field entries.
-- `crates/slicer-host/tests/gcode_cooling_fan_emission_tdd.rs` — primary edit (new).
-- `modules/core-modules/cooling/Cargo.toml`, `cooling.toml`, `modules/core-modules/build-core-modules.sh`, the three docs files — small targeted edits; not "primary" but unavoidable.
+- `crates/slicer-host/tests/gcode_part_cooling_emission_tdd.rs` — primary edit (new).
+- `modules/core-modules/part-cooling/Cargo.toml`, `part-cooling.toml`, `modules/core-modules/build-core-modules.sh`, the four docs files — small targeted edits; not "primary" but unavoidable.
 
 > The "≤ 3 primary files" rule is met (3 primary: cooling/src/lib.rs, dispatch.rs, tests file). The auxiliary edits are small, mechanical, and individually well-scoped.
 
@@ -80,7 +81,7 @@
 - "Summarize the cooling decision algorithm in `OrcaSlicerDocumented/src/libslic3r/GCode/CoolingBuffer.cpp` in ≤ 200 words. Highlight first-layer-disable, max-speed, and overhang-bump logic. No code snippets."
 - "Show the dispatch arm in `crates/slicer-host/src/dispatch.rs` around `:2854` that invokes `SkirtBrim`. Return: SNIPPETS, ≤ 30 lines, file:line."
 - "Run `./modules/core-modules/build-core-modules.sh`; return FACT pass/fail and SNIPPETS for any error."
-- "Run `cargo test -p slicer-host --test gcode_cooling_fan_emission_tdd`; return FACT pass/fail; SNIPPETS for failing tests."
+- "Run `cargo test -p slicer-host --test gcode_part_cooling_emission_tdd`; return FACT pass/fail; SNIPPETS for failing tests."
 - "Append rows to `docs/07_implementation_status.md` (TASK-152c superseded marker, new TASK-152d and TASK-154); return EDITED/NOT-EDITED."
 
 ## Data and Contract Notes
@@ -88,7 +89,7 @@
 - IR contracts touched: none added/changed. `GCodeCommand::FanSpeed { value: u8 }` already exists.
 - WIT boundary: the new module's TOML declares `finalization` stage and the same capability set as skirt-brim (or a subset). Confirmed by Step 1 dispatch.
 - Determinism: cooling decision is a pure function of `(layer_index, region_role_tags, config)`. Layer time NOT consulted (would require packet 52's per-move time computation; deferred).
-- Module loading: dispatcher loads `modules/core-modules/cooling/cooling.wasm` at startup. Path mirrors `skirt-brim/skirt-brim.wasm`.
+- Module loading: dispatcher loads `modules/core-modules/part-cooling/part-cooling.wasm` at startup. Path mirrors `skirt-brim/skirt-brim.wasm`.
 
 ## Locked Assumptions and Invariants
 
@@ -109,7 +110,39 @@
 - Largest single step: Step 3 (new module crate + manifest). M.
 - Highest-risk dispatch: CoolingBuffer SUMMARY — must return ≤ 200 words, no code snippets. If the sub-agent returns SNIPPETS, re-dispatch with tighter scope.
 
-## Open Questions
+## Resolved Questions
 
-- **Activation blocker** until user decides: should `docs/05_module_sdk.md` § "Layer Stage Module Surface Rejections" be edited to (a) ADD a pointer to the new accepted finalization surface, leaving the path-optimization rejection intact (recommended), or (b) be split into two sections, one for the path-optimization rejection and one for the accepted finalization surface? The packet currently selects (a). User answer needed before activation if (b) is preferred.
+- **docs/05 editing approach (was an activation blocker):** Resolved — user chose to **remove the cooling rejection snippet entirely** from `docs/05_module_sdk.md` § "Layer Stage Module Surface Rejections", rather than adding a pointer or splitting sections. Cooling is now supported via the finalization-stage module, so the old "cooling unsupported" wording is misleading and should be deleted.
 - Whether the cooling module should be `default_enabled = true` in its manifest. Locked decision: yes — DEV-009 demands cooling out-of-the-box. Users disable by setting `fan_speed_max = 0`.
+
+## Step 1 Discovery Block
+
+### Skirt-brim template (FACT)
+- wit-world: `slicer:world-finalization@1.0.0`
+- stage: `PostPass::LayerFinalization`
+- ir-access: reads `LayerCollectionIR`, writes `LayerCollectionIR.skirt-brim`
+- Dependencies: slicer-sdk, slicer-schema, slicer-ir (path deps)
+- Crate-type: coder must verify `[lib] crate-type = ["cdylib"]` — explore worker reported "not present" which may be incomplete
+
+### Dispatcher mechanism (SNIPPETS)
+- `dispatch.rs:50`: `"PostPass::LayerFinalization" => Some("run-finalization")` — stage → export name mapping
+- `dispatch.rs:1052`: `fn dispatch_finalization_call(...)` — generic stage dispatch
+- `dispatch.rs:2854`: `let pushes = match self.dispatch_finalization_call(stage_id, module, ...)`
+- Modules dispatched generically by stage ID — **no per-module match arm needed**; cooling is registered in the module list and the dispatcher picks it up automatically
+
+### OrcaSlicer defaults (FACT)
+| Our key | OrcaSlicer key | Default | Type |
+|---------|---------------|---------|------|
+| fan_speed_min | fan_min_speed | 20 (%) → 51 (0-255) | u8 |
+| fan_speed_max | fan_max_speed | 100 (%) → 255 (0-255) | u8 |
+| disable_fan_first_layers | close_fan_the_first_x_layers | 1 | u32 |
+| enable_overhang_fan | enable_overhang_bridge_fan | true | bool |
+| overhang_fan_speed | overhang_fan_speed | 100 (%) | u8 |
+| slow_down_for_layer_cooling | slow_down_for_layer_cooling | true | bool |
+| slow_down_min_speed | slow_down_min_speed | 10.0 | f64 mm/s |
+| slow_down_layer_time | slow_down_layer_time | 5.0 | f64 s |
+
+Note: fan_speed_min and fan_speed_max stored as 0-255 (M106 range); overhang_fan_speed stored as 0-100 percentage, scaled at runtime: `M106 S(overhang_fan_speed * fan_speed_max / 100)`.
+
+### CoolingBuffer algorithm (SUMMARY)
+Simplified for this packet: no layer-time interpolation. Algorithm: (1) layers < disable_fan_first_layers → M107; (2) layers >= disable_fan_first_layers → M106 S<fan_speed_max>; (3) overhang region → M106 S<scale(overhang_fan_speed%, fan_speed_max)>, restore prior after; (4) last layer end → M107.

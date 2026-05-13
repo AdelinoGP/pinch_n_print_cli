@@ -25,11 +25,11 @@ This packet is the second remediation against DEV-009 (Benchy live output partia
 
 ## In Scope
 
-- New crate `modules/core-modules/cooling/` implementing `FinalizationModule`.
+- New crate `modules/core-modules/part-cooling/` implementing `FinalizationModule`.
 - Eight cooling-profile keys registered in `config_schema.rs`.
 - Dispatcher wiring in `crates/slicer-host/src/dispatch.rs` (range `:2840-:2900` only).
-- Doc updates: `docs/05_module_sdk.md` § "Layer Stage Module Surface Rejections" (clarification only — add a pointer to the accepted finalization surface, do NOT remove the path-optimization rejection); `docs/07` rows for TASK-152d + TASK-154 and supersession marker on TASK-152c; `docs/DEVIATION_LOG.md` supersession + DEV-009 progress.
-- TDD tests in `crates/slicer-host/tests/gcode_cooling_fan_emission_tdd.rs`.
+- Doc updates: `docs/05_module_sdk.md` § "Layer Stage Module Surface Rejections" (remove the cooling rejection snippet — cooling is now supported via the finalization-stage module); `docs/07` rows for TASK-152d + TASK-154 and supersession marker on TASK-152c; `docs/DEVIATION_LOG.md` supersession + DEV-009 progress; `docs/14_deviation_audit_history.md` DEV-009 progress note.
+- TDD tests in `crates/slicer-host/tests/gcode_part_cooling_emission_tdd.rs`.
 
 ## Out of Scope
 
@@ -37,7 +37,7 @@ This packet is the second remediation against DEV-009 (Benchy live output partia
 - `FanMover` parity — fan command relocation toward role edges.
 - Adaptive PA.
 - Acceleration token emission.
-- Any change to the path-optimization surface; TASK-152c rejection on that surface is preserved verbatim.
+- Any change to the path-optimization code surface; TASK-152c's code-level rejection remains in the source, but the doc wording claiming "cooling unsupported" is removed as misleading now that the finalization surface supports it.
 
 ## Authoritative Docs
 
@@ -77,8 +77,8 @@ Negative outcomes:
 
 Measurable outcomes:
 
-- New crate compiles to a `.wasm` artefact: `modules/core-modules/cooling/cooling.wasm`.
-- ≥ 8 test functions in `gcode_cooling_fan_emission_tdd.rs`.
+- New crate compiles to a `.wasm` artefact: `modules/core-modules/part-cooling/part-cooling.wasm`.
+- ≥ 8 test functions in `gcode_part_cooling_emission_tdd.rs`.
 - `dispatch.rs` gains exactly one new branch in the finalization match (within `:2840-:2900`).
 - `config_schema.rs` gains exactly eight registered fields.
 
@@ -90,7 +90,7 @@ Cross-packet impact:
 
 ## Verification Commands
 
-- `cargo test -p slicer-host --test gcode_cooling_fan_emission_tdd` — primary acceptance.
+- `cargo test -p slicer-host --test gcode_part_cooling_emission_tdd` — primary acceptance.
 - `cargo test -p slicer-host --test orca_comment_contract_tdd` — regression.
 - `./modules/core-modules/build-core-modules.sh` — produces the cooling `.wasm`. Dispatch as FACT (success/failure).
 - `cargo check --workspace`.
