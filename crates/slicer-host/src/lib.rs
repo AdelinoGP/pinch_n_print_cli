@@ -41,7 +41,8 @@ pub use blackboard::{
 };
 pub use cli::{validate_run_options, CliError, HostCli, HostCommands, HostRunOptions};
 pub use config_resolution::{
-    resolve_global_config, resolve_per_object_configs, ConfigResolutionError,
+    paint_semantic_namespace_key, resolve_global_config, resolve_per_object_configs,
+    resolve_per_paint_semantic_configs, ConfigResolutionError, UnknownSemanticWarning,
 };
 pub use config_schema::{
     build_config_schema_json, get_advanced_fields, get_basic_fields, get_field_schema,

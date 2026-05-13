@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use clap::Parser;
 use slicer_host::dispatch::WasmRuntimeDispatcher;
 use slicer_host::model_loader::load_model;
-use slicer_host::pipeline::{run_pipeline_with_events, PipelineConfig, PipelineStageRunners};
+use slicer_host::pipeline::{run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners};
 use slicer_host::progress_events::{
     JsonLinesEmitter, ProgressEventEmitter, RuntimeProgressSink, SliceEventCollector,
 };
@@ -277,7 +277,7 @@ fn main() {
             let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
             let sink = RuntimeProgressSink::new(emitter, Arc::clone(&collector));
 
-            match run_pipeline_with_events(config, &sink) {
+            match run_pipeline_with_raw_config(config, &config_source, &sink) {
                 Ok(result) => {
                     if let Some(out_path) = output {
                         if let Err(e) = std::fs::write(&out_path, &result.gcode_text) {

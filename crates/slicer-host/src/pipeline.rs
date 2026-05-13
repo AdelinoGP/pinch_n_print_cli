@@ -4,11 +4,11 @@
 //! slicing pipeline: prepass → per-layer → finalization → postpass → gcode output.
 //! All stage runners are injectable via traits for testability.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::sync::Arc;
 
-use slicer_ir::{MeshIR, ResolvedConfig};
+use slicer_ir::{ConfigKey, ConfigValue, MeshIR, ResolvedConfig};
 
 use crate::{
     execute_layer_finalization, execute_per_layer_with_events, execute_postpass,
@@ -158,12 +158,16 @@ pub fn run_pipeline_with_events(
 
     // Step 2: Execute prepass stages sequentially, collecting runtime audits.
     // Pass the resolved configs so the RegionMapping built-in can use them.
+    // raw_config_source is empty here for backward compat (no paint overrides);
+    // use run_pipeline_with_raw_config for production paint-override support.
+    let empty_raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
     let prepass_audits = execute_prepass_with_builtins_configured(
         &plan,
         &mut blackboard,
         runners.prepass.as_ref(),
         &resolved_configs,
         &default_resolved_config,
+        &empty_raw,
     )?;
 
     // Step 2b: Promote the LayerPlanIR committed by prepass into the execution
@@ -187,6 +191,67 @@ pub fn run_pipeline_with_events(
     )?;
 
     // Step 5: Execute postpass (emit + serialize gcode)
+    let (gcode_text, postpass_audits) = execute_postpass(
+        &plan,
+        &layer_irs,
+        &blackboard,
+        runners.emitter.as_ref(),
+        runners.serializer.as_ref(),
+        runners.postpass.as_mut(),
+    )?;
+
+    Ok(PipelineOutput {
+        gcode_text,
+        prepass_audits,
+        layer_audits,
+        postpass_audits,
+    })
+}
+
+/// Execute the full slicing pipeline with paint-semantic config overrides.
+///
+/// Identical to [`run_pipeline_with_events`] except `raw_config_source` is
+/// forwarded to the RegionMapping built-in so that `paint_config:<semantic>:*`
+/// keys in the user-supplied config are applied as per-semantic overlays
+/// (AC-4 / production path for MMU paint overrides).
+pub fn run_pipeline_with_raw_config(
+    config: PipelineConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    sink: &(dyn LayerProgressSink + Sync),
+) -> Result<PipelineOutput, PipelineError> {
+    let PipelineConfig {
+        mesh_ir,
+        mut plan,
+        mut runners,
+        resolved_configs,
+        default_resolved_config,
+    } = config;
+
+    let mut blackboard = Blackboard::new(mesh_ir, 0);
+
+    let prepass_audits = execute_prepass_with_builtins_configured(
+        &plan,
+        &mut blackboard,
+        runners.prepass.as_ref(),
+        &resolved_configs,
+        &default_resolved_config,
+        raw_config_source,
+    )?;
+
+    if let Some(layer_plan) = blackboard.layer_plan() {
+        plan.global_layers = Arc::new(layer_plan.global_layers.clone());
+    }
+
+    let (mut layer_irs, layer_audits) =
+        execute_per_layer_with_events(&plan, &blackboard, runners.layer.as_ref(), sink)?;
+
+    execute_layer_finalization(
+        &plan,
+        &blackboard,
+        runners.finalization.as_ref(),
+        &mut layer_irs,
+    )?;
+
     let (gcode_text, postpass_audits) = execute_postpass(
         &plan,
         &layer_irs,
