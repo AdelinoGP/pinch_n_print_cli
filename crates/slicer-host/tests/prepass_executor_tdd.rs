@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -498,6 +498,7 @@ fn region_map_fixture() -> RegionMapIR {
                         config_view: ConfigView::new(),
                     }],
                 )]),
+                paint_overrides: BTreeMap::new(),
             },
         )]),
     }

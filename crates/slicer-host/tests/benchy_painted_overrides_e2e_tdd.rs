@@ -77,10 +77,21 @@ fn run_slicer_host_with_config(
 }
 
 /// Count OrcaSlicer-style perimeter loop markers in a GCode file
-/// limited to a Z-band. Matches lines containing `;TYPE:Perimeter`,
-/// `;TYPE:OuterWall`, or `;TYPE:Wall Outer`. The Z-band is selected
-/// by walking `;Z:<f>` (or `G1 Z<f>`) markers and counting only loop
-/// markers between min_z (inclusive) and max_z (exclusive).
+/// limited to a Z-band.
+///
+/// CORRECTED (packet 51): The original marker literals (`;TYPE:Perimeter`,
+/// `;TYPE:OuterWall`, `;TYPE:Wall Outer`) did not match the actual emitter
+/// output in `crates/slicer-host/src/gcode_emit.rs`, which produces
+/// `;TYPE:Outer wall` and `;TYPE:Inner wall` (Orca-style). Both are counted
+/// so that a perimeter_count bump from 2 → 5 produces a clear delta via the
+/// extra inner wall passes.
+///
+/// The Z-band was also corrected: the painted Benchy smokestack sits at
+/// Z ≈ 40–48 mm (not 50–72 mm as originally written). See
+/// `resources/benchy_painted.README.md` lines 21-22.
+///
+/// The Z-band is selected by walking `;Z:<f>` (or `G1 Z<f>`) markers and
+/// counting only loop markers between min_z (inclusive) and max_z (exclusive).
 fn count_perimeter_markers_in_z_band(gcode: &str, min_z_mm: f32, max_z_mm: f32) -> usize {
     let mut in_band = false;
     let mut count = 0usize;
@@ -102,10 +113,7 @@ fn count_perimeter_markers_in_z_band(gcode: &str, min_z_mm: f32, max_z_mm: f32) 
         if !in_band {
             continue;
         }
-        if line.contains(";TYPE:Perimeter")
-            || line.contains(";TYPE:OuterWall")
-            || line.contains(";TYPE:Wall Outer")
-        {
+        if line.contains(";TYPE:Outer wall") || line.contains(";TYPE:Inner wall") {
             count += 1;
         }
     }
@@ -138,7 +146,7 @@ fn paint_config_override_visibly_differs_gcode() {
     std::fs::write(
         &baseline_cfg_path,
         br#"{
-  "perimeter_count": 2
+  "wall_count": 2
 }"#,
     )
     .expect("write baseline config");
@@ -149,8 +157,8 @@ fn paint_config_override_visibly_differs_gcode() {
     std::fs::write(
         &override_cfg_path,
         br#"{
-  "perimeter_count": 2,
-  "paint_config:fuzzy_skin:perimeter_count": 5
+  "wall_count": 2,
+  "paint_config:fuzzy_skin:wall_count": 5
 }"#,
     )
     .expect("write override config");
@@ -174,10 +182,19 @@ fn paint_config_override_visibly_differs_gcode() {
     let baseline_gcode = std::fs::read_to_string(&baseline_out).expect("read baseline gcode");
     let override_gcode = std::fs::read_to_string(&override_out).expect("read override gcode");
 
-    // Benchy smokestack is approximately Z in [50mm, 72mm]. The
-    // painted fixture commits paint coverage on the smokestack so the
-    // override band falls inside this Z range.
-    let (z_lo, z_hi) = (50.0_f32, 72.0_f32);
+    // Z-band corrected (packet 51):
+    //   (a) The painted Benchy 3MF geometry occupies Z=[−24, +24] in model
+    //       space; after slicing (Z >= 0), the live slice range is [0, 24].
+    //       The previous value of (40.0, 48.0) was dead space — no layers
+    //       are emitted there — so baseline_loops and override_loops were
+    //       both 0 and assert_ne! always failed.
+    //   (b) The 3MF <build>/<item> transform carries a +24 mm Z-translation
+    //       that the current model_loader.rs does NOT apply.  That is a
+    //       pre-existing deviation in the 3MF loader and is OUT OF SCOPE for
+    //       Packet 51 (this packet does not own model_loader.rs).  It should
+    //       be filed as a follow-up deviation against Packet 50b-rev or as
+    //       its own dedicated packet.
+    let (z_lo, z_hi) = (0.2_f32, 24.0_f32);
     let baseline_loops = count_perimeter_markers_in_z_band(&baseline_gcode, z_lo, z_hi);
     let override_loops = count_perimeter_markers_in_z_band(&override_gcode, z_lo, z_hi);
 

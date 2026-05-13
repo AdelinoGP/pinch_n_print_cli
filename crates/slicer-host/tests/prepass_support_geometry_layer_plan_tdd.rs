@@ -10,7 +10,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_host::{
@@ -216,6 +216,7 @@ fn simple_region_map(object_id: &str, num_layers: u32) -> RegionMapIR {
             RegionPlan {
                 config: ResolvedConfig::default(),
                 stage_modules: HashMap::new(),
+                paint_overrides: BTreeMap::new(),
             },
         );
     }
@@ -237,6 +238,7 @@ fn multi_region_map() -> RegionMapIR {
         RegionPlan {
             config: ResolvedConfig::default(),
             stage_modules: HashMap::new(),
+            paint_overrides: BTreeMap::new(),
         },
     );
     entries.insert(
@@ -248,6 +250,7 @@ fn multi_region_map() -> RegionMapIR {
         RegionPlan {
             config: ResolvedConfig::default(),
             stage_modules: HashMap::new(),
+            paint_overrides: BTreeMap::new(),
         },
     );
     RegionMapIR {
@@ -578,6 +581,7 @@ fn host_projector_orders_region_segmentation_deterministically() {
         RegionPlan {
             config: ResolvedConfig::default(),
             stage_modules: HashMap::new(),
+            paint_overrides: BTreeMap::new(),
         },
     );
     entries.insert(
@@ -589,6 +593,7 @@ fn host_projector_orders_region_segmentation_deterministically() {
         RegionPlan {
             config: ResolvedConfig::default(),
             stage_modules: HashMap::new(),
+            paint_overrides: BTreeMap::new(),
         },
     );
     entries.insert(
@@ -600,6 +605,7 @@ fn host_projector_orders_region_segmentation_deterministically() {
         RegionPlan {
             config: ResolvedConfig::default(),
             stage_modules: HashMap::new(),
+            paint_overrides: BTreeMap::new(),
         },
     );
     entries.insert(
@@ -611,6 +617,7 @@ fn host_projector_orders_region_segmentation_deterministically() {
         RegionPlan {
             config: ResolvedConfig::default(),
             stage_modules: HashMap::new(),
+            paint_overrides: BTreeMap::new(),
         },
     );
     let region_map = RegionMapIR {

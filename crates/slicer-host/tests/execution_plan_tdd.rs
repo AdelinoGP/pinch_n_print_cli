@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -31,6 +31,7 @@ fn freezes_sorted_stage_buckets_runtime_bindings_and_shared_ir_ownership() {
         RegionPlan {
             config: ResolvedConfig::default(),
             stage_modules: HashMap::new(),
+            paint_overrides: BTreeMap::new(),
         },
     )]));
 
@@ -370,6 +371,7 @@ fn region_map_exceeding_cap_is_rejected() {
             RegionPlan {
                 config: ResolvedConfig::default(),
                 stage_modules: HashMap::new(),
+                paint_overrides: BTreeMap::new(),
             },
         );
     }
@@ -407,6 +409,7 @@ fn region_map_at_cap_is_accepted() {
             RegionPlan {
                 config: ResolvedConfig::default(),
                 stage_modules: HashMap::new(),
+                paint_overrides: BTreeMap::new(),
             },
         );
     }
@@ -608,6 +611,7 @@ fn region_map_cap_reports_exact_computed_entry_count() {
             RegionPlan {
                 config: ResolvedConfig::default(),
                 stage_modules: HashMap::new(),
+                paint_overrides: BTreeMap::new(),
             },
         );
     }
@@ -695,6 +699,7 @@ fn resolve_active_regions_uses_precomputed_index() {
             RegionPlan {
                 config: ResolvedConfig::default(),
                 stage_modules: HashMap::new(),
+                paint_overrides: BTreeMap::new(),
             },
         ),
         (
@@ -706,6 +711,7 @@ fn resolve_active_regions_uses_precomputed_index() {
             RegionPlan {
                 config: ResolvedConfig::default(),
                 stage_modules: HashMap::new(),
+                paint_overrides: BTreeMap::new(),
             },
         ),
         (
@@ -717,6 +723,7 @@ fn resolve_active_regions_uses_precomputed_index() {
             RegionPlan {
                 config: ResolvedConfig::default(),
                 stage_modules: HashMap::new(),
+                paint_overrides: BTreeMap::new(),
             },
         ),
     ]));

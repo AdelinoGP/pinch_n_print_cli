@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_host::{
@@ -313,6 +313,7 @@ fn region_map_fixture() -> RegionMapIR {
                         config_view: slicer_ir::ConfigView::new(),
                     }],
                 )]),
+                paint_overrides: BTreeMap::new(),
             },
         )]),
     }

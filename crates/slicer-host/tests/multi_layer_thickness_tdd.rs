@@ -36,7 +36,7 @@
 //!       layer_plan: Option<&LayerPlanIR>,
 //!   ) -> Result<SliceIR, LayerSliceError>
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use slicer_host::execute_layer_slice;
 use slicer_host::layer_slice::classify_region_surfaces;
@@ -272,6 +272,7 @@ fn make_region_map(
             RegionPlan {
                 config: cfg,
                 stage_modules: HashMap::new(),
+                paint_overrides: BTreeMap::new(),
             },
         );
     }

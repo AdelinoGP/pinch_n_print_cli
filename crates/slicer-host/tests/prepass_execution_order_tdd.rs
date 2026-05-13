@@ -4,7 +4,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -118,6 +118,7 @@ fn blackboard_with_prereqs(mesh: MeshIR) -> Blackboard {
                 RegionPlan {
                     config: ResolvedConfig::default(),
                     stage_modules: HashMap::new(),
+                    paint_overrides: BTreeMap::new(),
                 },
             );
         }

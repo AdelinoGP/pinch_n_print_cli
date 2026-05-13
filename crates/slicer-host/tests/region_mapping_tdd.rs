@@ -162,7 +162,14 @@ fn region_mapping_cap_exceeded_is_structured_fatal() {
     };
     let plan = empty_execution_plan();
 
-    let err = execute_region_mapping_with_cap(&layer_plan, &plan, 2).expect_err("must fail");
+    let err = execute_region_mapping_with_cap(
+        &layer_plan,
+        &plan,
+        None,
+        &std::collections::BTreeMap::new(),
+        2,
+    )
+    .expect_err("must fail");
     match err {
         RegionMappingError::CapExceeded {
             entry_count: 3,
@@ -206,7 +213,14 @@ fn region_mapping_cap_exceeded_surfaces_top_contributors_and_remediation() {
     };
     let plan = empty_execution_plan();
 
-    let err = execute_region_mapping_with_cap(&layer_plan, &plan, 5).expect_err("must fail");
+    let err = execute_region_mapping_with_cap(
+        &layer_plan,
+        &plan,
+        None,
+        &std::collections::BTreeMap::new(),
+        5,
+    )
+    .expect_err("must fail");
     match err {
         RegionMappingError::CapExceeded {
             entry_count,
@@ -259,8 +273,14 @@ fn region_mapping_at_cap_is_accepted() {
     let plan = empty_execution_plan();
 
     // Exactly 2 entries against a cap of 2 must succeed (not error).
-    execute_region_mapping_with_cap(&layer_plan, &plan, 2)
-        .expect("region mapping at exactly the cap must be accepted");
+    execute_region_mapping_with_cap(
+        &layer_plan,
+        &plan,
+        None,
+        &std::collections::BTreeMap::new(),
+        2,
+    )
+    .expect("region mapping at exactly the cap must be accepted");
 }
 
 // ----------------------------------------------------------------------
@@ -282,7 +302,8 @@ fn region_mapping_duplicate_region_key_is_structured_fatal() {
     };
     let plan = empty_execution_plan();
 
-    let err = execute_region_mapping(&layer_plan, &plan).expect_err("must fail");
+    let err = execute_region_mapping(&layer_plan, &plan, None, &std::collections::BTreeMap::new())
+        .expect_err("must fail");
     match err {
         RegionMappingError::DuplicateRegionKey { key } => {
             assert_eq!(key.global_layer_index, 0);
@@ -338,8 +359,15 @@ fn region_mapping_builtin_commit_failure_surfaces_via_prepass_error() {
         .expect("seed layer plan");
     // Manually commit a region map first so the built-in becomes a no-op;
     // then verify it was not overwritten. (Idempotency contract.)
-    let preexisting =
-        Arc::new(execute_region_mapping(&layer_plan, &empty_execution_plan()).unwrap());
+    let preexisting = Arc::new(
+        execute_region_mapping(
+            &layer_plan,
+            &empty_execution_plan(),
+            None,
+            &std::collections::BTreeMap::new(),
+        )
+        .unwrap(),
+    );
     blackboard
         .commit_region_map(Arc::clone(&preexisting))
         .unwrap();
@@ -359,9 +387,10 @@ fn region_mapping_is_deterministic_for_same_input() {
     let layer_plan = plan_two_layers_two_regions();
     let plan = empty_execution_plan();
 
-    let a = execute_region_mapping(&layer_plan, &plan).unwrap();
-    let b = execute_region_mapping(&layer_plan, &plan).unwrap();
-    let c = execute_region_mapping(&layer_plan, &plan).unwrap();
+    let empty_map = std::collections::BTreeMap::new();
+    let a = execute_region_mapping(&layer_plan, &plan, None, &empty_map).unwrap();
+    let b = execute_region_mapping(&layer_plan, &plan, None, &empty_map).unwrap();
+    let c = execute_region_mapping(&layer_plan, &plan, None, &empty_map).unwrap();
 
     assert_eq!(a, b);
     assert_eq!(b, c);

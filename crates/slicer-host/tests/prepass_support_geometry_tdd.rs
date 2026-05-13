@@ -23,7 +23,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -378,6 +378,7 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
                 RegionPlan {
                     config: slicer_ir::ResolvedConfig::default(),
                     stage_modules: HashMap::new(),
+                    paint_overrides: BTreeMap::new(),
                 },
             );
         }

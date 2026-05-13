@@ -29,7 +29,7 @@
 
 #![allow(missing_docs, dead_code, unused_imports, unused_variables)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use slicer_host::execute_layer_slice;
 use slicer_host::layer_slice::classify_region_surfaces;
@@ -859,6 +859,7 @@ fn region_override_redirects_claim_to_alternate_holder() {
         RegionPlan {
             config: ResolvedConfig::default(),
             stage_modules: HashMap::new(),
+            paint_overrides: BTreeMap::new(),
         },
     );
     let config_b = ResolvedConfig {
@@ -870,6 +871,7 @@ fn region_override_redirects_claim_to_alternate_holder() {
         RegionPlan {
             config: config_b,
             stage_modules: HashMap::new(),
+            paint_overrides: BTreeMap::new(),
         },
     );
 
