@@ -8,9 +8,12 @@
 use std::fmt;
 
 use rayon::prelude::*;
+use std::collections::HashMap;
+
 use slicer_ir::{
     GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen, ModuleId, PaintRegionIR,
     PaintSemantic, PerimeterIR, PrintEntity, RegionKey, SemVer, StageId, SupportIR,
+    WallFeatureFlags,
 };
 
 use crate::layer_slice::{execute_layer_slice, LayerSliceError};
@@ -586,6 +589,16 @@ fn run_paint_annotation(
 /// model and has no per-region identity, so support entities use an empty
 /// `object_id` and `region_id = 0` rather than inventing synthetic identity.
 /// `topo_order` is the entity's 0-based position in the emitted sequence.
+fn dominant_tool_index(flags: &[WallFeatureFlags]) -> Option<u64> {
+    let mut counts: HashMap<u64, usize> = HashMap::new();
+    for f in flags {
+        if let Some(ti) = f.tool_index {
+            *counts.entry(ti as u64).or_default() += 1;
+        }
+    }
+    counts.iter().max_by_key(|(_, c)| **c).map(|(ti, _)| *ti)
+}
+
 pub(crate) fn assemble_ordered_entities(
     global_layer_index: u32,
     perimeter: Option<&PerimeterIR>,
@@ -610,14 +623,15 @@ pub(crate) fn assemble_ordered_entities(
 
     if let Some(perim) = perimeter {
         for region in &perim.regions {
-            let key = RegionKey {
-                global_layer_index,
-                object_id: region.object_id.clone(),
-                region_id: region.region_id,
-            };
             for wl in &region.walls {
+                let paint_tool = dominant_tool_index(&wl.feature_flags);
+                let entity_key = RegionKey {
+                    global_layer_index,
+                    object_id: region.object_id.clone(),
+                    region_id: paint_tool.unwrap_or(region.region_id),
+                };
                 let role = wl.path.role.clone();
-                push(wl.path.clone(), role, key.clone(), &mut out);
+                push(wl.path.clone(), role, entity_key, &mut out);
             }
         }
     }

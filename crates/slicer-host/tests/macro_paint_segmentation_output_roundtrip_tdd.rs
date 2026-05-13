@@ -19,8 +19,9 @@ use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata}
 use slicer_host::manifest::LoadedModule;
 use slicer_host::{Blackboard, CompiledModule, IrAccessMask, PrepassStageRunner, WasmEngine};
 use slicer_ir::{
-    BoundingBox3, ConfigValue, ConfigView, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh,
-    PaintSemantic, PaintValue, Point3, SemVer, Transform3d,
+    BoundingBox3, ConfigValue, ConfigView, FacetPaintData, IndexedTriangleSet, LayerPlanIR, MeshIR,
+    ObjectConfig, ObjectLayerRef, ObjectMesh, PaintLayer, PaintSemantic, PaintValue, Point3,
+    SemVer, Transform3d,
 };
 
 // ── Path to the sdk-prepass-paintseg-guest component ─────────────────────────
@@ -28,6 +29,11 @@ use slicer_ir::{
 const SDK_PREPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../test-guests/sdk-prepass-paintseg-guest.component.wasm"
+);
+
+const PRODUCTION_PAINT_SEG_PATH: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../modules/core-modules/paint-segmentation/paint-segmentation.wasm"
 );
 
 // ── Harness helpers ───────────────────────────────────────────────────────────
@@ -685,5 +691,159 @@ fn no_early_return_bypasses_drain() {
         early_returns, 0,
         "Neg-2 FAIL: found {early_returns} early `return Ok(())` before drain loop in \
          PaintSegmentation arm — these would bypass the drain"
+    );
+}
+
+// ── AC-7: production WASM produces non-empty per_layer for MMU paint data ─────
+
+fn load_production_paint_seg(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmComponent>> {
+    let path = std::path::Path::new(PRODUCTION_PAINT_SEG_PATH);
+    if !path.exists() {
+        return None;
+    }
+    let bytes = std::fs::read(path).expect("read paint-segmentation.wasm");
+    match engine.compile_component(&bytes) {
+        Ok(c) => Some(Arc::new(c)),
+        Err(e) => panic!("failed to compile paint-segmentation: {e}"),
+    }
+}
+
+fn object_with_mmu_paint(id: &str) -> ObjectMesh {
+    ObjectMesh {
+        id: id.to_string(),
+        mesh: IndexedTriangleSet {
+            vertices: vec![
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.2,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+            ],
+            indices: vec![0, 1, 2],
+        },
+        transform: identity_transform(),
+        config: ObjectConfig {
+            data: HashMap::new(),
+        },
+        modifier_volumes: Vec::new(),
+        paint_data: Some(FacetPaintData {
+            layers: vec![PaintLayer {
+                semantic: PaintSemantic::Material,
+                facet_values: vec![Some(PaintValue::ToolIndex(0))],
+                strokes: Vec::new(),
+            }],
+        }),
+        world_z_extent: Some((0.0, 0.2)),
+    }
+}
+
+fn blackboard_with_mmu_objects(object_ids: &[&str]) -> Blackboard {
+    let objects: Vec<ObjectMesh> = object_ids
+        .iter()
+        .map(|id| object_with_mmu_paint(id))
+        .collect();
+    let mesh = Arc::new(MeshIR {
+        schema_version: semver(1, 0, 0),
+        objects,
+        build_volume: BoundingBox3 {
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+        },
+    });
+    let mut bb = Blackboard::new(mesh, 1);
+    let layer_plan = LayerPlanIR {
+        schema_version: semver(1, 0, 0),
+        global_layers: vec![],
+        object_participation: object_ids
+            .iter()
+            .map(|id| {
+                (
+                    id.to_string(),
+                    vec![ObjectLayerRef {
+                        local_layer_index: 0,
+                        global_layer_index: 0,
+                        effective_layer_height: 0.2,
+                    }],
+                )
+            })
+            .collect(),
+    };
+    bb.commit_layer_plan(Arc::new(layer_plan))
+        .expect("commit_layer_plan must succeed on fresh blackboard");
+    bb
+}
+
+#[test]
+fn mmu_model_paint_layers_yield_non_empty_per_layer() {
+    use slicer_host::PrepassStageOutput;
+
+    let engine = Arc::new(WasmEngine::new());
+    let component = match load_production_paint_seg(&engine) {
+        Some(c) => c,
+        None => {
+            eprintln!(
+                "SKIP: paint-segmentation.wasm not built; \
+                 run ./modules/core-modules/build-core-modules.sh"
+            );
+            return;
+        }
+    };
+    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
+    let module = make_compiled_module_with_config(
+        "com.orca.paint-segmentation",
+        "PrePass::PaintSegmentation",
+        component,
+        ConfigView::from_map(HashMap::new()),
+    );
+    let blackboard = blackboard_with_mmu_objects(&["obj-a"]);
+
+    let result = PrepassStageRunner::run_stage(
+        &dispatcher,
+        &"PrePass::PaintSegmentation".to_string(),
+        &module,
+        &blackboard,
+    );
+
+    let ir = match result {
+        Ok((PrepassStageOutput::PaintRegions(ir), _)) => ir,
+        Ok((PrepassStageOutput::None, _)) => {
+            panic!("AC-7 FAIL: got None — production guest emitted no paint regions for MMU model");
+        }
+        Ok((other, _)) => panic!(
+            "AC-7 FAIL: unexpected output variant {:?}",
+            std::mem::discriminant(&other)
+        ),
+        Err(e) => panic!("AC-7 FAIL: dispatch error: {e}"),
+    };
+
+    assert!(
+        !ir.per_layer.is_empty(),
+        "AC-7: per_layer must be non-empty for a model with MMU paint data"
+    );
+    let has_material = ir
+        .per_layer
+        .values()
+        .any(|lm| lm.semantic_regions.contains_key(&PaintSemantic::Material));
+    assert!(
+        has_material,
+        "AC-7: per_layer must contain Material semantic regions for ToolIndex paint data"
     );
 }

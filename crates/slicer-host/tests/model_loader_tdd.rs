@@ -547,8 +547,8 @@ fn load_3mf_extracts_mmu_color() {
         .find(|l| l.semantic == PaintSemantic::Material)
         .expect("Material layer should exist");
     assert_eq!(color_layer.facet_values.len(), facet_count);
-    assert_eq!(color_layer.facet_values[0], Some(PaintValue::ToolIndex(1)));
-    assert_eq!(color_layer.facet_values[1], Some(PaintValue::ToolIndex(2)));
+    assert_eq!(color_layer.facet_values[0], Some(PaintValue::ToolIndex(0)));
+    assert_eq!(color_layer.facet_values[1], Some(PaintValue::ToolIndex(1)));
     assert_eq!(color_layer.facet_values[2], None);
 }
 
@@ -627,9 +627,9 @@ fn load_3mf_subdivision_dominant_state() {
     assert!(
         matches!(
             material_layer.facet_values[0],
-            Some(PaintValue::ToolIndex(1))
+            Some(PaintValue::ToolIndex(0))
         ),
-        "expected dominant state to map to ToolIndex(1), got {:?}",
+        "expected dominant state to map to ToolIndex(0) (0-based), got {:?}",
         material_layer.facet_values[0]
     );
 }
@@ -724,4 +724,107 @@ fn load_3mf_wholefacet_has_no_strokes() {
             }
         }
     }
+}
+
+#[test]
+fn load_3mf_4color_has_mmu_and_support_layers() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../resources/benchy_4color.3mf"
+    );
+    let mesh = load_model(&PathBuf::from(path)).unwrap();
+    let pd = mesh.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint_data must be Some");
+    assert!(
+        pd.layers
+            .iter()
+            .any(|l| l.semantic == PaintSemantic::Material),
+        "expected Material layer"
+    );
+    assert!(
+        pd.layers.iter().any(|l| matches!(
+            l.semantic,
+            PaintSemantic::SupportEnforcer | PaintSemantic::SupportBlocker
+        )),
+        "expected support layer"
+    );
+}
+
+#[test]
+fn load_3mf_4color_material_spans_four_tool_indices() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../resources/benchy_4color.3mf"
+    );
+    let mesh = load_model(&PathBuf::from(path)).unwrap();
+    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
+    let mat = pd
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::Material)
+        .expect("no Material layer");
+    let indices: std::collections::HashSet<u32> = mat
+        .facet_values
+        .iter()
+        .filter_map(|v| {
+            if let Some(PaintValue::ToolIndex(n)) = v {
+                Some(*n)
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert!(
+        indices.len() >= 4,
+        "expected ≥4 distinct ToolIndex values, got {}: {:?}",
+        indices.len(),
+        indices
+    );
+    assert!(
+        indices.contains(&0),
+        "expected ToolIndex(0) present (0-based values), got {:?}",
+        indices
+    );
+}
+
+#[test]
+fn load_3mf_4color_support_enforcer_has_facets() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../resources/benchy_4color.3mf"
+    );
+    let mesh = load_model(&PathBuf::from(path)).unwrap();
+    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
+    let sup = pd
+        .layers
+        .iter()
+        .find(|l| {
+            matches!(
+                l.semantic,
+                PaintSemantic::SupportEnforcer | PaintSemantic::SupportBlocker
+            )
+        })
+        .expect("no support layer");
+    let has_any = sup
+        .facet_values
+        .iter()
+        .any(|v| matches!(v, Some(PaintValue::Flag(true))));
+    assert!(has_any, "support layer has no painted facets");
+}
+
+#[test]
+fn load_3mf_4color_layer_count_at_least_two() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../resources/benchy_4color.3mf"
+    );
+    let mesh = load_model(&PathBuf::from(path)).unwrap();
+    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
+    assert!(
+        pd.layers.len() >= 2,
+        "expected ≥2 layers, got {}",
+        pd.layers.len()
+    );
 }

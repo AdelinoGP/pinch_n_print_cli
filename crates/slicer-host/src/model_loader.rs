@@ -667,7 +667,7 @@ fn parse_3mf_model_xml(
                 semantic: PaintSemantic::Material,
                 facet_values: color_states
                     .iter()
-                    .map(|&s| s.map(PaintValue::ToolIndex))
+                    .map(|&s| s.map(|v| PaintValue::ToolIndex(v.saturating_sub(1))))
                     .collect(),
                 strokes: color_strokes,
             });

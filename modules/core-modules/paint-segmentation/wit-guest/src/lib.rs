@@ -8,31 +8,29 @@
 //! `harvest_paint_segmentation_ir` (docs/03 world-prepass.wit;
 //! docs/02 §Paint Region IR).
 //!
-//! # MVP region source
+//! # Region sources
 //!
-//! Per-region entries are driven by host-supplied config keys of the
-//! shape:
+//! 1. **Object-driven path (primary):** For each object with non-empty
+//!    `paint_layers`, every painted facet is projected through the
+//!    object's 4x4 transform matrix onto the XY plane. The resulting 2D
+//!    polygon is emitted as a region entry for every participating layer.
 //!
-//!   `paint_region:<object_id>:<layer_index>:<semantic>:<value>` =
-//!     `"x0,y0;x1,y1;x2,y2;..."`
+//! 2. **Config-driven fallback:** Host-supplied config keys of the shape
+//!    `paint_region:<object_id>:<layer_index>:<semantic>:<value>` =
+//!    `"x0,y0;x1,y1;x2,y2;..."` are parsed and pushed after the object
+//!    path. This supports manual fixtures and test harnesses.
 //!
-//! One key per region, value is a semicolon-separated list of `x,y`
-//! integer scaled coordinates (`slicer_ir` units — see
-//! `slicer_ir::mm_to_units`). The guest parses each key, builds one
-//! `paint-region-entry` with a single contour polygon and no holes,
-//! and pushes through the WIT resource. Invalid coordinate lists fail
-//! with a precise structured error that the host surfaces as
-//! `PrepassExecutionError::FatalModule`.
-//!
-//! Unpainted meshes (Benchy) supply no `paint_region:*` keys and the
-//! guest is a deterministic zero-entry no-op — a correct semantic
-//! outcome.
+//! Unpainted meshes (Benchy) supply no `paint_layers` and no
+//! `paint_region:*` keys, so the guest is a deterministic zero-entry
+//! no-op — a correct semantic outcome.
 //!
 //! # Ordering
 //!
-//! Entries are sorted by `(object_index_in_objects, layer_index asc,
-//! semantic asc, value asc)` before they are pushed, so two identical
-//! runs produce byte-identical `PaintRegionIR.per_layer` maps.
+//! Object-driven entries are pushed in natural iteration order
+//! (object order, paint layer order, facet index order, participating
+//! layer order). Config-driven entries are sorted by
+//! `(object_index_in_objects, layer_index asc, semantic asc, value asc)`
+//! before they are pushed.
 
 wit_bindgen::generate!({
     inline: r#"
@@ -122,7 +120,7 @@ wit_bindgen::generate!({
 
             record paint-region-entry {
                 object-id: object-id,
-                layer-index: u32,
+                layer-index: s32,
                 semantic: string,
                 polygons: list<ex-polygon>,
                 value: paint-value-input,
@@ -261,7 +259,7 @@ struct Component;
 #[derive(Debug, Clone)]
 struct ParsedEntry {
     object_id: String,
-    layer_index: u32,
+    layer_index: i32,
     semantic: String,
     value: PaintValueInput,
     polygon: Polygon,
@@ -322,7 +320,7 @@ fn parse_entry(key: &str, value: &ConfigValue) -> Option<Result<ParsedEntry, Str
         Some(s) => s,
         None => return Some(Err(format!("missing layer_index in '{key}'"))),
     };
-    let layer_index: u32 = match layer_str.parse() {
+    let layer_index: i32 = match layer_str.parse() {
         Ok(n) => n,
         Err(_) => return Some(Err(format!("invalid layer_index '{layer_str}' in '{key}'"))),
     };
@@ -360,6 +358,50 @@ fn value_sort_key(v: &PaintValueInput) -> String {
     }
 }
 
+/// Convert a WIT `PaintValueView` variant to `PaintValueInput`.
+fn paint_value_view_to_input(v: &PaintValueView) -> PaintValueInput {
+    match v {
+        PaintValueView::Flag(b) => PaintValueInput::Flag(*b),
+        PaintValueView::Scalar(f) => PaintValueInput::Scalar(*f),
+        PaintValueView::ToolIndex(n) => PaintValueInput::ToolIndex(*n),
+    }
+}
+
+/// Transform a 3D point through a 4x4 column-major matrix, returning a scaled 2D point.
+///
+/// Scales mm coordinates to slicer integer units (1 unit = 100 nm = 0.0001 mm).
+fn transform_point(v: &Point3, matrix: &[f64]) -> Point2 {
+    let x = f64::from(v.x);
+    let y = f64::from(v.y);
+    let z = f64::from(v.z);
+    let tx = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
+    let ty = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
+    let tw = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
+    let (px, py) = if tw != 0.0 && tw != 1.0 {
+        (tx / tw, ty / tw)
+    } else {
+        (tx, ty)
+    };
+    const SCALE: f64 = 10_000.0;
+    Point2 {
+        x: (px * SCALE).round() as i64,
+        y: (py * SCALE).round() as i64,
+    }
+}
+
+/// Project a single triangle facet to a 2D polygon via the transform matrix.
+fn project_facet(
+    vertices: &[Point3],
+    triangle: &(u32, u32, u32),
+    matrix: &[f64],
+) -> Vec<Point2> {
+    vec![
+        transform_point(&vertices[triangle.0 as usize], matrix),
+        transform_point(&vertices[triangle.1 as usize], matrix),
+        transform_point(&vertices[triangle.2 as usize], matrix),
+    ]
+}
+
 impl Guest for Component {
     fn run_mesh_analysis(
         _objects: Vec<ObjectId>,
@@ -390,6 +432,108 @@ impl Guest for Component {
         output: PaintSegmentationOutput,
         config: ConfigView,
     ) -> Result<(), ModuleError> {
+        // ── Object-driven path: project 3D paint facets onto 2D per-layer polygons ──
+        for object in &objects {
+            if object.paint_layers.is_empty() {
+                continue;
+            }
+
+            let facet_count = object.triangles.len();
+            let matrix = &object.transform_matrix;
+            if matrix.len() != 16 {
+                return Err(ModuleError {
+                    code: 3,
+                    message: format!(
+                        "object '{}' transform matrix has {} elements, expected 16",
+                        object.object_id,
+                        matrix.len()
+                    ),
+                    fatal: true,
+                });
+            }
+
+            for paint_layer in &object.paint_layers {
+                if paint_layer.facet_values.len() != facet_count {
+                    return Err(ModuleError {
+                        code: 1,
+                        message: format!(
+                            "object '{}' paint layer '{}' has {} facet values but {} triangles",
+                            object.object_id,
+                            paint_layer.semantic,
+                            paint_layer.facet_values.len(),
+                            facet_count,
+                        ),
+                        fatal: true,
+                    });
+                }
+
+                // Aggregate projected polygons per (layer_index, paint_value).
+                let mut aggregates: std::collections::HashMap<u32, Vec<(String, PaintValueInput, Vec<Vec<Point2>>)>> =
+                    std::collections::HashMap::new();
+
+                for (facet_index, facet_value) in paint_layer.facet_values.iter().enumerate() {
+                    let Some(value) = facet_value else { continue; };
+
+                    let contour = project_facet(
+                        &object.vertices,
+                        &object.triangles[facet_index],
+                        matrix,
+                    );
+                    let paint_value = paint_value_view_to_input(value);
+                    let sort_key = value_sort_key(&paint_value);
+
+                    for &layer_index in &object.participating_layer_indices {
+                        let layer_vec = aggregates.entry(layer_index).or_default();
+                        if let Some(pos) = layer_vec.iter().position(|(k, _, _)| k == &sort_key) {
+                            layer_vec[pos].2.push(contour.clone());
+                        } else {
+                            layer_vec.push((sort_key.clone(), paint_value.clone(), vec![contour.clone()]));
+                        }
+                    }
+                }
+
+                // Flatten and sort deterministically before pushing.
+                let mut entries: Vec<(u32, PaintValueInput, Vec<Vec<Point2>>)> = Vec::new();
+                for (layer_index, vec) in aggregates {
+                    for (_key, value, contours) in vec {
+                        entries.push((layer_index, value, contours));
+                    }
+                }
+                entries.sort_by(|a, b| {
+                    a.0.cmp(&b.0)
+                        .then_with(|| value_sort_key(&a.1).cmp(&value_sort_key(&b.1)))
+                });
+
+                for (layer_index, paint_value, contours) in entries {
+                    let polygons: Vec<ExPolygon> = contours
+                        .into_iter()
+                        .map(|pts| ExPolygon {
+                            contour: Polygon { points: pts },
+                            holes: Vec::new(),
+                        })
+                        .collect();
+                    let entry = PaintRegionEntry {
+                        object_id: object.object_id.clone(),
+                        layer_index: layer_index as i32,
+                        semantic: paint_layer.semantic.clone(),
+                        polygons,
+                        value: paint_value.clone(),
+                    };
+                    output
+                        .push_paint_region(&entry)
+                        .map_err(|e| ModuleError {
+                            code: 2,
+                            message: format!(
+                                "push_paint_region rejected {}/{}/{:?}: {}",
+                                object.object_id, layer_index, paint_value, e
+                            ),
+                            fatal: true,
+                        })?;
+                }
+            }
+        }
+
+        // ── Config-driven fallback path ─────────────────────────────────────────────
         let mut parsed: Vec<ParsedEntry> = Vec::new();
         for key in config.keys() {
             let value = match config.get(&key) {
@@ -402,7 +546,9 @@ impl Guest for Component {
                 Some(Err(msg)) => {
                     return Err(ModuleError {
                         code: 1,
-                        message: format!("paint-segmentation: malformed config entry: {msg}"),
+                        message: format!(
+                            "paint-segmentation: malformed config entry: {msg}"
+                        ),
                         fatal: true,
                     });
                 }
@@ -442,8 +588,11 @@ impl Guest for Component {
                     code: 2,
                     message: format!(
                         "push_paint_region rejected {}/{}/{}/{}: {}",
-                        entry.object_id, entry.layer_index, entry.semantic,
-                        value_sort_key(&entry.value), e
+                        entry.object_id,
+                        entry.layer_index,
+                        entry.semantic,
+                        value_sort_key(&entry.value),
+                        e
                     ),
                     fatal: true,
                 })?;
