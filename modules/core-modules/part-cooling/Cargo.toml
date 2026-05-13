@@ -1,0 +1,19 @@
+[package]
+name = "part-cooling"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Part cooling fan command generator for LayerFinalization stage"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-schema = { path = "../../../crates/slicer-schema" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+[dev-dependencies]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wit-bindgen = "0.24"
+
+[lints]
+workspace = true

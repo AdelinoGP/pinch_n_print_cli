@@ -1,0 +1,94 @@
+[module]
+id           = "com.core.part-cooling"
+version      = "0.1.0"
+display-name = "Part Cooling"
+description  = "Core part cooling fan module"
+author       = "modular-slicer"
+license      = "MIT"
+wit-world    = "slicer:world-finalization@1.0.0"
+
+[stage]
+id = "PostPass::LayerFinalization"
+
+[ir-access]
+reads  = ["LayerCollectionIR"]
+writes = ["LayerCollectionIR.cooling"]
+
+[claims]
+holds    = []
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "2.0.0"
+
+[config.schema]
+[config.schema.fan_speed_min]
+type    = "int"
+default = 51
+min     = 0
+max     = 255
+display = "Fan Speed Min"
+group   = "Cooling"
+
+[config.schema.fan_speed_max]
+type    = "int"
+default = 255
+min     = 0
+max     = 255
+display = "Fan Speed Max"
+group   = "Cooling"
+
+[config.schema.disable_fan_first_layers]
+type    = "int"
+default = 1
+min     = 0
+display = "Disable Fan First Layers"
+group   = "Cooling"
+
+[config.schema.overhang_fan_speed]
+type    = "int"
+default = 100
+min     = 0
+max     = 100
+display = "Overhang Fan Speed"
+group   = "Cooling"
+
+[config.schema.enable_overhang_fan]
+type    = "bool"
+default = true
+display = "Enable Overhang Fan"
+group   = "Cooling"
+
+[config.schema.slow_down_for_layer_cooling]
+type    = "bool"
+default = true
+display = "Slow Down For Layer Cooling"
+group   = "Cooling"
+
+[config.schema.slow_down_min_speed]
+type    = "float"
+default = 10.0
+min     = 0.0
+display = "Slow Down Min Speed"
+group   = "Cooling"
+
+[config.schema.slow_down_layer_time]
+type    = "float"
+default = 5.0
+min     = 0.0
+display = "Slow Down Layer Time"
+group   = "Cooling"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 5
+layer-parallel-safe    = false
