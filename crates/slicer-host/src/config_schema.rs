@@ -241,6 +241,28 @@ impl Default for FullConfigSchema {
             );
         }
 
+        fields.insert(
+            "use_relative_e_distances".to_string(),
+            ConfigFieldSchema {
+                key: "use_relative_e_distances".to_string(),
+                field_type: ConfigFieldType::Bool,
+                default: Some(ConfigValue::Bool(true)),
+                display: None,
+                description: None,
+                group: Some("Extrusion".to_string()),
+                unit: ConfigUnit::None,
+                advanced: false,
+                min: None,
+                max: None,
+                step: None,
+                max_length: None,
+                enum_values: None,
+                min_list_length: None,
+                max_list_length: None,
+                validate: None,
+            },
+        );
+
         let cooling_float_keys = [
             (
                 "slow_down_min_speed",
