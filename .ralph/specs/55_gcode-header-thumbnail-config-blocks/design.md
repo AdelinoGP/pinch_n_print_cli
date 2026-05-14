@@ -29,8 +29,7 @@
   - `crates/slicer-host/src/config_schema.rs`: add four `ConfigFieldSchema` entries (`filament_diameter`, `filament_density`, `max_z_height`, `thumbnail_path`) plus any width keys missing today. Total delta: ~40 LoC additions following the existing pattern at `:121` and `:171`.
   - `crates/slicer-host/src/cli.rs`: add `thumbnail: Option<PathBuf>` field to the `Slice` variant (or equivalent) of `HostCommands`. Total delta: ~5 LoC.
   - `crates/slicer-host/src/main.rs`: read the PNG once at `:280` ± 20 lines, validate magic, insert `("thumbnail_path", ConfigValue::String(path_string))` into `config_source`. Pass the bytes through to the serializer via a new field on whatever struct currently flows into `serialize_gcode()` (most likely a small additive field on the serializer's invocation site, NOT on the serializer struct itself — bytes are passed at call time). Total delta: ~20 LoC.
-  - `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs`: new file, ~250 LoC, all ACs.
-  - One small PNG fixture at `crates/slicer-host/tests/fixtures/test_thumb.png` (~1 KB) and one non-PNG fixture at `crates/slicer-host/tests/fixtures/not_a_png.bin`.
+  - `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs`: new file, ~250 LoC, all ACs. The valid-PNG fixture is the already-committed `resources/fake_thumb.png` (940×940, ≈132 KB, PNG-magic verified). The non-PNG negative case writes 64 bytes without PNG magic into `std::env::temp_dir()` at test runtime. No new committed binary fixtures.
 
 ## Files in Scope (read + edit)
 
@@ -45,10 +44,11 @@ Thin auxiliary edits (≤ 5 LoC each, listed for completeness):
 - `crates/slicer-host/src/cli.rs` — add `thumbnail: Option<PathBuf>` to the slice subcommand.
 - `crates/slicer-host/src/main.rs` — read PNG, validate magic, inject into `config_source`, pass bytes to serializer call site.
 
-Fixture additions:
+Fixture handling (NO new committed binary fixtures):
 
-- `crates/slicer-host/tests/fixtures/test_thumb.png` (~1 KB, any valid PNG).
-- `crates/slicer-host/tests/fixtures/not_a_png.bin` (≤ 64 bytes, no PNG magic).
+- Valid-PNG fixture: reuse the already-committed `resources/fake_thumb.png` (940×940, ≈132 KB). Resolve from the test as `Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../resources/fake_thumb.png"))` — `CARGO_MANIFEST_DIR` points at `crates/slicer-host/`, so two `..` segments reach the workspace root. Use this absolute path everywhere a thumbnail is needed; never copy the bytes into a `tests/fixtures/` directory.
+- Non-PNG negative-case fixture: materialized in-test using `tempfile::NamedTempFile` (if `tempfile` is already a workspace dev-dep) or a hand-rolled `std::env::temp_dir().join("packet55_not_a_png_<nanos>.bin")` with 64 bytes of non-magic data (e.g., `b"this is plainly not a png file, no magic at all\n\0..."`). Lifetime is the test function's scope; clean up best-effort.
+- The 132 KB PNG inflates to ≈176 KB Base64 (≈2300 lines at 76 chars/line). Assertions MUST avoid `assert_eq!(actual_gcode, expected_full_gcode)` on the whole file; instead assert on (a) regex/grep counts of sentinels, (b) byte-roundtrip equality between decoded payload and `std::fs::read("resources/fake_thumb.png")`, and (c) ≤ 120-char snippets when reporting failure. This keeps failure SNIPPETS under the 20-line dispatch budget.
 
 ## Read-Only Context
 
@@ -104,7 +104,7 @@ Fixture additions:
 
 - **Risk: ConfigValue → string formatting drift from OrcaSlicer.** Floats may be `0.16` vs `0.160000` vs `0.16f`. Mitigation: keep the formatter simple (`{:.4}` for floats, strip trailing zeros, `to_string()` for ints/bools); the AC `config_block_includes_user_passed` accepts `22` OR `22.0` to leave room.
 - **Risk: width-key list drift.** OrcaSlicer's emitted set may not match PinchAndPrint's registered set. Mitigation: AC4 names five specific keys (`outer_wall_line_width`, `inner_wall_line_width`, `sparse_infill_line_width`, `top_surface_line_width`, `support_line_width`). Step 2 registers any missing from this list with OrcaSlicer-parity defaults; Step 4 emits exactly these five.
-- **Risk: large PNG inflating the file unboundedly.** Mitigation: out of scope for this packet; document in `requirements.md` Out-of-Scope. Acceptance is byte-roundtrip, not byte-budget.
+- **Risk: large PNG inflating the file unboundedly.** Mitigation: out of scope for this packet; document in `requirements.md` Out-of-Scope. Acceptance is byte-roundtrip, not byte-budget. The chosen test fixture (`resources/fake_thumb.png`, 940×940, ≈132 KB) deliberately exercises the >100 KB case so the chunking, prefix, and roundtrip assertions stress the Base64 path; tests still finish in well under a second.
 - **Risk: CONFIG_BLOCK at file tail causes naive parsers to choke on `; ` lines after the last `G1`.** Mitigation: this is OrcaSlicer's behavior; any parser that mishandles it is non-conformant. AC `block_ordering_header_before_body_config_after` codifies the placement.
 - **Tradeoff: by routing `--thumbnail` through `config_source` rather than a new pipeline parameter, the API stays stable but a misleading "thumbnail_path is a config key" registration enters `config_schema.rs`.** Accepted; the field's semantic is documented in its `ConfigFieldSchema::description`.
 - **Tradeoff: no real per-print thumbnail.** Accepted at the user's explicit decision; the `--thumbnail` ingestion path makes follow-up rendering work additive (the wire-format helper is reused).

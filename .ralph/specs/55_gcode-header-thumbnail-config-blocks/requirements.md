@@ -24,7 +24,7 @@ This packet does NOT reopen or supersede any prior packet. TASK-119 (live in-bod
 
 ## In Scope
 
-- New TDD test `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` covering every AC and negative case.
+- New TDD test `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` covering every AC and negative case. The test uses the already-committed `resources/fake_thumb.png` (workspace-root path, resolved via `concat!(env!("CARGO_MANIFEST_DIR"), "/../../resources/fake_thumb.png")`) as the canonical valid-PNG fixture. The negative non-PNG case materializes 64 bytes of non-magic data into `std::env::temp_dir()` at test runtime; no new committed PNG/binary fixtures are added by this packet.
 - Four new config keys registered in `crates/slicer-host/src/config_schema.rs`:
   - `filament_diameter` (f32, default `1.75`).
   - `filament_density` (f32, default `1.24`, PLA-aligned with OrcaSlicer).
@@ -49,6 +49,7 @@ This packet does NOT reopen or supersede any prior packet. TASK-119 (live in-bod
 - Computing or emitting `estimated_print_time_s`; the field is already populated (currently 0) by the existing pipeline and is not part of the four required header lines.
 - Modifying any predecessor packet's edits or the `GCodeIR` schema.
 - Cross-platform path encoding edge cases beyond UTF-8 (Windows backslashes in `--thumbnail` are accepted via `std::path::Path`).
+- Adding any new committed binary fixture under `crates/slicer-host/tests/fixtures/`. The valid-PNG fixture already exists at `resources/fake_thumb.png` and is reused as-is.
 
 ## Authoritative Docs
 
@@ -73,7 +74,7 @@ Deliberately NOT borrowed: OrcaSlicer's full PrintConfig key set (we emit only w
 ## Acceptance Summary
 
 - Positive cases: HEADER_BLOCK present with the four required field lines + filament order; extrusion-width comments after the header; THUMBNAIL_BLOCK present iff `--thumbnail` supplied and bytes round-trip Base64; CONFIG_BLOCK at file tail covers the effective `ConfigView`; block ordering is HEADER → width → THUMBNAIL → body → CONFIG.
-- Negative cases: missing-sentinel file fails the test; `--thumbnail nonexistent.png` exits non-zero with `file not found`; `--thumbnail not_a_png.bin` exits non-zero with `invalid PNG magic`; empty `ConfigView` still emits sentinel pair with zero key lines; `; total layer number:` mismatching `LayerCollectionIR.layers.len()` fails the test.
+- Negative cases: missing-sentinel file fails the test; `--thumbnail nonexistent.png` exits non-zero with `file not found`; `--thumbnail <temp-non-png>` (a runtime-materialized 64-byte file without PNG magic) exits non-zero with `invalid PNG magic`; empty `ConfigView` still emits sentinel pair with zero key lines; `; total layer number:` mismatching `LayerCollectionIR.layers.len()` fails the test.
 - Measurable outcomes: every AC verification command in `packet.spec.md` returns exit 0; HEADER field count `grep -E '^; (total layer number|filament_diameter|filament_density|max_z_height):' <file> | wc -l == 4`; `grep -cE '^; (CONFIG|HEADER)_BLOCK_(START|END)' <file> == 4` (with no thumbnail) or `== 6` (with thumbnail, adding the two THUMBNAIL sentinels — actual count 4 + 2 = 6).
 - Cross-packet impact: unblocks future thumbnail-rendering packet and future `.gcode` reproducibility / parity-diff packet. No predecessor packet is reopened.
 

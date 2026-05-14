@@ -15,7 +15,7 @@
 - Task IDs:
   - `TASK-156`
   - `TASK-157`
-- Objective: create `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` with one test per AC in `packet.spec.md` plus the five negative-case tests. Test bodies invoke the existing slicing entrypoint with a fixed small fixture (Benchy or a smaller test mesh already used by `orca_comment_contract_tdd`) and assert against the resulting G-code text. All tests must FAIL because no envelope emission exists yet.
+- Objective: create `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` with one test per AC in `packet.spec.md` plus the five negative-case tests. Test bodies invoke the existing slicing entrypoint with a fixed small fixture (Benchy or a smaller test mesh already used by `orca_comment_contract_tdd`) and assert against the resulting G-code text. The thumbnail-related tests resolve the valid-PNG fixture as `Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../resources/fake_thumb.png"))` (NO copy into `tests/fixtures/`). The `rejects_non_png_thumbnail` test writes 64 bytes of non-magic data into a fresh `std::env::temp_dir()` path at test start. All tests must FAIL because no envelope emission exists yet.
 - Precondition: `cargo check --workspace` is green at branch HEAD.
 - Postcondition: every test in the new file compiles and fails with the expected "sentinel not found" / "field missing" / "thumbnail file not read" message.
 - Files allowed to read:
@@ -24,14 +24,15 @@
   - `crates/slicer-host/src/pipeline.rs` lines `:217-:265` — `run_pipeline_with_raw_config` signature.
 - Files allowed to edit (≤ 3):
   - `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` (new).
-  - `crates/slicer-host/tests/fixtures/test_thumb.png` (new, ~1 KB).
-  - `crates/slicer-host/tests/fixtures/not_a_png.bin` (new, ≤ 64 bytes).
+- No new committed binary fixtures. The valid-PNG fixture is the already-existing `resources/fake_thumb.png` (940×940, ≈132 KB, PNG-magic verified — see Self-check below). The non-PNG fixture is materialized at test runtime in `std::env::temp_dir()`.
+- Self-check before writing the test (one-line bash dispatch, FACT pass/fail): `python3 -c "import sys; b=open('resources/fake_thumb.png','rb').read(8); sys.exit(0 if b==bytes([0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]) else 1)"`. If FAIL, STOP and surface to the user — the packet is unimplementable as written.
 - Files explicitly out-of-bounds for this step:
   - `crates/slicer-host/src/gcode_emit.rs` (editing) — Step 3+ only.
   - `crates/slicer-host/src/config_schema.rs` — Step 2.
   - `crates/slicer-host/src/cli.rs`, `main.rs` — Step 5.
 - Expected sub-agent dispatches:
   - "Show the fixture setup pattern in `orca_comment_contract_tdd.rs`; return SNIPPETS ≤ 30 lines of the setup helper only" — scope: that file; return: SNIPPETS.
+  - "Verify PNG magic of `resources/fake_thumb.png`; return FACT yes/no plus first 8 bytes hex" — scope: that file only. Required pre-write check.
 - Context cost: `S`.
 - Authoritative docs:
   - `docs/02_ir_schemas.md` — `PrintMetadata`, `LayerCollectionIR` only; range-read.
@@ -206,7 +207,7 @@
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 1 | S | New test file + 2 fixtures; mirrors existing TDD pattern. |
+| Step 1 | S | New test file only; reuses `resources/fake_thumb.png`; mirrors existing TDD pattern. |
 | Step 2 | S | Pure config_schema.rs registration; no semantic change yet. |
 | Step 3 | S | One helper + serializer head-insertion; 2 OrcaSlicer FACTs. |
 | Step 4 | S | One helper + serializer head-insertion; 1 OrcaSlicer FACT. |
