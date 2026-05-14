@@ -3,7 +3,7 @@
 ## Execution Rules
 
 - One atomic step at a time.
-- Each step must map back to `TASK-156` (envelope) or `TASK-157` (thumbnail) — both new in this packet (insert rows in `docs/07_implementation_status.md` via Step 7's dispatch, not by hand-editing the backlog from inside the implementer).
+- Each step must map back to `TASK-184` (envelope) or `TASK-185` (thumbnail) — both new in this packet (insert rows in `docs/07_implementation_status.md` via Step 7's dispatch, not by hand-editing the backlog from inside the implementer).
 - TDD first: Step 1 writes the failing tests; subsequent steps make them pass one cluster at a time.
 - Each step honors the shared context-discipline preamble. The fields below are the budget contract.
 - Steps stay inside the packet boundary; no edits in any other `.ralph/specs/*/` directory.
@@ -15,11 +15,11 @@
 - Task IDs:
   - `TASK-156`
   - `TASK-157`
-- Objective: create `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` with one test per AC in `packet.spec.md` plus the five negative-case tests. Test bodies invoke the existing slicing entrypoint with a fixed small fixture (Benchy or a smaller test mesh already used by `orca_comment_contract_tdd`) and assert against the resulting G-code text. The thumbnail-related tests resolve the valid-PNG fixture as `Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../resources/fake_thumb.png"))` (NO copy into `tests/fixtures/`). The `rejects_non_png_thumbnail` test writes 64 bytes of non-magic data into a fresh `std::env::temp_dir()` path at test start. All tests must FAIL because no envelope emission exists yet.
+- Objective: create `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` with one test per AC in `packet.spec.md` plus the five negative-case tests. Test bodies invoke the existing slicing entrypoint with a fixed small fixture (Benchy or a smaller test mesh already used by `gcode_emit_tdd`) and assert against the resulting G-code text. The thumbnail-related tests resolve the valid-PNG fixture as `Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../resources/fake_thumb.png"))` (NO copy into `tests/fixtures/`). The `rejects_non_png_thumbnail` test writes 64 bytes of non-magic data into a fresh `std::env::temp_dir()` path at test start. All tests must FAIL because no envelope emission exists yet.
 - Precondition: `cargo check --workspace` is green at branch HEAD.
 - Postcondition: every test in the new file compiles and fails with the expected "sentinel not found" / "field missing" / "thumbnail file not read" message.
 - Files allowed to read:
-  - `crates/slicer-host/tests/orca_comment_contract_tdd.rs` — pattern to mirror for fixture setup.
+  - `crates/slicer-host/tests/gcode_emit_tdd.rs` — pattern to mirror for fixture setup.
   - `crates/slicer-host/src/gcode_emit.rs` lines `:374-:490` — to know exact output shape today.
   - `crates/slicer-host/src/pipeline.rs` lines `:217-:265` — `run_pipeline_with_raw_config` signature.
 - Files allowed to edit (≤ 3):
@@ -31,7 +31,7 @@
   - `crates/slicer-host/src/config_schema.rs` — Step 2.
   - `crates/slicer-host/src/cli.rs`, `main.rs` — Step 5.
 - Expected sub-agent dispatches:
-  - "Show the fixture setup pattern in `orca_comment_contract_tdd.rs`; return SNIPPETS ≤ 30 lines of the setup helper only" — scope: that file; return: SNIPPETS.
+  - "Show the fixture setup pattern in `gcode_emit_tdd.rs`; return SNIPPETS ≤ 30 lines of the setup helper only" — scope: that file; return: SNIPPETS.
   - "Verify PNG magic of `resources/fake_thumb.png`; return FACT yes/no plus first 8 bytes hex" — scope: that file only. Required pre-write check.
 - Context cost: `S`.
 - Authoritative docs:
@@ -179,11 +179,11 @@
 ### Step 7: Regression + lint + backlog update
 
 - Task IDs:
-  - `TASK-156`
-  - `TASK-157`
-- Objective: confirm no regression in existing G-code envelope behavior; pass workspace check and clippy; update `docs/07_implementation_status.md` to add `TASK-156` and `TASK-157` rows.
+  - `TASK-184`
+  - `TASK-185`
+- Objective: confirm no regression in existing G-code envelope behavior; pass workspace check and clippy; update `docs/07_implementation_status.md` to add `TASK-184` and `TASK-185` rows.
 - Precondition: Steps 1-6 complete.
-- Postcondition: full packet test file green; `orca_comment_contract_tdd` green; `cargo check --workspace` green; `cargo clippy --workspace -- -D warnings` green; `docs/07` updated.
+- Postcondition: full packet test file green; `gcode_emit_tdd` green; `cargo check --workspace` green; `cargo clippy --workspace -- -D warnings` green; `docs/07` updated.
 - Files allowed to read:
   - None directly; pure-dispatch step (the implementer adjudicates returned FACTs).
 - Files allowed to edit (≤ 3):
@@ -192,10 +192,10 @@
   - Everything else — this step is regression and bookkeeping only.
 - Expected sub-agent dispatches:
   - "Run `cargo test -p slicer-host --test gcode_header_thumbnail_config_blocks_tdd`; return FACT pass/fail; SNIPPETS ≤ 20 lines on first failure" — primary.
-  - "Run `cargo test -p slicer-host --test orca_comment_contract_tdd`; return FACT pass/fail" — regression.
+  - "Run `cargo test -p slicer-host --test gcode_emit_tdd`; return FACT pass/fail" — regression.
   - "Run `cargo check --workspace`; return FACT pass/fail; SNIPPETS ≤ 10 lines on failure" — type-check gate.
   - "Run `cargo clippy --workspace -- -D warnings`; return FACT pass/fail; SNIPPETS ≤ 10 lines on failure" — lint gate.
-  - "Insert two rows in `docs/07_implementation_status.md`: `TASK-156` (emit HEADER_BLOCK, extrusion-width comments, CONFIG_BLOCK in final G-code; packet 55) status `[~]`, and `TASK-157` (--thumbnail CLI flag + THUMBNAIL_BLOCK emission; packet 55) status `[~]`. Append at the end of the in-progress section. Return FACT: row line numbers" — backlog update.
+  - "Insert two rows in `docs/07_implementation_status.md`: `TASK-184` (emit HEADER_BLOCK, extrusion-width comments, CONFIG_BLOCK in final G-code; packet 55) status `[~]`, and `TASK-185` (--thumbnail CLI flag + THUMBNAIL_BLOCK emission; packet 55) status `[~]`. Append at the end of the in-progress section. Return FACT: row line numbers" — backlog update.
 - Context cost: `S`.
 - Authoritative docs: none.
 - OrcaSlicer refs: none.
@@ -221,10 +221,10 @@ Aggregate: `M`. No step is `L`. If Step 5 grows beyond `M` during implementation
 
 - All seven steps complete; every step exit condition met.
 - All `packet.spec.md` acceptance criteria green: each pipe-suffixed command dispatched and returned PASS.
-- `cargo test -p slicer-host --test orca_comment_contract_tdd` green (regression).
+- `cargo test -p slicer-host --test gcode_emit_tdd` green (regression).
 - `cargo check --workspace` green.
 - `cargo clippy --workspace -- -D warnings` green.
-- `docs/07_implementation_status.md` updated with `TASK-156` and `TASK-157` rows via worker dispatch.
+- `docs/07_implementation_status.md` updated with `TASK-184` and `TASK-185` rows via worker dispatch.
 - No predecessor packet status transitions required (no supersession).
 - `packet.spec.md` ready to move to `status: implemented`.
 

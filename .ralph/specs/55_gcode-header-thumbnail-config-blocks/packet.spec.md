@@ -1,9 +1,9 @@
 ---
-status: draft
+status: implemented
 packet: 55_gcode-header-thumbnail-config-blocks
 task_ids:
-  - TASK-156   # new — HEADER_BLOCK + CONFIG_BLOCK + extrusion-width comments
-  - TASK-157   # new — THUMBNAIL_BLOCK via --thumbnail CLI flag (OrcaSlicer-parity when flag absent)
+  - TASK-184   # HEADER_BLOCK + CONFIG_BLOCK + extrusion-width comments
+  - TASK-185   # THUMBNAIL_BLOCK via --thumbnail CLI flag (OrcaSlicer-parity when flag absent)
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
@@ -73,7 +73,7 @@ The sentinel literals, line ordering, comment prefix style, and Base64 column wr
 ## Verification
 
 - `cargo test -p slicer-host --test gcode_header_thumbnail_config_blocks_tdd` — dispatch as FACT pass/fail; SNIPPETS on failure with the first failing assertion + ≤ 20 lines.
-- `cargo test -p slicer-host --test orca_comment_contract_tdd` — regression; HEADER block must not break the existing `;LAYER_CHANGE`/`;TYPE:`/`;Z:`/`;HEIGHT:` sequence.
+- `cargo test -p slicer-host --test gcode_emit_tdd` — regression; HEADER block must not break the existing `;LAYER_CHANGE`/`;TYPE:`/`;Z:`/`;HEIGHT:` sequence (27 tests).
 - `cargo check --workspace`
 - `cargo clippy --workspace -- -D warnings`
 
@@ -82,7 +82,7 @@ The sentinel literals, line ordering, comment prefix style, and Base64 column wr
 - `docs/01_system_architecture.md` — finalization stage and serializer role; delegate a SUMMARY.
 - `docs/02_ir_schemas.md` — `PrintMetadata`, `LayerCollectionIR`, `ConfigView`; load directly only the ≤ 60-line sections covering these three structs (file is large; delegate ranges if uncertain).
 - `docs/03_wit_and_manifest.md` — config schema and manifest validation rules; load directly only the schema-validation section; delegate if > 300 lines around it.
-- `docs/07_implementation_status.md` — delegate; insert new rows `TASK-156` (header + width + config blocks) and `TASK-157` (--thumbnail flag). Do NOT reopen TASK-119 series (already covers in-body `;TYPE:`/`;LAYER_CHANGE` comments, which this packet leaves untouched).
+- `docs/07_implementation_status.md` — delegate; insert new rows `TASK-184` (header + width + config blocks) and `TASK-185` (--thumbnail flag). Do NOT reopen TASK-119 series (already covers in-body `;TYPE:`/`;LAYER_CHANGE` comments, which this packet leaves untouched).
 - `docs/08_coordinate_system.md` — load directly the unit-conversion section (≤ 30 lines) only when emitting `max_z_height` in millimeters from internal 100-nm units.
 
 ## OrcaSlicer Reference Obligations

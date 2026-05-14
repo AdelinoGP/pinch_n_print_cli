@@ -3,10 +3,10 @@
 ## Packet Metadata
 
 - Grouped task IDs:
-  - `TASK-156` — Emit OrcaSlicer-parity `HEADER_BLOCK`, extrusion-width comments, and `CONFIG_BLOCK` envelope in the final `.gcode` file.
-  - `TASK-157` — Accept an external PNG via a new `--thumbnail <path>` slicer-cli flag and emit it as `THUMBNAIL_BLOCK`; omit the block when the flag is absent.
+  - `TASK-184` — Emit OrcaSlicer-parity `HEADER_BLOCK`, extrusion-width comments, and `CONFIG_BLOCK` envelope in the final `.gcode` file.
+  - `TASK-185` — Accept an external PNG via a new `--thumbnail <path>` slicer-cli flag and emit it as `THUMBNAIL_BLOCK`; omit the block when the flag is absent.
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -81,7 +81,7 @@ Deliberately NOT borrowed: OrcaSlicer's full PrintConfig key set (we emit only w
 ## Verification Commands
 
 - `cargo test -p slicer-host --test gcode_header_thumbnail_config_blocks_tdd` — primary.
-- `cargo test -p slicer-host --test orca_comment_contract_tdd` — regression (envelope must not displace in-body comments).
+- `cargo test -p slicer-host --test gcode_emit_tdd` — regression (envelope must not displace in-body comments; 27 tests).
 - `cargo check --workspace` — type-check gate.
 - `cargo clippy --workspace -- -D warnings` — lint gate.
 

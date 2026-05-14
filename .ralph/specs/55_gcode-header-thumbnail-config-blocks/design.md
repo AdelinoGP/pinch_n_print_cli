@@ -4,7 +4,7 @@
 
 - Primary code path: `crates/slicer-host/src/gcode_emit.rs::DefaultGCodeSerializer::serialize_gcode()` (`:374-:490`). This function is the single point where `GCodeIR` becomes the final text string. All four new envelope blocks (HEADER, width comments, THUMBNAIL, CONFIG) are emitted from inside it — HEADER + width + THUMBNAIL at the head, CONFIG at the tail. No new module, no new finalization stage, no new TextPostProcess hook.
 - Secondary code path: `crates/slicer-host/src/cli.rs` + `crates/slicer-host/src/main.rs` for the `--thumbnail <path>` flag. The flag's value is injected into `config_source: HashMap<ConfigKey, ConfigValue>` (the same map produced by `parse_cli_config_source()` at `execution_plan.rs:193`) before the call to `run_pipeline_with_raw_config()` at `main.rs:280`. No changes to `run_pipeline_with_raw_config`'s signature — the file path travels as a config value.
-- Neighboring tests or fixtures: `crates/slicer-host/tests/orca_comment_contract_tdd.rs` is the existing comment-contract regression and must stay green. The new TDD `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` is the only new test file.
+- Neighboring tests or fixtures: `crates/slicer-host/tests/gcode_emit_tdd.rs` is the existing comment-contract regression and must stay green. The new TDD `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` is the only new test file.
 - OrcaSlicer comparison surface: only the wire format (sentinel literals, line prefix, Base64 column width, key spellings). Functional logic is NOT copied — PinchAndPrint's serializer remains independent.
 
 ## Architecture Constraints
@@ -80,7 +80,7 @@ Fixture handling (NO new committed binary fixtures):
 - "Read `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` lines `5590-5620` (`append_full_config()`). Return FACT ≤ 8 lines: iteration order, separator (` = ` vs `=`), and whether keys are sorted or insertion-order." — purpose: ground Step 6's CONFIG_BLOCK helper.
 - "Inspect `crates/slicer-host/src/config_schema.rs`; return LOCATIONS (≤ 40 entries) listing every registered key with type and default." — purpose: Step 6 needs to know the full effective-config key set so the test's `config_block_covers_effective_config` assertion is grounded.
 - "Run `cargo test -p slicer-host --test gcode_header_thumbnail_config_blocks_tdd`; return FACT pass/fail; SNIPPETS ≤ 20 lines on first failing assertion." — purpose: per-step verification.
-- "Run `cargo test -p slicer-host --test orca_comment_contract_tdd`; return FACT pass/fail." — purpose: regression after envelope insertion.
+- "Run `cargo test -p slicer-host --test gcode_emit_tdd`; return FACT pass/fail." — purpose: regression after envelope insertion.
 
 ## Data and Contract Notes
 
@@ -124,3 +124,13 @@ These are pre-implementation answerable; they do not block activation. The imple
 - **Q3.** Does the OrcaSlicer thumbnail wire format prepend a `; thumbnail begin <W>x<H> <bytes>` metadata line? FACT dispatch 4 confirms. If yes, Step 5 emits it; if no, omit. The roundtrip AC tolerates either.
 
 If FACT dispatches return contradictory or ambiguous results, surface as a packet-local risk and emit the simplest OrcaSlicer-matching variant; do NOT block on a perfect match.
+
+## Implementation Deviations
+
+Recorded at packet closure (2026-05-14). None are blocking; all are within the accepted risk envelope.
+
+- **DEV-A: `ThumbnailAwareSerializer` wrapper type** (vs. selected approach of "inline inside `DefaultGCodeSerializer::serialize_gcode()`"). The implementation wraps `DefaultGCodeSerializer` in a `ThumbnailAwareSerializer` struct (`gcode_emit.rs:928`) that handles THUMBNAIL_BLOCK and CONFIG_BLOCK injection, while HEADER_BLOCK and width comments remain inside `DefaultGCodeSerializer::serialize_gcode()`. Rationale: threading `thumbnail_bytes: Option<Vec<u8>>` into the existing serializer call chain would have required changing `GCodeSerializer` trait or `serialize_gcode()`'s signature, cascading into all existing test callers. The wrapper keeps `DefaultGCodeSerializer`'s API stable. Functional result is identical.
+
+- **DEV-B: `thumbnail_path` excluded from CONFIG_BLOCK via `pipeline.rs` removal** (vs. no explicit documentation of this exclusion in the original design). `thumbnail_path` is an invocation-time routing key, not a print parameter; including it in CONFIG_BLOCK would embed a machine-local absolute path that breaks file portability. The fix: `pipeline.rs::run_pipeline_with_raw_config` calls `effective_config.remove("thumbnail_path")` immediately after bytes are extracted, so the key is consumed before `ThumbnailAwareSerializer` sees the map. `serialize_config_block` requires no hardcoded filter.
+
+- **DEV-C: PNG file I/O and validation in `pipeline.rs`** (vs. design's "failure modes become `Result::Err` propagated up to `main.rs`"). All thumbnail file reading and PNG magic validation happens inside `run_pipeline_with_raw_config` (`pipeline.rs:257-273`). `main.rs` only inserts the path string into `config_source`; errors propagate as `PipelineError::Postpass` and are caught by the existing `match run_pipeline_with_raw_config(...)` handler in `main.rs`, which exits non-zero. The serializer itself remains pure (no file I/O).

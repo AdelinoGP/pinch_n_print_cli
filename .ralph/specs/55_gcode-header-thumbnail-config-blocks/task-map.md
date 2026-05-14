@@ -4,19 +4,19 @@ This packet introduces TWO new task IDs that are not yet in `docs/07_implementat
 
 This file is required because:
 
-1. The packet spans more than one task ID (`TASK-156` and `TASK-157`).
+1. The packet spans more than one task ID (`TASK-184` and `TASK-185`).
 2. Different OrcaSlicer references govern different steps.
 3. The packet sits alongside (does NOT reopen or supersede) the closed `TASK-119` series that already established the live in-body comment contract; the bridge between "in-body comments done" and "envelope blocks missing" needs to be explicit so reviewers do not confuse this packet with a TASK-119 follow-up.
 
 | docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
 | --- | --- | --- | --- | --- | --- | --- |
-| `TASK-156` | Step 1 | `docs/02_ir_schemas.md` (PrintMetadata/LayerCollectionIR sections) | `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` (new) | none | `S` | TDD scaffolding for HEADER + width + CONFIG ACs and negatives. |
-| `TASK-156` | Step 2 | `docs/03_wit_and_manifest.md` (config-schema section) | `crates/slicer-host/src/config_schema.rs` | none | `S` | Register `filament_diameter`, `filament_density`, `max_z_height` plus any missing width keys; no semantic change. |
-| `TASK-156` | Step 3 | `docs/02_ir_schemas.md`, `docs/08_coordinate_system.md` | `crates/slicer-host/src/gcode_emit.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:2640-2710` (delegate FACT ×2) | `S` | HEADER_BLOCK emission with four required fields + filament order. |
-| `TASK-156` | Step 4 | — | `crates/slicer-host/src/gcode_emit.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:2750-2765` (delegate FACT ×1) | `S` | Extrusion-width comments after HEADER_BLOCK_END; canonical key list grounded by FACT. |
-| `TASK-157` | Step 5 | `docs/03_wit_and_manifest.md` | `crates/slicer-host/src/cli.rs`, `main.rs`, `gcode_emit.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/Thumbnails.hpp:100-135` (delegate FACT ×1) | `M` | `--thumbnail` flag + PNG-magic validation + Base64 chunking + THUMBNAIL_BLOCK emission. Largest single step. |
-| `TASK-156` | Step 6 | `docs/02_ir_schemas.md` (ConfigView section) | `crates/slicer-host/src/gcode_emit.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:5590-5620` (delegate FACT ×1) | `S` | CONFIG_BLOCK at file tail; deterministic key-sorted iteration. |
-| `TASK-156`, `TASK-157` | Step 7 | — | `docs/07_implementation_status.md` (via dispatch) | none | `S` | Pure-dispatch regression + backlog row insertion. |
+| `TASK-184` | Step 1 | `docs/02_ir_schemas.md` (PrintMetadata/LayerCollectionIR sections) | `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` (new) | none | `S` | TDD scaffolding for HEADER + width + CONFIG ACs and negatives. |
+| `TASK-184` | Step 2 | `docs/03_wit_and_manifest.md` (config-schema section) | `crates/slicer-host/src/config_schema.rs` | none | `S` | Register `filament_diameter`, `filament_density`, `max_z_height` plus any missing width keys; no semantic change. |
+| `TASK-184` | Step 3 | `docs/02_ir_schemas.md`, `docs/08_coordinate_system.md` | `crates/slicer-host/src/gcode_emit.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:2640-2710` (delegate FACT ×2) | `S` | HEADER_BLOCK emission with four required fields + filament order. |
+| `TASK-184` | Step 4 | — | `crates/slicer-host/src/gcode_emit.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:2750-2765` (delegate FACT ×1) | `S` | Extrusion-width comments after HEADER_BLOCK_END; canonical key list grounded by FACT. |
+| `TASK-185` | Step 5 | `docs/03_wit_and_manifest.md` | `crates/slicer-host/src/cli.rs`, `main.rs`, `gcode_emit.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode/Thumbnails.hpp:100-135` (delegate FACT ×1) | `M` | `--thumbnail` flag + PNG-magic validation + Base64 chunking + THUMBNAIL_BLOCK emission. Largest single step. |
+| `TASK-184` | Step 6 | `docs/02_ir_schemas.md` (ConfigView section) | `crates/slicer-host/src/gcode_emit.rs` | `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:5590-5620` (delegate FACT ×1) | `S` | CONFIG_BLOCK at file tail; deterministic key-sorted iteration. |
+| `TASK-184`, `TASK-185` | Step 7 | — | `docs/07_implementation_status.md` (via dispatch) | none | `S` | Pure-dispatch regression + backlog row insertion. |
 
 Aggregate: `M`. Largest single step: Step 5 (`M`). No `L` cells. The packet is within budget for activation.
 
