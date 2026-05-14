@@ -545,12 +545,26 @@ impl GCodeEmitter for DefaultGCodeEmitter {
 ///
 /// Converts `GCodeIR` to a G-code text string by serializing each command
 /// according to standard G-code formatting rules.
-pub struct DefaultGCodeSerializer;
+///
+/// `relative` controls whether `M83` (relative-E) or `M82` (absolute-E) is
+/// emitted in the preamble, and how E values are rendered during serialization.
+pub struct DefaultGCodeSerializer {
+    /// `true` = relative-E mode (M83); `false` = absolute-E mode (M82).
+    relative: bool,
+}
 
 impl DefaultGCodeSerializer {
-    /// Creates a new `DefaultGCodeSerializer`.
+    /// Creates a new `DefaultGCodeSerializer` in relative-E mode (default).
     pub fn new() -> Self {
-        Self
+        Self::with_extrusion_mode(true)
+    }
+
+    /// Creates a `DefaultGCodeSerializer` with an explicit extrusion mode.
+    ///
+    /// - `relative = true`  → emits `M83` in preamble; E values are deltas.
+    /// - `relative = false` → emits `M82` in preamble; E values are absolute.
+    pub fn with_extrusion_mode(relative: bool) -> Self {
+        Self { relative }
     }
 }
 
@@ -563,6 +577,18 @@ impl Default for DefaultGCodeSerializer {
 impl GCodeSerializer for DefaultGCodeSerializer {
     fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
         let mut output = String::new();
+
+        // Preamble: emit extruder mode selector exactly once.
+        if self.relative {
+            writeln!(output, "M83").unwrap();
+        } else {
+            writeln!(output, "M82").unwrap();
+        }
+
+        // e_accumulator tracks the absolute E position seen so far (from GCodeIR,
+        // which always stores absolute E values).  Only used in relative mode to
+        // compute per-move deltas.
+        let mut e_accumulator: f64 = 0.0;
 
         for command in &gcode_ir.commands {
             match command {
@@ -589,7 +615,14 @@ impl GCodeSerializer for DefaultGCodeSerializer {
                         write!(output, " Z{}", format_coord(*z_val)).unwrap();
                     }
                     if let Some(e_val) = e {
-                        write!(output, " E{}", format_coord(*e_val)).unwrap();
+                        if self.relative {
+                            let abs_e = *e_val as f64;
+                            let delta = abs_e - e_accumulator;
+                            write!(output, " E{:.5}", delta).unwrap();
+                            e_accumulator = abs_e;
+                        } else {
+                            write!(output, " E{:.5}", e_val).unwrap();
+                        }
                     }
                     if let Some(f_val) = f {
                         write!(output, " F{}", format_coord(*f_val)).unwrap();
@@ -602,13 +635,23 @@ impl GCodeSerializer for DefaultGCodeSerializer {
                     mode,
                 } => match mode {
                     slicer_ir::RetractMode::Gcode => {
-                        writeln!(
-                            output,
-                            "G1 E-{} F{}",
-                            format_coord(*length),
-                            format_coord(*speed)
-                        )
-                        .unwrap();
+                        // Retract is always a delta (negative E movement) regardless of mode,
+                        // because it represents a physical retraction amount.  In relative mode
+                        // the retract length IS the delta.  In absolute mode we subtract from
+                        // the accumulator and emit the new absolute position.
+                        if self.relative {
+                            writeln!(output, "G1 E-{:.5} F{}", length, format_coord(*speed))
+                                .unwrap();
+                            e_accumulator -= *length as f64;
+                        } else {
+                            writeln!(
+                                output,
+                                "G1 E-{} F{}",
+                                format_coord(*length),
+                                format_coord(*speed)
+                            )
+                            .unwrap();
+                        }
                     }
                     slicer_ir::RetractMode::Firmware => {
                         writeln!(output, "G10").unwrap();
@@ -620,18 +663,41 @@ impl GCodeSerializer for DefaultGCodeSerializer {
                     mode,
                 } => match mode {
                     slicer_ir::RetractMode::Gcode => {
-                        writeln!(
-                            output,
-                            "G1 E{} F{}",
-                            format_coord(*length),
-                            format_coord(*speed)
-                        )
-                        .unwrap();
+                        if self.relative {
+                            writeln!(output, "G1 E{:.5} F{}", length, format_coord(*speed))
+                                .unwrap();
+                            e_accumulator += *length as f64;
+                        } else {
+                            writeln!(
+                                output,
+                                "G1 E{} F{}",
+                                format_coord(*length),
+                                format_coord(*speed)
+                            )
+                            .unwrap();
+                        }
                     }
                     slicer_ir::RetractMode::Firmware => {
                         writeln!(output, "G11").unwrap();
                     }
                 },
+                // Raw commands: detect G92 E resets and sync the accumulator.
+                GCodeCommand::Raw { text } => {
+                    // Detect "G92 E0" (or "G92 E0.0" etc.) to reset accumulator.
+                    let trimmed = text.trim();
+                    if trimmed.starts_with("G92") {
+                        // Parse the E value from the G92 line (e.g. "G92 E0" → 0.0).
+                        if let Some(e_str) = trimmed
+                            .split_whitespace()
+                            .find(|tok| tok.starts_with('E') || tok.starts_with('e'))
+                        {
+                            if let Ok(val) = e_str[1..].parse::<f64>() {
+                                e_accumulator = val;
+                            }
+                        }
+                    }
+                    writeln!(output, "{}", text).unwrap();
+                }
                 GCodeCommand::FanSpeed { value } => {
                     writeln!(output, "M106 S{}", value).unwrap();
                 }
@@ -648,9 +714,6 @@ impl GCodeSerializer for DefaultGCodeSerializer {
                 }
                 GCodeCommand::Comment { text } => {
                     writeln!(output, "; {}", text).unwrap();
-                }
-                GCodeCommand::Raw { text } => {
-                    writeln!(output, "{}", text).unwrap();
                 }
             }
         }

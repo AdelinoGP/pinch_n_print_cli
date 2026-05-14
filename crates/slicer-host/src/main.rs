@@ -261,7 +261,13 @@ fn main() {
                     finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
                     postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
                     emitter: Box::new(DefaultGCodeEmitter::new("slicer-host 0.1.0".into())),
-                    serializer: Box::new(DefaultGCodeSerializer::new()),
+                    serializer: {
+                        let relative = match config_source.get("use_relative_e_distances") {
+                            Some(slicer_ir::ConfigValue::Bool(b)) => *b,
+                            _ => true,
+                        };
+                        Box::new(DefaultGCodeSerializer::with_extrusion_mode(relative))
+                    },
                 },
                 resolved_configs: Arc::new(resolved_configs_map),
                 default_resolved_config: Arc::new(default_resolved_config),
