@@ -38,12 +38,12 @@ impl SkirtBrim {
 
         let skirt_loops = match config.get("skirt_loops") {
             Some(ConfigValue::Int(v)) => *v as u32,
-            _ => 1,
+            _ => 6,
         };
 
         let skirt_distance = match config.get("skirt_distance") {
             Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 6.0,
+            _ => 3.0,
         };
 
         let skirt_height = match config.get("skirt_height") {
@@ -53,7 +53,7 @@ impl SkirtBrim {
 
         let brim_width = match config.get("brim_width") {
             Some(ConfigValue::Float(v)) => *v as f32,
-            _ => 0.0,
+            _ => 8.0,
         };
 
         let line_width = match config.get("line_width") {

@@ -76,6 +76,7 @@ fn run_finalization_pushes_skirt_entities_to_target_layers() {
     let sb = skirt_brim_from(&[
         ("skirt_loops", ConfigValue::Int(2)),
         ("skirt_height", ConfigValue::Int(1)),
+        ("brim_width", ConfigValue::Float(0.0)),
     ]);
 
     let layer = make_layer(

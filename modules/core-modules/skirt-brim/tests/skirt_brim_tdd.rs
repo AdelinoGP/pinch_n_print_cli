@@ -87,10 +87,10 @@ fn custom_config(
 fn from_config_defaults() {
     let sb = SkirtBrim::from_config(&empty_config()).unwrap();
     assert!(sb.enabled());
-    assert_eq!(sb.skirt_loops(), 1);
-    assert!((sb.skirt_distance() - 6.0).abs() < 0.001);
+    assert_eq!(sb.skirt_loops(), 6);
+    assert!((sb.skirt_distance() - 3.0).abs() < 0.001);
     assert_eq!(sb.skirt_height(), 1);
-    assert!((sb.brim_width() - 0.0).abs() < 0.001);
+    assert!((sb.brim_width() - 8.0).abs() < 0.001);
     assert!((sb.line_width() - 0.4).abs() < 0.001);
 }
 
