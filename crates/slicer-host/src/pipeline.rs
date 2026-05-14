@@ -12,10 +12,12 @@ use slicer_ir::{ConfigKey, ConfigValue, MeshIR, ResolvedConfig};
 
 use crate::{
     execute_layer_finalization, execute_per_layer_with_events, execute_postpass,
-    prepass::execute_prepass_with_builtins_configured, Blackboard, ExecutionPlan,
-    FinalizationError, FinalizationStageRunner, GCodeEmitter, GCodeSerializer, LayerExecutionError,
-    LayerProgressSink, LayerStageRunner, ModuleAccessAudit, NoopLayerProgressSink, PostpassError,
-    PostpassStageRunner, PrepassExecutionError, PrepassStageRunner,
+    gcode_emit::{resolved_config_to_map, ThumbnailAwareSerializer},
+    prepass::execute_prepass_with_builtins_configured,
+    Blackboard, ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter,
+    GCodeSerializer, LayerExecutionError, LayerProgressSink, LayerStageRunner, ModuleAccessAudit,
+    NoopLayerProgressSink, PostpassError, PostpassStageRunner, PrepassExecutionError,
+    PrepassStageRunner,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -251,6 +253,47 @@ pub fn run_pipeline_with_raw_config(
         runners.finalization.as_ref(),
         &mut layer_irs,
     )?;
+
+    // Extract and validate thumbnail bytes from raw_config before serialization.
+    // If thumbnail_path is non-empty, read the file and check PNG magic; fail fast on error.
+    const PNG_MAGIC: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    let thumbnail_bytes: Option<Vec<u8>> = match raw_config_source.get("thumbnail_path") {
+        Some(ConfigValue::String(path)) if !path.is_empty() => {
+            let bytes = std::fs::read(path).map_err(|_| PostpassError::GCodeSerialization {
+                message: format!("thumbnail_path: file not found: {path}"),
+            })?;
+            if bytes.len() < 8 || bytes[..8] != PNG_MAGIC {
+                return Err(PipelineError::Postpass(PostpassError::GCodeSerialization {
+                    message: format!("thumbnail_path: invalid PNG magic in file: {path}"),
+                }));
+            }
+            Some(bytes)
+        }
+        _ => None,
+    };
+
+    // Build the effective config map: resolved defaults as baseline, then overlay
+    // the user-supplied raw config (raw values take precedence).
+    // This ensures CONFIG_BLOCK is non-empty even when raw_config_source is empty
+    // (AC-9 / NEG-4) while still including all user-passed keys (AC-8).
+    // thumbnail_path is an invocation-time routing key consumed above; strip it
+    // so it does not appear in CONFIG_BLOCK.
+    let mut effective_config = resolved_config_to_map(&default_resolved_config);
+    for (k, v) in raw_config_source {
+        effective_config.insert(k.clone(), v.clone());
+    }
+    effective_config.remove("thumbnail_path");
+
+    // Wrap the serializer with thumbnail support when bytes are present.
+    let inner_serializer = std::mem::replace(
+        &mut runners.serializer,
+        Box::new(crate::gcode_emit::DefaultGCodeSerializer::new()),
+    );
+    runners.serializer = Box::new(ThumbnailAwareSerializer::new(
+        inner_serializer,
+        thumbnail_bytes,
+        effective_config,
+    ));
 
     let (gcode_text, postpass_audits) = execute_postpass(
         &plan,

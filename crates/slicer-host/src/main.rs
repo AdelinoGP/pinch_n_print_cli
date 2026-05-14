@@ -116,6 +116,7 @@ fn main() {
             config,
             output,
             module_dir,
+            thumbnail,
         } => {
             // Load model
             let model_path = std::path::Path::new(&model);
@@ -149,6 +150,16 @@ fn main() {
                 },
                 None => std::collections::HashMap::new(),
             };
+
+            // Insert thumbnail_path into config_source when --thumbnail is supplied.
+            // pipeline.rs reads the file and validates PNG magic; errors surface as
+            // PipelineError and produce a non-zero exit below.
+            if let Some(ref thumb_path) = thumbnail {
+                config_source.insert(
+                    "thumbnail_path".to_string(),
+                    slicer_ir::ConfigValue::String(thumb_path.to_string_lossy().to_string()),
+                );
+            }
 
             // Seed planner-visible per-object world heights from the cached
             // `ObjectMesh.world_z_extent` field before module binding. This is

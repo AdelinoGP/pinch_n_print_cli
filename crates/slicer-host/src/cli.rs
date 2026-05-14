@@ -33,6 +33,9 @@ pub enum HostCommands {
         /// Directory to search for additional modules (default: ".").
         #[arg(long, default_value = ".")]
         module_dir: String,
+        /// Path to a PNG thumbnail image to embed in the G-code header.
+        #[arg(long)]
+        thumbnail: Option<PathBuf>,
     },
     /// Query the combined config schema from loaded modules.
     ConfigSchema {

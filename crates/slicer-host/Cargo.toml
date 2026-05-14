@@ -30,6 +30,7 @@ pyo3 = { workspace = true }
 wat = "1.0"
 tempfile = "3"
 serde_json = "1.0"
+base64 = "0.22"
 slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk" }
 
 [dev-dependencies.part-cooling]

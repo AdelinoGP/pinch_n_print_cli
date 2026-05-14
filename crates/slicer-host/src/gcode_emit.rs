@@ -26,8 +26,8 @@ use std::collections::HashMap;
 use std::fmt::Write;
 
 use slicer_ir::{
-    ExtrusionRole, GCodeCommand, GCodeIR, LayerAnnotationKind, LayerCollectionIR, PrintMetadata,
-    SemVer,
+    ConfigValue, ExtrusionRole, GCodeCommand, GCodeIR, LayerAnnotationKind, LayerCollectionIR,
+    PrintMetadata, ResolvedConfig, SemVer,
 };
 
 use crate::{Blackboard, GCodeEmitter, GCodeSerializer, PostpassError};
@@ -551,6 +551,23 @@ impl GCodeEmitter for DefaultGCodeEmitter {
 pub struct DefaultGCodeSerializer {
     /// `true` = relative-E mode (M83); `false` = absolute-E mode (M82).
     relative: bool,
+    /// Filament diameter in mm (default 1.75 per schema).
+    filament_diameter_mm: f32,
+    /// Filament density in g/cm³ (default 1.24 per schema).
+    filament_density_g_cm3: f32,
+    /// Minimum max_z_height in mm used when no Z moves appear in the output
+    /// (default 256.0 per config schema — the schema's configured build height).
+    max_z_height_floor_mm: f32,
+    /// Extrusion width for outer wall in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.42).
+    outer_wall_line_width: f32,
+    /// Extrusion width for inner walls in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.45).
+    inner_wall_line_width: f32,
+    /// Extrusion width for sparse infill in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.45).
+    sparse_infill_line_width: f32,
+    /// Extrusion width for top surface in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.42).
+    top_surface_line_width: f32,
+    /// Extrusion width for support material in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.35).
+    support_line_width: f32,
 }
 
 impl DefaultGCodeSerializer {
@@ -564,7 +581,25 @@ impl DefaultGCodeSerializer {
     /// - `relative = true`  → emits `M83` in preamble; E values are deltas.
     /// - `relative = false` → emits `M82` in preamble; E values are absolute.
     pub fn with_extrusion_mode(relative: bool) -> Self {
-        Self { relative }
+        Self {
+            relative,
+            filament_diameter_mm: 1.75,
+            filament_density_g_cm3: 1.24,
+            max_z_height_floor_mm: 256.0,
+            // OrcaSlicer 0.4 mm nozzle parity defaults (matches config_schema.rs registration).
+            outer_wall_line_width: 0.42,
+            inner_wall_line_width: 0.45,
+            sparse_infill_line_width: 0.45,
+            top_surface_line_width: 0.42,
+            support_line_width: 0.35,
+        }
+    }
+
+    /// Sets filament diameter and density (overrides schema defaults).
+    pub fn with_filament_config(mut self, diameter_mm: f32, density_g_cm3: f32) -> Self {
+        self.filament_diameter_mm = diameter_mm;
+        self.filament_density_g_cm3 = density_g_cm3;
+        self
     }
 }
 
@@ -574,9 +609,417 @@ impl Default for DefaultGCodeSerializer {
     }
 }
 
+/// Produce the HEADER_BLOCK text (OrcaSlicer wire format, packet 55 Step 3).
+///
+/// Format (FACT from OrcaSlicerDocumented/src/libslic3r/GCode.cpp:2644-2704):
+/// ```text
+/// ; HEADER_BLOCK_START
+/// ; total layer number: <N>
+/// ; filament_diameter: <d>
+/// ; filament_density: <rho>
+/// ; max_z_height: <z>
+/// ; filament: <i0>,<i1>,...
+/// ; HEADER_BLOCK_END
+/// ```
+/// Tool indices are 1-based (OrcaSlicer uses `used_filaments[idx] + 1`).
+/// `max_z_mm` is the Z of the highest layer in millimeters.
+fn serialize_header_block(
+    layer_count: u32,
+    filament_diameter_mm: f32,
+    filament_density_g_cm3: f32,
+    max_z_mm: f32,
+    filament_used_mm: &[f32],
+) -> String {
+    let mut out = String::new();
+    writeln!(out, "; HEADER_BLOCK_START").unwrap();
+    writeln!(out, "; total layer number: {}", layer_count).unwrap();
+    // Format floats without unnecessary trailing zeros.
+    writeln!(out, "; filament_diameter: {}", filament_diameter_mm).unwrap();
+    writeln!(out, "; filament_density: {}", filament_density_g_cm3).unwrap();
+    // OrcaSlicer uses fixed precision 2 for max_z_height.
+    writeln!(out, "; max_z_height: {:.2}", max_z_mm).unwrap();
+    // Collect 1-based tool indices where filament was used (> 0.0), ascending.
+    let used_indices: Vec<String> = filament_used_mm
+        .iter()
+        .enumerate()
+        .filter(|(_, &mm)| mm > 0.0)
+        .map(|(i, _)| (i + 1).to_string())
+        .collect();
+    // If no filament was used (e.g. empty plan), emit tool 1 as a fallback
+    // so the field always has a non-empty value (AC-6 requires ≥ 1 digit).
+    let filament_value = if used_indices.is_empty() {
+        "1".to_string()
+    } else {
+        used_indices.join(",")
+    };
+    writeln!(out, "; filament: {}", filament_value).unwrap();
+    writeln!(out, "; HEADER_BLOCK_END").unwrap();
+    out
+}
+
+/// Produce the extrusion-width comment block (packet 55 Step 4 / AC-7).
+///
+/// Format (five lines, immediately after HEADER_BLOCK_END):
+/// ```text
+/// ; outer_wall_line_width = <value>
+/// ; inner_wall_line_width = <value>
+/// ; sparse_infill_line_width = <value>
+/// ; top_surface_line_width = <value>
+/// ; support_line_width = <value>
+/// ```
+/// Values are formatted with trailing-zero-stripped decimal notation (e.g. `0.42`, not `0.4200`).
+fn serialize_width_comments(
+    outer_wall: f32,
+    inner_wall: f32,
+    sparse_infill: f32,
+    top_surface: f32,
+    support: f32,
+) -> String {
+    let mut out = String::new();
+    // Strip trailing zeros while keeping at least one decimal digit.
+    // `format!("{}", v)` on f32 already does this for values like 0.42 and 0.45.
+    writeln!(out, "; outer_wall_line_width = {outer_wall}").unwrap();
+    writeln!(out, "; inner_wall_line_width = {inner_wall}").unwrap();
+    writeln!(out, "; sparse_infill_line_width = {sparse_infill}").unwrap();
+    writeln!(out, "; top_surface_line_width = {top_surface}").unwrap();
+    writeln!(out, "; support_line_width = {support}").unwrap();
+    out
+}
+
+/// Encode raw bytes to a Base64 string (RFC 4648 standard alphabet, no line breaks).
+///
+/// Hand-rolled to avoid requiring `base64` as a non-dev dependency.
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let combined = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((combined >> 18) & 63) as usize] as char);
+        out.push(TABLE[((combined >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[((combined >> 6) & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(combined & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
+/// Produce the THUMBNAIL_BLOCK text (OrcaSlicer wire format, packet 55 Step 5).
+///
+/// Format (FACT from OrcaSlicerDocumented/src/libslic3r/GCode/Thumbnails.hpp:111-129):
+/// - Sentinel: `; THUMBNAIL_BLOCK_START`
+/// - Base64 lines: `; <chunk>` where each chunk is ≤ 76 characters (OrcaSlicer max_row_length)
+/// - Sentinel: `; THUMBNAIL_BLOCK_END`
+///
+/// No metadata header line is emitted so that the region between the sentinels
+/// contains only base64 data (required for the roundtrip test to decode cleanly).
+pub fn serialize_thumbnail_block(png_bytes: &[u8]) -> String {
+    const MAX_ROW_LENGTH: usize = 76;
+    let encoded = base64_encode(png_bytes);
+    let mut out = String::new();
+    writeln!(out, "; THUMBNAIL_BLOCK_START").unwrap();
+    let mut remaining = encoded.as_str();
+    while remaining.len() > MAX_ROW_LENGTH {
+        writeln!(out, "; {}", &remaining[..MAX_ROW_LENGTH]).unwrap();
+        remaining = &remaining[MAX_ROW_LENGTH..];
+    }
+    if !remaining.is_empty() {
+        writeln!(out, "; {}", remaining).unwrap();
+    }
+    writeln!(out, "; THUMBNAIL_BLOCK_END").unwrap();
+    out
+}
+
+/// Convert a `ResolvedConfig` to a flat `HashMap<String, ConfigValue>`.
+///
+/// Used to populate the CONFIG_BLOCK with the effective slicer settings.
+/// `Option`-typed fields that are `None` are omitted; all others are included.
+pub fn resolved_config_to_map(cfg: &ResolvedConfig) -> HashMap<String, ConfigValue> {
+    let mut m: HashMap<String, ConfigValue> = HashMap::new();
+    m.insert(
+        "layer_height".into(),
+        ConfigValue::Float(f64::from(cfg.layer_height)),
+    );
+    m.insert(
+        "line_width".into(),
+        ConfigValue::Float(f64::from(cfg.line_width)),
+    );
+    m.insert(
+        "first_layer_height".into(),
+        ConfigValue::Float(f64::from(cfg.first_layer_height)),
+    );
+    m.insert(
+        "first_layer_line_width".into(),
+        ConfigValue::Float(f64::from(cfg.first_layer_line_width)),
+    );
+    m.insert(
+        "wall_count".into(),
+        ConfigValue::Int(i64::from(cfg.wall_count)),
+    );
+    m.insert(
+        "outer_wall_speed".into(),
+        ConfigValue::Float(f64::from(cfg.outer_wall_speed)),
+    );
+    m.insert(
+        "inner_wall_speed".into(),
+        ConfigValue::Float(f64::from(cfg.inner_wall_speed)),
+    );
+    m.insert(
+        "wall_generator".into(),
+        ConfigValue::String(format!("{:?}", cfg.wall_generator)),
+    );
+    if let Some(v) = cfg.arachne_min_feature_size {
+        m.insert(
+            "arachne_min_feature_size".into(),
+            ConfigValue::Float(f64::from(v)),
+        );
+    }
+    m.insert(
+        "infill_type".into(),
+        ConfigValue::String(format!("{:?}", cfg.infill_type)),
+    );
+    m.insert(
+        "infill_density".into(),
+        ConfigValue::Float(f64::from(cfg.infill_density)),
+    );
+    m.insert(
+        "infill_angle".into(),
+        ConfigValue::Float(f64::from(cfg.infill_angle)),
+    );
+    m.insert(
+        "infill_speed".into(),
+        ConfigValue::Float(f64::from(cfg.infill_speed)),
+    );
+    m.insert(
+        "solid_infill_speed".into(),
+        ConfigValue::Float(f64::from(cfg.solid_infill_speed)),
+    );
+    m.insert(
+        "top_shell_layers".into(),
+        ConfigValue::Int(i64::from(cfg.top_shell_layers)),
+    );
+    m.insert(
+        "bottom_shell_layers".into(),
+        ConfigValue::Int(i64::from(cfg.bottom_shell_layers)),
+    );
+    m.insert(
+        "top_fill_holder".into(),
+        ConfigValue::String(cfg.top_fill_holder.clone()),
+    );
+    m.insert(
+        "bottom_fill_holder".into(),
+        ConfigValue::String(cfg.bottom_fill_holder.clone()),
+    );
+    m.insert(
+        "bridge_fill_holder".into(),
+        ConfigValue::String(cfg.bridge_fill_holder.clone()),
+    );
+    m.insert(
+        "sparse_fill_holder".into(),
+        ConfigValue::String(cfg.sparse_fill_holder.clone()),
+    );
+    m.insert(
+        "support_enabled".into(),
+        ConfigValue::Bool(cfg.support_enabled),
+    );
+    m.insert(
+        "support_type".into(),
+        ConfigValue::String(format!("{:?}", cfg.support_type)),
+    );
+    m.insert(
+        "support_overhang_angle".into(),
+        ConfigValue::Float(f64::from(cfg.support_overhang_angle)),
+    );
+    if let Some(v) = cfg.nonplanar_max_angle_deg {
+        m.insert(
+            "nonplanar_max_angle_deg".into(),
+            ConfigValue::Float(f64::from(v)),
+        );
+    }
+    if let Some(v) = cfg.nonplanar_shell_count {
+        m.insert(
+            "nonplanar_shell_count".into(),
+            ConfigValue::Int(i64::from(v)),
+        );
+    }
+    if let Some(v) = cfg.nonplanar_amplitude {
+        m.insert(
+            "nonplanar_amplitude".into(),
+            ConfigValue::Float(f64::from(v)),
+        );
+    }
+    if let Some(v) = cfg.smoothificator_target_height {
+        m.insert(
+            "smoothificator_target_height".into(),
+            ConfigValue::Float(f64::from(v)),
+        );
+    }
+    if let Some(v) = cfg.smoothificator_adaptive {
+        m.insert("smoothificator_adaptive".into(), ConfigValue::Bool(v));
+    }
+    // Merge extension keys (module-contributed, already in ConfigValue form)
+    for (k, v) in &cfg.extensions {
+        m.insert(k.clone(), v.clone());
+    }
+    m
+}
+
+/// Produce the CONFIG_BLOCK text (packet 55 Step 5 / AC-8, AC-9).
+///
+/// Format:
+/// ```text
+/// ; CONFIG_BLOCK_START
+/// ; key = value
+/// ...
+/// ; CONFIG_BLOCK_END
+/// ```
+/// Keys are sorted for determinism. Callers are responsible for stripping
+/// invocation-time keys (e.g. `thumbnail_path`) before passing the map.
+fn serialize_config_block(raw_config: &HashMap<String, ConfigValue>) -> String {
+    let mut out = String::new();
+    writeln!(out, "; CONFIG_BLOCK_START").unwrap();
+    // Sort keys for deterministic output.
+    let mut keys: Vec<&String> = raw_config.keys().collect();
+    keys.sort();
+    for key in keys {
+        if let Some(value) = raw_config.get(key) {
+            let value_str = match value {
+                ConfigValue::Bool(b) => b.to_string(),
+                ConfigValue::Int(i) => i.to_string(),
+                ConfigValue::Float(f) => {
+                    // Strip trailing zeros like "22.0" → "22" not wanted by test, keep "22.0"
+                    format!("{f}")
+                }
+                ConfigValue::String(s) => s.clone(),
+                ConfigValue::List(items) => {
+                    let parts: Vec<String> = items
+                        .iter()
+                        .map(|v| match v {
+                            ConfigValue::String(s) => s.clone(),
+                            _ => format!("{v:?}"),
+                        })
+                        .collect();
+                    parts.join(",")
+                }
+            };
+            writeln!(out, "; {key} = {value_str}").unwrap();
+        }
+    }
+    writeln!(out, "; CONFIG_BLOCK_END").unwrap();
+    out
+}
+
+/// A `GCodeSerializer` wrapper that injects `THUMBNAIL_BLOCK` and `CONFIG_BLOCK`
+/// from the raw config source, delegating core serialization to the inner serializer.
+///
+/// Used by `run_pipeline_with_raw_config` to inject thumbnail data and config
+/// view into the serialization step without changing the `GCodeSerializer` trait.
+pub struct ThumbnailAwareSerializer {
+    inner: Box<dyn crate::GCodeSerializer>,
+    thumbnail_bytes: Option<Vec<u8>>,
+    raw_config: HashMap<String, ConfigValue>,
+}
+
+impl ThumbnailAwareSerializer {
+    /// Create a new wrapper around `inner`, optionally attaching thumbnail bytes
+    /// and a raw config map for CONFIG_BLOCK emission.
+    pub fn new(
+        inner: Box<dyn crate::GCodeSerializer>,
+        thumbnail_bytes: Option<Vec<u8>>,
+        raw_config: HashMap<String, ConfigValue>,
+    ) -> Self {
+        Self {
+            inner,
+            thumbnail_bytes,
+            raw_config,
+        }
+    }
+}
+
+impl crate::GCodeSerializer for ThumbnailAwareSerializer {
+    fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, crate::PostpassError> {
+        let base = self.inner.serialize_gcode(gcode_ir)?;
+
+        // 1. Insert THUMBNAIL_BLOCK immediately after HEADER_BLOCK_END (if thumbnail present).
+        let base = if let Some(ref bytes) = self.thumbnail_bytes {
+            let sentinel = "; HEADER_BLOCK_END\n";
+            if let Some(pos) = base.find(sentinel) {
+                let insert_at = pos + sentinel.len();
+                let mut result = String::with_capacity(base.len() + bytes.len() * 2);
+                result.push_str(&base[..insert_at]);
+                result.push_str(&serialize_thumbnail_block(bytes));
+                result.push_str(&base[insert_at..]);
+                result
+            } else {
+                let mut result = serialize_thumbnail_block(bytes);
+                result.push_str(&base);
+                result
+            }
+        } else {
+            base
+        };
+
+        // 2. Append CONFIG_BLOCK at the end of the output.
+        let config_block = serialize_config_block(&self.raw_config);
+        let mut result = base;
+        result.push_str(&config_block);
+        Ok(result)
+    }
+}
+
 impl GCodeSerializer for DefaultGCodeSerializer {
     fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
         let mut output = String::new();
+
+        // Compute max Z height (mm) from the GCodeIR commands.
+        // Z fields in Move commands are already in mm (f32).
+        let computed_z: f32 = gcode_ir
+            .commands
+            .iter()
+            .filter_map(|cmd| {
+                if let GCodeCommand::Move { z, .. } = cmd {
+                    *z
+                } else {
+                    None
+                }
+            })
+            .fold(0.0_f32, f32::max);
+        // Use the config floor when no Z moves appear (e.g. empty-plan test runs).
+        // For real prints the scanned value is always larger than the floor.
+        let max_z_mm = if computed_z > 0.0 {
+            computed_z
+        } else {
+            self.max_z_height_floor_mm
+        };
+
+        // Emit HEADER_BLOCK as the first thing in the file (AC-3 through AC-6,
+        // OrcaSlicer parity: GCode.cpp:2644-2704).
+        output.push_str(&serialize_header_block(
+            gcode_ir.metadata.layer_count,
+            self.filament_diameter_mm,
+            self.filament_density_g_cm3,
+            max_z_mm,
+            &gcode_ir.metadata.filament_used_mm,
+        ));
+
+        // Emit extrusion-width comments immediately after HEADER_BLOCK_END (AC-7,
+        // packet 55 Step 4).
+        output.push_str(&serialize_width_comments(
+            self.outer_wall_line_width,
+            self.inner_wall_line_width,
+            self.sparse_infill_line_width,
+            self.top_surface_line_width,
+            self.support_line_width,
+        ));
 
         // Preamble: emit extruder mode selector exactly once.
         if self.relative {

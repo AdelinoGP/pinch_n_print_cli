@@ -38,6 +38,7 @@ fn run_parses_all_flags() {
             config,
             output,
             module_dir,
+            thumbnail: _,
         } => {
             assert_eq!(module, "/tmp/mod.wasm");
             assert_eq!(model, "/tmp/model.stl");

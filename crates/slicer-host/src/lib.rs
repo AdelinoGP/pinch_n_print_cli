@@ -64,7 +64,10 @@ pub use execution_plan::{
     ExecutionPlanError, ExecutionPlanRequest, IrAccessMask, LiveModuleBinding, LiveModuleLoadError,
     LiveModuleLoadOutput, SortedStageModules, DEFAULT_REGION_MAP_CAP, MAX_LAYER_INDEX, STAGE_ORDER,
 };
-pub use gcode_emit::{DefaultGCodeEmitter, DefaultGCodeSerializer};
+pub use gcode_emit::{
+    serialize_thumbnail_block, DefaultGCodeEmitter, DefaultGCodeSerializer,
+    ThumbnailAwareSerializer,
+};
 pub use instance_pool::{
     build_wasm_instance_pool, InstancePoolError, InstancePoolMode, WasmArtifactMetadata,
     WasmInstanceLease, WasmInstancePool,

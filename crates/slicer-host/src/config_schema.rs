@@ -296,6 +296,96 @@ impl Default for FullConfigSchema {
             );
         }
 
+        // Line-width keys (OrcaSlicer 0.4 mm nozzle parity defaults)
+        let width_keys = [
+            ("outer_wall_line_width", 0.42),
+            ("inner_wall_line_width", 0.45),
+            ("sparse_infill_line_width", 0.45),
+            ("top_surface_line_width", 0.42),
+            ("support_line_width", 0.35),
+        ];
+
+        for (key, default_val) in width_keys {
+            fields
+                .entry(key.to_string())
+                .or_insert_with(|| ConfigFieldSchema {
+                    key: key.to_string(),
+                    field_type: ConfigFieldType::Float,
+                    default: Some(ConfigValue::Float(default_val)),
+                    display: None,
+                    description: None,
+                    group: Some("Extrusion".to_string()),
+                    unit: ConfigUnit::Millimeters,
+                    advanced: false,
+                    min: Some(0.0),
+                    max: None,
+                    step: None,
+                    max_length: None,
+                    enum_values: None,
+                    min_list_length: None,
+                    max_list_length: None,
+                    validate: None,
+                });
+        }
+
+        // Filament / printer geometry keys required by packet 55 (AC7)
+        let filament_float_keys = [
+            ("filament_diameter", 1.75_f64),
+            ("filament_density", 1.24_f64),
+            ("max_z_height", 256.0_f64),
+        ];
+
+        for (key, default_val) in filament_float_keys {
+            fields.insert(
+                key.to_string(),
+                ConfigFieldSchema {
+                    key: key.to_string(),
+                    field_type: ConfigFieldType::Float,
+                    default: Some(ConfigValue::Float(default_val)),
+                    display: None,
+                    description: None,
+                    group: Some("Filament".to_string()),
+                    unit: if key == "filament_diameter" || key == "max_z_height" {
+                        ConfigUnit::Millimeters
+                    } else {
+                        ConfigUnit::None
+                    },
+                    advanced: false,
+                    min: Some(0.0),
+                    max: None,
+                    step: None,
+                    max_length: None,
+                    enum_values: None,
+                    min_list_length: None,
+                    max_list_length: None,
+                    validate: None,
+                },
+            );
+        }
+
+        // thumbnail_path — empty string = no thumbnail block
+        fields.insert(
+            "thumbnail_path".to_string(),
+            ConfigFieldSchema {
+                key: "thumbnail_path".to_string(),
+                field_type: ConfigFieldType::String,
+                default: Some(ConfigValue::String(String::new())),
+                display: None,
+                description: None,
+                group: Some("Output".to_string()),
+                unit: ConfigUnit::None,
+                advanced: false,
+                min: None,
+                max: None,
+                step: None,
+                max_length: None,
+                enum_values: None,
+                min_list_length: None,
+                max_list_length: None,
+                validate: None,
+            },
+        );
+
         Self {
             fields,
             cross_validate: Vec::new(),
