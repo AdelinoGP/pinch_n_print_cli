@@ -35,6 +35,9 @@ slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk" }
 [dev-dependencies.part-cooling]
 path = "../../modules/core-modules/part-cooling"
 
+[dev-dependencies.skirt-brim]
+path = "../../modules/core-modules/skirt-brim"
+
 [dev-dependencies.support-planner]
 path = "../../modules/core-modules/support-planner"
 # NOTE: no module crate dev-dependencies. SDK-level trait tests belong in
