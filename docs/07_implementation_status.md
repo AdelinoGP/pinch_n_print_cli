@@ -131,6 +131,8 @@ Last updated: 2026-05-08
 - [x] TASK-154 (cooling) Emit M106/M107 from a live finalization-stage cooling module. Covers DEV-009 (cooling subset). **Closed 2026-05-13 via packet 53 — new `modules/core-modules/part-cooling/` finalization module emits `M106`/`M107` on `LayerCollectionIR`; 8 cooling config keys registered with OrcaSlicer-derived defaults; 9/9 acceptance tests green; clippy clean.**
 - [x] TASK-142a Diagnose and fix why TASK-142's live SkirtBrim finalization module produces zero `;TYPE:Skirt/Brim` blocks. Applied: `lib.rs` defaults corrected (`skirt_loops` 1→6, `skirt_distance` 6→3, `brim_width` 0→8). 5 TDD tests in `gcode_skirt_brim_emission_tdd.rs`. Covers DEV-009 (skirt-brim emit subset). **Closed 2026-05-14 via packet 54.**
 - [x] TASK-183 Relative-extrusion mode toggle (M82/M83) via `use_relative_e_distances`. `DefaultGCodeSerializer::with_extrusion_mode` added; M83 default; M82 when flag=false; per-move E deltas in relative mode; G92 E0 resets accumulator. 10 TDD tests in `gcode_relative_extrusion_tdd.rs`. Covers DEV-009 (relative-E subset). **Closed 2026-05-14 via packet 54.**
+- [x] TASK-184 Emit OrcaSlicer-parity HEADER_BLOCK, extrusion-width comments, and CONFIG_BLOCK envelope in the final .gcode file (packet 55). 12 positive + 5 negative TDD tests in `gcode_header_thumbnail_config_blocks_tdd.rs`. **Closed 2026-05-14 via packet 55.**
+- [x] TASK-185 Accept an external PNG via `--thumbnail <path>` slicer-cli flag and emit it as THUMBNAIL_BLOCK; omit block when flag absent (packet 55). **Closed 2026-05-14 via packet 55.**
 
 ### Workstream 4 — Progress events and Python bridge coverage
 
