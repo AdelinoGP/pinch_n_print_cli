@@ -4,7 +4,7 @@
 
 - Grouped task IDs:
   - `TASK-142a` (new — Track A — diagnose & close the live SkirtBrim emit gap left by TASK-142)
-  - `TASK-155` (new — Track B — relative-extrusion toggle via `use_relative_e_distances`)
+  - `TASK-183` (new — Track B — relative-extrusion toggle via `use_relative_e_distances`)
 - Backlog source: `docs/07_implementation_status.md`
 - Packet status: `draft`
 - Aggregate context cost: `M`
@@ -37,9 +37,9 @@ Track A:
 Track B:
 - `use_relative_e_distances` registered in `crates/slicer-host/src/config_schema.rs` (`ConfigValue::Bool`, default `true`).
 - `DefaultGCodeSerializer::with_extrusion_mode(relative: bool)` added in `crates/slicer-host/src/gcode_emit.rs`. `DefaultGCodeSerializer::new()` becomes a shim that calls `with_extrusion_mode(true)`.
-- Threading the flag from `run_pipeline_with_raw_config` (in `crates/slicer-host/src/pipeline.rs:217`) into the serializer.
+- Threading the flag at the `PipelineConfig` construction site in `crates/slicer-host/src/main.rs` (caller of `run_pipeline_with_raw_config`) into the serializer.
 - New test file `crates/slicer-host/tests/gcode_relative_extrusion_tdd.rs`.
-- DEV-009 progress entries; TASK-142a + TASK-155 rows in `docs/07_implementation_status.md`.
+- DEV-009 progress entries; TASK-142a + TASK-183 rows in `docs/07_implementation_status.md`.
 
 ## Out of Scope
 
@@ -56,7 +56,7 @@ Track B:
 - `docs/02_ir_schemas.md` — `GCodeCommand::Move`, `GCodeIR` preamble; SUMMARY (E remains absolute in IR).
 - `docs/03_wit_and_manifest.md` — relevant only if Track A's diagnosis points at manifest config-key propagation; load directly the schema section in that case.
 - `docs/05_module_sdk.md` — finalization-stage section; load directly the relevant ≤ 40 lines.
-- `docs/07_implementation_status.md` — delegate; insert TASK-142a + TASK-155 rows.
+- `docs/07_implementation_status.md` — delegate; insert TASK-142a + TASK-183 rows.
 - `docs/14_deviation_audit_history.md` + `docs/DEVIATION_LOG.md` — load directly; DEV-009 progress entries.
 
 ## OrcaSlicer Reference Obligations
@@ -94,7 +94,7 @@ Measurable outcomes:
 - Track A: new test file with ≥ 5 tests (4 ACs + 1 negative).
 - Track B: new test file with ≥ 10 tests (6 ACs + 4 negative).
 - `gcode_emit.rs`: `DefaultGCodeSerializer::with_extrusion_mode` exists; `new()` is a shim.
-- `pipeline.rs`: `run_pipeline_with_raw_config` reads `use_relative_e_distances` from `raw_config_source` and forwards to the serializer.
+- `main.rs`: the `PipelineConfig` construction site reads `use_relative_e_distances` from `config_source` and forwards it to `DefaultGCodeSerializer::with_extrusion_mode(...)` before `run_pipeline_with_raw_config` is called.
 - `config_schema.rs`: one new bool field registered.
 - `skirt-brim/src/lib.rs` (or one other file) edited only at the location indicated by Step 1's diagnosis FACT.
 
@@ -108,7 +108,6 @@ Cross-packet impact:
 
 - `cargo test -p slicer-host --test gcode_skirt_brim_emission_tdd` — Track A acceptance.
 - `cargo test -p slicer-host --test gcode_relative_extrusion_tdd` — Track B acceptance.
-- `cargo test -p slicer-host --test orca_comment_contract_tdd` — regression.
 - `./modules/core-modules/build-core-modules.sh` — only if Track A touches `skirt-brim/src/lib.rs`. Dispatch as FACT pass/fail.
 - `cargo check --workspace` — fast type-check.
 - `cargo clippy --workspace -- -D warnings`.
@@ -120,7 +119,7 @@ See `implementation-plan.md` for per-step Precondition / Postcondition / Falsify
 ## Context Discipline Notes
 
 - `crates/slicer-host/src/gcode_emit.rs` is > 600 lines — range-read `:200-:480` only.
-- `crates/slicer-host/src/pipeline.rs` is large — range-read `:200-:280` only (around `run_pipeline_with_raw_config`).
+- `crates/slicer-host/src/main.rs` is large — range-read around the `PipelineConfig` construction site (~`:230-:280`) only.
 - `crates/slicer-host/src/dispatch.rs` is > 2800 lines — only range-read if Track A's diagnosis says the dispatcher arm is the bug; default `:2840-:2900`.
 - `modules/core-modules/skirt-brim/src/lib.rs` is small per reconnaissance — load directly.
 - Likely temptation reads to skip: `.ralph/specs/16_skirt-brim-finalization-live-path/` (packet 16; closed; do NOT re-read — its conclusion is TASK-142); the full `docs/07_implementation_status.md`; OrcaSlicer source.

@@ -22,7 +22,7 @@
   - The E token write (immediately after the F token in the same match arm — exact line to be confirmed by Step 1 range-read; based on reconnaissance, `E` is written within the same `if let Some(e_val) = e {...}` block).
   - `Retract` / `Unretract` variants — also write `E`.
   - The preamble emit (where `M82`/`M83` directive should be added) — discovery needed; likely a `serialize_preamble` method or the start of `serialize_gcode`.
-- `crates/slicer-host/src/pipeline.rs:217` — `run_pipeline_with_raw_config(_, raw_config_source: &HashMap<ConfigKey, ConfigValue>, _)`. Construct site for `DefaultGCodeSerializer`. After this packet, the construction uses `with_extrusion_mode(resolved_flag)`.
+- `crates/slicer-host/src/main.rs` (~`:230-:280`) — `PipelineConfig` construction site, caller of `run_pipeline_with_raw_config(config, &config_source, &sink)`. The serializer is built here from `config_source.get("use_relative_e_distances")` via `DefaultGCodeSerializer::with_extrusion_mode(resolved_flag)`. `pipeline.rs` itself is NOT modified — the flag is resolved at the call site before `PipelineConfig` is handed off, keeping `pipeline.rs` agnostic to extrusion-mode config keys.
 - `crates/slicer-host/src/config_schema.rs:104-176` — `ConfigValue::Bool` exists; eighth-of-`ConfigField` registration shape already used elsewhere; register the new key here.
 
 ## Architecture Constraints
@@ -30,7 +30,7 @@
 - `GCodeIR` E values remain absolute. `docs/02_ir_schemas.md` contract unchanged.
 - Serializer is the ONLY place that converts to text. Both modes produce identical X/Y/Z/F/S/T tokens; the only differences are: (a) one preamble directive (`M82` vs `M83`) and (b) the formatted `E` value (delta vs absolute) on `G1`/`G0` and `Retract`/`Unretract` lines.
 - The serializer keeps an internal `f64 e_accumulator`. On `G92 E0` the accumulator resets. On every `Move`/`Retract`/`Unretract` carrying an `E`, the emitted delta is `move.e - e_accumulator`; then `e_accumulator = move.e`.
-- The flag flows: `raw_config_source.get(&"use_relative_e_distances")` → `bool` → `DefaultGCodeSerializer::with_extrusion_mode(bool)` → stored as a field on the serializer. The flag NEVER touches the IR.
+- The flag flows: `config_source.get("use_relative_e_distances")` (read at `PipelineConfig` construction in `main.rs`) → `bool` → `DefaultGCodeSerializer::with_extrusion_mode(bool)` → stored as a field on the serializer. The flag NEVER touches the IR.
 
 ## Code Change Surface
 
@@ -40,14 +40,15 @@
 - Files expected to change:
   - **EXACTLY ONE** of: `modules/core-modules/skirt-brim/src/lib.rs`, `crates/slicer-host/src/dispatch.rs` (range `:2840-:2900`), `crates/slicer-host/src/config_schema.rs`, `modules/core-modules/skirt-brim/skirt-brim.toml`.
   - **PLUS** `crates/slicer-host/tests/gcode_skirt_brim_emission_tdd.rs` (new).
-  - If the fix requires more than one file (escalation), Track A is SPLIT OUT to a new packet 54a and Track B is delivered alone in this packet. The implementer must surface the escalation as a hand-off rather than silently expanding scope.
+  - **PLUS cascading test-default adjustments** in pre-existing skirt-brim tests when the diagnosed fix changes hardcoded defaults in `lib.rs`. Specifically: `modules/core-modules/skirt-brim/tests/skirt_brim_tdd.rs` (the `from_config_defaults` assertion mirrors the lib.rs defaults verbatim, so changing the defaults forces a one-for-one assertion update) and `modules/core-modules/skirt-brim/tests/finalization_live_tdd.rs` (tests that previously relied on the old `brim_width=0.0` default must explicitly set `brim_width=0.0` now that the default is `8.0`). These are mechanical cascades — no new behavioural expectations.
+  - If the fix requires more than one *source* file (escalation), Track A is SPLIT OUT to a new packet 54a and Track B is delivered alone in this packet. The implementer must surface the escalation as a hand-off rather than silently expanding scope. (Cascading test-default updates as described above do NOT count as escalation.)
 
 ### Track B
 
 - Selected approach: **constructor + per-mode formatter branch + per-instance accumulator.**
 - Files expected to change:
   - `crates/slicer-host/src/gcode_emit.rs` — add `with_extrusion_mode`, add `e_accumulator: f64` field, add `relative: bool` field, branch the E formatting in the `Move`/`Retract`/`Unretract` arms, emit `M82`/`M83` in the preamble.
-  - `crates/slicer-host/src/pipeline.rs` (range `:200-:280`) — read `use_relative_e_distances` from `raw_config_source`, pass to constructor.
+  - `crates/slicer-host/src/main.rs` (around the `PipelineConfig` construction site, ~`:230-:280`) — read `use_relative_e_distances` from `config_source`, pass to `DefaultGCodeSerializer::with_extrusion_mode(...)` before `run_pipeline_with_raw_config` is invoked.
   - `crates/slicer-host/src/config_schema.rs` — register `use_relative_e_distances` as `ConfigValue::Bool` default `true`.
   - `crates/slicer-host/tests/gcode_relative_extrusion_tdd.rs` (new).
 
@@ -61,7 +62,7 @@
 Primary (≤ 3):
 
 - `crates/slicer-host/src/gcode_emit.rs` — Track B primary. Range-read `:200-:480`. Edits: 4 small additions (preamble emit, field, constructor, branch in Move/Retract/Unretract arms).
-- `crates/slicer-host/src/pipeline.rs` — Track B threading. Range-read `:200-:280`. Edit: one line in the serializer construction.
+- `crates/slicer-host/src/main.rs` — Track B threading. Range-read around the `PipelineConfig` construction site (~`:230-:280`). Edit: read the flag from `config_source` and pass to `with_extrusion_mode(...)` at the `serializer:` field assignment.
 - `crates/slicer-host/src/config_schema.rs` — Track B + (possibly) Track A. Edits: register `use_relative_e_distances`; possibly register `skirt_brim_enabled` etc. depending on Track A diagnosis.
 
 Auxiliary (small, mechanical):
@@ -69,6 +70,7 @@ Auxiliary (small, mechanical):
 - `crates/slicer-host/tests/gcode_relative_extrusion_tdd.rs` — Track B test file (new).
 - `crates/slicer-host/tests/gcode_skirt_brim_emission_tdd.rs` — Track A test file (new).
 - Track A's "one fix file" — selected by Step 1 diagnosis.
+- Track A cascading test-default updates (when the diagnosed fix changes `lib.rs` defaults): `modules/core-modules/skirt-brim/tests/skirt_brim_tdd.rs`, `modules/core-modules/skirt-brim/tests/finalization_live_tdd.rs`. Mechanical only.
 
 ## Read-Only Context
 
@@ -85,7 +87,8 @@ Auxiliary (small, mechanical):
 - `target/`, `Cargo.lock`, generated bindings — never load.
 - `.ralph/specs/16_skirt-brim-finalization-live-path/` — DO NOT reopen. The predecessor packet's conclusion is preserved.
 - Full `crates/slicer-host/src/dispatch.rs` — out of range unless diagnosis forces it.
-- Full `crates/slicer-host/src/pipeline.rs` outside `:200-:280`.
+- `crates/slicer-host/src/pipeline.rs` — not modified by this packet (the flag is resolved upstream in `main.rs`). Do not edit.
+- Full `crates/slicer-host/src/main.rs` outside the `PipelineConfig` construction range.
 - Full `docs/07_implementation_status.md` — delegate row insertion.
 - Other module crates (`wipe-tower`, `tree-support`, etc.) — not relevant.
 
@@ -94,10 +97,9 @@ Auxiliary (small, mechanical):
 - **Track A diagnosis (the heaviest dispatch):** "In `modules/core-modules/skirt-brim/src/lib.rs`, `crates/slicer-host/src/dispatch.rs:2840-:2900`, and `crates/slicer-host/src/config_schema.rs`, identify EXACTLY ONE root cause for why the live SkirtBrim finalization module produces zero `;TYPE:Skirt|;TYPE:Brim` blocks in Benchy output. Examine these candidate causes in order: (1) `skirt_brim_enabled` config default not applied; (2) dispatcher does not call the module; (3) `skirt_loops` read as 0; (4) entities produced but on wrong layer; (5) `ExtrusionRole::Skirt` stripped before emit. Return: SUMMARY ≤ 100 words naming ONE cause + ONE smallest fix (one file, one change). If two causes are present, escalate — return 'ESCALATE: two-cause diagnosis required, recommend Track A split to packet 54a'."
 - "Run `cargo test -p slicer-host --test gcode_skirt_brim_emission_tdd`; return FACT pass/fail; SNIPPETS for failing tests."
 - "Run `cargo test -p slicer-host --test gcode_relative_extrusion_tdd`; return FACT pass/fail; SNIPPETS for failing tests."
-- "Run `cargo test -p slicer-host --test orca_comment_contract_tdd`; return FACT pass/fail."
 - "OrcaSlicer M82/M83 emission pattern in `OrcaSlicerDocumented/src/libslic3r/GCodeWriter.cpp` — FACT, ≤ 8 lines."
 - "OrcaSlicer Brim.cpp / Print.cpp role-tagging contract — SUMMARY ≤ 200 words."
-- "Append TASK-142a and TASK-155 rows to `docs/07_implementation_status.md`; append DEV-009 progress to `docs/DEVIATION_LOG.md`; return EDITED/NOT-EDITED."
+- "Append TASK-142a and TASK-183 rows to `docs/07_implementation_status.md`; append DEV-009 progress to `docs/DEVIATION_LOG.md`; return EDITED/NOT-EDITED."
 
 ## Data and Contract Notes
 
@@ -129,3 +131,20 @@ Auxiliary (small, mechanical):
 ## Open Questions
 
 - None at draft time. The escalation hatch (Track A → packet 54a) is the explicit answer to "what if Step 1 finds a bigger problem".
+
+## Diagnosis Outcome (Step 1 — 2026-05-14)
+
+**Status:** No ESCALATE — fix is single-file.
+
+**Root cause (primary):** Hardcoded fallback defaults in `modules/core-modules/skirt-brim/src/lib.rs` do not match the manifest (`skirt-brim.toml`):
+- `brim_width`: lib.rs = `0.0`, toml = `8.0` → brim disabled at default config
+- `skirt_loops`: lib.rs = `1`, toml = `6`
+- `skirt_distance`: lib.rs = `6.0`, toml = `3.0`
+
+When `run_finalization` is called with a ConfigView that lacks explicit values for these keys (e.g., a test that only sets `skirt_brim_enabled`), the lib.rs fallbacks apply and brim is disabled.
+
+**Secondary finding (label contract):** `orca_type_label(ExtrusionRole::Skirt)` returns `";TYPE:Skirt/Brim"` — NOT the separate `";TYPE:Skirt"` / `";TYPE:Brim"` labels written in the packet's ACs. Both skirt and brim paths use `ExtrusionRole::Skirt` (there is no `ExtrusionRole::Brim`). The TDD tests MUST check for `";TYPE:Skirt/Brim"` to match the actual OrcaSlicer label; using `";TYPE:Skirt"` or `";TYPE:Brim"` standalone would always fail.
+
+**Smallest fix:** Update defaults in `modules/core-modules/skirt-brim/src/lib.rs` — three `_ => <value>` lines (skirt_loops, skirt_distance, brim_width) to match the manifest defaults.
+
+**No ESCALATE:** dispatch.rs wiring and `apply_to` logic are correct. The emit-side `orca_type_label` is correct for OrcaSlicer parity. No second file needs changing.

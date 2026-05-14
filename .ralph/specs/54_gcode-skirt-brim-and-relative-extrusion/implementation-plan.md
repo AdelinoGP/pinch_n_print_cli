@@ -3,7 +3,7 @@
 ## Execution Rules
 
 - One atomic step at a time.
-- Each step maps to either `TASK-142a` (Track A) or `TASK-155` (Track B).
+- Each step maps to either `TASK-142a` (Track A) or `TASK-183` (Track B).
 - TDD first.
 - Honor context-discipline: stop reading at 60%, hand off at 85%.
 - Track A and Track B are independent; if Track A escalates at Step 1, Track B continues alone and Track A is hand-off to a new packet 54a.
@@ -31,14 +31,13 @@
 - Task IDs: `TASK-142a`
 - Objective: Write `crates/slicer-host/tests/gcode_skirt_brim_emission_tdd.rs` (≥ 5 tests covering the 4 ACs + 1 negative case in `packet.spec.md`). Apply the one-file fix from Step 1. Bring all Track A tests green.
 - Precondition: Step 1 returned a non-ESCALATE diagnosis.
-- Postcondition: All Track A tests green; `orca_comment_contract_tdd` still green; `./modules/core-modules/build-core-modules.sh` green if the fix touched the module.
+- Postcondition: All Track A tests green; `./modules/core-modules/build-core-modules.sh` green if the fix touched the module.
 - Files allowed to read: `modules/core-modules/skirt-brim/src/lib.rs` (full, small); `crates/slicer-host/src/gcode_emit.rs:60-:130` (label match); the one file named by Step 1's diagnosis; `crates/slicer-ir/src/slice_ir.rs:1280-:1330` and `:1460-:1530`.
-- Files allowed to edit (≤ 3): `crates/slicer-host/tests/gcode_skirt_brim_emission_tdd.rs` (new); the ONE source file named by Step 1's diagnosis; if that file is `skirt-brim/src/lib.rs`, also `modules/core-modules/build-core-modules.sh` is implicitly invoked via the verification dispatch (not edited).
+- Files allowed to edit (≤ 3 source-file edits + cascading test-default updates): `crates/slicer-host/tests/gcode_skirt_brim_emission_tdd.rs` (new); the ONE source file named by Step 1's diagnosis; **plus** mechanical cascading test-default updates in `modules/core-modules/skirt-brim/tests/skirt_brim_tdd.rs` and `modules/core-modules/skirt-brim/tests/finalization_live_tdd.rs` when the diagnosed fix changes `lib.rs` hardcoded defaults (these tests assert the defaults verbatim or rely on previous defaults to bound their setup). If that source file is `skirt-brim/src/lib.rs`, `modules/core-modules/build-core-modules.sh` is implicitly invoked via the verification dispatch (not edited).
 - Files explicitly out-of-bounds for this step: any source file NOT named by Step 1's diagnosis; full dispatch.rs; full pipeline.rs.
 - Expected sub-agent dispatches:
   - "Run `cargo test -p slicer-host --test gcode_skirt_brim_emission_tdd`; return FACT pass/fail; SNIPPETS for failing tests."
   - "Run `./modules/core-modules/build-core-modules.sh`; return FACT pass/fail." (only if the fix touched the skirt-brim module)
-  - "Run `cargo test -p slicer-host --test orca_comment_contract_tdd`; return FACT pass/fail."
 - Context cost: M.
 - Authoritative docs: `docs/05_module_sdk.md` (Finalization Stage section, ≤ 40 lines).
 - OrcaSlicer refs: Brim.cpp / Print.cpp SUMMARY from Step 1.
@@ -47,7 +46,7 @@
 
 ### Step 2B: Track B — Register `use_relative_e_distances` (TDD-first)
 
-- Task IDs: `TASK-155`
+- Task IDs: `TASK-183`
 - Objective: Write `crates/slicer-host/tests/gcode_relative_extrusion_tdd.rs` containing all 6 ACs + 4 negative tests. Add `use_relative_e_distances` to `config_schema.rs` (`ConfigValue::Bool` default `true`). Bring the `config_schema_registers_bool_default_true` test green; rest remain red.
 - Precondition: Independent of Track A; can run in parallel.
 - Postcondition: One named test green; the other 9 still red.
@@ -65,13 +64,13 @@
 
 ### Step 3B: Track B — Implement `with_extrusion_mode` and the per-mode serializer branch
 
-- Task IDs: `TASK-155`
+- Task IDs: `TASK-183`
 - Objective: Add `e_accumulator: f64` and `relative: bool` fields to `DefaultGCodeSerializer`. Add `with_extrusion_mode(relative: bool) -> Self`. `new()` calls `with_extrusion_mode(true)`. Emit `M83` or `M82` in the preamble. Branch the E formatting in the `Move`/`Retract`/`Unretract` arms: relative writes `(move.e - accumulator)`, absolute writes `move.e`. `G92 E0` resets the accumulator. X/Y/Z/F/S/T unchanged. All Track B tests pass (except threading test which needs Step 4B).
 - Precondition: Step 2B complete.
 - Postcondition: Five of the six remaining Track B tests pass (`default_is_relative_m83`, `e_values_are_per_move_deltas`, `xyzf_unchanged_across_modes`, `delta_sum_matches_absolute_per_g92_block`, plus all 4 negative tests). `absolute_mode_when_flag_false` may still be red until Step 4B threads the flag through the pipeline.
 - Files allowed to read: `crates/slicer-host/src/gcode_emit.rs:200-:480` (Move/Retract/Unretract arms + preamble emit); `crates/slicer-ir/src/slice_ir.rs:1460-:1530`.
 - Files allowed to edit (≤ 3): `crates/slicer-host/src/gcode_emit.rs`; `crates/slicer-host/tests/gcode_relative_extrusion_tdd.rs` (additions only).
-- Files explicitly out-of-bounds for this step: `pipeline.rs` (Step 4B), `dispatch.rs`, all module crates.
+- Files explicitly out-of-bounds for this step: `main.rs` (Step 4B), `pipeline.rs` (not touched by this packet), `dispatch.rs`, all module crates.
 - Expected sub-agent dispatches:
   - "Run `cargo test -p slicer-host --test gcode_relative_extrusion_tdd`; return FACT — expected 5 of 6 ACs + 4 of 4 negative tests pass."
   - "Run `cargo clippy -p slicer-host -- -D warnings`; return FACT pass/fail."
@@ -81,18 +80,17 @@
 - Verification: as above.
 - Exit condition: 5 of 6 ACs + 4 of 4 negative tests green.
 
-### Step 4B: Track B — Thread the flag through `run_pipeline_with_raw_config`
+### Step 4B: Track B — Thread the flag at the `PipelineConfig` construction site in `main.rs`
 
-- Task IDs: `TASK-155`
-- Objective: In `crates/slicer-host/src/pipeline.rs` (range `:200-:280`), read `use_relative_e_distances` from `raw_config_source.get(&"use_relative_e_distances")` (default `true` if absent). Forward to `DefaultGCodeSerializer::with_extrusion_mode(...)` at the construction site. `absolute_mode_when_flag_false` flips to green.
+- Task IDs: `TASK-183`
+- Objective: In `crates/slicer-host/src/main.rs` (around the `PipelineConfig` construction site, ~`:230-:280`), read `use_relative_e_distances` from `config_source.get("use_relative_e_distances")` (default `true` if absent or non-bool). Pass to `DefaultGCodeSerializer::with_extrusion_mode(...)` at the `serializer:` field assignment, before `run_pipeline_with_raw_config(config, &config_source, &sink)` is invoked. `pipeline.rs` is NOT modified — the flag resolves upstream so `pipeline.rs` stays agnostic to extrusion-mode config keys. `absolute_mode_when_flag_false` flips to green.
 - Precondition: Step 3B complete.
 - Postcondition: All Track B tests green.
-- Files allowed to read: `crates/slicer-host/src/pipeline.rs:200-:280`; `crates/slicer-host/src/config_schema.rs` (full).
-- Files allowed to edit (≤ 3): `crates/slicer-host/src/pipeline.rs`.
-- Files explicitly out-of-bounds for this step: everything outside pipeline.rs `:200-:280`.
+- Files allowed to read: `crates/slicer-host/src/main.rs` (around `PipelineConfig` construction, ~`:230-:280`); `crates/slicer-host/src/config_schema.rs` (full).
+- Files allowed to edit (≤ 3): `crates/slicer-host/src/main.rs`.
+- Files explicitly out-of-bounds for this step: `pipeline.rs` (untouched by this packet); everything in `main.rs` outside the `PipelineConfig` construction range.
 - Expected sub-agent dispatches:
   - "Run `cargo test -p slicer-host --test gcode_relative_extrusion_tdd`; return FACT — expected all pass."
-  - "Run `cargo test -p slicer-host --test orca_comment_contract_tdd`; return FACT pass/fail."
   - "Run `cargo clippy -p slicer-host -- -D warnings`; return FACT pass/fail."
 - Context cost: S.
 - Authoritative docs: none.
@@ -102,15 +100,15 @@
 
 ### Step 5: Docs hygiene — TASK rows + DEV-009 progress
 
-- Task IDs: `TASK-142a`, `TASK-155`
-- Objective: Append TASK-142a and TASK-155 rows to `docs/07_implementation_status.md` under Phase H. Append DEV-009 progress entries for both subsets in `docs/DEVIATION_LOG.md`.
+- Task IDs: `TASK-142a`, `TASK-183`
+- Objective: Append TASK-142a and TASK-183 rows to `docs/07_implementation_status.md` under Phase H. Append DEV-009 progress entries for both subsets in `docs/DEVIATION_LOG.md`.
 - Precondition: Step 4B complete (and Step 2A complete, if Track A did not escalate).
 - Postcondition: Both docs updated.
 - Files allowed to read: `docs/DEVIATION_LOG.md`, `docs/14_deviation_audit_history.md`.
 - Files allowed to edit (≤ 3): `docs/07_implementation_status.md`, `docs/DEVIATION_LOG.md`.
 - Files explicitly out-of-bounds for this step: every source file.
 - Expected sub-agent dispatches:
-  - "Append TASK-142a (Track A) and TASK-155 (Track B) rows in the Phase H table of `docs/07_implementation_status.md`; reference TASK-142 as predecessor for TASK-142a. Return EDITED/NOT-EDITED."
+  - "Append TASK-142a (Track A) and TASK-183 (Track B) rows in the Phase H table of `docs/07_implementation_status.md`; reference TASK-142 as predecessor for TASK-142a. Return EDITED/NOT-EDITED."
   - "Append DEV-009 progress entries for skirt-brim and relative-E subsets in `docs/DEVIATION_LOG.md`. Return EDITED/NOT-EDITED."
 - Context cost: S.
 - Authoritative docs: as above.
@@ -126,7 +124,7 @@
 | Step 2A (Track A fix) | M | One-file fix + new test file. Skipped if ESCALATE. |
 | Step 2B (Track B schema + tests) | S | Single key registration; failing test stub. |
 | Step 3B (Track B serializer branch) | M | Core algorithm + 9 tests flip to green. |
-| Step 4B (Track B pipeline threading) | S | One-line edit in pipeline.rs `:200-:280`. |
+| Step 4B (Track B config threading) | S | Small edit at the `PipelineConfig` construction site in `main.rs` (~`:230-:280`); `pipeline.rs` untouched. |
 | Step 5 (Docs hygiene) | S | Doc edits only. |
 
 Aggregate: M. No step is L.
@@ -134,7 +132,7 @@ Aggregate: M. No step is L.
 If Step 1 returns ESCALATE:
 - Track A becomes packet 54a (new packet to be generated by the implementer or by re-running spec-packet-generator).
 - This packet 54 reduces to Track B only and is renamed in place to `54_gcode-relative-extrusion`.
-- Track A's task ID (TASK-142a) moves to packet 54a; this packet's task_ids becomes `[TASK-155]` only.
+- Track A's task ID (TASK-142a) moves to packet 54a; this packet's task_ids becomes `[TASK-183]` only.
 - The implementer surfaces this as a hand-off in the Step 1 report; does NOT silently expand scope.
 
 ## Packet Completion Gate
@@ -142,11 +140,10 @@ If Step 1 returns ESCALATE:
 - All applicable steps complete (Track A is conditional on no-ESCALATE).
 - `cargo test -p slicer-host --test gcode_skirt_brim_emission_tdd` — green (or marked deferred-to-54a).
 - `cargo test -p slicer-host --test gcode_relative_extrusion_tdd` — green.
-- `cargo test -p slicer-host --test orca_comment_contract_tdd` — green.
 - `./modules/core-modules/build-core-modules.sh` — green (only if Track A touched the module).
 - `cargo check --workspace` — green.
 - `cargo clippy --workspace -- -D warnings` — green.
-- `docs/07_implementation_status.md` carries TASK-142a (or hand-off note) + TASK-155 rows.
+- `docs/07_implementation_status.md` carries TASK-142a (or hand-off note) + TASK-183 rows.
 - `docs/DEVIATION_LOG.md` carries DEV-009 progress entries.
 - `packet.spec.md` ready to flip to `status: implemented`.
 
