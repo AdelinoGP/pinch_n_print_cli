@@ -2,8 +2,10 @@
 
 use std::sync::Arc;
 
-use slicer_core::paint_region::{point_in_paint_region, BoundaryInclusion, PaintRegionQueryError};
-use slicer_ir::{PaintRegionIR, PaintSemantic, PaintValue, SliceIR};
+use slicer_core::paint_region::{
+    ex_polygon_contains_point, point_in_paint_region, BoundaryInclusion, PaintRegionQueryError,
+};
+use slicer_ir::{ExPolygon, PaintRegionIR, PaintSemantic, PaintValue, SliceIR};
 
 use crate::progress_events::{ProgressError, ProgressEvent, ProgressPhase};
 
@@ -16,6 +18,8 @@ pub struct SlicePostProcessPaintAnnotationRequest {
     pub paint_regions: Arc<PaintRegionIR>,
     /// Semantics that must be annotatable for this layer.
     pub required_semantics: Vec<PaintSemantic>,
+    /// Per-layer modifier volume projections for fuzzy-skin annotation.
+    pub modifier_projections: Vec<ExPolygon>,
 }
 
 /// Output of the built-in paint annotation finalization step.
@@ -175,6 +179,7 @@ pub fn execute_slice_postprocess_paint_annotation(
         mut slice_ir,
         paint_regions,
         required_semantics,
+        modifier_projections,
     } = request;
 
     let layer_index = slice_ir.global_layer_index;
@@ -351,6 +356,55 @@ pub fn execute_slice_postprocess_paint_annotation(
             region
                 .boundary_paint
                 .insert(semantic.clone(), semantic_paint);
+        }
+
+        // Modifier-volume fuzzy-skin annotation (packet 56b)
+        // Runs AFTER paint annotation: overrides default Flag(false) with
+        // Flag(true) for contour points that fall inside modifier projections.
+        if required_semantics.contains(&PaintSemantic::FuzzySkin)
+            && !modifier_projections.is_empty()
+        {
+            if let Some(existing) = region.boundary_paint.get_mut(&PaintSemantic::FuzzySkin) {
+                for (polygon_index, polygon_paint) in existing.iter_mut().enumerate() {
+                    if polygon_index >= region.polygons.len() {
+                        continue;
+                    }
+                    let polygon = &region.polygons[polygon_index];
+                    for (point_index, paint_slot) in polygon_paint.iter_mut().enumerate() {
+                        if point_index >= polygon.contour.points.len() {
+                            continue;
+                        }
+                        let point = polygon.contour.points[point_index];
+                        let in_modifier = modifier_projections.iter().any(|proj| {
+                            ex_polygon_contains_point(proj, point, BoundaryInclusion::Include)
+                        });
+                        if in_modifier {
+                            *paint_slot = Some(PaintValue::Flag(true));
+                        }
+                    }
+                }
+            } else if !region.polygons.is_empty() {
+                // No existing FuzzySkin annotation at all — create one from scratch
+                // using modifier projections only
+                let mut semantic_paint: Vec<Vec<Option<PaintValue>>> =
+                    Vec::with_capacity(region.polygons.len());
+                for polygon in &region.polygons {
+                    let mut point_paint: Vec<Option<PaintValue>> =
+                        vec![None; polygon.contour.points.len()];
+                    for (point_index, point) in polygon.contour.points.iter().enumerate() {
+                        let in_modifier = modifier_projections.iter().any(|proj| {
+                            ex_polygon_contains_point(proj, *point, BoundaryInclusion::Include)
+                        });
+                        if in_modifier {
+                            point_paint[point_index] = Some(PaintValue::Flag(true));
+                        }
+                    }
+                    semantic_paint.push(point_paint);
+                }
+                region
+                    .boundary_paint
+                    .insert(PaintSemantic::FuzzySkin, semantic_paint);
+            }
         }
     }
 

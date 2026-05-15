@@ -10,8 +10,9 @@ use std::fmt;
 use rayon::prelude::*;
 use std::collections::HashMap;
 
+use slicer_core::slice_mesh_ex;
 use slicer_ir::{
-    GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen, ModuleId, PaintRegionIR,
+    ExPolygon, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen, ModuleId, PaintRegionIR,
     PaintSemantic, PerimeterIR, PrintEntity, RegionKey, SemVer, StageId, SupportIR,
     WallFeatureFlags,
 };
@@ -540,10 +541,35 @@ fn run_paint_annotation(
         None => return Ok(()),
     };
 
+    // Compute per-layer modifier projections for fuzzy-skin annotation (packet 56b).
+    // For each modifier_part volume, slice its world-space mesh at the current
+    // layer Z to get the intersecting ExPolygon set.
+    let modifier_projections: Vec<ExPolygon> = {
+        let mesh = blackboard.mesh();
+        let mut projections = Vec::new();
+        for obj in &mesh.objects {
+            for mv in &obj.modifier_volumes {
+                let is_modifier_part = mv.config_delta.fields.get("subtype").map_or(false, |v| {
+                    v == &slicer_ir::ConfigValue::String("modifier_part".to_string())
+                });
+                if !is_modifier_part || mv.mesh.vertices.is_empty() {
+                    continue;
+                }
+                // slice_mesh_ex returns one Vec<ExPolygon> per Z; we only need layer.z
+                let slices = slice_mesh_ex(&mv.mesh, &[layer.z]);
+                if let Some(layer_slice) = slices.into_iter().next() {
+                    projections.extend(layer_slice);
+                }
+            }
+        }
+        projections
+    };
+
     let request = SlicePostProcessPaintAnnotationRequest {
         slice_ir,
         paint_regions,
         required_semantics: required_semantics.to_vec(),
+        modifier_projections,
     };
     let result = execute_slice_postprocess_paint_annotation(request).map_err(|source| {
         LayerExecutionError::PaintAnnotation {
