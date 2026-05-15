@@ -105,7 +105,7 @@ pub use python_bridge::{
 };
 pub use region_mapping::{
     commit_region_mapping_builtin, execute_region_mapping, execute_region_mapping_with_cap,
-    RegionMappingBuiltinError, RegionMappingError,
+    RegionMappingBuiltinError, RegionMappingError, TopContributor,
 };
 pub use slice_postprocess::{
     execute_slice_postprocess_paint_annotation, paint_annotation_warning_to_progress_event,

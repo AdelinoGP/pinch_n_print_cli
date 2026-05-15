@@ -269,6 +269,16 @@ pub fn execute_region_mapping_with_cap(
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
     cap: usize,
 ) -> Result<RegionMapIR, RegionMappingError> {
+    execute_region_mapping_inner(layer_plan, plan, paint_regions, paint_semantic_configs, cap)
+}
+
+fn execute_region_mapping_inner(
+    layer_plan: &LayerPlanIR,
+    plan: &ExecutionPlan,
+    paint_regions: Option<&PaintRegionIR>,
+    paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
+    cap: usize,
+) -> Result<RegionMapIR, RegionMappingError> {
     // --- Cap check with top-contributor diagnostics (docs/04 normative memory budget) ----
     let mut entry_count = 0usize;
     // Per-object region/layer counters for overflow diagnostics.
@@ -373,6 +383,7 @@ pub fn execute_region_mapping_with_cap(
                 stage_modules,
                 paint_overrides,
             };
+
             if entries.insert(key.clone(), plan_entry).is_some() {
                 return Err(RegionMappingError::DuplicateRegionKey { key });
             }
@@ -415,11 +426,12 @@ pub fn commit_region_mapping_builtin(
         return Err(RegionMappingBuiltinError::MissingLayerPlan);
     };
     let paint_regions = blackboard.paint_regions().map(|arc| arc.as_ref());
-    let mut ir = execute_region_mapping(
+    let mut ir = execute_region_mapping_with_cap(
         layer_plan.as_ref(),
         plan,
         paint_regions,
         paint_semantic_configs,
+        DEFAULT_REGION_MAP_CAP,
     )
     .map_err(RegionMappingBuiltinError::Mapping)?;
 
