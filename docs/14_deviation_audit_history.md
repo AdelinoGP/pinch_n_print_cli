@@ -1,6 +1,6 @@
 # Deviation Audit History
 
-Last updated: 2026-05-10 (DEV-044 + DEV-045 chronology entries added)
+Last updated: 2026-05-14 (DEV-050 + DEV-051 chronology entries added — Packet 56)
 
 ## Purpose
 
@@ -68,6 +68,8 @@ Use this file for provenance, chronology, and legacy-reference lookup only.
 - **2026-05-11 — DEV-044 closed**: Packet `50_paint-input-3mf-ingestion` extended `parse_3mf_model_xml` to recognize the `paint_fuzzy_skin` attribute on `<triangle>` elements, decode it as `PaintValue::Flag(true)` when the value is `"4"`, and populate `ObjectMesh::paint_data` with a `PaintLayer` carrying `PaintSemantic::FuzzySkin`. Whole-facet only; subdivision deferred. DEV-044 status flipped to `Closed — Packet 50, 2026-05-11` in `docs/DEVIATION_LOG.md`; TASK-180 added to `docs/07_implementation_status.md`.
 
 - **2026-05-13 — DEV-009 cooling subset closed**: Packet `53_gcode-cooling-fan-emission` closes the cooling subset of DEV-009. Cooling fan control (M106/M107) is now emitted from a live `PostPass::LayerFinalization` cooling module, replacing the previously documented rejection on `Layer::PathOptimization` (TASK-152c superseded by TASK-152d). TASK-152c marked superseded in `docs/07_implementation_status.md`; rejection wording removed from `docs/05_module_sdk.md`.
+
+- **2026-05-14 — DEV-050 + DEV-051 registered and closed**: Packet `56_threemf-sidecar-parser` introduced a host-internal parser for the OrcaSlicer / Bambu Studio sidecar `Metadata/model_settings.config`. **DEV-050** (Partial subtype coverage): `parse_part_subtype` in `crates/slicer-host/src/model_loader_sidecar.rs` recognises exactly five subtypes (`normal_part`, `modifier_part`, `negative_part`, `support_enforcer`, `support_blocker`); any unrecognized value is downgraded to `PartSubtype::NormalPart` with `log::warn!`. Registered and closed immediately by Packet 56 — the downgrade is a deliberate design choice to keep the loader forward-compatible. **DEV-051** (Missing or malformed sidecar non-fatal): `parse_3mf_sidecar` returns `HashMap::new()` silently for a missing sidecar, and returns `HashMap::new()` plus `log::warn!` ("treating all parts as normal_part") for malformed XML. `load_model` does not return `Err`. Registered and closed immediately by Packet 56. Both deviations were originally planned as DEV-047 and DEV-049 but were renumbered to DEV-050/DEV-051 because DEV-047 (packet 39 / stable-entity-ids) and DEV-049 (packet 53 / cooling) were already claimed. TASK-190 added to `docs/07_implementation_status.md`. 7 TDD tests in `crates/slicer-host/tests/threemf_sidecar_classification_tdd.rs`; all regression suites pass.
 
 ## Legacy Backlog Crosswalk
 

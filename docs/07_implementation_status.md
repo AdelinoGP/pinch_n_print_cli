@@ -133,6 +133,7 @@ Last updated: 2026-05-08
 - [x] TASK-183 Relative-extrusion mode toggle (M82/M83) via `use_relative_e_distances`. `DefaultGCodeSerializer::with_extrusion_mode` added; M83 default; M82 when flag=false; per-move E deltas in relative mode; G92 E0 resets accumulator. 10 TDD tests in `gcode_relative_extrusion_tdd.rs`. Covers DEV-009 (relative-E subset). **Closed 2026-05-14 via packet 54.**
 - [x] TASK-184 Emit OrcaSlicer-parity HEADER_BLOCK, extrusion-width comments, and CONFIG_BLOCK envelope in the final .gcode file (packet 55). 12 positive + 5 negative TDD tests in `gcode_header_thumbnail_config_blocks_tdd.rs`. **Closed 2026-05-14 via packet 55.**
 - [x] TASK-185 Accept an external PNG via `--thumbnail <path>` slicer-cli flag and emit it as THUMBNAIL_BLOCK; omit block when flag absent (packet 55). **Closed 2026-05-14 via packet 55.**
+- [x] TASK-190 Parse 3MF sidecar `Metadata/model_settings.config`; classify `<object>`/`<part>` by `subtype=`; surface typed per-part metadata (`PartSubtype`, `ObjectSidecarInfo`, `PartSidecarInfo`) keyed by `(object_id, part_id)`; plumb `parse_3mf_sidecar` into `load_3mf` before archive drop; thread unused `_sidecar` arg through `parse_3mf_model_xml` → `resolve_object` for Packet 56b. Covers DEV-050 (unknown subtype downgrade to NormalPart) and DEV-051 (missing/malformed sidecar non-fatal fallback). 7 TDD tests in `threemf_sidecar_classification_tdd.rs`. All regression suites green. **Closed 2026-05-14 — Packet 56 (56_threemf-sidecar-parser).**
 
 ### Workstream 4 — Progress events and Python bridge coverage
 
