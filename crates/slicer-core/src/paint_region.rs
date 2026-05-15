@@ -65,7 +65,8 @@ fn semantic_region_contains_point(
         .any(|polygon| ex_polygon_contains_point(polygon, point, boundary_inclusion))
 }
 
-fn ex_polygon_contains_point(
+/// Test whether a `Point2` is inside an [`ExPolygon`], respecting boundary inclusion rules.
+pub fn ex_polygon_contains_point(
     polygon: &ExPolygon,
     point: Point2,
     boundary_inclusion: BoundaryInclusion,
