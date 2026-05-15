@@ -11,11 +11,12 @@ use std::fmt;
 use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 
-use crate::model_loader_sidecar::{parse_3mf_sidecar, ObjectSidecarInfo};
+use crate::model_loader_sidecar::{parse_3mf_sidecar, ObjectSidecarInfo, PartSubtype};
 
 use slicer_ir::{
-    BoundingBox3, FacetPaintData, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, PaintLayer,
-    PaintSemantic, PaintStroke, PaintValue, Point3, SemVer, Transform3d,
+    BoundingBox3, ConfigDelta, ConfigValue, FacetPaintData, IndexedTriangleSet, MeshIR,
+    ModifierScope, ModifierVolume, ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic,
+    PaintStroke, PaintValue, Point3, SemVer, Transform3d,
 };
 
 /// Detected model file format.
@@ -169,7 +170,7 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
             let items = load_3mf(&mut reader)?;
             items
                 .into_iter()
-                .map(|(its, paint_data)| {
+                .map(|(its, paint_data, modifiers)| {
                     let world_z_extent = compute_z_extent_from_mesh(&its);
                     ObjectMesh {
                         id: uuid::Uuid::new_v4().to_string(),
@@ -178,7 +179,7 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
                         config: ObjectConfig {
                             data: HashMap::new(),
                         },
-                        modifier_volumes: Vec::new(),
+                        modifier_volumes: modifiers,
                         paint_data,
                         world_z_extent,
                     }
@@ -196,7 +197,7 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
     Ok(MeshIR {
         schema_version: SemVer {
             major: 1,
-            minor: 0,
+            minor: 1,
             patch: 0,
         },
         objects,
@@ -434,8 +435,15 @@ fn resolve_object(
     incoming_transform: &[f64; 16],
     objects: &HashMap<u32, Parsed3mfObject>,
     visited: &mut Vec<u32>,
-    _sidecar: &HashMap<u32, ObjectSidecarInfo>,
-) -> Result<(IndexedTriangleSet, Option<FacetPaintData>), ModelLoadError> {
+    sidecar: &HashMap<u32, ObjectSidecarInfo>,
+) -> Result<
+    (
+        IndexedTriangleSet,
+        Option<FacetPaintData>,
+        Vec<ModifierVolume>,
+    ),
+    ModelLoadError,
+> {
     if visited.contains(&object_id) {
         return Err(ModelLoadError::ThreeMfParse(format!(
             "3MF circular component reference detected for object {object_id}"
@@ -461,12 +469,13 @@ fn resolve_object(
             apply_transform_to_paint_data(pd, &effective_transform);
         }
         visited.pop();
-        Ok((result_mesh, result_paint))
+        Ok((result_mesh, result_paint, Vec::new()))
     } else if !obj.components.is_empty() {
         let mut merged_vertices = Vec::new();
         let mut merged_indices = Vec::new();
         let mut merged_paint: Option<FacetPaintData> = None;
         let mut accumulated_facet_count: usize = 0;
+        let mut modifier_volumes: Vec<ModifierVolume> = Vec::new();
 
         for comp in &obj.components {
             let comp_transform = if let Some(ref t) = comp.transform {
@@ -474,67 +483,167 @@ fn resolve_object(
             } else {
                 effective_transform
             };
-            let (comp_mesh, comp_paint) =
-                resolve_object(comp.objectid, &comp_transform, objects, visited, _sidecar)?;
-            let comp_facet_count = comp_mesh.indices.len() / 3;
 
-            let offset = merged_vertices.len() as u32;
-            merged_vertices.extend(comp_mesh.vertices);
-            merged_indices.extend(comp_mesh.indices.iter().map(|&i| i + offset));
+            // Check sidecar classification for this component part.
+            // Sidecar layout: object_id -> parts map; part id = comp.objectid.
+            let part_info = sidecar
+                .get(&object_id)
+                .and_then(|o| o.parts.get(&comp.objectid));
+            let subtype = part_info
+                .map(|p| p.subtype)
+                .unwrap_or(PartSubtype::NormalPart);
 
-            // Per-semantic alignment: every layer in merged_paint must end up with
-            // facet_values.len() == accumulated_facet_count + comp_facet_count.
-            // Components missing a semantic contribute None × comp_facet_count;
-            // semantics first appearing in this component are back-padded with None
-            // × accumulated_facet_count.
-            if merged_paint.is_none() && comp_paint.is_some() {
-                merged_paint = Some(FacetPaintData { layers: Vec::new() });
-            }
-            if let Some(ref mut merged) = merged_paint {
-                let comp_layers = comp_paint
-                    .as_ref()
-                    .map(|pd| pd.layers.as_slice())
-                    .unwrap_or(&[]);
-                for layer in merged.layers.iter_mut() {
-                    if let Some(comp_layer) =
-                        comp_layers.iter().find(|l| l.semantic == layer.semantic)
-                    {
-                        layer
-                            .facet_values
-                            .extend(comp_layer.facet_values.iter().cloned());
-                        layer.strokes.extend(comp_layer.strokes.iter().cloned());
-                    } else {
-                        layer
-                            .facet_values
-                            .extend(std::iter::repeat_n(None, comp_facet_count));
+            let (comp_mesh, comp_paint, child_modifiers) =
+                resolve_object(comp.objectid, &comp_transform, objects, visited, sidecar)?;
+
+            // Propagate any modifier volumes from deeper recursion.
+            modifier_volumes.extend(child_modifiers);
+
+            if subtype != PartSubtype::NormalPart {
+                // Non-NormalPart: route to ModifierVolume, do not merge into solid mesh.
+                if comp_paint.is_some() {
+                    log::warn!(
+                        target: "slicer_host::model_loader",
+                        "paint data on non-normal part dropped (part id {})",
+                        comp.objectid
+                    );
+                }
+
+                let subtype_str = match subtype {
+                    PartSubtype::ModifierPart => "modifier_part",
+                    PartSubtype::NegativePart => "negative_part",
+                    PartSubtype::SupportEnforcer => "support_enforcer",
+                    PartSubtype::SupportBlocker => "support_blocker",
+                    PartSubtype::NormalPart => unreachable!(),
+                };
+
+                let priority = match subtype {
+                    PartSubtype::ModifierPart => 0u32,
+                    PartSubtype::NegativePart => 100u32,
+                    PartSubtype::SupportEnforcer => 200u32,
+                    PartSubtype::SupportBlocker => 300u32,
+                    PartSubtype::NormalPart => unreachable!(),
+                };
+
+                let modifier_id = format!("{}-{}-{}", object_id, comp.objectid, subtype_str);
+
+                let mut config_fields = std::collections::HashMap::new();
+                config_fields.insert(
+                    "subtype".to_string(),
+                    ConfigValue::String(subtype_str.to_string()),
+                );
+
+                if let Some(part) = part_info {
+                    if let Some(fuzzy) = part.metadata.get("fuzzy_skin") {
+                        config_fields
+                            .insert("fuzzy_skin".to_string(), ConfigValue::String(fuzzy.clone()));
+                    }
+                    if let Some(extruder_str) = part.metadata.get("extruder") {
+                        match extruder_str.parse::<i64>() {
+                            Ok(v) => {
+                                config_fields.insert("extruder".to_string(), ConfigValue::Int(v));
+                            }
+                            Err(_) => {
+                                log::warn!(
+                                    target: "slicer_host::model_loader",
+                                    "extruder value '{}' on part {} is not a valid integer, skipping",
+                                    extruder_str,
+                                    comp.objectid
+                                );
+                            }
+                        }
+                    }
+                    if let Some(matrix) = part.metadata.get("matrix") {
+                        config_fields
+                            .insert("matrix".to_string(), ConfigValue::String(matrix.clone()));
                     }
                 }
-                for comp_layer in comp_layers {
-                    let already = merged
-                        .layers
-                        .iter()
-                        .any(|l| l.semantic == comp_layer.semantic);
-                    if !already {
-                        let mut new_layer = PaintLayer {
-                            semantic: comp_layer.semantic.clone(),
-                            facet_values: vec![None; accumulated_facet_count],
-                            strokes: Vec::new(),
-                        };
-                        new_layer
-                            .facet_values
-                            .extend(comp_layer.facet_values.iter().cloned());
-                        new_layer.strokes.extend(comp_layer.strokes.iter().cloned());
-                        merged.layers.push(new_layer);
+
+                modifier_volumes.push(ModifierVolume {
+                    id: modifier_id,
+                    mesh: comp_mesh,
+                    config_delta: ConfigDelta {
+                        fields: config_fields,
+                    },
+                    priority,
+                    applies_to: ModifierScope::AllFeatures,
+                });
+            } else {
+                // NormalPart: merge into solid mesh as before.
+                let comp_facet_count = comp_mesh.indices.len() / 3;
+
+                let offset = merged_vertices.len() as u32;
+                merged_vertices.extend(comp_mesh.vertices);
+                merged_indices.extend(comp_mesh.indices.iter().map(|&i| i + offset));
+
+                // Per-semantic alignment: every layer in merged_paint must end up with
+                // facet_values.len() == accumulated_facet_count + comp_facet_count.
+                // Components missing a semantic contribute None × comp_facet_count;
+                // semantics first appearing in this component are back-padded with None
+                // × accumulated_facet_count.
+                if merged_paint.is_none() && comp_paint.is_some() {
+                    merged_paint = Some(FacetPaintData { layers: Vec::new() });
+                }
+                if let Some(ref mut merged) = merged_paint {
+                    let comp_layers = comp_paint
+                        .as_ref()
+                        .map(|pd| pd.layers.as_slice())
+                        .unwrap_or(&[]);
+                    for layer in merged.layers.iter_mut() {
+                        if let Some(comp_layer) =
+                            comp_layers.iter().find(|l| l.semantic == layer.semantic)
+                        {
+                            layer
+                                .facet_values
+                                .extend(comp_layer.facet_values.iter().cloned());
+                            layer.strokes.extend(comp_layer.strokes.iter().cloned());
+                        } else {
+                            layer
+                                .facet_values
+                                .extend(std::iter::repeat_n(None, comp_facet_count));
+                        }
+                    }
+                    for comp_layer in comp_layers {
+                        let already = merged
+                            .layers
+                            .iter()
+                            .any(|l| l.semantic == comp_layer.semantic);
+                        if !already {
+                            let mut new_layer = PaintLayer {
+                                semantic: comp_layer.semantic.clone(),
+                                facet_values: vec![None; accumulated_facet_count],
+                                strokes: Vec::new(),
+                            };
+                            new_layer
+                                .facet_values
+                                .extend(comp_layer.facet_values.iter().cloned());
+                            new_layer.strokes.extend(comp_layer.strokes.iter().cloned());
+                            merged.layers.push(new_layer);
+                        }
                     }
                 }
-            }
 
-            accumulated_facet_count += comp_facet_count;
+                accumulated_facet_count += comp_facet_count;
+            }
         }
 
-        if merged_vertices.is_empty() {
+        if merged_vertices.is_empty() && modifier_volumes.is_empty() {
+            visited.pop();
             return Err(ModelLoadError::ThreeMfParse(
                 "no geometry in 3MF component chain".into(),
+            ));
+        }
+
+        // If all components were modifiers, create an empty solid mesh rather than erroring.
+        if merged_vertices.is_empty() {
+            visited.pop();
+            return Ok((
+                IndexedTriangleSet {
+                    vertices: Vec::new(),
+                    indices: Vec::new(),
+                },
+                None,
+                modifier_volumes,
             ));
         }
 
@@ -545,6 +654,7 @@ fn resolve_object(
                 indices: merged_indices,
             },
             merged_paint,
+            modifier_volumes,
         ))
     } else {
         visited.pop();
@@ -554,10 +664,17 @@ fn resolve_object(
     }
 }
 
-/// Load 3MF and return a list of (IndexedTriangleSet, optional paint data) per build item.
+/// Load 3MF and return a list of (IndexedTriangleSet, optional paint data, modifier volumes) per build item.
 fn load_3mf(
     reader: &mut (impl Read + Seek),
-) -> Result<Vec<(IndexedTriangleSet, Option<FacetPaintData>)>, ModelLoadError> {
+) -> Result<
+    Vec<(
+        IndexedTriangleSet,
+        Option<FacetPaintData>,
+        Vec<ModifierVolume>,
+    )>,
+    ModelLoadError,
+> {
     let mut archive =
         zip::ZipArchive::new(reader).map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
 
@@ -592,7 +709,7 @@ fn find_model_path<R: Read + Seek>(archive: &zip::ZipArchive<R>) -> Result<Strin
     ))
 }
 
-/// Parse 3MF model XML into a list of (IndexedTriangleSet, optional paint data)
+/// Parse 3MF model XML into a list of (IndexedTriangleSet, optional paint data, modifier volumes)
 /// per build item.
 ///
 /// Recognizes `<build>/<item>` and nested `<component>` transforms,
@@ -604,8 +721,15 @@ fn find_model_path<R: Read + Seek>(archive: &zip::ZipArchive<R>) -> Result<Strin
 /// `ModelLoadError::ThreeMfParse`.
 fn parse_3mf_model_xml(
     xml_bytes: &[u8],
-    _sidecar: &HashMap<u32, ObjectSidecarInfo>,
-) -> Result<Vec<(IndexedTriangleSet, Option<FacetPaintData>)>, ModelLoadError> {
+    sidecar: &HashMap<u32, ObjectSidecarInfo>,
+) -> Result<
+    Vec<(
+        IndexedTriangleSet,
+        Option<FacetPaintData>,
+        Vec<ModifierVolume>,
+    )>,
+    ModelLoadError,
+> {
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
@@ -1000,20 +1124,20 @@ fn parse_3mf_model_xml(
             .mesh
             .clone()
             .ok_or_else(|| ModelLoadError::ThreeMfParse("no geometry found in 3MF".into()))?;
-        return Ok(vec![(its, paint)]);
+        return Ok(vec![(its, paint, Vec::new())]);
     }
 
     let mut results = Vec::new();
     for item in &build_items {
         let item_transform = item.transform.unwrap_or_else(identity_3mf_transform);
-        let (its, paint) = resolve_object(
+        let (its, paint, modifiers) = resolve_object(
             item.objectid,
             &item_transform,
             &objects,
             &mut Vec::new(),
-            _sidecar,
+            sidecar,
         )?;
-        results.push((its, paint));
+        results.push((its, paint, modifiers));
     }
 
     if results.is_empty() {
