@@ -11,6 +11,8 @@ use std::fmt;
 use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 
+use crate::model_loader_sidecar::{parse_3mf_sidecar, ObjectSidecarInfo};
+
 use slicer_ir::{
     BoundingBox3, FacetPaintData, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, PaintLayer,
     PaintSemantic, PaintStroke, PaintValue, Point3, SemVer, Transform3d,
@@ -432,6 +434,7 @@ fn resolve_object(
     incoming_transform: &[f64; 16],
     objects: &HashMap<u32, Parsed3mfObject>,
     visited: &mut Vec<u32>,
+    _sidecar: &HashMap<u32, ObjectSidecarInfo>,
 ) -> Result<(IndexedTriangleSet, Option<FacetPaintData>), ModelLoadError> {
     if visited.contains(&object_id) {
         return Err(ModelLoadError::ThreeMfParse(format!(
@@ -472,7 +475,7 @@ fn resolve_object(
                 effective_transform
             };
             let (comp_mesh, comp_paint) =
-                resolve_object(comp.objectid, &comp_transform, objects, visited)?;
+                resolve_object(comp.objectid, &comp_transform, objects, visited, _sidecar)?;
             let comp_facet_count = comp_mesh.indices.len() / 3;
 
             let offset = merged_vertices.len() as u32;
@@ -559,16 +562,19 @@ fn load_3mf(
         zip::ZipArchive::new(reader).map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
 
     let model_path = find_model_path(&archive)?;
-    let mut model_file = archive
-        .by_name(&model_path)
-        .map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
+    let xml_bytes = {
+        let mut model_file = archive
+            .by_name(&model_path)
+            .map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
+        let mut buf = Vec::new();
+        model_file
+            .read_to_end(&mut buf)
+            .map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
+        buf
+    }; // model_file is dropped here, releasing borrow on archive
 
-    let mut xml_bytes = Vec::new();
-    model_file
-        .read_to_end(&mut xml_bytes)
-        .map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
-
-    parse_3mf_model_xml(&xml_bytes)
+    let sidecar = parse_3mf_sidecar(&mut archive);
+    parse_3mf_model_xml(&xml_bytes, &sidecar)
 }
 
 /// Find the 3D model XML path inside a 3MF ZIP archive.
@@ -598,6 +604,7 @@ fn find_model_path<R: Read + Seek>(archive: &zip::ZipArchive<R>) -> Result<Strin
 /// `ModelLoadError::ThreeMfParse`.
 fn parse_3mf_model_xml(
     xml_bytes: &[u8],
+    _sidecar: &HashMap<u32, ObjectSidecarInfo>,
 ) -> Result<Vec<(IndexedTriangleSet, Option<FacetPaintData>)>, ModelLoadError> {
     use quick_xml::events::Event;
     use quick_xml::Reader;
@@ -999,8 +1006,13 @@ fn parse_3mf_model_xml(
     let mut results = Vec::new();
     for item in &build_items {
         let item_transform = item.transform.unwrap_or_else(identity_3mf_transform);
-        let (its, paint) =
-            resolve_object(item.objectid, &item_transform, &objects, &mut Vec::new())?;
+        let (its, paint) = resolve_object(
+            item.objectid,
+            &item_transform,
+            &objects,
+            &mut Vec::new(),
+            _sidecar,
+        )?;
         results.push((its, paint));
     }
 

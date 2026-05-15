@@ -21,6 +21,7 @@ pub mod manifest;
 pub mod mesh_analysis;
 pub mod mesh_segmentation;
 pub mod model_loader;
+pub mod model_loader_sidecar;
 pub mod paint_segmentation;
 pub mod pipeline;
 pub mod postpass;
