@@ -10,18 +10,18 @@ This packet is the second of a three-way split of the original `56_threemf-modif
 
 | TASK ID | Topic | Implementation steps | Deviations addressed | Authoritative docs | OrcaSlicer ref(s) |
 |---|---|---|---|---|---|
-| TASK-191 | Branch `resolve_object` to route non-`NormalPart` geometry into `ObjectMesh.modifier_volumes`; drop paint data on non-`NormalPart` rows; bump `MeshIR.schema_version` 1.0.0 → 1.1.0. | Step 1 (TDD-RED), Step 2 (impl + schema bump), Step 7 (doc bump). | DEV-048 (paint dropped on non-normal parts). | `docs/02_ir_schemas.md` lines 5, 62-244; `docs/01_system_architecture.md` :107-114. | `OrcaSlicerDocumented/src/libslic3r/Format/bbs_3mf.cpp` — `<part subtype>` branching function name (LOCATIONS dispatch at Step 2). |
-| TASK-192a | Wire the `modifier_part` consumer: region-mapping direct stamp (Option 1) via `slicer_core::polygon_ops::intersection`; stamp `RegionPlan.config["fuzzy_skin.apply-to-all"] = true` on overlapping regions only. Includes fuzzy-skin manifest schema confirmation gate. | Step 3 (manifest gate), Step 4 (TDD-RED), Step 5 (impl + pipeline thread). | None (inherits DEV-045 (Packet 51) overlay path). | `docs/01_system_architecture.md` :107-114; `docs/03_wit_and_manifest.md` (manifest schema); `docs/08_coordinate_system.md`. | `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` — fuzzy-skin overlap function name (LOCATIONS dispatch at Step 5). |
+| TASK-191 | Branch `resolve_object` to route non-`NormalPart` geometry into `ObjectMesh.modifier_volumes`; drop paint data on non-`NormalPart` rows; bump `MeshIR.schema_version` 1.0.0 → 1.1.0. | Step 1 (TDD-RED), Step 2 (impl + schema bump), Step 7 (doc bump). | DEV-052 (paint dropped on non-normal parts). | `docs/02_ir_schemas.md` lines 5, 62-244; `docs/01_system_architecture.md` :107-114. | `OrcaSlicerDocumented/src/libslic3r/Format/bbs_3mf.cpp` — `<part subtype>` branching function name (LOCATIONS dispatch at Step 2). |
+| TASK-192a | Wire the `modifier_part` consumer: region-mapping direct stamp (Option 1) via `slicer_core::polygon_ops::intersection`; stamp `RegionPlan.config["fuzzy_skin.apply_to_all"] = true` on overlapping regions only. Includes fuzzy-skin manifest schema confirmation gate. | Step 3 (manifest gate), Step 4 (TDD-RED), Step 5 (impl + pipeline thread). | None (inherits DEV-045 (Packet 51) overlay path). | `docs/01_system_architecture.md` :107-114; `docs/03_wit_and_manifest.md` (manifest schema); `docs/08_coordinate_system.md`. | `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` — fuzzy-skin overlap function name (LOCATIONS dispatch at Step 5). |
 
 ## Deviation Map
 
 | Deviation ID (recommended) | Title | Registered by step | Closed by step | Owner packet |
 |---|---|---|---|---|
-| DEV-048 | Paint data on non-`NormalPart` rows (modifier, negative, support enforcer, support blocker) dropped at load time with `log::warn!`. | Step 7 | Step 7 (registered as Closed by Packet 56b). | This packet (56b). |
-| DEV-047 | Partial subtype coverage; unknown subtypes downgrade to `NormalPart`. | — | Already closed by Packet 56. | Packet 56. NOT this packet. |
-| DEV-049 | Missing or malformed sidecar fallback. | — | Already closed by Packet 56. | Packet 56. NOT this packet. |
+| DEV-052 | Paint data on non-`NormalPart` rows (modifier, negative, support enforcer, support blocker) dropped at load time with `log::warn!`. | Step 7 | Step 7 (registered as Closed by Packet 56b). | This packet (56b). |
+| DEV-050 | Partial subtype coverage; unknown subtypes downgrade to `NormalPart`. | — | Already closed by Packet 56. | Packet 56. NOT this packet. |
+| DEV-051 | Missing or malformed sidecar fallback. | — | Already closed by Packet 56. | Packet 56. NOT this packet. |
 
-Recommended numbering verified at Step 7 via FACT dispatch ("Confirm DEV-048 is the next free DEV-### slot, given DEV-047 and DEV-049 are already closed by Packet 56").
+Recommended numbering verified at Step 7 via FACT dispatch ("Confirm DEV-052 is the next free DEV-### slot, given DEV-050 and DEV-051 are already closed by Packet 56").
 
 ## OrcaSlicer Reference Schedule
 
@@ -37,7 +37,7 @@ All OrcaSlicer reads are delegate-only. Function names are cited in this packet'
 | Dependency | Direction | Note |
 |---|---|---|
 | Packet 56 (`56_threemf-sidecar-parser`) | This packet depends on | Provides `parse_3mf_sidecar` and the `_sidecar` parameter on `resolve_object`. Packet 56 MUST be `status: implemented` before this packet activates. Step 0 FACT verifies. |
-| Packet 51 (DEV-045) | This packet depends on | `RegionPlan.config` overlay path. This packet's stamp is additive on the `fuzzy_skin.apply-to-all` key only; Packet 51's overlay runs first. |
+| Packet 51 (DEV-045) | This packet depends on | `RegionPlan.config` overlay path. This packet's stamp is additive on the `fuzzy_skin.apply_to_all` key only; Packet 51's overlay runs first. |
 | Packet 50 (DEV-044) | This packet depends on | `FacetPaintData` ingestion. Used by the paint-drop regression check (`benchy_painted_e2e_tdd`). |
 | `slicer_core::polygon_ops::intersection` | Library dep | Public Clipper2-backed export. |
 | Packet 56c | This packet unblocks | Packet 56c consumes `ObjectMesh.modifier_volumes` populated by this packet for `negative_part` host-stage subtract and `support_enforcer`/`support_blocker` piggyback. |

@@ -65,18 +65,18 @@
 - Postcondition: `negative_part_removes_layer_polygon_area`, `negative_part_area_reduction_matches_cube_cross_section`, `negative_part_above_parent_no_subtract`, `negative_part_subtract_runs_before_paint_segmentation` are GREEN.
 - Files allowed to read:
   - `crates/slicer-host/src/pipeline.rs` — full (delegate FACT for line count first; if > 600 lines, narrow to the prepass-region-mapping region).
-  - `crates/slicer-host/src/region_mapping.rs` — find the layer-projection helper added by Packet 56b (read narrow section only).
+  - `crates/slicer-host/src/layer_executor.rs` — search for `slice_mesh_ex` usage pattern from Packet 56b (read narrow section only).
   - `crates/slicer-ir/src/slice_ir.rs` — `SliceIR` shape (narrow read).
 - Files allowed to edit (≤ 3):
   - `crates/slicer-host/src/negative_part_subtract.rs` — NEW.
   - `crates/slicer-host/src/pipeline.rs` — insert stage call.
   - `crates/slicer-host/src/lib.rs` (or `mod.rs` — the host crate's module root) — declare the new `mod negative_part_subtract`. Step 2 FACT dispatch returns the correct module-root file.
-- Files explicitly out-of-bounds: `model_loader.rs`, `region_mapping.rs` (read-only for the layer-projection helper), `paint_segmentation.rs` (Step 3 territory), macros, WIT, SDK, IR (read-only narrow).
-- Expected sub-agent dispatches:
-  - Question: "Return the exact `SliceIR` layer-polygon storage field path: `slice_ir.layers[i].____`. SNIPPETS, ≤ 5 lines." → SNIPPETS.
-  - Question: "Return `slicer_core::polygon_ops::difference` signature. SNIPPETS, ≤ 6 lines." → SNIPPETS.
-  - Question: "Return the layer-projection helper added by Packet 56b in `crates/slicer-host/src/region_mapping.rs` (function name + signature; for reuse in this packet)." SNIPPETS, ≤ 8 lines. → SNIPPETS.
-  - Question: "Return the exact line in `crates/slicer-host/src/pipeline.rs` where the call to `paint_segmentation` (or the first paint-segmentation-related call) occurs, immediately AFTER `execute_prepass_*` returns. FACT with file:line." → FACT.
+- Files explicitly out-of-bounds: `model_loader.rs`, `region_mapping.rs`, `paint_segmentation.rs` (Step 3 territory), macros, WIT, SDK, IR (read-only narrow).
+  - Expected sub-agent dispatches:
+    - Question: "Return the exact `SliceIR` layer-polygon storage field path: `slice_ir.layers[i].____`. SNIPPETS, ≤ 5 lines." → SNIPPETS.
+    - Question: "Return `slicer_core::polygon_ops::difference` signature. SNIPPETS, ≤ 6 lines." → SNIPPETS.
+    - Question: "Verify `slicer_core::slice_mesh_ex` signature (the layer-projection function used by Packet 56b). SNIPPETS, ≤ 8 lines. → SNIPPETS."
+    - Question: "Return the exact line in `crates/slicer-host/src/pipeline.rs` where the call to `paint_segmentation` (or the first paint-segmentation-related call) occurs, immediately AFTER `execute_prepass_*` returns. FACT with file:line." → FACT.
   - Question: "Which file declares the host crate's module roots (e.g., `pub mod negative_part_subtract`)? FACT with file path." → FACT.
   - Question: "Name the function(s) in `OrcaSlicerDocumented/src/libslic3r/Format/bbs_3mf.cpp` (or sibling) that perform negative-part per-layer subtract. LOCATIONS, ≤ 5 entries. No source." → LOCATIONS.
   - Question: "Run `cargo test -p slicer-host --test threemf_subtypes_synthetic_e2e_tdd negative_part_removes_layer_polygon_area negative_part_area_reduction_matches_cube_cross_section negative_part_above_parent_no_subtract negative_part_subtract_runs_before_paint_segmentation`. FACT pass/fail per test." → FACT.

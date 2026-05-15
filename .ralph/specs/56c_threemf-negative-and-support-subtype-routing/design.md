@@ -5,8 +5,8 @@
 ### State after Packets 56 and 56b (precondition for this packet)
 
 - `crates/slicer-host/src/model_loader.rs::resolve_object` routes ALL non-`NormalPart` parts into `ObjectMesh.modifier_volumes` with typed `config_delta.fields[ConfigKey::from("subtype")] == ConfigValue::String(...)`. `MeshIR.schema_version == 1.1.0`. Paint dropped on non-`NormalPart` rows.
-- `crates/slicer-host/src/region_mapping.rs::execute_region_mapping` accepts per-object `&[ModifierVolume]` and stamps `fuzzy_skin.apply-to-all` for `modifier_part` overlaps only.
-- `crates/slicer-host/src/pipeline.rs` threads per-object `modifier_volumes` into the region-mapping call.
+- `crates/slicer-host/src/region_mapping.rs::execute_region_mapping` is **unchanged** from Packet 56b's cleanup — no modifier-volume parameter and no stamping. Modifier-part fuzzy skin moved to the paint annotation pipeline (`slice_postprocess.rs`) in 56b.
+- `crates/slicer-host/src/pipeline.rs` was **not modified** by Packet 56b. Modifier-volume consumption happens through existing pipeline hooks: `layer_executor.rs::run_paint_annotation` for fuzzy-skin projections, and this packet inserts `apply_negative_part_subtract` between prepass and region-mapping.
 - `crates/slicer-host/src/paint_segmentation.rs` is unchanged from Packet 50 / 50b / 51's state — it emits `PaintRegionIR` from `paint_data` (triangle attributes) but has no awareness of `modifier_volumes`.
 - No host stage between prepass and region-mapping performs negative-part subtraction.
 
@@ -35,7 +35,7 @@
 ## Architecture Constraints
 
 - Scaled integer units: `slicer_core::polygon_ops` operates on `Point2` in scaled integer units. All modifier projections convert to `Point2::from_mm(x, y)` before any `polygon_ops` call.
-- Per-layer projection: reuse the existing slicer entry-point that already projects paint-data strokes to layer Z (same function Packet 56b identifies at its Step 5; for this packet's Step 2 FACT, re-confirm the function name or re-use Packet 56b's discovery cached in `region_mapping.rs`).
+- Per-layer projection: use `slicer_core::slice_mesh_ex(&mv.mesh, &layer_zs)` which returns `Vec<Vec<ExPolygon>>` (one Vec of ExPolygons per Z). This is the same function Packet 56b uses for modifier-part fuzzy-skin projections in `layer_executor.rs::run_paint_annotation`.
 - Pipeline ordering: `execute_prepass_*` → `apply_negative_part_subtract` → `paint_segmentation` → `execute_region_mapping`. The order is critical because paint segmentation must see post-subtract polygons (otherwise paint on a region subtracted by a negative volume would emit phantom paint regions). Step 2 FACT dispatch confirms the prepass return point.
 - Determinism: pipeline order is locked. `apply_negative_part_subtract` is purely functional given `SliceIR + modifier_volumes`; no global state.
 - WIT boundary: clean (re-confirmed at Packet 56b Step 0). This packet introduces no IR types and does not re-check.
@@ -50,7 +50,7 @@
 | `support_*` consumer placement | **Paint-segmentation piggyback.** Augment `paint_segmentation.rs` to consume `&[ModifierVolume]` and emit synthetic `PaintRegionIR` entries. | Reuses Packet 51's `paint_overrides` overlay. Zero new region-mapping code. |
 | `support_*` `PaintRegionIR` merge strategy | Union the synthetic polygon set with any existing entry at the same `(layer, semantic)`. If `slicer_core::polygon_ops::union` does not exist, fall back to insertion + downstream-overlay tolerance. | Avoids dropping paint-painted support regions when a volume coexists. |
 | `support_*` `PaintRegionIR` polygon source | Per-layer projection of the world-space modifier mesh. Matches `modifier_part`'s overlap projection in Packet 56b. | Consistent projection convention. |
-| Layer projection function | Reuse the slicer entry-point identified by Packet 56b Step 5's FACT dispatch. Step 2 of this packet re-runs the same dispatch (or reads the function name from `region_mapping.rs`). | Single source of projection truth. |
+| Layer projection function | `slicer_core::slice_mesh_ex(&mv.mesh, &layer_zs)`. Returns `Vec<Vec<ExPolygon>>` — one set of ExPolygons per layer Z. Same function used by Packet 56b in `layer_executor.rs::run_paint_annotation`. | Consistent projection across all three subtype consumers. |
 | Pipeline insertion point | Between `execute_prepass_*`'s return and the first call to `paint_segmentation` / `execute_region_mapping`. Step 2 FACT dispatch returns the exact line. | Activation Q3 = Option 1. |
 | Synthetic-fixture builder | In-memory `zip::write::ZipWriter` with hand-built `3D/3dmodel.model` + `Metadata/model_settings.config` strings. Reuse the pattern from `threemf_transform_tdd.rs`. | No on-disk fixture; tests are hermetic. |
 | Negative-test handling for degenerate volumes | Zero-triangle `negative_part` → no-op subtract (Clipper2 returns input unchanged for empty subtrahend). Zero-triangle `support_*` → emit no `PaintRegionIR` entries; no warning. | Degenerate is not an error. |
@@ -87,7 +87,7 @@ Each step picks at most three of these.
 | `crates/slicer-ir/src/slice_ir.rs` | search for `SliceIR`, `PaintRegionIR`, `PaintSemantic` | Existing shapes (informational). |
 | `crates/slicer-host/src/pipeline.rs` | search for `execute_prepass_` and `execute_region_mapping` calls | Insertion point. |
 | `crates/slicer-host/src/paint_segmentation.rs` | full (delegate FACT for length first) | Entry-point function and existing `PaintRegionIR` assembly. |
-| `crates/slicer-host/src/region_mapping.rs` | search for the layer-projection function name | Reused for `negative_part` projection. |
+| `crates/slicer-host/src/layer_executor.rs` | search for `modifier_projections` / `slice_mesh_ex` | Projection pattern used by Packet 56b (per-layer modifier-volume slicing). |
 | `crates/slicer-host/tests/threemf_transform_tdd.rs` | search for `ZipWriter::new` | Synthetic 3MF builder pattern. |
 | `docs/04_host_scheduler.md` | prepass / region-mapping ordering section | Delegate SUMMARY. |
 | `docs/02_ir_schemas.md` | `PaintRegionIR`, `PaintSemantic` block search | Read narrow section. |

@@ -34,6 +34,15 @@ When a packet does require it, dispatch it to a sub-agent with a `FACT pass/fail
 
 **1 unit = 100 nm (10⁻⁴ mm)**, NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` / `mm_to_units()`. Full porting checklist in `docs/08_coordinate_system.md`.
 
+## Config Key Naming Convention
+
+All config key strings in Rust code (both host-side and module-side) must use **snake_case** (underscores), never kebab-case (hyphens).
+
+- Correct: `config.get("apply_to_all")`, `ConfigKey::from("fuzzy_skin.apply_to_all")`
+- Wrong:   `config.get("apply-to-all")`, `ConfigKey::from("fuzzy_skin.apply-to-all")`
+
+Module manifest TOML section headers (`[config.schema.apply_to_all]`) already use snake_case. Runtime key strings must match.
+
 ## WIT/Type Changes Checklist
 
 When modifying WIT types or interface definitions:

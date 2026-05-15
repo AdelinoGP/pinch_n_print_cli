@@ -35,7 +35,7 @@
 
 - Task IDs:
   - `TASK-191`
-- Objective: Author the failing E2E TDD `benchy_4color_modifier_part_e2e_tdd.rs` covering: (a) triangle counts (225,240 in solid, 12 in modifier); (b) `modifier_volumes.len() == 1` with typed `config_delta`; (c) world-space AABB centroid within ±0.01 mm; (d) `MeshIR.schema_version == 1.1.0`. Author the failing DEV-048 negative case in `threemf_paint_drop_on_modifier_tdd.rs` (or fold into the parser suite at Step 2's discretion). Optionally add `empty_modifier_volume_stamps_no_regions` test stub.
+- Objective: Author the failing E2E TDD `benchy_4color_modifier_part_e2e_tdd.rs` covering: (a) triangle counts (225,240 in solid, 12 in modifier); (b) `modifier_volumes.len() == 1` with typed `config_delta`; (c) world-space AABB centroid within ±0.01 mm; (d) `MeshIR.schema_version == 1.1.0`. Author the failing DEV-052 negative case in `threemf_paint_drop_on_modifier_tdd.rs` (or fold into the parser suite at Step 2's discretion). Optionally add `empty_modifier_volume_stamps_no_regions` test stub.
 - Precondition: Step 0 clean.
 - Postcondition: New test files compile and fail on assertion (current `resolve_object` body merges everything; `modifier_volumes` is still empty).
 - Files allowed to read:
@@ -96,17 +96,17 @@
 
 - Task IDs:
   - `TASK-192a`
-- Objective: Verify `apply-to-all` is declared in `modules/core-modules/fuzzy-skin/manifest.toml`'s `[config.schema]`. If absent, add it (additive; no SemVer ripple). If present, no-op.
+- Objective: Verify `apply_to_all` is declared in `modules/core-modules/fuzzy-skin/fuzzy-skin.toml`'s `[config.schema]`. If absent, add it (additive; no SemVer ripple). If present, no-op.
 - Precondition: Step 2 GREEN.
-- Postcondition: `fuzzy-skin` manifest declares `apply-to-all`.
+- Postcondition: `fuzzy-skin` manifest declares `apply_to_all`.
 - Files allowed to read:
-  - `modules/core-modules/fuzzy-skin/manifest.toml`.
+  - `modules/core-modules/fuzzy-skin/fuzzy-skin.toml`.
   - `modules/core-modules/fuzzy-skin/src/lib.rs` — lines 1-120 (read-only verification; already analyzed at packet-author time).
 - Files allowed to edit (≤ 3):
-  - `modules/core-modules/fuzzy-skin/manifest.toml` — additive only.
+  - `modules/core-modules/fuzzy-skin/fuzzy-skin.toml` — additive only.
 - Files explicitly out-of-bounds: all other files.
 - Expected sub-agent dispatches:
-  - Question: "Does `modules/core-modules/fuzzy-skin/manifest.toml`'s `[config.schema]` block declare an entry whose name matches `apply-to-all` or `apply_to_all` (any spelling variant)? Return FACT yes/no with the verbatim name + file:line if yes." → FACT.
+  - Question: "Does `modules/core-modules/fuzzy-skin/fuzzy-skin.toml`'s `[config.schema]` block declare an entry whose name matches `apply_to_all` or `apply_to_all` (any spelling variant)? Return FACT yes/no with the verbatim name + file:line if yes." → FACT.
 - Context cost: `S`
 - Authoritative docs:
   - `docs/03_wit_and_manifest.md` — module manifest TOML schema. Delegate SUMMARY if needed for the additive-edit syntax.
@@ -114,7 +114,7 @@
 - Verification:
   - `cargo test -p slicer-host --test core_module_ir_access_contract_tdd` → GREEN.
   - `cargo build --workspace` → GREEN.
-- Exit condition: `apply-to-all` (verbatim verified key) present in manifest; build clean. If the verbatim key differs from `apply-to-all`, update the AC literals in `packet.spec.md` to match.
+- Exit condition: `apply_to_all` (verbatim verified key) present in manifest; build clean. If the verbatim key differs from `apply_to_all`, update the AC literals in `packet.spec.md` to match.
 
 ### Step 4: Region-mapping overlap stamp TDD-RED
 
@@ -122,7 +122,7 @@
   - `TASK-192a`
 - Objective: Author the failing TDD for `region_overlap_stamps_only_in_cube_zband` and `fuzzy_region_restricted_to_cube_and_painted_facets` in `benchy_4color_modifier_part_e2e_tdd.rs`. Also add `empty_modifier_volume_stamps_no_regions` if not stubbed at Step 1.
 - Precondition: Step 3 GREEN.
-- Postcondition: New tests compile and fail (current `execute_region_mapping` doesn't stamp `fuzzy_skin.apply-to-all`).
+- Postcondition: New tests compile and fail (current `execute_region_mapping` doesn't stamp `fuzzy_skin.apply_to_all`).
 - Files allowed to read:
   - `crates/slicer-host/src/region_mapping.rs` — lines 1-260.
   - `crates/slicer-host/tests/benchy_painted_overrides_e2e_tdd.rs` — `count_perimeter_markers_in_z_band` helper.
@@ -141,7 +141,7 @@
 
 - Task IDs:
   - `TASK-192a`
-- Objective: Extend `execute_region_mapping` to accept `&[ModifierVolume]` per object (or read from `ExecutionPlan`). Project each `modifier_part` per layer; compute `slicer_core::polygon_ops::intersection` against each region polygon; stamp `RegionPlan.config[ConfigKey::from("fuzzy_skin.apply-to-all")] = ConfigValue::Bool(true)` on non-empty overlap. Preserve the no-modifier fast path. Thread `modifier_volumes` from `pipeline.rs` into the call.
+- Objective: Extend `execute_region_mapping` to accept `&[ModifierVolume]` per object (or read from `ExecutionPlan`). Project each `modifier_part` per layer; compute `slicer_core::polygon_ops::intersection` against each region polygon; stamp `RegionPlan.config[ConfigKey::from("fuzzy_skin.apply_to_all")] = ConfigValue::Bool(true)` on non-empty overlap. Preserve the no-modifier fast path. Thread `modifier_volumes` from `pipeline.rs` into the call.
 - Precondition: Step 4 RED.
 - Postcondition: All four `benchy_4color_modifier_part_e2e_tdd` ACs GREEN: triangle counts, `modifier_volumes`, world AABB, region-overlap Z-band, fuzzy G-code restriction.
 - Files allowed to read:
@@ -149,9 +149,11 @@
   - `crates/slicer-host/src/pipeline.rs` — search for `execute_region_mapping(` call site.
   - `crates/slicer-host/src/config_resolution.rs` — lines 80-220.
 - Files allowed to edit (≤ 3):
-  - `crates/slicer-host/src/region_mapping.rs` — overlap stamp loop.
-  - `crates/slicer-host/src/pipeline.rs` — thread `modifier_volumes` into the call.
+  - `crates/slicer-host/src/layer_executor.rs` — `run_paint_annotation` modifier projection loop.
+  - `crates/slicer-host/src/slice_postprocess.rs` — `modifier_projections` field + overlap check.
+  - `crates/slicer-core/src/paint_region.rs` — `ex_polygon_contains_point` made `pub`.
   - `crates/slicer-host/tests/benchy_4color_modifier_part_e2e_tdd.rs` — extend if needed for fuzz-marker assertions.
+  - Note: `region_mapping.rs` received a structural refactor only (wrapping); `pipeline.rs` was unchanged.
 - Files explicitly out-of-bounds: macros, WIT, SDK, IR.
 - Expected sub-agent dispatches:
   - Question: "Which function in `slicer-core` slices an `IndexedTriangleSet` at a given Z plane and returns 2D polygons in scaled integer units? Return FACT with function path + signature." → FACT.
@@ -194,7 +196,7 @@
 
 - Task IDs:
   - `TASK-191`, `TASK-192a`
-- Objective: Add the schema_version header annotation under IR 0 in `docs/02_ir_schemas.md`. Append TASK-191 and TASK-192a rows in `docs/07_implementation_status.md`. Register DEV-048 as `Closed — Packet 56b, 2026-MM-DD` in `docs/DEVIATION_LOG.md`. Add chronology entry in `docs/14_deviation_audit_history.md`.
+- Objective: Add the schema_version header annotation under IR 0 in `docs/02_ir_schemas.md`. Append TASK-191 and TASK-192a rows in `docs/07_implementation_status.md`. Register DEV-052 as `Closed — Packet 56b, 2026-MM-DD` in `docs/DEVIATION_LOG.md`. Add chronology entry in `docs/14_deviation_audit_history.md`.
 - Precondition: Step 6 clean.
 - Postcondition: Docs reflect packet outcome.
 - Files allowed to read:
@@ -211,7 +213,7 @@
 - Expected sub-agent dispatches:
   - Question: "Add the schema_version header annotation under IR 0 `MeshIR` in `docs/02_ir_schemas.md` following the IR 2 precedent at line 250: `**Current schema_version: 1.1.0** (Bumped to 1.1.0 by packet 56b — populated \\`modifier_volumes\\` from \\`Metadata/model_settings.config\\`.)`. Return the resulting block as SNIPPETS, ≤ 5 lines." → SNIPPETS.
   - Question: "Append `[x] TASK-191` and `[x] TASK-192a` rows to `docs/07_implementation_status.md` immediately after the TASK-190 row registered by Packet 56, each naming packet `56b_threemf-modifier-part-ir-routing`. Return the resulting two lines verbatim. SNIPPETS." → SNIPPETS.
-  - Question: "Confirm DEV-048 is the next free DEV-### slot in `docs/DEVIATION_LOG.md` (with DEV-047 and DEV-049 already closed by Packet 56). Return FACT yes/no + the existing DEV row count." → FACT.
+  - Question: "Confirm DEV-052 is the next free DEV-### slot in `docs/DEVIATION_LOG.md` (with DEV-050 and DEV-051 already closed by Packet 56). Return FACT yes/no + the existing DEV row count." → FACT.
 - Context cost: `S`
 - Authoritative docs:
   - `docs/02_ir_schemas.md` line 250, 506 — patterns for the schema_version annotation.
@@ -220,7 +222,7 @@
   - `rg -q 'schema_version: 1\.1\.0.*packet 56b' docs/02_ir_schemas.md` → exit 0.
   - `rg -q '\[x\] TASK-191.*56b_threemf-modifier-part-ir-routing' docs/07_implementation_status.md` → exit 0.
   - `rg -q '\[x\] TASK-192a.*56b_threemf-modifier-part-ir-routing' docs/07_implementation_status.md` → exit 0.
-  - `rg -c '^\| DEV-048.*Closed.*Packet 56b' docs/DEVIATION_LOG.md` → 1.
+  - `rg -c '^\| DEV-052.*Closed.*Packet 56b' docs/DEVIATION_LOG.md` → 1.
 - Exit condition: All `rg` checks pass.
 
 ### Step 8: Packet acceptance ceremony
@@ -264,8 +266,8 @@ Aggregate: **M** (2 M + 7 S).
 - Every step exit condition met.
 - Packet acceptance criteria GREEN (each verification command dispatched and returned PASS).
 - `docs/07_implementation_status.md` updated for TASK-191 and TASK-192a via worker dispatch.
-- DEV-048 registered in `docs/DEVIATION_LOG.md` and chronology in `docs/14_deviation_audit_history.md`.
-- DEV-047, DEV-049 must NOT be touched by this packet (already closed by Packet 56).
+- DEV-052 registered in `docs/DEVIATION_LOG.md` and chronology in `docs/14_deviation_audit_history.md`.
+- DEV-050, DEV-051 must NOT be touched by this packet (already closed by Packet 56).
 - WIT-mirror gate confirmed clean (Step 0).
 - `packet.spec.md` ready to move to `status: implemented`.
 

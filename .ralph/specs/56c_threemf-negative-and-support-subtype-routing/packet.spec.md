@@ -33,7 +33,7 @@ No new deviations are registered by this packet. DEV-047, DEV-048, and DEV-049 a
 
 - In scope:
   - `crates/slicer-host/src/negative_part_subtract.rs` — NEW file. Defines `apply_negative_part_subtract(slice_ir: &mut SliceIR, modifier_volumes: &[ModifierVolume])` (signature locked at Step 2 via FACT dispatch on `SliceIR` shape). For each `negative_part` volume, projects per layer and calls `slicer_core::polygon_ops::difference` against each parent layer's polygons. Mutates `SliceIR` in place.
-  - `crates/slicer-host/src/pipeline.rs` — insert `apply_negative_part_subtract(...)` call between `execute_prepass_*` and `execute_region_mapping` (per Activation Q3 = Option 1). Thread `modifier_volumes` already threaded by Packet 56b.
+  - `crates/slicer-host/src/pipeline.rs` — insert `apply_negative_part_subtract(...)` call between `execute_prepass_*` and `execute_region_mapping` (per Activation Q3 = Option 1). Thread `modifier_volumes` into the new subtract call (by pulling them from the blackboard's mesh objects).
   - `crates/slicer-host/src/paint_segmentation.rs` — augment to accept `&[ModifierVolume]` (or pull from `ExecutionPlan`); emit synthetic `PaintRegionIR` per layer for each `support_enforcer` / `support_blocker` volume.
   - `crates/slicer-host/tests/threemf_subtypes_synthetic_e2e_tdd.rs` — NEW. Builds in-memory 3MF archives with `negative_part`, `support_enforcer`, `support_blocker` sidecars. Asserts: post-subtract polygon area, `PaintRegionIR` entries at correct layers, polygon match within ±0.005 mm² of the projected modifier volume.
   - `docs/07_implementation_status.md` — append TASK-192b, TASK-192c, TASK-193 rows naming this packet.
