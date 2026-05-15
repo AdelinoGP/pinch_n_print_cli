@@ -755,7 +755,7 @@ incompatible-with = ["*.nonplanar-wall-modulator"]
   display = "Fuzzy Skin Thickness (mm)"
   group   = "Fuzzy Skin"
 
-  [config.schema.point-distance]
+  [config.schema.point_distance]
   type    = "float"
   default = 0.8
   min     = 0.1
@@ -763,7 +763,7 @@ incompatible-with = ["*.nonplanar-wall-modulator"]
   display = "Point Distance (mm)"
   group   = "Fuzzy Skin"
 
-  [config.schema.apply-to-all]
+  [config.schema.apply_to_all]
   type    = "bool"
   default = false
   display = "Apply to Entire Model"
@@ -771,7 +771,7 @@ incompatible-with = ["*.nonplanar-wall-modulator"]
   group   = "Fuzzy Skin"
 
 [config.overridable-per-region]
-keys = ["thickness", "point-distance", "apply-to-all"]
+keys = ["thickness", "point_distance", "apply_to_all"]
 
 [hints]
 layer-parallel-safe = true
@@ -797,8 +797,8 @@ impl LayerModule for FuzzySkinModule {
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
         let thickness     = config.get_float("thickness").unwrap_or(0.3) as f32;
-        let point_dist    = config.get_float("point-distance").unwrap_or(0.8) as f32;
-        let apply_to_all  = config.get_bool("apply-to-all").unwrap_or(false);
+        let point_dist    = config.get_float("point_distance").unwrap_or(0.8) as f32;
+        let apply_to_all  = config.get_bool("apply_to_all").unwrap_or(false);
 
         for region in regions {
             let mut walls = region.wall_loops();

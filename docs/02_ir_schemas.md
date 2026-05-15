@@ -63,6 +63,7 @@ Bounds and overflow policy:
 
 **Produced by:** Host mesh loader  
 **Consumed by:** PrePass stages (read-only via host-services API; never passed directly to modules)
+**Current schema_version: 1.1.0** (Bumped to 1.1.0 by packet 56b — populated `modifier_volumes` from `Metadata/model_settings.config`.)
 
 ```rust
 pub struct MeshIR {
