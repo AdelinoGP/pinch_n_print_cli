@@ -44,11 +44,11 @@ impl LayerModule for FuzzySkinModule {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 0.3,
         };
-        let point_distance = match config.get("point-distance") {
+        let point_distance = match config.get("point_distance") {
             Some(ConfigValue::Float(v)) => *v as f32,
             _ => 0.8,
         };
-        let apply_to_all = match config.get("apply-to-all") {
+        let apply_to_all = match config.get("apply_to_all") {
             Some(ConfigValue::Bool(v)) => *v,
             _ => false,
         };
