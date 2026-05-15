@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 56_threemf-sidecar-parser
 task_ids:
   - TASK-190
@@ -23,10 +23,10 @@ Add a host-internal parser for the OrcaSlicer / Bambu Studio sidecar `Metadata/m
 
 This packet closes two deviations driven by parser-level behavior:
 
-- **DEV-047** — Partial subtype coverage. The parser enumerates `normal_part`, `modifier_part`, `negative_part`, `support_enforcer`, `support_blocker`. Unknown subtype values silently downgrade to `normal_part` with a `log::warn!` naming the unrecognized string.
-- **DEV-049** — Missing or malformed `Metadata/model_settings.config` is non-fatal. Missing entry → returns an empty map silently (no warning; absence is the default). Malformed XML (truncated, unclosed elements) → returns an empty map AND emits a `log::warn!` containing the substring "treating all parts as normal_part".
+- **DEV-050** — Partial subtype coverage. The parser enumerates `normal_part`, `modifier_part`, `negative_part`, `support_enforcer`, `support_blocker`. Unknown subtype values silently downgrade to `normal_part` with a `log::warn!` naming the unrecognized string.
+- **DEV-051** — Missing or malformed `Metadata/model_settings.config` is non-fatal. Missing entry → returns an empty map silently (no warning; absence is the default). Malformed XML (truncated, unclosed elements) → returns an empty map AND emits a `log::warn!` containing the substring "treating all parts as normal_part".
 
-(`DEV-048` — paint dropped on non-`normal_part` rows — is registered and closed by Packet 56b, which is the packet that actually branches `resolve_object` to perform the drop. Packet 56 cannot close DEV-048 because it does not modify `resolve_object`.)
+(Note: The paint-drop-on-non-`normal_part`-rows deviation — originally planned as DEV-048 — will be registered by Packet 56b under its own free DEV ID, as DEV-048 and DEV-049 were claimed by packet 53. Packet 56 cannot close that deviation because it does not modify `resolve_object`.)
 
 ## Scope Boundaries
 
@@ -35,7 +35,7 @@ This packet closes two deviations driven by parser-level behavior:
   - `crates/slicer-host/src/model_loader_sidecar.rs` — NEW sibling file allowed if `model_loader.rs` exceeds 800 lines after the addition (Packet-author estimate: parser is ~150 lines; sibling file is the conservative split).
   - `crates/slicer-host/tests/threemf_sidecar_classification_tdd.rs` — NEW. Unit tests covering: (a) well-formed sidecar from `resources/benchy_4color.3mf`; (b) malformed XML fallback; (c) unknown subtype downgrade; (d) missing sidecar silent default; (e) `fuzzy_skin = "external"` parsed as `ConfigValue::String`; (f) `<part id>`-to-`<object id>` mapping per Bambu's sidecar convention.
   - `docs/07_implementation_status.md` — append the TASK-190 row naming this packet.
-  - `docs/DEVIATION_LOG.md` — register DEV-047 and DEV-049 as `Closed — Packet 56, 2026-MM-DD`.
+  - `docs/DEVIATION_LOG.md` — register DEV-050 and DEV-051 as `Closed — Packet 56, 2026-MM-DD`.
   - `docs/14_deviation_audit_history.md` — chronology entries for the two new DEV rows.
 
 - Out of scope:
@@ -66,7 +66,7 @@ This packet closes two deviations driven by parser-level behavior:
 - **Given** `cargo clippy` is the lint gate, **when** Step 5 runs, **then** `cargo clippy -p slicer-host --tests -- -D warnings` is green AND `cargo clippy --workspace -- -D warnings` is green. | `cargo clippy -p slicer-host --tests -- -D warnings && cargo clippy --workspace -- -D warnings`
 - **Given** the existing regression suites must stay GREEN with the parser plumbed in (no consumer changes), **when** Step 4 runs, **then** `cargo test -p slicer-host --test threemf_transform_tdd` reports all-pass AND `cargo test -p slicer-host --test gcode_emit_tdd` reports all-pass AND `cargo test -p slicer-host --test benchy_painted_e2e_tdd` reports all-pass AND `cargo test -p slicer-host --test benchy_painted_overrides_e2e_tdd` reports all-pass. (The parser is plumbed but its output is unused; behavior must be unchanged.) | `cargo test -p slicer-host --test threemf_transform_tdd && cargo test -p slicer-host --test gcode_emit_tdd && cargo test -p slicer-host --test benchy_painted_e2e_tdd && cargo test -p slicer-host --test benchy_painted_overrides_e2e_tdd`
 - **Given** TASK-190 is registered by this packet, **when** Step 6 runs, **then** `docs/07_implementation_status.md` contains a row matching `[x] TASK-190` AND naming this packet (`56_threemf-sidecar-parser`). | `rg -q '\[x\] TASK-190.*56_threemf-sidecar-parser' docs/07_implementation_status.md`
-- **Given** DEV-047 and DEV-049 are registered and closed by this packet, **when** Step 6 runs, **then** `docs/DEVIATION_LOG.md` contains two rows whose ID column matches `DEV-047` and `DEV-049` AND whose status column reads `Closed — Packet 56, 2026-MM-DD` (date filled at close time). DEV-048 must NOT appear as closed by this packet (it is closed by Packet 56b). | `rg -c '^\| DEV-04[79].*Closed.*Packet 56[^b]' docs/DEVIATION_LOG.md` (expected: 2) `&& ! rg -q '^\| DEV-048.*Closed.*Packet 56[^b]' docs/DEVIATION_LOG.md`
+- **Given** DEV-050 and DEV-051 are registered and closed by this packet, **when** Step 6 runs, **then** `docs/DEVIATION_LOG.md` contains two rows whose ID column matches `DEV-050` and `DEV-051` AND whose status column reads `Closed — Packet 56, 2026-05-14`. (Note: the original recommended IDs DEV-047 and DEV-049 were found to be claimed by packets 39 and 53 respectively during Step 6 verification; DEV-050/DEV-051 are the actual free slots.) | `rg -c '^\| DEV-05[01].*Closed.*Packet 56[^b]' docs/DEVIATION_LOG.md`
 
 ## Negative Test Cases
 
@@ -92,7 +92,7 @@ This packet closes two deviations driven by parser-level behavior:
 - `docs/02_ir_schemas.md` — IR 0 `MeshIR` (lines 62-244) and `ConfigDelta`/`ModifierVolume` shape (lines 192-211 in the doc). Read directly (small section); informational only — no IR change in this packet.
 - `docs/08_coordinate_system.md` — scaled integer units (1 unit = 100 nm). Read directly (small). Informational; the parser does not perform any geometry.
 - `docs/07_implementation_status.md` — append TASK-190 row.
-- `docs/DEVIATION_LOG.md` — register DEV-047 and DEV-049.
+- `docs/DEVIATION_LOG.md` — register DEV-050 and DEV-051.
 - `docs/14_deviation_audit_history.md` — chronology entries.
 
 ## OrcaSlicer Reference Obligations

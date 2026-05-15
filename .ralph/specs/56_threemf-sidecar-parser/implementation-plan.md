@@ -134,7 +134,7 @@
 
 - Task IDs:
   - `TASK-190`
-- Objective: Append `[x] TASK-190` row to `docs/07_implementation_status.md` naming this packet. Register DEV-047 and DEV-049 as `Closed — Packet 56, 2026-MM-DD` in `docs/DEVIATION_LOG.md`. Add chronology entries in `docs/14_deviation_audit_history.md`.
+- Objective: Append `[x] TASK-190` row to `docs/07_implementation_status.md` naming this packet. Register DEV-050 and DEV-051 as `Closed — Packet 56, 2026-MM-DD` in `docs/DEVIATION_LOG.md`. Add chronology entries in `docs/14_deviation_audit_history.md`.
 - Precondition: Step 5 GREEN.
 - Postcondition: Docs reflect packet outcome.
 - Files allowed to read:
@@ -155,7 +155,7 @@
 - OrcaSlicer refs: none.
 - Verification:
   - `rg -q '\[x\] TASK-190.*56_threemf-sidecar-parser' docs/07_implementation_status.md` → exit 0.
-  - `rg -c '^\| DEV-04[79].*Closed.*Packet 56[^b]' docs/DEVIATION_LOG.md` → 2.
+  - `rg -c '^\| DEV-05[01].*Closed.*Packet 56[^b]' docs/DEVIATION_LOG.md` → 2.
   - `! rg -q '^\| DEV-048.*Closed.*Packet 56[^b]' docs/DEVIATION_LOG.md` → exit 0 (DEV-048 must NOT be closed by Packet 56).
 - Exit condition: All `rg` checks return the expected exit codes.
 
@@ -198,7 +198,7 @@ Aggregate: **M** (3 M + 4 S).
 - Every step exit condition met.
 - Packet acceptance criteria GREEN (each verification command dispatched and returned PASS).
 - `docs/07_implementation_status.md` updated for TASK-190 via worker dispatch.
-- DEV-047 and DEV-049 registered in `docs/DEVIATION_LOG.md` and chronology in `docs/14_deviation_audit_history.md`.
+- DEV-050 and DEV-051 registered in `docs/DEVIATION_LOG.md` and chronology in `docs/14_deviation_audit_history.md`.
 - DEV-048 reserved for Packet 56b (NOT closed in this packet).
 - `packet.spec.md` ready to move to `status: implemented`.
 

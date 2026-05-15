@@ -14,8 +14,8 @@ WIT scope is **clean** — confirmed in the original packet's Step-0 sub-agent g
 
 Two deviations are registered and closed by this packet:
 
-- **DEV-047** — Partial subtype coverage. The parser recognizes `normal_part`, `modifier_part`, `negative_part`, `support_enforcer`, `support_blocker`. Unknown values silently downgrade to `NormalPart` with a `log::warn!`. Recommended ID DEV-047 (verified by Step 6 against `docs/DEVIATION_LOG.md`).
-- **DEV-049** — Missing or malformed `Metadata/model_settings.config` is non-fatal. Missing → empty map, no warning. Malformed → empty map + `log::warn!`.
+- **DEV-050** — Partial subtype coverage. The parser recognizes `normal_part`, `modifier_part`, `negative_part`, `support_enforcer`, `support_blocker`. Unknown values silently downgrade to `NormalPart` with a `log::warn!`. Recommended ID DEV-050 (verified by Step 6 against `docs/DEVIATION_LOG.md`).
+- **DEV-051** — Missing or malformed `Metadata/model_settings.config` is non-fatal. Missing → empty map, no warning. Malformed → empty map + `log::warn!`.
 
 (DEV-048 — paint dropped on non-`normal_part` rows — is registered and closed by Packet 56b, which is where `resolve_object` branching introduces the drop logic.)
 
@@ -23,7 +23,7 @@ This packet does not absorb any prior packet's directory. The Cross-Packet Mutat
 
 ## Task IDs (registered by this packet)
 
-- **TASK-190** — Parse 3MF sidecar `Metadata/model_settings.config`; classify `<object>`/`<part>` by `subtype=`; surface typed per-part metadata. Covers DEV-047 (unknown subtype downgrade) and DEV-049 (missing/malformed sidecar fallback). Closed when this packet's verification commands pass.
+- **TASK-190** — Parse 3MF sidecar `Metadata/model_settings.config`; classify `<object>`/`<part>` by `subtype=`; surface typed per-part metadata. Covers DEV-050 (unknown subtype downgrade) and DEV-051 (missing/malformed sidecar fallback). Closed when this packet's verification commands pass.
 
 Packets 56b and 56c will register TASK-191, TASK-192, and TASK-193 as new rows in `docs/07_implementation_status.md`. This packet does not preallocate those rows.
 
@@ -34,7 +34,7 @@ Packets 56b and 56c will register TASK-191, TASK-192, and TASK-193 as new rows i
   - `crates/slicer-host/src/model_loader_sidecar.rs` — NEW sibling file if `model_loader.rs` exceeds 800 lines after the addition.
   - `crates/slicer-host/tests/threemf_sidecar_classification_tdd.rs` — NEW; parser unit suite.
   - `docs/07_implementation_status.md` — append TASK-190 row naming this packet.
-  - `docs/DEVIATION_LOG.md` — register DEV-047 and DEV-049 as `Closed — Packet 56, 2026-MM-DD`.
+  - `docs/DEVIATION_LOG.md` — register DEV-050 and DEV-051 as `Closed — Packet 56, 2026-MM-DD`.
   - `docs/14_deviation_audit_history.md` — chronology entries.
 
 ## Out of Scope
@@ -54,7 +54,7 @@ Packets 56b and 56c will register TASK-191, TASK-192, and TASK-193 as new rows i
 - `docs/02_ir_schemas.md` — IR 0 `MeshIR` (lines 62-244) and `ConfigDelta`/`ModifierVolume` shape (lines 192-211). Read directly; informational only.
 - `docs/08_coordinate_system.md` — informational; parser does no geometry.
 - `docs/07_implementation_status.md` — append TASK-190 row.
-- `docs/DEVIATION_LOG.md` — register DEV-047 and DEV-049.
+- `docs/DEVIATION_LOG.md` — register DEV-050 and DEV-051.
 - `docs/14_deviation_audit_history.md` — chronology entries.
 
 ## OrcaSlicer Reference Obligations
@@ -74,7 +74,7 @@ The host implementation MUST be project-internal Rust. Cite OrcaSlicer function 
 - All existing regression suites (`threemf_transform_tdd`, `gcode_emit_tdd`, `benchy_painted_e2e_tdd`, `benchy_painted_overrides_e2e_tdd`) stay GREEN. Slice output is byte-identical to pre-packet output for all fixtures (consumer is not yet wired).
 - `cargo clippy --workspace -- -D warnings` clean.
 - `docs/07_implementation_status.md` has a `[x] TASK-190` row naming this packet.
-- `docs/DEVIATION_LOG.md` has DEV-047 and DEV-049 rows marked `Closed — Packet 56`.
+- `docs/DEVIATION_LOG.md` has DEV-050 and DEV-051 rows marked `Closed — Packet 56`.
 
 ## Negative Cases (explicit)
 
