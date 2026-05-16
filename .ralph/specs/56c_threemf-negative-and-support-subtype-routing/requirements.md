@@ -6,11 +6,11 @@ Packet 56b (`56b_threemf-modifier-part-ir-routing`) routes ALL four non-`NormalP
 
 This packet (56c) closes that gap. It introduces:
 
-1. A new host stage `apply_negative_part_subtract` in `crates/slicer-host/src/negative_part_subtract.rs` with signature `pub fn apply_negative_part_subtract(slice_irs: &mut [SliceIR], modifier_volumes: &[ModifierVolume])`. The stage runs as a phase-0 built-in inside `crates/slicer-host/src/prepass.rs::execute_prepass_with_builtins_configured`, before `commit_region_mapping_builtin` and before any phase-1 user prepass stage including `PrePass::PaintSegmentation` (Activation Q3 = Option 1 locked at original-packet-author time; insertion point updated to reflect actual prepass topology). For each `negative_part` modifier volume, it projects via `slice_mesh_ex(&mv.mesh, &layer_zs)` and calls `slicer_core::polygon_ops::difference` against each `slice_irs[li].regions[ri].polygons`.
+1. A new host stage `apply_negative_part_subtract` in `crates/slicer-host/src/negative_part_subtract.rs` with signature `pub fn apply_negative_part_subtract(slice_ir: &mut SliceIR, modifier_volumes: &[ModifierVolume])` (singular `SliceIR` — one layer at a time). The stage is invoked per-layer inside `crates/slicer-host/src/layer_executor.rs::run_paint_annotation`, after `arena.take_slice()` and BEFORE the paint annotation loop begins (Activation Q3 = Option 1 locked at original-packet-author time; insertion point corrected from the infeasible original "phase-0 built-in inside `prepass.rs`" — `Vec<SliceIR>` does not exist at prepass time, it is produced per-layer in `layer_executor.rs::execute_layer_slice` after prepass returns). For each `negative_part` modifier volume, it resolves `slice_ir.z` against the modifier's Z extent; if inside, it projects the modifier mesh at `slice_ir.z` via `slice_mesh_ex(&mv.mesh, &[slice_ir.z])` and calls `slicer_core::polygon_ops::difference` against each `slice_ir.regions[ri].polygons`. Modifiers outside the Z extent are skipped.
 
 2. Synthetic `PaintRegionIR` emission for `support_enforcer` and `support_blocker` volumes in `crates/slicer-host/src/paint_segmentation.rs`. Modifier volumes are read directly from `mesh_ir.objects[].modifier_volumes` (already populated by Packet 56b) — no new parameter on `execute_paint_segmentation`. Each volume is projected per layer; the projections are emitted as `SemanticRegion` entries inserted into `LayerPaintMap.semantic_regions` under `PaintSemantic::SupportEnforcer` / `PaintSemantic::SupportBlocker`, union-merged with any existing entries via `slicer_core::polygon_ops::union`. These flow through Packet 51's `paint_overrides` overlay path with no new region-mapping code.
 
-3. A new synthetic-fixture E2E test suite (`threemf_subtypes_synthetic_e2e_tdd.rs`) that builds 3MF archives in-memory via the existing `zip::write::ZipWriter` pattern. The synthetic fixtures cover the three subtypes' consumer behavior plus pipeline-ordering correctness (negative subtract must run before paint segmentation) plus four degenerate-case negative tests (negative above parent, empty negative, empty support_enforcer, empty support_blocker).
+3. A new synthetic-fixture E2E test suite (`threemf_subtypes_synthetic_e2e_tdd.rs`) that builds 3MF archives in-memory via the existing `zip::write::ZipWriter` pattern. The synthetic fixtures cover the three subtypes' consumer behavior plus pipeline-ordering correctness (negative subtract must run per-layer before paint annotation, mutating `slice_ir.regions[].polygons` so downstream per-layer consumers see the post-subtract polygons; the test function name `negative_part_subtract_runs_before_paint_segmentation` is legacy from the original packet design) plus four degenerate-case negative tests (negative above parent, empty negative, empty support_enforcer, empty support_blocker).
 
 No new IR types are introduced. `SliceIR`, `PaintRegionIR`, `PaintSemantic::SupportEnforcer`, `PaintSemantic::SupportBlocker` already exist (Packets 50b / 51). This packet is consumer-side wiring on already-populated IR.
 
@@ -24,7 +24,7 @@ This packet does not modify Packet 56's or Packet 56b's directories. Cross-Packe
 
 ## Task IDs (registered by this packet)
 
-- **TASK-192b** — New host stage `apply_negative_part_subtract` with signature `(&mut [SliceIR], &[ModifierVolume])`. Inserted as a phase-0 built-in inside `prepass.rs::execute_prepass_with_builtins_configured` (before region-mapping commit and before user prepass stages). Per-layer 2D subtract via `slicer_core::polygon_ops::difference` for each `negative_part` modifier volume.
+- **TASK-192b** — New host stage `apply_negative_part_subtract` with signature `(&mut SliceIR, &[ModifierVolume])` (singular `SliceIR`). Invoked per-layer inside `layer_executor.rs::run_paint_annotation` (after `arena.take_slice()` and before the paint annotation loop). Per-layer 2D subtract via `slicer_core::polygon_ops::difference` for each `negative_part` modifier volume; modifiers outside the layer's Z extent are skipped.
 - **TASK-192c** — Synthetic `PaintRegionIR` emission for `support_enforcer` and `support_blocker` modifier volumes via paint-segmentation piggyback. `paint_segmentation.rs` reads `mesh_ir.objects[].modifier_volumes` directly (no new parameter). Flows through Packet 51's overlay.
 - **TASK-193** — TDD coverage: synthetic-fixture E2E (`threemf_subtypes_synthetic_e2e_tdd.rs`) with 10 test functions (6 positive + 4 degenerate negative); no-regression sweep; pipeline-ordering correctness assertion.
 
@@ -33,8 +33,8 @@ This packet does not modify Packet 56's or Packet 56b's directories. Cross-Packe
 ## In Scope
 
 - Files-in-scope (write):
-  - `crates/slicer-host/src/negative_part_subtract.rs` — NEW; `apply_negative_part_subtract` host stage with signature `(&mut [SliceIR], &[ModifierVolume])`.
-  - `crates/slicer-host/src/prepass.rs` — insert stage call as a phase-0 built-in inside `execute_prepass_with_builtins_configured`, before `commit_region_mapping_builtin` and before phase-1 user prepass stages.
+  - `crates/slicer-host/src/negative_part_subtract.rs` — NEW; `apply_negative_part_subtract` host stage with signature `(&mut SliceIR, &[ModifierVolume])` (singular `SliceIR`).
+  - `crates/slicer-host/src/layer_executor.rs` — insert per-layer call inside `run_paint_annotation`, after `arena.take_slice()` and before the paint annotation loop begins.
   - `crates/slicer-host/src/paint_segmentation.rs` — augment `execute_paint_segmentation` to read `mesh_ir.objects[].modifier_volumes` internally and emit synthetic `PaintRegionIR` for `support_*` volumes.
   - `crates/slicer-host/src/lib.rs` (or module-root file confirmed at Step 2 via FACT dispatch) — declare `pub mod negative_part_subtract`.
   - `crates/slicer-host/tests/threemf_subtypes_synthetic_e2e_tdd.rs` — NEW; synthetic-fixture E2E suite.
@@ -47,7 +47,7 @@ This packet does not modify Packet 56's or Packet 56b's directories. Cross-Packe
 - Any change to `wit/**`, `crates/slicer-host/src/wit_host.rs`, `dispatch.rs`. WIT clean.
 - Any change to `crates/slicer-macros/`, `crates/slicer-sdk/`.
 - Any change to `crates/slicer-host/src/region_mapping.rs` or `model_loader.rs`. Owned by Packets 56b / 56 respectively; immutable in this packet per Cross-Packet Mutation Rule.
-- Any change to `crates/slicer-host/src/pipeline.rs`. The phase-0 insertion lands inside `prepass.rs`, which is already invoked by `pipeline.rs`'s existing `execute_prepass_with_builtins_configured` call.
+- Any change to `crates/slicer-host/src/pipeline.rs` or `crates/slicer-host/src/prepass.rs`. `Vec<SliceIR>` does not exist at prepass time; the per-layer insertion lands inside `layer_executor.rs::run_paint_annotation`, which is already orchestrated by the existing layer-execution path.
 - Any change to `modules/core-modules/fuzzy-skin/`. Manifest gated by Packet 56b.
 - Any new fuzzy-skin semantics for `negative_part` or `support_*` volumes. Each subtype has its own consumer.
 - Sidecar `<assemble>` / `<plate>` sections; `extruder` per-modifier consumer; sidecar matrix as geometry source.
@@ -69,8 +69,8 @@ Host implementation MUST be project-internal Rust.
 
 ## Acceptance Summary (measurable outcomes)
 
-- `apply_negative_part_subtract` mutates each layer's `SliceIR` in place via `slice_irs[li].regions[ri].polygons`: for each layer Z in the negative volume's extent, the aggregate polygon area across all `SlicedRegion`s decreases by the negative volume's cross-section at Z within ±0.005 mm². Outside the extent, polygons are bit-identical.
-- The prepass order places `apply_negative_part_subtract` (phase-0 built-in inside `execute_prepass_with_builtins_configured`) BEFORE `commit_region_mapping_builtin` and BEFORE any phase-1 user prepass stage including `PrePass::PaintSegmentation` (per Activation Q3 = Option 1). Paint segmentation sees the post-subtract polygons.
+- `apply_negative_part_subtract` mutates each layer's `SliceIR` in place via `slice_ir.regions[ri].polygons`: for each layer Z in the negative volume's extent, the aggregate polygon area across all `SlicedRegion`s decreases by the negative volume's cross-section at Z within ±0.005 mm². Outside the extent, polygons are bit-identical.
+- The per-layer call order places `apply_negative_part_subtract` (invoked inside `layer_executor.rs::run_paint_annotation`, after `arena.take_slice()`) BEFORE the paint annotation loop and BEFORE all downstream per-layer consumers (per Activation Q3 = Option 1, with the insertion site corrected from the infeasible "phase-0 inside `prepass.rs`" original). Paint annotation and subsequent per-layer consumers see the post-subtract polygons. Paint segmentation runs earlier inside prepass on triangle paint attributes (not `SliceIR` polygons) and is unaffected.
 - `support_enforcer` modifier volumes emit `SemanticRegion` entries into `LayerPaintMap.semantic_regions` under `PaintSemantic::SupportEnforcer` at every overlapping global layer index; the aggregate `polygons` area across all returned `SemanticRegion`s matches the modifier's per-layer projection within ±0.005 mm² total area.
 - `support_blocker` modifier volumes emit `SemanticRegion` entries into `LayerPaintMap.semantic_regions` under `PaintSemantic::SupportBlocker` at every overlapping global layer index; same aggregate-area tolerance.
 - The emitted `PaintRegionIR` for `support_*` flows through Packet 51's `paint_overrides` overlay, producing the support-enforcer / support-blocker per-semantic `ResolvedConfig` at every intersecting layer.

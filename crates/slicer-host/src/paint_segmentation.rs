@@ -4,9 +4,10 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use slicer_core::{slice_mesh_ex, union};
 use slicer_ir::{
-    ExPolygon, LayerPaintMap, LayerPlanIR, MeshIR, PaintRegionIR, PaintSemantic, PaintValue,
-    Point2, Point3, Polygon, SemanticRegion, SurfaceClassificationIR,
+    ConfigValue, ExPolygon, LayerPaintMap, LayerPlanIR, MeshIR, PaintRegionIR, PaintSemantic,
+    PaintValue, Point2, Point3, Polygon, SemanticRegion, SurfaceClassificationIR,
 };
 
 /// Structured paint-segmentation contract failures.
@@ -138,6 +139,55 @@ pub fn execute_paint_segmentation(
                         paint_order as u64,
                         polygon.clone(),
                     );
+                }
+            }
+        }
+    }
+
+    // Emit synthetic PaintRegionIR entries for support_enforcer and support_blocker
+    // modifier volumes (Packet 56c). Projects each qualifying modifier mesh at every
+    // global layer Z and inserts SemanticRegion entries via polygon union.
+    let layer_zs: Vec<f32> = layer_plan_ir.global_layers.iter().map(|l| l.z).collect();
+    for object in &mesh_ir.objects {
+        for mv in &object.modifier_volumes {
+            let subtype = match mv.config_delta.fields.get("subtype") {
+                Some(ConfigValue::String(s)) => s.as_str(),
+                _ => continue,
+            };
+            let semantic = match subtype {
+                "support_enforcer" => PaintSemantic::SupportEnforcer,
+                "support_blocker" => PaintSemantic::SupportBlocker,
+                _ => continue,
+            };
+            if mv.mesh.vertices.is_empty() {
+                continue; // degenerate mesh — emit nothing
+            }
+            let projections = slice_mesh_ex(&mv.mesh, &layer_zs);
+            for (layer, polys) in layer_plan_ir.global_layers.iter().zip(projections) {
+                if polys.is_empty() {
+                    continue;
+                }
+                let layer_map = per_layer
+                    .entry(layer.index)
+                    .or_insert_with(|| LayerPaintMap {
+                        global_layer_index: layer.index,
+                        semantic_regions: HashMap::new(),
+                    });
+                let entry = layer_map
+                    .semantic_regions
+                    .entry(semantic.clone())
+                    .or_insert_with(Vec::new);
+                if entry.is_empty() {
+                    entry.push(SemanticRegion {
+                        object_id: object.id.clone(),
+                        polygons: polys,
+                        value: PaintValue::Flag(true),
+                        paint_order: 0,
+                    });
+                } else {
+                    // Union new polygons into the existing region for this object.
+                    let existing = entry.first_mut().unwrap();
+                    existing.polygons = union(&existing.polygons, &polys);
                 }
             }
         }

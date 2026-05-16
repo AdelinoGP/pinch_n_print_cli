@@ -40,7 +40,7 @@
 - Postcondition: Test file compiles. The negative_part tests fail (no subtract stage exists yet). The support_* tests fail (no synthetic emission exists yet).
 - Files allowed to read:
   - `crates/slicer-host/tests/threemf_transform_tdd.rs` — search for `ZipWriter::new` and the in-memory fixture builder pattern.
-  - `crates/slicer-host/src/prepass.rs` — narrow read around `execute_prepass_with_builtins_configured` and the phase-0/phase-1 transition (≈ lines 393-455). This is the phase-0 insertion point for Step 2.
+  - `crates/slicer-host/src/layer_executor.rs` — narrow read around `run_paint_annotation` (≈ line 525) and the `arena.take_slice()` site. This is the per-layer insertion point for Step 2.
 - Files allowed to edit (≤ 3):
   - `crates/slicer-host/tests/threemf_subtypes_synthetic_e2e_tdd.rs` — NEW.
 - Files explicitly out-of-bounds: everything else.
@@ -60,21 +60,20 @@
 
 - Task IDs:
   - `TASK-192b`
-- Objective: Create `crates/slicer-host/src/negative_part_subtract.rs` with `apply_negative_part_subtract(slice_irs: &mut [SliceIR], modifier_volumes: &[ModifierVolume])`. Insert call as a phase-0 built-in inside `crates/slicer-host/src/prepass.rs::execute_prepass_with_builtins_configured`, before `commit_region_mapping_builtin` and before any phase-1 user prepass stage. One `slice_mesh_ex` call per `negative_part` volume across the full layer-Z list; `slicer_core::polygon_ops::difference` per layer per `SlicedRegion`.
+- Objective: Create `crates/slicer-host/src/negative_part_subtract.rs` with `apply_negative_part_subtract(slice_ir: &mut SliceIR, modifier_volumes: &[ModifierVolume])`. Insert call inside `crates/slicer-host/src/layer_executor.rs::run_paint_annotation` after `arena.take_slice()` and BEFORE the paint annotation loop begins. For each `negative_part` modifier volume, project the modifier mesh at `slice_ir.z` via `slice_mesh_ex` and apply `slicer_core::polygon_ops::difference` per `SlicedRegion.polygons`. Modifiers outside the layer's Z extent are skipped.
 - Precondition: Step 1 RED.
 - Postcondition: `negative_part_removes_layer_polygon_area`, `negative_part_area_reduction_matches_cube_cross_section`, `negative_part_above_parent_no_subtract`, `empty_negative_part_no_subtract`, `negative_part_subtract_runs_before_paint_segmentation` are GREEN.
 - Files allowed to read:
-  - `crates/slicer-host/src/prepass.rs` — narrow read around `execute_prepass_with_builtins_configured` and the phase-0/phase-1 transition (≈ lines 393-455).
-  - `crates/slicer-host/src/layer_executor.rs` — narrow read at `slice_mesh_ex` call (`layer_executor.rs:559-562`) for the Packet 56b projection pattern.
+  - `crates/slicer-host/src/layer_executor.rs` — narrow read at `run_paint_annotation` (≈ line 525), the `arena.take_slice()` site, and the existing `slice_mesh_ex` call (`layer_executor.rs:559-562`) for the Packet 56b projection pattern.
   - `crates/slicer-ir/src/slice_ir.rs` — narrow reads at `SliceIR` (≈ line 1102), `SlicedRegion` (≈ line 1068), `ModifierVolume` (≈ line 252), `ConfigDelta` (≈ line 231).
 - Files allowed to edit (≤ 3):
   - `crates/slicer-host/src/negative_part_subtract.rs` — NEW.
-  - `crates/slicer-host/src/prepass.rs` — insert phase-0 built-in stage call before `commit_region_mapping_builtin`.
+  - `crates/slicer-host/src/layer_executor.rs` — insert per-layer call inside `run_paint_annotation`, after `arena.take_slice()` and before the paint annotation loop begins.
   - `crates/slicer-host/src/lib.rs` (or `mod.rs` — the host crate's module root) — declare the new `pub mod negative_part_subtract`. Step 2 FACT dispatch returns the correct module-root file.
-- Files explicitly out-of-bounds: `model_loader.rs`, `region_mapping.rs`, `pipeline.rs`, `paint_segmentation.rs` (Step 3 territory), macros, WIT, SDK, IR (read-only narrow).
+- Files explicitly out-of-bounds: `model_loader.rs`, `region_mapping.rs`, `pipeline.rs`, `prepass.rs`, `paint_segmentation.rs` (Step 3 territory), macros, WIT, SDK, IR (read-only narrow).
 - Expected sub-agent dispatches:
-  - Question: "Return the exact line in `crates/slicer-host/src/prepass.rs` where `commit_region_mapping_builtin` is first called inside `execute_prepass_with_builtins_configured` (phase-0/phase-1 boundary). FACT with file:line." → FACT.
-  - Question: "Return the exact place in `crates/slicer-host/src/prepass.rs` where the per-object `slice_irs: Vec<SliceIR>` (or equivalent layer-slice collection) is in scope and mutable, BEFORE `commit_region_mapping_builtin` is called. SNIPPETS, ≤ 15 lines." → SNIPPETS.
+  - Question: "Return the exact line in `crates/slicer-host/src/layer_executor.rs::run_paint_annotation` where `arena.take_slice()` returns the layer's `SliceIR`, immediately before the paint annotation loop begins. FACT with file:line." → FACT.
+  - Question: "Return the exact place in `crates/slicer-host/src/layer_executor.rs::run_paint_annotation` where the current object's `&[ModifierVolume]` is in scope alongside the mutable `SliceIR`, BEFORE the paint annotation loop runs. SNIPPETS, ≤ 15 lines." → SNIPPETS.
   - Question: "Which file declares the host crate's module roots (e.g., `pub mod negative_part_subtract`)? FACT with file path." → FACT.
   - Question: "Name the function(s) in `OrcaSlicerDocumented/src/libslic3r/Format/bbs_3mf.cpp` (or sibling) that perform negative-part per-layer subtract. LOCATIONS, ≤ 5 entries. No source." → LOCATIONS.
   - Question: "Run `cargo test -p slicer-host --test threemf_subtypes_synthetic_e2e_tdd negative_part_removes_layer_polygon_area negative_part_area_reduction_matches_cube_cross_section negative_part_above_parent_no_subtract empty_negative_part_no_subtract negative_part_subtract_runs_before_paint_segmentation`. FACT pass/fail per test." → FACT.
@@ -102,7 +101,7 @@
   - `crates/slicer-host/src/paint_segmentation.rs` — full (verified ~400 lines at review time; entry point `execute_paint_segmentation` at line 50).
 - Files allowed to edit (≤ 3):
   - `crates/slicer-host/src/paint_segmentation.rs` — augment with synthetic-volume emission helper that reads `mesh_ir.objects[].modifier_volumes` directly.
-- Files explicitly out-of-bounds: WIT, SDK, macros, `model_loader.rs`, `region_mapping.rs`, `pipeline.rs`, `prepass.rs` (already touched at Step 2), `negative_part_subtract.rs` (already complete).
+- Files explicitly out-of-bounds: WIT, SDK, macros, `model_loader.rs`, `region_mapping.rs`, `pipeline.rs`, `prepass.rs`, `layer_executor.rs` (already touched at Step 2), `negative_part_subtract.rs` (already complete).
 - Expected sub-agent dispatches:
   - Question: "Return the existing `execute_paint_segmentation` entry-point function body in `crates/slicer-host/src/paint_segmentation.rs` — specifically the place where the final `PaintRegionIR` is constructed/returned. SNIPPETS, ≤ 30 lines." → SNIPPETS.
   - Question: "Name the function(s) in `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` (or sibling) that emit `support_enforcer` / `support_blocker` geometry into the slicer's paint pipeline. LOCATIONS, ≤ 5 entries. No source." → LOCATIONS.

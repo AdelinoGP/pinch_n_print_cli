@@ -136,6 +136,9 @@ Last updated: 2026-05-08
 - [x] TASK-190 Parse 3MF sidecar `Metadata/model_settings.config`; classify `<object>`/`<part>` by `subtype=`; surface typed per-part metadata (`PartSubtype`, `ObjectSidecarInfo`, `PartSidecarInfo`) keyed by `(object_id, part_id)`; plumb `parse_3mf_sidecar` into `load_3mf` before archive drop; thread unused `_sidecar` arg through `parse_3mf_model_xml` → `resolve_object` for Packet 56b. Covers DEV-050 (unknown subtype downgrade to NormalPart) and DEV-051 (missing/malformed sidecar non-fatal fallback). 7 TDD tests in `threemf_sidecar_classification_tdd.rs`. All regression suites green. **Closed 2026-05-14 — Packet 56 (56_threemf-sidecar-parser).**
 - [x] TASK-191 — Branch `resolve_object` to route non-`NormalPart` geometry into `modifier_volumes`; drop paint on non-`NormalPart` rows; bump `MeshIR.schema_version` 1.0.0 → 1.1.0. (packet 56b_threemf-modifier-part-ir-routing)
 - [x] TASK-192a — Wire `modifier_part` consumer: region-mapping Z-overlap stamp for `fuzzy_skin.apply_to_all`. Includes fuzzy-skin manifest gate. (packet 56b_threemf-modifier-part-ir-routing)
+- [x] TASK-192b — New host stage apply_negative_part_subtract; per-layer 2D polygon subtract via polygon_ops::difference for negative_part modifier volumes. (56c_threemf-negative-and-support-subtype-routing)
+- [x] TASK-192c — Synthetic PaintRegionIR emission for support_enforcer and support_blocker modifier volumes via paint_segmentation piggyback. (56c_threemf-negative-and-support-subtype-routing)
+- [x] TASK-193 — TDD coverage: synthetic-fixture E2E (threemf_subtypes_synthetic_e2e_tdd.rs); negative_part, support_enforcer, support_blocker, ordering, degenerate cases. No-regression sweep. Acceptance ceremony. (56c_threemf-negative-and-support-subtype-routing)
 
 ### Workstream 4 — Progress events and Python bridge coverage
 

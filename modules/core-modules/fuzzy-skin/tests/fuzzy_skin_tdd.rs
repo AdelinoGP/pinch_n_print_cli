@@ -136,7 +136,7 @@ fn default_config() -> ConfigView {
 /// Helper: config with apply-to-all = true.
 fn apply_to_all_config() -> ConfigView {
     let mut fields = HashMap::new();
-    fields.insert("apply-to-all".to_string(), ConfigValue::Bool(true));
+    fields.insert("apply_to_all".to_string(), ConfigValue::Bool(true));
     ConfigView::from_map(fields)
 }
 
@@ -311,7 +311,7 @@ fn on_print_start_custom_config() {
     let mut fields = HashMap::new();
     fields.insert("thickness".to_string(), ConfigValue::Float(1.0));
     fields.insert("point-distance".to_string(), ConfigValue::Float(0.5));
-    fields.insert("apply-to-all".to_string(), ConfigValue::Bool(true));
+    fields.insert("apply_to_all".to_string(), ConfigValue::Bool(true));
     let config = ConfigView::from_map(fields);
     let module = FuzzySkinModule::on_print_start(&config);
     assert!(module.is_ok());

@@ -536,10 +536,18 @@ fn run_paint_annotation(
         Some(pr) => std::sync::Arc::clone(pr),
         None => return Ok(()),
     };
-    let slice_ir = match arena.take_slice() {
+    let mut slice_ir = match arena.take_slice() {
         Some(s) => s,
         None => return Ok(()),
     };
+
+    // Apply negative-part subtract before paint annotation sees the polygons (Packet 56c).
+    for obj in blackboard.mesh().objects.iter() {
+        crate::negative_part_subtract::apply_negative_part_subtract(
+            &mut slice_ir,
+            &obj.modifier_volumes,
+        );
+    }
 
     // Compute per-layer modifier projections for fuzzy-skin annotation (packet 56b).
     // For each modifier_part volume, slice its world-space mesh at the current
