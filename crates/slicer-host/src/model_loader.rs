@@ -122,6 +122,18 @@ pub fn detect_format(path: impl AsRef<Path>) -> Result<ModelFormat, ModelLoadErr
     }
 }
 
+/// Deterministic object ID: UUID v5 (SHA1) keyed on file path + per-file index.
+/// Same path and index always produce the same UUID across process runs.
+fn path_object_id(path: &Path, index: usize) -> String {
+    // NAMESPACE_OID (RFC 4122 §4.3) — stable, well-known UUID namespace.
+    const NS: uuid::Uuid = uuid::Uuid::from_bytes([
+        0x6b, 0xa7, 0xb8, 0x14, 0x9d, 0xad, 0x11, 0xd1, 0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30,
+        0xc8,
+    ]);
+    let name = format!("{}#{}", path.to_string_lossy(), index);
+    uuid::Uuid::new_v5(&NS, name.as_bytes()).to_string()
+}
+
 /// Load a model file and produce a [`MeshIR`].
 ///
 /// Detects format by extension, parses geometry, deduplicates vertices,
@@ -140,7 +152,7 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
             let its = load_stl(&mut reader)?;
             let world_z_extent = compute_z_extent_from_mesh(&its);
             vec![ObjectMesh {
-                id: uuid::Uuid::new_v4().to_string(),
+                id: path_object_id(path, 0),
                 mesh: its,
                 transform: identity_transform(),
                 config: ObjectConfig {
@@ -155,7 +167,7 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
             let its = load_obj(path)?;
             let world_z_extent = compute_z_extent_from_mesh(&its);
             vec![ObjectMesh {
-                id: uuid::Uuid::new_v4().to_string(),
+                id: path_object_id(path, 0),
                 mesh: its,
                 transform: identity_transform(),
                 config: ObjectConfig {
@@ -170,10 +182,11 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
             let items = load_3mf(&mut reader)?;
             items
                 .into_iter()
-                .map(|(its, paint_data, modifiers)| {
+                .enumerate()
+                .map(|(idx, (its, paint_data, modifiers))| {
                     let world_z_extent = compute_z_extent_from_mesh(&its);
                     ObjectMesh {
-                        id: uuid::Uuid::new_v4().to_string(),
+                        id: path_object_id(path, idx),
                         mesh: its,
                         transform: identity_transform(),
                         config: ObjectConfig {

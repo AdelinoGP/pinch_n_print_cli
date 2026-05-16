@@ -264,7 +264,11 @@ fn chain_lines_to_expolygons(lines: Vec<IntersectionLine>) -> Vec<ExPolygon> {
     // Convert Polygons to ExPolygons using boolean union
     // For simple cases (no holes), this just wraps each polygon
     // For complex cases, union handles nesting
-    polygons_to_expolygons(&polygons)
+    let mut expolygons = polygons_to_expolygons(&polygons);
+    // Canonical sort by min contour point so island ordering is independent
+    // of Clipper2's internal path traversal order across process runs.
+    expolygons.sort_by_key(|ep| ep.contour.points.iter().copied().min());
+    expolygons
 }
 
 /// Chain intersection lines into closed polygons using undirected
