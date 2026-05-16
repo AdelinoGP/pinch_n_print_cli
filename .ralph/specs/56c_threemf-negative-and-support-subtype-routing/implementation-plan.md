@@ -35,12 +35,12 @@
 
 - Task IDs:
   - `TASK-193`
-- Objective: Author the failing E2E TDD `threemf_subtypes_synthetic_e2e_tdd.rs`. Tests cover: `negative_part_removes_layer_polygon_area`, `negative_part_area_reduction_matches_cube_cross_section`, `negative_part_above_parent_no_subtract`, `support_enforcer_emits_paint_region`, `support_blocker_emits_paint_region`, `empty_support_enforcer_emits_nothing`, `negative_part_subtract_runs_before_paint_segmentation`, `support_enforcer_flows_through_paint_overrides`. Implement the in-memory `zip::write::ZipWriter` fixture builder (port from `threemf_transform_tdd.rs`).
+- Objective: Author the failing E2E TDD `threemf_subtypes_synthetic_e2e_tdd.rs`. Tests cover (10 functions): `negative_part_removes_layer_polygon_area`, `negative_part_area_reduction_matches_cube_cross_section`, `negative_part_above_parent_no_subtract`, `empty_negative_part_no_subtract`, `support_enforcer_emits_paint_region`, `support_blocker_emits_paint_region`, `empty_support_enforcer_emits_nothing`, `empty_support_blocker_emits_nothing`, `negative_part_subtract_runs_before_paint_segmentation`, `support_enforcer_flows_through_paint_overrides`. Implement the in-memory `zip::write::ZipWriter` fixture builder (port from `threemf_transform_tdd.rs`).
 - Precondition: Step 0 clean.
 - Postcondition: Test file compiles. The negative_part tests fail (no subtract stage exists yet). The support_* tests fail (no synthetic emission exists yet).
 - Files allowed to read:
   - `crates/slicer-host/tests/threemf_transform_tdd.rs` — search for `ZipWriter::new` and the in-memory fixture builder pattern.
-  - `crates/slicer-host/src/pipeline.rs` — search for `execute_prepass_` and `execute_region_mapping(` call sites.
+  - `crates/slicer-host/src/prepass.rs` — narrow read around `execute_prepass_with_builtins_configured` and the phase-0/phase-1 transition (≈ lines 393-455). This is the phase-0 insertion point for Step 2.
 - Files allowed to edit (≤ 3):
   - `crates/slicer-host/tests/threemf_subtypes_synthetic_e2e_tdd.rs` — NEW.
 - Files explicitly out-of-bounds: everything else.
@@ -60,66 +60,64 @@
 
 - Task IDs:
   - `TASK-192b`
-- Objective: Create `crates/slicer-host/src/negative_part_subtract.rs` with `apply_negative_part_subtract(slice_ir: &mut SliceIR, modifier_volumes: &[ModifierVolume])`. Insert call between `execute_prepass_*` and `paint_segmentation` in `pipeline.rs`. Per-layer 2D projection via the slicer entry-point identified by FACT dispatch; `slicer_core::polygon_ops::difference` per layer.
+- Objective: Create `crates/slicer-host/src/negative_part_subtract.rs` with `apply_negative_part_subtract(slice_irs: &mut [SliceIR], modifier_volumes: &[ModifierVolume])`. Insert call as a phase-0 built-in inside `crates/slicer-host/src/prepass.rs::execute_prepass_with_builtins_configured`, before `commit_region_mapping_builtin` and before any phase-1 user prepass stage. One `slice_mesh_ex` call per `negative_part` volume across the full layer-Z list; `slicer_core::polygon_ops::difference` per layer per `SlicedRegion`.
 - Precondition: Step 1 RED.
-- Postcondition: `negative_part_removes_layer_polygon_area`, `negative_part_area_reduction_matches_cube_cross_section`, `negative_part_above_parent_no_subtract`, `negative_part_subtract_runs_before_paint_segmentation` are GREEN.
+- Postcondition: `negative_part_removes_layer_polygon_area`, `negative_part_area_reduction_matches_cube_cross_section`, `negative_part_above_parent_no_subtract`, `empty_negative_part_no_subtract`, `negative_part_subtract_runs_before_paint_segmentation` are GREEN.
 - Files allowed to read:
-  - `crates/slicer-host/src/pipeline.rs` — full (delegate FACT for line count first; if > 600 lines, narrow to the prepass-region-mapping region).
-  - `crates/slicer-host/src/layer_executor.rs` — search for `slice_mesh_ex` usage pattern from Packet 56b (read narrow section only).
-  - `crates/slicer-ir/src/slice_ir.rs` — `SliceIR` shape (narrow read).
+  - `crates/slicer-host/src/prepass.rs` — narrow read around `execute_prepass_with_builtins_configured` and the phase-0/phase-1 transition (≈ lines 393-455).
+  - `crates/slicer-host/src/layer_executor.rs` — narrow read at `slice_mesh_ex` call (`layer_executor.rs:559-562`) for the Packet 56b projection pattern.
+  - `crates/slicer-ir/src/slice_ir.rs` — narrow reads at `SliceIR` (≈ line 1102), `SlicedRegion` (≈ line 1068), `ModifierVolume` (≈ line 252), `ConfigDelta` (≈ line 231).
 - Files allowed to edit (≤ 3):
   - `crates/slicer-host/src/negative_part_subtract.rs` — NEW.
-  - `crates/slicer-host/src/pipeline.rs` — insert stage call.
-  - `crates/slicer-host/src/lib.rs` (or `mod.rs` — the host crate's module root) — declare the new `mod negative_part_subtract`. Step 2 FACT dispatch returns the correct module-root file.
-- Files explicitly out-of-bounds: `model_loader.rs`, `region_mapping.rs`, `paint_segmentation.rs` (Step 3 territory), macros, WIT, SDK, IR (read-only narrow).
-  - Expected sub-agent dispatches:
-    - Question: "Return the exact `SliceIR` layer-polygon storage field path: `slice_ir.layers[i].____`. SNIPPETS, ≤ 5 lines." → SNIPPETS.
-    - Question: "Return `slicer_core::polygon_ops::difference` signature. SNIPPETS, ≤ 6 lines." → SNIPPETS.
-    - Question: "Verify `slicer_core::slice_mesh_ex` signature (the layer-projection function used by Packet 56b). SNIPPETS, ≤ 8 lines. → SNIPPETS."
-    - Question: "Return the exact line in `crates/slicer-host/src/pipeline.rs` where the call to `paint_segmentation` (or the first paint-segmentation-related call) occurs, immediately AFTER `execute_prepass_*` returns. FACT with file:line." → FACT.
+  - `crates/slicer-host/src/prepass.rs` — insert phase-0 built-in stage call before `commit_region_mapping_builtin`.
+  - `crates/slicer-host/src/lib.rs` (or `mod.rs` — the host crate's module root) — declare the new `pub mod negative_part_subtract`. Step 2 FACT dispatch returns the correct module-root file.
+- Files explicitly out-of-bounds: `model_loader.rs`, `region_mapping.rs`, `pipeline.rs`, `paint_segmentation.rs` (Step 3 territory), macros, WIT, SDK, IR (read-only narrow).
+- Expected sub-agent dispatches:
+  - Question: "Return the exact line in `crates/slicer-host/src/prepass.rs` where `commit_region_mapping_builtin` is first called inside `execute_prepass_with_builtins_configured` (phase-0/phase-1 boundary). FACT with file:line." → FACT.
+  - Question: "Return the exact place in `crates/slicer-host/src/prepass.rs` where the per-object `slice_irs: Vec<SliceIR>` (or equivalent layer-slice collection) is in scope and mutable, BEFORE `commit_region_mapping_builtin` is called. SNIPPETS, ≤ 15 lines." → SNIPPETS.
   - Question: "Which file declares the host crate's module roots (e.g., `pub mod negative_part_subtract`)? FACT with file path." → FACT.
   - Question: "Name the function(s) in `OrcaSlicerDocumented/src/libslic3r/Format/bbs_3mf.cpp` (or sibling) that perform negative-part per-layer subtract. LOCATIONS, ≤ 5 entries. No source." → LOCATIONS.
-  - Question: "Run `cargo test -p slicer-host --test threemf_subtypes_synthetic_e2e_tdd negative_part_removes_layer_polygon_area negative_part_area_reduction_matches_cube_cross_section negative_part_above_parent_no_subtract negative_part_subtract_runs_before_paint_segmentation`. FACT pass/fail per test." → FACT.
+  - Question: "Run `cargo test -p slicer-host --test threemf_subtypes_synthetic_e2e_tdd negative_part_removes_layer_polygon_area negative_part_area_reduction_matches_cube_cross_section negative_part_above_parent_no_subtract empty_negative_part_no_subtract negative_part_subtract_runs_before_paint_segmentation`. FACT pass/fail per test." → FACT.
+
+  Note: `SliceIR` shape (`SliceIR { z, global_layer_index, regions: Vec<SlicedRegion> }` per-layer), `SlicedRegion.polygons: Vec<ExPolygon>`, `polygon_ops::difference(&[ExPolygon], &[ExPolygon]) -> Vec<ExPolygon>`, and `slice_mesh_ex(&IndexedTriangleSet, &[f32]) -> Vec<Vec<ExPolygon>>` are all already verified during the spec-review of this packet — no further FACT dispatches needed for those shapes.
 - Context cost: `M`
 - Authoritative docs:
   - `docs/04_host_scheduler.md` — prepass / region-mapping ordering. Delegate SUMMARY.
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/Format/bbs_3mf.cpp` — LOCATIONS dispatch.
 - Verification:
-  - Four negative_part tests GREEN.
+  - Five negative_part tests GREEN.
   - `cargo test -p slicer-host --test benchy_painted_e2e_tdd` → must stay GREEN.
   - `cargo test -p slicer-host --test benchy_4color_modifier_part_e2e_tdd` → must stay GREEN.
-- Exit condition: Four negative_part tests GREEN; regressions stay GREEN.
+- Exit condition: Five negative_part tests GREEN; regressions stay GREEN.
 
 ### Step 3: Implement support enforcer/blocker paint-segmentation piggyback
 
 - Task IDs:
   - `TASK-192c`
-- Objective: Augment `paint_segmentation.rs` to accept `&[ModifierVolume]` (or pull from `ExecutionPlan`). For each `support_enforcer` / `support_blocker` modifier volume, project per layer and emit synthetic `PaintRegionIR.per_layer[N].semantic_regions` entries under the matching `PaintSemantic` variant. Union with any existing entries at the same `(layer, semantic)`.
+- Objective: Augment `paint_segmentation.rs::execute_paint_segmentation` to read `mesh_ir.objects[].modifier_volumes` directly (no new parameter on the function signature). For each `support_enforcer` / `support_blocker` modifier volume, project per layer via `slice_mesh_ex` and insert synthetic `SemanticRegion` entries into `LayerPaintMap.semantic_regions` (`HashMap<PaintSemantic, Vec<SemanticRegion>>`) under the matching `PaintSemantic` variant. Use `entry(layer).or_insert_with(LayerPaintMap::default).semantic_regions.entry(semantic).or_default().push(...)` for layers without prior entries, and `polygon_ops::union` to merge polygons when prior `SemanticRegion`s already exist at the same `(layer, semantic)`.
 - Precondition: Step 2 GREEN.
-- Postcondition: `support_enforcer_emits_paint_region`, `support_blocker_emits_paint_region`, `empty_support_enforcer_emits_nothing`, `support_enforcer_flows_through_paint_overrides` GREEN.
+- Postcondition: `support_enforcer_emits_paint_region`, `support_blocker_emits_paint_region`, `empty_support_enforcer_emits_nothing`, `empty_support_blocker_emits_nothing`, `support_enforcer_flows_through_paint_overrides` GREEN.
 - Files allowed to read:
-  - `crates/slicer-host/src/paint_segmentation.rs` — full (delegate FACT for size; narrow if > 600 lines).
-  - `crates/slicer-host/src/pipeline.rs` — search for `paint_segmentation` call site (already touched at Step 2).
+  - `crates/slicer-host/src/paint_segmentation.rs` — full (verified ~400 lines at review time; entry point `execute_paint_segmentation` at line 50).
 - Files allowed to edit (≤ 3):
-  - `crates/slicer-host/src/paint_segmentation.rs` — augment with synthetic-volume emission helper.
-  - `crates/slicer-host/src/pipeline.rs` — thread `modifier_volumes` of support subtypes into the paint-segmentation call.
-- Files explicitly out-of-bounds: WIT, SDK, macros, `model_loader.rs`, `region_mapping.rs`, `negative_part_subtract.rs` (already complete).
+  - `crates/slicer-host/src/paint_segmentation.rs` — augment with synthetic-volume emission helper that reads `mesh_ir.objects[].modifier_volumes` directly.
+- Files explicitly out-of-bounds: WIT, SDK, macros, `model_loader.rs`, `region_mapping.rs`, `pipeline.rs`, `prepass.rs` (already touched at Step 2), `negative_part_subtract.rs` (already complete).
 - Expected sub-agent dispatches:
-  - Question: "Return the existing `harvest_paint_segmentation_ir` (or equivalent) entry-point name + signature in `crates/slicer-host/src/paint_segmentation.rs`, plus the place where `PaintRegionIR` is finalized. SNIPPETS, ≤ 30 lines." → SNIPPETS.
-  - Question: "Confirm `PaintSemantic::SupportEnforcer` and `PaintSemantic::SupportBlocker` exist as enum variants in `crates/slicer-ir/`. FACT yes/no with file:line." → FACT.
-  - Question: "Does `slicer_core::polygon_ops::union` exist? If yes, return signature. SNIPPETS, ≤ 6 lines. If no, return FACT 'absent' + suggest alternative." → SNIPPETS or FACT.
+  - Question: "Return the existing `execute_paint_segmentation` entry-point function body in `crates/slicer-host/src/paint_segmentation.rs` — specifically the place where the final `PaintRegionIR` is constructed/returned. SNIPPETS, ≤ 30 lines." → SNIPPETS.
   - Question: "Name the function(s) in `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` (or sibling) that emit `support_enforcer` / `support_blocker` geometry into the slicer's paint pipeline. LOCATIONS, ≤ 5 entries. No source." → LOCATIONS.
-  - Question: "Run `cargo test -p slicer-host --test threemf_subtypes_synthetic_e2e_tdd support_enforcer_emits_paint_region support_blocker_emits_paint_region empty_support_enforcer_emits_nothing support_enforcer_flows_through_paint_overrides`. FACT pass/fail per test." → FACT.
+  - Question: "Run `cargo test -p slicer-host --test threemf_subtypes_synthetic_e2e_tdd support_enforcer_emits_paint_region support_blocker_emits_paint_region empty_support_enforcer_emits_nothing empty_support_blocker_emits_nothing support_enforcer_flows_through_paint_overrides`. FACT pass/fail per test." → FACT.
+
+  Note: `PaintRegionIR.per_layer: HashMap<u32, LayerPaintMap>`, `LayerPaintMap.semantic_regions: HashMap<PaintSemantic, Vec<SemanticRegion>>`, `SemanticRegion.polygons: Vec<ExPolygon>`, `PaintSemantic::SupportEnforcer`/`SupportBlocker`, and `polygon_ops::union(&[ExPolygon], &[ExPolygon]) -> Vec<ExPolygon>` are all already verified during the spec-review of this packet — no further FACT dispatches needed for those shapes.
 - Context cost: `M`
 - Authoritative docs:
   - `docs/02_ir_schemas.md` — `PaintRegionIR`, `PaintSemantic` block search (narrow read).
 - OrcaSlicer refs:
   - `OrcaSlicerDocumented/src/libslic3r/PrintObject.cpp` — LOCATIONS dispatch.
 - Verification:
-  - Four support_* tests GREEN.
+  - Five support_* tests GREEN.
   - `cargo test -p slicer-host --test benchy_painted_e2e_tdd painted_benchy_3mf_reaches_paint_segmentation` → must stay GREEN.
-- Exit condition: All eight `threemf_subtypes_synthetic_e2e_tdd` tests GREEN; regressions stay GREEN.
+- Exit condition: All ten `threemf_subtypes_synthetic_e2e_tdd` tests GREEN; regressions stay GREEN.
 
 ### Step 4: Regression sweep + clippy
 
