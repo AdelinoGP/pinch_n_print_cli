@@ -77,6 +77,7 @@ impl LayerModule for SdkLayerInfillModule {
                     z: first_z,
                     width: first_lh,
                     flow_factor: first_infill_n,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: layer_index as f32,
@@ -84,6 +85,7 @@ impl LayerModule for SdkLayerInfillModule {
                     z: 0.0,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: ExtrusionRole::SparseInfill,

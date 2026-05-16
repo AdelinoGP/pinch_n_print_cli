@@ -131,6 +131,7 @@ fn make_entity(
                     z: layer_index as f32,
                     width: 0.4 + index as f32,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 })
                 .collect(),
             role: ExtrusionRole::OuterWall,

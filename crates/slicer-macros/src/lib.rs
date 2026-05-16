@@ -1054,6 +1054,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             z: pt.z,
                             width: pt.width,
                             flow_factor: pt.flow_factor,
+                            overhang_quartile: pt.overhang_quartile,
                         })
                         .collect(),
                     role: __slicer_role_ir_to_wit(&p.role),
@@ -1072,6 +1073,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                             z: pt.z,
                             width: pt.width,
                             flow_factor: pt.flow_factor,
+                            overhang_quartile: pt.overhang_quartile,
                         })
                         .collect(),
                     role: __slicer_role_wit_to_ir(p.role.clone()),
@@ -1586,6 +1588,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 z: sdk_pt.z,
                 width: sdk_pt.width,
                 flow_factor: sdk_pt.flow_factor,
+                overhang_quartile: sdk_pt.overhang_quartile,
             }
         }
 
@@ -1900,6 +1903,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                                     z: sc.position.z,
                                     width: sc.position.width,
                                     flow_factor: sc.position.flow_factor,
+                                    overhang_quartile: sc.position.overhang_quartile,
                                 },
                                 score: sc.score,
                                 reason: SeamReason { tag: sc.reason.tag.clone() },
@@ -1915,6 +1919,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                                 z: __slicer_entry.chosen_position.z,
                                 width: __slicer_entry.chosen_position.width,
                                 flow_factor: __slicer_entry.chosen_position.flow_factor,
+                                overhang_quartile: __slicer_entry.chosen_position.overhang_quartile,
                             },
                             chosen_wall_index: __slicer_entry.chosen_wall_index,
                             scored_candidates: __slicer_wit_candidates,
@@ -1997,6 +2002,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                                             z: pt.z,
                                             width: pt.width,
                                             flow_factor: pt.flow_factor,
+                                            overhang_quartile: pt.overhang_quartile,
                                         })
                                         .collect()
                                 })
@@ -2386,6 +2392,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             fn __slicer_wit_point3w_to_ir(p: &WitPoint3WithWidth) -> ::slicer_ir::Point3WithWidth {
                 ::slicer_ir::Point3WithWidth {
                     x: p.x, y: p.y, z: p.z, width: p.width, flow_factor: p.flow_factor,
+                    overhang_quartile: p.overhang_quartile,
                 }
             }
             fn __slicer_wit_path_to_ir(p: &WitExtrusionPath3d) -> ::slicer_ir::ExtrusionPath3D {
@@ -2666,6 +2673,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                                     z: p.z,
                                     width: p.width,
                                     flow_factor: p.flow_factor,
+                                    overhang_quartile: p.overhang_quartile,
                                 })
                                 .collect(),
                             role: ::slicer_ir::ExtrusionRole::SupportMaterial,
@@ -2719,6 +2727,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 WitExtrusionPath3d {
                     points: p.points.iter().map(|pt| WitPoint3WithWidth {
                         x: pt.x, y: pt.y, z: pt.z, width: pt.width, flow_factor: pt.flow_factor,
+                        overhang_quartile: pt.overhang_quartile,
                     }).collect(),
                     role: __slicer_ir_role_to_wit(&p.role),
                     speed_factor: p.speed_factor,
@@ -2821,6 +2830,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                             z: pos.z,
                             width: pos.width,
                             flow_factor: pos.flow_factor,
+                            overhang_quartile: pos.overhang_quartile,
                         },
                         *wall_index,
                         &__slicer_ir_wallloop_to_wit(loop_),

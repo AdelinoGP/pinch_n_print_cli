@@ -8,6 +8,7 @@ interface geometry {
         x: f32, y: f32, z: f32,
         width: f32,         // local extrusion width in mm
         flow-factor: f32,   // multiplier on base extrusion volume
+        overhang-quartile: option<u8>,  // 0-3 overhang severity quartile, none = not classified
     }
     record bounding-box2 { min: point2, max: point2 }
     record bounding-box3 { min: point3, max: point3 }

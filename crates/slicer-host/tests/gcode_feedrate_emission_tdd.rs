@@ -137,6 +137,7 @@ fn per_role_speed_resolves_to_f_token() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -144,6 +145,7 @@ fn per_role_speed_resolves_to_f_token() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: role.clone(),
@@ -235,6 +237,7 @@ fn speed_factor_modulates_role_speed() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             },
             Point3WithWidth {
                 x: 10.0,
@@ -242,6 +245,7 @@ fn speed_factor_modulates_role_speed() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             },
         ],
         role: ExtrusionRole::OuterWall,
@@ -300,6 +304,7 @@ fn module_supplied_f_wins() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             }],
             role: ExtrusionRole::InnerWall,
             speed_factor: 1.0,
@@ -369,6 +374,7 @@ fn distinct_feedrates_present() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -376,6 +382,7 @@ fn distinct_feedrates_present() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -400,6 +407,7 @@ fn distinct_feedrates_present() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: 20.0,
@@ -407,6 +415,7 @@ fn distinct_feedrates_present() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: ExtrusionRole::SparseInfill,
@@ -473,6 +482,7 @@ fn f_token_within_200_lines() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -480,6 +490,7 @@ fn f_token_within_200_lines() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -611,7 +622,7 @@ fn filament_ironing_overrides_global_ironing() {
 
     let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
     let resolved = emitter
-        .resolve_feedrate(&ExtrusionRole::Ironing, 1.0)
+        .resolve_feedrate(&ExtrusionRole::Ironing, 1.0, None)
         .unwrap();
     assert_eq!(resolved, 40.0 * 60.0);
 }
@@ -625,7 +636,7 @@ fn wipe_speed_resolves_correctly() {
 
     let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
     let resolved = emitter
-        .resolve_feedrate(&ExtrusionRole::Custom("Wipe".to_string()), 1.0)
+        .resolve_feedrate(&ExtrusionRole::Custom("Wipe".to_string()), 1.0, None)
         .unwrap();
     assert_eq!(resolved, 96.0 * 60.0);
 }

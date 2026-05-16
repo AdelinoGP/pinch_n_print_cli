@@ -73,6 +73,7 @@ impl FinalizationModule for SdkFinalizationModule {
                         z: layer.entity_count() as f32,
                         width: tc.len() as f32,
                         flow_factor: z_hops.len() as f32,
+                        overhang_quartile: None,
                     },
                     Point3WithWidth {
                         x: first_entity_topo,
@@ -80,6 +81,7 @@ impl FinalizationModule for SdkFinalizationModule {
                         z: first_entity_speed_factor,
                         width: first_zhop_after,
                         flow_factor: first_zhop_height,
+                        overhang_quartile: None,
                     },
                 ],
                 role: ExtrusionRole::Custom("task-109-finalization-witness".into()),
@@ -109,6 +111,7 @@ impl FinalizationModule for SdkFinalizationModule {
                     z: z as f32,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 }],
                 role: ExtrusionRole::Custom("task-109-finalization-synth".into()),
                 speed_factor: 1.0,

@@ -62,6 +62,7 @@ fn wall_loop_at_z(z: f32) -> WallLoop {
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -69,6 +70,7 @@ fn wall_loop_at_z(z: f32) -> WallLoop {
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: ExtrusionRole::OuterWall,

@@ -4,6 +4,7 @@
 #![warn(unused_imports)]
 #![warn(unused_must_use)]
 
+pub mod aabb_lines_2d;
 pub mod aabb_tree;
 pub mod paint_region;
 pub mod polygon_ops;
@@ -170,6 +171,7 @@ fn interpolate_point(start: Point3WithWidth, end: Point3WithWidth, t: f32) -> Po
         z: start.z + ((end.z - start.z) * t),
         width: start.width + ((end.width - start.width) * t),
         flow_factor: start.flow_factor + ((end.flow_factor - start.flow_factor) * t),
+        overhang_quartile: start.overhang_quartile,
     }
 }
 

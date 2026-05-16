@@ -189,7 +189,7 @@ wit_bindgen::generate!({
             ) -> result<_, module-error>;
 
             // SeamPlanning stage
-            record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32 }
+            record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
             record seam-reason { tag: string }
             record scored-seam-candidate {
                 position: point3-with-width,

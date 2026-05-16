@@ -961,6 +961,7 @@ fn invalid_nan_output_rejected_with_diagnostic() {
                 z: 0.0,
                 width: 0.4,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             }],
             role: ExtrusionRole::SparseInfill,
             speed_factor: 1.0,
@@ -1090,6 +1091,7 @@ fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
                         z: 0.2,
                         width: 0.4,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                     Point3WithWidth {
                         x: 10.0,
@@ -1097,6 +1099,7 @@ fn perimeter_output_converts_wall_loops_and_commits_to_arena() {
                         z: 0.2,
                         width: 0.4,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                 ],
                 role: ExtrusionRole::OuterWall,
@@ -1163,6 +1166,7 @@ fn perimeter_output_rejects_nan_in_wall_loop_path() {
                     z: 0.0,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 }],
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
@@ -1207,6 +1211,7 @@ fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
                         z: 0.2,
                         width: 0.4,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                     Point3WithWidth {
                         x: 10.0,
@@ -1214,6 +1219,7 @@ fn perimeter_output_rejects_feature_flags_cardinality_mismatch() {
                         z: 0.2,
                         width: 0.4,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                 ],
                 role: ExtrusionRole::OuterWall,
@@ -1472,6 +1478,7 @@ fn perimeter_conversion_deterministic_across_repeated_calls() {
                         z: 0.2,
                         width: 0.4,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                     Point3WithWidth {
                         x: 3.0,
@@ -1479,6 +1486,7 @@ fn perimeter_conversion_deterministic_across_repeated_calls() {
                         z: 0.2,
                         width: 0.4,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                 ],
                 role: ExtrusionRole::OuterWall,
@@ -2530,6 +2538,7 @@ fn make_wall_loop(perimeter_index: u32, point_count: usize, z: f32) -> slicer_ir
             z,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         })
         .collect::<Vec<_>>();
     let flags = (0..point_count)
@@ -3228,6 +3237,7 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
                     z: 0.0,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 }],
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
@@ -3497,6 +3507,7 @@ fn support_output_rejects_untagged_push_in_identity_mode() {
             z: 0.0,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         }],
         role: ExtrusionRole::SupportMaterial,
         speed_factor: 1.0,
@@ -4054,6 +4065,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
                 z: 0.2,
                 width: 0.4,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             }],
             role: slicer_ir::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
@@ -5576,6 +5588,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 slicer_ir::Point3WithWidth {
                     x: 1.0,
@@ -5583,6 +5596,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 slicer_ir::Point3WithWidth {
                     x: 0.0,
@@ -5590,6 +5604,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
                     z: 0.2,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: slicer_ir::ExtrusionRole::OuterWall,
@@ -6554,6 +6569,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
         z: 0.0,
         width: 0.4,
         flow_factor: 1.0,
+        overhang_quartile: None,
     };
     let seam_position = SeamPosition {
         point: dummy_position,

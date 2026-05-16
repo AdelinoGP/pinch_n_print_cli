@@ -154,7 +154,7 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// must use this constant, not literal `SemVer { ... }` values.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 2,
-    minor: 0,
+    minor: 1,
     patch: 0,
 };
 
@@ -1226,6 +1226,9 @@ pub struct Point3WithWidth {
     pub width: f32,
     /// Multiplier on base extrusion volume
     pub flow_factor: f32,
+    /// Overhang severity quartile (0-3), None if not classified
+    #[serde(default)]
+    pub overhang_quartile: Option<u8>,
 }
 
 /// Extrusion role

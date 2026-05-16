@@ -44,6 +44,7 @@ fn make_path(
                 z: layer_z,
                 width,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             },
             Point3WithWidth {
                 x: x2,
@@ -51,6 +52,7 @@ fn make_path(
                 z: layer_z,
                 width,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             },
         ],
         role,

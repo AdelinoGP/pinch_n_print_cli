@@ -235,6 +235,7 @@ fn apply_fuzzy_skin(
                         z: base_z,
                         width: p0.width + (p1.width - p0.width) * t,
                         flow_factor: p0.flow_factor + (p1.flow_factor - p0.flow_factor) * t,
+                        overhang_quartile: None,
                     });
                     out_flags.push(seg_flag.clone());
                     out_widths.push(seg_width);
@@ -256,6 +257,7 @@ fn apply_fuzzy_skin(
                         z: base_z,
                         width: p0.width + (p1.width - p0.width) * t,
                         flow_factor: p0.flow_factor + (p1.flow_factor - p0.flow_factor) * t,
+                        overhang_quartile: None,
                     });
                     out_flags.push(seg_flag.clone());
                     out_widths.push(seg_width);

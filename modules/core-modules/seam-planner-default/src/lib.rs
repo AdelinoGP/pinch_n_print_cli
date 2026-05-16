@@ -163,6 +163,7 @@ impl PrepassModule for SeamPlannerDefault {
                             z: v[2],
                             width: 0.4, // default line width
                             flow_factor: 1.0,
+                            overhang_quartile: None,
                         },
                         score: 1.0 - curvature, // lower score = better (curvature inverted)
                         reason: SeamReason {
@@ -226,6 +227,7 @@ impl PrepassModule for SeamPlannerDefault {
                             z,
                             width: 0.4,
                             flow_factor: 1.0,
+                            overhang_quartile: None,
                         },
                         score: 100.0, // worst score
                         reason: SeamReason {

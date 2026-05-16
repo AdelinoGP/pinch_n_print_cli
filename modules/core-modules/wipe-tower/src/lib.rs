@@ -173,6 +173,7 @@ impl WipeTower {
                         z,
                         width: self.line_width,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                     Point3WithWidth {
                         x: end_x,
@@ -180,6 +181,7 @@ impl WipeTower {
                         z,
                         width: self.line_width,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                 ],
                 role: ExtrusionRole::WipeTower,

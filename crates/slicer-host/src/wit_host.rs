@@ -241,7 +241,7 @@ pub mod layer {
             interface geometry {
                 record point2 { x: s64, y: s64 }
                 record point3 { x: f32, y: f32, z: f32 }
-                record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32 }
+                record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
                 record bounding-box2 { min: point2, max: point2 }
                 record bounding-box3 { min: point3, max: point3 }
                 record polygon       { points: list<point2> }
@@ -501,7 +501,7 @@ pub mod prepass {
                 record point2 { x: s64, y: s64 }
                 record polygon { points: list<point2> }
                 record ex-polygon { contour: polygon, holes: list<polygon> }
-                record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32 }
+                record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
             }
 
             interface config-types {
@@ -912,7 +912,7 @@ pub mod finalization {
                 record point3 { x: f32, y: f32, z: f32 }
                 record bounding-box3 { min: point3, max: point3 }
                 record point2 { x: s64, y: s64 }
-                record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32 }
+                record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
                 record polygon { points: list<point2> }
                 record ex-polygon { contour: polygon, holes: list<polygon> }
                 record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32 }
@@ -2863,6 +2863,7 @@ fn ir_to_wit_extrusion_path(path: &slicer_ir::ExtrusionPath3D) -> ExtrusionPath3
                 z: p.z,
                 width: p.width,
                 flow_factor: p.flow_factor,
+                overhang_quartile: p.overhang_quartile,
             })
             .collect(),
         role: ir_to_wit_extrusion_role(&path.role),
@@ -3252,6 +3253,7 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
                         z: pos.z,
                         width: 0.0,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                     wall_index,
                 }))
@@ -3606,6 +3608,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
                     z: v.start_point.z,
                     width: v.start_point.width,
                     flow_factor: v.start_point.flow_factor,
+                    overhang_quartile: v.start_point.overhang_quartile,
                 },
                 end_point: Point3WithWidth {
                     x: v.end_point.x,
@@ -3613,6 +3616,7 @@ impl ir::HostLayerCollectionBuilder for HostExecutionContext {
                     z: v.end_point.z,
                     width: v.end_point.width,
                     flow_factor: v.end_point.flow_factor,
+                    overhang_quartile: v.end_point.overhang_quartile,
                 },
                 point_count: v.point_count,
             })
@@ -4475,6 +4479,7 @@ mod finalization_impls {
                     z: pt.z,
                     width: pt.width,
                     flow_factor: pt.flow_factor,
+                    overhang_quartile: pt.overhang_quartile,
                 })
                 .collect(),
             role: finalization_role_wit_to_ir(&p.role),
@@ -4533,6 +4538,7 @@ mod finalization_impls {
                     z: pt.z,
                     width: pt.width,
                     flow_factor: pt.flow_factor,
+                    overhang_quartile: pt.overhang_quartile,
                 })
                 .collect(),
             role: finalization_role_ir_to_wit(&p.role),
@@ -5263,6 +5269,7 @@ fn convert_point(p: &Point3WithWidth, index: usize) -> Result<slicer_ir::Point3W
         z: p.z,
         width: p.width,
         flow_factor: p.flow_factor,
+        overhang_quartile: p.overhang_quartile,
     })
 }
 
@@ -5728,6 +5735,7 @@ pub fn convert_perimeter_output(
                         z: pos.z,
                         width: 0.0,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                     score: *score,
                     reason: slicer_ir::SeamReason::Aligned,
@@ -5748,6 +5756,7 @@ pub fn convert_perimeter_output(
                     z: pos.z,
                     width: 0.0,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 wall_index: *wall_index,
             });

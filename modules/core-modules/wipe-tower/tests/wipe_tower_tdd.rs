@@ -26,6 +26,7 @@ fn dummy_entity(z: f32, index: u32) -> PrintEntity {
                 z,
                 width: 0.4,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             }],
             role: ExtrusionRole::OuterWall,
             speed_factor: 1.0,

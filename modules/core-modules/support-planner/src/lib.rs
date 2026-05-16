@@ -415,6 +415,7 @@ impl SupportPlanner {
                             z: raft_z,
                             width: self.line_width_mm,
                             flow_factor: 1.0,
+                            overhang_quartile: None,
                         }]],
                     });
                 }
@@ -502,6 +503,7 @@ impl SupportPlanner {
                         z: z_current,
                         width: radius_a * 2.0,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                     Point3WithWidth {
                         x: nb.x,
@@ -509,6 +511,7 @@ impl SupportPlanner {
                         z: z_current,
                         width: radius_b * 2.0,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     },
                 ]);
             }
@@ -1050,6 +1053,7 @@ fn push_interface_scan_lines(
                 z,
                 width,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             },
             Point3WithWidth {
                 x: p2x,
@@ -1057,6 +1061,7 @@ fn push_interface_scan_lines(
                 z,
                 width,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             },
         ]);
     }

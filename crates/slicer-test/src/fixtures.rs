@@ -373,6 +373,7 @@ pub fn rect_path(cx_mm: f32, cy_mm: f32, side_mm: f32, width_mm: f32) -> Extrusi
             z: 0.0,
             width: width_mm,
             flow_factor: 1.0,
+            overhang_quartile: None,
         })
         .collect();
     ExtrusionPath3D {

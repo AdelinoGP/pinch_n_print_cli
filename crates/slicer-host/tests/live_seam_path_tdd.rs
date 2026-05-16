@@ -40,6 +40,7 @@ fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) 
                     z: layer_z,
                     width,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: x2,
@@ -47,6 +48,7 @@ fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) 
                     z: layer_z,
                     width,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -399,6 +401,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
+                            overhang_quartile: None,
                         },
                         slicer_ir::Point3WithWidth {
                             x: 10.0,
@@ -406,6 +409,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
+                            overhang_quartile: None,
                         },
                         slicer_ir::Point3WithWidth {
                             x: 10.0,
@@ -413,6 +417,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
+                            overhang_quartile: None,
                         },
                         slicer_ir::Point3WithWidth {
                             x: 0.0,
@@ -420,6 +425,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
+                            overhang_quartile: None,
                         },
                     ],
                     role: slicer_ir::ExtrusionRole::OuterWall,
@@ -440,6 +446,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
                     z: layer_z,
                     width: 0.0,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 wall_index: 0,
             }),
@@ -554,6 +561,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
                     z: layer_z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: 5.0,
@@ -561,6 +569,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
                     z: layer_z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: 10.0,
@@ -568,6 +577,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
                     z: layer_z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -600,6 +610,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
         z: layer_z,
         width: 0.4,
         flow_factor: 1.0,
+        overhang_quartile: None,
     };
 
     // Inject the bad wall loop directly into PerimeterOutputCollected.
@@ -660,6 +671,7 @@ fn seam_z_outside_layer_envelope_rejected() {
                     z: layer_z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: 5.0,
@@ -667,6 +679,7 @@ fn seam_z_outside_layer_envelope_rejected() {
                     z: layer_z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -711,6 +724,7 @@ fn seam_z_outside_layer_envelope_rejected() {
         z: bad_seam_pos_z,
         width: 0.4,
         flow_factor: 1.0,
+        overhang_quartile: None,
     };
     let result = ctx.push_reordered_wall_loop(
         builder_resource,
@@ -891,6 +905,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
+                            overhang_quartile: None,
                         },
                         Point3WithWidth {
                             x: 10.0,
@@ -898,6 +913,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
+                            overhang_quartile: None,
                         },
                         Point3WithWidth {
                             x: 10.0,
@@ -905,6 +921,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
+                            overhang_quartile: None,
                         },
                         Point3WithWidth {
                             x: 0.0,
@@ -912,6 +929,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                             z: layer_z,
                             width: 0.4,
                             flow_factor: 1.0,
+                            overhang_quartile: None,
                         },
                     ],
                     role: ExtrusionRole::OuterWall,
@@ -967,6 +985,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                     z: chosen_z,
                     width: 0.0,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 wall_index: chosen_wall_index,
             },

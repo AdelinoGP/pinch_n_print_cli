@@ -36,6 +36,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             z,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
         Point3WithWidth {
             x: 10.0,
@@ -43,6 +44,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             z,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
         Point3WithWidth {
             x: 10.0,
@@ -50,6 +52,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             z,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
         Point3WithWidth {
             x: 0.0,
@@ -57,6 +60,7 @@ fn outer_wall(z: f32, fuzzy_flags: &[bool]) -> WallLoop {
             z,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
     ];
     let feature_flags: Vec<WallFeatureFlags> = fuzzy_flags.iter().map(|f| flags(*f)).collect();
@@ -84,6 +88,7 @@ fn inner_wall(z: f32) -> WallLoop {
             z,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
         Point3WithWidth {
             x: 9.0,
@@ -91,6 +96,7 @@ fn inner_wall(z: f32) -> WallLoop {
             z,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
         Point3WithWidth {
             x: 9.0,
@@ -98,6 +104,7 @@ fn inner_wall(z: f32) -> WallLoop {
             z,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
         Point3WithWidth {
             x: 1.0,
@@ -105,6 +112,7 @@ fn inner_wall(z: f32) -> WallLoop {
             z,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
     ];
     WallLoop {
@@ -310,7 +318,7 @@ fn on_print_start_defaults() {
 fn on_print_start_custom_config() {
     let mut fields = HashMap::new();
     fields.insert("thickness".to_string(), ConfigValue::Float(1.0));
-    fields.insert("point-distance".to_string(), ConfigValue::Float(0.5));
+    fields.insert("point_distance".to_string(), ConfigValue::Float(0.5));
     fields.insert("apply_to_all".to_string(), ConfigValue::Bool(true));
     let config = ConfigView::from_map(fields);
     let module = FuzzySkinModule::on_print_start(&config);

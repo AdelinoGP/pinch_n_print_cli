@@ -24,6 +24,7 @@ fn candidate(x: f32, y: f32, z: f32, score: f32, reason: SeamReason) -> SeamCand
             z,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
         score,
         reason,
@@ -43,6 +44,7 @@ fn wall_at_z(z: f32) -> WallLoop {
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: 1.0,
@@ -50,6 +52,7 @@ fn wall_at_z(z: f32) -> WallLoop {
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: 2.0,
@@ -57,6 +60,7 @@ fn wall_at_z(z: f32) -> WallLoop {
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: ExtrusionRole::OuterWall,
@@ -108,6 +112,7 @@ fn wall_from_candidates(candidates: &[SeamCandidate], z: f32) -> WallLoop {
             z,
             width: candidate.position.width,
             flow_factor: candidate.position.flow_factor,
+            overhang_quartile: candidate.position.overhang_quartile,
         })
         .collect();
     let point_count = points.len();

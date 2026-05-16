@@ -6,7 +6,7 @@ wit_bindgen::generate!({
             record point3 { x: f32, y: f32, z: f32 }
             record bounding-box3 { min: point3, max: point3 }
             record point2 { x: s64, y: s64 }
-            record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32 }
+            record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
             record polygon { points: list<point2> }
             record ex-polygon { contour: polygon, holes: list<polygon> }
             record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32 }

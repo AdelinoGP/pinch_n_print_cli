@@ -2219,6 +2219,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "serde",
+ "serde_json",
  "static_assertions",
  "thiserror 1.0.69",
 ]

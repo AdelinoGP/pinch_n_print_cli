@@ -52,6 +52,7 @@ fn point3_with_width(x: f32, y: f32, z: f32) -> slicer_ir::Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
+        overhang_quartile: None,
     }
 }
 

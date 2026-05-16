@@ -103,6 +103,7 @@ fn point3_with_width(x: f32, y: f32, z: f32) -> Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
+        overhang_quartile: None,
     }
 }
 
@@ -175,17 +176,21 @@ fn run_cooling_and_serialize(config: &ConfigView, layers: &mut Vec<LayerCollecti
 }
 
 /// Split serialized GCode text into per-layer sections using `;LAYER_CHANGE` as the delimiter.
+///
+/// Drops anything before the first `;LAYER_CHANGE` (the emitter writes a
+/// header preamble there), so `sections[i]` corresponds to layer `i`.
 fn layer_sections(text: &str) -> Vec<&str> {
     let mut sections = Vec::new();
-    let mut start = 0;
-    for (pos, _) in text.match_indices(";LAYER_CHANGE") {
-        if pos > start {
-            sections.push(&text[start..pos]);
-        }
-        start = pos;
+    let mut positions: Vec<usize> = text
+        .match_indices(";LAYER_CHANGE")
+        .map(|(p, _)| p)
+        .collect();
+    if positions.is_empty() {
+        return sections;
     }
-    if start < text.len() {
-        sections.push(&text[start..]);
+    positions.push(text.len());
+    for w in positions.windows(2) {
+        sections.push(&text[w[0]..w[1]]);
     }
     sections
 }

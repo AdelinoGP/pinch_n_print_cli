@@ -293,6 +293,7 @@ impl ArachnePerimeters {
                     z,
                     width: local_width,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 }
             })
             .collect()

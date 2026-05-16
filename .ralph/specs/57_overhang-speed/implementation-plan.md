@@ -30,7 +30,7 @@
   - `crates/slicer-ir/src/lib.rs` (schema-version constant)
   - Plus the enumerated binding fan-out files (mechanical; one-line patches each).
 - Files explicitly out-of-bounds for this step:
-  - `crates/slicer-host/src/gcode_emit.rs`, `crates/slicer-host/src/pipeline.rs` — touched in Step 4.
+  - `crates/slicer-host/src/gcode_emit.rs` — touched in Step 4 (also carries the classifier invocation site).
   - `OrcaSlicerDocumented/**`.
   - `target/`, `Cargo.lock`, any generated bindings.
 - Expected sub-agent dispatches:
@@ -120,8 +120,7 @@
   - `crates/slicer-host/src/overhang_classifier.rs` (new)
   - `crates/slicer-host/src/lib.rs` (add `pub mod overhang_classifier;`)
 - Files explicitly out-of-bounds for this step:
-  - `crates/slicer-host/src/gcode_emit.rs` body — only the prev-layer iteration shape is read for pattern.
-  - `crates/slicer-host/src/pipeline.rs` — Step 4.
+  - `crates/slicer-host/src/gcode_emit.rs` body — only the prev-layer iteration shape is read for pattern; the classifier invocation site inside `emit_gcode` is added in Step 4.
   - `OrcaSlicerDocumented/**` — delegate.
 - Expected sub-agent dispatches:
   - "Return the exact `<` vs `<=` convention at the four quartile boundaries in `OrcaSlicerDocumented/src/libslic3r/GCode/ExtrusionProcessor.hpp` around `:397` and `:535`. SNIPPETS, ≤ 30 lines each." — purpose: nail off-by-one for AC-5.
@@ -140,7 +139,7 @@
   - `cargo clippy -p slicer-host -- -D warnings` — FACT clean.
 - Exit condition: in-module unit tests green; `debug_assert!(q >= 1 && q <= 4)` is present on every quartile assignment; threshold convention SNIPPETS dispatch returned and was honored.
 
-### Step 4: Extend `resolve_feedrate` and wire `classify_layers` into the pipeline
+### Step 4: Extend `resolve_feedrate` and invoke `classify_layers` from `emit_gcode`
 
 - Task IDs:
   - `TASK-182`
@@ -148,24 +147,23 @@
   1. In `crates/slicer-host/src/gcode_emit.rs`, change `resolve_feedrate` signature to `pub fn resolve_feedrate(&self, role: &ExtrusionRole, speed_factor: f32, overhang_quartile: Option<u8>) -> Option<f32>`. Before the existing role match, return wall-family overhang dispatch when `role ∈ {OuterWall, InnerWall, ThinWall}`, `overhang_quartile == Some(q)`, and `self.feedrate_config.overhang_{q}_4_speed > 0.0`; the return value is `speed × 60 × clamped(speed_factor)`. Otherwise fall through.
   2. Update the per-point emission site at `:388` to `self.resolve_feedrate(role, entity.path.speed_factor, point.overhang_quartile)`.
   3. Update the z-hop site at `:443` (and any other `resolve_feedrate` caller enumerated by dispatch) to pass `None`.
-  4. In `crates/slicer-host/src/pipeline.rs`, insert `overhang_classifier::classify_layers(&mut layer_irs, &feedrate_config)` between the layer-finalization output and the `DefaultGCodeEmitter::emit_gcode` call in BOTH pipeline arms.
+  4. Inside `DefaultGCodeEmitter::emit_gcode`, immediately after cloning the layer set and before per-layer emission, call `overhang_classifier::classify_layers(&mut layers, &self.feedrate_config)`. Both pipeline arms (slicer-cli and WASM) reach `emit_gcode` via `execute_postpass`, so this single in-emitter site covers both arms — `crates/slicer-host/src/pipeline.rs` requires no edits.
 - Precondition: Steps 0–3 exit met.
 - Postcondition: All seven Step-1 tests pass GREEN (AC-1 … AC-5 + AC-N1 + AC-6 was already on a separate test).
 - Files allowed to read:
-  - `crates/slicer-host/src/gcode_emit.rs` — lines `[140-200]`, `[355-400]`, `[435-460]` only.
-  - `crates/slicer-host/src/pipeline.rs` — full IF ≤ 600 lines, else range-read around the two `emit_gcode` call sites (LOCATIONS dispatch).
+  - `crates/slicer-host/src/gcode_emit.rs` — lines `[140-200]`, `[240-280]` (cloned-layer set construction), `[355-400]`, `[435-460]` only.
 - Files allowed to edit (≤ 3):
   - `crates/slicer-host/src/gcode_emit.rs`
-  - `crates/slicer-host/src/pipeline.rs`
   - (Optional spillover only if another `resolve_feedrate` caller surfaced from dispatch.)
 - Files explicitly out-of-bounds for this step:
   - `crates/slicer-host/src/overhang_classifier.rs` — finalized in Step 3.
   - `crates/slicer-core/src/**` — finalized in Step 2.
   - `crates/slicer-ir/src/**` — finalized in Step 0.
+  - `crates/slicer-host/src/pipeline.rs` — classifier is invoked from inside `emit_gcode`; no pipeline edits required.
   - `OrcaSlicerDocumented/**`.
 - Expected sub-agent dispatches:
   - "List every call site of `resolve_feedrate` in the workspace. Return LOCATIONS." — purpose: ensure every caller is updated.
-  - "List every `DefaultGCodeEmitter::emit_gcode` call in `crates/slicer-host/src/pipeline.rs`. Return LOCATIONS." — purpose: confirm both pipeline arms.
+  - "Confirm `DefaultGCodeEmitter::emit_gcode` is reached by both pipeline arms via `execute_postpass`. Return FACT with file:line for each call chain." — purpose: confirm the single in-emitter call site covers both arms.
   - "Run `cargo test -p slicer-host --test overhang_speed_tdd`; return FACT pass/fail with failing test name + assertion + ≤ 20-line SNIPPET on failure." — purpose: AC dispatch.
 - Context cost: `M`.
 - Authoritative docs:
@@ -176,7 +174,7 @@
   - `cargo test -p slicer-host --test overhang_speed_tdd` — FACT all-pass (GREEN, all seven tests).
   - `cargo test -p slicer-ir --test point3_overhang_quartile_roundtrip` — FACT pass (AC-6 GREEN).
   - `cargo clippy -p slicer-host -- -D warnings` — FACT clean.
-- Exit condition: every AC defined in `packet.spec.md` returns PASS via a per-AC dispatch; the per-point loop at `gcode_emit.rs:362-393` is structurally unchanged except for the one threading change at `:388`.
+- Exit condition: every AC defined in `packet.spec.md` returns PASS via a per-AC dispatch; the per-point loop at `gcode_emit.rs:362-393` is structurally unchanged except for the one threading change at `:388`; the new `classify_layers` invocation sits in `emit_gcode` immediately after the layer clone and before per-layer emission.
 
 ### Step 5: Regression sweep + clippy gate
 
@@ -191,15 +189,14 @@
   - All source files — no edits allowed; if a regression surfaces, raise it as a packet-blocking finding and return to the prior step.
 - Expected sub-agent dispatches:
   - "Run `cargo test -p slicer-host --test gcode_feedrate_emission_tdd`; FACT pass/fail." — packet 52 regression.
-  - "Run `cargo test -p slicer-host --test gcode_emit_tdd`; FACT pass/fail." — emit-shape regression.
-  - "Run `cargo test -p slicer-host --test orca_comment_contract_tdd`; FACT pass/fail." — `;TYPE:` label regression.
+  - "Run `cargo test -p slicer-host --test gcode_emit_tdd`; FACT pass/fail." — emit-shape regression; this suite also carries the `;TYPE:` label invariants (`emits_orca_layer_headers_before_first_extrusion`, `emits_orca_type_comments_at_role_boundaries`).
   - "Run `cargo clippy -p slicer-ir -p slicer-core -p slicer-host -- -D warnings`; FACT clean/dirty with the first three warnings if dirty." — clippy gate.
   - "Run `cargo check --workspace`; FACT pass/fail." — WIT-binding drift gate.
 - Context cost: `S`.
 - Authoritative docs: none in this step.
 - OrcaSlicer refs: none in this step.
 - Verification:
-  - The five dispatches above. The step is GREEN only when all five return PASS.
+  - The four dispatches above. The step is GREEN only when all four return PASS.
 - Exit condition: every dispatch returns PASS. If any returns FAIL, classify (regression vs orthogonal) and either return to the relevant prior step or raise to the user.
 
 ### Step 6: Documentation updates

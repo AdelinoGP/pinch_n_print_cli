@@ -144,6 +144,7 @@ fn generate_zigzag_strokes(
         z,
         width: IRONING_LINE_WIDTH,
         flow_factor,
+        overhang_quartile: None,
     };
 
     // Build a single connected snake polyline: 2 points per stroke.

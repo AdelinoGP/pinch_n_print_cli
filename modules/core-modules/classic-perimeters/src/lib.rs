@@ -308,6 +308,7 @@ fn expolygon_to_path3d(contour: &slicer_ir::Polygon, z: f32, width: f32) -> Vec<
             z,
             width,
             flow_factor: 1.0,
+            overhang_quartile: None,
         })
         .collect()
 }

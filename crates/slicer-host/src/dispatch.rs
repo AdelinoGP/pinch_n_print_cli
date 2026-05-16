@@ -1529,6 +1529,7 @@ fn build_paint_layer_data_with_plan(
                             z: p.z,
                             width: p.width,
                             flow_factor: p.flow_factor,
+                            overhang_quartile: p.overhang_quartile,
                         },
                     )
                     .collect();
@@ -1813,6 +1814,7 @@ fn harvest_seam_plan_ir(
                     z: sc.position.z,
                     width: sc.position.width,
                     flow_factor: sc.position.flow_factor,
+                    overhang_quartile: sc.position.overhang_quartile,
                 },
                 score: sc.score,
                 reason: match sc.reason.tag.as_str() {
@@ -1831,6 +1833,7 @@ fn harvest_seam_plan_ir(
                 z: entry.chosen_position.z,
                 width: entry.chosen_position.width,
                 flow_factor: entry.chosen_position.flow_factor,
+                overhang_quartile: entry.chosen_position.overhang_quartile,
             },
             wall_index: entry.chosen_wall_index,
         };
@@ -1892,6 +1895,7 @@ fn harvest_support_plan_ir(
                     z: p.z,
                     width: p.width,
                     flow_factor: p.flow_factor,
+                    overhang_quartile: p.overhang_quartile,
                 })
                 .collect();
             branch_segments.push(ExtrusionPath3D {

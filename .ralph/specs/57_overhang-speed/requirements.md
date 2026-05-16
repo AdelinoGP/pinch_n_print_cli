@@ -33,7 +33,7 @@ This packet does **not** reopen or supersede packet 52; it consumes packet 52's 
 - `resolve_feedrate` signature change to accept `overhang_quartile: Option<u8>`; dispatch for `OuterWall | InnerWall | ThinWall` to the four overhang speed keys (× 60 × clamped `speed_factor`).
 - Per-point emission site update at `crates/slicer-host/src/gcode_emit.rs:388` to pass `point.overhang_quartile`.
 - Z-hop site and any other `resolve_feedrate` callers pass `None`.
-- Pipeline wire-in (both slicer-cli and WASM arms) in `crates/slicer-host/src/pipeline.rs`: insert `overhang_classifier::classify_layers(&mut layer_irs, &feedrate_config)` between layer finalization and `emit_gcode`.
+- Pipeline wire-in: insert `overhang_classifier::classify_layers(&mut layers, &feedrate_config)` inside `DefaultGCodeEmitter::emit_gcode` (`crates/slicer-host/src/gcode_emit.rs`), operating on the cloned layer set immediately before per-layer emission. Both slicer-cli and WASM pipeline arms reach `emit_gcode` via the existing `execute_postpass` flow, so the classifier executes on both arms from this single site rather than from two call sites in `pipeline.rs`.
 - New TDD test file `crates/slicer-host/tests/overhang_speed_tdd.rs` covering AC-1 … AC-5 and the negative AC-N1.
 - New IR roundtrip test for AC-6 in `crates/slicer-ir/tests/point3_overhang_quartile_roundtrip.rs` (or wherever the existing slice-IR roundtrip tests live — confirm in Step 1 via LOCATIONS dispatch).
 - Append remediation note to `docs/DEVIATION_LOG.md` for DEV-009.
@@ -94,7 +94,7 @@ All reads MUST be delegated to a sub-agent with SNIPPETS return; never load this
 - Measurable outcomes:
   - `cargo test -p slicer-host --test overhang_speed_tdd` reports 6 passing tests (or 7 with the negative case test split off).
   - `cargo test -p slicer-ir --test point3_overhang_quartile_roundtrip` passes.
-  - `cargo test -p slicer-host --test gcode_feedrate_emission_tdd`, `gcode_emit_tdd`, and `orca_comment_contract_tdd` remain green (regression).
+  - `cargo test -p slicer-host --test gcode_feedrate_emission_tdd` and `gcode_emit_tdd` remain green (regression — the latter also covers the `;TYPE:` label invariants via `emits_orca_layer_headers_before_first_extrusion` and `emits_orca_type_comments_at_role_boundaries`).
   - `cargo clippy -p slicer-ir -p slicer-core -p slicer-host -- -D warnings` reports zero diagnostics.
   - `cargo check --workspace` succeeds, proving the WIT field addition did not break any module consumer of `point3-with-width`.
 
@@ -111,7 +111,6 @@ All commands must be dispatched to a sub-agent with FACT pass/fail return; never
 - `cargo test -p slicer-ir --test point3_overhang_quartile_roundtrip`
 - `cargo test -p slicer-host --test gcode_feedrate_emission_tdd`
 - `cargo test -p slicer-host --test gcode_emit_tdd`
-- `cargo test -p slicer-host --test orca_comment_contract_tdd`
 - `cargo clippy -p slicer-ir -p slicer-core -p slicer-host -- -D warnings`
 - `cargo check --workspace`
 - Close-time ceremony only: `cargo test --workspace` (dispatch with FACT return; ≥ 11 min; not run mid-iteration per `CLAUDE.md`'s test discipline).

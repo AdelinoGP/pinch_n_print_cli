@@ -250,6 +250,7 @@ impl SkirtBrim {
             z,
             width: self.line_width,
             flow_factor: 1.0,
+            overhang_quartile: None,
         };
 
         ExtrusionPath3D {

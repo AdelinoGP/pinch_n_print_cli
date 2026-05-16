@@ -3,8 +3,7 @@
 ## Controlling Code Paths
 
 - Primary code paths:
-  - `crates/slicer-host/src/gcode_emit.rs` — `resolve_feedrate` (line 154), per-point emission loop (lines 362–393), z-hop site (line 443). The per-point loop already iterates `Point3WithWidth`; only the new arg needs threading.
-  - `crates/slicer-host/src/pipeline.rs` — both pipeline arms (slicer-cli binary and WASM execution). Wire `overhang_classifier::classify_layers(...)` between layer finalization and `DefaultGCodeEmitter::emit_gcode`.
+  - `crates/slicer-host/src/gcode_emit.rs` — `resolve_feedrate` (line 154), per-point emission loop (lines 362–393), z-hop site (line 443). The per-point loop already iterates `Point3WithWidth`; only the new arg needs threading. **Also** the classifier invocation site: `DefaultGCodeEmitter::emit_gcode` calls `overhang_classifier::classify_layers(&mut layers, &feedrate_config)` on its cloned layer set before per-layer emission. Both pipeline arms reach this site via `execute_postpass → emit_gcode`, so no edits to `pipeline.rs` are required.
   - `crates/slicer-ir/src/slice_ir.rs` — `Point3WithWidth` (line 1218): add the new optional `overhang_quartile: Option<u8>` field with `#[serde(default)]`.
   - `wit/deps/types.wit` — `point3-with-width` record (lines 7–11): add `overhang-quartile: option<u8>`.
   - **NEW** `crates/slicer-core/src/aabb_lines_2d.rs` — `LinesDistancer2D` struct (naïve linear scan + AABB prefilter).
@@ -12,8 +11,7 @@
 
 - Neighboring tests or fixtures:
   - `crates/slicer-host/tests/gcode_feedrate_emission_tdd.rs` — packet 52's regression suite; structurally mirror the fixture-construction style.
-  - `crates/slicer-host/tests/gcode_emit_tdd.rs` — emit-shape regression.
-  - `crates/slicer-host/tests/orca_comment_contract_tdd.rs` — `;TYPE:` label invariants.
+  - `crates/slicer-host/tests/gcode_emit_tdd.rs` — emit-shape regression **and** `;TYPE:` label invariants (`emits_orca_layer_headers_before_first_extrusion`, `emits_orca_type_comments_at_role_boundaries`).
   - `crates/slicer-ir/tests/` — existing IR roundtrip tests give the pattern for AC-6.
 
 - OrcaSlicer comparison surface:
@@ -30,7 +28,9 @@
 
 ## Code Change Surface
 
-- Selected approach: **per-point** carrying of `overhang_quartile: Option<u8>` on `Point3WithWidth`, with a host-side prepass (`overhang_classifier`) populating it after layer finalization and before G-code emission. `resolve_feedrate` consumes the per-point value and dispatches wall-family roles to `overhang_{q}_4_speed × 60 × clamped(speed_factor)`. The WIT record `point3-with-width` mirrors the field so it survives any module roundtrip.
+- Selected approach: **per-point** carrying of `overhang_quartile: Option<u8>` on `Point3WithWidth`, with a host-side prepass (`overhang_classifier`) populating it on the cloned layer set inside `DefaultGCodeEmitter::emit_gcode` immediately before per-layer emission. `resolve_feedrate` consumes the per-point value and dispatches wall-family roles to `overhang_{q}_4_speed × 60 × clamped(speed_factor)`. The WIT record `point3-with-width` mirrors the field so it survives any module roundtrip.
+
+  - **Classifier invocation site:** inside `DefaultGCodeEmitter::emit_gcode`, not at the `pipeline.rs` arms. Rationale: both pipeline arms (slicer-cli binary and WASM execution) reach `emit_gcode` via `execute_postpass`, so a single in-emitter site covers both arms without duplicated wiring and without mutating the upstream `LayerCollectionIR` that other postpass modules observe. The classifier still operates on a `&mut [LayerCollectionIR]` — the emitter's owned clone — preserving the design contract that `classify_layers` mutates in place between layer finalization and per-layer G-code emission.
 
 - Exact functions, traits, manifests, tests, or fixtures expected to change (kept ≤ 3 *primary* surfaces; binding fan-out is mechanical):
 
@@ -41,9 +41,9 @@
 
   **Mechanical secondary surfaces (binding fan-out):**
   - `wit/deps/types.wit` — record field addition.
-  - `crates/slicer-host/src/wit_host*.rs` / `dispatch*.rs` — every conversion site between Rust `Point3WithWidth` and the WIT record (LOCATIONS dispatch in Step 0 enumerates them; expected ≤ 8 sites).
+  - `crates/slicer-host/src/wit_host*.rs` / `dispatch*.rs` / `crates/slicer-macros/src/lib.rs` — every conversion site between Rust `Point3WithWidth` and the WIT record (LOCATIONS dispatch in Step 0 enumerates them; observed surface is ~22 sites, dominated by macro-generated propagation).
   - Guest binding crates that re-emit the WIT type into Rust on the WASM side (typically `wit_guest` modules under `crates/slicer-sdk` or `modules/core-modules/*`).
-  - `crates/slicer-host/src/pipeline.rs` — two `classify_layers` call sites.
+  - `crates/slicer-host/src/gcode_emit.rs` — one `classify_layers` call site inside `DefaultGCodeEmitter::emit_gcode` (covers both pipeline arms via `execute_postpass`); no edits to `pipeline.rs`.
   - `crates/slicer-host/src/lib.rs` — `pub mod overhang_classifier;`.
   - `crates/slicer-core/src/lib.rs` — `pub mod aabb_lines_2d;` (+ re-export if conventional in this crate).
 
@@ -59,8 +59,7 @@
 Target ≤ 3 primary files (kept) plus the new files (which by definition are owned by this packet). The binding fan-out is enumerated by a LOCATIONS dispatch in Step 0 so it does not bloat this list.
 
 - `crates/slicer-ir/src/slice_ir.rs` — role: `Point3WithWidth` definition; expected change: add `overhang_quartile: Option<u8>` field with `#[serde(default)]`, bump schema version constant.
-- `crates/slicer-host/src/gcode_emit.rs` — role: `resolve_feedrate` + per-point emission; expected change: extend signature, add dispatch arm for wall roles, update per-point and z-hop call sites.
-- `crates/slicer-host/src/pipeline.rs` — role: pipeline arms; expected change: insert `classify_layers` call after layer finalization in both arms.
+- `crates/slicer-host/src/gcode_emit.rs` — role: `resolve_feedrate` + per-point emission **and** classifier invocation; expected change: extend signature, add dispatch arm for wall roles, update per-point and z-hop call sites, and call `overhang_classifier::classify_layers` on the cloned layer set inside `DefaultGCodeEmitter::emit_gcode` before per-layer emission (covers both pipeline arms via `execute_postpass`).
 - `crates/slicer-host/src/overhang_classifier.rs` — NEW; role: classifier; expected change: full file.
 - `crates/slicer-core/src/aabb_lines_2d.rs` — NEW; role: 2D distancer utility; expected change: full file.
 - `crates/slicer-host/src/lib.rs` — role: module declaration; expected change: `pub mod overhang_classifier;`.
@@ -107,7 +106,7 @@ Not exhaustive; covers the predictable ones.
 - **Step 0 — schema-version constant lookup:** "Find the schema minor-version constant in `crates/slicer-ir/src/`. Return FACT with file:line and the current value." Purpose: pin the bump target.
 - **Step 0 — IR roundtrip test location:** "Find existing `Point3WithWidth` serde/JSON roundtrip tests under `crates/slicer-ir/tests/` and `crates/slicer-ir/src/`. Return LOCATIONS." Purpose: decide whether to create a new test file or extend.
 - **Step 3 — OrcaSlicer threshold endpoint parity:** "Return the exact `<` vs `<=` convention at the four quartile boundaries in `OrcaSlicerDocumented/src/libslic3r/GCode/ExtrusionProcessor.hpp` around line 397 and line 535. SNIPPETS, ≤ 30 lines each." Purpose: nail the off-by-one for AC-5.
-- **Step 4 — pipeline call-site enumeration:** "List every `DefaultGCodeEmitter::emit_gcode` call in `crates/slicer-host/src/pipeline.rs`. Return LOCATIONS." Purpose: confirm both pipeline arms are touched.
+- **Step 4 — emit_gcode call-chain confirmation:** "Confirm both pipeline arms (slicer-cli and WASM) reach `DefaultGCodeEmitter::emit_gcode` via `execute_postpass`. Return FACT with the call chain for each arm." Purpose: confirm the in-emitter classifier invocation covers both arms without `pipeline.rs` edits.
 - **Every cargo step:** "Run `<cargo command>`; return FACT pass/fail with ≤ 20 lines of SNIPPET on failure." Purpose: avoid absorbing cargo output.
 - **Step 7 — docs/07 closure edit:** "In `docs/07_implementation_status.md`, return LOCATIONS for the TASK-182 line." Purpose: targeted Edit, no browsing.
 - **Step 7 — workspace ceremony:** "Run `cargo test --workspace`; return FACT pass/fail with failing test name + assertion + ≤ 20-line SNIPPET on failure." Purpose: close-time gate.
@@ -116,8 +115,9 @@ Not exhaustive; covers the predictable ones.
 
 - IR contracts touched: `Point3WithWidth` gains an optional field; `#[serde(default)]` preserves backward-compat for older JSON producers (AC-6). Schema minor version bump signals the change to any downstream consumer.
 - WIT boundary considerations: `point3-with-width` record adds `overhang-quartile: option<u8>`. WIT `option<u8>` maps to Rust `Option<u8>` directly via `wit-bindgen`; no manual wrapping required. The conversion sites enumerated by Step 0's LOCATIONS dispatch must each propagate the new field — no silent drops, no `Default::default()` shortcuts that erase classifier output.
-- Determinism / scheduler constraints: classifier mutates `LayerCollectionIR` in place. It MUST run after layer finalization (the existing `LayerCollectionIR` is fully built) and before `emit_gcode`. No new scheduling phase; piggybacks on the host pipeline before emit.
+- Determinism / scheduler constraints: classifier mutates `LayerCollectionIR` in place. It MUST run after layer finalization (the existing `LayerCollectionIR` is fully built) and before per-layer G-code emission. Implementation runs it from inside `DefaultGCodeEmitter::emit_gcode` on the emitter's cloned layer set, so the upstream `LayerCollectionIR` observed by other postpass modules is not mutated. No new scheduling phase; piggybacks on emit.
 - The classifier short-circuits when all four `overhang_N_4_speed` keys are exactly `0.0` (the packet 52 default). This preserves AC-2's byte-identical zero-config no-op.
+- Synthetic `Point3WithWidth` construction sites in seam-candidate code paths (`crates/slicer-host/src/wit_host.rs` at three sites: the seam-candidate position rehydration paths) deliberately set `overhang_quartile: None`. These sites build temporary points from seam position data alone (no classification context), strictly upstream of the classifier and not on a path that emits G-code without re-classification. The `None` value is the correct construction default; the classifier overwrites it on wall-family roles when emit runs.
 
 ## Locked Assumptions and Invariants
 

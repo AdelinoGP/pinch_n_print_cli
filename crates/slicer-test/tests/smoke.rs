@@ -16,6 +16,7 @@ fn sample_path(z: f32) -> ExtrusionPath3D {
                 z,
                 width: 0.4,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             },
             Point3WithWidth {
                 x: 10.0,
@@ -23,6 +24,7 @@ fn sample_path(z: f32) -> ExtrusionPath3D {
                 z,
                 width: 0.4,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             },
         ],
         role: ExtrusionRole::SparseInfill,

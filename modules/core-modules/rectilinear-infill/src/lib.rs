@@ -260,6 +260,7 @@ impl RectilinearInfill {
                     z,
                     width: self.line_width,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 };
                 let end = Point3WithWidth {
                     x: slicer_ir::units_to_mm(end_x),
@@ -267,6 +268,7 @@ impl RectilinearInfill {
                     z,
                     width: self.line_width,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 };
 
                 paths.push(ExtrusionPath3D {

@@ -42,6 +42,7 @@ fn pt(x: f32, y: f32, z: f32) -> Point3WithWidth {
         z,
         width: 0.4,
         flow_factor: 1.0,
+        overhang_quartile: None,
     }
 }
 
@@ -497,6 +498,7 @@ fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {
             z: 0.2,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
         Point3WithWidth {
             x: x + 1.0,
@@ -504,6 +506,7 @@ fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {
             z: 0.2,
             width: 0.4,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
     ];
     WallLoop {

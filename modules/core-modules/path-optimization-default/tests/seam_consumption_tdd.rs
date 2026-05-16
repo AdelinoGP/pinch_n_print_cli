@@ -35,6 +35,7 @@ fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32, width: f32) -> Wal
                 z,
                 width,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             },
             Point3WithWidth {
                 x: x2,
@@ -42,6 +43,7 @@ fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32, width: f32) -> Wal
                 z,
                 width,
                 flow_factor: 1.0,
+                overhang_quartile: None,
             },
         ],
         role: ExtrusionRole::OuterWall,
@@ -76,6 +78,7 @@ fn no_move_commands_emitted_when_perimeter_already_rotated() {
             z: 0.2,
             width: 0.0,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
         wall_index: 0,
     };
@@ -202,6 +205,7 @@ fn seam_started_wall_replay_is_deterministic() {
             z: 0.2,
             width: 0.0,
             flow_factor: 1.0,
+            overhang_quartile: None,
         },
         wall_index: 0,
     };

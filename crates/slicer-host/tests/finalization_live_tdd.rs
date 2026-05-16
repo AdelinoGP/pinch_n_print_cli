@@ -154,6 +154,7 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
                 Point3WithWidth {
                     x: 20.0,
@@ -161,6 +162,7 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: ExtrusionRole::OuterWall,

@@ -7,7 +7,7 @@ wit_bindgen::generate!({
         interface geometry {
             record point2 { x: s64, y: s64 }
             record point3 { x: f32, y: f32, z: f32 }
-            record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32 }
+            record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
             record bounding-box2 { min: point2, max: point2 }
             record bounding-box3 { min: point3, max: point3 }
             record polygon       { points: list<point2> }
@@ -222,6 +222,7 @@ impl Guest for Component {
                         z,
                         width: 0.4,
                         flow_factor: 1.0,
+                        overhang_quartile: None,
                     }],
                     role: slicer::world_layer::geometry::ExtrusionRole::OuterWall,
                     speed_factor: 1.0,
@@ -268,11 +269,13 @@ impl Guest for Component {
                     x: 0.0, y: 0.0, z,
                     width: total_polys,
                     flow_factor: region_count,
+                    overhang_quartile: None,
                 },
                 slicer::world_layer::geometry::Point3WithWidth {
                     x: spacing as f32 * 10.0, y: 0.0, z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 },
             ],
             role: slicer::world_layer::geometry::ExtrusionRole::SparseInfill,
@@ -301,6 +304,7 @@ impl Guest for Component {
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 }],
                 role: slicer::world_layer::geometry::ExtrusionRole::TopSolidInfill,
                 speed_factor: 1.0,
@@ -333,6 +337,7 @@ impl Guest for Component {
                     z,
                     width: 0.4,
                     flow_factor: paint_layer_idx as f32,
+                    overhang_quartile: None,
                 },
             ],
             role: slicer::world_layer::geometry::ExtrusionRole::SupportMaterial,
@@ -357,6 +362,7 @@ impl Guest for Component {
                     z: r.z(),
                     width: 0.4,
                     flow_factor: 1.0,
+                    overhang_quartile: None,
                 }],
                 role: slicer::world_layer::geometry::ExtrusionRole::SupportMaterial,
                 speed_factor: 1.0,

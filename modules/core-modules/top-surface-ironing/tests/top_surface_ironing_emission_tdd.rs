@@ -49,6 +49,7 @@ fn rect_entity(role: ExtrusionRole, z: f32, region_id: u64) -> PrintEntity {
         z,
         width: 0.4,
         flow_factor: 1.0,
+        overhang_quartile: None,
     };
     PrintEntity {
         entity_id: 1,

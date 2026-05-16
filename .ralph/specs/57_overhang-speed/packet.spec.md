@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 57_overhang-speed
 task_ids:
   - TASK-182
@@ -21,7 +21,7 @@ Wire OrcaSlicer-parity overhang quartile speed end-to-end on the live G-code pat
   - New module `crates/slicer-core/src/aabb_lines_2d.rs` providing `LinesDistancer2D` (naïve linear scan + bbox prefilter; BVH deferred).
   - New module `crates/slicer-host/src/overhang_classifier.rs` with `pub fn classify_layers(layers: &mut [LayerCollectionIR], feedrate_config: &FeedrateConfig)`.
   - `resolve_feedrate` signature extension + per-point dispatch in `crates/slicer-host/src/gcode_emit.rs`.
-  - Pipeline wire-in (both slicer-cli and WASM arms) in `crates/slicer-host/src/pipeline.rs`.
+  - Pipeline wire-in: `overhang_classifier::classify_layers` invoked from inside `DefaultGCodeEmitter::emit_gcode` (`crates/slicer-host/src/gcode_emit.rs`) on the cloned layer set; both pipeline arms (slicer-cli binary and WASM execution) reach `emit_gcode` via the existing `execute_postpass` path, so the classifier runs on both arms without separate call sites in `pipeline.rs`.
   - New test file `crates/slicer-host/tests/overhang_speed_tdd.rs` covering the six ACs plus the negative case.
   - Remediation note appended to `docs/DEVIATION_LOG.md` for DEV-009.
 
@@ -68,8 +68,7 @@ Supplemental (per-criterion commands above are the authoritative gate; the entri
 - `cargo build -p slicer-ir -p slicer-core -p slicer-host`
 - `cargo test -p slicer-host --test overhang_speed_tdd`
 - `cargo test -p slicer-host --test gcode_feedrate_emission_tdd` *(regression: packet 52)*
-- `cargo test -p slicer-host --test gcode_emit_tdd` *(regression: emit shape)*
-- `cargo test -p slicer-host --test orca_comment_contract_tdd` *(regression: `;TYPE:` labels unchanged)*
+- `cargo test -p slicer-host --test gcode_emit_tdd` *(regression: emit shape **and** `;TYPE:` label invariants — see `emits_orca_layer_headers_before_first_extrusion`, `emits_orca_type_comments_at_role_boundaries`)*
 - `cargo clippy -p slicer-ir -p slicer-core -p slicer-host -- -D warnings`
 - `cargo check --workspace` *(catches WIT-binding drift in modules that consume `point3-with-width`)*
 - Acceptance-ceremony only (Step 7, dispatched to a sub-agent with FACT pass/fail return — never absorbed): `cargo test --workspace`
