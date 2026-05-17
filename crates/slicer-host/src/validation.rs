@@ -960,8 +960,8 @@ fn topological_sort(nodes: &[ModuleNode]) -> Result<Vec<ModuleId>, Vec<ModuleId>
         .collect();
 
     for node in nodes {
-        for downstream in &node.edges_to {
-            if let Some(degree) = in_degree.get_mut(downstream) {
+        for edge in &node.edges_to {
+            if let Some(degree) = in_degree.get_mut(&edge.to) {
                 *degree += 1;
             }
         }
@@ -977,11 +977,11 @@ fn topological_sort(nodes: &[ModuleNode]) -> Result<Vec<ModuleId>, Vec<ModuleId>
     while let Some(module_id) = queue.pop_front() {
         sorted.push(module_id.clone());
         if let Some(node) = nodes.iter().find(|node| node.module_id == module_id) {
-            for downstream in &node.edges_to {
-                if let Some(degree) = in_degree.get_mut(downstream) {
+            for edge in &node.edges_to {
+                if let Some(degree) = in_degree.get_mut(&edge.to) {
                     *degree -= 1;
                     if *degree == 0 {
-                        queue.push_back(downstream.clone());
+                        queue.push_back(edge.to.clone());
                     }
                 }
             }
@@ -1003,7 +1003,12 @@ fn topological_sort(nodes: &[ModuleNode]) -> Result<Vec<ModuleId>, Vec<ModuleId>
 fn compute_reachability(nodes: &[ModuleNode]) -> BTreeMap<ModuleId, BTreeSet<ModuleId>> {
     let adjacency: BTreeMap<ModuleId, Vec<ModuleId>> = nodes
         .iter()
-        .map(|node| (node.module_id.clone(), node.edges_to.clone()))
+        .map(|node| {
+            (
+                node.module_id.clone(),
+                node.edges_to.iter().map(|e| e.to.clone()).collect(),
+            )
+        })
         .collect();
     let mut reachability = BTreeMap::new();
 

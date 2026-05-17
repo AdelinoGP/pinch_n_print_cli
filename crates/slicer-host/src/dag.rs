@@ -1,11 +1,28 @@
 //! Intra-stage DAG construction contracts.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use slicer_ir::{ModuleId, StageId};
 
+use crate::instrumentation::EdgeReason;
 use crate::manifest::LoadedModule;
 use crate::validation::SchedulerError;
+
+/// One outgoing edge from a [`ModuleNode`]: the downstream module plus
+/// every reason the scheduler had to place it after the source.
+///
+/// Each `(from, to)` pair appears at most once in [`ModuleNode::edges_to`];
+/// multiple reasons (e.g. an IR write/read overlap plus an explicit
+/// `requires_modules`) accumulate into `reasons`. Consumers that only need
+/// the topology (in-degree, reachability) read `edge.to`; consumers that
+/// need to explain ordering (the slicer report) read both fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EdgeTo {
+    /// Downstream module that must run after the source.
+    pub to: ModuleId,
+    /// Non-empty list of distinct reasons this edge exists.
+    pub reasons: Vec<EdgeReason>,
+}
 
 /// One module node in an intra-stage dependency graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,8 +33,9 @@ pub struct ModuleNode {
     pub ir_reads: Vec<String>,
     /// Declared IR write paths copied from the module manifest.
     pub ir_writes: Vec<String>,
-    /// Outgoing edges to downstream modules in the same stage.
-    pub edges_to: Vec<ModuleId>,
+    /// Outgoing edges to downstream modules in the same stage, each carrying
+    /// the reasons it exists. Sorted by `to` for deterministic traversal.
+    pub edges_to: Vec<EdgeTo>,
 }
 
 /// Builds the dependency graph for one scheduler stage.
@@ -43,11 +61,12 @@ pub fn build_intra_stage_dag(
         );
     }
 
+    // Per-source adjacency keyed by downstream module, with deduped reasons.
     let stage_ids: Vec<ModuleId> = nodes.keys().cloned().collect();
-    let mut edges_by_source: BTreeMap<ModuleId, BTreeSet<ModuleId>> = stage_ids
+    let mut edges_by_source: BTreeMap<ModuleId, BTreeMap<ModuleId, Vec<EdgeReason>>> = stage_ids
         .iter()
         .cloned()
-        .map(|module_id| (module_id, BTreeSet::new()))
+        .map(|module_id| (module_id, BTreeMap::new()))
         .collect();
 
     for writer in &stage_modules {
@@ -55,14 +74,17 @@ pub fn build_intra_stage_dag(
             if writer.id == reader.id {
                 continue;
             }
-
-            if writer
-                .ir_writes
-                .iter()
-                .any(|written_path| reader.ir_reads.contains(written_path))
-            {
-                if let Some(edges) = edges_by_source.get_mut(&writer.id) {
-                    edges.insert(reader.id.clone());
+            for written_path in &writer.ir_writes {
+                if reader.ir_reads.contains(written_path) {
+                    let reason = EdgeReason::IrWriteRead {
+                        writer_path: written_path.clone(),
+                    };
+                    if let Some(by_dst) = edges_by_source.get_mut(&writer.id) {
+                        let reasons = by_dst.entry(reader.id.clone()).or_default();
+                        if !reasons.contains(&reason) {
+                            reasons.push(reason);
+                        }
+                    }
                 }
             }
         }
@@ -70,15 +92,21 @@ pub fn build_intra_stage_dag(
 
     for module in &stage_modules {
         for required_module in &module.requires_modules {
-            if let Some(edges) = edges_by_source.get_mut(required_module) {
-                edges.insert(module.id.clone());
+            if let Some(by_dst) = edges_by_source.get_mut(required_module) {
+                let reasons = by_dst.entry(module.id.clone()).or_default();
+                if !reasons.contains(&EdgeReason::ExplicitRequires) {
+                    reasons.push(EdgeReason::ExplicitRequires);
+                }
             }
         }
     }
 
-    for (module_id, edges) in edges_by_source {
+    for (module_id, by_dst) in edges_by_source {
         if let Some(node) = nodes.get_mut(&module_id) {
-            node.edges_to = edges.into_iter().collect();
+            node.edges_to = by_dst
+                .into_iter()
+                .map(|(to, reasons)| EdgeTo { to, reasons })
+                .collect();
         }
     }
 
@@ -91,7 +119,8 @@ mod tests {
 
     use slicer_ir::SemVer;
 
-    use super::{build_intra_stage_dag, ModuleNode};
+    use super::{build_intra_stage_dag, EdgeTo, ModuleNode};
+    use crate::instrumentation::EdgeReason;
     use crate::manifest::{ConfigSchema, LoadedModule};
 
     #[test]
@@ -137,8 +166,24 @@ mod tests {
                 ir_reads: Vec::new(),
                 ir_writes: vec![String::from("PerimeterIR.regions.walls")],
                 edges_to: vec![
-                    String::from("com.example.alpha"),
-                    String::from("com.example.beta"),
+                    EdgeTo {
+                        to: String::from("com.example.alpha"),
+                        reasons: vec![
+                            EdgeReason::IrWriteRead {
+                                writer_path: String::from("PerimeterIR.regions.walls"),
+                            },
+                            EdgeReason::ExplicitRequires,
+                        ],
+                    },
+                    EdgeTo {
+                        to: String::from("com.example.beta"),
+                        reasons: vec![
+                            EdgeReason::IrWriteRead {
+                                writer_path: String::from("PerimeterIR.regions.walls"),
+                            },
+                            EdgeReason::ExplicitRequires,
+                        ],
+                    },
                 ],
             }
         );

@@ -652,6 +652,11 @@ pub struct CompiledModule {
     /// Compiled WASM component for runtime instantiation.
     /// `None` only during test fixtures that don't exercise real WASM dispatch.
     pub wasm_component: Option<Arc<WasmComponent>>,
+    /// Module IDs this module explicitly depends on (manifest
+    /// `requires_modules`). Carried through to runtime so
+    /// `compute_serial_edges_from_compiled` can emit
+    /// `EdgeReason::ExplicitRequires` rows alongside `IrWriteRead`.
+    pub requires_modules: Vec<ModuleId>,
 }
 
 /// Minimal immutable IR access-mask representation for runtime planning.
@@ -891,6 +896,7 @@ pub fn build_execution_plan(
                 config_view: Arc::clone(&binding.config_view),
                 claims: binding.module.claims.clone(),
                 wasm_component: binding.wasm_component.clone(),
+                requires_modules: binding.module.requires_modules.clone(),
             });
         }
 

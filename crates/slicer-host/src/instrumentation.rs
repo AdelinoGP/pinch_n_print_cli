@@ -133,12 +133,9 @@ fn reason_tag(r: &EdgeReason) -> u8 {
 /// Runtime-equivalent of [`compute_serial_edges_for_stage`] that works on the
 /// frozen [`CompiledModule`] view available inside `ExecutionPlan`.
 ///
-/// `CompiledModule` does not carry `requires_modules`, so this variant only
-/// emits `IrWriteRead` reasons. The topological order in `stage.modules`
-/// already reflects any explicit-requires dependencies, so serial ordering is
-/// still correct — the report just cannot label such pairs with
-/// `EdgeReason::ExplicitRequires`. Plumbing `requires_modules` into
-/// `CompiledModule` is a future enhancement.
+/// Emits both `IrWriteRead` (overlapping write/read paths) and
+/// `ExplicitRequires` (manifest `requires_modules`) reasons, matching the
+/// `LoadedModule`-side helper's coverage.
 pub fn compute_serial_edges_from_compiled(modules: &[CompiledModule]) -> Vec<SerialEdge> {
     let mut edges: Vec<SerialEdge> = Vec::new();
     for writer in modules {
@@ -159,10 +156,22 @@ pub fn compute_serial_edges_from_compiled(modules: &[CompiledModule]) -> Vec<Ser
             }
         }
     }
+    for module in modules {
+        for required in &module.requires_modules {
+            if modules.iter().any(|m| &m.module_id == required) {
+                edges.push(SerialEdge {
+                    from: required.clone(),
+                    to: module.module_id.clone(),
+                    reason: EdgeReason::ExplicitRequires,
+                });
+            }
+        }
+    }
     edges.sort_by(|a, b| {
         a.from
             .cmp(&b.from)
             .then_with(|| a.to.cmp(&b.to))
+            .then_with(|| reason_tag(&a.reason).cmp(&reason_tag(&b.reason)))
             .then_with(|| match (&a.reason, &b.reason) {
                 (
                     EdgeReason::IrWriteRead { writer_path: ap },
@@ -194,17 +203,21 @@ pub trait PipelineInstrumentation: Send + Sync {
 
     /// Called immediately before a module dispatch.
     fn on_module_start(&self, stage: &StageId, layer: Option<u32>, module: &ModuleId);
-    /// Called immediately after a module dispatch returns. `wasm_before` /
-    /// `wasm_after` are the wasmtime `memory.data_size()` samples bracketing
-    /// the call (0 / 0 if the module has no linear memory or if the
-    /// dispatcher did not record a sample).
+    /// Called immediately after a module dispatch returns.
+    ///
+    /// `wasm_initial_bytes` is the guest's linear-memory size right after
+    /// instantiation but before the export call (the module's static
+    /// baseline). `wasm_peak_bytes` is the highwater observed across the
+    /// whole dispatch (≥ initial; equal when the call did not grow memory).
+    /// Both are `0` if the runner does not sample wasm memory (test mocks,
+    /// host built-ins).
     fn on_module_end(
         &self,
         stage: &StageId,
         layer: Option<u32>,
         module: &ModuleId,
-        wasm_before: u64,
-        wasm_after: u64,
+        wasm_initial_bytes: u64,
+        wasm_peak_bytes: u64,
     );
 
     /// Called before a layer's stage loop begins. `z_mm` is the layer's
@@ -235,8 +248,8 @@ impl PipelineInstrumentation for NoopInstrumentation {
         _stage: &StageId,
         _layer: Option<u32>,
         _module: &ModuleId,
-        _wasm_before: u64,
-        _wasm_after: u64,
+        _wasm_initial_bytes: u64,
+        _wasm_peak_bytes: u64,
     ) {
     }
     fn on_layer_start(&self, _layer: u32, _z_mm: f32) {}
@@ -347,6 +360,73 @@ mod tests {
         let modules = vec![module("b", &[], &[], &["does-not-exist"])];
         let edges = compute_serial_edges_for_stage(&modules);
         assert!(edges.is_empty());
+    }
+
+    fn compiled_module(
+        id: &str,
+        ir_reads: &[&str],
+        ir_writes: &[&str],
+        requires_modules: &[&str],
+    ) -> CompiledModule {
+        use crate::execution_plan::IrAccessMask;
+        use crate::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
+        use std::sync::Arc;
+        let loaded = module(id, ir_reads, ir_writes, requires_modules);
+        let pool = Arc::new(
+            build_wasm_instance_pool(
+                &loaded,
+                1,
+                WasmArtifactMetadata {
+                    uses_shared_memory: false,
+                },
+            )
+            .expect("pool should build for synthetic fixture"),
+        );
+        CompiledModule {
+            module_id: id.to_string(),
+            instance_pool: pool,
+            ir_read_mask: IrAccessMask {
+                paths: ir_reads.iter().map(|s| s.to_string()).collect(),
+            },
+            ir_write_mask: IrAccessMask {
+                paths: ir_writes.iter().map(|s| s.to_string()).collect(),
+            },
+            config_view: Arc::new(slicer_ir::ConfigView::new()),
+            claims: Vec::new(),
+            wasm_component: None,
+            requires_modules: requires_modules.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn compiled_explicit_requires_emits_explicit_reason() {
+        let modules = vec![
+            compiled_module("a", &[], &[], &[]),
+            compiled_module("b", &[], &[], &["a"]),
+        ];
+        let edges = compute_serial_edges_from_compiled(&modules);
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].from, "a");
+        assert_eq!(edges[0].to, "b");
+        assert_eq!(edges[0].reason, EdgeReason::ExplicitRequires);
+    }
+
+    #[test]
+    fn compiled_dual_reason_pair_emits_two_edges() {
+        let modules = vec![
+            compiled_module("a", &[], &["P"], &[]),
+            compiled_module("b", &["P"], &[], &["a"]),
+        ];
+        let edges = compute_serial_edges_from_compiled(&modules);
+        assert_eq!(edges.len(), 2);
+        assert!(edges.iter().any(|e| matches!(
+            (&e.from[..], &e.to[..], &e.reason),
+            ("a", "b", EdgeReason::IrWriteRead { .. })
+        )));
+        assert!(edges.iter().any(|e| matches!(
+            (&e.from[..], &e.to[..], &e.reason),
+            ("a", "b", EdgeReason::ExplicitRequires)
+        )));
     }
 
     #[test]

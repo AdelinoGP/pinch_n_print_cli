@@ -21,7 +21,10 @@ pub fn topological_sort(nodes: &[ModuleNode]) -> Result<Vec<ModuleId>, Vec<Modul
         .map(|node| {
             (
                 node.module_id.clone(),
-                node.edges_to.iter().cloned().collect::<BTreeSet<_>>(),
+                node.edges_to
+                    .iter()
+                    .map(|e| e.to.clone())
+                    .collect::<BTreeSet<_>>(),
             )
         })
         .collect();
