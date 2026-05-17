@@ -42,9 +42,9 @@
 
 #![allow(missing_docs)]
 
-use std::fs;
+mod common;
+
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 fn repo_root() -> PathBuf {
     // CARGO_MANIFEST_DIR = crates/slicer-host
@@ -63,98 +63,12 @@ fn core_modules_dir() -> PathBuf {
     repo_root().join("modules/core-modules")
 }
 
-/// Return an empty directory suitable for use as `--module-dir`. Used
-/// by the smoke tier to exercise the live plan / pipeline without
-/// tripping the upstream placeholder-artifact gap on the real
-/// `modules/core-modules/` tree.
-fn empty_module_dir(tmp: &tempfile::TempDir) -> PathBuf {
-    let p = tmp.path().join("empty-module-dir");
-    std::fs::create_dir_all(&p).expect("mkdir empty-module-dir");
-    p
-}
-
-/// Return a copy of `core_modules_dir()` that excludes
-/// `traditional-support.wasm` and `traditional-support.toml` so that
-/// `tree-support` becomes the active `support-generator` holder.
-/// Both `.wasm` and `.toml` companion files are omitted to prevent
-/// the module discovery from selecting traditional-support as a
-/// candidate.
-#[allow(dead_code)]
-fn filtered_module_dir_for_tree_support(tmp: &tempfile::TempDir) -> PathBuf {
-    let src = core_modules_dir();
-    let dst = tmp.path().join("tree-support-modules");
-    std::fs::create_dir_all(&dst).expect("mkdir tree-support-modules");
-
-    for entry in std::fs::read_dir(&src).expect("read core-modules dir") {
-        let entry = entry.expect("read_dir entry");
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-        // Skip the traditional-support module entirely so tree-support
-        // becomes the sole support-generator holder.
-        if name_str == "traditional-support" {
-            continue;
-        }
-        let target = dst.join(&name);
-        if entry.file_type().expect("file_type").is_dir() {
-            recurse_copy(&entry.path(), &target).expect("recurse_copy dir");
-        } else {
-            fs::copy(&entry.path(), &target).expect("copy file");
-        }
-    }
-    dst
-}
-
-/// Recursively copy `src` directory tree to `dst`.
-#[allow(dead_code)]
-fn recurse_copy(src: &Path, dst: &Path) -> std::io::Result<()> {
-    if src.is_dir() {
-        std::fs::create_dir_all(dst)?;
-        for entry in std::fs::read_dir(src)? {
-            let entry = entry?;
-            recurse_copy(&entry.path(), &dst.join(entry.file_name()))?;
-        }
-    } else {
-        std::fs::copy(src, dst)?;
-    }
-    Ok(())
-}
-
 fn assert_path_exists(p: &Path, label: &str) {
     assert!(
         p.exists(),
         "{label} fixture missing at {} — test cannot verify real E2E path",
         p.display()
     );
-}
-
-fn run_slicer_host(
-    model: &Path,
-    module_dir: &Path,
-    output: &Path,
-    config: Option<&Path>,
-) -> std::process::Output {
-    let bin = env!("CARGO_BIN_EXE_slicer-host");
-    // `--module` is a required CLI flag for the Run subcommand even
-    // though the live plan path is driven by `--module-dir`. Point it
-    // at any real file on disk; the runtime does not execute a
-    // singular "module" arg, it uses `--module-dir` discovery.
-    let dummy_module = model; // any existing file
-    let mut cmd = Command::new(bin);
-    cmd.args([
-        "run",
-        "--module",
-        dummy_module.to_str().unwrap(),
-        "--model",
-        model.to_str().unwrap(),
-        "--module-dir",
-        module_dir.to_str().unwrap(),
-        "--output",
-        output.to_str().unwrap(),
-    ]);
-    if let Some(config_path) = config {
-        cmd.arg("--config").arg(config_path);
-    }
-    cmd.output().expect("slicer-host binary should execute")
 }
 
 // ---------------------------------------------------------------------------
@@ -169,25 +83,21 @@ fn benchy_e2e_real_pipeline_produces_gcode() {
     let model = fixture_stl();
     assert_path_exists(&model, "model STL");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let modules = empty_module_dir(&tmp);
-    let out_path = tmp.path().join("benchy_e2e.gcode");
-
-    let output = run_slicer_host(&model, &modules, &out_path, None);
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let cached =
+        common::slicer_cache::cached_run(&model, common::slicer_cache::ModuleDirKind::Empty, None);
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let stderr = outcome.stderr.as_str();
 
     assert!(
-        output.status.success(),
-        "slicer-host exited non-zero\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}"
+        outcome.success,
+        "slicer-host exited non-zero\n--- stderr ---\n{stderr}"
     );
 
     assert!(
-        out_path.exists(),
+        outcome.output_written,
         "--output file must be written to disk (stderr was: {stderr})"
     );
-    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+    let gcode = outcome.gcode.as_str();
     if !gcode.is_empty() {
         let first = gcode.lines().next().unwrap_or("");
         assert!(
@@ -205,14 +115,12 @@ fn benchy_e2e_module_discovery_runs_on_live_path() {
     let model = fixture_stl();
     assert_path_exists(&model, "model STL");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let modules = empty_module_dir(&tmp);
-    let out_path = tmp.path().join("discovery.gcode");
-    let output = run_slicer_host(&model, &modules, &out_path, None);
+    let cached =
+        common::slicer_cache::cached_run(&model, common::slicer_cache::ModuleDirKind::Empty, None);
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let stderr = outcome.stderr.as_str();
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    if !output.status.success() {
+    if !outcome.success {
         assert!(
             !stderr.trim().is_empty(),
             "pipeline failure must produce diagnosable stderr output"
@@ -229,12 +137,13 @@ fn benchy_e2e_is_deterministic() {
     assert_path_exists(&model, "model STL");
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let modules = empty_module_dir(&tmp);
+    let modules =
+        common::slicer_cache::module_dir_path(&common::slicer_cache::ModuleDirKind::Empty);
     let out_a = tmp.path().join("a.gcode");
     let out_b = tmp.path().join("b.gcode");
 
-    let ra = run_slicer_host(&model, &modules, &out_a, None);
-    let rb = run_slicer_host(&model, &modules, &out_b, None);
+    let ra = common::slicer_cache::run_slicer_host_uncached(&model, &modules, &out_a, None);
+    let rb = common::slicer_cache::run_slicer_host_uncached(&model, &modules, &out_b, None);
 
     assert!(
         ra.status.success(),
@@ -275,11 +184,13 @@ fn benchy_e2e_against_real_core_modules_is_diagnosable() {
     assert_path_exists(&model, "model STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let out_path = tmp.path().join("real_modules.gcode");
-    let output = run_slicer_host(&model, &modules, &out_path, None);
-
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let stderr = outcome.stderr.as_str();
 
     // Regression guard: the canonical Benchy-path core modules must NOT
     // revert to placeholder .wasm. This loop is intentionally scoped to
@@ -303,9 +214,9 @@ fn benchy_e2e_against_real_core_modules_is_diagnosable() {
         );
     }
 
-    if output.status.success() {
+    if outcome.success {
         assert!(
-            out_path.exists(),
+            outcome.output_written,
             "--output file must be written to disk (stderr was: {stderr})"
         );
     } else {
@@ -391,22 +302,30 @@ fn preview(gcode: &str, n: usize) -> String {
 ///   - current blocker: downstream output-validation failures. Gate
 ///     fails loudly with the real stderr so the next agent can act on
 ///     the evolved failure mode.
-#[test]
-fn benchy_mvp_gcode_has_real_extrusion_content() {
+// Shared cached run for the default Benchy invocation (CoreModules,
+// no config) that backs all `benchy_mvp_*` split tests below.
+fn mvp_default_outcome(
+) -> std::sync::Arc<Result<common::slicer_cache::RunOutcome, common::slicer_cache::RunError>> {
     let model = fixture_stl();
     let modules = core_modules_dir();
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
+    common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    )
+}
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let out_path = tmp.path().join("benchy_mvp.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, None);
-    let stderr = String::from_utf8_lossy(&result.stderr);
+/// MVP regression guard for blocker #1: canonical Benchy-path modules
+/// must not appear in the placeholder-skip warnings. Detects "empty
+/// G-code from placeholder .wasm" silently returning.
+#[test]
+fn benchy_mvp_no_canonical_placeholder_regression() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let stderr = outcome.stderr.as_str();
 
-    // (0) Regression guard for blocker #1: canonical Benchy-path modules
-    // must not appear in the placeholder-skip warnings. This is the
-    // first assertion now — it ensures the "empty G-code from
-    // placeholder .wasm" failure mode cannot silently return.
     for canonical in [
         "classic-perimeters",
         "rectilinear-infill",
@@ -432,24 +351,35 @@ fn benchy_mvp_gcode_has_real_extrusion_content() {
                 .join("\n")
         );
     }
+}
 
+/// MVP run must exit zero and write the `--output` file.
+#[test]
+fn benchy_mvp_run_succeeds_and_writes_output() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host exited non-zero for Benchy MVP run. Blocker #1 is \
          closed (real component binaries built); this is the next \
          downstream-content failure. Stderr:\n{stderr}"
     );
     assert!(
-        out_path.exists(),
+        outcome.output_written,
         "--output file must be written; stderr:\n{stderr}"
     );
+}
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+/// MVP G-code must contain real `G1 ... E` extrusion moves, not just
+/// header/footer.
+#[test]
+fn benchy_mvp_gcode_has_extrusion_moves() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let stderr = outcome.stderr.as_str();
+    let gcode = outcome.gcode.as_str();
 
-    // (1) Must not be empty. Empty output on the real Benchy path would
-    // now only occur if the canonical modules silently return without
-    // emitting content — a downstream-content bug, not a placeholder
-    // regression (that is caught above).
     assert!(
         !gcode.is_empty(),
         "MVP downstream-content blocker: Benchy G-code is empty despite \
@@ -468,8 +398,7 @@ fn benchy_mvp_gcode_has_real_extrusion_content() {
             .join("\n")
     );
 
-    // (2) Must contain real extrusion moves, not just a header/footer.
-    let extrusion_moves = count_extrusion_moves(&gcode);
+    let extrusion_moves = count_extrusion_moves(gcode);
     assert!(
         extrusion_moves > 0,
         "MVP blocker: no `G1 ... E` extrusion moves in Benchy output. The \
@@ -477,11 +406,19 @@ fn benchy_mvp_gcode_has_real_extrusion_content() {
          which points to a downstream content/output-validation or other \
          live-path feature gap rather than the older placeholder/deep-copy \
          regressions. G-code preview (first 30 lines):\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
+}
 
-    // (3) Must progress through at least two distinct layer Z planes.
-    let zs = extract_layer_z_sequence(&gcode);
+/// MVP must progress through at least two distinct layer Z planes and
+/// emit them monotonically.
+#[test]
+fn benchy_mvp_layer_z_is_monotonic_with_two_distinct_layers() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let gcode = outcome.gcode.as_str();
+
+    let zs = extract_layer_z_sequence(gcode);
     assert!(
         zs.len() >= 2,
         "MVP blocker: expected at least 2 distinct layer Z values in Benchy \
@@ -489,11 +426,9 @@ fn benchy_mvp_gcode_has_real_extrusion_content() {
          emitted. G-code preview:\n{}",
         zs.len(),
         zs,
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 
-    // (4) Z must be monotonic across layer changes. Small numerical
-    // jitter is tolerated.
     let mut prev = f32::NEG_INFINITY;
     for (i, z) in zs.iter().enumerate() {
         assert!(
@@ -503,11 +438,18 @@ fn benchy_mvp_gcode_has_real_extrusion_content() {
         );
         prev = *z;
     }
+}
 
-    // (5) Layer count should be in a plausible Benchy range. A
-    // standard 3DBenchy (48 mm tall) at 0.2 mm layer height is ≈ 240
-    // layers; this keeps the gate wide enough to survive reasonable
-    // preset variation.
+/// MVP layer count must be in a plausible Benchy range. A standard
+/// 3DBenchy (48 mm tall) at 0.2 mm layer height is ~240 layers; the
+/// gate is wide enough to survive reasonable preset variation.
+#[test]
+fn benchy_mvp_layer_count_in_bounds() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let gcode = outcome.gcode.as_str();
+
+    let zs = extract_layer_z_sequence(gcode);
     assert!(
         zs.len() >= 10,
         "MVP blocker: Benchy produced only {} distinct layer Zs; expected \
@@ -541,8 +483,8 @@ fn benchy_mvp_content_is_deterministic() {
     let out_a = tmp.path().join("mvp_a.gcode");
     let out_b = tmp.path().join("mvp_b.gcode");
 
-    let ra = run_slicer_host(&model, &modules, &out_a, None);
-    let rb = run_slicer_host(&model, &modules, &out_b, None);
+    let ra = common::slicer_cache::run_slicer_host_uncached(&model, &modules, &out_a, None);
+    let rb = common::slicer_cache::run_slicer_host_uncached(&model, &modules, &out_b, None);
 
     // Determinism holds whether the pipeline currently succeeds or
     // fails — both runs must reach the same conclusion byte-for-byte.
@@ -582,17 +524,20 @@ fn benchy_mvp_produces_full_height_layer_progression() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let out_path = tmp.path().join("benchy_height.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, None);
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host must succeed on full-height Benchy run. Stderr:\n{stderr}"
     );
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output");
-    let zs = extract_layer_z_sequence(&gcode);
+    let gcode = outcome.gcode.as_str();
+    let zs = extract_layer_z_sequence(gcode);
 
     assert!(
         zs.len() >= 100,
@@ -625,22 +570,24 @@ fn benchy_with_support_enabled() {
     let model = fixture_stl();
     assert_path_exists(&model, "Benchy STL");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let modules = filtered_module_dir_for_tree_support(&tmp);
     let config = repo_root().join("resources/test_config/benchy-tree-support.json");
     assert_path_exists(&config, "benchy-tree-support.json config");
 
-    let out_path = tmp.path().join("benchy_support.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, Some(&config));
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+        Some(&config),
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host with tree-support config must exit 0. Stderr:\n{stderr}"
     );
-    assert!(out_path.exists(), "--output file must be written");
+    assert!(outcome.output_written, "--output file must be written");
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+    let gcode = outcome.gcode.as_str();
     assert!(
         !gcode.is_empty(),
         "gcode output must not be empty when support is enabled. Stderr:\n{stderr}"
@@ -655,21 +602,23 @@ fn benchy_support_marker_present() {
     let model = fixture_stl();
     assert_path_exists(&model, "Benchy STL");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let modules = filtered_module_dir_for_tree_support(&tmp);
     let config = repo_root().join("resources/test_config/benchy-tree-support.json");
     assert_path_exists(&config, "benchy-tree-support.json config");
 
-    let out_path = tmp.path().join("benchy_support_marker.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, Some(&config));
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+        Some(&config),
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host with tree-support must succeed. Stderr:\n{stderr}"
     );
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+    let gcode = outcome.gcode.as_str();
 
     // The tree-support module emits ;TYPE:Support or ;TYPE:Support interface
     // markers in the G-code to label support extrusion moves.
@@ -680,7 +629,7 @@ fn benchy_support_marker_present() {
         has_support_marker,
         "G-code must contain ;TYPE:Support or ;TYPE:Support interface marker \
          when tree-support is enabled. G-code preview (first 30 lines):\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 }
 
@@ -693,15 +642,19 @@ fn benchy_support_deterministic() {
     assert_path_exists(&model, "Benchy STL");
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let modules = filtered_module_dir_for_tree_support(&tmp);
+    let modules = common::slicer_cache::module_dir_path(
+        &common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+    );
     let config = repo_root().join("resources/test_config/benchy-tree-support.json");
     assert_path_exists(&config, "benchy-tree-support.json config");
 
     let out_a = tmp.path().join("support_det_a.gcode");
     let out_b = tmp.path().join("support_det_b.gcode");
 
-    let ra = run_slicer_host(&model, &modules, &out_a, Some(&config));
-    let rb = run_slicer_host(&model, &modules, &out_b, Some(&config));
+    let ra =
+        common::slicer_cache::run_slicer_host_uncached(&model, &modules, &out_a, Some(&config));
+    let rb =
+        common::slicer_cache::run_slicer_host_uncached(&model, &modules, &out_b, Some(&config));
 
     assert_eq!(
         ra.status.success(),
@@ -728,21 +681,24 @@ fn benchy_no_support_marker_when_disabled() {
     let model = fixture_stl();
     assert_path_exists(&model, "Benchy STL");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
     // Use the full core-modules tree (includes tree-support module
     // but without config flag it should not generate support IR).
     let modules = core_modules_dir();
     assert_path_exists(&modules, "core-modules directory");
 
     // Run WITHOUT any config — support_enabled defaults to false.
-    let out_path = tmp.path().join("benchy_no_support.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, None);
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     // Even if the pipeline fails, we check that support markers are absent.
     // The pipeline may fail for unrelated reasons; what we guard against
     // is a spurious ;TYPE:Support marker appearing when support is disabled.
-    let gcode = std::fs::read_to_string(&out_path).unwrap_or_default();
+    let gcode = outcome.gcode.as_str();
 
     let support_marker_lines: Vec<&str> = gcode
         .lines()
@@ -764,7 +720,7 @@ fn benchy_no_support_marker_when_disabled() {
             .rev()
             .collect::<Vec<_>>()
             .join("\n"),
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 }
 
@@ -781,8 +737,9 @@ fn tree_support_active_holder() {
     // ── Filtered dir: traditional-support is excluded; tree-support
     //    is the only `support-generator` holder, so the dedup never
     //    drops it. ──
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let filtered = filtered_module_dir_for_tree_support(&tmp);
+    let filtered = common::slicer_cache::module_dir_path(
+        &common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+    );
     let loaded =
         load_live_modules_for_plan(&[filtered], 1).expect("filtered live module load must succeed");
 
@@ -891,14 +848,17 @@ fn benchy_prepass_seam_plan_matches_live_outer_wall_start() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let out_path = tmp.path().join("seam_evidence.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, None);
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
     // The pipeline must succeed with real modules for this evidence to be meaningful.
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host must succeed on full Benchy run for seam evidence. Stderr:\n{stderr}"
     );
 
@@ -1086,23 +1046,25 @@ fn benchy_gcode_contains_support_feature_evidence() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let modules_filtered = filtered_module_dir_for_tree_support(&tmp);
     let config = repo_root().join("resources/test_config/benchy-tree-support.json");
     assert_path_exists(&config, "benchy-tree-support.json config");
 
-    let out_path = tmp.path().join("support_feature_evidence.gcode");
-    let result = run_slicer_host(&model, &modules_filtered, &out_path, Some(&config));
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+        Some(&config),
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host with tree-support config must succeed for feature-evidence \
          gate. Stderr:\n{stderr}"
     );
-    assert!(out_path.exists(), "--output file must be written");
+    assert!(outcome.output_written, "--output file must be written");
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+    let gcode = outcome.gcode.as_str();
 
     // Find at least one ;TYPE:Support block (or ;TYPE:Support interface).
     let support_blocks: Vec<&str> = gcode
@@ -1123,7 +1085,7 @@ fn benchy_gcode_contains_support_feature_evidence() {
             .rev()
             .collect::<Vec<_>>()
             .join("\n"),
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 
     // Find the byte-offset of the first support block and assert that
@@ -1145,7 +1107,7 @@ fn benchy_gcode_contains_support_feature_evidence() {
             "feature-evidence: found ;TYPE:Support block but no G1 ... E extrusion \
              move after it. Support geometry may be unresolvable or the post-processor \
              is not emitting extrusion for support toolpaths. G-code preview:\n{}",
-            preview(&gcode, 30)
+            preview(gcode, 30)
         );
     } else {
         // Defensive: already caught above by the is_empty check, but
@@ -1167,19 +1129,22 @@ fn benchy_gcode_contains_top_and_bottom_surface_evidence() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let out_path = tmp.path().join("surface_evidence.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, None);
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host must succeed for top/bottom surface feature-evidence. \
          Stderr:\n{stderr}"
     );
-    assert!(out_path.exists(), "--output file must be written");
+    assert!(outcome.output_written, "--output file must be written");
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+    let gcode = outcome.gcode.as_str();
 
     let has_top_surface = gcode.lines().any(|l| l.contains(";TYPE:Top surface"));
     let has_bottom_surface = gcode.lines().any(|l| l.contains(";TYPE:Bottom surface"));
@@ -1188,13 +1153,13 @@ fn benchy_gcode_contains_top_and_bottom_surface_evidence() {
         has_top_surface,
         "feature-evidence: missing ;TYPE:Top surface block in G-code. \
          G-code preview:\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
     assert!(
         has_bottom_surface,
         "feature-evidence: missing ;TYPE:Bottom surface block in G-code. \
          G-code preview:\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 }
 
@@ -1204,32 +1169,65 @@ fn benchy_gcode_contains_top_and_bottom_surface_evidence() {
 /// equal. Imbalanced retract/unretract counts indicate a G-code
 /// serialization bug where a filament transition is leaking across
 /// feature boundaries.
+/// Default Gcode-mode retract sequences: `G1 E-{len} F{speed}` lines
+/// must be present at least once.
 #[test]
-fn benchy_gcode_contains_balanced_retract_and_unretract_pairs() {
-    let model = fixture_stl();
-    let modules = core_modules_dir();
-    assert_path_exists(&model, "Benchy STL");
-    assert_path_exists(&modules, "core-modules directory");
-
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let out_path = tmp.path().join("retract_evidence.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, None);
-
-    let stderr = String::from_utf8_lossy(&result.stderr);
+fn benchy_default_emits_retract_commands() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host must succeed for retract/unretract feature-evidence. \
          Stderr:\n{stderr}"
     );
-    assert!(out_path.exists(), "--output file must be written");
+    let gcode = outcome.gcode.as_str();
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+    let retract_count = gcode.lines().filter(|l| l.starts_with("G1 E-")).count();
+    assert!(
+        retract_count > 0,
+        "feature-evidence: no `G1 E-<len> F<speed>` retract commands found \
+         under default (Gcode-mode) config. The live path may not be emitting \
+         retract sequences. G-code preview:\n{}",
+        preview(gcode, 30)
+    );
+}
 
-    // Default retract_mode is `Gcode`, so the emitter writes:
-    //   retract   = `G1 E-{length} F{speed}`
-    //   unretract = `G1 E{length} F{speed}`     (positive E, with F field)
-    // Firmware-mode opcodes (`G10` / `G11`) MUST NOT appear under the
-    // default config (NC-1 zero-bleed invariant).
+/// Default Gcode-mode unretract sequences: `G1 E{positive} F{speed}`
+/// lines must be present at least once.
+#[test]
+fn benchy_default_emits_unretract_commands() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    assert!(outcome.success, "slicer-host must succeed");
+    let gcode = outcome.gcode.as_str();
+
+    let unretract_count = gcode
+        .lines()
+        .filter(|l| {
+            let t = l.trim_start();
+            t.starts_with("G1 E") && !t.starts_with("G1 E-") && t.contains(" F")
+        })
+        .count();
+    assert!(
+        unretract_count > 0,
+        "feature-evidence: no `G1 E<len> F<speed>` unretract commands found \
+         under default (Gcode-mode) config. The live path may not be emitting \
+         unretract sequences after material transitions. G-code preview:\n{}",
+        preview(gcode, 30)
+    );
+}
+
+/// Retract and unretract counts must be exactly equal under the
+/// default Gcode-mode config — an imbalance means a filament
+/// transition is leaking across feature boundaries.
+#[test]
+fn benchy_default_retract_unretract_counts_are_equal() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    assert!(outcome.success, "slicer-host must succeed");
+    let gcode = outcome.gcode.as_str();
+
     let retract_count = gcode.lines().filter(|l| l.starts_with("G1 E-")).count();
     let unretract_count = gcode
         .lines()
@@ -1238,28 +1236,6 @@ fn benchy_gcode_contains_balanced_retract_and_unretract_pairs() {
             t.starts_with("G1 E") && !t.starts_with("G1 E-") && t.contains(" F")
         })
         .count();
-    let firmware_opcode_count = gcode
-        .lines()
-        .filter(|l| {
-            let t = l.trim();
-            t == "G10" || t == "G11"
-        })
-        .count();
-
-    assert!(
-        retract_count > 0,
-        "feature-evidence: no `G1 E-<len> F<speed>` retract commands found \
-         under default (Gcode-mode) config. The live path may not be emitting \
-         retract sequences. G-code preview:\n{}",
-        preview(&gcode, 30)
-    );
-    assert!(
-        unretract_count > 0,
-        "feature-evidence: no `G1 E<len> F<speed>` unretract commands found \
-         under default (Gcode-mode) config. The live path may not be emitting \
-         unretract sequences after material transitions. G-code preview:\n{}",
-        preview(&gcode, 30)
-    );
     assert_eq!(
         retract_count,
         unretract_count,
@@ -1268,8 +1244,26 @@ fn benchy_gcode_contains_balanced_retract_and_unretract_pairs() {
          G-code preview:\n{}",
         retract_count,
         unretract_count,
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
+}
+
+/// NC-1 zero-bleed invariant: firmware-mode opcodes (`G10` / `G11`)
+/// MUST NOT appear under the default Gcode-mode config.
+#[test]
+fn benchy_default_does_not_emit_firmware_retraction_opcodes() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    assert!(outcome.success, "slicer-host must succeed");
+    let gcode = outcome.gcode.as_str();
+
+    let firmware_opcode_count = gcode
+        .lines()
+        .filter(|l| {
+            let t = l.trim();
+            t == "G10" || t == "G11"
+        })
+        .count();
     assert_eq!(
         firmware_opcode_count,
         0,
@@ -1277,7 +1271,7 @@ fn benchy_gcode_contains_balanced_retract_and_unretract_pairs() {
          lines under default Gcode-mode config. Firmware retract opcodes must \
          NOT appear unless retract_mode = Firmware is configured. G-code preview:\n{}",
         firmware_opcode_count,
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 }
 
@@ -1308,18 +1302,22 @@ fn benchy_gcode_firmware_retraction_emits_balanced_g10_g11() {
     std::fs::write(&config_path, "{\n  \"retract_mode\": \"firmware\"\n}\n")
         .expect("write firmware-retract config");
 
-    let out_path = tmp.path().join("retract_firmware_evidence.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, Some(&config_path));
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        Some(&config_path),
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host must succeed for firmware-retract feature-evidence. \
          Stderr:\n{stderr}"
     );
-    assert!(out_path.exists(), "--output file must be written");
+    assert!(outcome.output_written, "--output file must be written");
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+    let gcode = outcome.gcode.as_str();
 
     // Firmware-mode opcodes: bare `G10` and `G11` lines (no inline-E).
     let count_g10 = gcode.lines().filter(|l| l.trim() == "G10").count();
@@ -1332,7 +1330,7 @@ fn benchy_gcode_firmware_retraction_emits_balanced_g10_g11() {
          retract_mode = firmware config. The live path may not be propagating \
          `RetractMode::Firmware` from path-optimization-default's ConfigView \
          through to the G-code emitter. G-code preview:\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
     assert!(
         count_g11 > 0,
@@ -1340,7 +1338,7 @@ fn benchy_gcode_firmware_retraction_emits_balanced_g10_g11() {
          retract_mode = firmware config. Retract was emitted but unretract \
          is missing — the unretract emit path may still be falling back to \
          Gcode mode. G-code preview:\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
     assert_eq!(
         count_g10,
@@ -1350,7 +1348,7 @@ fn benchy_gcode_firmware_retraction_emits_balanced_g10_g11() {
          retract_mode = firmware. G-code preview:\n{}",
         count_g10,
         count_g11,
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
     assert_eq!(
         inline_retract_count,
@@ -1360,7 +1358,7 @@ fn benchy_gcode_firmware_retraction_emits_balanced_g10_g11() {
          must NOT appear when firmware mode is active; all retracts must be \
          delegated to bare `G10` opcodes. G-code preview:\n{}",
         inline_retract_count,
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 }
 
@@ -1384,18 +1382,21 @@ fn benchy_live_path_contains_resolved_seam_evidence_before_emit() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let out_path = tmp.path().join("seam_evidence_live_path.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, None);
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host must succeed for live-path seam-evidence gate. Stderr:\n{stderr}"
     );
-    assert!(out_path.exists(), "--output file must be written");
+    assert!(outcome.output_written, "--output file must be written");
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output");
+    let gcode = outcome.gcode.as_str();
 
     // Live-path seam evidence: the G-code emitter applies seam by
     // rotating the wall loop so it starts at the seam vertex. This
@@ -1461,7 +1462,7 @@ fn benchy_live_path_contains_resolved_seam_evidence_before_emit() {
         "feature-evidence: live path shows no resolved-seam influence on \
          outer wall start points. Expected at least one outer-wall G1 extrusion \
          starting at a non-origin (seam-rotated) position. G-code preview:\n{}",
-        preview(&gcode, 50)
+        preview(gcode, 50)
     );
 }
 
@@ -1488,17 +1489,19 @@ fn benchy_feature_evidence_failures_name_the_missing_family() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let modules_filtered = filtered_module_dir_for_tree_support(&tmp);
     let config = repo_root().join("resources/test_config/benchy-tree-support.json");
     assert_path_exists(&config, "benchy-tree-support.json config");
 
     // Run a support-enabled slice and check failure message quality.
-    let out_path = tmp.path().join("feature_evidence_fail_msg.gcode");
-    let result = run_slicer_host(&model, &modules_filtered, &out_path, Some(&config));
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+        Some(&config),
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let stderr = outcome.stderr.as_str();
 
-    if !result.status.success() {
+    if !outcome.success {
         // Pipeline failed — verify stderr names the missing family.
         // Accept any stderr that contains one of the known feature-family
         // keywords in an actionable context.
@@ -1515,7 +1518,7 @@ fn benchy_feature_evidence_failures_name_the_missing_family() {
         );
     } else {
         // Pipeline succeeded — check the G-code for missing features.
-        let gcode = std::fs::read_to_string(&out_path).expect("read output");
+        let gcode = outcome.gcode.as_str();
 
         // Check support family.
         let has_support = gcode
@@ -1563,7 +1566,7 @@ fn benchy_feature_evidence_failures_name_the_missing_family() {
                 false,
                 "missing: support — G-code lacks ;TYPE:Support or has no \
                  extrusion after the support marker. G-code preview:\n{}",
-                preview(&gcode, 30)
+                preview(gcode, 30)
             );
         }
         if top_missing {
@@ -1571,7 +1574,7 @@ fn benchy_feature_evidence_failures_name_the_missing_family() {
                 false,
                 "missing: top_surface — G-code lacks ;TYPE:Top surface marker. \
                  G-code preview:\n{}",
-                preview(&gcode, 30)
+                preview(gcode, 30)
             );
         }
         if bottom_missing {
@@ -1579,7 +1582,7 @@ fn benchy_feature_evidence_failures_name_the_missing_family() {
                 false,
                 "missing: bottom_surface — G-code lacks ;TYPE:Bottom surface marker. \
                  G-code preview:\n{}",
-                preview(&gcode, 30)
+                preview(gcode, 30)
             );
         }
         if retract_missing {
@@ -1590,7 +1593,7 @@ fn benchy_feature_evidence_failures_name_the_missing_family() {
                  G-code preview:\n{}",
                 retract_count,
                 unretract_count,
-                preview(&gcode, 30)
+                preview(gcode, 30)
             );
         }
     }
@@ -1801,18 +1804,22 @@ fn benchy_multi_layer_top_bottom_evidence() {
     )
     .expect("write multi-layer shell config");
 
-    let out_path = tmp.path().join("multi_layer_evidence.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, Some(&config_path));
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        Some(&config_path),
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host must succeed for multi-layer top/bottom evidence gate. \
          Stderr:\n{stderr}"
     );
-    assert!(out_path.exists(), "--output file must be written");
+    assert!(outcome.output_written, "--output file must be written");
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output gcode");
+    let gcode = outcome.gcode.as_str();
 
     let top_surface_blocks = gcode
         .lines()
@@ -1828,14 +1835,14 @@ fn benchy_multi_layer_top_bottom_evidence() {
         "packet-35 evidence: expected at least 4 `;TYPE:Top surface` blocks with \
          top_shell_layers=4, found {}. G-code preview:\n{}",
         top_surface_blocks,
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
     assert!(
         bottom_surface_blocks >= 4,
         "packet-35 evidence: expected at least 4 `;TYPE:Bottom surface` blocks with \
          bottom_shell_layers=4, found {}. G-code preview:\n{}",
         bottom_surface_blocks,
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 }
 
@@ -1865,18 +1872,22 @@ fn benchy_user_top_shell_layers_propagates_through_binary() {
         "{\n  \"top_shell_layers\": 1,\n  \"bottom_shell_layers\": 1\n}\n",
     )
     .expect("write n1 config");
-    let out1_path = tmp.path().join("propagation_n1.gcode");
-    let result1 = run_slicer_host(&model, &modules, &out1_path, Some(&config1_path));
-    let stderr1 = String::from_utf8_lossy(&result1.stderr);
+    let cached1 = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        Some(&config1_path),
+    );
+    let outcome1 = common::slicer_cache::expect_outcome(&cached1);
+    let stderr1 = outcome1.stderr.as_str();
     assert!(
-        result1.status.success(),
+        outcome1.success,
         "slicer-host must succeed for N=1 run. Stderr:\n{stderr1}"
     );
     assert!(
-        out1_path.exists(),
+        outcome1.output_written,
         "--output file must be written for N=1 run"
     );
-    let gcode1 = std::fs::read_to_string(&out1_path).expect("read N=1 gcode");
+    let gcode1 = outcome1.gcode.as_str();
     let top1 = gcode1.matches(";TYPE:Top surface").count();
     let bot1 = gcode1.matches(";TYPE:Bottom surface").count();
 
@@ -1887,18 +1898,22 @@ fn benchy_user_top_shell_layers_propagates_through_binary() {
         "{\n  \"top_shell_layers\": 4,\n  \"bottom_shell_layers\": 4\n}\n",
     )
     .expect("write n4 config");
-    let out4_path = tmp.path().join("propagation_n4.gcode");
-    let result4 = run_slicer_host(&model, &modules, &out4_path, Some(&config4_path));
-    let stderr4 = String::from_utf8_lossy(&result4.stderr);
+    let cached4 = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        Some(&config4_path),
+    );
+    let outcome4 = common::slicer_cache::expect_outcome(&cached4);
+    let stderr4 = outcome4.stderr.as_str();
     assert!(
-        result4.status.success(),
+        outcome4.success,
         "slicer-host must succeed for N=4 run. Stderr:\n{stderr4}"
     );
     assert!(
-        out4_path.exists(),
+        outcome4.output_written,
         "--output file must be written for N=4 run"
     );
-    let gcode4 = std::fs::read_to_string(&out4_path).expect("read N=4 gcode");
+    let gcode4 = outcome4.gcode.as_str();
     let top4 = gcode4.matches(";TYPE:Top surface").count();
     let bot4 = gcode4.matches(";TYPE:Bottom surface").count();
 
@@ -1934,17 +1949,21 @@ fn cli_rejects_top_shell_layers_string() {
     std::fs::write(&bad_config_path, "{\n  \"top_shell_layers\": \"four\"\n}\n")
         .expect("write bad config");
 
-    let out_path = tmp.path().join("should_not_exist.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, Some(&bad_config_path));
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        Some(&bad_config_path),
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let stderr = outcome.stderr.as_str();
 
     assert!(
-        !result.status.success(),
+        !outcome.success,
         "NC-2 FAILED: slicer-host must exit non-zero for a type-mismatched config. \
          Stderr:\n{stderr}"
     );
     assert!(
-        !out_path.exists(),
+        !outcome.output_written,
         "NC-2 FAILED: --output file must NOT be written when config resolution fails. \
          Stderr:\n{stderr}"
     );
@@ -1972,18 +1991,21 @@ fn benchy_gcode_contains_exact_bridge_infill_marker() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let out_path = tmp.path().join("bridge_evidence.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, None);
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host must succeed for bridge infill evidence gate. Stderr:\n{stderr}"
     );
-    assert!(out_path.exists(), "--output file must be written");
+    assert!(outcome.output_written, "--output file must be written");
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output gcode");
+    let gcode = outcome.gcode.as_str();
 
     let has_bridge = gcode.lines().any(|l| l.trim() == ";TYPE:Bridge infill");
     assert!(
@@ -1991,61 +2013,73 @@ fn benchy_gcode_contains_exact_bridge_infill_marker() {
         "AC-11 FAILED: G-code must contain a line exactly equal to `;TYPE:Bridge infill`. \
          Bridge detection or rectilinear-infill emission may not be wired. \
          G-code preview:\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 }
 
 /// AC (packet 37): default rectilinear holds all four claims — Benchy G-code
 /// must contain all four role-family markers: Top surface, Bottom surface,
 /// Bridge infill, Sparse infill.
+/// AC (packet 37): default rectilinear holds all four claims. Each
+/// role-family marker is asserted by its own split test so failures
+/// independently name the missing family.
 #[test]
-fn benchy_default_claims_emit_all_role_families() {
-    let model = fixture_stl();
-    let modules = core_modules_dir();
-    assert_path_exists(&model, "Benchy STL");
-    assert_path_exists(&modules, "core-modules directory");
-
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let out_path = tmp.path().join("all_role_families.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, None);
-
-    let stderr = String::from_utf8_lossy(&result.stderr);
-    assert!(
-        result.status.success(),
-        "slicer-host must succeed for role-families gate. Stderr:\n{stderr}"
-    );
-    assert!(out_path.exists(), "--output file must be written");
-
-    let gcode = std::fs::read_to_string(&out_path).expect("read output gcode");
-
+fn benchy_default_emits_top_surface_marker() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    assert!(outcome.success, "slicer-host must succeed");
+    let gcode = outcome.gcode.as_str();
     let has_top = gcode.lines().any(|l| l.trim() == ";TYPE:Top surface");
-    let has_bottom = gcode.lines().any(|l| l.trim() == ";TYPE:Bottom surface");
-    let has_bridge = gcode.lines().any(|l| l.trim() == ";TYPE:Bridge infill");
-    let has_sparse = gcode.lines().any(|l| l.trim() == ";TYPE:Sparse infill");
-
     assert!(
         has_top,
         "FILL-ROLE-AC-FC1 FAILED: G-code must contain `;TYPE:Top surface`. \
          G-code preview:\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
+}
+
+#[test]
+fn benchy_default_emits_bottom_surface_marker() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    assert!(outcome.success, "slicer-host must succeed");
+    let gcode = outcome.gcode.as_str();
+    let has_bottom = gcode.lines().any(|l| l.trim() == ";TYPE:Bottom surface");
     assert!(
         has_bottom,
         "FILL-ROLE-AC-FC2 FAILED: G-code must contain `;TYPE:Bottom surface`. \
          G-code preview:\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
+}
+
+#[test]
+fn benchy_default_emits_bridge_infill_marker() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    assert!(outcome.success, "slicer-host must succeed");
+    let gcode = outcome.gcode.as_str();
+    let has_bridge = gcode.lines().any(|l| l.trim() == ";TYPE:Bridge infill");
     assert!(
         has_bridge,
         "FILL-ROLE-AC-FC3 FAILED: G-code must contain `;TYPE:Bridge infill`. \
          G-code preview:\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
+}
+
+#[test]
+fn benchy_default_emits_sparse_infill_marker() {
+    let cached = mvp_default_outcome();
+    let outcome = common::slicer_cache::expect_outcome(&cached);
+    assert!(outcome.success, "slicer-host must succeed");
+    let gcode = outcome.gcode.as_str();
+    let has_sparse = gcode.lines().any(|l| l.trim() == ";TYPE:Sparse infill");
     assert!(
         has_sparse,
         "FILL-ROLE-AC-FC4 FAILED: G-code must contain `;TYPE:Sparse infill`. \
          G-code preview:\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 }
 
@@ -2080,17 +2114,21 @@ fn benchy_gcode_contains_ironing_evidence() {
     )
     .expect("write ironing config");
 
-    let out_path = tmp.path().join("ironing_evidence.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, Some(&config_path));
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        Some(&config_path),
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "slicer-host must succeed for ironing evidence gate. Stderr:\n{stderr}"
     );
-    assert!(out_path.exists(), "--output file must be written");
+    assert!(outcome.output_written, "--output file must be written");
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output gcode");
+    let gcode = outcome.gcode.as_str();
 
     let has_top_surface = gcode.lines().any(|l| l.contains(";TYPE:Top surface"));
     assert!(
@@ -2098,7 +2136,7 @@ fn benchy_gcode_contains_ironing_evidence() {
         "AC-TSI-E2E FAILED: G-code must contain at least one `;TYPE:Top surface` block \
          (the ironing pass depends on top-surface detection being active). \
          G-code preview:\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 
     let has_ironing = gcode.lines().any(|l| l.trim() == ";TYPE:Ironing");
@@ -2108,7 +2146,7 @@ fn benchy_gcode_contains_ironing_evidence() {
          when slicing Benchy with ironing: true. The top-surface-ironing module may not \
          be built, discovered, or emitting ironing paths. \
          G-code preview:\n{}",
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 }
 
@@ -2140,17 +2178,21 @@ fn benchy_top_surface_precedes_ironing() {
     )
     .expect("write ironing config");
 
-    let out_path = tmp.path().join("ordering_check.gcode");
-    let result = run_slicer_host(&model, &modules, &out_path, Some(&config_path));
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        Some(&config_path),
+    );
+    let outcome = common::slicer_cache::expect_outcome(&cached);
 
-    let stderr = String::from_utf8_lossy(&result.stderr);
+    let stderr = outcome.stderr.as_str();
     assert!(
-        result.status.success(),
+        outcome.success,
         "AC-6 FAILED: slicer-host must succeed. Stderr:\n{stderr}"
     );
-    assert!(out_path.exists(), "--output file must be written");
+    assert!(outcome.output_written, "--output file must be written");
 
-    let gcode = std::fs::read_to_string(&out_path).expect("read output gcode");
+    let gcode = outcome.gcode.as_str();
 
     // Split the G-code into per-layer chunks.  A new layer begins at any line
     // that starts with ";LAYER_CHANGE" or ";LAYER:" (either convention).
@@ -2222,7 +2264,7 @@ fn benchy_top_surface_precedes_ironing() {
          Total layers detected: {}. \
          G-code preview:\n{}",
         total_layers,
-        preview(&gcode, 30)
+        preview(gcode, 30)
     );
 
     if let Some(msg) = violation {

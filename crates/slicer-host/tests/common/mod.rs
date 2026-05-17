@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+pub mod slicer_cache;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 

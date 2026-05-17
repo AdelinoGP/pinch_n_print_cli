@@ -30,8 +30,9 @@
 
 #![allow(missing_docs)]
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+mod common;
+
+use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -47,29 +48,6 @@ fn painted_benchy_3mf() -> PathBuf {
 
 fn unpainted_benchy_stl() -> PathBuf {
     repo_root().join("resources/benchy.stl")
-}
-
-fn core_modules_dir() -> PathBuf {
-    repo_root().join("modules/core-modules")
-}
-
-fn run_slicer_host(model: &Path, module_dir: &Path, output: &Path) -> std::process::Output {
-    let bin = env!("CARGO_BIN_EXE_slicer-host");
-    let dummy_module = model;
-    Command::new(bin)
-        .args([
-            "run",
-            "--module",
-            dummy_module.to_str().unwrap(),
-            "--model",
-            model.to_str().unwrap(),
-            "--module-dir",
-            module_dir.to_str().unwrap(),
-            "--output",
-            output.to_str().unwrap(),
-        ])
-        .output()
-        .expect("slicer-host binary should execute")
 }
 
 /// Strip volatile content (timestamps, run-ids, etc.) from emitted
@@ -135,30 +113,32 @@ fn painted_benchy_3mf_reaches_paint_segmentation() {
         unpainted.display()
     );
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let modules = core_modules_dir();
-    let painted_out = tmp.path().join("painted.gcode");
-    let unpainted_out = tmp.path().join("unpainted.gcode");
-
-    let painted_status = run_slicer_host(&painted, &modules, &painted_out);
-    assert!(
-        painted_status.status.success(),
-        "slicer-host must succeed on painted 3MF; got status {:?}\nstderr:\n{}",
-        painted_status.status,
-        String::from_utf8_lossy(&painted_status.stderr)
+    let painted_cached = common::slicer_cache::cached_run(
+        &painted,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
     );
-    let unpainted_status = run_slicer_host(&unpainted, &modules, &unpainted_out);
+    let painted_outcome = common::slicer_cache::expect_outcome(&painted_cached);
     assert!(
-        unpainted_status.status.success(),
-        "slicer-host must succeed on unpainted STL; got status {:?}\nstderr:\n{}",
-        unpainted_status.status,
-        String::from_utf8_lossy(&unpainted_status.stderr)
+        painted_outcome.success,
+        "slicer-host must succeed on painted 3MF; exit_code={:?}\nstderr:\n{}",
+        painted_outcome.exit_code, painted_outcome.stderr
     );
 
-    let painted_gcode =
-        normalize_gcode(&std::fs::read_to_string(&painted_out).expect("read painted gcode"));
-    let unpainted_gcode =
-        normalize_gcode(&std::fs::read_to_string(&unpainted_out).expect("read unpainted gcode"));
+    let unpainted_cached = common::slicer_cache::cached_run(
+        &unpainted,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    );
+    let unpainted_outcome = common::slicer_cache::expect_outcome(&unpainted_cached);
+    assert!(
+        unpainted_outcome.success,
+        "slicer-host must succeed on unpainted STL; exit_code={:?}\nstderr:\n{}",
+        unpainted_outcome.exit_code, unpainted_outcome.stderr
+    );
+
+    let painted_gcode = normalize_gcode(&painted_outcome.gcode);
+    let unpainted_gcode = normalize_gcode(&unpainted_outcome.gcode);
 
     assert!(
         !painted_gcode.is_empty() && !unpainted_gcode.is_empty(),

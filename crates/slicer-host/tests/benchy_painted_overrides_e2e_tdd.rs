@@ -31,8 +31,9 @@
 
 #![allow(missing_docs)]
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+mod common;
+
+use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -44,36 +45,6 @@ fn repo_root() -> PathBuf {
 
 fn painted_benchy_3mf() -> PathBuf {
     repo_root().join("resources/benchy_painted.3mf")
-}
-
-fn core_modules_dir() -> PathBuf {
-    repo_root().join("modules/core-modules")
-}
-
-fn run_slicer_host_with_config(
-    model: &Path,
-    module_dir: &Path,
-    output: &Path,
-    config: &Path,
-) -> std::process::Output {
-    let bin = env!("CARGO_BIN_EXE_slicer-host");
-    let dummy_module = model;
-    Command::new(bin)
-        .args([
-            "run",
-            "--module",
-            dummy_module.to_str().unwrap(),
-            "--model",
-            model.to_str().unwrap(),
-            "--module-dir",
-            module_dir.to_str().unwrap(),
-            "--output",
-            output.to_str().unwrap(),
-            "--config",
-            config.to_str().unwrap(),
-        ])
-        .output()
-        .expect("slicer-host binary should execute")
 }
 
 /// Count OrcaSlicer-style perimeter loop markers in a GCode file
@@ -139,7 +110,6 @@ fn paint_config_override_visibly_differs_gcode() {
     );
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let modules = core_modules_dir();
 
     // Baseline config: globally 2 perimeters.
     let baseline_cfg_path = tmp.path().join("baseline.json");
@@ -163,24 +133,32 @@ fn paint_config_override_visibly_differs_gcode() {
     )
     .expect("write override config");
 
-    let baseline_out = tmp.path().join("baseline.gcode");
-    let override_out = tmp.path().join("override.gcode");
-
-    let s1 = run_slicer_host_with_config(&painted, &modules, &baseline_out, &baseline_cfg_path);
+    let baseline_cached = common::slicer_cache::cached_run(
+        &painted,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        Some(&baseline_cfg_path),
+    );
+    let baseline_outcome = common::slicer_cache::expect_outcome(&baseline_cached);
     assert!(
-        s1.status.success(),
+        baseline_outcome.success,
         "baseline slice must succeed; stderr:\n{}",
-        String::from_utf8_lossy(&s1.stderr)
-    );
-    let s2 = run_slicer_host_with_config(&painted, &modules, &override_out, &override_cfg_path);
-    assert!(
-        s2.status.success(),
-        "override slice must succeed (paint_config namespace must parse cleanly); stderr:\n{}",
-        String::from_utf8_lossy(&s2.stderr)
+        baseline_outcome.stderr
     );
 
-    let baseline_gcode = std::fs::read_to_string(&baseline_out).expect("read baseline gcode");
-    let override_gcode = std::fs::read_to_string(&override_out).expect("read override gcode");
+    let override_cached = common::slicer_cache::cached_run(
+        &painted,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        Some(&override_cfg_path),
+    );
+    let override_outcome = common::slicer_cache::expect_outcome(&override_cached);
+    assert!(
+        override_outcome.success,
+        "override slice must succeed (paint_config namespace must parse cleanly); stderr:\n{}",
+        override_outcome.stderr
+    );
+
+    let baseline_gcode = baseline_outcome.gcode.as_str();
+    let override_gcode = override_outcome.gcode.as_str();
 
     // Z-band corrected (packet 51→46):
     //   (a) The 3MF loader now applies the <build>/<item> transform
@@ -191,8 +169,8 @@ fn paint_config_override_visibly_differs_gcode() {
     //       (Packet 51 closed). Regions carrying fuzzy_skin paint semantic
     //       receive wall_count=5 instead of the global wall_count=2.
     let (z_lo, z_hi) = (40.0_f32, 48.0_f32);
-    let baseline_loops = count_perimeter_markers_in_z_band(&baseline_gcode, z_lo, z_hi);
-    let override_loops = count_perimeter_markers_in_z_band(&override_gcode, z_lo, z_hi);
+    let baseline_loops = count_perimeter_markers_in_z_band(baseline_gcode, z_lo, z_hi);
+    let override_loops = count_perimeter_markers_in_z_band(override_gcode, z_lo, z_hi);
 
     // Today both numbers are equal (paint_config is silently dropped
     // into `cfg.extensions` and never consulted by region_mapping).
