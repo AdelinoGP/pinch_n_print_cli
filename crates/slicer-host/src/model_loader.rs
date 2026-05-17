@@ -439,7 +439,14 @@ fn apply_transform_to_paint_data(pd: &mut FacetPaintData, m: &[f64; 16]) {
                     apply_transform_to_vertex(&tri[2], m),
                 ];
             }
+            // f32 rounding during the matrix multiply can collapse two
+            // originally-distinct vertices onto the same coordinate. Drop
+            // such triangles so downstream consumers (which assert
+            // non-degeneracy) don't crash on them.
+            stroke.triangles.retain(|tri| !is_degenerate_triangle(tri));
         }
+        // Drop strokes that became empty (all triangles were degenerate).
+        layer.strokes.retain(|s| !s.triangles.is_empty());
     }
 }
 
@@ -1503,6 +1510,15 @@ fn walk_triangle_selector_strokes(
     Ok(())
 }
 
+/// Returns `true` when any two of the three vertices coincide — emitting
+/// such a stroke would crash downstream consumers (model_loader_tdd asserts
+/// `a != b && b != c && a != c`). Coincident vertices arise from
+/// `TriangleSelector` hex sequences that subdivide a triangle in ways that
+/// place two midpoint vertices at the same coordinate.
+fn is_degenerate_triangle(tri: &[Point3; 3]) -> bool {
+    tri[0] == tri[1] || tri[1] == tri[2] || tri[0] == tri[2]
+}
+
 /// Decode a TriangleSelector hex-encoded state string into leaf sub-triangles and their states.
 pub fn decode_paint_hex_strokes(
     hex: &str,
@@ -1517,6 +1533,11 @@ pub fn decode_paint_hex_strokes(
     let mut pos = 0;
     let mut out = Vec::new();
     walk_triangle_selector_strokes(&nibbles, &mut pos, verts, 0, &mut out, byte_offset, 0)?;
+    // Drop degenerate sub-triangles (two coincident vertices) — they arise
+    // from `TriangleSelector` hex sequences that subdivide at midpoints which
+    // collapse onto an existing vertex within float precision. Downstream
+    // consumers assert non-degeneracy and would crash on them.
+    out.retain(|(tri, _)| !is_degenerate_triangle(tri));
     Ok(out)
 }
 
