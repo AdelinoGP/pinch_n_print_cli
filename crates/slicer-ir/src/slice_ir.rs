@@ -66,7 +66,7 @@ pub fn units_to_mm(units: i64) -> f32 {
 /// 2D point using scaled integer coordinates
 ///
 /// Coordinate system: 1 unit = 100 nm = 10^-4 mm
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Point2 {
     /// X coordinate in scaled integer units (1 unit = 100 nm)
     pub x: i64,
@@ -90,7 +90,7 @@ impl Point2 {
 }
 
 /// 3D point using floating-point millimeter coordinates
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Point3 {
     /// X coordinate in millimeters
     pub x: f32,
@@ -101,7 +101,7 @@ pub struct Point3 {
 }
 
 /// 3D bounding box
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct BoundingBox3 {
     /// Minimum corner of the bounding box
     pub min: Point3,
@@ -110,14 +110,14 @@ pub struct BoundingBox3 {
 }
 
 /// 3D transformation (column-major 4x4 matrix)
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Transform3d {
     /// 4x4 transformation matrix in column-major order
     pub matrix: [f64; 16],
 }
 
 /// Indexed triangle set (vertices + indices)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct IndexedTriangleSet {
     /// List of 3D vertices
     pub vertices: Vec<Point3>,
@@ -126,7 +126,7 @@ pub struct IndexedTriangleSet {
 }
 
 /// Semantic versioning
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SemVer {
     /// Major version number
     pub major: u32,
@@ -163,7 +163,7 @@ pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
 // ============================================================================
 
 /// Raw user config (not yet resolved)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ObjectConfig {
     /// Configuration data key-value map
     pub data: HashMap<String, ConfigValue>,
@@ -221,14 +221,14 @@ pub struct PaintLayer {
 }
 
 /// All paint layers on one object
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FacetPaintData {
     /// List of paint layers on this object
     pub layers: Vec<PaintLayer>,
 }
 
 /// Config delta (only explicitly set fields)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ConfigDelta {
     /// Configuration fields that are explicitly set
     pub fields: HashMap<ConfigKey, ConfigValue>,
@@ -378,7 +378,7 @@ pub struct BridgeRegion {
 }
 
 /// Overhang region
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct OverhangRegion {
     /// Unique identifier for the overhang region
     pub id: OverhangRegionId,
@@ -391,7 +391,7 @@ pub struct OverhangRegion {
 }
 
 /// Object surface data
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ObjectSurfaceData {
     /// Facet classifications for each triangle
     pub facet_classes: Vec<FacetClass>,
@@ -605,7 +605,7 @@ impl Default for ConfigView {
 }
 
 /// Non-planar shell reference
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct NonPlanarShellRef {
     /// ID of the surface group this shell belongs to
     pub surface_group_id: SurfaceGroupId,
@@ -766,7 +766,7 @@ pub struct GlobalLayer {
 }
 
 /// Object layer reference
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ObjectLayerRef {
     /// Local layer index within the object
     pub local_layer_index: u32,
@@ -891,7 +891,7 @@ pub struct SupportPlanIR {
 // ============================================================================
 
 /// Key uniquely identifying one support geometry entry.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SupportGeometryKey {
     /// u32::MAX sentinel = intermediate model-resolution layer.
     pub global_support_layer_index: u32,
@@ -932,7 +932,7 @@ pub struct SemanticRegion {
 }
 
 /// Layer paint map
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LayerPaintMap {
     /// Global layer index
     pub global_layer_index: u32,
@@ -972,7 +972,7 @@ impl PaintRegionIR {
 /// reports `(semantic, value)` for a specific `(object_id, facet_index)`.
 /// Semantic and value are free-form strings at this layer — the consumer
 /// decides how to parse `value` (tool index, boolean flag, named material).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FacetPaintMark {
     /// Object the mark applies to.
     pub object_id: ObjectId,
@@ -1004,7 +1004,7 @@ pub struct MeshSegmentationIR {
 // ============================================================================
 
 /// Region key (unique identifier for a region in a layer)
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RegionKey {
     /// Global layer index
     pub global_layer_index: u32,
@@ -1015,7 +1015,7 @@ pub struct RegionKey {
 }
 
 /// Module invocation
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ModuleInvocation {
     /// ID of the module to invoke
     pub module_id: ModuleId,
@@ -1024,7 +1024,7 @@ pub struct ModuleInvocation {
 }
 
 /// Region plan
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RegionPlan {
     /// Resolved config for the region
     pub config: ResolvedConfig,
@@ -1048,14 +1048,14 @@ pub struct RegionMapIR {
 // ============================================================================
 
 /// Polygon
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Polygon {
     /// List of points defining the polygon
     pub points: Vec<Point2>,
 }
 
 /// Polygon with holes
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ExPolygon {
     /// Outer contour (CCW)
     pub contour: Polygon,
@@ -1126,18 +1126,20 @@ impl Default for SliceIR {
 // ============================================================================
 
 /// Wall generator type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WallGenerator {
     /// Classic wall generator
+    #[default]
     Classic,
     /// Arachne variable-width wall generator
     Arachne,
 }
 
 /// Infill type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InfillType {
     /// Grid infill
+    #[default]
     Grid,
     /// Triangles infill
     Triangles,
@@ -1154,9 +1156,10 @@ pub enum InfillType {
 }
 
 /// Support type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SupportType {
     /// Traditional support generation
+    #[default]
     Traditional,
     /// Tree support generation
     Tree,
@@ -1190,7 +1193,7 @@ pub enum LoopType {
 }
 
 /// Wall feature flags
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct WallFeatureFlags {
     /// Tool override for this segment
     pub tool_index: Option<u32>,
@@ -1207,14 +1210,14 @@ pub struct WallFeatureFlags {
 }
 
 /// Width profile (for variable-width extrusion)
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct WidthProfile {
     /// One width per vertex in path.points
     pub widths: Vec<f32>,
 }
 
 /// Point with width (for extrusion paths)
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Point3WithWidth {
     /// X coordinate in millimeters
     pub x: f32,
@@ -1342,7 +1345,7 @@ pub struct SeamCandidate {
 }
 
 /// Seam position
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SeamPosition {
     /// Position of the seam
     pub point: Point3WithWidth,
@@ -1383,7 +1386,7 @@ pub struct PerimeterIR {
 // ============================================================================
 
 /// Infill region
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct InfillRegion {
     /// Object ID this region belongs to
     pub object_id: ObjectId,
@@ -1434,7 +1437,7 @@ pub struct SupportIR {
 // ============================================================================
 
 /// Tool change
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ToolChange {
     /// Index of the entity after which the tool change occurs
     pub after_entity_index: u32,
@@ -1445,7 +1448,7 @@ pub struct ToolChange {
 }
 
 /// Z hop
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ZHop {
     /// Index of the entity after which the Z hop occurs
     pub after_entity_index: u32,
@@ -1454,7 +1457,7 @@ pub struct ZHop {
 }
 
 /// Retract or unretract decision from `Layer::PathOptimization`, keyed by entity anchor.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TravelRetract {
     /// Index of the entity after which this retract/unretract is anchored.
     pub after_entity_index: u32,
@@ -1472,7 +1475,7 @@ pub struct TravelRetract {
 }
 
 /// Travel move destination from `Layer::PathOptimization`, keyed by entity anchor.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct TravelMove {
     /// Stable identifier of the entity in `LayerCollectionIR.ordered_entities` after which this
     /// travel is emitted. Resolved at emit time via a per-layer `HashMap<u64, usize>` lookup.
@@ -1633,7 +1636,7 @@ pub enum GCodeCommand {
 }
 
 /// Print metadata
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PrintMetadata {
     /// Estimated print time in seconds
     pub estimated_print_time_s: u32,

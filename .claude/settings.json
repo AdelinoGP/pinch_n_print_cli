@@ -7,6 +7,12 @@
     },
     "transport": "stdio"
   },
+  "permissions": {
+    "deny": [
+      "Bash(git push)",
+      "Bash(git push *)"
+    ]
+  },
   "hooks": {
     "PostToolUse": [
       {
