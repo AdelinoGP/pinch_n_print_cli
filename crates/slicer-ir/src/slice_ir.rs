@@ -112,6 +112,11 @@ pub struct BoundingBox3 {
 }
 
 /// 3D transformation (column-major 4x4 matrix)
+///
+/// **Hazard:** `Transform3d::default()` is an all-zeros matrix, not the
+/// identity — multiplying by it collapses every point to the origin. Call
+/// sites that need a real transform must override `matrix` explicitly. See
+/// `docs/specs/default-builder-migration.md` §11 Q2.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Transform3d {
     /// 4x4 transformation matrix in column-major order
@@ -168,42 +173,48 @@ pub const CURRENT_MESH_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `LayerPlanIR`.
+/// Schema version for `LayerPlanIR`. Initial 1.0.0 — no bumps recorded in
+/// `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_LAYER_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
     patch: 0,
 };
 
-/// Schema version for `SeamPlanIR`.
+/// Schema version for `SeamPlanIR`. Initial 1.0.0 — no bumps recorded in
+/// `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
     patch: 0,
 };
 
-/// Schema version for `SupportPlanIR`.
+/// Schema version for `SupportPlanIR`. Initial 1.0.0 — no bumps recorded in
+/// `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
     patch: 0,
 };
 
-/// Schema version for `SupportGeometryIR`.
+/// Schema version for `SupportGeometryIR`. Initial 1.0.0 — no bumps recorded
+/// in `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
     patch: 0,
 };
 
-/// Schema version for `PaintRegionIR`.
+/// Schema version for `PaintRegionIR`. Initial 1.0.0 — no bumps recorded in
+/// `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_PAINT_REGION_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
     patch: 0,
 };
 
-/// Schema version for `MeshSegmentationIR`.
+/// Schema version for `MeshSegmentationIR`. Initial 1.0.0 — no bumps recorded
+/// in `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
@@ -218,35 +229,40 @@ pub const CURRENT_REGION_MAP_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `PerimeterIR`.
+/// Schema version for `PerimeterIR`. Initial 1.0.0 — no bumps recorded in
+/// `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_PERIMETER_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
     patch: 0,
 };
 
-/// Schema version for `InfillIR`.
+/// Schema version for `InfillIR`. Initial 1.0.0 — no bumps recorded in
+/// `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_INFILL_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
     patch: 0,
 };
 
-/// Schema version for `SupportIR`.
+/// Schema version for `SupportIR`. Initial 1.0.0 — no bumps recorded in
+/// `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_SUPPORT_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
     patch: 0,
 };
 
-/// Schema version for `LayerCollectionIR`.
+/// Schema version for `LayerCollectionIR`. Initial 1.0.0 — no bumps recorded
+/// in `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
     patch: 0,
 };
 
-/// Schema version for `GCodeIR`.
+/// Schema version for `GCodeIR`. Initial 1.0.0 — no bumps recorded in
+/// `docs/02_ir_schemas.md` as of TASK-200b.
 pub const CURRENT_GCODE_IR_SCHEMA_VERSION: SemVer = SemVer {
     major: 1,
     minor: 0,
