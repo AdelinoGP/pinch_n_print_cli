@@ -1305,6 +1305,47 @@ pub struct SlicePostprocessCollected {
 
 // ── Per-call execution context ──────────────────────────────────────────
 
+/// Tracks the guest's linear-memory growth across a single dispatch call.
+///
+/// Installed as the `Store`'s `ResourceLimiter` so wasmtime invokes
+/// [`memory_growing`](wasmtime::ResourceLimiter::memory_growing) on every
+/// `memory.grow` (and once at instantiation to size the initial memory).
+/// Components without a linear memory never trigger the callback, so both
+/// fields remain 0 — the report treats `(0, 0)` as "no sample".
+/// The dispatcher reads `current_bytes` / `peak_bytes` after the typed call
+/// returns and forwards them to the report's `on_module_end` hook.
+#[derive(Debug, Default)]
+pub struct MemTracker {
+    /// Linear-memory size in bytes as of the most recent grow notification.
+    pub current_bytes: u64,
+    /// Highwater mark observed across this dispatch call (in bytes).
+    pub peak_bytes: u64,
+}
+
+impl wasmtime::ResourceLimiter for MemTracker {
+    fn memory_growing(
+        &mut self,
+        _current: usize,
+        desired: usize,
+        _maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
+        self.current_bytes = desired as u64;
+        if self.current_bytes > self.peak_bytes {
+            self.peak_bytes = self.current_bytes;
+        }
+        Ok(true)
+    }
+
+    fn table_growing(
+        &mut self,
+        _current: usize,
+        _desired: usize,
+        _maximum: Option<usize>,
+    ) -> wasmtime::Result<bool> {
+        Ok(true)
+    }
+}
+
 /// Per-WASM-call execution context used as the `wasmtime::Store` data.
 ///
 /// Created fresh for each module invocation. Carries:
@@ -1452,6 +1493,10 @@ pub struct HostExecutionContext {
     /// (the WIT accessor returns the empty list, which the SDK convention
     /// treats as "holds all" — packet 36 / 12-rev1 behavior).
     pub held_claims_per_region: std::collections::HashMap<(String, String), Vec<String>>,
+
+    /// Linear-memory tracker, installed as the store's `ResourceLimiter`
+    /// to sample guest memory growth for the slicer report.
+    pub mem_tracker: MemTracker,
 }
 
 impl HostExecutionContext {
@@ -1496,6 +1541,7 @@ impl HostExecutionContext {
             catchup_z_bottom,
             mesh_ir,
             held_claims_per_region: std::collections::HashMap::new(),
+            mem_tracker: MemTracker::default(),
         }
     }
 

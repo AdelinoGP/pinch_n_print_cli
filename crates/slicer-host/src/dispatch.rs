@@ -9,10 +9,21 @@
 //! boundaries through `HostExecutionContext` and world-specific bindings
 //! (`LayerModule`, `PrepassModule`, `FinalizationModule`, `PostpassModule`).
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use wasmtime::component::Resource;
+
+thread_local! {
+    /// Per-worker-thread slot holding the wasm linear-memory sample
+    /// `(initial_bytes, peak_bytes)` from the most recent
+    /// [`WasmRuntimeDispatcher::dispatch_layer_call`] on this thread.
+    /// Read and cleared by `LayerStageRunner::last_wasm_mem_sample`.
+    /// Rayon workers are stable threads, so a thread-local is safe for the
+    /// per-layer parallel executor's `run_stage → on_module_end` sequence.
+    static LAST_WASM_MEM_SAMPLE: Cell<(u64, u64)> = const { Cell::new((0, 0)) };
+}
 
 use slicer_ir::{
     GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, RetractMode, SeamPosition, StageId,
@@ -402,6 +413,10 @@ impl WasmRuntimeDispatcher {
             Some(blackboard.mesh().clone()),
         );
         let mut store = wasmtime::Store::new(engine, ctx);
+        // Wire the per-call MemTracker as the store's ResourceLimiter so
+        // wasmtime notifies it on memory.grow (and on initial instantiation
+        // sizing). Sampled after the typed export returns.
+        store.limiter(|ctx| &mut ctx.mem_tracker);
 
         // Resolve fill-role held claims per region for this module call. The
         // resolver intersects the module's manifest `[claims].holds` with the
@@ -494,6 +509,10 @@ impl WasmRuntimeDispatcher {
                     reason: e.to_string(),
                 })?;
 
+        // Snapshot the post-instantiation memory size — captures the module's
+        // baseline linear-memory allocation before the export call runs.
+        let mem_initial_bytes = store.data().mem_tracker.current_bytes;
+
         // Call the stage-appropriate typed export.
         let call_result = self.call_layer_export(
             CallConfig {
@@ -525,6 +544,15 @@ impl WasmRuntimeDispatcher {
                 module_err.code, module_err.fatal, module_err.message
             ),
         })?;
+
+        // Sample the wasm linear-memory tracker before consuming the store.
+        // `mem_initial_bytes` captured the post-instantiation baseline above;
+        // `peak_bytes` is the highwater observed across both instantiation
+        // and the export call (always >= initial because wasm memory only
+        // grows). The pair (initial, peak) lets the report distinguish
+        // module static cost from per-call dynamic growth.
+        let mem_peak_bytes = store.data().mem_tracker.peak_bytes;
+        LAST_WASM_MEM_SAMPLE.with(|c| c.set((mem_initial_bytes, mem_peak_bytes)));
 
         // Extract the execution context with collected outputs.
         Ok(store.into_data())
@@ -812,6 +840,7 @@ impl WasmRuntimeDispatcher {
             Some(blackboard.mesh().clone()),
         );
         let mut store = wasmtime::Store::new(engine, ctx);
+        store.limiter(|ctx| &mut ctx.mem_tracker);
 
         let config_handle = store
             .data_mut()
@@ -1092,6 +1121,7 @@ impl WasmRuntimeDispatcher {
             Some(blackboard.mesh().clone()),
         );
         let mut store = wasmtime::Store::new(engine, ctx);
+        store.limiter(|ctx| &mut ctx.mem_tracker);
 
         let config_handle = store
             .data_mut()
@@ -1240,6 +1270,7 @@ impl WasmRuntimeDispatcher {
             Some(blackboard.mesh().clone()),
         );
         let mut store = wasmtime::Store::new(engine, ctx);
+        store.limiter(|ctx| &mut ctx.mem_tracker);
 
         let config_handle = match store
             .data_mut()
@@ -1408,6 +1439,7 @@ impl WasmRuntimeDispatcher {
             Some(blackboard.mesh().clone()),
         );
         let mut store = wasmtime::Store::new(engine, ctx);
+        store.limiter(|ctx| &mut ctx.mem_tracker);
 
         let config_handle = match store
             .data_mut()
@@ -2387,6 +2419,10 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
         }
 
         Ok((LayerStageOutput::Success, runtime_reads, runtime_writes))
+    }
+
+    fn last_wasm_mem_sample(&self) -> (u64, u64) {
+        LAST_WASM_MEM_SAMPLE.with(|c| c.replace((0, 0)))
     }
 }
 
