@@ -507,14 +507,10 @@ fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
         .collect();
 
     SliceIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: layer_index,
         z,
         regions,
+        ..Default::default()
     }
 }
 
@@ -570,24 +566,15 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
 
     let blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            objects: vec![],
             build_volume: BoundingBox3 {
-                min: slicer_ir::Point3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
+                min: slicer_ir::Point3::default(),
                 max: slicer_ir::Point3 {
                     x: 200.0,
                     y: 200.0,
                     z: 10.0,
                 },
             },
+            ..Default::default()
         }),
         1,
     );
@@ -689,24 +676,15 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 
     let blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            objects: vec![],
             build_volume: BoundingBox3 {
-                min: slicer_ir::Point3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
+                min: slicer_ir::Point3::default(),
                 max: slicer_ir::Point3 {
                     x: 200.0,
                     y: 200.0,
                     z: 10.0,
                 },
             },
+            ..Default::default()
         }),
         1,
     );
@@ -809,24 +787,15 @@ fn support_deterministic_across_repeated_runs() {
     let blackboard = || {
         Blackboard::new(
             Arc::new(slicer_ir::MeshIR {
-                schema_version: SemVer {
-                    major: 1,
-                    minor: 0,
-                    patch: 0,
-                },
-                objects: vec![],
                 build_volume: BoundingBox3 {
-                    min: slicer_ir::Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
+                    min: slicer_ir::Point3::default(),
                     max: slicer_ir::Point3 {
                         x: 200.0,
                         y: 200.0,
                         z: 10.0,
                     },
                 },
+                ..Default::default()
             }),
             1,
         )
@@ -1049,36 +1018,23 @@ fn support_enforcer_blocker_paint_precedence() {
         );
 
         Arc::new(PaintRegionIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
             per_layer,
+            ..Default::default()
         })
     };
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let mut blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            objects: vec![],
             build_volume: BoundingBox3 {
-                min: slicer_ir::Point3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
+                min: slicer_ir::Point3::default(),
                 max: slicer_ir::Point3 {
                     x: 200.0,
                     y: 200.0,
                     z: 10.0,
                 },
             },
+            ..Default::default()
         }),
         1,
     );
@@ -1279,29 +1235,24 @@ mod planner_consuming_tier {
             bridge_orientation_deg: 0.0,
         };
         slicer_ir::SliceIR {
-            schema_version: semver(1, 0, 0),
             global_layer_index: layer_index,
             z,
             regions: vec![region],
+            ..Default::default()
         }
     }
 
     fn empty_blackboard_with_support_plan(plan: Option<Arc<SupportPlanIR>>) -> Blackboard {
         let mesh = Arc::new(MeshIR {
-            schema_version: semver(1, 0, 0),
-            objects: vec![],
             build_volume: BoundingBox3 {
-                min: Point3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
+                min: Point3::default(),
                 max: Point3 {
                     x: 200.0,
                     y: 200.0,
                     z: 10.0,
                 },
             },
+            ..Default::default()
         });
         let mut bb = Blackboard::new(mesh, 1);
         if let Some(p) = plan {
@@ -1378,13 +1329,13 @@ mod planner_consuming_tier {
 
     fn plan_for_obj0(layer_index: u32, layer_z: f32) -> Arc<SupportPlanIR> {
         Arc::new(SupportPlanIR {
-            schema_version: semver(1, 0, 0),
             entries: vec![SupportPlanEntry {
                 global_layer_index: layer_index as i32,
                 object_id: "obj-0".to_string(),
                 region_id: 0,
                 branch_segments: vec![make_planned_segment(layer_z)],
             }],
+            ..Default::default()
         })
     }
 
@@ -1556,7 +1507,6 @@ mod planner_consuming_tier {
         };
 
         let plan = Arc::new(SupportPlanIR {
-            schema_version: semver(1, 0, 0),
             entries: vec![
                 SupportPlanEntry {
                     global_layer_index: layer_index as i32,
@@ -1571,12 +1521,12 @@ mod planner_consuming_tier {
                     branch_segments: vec![seg_for(target_region_id, layer_z)],
                 },
             ],
+            ..Default::default()
         });
 
         // Build a SliceIR whose single region has region_id = 42.
         let extent = slicer_ir::mm_to_units(10.0);
         let slice_ir = SliceIR {
-            schema_version: semver(1, 0, 0),
             global_layer_index: layer_index,
             z: layer_z,
             regions: vec![SlicedRegion {
@@ -1606,6 +1556,7 @@ mod planner_consuming_tier {
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
             }],
+            ..Default::default()
         };
 
         // Dispatch tree-support with the multi-region plan.

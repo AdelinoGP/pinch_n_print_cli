@@ -669,3 +669,74 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
         "SliceIR::default() schema_version must equal the constant"
     );
 }
+
+/// TASK-200b: every schema-versioned IR's `Default` must pin
+/// `schema_version` to the matching `CURRENT_*_IR_SCHEMA_VERSION` constant.
+#[test]
+fn chunk2_ir_schema_versions_are_default_sourced() {
+    assert_eq!(
+        MeshIR::default().schema_version,
+        slicer_ir::CURRENT_MESH_IR_SCHEMA_VERSION,
+        "MeshIR::default().schema_version must equal CURRENT_MESH_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        LayerPlanIR::default().schema_version,
+        slicer_ir::CURRENT_LAYER_PLAN_IR_SCHEMA_VERSION,
+        "LayerPlanIR::default().schema_version must equal CURRENT_LAYER_PLAN_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        SeamPlanIR::default().schema_version,
+        slicer_ir::CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION,
+        "SeamPlanIR::default().schema_version must equal CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        SupportPlanIR::default().schema_version,
+        slicer_ir::CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+        "SupportPlanIR::default().schema_version must equal CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        SupportGeometryIR::default().schema_version,
+        slicer_ir::CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
+        "SupportGeometryIR::default().schema_version must equal CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        PaintRegionIR::default().schema_version,
+        slicer_ir::CURRENT_PAINT_REGION_IR_SCHEMA_VERSION,
+        "PaintRegionIR::default().schema_version must equal CURRENT_PAINT_REGION_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        MeshSegmentationIR::default().schema_version,
+        slicer_ir::CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION,
+        "MeshSegmentationIR::default().schema_version must equal CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        RegionMapIR::default().schema_version,
+        slicer_ir::CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+        "RegionMapIR::default().schema_version must equal CURRENT_REGION_MAP_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        PerimeterIR::default().schema_version,
+        slicer_ir::CURRENT_PERIMETER_IR_SCHEMA_VERSION,
+        "PerimeterIR::default().schema_version must equal CURRENT_PERIMETER_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        InfillIR::default().schema_version,
+        slicer_ir::CURRENT_INFILL_IR_SCHEMA_VERSION,
+        "InfillIR::default().schema_version must equal CURRENT_INFILL_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        SupportIR::default().schema_version,
+        slicer_ir::CURRENT_SUPPORT_IR_SCHEMA_VERSION,
+        "SupportIR::default().schema_version must equal CURRENT_SUPPORT_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        LayerCollectionIR::default().schema_version,
+        slicer_ir::CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION,
+        "LayerCollectionIR::default().schema_version must equal CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION"
+    );
+    assert_eq!(
+        GCodeIR::default().schema_version,
+        slicer_ir::CURRENT_GCODE_IR_SCHEMA_VERSION,
+        "GCodeIR::default().schema_version must equal CURRENT_GCODE_IR_SCHEMA_VERSION"
+    );
+}

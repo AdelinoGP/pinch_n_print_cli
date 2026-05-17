@@ -23,7 +23,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -66,27 +66,21 @@ fn support_planner_wasm() -> std::path::PathBuf {
 /// shape the wasm guest sees.
 fn overhang_plate_mesh() -> MeshIR {
     MeshIR {
-        schema_version: semver(1, 0, 0),
         objects: vec![ObjectMesh {
             id: "plate".to_string(),
             mesh: IndexedTriangleSet {
                 vertices: vec![
                     // Anchor so object bounds span z=0..2.0.
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
+                    Point3::default(),
                     // Lower face of the floating plate at z=1.8.
                     Point3 {
-                        x: 0.0,
-                        y: 0.0,
                         z: 1.8,
+                        ..Default::default()
                     },
                     Point3 {
                         x: 4.0,
-                        y: 0.0,
                         z: 1.8,
+                        ..Default::default()
                     },
                     Point3 {
                         x: 4.0,
@@ -94,9 +88,9 @@ fn overhang_plate_mesh() -> MeshIR {
                         z: 1.8,
                     },
                     Point3 {
-                        x: 0.0,
                         y: 4.0,
                         z: 1.8,
+                        ..Default::default()
                     },
                 ],
                 // CW winding (when viewed from above) → normals point down.
@@ -105,25 +99,17 @@ fn overhang_plate_mesh() -> MeshIR {
             transform: Transform3d {
                 matrix: identity4(),
             },
-            config: slicer_ir::ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: Point3::default(),
             max: Point3 {
                 x: 200.0,
                 y: 200.0,
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
@@ -132,40 +118,32 @@ fn overhang_plate_mesh() -> MeshIR {
 /// short-circuit. Result: empty plan.
 fn flat_cube_mesh() -> MeshIR {
     MeshIR {
-        schema_version: semver(1, 0, 0),
         objects: vec![ObjectMesh {
             id: "cube".to_string(),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
+                    Point3::default(),
                     Point3 {
                         x: 1.0,
-                        y: 0.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                     Point3 {
                         x: 1.0,
                         y: 1.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                     Point3 {
-                        x: 0.0,
                         y: 1.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                     Point3 {
-                        x: 0.0,
-                        y: 0.0,
                         z: 1.0,
+                        ..Default::default()
                     },
                     Point3 {
                         x: 1.0,
-                        y: 0.0,
                         z: 1.0,
+                        ..Default::default()
                     },
                     Point3 {
                         x: 1.0,
@@ -173,9 +151,9 @@ fn flat_cube_mesh() -> MeshIR {
                         z: 1.0,
                     },
                     Point3 {
-                        x: 0.0,
                         y: 1.0,
                         z: 1.0,
+                        ..Default::default()
                     },
                 ],
                 indices: vec![
@@ -190,25 +168,17 @@ fn flat_cube_mesh() -> MeshIR {
             transform: Transform3d {
                 matrix: identity4(),
             },
-            config: slicer_ir::ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: Point3::default(),
             max: Point3 {
                 x: 200.0,
                 y: 200.0,
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
@@ -376,25 +346,21 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
                     object_id: obj.id.clone(),
                     region_id: 0,
                 },
-                RegionPlan {
-                    config: slicer_ir::ResolvedConfig::default(),
-                    stage_modules: HashMap::new(),
-                    paint_overrides: BTreeMap::new(),
-                },
+                RegionPlan::default(),
             );
         }
     }
     let mesh_arc = Arc::new(mesh);
     let mut bb = Blackboard::new(mesh_arc, 0);
     bb.commit_layer_plan(Arc::new(LayerPlanIR {
-        schema_version: semver(1, 0, 0),
         global_layers,
         object_participation,
+        ..Default::default()
     }))
     .expect("commit_layer_plan must succeed");
     bb.commit_region_map(Arc::new(RegionMapIR {
-        schema_version: semver(1, 0, 0),
         entries: region_entries,
+        ..Default::default()
     }))
     .expect("commit_region_map must succeed");
     bb
@@ -506,10 +472,7 @@ fn prepass_support_geometry_fails_without_layer_plan() {
     let mesh = Arc::new(minimal_mesh_fixture());
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 0);
     blackboard
-        .commit_surface_classification(Arc::new(SurfaceClassificationIR {
-            schema_version: semver(1, 0, 0),
-            per_object: HashMap::new(),
-        }))
+        .commit_surface_classification(Arc::new(SurfaceClassificationIR::default()))
         .expect("surface classification pre-commit must succeed");
 
     let plan = execution_plan_fixture_native(vec![compiled_native_stage(
@@ -582,10 +545,7 @@ fn support_planner_claim_dedup() {
 fn blackboard_accepts_and_returns_support_plan_ir() {
     let mesh = Arc::new(minimal_mesh_fixture());
     let mut blackboard = Blackboard::new(mesh, 0);
-    let ir = Arc::new(SupportPlanIR {
-        schema_version: semver(1, 0, 0),
-        entries: Vec::new(),
-    });
+    let ir = Arc::new(SupportPlanIR::default());
     blackboard
         .commit_support_plan(Arc::clone(&ir))
         .expect("first commit must succeed");
@@ -609,34 +569,19 @@ fn layer_plan_committed_plus_support_geometry_proceeds() {
     let mesh = Arc::new(minimal_mesh_fixture());
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 0);
     blackboard
-        .commit_surface_classification(Arc::new(SurfaceClassificationIR {
-            schema_version: semver(1, 0, 0),
-            per_object: HashMap::new(),
-        }))
+        .commit_surface_classification(Arc::new(SurfaceClassificationIR::default()))
         .unwrap();
     blackboard
-        .commit_layer_plan(Arc::new(LayerPlanIR {
-            schema_version: semver(1, 0, 0),
-            global_layers: Vec::new(),
-            object_participation: HashMap::new(),
-        }))
+        .commit_layer_plan(Arc::new(LayerPlanIR::default()))
         .unwrap();
     blackboard
-        .commit_region_map(Arc::new(RegionMapIR {
-            schema_version: semver(1, 0, 0),
-            entries: HashMap::new(),
-        }))
+        .commit_region_map(Arc::new(RegionMapIR::default()))
         .unwrap();
     // PrePass::SupportGeometry built-in (committed via execute_prepass_with_builtins in the
     // real pipeline) produces SupportGeometryIR. For this direct execute_prepass test
     // we pre-commit it so the stage prerequisite check passes.
     blackboard
-        .commit_support_geometry(Arc::new(SupportGeometryIR {
-            schema_version: semver(1, 0, 0),
-            support_layer_height_mm: 0.0,
-            support_top_z_distance_mm: 0.0,
-            entries: Default::default(),
-        }))
+        .commit_support_geometry(Arc::new(SupportGeometryIR::default()))
         .unwrap();
 
     let plan = execution_plan_fixture_native(vec![compiled_native_stage(
@@ -657,25 +602,18 @@ fn layer_plan_committed_plus_support_geometry_proceeds() {
 
 fn minimal_mesh_fixture() -> MeshIR {
     MeshIR {
-        schema_version: semver(1, 0, 0),
         objects: vec![ObjectMesh {
             id: "plate".to_string(),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
+                    Point3::default(),
                     Point3 {
                         x: 1.0,
-                        y: 0.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                     Point3 {
-                        x: 0.0,
                         y: 1.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                 ],
                 indices: vec![0, 1, 2],
@@ -683,25 +621,17 @@ fn minimal_mesh_fixture() -> MeshIR {
             transform: Transform3d {
                 matrix: identity4(),
             },
-            config: slicer_ir::ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: Point3::default(),
             max: Point3 {
                 x: 200.0,
                 y: 200.0,
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
@@ -798,10 +728,7 @@ impl PrepassStageRunner for EmptyPlanRunner {
         _blackboard: &Blackboard,
     ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
         Ok((
-            PrepassStageOutput::SupportPlan(Arc::new(SupportPlanIR {
-                schema_version: semver(1, 0, 0),
-                entries: Vec::new(),
-            })),
+            PrepassStageOutput::SupportPlan(Arc::new(SupportPlanIR::default())),
             Vec::new(),
         ))
     }

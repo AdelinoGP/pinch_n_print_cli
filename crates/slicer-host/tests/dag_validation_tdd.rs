@@ -354,35 +354,11 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
             };
 
             // Build minimal MeshIR and Blackboard for dispatch call.
-            let mesh_ir = slicer_ir::MeshIR {
-                schema_version: semver(1, 0, 0),
-                objects: Vec::new(),
-                build_volume: slicer_ir::BoundingBox3 {
-                    min: slicer_ir::Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    max: slicer_ir::Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                },
-            };
+            let mesh_ir = slicer_ir::MeshIR::default();
             let blackboard = slicer_host::Blackboard::new(Arc::new(mesh_ir), 0);
 
             // Build minimal GCodeIR (commands and metadata fields only)
-            let gcode_ir = slicer_ir::GCodeIR {
-                schema_version: semver(1, 0, 0),
-                commands: Vec::new(),
-                metadata: slicer_ir::PrintMetadata {
-                    estimated_print_time_s: 0,
-                    filament_used_mm: Vec::new(),
-                    layer_count: 0,
-                    slicer_version: String::new(),
-                },
-            };
+            let gcode_ir = slicer_ir::GCodeIR::default();
 
             // Dispatch call exercises the pipeline even though it returns early
             // due to MissingComponent. The PostpassStageRunner trait is used.

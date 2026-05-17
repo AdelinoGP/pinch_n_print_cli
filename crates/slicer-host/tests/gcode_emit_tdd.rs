@@ -22,7 +22,6 @@
 //! Reference: docs/02_ir_schemas.md (IR 11 - GCodeIR), docs/04_host_scheduler.md (lines 778-810)
 //! OrcaSlicer reference: OrcaSlicerDocumented/src/libslic3r/GCodeWriter.cpp, GCodeProcessor.hpp
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_host::{
@@ -30,21 +29,13 @@ use slicer_host::{
 };
 use slicer_ir::{
     BoundingBox3, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, IndexedTriangleSet,
-    LayerCollectionIR, MeshIR, ObjectConfig, ObjectId, ObjectMesh, Point3, Point3WithWidth,
-    PrintEntity, PrintMetadata, RegionKey, RetractMode, SemVer, ToolChange, Transform3d, ZHop,
+    LayerCollectionIR, MeshIR, ObjectId, ObjectMesh, Point3, Point3WithWidth, PrintEntity,
+    PrintMetadata, RegionKey, RetractMode, ToolChange, Transform3d, ZHop,
 };
 
 // ============================================================================
 // Test fixtures
 // ============================================================================
-
-fn semver_fixture() -> SemVer {
-    SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    }
-}
 
 fn identity_transform() -> Transform3d {
     Transform3d {
@@ -59,49 +50,35 @@ fn identity_transform() -> Transform3d {
 
 fn mesh_fixture() -> MeshIR {
     MeshIR {
-        schema_version: semver_fixture(),
         objects: vec![ObjectMesh {
             id: ObjectId::from("test-object"),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
+                    Point3::default(),
                     Point3 {
                         x: 10.0,
-                        y: 0.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                     Point3 {
                         x: 5.0,
                         y: 10.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                 ],
                 indices: vec![0, 1, 2],
             },
             transform: identity_transform(),
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: Point3::default(),
             max: Point3 {
                 x: 220.0,
                 y: 220.0,
                 z: 250.0,
             },
         },
+        ..Default::default()
     }
 }
 
@@ -150,42 +127,30 @@ fn print_entity_fixture(points: Vec<Point3WithWidth>, role: ExtrusionRole) -> Pr
 
 fn layer_collection_fixture(index: u32, z: f32) -> LayerCollectionIR {
     LayerCollectionIR {
-        schema_version: semver_fixture(),
         global_layer_index: index,
         z,
-        ordered_entities: vec![],
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
+        ..Default::default()
     }
 }
 
 fn layer_with_entity(index: u32, z: f32, entity: PrintEntity) -> LayerCollectionIR {
     LayerCollectionIR {
-        schema_version: semver_fixture(),
         global_layer_index: index,
         z,
         ordered_entities: vec![entity],
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
+        ..Default::default()
     }
 }
 
 fn gcode_ir_fixture(commands: Vec<GCodeCommand>) -> GCodeIR {
     GCodeIR {
-        schema_version: semver_fixture(),
         commands,
         metadata: PrintMetadata {
-            estimated_print_time_s: 0,
             filament_used_mm: vec![0.0],
-            layer_count: 0,
             slicer_version: "1.0.0-test".to_string(),
+            ..Default::default()
         },
+        ..Default::default()
     }
 }
 
@@ -1484,26 +1449,16 @@ fn layer_boundary_emits_t0_when_returning_to_default_tool() {
     // tool 0 (unpainted body). Without the cross-layer reset, layer 1
     // silently inherits T2 and the body is extruded with the wrong filament.
     let layer0 = LayerCollectionIR {
-        schema_version: semver_fixture(),
         global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![entity_with_region_id(2)],
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
+        ..Default::default()
     };
     let layer1 = LayerCollectionIR {
-        schema_version: semver_fixture(),
         global_layer_index: 1,
         z: 0.4,
         ordered_entities: vec![entity_with_region_id(0)],
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
+        ..Default::default()
     };
 
     let blackboard = blackboard_fixture();
@@ -1545,26 +1500,16 @@ fn layer_boundary_no_redundant_tool_change_when_tool_unchanged() {
     // layer's first entity legitimately triggers 0→1; the second layer must
     // NOT trigger 1→1).
     let layer0 = LayerCollectionIR {
-        schema_version: semver_fixture(),
         global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![entity_with_region_id(1)],
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
+        ..Default::default()
     };
     let layer1 = LayerCollectionIR {
-        schema_version: semver_fixture(),
         global_layer_index: 1,
         z: 0.4,
         ordered_entities: vec![entity_with_region_id(1)],
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
+        ..Default::default()
     };
 
     let blackboard = blackboard_fixture();

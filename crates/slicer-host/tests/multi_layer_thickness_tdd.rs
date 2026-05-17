@@ -36,14 +36,14 @@
 //!       layer_plan: Option<&LayerPlanIR>,
 //!   ) -> Result<SliceIR, LayerSliceError>
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use slicer_host::execute_layer_slice;
 use slicer_host::layer_slice::classify_region_surfaces;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, FacetClass, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3, Polygon, RegionKey, RegionMapIR,
-    RegionPlan, ResolvedConfig, SemVer, SurfaceClassificationIR, SurfaceGroup, Transform3d,
+    ObjectMesh, ObjectSurfaceData, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan,
+    ResolvedConfig, SurfaceClassificationIR, SurfaceGroup, Transform3d,
 };
 
 // ============================================================================
@@ -117,22 +117,12 @@ fn make_object_mesh(id: &str, mesh: IndexedTriangleSet) -> ObjectMesh {
         id: id.to_string(),
         mesh,
         transform: identity_transform(),
-        config: ObjectConfig {
-            data: HashMap::new(),
-        },
-        modifier_volumes: Vec::new(),
-        paint_data: None,
-        world_z_extent: None,
+        ..Default::default()
     }
 }
 
 fn make_mesh_ir(object_id: &str, mesh: IndexedTriangleSet) -> MeshIR {
     MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 1,
-            patch: 0,
-        },
         objects: vec![make_object_mesh(object_id, mesh)],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -146,6 +136,7 @@ fn make_mesh_ir(object_id: &str, mesh: IndexedTriangleSet) -> MeshIR {
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
@@ -173,18 +164,13 @@ fn make_surface_class_top(object_id: &str) -> SurfaceClassificationIR {
             printable: true,
             shell_count: 1,
         }],
-        bridge_regions: vec![],
-        overhang_regions: vec![],
+        ..Default::default()
     };
     let mut per_object = HashMap::new();
     per_object.insert(object_id.to_string(), per_object_data);
     SurfaceClassificationIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         per_object,
+        ..Default::default()
     }
 }
 
@@ -200,18 +186,13 @@ fn make_surface_class_bottom(object_id: &str) -> SurfaceClassificationIR {
             printable: true,
             shell_count: 1,
         }],
-        bridge_regions: vec![],
-        overhang_regions: vec![],
+        ..Default::default()
     };
     let mut per_object = HashMap::new();
     per_object.insert(object_id.to_string(), per_object_data);
     SurfaceClassificationIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         per_object,
+        ..Default::default()
     }
 }
 
@@ -240,13 +221,8 @@ fn make_layer_plan(n: usize, object_id: &str) -> LayerPlanIR {
         .map(|i| make_layer(i as u32, (i + 1) as f32 * 0.2, object_id))
         .collect();
     LayerPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layers,
-        object_participation: HashMap::new(),
+        ..Default::default()
     }
 }
 
@@ -271,18 +247,13 @@ fn make_region_map(
             key,
             RegionPlan {
                 config: cfg,
-                stage_modules: HashMap::new(),
-                paint_overrides: BTreeMap::new(),
+                ..Default::default()
             },
         );
     }
     RegionMapIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         entries,
+        ..Default::default()
     }
 }
 
@@ -525,18 +496,13 @@ fn missing_config_uses_default_three() {
             printable: true,
             shell_count: 1,
         }],
-        bridge_regions: vec![],
-        overhang_regions: vec![],
+        ..Default::default()
     };
     let mut per_object = HashMap::new();
     per_object.insert(object_id.to_string(), per_object_data);
     let surface_class = SurfaceClassificationIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         per_object,
+        ..Default::default()
     };
 
     let layer = make_layer(0, 0.9, object_id);

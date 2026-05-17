@@ -158,6 +158,99 @@ pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
+/// Schema version for `MeshIR`. Bumped to 1.1.0 by packet 56b — populated
+/// `modifier_volumes` from `Metadata/model_settings.config`.
+pub const CURRENT_MESH_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 1,
+    patch: 0,
+};
+
+/// Schema version for `LayerPlanIR`.
+pub const CURRENT_LAYER_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
+/// Schema version for `SeamPlanIR`.
+pub const CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
+/// Schema version for `SupportPlanIR`.
+pub const CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
+/// Schema version for `SupportGeometryIR`.
+pub const CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
+/// Schema version for `PaintRegionIR`.
+pub const CURRENT_PAINT_REGION_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
+/// Schema version for `MeshSegmentationIR`.
+pub const CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
+/// Schema version for `RegionMapIR`. Bumped to 1.1.0 by packet 51 — additive
+/// `paint_overrides` field on `RegionPlan`.
+pub const CURRENT_REGION_MAP_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 1,
+    patch: 0,
+};
+
+/// Schema version for `PerimeterIR`.
+pub const CURRENT_PERIMETER_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
+/// Schema version for `InfillIR`.
+pub const CURRENT_INFILL_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
+/// Schema version for `SupportIR`.
+pub const CURRENT_SUPPORT_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
+/// Schema version for `LayerCollectionIR`.
+pub const CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
+/// Schema version for `GCodeIR`.
+pub const CURRENT_GCODE_IR_SCHEMA_VERSION: SemVer = SemVer {
+    major: 1,
+    minor: 0,
+    patch: 0,
+};
+
 // ============================================================================
 // Mesh IR Types
 // ============================================================================
@@ -265,7 +358,7 @@ pub struct ModifierVolume {
 }
 
 /// Object mesh
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ObjectMesh {
     /// Unique identifier for the object
     pub id: ObjectId,
@@ -305,6 +398,16 @@ pub struct MeshIR {
     pub build_volume: BoundingBox3,
 }
 
+impl Default for MeshIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_MESH_IR_SCHEMA_VERSION,
+            objects: Vec::new(),
+            build_volume: BoundingBox3::default(),
+        }
+    }
+}
+
 // ============================================================================
 // Surface Classification IR Types
 // ============================================================================
@@ -333,7 +436,7 @@ pub enum FacetClass {
 }
 
 /// Surface group
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SurfaceGroup {
     /// Unique identifier for the surface group
     pub id: SurfaceGroupId,
@@ -352,7 +455,7 @@ pub struct SurfaceGroup {
 }
 
 /// Bridge region
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct BridgeRegion {
     /// Unique identifier for the bridge region
     pub id: BridgeRegionId,
@@ -730,7 +833,7 @@ impl Default for ResolvedConfig {
 }
 
 /// Active region in a global layer
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ActiveRegion {
     /// Object ID this region belongs to
     pub object_id: ObjectId,
@@ -751,7 +854,7 @@ pub struct ActiveRegion {
 }
 
 /// Global layer
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct GlobalLayer {
     /// Index of the global layer
     pub index: u32,
@@ -787,6 +890,16 @@ pub struct LayerPlanIR {
     pub object_participation: HashMap<ObjectId, Vec<ObjectLayerRef>>,
 }
 
+impl Default for LayerPlanIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_LAYER_PLAN_IR_SCHEMA_VERSION,
+            global_layers: Vec::new(),
+            object_participation: HashMap::new(),
+        }
+    }
+}
+
 // ============================================================================
 // Seam Plan IR Types
 // ============================================================================
@@ -813,7 +926,7 @@ pub struct ScoredSeamCandidate {
 /// Consumed at dispatch time by `Layer::PerimetersPostProcess` to seed
 /// `PerimeterRegionView.resolved_seam` so the apply-stage module
 /// (seam-placer) operates on a pre-resolved seam without rescoring.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SeamPlanEntry {
     /// Stable region key for lookup during layer dispatch.
     pub region_key: RegionKey,
@@ -834,6 +947,15 @@ pub struct SeamPlanIR {
     pub schema_version: SemVer,
     /// One entry per active `(layer, object, region)` triple.
     pub entries: Vec<SeamPlanEntry>,
+}
+
+impl Default for SeamPlanIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_SEAM_PLAN_IR_SCHEMA_VERSION,
+            entries: Vec::new(),
+        }
+    }
 }
 
 // ============================================================================
@@ -886,6 +1008,15 @@ pub struct SupportPlanIR {
     pub entries: Vec<SupportPlanEntry>,
 }
 
+impl Default for SupportPlanIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_SUPPORT_PLAN_IR_SCHEMA_VERSION,
+            entries: Vec::new(),
+        }
+    }
+}
+
 // ============================================================================
 // Support Geometry IR Types
 // ============================================================================
@@ -912,6 +1043,17 @@ pub struct SupportGeometryIR {
     pub support_top_z_distance_mm: f32,
     /// Per-(layer, object, region) coarse outline polygons.
     pub entries: HashMap<SupportGeometryKey, Vec<ExPolygon>>,
+}
+
+impl Default for SupportGeometryIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_SUPPORT_GEOMETRY_IR_SCHEMA_VERSION,
+            support_layer_height_mm: 0.0,
+            support_top_z_distance_mm: 0.0,
+            entries: HashMap::new(),
+        }
+    }
 }
 
 // ============================================================================
@@ -947,6 +1089,15 @@ pub struct PaintRegionIR {
     pub schema_version: SemVer,
     /// Per-layer paint maps
     pub per_layer: HashMap<u32, LayerPaintMap>,
+}
+
+impl Default for PaintRegionIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_PAINT_REGION_IR_SCHEMA_VERSION,
+            per_layer: HashMap::new(),
+        }
+    }
 }
 
 impl PaintRegionIR {
@@ -999,6 +1150,15 @@ pub struct MeshSegmentationIR {
     pub marks: Vec<FacetPaintMark>,
 }
 
+impl Default for MeshSegmentationIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION,
+            marks: Vec::new(),
+        }
+    }
+}
+
 // ============================================================================
 // Region Map IR Types
 // ============================================================================
@@ -1043,6 +1203,15 @@ pub struct RegionMapIR {
     pub entries: HashMap<RegionKey, RegionPlan>,
 }
 
+impl Default for RegionMapIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
+            entries: HashMap::new(),
+        }
+    }
+}
+
 // ============================================================================
 // Slice IR Types
 // ============================================================================
@@ -1064,7 +1233,7 @@ pub struct ExPolygon {
 }
 
 /// Sliced region
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SlicedRegion {
     /// Object ID this region belongs to
     pub object_id: ObjectId,
@@ -1354,7 +1523,7 @@ pub struct SeamPosition {
 }
 
 /// Perimeter region
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PerimeterRegion {
     /// Object ID this region belongs to
     pub object_id: ObjectId,
@@ -1379,6 +1548,16 @@ pub struct PerimeterIR {
     pub global_layer_index: u32,
     /// Perimeter regions in this layer
     pub regions: Vec<PerimeterRegion>,
+}
+
+impl Default for PerimeterIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_PERIMETER_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            regions: Vec::new(),
+        }
+    }
 }
 
 // ============================================================================
@@ -1411,6 +1590,16 @@ pub struct InfillIR {
     pub regions: Vec<InfillRegion>,
 }
 
+impl Default for InfillIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_INFILL_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            regions: Vec::new(),
+        }
+    }
+}
+
 // ============================================================================
 // Support IR Types
 // ============================================================================
@@ -1430,6 +1619,19 @@ pub struct SupportIR {
     pub raft_paths: Vec<ExtrusionPath3D>,
     /// Ironing paths
     pub ironing_paths: Vec<ExtrusionPath3D>,
+}
+
+impl Default for SupportIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_SUPPORT_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            support_paths: Vec::new(),
+            interface_paths: Vec::new(),
+            raft_paths: Vec::new(),
+            ironing_paths: Vec::new(),
+        }
+    }
 }
 
 // ============================================================================
@@ -1548,6 +1750,22 @@ pub struct LayerCollectionIR {
     pub travel_moves: Vec<TravelMove>,
 }
 
+impl Default for LayerCollectionIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_LAYER_COLLECTION_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            z: 0.0,
+            ordered_entities: Vec::new(),
+            tool_changes: Vec::new(),
+            z_hops: Vec::new(),
+            annotations: Vec::new(),
+            retracts: Vec::new(),
+            travel_moves: Vec::new(),
+        }
+    }
+}
+
 // ============================================================================
 // GCode IR Types
 // ============================================================================
@@ -1657,4 +1875,14 @@ pub struct GCodeIR {
     pub commands: Vec<GCodeCommand>,
     /// Print metadata
     pub metadata: PrintMetadata,
+}
+
+impl Default for GCodeIR {
+    fn default() -> Self {
+        Self {
+            schema_version: CURRENT_GCODE_IR_SCHEMA_VERSION,
+            commands: Vec::new(),
+            metadata: PrintMetadata::default(),
+        }
+    }
 }

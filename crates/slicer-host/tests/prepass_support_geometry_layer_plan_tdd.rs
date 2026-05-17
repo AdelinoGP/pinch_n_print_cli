@@ -10,7 +10,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_host::{
@@ -20,8 +20,8 @@ use slicer_host::{
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer,
-    SupportPlanIR, Transform3d,
+    ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SupportPlanIR,
+    Transform3d,
 };
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
@@ -52,25 +52,19 @@ fn support_planner_wasm() -> std::path::PathBuf {
 /// Overhang plate mesh with configurable object ID.
 fn overhang_mesh(object_id: &str) -> MeshIR {
     MeshIR {
-        schema_version: semver(1, 0, 0),
         objects: vec![ObjectMesh {
             id: object_id.to_string(),
             mesh: IndexedTriangleSet {
                 vertices: vec![
+                    Point3::default(),
                     Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
                         z: 1.8,
+                        ..Default::default()
                     },
                     Point3 {
                         x: 4.0,
-                        y: 0.0,
                         z: 1.8,
+                        ..Default::default()
                     },
                     Point3 {
                         x: 4.0,
@@ -78,9 +72,9 @@ fn overhang_mesh(object_id: &str) -> MeshIR {
                         z: 1.8,
                     },
                     Point3 {
-                        x: 0.0,
                         y: 4.0,
                         z: 1.8,
+                        ..Default::default()
                     },
                 ],
                 indices: vec![1, 3, 2, 1, 4, 3],
@@ -88,32 +82,23 @@ fn overhang_mesh(object_id: &str) -> MeshIR {
             transform: Transform3d {
                 matrix: identity4(),
             },
-            config: slicer_ir::ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: Point3::default(),
             max: Point3 {
                 x: 200.0,
                 y: 200.0,
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
 /// Variable-height LayerPlanIR with 4 layers at z = 0.4, 0.8, 1.2, 2.0.
 fn variable_height_layer_plan() -> LayerPlanIR {
     LayerPlanIR {
-        schema_version: semver(1, 0, 0),
         global_layers: vec![
             GlobalLayer {
                 index: 0,
@@ -173,6 +158,7 @@ fn variable_height_layer_plan() -> LayerPlanIR {
             );
             m
         },
+        ..Default::default()
     }
 }
 
@@ -180,7 +166,6 @@ fn variable_height_layer_plan() -> LayerPlanIR {
 /// Z must be >= 1.8 so the overhang contact (centroid at z≈1.8) lands on it.
 fn multi_region_layer_plan() -> LayerPlanIR {
     LayerPlanIR {
-        schema_version: semver(1, 0, 0),
         global_layers: vec![GlobalLayer {
             index: 5,
             z: 2.0,
@@ -200,6 +185,7 @@ fn multi_region_layer_plan() -> LayerPlanIR {
             );
             m
         },
+        ..Default::default()
     }
 }
 
@@ -213,16 +199,12 @@ fn simple_region_map(object_id: &str, num_layers: u32) -> RegionMapIR {
                 object_id: object_id.to_string(),
                 region_id: 0,
             },
-            RegionPlan {
-                config: ResolvedConfig::default(),
-                stage_modules: HashMap::new(),
-                paint_overrides: BTreeMap::new(),
-            },
+            RegionPlan::default(),
         );
     }
     RegionMapIR {
-        schema_version: semver(1, 0, 0),
         entries,
+        ..Default::default()
     }
 }
 
@@ -235,11 +217,7 @@ fn multi_region_map() -> RegionMapIR {
             object_id: "obj-multi".to_string(),
             region_id: 7,
         },
-        RegionPlan {
-            config: ResolvedConfig::default(),
-            stage_modules: HashMap::new(),
-            paint_overrides: BTreeMap::new(),
-        },
+        RegionPlan::default(),
     );
     entries.insert(
         RegionKey {
@@ -247,15 +225,11 @@ fn multi_region_map() -> RegionMapIR {
             object_id: "obj-multi".to_string(),
             region_id: 42,
         },
-        RegionPlan {
-            config: ResolvedConfig::default(),
-            stage_modules: HashMap::new(),
-            paint_overrides: BTreeMap::new(),
-        },
+        RegionPlan::default(),
     );
     RegionMapIR {
-        schema_version: semver(1, 0, 0),
         entries,
+        ..Default::default()
     }
 }
 
@@ -552,10 +526,7 @@ fn prepass_support_generation_succeeds_with_builtin_region_mapping() {
 fn planner_skips_object_with_empty_region_map() {
     let mesh = overhang_mesh("plate");
     let layer_plan = variable_height_layer_plan();
-    let empty_region_map = RegionMapIR {
-        schema_version: semver(1, 0, 0),
-        entries: HashMap::new(),
-    };
+    let empty_region_map = RegionMapIR::default();
 
     let plan_ir = run_prepass(mesh, layer_plan, empty_region_map);
 
@@ -579,11 +550,7 @@ fn host_projector_orders_region_segmentation_deterministically() {
             object_id: "z-obj".to_string(),
             region_id: 99,
         },
-        RegionPlan {
-            config: ResolvedConfig::default(),
-            stage_modules: HashMap::new(),
-            paint_overrides: BTreeMap::new(),
-        },
+        RegionPlan::default(),
     );
     entries.insert(
         RegionKey {
@@ -591,11 +558,7 @@ fn host_projector_orders_region_segmentation_deterministically() {
             object_id: "a-obj".to_string(),
             region_id: 1,
         },
-        RegionPlan {
-            config: ResolvedConfig::default(),
-            stage_modules: HashMap::new(),
-            paint_overrides: BTreeMap::new(),
-        },
+        RegionPlan::default(),
     );
     entries.insert(
         RegionKey {
@@ -603,11 +566,7 @@ fn host_projector_orders_region_segmentation_deterministically() {
             object_id: "a-obj".to_string(),
             region_id: 5,
         },
-        RegionPlan {
-            config: ResolvedConfig::default(),
-            stage_modules: HashMap::new(),
-            paint_overrides: BTreeMap::new(),
-        },
+        RegionPlan::default(),
     );
     entries.insert(
         RegionKey {
@@ -615,15 +574,11 @@ fn host_projector_orders_region_segmentation_deterministically() {
             object_id: "m-obj".to_string(),
             region_id: 3,
         },
-        RegionPlan {
-            config: ResolvedConfig::default(),
-            stage_modules: HashMap::new(),
-            paint_overrides: BTreeMap::new(),
-        },
+        RegionPlan::default(),
     );
     let region_map = RegionMapIR {
-        schema_version: semver(1, 0, 0),
         entries,
+        ..Default::default()
     };
 
     // Project twice and compare (WIT-generated types lack PartialEq,

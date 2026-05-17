@@ -1,7 +1,7 @@
 #![allow(missing_docs)]
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -13,8 +13,8 @@ use slicer_host::{
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExPolygon, GlobalLayer, LayerPaintMap, LayerPlanIR,
     MeshIR, ModuleInvocation, ObjectLayerRef, ObjectMesh, ObjectSurfaceData, PaintRegionIR,
-    PaintSemantic, PaintValue, Point2, Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
-    SemVer, SemanticRegion, SurfaceClassificationIR, Transform3d,
+    PaintSemantic, PaintValue, Point2, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer,
+    SemanticRegion, SurfaceClassificationIR, Transform3d,
 };
 
 #[test]
@@ -375,25 +375,18 @@ fn loaded_module(id: &str, stage: &str) -> slicer_host::LoadedModule {
 
 fn mesh_fixture() -> MeshIR {
     MeshIR {
-        schema_version: semver(1, 0, 0),
         objects: vec![ObjectMesh {
             id: String::from("cube"),
             mesh: slicer_ir::IndexedTriangleSet {
                 vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
+                    Point3::default(),
                     Point3 {
                         x: 1.0,
-                        y: 0.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                     Point3 {
-                        x: 0.0,
                         y: 1.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                 ],
                 indices: vec![0, 1, 2],
@@ -401,46 +394,35 @@ fn mesh_fixture() -> MeshIR {
             transform: Transform3d {
                 matrix: identity4(),
             },
-            config: slicer_ir::ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: Point3::default(),
             max: Point3 {
                 x: 200.0,
                 y: 200.0,
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
 fn surface_fixture() -> SurfaceClassificationIR {
     SurfaceClassificationIR {
-        schema_version: semver(1, 0, 0),
         per_object: HashMap::from([(
             String::from("cube"),
             ObjectSurfaceData {
                 facet_classes: vec![slicer_ir::FacetClass::TopSurface],
-                surface_groups: Vec::new(),
-                bridge_regions: Vec::new(),
-                overhang_regions: Vec::new(),
+                ..Default::default()
             },
         )]),
+        ..Default::default()
     }
 }
 
 fn layer_plan_fixture() -> LayerPlanIR {
     LayerPlanIR {
-        schema_version: semver(1, 0, 0),
         global_layers: vec![GlobalLayer {
             index: 0,
             z: 0.2,
@@ -456,13 +438,13 @@ fn layer_plan_fixture() -> LayerPlanIR {
                 effective_layer_height: 0.2,
             }],
         )]),
+        ..Default::default()
     }
 }
 
 fn paint_regions_fixture() -> PaintRegionIR {
     let semantic = PaintSemantic::Material;
     PaintRegionIR {
-        schema_version: semver(1, 0, 0),
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
@@ -478,12 +460,12 @@ fn paint_regions_fixture() -> PaintRegionIR {
                 )]),
             },
         )]),
+        ..Default::default()
     }
 }
 
 fn region_map_fixture() -> RegionMapIR {
     RegionMapIR {
-        schema_version: semver(1, 0, 0),
         entries: HashMap::from([(
             RegionKey {
                 global_layer_index: 0,
@@ -491,17 +473,17 @@ fn region_map_fixture() -> RegionMapIR {
                 region_id: 7,
             },
             RegionPlan {
-                config: ResolvedConfig::default(),
                 stage_modules: HashMap::from([(
                     String::from("Layer::Perimeters"),
                     vec![ModuleInvocation {
                         module_id: String::from("com.example.perimeters"),
-                        config_view: ConfigView::new(),
+                        ..Default::default()
                     }],
                 )]),
-                paint_overrides: BTreeMap::new(),
+                ..Default::default()
             },
         )]),
+        ..Default::default()
     }
 }
 

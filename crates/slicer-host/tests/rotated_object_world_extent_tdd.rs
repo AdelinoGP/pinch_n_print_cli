@@ -20,7 +20,7 @@ use slicer_host::{
     WasmArtifactMetadata,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigView, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectConfig, ObjectMesh,
+    BoundingBox3, ConfigView, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectMesh,
     ObjectSurfaceData, PaintRegionIR, Point3, RegionMapIR, SemVer, SurfaceClassificationIR,
     Transform3d,
 };
@@ -32,25 +32,18 @@ use slicer_ir::{
 /// Both have world Z = 0 → degenerate (z_max == z_min).
 fn vertical_rod_mesh() -> MeshIR {
     MeshIR {
-        schema_version: semver(1, 0, 0),
         objects: vec![ObjectMesh {
             id: String::from("vertical-rod"),
             mesh: IndexedTriangleSet {
                 vertices: vec![
+                    Point3::default(), // bottom at local Z=0, Y=0
                     Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    }, // bottom at local Z=0, Y=0
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
                         z: 10.0,
+                        ..Default::default()
                     }, // top at local Z=10, Y=0
                     Point3 {
-                        x: 0.0,
-                        y: 0.0,
                         z: 5.0,
+                        ..Default::default()
                     }, // third vertex also at Y=0 (zero-thickness)
                 ],
                 indices: vec![0, 1, 2],
@@ -60,18 +53,12 @@ fn vertical_rod_mesh() -> MeshIR {
             transform: Transform3d {
                 matrix: rotate_x_90(),
             },
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
-                x: 0.0,
                 y: -200.0,
-                z: 0.0,
+                ..Default::default()
             },
             max: Point3 {
                 x: 200.0,
@@ -79,22 +66,21 @@ fn vertical_rod_mesh() -> MeshIR {
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
 /// Object surface data fixture.
 fn surface_fixture() -> SurfaceClassificationIR {
     SurfaceClassificationIR {
-        schema_version: semver(1, 0, 0),
         per_object: HashMap::from([(
             String::from("vertical-rod"),
             ObjectSurfaceData {
                 facet_classes: vec![slicer_ir::FacetClass::TopSurface],
-                surface_groups: Vec::new(),
-                bridge_regions: Vec::new(),
-                overhang_regions: Vec::new(),
+                ..Default::default()
             },
         )]),
+        ..Default::default()
     }
 }
 
@@ -102,25 +88,15 @@ fn surface_fixture() -> SurfaceClassificationIR {
 /// A rotate_x(90deg) object has no printable height, so no valid layers
 /// are produced.  global_layers is empty.
 fn degenerate_layer_plan_fixture() -> LayerPlanIR {
-    LayerPlanIR {
-        schema_version: semver(1, 0, 0),
-        global_layers: Vec::new(), // no layers — degenerate Z extent
-        object_participation: HashMap::new(),
-    }
+    LayerPlanIR::default()
 }
 
 fn region_map_fixture() -> RegionMapIR {
-    RegionMapIR {
-        schema_version: semver(1, 0, 0),
-        entries: HashMap::new(),
-    }
+    RegionMapIR::default()
 }
 
 fn paint_regions_fixture() -> PaintRegionIR {
-    PaintRegionIR {
-        schema_version: semver(1, 0, 0),
-        per_layer: HashMap::new(),
-    }
+    PaintRegionIR::default()
 }
 
 fn execution_plan_fixture(prepass_stages: Vec<CompiledStage>) -> ExecutionPlan {

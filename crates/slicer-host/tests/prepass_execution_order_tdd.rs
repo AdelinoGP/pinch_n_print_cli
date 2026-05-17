@@ -4,7 +4,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -14,8 +14,8 @@ use slicer_host::{
     IrAccessMask, LoadedModule, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectConfig,
-    ObjectLayerRef, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer,
+    BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectLayerRef,
+    ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer,
     SupportGeometryIR, SupportPlanIR, SurfaceClassificationIR, Transform3d,
 };
 
@@ -29,25 +29,18 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 
 fn minimal_mesh() -> MeshIR {
     MeshIR {
-        schema_version: semver(1, 0, 0),
         objects: vec![ObjectMesh {
             id: String::from("cube"),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
+                    Point3::default(),
                     Point3 {
                         x: 1.0,
-                        y: 0.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                     Point3 {
-                        x: 0.0,
                         y: 1.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                 ],
                 indices: vec![0, 1, 2],
@@ -57,25 +50,17 @@ fn minimal_mesh() -> MeshIR {
                     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
                 ],
             },
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: Point3::default(),
             max: Point3 {
                 x: 200.0,
                 y: 200.0,
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
@@ -115,11 +100,7 @@ fn blackboard_with_prereqs(mesh: MeshIR) -> Blackboard {
                     object_id: obj.id.clone(),
                     region_id: 0,
                 },
-                RegionPlan {
-                    config: ResolvedConfig::default(),
-                    stage_modules: HashMap::new(),
-                    paint_overrides: BTreeMap::new(),
-                },
+                RegionPlan::default(),
             );
         }
     }
@@ -128,15 +109,15 @@ fn blackboard_with_prereqs(mesh: MeshIR) -> Blackboard {
     let mut bb = Blackboard::new(Arc::clone(&mesh_arc), 0);
 
     bb.commit_layer_plan(Arc::new(LayerPlanIR {
-        schema_version: semver(1, 0, 0),
         global_layers,
         object_participation,
+        ..Default::default()
     }))
     .expect("commit_layer_plan must succeed");
 
     bb.commit_region_map(Arc::new(RegionMapIR {
-        schema_version: semver(1, 0, 0),
         entries: region_entries,
+        ..Default::default()
     }))
     .expect("commit_region_map must succeed");
 
@@ -199,10 +180,7 @@ impl PrepassStageRunner for TreeSupportStubRunner {
         _blackboard: &Blackboard,
     ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
         Ok((
-            PrepassStageOutput::SupportPlan(Arc::new(SupportPlanIR {
-                schema_version: semver(1, 0, 0),
-                entries: vec![],
-            })),
+            PrepassStageOutput::SupportPlan(Arc::new(SupportPlanIR::default())),
             vec![],
         ))
     }
@@ -225,19 +203,15 @@ fn tree_support_plan_succeeds_without_layer_planning_stage() {
     // Pre-seed SurfaceClassificationIR (normally produced by the MeshAnalysis
     // built-in; here we seed it directly to isolate the ordering assertion).
     blackboard
-        .commit_surface_classification(Arc::new(SurfaceClassificationIR {
-            schema_version: semver(1, 0, 0),
-            per_object: HashMap::new(),
-        }))
+        .commit_surface_classification(Arc::new(SurfaceClassificationIR::default()))
         .expect("pre-seeding SurfaceClassificationIR must succeed");
 
     // Pre-seed SupportGeometryIR (host built-in; satisfy the prereq directly).
     blackboard
         .commit_support_geometry(Arc::new(SupportGeometryIR {
-            schema_version: semver(1, 0, 0),
             support_layer_height_mm: 0.2,
             support_top_z_distance_mm: 0.1,
-            entries: HashMap::new(),
+            ..Default::default()
         }))
         .expect("pre-seeding SupportGeometryIR must succeed");
 

@@ -130,34 +130,16 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 }
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
-    Arc::new(MeshIR {
-        schema_version: semver(1, 0, 0),
-        objects: Vec::new(),
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-        },
-    })
+    Arc::new(MeshIR::default())
 }
 
 fn minimal_gcode_ir() -> GCodeIR {
     GCodeIR {
-        schema_version: semver(1, 0, 0),
-        commands: Vec::new(),
         metadata: PrintMetadata {
             slicer_version: "test".into(),
-            estimated_print_time_s: 0,
-            filament_used_mm: Vec::new(),
-            layer_count: 0,
+            ..Default::default()
         },
+        ..Default::default()
     }
 }
 
@@ -1892,8 +1874,8 @@ fn make_paint_region_ir(
     );
 
     PaintRegionIR {
-        schema_version: semver(1, 0, 0),
         per_layer,
+        ..Default::default()
     }
 }
 
@@ -2235,10 +2217,10 @@ fn make_slice_ir(
         .collect();
 
     SliceIR {
-        schema_version: semver(1, 0, 0),
         global_layer_index: layer_index,
         z,
         regions,
+        ..Default::default()
     }
 }
 
@@ -2604,9 +2586,9 @@ fn make_perimeter_ir(
         })
         .collect();
     slicer_ir::PerimeterIR {
-        schema_version: semver(1, 0, 0),
         global_layer_index: layer_index,
         regions,
+        ..Default::default()
     }
 }
 
@@ -2963,9 +2945,9 @@ fn make_perimeter_ir_with_ids(
         })
         .collect();
     slicer_ir::PerimeterIR {
-        schema_version: semver(1, 0, 0),
         global_layer_index: layer_index,
         regions,
+        ..Default::default()
     }
 }
 
@@ -4081,19 +4063,9 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
         topo_order: 0,
     };
     arena.set_layer_collection(LayerCollectionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![entity.clone(), entity],
-        tool_changes: Vec::new(),
-        z_hops: Vec::new(),
-        annotations: Vec::new(),
-        retracts: vec![],
-        travel_moves: vec![],
+        ..Default::default()
     });
 
     slicer_host::commit_layer_outputs_for_test(
@@ -4479,14 +4451,7 @@ fn layer_plan_committed_to_blackboard_after_execute_prepass() {
     // proceed to the LayerPlanning stage without hitting a missing-prerequisite
     // error.
     blackboard
-        .commit_surface_classification(Arc::new(SurfaceClassificationIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            per_object: HashMap::new(),
-        }))
+        .commit_surface_classification(Arc::new(SurfaceClassificationIR::default()))
         .expect("pre-seed SurfaceClassificationIR");
 
     let result = execute_prepass(&plan, &mut blackboard, &dispatcher);
@@ -4780,24 +4745,16 @@ fn mesh_segmentation_collects_config_driven_marks() {
     // Pre-seed mesh with two object ids matching the config keys so the
     // guest's `object_index` sort key finds them.
     let mesh = Arc::new(slicer_ir::MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![make_object("benchy"), make_object("other-obj")],
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: slicer_ir::Point3::default(),
             max: slicer_ir::Point3 {
                 x: 1.0,
                 y: 1.0,
                 z: 1.0,
             },
         },
+        ..Default::default()
     });
     let blackboard = Blackboard::new(mesh, 0);
 
@@ -4869,24 +4826,16 @@ fn mesh_segmentation_dispatch_is_deterministic() {
     );
     let cfg = ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str()));
     let mesh = Arc::new(slicer_ir::MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![make_object("obj-a")],
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: slicer_ir::Point3::default(),
             max: slicer_ir::Point3 {
                 x: 1.0,
                 y: 1.0,
                 z: 1.0,
             },
         },
+        ..Default::default()
     });
     let blackboard = Blackboard::new(mesh, 0);
 
@@ -5144,24 +5093,16 @@ fn paint_segmentation_collects_config_driven_regions() {
     );
 
     let mesh = Arc::new(slicer_ir::MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![make_object("benchy")],
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: slicer_ir::Point3::default(),
             max: slicer_ir::Point3 {
                 x: 1.0,
                 y: 1.0,
                 z: 1.0,
             },
         },
+        ..Default::default()
     });
     let blackboard = Blackboard::new(mesh, 0);
 
@@ -5255,24 +5196,16 @@ fn paint_segmentation_dispatch_is_deterministic() {
     );
     let cfg = ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str()));
     let mesh = Arc::new(slicer_ir::MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![make_object("obj")],
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: slicer_ir::Point3::default(),
             max: slicer_ir::Point3 {
                 x: 1.0,
                 y: 1.0,
                 z: 1.0,
             },
         },
+        ..Default::default()
     });
     let blackboard = Blackboard::new(mesh, 0);
 
@@ -5490,25 +5423,10 @@ fn paint_segmentation_commits_through_execute_prepass() {
     // both so execute_prepass can proceed to the PaintSegmentation
     // stage without hitting a missing-prerequisite error.
     blackboard
-        .commit_surface_classification(Arc::new(slicer_ir::SurfaceClassificationIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            per_object: HashMap::new(),
-        }))
+        .commit_surface_classification(Arc::new(slicer_ir::SurfaceClassificationIR::default()))
         .unwrap();
     blackboard
-        .commit_layer_plan(Arc::new(slicer_ir::LayerPlanIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            global_layers: Vec::new(),
-            object_participation: HashMap::new(),
-        }))
+        .commit_layer_plan(Arc::new(slicer_ir::LayerPlanIR::default()))
         .unwrap();
     execute_prepass(&plan, &mut blackboard, &dispatcher).expect("prepass succeeds");
     let ir = blackboard
@@ -5629,11 +5547,6 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
         boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
     };
     let perim = slicer_ir::PerimeterIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: 7,
         regions: vec![slicer_ir::PerimeterRegion {
             object_id: "obj".into(),
@@ -5643,6 +5556,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
             infill_areas: Vec::new(),
             resolved_seam: None,
         }],
+        ..Default::default()
     };
     arena.set_perimeter(perim).expect("seed perimeter");
 
@@ -5919,20 +5833,16 @@ fn make_object(id: &str) -> slicer_ir::ObjectMesh {
 fn blackboard_with_objects(object_ids: &[&str]) -> Blackboard {
     let objects: Vec<slicer_ir::ObjectMesh> = object_ids.iter().map(|id| make_object(id)).collect();
     let mesh = Arc::new(MeshIR {
-        schema_version: semver(1, 0, 0),
         objects,
         build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: Point3::default(),
             max: Point3 {
                 x: 1.0,
                 y: 1.0,
                 z: 1.0,
             },
         },
+        ..Default::default()
     });
     Blackboard::new(mesh, 0)
 }
@@ -6454,24 +6364,16 @@ fn mesh_segmentation_macro_path_drain_preserves_push_order() {
         ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str())),
     );
     let mesh = Arc::new(slicer_ir::MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![make_object("obj-B"), make_object("obj-A")],
         build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: slicer_ir::Point3::default(),
             max: slicer_ir::Point3 {
                 x: 1.0,
                 y: 1.0,
                 z: 1.0,
             },
         },
+        ..Default::default()
     });
     let blackboard = Blackboard::new(mesh, 0);
 
@@ -6580,11 +6482,6 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
 
     // First commit with valid unique entries.
     let seam_plan = SeamPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         entries: vec![
             SeamPlanEntry {
                 region_key: RegionKey {
@@ -6593,7 +6490,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
                     region_id: 1,
                 },
                 chosen_candidate: seam_position.clone(),
-                scored_candidates: vec![],
+                ..Default::default()
             },
             SeamPlanEntry {
                 region_key: RegionKey {
@@ -6602,9 +6499,10 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
                     region_id: 2,
                 },
                 chosen_candidate: seam_position.clone(),
-                scored_candidates: vec![],
+                ..Default::default()
             },
         ],
+        ..Default::default()
     };
 
     // Commit once — should succeed.
@@ -6617,11 +6515,6 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
     // Second commit — same region key (global_layer_index=0, obj-A, region_id=1)
     // is a duplicate and must be rejected.
     let duplicate_seam_plan = SeamPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         entries: vec![SeamPlanEntry {
             region_key: RegionKey {
                 global_layer_index: 0,
@@ -6629,8 +6522,9 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
                 region_id: 1, // duplicate of above
             },
             chosen_candidate: seam_position,
-            scored_candidates: vec![],
+            ..Default::default()
         }],
+        ..Default::default()
     };
     let result2 = blackboard.commit_seam_plan(std::sync::Arc::new(duplicate_seam_plan));
     assert!(
@@ -6706,27 +6600,12 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
     let empty_mesh = empty_mesh_ir();
     let mut blackboard = Blackboard::new(Arc::clone(&empty_mesh), 0);
     blackboard
-        .commit_layer_plan(Arc::new(LayerPlanIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            global_layers: vec![],
-            object_participation: Default::default(),
-        }))
+        .commit_layer_plan(Arc::new(LayerPlanIR::default()))
         .expect("commit minimal layer plan for required slot");
 
     // Also commit SurfaceClassificationIR (MeshAnalysis output that other stages need).
     blackboard
-        .commit_surface_classification(Arc::new(SurfaceClassificationIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            per_object: Default::default(),
-        }))
+        .commit_surface_classification(Arc::new(SurfaceClassificationIR::default()))
         .expect("commit surface classification for required slot");
 
     let result = PrepassStageRunner::run_stage(

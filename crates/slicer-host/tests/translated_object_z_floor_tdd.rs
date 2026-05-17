@@ -19,8 +19,8 @@ use slicer_host::{
     WasmArtifactMetadata,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectConfig,
-    ObjectLayerRef, ObjectMesh, ObjectSurfaceData, PaintRegionIR, Point3, RegionMapIR, SemVer,
+    BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectLayerRef,
+    ObjectMesh, ObjectSurfaceData, PaintRegionIR, Point3, RegionMapIR, SemVer,
     SurfaceClassificationIR, Transform3d,
 };
 
@@ -32,7 +32,6 @@ fn translated_layer_plan_fixture() -> LayerPlanIR {
     let layer_height = 0.2;
     let world_z_floor = 10.0;
     LayerPlanIR {
-        schema_version: semver(1, 0, 0),
         global_layers: vec![
             GlobalLayer {
                 index: 0,
@@ -64,37 +63,30 @@ fn translated_layer_plan_fixture() -> LayerPlanIR {
                 },
             ],
         )]),
+        ..Default::default()
     }
 }
 
 /// Object surface data fixture.
 fn surface_fixture() -> SurfaceClassificationIR {
     SurfaceClassificationIR {
-        schema_version: semver(1, 0, 0),
         per_object: HashMap::from([(
             String::from("translated-obj"),
             ObjectSurfaceData {
                 facet_classes: vec![slicer_ir::FacetClass::TopSurface],
-                surface_groups: Vec::new(),
-                bridge_regions: Vec::new(),
-                overhang_regions: Vec::new(),
+                ..Default::default()
             },
         )]),
+        ..Default::default()
     }
 }
 
 fn region_map_fixture() -> RegionMapIR {
-    RegionMapIR {
-        schema_version: semver(1, 0, 0),
-        entries: HashMap::new(),
-    }
+    RegionMapIR::default()
 }
 
 fn paint_regions_fixture() -> PaintRegionIR {
-    PaintRegionIR {
-        schema_version: semver(1, 0, 0),
-        per_layer: HashMap::new(),
-    }
+    PaintRegionIR::default()
 }
 
 fn execution_plan_fixture(prepass_stages: Vec<CompiledStage>) -> ExecutionPlan {
@@ -392,42 +384,30 @@ fn world_z_zero_translated_mesh() -> MeshIR {
     t[14] = 10.0; // +10mm in Z
 
     MeshIR {
-        schema_version: semver(1, 0, 0),
         objects: vec![ObjectMesh {
             id: String::from("translated-obj"),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
+                    Point3::default(),
                     Point3 {
                         x: 1.0,
-                        y: 0.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                     Point3 {
-                        x: 0.0,
                         y: 1.0,
                         z: 1.0,
+                        ..Default::default()
                     }, // z=1 in local → z=11 in world
                 ],
                 indices: vec![0, 1, 2],
             },
             transform: Transform3d { matrix: t },
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: None, // recomputed on load; None is safe for fresh mesh
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
             min: Point3 {
-                x: 0.0,
-                y: 0.0,
                 z: 10.0,
+                ..Default::default()
             },
             max: Point3 {
                 x: 200.0,
@@ -435,6 +415,7 @@ fn world_z_zero_translated_mesh() -> MeshIR {
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 

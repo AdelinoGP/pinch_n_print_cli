@@ -149,22 +149,12 @@ fn make_object_mesh(object_id: &str, mesh: IndexedTriangleSet) -> ObjectMesh {
         id: object_id.to_string(),
         mesh,
         transform: identity_transform(),
-        config: ObjectConfig {
-            data: HashMap::new(),
-        },
-        modifier_volumes: vec![],
-        paint_data: None,
-        world_z_extent: None,
+        ..Default::default()
     }
 }
 
 fn make_mesh_ir(object_id: &str, mesh: IndexedTriangleSet) -> MeshIR {
     MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 1,
-            patch: 0,
-        },
         objects: vec![make_object_mesh(object_id, mesh)],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -178,6 +168,7 @@ fn make_mesh_ir(object_id: &str, mesh: IndexedTriangleSet) -> MeshIR {
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
@@ -222,14 +213,8 @@ fn make_surface_class(
 ) -> SurfaceClassificationIR {
     let bridge_regions = match bridge_facet_indices {
         Some(indices) => vec![BridgeRegion {
-            id: 0,
             facet_indices: indices,
-            bridge_direction_deg: 0.0,
-            anchor_width_mm: 0.0,
-            bridge_length_mm: 0.0,
-            expansion_margin_mm: 0.0,
-            is_valid: false,
-            xy_footprint: vec![],
+            ..Default::default()
         }],
         None => vec![],
     };
@@ -253,12 +238,8 @@ fn make_surface_class(
     per_object.insert(object_id.to_string(), per_object_data);
 
     SurfaceClassificationIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         per_object,
+        ..Default::default()
     }
 }
 
@@ -846,22 +827,10 @@ fn region_override_redirects_claim_to_alternate_holder() {
         object_id: ObjectId::from("override-obj"),
         region_id: 1u64 as RegionId,
     };
-    let mut region_map = RegionMapIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        entries: HashMap::new(),
-    };
-    region_map.entries.insert(
-        region_a_key.clone(),
-        RegionPlan {
-            config: ResolvedConfig::default(),
-            stage_modules: HashMap::new(),
-            paint_overrides: BTreeMap::new(),
-        },
-    );
+    let mut region_map = RegionMapIR::default();
+    region_map
+        .entries
+        .insert(region_a_key.clone(), RegionPlan::default());
     let config_b = ResolvedConfig {
         sparse_fill_holder: String::from("lightning-infill"),
         ..ResolvedConfig::default()
@@ -870,8 +839,7 @@ fn region_override_redirects_claim_to_alternate_holder() {
         region_b_key.clone(),
         RegionPlan {
             config: config_b,
-            stage_modules: HashMap::new(),
-            paint_overrides: BTreeMap::new(),
+            ..Default::default()
         },
     );
 

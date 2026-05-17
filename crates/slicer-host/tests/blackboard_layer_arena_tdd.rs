@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_host::{
@@ -10,8 +10,7 @@ use slicer_ir::{
     BoundingBox3, ExtrusionPath3D, ExtrusionRole, GlobalLayer, InfillIR, LayerCollectionIR,
     LayerPaintMap, LayerPlanIR, MeshIR, ModuleInvocation, ObjectMesh, ObjectSurfaceData,
     PaintRegionIR, PerimeterIR, Point3, Point3WithWidth, PrintEntity, RegionKey, RegionMapIR,
-    RegionPlan, ResolvedConfig, SemVer, SliceIR, SupportIR, SurfaceClassificationIR, ToolChange,
-    Transform3d, ZHop,
+    RegionPlan, SliceIR, SupportIR, SurfaceClassificationIR, ToolChange, Transform3d, ZHop,
 };
 
 // Contract notes:
@@ -196,25 +195,18 @@ fn expect_option_ref<T>(_: Option<&T>) {}
 
 fn mesh_fixture() -> MeshIR {
     MeshIR {
-        schema_version: semver(1, 0, 0),
         objects: vec![ObjectMesh {
             id: String::from("cube"),
             mesh: slicer_ir::IndexedTriangleSet {
                 vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
+                    Point3::default(),
                     Point3 {
                         x: 1.0,
-                        y: 0.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                     Point3 {
-                        x: 0.0,
                         y: 1.0,
-                        z: 0.0,
+                        ..Default::default()
                     },
                 ],
                 indices: vec![0, 1, 2],
@@ -222,46 +214,35 @@ fn mesh_fixture() -> MeshIR {
             transform: Transform3d {
                 matrix: identity4(),
             },
-            config: slicer_ir::ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: Vec::new(),
-            paint_data: None,
-            world_z_extent: None,
+            ..Default::default()
         }],
         build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
+            min: Point3::default(),
             max: Point3 {
                 x: 200.0,
                 y: 200.0,
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
 fn surface_fixture() -> SurfaceClassificationIR {
     SurfaceClassificationIR {
-        schema_version: semver(1, 0, 0),
         per_object: HashMap::from([(
             String::from("cube"),
             ObjectSurfaceData {
                 facet_classes: vec![slicer_ir::FacetClass::TopSurface],
-                surface_groups: Vec::new(),
-                bridge_regions: Vec::new(),
-                overhang_regions: Vec::new(),
+                ..Default::default()
             },
         )]),
+        ..Default::default()
     }
 }
 
 fn layer_plan_fixture() -> LayerPlanIR {
     LayerPlanIR {
-        schema_version: semver(1, 0, 0),
         global_layers: vec![
             GlobalLayer {
                 index: 0,
@@ -278,26 +259,25 @@ fn layer_plan_fixture() -> LayerPlanIR {
                 is_sync_layer: false,
             },
         ],
-        object_participation: HashMap::new(),
+        ..Default::default()
     }
 }
 
 fn paint_regions_fixture() -> PaintRegionIR {
     PaintRegionIR {
-        schema_version: semver(1, 0, 0),
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
                 global_layer_index: 0,
-                semantic_regions: HashMap::new(),
+                ..Default::default()
             },
         )]),
+        ..Default::default()
     }
 }
 
 fn region_map_fixture() -> RegionMapIR {
     RegionMapIR {
-        schema_version: semver(1, 0, 0),
         entries: HashMap::from([(
             RegionKey {
                 global_layer_index: 0,
@@ -305,71 +285,51 @@ fn region_map_fixture() -> RegionMapIR {
                 region_id: 0,
             },
             RegionPlan {
-                config: ResolvedConfig::default(),
                 stage_modules: HashMap::from([(
                     String::from("Layer::Perimeters"),
                     vec![ModuleInvocation {
                         module_id: String::from("com.example.perimeters"),
-                        config_view: slicer_ir::ConfigView::new(),
+                        ..Default::default()
                     }],
                 )]),
-                paint_overrides: BTreeMap::new(),
+                ..Default::default()
             },
         )]),
+        ..Default::default()
     }
 }
 
 fn slice_fixture() -> SliceIR {
     SliceIR {
-        schema_version: semver(1, 0, 0),
-        global_layer_index: 0,
         z: 0.2,
-        regions: Vec::new(),
+        ..Default::default()
     }
 }
 
 fn perimeter_fixture() -> PerimeterIR {
-    PerimeterIR {
-        schema_version: semver(1, 0, 0),
-        global_layer_index: 0,
-        regions: Vec::new(),
-    }
+    PerimeterIR::default()
 }
 
 fn infill_fixture() -> InfillIR {
-    InfillIR {
-        schema_version: semver(1, 0, 0),
-        global_layer_index: 0,
-        regions: Vec::new(),
-    }
+    InfillIR::default()
 }
 
 fn support_fixture() -> SupportIR {
-    SupportIR {
-        schema_version: semver(1, 0, 0),
-        global_layer_index: 0,
-        support_paths: Vec::new(),
-        interface_paths: Vec::new(),
-        raft_paths: Vec::new(),
-        ironing_paths: Vec::new(),
-    }
+    SupportIR::default()
 }
 
 fn layer_collection_fixture(global_layer_index: u32, z: f32) -> LayerCollectionIR {
     LayerCollectionIR {
-        schema_version: semver(1, 0, 0),
         global_layer_index,
         z,
         ordered_entities: vec![PrintEntity {
             entity_id: 1,
             path: ExtrusionPath3D {
                 points: vec![Point3WithWidth {
-                    x: 0.0,
-                    y: 0.0,
                     z,
                     width: 0.4,
                     flow_factor: 1.0,
-                    overhang_quartile: None,
+                    ..Default::default()
                 }],
                 role: ExtrusionRole::OuterWall,
                 speed_factor: 1.0,
@@ -383,25 +343,14 @@ fn layer_collection_fixture(global_layer_index: u32, z: f32) -> LayerCollectionI
             topo_order: 0,
         }],
         tool_changes: vec![ToolChange {
-            after_entity_index: 0,
-            from_tool: 0,
             to_tool: 1,
+            ..Default::default()
         }],
         z_hops: vec![ZHop {
             after_entity_index: 0,
             hop_height: 0.6,
         }],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
-    }
-}
-
-fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer {
-        major,
-        minor,
-        patch,
+        ..Default::default()
     }
 }
 
@@ -419,32 +368,24 @@ fn seam_plan_blackboard_slot_is_write_once() {
     // exactly one commit is allowed; a second commit must fail with
     // BlackboardError::DuplicatePrepassCommit { slot: SeamPlan }.
     use slicer_host::{Blackboard, BlackboardError, BlackboardPrepassSlot};
-    use slicer_ir::{RegionKey, SeamPlanEntry, SeamPlanIR, SeamPosition, SemVer};
+    use slicer_ir::{RegionKey, SeamPlanEntry, SeamPlanIR, SeamPosition};
 
     let mesh = Arc::new(mesh_fixture());
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 0);
 
     // Build a minimal valid SeamPosition for the chosen_candidate field.
     let dummy_position = slicer_ir::Point3WithWidth {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0,
         width: 0.4,
         flow_factor: 1.0,
-        overhang_quartile: None,
+        ..Default::default()
     };
     let seam_position = SeamPosition {
         point: dummy_position,
-        wall_index: 0,
+        ..Default::default()
     };
 
     // Commit an empty SeamPlanIR.
     let plan = SeamPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         entries: vec![SeamPlanEntry {
             region_key: RegionKey {
                 global_layer_index: 0,
@@ -452,8 +393,9 @@ fn seam_plan_blackboard_slot_is_write_once() {
                 region_id: 1,
             },
             chosen_candidate: seam_position,
-            scored_candidates: vec![],
+            ..Default::default()
         }],
+        ..Default::default()
     };
 
     let first = blackboard.commit_seam_plan(Arc::new(plan));
@@ -464,14 +406,7 @@ fn seam_plan_blackboard_slot_is_write_once() {
     );
 
     // Second commit to the same slot must be rejected.
-    let duplicate = SeamPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        entries: vec![],
-    };
+    let duplicate = SeamPlanIR::default();
     let second = blackboard.commit_seam_plan(Arc::new(duplicate));
     assert!(
         second.is_err(),
