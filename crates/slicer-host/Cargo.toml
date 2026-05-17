@@ -32,6 +32,7 @@ tempfile = "3"
 serde_json = "1.0"
 base64 = "0.22"
 slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk" }
+criterion = { workspace = true }
 
 [dev-dependencies.part-cooling]
 path = "../../modules/core-modules/part-cooling"
@@ -45,6 +46,18 @@ path = "../../modules/core-modules/support-planner"
 # the module's own `tests/` directory; host-level tests must exercise
 # either pure host plumbing (blackboard, dispatch routing, claim dedup)
 # or load the module's `.wasm` and dispatch through wasmtime.
+
+[[bench]]
+name = "pipeline"
+harness = false
+
+[[bench]]
+name = "per_stage"
+harness = false
+
+[[bench]]
+name = "wasm_modules"
+harness = false
 
 [lints]
 workspace = true

@@ -40,6 +40,9 @@ authors = ["ModularSlicer Team"]
 version = "0.1.0"
 
 [workspace.dependencies]
+# Benchmarking
+criterion = { version = "0.5.1", default-features = false, features = ["html_reports", "cargo_bench_support"] }
+
 # Core dependencies
 wasmtime = "43.0.0"
 wit-bindgen = "0.57.1"
@@ -100,3 +103,7 @@ too_many_arguments = "allow"
 opt-level = 3
 lto = "thin"
 strip = true
+
+[profile.bench]
+inherits = "release"
+debug = 1            # line tables only — useful for flamegraphs without bloating

@@ -8,5 +8,12 @@ authors = ["ModularSlicer Team"]
 clipper2-rust = { workspace = true }
 slicer-ir = { path = "../slicer-ir" }
 
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "polygon_ops"
+harness = false
+
 [lints]
 workspace = true

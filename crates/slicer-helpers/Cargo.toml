@@ -16,6 +16,11 @@ truck-meshalgo = { workspace = true }
 [dev-dependencies]
 truck-modeling = { workspace = true }
 truck-topology = "0.6"
+criterion = { workspace = true }
+
+[[bench]]
+name = "mesh_ops"
+harness = false
 
 [lints]
 workspace = true
