@@ -50,8 +50,8 @@ pub fn assert_paths_planar(paths: &[ExtrusionPath3D], expected_z_mm: f32, tolera
 ///
 /// let path = ExtrusionPath3D {
 ///     points: vec![
-///         Point3WithWidth { x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0 },
-///         Point3WithWidth { x: 1.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0 },
+///         Point3WithWidth { x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0, overhang_quartile: None },
+///         Point3WithWidth { x: 1.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0, overhang_quartile: None },
 ///     ],
 ///     role: ExtrusionRole::SparseInfill,
 ///     speed_factor: 1.0,
@@ -89,7 +89,7 @@ pub fn assert_max_segment_length(paths: &[ExtrusionPath3D], max_len_mm: f32) {
 ///
 /// let path = ExtrusionPath3D {
 ///     points: vec![
-///         Point3WithWidth { x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0 },
+///         Point3WithWidth { x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0, overhang_quartile: None },
 ///     ],
 ///     role: ExtrusionRole::SparseInfill,
 ///     speed_factor: 1.0,
@@ -135,7 +135,7 @@ pub fn assert_extrusion_width_range(paths: &[ExtrusionPath3D], min_width: f32, m
 /// };
 /// let path = ExtrusionPath3D {
 ///     points: vec![
-///         Point3WithWidth { x: 5.0, y: 5.0, z: 0.0, width: 0.4, flow_factor: 1.0 },
+///         Point3WithWidth { x: 5.0, y: 5.0, z: 0.0, width: 0.4, flow_factor: 1.0, overhang_quartile: None },
 ///     ],
 ///     role: ExtrusionRole::SparseInfill,
 ///     speed_factor: 1.0,
@@ -249,16 +249,16 @@ fn point_on_segment(px: i64, py: i64, a: &slicer_ir::Point2, b: &slicer_ir::Poin
 ///
 /// let path_a = ExtrusionPath3D {
 ///     points: vec![
-///         Point3WithWidth { x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0 },
-///         Point3WithWidth { x: 10.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0 },
+///         Point3WithWidth { x: 0.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0, overhang_quartile: None },
+///         Point3WithWidth { x: 10.0, y: 0.0, z: 0.0, width: 0.4, flow_factor: 1.0, overhang_quartile: None },
 ///     ],
 ///     role: ExtrusionRole::SparseInfill,
 ///     speed_factor: 1.0,
 /// };
 /// let path_b = ExtrusionPath3D {
 ///     points: vec![
-///         Point3WithWidth { x: 0.0, y: 1.0, z: 0.0, width: 0.4, flow_factor: 1.0 },
-///         Point3WithWidth { x: 10.0, y: 1.0, z: 0.0, width: 0.4, flow_factor: 1.0 },
+///         Point3WithWidth { x: 0.0, y: 1.0, z: 0.0, width: 0.4, flow_factor: 1.0, overhang_quartile: None },
+///         Point3WithWidth { x: 10.0, y: 1.0, z: 0.0, width: 0.4, flow_factor: 1.0, overhang_quartile: None },
 ///     ],
 ///     role: ExtrusionRole::SparseInfill,
 ///     speed_factor: 1.0,

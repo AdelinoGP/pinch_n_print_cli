@@ -25,7 +25,7 @@ inlined-to-nothing `NoopInstrumentation` calls at each bracket point.
   peak host memory in bytes, threads observed, peak concurrent layers.
 - **Phase Totals**: PrePass / PerLayer (sum of per-layer wall-clock) / PostPass.
 - **Per-Module Aggregate (per-layer tier)**: by module id — calls, total ms,
-  mean, p95, peak host Δ.
+  mean, p95, peak host Δ, peak WASM linear memory.
 - **Per-Layer table**: one row per layer with duration, worker thread,
   stages count, modules count, host bytes delta, host bytes peak.
 - **Per-Stage Aggregate**: every stage that ran, with tier color-coded.
@@ -33,11 +33,16 @@ inlined-to-nothing `NoopInstrumentation` calls at each bracket point.
   which layers were processed on which thread and when.
 - **Serial Edges**: collapsible `<details>` per stage with rows like
   `module-a → module-b  (IrWriteRead: PerimeterIR.regions.walls)` —
-  the answer to "why couldn't these run in parallel?".
+  the answer to "why couldn't these run in parallel?". Auto-collapsed
+  when there are more than 3 stages to keep initial scroll length compact.
+- **Per-Layer-Per-Module (verbose)**: opt-in via `--report-verbose`.
+  One row per module call: layer index, stage, module, duration, host
+  peak Δ, WASM peak. Off by default because it scales as
+  O(layers × stages × modules).
 
-The HTML is a single self-contained file (~150 KB on a 1000-layer print;
-larger with `--report-verbose`). No external assets, one inline `<style>`
-and a tiny inline `<script>`.
+The HTML is a single self-contained file (~60–150 KB without
+`--report-verbose`; can grow to MBs with it). No external assets,
+one inline `<style>`, no JavaScript.
 
 ## Architecture
 
@@ -57,9 +62,12 @@ and a tiny inline `<script>`.
 
 Hook points: `pipeline.rs::run_pipeline_with_instrumentation` brackets
 each phase; `layer_executor.rs::execute_single_layer` brackets layer /
-stage / module boundaries. The pipeline does *not* fire per-stage or
-per-module brackets inside `prepass.rs` or `postpass.rs` — those phases
-get phase-level totals only (see v1 limitations below).
+stage / module boundaries for per-layer; `prepass.rs` and `postpass.rs`
+have `_with_instrumentation` variants that bracket per-stage and
+per-module for those tiers. Host built-ins inside prepass
+(MeshAnalysis, SupportGeometry, RegionMapping) and postpass (GCode
+emit / serialize) are not bracketed — they are not user-visible
+modules.
 
 ## Global allocator contract
 
@@ -90,33 +98,26 @@ declared anywhere in this workspace.
 These are deliberate tradeoffs for the initial implementation. None affect
 correctness; they bound the level of detail the report can surface.
 
-1. **Prepass / Postpass have phase-level brackets only.** Per-stage and
-   per-module data is not collected for those phases (they typically
-   account for under 10% of slice time; the per-layer tier — the
-   dominant cost — has full granularity). Lifting this requires
-   refactoring `execute_prepass_with_builtins_configured` (550 LOC) and
-   `execute_postpass` (273 LOC) to expose per-stage execution.
-2. **WASM linear-memory deltas are zero.** wasmtime's typed component-model
-   bindings (`WasmRuntimeDispatcher`) do not expose `memory.data_size()`
-   the way classic modules do. The host allocator still captures
-   wasmtime's *host-side* bookkeeping; what's missing is the linear
-   memory the guest sees. Wiring this in requires either dropping to
-   untyped instantiation or threading a memory export through every
-   world's bindgen.
-3. **Serial-edge reasons at runtime cover only `IrWriteRead`.**
-   `CompiledModule` does not carry `requires_modules`, so the runtime
-   helper (`compute_serial_edges_from_compiled`) cannot emit
-   `EdgeReason::ExplicitRequires` reasons. Topological order in
-   `stage.modules` still reflects explicit-requires dependencies — the
-   report just doesn't label them with that reason. The
-   `LoadedModule`-side helper (`compute_serial_edges_for_stage`)
-   handles both reasons; future work could plumb `requires_modules`
-   into `CompiledModule` or thread `LoadedModule`s through to the
-   collector at plan-freeze time.
-4. **Phase markers don't include claim conflicts.** The existing DAG
+1. **Phase markers don't include claim conflicts.** The existing DAG
    builder doesn't produce claim-conflict edges (claims block plan
    validation entirely). If the validation model evolves to allow
    claim-induced ordering, add an `EdgeReason::ClaimConflict` variant.
+
+### WASM linear-memory sampling
+
+Each per-call `wasmtime::Store` installs a `MemTracker` (in
+`crates/slicer-host/src/wit_host.rs`) as its `ResourceLimiter`. The
+limiter records every `memory.grow` notification (including the initial
+instantiation grow) and surfaces two values per dispatch:
+
+- `wasm_initial_bytes` — linear-memory size right after instantiation
+  but before the export call runs (the module's static baseline).
+- `wasm_peak_bytes` — highwater observed across the whole dispatch.
+
+The per-call `(initial, peak)` is stashed in a thread-local read by
+`LayerStageRunner::last_wasm_mem_sample` (default impl returns `(0, 0)`
+for non-wasm runners), then handed to `on_module_end`. Test mocks and
+host built-ins leave the WASM columns blank without any extra wiring.
 
 ## Test coverage
 
