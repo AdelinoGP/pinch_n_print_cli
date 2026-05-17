@@ -3,15 +3,23 @@
 //! Parses CLI arguments via clap and dispatches to the pipeline orchestration
 //! or config-schema query functions.
 
+#[global_allocator]
+static ALLOC: AccountingAllocator<std::alloc::System> =
+    AccountingAllocator::new(std::alloc::System);
+
 use std::sync::{Arc, Mutex};
 
 use clap::Parser;
 use slicer_host::dispatch::WasmRuntimeDispatcher;
 use slicer_host::model_loader::load_model;
-use slicer_host::pipeline::{run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners};
+use slicer_host::pipeline::{
+    run_pipeline_with_instrumentation, run_pipeline_with_raw_config, PipelineConfig,
+    PipelineStageRunners,
+};
 use slicer_host::progress_events::{
     JsonLinesEmitter, ProgressEventEmitter, RuntimeProgressSink, SliceEventCollector,
 };
+use slicer_host::report::{allocator as report_alloc, AccountingAllocator, Collector};
 use slicer_host::{
     build_config_schema_json, build_live_execution_plan, load_live_modules_for_plan,
     load_modules_from_roots, parse_cli_config_source, resolve_global_config,
@@ -117,6 +125,8 @@ fn main() {
             output,
             module_dir,
             thumbnail,
+            report,
+            report_verbose: _,
         } => {
             // Load model
             let model_path = std::path::Path::new(&model);
@@ -294,7 +304,32 @@ fn main() {
             let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
             let sink = RuntimeProgressSink::new(emitter, Arc::clone(&collector));
 
-            match run_pipeline_with_raw_config(config, &config_source, &sink) {
+            // Branch on --report. When absent, take the original code path
+            // (zero overhead, no allocator counters incremented). When
+            // present, install the Collector + enable the accounting
+            // allocator for the duration of the slice.
+            let result = if let Some(ref report_path) = report {
+                report_alloc::enable();
+                let collector = Arc::new(Collector::new(model.clone()));
+                let r = run_pipeline_with_instrumentation(
+                    config,
+                    &config_source,
+                    &sink,
+                    collector.as_ref(),
+                );
+                report_alloc::disable();
+                // Render and write the report regardless of pipeline outcome
+                // — partial timing data is still useful when debugging a
+                // failing slice.
+                if let Err(e) = collector.finish_and_render_to(report_path) {
+                    eprintln!("warning: failed to write slicer report: {e}");
+                }
+                r
+            } else {
+                run_pipeline_with_raw_config(config, &config_source, &sink)
+            };
+
+            match result {
                 Ok(result) => {
                     if let Some(out_path) = output {
                         if let Err(e) = std::fs::write(&out_path, &result.gcode_text) {

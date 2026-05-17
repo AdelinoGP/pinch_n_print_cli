@@ -11,13 +11,14 @@ use std::sync::Arc;
 use slicer_ir::{ConfigKey, ConfigValue, MeshIR, ResolvedConfig};
 
 use crate::{
-    execute_layer_finalization, execute_per_layer_with_events, execute_postpass,
+    compute_serial_edges_from_compiled, execute_layer_finalization, execute_per_layer_with_events,
+    execute_per_layer_with_instrumentation, execute_postpass,
     gcode_emit::{resolved_config_to_map, ThumbnailAwareSerializer},
     prepass::execute_prepass_with_builtins_configured,
     Blackboard, ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter,
     GCodeSerializer, LayerExecutionError, LayerProgressSink, LayerStageRunner, ModuleAccessAudit,
-    NoopLayerProgressSink, PostpassError, PostpassStageRunner, PrepassExecutionError,
-    PrepassStageRunner,
+    NoopLayerProgressSink, Phase, PipelineInstrumentation, PostpassError, PostpassStageRunner,
+    PrepassExecutionError, PrepassStageRunner, TierKind,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -303,6 +304,147 @@ pub fn run_pipeline_with_raw_config(
         runners.serializer.as_ref(),
         runners.postpass.as_mut(),
     )?;
+
+    Ok(PipelineOutput {
+        gcode_text,
+        prepass_audits,
+        layer_audits,
+        postpass_audits,
+    })
+}
+
+/// Execute the full slicing pipeline with bracket-shaped instrumentation
+/// surfaced through `instrumentation`. Identical semantics to
+/// [`run_pipeline_with_raw_config`] when `&NoopInstrumentation` is passed.
+///
+/// The instrumentation receives:
+/// - `on_phase_start/end` for `Phase::PrePass`, `Phase::PerLayer`, `Phase::PostPass`
+/// - `record_edges` once per stage at plan freeze, for every prepass /
+///   per-layer / postpass stage, carrying the serial-edge reasons derived
+///   from the compiled IR access masks (see
+///   [`compute_serial_edges_from_compiled`] for the v1 reason coverage).
+/// - Per-layer / per-stage / per-module brackets *inside* the per-layer tier
+///   only (from `execute_per_layer_with_instrumentation`). Prepass and
+///   postpass currently surface only their phase brackets; finer-grained
+///   hooks inside those phases are a follow-up.
+pub fn run_pipeline_with_instrumentation(
+    config: PipelineConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    sink: &(dyn LayerProgressSink + Sync),
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+) -> Result<PipelineOutput, PipelineError> {
+    let PipelineConfig {
+        mesh_ir,
+        mut plan,
+        mut runners,
+        resolved_configs,
+        default_resolved_config,
+    } = config;
+
+    // Plan-freeze: emit one `record_edges` call per stage so the report has
+    // the full serial-edge explainer up front, even for stages where no
+    // modules fire on this run.
+    for stage in &plan.prepass_stages {
+        let edges = compute_serial_edges_from_compiled(&stage.modules);
+        instrumentation.record_edges(&stage.stage_id, TierKind::PrePass, &edges);
+    }
+    for stage in &plan.per_layer_stages {
+        let edges = compute_serial_edges_from_compiled(&stage.modules);
+        instrumentation.record_edges(&stage.stage_id, TierKind::PerLayer, &edges);
+    }
+    if let Some(stage) = plan.layer_finalization_stage.as_ref() {
+        let edges = compute_serial_edges_from_compiled(&stage.modules);
+        instrumentation.record_edges(&stage.stage_id, TierKind::PostPass, &edges);
+    }
+    for stage in &plan.postpass_stages {
+        let edges = compute_serial_edges_from_compiled(&stage.modules);
+        instrumentation.record_edges(&stage.stage_id, TierKind::PostPass, &edges);
+    }
+
+    let mut blackboard = Blackboard::new(mesh_ir, 0);
+
+    instrumentation.on_phase_start(Phase::PrePass);
+    let prepass_audits = execute_prepass_with_builtins_configured(
+        &plan,
+        &mut blackboard,
+        runners.prepass.as_ref(),
+        &resolved_configs,
+        &default_resolved_config,
+        raw_config_source,
+    );
+    instrumentation.on_phase_end(Phase::PrePass);
+    let prepass_audits = prepass_audits?;
+
+    if let Some(layer_plan) = blackboard.layer_plan() {
+        plan.global_layers = Arc::new(layer_plan.global_layers.clone());
+    }
+
+    instrumentation.on_phase_start(Phase::PerLayer);
+    let per_layer_result = execute_per_layer_with_instrumentation(
+        &plan,
+        &blackboard,
+        runners.layer.as_ref(),
+        sink,
+        instrumentation,
+    );
+    instrumentation.on_phase_end(Phase::PerLayer);
+    let (mut layer_irs, layer_audits) = per_layer_result?;
+
+    instrumentation.on_phase_start(Phase::PostPass);
+    let post_result = (|| -> Result<(String, Vec<ModuleAccessAudit>), PipelineError> {
+        execute_layer_finalization(
+            &plan,
+            &blackboard,
+            runners.finalization.as_ref(),
+            &mut layer_irs,
+        )?;
+
+        // Replicate the thumbnail / effective-config wrapping from
+        // `run_pipeline_with_raw_config` so this entry behaves identically.
+        const PNG_MAGIC: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        let thumbnail_bytes: Option<Vec<u8>> = match raw_config_source.get("thumbnail_path") {
+            Some(ConfigValue::String(path)) if !path.is_empty() => {
+                let bytes = std::fs::read(path).map_err(|_| PostpassError::GCodeSerialization {
+                    message: format!("thumbnail_path: file not found: {path}"),
+                })?;
+                if bytes.len() < 8 || bytes[..8] != PNG_MAGIC {
+                    return Err(PipelineError::Postpass(PostpassError::GCodeSerialization {
+                        message: format!("thumbnail_path: invalid PNG magic in file: {path}"),
+                    }));
+                }
+                Some(bytes)
+            }
+            _ => None,
+        };
+
+        let mut effective_config = resolved_config_to_map(&default_resolved_config);
+        for (k, v) in raw_config_source {
+            effective_config.insert(k.clone(), v.clone());
+        }
+        effective_config.remove("thumbnail_path");
+
+        let inner_serializer = std::mem::replace(
+            &mut runners.serializer,
+            Box::new(crate::gcode_emit::DefaultGCodeSerializer::new()),
+        );
+        runners.serializer = Box::new(ThumbnailAwareSerializer::new(
+            inner_serializer,
+            thumbnail_bytes,
+            effective_config,
+        ));
+
+        let (gcode_text, postpass_audits) = execute_postpass(
+            &plan,
+            &layer_irs,
+            &blackboard,
+            runners.emitter.as_ref(),
+            runners.serializer.as_ref(),
+            runners.postpass.as_mut(),
+        )?;
+        Ok((gcode_text, postpass_audits))
+    })();
+    instrumentation.on_phase_end(Phase::PostPass);
+    let (gcode_text, postpass_audits) = post_result?;
 
     Ok(PipelineOutput {
         gcode_text,

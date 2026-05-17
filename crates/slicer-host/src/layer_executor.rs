@@ -17,6 +17,7 @@ use slicer_ir::{
     WallFeatureFlags,
 };
 
+use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
 use crate::layer_slice::{execute_layer_slice, LayerSliceError};
 use crate::progress_events::ProgressEvent;
 use crate::slice_postprocess::{
@@ -219,6 +220,20 @@ pub fn execute_per_layer_with_events(
     runner: &(dyn LayerStageRunner + Sync),
     sink: &(dyn LayerProgressSink + Sync),
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
+    execute_per_layer_with_instrumentation(plan, blackboard, runner, sink, &NoopInstrumentation)
+}
+
+/// Like [`execute_per_layer_with_events`] but additionally records timing,
+/// memory, and DAG bracket calls into `instrumentation`. Pass
+/// `&NoopInstrumentation` for zero-overhead behavior identical to the
+/// non-instrumented variant.
+pub fn execute_per_layer_with_instrumentation(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
     let global_layers = &plan.global_layers;
     let required_semantics = blackboard
         .paint_regions()
@@ -230,7 +245,15 @@ pub fn execute_per_layer_with_events(
         global_layers
             .par_iter()
             .map(|layer| {
-                execute_single_layer(plan, blackboard, runner, sink, &required_semantics, layer)
+                execute_single_layer(
+                    plan,
+                    blackboard,
+                    runner,
+                    sink,
+                    instrumentation,
+                    &required_semantics,
+                    layer,
+                )
             })
             .collect();
 
@@ -284,6 +307,30 @@ fn execute_single_layer(
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
     sink: &(dyn LayerProgressSink + Sync),
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    required_semantics: &[PaintSemantic],
+    layer: &GlobalLayer,
+) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
+    instrumentation.on_layer_start(layer.index, layer.z);
+    let result = execute_single_layer_inner(
+        plan,
+        blackboard,
+        runner,
+        sink,
+        instrumentation,
+        required_semantics,
+        layer,
+    );
+    instrumentation.on_layer_end(layer.index);
+    result
+}
+
+fn execute_single_layer_inner(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &(dyn LayerStageRunner + Sync),
+    sink: &(dyn LayerProgressSink + Sync),
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
     required_semantics: &[PaintSemantic],
     layer: &GlobalLayer,
 ) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
@@ -358,19 +405,31 @@ fn execute_single_layer(
                 travel_moves: Vec::new(),
             });
         }
+        instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
         // Execute modules in topological order within each stage
         for module in &stage.modules {
+            instrumentation.on_module_start(&stage.stage_id, Some(layer.index), &module.module_id);
             let run_result =
                 runner.run_stage(&stage.stage_id, layer, module, blackboard, &mut arena);
+            // For now the dispatcher does not yet sample wasm linear memory;
+            // pass 0/0. Task #5 will wire real wasmtime memory.data_size().
+            instrumentation.on_module_end(
+                &stage.stage_id,
+                Some(layer.index),
+                &module.module_id,
+                0,
+                0,
+            );
             let (stage_result, runtime_reads, runtime_writes) = match run_result {
                 Ok((output, reads, writes)) => (output, reads, writes),
                 Err(e) => {
+                    instrumentation.on_stage_end(&stage.stage_id, Some(layer.index));
                     return Err(LayerExecutionError::FatalLayer {
                         layer_index: layer.index,
                         stage_id: stage.stage_id.clone(),
                         module_id: module.module_id.clone(),
                         message: e.to_string(),
-                    })
+                    });
                 }
             };
 
@@ -409,6 +468,7 @@ fn execute_single_layer(
             run_paint_annotation(blackboard, required_semantics, sink, &mut arena, layer)?;
             paint_annotation_ran = true;
         }
+        instrumentation.on_stage_end(&stage.stage_id, Some(layer.index));
     }
 
     // Fallback: if no `Layer::SlicePostProcess` stage was scheduled but paint

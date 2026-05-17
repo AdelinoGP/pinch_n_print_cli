@@ -36,6 +36,15 @@ pub enum HostCommands {
         /// Path to a PNG thumbnail image to embed in the G-code header.
         #[arg(long)]
         thumbnail: Option<PathBuf>,
+        /// Optional path for an HTML slicer report (timing / memory /
+        /// parallelism explainer). When absent, no report-related
+        /// instrumentation is installed — zero overhead.
+        #[arg(long, value_name = "PATH.html")]
+        report: Option<PathBuf>,
+        /// Verbose report mode (per-layer-per-module rows). Requires
+        /// `--report`. Defaults to off to keep page size small.
+        #[arg(long, requires = "report")]
+        report_verbose: bool,
     },
     /// Query the combined config schema from loaded modules.
     ConfigSchema {

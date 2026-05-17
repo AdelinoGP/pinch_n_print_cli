@@ -39,6 +39,8 @@ fn run_parses_all_flags() {
             output,
             module_dir,
             thumbnail: _,
+            report: _,
+            report_verbose: _,
         } => {
             assert_eq!(module, "/tmp/mod.wasm");
             assert_eq!(model, "/tmp/model.stl");

@@ -14,6 +14,7 @@ pub mod dispatch_helpers;
 pub mod execution_plan;
 pub mod gcode_emit;
 pub mod instance_pool;
+pub mod instrumentation;
 pub mod layer_executor;
 pub mod layer_finalization;
 pub mod layer_slice;
@@ -31,6 +32,7 @@ pub mod prepass;
 pub mod progress_events;
 pub mod python_bridge;
 pub mod region_mapping;
+pub mod report;
 pub mod slice_postprocess;
 pub mod support_geometry;
 pub mod topology;
@@ -75,9 +77,14 @@ pub use instance_pool::{
     build_wasm_instance_pool, InstancePoolError, InstancePoolMode, WasmArtifactMetadata,
     WasmInstanceLease, WasmInstancePool,
 };
+pub use instrumentation::{
+    compute_serial_edges_for_stage, compute_serial_edges_from_compiled, EdgeReason,
+    NoopInstrumentation, Phase, PipelineInstrumentation, SerialEdge, TierKind,
+};
 pub use layer_executor::{
-    execute_per_layer, execute_per_layer_with_events, ir_path_for_layer_stage, LayerExecutionError,
-    LayerProgressSink, LayerStageError, LayerStageOutput, LayerStageRunner, NoopLayerProgressSink,
+    execute_per_layer, execute_per_layer_with_events, execute_per_layer_with_instrumentation,
+    ir_path_for_layer_stage, LayerExecutionError, LayerProgressSink, LayerStageError,
+    LayerStageOutput, LayerStageRunner, NoopLayerProgressSink,
 };
 pub use layer_finalization::{
     execute_layer_finalization, FinalizationError, FinalizationOutput, FinalizationOutputBuilder,
