@@ -9,7 +9,7 @@ use std::fmt::Write;
 
 use crate::instrumentation::{EdgeReason, SerialEdge, TierKind};
 
-use super::model::{LayerRecord, ModuleRecord, ParallelismRecord, Report, StageRecord};
+use super::model::{ModuleRecord, ParallelismRecord, Report, StageRecord};
 
 const STYLE: &str = r#"
 body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -101,6 +101,7 @@ fn escape_html(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+        .replace('\'', "&#39;")
 }
 
 fn render_header(out: &mut String, r: &Report) {
@@ -421,9 +422,3 @@ fn fmt_reason(r: &EdgeReason) -> String {
         EdgeReason::ExplicitRequires => "ExplicitRequires".to_string(),
     }
 }
-
-// Suppress unused-warning for LayerRecord in this file even though we don't
-// use its fields directly — render_per_layer_table reads them through the
-// public API above.
-#[allow(dead_code)]
-fn _unused(_l: &LayerRecord) {}

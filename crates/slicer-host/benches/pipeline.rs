@@ -66,5 +66,35 @@ fn bench_collector_overhead(c: &mut Criterion) {
     g.finish();
 }
 
-criterion_group!(benches, bench_noop_overhead, bench_collector_overhead);
+fn bench_allocator_disabled(c: &mut Criterion) {
+    // Sanity: ensure accounting is OFF for this bench (it's the default,
+    // but be defensive — earlier benches in the same process could leave
+    // it on).
+    slicer_host::report::allocator::disable();
+
+    let mut g = c.benchmark_group("pipeline/allocator_fast_path");
+    g.bench_function("vec_push_1k", |b| {
+        b.iter(|| {
+            let mut v: Vec<u64> = Vec::with_capacity(0);
+            for i in 0..1024u64 {
+                v.push(black_box(i));
+            }
+            black_box(v);
+        })
+    });
+    g.bench_function("string_alloc_short", |b| {
+        b.iter(|| {
+            let s = format!("scope-{}", black_box(42u32));
+            black_box(s);
+        })
+    });
+    g.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_noop_overhead,
+    bench_collector_overhead,
+    bench_allocator_disabled
+);
 criterion_main!(benches);

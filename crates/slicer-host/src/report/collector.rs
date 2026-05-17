@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Mutex;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use slicer_ir::{ModuleId, StageId};
 
@@ -61,14 +61,19 @@ pub struct Collector {
     layers: Mutex<Vec<LayerRecord>>,
     postpass: Mutex<Vec<StageRecord>>,
     current_phase: AtomicU8,
-    layer_count: AtomicU8Counter,
-    module_count: AtomicU8Counter,
+    /// Tracks the largest observed `layer_index + 1` — idempotent peak,
+    /// safe to race because `set_max` only ratchets upward.
+    layer_count: PeakCounter,
+    /// True running tally of module-call brackets — incremented once per
+    /// `on_module_end`. Uses `fetch_add` so concurrent rayon workers can't
+    /// silently undercount the way a load-then-set-max RMW would.
+    module_count: AtomicCounter,
 }
 
-/// Atomic u32 counter wrapped to keep field types tidy.
-struct AtomicU8Counter(std::sync::atomic::AtomicU32);
+/// Idempotent peak: only stores `v` if greater than current. Safe to race.
+struct PeakCounter(std::sync::atomic::AtomicU32);
 
-impl AtomicU8Counter {
+impl PeakCounter {
     fn new() -> Self {
         Self(std::sync::atomic::AtomicU32::new(0))
     }
@@ -89,21 +94,36 @@ impl AtomicU8Counter {
     }
 }
 
+/// Monotonic tally: each `inc()` is a single atomic add, race-free.
+struct AtomicCounter(std::sync::atomic::AtomicU32);
+
+impl AtomicCounter {
+    fn new() -> Self {
+        Self(std::sync::atomic::AtomicU32::new(0))
+    }
+    fn inc(&self) {
+        self.0.fetch_add(1, Ordering::Relaxed);
+    }
+    fn get(&self) -> u32 {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
 impl Collector {
     /// Create a new collector. `model_path` is informational and embedded
     /// in the report header.
     pub fn new(model_path: impl Into<String>) -> Self {
         Self {
             base_instant: Instant::now(),
-            started_at: format!("{:?}", std::time::SystemTime::now()),
+            started_at: format_rfc3339_utc(SystemTime::now()),
             model_path: model_path.into(),
             edges_by_stage: Mutex::new(HashMap::new()),
             prepass: Mutex::new(Vec::new()),
             layers: Mutex::new(Vec::new()),
             postpass: Mutex::new(Vec::new()),
             current_phase: AtomicU8::new(PHASE_NONE),
-            layer_count: AtomicU8Counter::new(),
-            module_count: AtomicU8Counter::new(),
+            layer_count: PeakCounter::new(),
+            module_count: AtomicCounter::new(),
         }
     }
 
@@ -154,10 +174,16 @@ impl Collector {
                     v.push(record);
                 }
             }
+            PHASE_PERLAYER => {
+                // A stage_end fired with no enclosing Layer scope while
+                // PerLayer was active — bracket bug upstream. Drop the
+                // record rather than misattribute it to postpass.
+                let _ = record;
+            }
             _ => {
-                if let Ok(mut v) = self.postpass.lock() {
-                    v.push(record);
-                }
+                // Phase is NONE: stage_end fired with no phase open at all.
+                // Same reasoning — drop rather than silently route.
+                let _ = record;
             }
         }
     }
@@ -203,6 +229,37 @@ impl Collector {
         let report = self.finalize();
         render_html(&report)
     }
+}
+
+/// Format a `SystemTime` as an RFC 3339 timestamp in UTC, e.g.
+/// `2026-05-16T23:38:05Z`. Hand-rolled to avoid pulling in a date crate —
+/// the value is purely human-display in the report header.
+fn format_rfc3339_utc(t: SystemTime) -> String {
+    let secs = t
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // Civil-from-days (Howard Hinnant, public domain) — converts a Unix
+    // day count into (year, month, day) for the proleptic Gregorian calendar.
+    let days = (secs / 86_400) as i64;
+    let secs_of_day = (secs % 86_400) as u32;
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = y + if month <= 2 { 1 } else { 0 };
+    let hour = secs_of_day / 3600;
+    let minute = (secs_of_day % 3600) / 60;
+    let second = secs_of_day % 60;
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        year, month, day, hour, minute, second
+    )
 }
 
 fn derive_parallelism(layers: &[LayerRecord]) -> ParallelismRecord {
@@ -359,7 +416,7 @@ impl PipelineInstrumentation for Collector {
             wasm_delta: 0,
             wasm_peak: 0,
         };
-        self.module_count.set_max(self.module_count.get() + 1);
+        self.module_count.inc();
         SCOPE_STACK.with(|cell| {
             let mut stack = cell.borrow_mut();
             if let Some(PendingScope::Stage {

@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::sync::Arc;
 
-use slicer_ir::{ConfigKey, ConfigValue, MeshIR, ResolvedConfig};
+use slicer_ir::{ConfigKey, ConfigValue, LayerCollectionIR, MeshIR, ResolvedConfig};
 
 use crate::{
     compute_serial_edges_from_compiled, execute_layer_finalization, execute_per_layer_with_events,
@@ -255,54 +255,13 @@ pub fn run_pipeline_with_raw_config(
         &mut layer_irs,
     )?;
 
-    // Extract and validate thumbnail bytes from raw_config before serialization.
-    // If thumbnail_path is non-empty, read the file and check PNG magic; fail fast on error.
-    const PNG_MAGIC: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-    let thumbnail_bytes: Option<Vec<u8>> = match raw_config_source.get("thumbnail_path") {
-        Some(ConfigValue::String(path)) if !path.is_empty() => {
-            let bytes = std::fs::read(path).map_err(|_| PostpassError::GCodeSerialization {
-                message: format!("thumbnail_path: file not found: {path}"),
-            })?;
-            if bytes.len() < 8 || bytes[..8] != PNG_MAGIC {
-                return Err(PipelineError::Postpass(PostpassError::GCodeSerialization {
-                    message: format!("thumbnail_path: invalid PNG magic in file: {path}"),
-                }));
-            }
-            Some(bytes)
-        }
-        _ => None,
-    };
-
-    // Build the effective config map: resolved defaults as baseline, then overlay
-    // the user-supplied raw config (raw values take precedence).
-    // This ensures CONFIG_BLOCK is non-empty even when raw_config_source is empty
-    // (AC-9 / NEG-4) while still including all user-passed keys (AC-8).
-    // thumbnail_path is an invocation-time routing key consumed above; strip it
-    // so it does not appear in CONFIG_BLOCK.
-    let mut effective_config = resolved_config_to_map(&default_resolved_config);
-    for (k, v) in raw_config_source {
-        effective_config.insert(k.clone(), v.clone());
-    }
-    effective_config.remove("thumbnail_path");
-
-    // Wrap the serializer with thumbnail support when bytes are present.
-    let inner_serializer = std::mem::replace(
-        &mut runners.serializer,
-        Box::new(crate::gcode_emit::DefaultGCodeSerializer::new()),
-    );
-    runners.serializer = Box::new(ThumbnailAwareSerializer::new(
-        inner_serializer,
-        thumbnail_bytes,
-        effective_config,
-    ));
-
-    let (gcode_text, postpass_audits) = execute_postpass(
+    let (gcode_text, postpass_audits) = run_postpass_with_thumbnail(
         &plan,
-        &layer_irs,
         &blackboard,
-        runners.emitter.as_ref(),
-        runners.serializer.as_ref(),
-        runners.postpass.as_mut(),
+        &mut runners,
+        raw_config_source,
+        &default_resolved_config,
+        &layer_irs,
     )?;
 
     Ok(PipelineOutput {
@@ -399,49 +358,14 @@ pub fn run_pipeline_with_instrumentation(
             &mut layer_irs,
         )?;
 
-        // Replicate the thumbnail / effective-config wrapping from
-        // `run_pipeline_with_raw_config` so this entry behaves identically.
-        const PNG_MAGIC: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-        let thumbnail_bytes: Option<Vec<u8>> = match raw_config_source.get("thumbnail_path") {
-            Some(ConfigValue::String(path)) if !path.is_empty() => {
-                let bytes = std::fs::read(path).map_err(|_| PostpassError::GCodeSerialization {
-                    message: format!("thumbnail_path: file not found: {path}"),
-                })?;
-                if bytes.len() < 8 || bytes[..8] != PNG_MAGIC {
-                    return Err(PipelineError::Postpass(PostpassError::GCodeSerialization {
-                        message: format!("thumbnail_path: invalid PNG magic in file: {path}"),
-                    }));
-                }
-                Some(bytes)
-            }
-            _ => None,
-        };
-
-        let mut effective_config = resolved_config_to_map(&default_resolved_config);
-        for (k, v) in raw_config_source {
-            effective_config.insert(k.clone(), v.clone());
-        }
-        effective_config.remove("thumbnail_path");
-
-        let inner_serializer = std::mem::replace(
-            &mut runners.serializer,
-            Box::new(crate::gcode_emit::DefaultGCodeSerializer::new()),
-        );
-        runners.serializer = Box::new(ThumbnailAwareSerializer::new(
-            inner_serializer,
-            thumbnail_bytes,
-            effective_config,
-        ));
-
-        let (gcode_text, postpass_audits) = execute_postpass(
+        run_postpass_with_thumbnail(
             &plan,
-            &layer_irs,
             &blackboard,
-            runners.emitter.as_ref(),
-            runners.serializer.as_ref(),
-            runners.postpass.as_mut(),
-        )?;
-        Ok((gcode_text, postpass_audits))
+            &mut runners,
+            raw_config_source,
+            &default_resolved_config,
+            &layer_irs,
+        )
     })();
     instrumentation.on_phase_end(Phase::PostPass);
     let (gcode_text, postpass_audits) = post_result?;
@@ -452,6 +376,73 @@ pub fn run_pipeline_with_instrumentation(
         layer_audits,
         postpass_audits,
     })
+}
+
+/// PNG file signature — first 8 bytes of every valid PNG.
+const PNG_MAGIC: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+/// Shared post-finalization helper: validate the optional thumbnail file, build
+/// the effective config map, wrap the serializer, and run `execute_postpass`.
+///
+/// Extracted to eliminate the identical block that previously lived in both
+/// [`run_pipeline_with_raw_config`] and [`run_pipeline_with_instrumentation`].
+fn run_postpass_with_thumbnail(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runners: &mut PipelineStageRunners,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    default_resolved_config: &ResolvedConfig,
+    layer_irs: &[LayerCollectionIR],
+) -> Result<(String, Vec<ModuleAccessAudit>), PipelineError> {
+    // Extract and validate thumbnail bytes from raw_config before serialization.
+    // If thumbnail_path is non-empty, read the file and check PNG magic; fail fast on error.
+    let thumbnail_bytes: Option<Vec<u8>> = match raw_config_source.get("thumbnail_path") {
+        Some(ConfigValue::String(path)) if !path.is_empty() => {
+            let bytes = std::fs::read(path).map_err(|_| PostpassError::GCodeSerialization {
+                message: format!("thumbnail_path: file not found: {path}"),
+            })?;
+            if bytes.len() < 8 || bytes[..8] != PNG_MAGIC {
+                return Err(PipelineError::Postpass(PostpassError::GCodeSerialization {
+                    message: format!("thumbnail_path: invalid PNG magic in file: {path}"),
+                }));
+            }
+            Some(bytes)
+        }
+        _ => None,
+    };
+
+    // Build the effective config map: resolved defaults as baseline, then overlay
+    // the user-supplied raw config (raw values take precedence).
+    // This ensures CONFIG_BLOCK is non-empty even when raw_config_source is empty
+    // (AC-9 / NEG-4) while still including all user-passed keys (AC-8).
+    // thumbnail_path is an invocation-time routing key consumed above; strip it
+    // so it does not appear in CONFIG_BLOCK.
+    let mut effective_config = resolved_config_to_map(default_resolved_config);
+    for (k, v) in raw_config_source {
+        effective_config.insert(k.clone(), v.clone());
+    }
+    effective_config.remove("thumbnail_path");
+
+    // Wrap the serializer with thumbnail support when bytes are present.
+    let inner_serializer = std::mem::replace(
+        &mut runners.serializer,
+        Box::new(crate::gcode_emit::DefaultGCodeSerializer::new()),
+    );
+    runners.serializer = Box::new(ThumbnailAwareSerializer::new(
+        inner_serializer,
+        thumbnail_bytes,
+        effective_config,
+    ));
+
+    execute_postpass(
+        plan,
+        layer_irs,
+        blackboard,
+        runners.emitter.as_ref(),
+        runners.serializer.as_ref(),
+        runners.postpass.as_mut(),
+    )
+    .map_err(PipelineError::from)
 }
 
 #[cfg(test)]
