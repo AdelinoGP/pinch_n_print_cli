@@ -158,6 +158,7 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         claims: Vec::new(),
         wasm_component: Some(path_opt_component),
+        requires_modules: Vec::new(),
     });
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -276,6 +277,7 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         claims: Vec::new(),
         wasm_component: Some(path_opt_component),
+        requires_modules: Vec::new(),
     });
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -366,6 +368,7 @@ fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         claims: Vec::new(),
         wasm_component: Some(path_opt_component),
+        requires_modules: Vec::new(),
     });
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -656,5 +659,6 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::clone(&binding.config_view),
         claims: Vec::new(),
         wasm_component: None,
+        requires_modules: Vec::new(),
     }
 }

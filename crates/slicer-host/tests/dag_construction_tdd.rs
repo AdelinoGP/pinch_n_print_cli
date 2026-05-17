@@ -73,10 +73,12 @@ fn read_after_write_access_derives_an_edge_from_writer_to_reader() {
     .expect("DAG construction should succeed for auto-derived edges");
 
     let by_id = nodes_by_id(&nodes);
-    assert_eq!(
-        by_id["com.example.writer"].edges_to,
-        vec![String::from("com.example.reader")]
-    );
+    let writer_edges: Vec<&str> = by_id["com.example.writer"]
+        .edges_to
+        .iter()
+        .map(|e| e.to.as_str())
+        .collect();
+    assert_eq!(writer_edges, vec!["com.example.reader"]);
     assert!(by_id["com.example.reader"].edges_to.is_empty());
 }
 
@@ -108,7 +110,8 @@ fn same_stage_requires_modules_derives_an_explicit_dependency_edge() {
     assert!(
         by_id["com.example.base-infill"]
             .edges_to
-            .contains(&String::from("com.example.decorator")),
+            .iter()
+            .any(|e| e.to == "com.example.decorator"),
         "same-stage requires_modules should add an A -> B edge"
     );
 }

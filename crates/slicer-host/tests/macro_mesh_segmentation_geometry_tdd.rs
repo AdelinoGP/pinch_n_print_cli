@@ -116,6 +116,7 @@ fn make_compiled_module_with(
         config_view: Arc::new(ConfigView::from_map(std::collections::HashMap::new())),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     }
 }
 

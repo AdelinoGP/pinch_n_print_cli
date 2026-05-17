@@ -699,7 +699,7 @@ fn load_3mf_benchy_4color_strokes_populated() {
                         let [a, b, c] = tri;
                         assert!(
                             a != b && b != c && a != c,
-                            "degenerate stroke triangle found"
+                            "degenerate stroke triangle found: a={a:?} b={b:?} c={c:?}"
                         );
                     }
                 }

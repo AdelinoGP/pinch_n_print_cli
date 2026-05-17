@@ -471,6 +471,7 @@ fn compile_support_module(
         config_view: Arc::new(slicer_ir::ConfigView::from_map(config_map)),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     }
 }
 
@@ -991,6 +992,7 @@ fn support_enforcer_blocker_paint_precedence() {
         )),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     };
 
     // Build PaintRegionIR: layer 0, 1 enforcer region, 1 blocker region
@@ -1243,6 +1245,7 @@ mod planner_consuming_tier {
             config_view: Arc::new(ConfigView::from_map(config_map)),
             claims: Vec::new(),
             wasm_component: Some(component),
+            requires_modules: Vec::new(),
         }
     }
 

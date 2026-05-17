@@ -140,14 +140,23 @@ fn disconnected_components_follow_kahn_queue_ordering_deterministically() {
 }
 
 fn node(module_id: &str, edges_to: &[&str]) -> ModuleNode {
+    use slicer_host::instrumentation::EdgeReason;
+    use slicer_host::EdgeTo;
     ModuleNode {
         module_id: module_id.to_string(),
         ir_reads: Vec::new(),
         ir_writes: Vec::new(),
-        edges_to: ids(edges_to),
+        edges_to: edges_to
+            .iter()
+            .map(|to| EdgeTo {
+                to: (*to).to_string(),
+                reasons: vec![EdgeReason::ExplicitRequires],
+            })
+            .collect(),
     }
 }
 
+#[allow(dead_code)]
 fn ids(values: &[&str]) -> Vec<String> {
     values.iter().map(|value| (*value).to_string()).collect()
 }

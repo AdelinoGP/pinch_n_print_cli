@@ -601,11 +601,12 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 20 core modules as of 2026-05-07.
+    // We expect exactly 21 core modules as of 2026-05-17 (part-cooling
+    // landed alongside packet 57 — TASK-182).
     assert_eq!(
         report.modules.len(),
-        20,
-        "expected 20 core modules, got {}: {:?}",
+        21,
+        "expected 21 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| &m.id).collect::<Vec<_>>()
     );
@@ -816,6 +817,7 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
         "com.core.traditional-support",
         "com.core.tree-support",
         "com.core.paint-region-annotator",
+        "com.core.part-cooling",
         "com.core.seam-placer",
         "com.core.seam-planner-default",
         "com.core.support-planner",

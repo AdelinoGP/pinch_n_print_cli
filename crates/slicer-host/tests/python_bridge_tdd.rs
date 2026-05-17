@@ -373,6 +373,7 @@ fn compiled_module(stage_id: &str, module_id: &str, config: ConfigView) -> Compi
         config_view: Arc::new(config),
         claims: Vec::new(),
         wasm_component: None,
+        requires_modules: Vec::new(),
     }
 }
 

@@ -123,6 +123,7 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView::new()),
         claims: Vec::new(),
         wasm_component: None,
+        requires_modules: Vec::new(),
     }
 }
 

@@ -376,6 +376,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         )),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     };
 
     // Build PerimeterIR with resolved_seam set on one wall loop.
@@ -875,6 +876,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         )),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     };
 
     let layer_z = 0.2;

@@ -172,13 +172,22 @@ mod doc_grep_tests {
              'Widen paint-region transport'"
         );
 
-        // (b) A blocker list line must contain TASK-130c
-        let has_blocker = src
-            .lines()
-            .any(|l| (l.contains("Blocking") || l.contains("blocker")) && l.contains("TASK-130c"));
+        // (b) A line must reference TASK-130c's relationship to a blocker.
+        // The task can be registered as either an open blocker
+        // (`Blocking`/`blocker`) OR as the closure of a blocker
+        // (`Closed`/`closed`/`Covers DEV-025`). After packet 42 the task
+        // was closed; either form still satisfies the registration contract.
+        let has_blocker_or_closure = src.lines().any(|l| {
+            l.contains("TASK-130c")
+                && (l.contains("Blocking")
+                    || l.contains("blocker")
+                    || l.contains("Closed")
+                    || l.contains("closed")
+                    || l.contains("DEV-025"))
+        });
         assert!(
-            has_blocker,
-            "07_implementation_status.md blocker list must reference TASK-130c"
+            has_blocker_or_closure,
+            "07_implementation_status.md must reference TASK-130c as a blocker or its closure"
         );
     }
 
@@ -214,8 +223,10 @@ mod doc_grep_tests {
             dev025_block.contains("Mismatch 5"),
             "DEV-025 must reference 'Mismatch 5'"
         );
+        // Case-insensitive — "Paint value" and "paint value" are both valid.
+        let dev025_lower = dev025_block.to_lowercase();
         assert!(
-            dev025_block.contains("paint value"),
+            dev025_lower.contains("paint value"),
             "DEV-025 must contain 'paint value' (mismatch 4 description)"
         );
         assert!(

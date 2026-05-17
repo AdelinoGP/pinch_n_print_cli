@@ -183,6 +183,7 @@ fn compiled_stub_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         claims: Vec::new(),
         wasm_component: None,
+        requires_modules: Vec::new(),
     }
 }
 

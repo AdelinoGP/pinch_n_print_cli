@@ -205,6 +205,7 @@ fn compile_seam_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         config_view: Arc::new(ConfigView::from_map(config_map)),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     }
 }
 

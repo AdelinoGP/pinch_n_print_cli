@@ -523,15 +523,20 @@ fn run_pipeline_with_events_on_empty_plan_emits_no_spurious_events() {
 #[test]
 fn main_production_entry_path_uses_run_pipeline_with_events() {
     // Guards the TASK-108 production-path closure: the slicer-host binary's
-    // Run arm must invoke `run_pipeline_with_events` rather than the
-    // sink-less `run_pipeline` (which dropped paint warnings into
-    // `NoopLayerProgressSink`). If this regresses, paint-annotation
-    // degraded-success events stop reaching the documented transport.
+    // Run arm must invoke a pipeline entry point that threads a
+    // `LayerProgressSink` (not the sink-less `run_pipeline`, which dropped
+    // paint warnings into `NoopLayerProgressSink`). If this regresses,
+    // paint-annotation degraded-success events stop reaching the documented
+    // transport. Either `run_pipeline_with_raw_config` (no-report path) or
+    // `run_pipeline_with_instrumentation` (--report path) is acceptable;
+    // both forward the supplied sink.
     let main_src = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/main.rs"))
         .expect("read main.rs");
     assert!(
-        main_src.contains("run_pipeline_with_events"),
-        "main.rs must call run_pipeline_with_events"
+        main_src.contains("run_pipeline_with_raw_config")
+            || main_src.contains("run_pipeline_with_events")
+            || main_src.contains("run_pipeline_with_instrumentation"),
+        "main.rs must call a sink-aware pipeline entry point"
     );
     assert!(
         main_src.contains("RuntimeProgressSink::new"),

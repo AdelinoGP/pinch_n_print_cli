@@ -254,6 +254,7 @@ fn make_compiled_module_with_config(
         config_view: Arc::new(config),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     }
 }
 
@@ -277,6 +278,7 @@ fn make_compiled_module_no_wasm(id: &str, stage: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         claims: Vec::new(),
         wasm_component: None,
+        requires_modules: Vec::new(),
     }
 }
 
@@ -6694,6 +6696,7 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
         config_view: Arc::new(ConfigView::from_map(Default::default())),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     };
 
     // Build a blackboard with a committed LayerPlanIR (SeamPlanning's required slot).

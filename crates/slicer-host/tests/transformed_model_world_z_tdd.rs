@@ -273,6 +273,7 @@ fn compiled_layer_planning_module() -> CompiledModule {
         config_view: Arc::clone(&binding.config_view),
         claims: Vec::new(),
         wasm_component: None,
+        requires_modules: Vec::new(),
     }
 }
 

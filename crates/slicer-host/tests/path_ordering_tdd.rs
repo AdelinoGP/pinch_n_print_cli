@@ -145,6 +145,7 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         claims: Vec::new(),
         wasm_component: Some(path_opt_component),
+        requires_modules: Vec::new(),
     });
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -341,6 +342,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         claims: Vec::new(),
         wasm_component: Some(path_opt_component),
+        requires_modules: Vec::new(),
     });
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -453,6 +455,7 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         claims: Vec::new(),
         wasm_component: Some(path_opt_component),
+        requires_modules: Vec::new(),
     });
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -563,6 +566,7 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             config_view: Arc::new(ConfigView::from_map(HashMap::new())),
             claims: Vec::new(),
             wasm_component: Some(path_opt_component),
+            requires_modules: Vec::new(),
         });
 
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -668,6 +672,7 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         claims: Vec::new(),
         wasm_component: Some(path_opt_component),
+        requires_modules: Vec::new(),
     });
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -943,5 +948,6 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::clone(&binding.config_view),
         claims: Vec::new(),
         wasm_component: None,
+        requires_modules: Vec::new(),
     }
 }

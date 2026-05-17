@@ -280,6 +280,7 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         config_view: Arc::new(ConfigView::from_map(default_planner_config_map())),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     }
 }
 
@@ -766,6 +767,7 @@ fn compiled_native_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         claims: Vec::new(),
         wasm_component: None,
+        requires_modules: Vec::new(),
     }
 }
 

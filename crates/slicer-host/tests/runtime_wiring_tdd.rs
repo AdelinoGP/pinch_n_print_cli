@@ -364,6 +364,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         claims: Vec::new(),
         wasm_component: None,
+        requires_modules: Vec::new(),
     };
 
     let plan = ExecutionPlan {

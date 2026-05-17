@@ -140,6 +140,7 @@ fn make_module(id: &str, component: Arc<slicer_host::WasmComponent>) -> Compiled
         config_view: Arc::new(ConfigView::new()),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     }
 }
 
@@ -231,6 +232,7 @@ fn make_module_with_config(
         config_view: Arc::new(config),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     }
 }
 

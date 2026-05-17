@@ -140,6 +140,7 @@ fn make_module(
         config_view: Arc::new(config),
         claims: Vec::new(),
         wasm_component: Some(component),
+        requires_modules: Vec::new(),
     }
 }
 
