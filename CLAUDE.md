@@ -14,6 +14,30 @@ cargo test -p slicer-host --test core_module_ir_access_contract_tdd   # narrow, 
 cargo run --bin slicer-cli --release --slice --input model.stl --output model.gcode
 ```
 
+### Benchmarks (slow; not in CI)
+
+```bash
+# Native — fast, no WASM needed:
+cargo bench -p slicer-core    --bench polygon_ops
+cargo bench -p slicer-helpers --bench mesh_ops
+# Host:
+cargo bench -p slicer-host    --bench pipeline       # instrumentation overhead
+cargo bench -p slicer-host    --bench per_stage      # plan-freeze serial-edge helpers
+cargo bench -p slicer-host    --bench wasm_modules   # v1 stub; needs ./modules/core-modules/build-core-modules.sh
+```
+
+### HTML slicer report (debugging)
+
+```bash
+cargo run --bin slicer-host --release -- run \
+    --model resources/benchy.stl \
+    --module-dir modules/core-modules \
+    --output /tmp/out.gcode \
+    --report /tmp/slicer-report.html         # opt-in; zero overhead when absent
+```
+
+See `docs/16_slicer_report.md` for format, allocator contract, and known v1 limitations.
+
 ## Test Discipline (agents must follow)
 
 **Do not run `cargo test --workspace` by default.** The full suite is >1000 tests and takes ≥11 minutes — running it speculatively or "to be safe" wastes time and tokens.
