@@ -56,7 +56,7 @@ pub use config_schema::{
     ConfigSchemaParseErrorKind, ConfigUnit, ConfigValidationError, ConfigValidationErrorKind,
     ConfigValue, CrossValidateRule, CrossValidateSeverity, FullConfigSchema,
 };
-pub use dag::{build_intra_stage_dag, ModuleNode};
+pub use dag::{build_intra_stage_dag, EdgeTo, ModuleNode};
 pub use dispatch::{
     apply_entity_order_proposal, commit_layer_outputs_for_test, export_name_for_stage,
     project_ordered_entities, DispatchError, DispatchPhase, OrderedEntityView,

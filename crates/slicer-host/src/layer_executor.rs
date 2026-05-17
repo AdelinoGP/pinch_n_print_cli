@@ -191,6 +191,21 @@ pub trait LayerStageRunner {
         blackboard: &Blackboard,
         arena: &mut LayerArena,
     ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError>;
+
+    /// Return the wasm linear-memory sample `(current_bytes, peak_bytes)` for
+    /// the **most recent** [`run_stage`](Self::run_stage) call on the current
+    /// thread, then clear it. Default implementation returns `(0, 0)` —
+    /// non-wasm runners (test mocks, host-built-in trampolines) leave the
+    /// report's WASM memory columns blank without needing further wiring.
+    ///
+    /// The real implementation on `WasmRuntimeDispatcher` reads a thread-local
+    /// populated by `dispatch_layer_call`. Because rayon workers are stable
+    /// threads and `run_stage → last_wasm_mem_sample → on_module_end` runs
+    /// in-order on the same thread, the sample reliably belongs to the
+    /// just-completed call.
+    fn last_wasm_mem_sample(&self) -> (u64, u64) {
+        (0, 0)
+    }
 }
 
 /// Executes the Tier-2 per-layer parallel pipeline using rayon.
@@ -411,14 +426,15 @@ fn execute_single_layer_inner(
             instrumentation.on_module_start(&stage.stage_id, Some(layer.index), &module.module_id);
             let run_result =
                 runner.run_stage(&stage.stage_id, layer, module, blackboard, &mut arena);
-            // For now the dispatcher does not yet sample wasm linear memory;
-            // pass 0/0. Task #5 will wire real wasmtime memory.data_size().
+            // Pull the wasm linear-memory sample for the just-completed call.
+            // Returns (0, 0) for non-wasm runners (test mocks, host built-ins).
+            let (wasm_before, wasm_after) = runner.last_wasm_mem_sample();
             instrumentation.on_module_end(
                 &stage.stage_id,
                 Some(layer.index),
                 &module.module_id,
-                0,
-                0,
+                wasm_before,
+                wasm_after,
             );
             let (stage_result, runtime_reads, runtime_writes) = match run_result {
                 Ok((output, reads, writes)) => (output, reads, writes),

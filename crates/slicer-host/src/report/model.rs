@@ -21,9 +21,12 @@ pub struct MemDelta {
     pub host_delta: Bytes,
     /// Peak host bytes-in-use observed during the bracket scope.
     pub host_peak: u64,
-    /// WASM linear-memory net change (0 in v1 — see report docs).
+    /// WASM linear-memory growth during the bracket, in bytes
+    /// (`wasm_peak - wasm_initial`). Zero when the call did not grow memory
+    /// or when the runner does not sample wasm (test mocks, host built-ins).
     pub wasm_delta: Bytes,
-    /// WASM linear-memory peak observed (0 in v1).
+    /// WASM linear-memory peak observed during the bracket, in bytes.
+    /// Zero when the runner does not sample wasm.
     pub wasm_peak: u64,
 }
 
@@ -151,4 +154,8 @@ pub struct Report {
     pub postpass: Vec<StageRecord>,
     /// Parallelism observation.
     pub parallelism: ParallelismRecord,
+    /// When `true`, the render includes a per-layer-per-module detail table
+    /// (one row per module call). Off by default to keep the HTML compact —
+    /// a 1000-layer slice can easily reach 10⁴ module rows.
+    pub verbose: bool,
 }

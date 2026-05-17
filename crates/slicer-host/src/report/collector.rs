@@ -55,6 +55,7 @@ pub struct Collector {
     base_instant: Instant,
     started_at: String,
     model_path: String,
+    verbose: bool,
     /// Per-stage serial edges recorded at plan freeze.
     edges_by_stage: Mutex<HashMap<String, Vec<SerialEdge>>>,
     prepass: Mutex<Vec<StageRecord>>,
@@ -113,10 +114,19 @@ impl Collector {
     /// Create a new collector. `model_path` is informational and embedded
     /// in the report header.
     pub fn new(model_path: impl Into<String>) -> Self {
+        Self::new_with_verbose(model_path, false)
+    }
+
+    /// Create a new collector with verbose rendering enabled, which adds a
+    /// per-layer-per-module detail table to the HTML output. Off by default
+    /// because the detail table scales as O(layers × stages × modules) —
+    /// a 1000-layer slice can produce ~10⁴ rows.
+    pub fn new_with_verbose(model_path: impl Into<String>, verbose: bool) -> Self {
         Self {
             base_instant: Instant::now(),
             started_at: format_rfc3339_utc(SystemTime::now()),
             model_path: model_path.into(),
+            verbose,
             edges_by_stage: Mutex::new(HashMap::new()),
             prepass: Mutex::new(Vec::new()),
             layers: Mutex::new(Vec::new()),
@@ -214,6 +224,7 @@ impl Collector {
             layers: layers_sorted,
             postpass,
             parallelism,
+            verbose: self.verbose,
         }
     }
 
@@ -394,8 +405,8 @@ impl PipelineInstrumentation for Collector {
         _stage: &StageId,
         _layer: Option<u32>,
         _module: &ModuleId,
-        _wasm_before: u64,
-        _wasm_after: u64,
+        wasm_initial_bytes: u64,
+        wasm_peak_bytes: u64,
     ) {
         let popped = SCOPE_STACK.with(|cell| cell.borrow_mut().pop());
         let Some(PendingScope::Module {
@@ -413,8 +424,12 @@ impl PipelineInstrumentation for Collector {
         record.mem = MemDelta {
             host_delta: stats.current,
             host_peak: stats.peak,
-            wasm_delta: 0,
-            wasm_peak: 0,
+            // `wasm_delta` records how much linear memory the export call
+            // grew beyond the post-instantiation baseline. `wasm_peak`
+            // is the absolute highwater (initial + any growth). Equal
+            // to `wasm_initial_bytes` when the call did not grow memory.
+            wasm_delta: (wasm_peak_bytes as i64).saturating_sub(wasm_initial_bytes as i64),
+            wasm_peak: wasm_peak_bytes,
         };
         self.module_count.inc();
         SCOPE_STACK.with(|cell| {

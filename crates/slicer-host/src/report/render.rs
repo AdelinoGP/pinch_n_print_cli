@@ -46,11 +46,39 @@ pub fn render_html(r: &Report) -> String {
     render_module_summary(&mut out, r);
     render_per_layer_table(&mut out, r);
     render_per_stage_breakdown(&mut out, r);
+    if r.verbose {
+        render_per_layer_per_module_detail(&mut out, r);
+    }
     render_parallelism(&mut out, &r.parallelism);
     render_serial_edges(&mut out, r);
 
     let _ = write!(out, "</body></html>");
     out
+}
+
+fn render_per_layer_per_module_detail(out: &mut String, r: &Report) {
+    if r.layers.is_empty() {
+        return;
+    }
+    let _ = write!(out, "<h2>Per-Layer-Per-Module (verbose)</h2>");
+    let _ = write!(out, "<table><thead><tr><th>Layer</th><th>Stage</th><th>Module</th><th>Duration (ms)</th><th>Host peak</th><th>WASM peak</th></tr></thead><tbody>");
+    for layer in &r.layers {
+        for stage in &layer.stages {
+            for module in &stage.modules {
+                let _ = write!(
+                    out,
+                    "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                    layer.layer_index,
+                    escape_html(&stage.stage_id),
+                    escape_html(&module.module_id),
+                    fmt_ms(module.duration_ns()),
+                    fmt_bytes(module.mem.host_peak),
+                    fmt_bytes(module.mem.wasm_peak),
+                );
+            }
+        }
+    }
+    let _ = write!(out, "</tbody></table>");
 }
 
 fn fmt_ms(ns: u64) -> String {
@@ -131,7 +159,7 @@ fn render_header(out: &mut String, r: &Report) {
     let _ = write!(out, "</div>");
     let _ = write!(
         out,
-        "<div class=\"note\">v1: prepass/postpass show phase-level totals only; per-layer tier has full per-stage / per-module detail. WASM linear-memory columns are zero (see docs/16_slicer_report.md).</div>"
+        "<div class=\"note\">Host built-ins inside prepass (MeshAnalysis, SupportGeometry, RegionMapping) and postpass (GCode emit / serialize) are not bracketed — only user modules appear in the tables.</div>"
     );
 }
 
@@ -184,7 +212,7 @@ fn render_module_summary(out: &mut String, r: &Report) {
         return;
     }
     let _ = write!(out, "<h2>Per-Module Aggregate (per-layer tier)</h2>");
-    let _ = write!(out, "<table><thead><tr><th>Module</th><th>Calls</th><th>Total (ms)</th><th>Mean (ms)</th><th>p95 (ms)</th><th>Peak host Δ</th></tr></thead><tbody>");
+    let _ = write!(out, "<table><thead><tr><th>Module</th><th>Calls</th><th>Total (ms)</th><th>Mean (ms)</th><th>p95 (ms)</th><th>Peak host Δ</th><th>WASM peak</th></tr></thead><tbody>");
     for (id, calls) in by_module {
         let durations_ns: Vec<u64> = calls.iter().map(|c| c.duration_ns()).collect();
         let total_ns: u64 = durations_ns.iter().sum();
@@ -195,15 +223,17 @@ fn render_module_summary(out: &mut String, r: &Report) {
         };
         let p95_ns = percentile_ns(&durations_ns, 0.95);
         let peak_host = calls.iter().map(|c| c.mem.host_peak).max().unwrap_or(0);
+        let peak_wasm = calls.iter().map(|c| c.mem.wasm_peak).max().unwrap_or(0);
         let _ = write!(
             out,
-            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
             escape_html(&id),
             calls.len(),
             fmt_ms(total_ns),
             fmt_ms(mean_ns),
             fmt_ms(p95_ns),
-            fmt_bytes(peak_host)
+            fmt_bytes(peak_host),
+            fmt_bytes(peak_wasm)
         );
     }
     let _ = write!(out, "</tbody></table>");
@@ -391,10 +421,17 @@ fn render_serial_edges(out: &mut String, r: &Report) {
         return;
     }
     let _ = write!(out, "<h2>Serial Edges (why modules ran in order)</h2>");
+    // Auto-collapse <details> blocks when there are many stages to keep
+    // the initial scroll length compact.
+    let details_attr = if by_stage.len() > 3 {
+        "details"
+    } else {
+        "details open"
+    };
     for (stage_id, edges) in by_stage {
         let _ = write!(
             out,
-            "<details open><summary><b>{}</b> · {} edge{}</summary>",
+            "<{details_attr}><summary><b>{}</b> · {} edge{}</summary>",
             escape_html(&stage_id),
             edges.len(),
             if edges.len() == 1 { "" } else { "s" }
@@ -410,10 +447,6 @@ fn render_serial_edges(out: &mut String, r: &Report) {
         }
         let _ = write!(out, "</details>");
     }
-    let _ = write!(
-        out,
-        "<div class=\"note\">v1 emits IrWriteRead reasons only at runtime; ExplicitRequires reasons are not labeled (topological order is still correct).</div>"
-    );
 }
 
 fn fmt_reason(r: &EdgeReason) -> String {

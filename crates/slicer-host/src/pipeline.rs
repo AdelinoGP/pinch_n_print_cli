@@ -17,8 +17,8 @@ use crate::{
     prepass::execute_prepass_with_builtins_configured,
     Blackboard, ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter,
     GCodeSerializer, LayerExecutionError, LayerProgressSink, LayerStageRunner, ModuleAccessAudit,
-    NoopLayerProgressSink, Phase, PipelineInstrumentation, PostpassError, PostpassStageRunner,
-    PrepassExecutionError, PrepassStageRunner, TierKind,
+    NoopInstrumentation, NoopLayerProgressSink, Phase, PipelineInstrumentation, PostpassError,
+    PostpassStageRunner, PrepassExecutionError, PrepassStageRunner, TierKind,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -262,6 +262,7 @@ pub fn run_pipeline_with_raw_config(
         raw_config_source,
         &default_resolved_config,
         &layer_irs,
+        &NoopInstrumentation,
     )?;
 
     Ok(PipelineOutput {
@@ -281,11 +282,12 @@ pub fn run_pipeline_with_raw_config(
 /// - `record_edges` once per stage at plan freeze, for every prepass /
 ///   per-layer / postpass stage, carrying the serial-edge reasons derived
 ///   from the compiled IR access masks (see
-///   [`compute_serial_edges_from_compiled`] for the v1 reason coverage).
-/// - Per-layer / per-stage / per-module brackets *inside* the per-layer tier
-///   only (from `execute_per_layer_with_instrumentation`). Prepass and
-///   postpass currently surface only their phase brackets; finer-grained
-///   hooks inside those phases are a follow-up.
+///   [`compute_serial_edges_from_compiled`]).
+/// - Per-stage / per-module brackets in all three tiers. Per-layer
+///   additionally brackets `on_layer_start/end` around each layer.
+///   Host built-ins inside prepass (MeshAnalysis, SupportGeometry,
+///   RegionMapping) and postpass (GCode emit / serialize) are not
+///   bracketed — they are not user-visible modules.
 pub fn run_pipeline_with_instrumentation(
     config: PipelineConfig,
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
@@ -323,13 +325,14 @@ pub fn run_pipeline_with_instrumentation(
     let mut blackboard = Blackboard::new(mesh_ir, 0);
 
     instrumentation.on_phase_start(Phase::PrePass);
-    let prepass_audits = execute_prepass_with_builtins_configured(
+    let prepass_audits = crate::prepass::execute_prepass_with_builtins_configured_instr(
         &plan,
         &mut blackboard,
         runners.prepass.as_ref(),
         &resolved_configs,
         &default_resolved_config,
         raw_config_source,
+        instrumentation,
     );
     instrumentation.on_phase_end(Phase::PrePass);
     let prepass_audits = prepass_audits?;
@@ -351,12 +354,23 @@ pub fn run_pipeline_with_instrumentation(
 
     instrumentation.on_phase_start(Phase::PostPass);
     let post_result = (|| -> Result<(String, Vec<ModuleAccessAudit>), PipelineError> {
-        execute_layer_finalization(
+        // Bracket layer finalization as a synthetic stage so the report's
+        // per-stage table accounts for time spent in the finalization tier.
+        // Individual finalization modules are not bracketed (that path uses
+        // FinalizationStageRunner, a separate trait).
+        if let Some(fin_stage) = plan.layer_finalization_stage.as_ref() {
+            instrumentation.on_stage_start(&fin_stage.stage_id, None);
+        }
+        let fin_result = execute_layer_finalization(
             &plan,
             &blackboard,
             runners.finalization.as_ref(),
             &mut layer_irs,
-        )?;
+        );
+        if let Some(fin_stage) = plan.layer_finalization_stage.as_ref() {
+            instrumentation.on_stage_end(&fin_stage.stage_id, None);
+        }
+        fin_result?;
 
         run_postpass_with_thumbnail(
             &plan,
@@ -365,6 +379,7 @@ pub fn run_pipeline_with_instrumentation(
             raw_config_source,
             &default_resolved_config,
             &layer_irs,
+            instrumentation,
         )
     })();
     instrumentation.on_phase_end(Phase::PostPass);
@@ -382,10 +397,9 @@ pub fn run_pipeline_with_instrumentation(
 const PNG_MAGIC: [u8; 8] = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
 
 /// Shared post-finalization helper: validate the optional thumbnail file, build
-/// the effective config map, wrap the serializer, and run `execute_postpass`.
-///
-/// Extracted to eliminate the identical block that previously lived in both
-/// [`run_pipeline_with_raw_config`] and [`run_pipeline_with_instrumentation`].
+/// the effective config map, wrap the serializer, and run the instrumented
+/// postpass. Pass `&NoopInstrumentation` for the non-report path; the noop
+/// methods are empty, so callers that don't need a report pay no overhead.
 fn run_postpass_with_thumbnail(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
@@ -393,6 +407,7 @@ fn run_postpass_with_thumbnail(
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     default_resolved_config: &ResolvedConfig,
     layer_irs: &[LayerCollectionIR],
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
 ) -> Result<(String, Vec<ModuleAccessAudit>), PipelineError> {
     // Extract and validate thumbnail bytes from raw_config before serialization.
     // If thumbnail_path is non-empty, read the file and check PNG magic; fail fast on error.
@@ -434,13 +449,14 @@ fn run_postpass_with_thumbnail(
         effective_config,
     ));
 
-    execute_postpass(
+    crate::postpass::execute_postpass_with_instrumentation(
         plan,
         layer_irs,
         blackboard,
         runners.emitter.as_ref(),
         runners.serializer.as_ref(),
         runners.postpass.as_mut(),
+        instrumentation,
     )
     .map_err(PipelineError::from)
 }

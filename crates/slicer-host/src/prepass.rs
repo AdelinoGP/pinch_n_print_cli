@@ -11,6 +11,7 @@ use slicer_ir::{
 };
 
 use crate::config_resolution::resolve_per_paint_semantic_configs;
+use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
 use crate::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
 use crate::region_mapping::{commit_region_mapping_builtin, RegionMappingBuiltinError};
 use crate::support_geometry::SupportGeometryBuiltinError;
@@ -213,18 +214,45 @@ pub fn execute_prepass(
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
+    execute_prepass_with_instrumentation(plan, blackboard, runner, &NoopInstrumentation)
+}
+
+/// Instrumented variant of [`execute_prepass`] that brackets each stage and
+/// module dispatch via `instrumentation`. Identical semantics to
+/// `execute_prepass` when `&NoopInstrumentation` is passed.
+pub fn execute_prepass_with_instrumentation(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     let mut audits = Vec::new();
 
     for stage in &plan.prepass_stages {
         ensure_stage_prerequisites(&stage.stage_id, blackboard)?;
 
+        instrumentation.on_stage_start(&stage.stage_id, None);
         for module in &stage.modules {
-            let (output, runtime_reads) = runner.run_stage(&stage.stage_id, module, blackboard)?;
+            instrumentation.on_module_start(&stage.stage_id, None, &module.module_id);
+            let run_result = runner.run_stage(&stage.stage_id, module, blackboard);
+            instrumentation.on_module_end(&stage.stage_id, None, &module.module_id, 0, 0);
+            let (output, runtime_reads) = match run_result {
+                Ok(t) => t,
+                Err(e) => {
+                    instrumentation.on_stage_end(&stage.stage_id, None);
+                    return Err(e);
+                }
+            };
 
             // Determine IR path before committing (output is moved into commit).
             let ir_path = ir_path_for_prepass_output(&output);
 
-            commit_stage_output(&stage.stage_id, &module.module_id, blackboard, output)?;
+            if let Err(e) =
+                commit_stage_output(&stage.stage_id, &module.module_id, blackboard, output)
+            {
+                instrumentation.on_stage_end(&stage.stage_id, None);
+                return Err(e);
+            }
 
             // Record runtime audit if the module produced output.
             // Always record the audit when there is a runtime_reads vector,
@@ -245,6 +273,7 @@ pub fn execute_prepass(
                 });
             }
         }
+        instrumentation.on_stage_end(&stage.stage_id, None);
     }
 
     Ok(audits)
@@ -317,6 +346,30 @@ pub(crate) fn execute_prepass_with_builtins_configured(
     resolved_configs: &BTreeMap<String, ResolvedConfig>,
     default_resolved_config: &ResolvedConfig,
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
+    execute_prepass_with_builtins_configured_instr(
+        plan,
+        blackboard,
+        runner,
+        resolved_configs,
+        default_resolved_config,
+        raw_config_source,
+        &NoopInstrumentation,
+    )
+}
+
+/// Instrumented version of [`execute_prepass_with_builtins_configured`] that
+/// brackets each user prepass stage and module via `instrumentation`.
+/// Host built-ins (MeshAnalysis, SupportGeometry, RegionMapping) are not
+/// bracketed — they aren't user-visible modules.
+pub(crate) fn execute_prepass_with_builtins_configured_instr(
+    plan: &ExecutionPlan,
+    blackboard: &mut Blackboard,
+    runner: &dyn PrepassStageRunner,
+    resolved_configs: &BTreeMap<String, ResolvedConfig>,
+    default_resolved_config: &ResolvedConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     if blackboard.surface_classification().is_none() {
         let ir = execute_mesh_analysis(blackboard.mesh().as_ref())
@@ -415,7 +468,8 @@ pub(crate) fn execute_prepass_with_builtins_configured(
             prepass_stages: early_stages.into_iter().cloned().collect(),
             ..plan.clone()
         };
-        audits = execute_prepass(&early_plan, blackboard, runner)?;
+        audits =
+            execute_prepass_with_instrumentation(&early_plan, blackboard, runner, instrumentation)?;
     }
     // Phase-2 setup: if LayerPlanIR was committed during phase-1, run the
     // support-geometry built-in (needs LayerPlan, no RegionMap required) and
@@ -452,7 +506,8 @@ pub(crate) fn execute_prepass_with_builtins_configured(
             prepass_stages: late_stages.into_iter().cloned().collect(),
             ..plan.clone()
         };
-        let late_audits = execute_prepass(&late_plan, blackboard, runner)?;
+        let late_audits =
+            execute_prepass_with_instrumentation(&late_plan, blackboard, runner, instrumentation)?;
         audits.extend(late_audits);
     }
     Ok(audits)

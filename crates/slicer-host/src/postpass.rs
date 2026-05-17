@@ -15,6 +15,7 @@ use std::fmt;
 
 use slicer_ir::{GCodeIR, LayerCollectionIR, ModuleId, StageId};
 
+use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
 use crate::{Blackboard, CompiledModule, ExecutionPlan, ModuleAccessAudit};
 
 /// Output produced by a single postpass module invocation.
@@ -174,6 +175,29 @@ pub fn execute_postpass(
     serializer: &dyn GCodeSerializer,
     runner: &mut dyn PostpassStageRunner,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
+    execute_postpass_with_instrumentation(
+        plan,
+        layer_irs,
+        blackboard,
+        emitter,
+        serializer,
+        runner,
+        &NoopInstrumentation,
+    )
+}
+
+/// Instrumented variant of [`execute_postpass`] that brackets each user
+/// postpass stage and module via `instrumentation`. Host-built-in GCode
+/// emission and serialization are not bracketed — they aren't user modules.
+pub fn execute_postpass_with_instrumentation(
+    plan: &ExecutionPlan,
+    layer_irs: &[LayerCollectionIR],
+    blackboard: &Blackboard,
+    emitter: &dyn GCodeEmitter,
+    serializer: &dyn GCodeSerializer,
+    runner: &mut dyn PostpassStageRunner,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
     // Step 1a: Reconcile finalization-aware travel moves before emission.
     // This adjusts travel_moves to route through Skirt/Brim and WipeTower
     // geometry without modifying ordered_entities.
@@ -190,13 +214,24 @@ pub fn execute_postpass(
     // Step 2: Run all GCodePostProcess modules sequentially
     for stage in &plan.postpass_stages {
         if stage.stage_id.contains("GCodePostProcess") {
+            instrumentation.on_stage_start(&stage.stage_id, None);
             for module in &stage.modules {
-                match runner.run_gcode_postprocess(
+                instrumentation.on_module_start(&stage.stage_id, None, &module.module_id);
+                let res = runner.run_gcode_postprocess(
                     &stage.stage_id,
                     module,
                     blackboard,
                     &mut gcode_ir,
-                )? {
+                );
+                instrumentation.on_module_end(&stage.stage_id, None, &module.module_id, 0, 0);
+                let result = match res {
+                    Ok(r) => r,
+                    Err(e) => {
+                        instrumentation.on_stage_end(&stage.stage_id, None);
+                        return Err(e);
+                    }
+                };
+                match result {
                     PostpassOutput::GCodeSuccess => {
                         // Record runtime audit for GCodePostProcess modules.
                         // Extract runtime reads collected during this dispatch call.
@@ -219,6 +254,7 @@ pub fn execute_postpass(
                     }
                 }
             }
+            instrumentation.on_stage_end(&stage.stage_id, None);
         }
     }
 
@@ -240,8 +276,19 @@ pub fn execute_postpass(
 
     // Step 5: Run all TextPostProcess modules sequentially
     for stage in text_postprocess_stages {
+        instrumentation.on_stage_start(&stage.stage_id, None);
         for module in &stage.modules {
-            match runner.run_text_postprocess(&stage.stage_id, module, blackboard, text)? {
+            instrumentation.on_module_start(&stage.stage_id, None, &module.module_id);
+            let res = runner.run_text_postprocess(&stage.stage_id, module, blackboard, text);
+            instrumentation.on_module_end(&stage.stage_id, None, &module.module_id, 0, 0);
+            let result = match res {
+                Ok(r) => r,
+                Err(e) => {
+                    instrumentation.on_stage_end(&stage.stage_id, None);
+                    return Err(e);
+                }
+            };
+            match result {
                 PostpassOutput::TextSuccess { text: new_text } => {
                     // Record runtime audit for TextPostProcess modules.
                     // Extract runtime reads collected during this dispatch call.
@@ -267,6 +314,7 @@ pub fn execute_postpass(
                 }
             }
         }
+        instrumentation.on_stage_end(&stage.stage_id, None);
     }
 
     Ok((text, audits))

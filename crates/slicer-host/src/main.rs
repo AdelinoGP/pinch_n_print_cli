@@ -126,7 +126,7 @@ fn main() {
             module_dir,
             thumbnail,
             report,
-            report_verbose: _,
+            report_verbose,
         } => {
             // Load model
             let model_path = std::path::Path::new(&model);
@@ -310,7 +310,8 @@ fn main() {
             // allocator for the duration of the slice.
             let result = if let Some(ref report_path) = report {
                 report_alloc::enable();
-                let collector = Arc::new(Collector::new(model.clone()));
+                let collector =
+                    Arc::new(Collector::new_with_verbose(model.clone(), report_verbose));
                 let r = run_pipeline_with_instrumentation(
                     config,
                     &config_source,
@@ -446,6 +447,7 @@ mod _stale_build_plan {
                         config_view: Arc::new(ConfigView::new()),
                         claims: m.claims.clone(),
                         wasm_component,
+                        requires_modules: m.requires_modules.clone(),
                     }
                 })
                 .collect();
