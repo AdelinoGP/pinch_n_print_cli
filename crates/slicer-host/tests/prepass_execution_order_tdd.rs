@@ -15,8 +15,8 @@ use slicer_host::{
 };
 use slicer_ir::{
     BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectLayerRef,
-    ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer,
-    SupportGeometryIR, SupportPlanIR, SurfaceClassificationIR, Transform3d,
+    ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SupportGeometryIR,
+    SupportPlanIR, SurfaceClassificationIR, Transform3d,
 };
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {

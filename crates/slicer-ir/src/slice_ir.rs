@@ -66,7 +66,9 @@ pub fn units_to_mm(units: i64) -> f32 {
 /// 2D point using scaled integer coordinates
 ///
 /// Coordinate system: 1 unit = 100 nm = 10^-4 mm
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct Point2 {
     /// X coordinate in scaled integer units (1 unit = 100 nm)
     pub x: i64,
