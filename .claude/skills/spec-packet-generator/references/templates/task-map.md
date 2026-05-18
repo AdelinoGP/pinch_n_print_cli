@@ -1,8 +1,6 @@
 # Task Map: [spec-slug]
 
-Use this file when the packet needs an explicit bridge back to `docs/07_implementation_status.md`.
-
-This file is required when the packet spans more than one task ID, reopens prior packet work, or supersedes an earlier packet.
+Use this file when the packet needs an explicit bridge back to `docs/07_implementation_status.md`. Required when the packet spans more than one task ID, reopens prior packet work, or supersedes an earlier packet. **Skip this file entirely for single-task-ID packets** — the generator should not emit it by default.
 
 | docs/07 task ID | Packet step | Primary docs | Expected code surface | OrcaSlicer refs | Context cost | Notes |
 | --- | --- | --- | --- | --- | --- | --- |

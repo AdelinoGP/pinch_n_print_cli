@@ -56,7 +56,7 @@ hats:
 
       ## Active Packet Contract
       - Read `./docs/07_implementation_status.md` only to confirm task IDs and completion state.
-      - Discover packet roots under `./.ralph/specs/`, excluding `_templates/`.
+      - Discover packet roots under `./.ralph/specs/`. (Templates live in the `spec-packet-generator` skill at `.claude/skills/spec-packet-generator/references/templates/`, never under `.ralph/specs/`.)
       - Each packet must include:
         - `packet.spec.md`
         - `requirements.md`

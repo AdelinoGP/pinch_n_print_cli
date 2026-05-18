@@ -35,27 +35,7 @@
 
 ### Step 2: [short step title]
 
-- Task IDs:
-  - `TASK-000`
-- Objective:
-- Precondition:
-- Postcondition:
-- Files allowed to read:
-  - `[path/to/file]`
-- Files allowed to edit (≤ 3):
-  - `[path/to/file]`
-- Files explicitly out-of-bounds for this step:
-  -
-- Expected sub-agent dispatches:
-  -
-- Context cost: `S | M`
-- Authoritative docs:
-  - `[docs/01_system_architecture.md]`
-- OrcaSlicer refs:
-  - `[OrcaSlicerDocumented/path]`
-- Verification:
-  - `[targeted command]`
-- Exit condition:
+(Same field set as Step 1. Do not abbreviate or write "see Step 1" for any field — each step's budget contract is independent.)
 
 For read-only discovery steps, state the expected inventory, decision, or count that proves the step is complete. Read-only discovery steps are usually pure-dispatch steps (the implementer does no direct reading, only adjudicates returned LOCATIONS or FACTs).
 

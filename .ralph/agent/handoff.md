@@ -44,7 +44,7 @@ Execute one prepared ModularSlicer packet and nothing else.
 
 ## Active Packet Selection
 
-1. Search `./.ralph/specs/*/packet.spec.md`, excluding `./.ralph/specs/_templates/`.
+1. Search `./.ralph/specs/*/packet.spec.md`. (Templates live in the `spec-packet-generator` skill at `.claude/skills/spec-packet-generator/references/templates/`, never under `.ralph/specs/`.)
 2. Exactly one packet must declare `status: active` in front matter.
 3. If zero or multiple packets are active, stop and...
 ```

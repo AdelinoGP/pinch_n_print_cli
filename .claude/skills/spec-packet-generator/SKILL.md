@@ -180,30 +180,57 @@ See `references/acceptance-criteria-examples.md` for a compliant and a non-compl
 
 ### 6. Create Packet Structure
 
-Create `./.ralph/specs/[spec_slug]/` and generate the 5 files. Use `./.ralph/specs/_templates/` as starting structure but replace placeholders with packet-specific content. Templates already include context-discipline fields (files-in-scope, sub-agent dispatches, context cost) — fill in concretely; no placeholders, no "TBD", no "see above".
+Create `./.ralph/specs/[spec_slug]/` and generate the packet files. Use the templates at `references/templates/` (inside this skill) as starting structure but replace placeholders with packet-specific content. Templates already include context-discipline fields (files-in-scope, sub-agent dispatches, context cost) — fill in concretely; no placeholders, no "TBD", no "see above".
+
+**File-purpose hierarchy (each concept has one owner; everything else references back).** Enforce this when filling in templates:
+
+| Concept | Owner | Other files |
+|---|---|---|
+| Goal (one sentence, solution-shaped) | `packet.spec.md` | — |
+| Problem motivation (why; motivation-shaped) | `requirements.md` | — |
+| Scope (full in/out lists) | `requirements.md` | `packet.spec.md` carries a 2–3 sentence prose summary only |
+| Acceptance Criteria (Given/When/Then + verification command) | `packet.spec.md` | `requirements.md` references by ID, never copies |
+| Verification commands (full matrix with delegation hints) | `requirements.md` | `packet.spec.md` lists only 2–3 gate commands |
+| Code-change surface | `design.md` | — |
+| Files-in-scope / out-of-bounds | `design.md` (packet-level) + `implementation-plan.md` (per-step) | — |
+| Step sequence with cost contract | `implementation-plan.md` | — |
+| `docs/07` crosswalk | `task-map.md` (conditional) | — |
+
+**Snippet library (`references/snippets/`).** Workspace-invariant boilerplate is centralized as snippets that are included **verbatim** when applicable. Generated packets are still self-contained — there is no runtime macro engine; the skill copies snippet text into the packet during generation and marks it with an inline `<!-- snippet: <name> -->` HTML comment so self-review can grep for it.
+
+- `context-discipline.md` — closing block of `packet.spec.md`. **Mandatory for every packet.**
+- `orca-delegation.md` — opening paragraph of `OrcaSlicer Reference Obligations` in `packet.spec.md` AND `requirements.md`. **Skip both sections entirely** if the packet involves no OrcaSlicer parity. Never include a third copy in `design.md`.
+- `wasm-staleness.md` — bullet in `design.md` §Architecture Constraints. **Skip** if no path in the change surface feeds guest WASM (host-only refactors, doc edits, etc.).
+- `coord-system.md` — bullet in `design.md` §Architecture Constraints. **Skip** for packets that touch only G-code text, config parsing, scheduler wiring, or other non-geometric concerns.
+
+Decide per snippet whether the packet needs it. If included, copy verbatim. **Paraphrasing snippet content is forbidden** — paraphrases drift and rot; verbatim or absent.
 
 ### 7. `packet.spec.md`
 
-YAML frontmatter (`status`, `packet`, `task_ids`, `backlog_source: docs/07_implementation_status.md`); packet goal; scope boundaries; Given/When/Then ACs (each ending with `|` + runnable command); at least one negative/rejection criterion when the packet touches validation, enforcement, or error handling; prerequisites and blockers when sequencing matters or a prior packet is being corrected; supplemental verification commands (workspace-level checks, not a replacement for per-criterion commands); authoritative docs; OrcaSlicer reference obligations.
+YAML frontmatter (`status`, `packet`, `task_ids`, `backlog_source: docs/07_implementation_status.md`); one-sentence solution-shaped Goal; **prose** Scope Boundaries (2–3 sentences, NOT a bullet list duplicating `requirements.md` §In Scope); Given/When/Then ACs as the single authoritative source (each ending with `|` + runnable command, each labelled `AC-1`, `AC-2`, …); at least one negative/rejection criterion (`AC-N1`, `AC-N2`, …) when the packet touches validation, enforcement, or error handling; prerequisites and blockers when sequencing matters or a prior packet is being corrected; Verification section listing only the **2–3 gate commands** the closure check runs (full matrix lives in `requirements.md`); authoritative docs; Doc Impact Statement (Required); OrcaSlicer Reference Obligations (include `orca-delegation` snippet if applicable, omit section otherwise); Context Discipline Note (include `context-discipline` snippet — mandatory).
+
+**Do not** include a static "Packet Files" section — the 5-file structure is documented once in `.ralph/specs/README.md`.
 
 ### 8. `requirements.md`
 
-Problem statement; grouped task ids; in/out-of-scope; authoritative docs; OrcaSlicer obligations; acceptance summary with measurable outcomes and explicit negative cases; cross-packet dependencies/unblockers when relevant; verification commands.
+Problem Statement (motivation-shaped — why the gap matters); grouped task ids; **full** In Scope / Out of Scope bullet lists; authoritative docs with size/delegation notes; OrcaSlicer Reference Obligations (include `orca-delegation` snippet if applicable); Acceptance Summary that **references ACs by ID** and adds measurable refinements that didn't fit Given/When/Then (never copies the criterion text); Verification Commands as a **table with delegation hints** (the full matrix — `packet.spec.md` carries only the gate subset); Step Completion Expectations that document only cross-step invariants the per-step blocks in `implementation-plan.md` cannot express (write `None.` if not applicable, never restate per-step preconditions); packet-specific Context Discipline Notes only (do not restate the workspace-wide discipline — that lives in the `context-discipline` snippet in `packet.spec.md`).
 
 ### 9. `design.md`
 
 Implementation shape (no implementation):
-- Controlling code paths / likely surfaces.
+- Controlling code paths / likely surfaces (point at `requirements.md` for OrcaSlicer parity surface; do not restate the delegation rules).
 - Neighboring tests/fixtures.
-- Architecture constraints.
+- Architecture Constraints — packet-specific bullets, plus `wasm-staleness` snippet bullet **if** the change surface feeds guest WASM, plus `coord-system` snippet bullet **if** the packet touches geometry/mm-unit conversion. Decide per snippet; skip the bullet entirely if not applicable.
 - One selected approach (rejected alternatives noted briefly — must choose one).
-- Explicit code change surface: exact functions, traits, manifests, tests, fixtures expected to move (target ≤ 3 primary files).
-- Read-only context the implementer needs (with line-range hints when files > 300 lines).
-- Out-of-bounds files (large generated, OrcaSlicer source, vendored, unrelated crates).
-- Data and contract notes.
-- Risks and tradeoffs.
-- Open questions blocking activation.
-- Locked assumptions and invariants the implementation must preserve.
+- Explicit Code Change Surface: exact functions, traits, manifests, tests, fixtures expected to move (target ≤ 3 primary files).
+- Read-Only Context the implementer needs (with line-range hints when files > 300 lines).
+- Out-of-Bounds Files (large generated, OrcaSlicer source, vendored, unrelated crates).
+- Expected Sub-Agent Dispatches with explicit return-format hints per dispatch.
+- Data and Contract Notes.
+- Locked Assumptions and Invariants — never omitted silently. If the change is reversible via config defaults with no behavior locks, write `None — change is reversible via existing config defaults; no behavior locks introduced.`
+- Risks and Tradeoffs.
+- Context Cost Estimate (aggregate, largest single step, highest-risk dispatch).
+- Open Questions — never omitted silently. Tag with `[FWD]` (forward-looking; implementer can resolve mid-flight) or `[BLOCK]` (activation-blocking). Write `None.` if none.
 
 ### 10. `implementation-plan.md`
 
@@ -221,6 +248,8 @@ Steps stay inside the packet boundary, reflect TDD/narrow validation, and are ac
 
 ### 11. Self-Review (mandatory before reporting)
 
+**Implementation-grade checks**
+
 - [ ] Every AC is implementation-grade and names exact assertion content.
 - [ ] At least one negative case when the slice changes validation, enforcement, or contract behavior.
 - [ ] `requirements.md` states measurable outcomes, not topical summaries.
@@ -230,6 +259,42 @@ Steps stay inside the packet boundary, reflect TDD/narrow validation, and are ac
 - [ ] Verification commands are delegation-friendly.
 - [ ] Reopened/superseding packet explains what the prior packet missed and how this one narrows the gap.
 - [ ] Open questions are answered, OR the packet stays `draft` with the blocker called out.
+
+**Repetition checks (target redundancy, not length)**
+
+- [ ] **Snippet integrity.** Every passage that conveys content owned by a `references/snippets/*.md` snippet is either (a) the verbatim snippet text marked with `<!-- snippet: <name> -->`, or (b) absent because the snippet does not apply to this packet. Grep the packet for each snippet's distinctive opening phrase to confirm — no paraphrased near-duplicates allowed.
+- [ ] **Cross-file overlap.** No section in `packet.spec.md` restates content from `requirements.md` or `design.md` beyond a single-sentence summary + a back-reference. Acceptance Criteria are stated once in `packet.spec.md`; `requirements.md` Acceptance Summary references them by ID, never copies them. `packet.spec.md` §Verification lists only the 2–3 gate commands; the full matrix lives only in `requirements.md`.
+- [ ] **In-file repetition.** No two bullets in the same list say the same thing in different wording. No two ACs differ only in their pipe-suffixed verification command.
+- [ ] **Boilerplate-vs-content ratio.** If a section is dominated by general-knowledge prose ("config keys are snake_case", "treat trait bounds carefully"), strip the prose. The rule lives in `CLAUDE.md`, the snippets, or `docs/`; the packet only carries the packet-specific facts.
+
+**Length as a *signal*, never a gate (anti-gaming guard)**
+
+Length-target gaming has been observed in prior packets: when instructed to "keep `design.md` ≤ N lines", the skill compresses legitimately complex content (ACs collapsed, edge cases dropped, sub-agent dispatches truncated) to hit the number. **This is forbidden.** The rule:
+
+> When a file exceeds the rough reference size below, **do not compress**. Run the four repetition checks above and ask: is this length driven by duplication (fix it) or by genuine packet complexity (leave it)?
+
+Reference sizes (re-examination triggers, not limits):
+- `packet.spec.md` ~100 lines
+- `requirements.md` ~150 lines
+- `design.md` ~250 lines
+- `implementation-plan.md` ~300 lines
+
+Legitimate length reductions are only:
+1. Removing duplication that the repetition checks flagged.
+2. Cutting general-knowledge prose covered by snippets / `CLAUDE.md` / `docs/`.
+3. Replacing copy-pasted boilerplate with the canonical snippet (marked with `<!-- snippet: <name> -->`).
+
+**Forbidden** length reductions:
+- Trimming ACs, negative cases, or step exit conditions.
+- Truncating files-in-scope or out-of-bounds lists.
+- Shortening sub-agent dispatch contracts (each must keep question + scope + return-format).
+- Eliding locked invariants or open questions to hit a number.
+
+**Surface the reasoning when triggered.** When a file exceeds its reference size, the self-review output names which complexity drove it. Examples:
+- ✅ `design.md` 340 lines: 12 distinct code surfaces, 8 sub-agent dispatches with return-format contracts, 6 locked invariants. None reducible without losing implementation-grade detail.
+- ❌ `design.md` 340 lines: large. (← unacceptable — hand-waving)
+
+The user reviews this reasoning when signing off on `status: active`. If the reasoning is hand-waving, the packet stays `draft`.
 
 If any item fails, revise before presenting as complete. If you cannot resolve from available sources, stop and tell the user exactly what is ambiguous.
 
@@ -264,6 +329,21 @@ The packet must be sufficient for a Ralph run to know:
 ## References
 
 Load on demand:
+
+**Templates** (`references/templates/`) — starting structure for every packet file. Replace placeholders with packet-specific content; do not emit a packet file that still contains `[spec-slug]`, `TASK-000`, or "TBD".
+- `packet.spec.md` — preflight-visible contract. YAML frontmatter, Goal, prose Scope Boundaries, ACs (single source of truth), Negative Test Cases, gate-only Verification, Authoritative Docs, Doc Impact Statement, OrcaSlicer Reference Obligations (snippet), Context Discipline Note (snippet).
+- `requirements.md` — Problem Statement, full Scope lists, Authoritative Docs, OrcaSlicer obligations (snippet), Acceptance Summary (refs ACs by ID), full Verification Commands matrix, cross-step Step Completion Expectations, packet-specific Context Discipline Notes.
+- `design.md` — Controlling Code Paths, Architecture Constraints (snippet bullets when applicable), Code Change Surface, Files in Scope, Read-Only Context, Out-of-Bounds Files, Expected Sub-Agent Dispatches, Data and Contract Notes, Locked Assumptions, Risks, Context Cost Estimate, Open Questions.
+- `implementation-plan.md` — Execution Rules, atomic Steps (each with full field set), Per-Step Budget Roll-Up, Packet Completion Gate, Acceptance Ceremony.
+- `task-map.md` — conditional: only when packet spans > 1 task ID, reopens prior work, or supersedes earlier packet. Skip otherwise.
+
+**Snippets** (`references/snippets/`) — workspace-invariant boilerplate. Include verbatim (with `<!-- snippet: <name> -->` marker) when applicable; skip entirely when not. **Paraphrasing is forbidden.**
+- `context-discipline.md` — closing block of every `packet.spec.md`. Mandatory.
+- `orca-delegation.md` — opening paragraph of `OrcaSlicer Reference Obligations` in `packet.spec.md` and `requirements.md`. Skip both sections if no OrcaSlicer parity.
+- `wasm-staleness.md` — bullet in `design.md` §Architecture Constraints when the change surface feeds guest WASM. Skip for host-only changes.
+- `coord-system.md` — bullet in `design.md` §Architecture Constraints when the packet touches geometry / mm↔unit conversion. Skip for non-geometric packets.
+
+**Examples and operations**
 - `references/acceptance-criteria-examples.md` — when writing or reviewing ACs in Step 5/7. Shows a compliant AC and a non-compliant one side by side.
 - `references/usage-examples.md` — when the user asks how to invoke the skill or wants an example invocation string.
 - `references/troubleshooting.md` — when you hit a failure mode: prompt too broad, ambiguous task mapping, no relevant tasks in `docs/07`, an active packet conflict, missing OrcaSlicer ref, existing packet directory, or your own context approaching 60%.

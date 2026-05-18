@@ -4,11 +4,16 @@
 
 - Primary code path:
 - Neighboring tests or fixtures:
-- OrcaSlicer comparison surface:
+- OrcaSlicer comparison surface: see `requirements.md` §OrcaSlicer Reference Obligations (delegate; never load). Do not restate the delegation rules here.
 
 ## Architecture Constraints
 
--
+List packet-specific architectural constraints below. For workspace invariants, include the relevant snippet verbatim (and only when applicable):
+
+- (Include `<!-- snippet: wasm-staleness -->` bullet from `references/snippets/wasm-staleness.md` if this packet edits any path that feeds the guest WASM build. Skip if the change surface is host-only.)
+- (Include `<!-- snippet: coord-system -->` bullet from `references/snippets/coord-system.md` if this packet touches geometry, slicing, polygon/mesh ops, or any mm↔unit conversion. Skip for pure G-code text, config parsing, scheduler wiring, etc.)
+- Packet-specific constraint:
+- Packet-specific constraint:
 
 ## Code Change Surface
 
@@ -55,6 +60,8 @@ List the dispatches the implementer is expected to make. This list is not exhaus
 
 ## Locked Assumptions and Invariants
 
+State the invariants the implementation must preserve. If the packet introduces no new invariants and preserves no surprising ones, write `None — change is reversible via existing config defaults; no behavior locks introduced.` Do not omit this section silently.
+
 -
 
 ## Risks and Tradeoffs
@@ -72,3 +79,6 @@ List the dispatches the implementer is expected to make. This list is not exhaus
 - Resolve any ambiguity here before the packet becomes `active`.
 - If an open question would change scope, interfaces, or verification strategy, the packet must remain `draft` until it is answered.
 - If an open question requires reading an out-of-bounds file to answer, escalate to a delegation plan rather than admitting the file into scope.
+- Mark forward-looking questions (implementer can resolve mid-flight) with `[FWD]`. Mark activation-blocking questions with `[BLOCK]`.
+
+If none, write `None.` — do not omit the section silently.
