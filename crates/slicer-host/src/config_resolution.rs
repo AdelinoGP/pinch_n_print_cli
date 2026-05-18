@@ -7,10 +7,223 @@ use std::collections::{BTreeMap, HashMap};
 
 use slicer_ir::{ConfigKey, ConfigValue, PaintSemantic, ResolvedConfig};
 
+use crate::manifest::LoadedModule;
+
 // Re-exported so `slicer_host::config_resolution::ConfigResolutionError` keeps
 // resolving; the canonical definition lives next to `ResolvedConfig` in
 // `slicer_ir::resolved_config`.
 pub use slicer_ir::ConfigResolutionError;
+
+/// A single module's declared `[min, max]` for a numeric config key. Input
+/// shape for [`ConfigBoundsIndex::from_declarations`].
+#[derive(Debug, Clone, PartialEq)]
+pub struct BoundsDeclaration {
+    /// Config key name (e.g. `"layer_height"`).
+    pub key: String,
+    /// Inclusive minimum declared by the module, if any.
+    pub min: Option<f64>,
+    /// Inclusive maximum declared by the module, if any.
+    pub max: Option<f64>,
+    /// Module that declared the bound (used only in diagnostics).
+    pub module_id: String,
+}
+
+/// Strictest numeric bounds for a single config key, merged across every
+/// module that declared the key in its manifest `[config.schema]` table.
+#[derive(Debug, Clone, PartialEq)]
+struct NumericBounds {
+    min: Option<f64>,
+    max: Option<f64>,
+}
+
+impl NumericBounds {
+    fn intersect(&self, other: &NumericBounds) -> NumericBounds {
+        // For min: take the larger (more restrictive). None means unbounded
+        // below — any Some wins.
+        let min = match (self.min, other.min) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        };
+        // For max: take the smaller (more restrictive).
+        let max = match (self.max, other.max) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        };
+        NumericBounds { min, max }
+    }
+}
+
+/// Per-key numeric bounds aggregated from every loaded module's manifest
+/// schema. Built once at host startup via [`ConfigBoundsIndex::from_modules`]
+/// and threaded into the resolver entry points so out-of-range CLI values are
+/// rejected the same way variant TypeMismatches are.
+///
+/// When several modules declare the same key with different `[min, max]`
+/// bounds, the strictest range wins (intersection): every module's contract
+/// must hold simultaneously. If the intersection is empty (`min > max`), the
+/// resulting range is retained and rejects every value — a `log::warn!` is
+/// emitted naming the offending modules at construction time.
+#[derive(Debug, Clone, Default)]
+pub struct ConfigBoundsIndex {
+    bounds: HashMap<String, NumericBounds>,
+}
+
+impl ConfigBoundsIndex {
+    /// An empty index — no bounds enforced. Useful for tests and call sites
+    /// that have no loaded modules in scope.
+    pub fn empty() -> Self {
+        Self {
+            bounds: HashMap::new(),
+        }
+    }
+
+    /// Build the index by walking every loaded module's config schema.
+    ///
+    /// Only entries whose `field_type` is numeric (`int`, `float`,
+    /// `float-list`, `int-list`) and that carry at least one of `min`/`max`
+    /// contribute to the index. On collision across modules, ranges are
+    /// intersected.
+    pub fn from_modules<'a, I>(modules: I) -> Self
+    where
+        I: IntoIterator<Item = &'a LoadedModule>,
+    {
+        let declarations = modules.into_iter().flat_map(|module| {
+            let module_id = module.id().to_string();
+            module
+                .config_schema()
+                .entries
+                .iter()
+                .filter_map(move |(key, entry)| {
+                    if !is_numeric_field_type(&entry.field_type) {
+                        return None;
+                    }
+                    if entry.min.is_none() && entry.max.is_none() {
+                        return None;
+                    }
+                    Some(BoundsDeclaration {
+                        key: key.clone(),
+                        min: entry.min,
+                        max: entry.max,
+                        module_id: module_id.clone(),
+                    })
+                })
+        });
+        Self::from_declarations(declarations)
+    }
+
+    /// Build the index from an explicit iterator of per-module
+    /// `(key, min, max, module_id)` declarations.
+    ///
+    /// Used by [`ConfigBoundsIndex::from_modules`] internally and exposed for
+    /// integration tests so they can construct a bounds index without
+    /// fabricating full `LoadedModule` values.
+    pub fn from_declarations<I>(declarations: I) -> Self
+    where
+        I: IntoIterator<Item = BoundsDeclaration>,
+    {
+        let mut index: HashMap<String, NumericBounds> = HashMap::new();
+        let mut contributors: HashMap<String, Vec<String>> = HashMap::new();
+
+        for decl in declarations {
+            let new_bounds = NumericBounds {
+                min: decl.min,
+                max: decl.max,
+            };
+            contributors
+                .entry(decl.key.clone())
+                .or_default()
+                .push(decl.module_id);
+            index
+                .entry(decl.key)
+                .and_modify(|existing| {
+                    *existing = existing.intersect(&new_bounds);
+                })
+                .or_insert(new_bounds);
+        }
+
+        for (key, bounds) in &index {
+            if let (Some(lo), Some(hi)) = (bounds.min, bounds.max) {
+                if lo > hi {
+                    let empty = Vec::new();
+                    let modules = contributors.get(key).unwrap_or(&empty);
+                    log::warn!(
+                        "config bounds intersection is empty for key '{key}' (effective range [{lo}, {hi}]); every value will be rejected. Modules declaring this key: {modules:?}"
+                    );
+                }
+            }
+        }
+
+        Self { bounds: index }
+    }
+
+    /// Validate a single `(key, value)` pair against the merged bounds.
+    ///
+    /// Returns:
+    /// - `Ok(())` when the key has no bounds, the value's variant is not
+    ///   numeric (variant mismatch is `apply_cli_key`'s job), or every
+    ///   numeric component lies within the declared range.
+    /// - `Err(ConfigResolutionError::OutOfRange { .. })` when a numeric scalar
+    ///   or list element falls outside `[min, max]` or is NaN/non-finite
+    ///   against a finite bound. For list values, the first offending element
+    ///   is reported with `index: Some(i)`.
+    pub fn check(&self, key: &str, value: &ConfigValue) -> Result<(), ConfigResolutionError> {
+        let Some(bounds) = self.bounds.get(key) else {
+            return Ok(());
+        };
+        check_value(key, value, bounds, None)
+    }
+}
+
+fn is_numeric_field_type(field_type: &str) -> bool {
+    matches!(field_type, "int" | "float" | "float-list" | "int-list")
+}
+
+fn check_value(
+    key: &str,
+    value: &ConfigValue,
+    bounds: &NumericBounds,
+    index: Option<usize>,
+) -> Result<(), ConfigResolutionError> {
+    match value {
+        ConfigValue::Int(i) => check_scalar(key, *i as f64, bounds, index),
+        ConfigValue::Float(f) => check_scalar(key, *f, bounds, index),
+        ConfigValue::List(elements) => {
+            for (i, element) in elements.iter().enumerate() {
+                check_value(key, element, bounds, Some(i))?;
+            }
+            Ok(())
+        }
+        // Non-numeric variants: variant mismatch (if any) is reported by
+        // `apply_cli_key`'s TypeMismatch path; numeric bounds don't apply.
+        ConfigValue::Bool(_) | ConfigValue::String(_) => Ok(()),
+    }
+}
+
+fn check_scalar(
+    key: &str,
+    value: f64,
+    bounds: &NumericBounds,
+    index: Option<usize>,
+) -> Result<(), ConfigResolutionError> {
+    let in_range = value.is_finite()
+        && bounds.min.map_or(true, |lo| value >= lo)
+        && bounds.max.map_or(true, |hi| value <= hi);
+    if in_range {
+        Ok(())
+    } else {
+        Err(ConfigResolutionError::OutOfRange {
+            key: key.to_string(),
+            value,
+            min: bounds.min,
+            max: bounds.max,
+            index,
+        })
+    }
+}
 
 /// Diagnostic returned when a `paint_config:<semantic>:<key>` entry references
 /// a semantic not present in the model. Non-fatal; forwarded to the progress
@@ -60,6 +273,7 @@ pub fn resolve_per_paint_semantic_configs(
     global: &ResolvedConfig,
     source: &HashMap<ConfigKey, ConfigValue>,
     present_semantics: &[PaintSemantic],
+    bounds: &ConfigBoundsIndex,
 ) -> Result<
     (
         BTreeMap<PaintSemantic, ResolvedConfig>,
@@ -94,7 +308,7 @@ pub fn resolve_per_paint_semantic_configs(
                         // Apply this single override key to the entry.
                         let single: HashMap<String, ConfigValue> =
                             [(sub_key.to_string(), value.clone())].into();
-                        let updated = apply_overlay(entry, &single)?;
+                        let updated = apply_overlay(entry, &single, bounds)?;
                         *entry = updated;
                     }
                     None => {
@@ -129,6 +343,7 @@ pub fn resolve_per_paint_semantic_configs(
 /// Defaults come from [`ResolvedConfig::default()`].
 pub fn resolve_global_config(
     source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &ConfigBoundsIndex,
 ) -> Result<ResolvedConfig, ConfigResolutionError> {
     let mut cfg = ResolvedConfig::default();
 
@@ -145,6 +360,10 @@ pub fn resolve_global_config(
         if key.starts_with("object_height:") {
             continue;
         }
+
+        // Enforce numeric min/max declared in any module's manifest before
+        // routing the value into a declared field or the extensions bucket.
+        bounds.check(key.as_str(), value)?;
 
         // Dispatch into the macro-generated per-field setter. Unknown keys
         // fall through to the `extensions` overflow bucket. Single source of
@@ -169,6 +388,7 @@ pub fn resolve_per_object_configs(
     global: &ResolvedConfig,
     source: &HashMap<ConfigKey, ConfigValue>,
     object_ids: &[&str],
+    bounds: &ConfigBoundsIndex,
 ) -> Result<BTreeMap<String, ResolvedConfig>, ConfigResolutionError> {
     let mut result = BTreeMap::new();
 
@@ -188,7 +408,7 @@ pub fn resolve_per_object_configs(
             // Merge by running through resolve_global_config with the
             // per-object sub-map, then selectively apply non-default fields.
             // Simpler: rebuild from global + per_object_source overlay.
-            per_obj_cfg = apply_overlay(global, &per_object_source)?;
+            per_obj_cfg = apply_overlay(global, &per_object_source, bounds)?;
         }
 
         result.insert(object_id.to_string(), per_obj_cfg);
@@ -202,6 +422,7 @@ pub fn resolve_per_object_configs(
 fn apply_overlay(
     base: &ResolvedConfig,
     overrides: &HashMap<String, ConfigValue>,
+    bounds: &ConfigBoundsIndex,
 ) -> Result<ResolvedConfig, ConfigResolutionError> {
     // Merge: start from a merged source where declared-field defaults come
     // from base, then overrides win.
@@ -219,6 +440,8 @@ fn apply_overlay(
         if key.starts_with("object_config:") || key.starts_with("object_height:") {
             continue;
         }
+
+        bounds.check(key.as_str(), value)?;
 
         if !cfg.apply_cli_key(key.as_str(), value)? {
             cfg.extensions.insert(key.clone(), value.clone());

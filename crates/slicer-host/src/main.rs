@@ -23,7 +23,7 @@ use slicer_host::report::{allocator as report_alloc, AccountingAllocator, Collec
 use slicer_host::{
     build_config_schema_json, build_live_execution_plan, load_live_modules_for_plan,
     load_modules_from_roots, parse_cli_config_source, resolve_global_config,
-    resolve_per_object_configs, ConfigResolutionError, DefaultGCodeEmitter, DefaultGCodeSerializer,
+    resolve_per_object_configs, ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer,
     HostCli, HostCommands,
 };
 
@@ -186,47 +186,16 @@ fn main() {
                 }
             }
 
-            // Resolve the global fallback config and per-object overlays from the
-            // raw config source.  Resolution is strict: a wrong-typed value
-            // (e.g. `top_shell_layers: "four"`) exits immediately with a message
-            // that includes the offending key and expected variant (NC-2 pin).
-            let default_resolved_config = match resolve_global_config(&config_source) {
-                Ok(cfg) => cfg,
-                Err(ConfigResolutionError::TypeMismatch {
-                    ref key,
-                    expected,
-                    ref actual,
-                }) => {
-                    eprintln!(
-                        "error: config resolution failed: key '{key}' expected {expected}, got {actual}"
-                    );
-                    std::process::exit(1);
-                }
-            };
-            let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
-            let resolved_configs_map = match resolve_per_object_configs(
-                &default_resolved_config,
-                &config_source,
-                &object_ids,
-            ) {
-                Ok(map) => map,
-                Err(ConfigResolutionError::TypeMismatch {
-                    ref key,
-                    expected,
-                    ref actual,
-                }) => {
-                    eprintln!(
-                            "error: config resolution failed: key '{key}' expected {expected}, got {actual}"
-                        );
-                    std::process::exit(1);
-                }
-            };
-
             // Discover and plan every module under --module-dir. Modules
             // are topologically sorted within each stage and laid out in
             // the canonical STAGE_ORDER. Non-fatal discovery diagnostics
             // are surfaced on stderr; fatal failures terminate with a
             // structured message (docs/04 §Fixed Stage Order).
+            //
+            // Loaded before config resolution so the merged numeric-bounds
+            // index (from each module's manifest `[config.schema]`) is in
+            // scope and can reject out-of-range CLI values alongside variant
+            // TypeMismatches.
             let module_dir_path = std::path::PathBuf::from(&module_dir);
             let loaded = match load_live_modules_for_plan(
                 std::slice::from_ref(&module_dir_path),
@@ -246,6 +215,35 @@ fn main() {
                     msg = diag.message,
                 );
             }
+            let config_bounds =
+                ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
+
+            // Resolve the global fallback config and per-object overlays from the
+            // raw config source.  Resolution is strict: a wrong-typed value
+            // (e.g. `top_shell_layers: "four"`) or a numeric value outside the
+            // module-declared `[min, max]` exits immediately with a message
+            // that includes the offending key (NC-2 pin).
+            let default_resolved_config =
+                match resolve_global_config(&config_source, &config_bounds) {
+                    Ok(cfg) => cfg,
+                    Err(e) => {
+                        eprintln!("error: config resolution failed: {e}");
+                        std::process::exit(1);
+                    }
+                };
+            let object_ids: Vec<&str> = mesh_ir.objects.iter().map(|o| o.id.as_str()).collect();
+            let resolved_configs_map = match resolve_per_object_configs(
+                &default_resolved_config,
+                &config_source,
+                &object_ids,
+                &config_bounds,
+            ) {
+                Ok(map) => map,
+                Err(e) => {
+                    eprintln!("error: config resolution failed: {e}");
+                    std::process::exit(1);
+                }
+            };
 
             // The live plan/build path. Every per-module ConfigView is
             // synthesised through `bind_module_config_view` inside this
@@ -295,6 +293,7 @@ fn main() {
                 },
                 resolved_configs: Arc::new(resolved_configs_map),
                 default_resolved_config: Arc::new(default_resolved_config),
+                bounds: Arc::new(config_bounds),
             };
 
             // Route per-layer progress events (including host-built-in

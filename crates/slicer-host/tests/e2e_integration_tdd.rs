@@ -188,6 +188,7 @@ fn e2e_load_stl_empty_plan() {
         runners: default_runners(),
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline(config);
@@ -211,6 +212,7 @@ fn e2e_deterministic_output() {
         runners: default_runners(),
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     })
     .unwrap();
 
@@ -220,6 +222,7 @@ fn e2e_deterministic_output() {
         runners: default_runners(),
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     })
     .unwrap();
 
@@ -304,6 +307,7 @@ fn e2e_with_layers() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let output = run_pipeline(config).unwrap();
@@ -344,6 +348,7 @@ fn e2e_pipeline_uses_real_mesh() {
         runners: noop_runners(),
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline(config);
@@ -365,6 +370,7 @@ fn e2e_output_to_file() {
         runners: default_runners(),
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let output = run_pipeline(config).unwrap();

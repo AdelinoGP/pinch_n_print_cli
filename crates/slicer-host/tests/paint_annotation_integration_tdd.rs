@@ -490,6 +490,7 @@ fn run_pipeline_with_events_on_empty_plan_emits_no_spurious_events() {
         runners: minimal_runners(),
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
     run_pipeline_with_events(config, &sink).expect("empty pipeline must succeed");
 

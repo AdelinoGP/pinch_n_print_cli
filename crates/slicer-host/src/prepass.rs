@@ -324,6 +324,7 @@ pub fn execute_prepass_with_builtins(
     let empty_resolved: BTreeMap<String, ResolvedConfig> = BTreeMap::new();
     let default_resolved = ResolvedConfig::default();
     let empty_raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
+    let empty_bounds = crate::ConfigBoundsIndex::empty();
     execute_prepass_with_builtins_configured(
         plan,
         blackboard,
@@ -331,6 +332,7 @@ pub fn execute_prepass_with_builtins(
         &empty_resolved,
         &default_resolved,
         &empty_raw,
+        &empty_bounds,
     )
 }
 
@@ -346,6 +348,7 @@ pub(crate) fn execute_prepass_with_builtins_configured(
     resolved_configs: &BTreeMap<String, ResolvedConfig>,
     default_resolved_config: &ResolvedConfig,
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &crate::ConfigBoundsIndex,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     execute_prepass_with_builtins_configured_instr(
         plan,
@@ -354,6 +357,7 @@ pub(crate) fn execute_prepass_with_builtins_configured(
         resolved_configs,
         default_resolved_config,
         raw_config_source,
+        bounds,
         &NoopInstrumentation,
     )
 }
@@ -369,6 +373,7 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
     resolved_configs: &BTreeMap<String, ResolvedConfig>,
     default_resolved_config: &ResolvedConfig,
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    bounds: &crate::ConfigBoundsIndex,
     instrumentation: &(dyn PipelineInstrumentation + Sync),
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     if blackboard.surface_classification().is_none() {
@@ -399,6 +404,7 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         blackboard: &Blackboard,
         default_resolved_config: &ResolvedConfig,
         raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+        bounds: &crate::ConfigBoundsIndex,
     ) -> BTreeMap<PaintSemantic, ResolvedConfig> {
         let Some(paint_ir) = blackboard.paint_regions() else {
             return BTreeMap::new();
@@ -417,6 +423,7 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             default_resolved_config,
             raw_config_source,
             &present_semantics,
+            bounds,
         ) {
             Ok((map, warnings)) => {
                 for w in warnings {
@@ -445,8 +452,12 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
     //    (those requiring RegionMap) run in phase-2 after RegionMapping.
     let layer_plan_existed = blackboard.layer_plan().is_some();
     if layer_plan_existed && blackboard.region_map().is_none() {
-        let paint_semantic_configs =
-            build_paint_semantic_configs(blackboard, default_resolved_config, raw_config_source);
+        let paint_semantic_configs = build_paint_semantic_configs(
+            blackboard,
+            default_resolved_config,
+            raw_config_source,
+            bounds,
+        );
         commit_region_mapping_builtin(
             plan,
             blackboard,
@@ -484,8 +495,12 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             .map_err(|source| PrepassExecutionError::SupportGeometry { source })?;
     }
     if blackboard.layer_plan().is_some() && blackboard.region_map().is_none() {
-        let paint_semantic_configs =
-            build_paint_semantic_configs(blackboard, default_resolved_config, raw_config_source);
+        let paint_semantic_configs = build_paint_semantic_configs(
+            blackboard,
+            default_resolved_config,
+            raw_config_source,
+            bounds,
+        );
         commit_region_mapping_builtin(
             plan,
             blackboard,

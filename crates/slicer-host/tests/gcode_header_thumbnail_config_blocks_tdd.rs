@@ -160,6 +160,7 @@ fn slice_to_gcode(thumbnail_path: Option<&str>) -> Result<String, String> {
         runners: default_runners(),
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
@@ -437,6 +438,7 @@ fn config_block_includes_user_passed() {
         runners: default_runners(),
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
@@ -637,6 +639,7 @@ fn rejects_missing_thumbnail_file() {
         runners: default_runners(),
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink);
@@ -669,6 +672,7 @@ fn rejects_non_png_thumbnail() {
         runners: default_runners(),
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink);
@@ -702,6 +706,7 @@ fn empty_config_view_still_emits_sentinels() {
         runners: default_runners(),
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)

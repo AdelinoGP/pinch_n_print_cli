@@ -240,6 +240,7 @@ fn run_with_noop_instrumentation_succeeds_and_collects_nothing() {
         runners: noop_runners(),
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline_with_instrumentation(
@@ -291,6 +292,7 @@ fn run_with_collector_records_phase_and_layer_brackets() {
         runners: noop_runners(),
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     // `Arc<Collector>` implements `PipelineInstrumentation` via the inner
@@ -450,6 +452,7 @@ fn record_edges_fires_for_every_stage_at_plan_freeze() {
         runners: noop_runners(),
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline_with_instrumentation(

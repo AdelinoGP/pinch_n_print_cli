@@ -5,7 +5,9 @@
 
 use std::collections::HashMap;
 
-use slicer_host::{resolve_global_config, resolve_per_object_configs, ConfigResolutionError};
+use slicer_host::{
+    resolve_global_config, resolve_per_object_configs, ConfigBoundsIndex, ConfigResolutionError,
+};
 use slicer_ir::ConfigValue;
 
 /// AC-1: A known field (top_shell_layers) is applied; unlisted fields keep
@@ -15,7 +17,8 @@ fn resolver_maps_top_shell_layers() {
     let mut source: HashMap<String, ConfigValue> = HashMap::new();
     source.insert("top_shell_layers".to_string(), ConfigValue::Int(4));
 
-    let resolved = resolve_global_config(&source).expect("resolution should succeed");
+    let bounds = ConfigBoundsIndex::empty();
+    let resolved = resolve_global_config(&source, &bounds).expect("resolution should succeed");
 
     assert_eq!(resolved.top_shell_layers, 4, "top_shell_layers should be 4");
     assert_eq!(
@@ -38,7 +41,8 @@ fn resolver_unknown_key_routes_to_extensions() {
         ConfigValue::String("on".to_string()),
     );
 
-    let resolved = resolve_global_config(&source).expect("resolution should succeed");
+    let bounds = ConfigBoundsIndex::empty();
+    let resolved = resolve_global_config(&source, &bounds).expect("resolution should succeed");
 
     assert_eq!(resolved.top_shell_layers, 2);
     assert_eq!(
@@ -59,10 +63,11 @@ fn resolver_per_object_overrides_global() {
         ConfigValue::Int(5),
     );
 
-    let global = resolve_global_config(&source).expect("global resolution should succeed");
+    let bounds = ConfigBoundsIndex::empty();
+    let global = resolve_global_config(&source, &bounds).expect("global resolution should succeed");
     assert_eq!(global.top_shell_layers, 3);
 
-    let per_object = resolve_per_object_configs(&global, &source, &["obj-A", "obj-B"])
+    let per_object = resolve_per_object_configs(&global, &source, &["obj-A", "obj-B"], &bounds)
         .expect("per-object resolution should succeed");
 
     // BTreeMap ordering: obj-A < obj-B alphabetically.
@@ -92,7 +97,8 @@ fn resolver_rejects_string_for_top_shell_layers() {
         ConfigValue::String("four".to_string()),
     );
 
-    let err = resolve_global_config(&source).expect_err("should fail on type mismatch");
+    let bounds = ConfigBoundsIndex::empty();
+    let err = resolve_global_config(&source, &bounds).expect_err("should fail on type mismatch");
 
     match err {
         ConfigResolutionError::TypeMismatch {
@@ -107,5 +113,6 @@ fn resolver_rejects_string_for_top_shell_layers() {
                 "actual variant should mention 'String', got: {actual}"
             );
         }
+        other => panic!("expected TypeMismatch, got {other:?}"),
     }
 }

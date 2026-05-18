@@ -32,6 +32,20 @@ pub enum ConfigResolutionError {
         /// The variant name that was actually supplied.
         actual: String,
     },
+    /// A numeric value fell outside the `[min, max]` range declared in the
+    /// module manifest schema. Also raised for NaN/Inf in numeric fields.
+    OutOfRange {
+        /// The config key that received the offending value.
+        key: String,
+        /// The numeric value (coerced to `f64` for reporting).
+        value: f64,
+        /// Inclusive minimum from the manifest, if declared.
+        min: Option<f64>,
+        /// Inclusive maximum from the manifest, if declared.
+        max: Option<f64>,
+        /// Index of the offending element when `value` is a list element.
+        index: Option<usize>,
+    },
 }
 
 impl std::fmt::Display for ConfigResolutionError {
@@ -45,6 +59,30 @@ impl std::fmt::Display for ConfigResolutionError {
                 f,
                 "config key '{key}': expected {expected} value, got {actual}"
             ),
+            Self::OutOfRange {
+                key,
+                value,
+                min,
+                max,
+                index,
+            } => {
+                let range = match (min, max) {
+                    (Some(lo), Some(hi)) => format!("[{lo}, {hi}]"),
+                    (Some(lo), None) => format!("[{lo}, +inf)"),
+                    (None, Some(hi)) => format!("(-inf, {hi}]"),
+                    (None, None) => "(finite)".to_string(),
+                };
+                match index {
+                    Some(i) => write!(
+                        f,
+                        "config key '{key}'[{i}]: value {value} outside allowed range {range}"
+                    ),
+                    None => write!(
+                        f,
+                        "config key '{key}': value {value} outside allowed range {range}"
+                    ),
+                }
+            }
         }
     }
 }

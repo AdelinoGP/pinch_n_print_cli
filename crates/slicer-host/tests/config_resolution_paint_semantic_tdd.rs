@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use slicer_host::{resolve_per_paint_semantic_configs, ConfigResolutionError};
+use slicer_host::{resolve_per_paint_semantic_configs, ConfigBoundsIndex, ConfigResolutionError};
 use slicer_ir::{ConfigValue, PaintSemantic, ResolvedConfig};
 
 // ---------------------------------------------------------------------------
@@ -43,8 +43,10 @@ fn resolves_paint_config_namespace() {
 
     let semantics = [PaintSemantic::Custom("fuzzy_skin".to_string())];
 
-    let (result, _warnings) = resolve_per_paint_semantic_configs(&global, &source, &semantics)
-        .expect("resolution should not fail");
+    let bounds = ConfigBoundsIndex::empty();
+    let (result, _warnings) =
+        resolve_per_paint_semantic_configs(&global, &source, &semantics, &bounds)
+            .expect("resolution should not fail");
     assert!(result.contains_key(&PaintSemantic::Custom("fuzzy_skin".to_string())));
     assert_eq!(
         result[&PaintSemantic::Custom("fuzzy_skin".to_string())].wall_count,
@@ -69,8 +71,10 @@ fn unknown_semantic_warns_then_ignores() {
     // Known semantics list deliberately does NOT include UNKNOWN_SEMANTIC.
     let semantics: [PaintSemantic; 0] = [];
 
-    let (result, warnings) = resolve_per_paint_semantic_configs(&global, &source, &semantics)
-        .expect("resolution should not fail");
+    let bounds = ConfigBoundsIndex::empty();
+    let (result, warnings) =
+        resolve_per_paint_semantic_configs(&global, &source, &semantics, &bounds)
+            .expect("resolution should not fail");
     assert!(!result.contains_key(&PaintSemantic::Custom("UNKNOWN_SEMANTIC".to_string())));
     assert_eq!(warnings.len(), 1);
     assert!(warnings[0].contains("UNKNOWN_SEMANTIC"));

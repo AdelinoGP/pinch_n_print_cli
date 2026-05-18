@@ -15,10 +15,10 @@ use crate::{
     execute_per_layer_with_instrumentation, execute_postpass,
     gcode_emit::{resolved_config_to_map, ThumbnailAwareSerializer},
     prepass::execute_prepass_with_builtins_configured,
-    Blackboard, ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter,
-    GCodeSerializer, LayerExecutionError, LayerProgressSink, LayerStageRunner, ModuleAccessAudit,
-    NoopInstrumentation, NoopLayerProgressSink, Phase, PipelineInstrumentation, PostpassError,
-    PostpassStageRunner, PrepassExecutionError, PrepassStageRunner, TierKind,
+    Blackboard, ConfigBoundsIndex, ExecutionPlan, FinalizationError, FinalizationStageRunner,
+    GCodeEmitter, GCodeSerializer, LayerExecutionError, LayerProgressSink, LayerStageRunner,
+    ModuleAccessAudit, NoopInstrumentation, NoopLayerProgressSink, Phase, PipelineInstrumentation,
+    PostpassError, PostpassStageRunner, PrepassExecutionError, PrepassStageRunner, TierKind,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -54,6 +54,13 @@ pub struct PipelineConfig {
     /// Global fallback [`ResolvedConfig`] used for objects not present in
     /// `resolved_configs` and passed as the default to the RegionMapping built-in.
     pub default_resolved_config: Arc<ResolvedConfig>,
+    /// Numeric `[min, max]` bounds aggregated from every loaded module's
+    /// manifest `[config.schema]`. Threaded into the prepass-time
+    /// `resolve_per_paint_semantic_configs` call so `paint_config:<sem>:<key>`
+    /// overrides are rejected on out-of-range values, same as global keys.
+    /// Defaults to [`ConfigBoundsIndex::empty`] for pipeline call sites that
+    /// don't load modules (in-process tests).
+    pub bounds: Arc<ConfigBoundsIndex>,
 }
 
 /// Output produced by a successful pipeline run.
@@ -150,6 +157,7 @@ pub fn run_pipeline_with_events(
         mut runners,
         resolved_configs,
         default_resolved_config,
+        bounds,
     } = config;
 
     // Step 1: Create blackboard with the loaded mesh. Layer count is not known
@@ -171,6 +179,7 @@ pub fn run_pipeline_with_events(
         &resolved_configs,
         &default_resolved_config,
         &empty_raw,
+        &bounds,
     )?;
 
     // Step 2b: Promote the LayerPlanIR committed by prepass into the execution
@@ -228,6 +237,7 @@ pub fn run_pipeline_with_raw_config(
         mut runners,
         resolved_configs,
         default_resolved_config,
+        bounds,
     } = config;
 
     let mut blackboard = Blackboard::new(mesh_ir, 0);
@@ -239,6 +249,7 @@ pub fn run_pipeline_with_raw_config(
         &resolved_configs,
         &default_resolved_config,
         raw_config_source,
+        &bounds,
     )?;
 
     if let Some(layer_plan) = blackboard.layer_plan() {
@@ -300,6 +311,7 @@ pub fn run_pipeline_with_instrumentation(
         mut runners,
         resolved_configs,
         default_resolved_config,
+        bounds,
     } = config;
 
     // Plan-freeze: emit one `record_edges` call per stage so the report has
@@ -332,6 +344,7 @@ pub fn run_pipeline_with_instrumentation(
         &resolved_configs,
         &default_resolved_config,
         raw_config_source,
+        &bounds,
         instrumentation,
     );
     instrumentation.on_phase_end(Phase::PrePass);

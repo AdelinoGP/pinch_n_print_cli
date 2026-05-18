@@ -239,6 +239,7 @@ fn run_pipeline_empty_modules() {
         runners: noop_runners(),
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline(config);
@@ -274,6 +275,7 @@ fn run_pipeline_returns_gcode_string() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let output = run_pipeline(config).unwrap();
@@ -325,6 +327,7 @@ fn run_pipeline_propagates_prepass_error() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline(config);
@@ -382,6 +385,7 @@ fn run_pipeline_propagates_layer_error() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline(config);
@@ -421,6 +425,7 @@ fn run_pipeline_propagates_postpass_error() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline(config);
@@ -525,6 +530,7 @@ fn run_pipeline_calls_stages_in_order() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline(config);
@@ -587,6 +593,7 @@ fn run_pipeline_propagates_finalization_error() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline(config);
@@ -647,6 +654,7 @@ fn run_pipeline_with_layers_produces_output() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let output = run_pipeline(config).unwrap();
@@ -727,6 +735,7 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline(config);
@@ -800,6 +809,7 @@ fn prepass_audits_live_path() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -901,6 +911,7 @@ fn layer_audits_live_path() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -997,6 +1008,7 @@ fn access_audits_live_path() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1156,6 +1168,7 @@ fn access_audits_live_path_read_performing() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");

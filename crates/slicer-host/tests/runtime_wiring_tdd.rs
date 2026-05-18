@@ -394,6 +394,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
         },
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: std::sync::Arc::new(slicer_host::ConfigBoundsIndex::empty()),
     };
 
     let result = run_pipeline(config);
