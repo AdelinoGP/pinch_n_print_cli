@@ -1357,40 +1357,40 @@ impl wasmtime::ResourceLimiter for MemTracker {
 /// this context and integrates them into the pipeline state.
 pub struct HostExecutionContext {
     /// Resource handle table — manages lifetimes of host-provided resources.
-    pub table: ResourceTable,
+    pub(crate) table: ResourceTable,
     /// Module identifier (from manifest).
-    pub module_id: String,
+    pub(crate) module_id: String,
     /// Monotonic clock start for profiling.
     start_time: Instant,
     /// Log messages emitted by the guest via host-services.log.
-    pub log_messages: Vec<(String, String)>,
+    pub(crate) log_messages: Vec<(String, String)>,
 
     // ── Output collectors ───────────────────────────────────────────
     /// Infill output collected during a call.
-    pub infill_output: InfillOutputCollected,
+    pub(crate) infill_output: InfillOutputCollected,
     /// Perimeter output collected during a call.
-    pub perimeter_output: PerimeterOutputCollected,
+    pub(crate) perimeter_output: PerimeterOutputCollected,
     /// Support output collected during a call.
-    pub support_output: SupportOutputCollected,
+    pub(crate) support_output: SupportOutputCollected,
     /// GCode output collected during a call.
-    pub gcode_output: GcodeOutputCollected,
+    pub(crate) gcode_output: GcodeOutputCollected,
     /// Slice postprocess output collected during a call.
-    pub slice_postprocess_output: SlicePostprocessCollected,
+    pub(crate) slice_postprocess_output: SlicePostprocessCollected,
     /// Identity of the perimeter-region-view most recently accessed by the
     /// guest. Used to tag pushed post-process output so the commit path can
     /// preserve per-region identity instead of flattening into one synthetic
     /// region. Reset to `None` between calls (HostExecutionContext is per-call).
-    pub current_perimeter_region: Option<PerimeterRegionOrigin>,
+    pub(crate) current_perimeter_region: Option<PerimeterRegionOrigin>,
     /// Identity of the slice-region-view most recently accessed by the guest.
     /// Used to tag support post-process output pushes so the commit path can
     /// preserve per-region identity (grouping + structured diagnostic on
     /// untagged pushes) rather than silently flattening.
-    pub current_slice_region: Option<SliceRegionOrigin>,
+    pub(crate) current_slice_region: Option<SliceRegionOrigin>,
 
     /// Layer proposals collected from `push_layer` calls during a prepass
     /// `run-layer-planning` invocation.  Empty for all non-prepass stages.
     /// Drained by the prepass dispatch path after the WIT call returns.
-    pub layer_plan_proposals: Vec<prepass::LayerProposal>,
+    pub(crate) layer_plan_proposals: Vec<prepass::LayerProposal>,
 
     /// Per-object facet annotations collected from `push-facet-annotation`
     /// calls during a prepass `run-mesh-analysis` invocation. Tuple is
@@ -1400,13 +1400,13 @@ pub struct HostExecutionContext {
     /// annotations (e.g. the current production path where
     /// `SurfaceClassificationIR` is still produced by the host built-in;
     /// see `mesh_analysis::execute_mesh_analysis`).
-    pub mesh_analysis_annotations: Vec<(String, prepass::FacetAnnotation)>,
+    pub(crate) mesh_analysis_annotations: Vec<(String, prepass::FacetAnnotation)>,
 
     /// Per-object surface groups collected from `push-surface-group`
     /// calls during a prepass `run-mesh-analysis` invocation. Tuple is
     /// `(object_id, SurfaceGroupProposal)`; insertion order preserved.
     /// Empty for all non-MeshAnalysis stages.
-    pub mesh_analysis_surface_groups: Vec<(String, prepass::SurfaceGroupProposal)>,
+    pub(crate) mesh_analysis_surface_groups: Vec<(String, prepass::SurfaceGroupProposal)>,
 
     /// Triangle paint marks collected from `mark-triangle-paint` calls
     /// during a prepass `run-mesh-segmentation` invocation. Tuple layout
@@ -1414,27 +1414,27 @@ pub struct HostExecutionContext {
     /// `(object_id, facet_index, semantic, value)`. Insertion order is
     /// preserved so `harvest_mesh_segmentation_ir` can build a
     /// deterministic `MeshSegmentationIR.marks` sequence.
-    pub mesh_segmentation_marks: Vec<(String, u32, String, String)>,
+    pub(crate) mesh_segmentation_marks: Vec<(String, u32, String, String)>,
 
     /// Paint-region entries collected from `push-paint-region` calls
     /// during a prepass `run-paint-segmentation` invocation. Stored as
     /// raw `prepass::PaintRegionEntry` records so the harvest helper
     /// can convert them to `PaintRegionIR` without losing any field.
     /// Empty for all non-prepass stages.
-    pub paint_region_entries: Vec<prepass::PaintRegionEntry>,
+    pub(crate) paint_region_entries: Vec<prepass::PaintRegionEntry>,
 
     /// Seam-plan entries collected during a prepass `run-seam-planning`
     /// invocation. Stored as raw `prepass::SeamPlanEntry` records so the
     /// harvest helper can convert them to `SeamPlanIR` without losing any field.
     /// Empty for all non-prepass stages.
-    pub seam_plan_entries: Vec<prepass::SeamPlanEntry>,
+    pub(crate) seam_plan_entries: Vec<prepass::SeamPlanEntry>,
 
     /// Support-plan entries collected during a prepass
     /// `run-support-geometry` invocation. Stored as raw
     /// `prepass::SupportPlanEntry` records so the harvest helper can convert
     /// them to `SupportPlanIR` without losing any field. Empty for all
     /// non-prepass stages.
-    pub support_plan_entries: Vec<prepass::SupportPlanEntry>,
+    pub(crate) support_plan_entries: Vec<prepass::SupportPlanEntry>,
 
     /// Finalization builder pushes collected during a finalization
     /// `run-finalization` invocation. The host-side
@@ -1443,7 +1443,7 @@ pub struct HostExecutionContext {
     /// so `FinalizationStageRunner` can drain them even after the
     /// guest has dropped the builder handle (docs/03
     /// world-finalization.wit §finalization-output-builder).
-    pub finalization_pushes: Vec<FinalizationBuilderPush>,
+    pub(crate) finalization_pushes: Vec<FinalizationBuilderPush>,
 
     /// Layer-collection ordering proposal captured during a
     /// `Layer::PathOptimization` call via
@@ -1452,7 +1452,7 @@ pub struct HostExecutionContext {
     /// Reset to `None` by `push_layer_collection_builder` so a single
     /// `HostExecutionContext` reused across two layer calls cannot leak
     /// a proposal between them.
-    pub layer_collection_proposal: Option<Vec<(u32, bool)>>,
+    pub(crate) layer_collection_proposal: Option<Vec<(u32, bool)>>,
 
     /// Counter incremented at the top of `HostLayerCollectionBuilder::get_ordered_entities`,
     /// reset to `0` by `push_layer_collection_builder`. Exists to pin the macro-call-once
@@ -1466,14 +1466,14 @@ pub struct HostExecutionContext {
     /// record the exact IR path (e.g. `SliceIR.regions.polygons`) when
     /// called. Extracted by the dispatcher and returned as part of
     /// `ModuleAccessAudit.runtime_reads`.
-    pub runtime_reads: Vec<String>,
+    pub(crate) runtime_reads: Vec<String>,
 
     /// Runtime IR write paths accessed by the guest via WIT builder methods
     /// during this call. Populated by instrumenting each builder method to
     /// record the exact IR path (e.g. `PerimeterIR.regions.walls`) when
     /// called. Extracted by the dispatcher and returned as part of
     /// `ModuleAccessAudit.runtime_writes`.
-    pub runtime_writes: Vec<String>,
+    pub(crate) runtime_writes: Vec<String>,
 
     // ── Z envelope fields ─────────────────────────────────────────────
     /// Layer Z floor (lower bound of the Z envelope).
@@ -1483,7 +1483,7 @@ pub struct HostExecutionContext {
     /// Bottom Z of catch-up layer, or `None` if not a catch-up layer.
     catchup_z_bottom: Option<f32>,
     /// Host-owned mesh IR used by mesh-query host services.
-    pub mesh_ir: Option<Arc<MeshIR>>,
+    pub(crate) mesh_ir: Option<Arc<MeshIR>>,
 
     /// Fill-role claim IDs held by `module_id` per `(object_id, region_id)`,
     /// resolved by `validation::resolve_held_claims` against the per-region
@@ -1492,29 +1492,65 @@ pub struct HostExecutionContext {
     /// `SliceRegionData.held_claims`. Empty for non-`Layer::Infill` calls
     /// (the WIT accessor returns the empty list, which the SDK convention
     /// treats as "holds all" — packet 36 / 12-rev1 behavior).
-    pub held_claims_per_region: std::collections::HashMap<(String, String), Vec<String>>,
+    pub(crate) held_claims_per_region: std::collections::HashMap<(String, String), Vec<String>>,
 
     /// Linear-memory tracker, installed as the store's `ResourceLimiter`
     /// to sample guest memory growth for the slicer report.
-    pub mem_tracker: MemTracker,
+    pub(crate) mem_tracker: MemTracker,
 }
 
-impl HostExecutionContext {
-    /// Create a new execution context for a module call.
+/// Consuming builder for [`HostExecutionContext`].
+///
+/// Per spec §6.4 — required positional args are `module_id`, `layer_z`,
+/// `effective_layer_height`; the two optional Z-envelope/mesh slots
+/// (`catchup_z_bottom`, `mesh_ir`) are settable via fluent setters. All
+/// per-call output accumulators default to `Default::default()` (i.e.
+/// empty) and are mutated through accessors on the built context.
+#[must_use = "HostExecutionContextBuilder yields a HostExecutionContext via .build()"]
+pub struct HostExecutionContextBuilder {
+    module_id: String,
+    layer_z: f32,
+    effective_layer_height: f32,
+    catchup_z_bottom: Option<f32>,
+    mesh_ir: Option<Arc<MeshIR>>,
+}
+
+impl HostExecutionContextBuilder {
+    /// Start a builder with the three required identity fields.
     ///
-    /// `layer_z` is the layer floor (lower Z bound). `effective_layer_height` is
-    /// the envelope height. `catchup_z_bottom` is `Some` when this is a catch-up
-    /// layer (the floor is then `catchup_z_bottom` instead of `layer_z`).
-    pub fn new(
-        module_id: String,
-        layer_z: f32,
-        effective_layer_height: f32,
-        catchup_z_bottom: Option<f32>,
-        mesh_ir: Option<Arc<MeshIR>>,
-    ) -> Self {
+    /// `layer_z` is the layer floor (lower Z bound). `effective_layer_height`
+    /// is the envelope height. The catch-up bottom and mesh IR slots default
+    /// to `None`; set them via [`Self::catchup_z_bottom`] / [`Self::mesh_ir`]
+    /// before calling [`Self::build`] when needed.
+    pub fn new(module_id: impl Into<String>, layer_z: f32, effective_layer_height: f32) -> Self {
         Self {
+            module_id: module_id.into(),
+            layer_z,
+            effective_layer_height,
+            catchup_z_bottom: None,
+            mesh_ir: None,
+        }
+    }
+
+    /// Set the catch-up layer's bottom Z. `Some` marks this call as a
+    /// catch-up layer (the envelope floor becomes `catchup_z_bottom`
+    /// instead of `layer_z`).
+    pub fn catchup_z_bottom(mut self, v: Option<f32>) -> Self {
+        self.catchup_z_bottom = v;
+        self
+    }
+
+    /// Set the host-owned mesh IR for mesh-query host services.
+    pub fn mesh_ir(mut self, v: Option<Arc<MeshIR>>) -> Self {
+        self.mesh_ir = v;
+        self
+    }
+
+    /// Finalize the builder into a fresh `HostExecutionContext`.
+    pub fn build(self) -> HostExecutionContext {
+        HostExecutionContext {
             table: ResourceTable::new(),
-            module_id,
+            module_id: self.module_id,
             start_time: Instant::now(),
             log_messages: Vec::new(),
             infill_output: InfillOutputCollected::default(),
@@ -1536,13 +1572,175 @@ impl HostExecutionContext {
             host_get_ordered_entities_call_count: 0,
             runtime_reads: Vec::new(),
             runtime_writes: Vec::new(),
-            layer_z,
-            effective_layer_height,
-            catchup_z_bottom,
-            mesh_ir,
+            layer_z: self.layer_z,
+            effective_layer_height: self.effective_layer_height,
+            catchup_z_bottom: self.catchup_z_bottom,
+            mesh_ir: self.mesh_ir,
             held_claims_per_region: std::collections::HashMap::new(),
             mem_tracker: MemTracker::default(),
         }
+    }
+}
+
+impl HostExecutionContext {
+    /// Module identifier (from manifest).
+    pub fn module_id(&self) -> &str {
+        &self.module_id
+    }
+
+    /// Log messages emitted by the guest via host-services.log.
+    pub fn log_messages(&self) -> &[(String, String)] {
+        &self.log_messages
+    }
+
+    /// Mutable handle to the log-messages collector.
+    pub fn log_messages_mut(&mut self) -> &mut Vec<(String, String)> {
+        &mut self.log_messages
+    }
+
+    /// Per-call infill output collector.
+    pub fn infill_output(&self) -> &InfillOutputCollected {
+        &self.infill_output
+    }
+
+    /// Mutable handle to the per-call infill output collector.
+    pub fn infill_output_mut(&mut self) -> &mut InfillOutputCollected {
+        &mut self.infill_output
+    }
+
+    /// Per-call perimeter output collector.
+    pub fn perimeter_output(&self) -> &PerimeterOutputCollected {
+        &self.perimeter_output
+    }
+
+    /// Mutable handle to the per-call perimeter output collector.
+    pub fn perimeter_output_mut(&mut self) -> &mut PerimeterOutputCollected {
+        &mut self.perimeter_output
+    }
+
+    /// Per-call support output collector.
+    pub fn support_output(&self) -> &SupportOutputCollected {
+        &self.support_output
+    }
+
+    /// Mutable handle to the per-call support output collector.
+    pub fn support_output_mut(&mut self) -> &mut SupportOutputCollected {
+        &mut self.support_output
+    }
+
+    /// Per-call GCode output collector.
+    pub fn gcode_output(&self) -> &GcodeOutputCollected {
+        &self.gcode_output
+    }
+
+    /// Mutable handle to the per-call GCode output collector.
+    pub fn gcode_output_mut(&mut self) -> &mut GcodeOutputCollected {
+        &mut self.gcode_output
+    }
+
+    /// Per-call slice-postprocess output collector.
+    pub fn slice_postprocess_output(&self) -> &SlicePostprocessCollected {
+        &self.slice_postprocess_output
+    }
+
+    /// Mutable handle to the per-call slice-postprocess output collector.
+    pub fn slice_postprocess_output_mut(&mut self) -> &mut SlicePostprocessCollected {
+        &mut self.slice_postprocess_output
+    }
+
+    /// Identity of the most recently accessed perimeter region (see field doc).
+    pub fn current_perimeter_region(&self) -> Option<&PerimeterRegionOrigin> {
+        self.current_perimeter_region.as_ref()
+    }
+
+    /// Override the current perimeter region origin (test/dispatch helper).
+    pub fn set_current_perimeter_region(&mut self, origin: Option<PerimeterRegionOrigin>) {
+        self.current_perimeter_region = origin;
+    }
+
+    /// Identity of the most recently accessed slice region (see field doc).
+    pub fn current_slice_region(&self) -> Option<&SliceRegionOrigin> {
+        self.current_slice_region.as_ref()
+    }
+
+    /// Override the current slice region origin (test/dispatch helper).
+    pub fn set_current_slice_region(&mut self, origin: Option<SliceRegionOrigin>) {
+        self.current_slice_region = origin;
+    }
+
+    /// Layer proposals collected during a prepass `run-layer-planning` call.
+    pub fn layer_plan_proposals(&self) -> &[prepass::LayerProposal] {
+        &self.layer_plan_proposals
+    }
+
+    /// Mutable access to the layer proposals collector.
+    pub fn layer_plan_proposals_mut(&mut self) -> &mut Vec<prepass::LayerProposal> {
+        &mut self.layer_plan_proposals
+    }
+
+    /// Per-object facet annotations collected during `run-mesh-analysis`.
+    pub fn mesh_analysis_annotations(&self) -> &[(String, prepass::FacetAnnotation)] {
+        &self.mesh_analysis_annotations
+    }
+
+    /// Per-object surface groups collected during `run-mesh-analysis`.
+    pub fn mesh_analysis_surface_groups(&self) -> &[(String, prepass::SurfaceGroupProposal)] {
+        &self.mesh_analysis_surface_groups
+    }
+
+    /// Triangle paint marks collected during `run-mesh-segmentation`.
+    pub fn mesh_segmentation_marks(&self) -> &[(String, u32, String, String)] {
+        &self.mesh_segmentation_marks
+    }
+
+    /// Paint-region entries collected during `run-paint-segmentation`.
+    pub fn paint_region_entries(&self) -> &[prepass::PaintRegionEntry] {
+        &self.paint_region_entries
+    }
+
+    /// Seam-plan entries collected during `run-seam-planning`.
+    pub fn seam_plan_entries(&self) -> &[prepass::SeamPlanEntry] {
+        &self.seam_plan_entries
+    }
+
+    /// Support-plan entries collected during `run-support-geometry`.
+    pub fn support_plan_entries(&self) -> &[prepass::SupportPlanEntry] {
+        &self.support_plan_entries
+    }
+
+    /// Finalization builder pushes captured during `run-finalization`.
+    pub fn finalization_pushes(&self) -> &[FinalizationBuilderPush] {
+        &self.finalization_pushes
+    }
+
+    /// Layer-collection ordering proposal from `set-entity-order`, if any.
+    pub fn layer_collection_proposal(&self) -> Option<&Vec<(u32, bool)>> {
+        self.layer_collection_proposal.as_ref()
+    }
+
+    /// Runtime IR read paths recorded by view-method instrumentation.
+    pub fn runtime_reads(&self) -> &[String] {
+        &self.runtime_reads
+    }
+
+    /// Runtime IR write paths recorded by builder-method instrumentation.
+    pub fn runtime_writes(&self) -> &[String] {
+        &self.runtime_writes
+    }
+
+    /// Host-owned mesh IR used by mesh-query host services, if any.
+    pub fn mesh_ir(&self) -> Option<&Arc<MeshIR>> {
+        self.mesh_ir.as_ref()
+    }
+
+    /// Resource-limiter handle used by the wasmtime store.
+    pub fn mem_tracker_mut(&mut self) -> &mut MemTracker {
+        &mut self.mem_tracker
+    }
+
+    /// Read-only snapshot of the linear-memory tracker for reports.
+    pub fn mem_tracker(&self) -> &MemTracker {
+        &self.mem_tracker
     }
 
     /// Replace the per-region held-claim map. Called by the dispatcher after
@@ -2834,7 +3032,7 @@ mod region_origin_tests {
     #[test]
     fn touch_slice_region_rejects_noncanonical_region_id_strings() {
         let mut ctx =
-            HostExecutionContext::new("com.test.slice-origin".to_string(), 0.0, 0.2, None, None);
+            HostExecutionContextBuilder::new("com.test.slice-origin".to_string(), 0.0, 0.2).build();
         let handle = ctx
             .push_slice_region(SliceRegionData {
                 object_id: "obj-1".to_string(),
@@ -2868,13 +3066,9 @@ mod region_origin_tests {
 
     #[test]
     fn touch_perimeter_region_rejects_noncanonical_region_id_strings() {
-        let mut ctx = HostExecutionContext::new(
-            "com.test.perimeter-origin".to_string(),
-            0.0,
-            0.2,
-            None,
-            None,
-        );
+        let mut ctx =
+            HostExecutionContextBuilder::new("com.test.perimeter-origin".to_string(), 0.0, 0.2)
+                .build();
         let handle = ctx
             .push_perimeter_region(PerimeterRegionData {
                 object_id: "obj-1".to_string(),
@@ -4850,13 +5044,9 @@ mod finalization_impls {
 
         #[test]
         fn finalization_output_builder_rejects_noncanonical_region_id_strings() {
-            let mut ctx = HostExecutionContext::new(
-                "com.test.finalization".to_string(),
-                0.0,
-                0.2,
-                None,
-                None,
-            );
+            let mut ctx =
+                HostExecutionContextBuilder::new("com.test.finalization".to_string(), 0.0, 0.2)
+                    .build();
             let handle = ctx
                 .push_finalization_output_builder()
                 .expect("push finalization output builder");

@@ -135,4 +135,6 @@ pub use validation::{
     FillHolders, ModuleAccessAudit, SchedulerError, StageDag, FILL_CLAIM_IDS,
 };
 pub use wasm_instance::{WasmCallError, WasmComponent, WasmEngine, WasmInstance, WasmLoadError};
-pub use wit_host::HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS;
+pub use wit_host::{
+    HostExecutionContext, HostExecutionContextBuilder, HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS,
+};

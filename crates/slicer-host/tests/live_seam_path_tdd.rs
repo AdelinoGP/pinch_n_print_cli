@@ -23,8 +23,8 @@
 use slicer_host::dispatch::commit_layer_outputs_for_test;
 use slicer_host::wit_host::layer::slicer::world_layer::ir_handles::HostPerimeterOutputBuilder;
 use slicer_host::wit_host::{
-    ExtrusionRole, HostExecutionContext, Point3, Point3WithWidth, WallFeatureFlag, WallLoopType,
-    WallLoopView,
+    ExtrusionRole, HostExecutionContextBuilder, Point3, Point3WithWidth, WallFeatureFlag,
+    WallLoopType, WallLoopView,
 };
 
 /// Helper: make a 2-point horizontal wall loop at a given Z.
@@ -86,20 +86,14 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
     let layer_index = 0u32;
     let layer_z = 0.2;
 
-    let mut ctx = HostExecutionContext::new(
-        module_id.to_string(),
-        layer_z,
-        0.2,  // effective_layer_height
-        None, // catchup_z_bottom
-        None, // mesh_ir
-    );
+    let mut ctx = HostExecutionContextBuilder::new(module_id.to_string(), layer_z, 0.2).build();
 
     // Simulate seam-placer output: one wall loop + seam candidates.
     // (resolved_seam would be set via SDK's set_resolved_seam() if WIT allowed it)
-    ctx.perimeter_output
+    ctx.perimeter_output_mut()
         .wall_loops
         .push(make_wall_loop(layer_z, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx.perimeter_output
+    ctx.perimeter_output_mut()
         .wall_loop_origins
         .push(Some((String::new(), 0)));
 
@@ -109,14 +103,14 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
         y: 0.0,
         z: layer_z,
     };
-    ctx.perimeter_output
+    ctx.perimeter_output_mut()
         .seam_candidates
         .push((candidate_pos, 1.0));
-    ctx.perimeter_output
+    ctx.perimeter_output_mut()
         .seam_candidate_origins
         .push(Some((String::new(), 0)));
 
-    ctx.current_perimeter_region = Some((String::new(), 0));
+    ctx.set_current_perimeter_region(Some((String::new(), 0)));
     ctx.push_resolved_seam(Resource::new_own(0), candidate_pos, 0)
         .expect("host push_resolved_seam call must succeed")
         .expect("guest push_resolved_seam call must succeed");
@@ -168,7 +162,7 @@ fn empty_perimeter_output_for_wallpostprocess_skips_commit() {
     let module_id = "com.test.empty-perimeter";
     let layer_index = 0u32;
 
-    let ctx = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
+    let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
     // All three collections empty — perimeter disabled or no eligible regions.
 
     let mut arena = slicer_host::LayerArena::new();
@@ -208,22 +202,22 @@ fn resolved_seam_is_applied_only_to_origin_region() {
     let layer_index = 0u32;
     let layer_z = 0.2;
 
-    let mut ctx = HostExecutionContext::new(module_id.to_string(), layer_z, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new(module_id.to_string(), layer_z, 0.2).build();
 
-    ctx.perimeter_output
+    ctx.perimeter_output_mut()
         .wall_loops
         .push(make_wall_loop(layer_z, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx.perimeter_output
+    ctx.perimeter_output_mut()
         .wall_loop_origins
         .push(Some(("obj-a".to_string(), 0)));
-    ctx.perimeter_output
+    ctx.perimeter_output_mut()
         .wall_loops
         .push(make_wall_loop(layer_z, 0.0, 1.0, 10.0, 1.0, 0.4));
-    ctx.perimeter_output
+    ctx.perimeter_output_mut()
         .wall_loop_origins
         .push(Some(("obj-b".to_string(), 1)));
 
-    ctx.current_perimeter_region = Some(("obj-a".to_string(), 0));
+    ctx.set_current_perimeter_region(Some(("obj-a".to_string(), 0)));
     ctx.push_resolved_seam(
         Resource::new_own(0),
         Point3 {
@@ -534,7 +528,7 @@ fn rotated_points_cardinality_mismatch_rejected() {
     let layer_index = 0u32;
     let layer_z = 0.2;
 
-    let mut ctx = HostExecutionContext::new(module_id.to_string(), layer_z, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new(module_id.to_string(), layer_z, 0.2).build();
 
     // Build a wall loop view with 3 points but only 2 feature flags
     // (intentionally mismatched — violates the cardinality invariant).
@@ -604,14 +598,16 @@ fn rotated_points_cardinality_mismatch_rejected() {
     // Inject the bad wall loop directly into PerimeterOutputCollected.
     // This bypasses the WIT boundary but verifies that convert_perimeter_output
     // rejects mismatched cardinality (feature_flags.len() != path.points.len()).
-    ctx.perimeter_output.rotated_wall_loops.push(bad_wall_loop);
-    ctx.perimeter_output
+    ctx.perimeter_output_mut()
+        .rotated_wall_loops
+        .push(bad_wall_loop);
+    ctx.perimeter_output_mut()
         .rotated_wall_loop_origins
         .push(Some((String::new(), 0)));
 
     // convert_perimeter_output should reject the mismatched cardinality.
     let result =
-        slicer_host::wit_host::convert_perimeter_output(&ctx.perimeter_output, layer_index);
+        slicer_host::wit_host::convert_perimeter_output(&ctx.perimeter_output(), layer_index);
 
     assert!(
         result.is_err(),
@@ -640,13 +636,9 @@ fn seam_z_outside_layer_envelope_rejected() {
     let layer_z = 0.2;
     let effective_layer_height = 0.2; // ceiling = 0.4
 
-    let mut ctx = HostExecutionContext::new(
-        module_id.to_string(),
-        layer_z,
-        effective_layer_height,
-        None,
-        None,
-    );
+    let mut ctx =
+        HostExecutionContextBuilder::new(module_id.to_string(), layer_z, effective_layer_height)
+            .build();
 
     let good_loop = WallLoopView {
         perimeter_index: 0,
@@ -745,7 +737,7 @@ fn seam_z_outside_layer_envelope_rejected() {
 
     // Verify nothing was committed.
     assert!(
-        ctx.perimeter_output.rotated_wall_loops.is_empty(),
+        ctx.perimeter_output().rotated_wall_loops.is_empty(),
         "no rotated wall loops must be stored after Z rejection"
     );
 }

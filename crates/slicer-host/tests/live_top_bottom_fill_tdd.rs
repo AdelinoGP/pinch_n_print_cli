@@ -22,7 +22,7 @@
 
 use slicer_host::dispatch::commit_layer_outputs_for_test;
 use slicer_host::wit_host::{
-    ExtrusionPath3d, ExtrusionRole, HostExecutionContext, Point3WithWidth,
+    ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3WithWidth,
 };
 use slicer_ir::ExtrusionRole as IrExtrusionRole;
 
@@ -68,14 +68,8 @@ fn commit_layer_outputs_preserves_top_solid_infill_role() {
     let layer_index = 0u32;
 
     // Build a HostExecutionContext with a solid path tagged TopSolidInfill.
-    let mut ctx = HostExecutionContext::new(
-        module_id.to_string(),
-        0.2,  // layer_z
-        0.2,  // effective_layer_height
-        None, // catchup_z_bottom
-        None, // mesh_ir
-    );
-    ctx.infill_output.solid_paths.push(make_path(
+    let mut ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
+    ctx.infill_output_mut().solid_paths.push(make_path(
         0.2,
         0.0,
         0.0,
@@ -85,7 +79,7 @@ fn commit_layer_outputs_preserves_top_solid_infill_role() {
         ExtrusionRole::TopSolidInfill,
     ));
     // No origin tags — untagged path goes to the one synthetic region.
-    ctx.infill_output.solid_path_origins.push(None);
+    ctx.infill_output_mut().solid_path_origins.push(None);
 
     // Commit into an empty arena.
     let mut arena = slicer_host::LayerArena::new();
@@ -137,8 +131,8 @@ fn commit_layer_outputs_preserves_bottom_solid_infill_role() {
     let module_id = "com.test.bottom-solid-infill";
     let layer_index = 0u32;
 
-    let mut ctx = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
-    ctx.infill_output.solid_paths.push(make_path(
+    let mut ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
+    ctx.infill_output_mut().solid_paths.push(make_path(
         0.2,
         0.0,
         0.0,
@@ -147,7 +141,7 @@ fn commit_layer_outputs_preserves_bottom_solid_infill_role() {
         0.4,
         ExtrusionRole::BottomSolidInfill,
     ));
-    ctx.infill_output.solid_path_origins.push(None);
+    ctx.infill_output_mut().solid_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
     commit_layer_outputs_for_test(
@@ -182,16 +176,15 @@ fn commit_layer_outputs_preserves_mixed_infill_roles() {
     let module_id = "com.test.mixed-infill";
     let layer_index = 1u32;
 
-    let mut ctx = HostExecutionContext::new(
+    let mut ctx = HostExecutionContextBuilder::new(
         module_id.to_string(),
         0.4, // layer 1
         0.2,
-        None,
-        None,
-    );
+    )
+    .build();
 
     // Sparse (regular) infill path.
-    ctx.infill_output.sparse_paths.push(make_path(
+    ctx.infill_output_mut().sparse_paths.push(make_path(
         0.4,
         0.0,
         0.0,
@@ -200,10 +193,10 @@ fn commit_layer_outputs_preserves_mixed_infill_roles() {
         0.4,
         ExtrusionRole::SparseInfill,
     ));
-    ctx.infill_output.sparse_path_origins.push(None);
+    ctx.infill_output_mut().sparse_path_origins.push(None);
 
     // Top solid fill path.
-    ctx.infill_output.solid_paths.push(make_path(
+    ctx.infill_output_mut().solid_paths.push(make_path(
         0.4,
         0.0,
         0.0,
@@ -212,10 +205,10 @@ fn commit_layer_outputs_preserves_mixed_infill_roles() {
         0.4,
         ExtrusionRole::TopSolidInfill,
     ));
-    ctx.infill_output.solid_path_origins.push(None);
+    ctx.infill_output_mut().solid_path_origins.push(None);
 
     // Bottom solid fill path.
-    ctx.infill_output.solid_paths.push(make_path(
+    ctx.infill_output_mut().solid_paths.push(make_path(
         0.4,
         0.0,
         0.0,
@@ -224,7 +217,7 @@ fn commit_layer_outputs_preserves_mixed_infill_roles() {
         0.4,
         ExtrusionRole::BottomSolidInfill,
     ));
-    ctx.infill_output.solid_path_origins.push(None);
+    ctx.infill_output_mut().solid_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
     commit_layer_outputs_for_test(
@@ -269,8 +262,8 @@ fn commit_layer_outputs_infill_postprocess_replaces_correctly() {
     let layer_index = 0u32;
 
     // First commit a base infill IR via Layer::Infill.
-    let mut ctx1 = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
-    ctx1.infill_output.sparse_paths.push(make_path(
+    let mut ctx1 = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
+    ctx1.infill_output_mut().sparse_paths.push(make_path(
         0.2,
         0.0,
         0.0,
@@ -279,7 +272,7 @@ fn commit_layer_outputs_infill_postprocess_replaces_correctly() {
         0.4,
         ExtrusionRole::SparseInfill,
     ));
-    ctx1.infill_output.sparse_path_origins.push(None);
+    ctx1.infill_output_mut().sparse_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
     commit_layer_outputs_for_test(
@@ -300,8 +293,8 @@ fn commit_layer_outputs_infill_postprocess_replaces_correctly() {
         .any(|p| p.role == IrExtrusionRole::TopSolidInfill));
 
     // Replace with a Layer::InfillPostProcess commit that carries TopSolidInfill.
-    let mut ctx2 = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
-    ctx2.infill_output.solid_paths.push(make_path(
+    let mut ctx2 = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
+    ctx2.infill_output_mut().solid_paths.push(make_path(
         0.2,
         0.0,
         0.0,
@@ -310,7 +303,7 @@ fn commit_layer_outputs_infill_postprocess_replaces_correctly() {
         0.5,
         ExtrusionRole::TopSolidInfill,
     ));
-    ctx2.infill_output.solid_path_origins.push(None);
+    ctx2.infill_output_mut().solid_path_origins.push(None);
 
     commit_layer_outputs_for_test(
         "Layer::InfillPostProcess",

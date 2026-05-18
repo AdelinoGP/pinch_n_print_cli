@@ -1194,8 +1194,8 @@ fn access_audits_live_path_read_performing() {
 
 use layer::slicer::world_layer::geometry::ExtrusionPath3d as WitExtrusionPath3d;
 use slicer_host::wit_host::{
-    layer, HostExecutionContext, HostPerimeterOutputBuilder, Point3 as WitPoint3, Point3WithWidth,
-    WallFeatureFlag, WallLoopView,
+    layer, HostExecutionContextBuilder, HostPerimeterOutputBuilder, Point3 as WitPoint3,
+    Point3WithWidth, WallFeatureFlag, WallLoopView,
 };
 
 fn make_wall_loop_view() -> WallLoopView {
@@ -1238,13 +1238,7 @@ fn make_wall_loop_view() -> WallLoopView {
 // AC-1: push_wall_loop records "PerimeterIR.regions.walls" in runtime_writes
 #[test]
 fn push_wall_loop_records_runtime_write() {
-    let mut ctx = HostExecutionContext::new(
-        "test-module".into(),
-        0.0,  // layer_z
-        0.2,  // effective_layer_height
-        None, // catchup_z_bottom
-        None, // mesh_ir
-    );
+    let mut ctx = HostExecutionContextBuilder::new("test-module", 0.0, 0.2).build();
     let builder_handle = ctx
         .push_perimeter_output_builder()
         .expect("push_perimeter_output_builder must succeed");
@@ -1257,14 +1251,14 @@ fn push_wall_loop_records_runtime_write() {
 
     // AC-1: runtime_writes must contain the narrow path "PerimeterIR.regions.walls"
     assert!(
-        ctx.runtime_writes
+        ctx.runtime_writes()
             .contains(&"PerimeterIR.regions.walls".to_string()),
         "runtime_writes must contain 'PerimeterIR.regions.walls' after push_wall_loop, got {:?}",
-        ctx.runtime_writes
+        ctx.runtime_writes()
     );
     // Must NOT contain the coarse root
     assert!(
-        !ctx.runtime_writes.contains(&"PerimeterIR".to_string()),
+        !ctx.runtime_writes().contains(&"PerimeterIR".to_string()),
         "runtime_writes must NOT contain coarse 'PerimeterIR' when narrow path is recorded"
     );
 }
@@ -1272,7 +1266,7 @@ fn push_wall_loop_records_runtime_write() {
 // AC-2: push_reordered_wall_loop records "PerimeterIR.regions.walls" in runtime_writes
 #[test]
 fn push_reordered_wall_loop_records_runtime_write() {
-    let mut ctx = HostExecutionContext::new("test-module".into(), 0.0, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test-module", 0.0, 0.2).build();
     let builder_handle = ctx
         .push_perimeter_output_builder()
         .expect("push_perimeter_output_builder must succeed");
@@ -1349,16 +1343,16 @@ fn push_reordered_wall_loop_records_runtime_write() {
 
     // AC-2: runtime_writes must contain the narrow path "PerimeterIR.regions.walls"
     assert!(
-        ctx.runtime_writes.contains(&"PerimeterIR.regions.walls".to_string()),
+        ctx.runtime_writes().contains(&"PerimeterIR.regions.walls".to_string()),
         "runtime_writes must contain 'PerimeterIR.regions.walls' after push_reordered_wall_loop, got {:?}",
-        ctx.runtime_writes
+        ctx.runtime_writes()
     );
 }
 
 // AC-3: push_resolved_seam records "PerimeterIR.resolved-seam" in runtime_writes
 #[test]
 fn push_resolved_seam_records_runtime_write() {
-    let mut ctx = HostExecutionContext::new("test-module".into(), 0.0, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test-module", 0.0, 0.2).build();
     let builder_handle = ctx
         .push_perimeter_output_builder()
         .expect("push_perimeter_output_builder must succeed");
@@ -1375,9 +1369,9 @@ fn push_resolved_seam_records_runtime_write() {
 
     // AC-3: runtime_writes must contain the narrow path "PerimeterIR.resolved-seam"
     assert!(
-        ctx.runtime_writes.contains(&"PerimeterIR.resolved-seam".to_string()),
+        ctx.runtime_writes().contains(&"PerimeterIR.resolved-seam".to_string()),
         "runtime_writes must contain 'PerimeterIR.resolved-seam' after push_resolved_seam, got {:?}",
-        ctx.runtime_writes
+        ctx.runtime_writes()
     );
 }
 
@@ -1425,7 +1419,7 @@ fn infill_coarse_fallback_audit() {
 // "runtime_writes contains 'PerimeterIR'" would fail.
 #[test]
 fn missing_runtime_writes_fails() {
-    let mut ctx = HostExecutionContext::new("test-module".into(), 0.0, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test-module", 0.0, 0.2).build();
     let builder_handle = ctx
         .push_perimeter_output_builder()
         .expect("push_perimeter_output_builder must succeed");
@@ -1438,7 +1432,7 @@ fn missing_runtime_writes_fails() {
     // With instrumentation fix: runtime_writes contains "PerimeterIR.regions.walls" → passes.
     // This test verifies the instrumentation IS wired (otherwise AC-1 would fail).
     assert!(
-        ctx.runtime_writes
+        ctx.runtime_writes()
             .contains(&"PerimeterIR.regions.walls".to_string()),
         "push_wall_loop must record 'PerimeterIR.regions.walls' in runtime_writes; \
          if this fails, the instrumentation is not wired (TASK-123b regression)"

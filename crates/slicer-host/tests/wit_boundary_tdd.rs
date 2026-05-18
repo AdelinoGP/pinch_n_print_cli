@@ -10,7 +10,8 @@
 use std::collections::HashMap;
 
 use slicer_host::wit_host::{
-    ConfigValueStorage, ConfigViewData, HostExecutionContext, LayerModule, SliceRegionData,
+    ConfigValueStorage, ConfigViewData, HostExecutionContext, HostExecutionContextBuilder,
+    LayerModule, SliceRegionData,
 };
 
 /// Path to the pre-built test guest component.
@@ -43,7 +44,7 @@ fn make_engine() -> wasmtime::Engine {
 fn make_ctx(module_id: impl Into<String>, layer_z: f32) -> HostExecutionContext {
     // mesh_ir is None — these WIT boundary tests exercise config/IR/output
     // paths and do not require live mesh data.
-    HostExecutionContext::new(module_id.into(), layer_z, 1.0, None, None)
+    HostExecutionContextBuilder::new(module_id.into(), layer_z, 1.0).build()
 }
 
 // ── A: Config access across the boundary ────────────────────────────────
@@ -112,11 +113,11 @@ fn guest_reads_config_value_and_uses_it_in_output() {
 
     // Verify config was read: spacing=3.5 → second point x = 3.5*10 = 35.0
     assert_eq!(
-        ctx.infill_output.sparse_paths.len(),
+        ctx.infill_output().sparse_paths.len(),
         1,
         "expected 1 sparse path"
     );
-    let path = &ctx.infill_output.sparse_paths[0];
+    let path = &ctx.infill_output().sparse_paths[0];
     assert_eq!(path.points.len(), 2, "expected 2 points");
     assert!(
         (path.points[1].x - 35.0).abs() < 0.001,
@@ -189,8 +190,8 @@ fn guest_reads_region_z_from_ir_view() {
         .unwrap();
 
     let ctx = store.into_data();
-    assert_eq!(ctx.infill_output.sparse_paths.len(), 1);
-    let z = ctx.infill_output.sparse_paths[0].points[0].z;
+    assert_eq!(ctx.infill_output().sparse_paths.len(), 1);
+    let z = ctx.infill_output().sparse_paths[0].points[0].z;
     assert!((z - 5.5).abs() < 0.001, "z should be 5.5, got {z}");
 }
 
@@ -251,8 +252,8 @@ fn guest_emits_output_via_infill_builder() {
 
     let ctx = store.into_data();
     // Guest must have pushed exactly one sparse path
-    assert_eq!(ctx.infill_output.sparse_paths.len(), 1);
-    let path = &ctx.infill_output.sparse_paths[0];
+    assert_eq!(ctx.infill_output().sparse_paths.len(), 1);
+    let path = &ctx.infill_output().sparse_paths[0];
     // Path must have 2 points
     assert_eq!(path.points.len(), 2);
     // Role must be sparse-infill
@@ -325,10 +326,10 @@ fn guest_logs_via_host_services() {
     let ctx = store.into_data();
     // Guest logs "run-infill: layer=7, ..."
     assert!(
-        !ctx.log_messages.is_empty(),
+        !ctx.log_messages().is_empty(),
         "expected at least one log message"
     );
-    let (level, msg) = &ctx.log_messages[0];
+    let (level, msg) = &ctx.log_messages()[0];
     assert_eq!(level, "info");
     assert!(
         msg.contains("layer=7"),
@@ -400,22 +401,22 @@ fn repeated_calls_produce_independent_outputs() {
         let ctx = store.into_data();
         // Each call should have exactly one path
         assert_eq!(
-            ctx.infill_output.sparse_paths.len(),
+            ctx.infill_output().sparse_paths.len(),
             1,
             "call {i}: expected 1 path"
         );
         // Each call should have the z from its own region
-        let actual_z = ctx.infill_output.sparse_paths[0].points[0].z;
+        let actual_z = ctx.infill_output().sparse_paths[0].points[0].z;
         assert!(
             (actual_z - z).abs() < 0.001,
             "call {i}: z should be {z}, got {actual_z}"
         );
         // No log messages from previous calls
         assert_eq!(
-            ctx.log_messages.len(),
+            ctx.log_messages().len(),
             1,
             "call {i}: expected 1 log message, got {}",
-            ctx.log_messages.len()
+            ctx.log_messages().len()
         );
     }
 }
@@ -458,7 +459,7 @@ fn empty_region_list_handled_gracefully() {
         .unwrap();
 
     let ctx = store.into_data();
-    assert_eq!(ctx.infill_output.sparse_paths.len(), 0);
+    assert_eq!(ctx.infill_output().sparse_paths.len(), 0);
 }
 
 // ── Helper: convert Resource to the right type ──────────────────────────

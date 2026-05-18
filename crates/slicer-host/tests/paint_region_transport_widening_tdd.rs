@@ -246,12 +246,12 @@ mod doc_grep_tests {
 mod transport_round_trip_tests {
     use slicer_host::wit_host::prepass::slicer::world_prepass::geometry as geo;
     use slicer_host::wit_host::prepass::{self as pm, HostPaintSegmentationOutput};
-    use slicer_host::wit_host::HostExecutionContext;
+    use slicer_host::wit_host::{HostExecutionContext, HostExecutionContextBuilder};
     use slicer_ir::{PaintSemantic, PaintValue};
     use wasmtime::component::Resource;
 
     fn make_ctx() -> HostExecutionContext {
-        HostExecutionContext::new("com.test.paint-transport-wide".into(), 0.0, 0.0, None, None)
+        HostExecutionContextBuilder::new("com.test.paint-transport-wide", 0.0, 0.0).build()
     }
 
     fn square_geo_polygon(x: i64, y: i64, side: i64) -> geo::Polygon {

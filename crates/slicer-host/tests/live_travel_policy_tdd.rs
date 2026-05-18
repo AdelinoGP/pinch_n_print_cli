@@ -15,19 +15,14 @@
 use slicer_host::commit_layer_outputs_for_test;
 use slicer_host::wit_host::{
     ExtrusionRole, GcodeCommandCollected, GcodeMoveCmd, HostExecutionContext,
+    HostExecutionContextBuilder,
 };
 use slicer_host::LayerArena;
 use slicer_ir::{LayerCollectionIR, RetractMode};
 
 /// Helper: make a fresh `HostExecutionContext` for PathOptimization tests.
 fn make_ctx(module_id: &str) -> HostExecutionContext {
-    HostExecutionContext::new(
-        module_id.to_string(),
-        0.2,  // layer_z
-        0.2,  // effective_layer_height
-        None, // catchup_z_bottom
-        None, // mesh_ir
-    )
+    HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build()
 }
 
 /// Simulate what layer_executor does: flush deferred queues into LayerCollectionIR.
@@ -91,18 +86,20 @@ fn flush_to_layer_collection(arena: &mut LayerArena) -> slicer_ir::LayerCollecti
 fn retracting_travel_populates_matching_z_hop_and_retract_pair() {
     let mut ctx = make_ctx("com.test.path-opt-retract");
 
-    ctx.gcode_output
+    ctx.gcode_output_mut()
         .commands
         .push(GcodeCommandCollected::Retract {
             length: 0.8,
             speed: 25.0,
             mode: RetractMode::Gcode,
         });
-    ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
-        after_entity_index: 0,
-        hop_height: 0.2,
-    });
-    ctx.gcode_output
+    ctx.gcode_output_mut()
+        .commands
+        .push(GcodeCommandCollected::ZHop {
+            after_entity_index: 0,
+            hop_height: 0.2,
+        });
+    ctx.gcode_output_mut()
         .commands
         .push(GcodeCommandCollected::Move(GcodeMoveCmd {
             x: Some(50.0),
@@ -112,7 +109,7 @@ fn retracting_travel_populates_matching_z_hop_and_retract_pair() {
             f: None,
             role: ExtrusionRole::Custom("travel".to_string()),
         }));
-    ctx.gcode_output
+    ctx.gcode_output_mut()
         .commands
         .push(GcodeCommandCollected::Unretract {
             length: 0.8,
@@ -192,7 +189,7 @@ fn retracting_travel_populates_matching_z_hop_and_retract_pair() {
 fn no_retract_policy_emits_no_orphan_retracts_or_z_hops() {
     let mut ctx = make_ctx("com.test.path-opt-no-retract");
 
-    ctx.gcode_output
+    ctx.gcode_output_mut()
         .commands
         .push(GcodeCommandCollected::Comment(
             "path-optimization layer 0 regions=1 entities=2".to_string(),
@@ -236,18 +233,20 @@ fn no_retract_policy_emits_no_orphan_retracts_or_z_hops() {
 fn travel_policy_is_deterministic_across_repeated_runs() {
     let make_ctx_with_travel = || {
         let mut ctx = make_ctx("com.test.path-opt-determ");
-        ctx.gcode_output
+        ctx.gcode_output_mut()
             .commands
             .push(GcodeCommandCollected::Retract {
                 length: 0.5,
                 speed: 30.0,
                 mode: RetractMode::Gcode,
             });
-        ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
-            after_entity_index: 0,
-            hop_height: 0.1,
-        });
-        ctx.gcode_output
+        ctx.gcode_output_mut()
+            .commands
+            .push(GcodeCommandCollected::ZHop {
+                after_entity_index: 0,
+                hop_height: 0.1,
+            });
+        ctx.gcode_output_mut()
             .commands
             .push(GcodeCommandCollected::Move(GcodeMoveCmd {
                 x: Some(50.0),
@@ -257,7 +256,7 @@ fn travel_policy_is_deterministic_across_repeated_runs() {
                 f: None,
                 role: ExtrusionRole::Custom("travel".to_string()),
             }));
-        ctx.gcode_output
+        ctx.gcode_output_mut()
             .commands
             .push(GcodeCommandCollected::Unretract {
                 length: 0.5,
@@ -320,18 +319,20 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
 
     // Emit the OrcaSlicer canonical travel sequence.
     // ZHop carries an arbitrary entity index (999) that the dispatch must override.
-    ctx.gcode_output
+    ctx.gcode_output_mut()
         .commands
         .push(GcodeCommandCollected::Retract {
             length: 0.8,
             speed: 25.0,
             mode: RetractMode::Gcode,
         });
-    ctx.gcode_output.commands.push(GcodeCommandCollected::ZHop {
-        after_entity_index: 999,
-        hop_height: 0.2,
-    });
-    ctx.gcode_output
+    ctx.gcode_output_mut()
+        .commands
+        .push(GcodeCommandCollected::ZHop {
+            after_entity_index: 999,
+            hop_height: 0.2,
+        });
+    ctx.gcode_output_mut()
         .commands
         .push(GcodeCommandCollected::Move(GcodeMoveCmd {
             x: Some(50.0),
@@ -341,7 +342,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
             f: None,
             role: ExtrusionRole::Custom("travel".to_string()),
         }));
-    ctx.gcode_output
+    ctx.gcode_output_mut()
         .commands
         .push(GcodeCommandCollected::Unretract {
             length: 0.8,

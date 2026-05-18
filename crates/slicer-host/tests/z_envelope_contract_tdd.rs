@@ -26,8 +26,8 @@ use slicer_host::wit_host::layer::slicer::world_layer::ir_handles::{
     HostInfillOutputBuilder, HostPerimeterOutputBuilder, HostSupportOutputBuilder,
 };
 use slicer_host::wit_host::{
-    ExtrusionPath3d, ExtrusionRole, HostExecutionContext, Point3, Point3WithWidth, WallLoopType,
-    WallLoopView,
+    ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3, Point3WithWidth,
+    WallLoopType, WallLoopView,
 };
 
 // ── Helper: build an ExtrusionPath3d with a given Z ───────────────────────
@@ -93,7 +93,7 @@ fn make_wall_loop(z: f32) -> WallLoopView {
 fn z_below_layer_z_floor() {
     // envelope: layer_z=0.2, effective_layer_height=0.2 → [0.2, 0.4]
     // path.z = 0.1 → below floor → fatal
-    let mut ctx = HostExecutionContext::new("test.infill".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.infill", 0.2, 0.2).build();
     let handle = ctx.push_infill_output_builder().unwrap();
 
     let result = HostInfillOutputBuilder::push_sparse_path(&mut ctx, handle, make_path(0.1));
@@ -117,7 +117,7 @@ fn z_below_layer_z_floor() {
 fn z_above_layer_z_ceiling() {
     // envelope: layer_z=0.2, effective_layer_height=0.2 → [0.2, 0.4]
     // path.z = 0.5 → above ceiling → fatal
-    let mut ctx = HostExecutionContext::new("test.infill".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.infill", 0.2, 0.2).build();
     let handle = ctx.push_infill_output_builder().unwrap();
 
     let result = HostInfillOutputBuilder::push_sparse_path(&mut ctx, handle, make_path(0.5));
@@ -141,7 +141,9 @@ fn z_above_layer_z_ceiling() {
 fn catchup_layer_pass() {
     // catchup_z_bottom=0.0, effective_layer_height=0.2 → catchup envelope [0.0, 0.2]
     // path.z = 0.2 → at catchup ceiling → valid (not a violation)
-    let mut ctx = HostExecutionContext::new("test.infill".into(), 0.2, 0.2, Some(0.0), None);
+    let mut ctx = HostExecutionContextBuilder::new("test.infill", 0.2, 0.2)
+        .catchup_z_bottom(Some(0.0))
+        .build();
     let handle = ctx.push_infill_output_builder().unwrap();
 
     let result = HostInfillOutputBuilder::push_sparse_path(&mut ctx, handle, make_path(0.2));
@@ -159,7 +161,7 @@ fn catchup_layer_pass() {
 fn perim_only_pass() {
     // envelope: layer_z=0.2, effective_layer_height=0.2 → [0.2, 0.4]
     // wall loop.z = 0.3 → within envelope → valid
-    let mut ctx = HostExecutionContext::new("test.perimeters".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.perimeters", 0.2, 0.2).build();
     let handle = ctx.push_perimeter_output_builder().unwrap();
 
     let result = HostPerimeterOutputBuilder::push_wall_loop(&mut ctx, handle, make_wall_loop(0.3));
@@ -177,7 +179,7 @@ fn perim_only_pass() {
 fn z_at_floor_boundary() {
     // envelope: layer_z=0.2, effective_layer_height=0.2 → [0.2, 0.4]
     // path.z = 0.2 → at lower bound → valid (inclusive)
-    let mut ctx = HostExecutionContext::new("test.infill".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.infill", 0.2, 0.2).build();
     let handle = ctx.push_infill_output_builder().unwrap();
 
     let result = HostInfillOutputBuilder::push_sparse_path(&mut ctx, handle, make_path(0.2));
@@ -195,7 +197,7 @@ fn z_at_floor_boundary() {
 fn z_at_ceiling_boundary() {
     // envelope: layer_z=0.2, effective_layer_height=0.2 → [0.2, 0.4]
     // path.z = 0.4 → at upper bound → valid (inclusive)
-    let mut ctx = HostExecutionContext::new("test.infill".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.infill", 0.2, 0.2).build();
     let handle = ctx.push_infill_output_builder().unwrap();
 
     let result = HostInfillOutputBuilder::push_sparse_path(&mut ctx, handle, make_path(0.4));
@@ -211,7 +213,7 @@ fn z_at_ceiling_boundary() {
 
 #[test]
 fn push_solid_path_above_ceiling_is_fatal() {
-    let mut ctx = HostExecutionContext::new("test.infill".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.infill", 0.2, 0.2).build();
     let handle = ctx.push_infill_output_builder().unwrap();
 
     let result = HostInfillOutputBuilder::push_solid_path(&mut ctx, handle, make_path(0.5));
@@ -225,7 +227,7 @@ fn push_solid_path_above_ceiling_is_fatal() {
 
 #[test]
 fn push_ironing_path_below_floor_is_fatal() {
-    let mut ctx = HostExecutionContext::new("test.infill".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.infill", 0.2, 0.2).build();
     let handle = ctx.push_infill_output_builder().unwrap();
 
     let result = HostInfillOutputBuilder::push_ironing_path(&mut ctx, handle, make_path(0.1));
@@ -239,7 +241,7 @@ fn push_ironing_path_below_floor_is_fatal() {
 
 #[test]
 fn push_seam_candidate_below_floor_is_fatal() {
-    let mut ctx = HostExecutionContext::new("test.perimeters".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.perimeters", 0.2, 0.2).build();
     let handle = ctx.push_perimeter_output_builder().unwrap();
 
     let result = HostPerimeterOutputBuilder::push_seam_candidate(
@@ -265,7 +267,7 @@ fn push_seam_candidate_below_floor_is_fatal() {
 
 #[test]
 fn push_seam_candidate_at_floor_boundary_is_valid() {
-    let mut ctx = HostExecutionContext::new("test.perimeters".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.perimeters", 0.2, 0.2).build();
     let handle = ctx.push_perimeter_output_builder().unwrap();
 
     let result = HostPerimeterOutputBuilder::push_seam_candidate(
@@ -289,7 +291,7 @@ fn push_seam_candidate_at_floor_boundary_is_valid() {
 
 #[test]
 fn push_wall_loop_above_ceiling_is_fatal() {
-    let mut ctx = HostExecutionContext::new("test.perimeters".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.perimeters", 0.2, 0.2).build();
     let handle = ctx.push_perimeter_output_builder().unwrap();
 
     let result = HostPerimeterOutputBuilder::push_wall_loop(&mut ctx, handle, make_wall_loop(0.5));
@@ -303,7 +305,7 @@ fn push_wall_loop_above_ceiling_is_fatal() {
 
 #[test]
 fn push_support_path_above_ceiling_is_fatal() {
-    let mut ctx = HostExecutionContext::new("test.support".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.support", 0.2, 0.2).build();
     let handle = ctx.push_support_output_builder().unwrap();
 
     let result = HostSupportOutputBuilder::push_support_path(&mut ctx, handle, make_path(0.5));
@@ -320,7 +322,7 @@ fn push_support_path_above_ceiling_is_fatal() {
 
 #[test]
 fn push_interface_path_below_floor_is_fatal() {
-    let mut ctx = HostExecutionContext::new("test.support".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.support", 0.2, 0.2).build();
     let handle = ctx.push_support_output_builder().unwrap();
 
     let result =
@@ -338,7 +340,7 @@ fn push_interface_path_below_floor_is_fatal() {
 
 #[test]
 fn push_raft_path_above_ceiling_is_fatal() {
-    let mut ctx = HostExecutionContext::new("test.support".into(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new("test.support", 0.2, 0.2).build();
     let handle = ctx.push_support_output_builder().unwrap();
 
     let result = HostSupportOutputBuilder::push_raft_path(&mut ctx, handle, make_path(0.5));
@@ -354,7 +356,9 @@ fn push_raft_path_above_ceiling_is_fatal() {
 fn catchup_layer_z_below_catchup_floor_is_fatal() {
     // catchup_z_bottom=0.0, effective_layer_height=0.2 → catchup envelope [0.0, 0.2]
     // path.z = -0.1 → below catchup floor → fatal (not caught by normal layer check)
-    let mut ctx = HostExecutionContext::new("test.infill".into(), 0.2, 0.2, Some(0.0), None);
+    let mut ctx = HostExecutionContextBuilder::new("test.infill", 0.2, 0.2)
+        .catchup_z_bottom(Some(0.0))
+        .build();
     let handle = ctx.push_infill_output_builder().unwrap();
 
     let result = HostInfillOutputBuilder::push_sparse_path(&mut ctx, handle, make_path(-0.1));
@@ -373,7 +377,7 @@ fn normal_layer_uses_layer_z_catchup_uses_catchup_z_bottom() {
     // Z = 0.1 is INVALID for normal layer but VALID for catchup layer
 
     // Normal layer: Z 0.1 should fail
-    let mut ctx_normal = HostExecutionContext::new("test.infill".into(), 0.2, 0.2, None, None);
+    let mut ctx_normal = HostExecutionContextBuilder::new("test.infill", 0.2, 0.2).build();
     let handle_normal = ctx_normal.push_infill_output_builder().unwrap();
     let result_normal =
         HostInfillOutputBuilder::push_sparse_path(&mut ctx_normal, handle_normal, make_path(0.1));
@@ -383,8 +387,9 @@ fn normal_layer_uses_layer_z_catchup_uses_catchup_z_bottom() {
     );
 
     // Catchup layer: Z 0.1 should pass
-    let mut ctx_catchup =
-        HostExecutionContext::new("test.infill".into(), 0.2, 0.2, Some(0.0), None);
+    let mut ctx_catchup = HostExecutionContextBuilder::new("test.infill", 0.2, 0.2)
+        .catchup_z_bottom(Some(0.0))
+        .build();
     let handle_catchup = ctx_catchup.push_infill_output_builder().unwrap();
     let result_catchup =
         HostInfillOutputBuilder::push_sparse_path(&mut ctx_catchup, handle_catchup, make_path(0.1));

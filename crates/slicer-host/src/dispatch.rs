@@ -30,7 +30,9 @@ use slicer_ir::{
 };
 use slicer_sdk::traits::{EntityMutation, SortKey, SyntheticLayerData};
 
-use crate::wit_host::{self, ConfigViewData, HostExecutionContext, PaintRegionLayerData};
+use crate::wit_host::{
+    self, ConfigViewData, HostExecutionContext, HostExecutionContextBuilder, PaintRegionLayerData,
+};
 use crate::{
     Blackboard, CompiledModule, FinalizationError, FinalizationOutput, FinalizationStageRunner,
     LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner, PostpassError, PostpassOutput,
@@ -405,13 +407,13 @@ impl WasmRuntimeDispatcher {
         })?;
 
         // Create per-call execution context and store.
-        let ctx = HostExecutionContext::new(
+        let ctx = HostExecutionContextBuilder::new(
             module.module_id.clone(),
             envelope_floor,
             envelope_height,
-            None,
-            Some(blackboard.mesh().clone()),
-        );
+        )
+        .mesh_ir(Some(blackboard.mesh().clone()))
+        .build();
         let mut store = wasmtime::Store::new(engine, ctx);
         // Wire the per-call MemTracker as the store's ResourceLimiter so
         // wasmtime notifies it on memory.grow (and on initial instantiation
@@ -832,13 +834,9 @@ impl WasmRuntimeDispatcher {
             reason: e.to_string(),
         })?;
 
-        let ctx = wit_host::HostExecutionContext::new(
-            module.module_id.clone(),
-            0.0,
-            0.0,
-            None,
-            Some(blackboard.mesh().clone()),
-        );
+        let ctx = wit_host::HostExecutionContextBuilder::new(module.module_id.clone(), 0.0, 0.0)
+            .mesh_ir(Some(blackboard.mesh().clone()))
+            .build();
         let mut store = wasmtime::Store::new(engine, ctx);
         store.limiter(|ctx| &mut ctx.mem_tracker);
 
@@ -1113,13 +1111,9 @@ impl WasmRuntimeDispatcher {
             reason: e.to_string(),
         })?;
 
-        let ctx = HostExecutionContext::new(
-            module.module_id.clone(),
-            0.0,
-            0.0,
-            None,
-            Some(blackboard.mesh().clone()),
-        );
+        let ctx = HostExecutionContextBuilder::new(module.module_id.clone(), 0.0, 0.0)
+            .mesh_ir(Some(blackboard.mesh().clone()))
+            .build();
         let mut store = wasmtime::Store::new(engine, ctx);
         store.limiter(|ctx| &mut ctx.mem_tracker);
 
@@ -1262,13 +1256,9 @@ impl WasmRuntimeDispatcher {
             );
         }
 
-        let ctx = HostExecutionContext::new(
-            module.module_id.clone(),
-            0.0,
-            0.0,
-            None,
-            Some(blackboard.mesh().clone()),
-        );
+        let ctx = HostExecutionContextBuilder::new(module.module_id.clone(), 0.0, 0.0)
+            .mesh_ir(Some(blackboard.mesh().clone()))
+            .build();
         let mut store = wasmtime::Store::new(engine, ctx);
         store.limiter(|ctx| &mut ctx.mem_tracker);
 
@@ -1431,13 +1421,9 @@ impl WasmRuntimeDispatcher {
             );
         }
 
-        let ctx = HostExecutionContext::new(
-            module.module_id.clone(),
-            0.0,
-            0.0,
-            None,
-            Some(blackboard.mesh().clone()),
-        );
+        let ctx = HostExecutionContextBuilder::new(module.module_id.clone(), 0.0, 0.0)
+            .mesh_ir(Some(blackboard.mesh().clone()))
+            .build();
         let mut store = wasmtime::Store::new(engine, ctx);
         store.limiter(|ctx| &mut ctx.mem_tracker);
 
@@ -1942,17 +1928,16 @@ fn harvest_support_plan_ir(
 #[cfg(test)]
 mod tests {
     use super::harvest_layer_plan_ir;
-    use crate::wit_host::{self, HostExecutionContext};
+    use crate::wit_host::{self, HostExecutionContextBuilder};
 
     #[test]
     fn harvest_layer_plan_ir_rejects_noncanonical_region_id_strings() {
-        let mut ctx = HostExecutionContext::new(
+        let mut ctx = HostExecutionContextBuilder::new(
             "com.test.layer-plan-bad-region-id".to_string(),
             0.0,
             0.2,
-            None,
-            None,
-        );
+        )
+        .build();
         ctx.layer_plan_proposals
             .push(wit_host::prepass::LayerProposal {
                 z: 0.2,

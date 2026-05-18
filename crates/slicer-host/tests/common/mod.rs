@@ -5,13 +5,15 @@ pub mod slicer_cache;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use slicer_host::wit_host::HostExecutionContext;
+use slicer_host::wit_host::{HostExecutionContext, HostExecutionContextBuilder};
 use slicer_ir::{
     BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
 };
 
 pub fn ctx_with_mesh(module_id: &str, mesh: Arc<MeshIR>) -> HostExecutionContext {
-    HostExecutionContext::new(module_id.to_string(), 0.0, 0.0, None, Some(mesh))
+    HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
+        .mesh_ir(Some(mesh))
+        .build()
 }
 
 pub fn point3(x: f32, y: f32, z: f32) -> Point3 {

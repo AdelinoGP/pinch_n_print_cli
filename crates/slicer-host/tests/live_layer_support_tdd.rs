@@ -20,7 +20,7 @@
 
 use slicer_host::dispatch::commit_layer_outputs_for_test;
 use slicer_host::wit_host::{
-    ExtrusionPath3d, ExtrusionRole, HostExecutionContext, Point3WithWidth,
+    ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3WithWidth,
 };
 use slicer_ir::ExtrusionRole as IrExtrusionRole;
 
@@ -70,28 +70,22 @@ fn tree_support_dispatch_commits_support_material_paths() {
     let layer_index = 0u32;
 
     // Simulate tree-support module output: 3 branch paths.
-    let mut ctx = HostExecutionContext::new(
-        module_id.to_string(),
-        0.2,  // layer_z
-        0.2,  // effective_layer_height
-        None, // catchup_z_bottom
-        None, // mesh_ir
-    );
+    let mut ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
 
     // Tree-support emits 3 support_material paths.
-    ctx.support_output
+    ctx.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx.support_output
+    ctx.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 2.0, 10.0, 2.0, 0.4));
-    ctx.support_output
+    ctx.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 4.0, 10.0, 4.0, 0.4));
     // Origins are None → synthetic region path.
-    ctx.support_output.support_path_origins.push(None);
-    ctx.support_output.support_path_origins.push(None);
-    ctx.support_output.support_path_origins.push(None);
+    ctx.support_output_mut().support_path_origins.push(None);
+    ctx.support_output_mut().support_path_origins.push(None);
+    ctx.support_output_mut().support_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
     commit_layer_outputs_for_test(
@@ -136,23 +130,23 @@ fn traditional_support_dispatch_commits_support_material_paths() {
     let module_id = "com.test.traditional-support";
     let layer_index = 0u32;
 
-    let mut ctx = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
 
     // Traditional-support emits 4 parallel scan lines.
-    ctx.support_output
+    ctx.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx.support_output
+    ctx.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 2.0, 10.0, 2.0, 0.4));
-    ctx.support_output
+    ctx.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 4.0, 10.0, 4.0, 0.4));
-    ctx.support_output
+    ctx.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 6.0, 10.0, 6.0, 0.4));
     for _ in 0..4 {
-        ctx.support_output.support_path_origins.push(None);
+        ctx.support_output_mut().support_path_origins.push(None);
     }
 
     let mut arena = slicer_host::LayerArena::new();
@@ -197,14 +191,14 @@ fn enforcer_forces_live_support_commit_even_when_needs_support_is_false() {
     let module_id = "com.test.enforcer-override";
     let layer_index = 0u32;
 
-    let mut ctx = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
+    let mut ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
 
     // Simulate enforcer override: module was called with needs_support=false
     // but SupportEnforcer paint forced it to emit paths anyway.
-    ctx.support_output
+    ctx.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx.support_output.support_path_origins.push(None);
+    ctx.support_output_mut().support_path_origins.push(None);
 
     let mut arena = slicer_host::LayerArena::new();
     commit_layer_outputs_for_test(
@@ -234,7 +228,7 @@ fn disabled_or_ineligible_support_stage_commits_empty_support_ir() {
     let module_id = "com.test.disabled-support";
     let layer_index = 0u32;
 
-    let ctx = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
+    let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
     // All three path collections are empty — support disabled or no eligible regions.
     // No paths pushed, all origin vectors empty.
 
@@ -265,15 +259,15 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
     let layer_index = 0u32;
 
     // First run
-    let mut ctx1 = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
-    ctx1.support_output
+    let mut ctx1 = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
+    ctx1.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx1.support_output
+    ctx1.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 3.0, 10.0, 3.0, 0.4));
     for _ in 0..2 {
-        ctx1.support_output.support_path_origins.push(None);
+        ctx1.support_output_mut().support_path_origins.push(None);
     }
 
     let mut arena1 = slicer_host::LayerArena::new();
@@ -288,15 +282,15 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
     .expect("first commit must succeed");
 
     // Second run — identical input
-    let mut ctx2 = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
-    ctx2.support_output
+    let mut ctx2 = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
+    ctx2.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx2.support_output
+    ctx2.support_output_mut()
         .support_paths
         .push(make_support_path(0.2, 0.0, 3.0, 10.0, 3.0, 0.4));
     for _ in 0..2 {
-        ctx2.support_output.support_path_origins.push(None);
+        ctx2.support_output_mut().support_path_origins.push(None);
     }
 
     let mut arena2 = slicer_host::LayerArena::new();
@@ -362,7 +356,7 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
     let module_id = "com.test.blocker-commit";
     let layer_index = 0u32;
 
-    let ctx = HostExecutionContext::new(module_id.to_string(), 0.2, 0.2, None, None);
+    let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
     // Module with SupportBlocker would emit zero paths — simulate that at commit level.
     // All path vectors remain empty; this is the correct host behavior when
     // the support module honored the blocker.
