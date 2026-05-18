@@ -1,0 +1,406 @@
+//! Single-source-of-truth declaration of [`ResolvedConfig`].
+//!
+//! Every declared field is described exactly once via the
+//! [`declare_resolved_config!`] DSL near the bottom of this file. The macro
+//! expands a single declaration list into:
+//!
+//! - the `pub struct ResolvedConfig { ... }` definition with all fields,
+//! - `impl Default for ResolvedConfig` with all initializers,
+//! - `impl ResolvedConfig { pub fn apply_cli_key(...) -> Result<bool, _> }`
+//!   that dispatches a `(ConfigKey, ConfigValue)` pair onto the matching field
+//!   with strict per-variant type checking.
+//!
+//! Adding a new field requires editing one line in the macro invocation. The
+//! host-side resolver in `slicer-host::config_resolution` is a thin loop over
+//! `apply_cli_key`.
+
+use std::collections::HashMap;
+
+use crate::slice_ir::{ConfigValue, InfillType, SupportType, WallGenerator};
+
+// ── Error and extractor primitives ─────────────────────────────────────────
+
+/// Errors produced during config resolution.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ConfigResolutionError {
+    /// A declared `ResolvedConfig` field received a value of the wrong variant.
+    TypeMismatch {
+        /// The config key that had the wrong type.
+        key: String,
+        /// The variant name expected (e.g. `"Int"`, `"Float"`, `"Bool"`).
+        expected: &'static str,
+        /// The variant name that was actually supplied.
+        actual: String,
+    },
+}
+
+impl std::fmt::Display for ConfigResolutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TypeMismatch {
+                key,
+                expected,
+                actual,
+            } => write!(
+                f,
+                "config key '{key}': expected {expected} value, got {actual}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ConfigResolutionError {}
+
+/// Return a short variant-name string for a [`ConfigValue`] (used in error
+/// messages).
+fn variant_name(v: &ConfigValue) -> String {
+    match v {
+        ConfigValue::Bool(_) => "Bool".to_string(),
+        ConfigValue::Int(_) => "Int".to_string(),
+        ConfigValue::Float(_) => "Float".to_string(),
+        ConfigValue::String(_) => "String".to_string(),
+        ConfigValue::List(_) => "List".to_string(),
+    }
+}
+
+/// Extract an `f32` from a `Float`/`Int` `ConfigValue`. Used by the
+/// [`declare_resolved_config!`] macro expansion.
+#[doc(hidden)]
+pub fn extract_float(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
+    match value {
+        ConfigValue::Float(f) => Ok(*f as f32),
+        ConfigValue::Int(i) => Ok(*i as f32),
+        other => Err(ConfigResolutionError::TypeMismatch {
+            key: key.to_string(),
+            expected: "Float",
+            actual: variant_name(other),
+        }),
+    }
+}
+
+/// Extract a `u32` from an `Int` `ConfigValue`.
+#[doc(hidden)]
+pub fn extract_int_as_u32(key: &str, value: &ConfigValue) -> Result<u32, ConfigResolutionError> {
+    match value {
+        ConfigValue::Int(i) => Ok(*i as u32),
+        other => Err(ConfigResolutionError::TypeMismatch {
+            key: key.to_string(),
+            expected: "Int",
+            actual: variant_name(other),
+        }),
+    }
+}
+
+/// Extract a `bool` from a `Bool` `ConfigValue`.
+#[doc(hidden)]
+pub fn extract_bool(key: &str, value: &ConfigValue) -> Result<bool, ConfigResolutionError> {
+    match value {
+        ConfigValue::Bool(b) => Ok(*b),
+        other => Err(ConfigResolutionError::TypeMismatch {
+            key: key.to_string(),
+            expected: "Bool",
+            actual: variant_name(other),
+        }),
+    }
+}
+
+// ── Declarative DSL ────────────────────────────────────────────────────────
+
+/// Declare every `ResolvedConfig` field in one place. Each line is one of:
+///
+/// - `plain <field>: <Ty> = <default>;` — struct field + Default only; the
+///   field is NOT bound to any CLI key (current behavior preserved for
+///   enums and per-region override targets).
+/// - `cli "<cli_key>" <field>: <Ty> = <default> => <extractor>;` — struct
+///   field + Default + an `apply_cli_key` match arm that calls
+///   `<extractor>(key, value)?` and assigns the result to the field.
+/// - `cli_opt "<cli_key>" <field>: Option<T> = <default> => <extractor>;` —
+///   same as `cli`, except the extracted `T` is wrapped in `Some(...)` before
+///   assignment. Default is typically `None`.
+///
+/// The macro always appends an `extensions: HashMap<String, ConfigValue>`
+/// field initialised to `HashMap::new()`. The catch-all `_ => Ok(false)` arm
+/// in `apply_cli_key` signals "unknown key, route to extensions" to the
+/// host-side resolver.
+#[macro_export]
+macro_rules! declare_resolved_config {
+    ( $($t:tt)* ) => {
+        // The trailing three idents are the parameter names threaded through
+        // the recursion. They become metavariables in every `__drc!` arm,
+        // giving the per-field match arms a shared hygiene context with the
+        // `apply_cli_key` body emitted by the terminal arm. (We cannot
+        // reference `self` directly across separate macro arms — see the
+        // `let __drc_cfg = ...` binding in the terminal arm.)
+        $crate::__drc!(@parse
+            fields:   { }
+            defaults: { }
+            cli_arms: { }
+            cfg:      __drc_cfg
+            key:      __drc_key
+            value:    __drc_value
+            input:    { $($t)* }
+        );
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __drc {
+    // Done parsing — emit struct, Default, and apply_cli_key.
+    (@parse
+        fields:   { $($sf:tt)* }
+        defaults: { $($df:tt)* }
+        cli_arms: { $($arm:tt)* }
+        cfg:      $cfg:ident
+        key:      $key:ident
+        value:    $value:ident
+        input:    { }
+    ) => {
+        /// Fully merged config produced by the host resolver and consumed by
+        /// every per-region/per-object planning stage.
+        ///
+        /// Field set is declared via [`declare_resolved_config!`]; see that
+        /// macro and the invocation in `crates/slicer-ir/src/resolved_config.rs`
+        /// for the single source of truth.
+        #[derive(Debug, Clone, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+        pub struct ResolvedConfig {
+            $($sf)*
+            /// Overflow bucket for unknown module configs.
+            pub extensions: ::std::collections::HashMap<String, $crate::ConfigValue>,
+        }
+
+        impl ::core::default::Default for ResolvedConfig {
+            fn default() -> Self {
+                Self {
+                    $($df)*
+                    extensions: ::std::collections::HashMap::new(),
+                }
+            }
+        }
+
+        impl ResolvedConfig {
+            /// Apply a single CLI-source `(key, value)` pair to the matching
+            /// declared field.
+            ///
+            /// Returns:
+            /// - `Ok(true)` if `key` matched a CLI-bound declared field and
+            ///   the field was updated.
+            /// - `Ok(false)` if `key` does not name a CLI-bound declared
+            ///   field; the caller is expected to route the value to
+            ///   [`ResolvedConfig::extensions`].
+            /// - `Err(ConfigResolutionError::TypeMismatch { .. })` if the
+            ///   value's `ConfigValue` variant did not match the declared
+            ///   field type.
+            pub fn apply_cli_key(
+                &mut self,
+                key: &str,
+                value: &$crate::ConfigValue,
+            ) -> ::core::result::Result<bool, $crate::ConfigResolutionError> {
+                // Hygiene-safe re-binds: each per-field arm emitted by a
+                // separate `__drc!` arm references these via metavariables
+                // ($cfg, $key, $value), so they share a single binding site.
+                let $cfg: &mut ResolvedConfig = self;
+                let $key: &str = key;
+                let $value: &$crate::ConfigValue = value;
+                match $key {
+                    $($arm)*
+                    _ => ::core::result::Result::Ok(false),
+                }
+            }
+        }
+    };
+
+    // `plain <field>: <ty> = <default>;` — struct + default, no CLI dispatch.
+    (@parse
+        fields:   { $($sf:tt)* }
+        defaults: { $($df:tt)* }
+        cli_arms: { $($arm:tt)* }
+        cfg:      $cfg:ident
+        key:      $key:ident
+        value:    $value:ident
+        input: {
+            $(#[$m:meta])*
+            plain $field:ident : $ty:ty = $default:expr ;
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::__drc!(@parse
+            fields: {
+                $($sf)*
+                $(#[$m])*
+                pub $field: $ty,
+            }
+            defaults: {
+                $($df)*
+                $field: $default,
+            }
+            cli_arms: { $($arm)* }
+            cfg:      $cfg
+            key:      $key
+            value:    $value
+            input: { $($rest)* }
+        );
+    };
+
+    // `cli "<key>" <field>: <ty> = <default> => <extractor>;`
+    // — required CLI-bound field; extractor returns T directly.
+    (@parse
+        fields:   { $($sf:tt)* }
+        defaults: { $($df:tt)* }
+        cli_arms: { $($arm:tt)* }
+        cfg:      $cfg:ident
+        key:      $key:ident
+        value:    $value:ident
+        input: {
+            $(#[$m:meta])*
+            cli $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::__drc!(@parse
+            fields: {
+                $($sf)*
+                $(#[$m])*
+                pub $field: $ty,
+            }
+            defaults: {
+                $($df)*
+                $field: $default,
+            }
+            cli_arms: {
+                $($arm)*
+                $cli_key => {
+                    $cfg.$field = $crate::resolved_config::$extractor($key, $value)?;
+                    ::core::result::Result::Ok(true)
+                }
+            }
+            cfg:      $cfg
+            key:      $key
+            value:    $value
+            input: { $($rest)* }
+        );
+    };
+
+    // `cli_opt "<key>" <field>: Option<T> = <default> => <extractor>;`
+    // — optional CLI-bound field; extracted T is wrapped in `Some(...)`.
+    (@parse
+        fields:   { $($sf:tt)* }
+        defaults: { $($df:tt)* }
+        cli_arms: { $($arm:tt)* }
+        cfg:      $cfg:ident
+        key:      $key:ident
+        value:    $value:ident
+        input: {
+            $(#[$m:meta])*
+            cli_opt $cli_key:literal $field:ident : $ty:ty = $default:expr => $extractor:ident ;
+            $($rest:tt)*
+        }
+    ) => {
+        $crate::__drc!(@parse
+            fields: {
+                $($sf)*
+                $(#[$m])*
+                pub $field: $ty,
+            }
+            defaults: {
+                $($df)*
+                $field: $default,
+            }
+            cli_arms: {
+                $($arm)*
+                $cli_key => {
+                    $cfg.$field = ::core::option::Option::Some(
+                        $crate::resolved_config::$extractor($key, $value)?
+                    );
+                    ::core::result::Result::Ok(true)
+                }
+            }
+            cfg:      $cfg
+            key:      $key
+            value:    $value
+            input: { $($rest)* }
+        );
+    };
+}
+
+// ── Field declarations: the single source of truth ─────────────────────────
+
+declare_resolved_config! {
+    // Geometry
+    /// Layer height in millimeters.
+    cli "layer_height"           layer_height: f32 = 0.2 => extract_float;
+    /// Line width in millimeters.
+    cli "line_width"             line_width: f32 = 0.4 => extract_float;
+    /// First layer height in millimeters.
+    cli "first_layer_height"     first_layer_height: f32 = 0.2 => extract_float;
+    /// First layer line width in millimeters.
+    cli "first_layer_line_width" first_layer_line_width: f32 = 0.4 => extract_float;
+
+    // Walls
+    /// Number of walls (perimeters).
+    cli "wall_count"             wall_count: u32 = 2 => extract_int_as_u32;
+    /// Outer wall speed in mm/s.
+    cli "outer_wall_speed"       outer_wall_speed: f32 = 50.0 => extract_float;
+    /// Inner wall speed in mm/s.
+    cli "inner_wall_speed"       inner_wall_speed: f32 = 50.0 => extract_float;
+    /// Wall generator algorithm. Not CLI-bound today.
+    plain                        wall_generator: WallGenerator = WallGenerator::Classic;
+    /// Minimum feature size for Arachne (optional).
+    cli_opt "arachne_min_feature_size" arachne_min_feature_size: Option<f32> = None => extract_float;
+
+    // Infill
+    /// Infill type. Not CLI-bound today.
+    plain                        infill_type: InfillType = InfillType::Grid;
+    /// Infill density (0.0 to 1.0).
+    cli "infill_density"         infill_density: f32 = 0.2 => extract_float;
+    /// Infill angle in degrees.
+    cli "infill_angle"           infill_angle: f32 = 45.0 => extract_float;
+    /// Infill speed in mm/s.
+    cli "infill_speed"           infill_speed: f32 = 50.0 => extract_float;
+    /// Solid infill speed in mm/s.
+    cli "solid_infill_speed"     solid_infill_speed: f32 = 50.0 => extract_float;
+    /// Number of top shell layers.
+    cli "top_shell_layers"       top_shell_layers: u32 = 3 => extract_int_as_u32;
+    /// Number of bottom shell layers.
+    cli "bottom_shell_layers"    bottom_shell_layers: u32 = 3 => extract_int_as_u32;
+
+    // Fill-role holders (packet 37). Per-region overrides flow through
+    // `RegionMapIR.entries[*].config`, not CLI keys.
+    /// Module ID holding `claim:top-fill`.
+    plain                        top_fill_holder: String = String::from("rectilinear-infill");
+    /// Module ID holding `claim:bottom-fill`.
+    plain                        bottom_fill_holder: String = String::from("rectilinear-infill");
+    /// Module ID holding `claim:bridge-fill`.
+    plain                        bridge_fill_holder: String = String::from("rectilinear-infill");
+    /// Module ID holding `claim:sparse-fill`.
+    plain                        sparse_fill_holder: String = String::from("rectilinear-infill");
+
+    // Support
+    /// Whether support is enabled.
+    cli "support_enabled"        support_enabled: bool = false => extract_bool;
+    /// Support generation type. Not CLI-bound today.
+    plain                        support_type: SupportType = SupportType::Traditional;
+    /// Support overhang angle threshold in degrees.
+    cli "support_overhang_angle" support_overhang_angle: f32 = 45.0 => extract_float;
+
+    // Non-planar (module-contributed)
+    /// Maximum non-planar angle in degrees (optional).
+    cli_opt "nonplanar_max_angle_deg"  nonplanar_max_angle_deg: Option<f32> = None => extract_float;
+    /// Number of non-planar shells (optional).
+    cli_opt "nonplanar_shell_count"    nonplanar_shell_count: Option<u32> = None => extract_int_as_u32;
+    /// Non-planar amplitude in millimeters (optional).
+    cli_opt "nonplanar_amplitude"      nonplanar_amplitude: Option<f32> = None => extract_float;
+
+    // Smoothificator (module-contributed)
+    /// Smoothificator target height in millimeters (optional).
+    cli_opt "smoothificator_target_height" smoothificator_target_height: Option<f32> = None => extract_float;
+    /// Smoothificator adaptive mode (optional).
+    cli_opt "smoothificator_adaptive"      smoothificator_adaptive: Option<bool> = None => extract_bool;
+}
+
+// Touch the imports the macro expansion implicitly relies on, so a future
+// reviewer doesn't think they're unused.
+#[allow(dead_code)]
+const _: fn() = || {
+    let _: HashMap<String, ConfigValue> = HashMap::new();
+};

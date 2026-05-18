@@ -80,22 +80,39 @@ fn request_with_per_layer_transition(
     module_a: &LoadedModule,
     module_b: &LoadedModule,
 ) -> DagValidationRequest {
+    // Defensive: satisfy packet-37 fill-role coverage so that a future tightening
+    // of validate_startup_dag — which would surface MissingDependency
+    // independent of the conflict short-circuit — does not silently start
+    // failing these tests. The claim-under-test is unrelated to fill roles.
+    let mut claim_holders = vec![
+        ClaimHolder {
+            claim: claim.to_string(),
+            module_id: module_a.id().to_string(),
+            scope: region_scope_at(0),
+        },
+        ClaimHolder {
+            claim: claim.to_string(),
+            module_id: module_b.id().to_string(),
+            scope: region_scope_at(10),
+        },
+    ];
+    for fill in [
+        "claim:top-fill",
+        "claim:bottom-fill",
+        "claim:bridge-fill",
+        "claim:sparse-fill",
+    ] {
+        claim_holders.push(ClaimHolder {
+            claim: fill.to_string(),
+            module_id: module_a.id().to_string(),
+            scope: ConflictScope::Global,
+        });
+    }
     DagValidationRequest {
         modules: vec![module_a.clone(), module_b.clone()],
         stage_dags: vec![stage_dag_for(stage, &[module_a.clone(), module_b.clone()])],
         host_ir_schema_version: semver(1, 0, 0),
-        claim_holders: vec![
-            ClaimHolder {
-                claim: claim.to_string(),
-                module_id: module_a.id().to_string(),
-                scope: region_scope_at(0),
-            },
-            ClaimHolder {
-                claim: claim.to_string(),
-                module_id: module_b.id().to_string(),
-                scope: region_scope_at(10),
-            },
-        ],
+        claim_holders,
         access_audits: Vec::new(),
     }
 }

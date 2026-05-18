@@ -8,10 +8,12 @@
 #![warn(unused_must_use)]
 
 pub mod entity_id;
+pub mod resolved_config;
 pub mod slice_ir;
 pub mod validation;
 
 pub use entity_id::LayerEntityIdGen;
+pub use resolved_config::{ConfigResolutionError, ResolvedConfig};
 pub use validation::validate_travel_anchors;
 
 pub use slice_ir::{
@@ -99,7 +101,6 @@ pub use slice_ir::{
     // Region map types
     RegionMapIR,
     RegionPlan,
-    ResolvedConfig,
     RetractMode,
     ScoredSeamCandidate,
     SeamCandidate,

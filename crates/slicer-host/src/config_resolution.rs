@@ -1,19 +1,16 @@
 //! Host-side resolver that turns user-supplied CLI config into per-object
-//! [`slicer_ir::ResolvedConfig`] values.
-//!
-//! # Disambiguation
-//!
-//! - **`config_schema.rs`** describes per-module manifest field shapes
-//!   (author-time, declarative). It drives [`bind_module_config_view`] and the
-//!   `config-schema` CLI subcommand.
-//!
-//! - **`config_resolution.rs`** (this module) resolves user-supplied CLI input
-//!   into per-object `slicer_ir::ResolvedConfig` (invocation-time, imperative).
-//!   The resulting configs drive `RegionPlan.config` during pipeline execution.
+//! [`slicer_ir::ResolvedConfig`] values. Invoked from the `Run` command and
+//! the live execution-plan path; the resulting configs drive `RegionPlan.config`
+//! during pipeline execution.
 
 use std::collections::{BTreeMap, HashMap};
 
 use slicer_ir::{ConfigKey, ConfigValue, PaintSemantic, ResolvedConfig};
+
+// Re-exported so `slicer_host::config_resolution::ConfigResolutionError` keeps
+// resolving; the canonical definition lives next to `ResolvedConfig` in
+// `slicer_ir::resolved_config`.
+pub use slicer_ir::ConfigResolutionError;
 
 /// Diagnostic returned when a `paint_config:<semantic>:<key>` entry references
 /// a semantic not present in the model. Non-fatal; forwarded to the progress
@@ -114,49 +111,6 @@ pub fn resolve_per_paint_semantic_configs(
     Ok((result, warnings))
 }
 
-/// Errors produced during config resolution.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ConfigResolutionError {
-    /// A declared `ResolvedConfig` field received a value of the wrong variant.
-    TypeMismatch {
-        /// The config key that had the wrong type.
-        key: String,
-        /// The variant name expected (e.g. `"Int"`, `"Float"`, `"Bool"`).
-        expected: &'static str,
-        /// The variant name that was actually supplied.
-        actual: String,
-    },
-}
-
-impl std::fmt::Display for ConfigResolutionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::TypeMismatch {
-                key,
-                expected,
-                actual,
-            } => write!(
-                f,
-                "config key '{key}': expected {expected} value, got {actual}"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ConfigResolutionError {}
-
-/// Return a short variant-name string for a [`ConfigValue`] (used in error
-/// messages).
-fn variant_name(v: &ConfigValue) -> String {
-    match v {
-        ConfigValue::Bool(_) => "Bool".to_string(),
-        ConfigValue::Int(_) => "Int".to_string(),
-        ConfigValue::Float(_) => "Float".to_string(),
-        ConfigValue::String(_) => "String".to_string(),
-        ConfigValue::List(_) => "List".to_string(),
-    }
-}
-
 /// Resolve a flat `HashMap<ConfigKey, ConfigValue>` (as produced by
 /// [`parse_cli_config_source`]) into a global [`ResolvedConfig`].
 ///
@@ -192,86 +146,11 @@ pub fn resolve_global_config(
             continue;
         }
 
-        match key.as_str() {
-            // --- Geometry ---
-            "layer_height" => {
-                cfg.layer_height = extract_float(key, value)?;
-            }
-            "line_width" => {
-                cfg.line_width = extract_float(key, value)?;
-            }
-            "first_layer_height" => {
-                cfg.first_layer_height = extract_float(key, value)?;
-            }
-            "first_layer_line_width" => {
-                cfg.first_layer_line_width = extract_float(key, value)?;
-            }
-
-            // --- Walls ---
-            "wall_count" => {
-                cfg.wall_count = extract_int_as_u32(key, value)?;
-            }
-            "outer_wall_speed" => {
-                cfg.outer_wall_speed = extract_float(key, value)?;
-            }
-            "inner_wall_speed" => {
-                cfg.inner_wall_speed = extract_float(key, value)?;
-            }
-            "arachne_min_feature_size" => {
-                cfg.arachne_min_feature_size = Some(extract_float(key, value)?);
-            }
-
-            // --- Infill ---
-            "infill_density" => {
-                cfg.infill_density = extract_float(key, value)?;
-            }
-            "infill_angle" => {
-                cfg.infill_angle = extract_float(key, value)?;
-            }
-            "infill_speed" => {
-                cfg.infill_speed = extract_float(key, value)?;
-            }
-            "solid_infill_speed" => {
-                cfg.solid_infill_speed = extract_float(key, value)?;
-            }
-            "top_shell_layers" => {
-                cfg.top_shell_layers = extract_int_as_u32(key, value)?;
-            }
-            "bottom_shell_layers" => {
-                cfg.bottom_shell_layers = extract_int_as_u32(key, value)?;
-            }
-
-            // --- Support ---
-            "support_enabled" => {
-                cfg.support_enabled = extract_bool(key, value)?;
-            }
-            "support_overhang_angle" => {
-                cfg.support_overhang_angle = extract_float(key, value)?;
-            }
-
-            // --- Non-planar ---
-            "nonplanar_max_angle_deg" => {
-                cfg.nonplanar_max_angle_deg = Some(extract_float(key, value)?);
-            }
-            "nonplanar_shell_count" => {
-                cfg.nonplanar_shell_count = Some(extract_int_as_u32(key, value)?);
-            }
-            "nonplanar_amplitude" => {
-                cfg.nonplanar_amplitude = Some(extract_float(key, value)?);
-            }
-
-            // --- Smoothificator ---
-            "smoothificator_target_height" => {
-                cfg.smoothificator_target_height = Some(extract_float(key, value)?);
-            }
-            "smoothificator_adaptive" => {
-                cfg.smoothificator_adaptive = Some(extract_bool(key, value)?);
-            }
-
-            // Unknown key → extensions overflow bucket.
-            _ => {
-                cfg.extensions.insert(key.clone(), value.clone());
-            }
+        // Dispatch into the macro-generated per-field setter. Unknown keys
+        // fall through to the `extensions` overflow bucket. Single source of
+        // truth lives in `slicer-ir::resolved_config`.
+        if !cfg.apply_cli_key(key.as_str(), value)? {
+            cfg.extensions.insert(key.clone(), value.clone());
         }
     }
 
@@ -341,85 +220,10 @@ fn apply_overlay(
             continue;
         }
 
-        match key.as_str() {
-            "layer_height" => cfg.layer_height = extract_float(key, value)?,
-            "line_width" => cfg.line_width = extract_float(key, value)?,
-            "first_layer_height" => cfg.first_layer_height = extract_float(key, value)?,
-            "first_layer_line_width" => {
-                cfg.first_layer_line_width = extract_float(key, value)?;
-            }
-            "wall_count" => cfg.wall_count = extract_int_as_u32(key, value)?,
-            "outer_wall_speed" => cfg.outer_wall_speed = extract_float(key, value)?,
-            "inner_wall_speed" => cfg.inner_wall_speed = extract_float(key, value)?,
-            "arachne_min_feature_size" => {
-                cfg.arachne_min_feature_size = Some(extract_float(key, value)?);
-            }
-            "infill_density" => cfg.infill_density = extract_float(key, value)?,
-            "infill_angle" => cfg.infill_angle = extract_float(key, value)?,
-            "infill_speed" => cfg.infill_speed = extract_float(key, value)?,
-            "solid_infill_speed" => cfg.solid_infill_speed = extract_float(key, value)?,
-            "top_shell_layers" => cfg.top_shell_layers = extract_int_as_u32(key, value)?,
-            "bottom_shell_layers" => cfg.bottom_shell_layers = extract_int_as_u32(key, value)?,
-            "support_enabled" => cfg.support_enabled = extract_bool(key, value)?,
-            "support_overhang_angle" => {
-                cfg.support_overhang_angle = extract_float(key, value)?;
-            }
-            "nonplanar_max_angle_deg" => {
-                cfg.nonplanar_max_angle_deg = Some(extract_float(key, value)?);
-            }
-            "nonplanar_shell_count" => {
-                cfg.nonplanar_shell_count = Some(extract_int_as_u32(key, value)?);
-            }
-            "nonplanar_amplitude" => {
-                cfg.nonplanar_amplitude = Some(extract_float(key, value)?);
-            }
-            "smoothificator_target_height" => {
-                cfg.smoothificator_target_height = Some(extract_float(key, value)?);
-            }
-            "smoothificator_adaptive" => {
-                cfg.smoothificator_adaptive = Some(extract_bool(key, value)?);
-            }
-            _ => {
-                cfg.extensions.insert(key.clone(), value.clone());
-            }
+        if !cfg.apply_cli_key(key.as_str(), value)? {
+            cfg.extensions.insert(key.clone(), value.clone());
         }
     }
 
     Ok(cfg)
-}
-
-// --- Type extraction helpers ------------------------------------------------
-
-fn extract_float(key: &str, value: &ConfigValue) -> Result<f32, ConfigResolutionError> {
-    match value {
-        ConfigValue::Float(f) => Ok(*f as f32),
-        ConfigValue::Int(i) => Ok(*i as f32),
-        other => Err(ConfigResolutionError::TypeMismatch {
-            key: key.to_string(),
-            expected: "Float",
-            actual: variant_name(other),
-        }),
-    }
-}
-
-fn extract_int_as_u32(key: &str, value: &ConfigValue) -> Result<u32, ConfigResolutionError> {
-    match value {
-        ConfigValue::Int(i) => Ok(*i as u32),
-        other => Err(ConfigResolutionError::TypeMismatch {
-            key: key.to_string(),
-            expected: "Int",
-            actual: variant_name(other),
-        }),
-    }
-}
-
-fn extract_bool(key: &str, value: &ConfigValue) -> Result<bool, ConfigResolutionError> {
-    match value {
-        ConfigValue::Bool(b) => Ok(*b),
-        other => Err(ConfigResolutionError::TypeMismatch {
-            key: key.to_string(),
-            expected: "Bool",
-            actual: variant_name(other),
-        }),
-    }
 }
