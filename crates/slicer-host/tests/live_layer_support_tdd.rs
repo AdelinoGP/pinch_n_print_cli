@@ -463,7 +463,7 @@ fn compile_support_module(
         "support_density".to_string(),
         slicer_ir::ConfigValue::Float(20.0),
     );
-    CompiledModuleBuilder::new(loaded.id.clone(), pool)
+    CompiledModuleBuilder::new(loaded.id().to_string(), pool)
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(config_map)))
         .wasm_component(Some(component))
         .build()
@@ -1087,7 +1087,7 @@ mod planner_consuming_tier {
         let mut config_map = std::collections::HashMap::new();
         config_map.insert("support_enabled".to_string(), ConfigValue::Bool(true));
         config_map.insert("support_density".to_string(), ConfigValue::Float(20.0));
-        CompiledModuleBuilder::new(loaded.id.clone(), pool)
+        CompiledModuleBuilder::new(loaded.id().to_string(), pool)
             .config_view(Arc::new(ConfigView::from_map(config_map)))
             .wasm_component(Some(component))
             .build()

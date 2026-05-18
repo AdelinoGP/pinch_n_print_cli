@@ -299,7 +299,7 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         )
         .expect("instance pool must build"),
     );
-    CompiledModuleBuilder::new(loaded.id.clone(), pool)
+    CompiledModuleBuilder::new(loaded.id().to_string(), pool)
         .config_view(Arc::new(ConfigView::from_map(default_planner_config_map())))
         .wasm_component(Some(component))
         .build()

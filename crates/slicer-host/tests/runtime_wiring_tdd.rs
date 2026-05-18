@@ -278,7 +278,7 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
         .modules
         .iter()
         .map(|m| {
-            let parallelism = if m.layer_parallel_safe { 4 } else { 1 };
+            let parallelism = if m.layer_parallel_safe() { 4 } else { 1 };
             let pool = Arc::new(
                 build_wasm_instance_pool(
                     m,
@@ -352,12 +352,12 @@ fn manifest_driven_pipeline_runs_to_completion() {
         )
         .unwrap(),
     );
-    let compiled_module = CompiledModuleBuilder::new(m.id.clone(), pool)
+    let compiled_module = CompiledModuleBuilder::new(m.id().to_string(), pool)
         .ir_read_mask(IrAccessMask {
-            paths: m.ir_reads.clone(),
+            paths: m.ir_reads().to_vec(),
         })
         .ir_write_mask(IrAccessMask {
-            paths: m.ir_writes.clone(),
+            paths: m.ir_writes().to_vec(),
         })
         .config_view(Arc::new(ConfigView::from_map(HashMap::new())))
         .build();
@@ -541,22 +541,22 @@ fn core_modules_build_a_multi_tier_execution_plan() {
     let prepass_count = report
         .modules
         .iter()
-        .filter(|m| m.stage.starts_with("PrePass::"))
+        .filter(|m| m.stage().starts_with("PrePass::"))
         .count();
     let layer_count = report
         .modules
         .iter()
-        .filter(|m| m.stage.starts_with("Layer::"))
+        .filter(|m| m.stage().starts_with("Layer::"))
         .count();
     let finalization_count = report
         .modules
         .iter()
-        .filter(|m| m.stage == "PostPass::LayerFinalization")
+        .filter(|m| m.stage() == "PostPass::LayerFinalization")
         .count();
     let postpass_count = report
         .modules
         .iter()
-        .filter(|m| m.stage.starts_with("PostPass::") && m.stage != "PostPass::LayerFinalization")
+        .filter(|m| m.stage().starts_with("PostPass::") && m.stage() != "PostPass::LayerFinalization")
         .count();
 
     assert!(
@@ -582,7 +582,7 @@ fn core_modules_build_a_multi_tier_execution_plan() {
             let pool = Arc::new(
                 build_wasm_instance_pool(
                     m,
-                    if m.layer_parallel_safe { 4 } else { 1 },
+                    if m.layer_parallel_safe() { 4 } else { 1 },
                     WasmArtifactMetadata {
                         uses_shared_memory: false,
                     },

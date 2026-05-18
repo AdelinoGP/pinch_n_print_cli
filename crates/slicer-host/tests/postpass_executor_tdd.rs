@@ -675,7 +675,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(binding.module.id.clone(), Arc::clone(&binding.instance_pool))
+    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&binding.instance_pool))
         .config_view(Arc::clone(&binding.config_view))
         .build()
 }
@@ -889,7 +889,7 @@ impl PostpassStageRunner for OrderTrackingRunner {
     ) -> Result<PostpassOutput, PostpassError> {
         self.calls
             .borrow_mut()
-            .push((module.module_id.clone(), "GCodePostProcess".to_string()));
+            .push((module.module_id().to_string(), "GCodePostProcess".to_string()));
         Ok(PostpassOutput::GCodeSuccess)
     }
 
@@ -902,7 +902,7 @@ impl PostpassStageRunner for OrderTrackingRunner {
     ) -> Result<PostpassOutput, PostpassError> {
         self.calls
             .borrow_mut()
-            .push((module.module_id.clone(), "TextPostProcess".to_string()));
+            .push((module.module_id().to_string(), "TextPostProcess".to_string()));
         Ok(PostpassOutput::TextSuccess { text })
     }
 }
@@ -1039,12 +1039,12 @@ impl PostpassStageRunner for FatalErrorRunner {
     ) -> Result<PostpassOutput, PostpassError> {
         self.called_modules
             .borrow_mut()
-            .push(module.module_id.clone());
+            .push(module.module_id().to_string());
 
-        if self.gcode_fatal_module.as_ref() == Some(&module.module_id) {
+        if self.gcode_fatal_module.as_deref() == Some(module.module_id()) {
             return Err(PostpassError::FatalModule {
                 stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
+                module_id: module.module_id().to_string(),
                 message: "fatal error".to_string(),
             });
         }
@@ -1060,12 +1060,12 @@ impl PostpassStageRunner for FatalErrorRunner {
     ) -> Result<PostpassOutput, PostpassError> {
         self.called_modules
             .borrow_mut()
-            .push(module.module_id.clone());
+            .push(module.module_id().to_string());
 
-        if self.text_fatal_module.as_ref() == Some(&module.module_id) {
+        if self.text_fatal_module.as_deref() == Some(module.module_id()) {
             return Err(PostpassError::FatalModule {
                 stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
+                module_id: module.module_id().to_string(),
                 message: "fatal error".to_string(),
             });
         }
@@ -1120,9 +1120,9 @@ impl PostpassStageRunner for NonFatalErrorRunner {
     ) -> Result<PostpassOutput, PostpassError> {
         self.called_modules
             .borrow_mut()
-            .push(module.module_id.clone());
+            .push(module.module_id().to_string());
 
-        if self.nonfatal_gcode_module.as_ref() == Some(&module.module_id) {
+        if self.nonfatal_gcode_module.as_deref() == Some(module.module_id()) {
             return Ok(PostpassOutput::NonFatalError {
                 message: "non-fatal error".to_string(),
             });
@@ -1139,9 +1139,9 @@ impl PostpassStageRunner for NonFatalErrorRunner {
     ) -> Result<PostpassOutput, PostpassError> {
         self.called_modules
             .borrow_mut()
-            .push(module.module_id.clone());
+            .push(module.module_id().to_string());
 
-        if self.nonfatal_text_module.as_ref() == Some(&module.module_id) {
+        if self.nonfatal_text_module.as_deref() == Some(module.module_id()) {
             return Ok(PostpassOutput::NonFatalError {
                 message: "non-fatal error".to_string(),
             });

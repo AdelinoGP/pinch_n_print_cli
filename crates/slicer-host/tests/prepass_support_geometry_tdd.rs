@@ -235,7 +235,7 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         )
         .expect("instance pool must build"),
     );
-    CompiledModuleBuilder::new(loaded.id.clone(), pool)
+    CompiledModuleBuilder::new(loaded.id().to_string(), pool)
         .config_view(Arc::new(ConfigView::from_map(default_planner_config_map())))
         .wasm_component(Some(component))
         .build()
@@ -508,7 +508,7 @@ fn support_planner_claim_dedup() {
         "exactly one holder of `support-planner` must survive"
     );
     assert_eq!(
-        kept[0].id, "com.core.support-planner-a",
+        kept[0].id(), "com.core.support-planner-a",
         "alphabetical first winner (support-planner-a) must be kept"
     );
     assert_eq!(diagnostics.len(), 1);
@@ -667,7 +667,7 @@ fn compiled_native_module(stage_id: &str, module_id: &str) -> CompiledModule {
         )
         .expect("fixture instance pool must build"),
     );
-    CompiledModuleBuilder::new(loaded.id.clone(), pool).build()
+    CompiledModuleBuilder::new(loaded.id().to_string(), pool).build()
 }
 
 #[derive(Default)]

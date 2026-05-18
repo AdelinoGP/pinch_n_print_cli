@@ -343,7 +343,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         )
         .expect("instance pool must build"),
     );
-    let module = CompiledModuleBuilder::new(loaded.id.clone(), pool)
+    let module = CompiledModuleBuilder::new(loaded.id().to_string(), pool)
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(
             std::collections::HashMap::new(),
         )))
@@ -815,7 +815,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         )
         .expect("instance pool must build"),
     );
-    let module = CompiledModuleBuilder::new(loaded.id.clone(), pool)
+    let module = CompiledModuleBuilder::new(loaded.id().to_string(), pool)
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(
             std::collections::HashMap::new(),
         )))

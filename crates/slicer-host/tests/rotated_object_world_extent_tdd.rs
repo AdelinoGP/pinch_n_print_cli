@@ -139,12 +139,12 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView::new()),
         wasm_component: None,
     };
-    CompiledModuleBuilder::new(binding.module.id.clone(), Arc::clone(&binding.instance_pool))
+    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&binding.instance_pool))
         .ir_read_mask(IrAccessMask {
-            paths: binding.module.ir_reads.clone(),
+            paths: binding.module.ir_reads().to_vec(),
         })
         .ir_write_mask(IrAccessMask {
-            paths: binding.module.ir_writes.clone(),
+            paths: binding.module.ir_writes().to_vec(),
         })
         .build()
 }
@@ -241,13 +241,13 @@ impl PrepassStageRunner for ScriptedRunner {
         let mut observed = self.observed.borrow_mut();
         let next_index = observed.len();
         if let Some(expected_module_id) = self.expected_order.get(next_index) {
-            assert_eq!(&module.module_id, expected_module_id);
+            assert_eq!(module.module_id(), expected_module_id.as_str());
         }
-        observed.push(module.module_id.clone());
+        observed.push(module.module_id().to_string());
         drop(observed);
 
         self.scripted
-            .get(&module.module_id)
+            .get(module.module_id())
             .cloned()
             .expect("runner fixture should define every module outcome")
             .map(|output| (output, Vec::new()))

@@ -141,7 +141,7 @@ fn load_live_modules_for_plan_discovers_manifests_from_module_dir() {
 
     let out = load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 2)
         .expect("load");
-    let ids: Vec<String> = out.bindings.iter().map(|b| b.module.id.clone()).collect();
+    let ids: Vec<String> = out.bindings.iter().map(|b| b.module.id().to_string()).collect();
     assert!(ids.contains(&"com.example.a".to_string()));
     assert!(ids.contains(&"com.example.b".to_string()));
 }
@@ -241,11 +241,11 @@ fn live_plan_assigns_declared_read_filtered_config_view_to_every_module() {
     .expect("plan must build on the live path");
 
     let module = &plan.per_layer_stages[0].modules[0];
-    let mut keys = module.config_view.keys();
+    let mut keys = module.config_view().keys();
     keys.sort();
     assert_eq!(keys, vec!["density".to_string(), "pattern".to_string()]);
-    assert!(!module.config_view.contains_key("secret"));
-    assert_eq!(module.config_view.get_float("density"), Some(0.35));
+    assert!(!module.config_view().contains_key("secret"));
+    assert_eq!(module.config_view().get_float("density"), Some(0.35));
 }
 
 #[test]
@@ -268,9 +268,9 @@ fn live_plan_end_to_end_with_cli_config_json_respects_declared_reads() {
     .unwrap();
 
     let module = &plan.per_layer_stages[0].modules[0];
-    assert!(module.config_view.contains_key("density"));
-    assert!(!module.config_view.contains_key("extra"));
-    assert_eq!(module.config_view.get_float("density"), Some(0.9));
+    assert!(module.config_view().contains_key("density"));
+    assert!(!module.config_view().contains_key("extra"));
+    assert_eq!(module.config_view().get_float("density"), Some(0.9));
 }
 
 #[test]
@@ -302,12 +302,12 @@ fn live_plan_is_deterministic_across_repeated_loads() {
     let ids_a: Vec<String> = a
         .per_layer_stages
         .iter()
-        .flat_map(|s| s.modules.iter().map(|m| m.module_id.clone()))
+        .flat_map(|s| s.modules.iter().map(|m| m.module_id().to_string()))
         .collect();
     let ids_b: Vec<String> = b
         .per_layer_stages
         .iter()
-        .flat_map(|s| s.modules.iter().map(|m| m.module_id.clone()))
+        .flat_map(|s| s.modules.iter().map(|m| m.module_id().to_string()))
         .collect();
     assert_eq!(ids_a, ids_b, "module ordering must be deterministic");
 }
@@ -352,16 +352,16 @@ fn live_plan_preserves_seeded_planner_object_height_keys_for_real_core_modules()
     let planner_module = planner_stage
         .modules
         .iter()
-        .find(|module| module.module_id == "com.core.layer-planner-default")
+        .find(|module| module.module_id() == "com.core.layer-planner-default")
         .expect("default planner module present");
 
     assert!(
-        planner_module.config_view.contains_key(&object_height_key),
+        planner_module.config_view().contains_key(&object_height_key),
         "real planner binding must preserve seeded wildcard-expanded key '{}'",
         object_height_key,
     );
     assert_eq!(
-        planner_module.config_view.get_float(&object_height_key),
+        planner_module.config_view().get_float(&object_height_key),
         Some((z_max - z_min) as f64),
         "real planner binding must expose the seeded object height",
     );
@@ -437,7 +437,7 @@ fn valid_component_binary_is_compiled_and_attached_to_live_binding() {
     let binding = out
         .bindings
         .iter()
-        .find(|b| b.module.id == "com.example.infill")
+        .find(|b| b.module.id() == "com.example.infill")
         .unwrap();
     assert!(
         binding.wasm_component.is_some(),
@@ -445,7 +445,7 @@ fn valid_component_binary_is_compiled_and_attached_to_live_binding() {
     );
     // No per-module warning diagnostic on the happy path.
     assert!(out.diagnostics.iter().all(
-        |d| d.path != binding.module.wasm_path || !matches!(d.level, DiagnosticLevel::Warning)
+        |d| d.path != binding.module.wasm_path() || !matches!(d.level, DiagnosticLevel::Warning)
     ));
 }
 
@@ -464,9 +464,9 @@ fn placeholder_wasm_is_skipped_with_structured_warning_diagnostic() {
     let binding = out
         .bindings
         .iter()
-        .find(|b| b.module.id == "com.example.placeholder")
+        .find(|b| b.module.id() == "com.example.placeholder")
         .unwrap();
-    assert!(binding.module.placeholder_wasm);
+    assert!(binding.module.placeholder_wasm());
     assert!(
         binding.wasm_component.is_none(),
         "placeholder binary must not produce a compiled component"
@@ -478,7 +478,7 @@ fn placeholder_wasm_is_skipped_with_structured_warning_diagnostic() {
         .diagnostics
         .iter()
         .find(|d| {
-            d.path == binding.module.wasm_path
+            d.path == binding.module.wasm_path()
                 && matches!(d.level, DiagnosticLevel::Warning)
                 && d.field.as_deref() == Some("wasm_path")
         })
@@ -501,9 +501,9 @@ fn non_component_bytes_are_skipped_with_compile_failure_diagnostic() {
     let binding = out
         .bindings
         .iter()
-        .find(|b| b.module.id == "com.example.broken")
+        .find(|b| b.module.id() == "com.example.broken")
         .unwrap();
-    assert!(!binding.module.placeholder_wasm);
+    assert!(!binding.module.placeholder_wasm());
     assert!(
         binding.wasm_component.is_none(),
         "invalid component bytes must not crash the loader but also must not attach"
@@ -512,7 +512,7 @@ fn non_component_bytes_are_skipped_with_compile_failure_diagnostic() {
         .diagnostics
         .iter()
         .find(|d| {
-            d.path == binding.module.wasm_path
+            d.path == binding.module.wasm_path()
                 && matches!(d.level, DiagnosticLevel::Warning)
                 && d.message.contains("compile component")
         })
@@ -534,7 +534,7 @@ fn component_attachment_is_deterministic_across_repeated_loads() {
         let out = load_live_modules_for_plan(&roots, 1).unwrap();
         out.bindings
             .iter()
-            .map(|b| (b.module.id.clone(), b.wasm_component.is_some()))
+            .map(|b| (b.module.id().to_string(), b.wasm_component.is_some()))
             .collect::<Vec<_>>()
     };
     let a = run();
@@ -571,7 +571,7 @@ fn mixed_valid_and_invalid_binaries_load_deterministically_side_by_side() {
     let by_id: std::collections::HashMap<&str, &slicer_host::LiveModuleBinding> = out
         .bindings
         .iter()
-        .map(|b| (b.module.id.as_str(), b))
+        .map(|b| (b.module.id(), b))
         .collect();
     assert!(by_id["com.example.ok"].wasm_component.is_some());
     assert!(by_id["com.example.bad"].wasm_component.is_none());

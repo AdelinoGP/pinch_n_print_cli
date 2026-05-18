@@ -45,10 +45,10 @@ fn speed_keys_registered_with_defaults() {
         let field = schema.fields.get(key);
         assert!(field.is_some(), "Key {} not found in schema", key);
         let field = field.unwrap();
-        assert_eq!(field.field_type, ConfigFieldType::Float);
+        assert_eq!(field.field_type(), &ConfigFieldType::Float);
         assert_eq!(
-            field.default,
-            Some(ConfigValue::Float(default_val)),
+            field.default(),
+            Some(&ConfigValue::Float(default_val)),
             "Incorrect default for {}",
             key
         );
@@ -578,10 +578,10 @@ fn overhang_speed_keys_registered_with_defaults() {
         let field = schema.fields.get(key);
         assert!(field.is_some(), "Key {} not found in schema", key);
         let field = field.unwrap();
-        assert_eq!(field.field_type, ConfigFieldType::Float);
+        assert_eq!(field.field_type(), &ConfigFieldType::Float);
         assert_eq!(
-            field.default,
-            Some(ConfigValue::Float(0.0)),
+            field.default(),
+            Some(&ConfigValue::Float(0.0)),
             "Incorrect default for {}",
             key
         );

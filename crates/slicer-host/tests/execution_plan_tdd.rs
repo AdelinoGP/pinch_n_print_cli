@@ -159,18 +159,18 @@ fn assert_module(
     expected_reads: &[&str],
     expected_writes: &[&str],
 ) {
-    assert_eq!(compiled.module_id, expected.module.id);
-    assert_eq!(compiled.ir_read_mask.paths, strings(expected_reads));
-    assert_eq!(compiled.ir_write_mask.paths, strings(expected_writes));
+    assert_eq!(compiled.module_id(), expected.module.id());
+    assert_eq!(compiled.ir_read_mask().paths, strings(expected_reads));
+    assert_eq!(compiled.ir_write_mask().paths, strings(expected_writes));
     assert!(Arc::ptr_eq(
-        &compiled.instance_pool,
+        compiled.instance_pool(),
         &expected.instance_pool
     ));
-    assert!(Arc::ptr_eq(&compiled.config_view, &expected.config_view));
+    assert!(Arc::ptr_eq(compiled.config_view(), &expected.config_view));
 }
 
 fn bound_module(
-    mut module: slicer_host::LoadedModule,
+    module: slicer_host::LoadedModule,
     config_view: ConfigView,
     host_parallelism: usize,
 ) -> ExecutionModuleBinding {
@@ -179,8 +179,9 @@ fn bound_module(
     // guardrail (`ExecutionPlanError::UndeclaredConfigKey`) doesn't reject
     // the synthetic fixture. This mirrors the production contract where
     // live views come from `bind_module_config_view(module, source)`.
+    let mut schema = module.config_schema().clone();
     for key in config_view.keys() {
-        module.config_schema.entries.insert(
+        schema.entries.insert(
             key.clone(),
             ConfigFieldEntry {
                 field_type: "bool".to_string(),
@@ -188,6 +189,19 @@ fn bound_module(
             },
         );
     }
+    let module = LoadedModuleBuilder::new(
+        module.id(),
+        module.version(),
+        module.stage(),
+        module.wit_world(),
+        module.wasm_path().to_path_buf(),
+    )
+    .ir_reads(module.ir_reads().to_vec())
+    .ir_writes(module.ir_writes().to_vec())
+    .min_host_version(module.min_host_version())
+    .layer_parallel_safe(module.layer_parallel_safe())
+    .config_schema(schema)
+    .build();
 
     let instance_pool = Arc::new(
         build_wasm_instance_pool(
@@ -480,8 +494,8 @@ fn plan_construction_is_deterministic_across_repeated_calls() {
 
     assert_eq!(plan_a.per_layer_stages.len(), plan_b.per_layer_stages.len());
     assert_eq!(
-        plan_a.per_layer_stages[0].modules[0].module_id,
-        plan_b.per_layer_stages[0].modules[0].module_id,
+        plan_a.per_layer_stages[0].modules[0].module_id(),
+        plan_b.per_layer_stages[0].modules[0].module_id(),
     );
     assert_eq!(plan_a.global_layers.len(), plan_b.global_layers.len());
 }

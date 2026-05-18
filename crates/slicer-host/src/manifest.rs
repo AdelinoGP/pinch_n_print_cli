@@ -19,51 +19,150 @@ fn is_false(b: &bool) -> bool {
 /// Construction goes through [`LoadedModuleBuilder`] (call
 /// [`LoadedModuleBuilder::new`] with the five manifest-derived identity
 /// fields, set the optional ones via chained setters, then call
-/// [`LoadedModuleBuilder::build`]). Field reads remain via `pub` access.
+/// [`LoadedModuleBuilder::build`]). Field reads from outside the crate
+/// go through the `pub fn` accessor methods declared below.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoadedModule {
     /// Reverse-domain module identifier.
-    pub id: ModuleId,
+    pub(crate) id: ModuleId,
     /// Module semantic version.
-    pub version: SemVer,
+    pub(crate) version: SemVer,
     /// Canonical scheduler stage identifier.
-    pub stage: StageId,
+    pub(crate) stage: StageId,
     /// WIT world exported by the module.
-    pub wit_world: String,
+    pub(crate) wit_world: String,
     /// Declared IR access paths for reads.
-    pub ir_reads: Vec<String>,
+    pub(crate) ir_reads: Vec<String>,
     /// Declared IR access paths for writes.
-    pub ir_writes: Vec<String>,
+    pub(crate) ir_writes: Vec<String>,
     /// Claims held by this module.
-    pub claims: Vec<String>,
+    pub(crate) claims: Vec<String>,
     /// Claims required from other modules.
-    pub requires_claims: Vec<String>,
+    pub(crate) requires_claims: Vec<String>,
     /// Explicit incompatibility declarations.
-    pub incompatible_with: Vec<String>,
+    pub(crate) incompatible_with: Vec<String>,
     /// Required peer modules.
-    pub requires_modules: Vec<ModuleId>,
+    pub(crate) requires_modules: Vec<ModuleId>,
     /// Minimum host version accepted by the module.
-    pub min_host_version: SemVer,
+    pub(crate) min_host_version: SemVer,
     /// Inclusive minimum IR schema version.
-    pub min_ir_schema: SemVer,
+    pub(crate) min_ir_schema: SemVer,
     /// Exclusive maximum IR schema version.
-    pub max_ir_schema: SemVer,
+    pub(crate) max_ir_schema: SemVer,
     /// Placeholder config schema payload.
-    pub config_schema: ConfigSchema,
+    pub(crate) config_schema: ConfigSchema,
     /// Keys overridable per region.
-    pub overridable_per_region: Vec<String>,
+    pub(crate) overridable_per_region: Vec<String>,
     /// Keys overridable per layer.
-    pub overridable_per_layer: Vec<String>,
+    pub(crate) overridable_per_layer: Vec<String>,
     /// Effective layer parallel safety used by the runtime.
-    pub layer_parallel_safe: bool,
+    pub(crate) layer_parallel_safe: bool,
     /// Companion `.wasm` path for this manifest.
-    pub wasm_path: PathBuf,
+    pub(crate) wasm_path: PathBuf,
     /// True when the companion `.wasm` is a known placeholder (not a valid
     /// component-model binary). Modules with placeholder binaries are
     /// discoverable for manifest validation and plan construction, but
     /// runtime dispatch will skip them with a diagnostic rather than
     /// attempting component compilation.
-    pub placeholder_wasm: bool,
+    pub(crate) placeholder_wasm: bool,
+}
+
+impl LoadedModule {
+    /// Reverse-domain module identifier.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    /// Module semantic version.
+    pub fn version(&self) -> SemVer {
+        self.version
+    }
+
+    /// Canonical scheduler stage identifier.
+    pub fn stage(&self) -> &str {
+        &self.stage
+    }
+
+    /// WIT world exported by the module.
+    pub fn wit_world(&self) -> &str {
+        &self.wit_world
+    }
+
+    /// Declared IR access paths for reads.
+    pub fn ir_reads(&self) -> &[String] {
+        &self.ir_reads
+    }
+
+    /// Declared IR access paths for writes.
+    pub fn ir_writes(&self) -> &[String] {
+        &self.ir_writes
+    }
+
+    /// Claims held by this module.
+    pub fn claims(&self) -> &[String] {
+        &self.claims
+    }
+
+    /// Claims required from other modules.
+    pub fn requires_claims(&self) -> &[String] {
+        &self.requires_claims
+    }
+
+    /// Explicit incompatibility declarations.
+    pub fn incompatible_with(&self) -> &[String] {
+        &self.incompatible_with
+    }
+
+    /// Required peer modules.
+    pub fn requires_modules(&self) -> &[ModuleId] {
+        &self.requires_modules
+    }
+
+    /// Minimum host version accepted by the module.
+    pub fn min_host_version(&self) -> SemVer {
+        self.min_host_version
+    }
+
+    /// Inclusive minimum IR schema version.
+    pub fn min_ir_schema(&self) -> SemVer {
+        self.min_ir_schema
+    }
+
+    /// Exclusive maximum IR schema version.
+    pub fn max_ir_schema(&self) -> SemVer {
+        self.max_ir_schema
+    }
+
+    /// Placeholder config schema payload.
+    pub fn config_schema(&self) -> &ConfigSchema {
+        &self.config_schema
+    }
+
+    /// Keys overridable per region.
+    pub fn overridable_per_region(&self) -> &[String] {
+        &self.overridable_per_region
+    }
+
+    /// Keys overridable per layer.
+    pub fn overridable_per_layer(&self) -> &[String] {
+        &self.overridable_per_layer
+    }
+
+    /// Effective layer parallel safety used by the runtime.
+    pub fn layer_parallel_safe(&self) -> bool {
+        self.layer_parallel_safe
+    }
+
+    /// Companion `.wasm` path for this manifest.
+    pub fn wasm_path(&self) -> &Path {
+        &self.wasm_path
+    }
+
+    /// True when the companion `.wasm` is a known placeholder (not a valid
+    /// component-model binary).
+    pub fn placeholder_wasm(&self) -> bool {
+        self.placeholder_wasm
+    }
 }
 
 /// Builder for [`LoadedModule`]. Required identity fields

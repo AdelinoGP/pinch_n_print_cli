@@ -148,7 +148,7 @@ fn compiled_stub_module(stage_id: &str, module_id: &str) -> CompiledModule {
         )
         .expect("fixture pool must build"),
     );
-    CompiledModuleBuilder::new(loaded.id.clone(), pool).build()
+    CompiledModuleBuilder::new(loaded.id().to_string(), pool).build()
 }
 
 /// A stub runner that returns an empty `SupportPlanIR` for any stage call,

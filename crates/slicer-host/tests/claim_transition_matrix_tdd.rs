@@ -87,12 +87,12 @@ fn request_with_per_layer_transition(
         claim_holders: vec![
             ClaimHolder {
                 claim: claim.to_string(),
-                module_id: module_a.id.clone(),
+                module_id: module_a.id().to_string(),
                 scope: region_scope_at(0),
             },
             ClaimHolder {
                 claim: claim.to_string(),
-                module_id: module_b.id.clone(),
+                module_id: module_b.id().to_string(),
                 scope: region_scope_at(10),
             },
         ],
@@ -235,12 +235,12 @@ fn stable_holder_across_layers_is_valid_for_non_transitionable_claim() {
         claim_holders: vec![
             ClaimHolder {
                 claim: String::from("perimeter-generator"),
-                module_id: alpha.id.clone(),
+                module_id: alpha.id().to_string(),
                 scope: region_scope_at(0),
             },
             ClaimHolder {
                 claim: String::from("perimeter-generator"),
-                module_id: alpha.id.clone(),
+                module_id: alpha.id().to_string(),
                 scope: region_scope_at(10),
             },
             // Packet 37 fill-role coverage: every fill-role claim must have
@@ -250,22 +250,22 @@ fn stable_holder_across_layers_is_valid_for_non_transitionable_claim() {
             // sufficient for global startup validation.
             ClaimHolder {
                 claim: String::from("claim:top-fill"),
-                module_id: alpha.id.clone(),
+                module_id: alpha.id().to_string(),
                 scope: ConflictScope::Global,
             },
             ClaimHolder {
                 claim: String::from("claim:bottom-fill"),
-                module_id: alpha.id.clone(),
+                module_id: alpha.id().to_string(),
                 scope: ConflictScope::Global,
             },
             ClaimHolder {
                 claim: String::from("claim:bridge-fill"),
-                module_id: alpha.id.clone(),
+                module_id: alpha.id().to_string(),
                 scope: ConflictScope::Global,
             },
             ClaimHolder {
                 claim: String::from("claim:sparse-fill"),
-                module_id: alpha.id.clone(),
+                module_id: alpha.id().to_string(),
                 scope: ConflictScope::Global,
             },
         ],

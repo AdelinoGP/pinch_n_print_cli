@@ -53,18 +53,18 @@ fn get_field_schema_returns_full_field_definition() {
     let schema = make_tpms_infill_schema();
     let density = get_field_schema(&schema, "density").expect("density field should exist");
 
-    assert_eq!(density.key, "density");
-    assert_eq!(density.field_type, ConfigFieldType::Float);
-    assert_eq!(density.default, Some(ConfigValue::Float(0.15)));
-    assert_eq!(density.min, Some(0.05));
-    assert_eq!(density.max, Some(0.95));
-    assert_eq!(density.step, Some(0.01));
-    assert_eq!(density.display.as_deref(), Some("Infill Density"));
-    assert_eq!(density.unit, ConfigUnit::Ratio);
-    assert_eq!(density.group.as_deref(), Some("Pattern"));
-    assert!(!density.advanced);
+    assert_eq!(density.key(), "density");
+    assert_eq!(density.field_type(), &ConfigFieldType::Float);
+    assert_eq!(density.default(), Some(&ConfigValue::Float(0.15)));
+    assert_eq!(density.min(), Some(0.05));
+    assert_eq!(density.max(), Some(0.95));
+    assert_eq!(density.step(), Some(0.01));
+    assert_eq!(density.display(), Some("Infill Density"));
+    assert_eq!(density.unit(), &ConfigUnit::Ratio);
+    assert_eq!(density.group(), Some("Pattern"));
+    assert!(!density.advanced());
     assert_eq!(
-        density.validate.as_deref(),
+        density.validate(),
         Some("value > 0.0 && value < 1.0")
     );
 }
@@ -74,14 +74,14 @@ fn enum_field_includes_allowed_values() {
     let schema = make_tpms_infill_schema();
     let pattern = get_field_schema(&schema, "pattern").expect("pattern field should exist");
 
-    assert_eq!(pattern.field_type, ConfigFieldType::Enum);
+    assert_eq!(pattern.field_type(), &ConfigFieldType::Enum);
     assert_eq!(
-        pattern.default,
-        Some(ConfigValue::String("schwartz-d".into()))
+        pattern.default(),
+        Some(&ConfigValue::String("schwartz-d".into()))
     );
     assert_eq!(
-        pattern.enum_values,
-        Some(vec!["schwartz-d".into(), "fischer-koch-s".into()])
+        pattern.enum_values(),
+        Some(&["schwartz-d".to_string(), "fischer-koch-s".to_string()][..])
     );
 }
 
@@ -91,10 +91,10 @@ fn int_field_includes_range_constraints() {
     let multiline =
         get_field_schema(&schema, "multiline-count").expect("multiline-count field should exist");
 
-    assert_eq!(multiline.field_type, ConfigFieldType::Int);
-    assert_eq!(multiline.default, Some(ConfigValue::Int(1)));
-    assert_eq!(multiline.min, Some(1.0));
-    assert_eq!(multiline.max, Some(4.0));
+    assert_eq!(multiline.field_type(), &ConfigFieldType::Int);
+    assert_eq!(multiline.default(), Some(&ConfigValue::Int(1)));
+    assert_eq!(multiline.min(), Some(1.0));
+    assert_eq!(multiline.max(), Some(4.0));
 }
 
 #[test]
@@ -103,14 +103,14 @@ fn advanced_flag_is_preserved() {
 
     let marching = get_field_schema(&schema, "marching-cell-size")
         .expect("marching-cell-size field should exist");
-    assert!(marching.advanced);
+    assert!(marching.advanced());
 
     let raster =
         get_field_schema(&schema, "raster-precision").expect("raster-precision field should exist");
-    assert!(raster.advanced);
+    assert!(raster.advanced());
 
     let density = get_field_schema(&schema, "density").expect("density field should exist");
-    assert!(!density.advanced);
+    assert!(!density.advanced());
 }
 
 // ============================================================================
@@ -375,16 +375,16 @@ fn parse_float_field_extracts_all_properties() {
         .expect("float field should parse");
 
     let density = schema.fields.get("density").expect("density field");
-    assert_eq!(density.field_type, ConfigFieldType::Float);
-    assert_eq!(density.default, Some(ConfigValue::Float(0.15)));
-    assert_eq!(density.min, Some(0.05));
-    assert_eq!(density.max, Some(0.95));
-    assert_eq!(density.step, Some(0.01));
-    assert_eq!(density.display.as_deref(), Some("Infill Density"));
-    assert_eq!(density.unit, ConfigUnit::Ratio);
-    assert_eq!(density.group.as_deref(), Some("Pattern"));
+    assert_eq!(density.field_type(), &ConfigFieldType::Float);
+    assert_eq!(density.default(), Some(&ConfigValue::Float(0.15)));
+    assert_eq!(density.min(), Some(0.05));
+    assert_eq!(density.max(), Some(0.95));
+    assert_eq!(density.step(), Some(0.01));
+    assert_eq!(density.display(), Some("Infill Density"));
+    assert_eq!(density.unit(), &ConfigUnit::Ratio);
+    assert_eq!(density.group(), Some("Pattern"));
     assert_eq!(
-        density.validate.as_deref(),
+        density.validate(),
         Some("value > 0.0 && value < 1.0")
     );
 }
@@ -404,14 +404,14 @@ fn parse_enum_field_extracts_values_list() {
         .expect("enum field should parse");
 
     let pattern = schema.fields.get("pattern").expect("pattern field");
-    assert_eq!(pattern.field_type, ConfigFieldType::Enum);
+    assert_eq!(pattern.field_type(), &ConfigFieldType::Enum);
     assert_eq!(
-        pattern.enum_values,
-        Some(vec!["schwartz-d".into(), "fischer-koch-s".into()])
+        pattern.enum_values(),
+        Some(&["schwartz-d".to_string(), "fischer-koch-s".to_string()][..])
     );
     assert_eq!(
-        pattern.default,
-        Some(ConfigValue::String("schwartz-d".into()))
+        pattern.default(),
+        Some(&ConfigValue::String("schwartz-d".into()))
     );
 }
 
@@ -434,10 +434,10 @@ fn parse_int_field_extracts_range_constraints() {
         .fields
         .get("multiline-count")
         .expect("multiline-count field");
-    assert_eq!(multiline.field_type, ConfigFieldType::Int);
-    assert_eq!(multiline.default, Some(ConfigValue::Int(1)));
-    assert_eq!(multiline.min, Some(1.0));
-    assert_eq!(multiline.max, Some(4.0));
+    assert_eq!(multiline.field_type(), &ConfigFieldType::Int);
+    assert_eq!(multiline.default(), Some(&ConfigValue::Int(1)));
+    assert_eq!(multiline.min(), Some(1.0));
+    assert_eq!(multiline.max(), Some(4.0));
 }
 
 #[test]
@@ -453,7 +453,7 @@ fn parse_advanced_flag_defaults_to_false() {
         parse_config_schema(config_section, Path::new("test.toml")).expect("field should parse");
 
     let density = schema.fields.get("density").expect("density field");
-    assert!(!density.advanced);
+    assert!(!density.advanced());
 }
 
 #[test]
@@ -470,7 +470,7 @@ fn parse_advanced_flag_when_true() {
         parse_config_schema(config_section, Path::new("test.toml")).expect("field should parse");
 
     let cell_size = schema.fields.get("cell-size").expect("cell-size field");
-    assert!(cell_size.advanced);
+    assert!(cell_size.advanced());
 }
 
 #[test]
@@ -488,7 +488,7 @@ fn parse_float_default_normalizes_subnormal_to_zero() {
         .expect("float field should parse");
 
     let epsilon = schema.fields.get("epsilon").expect("epsilon field");
-    match epsilon.default.as_ref() {
+    match epsilon.default() {
         Some(ConfigValue::Float(value)) => assert_eq!(*value, 0.0),
         other => panic!("expected float default, got {other:?}"),
     }
@@ -512,9 +512,9 @@ fn parse_float_list_default_normalizes_subnormal_members_to_zero() {
         .fields
         .get("layer-heights")
         .expect("layer-heights field");
-    match layer_heights.default.as_ref() {
+    match layer_heights.default() {
         Some(ConfigValue::FloatList(values)) => {
-            assert_eq!(values, &vec![0.0, 0.2, 0.0]);
+            assert_eq!(*values, vec![0.0, 0.2, 0.0]);
         }
         other => panic!("expected float-list default, got {other:?}"),
     }
@@ -632,9 +632,9 @@ fn config_schema_rejects_unknown_retract_mode() {
         .fields
         .get("retract_mode")
         .expect("manifest must declare retract_mode field");
-    assert_eq!(retract_mode_field.field_type, ConfigFieldType::Enum);
+    assert_eq!(retract_mode_field.field_type(), &ConfigFieldType::Enum);
     assert_eq!(
-        retract_mode_field.enum_values.as_deref(),
+        retract_mode_field.enum_values(),
         Some(&["gcode".to_string(), "firmware".to_string()][..])
     );
 
@@ -673,14 +673,14 @@ fn group_fields_by_ui_group_collects_by_group_name() {
     assert!(groups.contains_key("Advanced"));
 
     let pattern_fields = groups.get("Pattern").expect("Pattern group");
-    assert!(pattern_fields.iter().any(|f| f.key == "density"));
-    assert!(pattern_fields.iter().any(|f| f.key == "pattern"));
+    assert!(pattern_fields.iter().any(|f| f.key() == "density"));
+    assert!(pattern_fields.iter().any(|f| f.key() == "pattern"));
 
     let advanced_fields = groups.get("Advanced").expect("Advanced group");
     assert!(advanced_fields
         .iter()
-        .any(|f| f.key == "marching-cell-size"));
-    assert!(advanced_fields.iter().any(|f| f.key == "raster-precision"));
+        .any(|f| f.key() == "marching-cell-size"));
+    assert!(advanced_fields.iter().any(|f| f.key() == "raster-precision"));
 }
 
 #[test]
@@ -688,10 +688,10 @@ fn get_advanced_fields_returns_only_advanced() {
     let schema = make_tpms_infill_schema();
     let advanced = get_advanced_fields(&schema);
 
-    assert!(advanced.iter().all(|f| f.advanced));
-    assert!(advanced.iter().any(|f| f.key == "marching-cell-size"));
-    assert!(advanced.iter().any(|f| f.key == "raster-precision"));
-    assert!(!advanced.iter().any(|f| f.key == "density"));
+    assert!(advanced.iter().all(|f| f.advanced()));
+    assert!(advanced.iter().any(|f| f.key() == "marching-cell-size"));
+    assert!(advanced.iter().any(|f| f.key() == "raster-precision"));
+    assert!(!advanced.iter().any(|f| f.key() == "density"));
 }
 
 #[test]
@@ -699,10 +699,10 @@ fn get_basic_fields_returns_only_non_advanced() {
     let schema = make_tpms_infill_schema();
     let basic = get_basic_fields(&schema);
 
-    assert!(basic.iter().all(|f| !f.advanced));
-    assert!(basic.iter().any(|f| f.key == "density"));
-    assert!(basic.iter().any(|f| f.key == "pattern"));
-    assert!(!basic.iter().any(|f| f.key == "marching-cell-size"));
+    assert!(basic.iter().all(|f| !f.advanced()));
+    assert!(basic.iter().any(|f| f.key() == "density"));
+    assert!(basic.iter().any(|f| f.key() == "pattern"));
+    assert!(!basic.iter().any(|f| f.key() == "marching-cell-size"));
 }
 
 // ============================================================================

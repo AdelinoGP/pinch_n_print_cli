@@ -147,7 +147,7 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
         .expect("fixture pool"),
     );
     let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
             .wasm_component(Some(path_opt_component))
             .build(),
     );
@@ -261,7 +261,7 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
         .expect("fixture pool"),
     );
     let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
             .wasm_component(Some(path_opt_component))
             .build(),
     );
@@ -347,7 +347,7 @@ fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
         .expect("fixture pool"),
     );
     let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
             .wasm_component(Some(path_opt_component))
             .build(),
     );
@@ -582,7 +582,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         wasm_component: None,
     };
-    CompiledModuleBuilder::new(binding.module.id.clone(), Arc::clone(&pool))
+    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&pool))
         .config_view(Arc::clone(&binding.config_view))
         .build()
 }

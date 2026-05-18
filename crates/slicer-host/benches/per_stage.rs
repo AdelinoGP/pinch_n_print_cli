@@ -44,20 +44,16 @@ fn chain_modules(n: usize) -> Vec<LoadedModule> {
     (0..n)
         .map(|i| {
             let writes_path: String = format!("PerimeterIR.region.{i}");
-            let reads_path: String = if i == 0 {
-                String::new()
-            } else {
-                format!("PerimeterIR.region.{}", i - 1)
-            };
-            let mut m = loaded_module(
-                &format!("m{i}"),
-                &[reads_path.as_str()],
-                &[writes_path.as_str()],
-            );
             if i == 0 {
-                m.ir_reads.clear();
+                loaded_module(&format!("m{i}"), &[], &[writes_path.as_str()])
+            } else {
+                let reads_path: String = format!("PerimeterIR.region.{}", i - 1);
+                loaded_module(
+                    &format!("m{i}"),
+                    &[reads_path.as_str()],
+                    &[writes_path.as_str()],
+                )
             }
-            m
         })
         .collect()
 }

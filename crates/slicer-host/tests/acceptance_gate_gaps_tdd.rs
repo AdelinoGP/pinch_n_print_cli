@@ -79,7 +79,7 @@ fn undeclared_runtime_read_emits_structured_diagnostic_with_module_path_and_kind
         &["A.placeholder"],
     );
     let audit = ModuleAccessAudit {
-        module_id: m.id.clone(),
+        module_id: m.id().to_string(),
         runtime_reads: vec!["A.undeclared.read".to_string()],
         runtime_writes: vec![],
     };
@@ -112,7 +112,7 @@ fn undeclared_runtime_read_emits_structured_diagnostic_with_module_path_and_kind
 fn undeclared_runtime_write_emits_structured_diagnostic_with_kind_write() {
     let m = loaded_module("com.test.w", "Layer::Support", &[], &["A.declared"]);
     let audit = ModuleAccessAudit {
-        module_id: m.id.clone(),
+        module_id: m.id().to_string(),
         runtime_reads: vec![],
         runtime_writes: vec!["A.undeclared.write".to_string()],
     };
@@ -137,7 +137,7 @@ fn undeclared_runtime_write_emits_structured_diagnostic_with_kind_write() {
 fn declared_access_produces_no_undeclared_access_diagnostic() {
     let m = loaded_module("com.test.ok", "Layer::Support", &["A.r"], &["A.w"]);
     let audit = ModuleAccessAudit {
-        module_id: m.id.clone(),
+        module_id: m.id().to_string(),
         runtime_reads: vec!["A.r".to_string()],
         runtime_writes: vec!["A.w".to_string()],
     };
@@ -193,8 +193,19 @@ fn parallel_safe_module_returns_distinct_slot_indices_across_threads() {
 
 #[test]
 fn serialized_pool_only_ever_returns_slot_zero_under_repeated_acquisition() {
-    let mut m = loaded_module("com.test.serial", "Layer::Support", &[], &["A"]);
-    m.layer_parallel_safe = false;
+    let m = LoadedModuleBuilder::new(
+        "com.test.serial",
+        semver(1, 0, 0),
+        "Layer::Support",
+        "slicer:world-layer@1.0.0",
+        std::path::PathBuf::from("fixtures/com.test.serial.wasm"),
+    )
+    .ir_writes(vec!["A".to_string()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(false)
+    .build();
     let pool = build_wasm_instance_pool(&m, 8, artifact_meta(false))
         .expect("serialized pool should build");
     assert_eq!(pool.mode(), InstancePoolMode::Serialized);

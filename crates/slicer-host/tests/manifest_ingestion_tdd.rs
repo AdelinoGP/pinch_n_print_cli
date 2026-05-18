@@ -29,32 +29,32 @@ fn valid_manifest_is_normalized_into_loaded_module_runtime_fields() {
 
     assert_loaded_module_basics(&module, &wasm_path);
     assert_eq!(
-        module.ir_reads,
-        vec![
+        module.ir_reads(),
+        &[
             String::from("SliceIR.regions.infill_areas"),
             String::from("RegionMapIR"),
         ]
     );
     assert_eq!(
-        module.ir_writes,
-        vec![String::from("InfillIR.regions.sparse_infill")]
+        module.ir_writes(),
+        &[String::from("InfillIR.regions.sparse_infill")]
     );
-    assert_eq!(module.claims, vec![String::from("infill-generator")]);
-    assert_eq!(module.requires_claims, vec![String::from("region-map")]);
+    assert_eq!(module.claims(), &[String::from("infill-generator")]);
+    assert_eq!(module.requires_claims(), &[String::from("region-map")]);
     assert_eq!(
-        module.incompatible_with,
-        vec![String::from("com.community.lines-*")]
+        module.incompatible_with(),
+        &[String::from("com.community.lines-*")]
     );
     assert_eq!(
-        module.requires_modules,
-        vec![String::from("com.community.support-prep")]
+        module.requires_modules(),
+        &[String::from("com.community.support-prep")]
     );
-    assert_eq!(module.overridable_per_region, vec![String::from("density")]);
-    assert_eq!(module.overridable_per_layer, vec![String::from("density")]);
-    assert_eq!(module.min_host_version, semver(0, 5, 0));
-    assert_eq!(module.min_ir_schema, semver(1, 2, 0));
-    assert_eq!(module.max_ir_schema, semver(2, 0, 0));
-    assert!(module.layer_parallel_safe);
+    assert_eq!(module.overridable_per_region(), &[String::from("density")]);
+    assert_eq!(module.overridable_per_layer(), &[String::from("density")]);
+    assert_eq!(module.min_host_version(), semver(0, 5, 0));
+    assert_eq!(module.min_ir_schema(), semver(1, 2, 0));
+    assert_eq!(module.max_ir_schema(), semver(2, 0, 0));
+    assert!(module.layer_parallel_safe());
 }
 
 #[test]
@@ -147,8 +147,8 @@ fn higher_precedence_root_wins_duplicate_module_ids_and_emits_warning() {
         1,
         "earlier root should win duplicate resolution"
     );
-    assert_eq!(report.modules[0].id, "com.community.duplicate");
-    assert_eq!(report.modules[0].stage, "Layer::Infill");
+    assert_eq!(report.modules[0].id(), "com.community.duplicate");
+    assert_eq!(report.modules[0].stage(), "Layer::Infill");
 
     let warning = report
         .diagnostics
@@ -254,8 +254,8 @@ fn lexical_order_within_one_root_deterministically_breaks_duplicate_ids() {
         .expect("duplicate ids in one root should resolve deterministically");
 
     assert_eq!(report.modules.len(), 1);
-    assert_eq!(report.modules[0].id, "com.community.same-root-duplicate");
-    assert_eq!(report.modules[0].stage, "Layer::Infill");
+    assert_eq!(report.modules[0].id(), "com.community.same-root-duplicate");
+    assert_eq!(report.modules[0].stage(), "Layer::Infill");
 
     let warning = report
         .diagnostics
@@ -284,8 +284,8 @@ fn finalization_manifest_true_parallel_hint_warns_and_normalizes_to_serialized_r
         .expect("finalization module should still load with a warning");
 
     assert_eq!(report.modules.len(), 1);
-    assert_eq!(report.modules[0].id, "com.community.finalizer");
-    assert!(!report.modules[0].layer_parallel_safe);
+    assert_eq!(report.modules[0].id(), "com.community.finalizer");
+    assert!(!report.modules[0].layer_parallel_safe());
 
     let warning = report
         .diagnostics
@@ -358,11 +358,11 @@ layer-parallel-safe = true
 }
 
 fn assert_loaded_module_basics(module: &LoadedModule, wasm_path: &Path) {
-    assert_eq!(module.id, "com.community.tpms-infill");
-    assert_eq!(module.version, semver(1, 2, 0));
-    assert_eq!(module.stage, "Layer::Infill");
-    assert_eq!(module.wit_world, "slicer:world-layer@1.0.0");
-    assert_eq!(module.wasm_path, wasm_path);
+    assert_eq!(module.id(), "com.community.tpms-infill");
+    assert_eq!(module.version(), semver(1, 2, 0));
+    assert_eq!(module.stage(), "Layer::Infill");
+    assert_eq!(module.wit_world(), "slicer:world-layer@1.0.0");
+    assert_eq!(module.wasm_path(), wasm_path);
 }
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -512,7 +512,7 @@ fn discovery_finds_manifests_in_immediate_subdirectories() {
         "should discover both modules in subdirectories"
     );
 
-    let ids: Vec<&str> = report.modules.iter().map(|m| m.id.as_str()).collect();
+    let ids: Vec<&str> = report.modules.iter().map(|m| m.id()).collect();
     assert!(ids.contains(&"com.core.my-infill"));
     assert!(ids.contains(&"com.core.my-support"));
 }
@@ -545,7 +545,7 @@ fn discovery_excludes_cargo_toml_in_subdirectories() {
         .expect("discovery should load module but skip Cargo.toml");
 
     assert_eq!(report.modules.len(), 1);
-    assert_eq!(report.modules[0].id, "com.core.my-module");
+    assert_eq!(report.modules[0].id(), "com.core.my-module");
 }
 
 #[test]
@@ -583,7 +583,7 @@ fn discovery_mixes_flat_and_subdirectory_manifests() {
         .expect("should discover both flat and subdirectory modules");
 
     assert_eq!(report.modules.len(), 2);
-    let ids: Vec<&str> = report.modules.iter().map(|m| m.id.as_str()).collect();
+    let ids: Vec<&str> = report.modules.iter().map(|m| m.id()).collect();
     assert!(ids.contains(&"com.community.flat"));
     assert!(ids.contains(&"com.core.subdir"));
 }
@@ -608,7 +608,7 @@ fn core_modules_directory_is_discoverable_and_all_load() {
         21,
         "expected 21 core modules, got {}: {:?}",
         report.modules.len(),
-        report.modules.iter().map(|m| &m.id).collect::<Vec<_>>()
+        report.modules.iter().map(|m| m.id()).collect::<Vec<_>>()
     );
 
     // Verify no errors in diagnostics (warnings are ok)
@@ -625,19 +625,19 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     // Verify all modules have valid stages
     for module in &report.modules {
         assert!(
-            !module.stage.is_empty(),
+            !module.stage().is_empty(),
             "module {} must have a stage",
-            module.id
+            module.id()
         );
         assert!(
-            !module.wit_world.is_empty(),
+            !module.wit_world().is_empty(),
             "module {} must have a wit_world",
-            module.id
+            module.id()
         );
     }
 
     // Verify we have modules covering key stages
-    let stages: Vec<&str> = report.modules.iter().map(|m| m.stage.as_str()).collect();
+    let stages: Vec<&str> = report.modules.iter().map(|m| m.stage()).collect();
     assert!(
         stages.contains(&"Layer::Infill"),
         "should have infill modules"
@@ -699,11 +699,11 @@ fn core_finalization_modules_have_parallel_safe_false() {
     let report = load_modules_from_roots(&[core_modules_root]).expect("core modules should load");
 
     for module in &report.modules {
-        if module.stage == "PostPass::LayerFinalization" {
+        if module.stage() == "PostPass::LayerFinalization" {
             assert!(
-                !module.layer_parallel_safe,
+                !module.layer_parallel_safe(),
                 "finalization module {} must have layer_parallel_safe=false",
-                module.id
+                module.id()
             );
         }
     }
@@ -737,7 +737,7 @@ fn placeholder_wasm_is_detected_during_ingestion() {
 
     assert_eq!(report.modules.len(), 1);
     assert!(
-        report.modules[0].placeholder_wasm,
+        report.modules[0].placeholder_wasm(),
         "module with 8-byte stub should have placeholder_wasm=true"
     );
 
@@ -782,7 +782,7 @@ fn real_wasm_is_not_flagged_as_placeholder() {
     let report = load_modules_from_roots(&[fixture.root().to_path_buf()]).unwrap();
     assert_eq!(report.modules.len(), 1);
     assert!(
-        !report.modules[0].placeholder_wasm,
+        !report.modules[0].placeholder_wasm(),
         "module with >8 byte wasm should not be a placeholder"
     );
 }
@@ -829,11 +829,11 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
     ];
 
     for module in &report.modules {
-        let expected_placeholder = !NON_PLACEHOLDER.contains(&module.id.as_str());
+        let expected_placeholder = !NON_PLACEHOLDER.contains(&module.id());
         assert_eq!(
-            module.placeholder_wasm, expected_placeholder,
+            module.placeholder_wasm(), expected_placeholder,
             "core module {} placeholder_wasm mismatch (expected {}, got {})",
-            module.id, expected_placeholder, module.placeholder_wasm
+            module.id(), expected_placeholder, module.placeholder_wasm()
         );
     }
 }
@@ -864,7 +864,7 @@ fn core_module_placeholder_warnings_include_module_ids() {
     let real_count = report
         .modules
         .iter()
-        .filter(|m| !m.placeholder_wasm)
+        .filter(|m| !m.placeholder_wasm())
         .count();
     let expected_placeholder_warnings = total_modules - real_count;
     assert_eq!(
@@ -891,14 +891,14 @@ fn discovery_order_is_deterministic_across_repeated_scans() {
         .unwrap()
         .modules
         .iter()
-        .map(|m| m.id.clone())
+        .map(|m| m.id().to_string())
         .collect();
 
     let ids_b: Vec<String> = load_modules_from_roots(&[core_modules_root])
         .unwrap()
         .modules
         .iter()
-        .map(|m| m.id.clone())
+        .map(|m| m.id().to_string())
         .collect();
 
     assert_eq!(ids_a, ids_b, "module discovery order must be deterministic");
@@ -946,7 +946,7 @@ fn discovery_order_is_lexicographic_by_manifest_path() {
     );
 
     let report = load_modules_from_roots(&[fixture.root().to_path_buf()]).unwrap();
-    let ids: Vec<&str> = report.modules.iter().map(|m| m.id.as_str()).collect();
+    let ids: Vec<&str> = report.modules.iter().map(|m| m.id()).collect();
 
     assert_eq!(ids, vec!["com.test.aaa", "com.test.mmm", "com.test.zzz"]);
 }

@@ -247,7 +247,7 @@ impl FinalizationStageRunner for ScriptedRunner {
         _layers: &mut Vec<LayerCollectionIR>,
     ) -> Result<FinalizationOutput, FinalizationError> {
         assert_eq!(
-            module.instance_pool.size(),
+            module.instance_pool().size(),
             1,
             "Pool size must be 1 for finalization modules"
         );
@@ -255,13 +255,13 @@ impl FinalizationStageRunner for ScriptedRunner {
         let mut observed = self.observed.borrow_mut();
         let next_index = observed.len();
         if let Some(expected_module_id) = self.expected_order.get(next_index) {
-            assert_eq!(&module.module_id, expected_module_id);
+            assert_eq!(module.module_id(), expected_module_id.as_str());
         }
-        observed.push(module.module_id.clone());
+        observed.push(module.module_id().to_string());
         drop(observed);
 
         self.scripted
-            .get(&module.module_id)
+            .get(module.module_id())
             .cloned()
             .expect("runner fixture should define every module outcome")
     }
@@ -309,7 +309,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(binding.module.id.clone(), Arc::clone(&binding.instance_pool))
+    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&binding.instance_pool))
         .build()
 }
 

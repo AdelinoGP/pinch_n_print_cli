@@ -47,41 +47,125 @@ pub enum ConfigUnit {
 /// Construction goes through [`ConfigFieldSchemaBuilder`], which uses
 /// non-consuming `&mut self -> &mut Self` setters — see spec §6.3 — so
 /// the existing `FullConfigSchema::default()` loop bodies stay readable
-/// when each row sets a different mix of optionals.
+/// when each row sets a different mix of optionals. Field reads from
+/// outside the crate go through the `pub fn` accessor methods declared
+/// below.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConfigFieldSchema {
     /// The field key (e.g., "density", "pattern").
-    pub key: String,
+    pub(crate) key: String,
     /// The field type.
-    pub field_type: ConfigFieldType,
+    pub(crate) field_type: ConfigFieldType,
     /// Default value as a string representation.
-    pub default: Option<ConfigValue>,
+    pub(crate) default: Option<ConfigValue>,
     /// Display name for UI.
-    pub display: Option<String>,
+    pub(crate) display: Option<String>,
     /// Description for tooltips.
-    pub description: Option<String>,
+    pub(crate) description: Option<String>,
     /// UI grouping hint.
-    pub group: Option<String>,
+    pub(crate) group: Option<String>,
     /// Unit for numeric fields.
-    pub unit: ConfigUnit,
+    pub(crate) unit: ConfigUnit,
     /// Whether this is an advanced setting (hidden by default).
-    pub advanced: bool,
+    pub(crate) advanced: bool,
     /// Minimum value for Int/Float fields.
-    pub min: Option<f64>,
+    pub(crate) min: Option<f64>,
     /// Maximum value for Int/Float fields.
-    pub max: Option<f64>,
+    pub(crate) max: Option<f64>,
     /// Step size for Int/Float fields.
-    pub step: Option<f64>,
+    pub(crate) step: Option<f64>,
     /// Maximum length for String fields.
-    pub max_length: Option<usize>,
+    pub(crate) max_length: Option<usize>,
     /// Allowed values for Enum fields.
-    pub enum_values: Option<Vec<String>>,
+    pub(crate) enum_values: Option<Vec<String>>,
     /// Minimum length for list fields.
-    pub min_list_length: Option<usize>,
+    pub(crate) min_list_length: Option<usize>,
     /// Maximum length for list fields.
-    pub max_list_length: Option<usize>,
+    pub(crate) max_list_length: Option<usize>,
     /// Single-field validation expression.
-    pub validate: Option<String>,
+    pub(crate) validate: Option<String>,
+}
+
+impl ConfigFieldSchema {
+    /// The field key (e.g., "density", "pattern").
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    /// The field type.
+    pub fn field_type(&self) -> &ConfigFieldType {
+        &self.field_type
+    }
+
+    /// Default value as a string representation.
+    pub fn default(&self) -> Option<&ConfigValue> {
+        self.default.as_ref()
+    }
+
+    /// Display name for UI.
+    pub fn display(&self) -> Option<&str> {
+        self.display.as_deref()
+    }
+
+    /// Description for tooltips.
+    pub fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    /// UI grouping hint.
+    pub fn group(&self) -> Option<&str> {
+        self.group.as_deref()
+    }
+
+    /// Unit for numeric fields.
+    pub fn unit(&self) -> &ConfigUnit {
+        &self.unit
+    }
+
+    /// Whether this is an advanced setting (hidden by default).
+    pub fn advanced(&self) -> bool {
+        self.advanced
+    }
+
+    /// Minimum value for Int/Float fields.
+    pub fn min(&self) -> Option<f64> {
+        self.min
+    }
+
+    /// Maximum value for Int/Float fields.
+    pub fn max(&self) -> Option<f64> {
+        self.max
+    }
+
+    /// Step size for Int/Float fields.
+    pub fn step(&self) -> Option<f64> {
+        self.step
+    }
+
+    /// Maximum length for String fields.
+    pub fn max_length(&self) -> Option<usize> {
+        self.max_length
+    }
+
+    /// Allowed values for Enum fields.
+    pub fn enum_values(&self) -> Option<&[String]> {
+        self.enum_values.as_deref()
+    }
+
+    /// Minimum length for list fields.
+    pub fn min_list_length(&self) -> Option<usize> {
+        self.min_list_length
+    }
+
+    /// Maximum length for list fields.
+    pub fn max_list_length(&self) -> Option<usize> {
+        self.max_list_length
+    }
+
+    /// Single-field validation expression.
+    pub fn validate(&self) -> Option<&str> {
+        self.validate.as_deref()
+    }
 }
 
 /// Builder for [`ConfigFieldSchema`].

@@ -134,19 +134,19 @@ fn every_core_module_declares_non_empty_ir_access_per_docs_01() {
         // PostPass::TextPostProcess is explicitly documented as operating on
         // serialized text (docs/01 line 345), not on structured IR, and
         // therefore may legitimately declare empty ir-access.
-        if module.stage == "PostPass::TextPostProcess" {
+        if module.stage() == "PostPass::TextPostProcess" {
             continue;
         }
-        if module.ir_reads.is_empty() {
+        if module.ir_reads().is_empty() {
             offenders.push(format!(
                 "{stem} (stage {}): empty ir-access.reads",
-                module.stage
+                module.stage()
             ));
         }
-        if module.ir_writes.is_empty() {
+        if module.ir_writes().is_empty() {
             offenders.push(format!(
                 "{stem} (stage {}): empty ir-access.writes",
-                module.stage
+                module.stage()
             ));
         }
     }
@@ -169,14 +169,14 @@ fn core_module_ir_access_covers_required_roots_from_stage_io_contract() {
     let mut offenders: BTreeMap<String, Vec<String>> = BTreeMap::new();
 
     for (stem, module) in &modules {
-        let Some((required_reads, required_writes)) = required_contract_for_stage(&module.stage)
+        let Some((required_reads, required_writes)) = required_contract_for_stage(module.stage())
         else {
             // Unknown/unconstrained stage (e.g. TextPostProcess): skip.
             continue;
         };
 
         for root in required_reads {
-            if !module.ir_reads.iter().any(|p| path_mentions_root(p, root)) {
+            if !module.ir_reads().iter().any(|p| path_mentions_root(p, root)) {
                 offenders
                     .entry(stem.clone())
                     .or_default()
@@ -184,7 +184,7 @@ fn core_module_ir_access_covers_required_roots_from_stage_io_contract() {
             }
         }
         for root in required_writes {
-            if !module.ir_writes.iter().any(|p| path_mentions_root(p, root)) {
+            if !module.ir_writes().iter().any(|p| path_mentions_root(p, root)) {
                 offenders
                     .entry(stem.clone())
                     .or_default()
@@ -221,7 +221,7 @@ fn core_module_reads_are_restricted_to_upstream_ir_root_set() {
     let mut offenders = Vec::new();
 
     for (stem, module) in &modules {
-        let allowed_upstream_roots: &[&str] = match module.stage.as_str() {
+        let allowed_upstream_roots: &[&str] = match module.stage() {
             "PrePass::MeshSegmentation" => &["MeshIR"],
             "PrePass::MeshAnalysis" => &["MeshIR"],
             "PrePass::LayerPlanning" => &["MeshIR", "SurfaceClassificationIR"],
@@ -263,14 +263,14 @@ fn core_module_reads_are_restricted_to_upstream_ir_root_set() {
             _ => continue,
         };
 
-        for declared in &module.ir_reads {
+        for declared in module.ir_reads() {
             let ok = allowed_upstream_roots
                 .iter()
                 .any(|root| path_mentions_root(declared, root));
             if !ok {
                 offenders.push(format!(
                     "{stem} (stage {}): read '{declared}' is not a declared upstream IR root {:?}",
-                    module.stage, allowed_upstream_roots
+                    module.stage(), allowed_upstream_roots
                 ));
             }
         }
@@ -307,14 +307,14 @@ fn seam_planner_default_declares_prepass_contract_roots() {
     };
 
     assert_eq!(
-        module.stage, "PrePass::SeamPlanning",
+        module.stage(), "PrePass::SeamPlanning",
         "seam-planner-default must declare stage = PrePass::SeamPlanning"
     );
 
     let required_reads = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"];
     for root in &required_reads {
         assert!(
-            module.ir_reads.iter().any(|p| path_mentions_root(p, root)),
+            module.ir_reads().iter().any(|p| path_mentions_root(p, root)),
             "seam-planner-default must declare read root '{}'",
             root
         );
@@ -322,7 +322,7 @@ fn seam_planner_default_declares_prepass_contract_roots() {
 
     assert!(
         module
-            .ir_writes
+            .ir_writes()
             .iter()
             .any(|p| path_mentions_root(p, "SeamPlanIR")),
         "seam-planner-default must declare write root 'SeamPlanIR'"

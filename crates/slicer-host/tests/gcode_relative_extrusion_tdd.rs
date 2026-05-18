@@ -92,15 +92,15 @@ fn config_schema_registers_bool_default_true() {
 
     // Must be a Bool field
     assert_eq!(
-        field.field_type,
-        ConfigFieldType::Bool,
+        field.field_type(),
+        &ConfigFieldType::Bool,
         "use_relative_e_distances must have field_type Bool"
     );
 
     // Default must be Bool(true)
     assert_eq!(
-        field.default,
-        Some(ConfigValue::Bool(true)),
+        field.default(),
+        Some(&ConfigValue::Bool(true)),
         "use_relative_e_distances default must be Bool(true)"
     );
 

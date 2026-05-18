@@ -84,6 +84,20 @@ fn make_global_layer(index: u32, z: f32) -> GlobalLayer {
 }
 
 fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
+    make_dummy_module_with_masks(
+        stage_id,
+        module_id,
+        IrAccessMask::default(),
+        IrAccessMask::default(),
+    )
+}
+
+fn make_dummy_module_with_masks(
+    stage_id: &str,
+    module_id: &str,
+    ir_read_mask: IrAccessMask,
+    ir_write_mask: IrAccessMask,
+) -> CompiledModule {
     let loaded = LoadedModuleBuilder::new(
         module_id,
         semver(1, 0, 0),
@@ -105,7 +119,10 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
         )
         .expect("fixture module should build a pool"),
     );
-    CompiledModuleBuilder::new(module_id, pool).build()
+    CompiledModuleBuilder::new(module_id, pool)
+        .ir_read_mask(ir_read_mask)
+        .ir_write_mask(ir_write_mask)
+        .build()
 }
 
 struct NoopPrepassRunner;
@@ -391,15 +408,23 @@ fn record_edges_fires_for_every_stage_at_plan_freeze() {
     // `compute_serial_edges_from_compiled` emits a real IrWriteRead edge.
     let shared_path = "PerimeterIR.regions.walls".to_string();
 
-    let mut module_a = make_dummy_module("Layer::Perimeters", "perimeter-writer");
-    module_a.ir_write_mask = IrAccessMask {
-        paths: vec![shared_path.clone()],
-    };
+    let module_a = make_dummy_module_with_masks(
+        "Layer::Perimeters",
+        "perimeter-writer",
+        IrAccessMask::default(),
+        IrAccessMask {
+            paths: vec![shared_path.clone()],
+        },
+    );
 
-    let mut module_b = make_dummy_module("Layer::Perimeters", "perimeter-reader");
-    module_b.ir_read_mask = IrAccessMask {
-        paths: vec![shared_path.clone()],
-    };
+    let module_b = make_dummy_module_with_masks(
+        "Layer::Perimeters",
+        "perimeter-reader",
+        IrAccessMask {
+            paths: vec![shared_path.clone()],
+        },
+        IrAccessMask::default(),
+    );
 
     let plan = ExecutionPlan {
         prepass_stages: vec![CompiledStage {

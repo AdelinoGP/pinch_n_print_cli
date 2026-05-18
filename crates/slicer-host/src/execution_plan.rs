@@ -637,31 +637,75 @@ pub struct CompiledStage {
 /// Construction goes through [`CompiledModuleBuilder`]: pass the two
 /// required identity fields (`module_id`, `instance_pool`) to
 /// [`CompiledModuleBuilder::new`], then chain setters for the optional
-/// fields and call [`CompiledModuleBuilder::build`].
+/// fields and call [`CompiledModuleBuilder::build`]. Field reads from
+/// outside the crate go through the `pub fn` accessor methods declared
+/// below.
 #[derive(Debug, Clone)]
 pub struct CompiledModule {
     /// Reverse-domain module identifier.
-    pub module_id: ModuleId,
+    pub(crate) module_id: ModuleId,
     /// Bound instance pool selected during startup planning.
-    pub instance_pool: Arc<WasmInstancePool>,
+    pub(crate) instance_pool: Arc<WasmInstancePool>,
     /// Frozen IR read access mask derived from the manifest.
-    pub ir_read_mask: IrAccessMask,
+    pub(crate) ir_read_mask: IrAccessMask,
     /// Frozen IR write access mask derived from the manifest.
-    pub ir_write_mask: IrAccessMask,
+    pub(crate) ir_write_mask: IrAccessMask,
     /// Frozen module-specific config view.
-    pub config_view: Arc<ConfigView>,
+    pub(crate) config_view: Arc<ConfigView>,
     /// Frozen `[claims].holds` from the manifest. Used by the host's
     /// fill-role resolver (`validation::resolve_held_claims`) to compute the
     /// per-call effective held set for `Layer::Infill`.
-    pub claims: Vec<String>,
+    pub(crate) claims: Vec<String>,
     /// Compiled WASM component for runtime instantiation.
     /// `None` only during test fixtures that don't exercise real WASM dispatch.
-    pub wasm_component: Option<Arc<WasmComponent>>,
+    pub(crate) wasm_component: Option<Arc<WasmComponent>>,
     /// Module IDs this module explicitly depends on (manifest
     /// `requires_modules`). Carried through to runtime so
     /// `compute_serial_edges_from_compiled` can emit
     /// `EdgeReason::ExplicitRequires` rows alongside `IrWriteRead`.
-    pub requires_modules: Vec<ModuleId>,
+    pub(crate) requires_modules: Vec<ModuleId>,
+}
+
+impl CompiledModule {
+    /// Reverse-domain module identifier.
+    pub fn module_id(&self) -> &str {
+        &self.module_id
+    }
+
+    /// Bound instance pool selected during startup planning.
+    pub fn instance_pool(&self) -> &Arc<WasmInstancePool> {
+        &self.instance_pool
+    }
+
+    /// Frozen IR read access mask derived from the manifest.
+    pub fn ir_read_mask(&self) -> &IrAccessMask {
+        &self.ir_read_mask
+    }
+
+    /// Frozen IR write access mask derived from the manifest.
+    pub fn ir_write_mask(&self) -> &IrAccessMask {
+        &self.ir_write_mask
+    }
+
+    /// Frozen module-specific config view.
+    pub fn config_view(&self) -> &Arc<ConfigView> {
+        &self.config_view
+    }
+
+    /// Frozen `[claims].holds` from the manifest.
+    pub fn claims(&self) -> &[String] {
+        &self.claims
+    }
+
+    /// Compiled WASM component for runtime instantiation.
+    pub fn wasm_component(&self) -> Option<&Arc<WasmComponent>> {
+        self.wasm_component.as_ref()
+    }
+
+    /// Module IDs this module explicitly depends on.
+    pub fn requires_modules(&self) -> &[ModuleId] {
+        &self.requires_modules
+    }
 }
 
 /// Builder for [`CompiledModule`]. Required identity fields

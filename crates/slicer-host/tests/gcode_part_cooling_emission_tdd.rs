@@ -215,19 +215,19 @@ fn cooling_keys_registered() {
         assert!(field.is_some(), "Key {} not found in schema", key);
         let field = field.unwrap();
         assert_eq!(
-            field.field_type,
-            ConfigFieldType::Int,
+            field.field_type(),
+            &ConfigFieldType::Int,
             "Expected Int type for {}",
             key
         );
         assert_eq!(
-            field.default,
-            Some(SchemaConfigValue::Int(default_val)),
+            field.default(),
+            Some(&SchemaConfigValue::Int(default_val)),
             "Incorrect default for {}",
             key
         );
         assert_eq!(
-            field.group.as_deref(),
+            field.group(),
             Some("Cooling"),
             "Expected Cooling group for {}",
             key
@@ -244,19 +244,19 @@ fn cooling_keys_registered() {
         assert!(field.is_some(), "Key {} not found in schema", key);
         let field = field.unwrap();
         assert_eq!(
-            field.field_type,
-            ConfigFieldType::Bool,
+            field.field_type(),
+            &ConfigFieldType::Bool,
             "Expected Bool type for {}",
             key
         );
         assert_eq!(
-            field.default,
-            Some(SchemaConfigValue::Bool(default_val)),
+            field.default(),
+            Some(&SchemaConfigValue::Bool(default_val)),
             "Incorrect default for {}",
             key
         );
         assert_eq!(
-            field.group.as_deref(),
+            field.group(),
             Some("Cooling"),
             "Expected Cooling group for {}",
             key
@@ -270,19 +270,19 @@ fn cooling_keys_registered() {
         assert!(field.is_some(), "Key {} not found in schema", key);
         let field = field.unwrap();
         assert_eq!(
-            field.field_type,
-            ConfigFieldType::Float,
+            field.field_type(),
+            &ConfigFieldType::Float,
             "Expected Float type for {}",
             key
         );
         assert_eq!(
-            field.default,
-            Some(SchemaConfigValue::Float(default_val)),
+            field.default(),
+            Some(&SchemaConfigValue::Float(default_val)),
             "Incorrect default for {}",
             key
         );
         assert_eq!(
-            field.group.as_deref(),
+            field.group(),
             Some("Cooling"),
             "Expected Cooling group for {}",
             key

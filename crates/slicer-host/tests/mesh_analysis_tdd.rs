@@ -39,7 +39,7 @@ impl PrepassStageRunner for UnreachableRunner {
     ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
         panic!(
             "prepass runner should not be invoked for this test (stage={stage_id}, module={})",
-            module.module_id
+            module.module_id()
         );
     }
 }

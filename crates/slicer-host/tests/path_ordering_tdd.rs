@@ -113,7 +113,7 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
         .expect("fixture pool"),
     );
     let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
             .wasm_component(Some(path_opt_component))
             .build(),
     );
@@ -284,7 +284,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         .expect("fixture pool"),
     );
     let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
             .wasm_component(Some(path_opt_component))
             .build(),
     );
@@ -371,7 +371,7 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
         .expect("fixture pool"),
     );
     let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
             .wasm_component(Some(path_opt_component))
             .build(),
     );
@@ -456,7 +456,7 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             .expect("fixture pool"),
         );
         let path_opt_module = Arc::new(
-            CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+            CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
                 .wasm_component(Some(path_opt_component))
                 .build(),
         );
@@ -536,7 +536,7 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         .expect("fixture pool"),
     );
     let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
             .wasm_component(Some(path_opt_component))
             .build(),
     );
@@ -777,7 +777,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         wasm_component: None,
     };
-    CompiledModuleBuilder::new(binding.module.id.clone(), Arc::clone(&pool))
+    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&pool))
         .config_view(Arc::clone(&binding.config_view))
         .build()
 }

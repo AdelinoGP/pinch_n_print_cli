@@ -746,7 +746,7 @@ fn tree_support_active_holder() {
     let bound_ids: Vec<String> = loaded
         .bindings
         .iter()
-        .map(|b| b.module.id.clone())
+        .map(|b| b.module.id().to_string())
         .collect();
     assert!(
         bound_ids.iter().any(|id| id == "com.core.tree-support"),
@@ -788,7 +788,7 @@ fn tree_support_active_holder() {
     let full_ids: Vec<String> = full_loaded
         .bindings
         .iter()
-        .map(|b| b.module.id.clone())
+        .map(|b| b.module.id().to_string())
         .collect();
     assert!(
         full_ids

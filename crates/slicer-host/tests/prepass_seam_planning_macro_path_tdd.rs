@@ -190,7 +190,7 @@ fn compile_seam_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         "seam_mode".to_string(),
         ConfigValue::String("nearest".to_string()),
     );
-    CompiledModuleBuilder::new(loaded.id.clone(), pool)
+    CompiledModuleBuilder::new(loaded.id().to_string(), pool)
         .config_view(Arc::new(ConfigView::from_map(config_map)))
         .wasm_component(Some(component))
         .build()

@@ -40,11 +40,11 @@ fn layer_planner_default_loads_as_real_component() {
     let binding = out
         .bindings
         .iter()
-        .find(|b| b.module.id == "com.core.layer-planner-default")
+        .find(|b| b.module.id() == "com.core.layer-planner-default")
         .expect("layer-planner-default binding present after discovery");
 
     assert!(
-        !binding.module.placeholder_wasm,
+        !binding.module.placeholder_wasm(),
         "layer-planner-default.wasm must not be a placeholder"
     );
     assert!(

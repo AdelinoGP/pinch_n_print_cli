@@ -401,7 +401,7 @@ impl LayerStageRunner for ScriptedRunner {
         _blackboard: &Blackboard,
         _arena: &mut LayerArena,
     ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        let key = (layer.index, stage_id.clone(), module.module_id.clone());
+        let key = (layer.index, stage_id.clone(), module.module_id().to_string());
 
         // Record invocation
         self.invocations.lock().unwrap().push(key.clone());
@@ -411,7 +411,7 @@ impl LayerStageRunner for ScriptedRunner {
         if let Some(message) = self.fatal_errors.get(&key) {
             return Err(LayerStageError::FatalModule {
                 stage_id: stage_id.clone(),
-                module_id: module.module_id.clone(),
+                module_id: module.module_id().to_string(),
                 message: message.clone(),
             });
         }
@@ -560,12 +560,12 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(binding.module.id.clone(), Arc::clone(&binding.instance_pool))
+    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&binding.instance_pool))
         .ir_read_mask(IrAccessMask {
-            paths: binding.module.ir_reads.clone(),
+            paths: binding.module.ir_reads().to_vec(),
         })
         .ir_write_mask(IrAccessMask {
-            paths: binding.module.ir_writes.clone(),
+            paths: binding.module.ir_writes().to_vec(),
         })
         .config_view(Arc::clone(&binding.config_view))
         .build()

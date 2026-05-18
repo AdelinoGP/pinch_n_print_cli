@@ -49,6 +49,36 @@ fn module_with_config_keys(id: &str, keys: &[&str]) -> LoadedModule {
     .build()
 }
 
+fn module_with_config_keys_stage_world(
+    id: &str,
+    keys: &[&str],
+    stage: &str,
+    wit_world: &str,
+) -> LoadedModule {
+    let mut entries = BTreeMap::new();
+    for k in keys {
+        entries.insert(
+            (*k).to_string(),
+            ConfigFieldEntry {
+                field_type: "float".to_string(),
+                ..Default::default()
+            },
+        );
+    }
+    LoadedModuleBuilder::new(
+        id,
+        sem(),
+        stage,
+        wit_world,
+        PathBuf::from("fixtures/mod.wasm"),
+    )
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(sem())
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .config_schema(ConfigSchema { entries })
+    .build()
+}
+
 fn source() -> HashMap<String, ConfigValue> {
     let mut m = HashMap::new();
     m.insert("density".to_string(), ConfigValue::Float(0.25));
@@ -208,8 +238,8 @@ fn plan_request_for(module: &LoadedModule, config_view: Arc<ConfigView>) -> Exec
     );
     ExecutionPlanRequest {
         sorted_stages: vec![SortedStageModules {
-            stage_id: module.stage.clone(),
-            module_ids: vec![module.id.clone()],
+            stage_id: module.stage().to_string(),
+            module_ids: vec![module.id().to_string()],
         }],
         module_bindings: vec![ExecutionModuleBinding {
             module: module.clone(),
@@ -232,10 +262,10 @@ fn build_execution_plan_accepts_bound_configview_from_bind_module_config_view() 
     // The bound ConfigView flows through the compiled module unchanged and
     // exposes only declared keys on the real plan/build path.
     let compiled = &plan.prepass_stages[0].modules[0];
-    let keys = compiled.config_view.keys();
+    let keys = compiled.config_view().keys();
     assert_eq!(keys, vec!["density".to_string(), "pattern".to_string()]);
-    assert!(!compiled.config_view.contains_key("secret"));
-    assert!(!compiled.config_view.contains_key("fuzzy"));
+    assert!(!compiled.config_view().contains_key("secret"));
+    assert!(!compiled.config_view().contains_key("fuzzy"));
 }
 
 #[test]
@@ -337,8 +367,8 @@ fn build_live_execution_plan_filters_every_module_config_view_through_bind_helpe
     let m = module_with_config_keys("com.example.infill", &["density", "pattern"]);
     let plan = build_live_execution_plan(
         vec![SortedStageModules {
-            stage_id: m.stage.clone(),
-            module_ids: vec![m.id.clone()],
+            stage_id: m.stage().to_string(),
+            module_ids: vec![m.id().to_string()],
         }],
         vec![live_binding(&m)],
         &source(),
@@ -349,12 +379,12 @@ fn build_live_execution_plan_filters_every_module_config_view_through_bind_helpe
 
     let compiled = &plan.prepass_stages[0].modules[0];
     assert_eq!(
-        compiled.config_view.keys(),
+        compiled.config_view().keys(),
         vec!["density".to_string(), "pattern".to_string()]
     );
-    assert!(!compiled.config_view.contains_key("secret"));
-    assert!(!compiled.config_view.contains_key("fuzzy"));
-    assert_eq!(compiled.config_view.get_float("density"), Some(0.25));
+    assert!(!compiled.config_view().contains_key("secret"));
+    assert!(!compiled.config_view().contains_key("fuzzy"));
+    assert_eq!(compiled.config_view().get_float("density"), Some(0.25));
 }
 
 #[test]
@@ -362,19 +392,22 @@ fn build_live_execution_plan_never_exposes_undeclared_keys_to_compiled_modules()
     // Raw source carries many keys; each module in the plan must see only
     // the subset it declared.
     let m1 = module_with_config_keys("com.example.a", &["density"]);
-    let mut m2 = module_with_config_keys("com.example.b", &["fuzzy"]);
-    m2.stage = "PrePass::LayerPlanning".to_string();
-    m2.wit_world = "slicer:world-prepass@1.0.0".to_string();
+    let m2 = module_with_config_keys_stage_world(
+        "com.example.b",
+        &["fuzzy"],
+        "PrePass::LayerPlanning",
+        "slicer:world-prepass@1.0.0",
+    );
 
     let plan = build_live_execution_plan(
         vec![
             SortedStageModules {
-                stage_id: m1.stage.clone(),
-                module_ids: vec![m1.id.clone()],
+                stage_id: m1.stage().to_string(),
+                module_ids: vec![m1.id().to_string()],
             },
             SortedStageModules {
-                stage_id: m2.stage.clone(),
-                module_ids: vec![m2.id.clone()],
+                stage_id: m2.stage().to_string(),
+                module_ids: vec![m2.id().to_string()],
             },
         ],
         vec![live_binding(&m1), live_binding(&m2)],
@@ -386,13 +419,13 @@ fn build_live_execution_plan_never_exposes_undeclared_keys_to_compiled_modules()
 
     // module "a" declared only `density`; it must not see `fuzzy` or other keys
     let a = &plan.prepass_stages[0].modules[0];
-    assert_eq!(a.config_view.keys(), vec!["density".to_string()]);
-    assert!(!a.config_view.contains_key("fuzzy"));
-    assert!(!a.config_view.contains_key("secret"));
+    assert_eq!(a.config_view().keys(), vec!["density".to_string()]);
+    assert!(!a.config_view().contains_key("fuzzy"));
+    assert!(!a.config_view().contains_key("secret"));
     // module "b" declared only `fuzzy`; it must not see `density`.
     let b = &plan.prepass_stages[1].modules[0];
-    assert_eq!(b.config_view.keys(), vec!["fuzzy".to_string()]);
-    assert!(!b.config_view.contains_key("density"));
+    assert_eq!(b.config_view().keys(), vec!["fuzzy".to_string()]);
+    assert!(!b.config_view().contains_key("density"));
 }
 
 // ── parse_cli_config_source ────────────────────────────────────────────
