@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 pub const MAX_REPAIR_CAP_VERTICES: usize = 256;
 
 /// Result of a mesh repair operation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RepairResult {
     /// The repaired mesh.
     pub mesh: MeshIR,

@@ -4,21 +4,30 @@ use meshopt::{DecodePosition, SimplifyOptions};
 use slicer_ir::{IndexedTriangleSet, MeshIR, Point3};
 
 /// Configuration for mesh decimation.
+///
+/// Construct via [`DecimateConfigBuilder`]. Fields are crate-private;
+/// invariants (exactly one of `target_count`/`target_ratio` set,
+/// `max_error > 0.0`) are enforced at [`DecimateConfigBuilder::build`] time.
 #[derive(Debug, Clone)]
 pub struct DecimateConfig {
-    /// Absolute target triangle count. Mutually exclusive with `target_ratio`.
-    pub target_count: Option<usize>,
-    /// Fraction of original count to retain (0.0–1.0). Mutually exclusive with `target_count`.
-    pub target_ratio: Option<f32>,
-    /// Maximum allowed quadric error in internal units. Decimation stops early
-    /// if this would be exceeded.
-    pub max_error: f32,
-    /// Use `simplify_sloppy` instead of `simplify`. Faster but may produce
-    /// lower-quality results near boundaries.
-    pub aggressive: bool,
+    pub(crate) target_count: Option<usize>,
+    pub(crate) target_ratio: Option<f32>,
+    pub(crate) max_error: f32,
+    pub(crate) aggressive: bool,
 }
 
-impl Default for DecimateConfig {
+/// Builder for [`DecimateConfig`]. Consuming-style setters; terminal
+/// [`build`](Self::build) validates the configuration.
+#[derive(Debug, Clone)]
+#[must_use]
+pub struct DecimateConfigBuilder {
+    target_count: Option<usize>,
+    target_ratio: Option<f32>,
+    max_error: f32,
+    aggressive: bool,
+}
+
+impl Default for DecimateConfigBuilder {
     fn default() -> Self {
         Self {
             target_count: None,
@@ -29,8 +38,76 @@ impl Default for DecimateConfig {
     }
 }
 
+impl DecimateConfigBuilder {
+    /// Start a new builder with the project default `max_error` (0.01) and
+    /// no target set. A target must be supplied via [`target_count`](Self::target_count)
+    /// or [`target_ratio`](Self::target_ratio) before [`build`](Self::build).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the absolute target triangle count. Mutually exclusive with
+    /// [`target_ratio`](Self::target_ratio).
+    pub fn target_count(mut self, n: usize) -> Self {
+        self.target_count = Some(n);
+        self
+    }
+
+    /// Set the fraction of the original count to retain (0.0–1.0). Mutually
+    /// exclusive with [`target_count`](Self::target_count).
+    pub fn target_ratio(mut self, ratio: f32) -> Self {
+        self.target_ratio = Some(ratio);
+        self
+    }
+
+    /// Set the maximum allowed quadric error. Must be `> 0.0`.
+    pub fn max_error(mut self, e: f32) -> Self {
+        self.max_error = e;
+        self
+    }
+
+    /// Toggle the sloppy/aggressive simplification path.
+    pub fn aggressive(mut self, b: bool) -> Self {
+        self.aggressive = b;
+        self
+    }
+
+    /// Validate and produce a [`DecimateConfig`].
+    ///
+    /// Returns [`DecimateError::InvalidConfig`] when:
+    /// - neither `target_count` nor `target_ratio` is set,
+    /// - both are set, or
+    /// - `max_error <= 0.0`.
+    pub fn build(self) -> Result<DecimateConfig, DecimateError> {
+        match (self.target_count, self.target_ratio) {
+            (Some(_), Some(_)) => {
+                return Err(DecimateError::InvalidConfig(
+                    "both target_count and target_ratio are set; specify exactly one".to_string(),
+                ));
+            }
+            (None, None) => {
+                return Err(DecimateError::InvalidConfig(
+                    "neither target_count nor target_ratio is set; specify exactly one".to_string(),
+                ));
+            }
+            _ => {}
+        }
+        if self.max_error <= 0.0 {
+            return Err(DecimateError::InvalidConfig(
+                "max_error must be > 0.0".to_string(),
+            ));
+        }
+        Ok(DecimateConfig {
+            target_count: self.target_count,
+            target_ratio: self.target_ratio,
+            max_error: self.max_error,
+            aggressive: self.aggressive,
+        })
+    }
+}
+
 /// Result of a mesh decimation operation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DecimateResult {
     /// The decimated mesh.
     pub mesh: MeshIR,
@@ -68,24 +145,10 @@ impl DecodePosition for Vertex {
 
 /// Reduce triangle count via quadric error metric (QEM) edge collapse.
 ///
-/// Exactly one of `config.target_count` or `config.target_ratio` must be specified.
+/// Build `config` with [`DecimateConfigBuilder`]; construction guarantees
+/// exactly one of `target_count`/`target_ratio` is set and `max_error > 0.0`.
 /// Each `ObjectMesh` in the input `MeshIR` is decimated independently.
 pub fn decimate(mut mesh: MeshIR, config: DecimateConfig) -> Result<DecimateResult, DecimateError> {
-    // Validate config: exactly one target must be set.
-    match (config.target_count, config.target_ratio) {
-        (Some(_), Some(_)) => {
-            return Err(DecimateError::InvalidConfig(
-                "both target_count and target_ratio are set; specify exactly one".to_string(),
-            ));
-        }
-        (None, None) => {
-            return Err(DecimateError::InvalidConfig(
-                "neither target_count nor target_ratio is set; specify exactly one".to_string(),
-            ));
-        }
-        _ => {}
-    }
-
     // Check for empty mesh.
     let total_tris: usize = mesh.objects.iter().map(|o| o.mesh.indices.len() / 3).sum();
     if total_tris == 0 {
@@ -188,4 +251,70 @@ fn compact_mesh(
         },
         old_to_new,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_errors_when_no_target_set() {
+        let err = DecimateConfigBuilder::new().build().unwrap_err();
+        match err {
+            DecimateError::InvalidConfig(msg) => assert!(msg.contains("neither")),
+            other => panic!("expected InvalidConfig, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_errors_when_both_targets_set() {
+        let err = DecimateConfigBuilder::new()
+            .target_count(400)
+            .target_ratio(0.5)
+            .build()
+            .unwrap_err();
+        match err {
+            DecimateError::InvalidConfig(msg) => assert!(msg.contains("both")),
+            other => panic!("expected InvalidConfig, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_errors_when_max_error_non_positive() {
+        let err = DecimateConfigBuilder::new()
+            .target_ratio(0.5)
+            .max_error(0.0)
+            .build()
+            .unwrap_err();
+        match err {
+            DecimateError::InvalidConfig(msg) => assert!(msg.contains("max_error")),
+            other => panic!("expected InvalidConfig, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_ok_with_target_count() {
+        let cfg = DecimateConfigBuilder::new()
+            .target_count(400)
+            .build()
+            .unwrap();
+        assert_eq!(cfg.target_count, Some(400));
+        assert_eq!(cfg.target_ratio, None);
+        assert!((cfg.max_error - 0.01).abs() < f32::EPSILON);
+        assert!(!cfg.aggressive);
+    }
+
+    #[test]
+    fn build_ok_with_target_ratio_and_overrides() {
+        let cfg = DecimateConfigBuilder::new()
+            .target_ratio(0.25)
+            .max_error(0.5)
+            .aggressive(true)
+            .build()
+            .unwrap();
+        assert_eq!(cfg.target_count, None);
+        assert_eq!(cfg.target_ratio, Some(0.25));
+        assert!((cfg.max_error - 0.5).abs() < f32::EPSILON);
+        assert!(cfg.aggressive);
+    }
 }

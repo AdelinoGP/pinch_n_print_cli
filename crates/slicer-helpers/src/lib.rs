@@ -13,7 +13,7 @@ pub mod import;
 pub mod repair;
 
 // Re-export all public types for convenient access.
-pub use decimate::{DecimateConfig, DecimateError, DecimateResult};
+pub use decimate::{DecimateConfig, DecimateConfigBuilder, DecimateError, DecimateResult};
 pub use import::step::{NamedMesh, StepImportError, StepImportResult, StepLengthUnit, StepWarning};
 pub use repair::{RepairError, RepairResult, RepairStats, RepairWarning, MAX_REPAIR_CAP_VERTICES};
 
@@ -46,12 +46,15 @@ mod tests {
         assert_eq!(stats.components, 0);
         assert!(stats.warnings.is_empty());
 
-        // Verify DecimateConfig default.
-        let config = DecimateConfig::default();
-        assert!(config.target_count.is_none());
-        assert!(config.target_ratio.is_none());
-        assert!((config.max_error - 0.01).abs() < f32::EPSILON);
-        assert!(!config.aggressive);
+        // Verify DecimateConfigBuilder default + minimal build round-trip.
+        let cfg = DecimateConfigBuilder::new()
+            .target_ratio(0.5)
+            .build()
+            .expect("default builder + target_ratio should validate");
+        assert_eq!(cfg.target_count, None);
+        assert_eq!(cfg.target_ratio, Some(0.5));
+        assert!((cfg.max_error - 0.01).abs() < f32::EPSILON);
+        assert!(!cfg.aggressive);
 
         // Verify StepLengthUnit variants.
         assert_eq!(StepLengthUnit::Millimetre, StepLengthUnit::Millimetre);

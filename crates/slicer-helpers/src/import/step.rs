@@ -18,7 +18,7 @@ const INITIAL_TESSELLATION_TOL: f64 = 0.01;
 const RELATIVE_TOL: f64 = 0.001;
 
 /// Result of importing a STEP file.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct StepImportResult {
     /// One mesh per solid found in the STEP file.
     pub meshes: Vec<NamedMesh>,
@@ -29,7 +29,7 @@ pub struct StepImportResult {
 }
 
 /// A mesh with an optional STEP entity label.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct NamedMesh {
     /// STEP entity label if present.
     pub name: Option<String>,
@@ -38,7 +38,7 @@ pub struct NamedMesh {
 }
 
 /// Length unit declared in a STEP file header.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub enum StepLengthUnit {
     /// Millimetres (most common).
     Millimetre,
@@ -49,6 +49,7 @@ pub enum StepLengthUnit {
     /// Micrometres.
     Micrometre,
     /// No unit declared; defaults to millimetres with a warning.
+    #[default]
     Unknown,
 }
 

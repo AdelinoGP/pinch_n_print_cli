@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
 
-use slicer_helpers::decimate::{decimate, DecimateConfig};
+use slicer_helpers::decimate::{decimate, DecimateConfigBuilder};
 use slicer_helpers::import::step::import_step;
 use slicer_helpers::repair::repair;
 use slicer_ir::MeshIR;
@@ -62,7 +62,10 @@ fn bench_repair(c: &mut Criterion) {
 
 fn bench_decimate(c: &mut Criterion) {
     let mesh = load_cube_mesh();
-    let config = DecimateConfig::default();
+    let config = DecimateConfigBuilder::new()
+        .target_ratio(0.5)
+        .build()
+        .expect("bench builder should validate");
     c.bench_function("mesh_ops/decimate/cube_default", |b| {
         b.iter_batched(
             || mesh.clone(),

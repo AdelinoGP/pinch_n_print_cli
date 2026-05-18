@@ -4,7 +4,7 @@
 //! Each test constructs a MeshIR with appropriate geometry and asserts the expected
 //! decimation outcome.
 
-use slicer_helpers::{decimate, DecimateConfig, DecimateError};
+use slicer_helpers::{decimate, DecimateConfigBuilder, DecimateError};
 use slicer_ir::{
     BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
 };
@@ -138,10 +138,10 @@ fn decimate_by_ratio() {
         "sphere should have ~2000 tris, got {original_count}"
     );
 
-    let config = DecimateConfig {
-        target_ratio: Some(0.5),
-        ..DecimateConfig::default()
-    };
+    let config = DecimateConfigBuilder::new()
+        .target_ratio(0.5)
+        .build()
+        .expect("builder should validate");
 
     let result = decimate(mesh, config).expect("decimate should succeed");
     let half = original_count / 2;
@@ -161,11 +161,11 @@ fn decimate_by_count() {
     let original_count = mesh.objects[0].mesh.indices.len() / 3;
     assert!(original_count >= 1800);
 
-    let config = DecimateConfig {
-        target_count: Some(400),
-        max_error: f32::MAX,
-        ..DecimateConfig::default()
-    };
+    let config = DecimateConfigBuilder::new()
+        .target_count(400)
+        .max_error(f32::MAX)
+        .build()
+        .expect("builder should validate");
 
     let result = decimate(mesh, config).expect("decimate should succeed");
     assert!(
@@ -181,11 +181,11 @@ fn decimate_respects_error_budget() {
     let its = sphere_2000();
     let mesh = single_object_mesh(its);
 
-    let config = DecimateConfig {
-        target_ratio: Some(0.5),
-        max_error: 0.001,
-        ..DecimateConfig::default()
-    };
+    let config = DecimateConfigBuilder::new()
+        .target_ratio(0.5)
+        .max_error(0.001)
+        .build()
+        .expect("builder should validate");
 
     let result = decimate(mesh, config).expect("decimate should succeed");
     assert!(
@@ -204,11 +204,11 @@ fn decimate_stops_early() {
     // Very aggressive target (1% of original) but very tight error budget.
     // Decimation should stop early, keeping more triangles than the 1% target.
     let target = (original_count as f32 * 0.01) as usize;
-    let config = DecimateConfig {
-        target_ratio: Some(0.01),
-        max_error: 0.001,
-        ..DecimateConfig::default()
-    };
+    let config = DecimateConfigBuilder::new()
+        .target_ratio(0.01)
+        .max_error(0.001)
+        .build()
+        .expect("builder should validate");
 
     let result = decimate(mesh, config).expect("decimate should succeed");
     // Stopped early: final count should be more than the aggressive target
@@ -243,10 +243,10 @@ fn decimate_empty_mesh_error() {
         },
     };
 
-    let config = DecimateConfig {
-        target_ratio: Some(0.5),
-        ..DecimateConfig::default()
-    };
+    let config = DecimateConfigBuilder::new()
+        .target_ratio(0.5)
+        .build()
+        .expect("builder should validate");
 
     let result = decimate(mesh, config);
     assert!(result.is_err());
@@ -258,17 +258,11 @@ fn decimate_empty_mesh_error() {
 
 #[test]
 fn decimate_conflict_config_error() {
-    let its = sphere_2000();
-    let mesh = single_object_mesh(its);
-
-    // Both target_count and target_ratio set — should be rejected.
-    let config = DecimateConfig {
-        target_count: Some(400),
-        target_ratio: Some(0.5),
-        ..DecimateConfig::default()
-    };
-
-    let result = decimate(mesh, config);
+    // Both target_count and target_ratio set — rejected at builder.build().
+    let result = DecimateConfigBuilder::new()
+        .target_count(400)
+        .target_ratio(0.5)
+        .build();
     assert!(result.is_err());
     assert!(
         matches!(result.unwrap_err(), DecimateError::InvalidConfig(_)),

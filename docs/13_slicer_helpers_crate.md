@@ -220,7 +220,10 @@ Coordinates are converted to `f32` for meshopt processing and back to `i64` (int
 | `max_error`    | `f32`   | `0.01`  | Maximum allowed quadric error in internal units. Decimation stops early if this would be exceeded.         |
 | `aggressive`   | `bool`  | `false` | Use `simplify_sloppy` instead of `simplify`. Faster but may produce lower-quality results near boundaries. |
 
-Exactly one of `target_count` or `target_ratio` must be specified.
+Exactly one of `target_count` or `target_ratio` must be specified. Construct
+`DecimateConfig` via [`DecimateConfigBuilder`]; `build()` validates the
+exactly-one-target rule and `max_error > 0.0`, returning
+`DecimateError::InvalidConfig` on violation.
 
 ### Output
 
@@ -236,6 +239,17 @@ pub struct DecimateResult {
 ### Public API
 
 ```rust
+pub struct DecimateConfigBuilder { /* private */ }
+
+impl DecimateConfigBuilder {
+    pub fn new() -> Self;
+    pub fn target_count(self, n: usize) -> Self;
+    pub fn target_ratio(self, ratio: f32) -> Self;
+    pub fn max_error(self, e: f32) -> Self;
+    pub fn aggressive(self, b: bool) -> Self;
+    pub fn build(self) -> Result<DecimateConfig, DecimateError>;
+}
+
 pub fn decimate(mesh: MeshIR, config: DecimateConfig) -> Result<DecimateResult, DecimateError>
 ```
 
