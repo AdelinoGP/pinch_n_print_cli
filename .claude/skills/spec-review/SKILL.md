@@ -118,6 +118,29 @@ Packet-quality preflight:
 
 If any AC lacks a runnable command → **HIGH** finding (not MED), mark `PARTIAL/INCOMPLETE` in the report, and do not proceed until logged. If packet-quality fails, log a **HIGH** per missing element and clearly separate packet-authoring defects from implementation defects.
 
+#### Doc Impact Statement gate (Required)
+
+Every packet's `packet.spec.md` must contain a **Doc Impact Statement** section
+(see `.claude/skills/spec-packet-generator/references/templates/packet.spec.md`). Verify:
+
+1. The section exists and is non-empty.
+2. Its content is **either** the literal string `none` with a one-line
+   rationale, **or** a list of specific `docs/<NN>_*.md` sections plus one
+   verification grep per section.
+3. If `none`: confirm the rationale is genuinely scope-bound (test-only, pure
+   refactor, doc-only change). Refactors that touch IR fields, WIT types,
+   scheduler rules, claim IDs, manifest schema, host services, or module SDK
+   contracts are **not** eligible — flag **HIGH** if `none` is claimed for
+   any such packet.
+4. If a section list: dispatch each verification grep as a `FACT pass/fail`.
+   Every grep must return a hit before the packet may close. Missing greps
+   = `CHANGES REQUESTED`; failing greps = `CHANGES REQUESTED` with the
+   missing doc edits enumerated.
+
+A missing or non-conformant Doc Impact Statement is a packet-authoring defect
+of equal severity to a missing AC verification command — block closure until
+fixed.
+
 ### Step 2 — Identify the packet
 
 Given a name, list `.ralph/specs/` (small, OK to read directly). Given a path, validate it contains all 5 packet files.
