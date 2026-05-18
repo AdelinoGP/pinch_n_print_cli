@@ -442,15 +442,14 @@ fn default_rectilinear_holds_all_claims_emits_top() {
 
     // ── Runtime filter: SliceRegionView::should_emit returns true for the
     //    top-surface role when the held set contains claim:top-fill.
-    let mut view = SliceRegionView::new(
-        ObjectId::from("rect-obj"),
-        RegionId::from(0u64),
-        Vec::new(),
-        Vec::new(),
-        0.2,
-        1.0,
-        false,
-    );
+    let mut view = SliceRegionView::default();
+    view.set_object_id(ObjectId::from("rect-obj"));
+    view.set_region_id(RegionId::from(0u64));
+    view.set_polygons(Vec::new());
+    view.set_infill_areas(Vec::new());
+    view.set_effective_layer_height(0.2);
+    view.set_z(1.0);
+    view.set_has_nonplanar(false);
     view.set_held_claims(held);
     assert!(
         view.should_emit(ExtrusionRole::TopSolidInfill),
@@ -600,15 +599,14 @@ fn gyroid_holds_sparse_claim_only_emits_sparse() {
     );
 
     // ── Runtime filter: gyroid view emits sparse but not top.
-    let mut gyroid_view = SliceRegionView::new(
-        ObjectId::from("gyroid-obj"),
-        RegionId::from(0u64),
-        Vec::new(),
-        Vec::new(),
-        0.2,
-        1.0,
-        false,
-    );
+    let mut gyroid_view = SliceRegionView::default();
+    gyroid_view.set_object_id(ObjectId::from("gyroid-obj"));
+    gyroid_view.set_region_id(RegionId::from(0u64));
+    gyroid_view.set_polygons(Vec::new());
+    gyroid_view.set_infill_areas(Vec::new());
+    gyroid_view.set_effective_layer_height(0.2);
+    gyroid_view.set_z(1.0);
+    gyroid_view.set_has_nonplanar(false);
     gyroid_view.set_held_claims(gyroid_held);
     assert!(
         gyroid_view.should_emit(ExtrusionRole::SparseInfill),
@@ -620,15 +618,14 @@ fn gyroid_holds_sparse_claim_only_emits_sparse() {
     );
 
     // ── Runtime filter: rectilinear view emits top but not sparse.
-    let mut rect_view = SliceRegionView::new(
-        ObjectId::from("rect-obj"),
-        RegionId::from(0u64),
-        Vec::new(),
-        Vec::new(),
-        0.2,
-        1.0,
-        false,
-    );
+    let mut rect_view = SliceRegionView::default();
+    rect_view.set_object_id(ObjectId::from("rect-obj"));
+    rect_view.set_region_id(RegionId::from(0u64));
+    rect_view.set_polygons(Vec::new());
+    rect_view.set_infill_areas(Vec::new());
+    rect_view.set_effective_layer_height(0.2);
+    rect_view.set_z(1.0);
+    rect_view.set_has_nonplanar(false);
     rect_view.set_held_claims(rect_held);
     assert!(
         rect_view.should_emit(ExtrusionRole::TopSolidInfill),
@@ -715,15 +712,14 @@ fn gyroid_does_not_emit_for_unheld_top_claim() {
     );
 
     // ── Runtime filter: should_emit(TopSolidInfill) returns false.
-    let mut gyroid_view = SliceRegionView::new(
-        ObjectId::from("gyroid-top-obj"),
-        RegionId::from(0u64),
-        Vec::new(),
-        Vec::new(),
-        0.2,
-        1.0,
-        false,
-    );
+    let mut gyroid_view = SliceRegionView::default();
+    gyroid_view.set_object_id(ObjectId::from("gyroid-top-obj"));
+    gyroid_view.set_region_id(RegionId::from(0u64));
+    gyroid_view.set_polygons(Vec::new());
+    gyroid_view.set_infill_areas(Vec::new());
+    gyroid_view.set_effective_layer_height(0.2);
+    gyroid_view.set_z(1.0);
+    gyroid_view.set_has_nonplanar(false);
     gyroid_view.set_held_claims(gyroid_held);
     assert!(
         !gyroid_view.should_emit(ExtrusionRole::TopSolidInfill),
@@ -909,15 +905,14 @@ fn region_override_redirects_claim_to_alternate_holder() {
     //    fall-through is irrelevant when dispatch never invokes the module.
 
     // Region A (default): rectilinear is dispatched and emits sparse.
-    let mut rect_view_a = SliceRegionView::new(
-        ObjectId::from("override-obj"),
-        RegionId::from(0u64),
-        Vec::new(),
-        Vec::new(),
-        0.2,
-        1.0,
-        false,
-    );
+    let mut rect_view_a = SliceRegionView::default();
+    rect_view_a.set_object_id(ObjectId::from("override-obj"));
+    rect_view_a.set_region_id(RegionId::from(0u64));
+    rect_view_a.set_polygons(Vec::new());
+    rect_view_a.set_infill_areas(Vec::new());
+    rect_view_a.set_effective_layer_height(0.2);
+    rect_view_a.set_z(1.0);
+    rect_view_a.set_has_nonplanar(false);
     rect_view_a.set_held_claims(rect_a);
     assert!(
         rect_view_a.should_emit(ExtrusionRole::SparseInfill),
@@ -927,30 +922,28 @@ fn region_override_redirects_claim_to_alternate_holder() {
     // Region B (override): lightning is dispatched and emits sparse;
     //                      rectilinear is dispatched for the other roles
     //                      but its sparse role is filtered out.
-    let mut lightning_view_b = SliceRegionView::new(
-        ObjectId::from("override-obj"),
-        RegionId::from(1u64),
-        Vec::new(),
-        Vec::new(),
-        0.2,
-        1.0,
-        false,
-    );
+    let mut lightning_view_b = SliceRegionView::default();
+    lightning_view_b.set_object_id(ObjectId::from("override-obj"));
+    lightning_view_b.set_region_id(RegionId::from(1u64));
+    lightning_view_b.set_polygons(Vec::new());
+    lightning_view_b.set_infill_areas(Vec::new());
+    lightning_view_b.set_effective_layer_height(0.2);
+    lightning_view_b.set_z(1.0);
+    lightning_view_b.set_has_nonplanar(false);
     lightning_view_b.set_held_claims(lightning_b);
     assert!(
         lightning_view_b.should_emit(ExtrusionRole::SparseInfill),
         "region B: lightning must emit SparseInfill (override redirects sparse to lightning)"
     );
 
-    let mut rect_view_b = SliceRegionView::new(
-        ObjectId::from("override-obj"),
-        RegionId::from(1u64),
-        Vec::new(),
-        Vec::new(),
-        0.2,
-        1.0,
-        false,
-    );
+    let mut rect_view_b = SliceRegionView::default();
+    rect_view_b.set_object_id(ObjectId::from("override-obj"));
+    rect_view_b.set_region_id(RegionId::from(1u64));
+    rect_view_b.set_polygons(Vec::new());
+    rect_view_b.set_infill_areas(Vec::new());
+    rect_view_b.set_effective_layer_height(0.2);
+    rect_view_b.set_z(1.0);
+    rect_view_b.set_has_nonplanar(false);
     rect_view_b.set_held_claims(rect_b);
     assert!(
         !rect_view_b.should_emit(ExtrusionRole::SparseInfill),

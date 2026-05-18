@@ -144,14 +144,16 @@ fn wall_from_candidates(candidates: &[SeamCandidate], z: f32) -> WallLoop {
 
 /// Helper: create a PerimeterRegionView with given candidates and walls.
 fn region_with_candidates(candidates: Vec<SeamCandidate>, z: f32) -> PerimeterRegionView {
-    PerimeterRegionView::new(
-        "obj-0".to_string(),
-        0,
-        vec![wall_from_candidates(&candidates, z)],
-        vec![],
-        candidates,
-        None,
-    )
+    {
+        let mut tmp = PerimeterRegionView::default();
+        tmp.set_object_id("obj-0".to_string());
+        tmp.set_region_id(0);
+        tmp.set_wall_loops(vec![wall_from_candidates(&candidates, z)]);
+        tmp.set_infill_areas(vec![]);
+        tmp.set_seam_candidates(candidates);
+        tmp.set_resolved_seam(None);
+        tmp
+    }
 }
 
 // ============================================================================

@@ -47,15 +47,14 @@ fn make_square_expolygon() -> slicer_ir::ExPolygon {
 /// Create a region with bridge areas and orientation set.
 fn make_bridge_region(bridge_orientation_deg: f32) -> SliceRegionView {
     let square = make_square_expolygon();
-    let mut region = SliceRegionView::new(
-        "test_object".to_string(),
-        0,
-        vec![],
-        vec![square.clone()],
-        0.2,
-        1.0,
-        false,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("test_object".to_string());
+    region.set_region_id(0);
+    region.set_polygons(vec![]);
+    region.set_infill_areas(vec![square.clone()]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(1.0);
+    region.set_has_nonplanar(false);
     region.set_is_bridge(true);
     region.set_bridge_areas(vec![square.clone()]);
     region.set_bridge_orientation_deg(bridge_orientation_deg);
@@ -183,15 +182,14 @@ fn straddling_expoly_partitioned_via_set_difference() {
     let outer = rect_expoly_mm(0, 0, 20, 20);
     let bridge = rect_expoly_mm(5, 5, 15, 15);
 
-    let mut region = SliceRegionView::new(
-        "test_object".to_string(),
-        0,
-        vec![],
-        vec![outer],
-        0.2,
-        1.0,
-        false,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("test_object".to_string());
+    region.set_region_id(0);
+    region.set_polygons(vec![]);
+    region.set_infill_areas(vec![outer]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(1.0);
+    region.set_has_nonplanar(false);
     region.set_is_bridge(true);
     region.set_bridge_areas(vec![bridge]);
     region.set_bridge_orientation_deg(0.0);
@@ -263,15 +261,14 @@ fn bridge_paths_use_bridge_orientation_not_sparse_alternation() {
     let outer = rect_expoly_mm(0, 0, 20, 20);
     let bridge_rect = rect_expoly_mm(2, 2, 18, 18);
 
-    let mut region = SliceRegionView::new(
-        "test_object".to_string(),
-        0,
-        vec![],
-        vec![outer],
-        0.2,
-        1.0,
-        false,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("test_object".to_string());
+    region.set_region_id(0);
+    region.set_polygons(vec![]);
+    region.set_infill_areas(vec![outer]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(1.0);
+    region.set_has_nonplanar(false);
     region.set_is_bridge(true);
     region.set_bridge_areas(vec![bridge_rect]);
     region.set_bridge_orientation_deg(bridge_angle);
@@ -323,15 +320,14 @@ fn bridge_paths_use_bridge_orientation_not_sparse_alternation() {
 fn empty_bridge_areas_emits_no_bridge_infill_even_when_is_bridge_true() {
     let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
 
-    let mut region = SliceRegionView::new(
-        "test_object".to_string(),
-        0,
-        vec![],
-        vec![rect_expoly_mm(0, 0, 20, 20)],
-        0.2,
-        1.0,
-        false,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("test_object".to_string());
+    region.set_region_id(0);
+    region.set_polygons(vec![]);
+    region.set_infill_areas(vec![rect_expoly_mm(0, 0, 20, 20)]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(1.0);
+    region.set_has_nonplanar(false);
     region.set_is_bridge(true);
     // bridge_areas intentionally left empty
 

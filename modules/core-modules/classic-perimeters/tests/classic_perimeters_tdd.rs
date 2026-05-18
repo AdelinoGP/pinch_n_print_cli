@@ -79,15 +79,17 @@ fn make_config_with_speeds(
 
 /// Create a SliceRegionView with a single square polygon.
 fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
-    SliceRegionView::new(
-        "obj-1".to_string(),
-        1,
-        vec![make_square(side_mm)],
-        Vec::new(),
-        0.2,
-        z,
-        false,
-    )
+    {
+        let mut tmp = SliceRegionView::default();
+        tmp.set_object_id("obj-1".to_string());
+        tmp.set_region_id(1);
+        tmp.set_polygons(vec![make_square(side_mm)]);
+        tmp.set_infill_areas(Vec::new());
+        tmp.set_effective_layer_height(0.2);
+        tmp.set_z(z);
+        tmp.set_has_nonplanar(false);
+        tmp
+    }
 }
 
 #[test]
@@ -192,15 +194,14 @@ fn infill_area_computed() {
 fn empty_polygon_no_output() {
     let config = make_config(2, 0.4);
     let module = ClassicPerimeters::on_print_start(&config).unwrap();
-    let region = SliceRegionView::new(
-        "obj-1".to_string(),
-        1,
-        Vec::new(), // empty polygons
-        Vec::new(),
-        0.2,
-        0.2,
-        false,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("obj-1".to_string());
+    region.set_region_id(1);
+    region.set_polygons(Vec::new());
+    region.set_infill_areas(Vec::new());
+    region.set_effective_layer_height(0.2);
+    region.set_z(0.2);
+    region.set_has_nonplanar(false);
     let regions = vec![region];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

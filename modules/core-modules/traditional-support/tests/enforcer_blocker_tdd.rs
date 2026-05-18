@@ -57,15 +57,17 @@ fn square_expoly() -> ExPolygon {
 /// Helper: create a SliceRegionView with the standard square.
 fn square_region(z: f32) -> SliceRegionView {
     let poly = square_expoly();
-    SliceRegionView::new(
-        "obj1".to_string(),
-        1,
-        vec![poly.clone()],
-        vec![poly],
-        0.2,
-        z,
-        false,
-    )
+    {
+        let mut tmp = SliceRegionView::default();
+        tmp.set_object_id("obj1".to_string());
+        tmp.set_region_id(1);
+        tmp.set_polygons(vec![poly.clone()]);
+        tmp.set_infill_areas(vec![poly]);
+        tmp.set_effective_layer_height(0.2);
+        tmp.set_z(z);
+        tmp.set_has_nonplanar(false);
+        tmp
+    }
 }
 
 /// Helper: build a PaintRegionIR with a single semantic covering the entire

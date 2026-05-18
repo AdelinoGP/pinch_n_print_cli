@@ -82,15 +82,17 @@ fn empty_paint_ir() -> PaintRegionIR {
 
 /// Helper: create a SliceRegionView from an ExPolygon.
 fn region_view(object_id: &str, region_id: u32, polygons: Vec<ExPolygon>) -> SliceRegionView {
-    SliceRegionView::new(
-        object_id.to_string(),
-        region_id as RegionId,
-        polygons,
-        vec![],
-        0.2,
-        0.2,
-        false,
-    )
+    {
+        let mut tmp = SliceRegionView::default();
+        tmp.set_object_id(object_id.to_string());
+        tmp.set_region_id(region_id as RegionId);
+        tmp.set_polygons(polygons);
+        tmp.set_infill_areas(vec![]);
+        tmp.set_effective_layer_height(0.2);
+        tmp.set_z(0.2);
+        tmp.set_has_nonplanar(false);
+        tmp
+    }
 }
 
 /// Helper: create a RegionKey.

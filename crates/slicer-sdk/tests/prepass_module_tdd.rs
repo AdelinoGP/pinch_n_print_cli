@@ -89,7 +89,11 @@ fn test_03_facet_annotation_has_required_fields() {
 
 #[test]
 fn test_03b_facet_annotation_constructor() {
-    let annotation = FacetAnnotation::new(100, 30.0, FacetClass::Bridge);
+    let annotation = FacetAnnotation {
+        facet_index: 100,
+        slope_angle_deg: 30.0,
+        classification: FacetClass::Bridge,
+    };
 
     assert_eq!(annotation.facet_index, 100);
     assert!((annotation.slope_angle_deg - 30.0).abs() < 1e-6);
@@ -120,7 +124,12 @@ fn test_04_surface_group_proposal_has_required_fields() {
 
 #[test]
 fn test_04b_surface_group_proposal_constructor() {
-    let group = SurfaceGroupProposal::new(vec![5, 6, 7], 1.0, 5.0, 3);
+    let group = SurfaceGroupProposal {
+        facet_indices: vec![5, 6, 7],
+        z_min: 1.0,
+        z_max: 5.0,
+        shell_count: 3,
+    };
 
     assert_eq!(group.facet_indices, vec![5, 6, 7]);
     assert!((group.z_min - 1.0).abs() < 1e-6);
@@ -135,7 +144,11 @@ fn test_04b_surface_group_proposal_constructor() {
 #[test]
 fn test_05_mesh_analysis_output_push_facet_annotation() {
     let mut output = MeshAnalysisOutput::new();
-    let annotation = FacetAnnotation::new(0, 45.0, FacetClass::Normal);
+    let annotation = FacetAnnotation {
+        facet_index: 0,
+        slope_angle_deg: 45.0,
+        classification: FacetClass::Normal,
+    };
 
     let result = output.push_facet_annotation("obj-1".to_string(), annotation);
     assert!(result.is_ok());
@@ -149,7 +162,12 @@ fn test_05_mesh_analysis_output_push_facet_annotation() {
 #[test]
 fn test_06_mesh_analysis_output_push_surface_group() {
     let mut output = MeshAnalysisOutput::new();
-    let group = SurfaceGroupProposal::new(vec![0, 1, 2], 0.0, 5.0, 2);
+    let group = SurfaceGroupProposal {
+        facet_indices: vec![0, 1, 2],
+        z_min: 0.0,
+        z_max: 5.0,
+        shell_count: 2,
+    };
 
     let result = output.push_surface_group("obj-1".to_string(), group);
     assert!(result.is_ok());
@@ -186,13 +204,13 @@ fn test_07_region_layer_proposal_has_required_fields() {
 
 #[test]
 fn test_07b_region_layer_proposal_catchup() {
-    let proposal = RegionLayerProposal::new(
-        "obj-2".to_string(),
-        "region-99".to_string(),
-        0.15,
-        true,
-        1.5,
-    );
+    let proposal = RegionLayerProposal {
+        object_id: "obj-2".to_string(),
+        region_id: "region-99".to_string(),
+        effective_layer_height: 0.15,
+        is_catchup: true,
+        catchup_z_bottom: 1.5,
+    };
 
     assert_eq!(proposal.object_id, "obj-2");
     assert_eq!(proposal.region_id, "region-99");
@@ -210,8 +228,13 @@ fn test_08_layer_proposal_has_required_fields() {
     // Per docs/03_wit_and_manifest.md (world-prepass.wit):
     // record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
 
-    let region =
-        RegionLayerProposal::new("obj-1".to_string(), "region-1".to_string(), 0.2, false, 0.0);
+    let region = RegionLayerProposal {
+        object_id: "obj-1".to_string(),
+        region_id: "region-1".to_string(),
+        effective_layer_height: 0.2,
+        is_catchup: false,
+        catchup_z_bottom: 0.0,
+    };
 
     let proposal = LayerProposal {
         z: 0.2,
@@ -225,11 +248,26 @@ fn test_08_layer_proposal_has_required_fields() {
 #[test]
 fn test_08b_layer_proposal_constructor() {
     let regions = vec![
-        RegionLayerProposal::new("obj-1".to_string(), "r1".to_string(), 0.2, false, 0.0),
-        RegionLayerProposal::new("obj-2".to_string(), "r2".to_string(), 0.2, false, 0.0),
+        RegionLayerProposal {
+            object_id: "obj-1".to_string(),
+            region_id: "r1".to_string(),
+            effective_layer_height: 0.2,
+            is_catchup: false,
+            catchup_z_bottom: 0.0,
+        },
+        RegionLayerProposal {
+            object_id: "obj-2".to_string(),
+            region_id: "r2".to_string(),
+            effective_layer_height: 0.2,
+            is_catchup: false,
+            catchup_z_bottom: 0.0,
+        },
     ];
 
-    let proposal = LayerProposal::new(0.4, regions);
+    let proposal = LayerProposal {
+        z: 0.4,
+        active_regions: regions,
+    };
 
     assert!((proposal.z - 0.4).abs() < 1e-6);
     assert_eq!(proposal.active_regions.len(), 2);
@@ -242,7 +280,10 @@ fn test_08b_layer_proposal_constructor() {
 #[test]
 fn test_09_layer_plan_output_push_layer() {
     let mut output = LayerPlanOutput::new();
-    let proposal = LayerProposal::new(0.2, vec![]);
+    let proposal = LayerProposal {
+        z: 0.2,
+        active_regions: vec![],
+    };
 
     let result = output.push_layer(proposal);
     assert!(result.is_ok());
@@ -427,10 +468,28 @@ fn test_14_prelude_exports_all_prepass_types() {
 fn test_14b_prelude_types_are_constructible() {
     // Verify types can be constructed via prelude imports
     let _class = FacetClass::Normal;
-    let _annotation = FacetAnnotation::new(0, 0.0, FacetClass::Normal);
-    let _group = SurfaceGroupProposal::new(vec![], 0.0, 0.0, 0);
-    let _region = RegionLayerProposal::new("".to_string(), "".to_string(), 0.0, false, 0.0);
-    let _layer = LayerProposal::new(0.0, vec![]);
+    let _annotation = FacetAnnotation {
+        facet_index: 0,
+        slope_angle_deg: 0.0,
+        classification: FacetClass::Normal,
+    };
+    let _group = SurfaceGroupProposal {
+        facet_indices: vec![],
+        z_min: 0.0,
+        z_max: 0.0,
+        shell_count: 0,
+    };
+    let _region = RegionLayerProposal {
+        object_id: "".to_string(),
+        region_id: "".to_string(),
+        effective_layer_height: 0.0,
+        is_catchup: false,
+        catchup_z_bottom: 0.0,
+    };
+    let _layer = LayerProposal {
+        z: 0.0,
+        active_regions: vec![],
+    };
     let _mesh_output = MeshAnalysisOutput::new();
     let _layer_output = LayerPlanOutput::new();
     let _object_id: ObjectId = "test".to_string();

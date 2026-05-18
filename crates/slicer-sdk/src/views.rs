@@ -49,27 +49,21 @@ pub struct SliceRegionView {
     held_claims: Vec<String>,
 }
 
-impl SliceRegionView {
-    /// Create a new SliceRegionView (host-only, for testing).
-    #[doc(hidden)]
-    pub fn new(
-        object_id: ObjectId,
-        region_id: RegionId,
-        polygons: Vec<ExPolygon>,
-        infill_areas: Vec<ExPolygon>,
-        effective_layer_height: f32,
-        z: f32,
-        has_nonplanar: bool,
-    ) -> Self {
+impl Default for SliceRegionView {
+    fn default() -> Self {
         Self {
-            object_id,
-            region_id,
-            polygons,
-            infill_areas,
-            effective_layer_height,
-            z,
-            has_nonplanar,
+            object_id: ObjectId::default(),
+            region_id: RegionId::default(),
+            polygons: Vec::new(),
+            infill_areas: Vec::new(),
+            effective_layer_height: 0.0,
+            z: 0.0,
+            has_nonplanar: false,
             boundary_paint: HashMap::new(),
+            // `needs_support: true` matches the pre-TASK-200e `new()` default
+            // (see docs/02_ir_schemas.md §IR 2). Test fixtures that predate
+            // the SurfaceClassificationIR wiring observe the prior
+            // "all candidates eligible" behavior.
             needs_support: true,
             is_top_surface: false,
             is_bottom_surface: false,
@@ -79,37 +73,58 @@ impl SliceRegionView {
             held_claims: Vec::new(),
         }
     }
+}
 
-    /// Create a new SliceRegionView with boundary paint data (host-only, for testing).
+impl SliceRegionView {
+    /// Override the object ID (host-only, for testing).
     #[doc(hidden)]
-    #[allow(clippy::too_many_arguments)]
-    pub fn with_boundary_paint(
-        object_id: ObjectId,
-        region_id: RegionId,
-        polygons: Vec<ExPolygon>,
-        infill_areas: Vec<ExPolygon>,
-        effective_layer_height: f32,
-        z: f32,
-        has_nonplanar: bool,
+    pub fn set_object_id(&mut self, object_id: impl Into<ObjectId>) {
+        self.object_id = object_id.into();
+    }
+
+    /// Override the region ID (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_region_id(&mut self, region_id: RegionId) {
+        self.region_id = region_id;
+    }
+
+    /// Override the slice polygons (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_polygons(&mut self, polygons: Vec<ExPolygon>) {
+        self.polygons = polygons;
+    }
+
+    /// Override the infill areas (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_infill_areas(&mut self, infill_areas: Vec<ExPolygon>) {
+        self.infill_areas = infill_areas;
+    }
+
+    /// Override the effective layer height (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_effective_layer_height(&mut self, effective_layer_height: f32) {
+        self.effective_layer_height = effective_layer_height;
+    }
+
+    /// Override the Z height (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_z(&mut self, z: f32) {
+        self.z = z;
+    }
+
+    /// Override the non-planar flag (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_has_nonplanar(&mut self, has_nonplanar: bool) {
+        self.has_nonplanar = has_nonplanar;
+    }
+
+    /// Override the boundary paint map (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_boundary_paint(
+        &mut self,
         boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
-    ) -> Self {
-        Self {
-            object_id,
-            region_id,
-            polygons,
-            infill_areas,
-            effective_layer_height,
-            z,
-            has_nonplanar,
-            boundary_paint,
-            needs_support: true,
-            is_top_surface: false,
-            is_bottom_surface: false,
-            is_bridge: false,
-            bridge_areas: Vec::new(),
-            bridge_orientation_deg: 0.0,
-            held_claims: Vec::new(),
-        }
+    ) {
+        self.boundary_paint = boundary_paint;
     }
 
     /// Override the `needs_support` eligibility flag (host-only, for testing).
@@ -313,7 +328,7 @@ impl SliceRegionView {
 ///
 /// Matches WIT `resource perimeter-region-view` from ir-types.wit.
 /// Host constructs these; modules cannot construct them.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PerimeterRegionView {
     object_id: ObjectId,
     region_id: RegionId,
@@ -325,24 +340,40 @@ pub struct PerimeterRegionView {
 }
 
 impl PerimeterRegionView {
-    /// Create a new PerimeterRegionView (host-only, for testing).
+    /// Override the object ID (host-only, for testing).
     #[doc(hidden)]
-    pub fn new(
-        object_id: ObjectId,
-        region_id: RegionId,
-        wall_loops: Vec<WallLoop>,
-        infill_areas: Vec<ExPolygon>,
-        seam_candidates: Vec<SeamCandidate>,
-        resolved_seam: Option<SeamPosition>,
-    ) -> Self {
-        Self {
-            object_id,
-            region_id,
-            wall_loops,
-            infill_areas,
-            seam_candidates,
-            resolved_seam,
-        }
+    pub fn set_object_id(&mut self, object_id: impl Into<ObjectId>) {
+        self.object_id = object_id.into();
+    }
+
+    /// Override the region ID (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_region_id(&mut self, region_id: RegionId) {
+        self.region_id = region_id;
+    }
+
+    /// Override the wall loops (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_wall_loops(&mut self, wall_loops: Vec<WallLoop>) {
+        self.wall_loops = wall_loops;
+    }
+
+    /// Override the infill areas (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_infill_areas(&mut self, infill_areas: Vec<ExPolygon>) {
+        self.infill_areas = infill_areas;
+    }
+
+    /// Override the seam candidates (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_seam_candidates(&mut self, seam_candidates: Vec<SeamCandidate>) {
+        self.seam_candidates = seam_candidates;
+    }
+
+    /// Override the resolved seam (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_resolved_seam(&mut self, resolved_seam: Option<SeamPosition>) {
+        self.resolved_seam = resolved_seam;
     }
 
     /// Returns the object ID this region belongs to.

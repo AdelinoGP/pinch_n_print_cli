@@ -18,9 +18,10 @@ pub type RegionId = String;
 /// ```wit
 /// enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FacetClass {
     /// Normal surface with standard slope.
+    #[default]
     Normal,
     /// Near-horizontal surface (close to build plate plane).
     NearHorizontal,
@@ -40,7 +41,7 @@ pub enum FacetClass {
 /// ```wit
 /// record facet-annotation { facet-index: u32, slope-angle-deg: f32, classification: facet-class }
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct FacetAnnotation {
     /// Index of the facet in the mesh.
     pub facet_index: u32,
@@ -50,24 +51,13 @@ pub struct FacetAnnotation {
     pub classification: FacetClass,
 }
 
-impl FacetAnnotation {
-    /// Create a new FacetAnnotation.
-    pub fn new(facet_index: u32, slope_angle_deg: f32, classification: FacetClass) -> Self {
-        Self {
-            facet_index,
-            slope_angle_deg,
-            classification,
-        }
-    }
-}
-
 /// Proposal for grouping related surface facets.
 ///
 /// Per docs/03_wit_and_manifest.md (world-prepass.wit):
 /// ```wit
 /// record surface-group-proposal { facet-indices: list<u32>, z-min: f32, z-max: f32, shell-count: u32 }
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SurfaceGroupProposal {
     /// Indices of facets belonging to this surface group.
     pub facet_indices: Vec<u32>,
@@ -77,18 +67,6 @@ pub struct SurfaceGroupProposal {
     pub z_max: f32,
     /// Number of shells (perimeters) for this group.
     pub shell_count: u32,
-}
-
-impl SurfaceGroupProposal {
-    /// Create a new SurfaceGroupProposal.
-    pub fn new(facet_indices: Vec<u32>, z_min: f32, z_max: f32, shell_count: u32) -> Self {
-        Self {
-            facet_indices,
-            z_min,
-            z_max,
-            shell_count,
-        }
-    }
 }
 
 /// Proposal for a region's participation in a layer.
@@ -101,7 +79,7 @@ impl SurfaceGroupProposal {
 ///     is-catchup: bool, catchup-z-bottom: f32,
 /// }
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RegionLayerProposal {
     /// Object this region belongs to.
     pub object_id: ObjectId,
@@ -115,30 +93,11 @@ pub struct RegionLayerProposal {
     pub catchup_z_bottom: f32,
 }
 
-impl RegionLayerProposal {
-    /// Create a new RegionLayerProposal.
-    pub fn new(
-        object_id: ObjectId,
-        region_id: RegionId,
-        effective_layer_height: f32,
-        is_catchup: bool,
-        catchup_z_bottom: f32,
-    ) -> Self {
-        Self {
-            object_id,
-            region_id,
-            effective_layer_height,
-            is_catchup,
-            catchup_z_bottom,
-        }
-    }
-}
-
 /// A read-only view of an object's mesh and paint data.
 ///
 /// Used by `PrepassModule::run_mesh_segmentation` to provide mesh geometry
 /// and paint stroke information to segmentation modules.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct MeshObjectView {
     /// Unique identifier of the object.
     pub object_id: String,
@@ -151,7 +110,7 @@ pub struct MeshObjectView {
 }
 
 /// A read-only view of a single paint layer on an object.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PaintLayerView {
     /// The paint semantic (e.g. "support_enforcer", "seam").
     pub semantic: String,
@@ -162,7 +121,7 @@ pub struct PaintLayerView {
 }
 
 /// A paint value that can represent a flag, scalar, or tool index.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PaintValueView {
     /// Kind discriminator: `"flag"`, `"scalar"`, or `"tool_index"`.
     pub kind: String,
@@ -175,7 +134,7 @@ pub struct PaintValueView {
 }
 
 /// A sub-facet paint stroke that needs to be resolved into whole-facet values.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct PaintStrokeView {
     /// Stroke triangles as vertex positions `[[x,y,z]; 3]`.
     pub triangles: Vec<[[f32; 3]; 3]>,
@@ -205,26 +164,20 @@ pub struct PaintSegmentationObjectView {
     pub participating_layer_indices: Vec<u32>,
 }
 
-impl PaintSegmentationObjectView {
-    /// Create a new PaintSegmentationObjectView.
-    pub fn new(
-        object_id: String,
-        vertices: Vec<[f32; 3]>,
-        triangles: Vec<[u32; 3]>,
-        paint_layers: Vec<PaintLayerView>,
-        transform_matrix: [f64; 16],
-        participating_layer_indices: Vec<u32>,
-    ) -> Self {
+impl Default for PaintSegmentationObjectView {
+    fn default() -> Self {
         Self {
-            object_id,
-            vertices,
-            triangles,
-            paint_layers,
-            transform_matrix,
-            participating_layer_indices,
+            object_id: String::new(),
+            vertices: Vec::new(),
+            triangles: Vec::new(),
+            paint_layers: Vec::new(),
+            transform_matrix: [0.0; 16],
+            participating_layer_indices: Vec::new(),
         }
     }
+}
 
+impl PaintSegmentationObjectView {
     /// Returns the object ID.
     pub fn object_id(&self) -> &str {
         &self.object_id
@@ -262,7 +215,7 @@ impl PaintSegmentationObjectView {
 /// ```wit
 /// record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LayerProposal {
     /// Z coordinate of this layer.
     pub z: f32,
@@ -270,22 +223,15 @@ pub struct LayerProposal {
     pub active_regions: Vec<RegionLayerProposal>,
 }
 
-impl LayerProposal {
-    /// Create a new LayerProposal.
-    pub fn new(z: f32, active_regions: Vec<RegionLayerProposal>) -> Self {
-        Self { z, active_regions }
-    }
-}
-
 /// Reason tag for seam scoring (mirrors WIT `seam-reason`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SeamReason {
     /// Semantic tag describing why this candidate scored this way.
     pub tag: String,
 }
 
 /// One scored seam candidate from the prepass planner.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ScoredSeamCandidate {
     /// 3D position with extrusion width.
     pub position: Point3WithWidth,
@@ -296,7 +242,7 @@ pub struct ScoredSeamCandidate {
 }
 
 /// One entry in the global seam plan.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SeamPlanEntry {
     /// Global layer index for this seam plan entry.
     pub global_layer_index: u32,
@@ -313,7 +259,7 @@ pub struct SeamPlanEntry {
 }
 
 /// One entry in the global support plan.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SupportPlanEntry {
     /// Global layer index for this support plan entry.
     /// Negative values (`-1`, `-2`, ...) are reserved for raft prefix layers.
@@ -329,7 +275,7 @@ pub struct SupportPlanEntry {
 }
 
 /// Entry in the layer plan view, representing one layer's metadata.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LayerPlanViewEntry {
     /// Global layer index (0-based).
     pub global_layer_index: u32,
@@ -340,14 +286,14 @@ pub struct LayerPlanViewEntry {
 }
 
 /// Read-only view of the committed LayerPlanIR layers.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct LayerPlanView {
     /// Ordered list of layer entries (ascending by global_layer_index).
     pub layers: Vec<LayerPlanViewEntry>,
 }
 
 /// Entry in the region segmentation view, listing regions for one (object, layer) pair.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RegionSegmentationViewEntry {
     /// Object this entry belongs to.
     pub object_id: ObjectId,
@@ -358,14 +304,14 @@ pub struct RegionSegmentationViewEntry {
 }
 
 /// Read-only view of the committed RegionMapIR entries.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RegionSegmentationView {
     /// Ordered list of entries (ascending by (layer_index, object_id)).
     pub entries: Vec<RegionSegmentationViewEntry>,
 }
 
 /// Entry in the support geometry view, listing coarse outlines for one support layer.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SupportGeometryViewEntry {
     /// u32::MAX sentinel = intermediate model-resolution layer
     pub global_support_layer_index: u32,
@@ -378,7 +324,7 @@ pub struct SupportGeometryViewEntry {
 }
 
 /// Read-only view of the committed SupportGeometryIR.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct SupportGeometryView {
     /// Ordered list of entries (ascending by (global_support_layer_index, object_id, region_id)).
     pub entries: Vec<SupportGeometryViewEntry>,

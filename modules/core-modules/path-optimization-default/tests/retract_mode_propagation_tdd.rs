@@ -77,22 +77,26 @@ fn config_for_external_travel(mode_override: Option<&str>) -> ConfigView {
 /// which must produce one `Retract` and one `Unretract`.
 fn two_separate_regions() -> Vec<PerimeterRegionView> {
     vec![
-        PerimeterRegionView::new(
-            "obj-a".into(),
-            0,
-            vec![make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2)],
-            vec![],
-            vec![],
-            None,
-        ),
-        PerimeterRegionView::new(
-            "obj-a".into(),
-            1,
-            vec![make_wall_loop(50.0, 50.0, 60.0, 50.0, 0.2)],
-            vec![],
-            vec![],
-            None,
-        ),
+        {
+            let mut tmp = PerimeterRegionView::default();
+            tmp.set_object_id("obj-a");
+            tmp.set_region_id(0);
+            tmp.set_wall_loops(vec![make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2)]);
+            tmp.set_infill_areas(vec![]);
+            tmp.set_seam_candidates(vec![]);
+            tmp.set_resolved_seam(None);
+            tmp
+        },
+        {
+            let mut tmp = PerimeterRegionView::default();
+            tmp.set_object_id("obj-a");
+            tmp.set_region_id(1);
+            tmp.set_wall_loops(vec![make_wall_loop(50.0, 50.0, 60.0, 50.0, 0.2)]);
+            tmp.set_infill_areas(vec![]);
+            tmp.set_seam_candidates(vec![]);
+            tmp.set_resolved_seam(None);
+            tmp
+        },
     ]
 }
 

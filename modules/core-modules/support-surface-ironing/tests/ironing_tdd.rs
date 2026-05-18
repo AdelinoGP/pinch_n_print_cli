@@ -86,14 +86,16 @@ fn wall_loop_at_z(z: f32) -> WallLoop {
 
 /// Build a PerimeterRegionView with a 10mm square at given z.
 fn region_with_square_at_z(z: f32) -> PerimeterRegionView {
-    PerimeterRegionView::new(
-        "obj-0".to_string(),
-        0,
-        vec![wall_loop_at_z(z)],
-        vec![square_10mm()],
-        vec![],
-        None,
-    )
+    {
+        let mut tmp = PerimeterRegionView::default();
+        tmp.set_object_id("obj-0".to_string());
+        tmp.set_region_id(0);
+        tmp.set_wall_loops(vec![wall_loop_at_z(z)]);
+        tmp.set_infill_areas(vec![square_10mm()]);
+        tmp.set_seam_candidates(vec![]);
+        tmp.set_resolved_seam(None);
+        tmp
+    }
 }
 
 // ---------------------------------------------------------------------------

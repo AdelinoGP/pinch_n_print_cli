@@ -60,15 +60,14 @@ fn unpainted_region_produces_default_flags() {
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
-    let region = SliceRegionView::new(
-        "obj-1".to_string(),
-        0,
-        vec![square_polygon()],
-        vec![],
-        0.2,
-        0.2,
-        false,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("obj-1".to_string());
+    region.set_region_id(0);
+    region.set_polygons(vec![square_polygon()]);
+    region.set_infill_areas(vec![]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(0.2);
+    region.set_has_nonplanar(false);
 
     module
         .run_perimeters(0, &[region], &paint, &mut output, &config)
@@ -105,16 +104,15 @@ fn material_paint_sets_tool_index_on_outer_wall() {
     let mut boundary_paint = HashMap::new();
     boundary_paint.insert(PaintSemantic::Material, material_paint);
 
-    let region = SliceRegionView::with_boundary_paint(
-        "obj-1".to_string(),
-        0,
-        vec![poly],
-        vec![],
-        0.2,
-        0.2,
-        false,
-        boundary_paint,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("obj-1".to_string());
+    region.set_region_id(0);
+    region.set_polygons(vec![poly]);
+    region.set_infill_areas(vec![]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(0.2);
+    region.set_has_nonplanar(false);
+    region.set_boundary_paint(boundary_paint);
 
     module
         .run_perimeters(0, &[region], &paint, &mut output, &config)
@@ -154,16 +152,15 @@ fn fuzzy_skin_paint_sets_flag_on_outer_wall() {
     let mut boundary_paint = HashMap::new();
     boundary_paint.insert(PaintSemantic::FuzzySkin, fuzzy_paint);
 
-    let region = SliceRegionView::with_boundary_paint(
-        "obj-1".to_string(),
-        0,
-        vec![poly],
-        vec![],
-        0.2,
-        0.2,
-        false,
-        boundary_paint,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("obj-1".to_string());
+    region.set_region_id(0);
+    region.set_polygons(vec![poly]);
+    region.set_infill_areas(vec![]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(0.2);
+    region.set_has_nonplanar(false);
+    region.set_boundary_paint(boundary_paint);
 
     module
         .run_perimeters(0, &[region], &paint, &mut output, &config)
@@ -199,16 +196,15 @@ fn inner_walls_get_no_paint_propagation() {
     let mut boundary_paint = HashMap::new();
     boundary_paint.insert(PaintSemantic::Material, material_paint);
 
-    let region = SliceRegionView::with_boundary_paint(
-        "obj-1".to_string(),
-        0,
-        vec![poly],
-        vec![],
-        0.2,
-        0.2,
-        false,
-        boundary_paint,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("obj-1".to_string());
+    region.set_region_id(0);
+    region.set_polygons(vec![poly]);
+    region.set_infill_areas(vec![]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(0.2);
+    region.set_has_nonplanar(false);
+    region.set_boundary_paint(boundary_paint);
 
     module
         .run_perimeters(0, &[region], &paint, &mut output, &config)
@@ -252,16 +248,15 @@ fn adjacent_material_change_sets_material_boundary() {
     let mut boundary_paint = HashMap::new();
     boundary_paint.insert(PaintSemantic::Material, material_paint);
 
-    let region = SliceRegionView::with_boundary_paint(
-        "obj-1".to_string(),
-        0,
-        vec![poly],
-        vec![],
-        0.2,
-        0.2,
-        false,
-        boundary_paint,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("obj-1".to_string());
+    region.set_region_id(0);
+    region.set_polygons(vec![poly]);
+    region.set_infill_areas(vec![]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(0.2);
+    region.set_has_nonplanar(false);
+    region.set_boundary_paint(boundary_paint);
 
     module
         .run_perimeters(0, &[region], &paint, &mut output, &config)
@@ -302,16 +297,15 @@ fn mixed_painted_unpainted_preserves_none_as_default() {
     let mut boundary_paint = HashMap::new();
     boundary_paint.insert(PaintSemantic::Material, material_paint);
 
-    let region = SliceRegionView::with_boundary_paint(
-        "obj-1".to_string(),
-        0,
-        vec![poly],
-        vec![],
-        0.2,
-        0.2,
-        false,
-        boundary_paint,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("obj-1".to_string());
+    region.set_region_id(0);
+    region.set_polygons(vec![poly]);
+    region.set_infill_areas(vec![]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(0.2);
+    region.set_has_nonplanar(false);
+    region.set_boundary_paint(boundary_paint);
 
     module
         .run_perimeters(0, &[region], &paint, &mut output, &config)

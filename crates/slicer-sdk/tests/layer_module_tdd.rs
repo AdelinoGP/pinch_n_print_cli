@@ -329,13 +329,27 @@ fn test_11_run_support_signature_matches_wit() {
 
 #[test]
 fn test_12_slice_region_view_object_id() {
-    let view = SliceRegionView::new("obj-1".to_string(), 0, vec![], vec![], 0.2, 1.0, false);
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_region_id(0);
+    view.set_polygons(vec![]);
+    view.set_infill_areas(vec![]);
+    view.set_effective_layer_height(0.2);
+    view.set_z(1.0);
+    view.set_has_nonplanar(false);
     assert_eq!(view.object_id(), "obj-1");
 }
 
 #[test]
 fn test_13_slice_region_view_region_id() {
-    let view = SliceRegionView::new("obj-1".to_string(), 42, vec![], vec![], 0.2, 1.0, false);
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_region_id(42);
+    view.set_polygons(vec![]);
+    view.set_infill_areas(vec![]);
+    view.set_effective_layer_height(0.2);
+    view.set_z(1.0);
+    view.set_has_nonplanar(false);
     assert_eq!(*view.region_id(), 42);
 }
 
@@ -347,15 +361,14 @@ fn test_14_slice_region_view_polygons() {
         },
         holes: vec![],
     };
-    let view = SliceRegionView::new(
-        "obj-1".to_string(),
-        0,
-        vec![poly.clone()],
-        vec![],
-        0.2,
-        1.0,
-        false,
-    );
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_region_id(0);
+    view.set_polygons(vec![poly.clone()]);
+    view.set_infill_areas(vec![]);
+    view.set_effective_layer_height(0.2);
+    view.set_z(1.0);
+    view.set_has_nonplanar(false);
     assert_eq!(view.polygons().len(), 1);
 }
 
@@ -367,37 +380,66 @@ fn test_15_slice_region_view_infill_areas() {
         },
         holes: vec![],
     };
-    let view = SliceRegionView::new(
-        "obj-1".to_string(),
-        0,
-        vec![],
-        vec![poly.clone()],
-        0.2,
-        1.0,
-        false,
-    );
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_region_id(0);
+    view.set_polygons(vec![]);
+    view.set_infill_areas(vec![poly.clone()]);
+    view.set_effective_layer_height(0.2);
+    view.set_z(1.0);
+    view.set_has_nonplanar(false);
     assert_eq!(view.infill_areas().len(), 1);
 }
 
 #[test]
 fn test_16_slice_region_view_z() {
-    let view = SliceRegionView::new("obj-1".to_string(), 0, vec![], vec![], 0.2, 1.5, false);
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_region_id(0);
+    view.set_polygons(vec![]);
+    view.set_infill_areas(vec![]);
+    view.set_effective_layer_height(0.2);
+    view.set_z(1.5);
+    view.set_has_nonplanar(false);
     assert!((view.z() - 1.5).abs() < 1e-6);
 }
 
 #[test]
 fn test_17_slice_region_view_effective_layer_height() {
-    let view = SliceRegionView::new("obj-1".to_string(), 0, vec![], vec![], 0.25, 1.0, false);
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_region_id(0);
+    view.set_polygons(vec![]);
+    view.set_infill_areas(vec![]);
+    view.set_effective_layer_height(0.25);
+    view.set_z(1.0);
+    view.set_has_nonplanar(false);
     assert!((view.effective_layer_height() - 0.25).abs() < 1e-6);
 }
 
 #[test]
 fn test_18_slice_region_view_has_nonplanar() {
-    let view_planar = SliceRegionView::new("obj-1".to_string(), 0, vec![], vec![], 0.2, 1.0, false);
+    let mut view_planar = SliceRegionView::default();
+    view_planar.set_object_id("obj-1".to_string());
+    view_planar.set_region_id(0);
+    view_planar.set_polygons(vec![]);
+    view_planar.set_infill_areas(vec![]);
+    view_planar.set_effective_layer_height(0.2);
+    view_planar.set_z(1.0);
+    view_planar.set_has_nonplanar(false);
     assert!(!view_planar.has_nonplanar());
 
-    let view_nonplanar =
-        SliceRegionView::new("obj-1".to_string(), 0, vec![], vec![], 0.2, 1.0, true);
+    let view_nonplanar = {
+        let mut tmp = SliceRegionView::default();
+        tmp.set_object_id("obj-1".to_string());
+        tmp.set_region_id(0);
+        tmp.set_polygons(vec![]);
+        tmp.set_infill_areas(vec![]);
+        tmp.set_effective_layer_height(0.2);
+        tmp.set_z(1.0);
+        tmp.set_has_nonplanar(true);
+        tmp
+    };
     assert!(view_nonplanar.has_nonplanar());
 }
 
@@ -408,7 +450,14 @@ fn test_18_slice_region_view_has_nonplanar() {
 
 #[test]
 fn slice_region_view_needs_support_defaults_true() {
-    let view = SliceRegionView::new("obj-1".to_string(), 0, vec![], vec![], 0.2, 1.0, false);
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_region_id(0);
+    view.set_polygons(vec![]);
+    view.set_infill_areas(vec![]);
+    view.set_effective_layer_height(0.2);
+    view.set_z(1.0);
+    view.set_has_nonplanar(false);
     assert!(
         view.needs_support(),
         "default constructor must keep needs_support=true to preserve pre-classification eligibility"
@@ -417,7 +466,14 @@ fn slice_region_view_needs_support_defaults_true() {
 
 #[test]
 fn slice_region_view_set_needs_support_overrides() {
-    let mut view = SliceRegionView::new("obj-1".to_string(), 0, vec![], vec![], 0.2, 1.0, false);
+    let mut view = SliceRegionView::default();
+    view.set_object_id("obj-1".to_string());
+    view.set_region_id(0);
+    view.set_polygons(vec![]);
+    view.set_infill_areas(vec![]);
+    view.set_effective_layer_height(0.2);
+    view.set_z(1.0);
+    view.set_has_nonplanar(false);
     view.set_needs_support(false);
     assert!(!view.needs_support());
     view.set_needs_support(true);
@@ -430,13 +486,25 @@ fn slice_region_view_set_needs_support_overrides() {
 
 #[test]
 fn test_19_perimeter_region_view_object_id() {
-    let view = PerimeterRegionView::new("obj-2".to_string(), 0, vec![], vec![], vec![], None);
+    let mut view = PerimeterRegionView::default();
+    view.set_object_id("obj-2".to_string());
+    view.set_region_id(0);
+    view.set_wall_loops(vec![]);
+    view.set_infill_areas(vec![]);
+    view.set_seam_candidates(vec![]);
+    view.set_resolved_seam(None);
     assert_eq!(view.object_id(), "obj-2");
 }
 
 #[test]
 fn test_20_perimeter_region_view_region_id() {
-    let view = PerimeterRegionView::new("obj-2".to_string(), 99, vec![], vec![], vec![], None);
+    let mut view = PerimeterRegionView::default();
+    view.set_object_id("obj-2".to_string());
+    view.set_region_id(99);
+    view.set_wall_loops(vec![]);
+    view.set_infill_areas(vec![]);
+    view.set_seam_candidates(vec![]);
+    view.set_resolved_seam(None);
     assert_eq!(*view.region_id(), 99);
 }
 
@@ -454,7 +522,13 @@ fn test_21_perimeter_region_view_wall_loops() {
         feature_flags: vec![],
         boundary_type: slicer_ir::WallBoundaryType::ExteriorSurface,
     };
-    let view = PerimeterRegionView::new("obj-2".to_string(), 0, vec![wall], vec![], vec![], None);
+    let mut view = PerimeterRegionView::default();
+    view.set_object_id("obj-2".to_string());
+    view.set_region_id(0);
+    view.set_wall_loops(vec![wall]);
+    view.set_infill_areas(vec![]);
+    view.set_seam_candidates(vec![]);
+    view.set_resolved_seam(None);
     assert_eq!(view.wall_loops().len(), 1);
 }
 
@@ -464,7 +538,13 @@ fn test_22_perimeter_region_view_infill_areas() {
         contour: Polygon { points: vec![] },
         holes: vec![],
     };
-    let view = PerimeterRegionView::new("obj-2".to_string(), 0, vec![], vec![poly], vec![], None);
+    let mut view = PerimeterRegionView::default();
+    view.set_object_id("obj-2".to_string());
+    view.set_region_id(0);
+    view.set_wall_loops(vec![]);
+    view.set_infill_areas(vec![poly]);
+    view.set_seam_candidates(vec![]);
+    view.set_resolved_seam(None);
     assert_eq!(view.infill_areas().len(), 1);
 }
 

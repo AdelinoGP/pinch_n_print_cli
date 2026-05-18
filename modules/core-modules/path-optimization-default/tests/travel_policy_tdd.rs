@@ -83,22 +83,20 @@ fn config_with_retract_and_z_hop(retract_length: f64, z_hop: f64) -> ConfigView 
 fn external_travel_emits_matched_retract_and_unretract() {
     let config = config_with_retract(0.8);
 
-    let region_a = PerimeterRegionView::new(
-        "obj-a".into(),
-        0,
-        vec![make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2)],
-        vec![],
-        vec![],
-        None,
-    );
-    let region_b = PerimeterRegionView::new(
-        "obj-a".into(),
-        1,
-        vec![make_wall_loop(50.0, 50.0, 60.0, 50.0, 0.2)],
-        vec![],
-        vec![],
-        None,
-    );
+    let mut region_a = PerimeterRegionView::default();
+    region_a.set_object_id("obj-a");
+    region_a.set_region_id(0);
+    region_a.set_wall_loops(vec![make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2)]);
+    region_a.set_infill_areas(vec![]);
+    region_a.set_seam_candidates(vec![]);
+    region_a.set_resolved_seam(None);
+    let mut region_b = PerimeterRegionView::default();
+    region_b.set_object_id("obj-a");
+    region_b.set_region_id(1);
+    region_b.set_wall_loops(vec![make_wall_loop(50.0, 50.0, 60.0, 50.0, 0.2)]);
+    region_b.set_infill_areas(vec![]);
+    region_b.set_seam_candidates(vec![]);
+    region_b.set_resolved_seam(None);
 
     let module = path_optimization_default::PathOptimizationDefault::on_print_start(&config)
         .expect("on_print_start must succeed");
@@ -166,17 +164,16 @@ fn external_travel_emits_matched_retract_and_unretract() {
 fn internal_travel_suppresses_retraction() {
     let config = config_with_retract(0.8);
 
-    let region = PerimeterRegionView::new(
-        "obj-a".into(),
-        0,
-        vec![
-            make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2),
-            make_wall_loop(1.0, 1.0, 9.0, 1.0, 0.2),
-        ],
-        vec![],
-        vec![],
-        None,
-    );
+    let mut region = PerimeterRegionView::default();
+    region.set_object_id("obj-a");
+    region.set_region_id(0);
+    region.set_wall_loops(vec![
+        make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2),
+        make_wall_loop(1.0, 1.0, 9.0, 1.0, 0.2),
+    ]);
+    region.set_infill_areas(vec![]);
+    region.set_seam_candidates(vec![]);
+    region.set_resolved_seam(None);
 
     let module = path_optimization_default::PathOptimizationDefault::on_print_start(&config)
         .expect("on_print_start must succeed");
@@ -218,22 +215,20 @@ fn internal_travel_suppresses_retraction() {
 fn external_travel_with_z_hop_emits_z_hop_and_retract_pair() {
     let config = config_with_retract_and_z_hop(0.8, 0.2);
 
-    let region_a = PerimeterRegionView::new(
-        "obj-a".into(),
-        0,
-        vec![make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2)],
-        vec![],
-        vec![],
-        None,
-    );
-    let region_b = PerimeterRegionView::new(
-        "obj-a".into(),
-        1,
-        vec![make_wall_loop(50.0, 50.0, 60.0, 50.0, 0.2)],
-        vec![],
-        vec![],
-        None,
-    );
+    let mut region_a = PerimeterRegionView::default();
+    region_a.set_object_id("obj-a");
+    region_a.set_region_id(0);
+    region_a.set_wall_loops(vec![make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2)]);
+    region_a.set_infill_areas(vec![]);
+    region_a.set_seam_candidates(vec![]);
+    region_a.set_resolved_seam(None);
+    let mut region_b = PerimeterRegionView::default();
+    region_b.set_object_id("obj-a");
+    region_b.set_region_id(1);
+    region_b.set_wall_loops(vec![make_wall_loop(50.0, 50.0, 60.0, 50.0, 0.2)]);
+    region_b.set_infill_areas(vec![]);
+    region_b.set_seam_candidates(vec![]);
+    region_b.set_resolved_seam(None);
 
     let module = path_optimization_default::PathOptimizationDefault::on_print_start(&config)
         .expect("on_print_start must succeed");
@@ -283,22 +278,26 @@ fn travel_policy_output_is_deterministic() {
 
     let make_regions = || {
         vec![
-            PerimeterRegionView::new(
-                "obj-a".into(),
-                0,
-                vec![make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2)],
-                vec![],
-                vec![],
-                None,
-            ),
-            PerimeterRegionView::new(
-                "obj-a".into(),
-                1,
-                vec![make_wall_loop(50.0, 50.0, 60.0, 50.0, 0.2)],
-                vec![],
-                vec![],
-                None,
-            ),
+            {
+                let mut tmp = PerimeterRegionView::default();
+                tmp.set_object_id("obj-a");
+                tmp.set_region_id(0);
+                tmp.set_wall_loops(vec![make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2)]);
+                tmp.set_infill_areas(vec![]);
+                tmp.set_seam_candidates(vec![]);
+                tmp.set_resolved_seam(None);
+                tmp
+            },
+            {
+                let mut tmp = PerimeterRegionView::default();
+                tmp.set_object_id("obj-a");
+                tmp.set_region_id(1);
+                tmp.set_wall_loops(vec![make_wall_loop(50.0, 50.0, 60.0, 50.0, 0.2)]);
+                tmp.set_infill_areas(vec![]);
+                tmp.set_seam_candidates(vec![]);
+                tmp.set_resolved_seam(None);
+                tmp
+            },
         ]
     };
 

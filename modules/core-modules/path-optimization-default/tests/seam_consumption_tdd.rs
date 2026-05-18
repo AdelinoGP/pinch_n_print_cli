@@ -83,14 +83,15 @@ fn no_move_commands_emitted_when_perimeter_already_rotated() {
         wall_index: 0,
     };
 
-    let region = PerimeterRegionView::new(
-        "test-object".into(),
-        0,
-        vec![wall_loop],
-        vec![], // no infill areas needed for this test
-        vec![], // no seam candidates needed for this test
-        Some(resolved_seam),
-    );
+    let mut region = PerimeterRegionView::default();
+    region.set_object_id("test-object");
+    region.set_region_id(0);
+    region.set_wall_loops(vec![wall_loop]);
+    region.set_infill_areas(vec![]);
+    // no infill areas needed for this test
+
+    region.set_seam_candidates(vec![]);
+    region.set_resolved_seam(Some(resolved_seam));
 
     let module = path_optimization_default::PathOptimizationDefault::on_print_start(
         &slicer_ir::ConfigView::default(),
@@ -149,14 +150,13 @@ fn no_move_commands_emitted_when_perimeter_already_rotated() {
 fn missing_resolved_seam_leaves_wall_loop_order_unchanged() {
     // Build a PerimeterRegionView with no resolved_seam.
     let wall_loop = make_wall_loop(0.0, 0.0, 10.0, 0.0, 0.2, 0.4);
-    let region = PerimeterRegionView::new(
-        "test-object".into(),
-        0,
-        vec![wall_loop],
-        vec![],
-        vec![],
-        None, // no resolved seam
-    );
+    let mut region = PerimeterRegionView::default();
+    region.set_object_id("test-object");
+    region.set_region_id(0);
+    region.set_wall_loops(vec![wall_loop]);
+    region.set_infill_areas(vec![]);
+    region.set_seam_candidates(vec![]);
+    region.set_resolved_seam(None);
 
     let module = path_optimization_default::PathOptimizationDefault::on_print_start(
         &slicer_ir::ConfigView::default(),
@@ -209,14 +209,13 @@ fn seam_started_wall_replay_is_deterministic() {
         },
         wall_index: 0,
     };
-    let region = PerimeterRegionView::new(
-        "test-object".into(),
-        0,
-        vec![wall_loop],
-        vec![],
-        vec![],
-        Some(resolved_seam),
-    );
+    let mut region = PerimeterRegionView::default();
+    region.set_object_id("test-object");
+    region.set_region_id(0);
+    region.set_wall_loops(vec![wall_loop]);
+    region.set_infill_areas(vec![]);
+    region.set_seam_candidates(vec![]);
+    region.set_resolved_seam(Some(resolved_seam));
 
     let module = path_optimization_default::PathOptimizationDefault::on_print_start(
         &slicer_ir::ConfigView::default(),

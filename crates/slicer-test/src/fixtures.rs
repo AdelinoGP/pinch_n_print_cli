@@ -297,15 +297,17 @@ impl SliceRegionViewBuilder {
         } else {
             self.polygons.clone()
         };
-        SliceRegionView::new(
-            self.object_id,
-            self.region_id,
-            self.polygons,
-            infill_areas,
-            self.effective_layer_height,
-            self.z,
-            self.has_nonplanar,
-        )
+        {
+            let mut tmp = SliceRegionView::default();
+            tmp.set_object_id(self.object_id);
+            tmp.set_region_id(self.region_id);
+            tmp.set_polygons(self.polygons);
+            tmp.set_infill_areas(infill_areas);
+            tmp.set_effective_layer_height(self.effective_layer_height);
+            tmp.set_z(self.z);
+            tmp.set_has_nonplanar(self.has_nonplanar);
+            tmp
+        }
     }
 }
 
@@ -568,13 +570,13 @@ impl PerimeterRegionViewBuilder {
     /// Build a [`PerimeterRegionView`].
     #[must_use]
     pub fn build(self) -> PerimeterRegionView {
-        PerimeterRegionView::new(
-            self.object_id,
-            self.region_id,
-            self.wall_loops,
-            self.infill_areas,
-            self.seam_candidates,
-            None, // resolved_seam
-        )
+        let mut view = PerimeterRegionView::default();
+        view.set_object_id(self.object_id);
+        view.set_region_id(self.region_id);
+        view.set_wall_loops(self.wall_loops);
+        view.set_infill_areas(self.infill_areas);
+        view.set_seam_candidates(self.seam_candidates);
+        view.set_resolved_seam(None);
+        view
     }
 }

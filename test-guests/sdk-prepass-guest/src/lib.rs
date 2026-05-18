@@ -58,19 +58,14 @@ impl PrepassModule for SdkPrepassModule {
                     output
                         .push_facet_annotation(
                             obj.clone(),
-                            FacetAnnotation::new(i, slope, class),
+                            FacetAnnotation { facet_index: i, slope_angle_deg: slope, classification: class },
                         )
                         .map_err(|e| ModuleError::fatal(8, e))?;
                 }
                 output
                     .push_surface_group(
                         obj.clone(),
-                        SurfaceGroupProposal::new(
-                            (0..n).collect(),
-                            0.0,
-                            (n as f32) * 0.2,
-                            2,
-                        ),
+                        SurfaceGroupProposal { facet_indices: (0..n).collect(), z_min: 0.0, z_max: (n as f32) * 0.2, shell_count: 2 },
                     )
                     .map_err(|e| ModuleError::fatal(9, e))?;
             }

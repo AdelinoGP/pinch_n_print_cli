@@ -113,15 +113,17 @@ fn make_config_full(
 
 /// Create a SliceRegionView with a single polygon.
 fn make_region_from_poly(poly: ExPolygon, z: f32) -> SliceRegionView {
-    SliceRegionView::new(
-        "obj-1".to_string(),
-        1,
-        vec![poly],
-        Vec::new(),
-        0.2,
-        z,
-        false,
-    )
+    {
+        let mut tmp = SliceRegionView::default();
+        tmp.set_object_id("obj-1".to_string());
+        tmp.set_region_id(1);
+        tmp.set_polygons(vec![poly]);
+        tmp.set_infill_areas(Vec::new());
+        tmp.set_effective_layer_height(0.2);
+        tmp.set_z(z);
+        tmp.set_has_nonplanar(false);
+        tmp
+    }
 }
 
 /// Create a SliceRegionView with a single square polygon.
@@ -277,15 +279,14 @@ fn zero_walls_config() {
 fn empty_regions_no_output() {
     let config = make_config(2, 0.4);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
-    let region = SliceRegionView::new(
-        "obj-1".to_string(),
-        1,
-        Vec::new(),
-        Vec::new(),
-        0.2,
-        1.0,
-        false,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("obj-1".to_string());
+    region.set_region_id(1);
+    region.set_polygons(Vec::new());
+    region.set_infill_areas(Vec::new());
+    region.set_effective_layer_height(0.2);
+    region.set_z(1.0);
+    region.set_has_nonplanar(false);
     let regions = vec![region];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();

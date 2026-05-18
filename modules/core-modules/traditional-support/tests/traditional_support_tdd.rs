@@ -32,15 +32,17 @@ fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
         },
         holes: vec![],
     };
-    SliceRegionView::new(
-        "obj1".to_string(),
-        1,
-        vec![square.clone()],
-        vec![square], // infill_areas
-        0.2,
-        z,
-        false,
-    )
+    {
+        let mut tmp = SliceRegionView::default();
+        tmp.set_object_id("obj1".to_string());
+        tmp.set_region_id(1);
+        tmp.set_polygons(vec![square.clone()]);
+        tmp.set_infill_areas(vec![square]); // infill_areas
+        tmp.set_effective_layer_height(0.2);
+        tmp.set_z(z);
+        tmp.set_has_nonplanar(false);
+        tmp
+    }
 }
 
 /// Test 1: support_enabled=false produces no output.
@@ -228,15 +230,16 @@ fn empty_regions_no_output() {
     let module = TraditionalSupport::on_print_start(&config).unwrap();
 
     // Region with empty polygons
-    let region = SliceRegionView::new(
-        "obj1".to_string(),
-        1,
-        vec![], // empty polygons
-        vec![],
-        0.2,
-        0.3,
-        false,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("obj1".to_string());
+    region.set_region_id(1);
+    region.set_polygons(vec![]);
+    // empty polygons
+
+    region.set_infill_areas(vec![]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(0.3);
+    region.set_has_nonplanar(false);
 
     let paint = PaintRegionLayerView::new(0);
     let mut output = SupportOutputBuilder::new();

@@ -105,7 +105,10 @@ impl PrepassModule for DefaultLayerPlanner {
         // Push proposals to output
         for layer in merged {
             output
-                .push_layer(LayerProposal::new(layer.z, layer.regions))
+                .push_layer(LayerProposal {
+                    z: layer.z,
+                    active_regions: layer.regions,
+                })
                 .map_err(|e| ModuleError::fatal(5, e))?;
         }
 
@@ -212,13 +215,13 @@ fn merge_same_height(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
                 } else {
                     p.layer_height
                 };
-                RegionLayerProposal::new(
-                    p.object_id.clone(),
-                    "0".to_string(),
-                    effective_lh,
-                    false,
-                    0.0,
-                )
+                RegionLayerProposal {
+                    object_id: p.object_id.clone(),
+                    region_id: "0".to_string(),
+                    effective_layer_height: effective_lh,
+                    is_catchup: false,
+                    catchup_z_bottom: 0.0,
+                }
             })
             .collect();
 
@@ -266,26 +269,26 @@ fn merge_different_heights(plans: &[ObjectPlan]) -> Vec<MergedLayer> {
                 } else {
                     plan.layer_height
                 };
-                regions.push(RegionLayerProposal::new(
-                    plan.object_id.clone(),
-                    "0".to_string(),
-                    effective_lh,
-                    false,
-                    0.0,
-                ));
+                regions.push(RegionLayerProposal {
+                    object_id: plan.object_id.clone(),
+                    region_id: "0".to_string(),
+                    effective_layer_height: effective_lh,
+                    is_catchup: false,
+                    catchup_z_bottom: 0.0,
+                });
                 last_z[i] = z;
             } else {
                 // Catch-up layer: this object doesn't have a native layer here
                 let bottom_z = last_z[i];
                 let catchup_height = z - bottom_z;
                 if catchup_height > 1e-6 {
-                    regions.push(RegionLayerProposal::new(
-                        plan.object_id.clone(),
-                        "0".to_string(),
-                        catchup_height,
-                        true,
-                        bottom_z,
-                    ));
+                    regions.push(RegionLayerProposal {
+                        object_id: plan.object_id.clone(),
+                        region_id: "0".to_string(),
+                        effective_layer_height: catchup_height,
+                        is_catchup: true,
+                        catchup_z_bottom: bottom_z,
+                    });
                     last_z[i] = z;
                 }
             }

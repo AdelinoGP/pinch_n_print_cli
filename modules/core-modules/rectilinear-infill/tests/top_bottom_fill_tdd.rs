@@ -45,15 +45,14 @@ fn make_square_expolygon() -> ExPolygon {
 
 fn make_test_region(is_top: bool, is_bottom: bool, is_bridge: bool) -> SliceRegionView {
     let square = make_square_expolygon();
-    let mut region = SliceRegionView::new(
-        "test_object".to_string(),
-        0,
-        vec![],
-        vec![square],
-        0.2,
-        1.0,
-        false,
-    );
+    let mut region = SliceRegionView::default();
+    region.set_object_id("test_object".to_string());
+    region.set_region_id(0);
+    region.set_polygons(vec![]);
+    region.set_infill_areas(vec![square]);
+    region.set_effective_layer_height(0.2);
+    region.set_z(1.0);
+    region.set_has_nonplanar(false);
     region.set_is_top_surface(is_top);
     region.set_is_bottom_surface(is_bottom);
     region.set_is_bridge(is_bridge);

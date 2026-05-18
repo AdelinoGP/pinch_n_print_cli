@@ -95,14 +95,16 @@ fn sdk_region(
     walls: Vec<WallLoop>,
     candidates: Vec<SeamCandidate>,
 ) -> PerimeterRegionView {
-    PerimeterRegionView::new(
-        object_id.to_string(),
-        region_id,
-        walls,
-        vec![],
-        candidates,
-        None,
-    )
+    {
+        let mut tmp = PerimeterRegionView::default();
+        tmp.set_object_id(object_id.to_string());
+        tmp.set_region_id(region_id);
+        tmp.set_wall_loops(walls);
+        tmp.set_infill_areas(vec![]);
+        tmp.set_seam_candidates(candidates);
+        tmp.set_resolved_seam(None);
+        tmp
+    }
 }
 
 // ── Dispatch tests ─────────────────────────────────────────────────────

@@ -2508,16 +2508,15 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         .region_id()
                         .parse()
                         .unwrap_or(0);
-                    let mut sdk_view = ::slicer_sdk::views::SliceRegionView::with_boundary_paint(
-                        r.object_id(),
-                        region_id,
-                        polys,
-                        infill,
-                        r.effective_layer_height(),
-                        r.z(),
-                        r.has_nonplanar(),
-                        boundary_paint,
-                    );
+                    let mut sdk_view = ::slicer_sdk::views::SliceRegionView::default();
+                    sdk_view.set_object_id(r.object_id());
+                    sdk_view.set_region_id(region_id);
+                    sdk_view.set_polygons(polys);
+                    sdk_view.set_infill_areas(infill);
+                    sdk_view.set_effective_layer_height(r.effective_layer_height());
+                    sdk_view.set_z(r.z());
+                    sdk_view.set_has_nonplanar(r.has_nonplanar());
+                    sdk_view.set_boundary_paint(boundary_paint);
                     sdk_view.set_is_top_surface(r.is_top_surface());
                     sdk_view.set_is_bottom_surface(r.is_bottom_surface());
                     sdk_view.set_is_bridge(r.is_bridge());
@@ -2549,18 +2548,18 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     // read it and map to the SDK seam position type.
                     let resolved_seam = r.resolved_seam()
                         .map(|sp| __slicer_adapt_seam_position(sp));
-                    out.push(::slicer_sdk::views::PerimeterRegionView::new(
-                        r.object_id(),
-                        region_id,
-                        walls,
-                        infill,
-                        // Seam candidates are not on the WIT view (they are
-                        // written via `perimeter-output-builder.push-seam-candidate`
-                        // and consumed later); per the read-only input view we
-                        // arrive here with none.
-                        ::std::vec::Vec::new(),
-                        resolved_seam,
-                    ));
+                    let mut perimeter_view = ::slicer_sdk::views::PerimeterRegionView::default();
+                    perimeter_view.set_object_id(r.object_id());
+                    perimeter_view.set_region_id(region_id);
+                    perimeter_view.set_wall_loops(walls);
+                    perimeter_view.set_infill_areas(infill);
+                    // Seam candidates are not on the WIT view (they are
+                    // written via `perimeter-output-builder.push-seam-candidate`
+                    // and consumed later); per the read-only input view we
+                    // arrive here with none.
+                    perimeter_view.set_seam_candidates(::std::vec::Vec::new());
+                    perimeter_view.set_resolved_seam(resolved_seam);
+                    out.push(perimeter_view);
                 }
                 out
             }
