@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     LayerPlanIR, ModuleInvocation, PaintRegionIR, PaintSemantic, RegionKey, RegionMapIR,
-    RegionPlan, ResolvedConfig, SemVer, StageId,
+    RegionPlan, ResolvedConfig, StageId,
 };
 
 use crate::config_resolution::paint_semantic_namespace_key;
@@ -391,12 +391,8 @@ fn execute_region_mapping_inner(
     }
 
     Ok(RegionMapIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 1,
-            patch: 0,
-        },
         entries,
+        ..Default::default()
     })
 }
 

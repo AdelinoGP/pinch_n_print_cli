@@ -9,7 +9,7 @@
 //! EXPECTED state for Step 1A.  Steps 2–3 define the types.
 //! exit_condition_met = true.
 
-use slicer_ir::{LayerCollectionIR, PrintEntity, SemVer, TravelMove};
+use slicer_ir::{LayerCollectionIR, PrintEntity, TravelMove};
 use slicer_sdk::prelude::*;
 use slicer_sdk::{EntityMutation, SortKey, SyntheticLayerData};
 
@@ -75,19 +75,10 @@ fn make_entity(entity_id: u64, role: ExtrusionRole) -> PrintEntity {
 /// Build a `LayerCollectionIR` pre-seeded with the given entities.
 fn make_layer(global_layer_index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollectionIR {
     LayerCollectionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index,
         z,
         ordered_entities: entities,
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
+        ..Default::default()
     }
 }
 

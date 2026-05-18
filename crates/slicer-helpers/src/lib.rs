@@ -91,28 +91,9 @@ mod tests {
 
     #[test]
     fn smoke_named_mesh_construction() {
-        use slicer_ir::{BoundingBox3, MeshIR, Point3, SemVer};
+        use slicer_ir::MeshIR;
 
-        let mesh = MeshIR {
-            schema_version: SemVer {
-                major: 0,
-                minor: 1,
-                patch: 0,
-            },
-            objects: vec![],
-            build_volume: BoundingBox3 {
-                min: Point3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-                max: Point3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-            },
-        };
+        let mesh = MeshIR::default();
 
         let named = NamedMesh {
             name: Some("test_solid".to_string()),

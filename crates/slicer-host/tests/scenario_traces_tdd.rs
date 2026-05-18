@@ -257,12 +257,8 @@ fn paint_ir_with_two_custom_regions(layer_idx: u32, orders: (u64, u64)) -> Paint
         },
     );
     PaintRegionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         per_layer,
+        ..Default::default()
     }
 }
 

@@ -8,7 +8,7 @@ use slicer_host::config_schema::{
     ConfigValue, FullConfigSchema,
 };
 use slicer_host::{DefaultGCodeSerializer, GCodeSerializer};
-use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR, PrintMetadata, SemVer};
+use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR, PrintMetadata};
 
 // ---------------------------------------------------------------------------
 // Helper: build a minimal GCodeIR with a sequence of extrusion moves.
@@ -30,11 +30,6 @@ fn make_gcode_ir(e_values: &[f32]) -> GCodeIR {
         });
     }
     GCodeIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         commands,
         metadata: PrintMetadata {
             estimated_print_time_s: 0,
@@ -42,6 +37,7 @@ fn make_gcode_ir(e_values: &[f32]) -> GCodeIR {
             layer_count: 1,
             slicer_version: "test".to_string(),
         },
+        ..Default::default()
     }
 }
 
@@ -296,11 +292,6 @@ fn delta_sum_matches_absolute_per_g92_block() {
     }
 
     let ir = GCodeIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         commands,
         metadata: PrintMetadata {
             estimated_print_time_s: 0,
@@ -308,6 +299,7 @@ fn delta_sum_matches_absolute_per_g92_block() {
             layer_count: 1,
             slicer_version: "test".to_string(),
         },
+        ..Default::default()
     };
 
     let serializer = DefaultGCodeSerializer::new(); // relative mode

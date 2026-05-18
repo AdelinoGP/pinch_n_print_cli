@@ -29,11 +29,7 @@ use slicer_ir::{
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
 fn semver() -> SemVer {
-    SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    }
+    SemVer::default()
 }
 
 fn pt(x: f32, y: f32) -> Point3WithWidth {
@@ -794,11 +790,6 @@ fn path_at_explicit(x: f32, y: f32, role: ExtrusionRole) -> ExtrusionPath3D {
 
 fn minimal_mesh(object_id: &str) -> Arc<MeshIR> {
     Arc::new(MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![ObjectMesh {
             id: object_id.to_string(),
             mesh: IndexedTriangleSet {
@@ -845,6 +836,7 @@ fn minimal_mesh(object_id: &str) -> Arc<MeshIR> {
                 z: 200.0,
             },
         },
+        ..Default::default()
     })
 }
 

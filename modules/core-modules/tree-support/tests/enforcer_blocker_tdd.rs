@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ConfigValue, ConfigView, ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue,
-    Point2, Polygon, SemVer, SemanticRegion,
+    Point2, Polygon, SemanticRegion,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -90,12 +90,8 @@ fn paint_ir_with_semantic(semantic: PaintSemantic, value: PaintValue) -> Arc<Pai
     per_layer.insert(0_u32, layer_paint);
 
     Arc::new(PaintRegionIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         per_layer,
+        ..Default::default()
     })
 }
 
@@ -128,12 +124,8 @@ fn paint_ir_both_blocker_and_enforcer() -> Arc<PaintRegionIR> {
     per_layer.insert(0_u32, layer_paint);
 
     Arc::new(PaintRegionIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         per_layer,
+        ..Default::default()
     })
 }
 

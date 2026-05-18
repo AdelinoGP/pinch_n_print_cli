@@ -16,7 +16,7 @@ use crate::model_loader_sidecar::{parse_3mf_sidecar, ObjectSidecarInfo, PartSubt
 use slicer_ir::{
     BoundingBox3, ConfigDelta, ConfigValue, FacetPaintData, IndexedTriangleSet, MeshIR,
     ModifierScope, ModifierVolume, ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic,
-    PaintStroke, PaintValue, Point3, SemVer, Transform3d,
+    PaintStroke, PaintValue, Point3, Transform3d,
 };
 
 /// Detected model file format.
@@ -208,13 +208,9 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
     let build_volume = compute_bounding_box_union(objects.iter().map(|o| &o.mesh));
 
     Ok(MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 1,
-            patch: 0,
-        },
         objects,
         build_volume,
+        ..Default::default()
     })
 }
 

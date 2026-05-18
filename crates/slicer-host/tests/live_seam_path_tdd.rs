@@ -887,11 +887,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     // Build a PerimeterIR WITHOUT resolved_seam set.
     // The resolved_seam should be injected from SeamPlanIR during dispatch.
     let perimeter_ir = PerimeterIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: layer_index,
         regions: vec![PerimeterRegion {
             object_id: object_id.clone(),
@@ -957,6 +952,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
             seam_candidates: vec![],
             resolved_seam: None, // Not set — should be injected from SeamPlanIR
         }],
+        ..Default::default()
     };
 
     // Build a SeamPlanIR with an entry matching the perimeter region.
@@ -969,11 +965,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     let chosen_wall_index = 0;
 
     let seam_plan_ir = SeamPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         entries: vec![SeamPlanEntry {
             region_key: RegionKey {
                 global_layer_index: layer_index,
@@ -993,6 +984,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
             },
             scored_candidates: vec![],
         }],
+        ..Default::default()
     };
 
     // Stage PerimeterIR into arena (without resolved_seam).
@@ -1002,12 +994,6 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     // Stage SeamPlanIR into blackboard.
     let mut blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            objects: vec![],
             build_volume: BoundingBox3 {
                 min: slicer_ir::Point3 {
                     x: 0.0,
@@ -1020,6 +1006,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                     z: 10.0,
                 },
             },
+            ..Default::default()
         }),
         1,
     );

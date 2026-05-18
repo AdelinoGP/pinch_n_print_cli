@@ -20,9 +20,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use slicer_ir::{
-    ExPolygon, LayerPlanIR, MeshIR, RegionId, SemVer, SupportGeometryIR, SupportGeometryKey,
-};
+use slicer_ir::{ExPolygon, LayerPlanIR, MeshIR, RegionId, SupportGeometryIR, SupportGeometryKey};
 
 use crate::Blackboard;
 
@@ -132,14 +130,10 @@ pub fn execute_support_geometry(
     add_intermediate_model_layers(&mut entries, layer_plan, mesh, support_top_z_distance_mm);
 
     Ok(SupportGeometryIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         support_layer_height_mm,
         support_top_z_distance_mm,
         entries,
+        ..Default::default()
     })
 }
 
@@ -219,11 +213,6 @@ mod tests {
 
     fn make_test_mesh() -> MeshIR {
         MeshIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
             objects: vec![ObjectMesh {
                 id: "test-object".to_string(),
                 mesh: slicer_ir::IndexedTriangleSet {
@@ -303,16 +292,12 @@ mod tests {
                     z: 250.0,
                 },
             },
+            ..Default::default()
         }
     }
 
     fn make_2_layer_plan() -> LayerPlanIR {
         LayerPlanIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
             global_layers: vec![
                 GlobalLayer {
                     index: 0,
@@ -348,6 +333,7 @@ mod tests {
                 },
             ],
             object_participation: HashMap::new(),
+            ..Default::default()
         }
     }
 

@@ -42,11 +42,6 @@ fn benchy_painted_3mf() -> PathBuf {
 /// config deltas are stamped into `RegionPlan.config.extensions`.
 fn single_region_layer_plan(layer_index: u32, z_mm: f32) -> LayerPlanIR {
     LayerPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layers: vec![GlobalLayer {
             index: layer_index,
             z: z_mm,
@@ -64,6 +59,7 @@ fn single_region_layer_plan(layer_index: u32, z_mm: f32) -> LayerPlanIR {
             is_sync_layer: false,
         }],
         object_participation: Default::default(),
+        ..Default::default()
     }
 }
 
@@ -73,11 +69,6 @@ fn single_region_layer_plan(layer_index: u32, z_mm: f32) -> LayerPlanIR {
 /// `Flag(true)` on overlapping points.
 fn fuzzy_paint_regions(layer_index: u32) -> PaintRegionIR {
     PaintRegionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         per_layer: HashMap::from([(
             layer_index,
             LayerPaintMap {
@@ -102,6 +93,7 @@ fn fuzzy_paint_regions(layer_index: u32) -> PaintRegionIR {
                 )]),
             },
         )]),
+        ..Default::default()
     }
 }
 
@@ -259,11 +251,6 @@ fn modifier_projections_annotate_contour_points() {
     let region_polygon = modifier_projections[0].clone();
 
     let slice_ir = SliceIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: 0,
         z: test_z,
         regions: vec![SlicedRegion {
@@ -280,6 +267,7 @@ fn modifier_projections_annotate_contour_points() {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
         }],
+        ..Default::default()
     };
 
     let paint_regions = Arc::new(fuzzy_paint_regions(0));
@@ -326,11 +314,6 @@ fn modifier_projections_annotate_contour_points() {
     let below_region_polygon = modifier_projections[0].clone();
 
     let below_slice_ir = SliceIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: 1,
         z: below_z,
         regions: vec![SlicedRegion {
@@ -347,6 +330,7 @@ fn modifier_projections_annotate_contour_points() {
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
         }],
+        ..Default::default()
     };
 
     let below_paint_regions = Arc::new(fuzzy_paint_regions(1));
@@ -415,11 +399,6 @@ fn modifier_projection_z_band_restriction() {
 
     let make_slice_ir = |z: f32, idx: u32, poly: ExPolygon| -> SliceIR {
         SliceIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
             global_layer_index: idx,
             z,
             regions: vec![SlicedRegion {
@@ -436,6 +415,7 @@ fn modifier_projection_z_band_restriction() {
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
             }],
+            ..Default::default()
         }
     };
 

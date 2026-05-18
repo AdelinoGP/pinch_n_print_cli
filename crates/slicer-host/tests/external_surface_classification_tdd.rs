@@ -20,7 +20,7 @@ use slicer_host::execute_layer_slice; // Step 4 will extend this signature
 use slicer_host::layer_slice::classify_region_surfaces; // Step 3 will implement this
 use slicer_ir::{
     ActiveRegion, BoundingBox3, BridgeRegion, FacetClass, GlobalLayer, IndexedTriangleSet, MeshIR,
-    ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3, Polygon, ResolvedConfig, SemVer,
+    ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3, Polygon, ResolvedConfig,
     SurfaceClassificationIR, SurfaceGroup, Transform3d,
 };
 
@@ -166,11 +166,6 @@ fn make_object_mesh(id: &str, mesh: IndexedTriangleSet) -> ObjectMesh {
 /// Build a `MeshIR` with a single object.
 fn make_mesh_ir(object_id: &str, mesh: IndexedTriangleSet) -> MeshIR {
     MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 1,
-            patch: 0,
-        },
         objects: vec![make_object_mesh(object_id, mesh)],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -184,6 +179,7 @@ fn make_mesh_ir(object_id: &str, mesh: IndexedTriangleSet) -> MeshIR {
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
@@ -240,12 +236,8 @@ fn make_surface_class(
     per_object.insert(object_id.to_string(), per_object_data);
 
     SurfaceClassificationIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         per_object,
+        ..Default::default()
     }
 }
 
@@ -514,12 +506,8 @@ fn execute_layer_slice_writes_top_flag_on_sliced_region() {
     let mut per_object = HashMap::new();
     per_object.insert(object_id.to_string(), per_object_data);
     let surface_class = SurfaceClassificationIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         per_object,
+        ..Default::default()
     };
 
     // layer_z = 0.5 mm; next_layer_z = 0.7 mm.

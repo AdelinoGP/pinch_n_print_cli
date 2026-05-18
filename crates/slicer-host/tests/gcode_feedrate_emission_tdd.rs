@@ -79,11 +79,6 @@ fn rejects_non_float_speed_config() {
 
 fn dummy_blackboard() -> Blackboard {
     let mesh_ir = MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -97,6 +92,7 @@ fn dummy_blackboard() -> Blackboard {
                 z: 0.0,
             },
         },
+        ..Default::default()
     };
     Blackboard::new(Arc::new(mesh_ir), 1)
 }
@@ -108,11 +104,6 @@ fn per_role_speed_resolves_to_f_token() {
     // Expected F tokens: 1800 / 3600 / 7200 mm/min on the first print move
     // of each region.
     let mut layer = LayerCollectionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![],
@@ -121,6 +112,7 @@ fn per_role_speed_resolves_to_f_token() {
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
+        ..Default::default()
     };
 
     let region_specs: [(u64, ExtrusionRole); 3] = [
@@ -214,11 +206,6 @@ fn per_role_speed_resolves_to_f_token() {
 #[test]
 fn speed_factor_modulates_role_speed() {
     let mut layer = LayerCollectionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![],
@@ -227,6 +214,7 @@ fn speed_factor_modulates_role_speed() {
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
+        ..Default::default()
     };
 
     let path = ExtrusionPath3D {
@@ -280,11 +268,6 @@ fn speed_factor_modulates_role_speed() {
 #[test]
 fn module_supplied_f_wins() {
     let mut layer = LayerCollectionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![],
@@ -293,6 +276,7 @@ fn module_supplied_f_wins() {
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
+        ..Default::default()
     };
 
     layer.ordered_entities.push(PrintEntity {
@@ -349,11 +333,6 @@ fn module_supplied_f_wins() {
 #[test]
 fn distinct_feedrates_present() {
     let mut layer = LayerCollectionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![],
@@ -362,6 +341,7 @@ fn distinct_feedrates_present() {
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
+        ..Default::default()
     };
 
     layer.ordered_entities.push(PrintEntity {
@@ -457,11 +437,6 @@ fn distinct_feedrates_present() {
 #[test]
 fn f_token_within_200_lines() {
     let mut layer = LayerCollectionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![],
@@ -470,6 +445,7 @@ fn f_token_within_200_lines() {
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
+        ..Default::default()
     };
 
     layer.ordered_entities.push(PrintEntity {

@@ -1720,9 +1720,7 @@ fn harvest_layer_plan_ir(
     _module_id: &str,
     ctx: wit_host::HostExecutionContext,
 ) -> Result<slicer_ir::LayerPlanIR, String> {
-    use slicer_ir::{
-        ActiveRegion, GlobalLayer, LayerPlanIR, ObjectLayerRef, ResolvedConfig, SemVer,
-    };
+    use slicer_ir::{ActiveRegion, GlobalLayer, LayerPlanIR, ObjectLayerRef, ResolvedConfig};
     use std::collections::HashMap;
 
     let proposals = ctx.layer_plan_proposals;
@@ -1785,13 +1783,9 @@ fn harvest_layer_plan_ir(
     }
 
     Ok(LayerPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layers,
         object_participation,
+        ..Default::default()
     })
 }
 
@@ -1807,9 +1801,7 @@ fn harvest_seam_plan_ir(
     _module_id: &str,
     ctx: wit_host::HostExecutionContext,
 ) -> Result<slicer_ir::SeamPlanIR, String> {
-    use slicer_ir::{
-        RegionKey, ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition, SemVer,
-    };
+    use slicer_ir::{RegionKey, ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition};
     use std::collections::HashMap;
 
     let mut seen: HashMap<RegionKey, ()> = HashMap::new();
@@ -1878,12 +1870,8 @@ fn harvest_seam_plan_ir(
     }
 
     Ok(SeamPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         entries,
+        ..Default::default()
     })
 }
 
@@ -1903,7 +1891,7 @@ fn harvest_support_plan_ir(
     ctx: wit_host::HostExecutionContext,
 ) -> Result<slicer_ir::SupportPlanIR, String> {
     use slicer_ir::{
-        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SemVer, SupportPlanEntry, SupportPlanIR,
+        ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SupportPlanEntry, SupportPlanIR,
     };
 
     let mut entries: Vec<SupportPlanEntry> = Vec::with_capacity(ctx.support_plan_entries.len());
@@ -1946,12 +1934,8 @@ fn harvest_support_plan_ir(
     }
 
     Ok(SupportPlanIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         entries,
+        ..Default::default()
     })
 }
 
@@ -2025,7 +2009,7 @@ mod tests {
 fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_ir::PaintRegionIR {
     use slicer_ir::{
         ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon,
-        SemVer, SemanticRegion,
+        SemanticRegion,
     };
     use std::collections::HashMap;
     use wit_host::prepass::PaintValueInput;
@@ -2101,12 +2085,8 @@ fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_
     }
 
     PaintRegionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         per_layer,
+        ..Default::default()
     }
 }
 
@@ -2130,7 +2110,7 @@ pub fn harvest_paint_segmentation_ir_pub(
 fn harvest_mesh_segmentation_ir(
     ctx: wit_host::HostExecutionContext,
 ) -> slicer_ir::MeshSegmentationIR {
-    use slicer_ir::{FacetPaintMark, MeshSegmentationIR, SemVer};
+    use slicer_ir::{FacetPaintMark, MeshSegmentationIR};
 
     let marks: Vec<FacetPaintMark> = ctx
         .mesh_segmentation_marks
@@ -2144,12 +2124,8 @@ fn harvest_mesh_segmentation_ir(
         .collect();
 
     MeshSegmentationIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         marks,
+        ..Default::default()
     }
 }
 
@@ -3051,19 +3027,10 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                 })
                 .collect();
             layers.push(LayerCollectionIR {
-                schema_version: slicer_ir::SemVer {
-                    major: 1,
-                    minor: 0,
-                    patch: 0,
-                },
                 global_layer_index: new_index,
                 z,
                 ordered_entities: entities,
-                tool_changes: Vec::new(),
-                z_hops: Vec::new(),
-                annotations: Vec::new(),
-                retracts: vec![],
-                travel_moves: vec![],
+                ..Default::default()
             });
         }
 

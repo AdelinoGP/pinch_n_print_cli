@@ -13,8 +13,7 @@ use std::collections::HashMap;
 use slicer_core::slice_mesh_ex;
 use slicer_ir::{
     ExPolygon, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen, ModuleId, PaintRegionIR,
-    PaintSemantic, PerimeterIR, PrintEntity, RegionKey, SemVer, StageId, SupportIR,
-    WallFeatureFlags,
+    PaintSemantic, PerimeterIR, PrintEntity, RegionKey, StageId, SupportIR, WallFeatureFlags,
 };
 
 use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
@@ -405,19 +404,10 @@ fn execute_single_layer_inner(
                 arena.support(),
             );
             arena.set_layer_collection(LayerCollectionIR {
-                schema_version: SemVer {
-                    major: 1,
-                    minor: 0,
-                    patch: 0,
-                },
                 global_layer_index: layer.index,
                 z: layer.z,
                 ordered_entities,
-                tool_changes: Vec::new(),
-                z_hops: Vec::new(),
-                annotations: Vec::new(),
-                retracts: Vec::new(),
-                travel_moves: Vec::new(),
+                ..Default::default()
             });
         }
         instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
@@ -506,19 +496,10 @@ fn execute_single_layer_inner(
             arena.support(),
         );
         LayerCollectionIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
             global_layer_index: layer.index,
             z: layer.z,
             ordered_entities,
-            tool_changes: Vec::new(),
-            z_hops: Vec::new(),
-            annotations: Vec::new(),
-            retracts: Vec::new(),
-            travel_moves: Vec::new(),
+            ..Default::default()
         }
     });
     layer_output

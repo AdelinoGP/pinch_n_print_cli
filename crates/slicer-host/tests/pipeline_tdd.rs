@@ -30,7 +30,6 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
     Arc::new(MeshIR {
-        schema_version: semver(1, 0, 0),
         objects: Vec::new(),
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -44,6 +43,7 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
                 z: 0.0,
             },
         },
+        ..Default::default()
     })
 }
 
@@ -61,7 +61,6 @@ fn empty_execution_plan() -> ExecutionPlan {
 
 fn minimal_gcode_ir() -> GCodeIR {
     GCodeIR {
-        schema_version: semver(1, 0, 0),
         commands: Vec::new(),
         metadata: PrintMetadata {
             slicer_version: "test".into(),
@@ -69,6 +68,7 @@ fn minimal_gcode_ir() -> GCodeIR {
             filament_used_mm: Vec::new(),
             layer_count: 0,
         },
+        ..Default::default()
     }
 }
 
@@ -690,13 +690,8 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
         ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
             Ok((
                 PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
-                    schema_version: SemVer {
-                        major: 1,
-                        minor: 0,
-                        patch: 0,
-                    },
                     global_layers: vec![make_global_layer(0, 0.2), make_global_layer(1, 0.4)],
-                    object_participation: HashMap::new(),
+                    ..Default::default()
                 })),
                 Vec::new(),
             ))

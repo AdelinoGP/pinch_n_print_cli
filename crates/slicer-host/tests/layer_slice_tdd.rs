@@ -15,7 +15,7 @@ use slicer_host::{
 };
 use slicer_ir::{
     ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh,
-    Point3, ResolvedConfig, SemVer, StageId, Transform3d,
+    Point3, ResolvedConfig, StageId, Transform3d,
 };
 
 fn unit_tetra() -> IndexedTriangleSet {
@@ -61,11 +61,6 @@ fn identity_transform() -> Transform3d {
 
 fn tetra_mesh_ir(object_id: &str) -> MeshIR {
     MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![ObjectMesh {
             id: object_id.to_string(),
             mesh: unit_tetra(),
@@ -89,6 +84,7 @@ fn tetra_mesh_ir(object_id: &str) -> MeshIR {
                 z: 1.0,
             },
         },
+        ..Default::default()
     }
 }
 

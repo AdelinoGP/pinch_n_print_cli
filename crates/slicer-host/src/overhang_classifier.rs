@@ -163,7 +163,7 @@ fn classify_layer(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slicer_ir::{ExtrusionPath3D, LayerCollectionIR, PrintEntity, RegionKey, SemVer};
+    use slicer_ir::{ExtrusionPath3D, LayerCollectionIR, PrintEntity, RegionKey};
 
     fn zero_config() -> FeedrateConfig {
         FeedrateConfig {
@@ -216,19 +216,9 @@ mod tests {
 
     fn empty_layer(global_layer_index: u32) -> LayerCollectionIR {
         LayerCollectionIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
             global_layer_index,
             z: global_layer_index as f32 * 0.2,
-            ordered_entities: Vec::new(),
-            tool_changes: Vec::new(),
-            z_hops: Vec::new(),
-            annotations: Vec::new(),
-            retracts: Vec::new(),
-            travel_moves: Vec::new(),
+            ..Default::default()
         }
     }
 

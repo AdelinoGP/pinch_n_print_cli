@@ -2,9 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use slicer_ir::{
-    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
-};
+use slicer_ir::{IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, Transform3d};
 use truck_meshalgo::prelude::*;
 use truck_stepio::r#in::*;
 
@@ -220,24 +218,8 @@ pub fn merge_step_meshes(mut result: StepImportResult) -> StepImportResult {
     }
 
     let merged_mesh = MeshIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         objects: all_objects,
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-        },
+        ..Default::default()
     };
 
     result.meshes.push(NamedMesh {
@@ -344,24 +326,8 @@ fn polygon_to_mesh_ir(poly: &PolygonMesh, unit_to_mm: f64) -> MeshIR {
     };
 
     MeshIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         objects: vec![object],
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-        },
+        ..Default::default()
     }
 }
 

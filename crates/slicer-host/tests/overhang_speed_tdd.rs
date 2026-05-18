@@ -13,11 +13,6 @@ use std::sync::Arc;
 
 fn dummy_blackboard() -> Blackboard {
     let mesh_ir = MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![],
         build_volume: BoundingBox3 {
             min: Point3 {
@@ -31,17 +26,13 @@ fn dummy_blackboard() -> Blackboard {
                 z: 256.0,
             },
         },
+        ..Default::default()
     };
     Blackboard::new(Arc::new(mesh_ir), 1)
 }
 
 fn make_layer(global_layer_index: u32, z: f32) -> LayerCollectionIR {
     LayerCollectionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index,
         z,
         ordered_entities: vec![],
@@ -50,6 +41,7 @@ fn make_layer(global_layer_index: u32, z: f32) -> LayerCollectionIR {
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
+        ..Default::default()
     }
 }
 

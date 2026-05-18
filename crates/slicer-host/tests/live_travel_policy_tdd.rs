@@ -17,7 +17,7 @@ use slicer_host::wit_host::{
     ExtrusionRole, GcodeCommandCollected, GcodeMoveCmd, HostExecutionContext,
 };
 use slicer_host::LayerArena;
-use slicer_ir::{LayerCollectionIR, RetractMode, SemVer};
+use slicer_ir::{LayerCollectionIR, RetractMode};
 
 /// Helper: make a fresh `HostExecutionContext` for PathOptimization tests.
 fn make_ctx(module_id: &str) -> HostExecutionContext {
@@ -40,11 +40,6 @@ fn flush_to_layer_collection(arena: &mut LayerArena) -> slicer_ir::LayerCollecti
         .unwrap_or_default();
 
     let mut layer_collection = slicer_ir::LayerCollectionIR {
-        schema_version: slicer_ir::SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![],
@@ -53,6 +48,7 @@ fn flush_to_layer_collection(arena: &mut LayerArena) -> slicer_ir::LayerCollecti
         annotations: vec![],
         retracts: vec![],
         travel_moves: vec![],
+        ..Default::default()
     };
     layer_collection.z_hops.extend(arena.take_deferred_z_hops());
     layer_collection
@@ -378,19 +374,9 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
     };
     let mut arena = LayerArena::new();
     arena.set_layer_collection(LayerCollectionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        global_layer_index: 0,
         z: 0.2,
         ordered_entities: vec![make_entity(1), make_entity(2), make_entity(3)],
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
+        ..Default::default()
     });
 
     commit_layer_outputs_for_test(

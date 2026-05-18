@@ -6,7 +6,7 @@
 
 use slicer_helpers::{repair, RepairResult, RepairWarning};
 use slicer_ir::{
-    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
+    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, Transform3d,
 };
 use std::collections::HashMap;
 
@@ -29,11 +29,6 @@ fn identity_transform() -> Transform3d {
 /// Wrap an IndexedTriangleSet in a single-object MeshIR.
 fn single_object_mesh(its: IndexedTriangleSet) -> MeshIR {
     MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![ObjectMesh {
             id: "test-object".to_string(),
             mesh: its,
@@ -57,6 +52,7 @@ fn single_object_mesh(its: IndexedTriangleSet) -> MeshIR {
                 z: 100.0,
             },
         },
+        ..Default::default()
     }
 }
 

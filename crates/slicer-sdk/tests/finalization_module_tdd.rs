@@ -77,22 +77,12 @@ fn test_02_run_finalization_signature_matches_wit() {
 
 #[test]
 fn test_03_layer_collection_view_accessors() {
-    use slicer_ir::{LayerCollectionIR, SemVer};
+    use slicer_ir::LayerCollectionIR;
 
     let layer_ir = LayerCollectionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         global_layer_index: 42,
         z: 8.4,
-        ordered_entities: vec![],
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
+        ..Default::default()
     };
 
     let view = LayerCollectionView::new(layer_ir);

@@ -27,7 +27,7 @@ use std::fmt::Write;
 
 use slicer_ir::{
     ConfigValue, ExtrusionRole, GCodeCommand, GCodeIR, LayerAnnotationKind, LayerCollectionIR,
-    PrintMetadata, ResolvedConfig, SemVer,
+    PrintMetadata, ResolvedConfig,
 };
 
 use crate::{Blackboard, GCodeEmitter, GCodeSerializer, PostpassError};
@@ -566,11 +566,6 @@ impl GCodeEmitter for DefaultGCodeEmitter {
         }
 
         Ok(GCodeIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
             commands,
             metadata: PrintMetadata {
                 estimated_print_time_s: 0, // Not calculated in this implementation
@@ -578,6 +573,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 layer_count,
                 slicer_version: self.slicer_version.clone(),
             },
+            ..Default::default()
         })
     }
 

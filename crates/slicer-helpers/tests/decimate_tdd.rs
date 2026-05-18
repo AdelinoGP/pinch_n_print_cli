@@ -6,7 +6,7 @@
 
 use slicer_helpers::{decimate, DecimateConfigBuilder, DecimateError};
 use slicer_ir::{
-    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
+    BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, Transform3d,
 };
 use std::collections::HashMap;
 
@@ -46,11 +46,6 @@ fn single_object_mesh(its: IndexedTriangleSet) -> MeshIR {
         }
     };
     MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![ObjectMesh {
             id: "test-object".to_string(),
             mesh: its,
@@ -74,6 +69,7 @@ fn single_object_mesh(its: IndexedTriangleSet) -> MeshIR {
                 z: 200.0,
             },
         },
+        ..Default::default()
     }
 }
 
@@ -222,26 +218,7 @@ fn decimate_stops_early() {
 
 #[test]
 fn decimate_empty_mesh_error() {
-    let mesh = MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        objects: vec![],
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-        },
-    };
+    let mesh = MeshIR::default();
 
     let config = DecimateConfigBuilder::new()
         .target_ratio(0.5)

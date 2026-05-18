@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use slicer_ir::{
     ConfigView, ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, Point2,
-    Polygon, RegionId, RegionKey, SemVer, SemanticRegion,
+    Polygon, RegionId, RegionKey, SemanticRegion,
 };
 use slicer_sdk::builders::SlicePostprocessBuilder;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -75,12 +75,8 @@ fn empty_config() -> ConfigView {
 /// Helper: create an empty PaintRegionIR.
 fn empty_paint_ir() -> PaintRegionIR {
     PaintRegionIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         per_layer: HashMap::new(),
+        ..Default::default()
     }
 }
 
@@ -147,11 +143,6 @@ fn boundary_paint_lengths_match_contour_point_counts() {
 
     // Paint region covering the entire area with Material semantic
     let paint_ir = Arc::new(PaintRegionIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
@@ -167,6 +158,7 @@ fn boundary_paint_lengths_match_contour_point_counts() {
                 )]),
             },
         )]),
+        ..Default::default()
     });
 
     let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
@@ -205,11 +197,6 @@ fn multiple_polygons_per_region_each_get_boundary_paint() {
     let regions = vec![region_view("obj1", 0, vec![poly1, poly2])];
 
     let paint_ir = Arc::new(PaintRegionIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
@@ -225,6 +212,7 @@ fn multiple_polygons_per_region_each_get_boundary_paint() {
                 )]),
             },
         )]),
+        ..Default::default()
     });
 
     let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
@@ -255,11 +243,6 @@ fn multiple_semantics_handled_independently() {
     let regions = vec![region_view("obj1", 0, vec![poly])];
 
     let paint_ir = Arc::new(PaintRegionIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
@@ -286,6 +269,7 @@ fn multiple_semantics_handled_independently() {
                 ]),
             },
         )]),
+        ..Default::default()
     });
 
     let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
@@ -331,11 +315,6 @@ fn points_outside_paint_region_get_none() {
     // Paint region far away — centered at 500_000 (50mm)
     let paint_region_poly = square_polygon(400_000, 400_000, 200_000);
     let paint_ir = Arc::new(PaintRegionIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
@@ -351,6 +330,7 @@ fn points_outside_paint_region_get_none() {
                 )]),
             },
         )]),
+        ..Default::default()
     });
 
     let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
@@ -386,11 +366,6 @@ fn multiple_regions_each_get_boundary_paint() {
     ];
 
     let paint_ir = Arc::new(PaintRegionIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
@@ -406,6 +381,7 @@ fn multiple_regions_each_get_boundary_paint() {
                 )]),
             },
         )]),
+        ..Default::default()
     });
 
     let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
@@ -433,11 +409,6 @@ fn highest_paint_order_wins_for_overlapping_regions() {
 
     // Two overlapping material regions with different paint_order
     let paint_ir = Arc::new(PaintRegionIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
@@ -461,6 +432,7 @@ fn highest_paint_order_wins_for_overlapping_regions() {
                 )]),
             },
         )]),
+        ..Default::default()
     });
 
     let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
@@ -494,11 +466,6 @@ fn deterministic_conflict_fatal_for_custom_semantics() {
 
     // Two overlapping custom regions with same paint_order but different values
     let paint_ir = Arc::new(PaintRegionIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
@@ -522,6 +489,7 @@ fn deterministic_conflict_fatal_for_custom_semantics() {
                 )]),
             },
         )]),
+        ..Default::default()
     });
 
     let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);
@@ -547,11 +515,6 @@ fn region_with_no_polygons_produces_no_boundary_paint() {
     let regions = vec![region_view("obj1", 0, vec![])]; // no polygons
 
     let paint_ir = Arc::new(PaintRegionIR {
-        schema_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
         per_layer: HashMap::from([(
             0,
             LayerPaintMap {
@@ -567,6 +530,7 @@ fn region_with_no_polygons_produces_no_boundary_paint() {
                 )]),
             },
         )]),
+        ..Default::default()
     });
 
     let paint = PaintRegionLayerView::with_paint_regions(0, paint_ir);

@@ -326,11 +326,7 @@ fn four_fill_claims_registered_in_catalog() {
         claim_holders: all_holders,
         stage_dags: vec![],
         access_audits: vec![],
-        host_ir_schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        host_ir_schema_version: SemVer::default(),
     };
 
     let report = validate_startup_dag(&request);
@@ -1006,11 +1002,7 @@ fn two_holders_for_one_claim_fails_validation() {
         claim_holders,
         stage_dags: vec![],
         access_audits: vec![],
-        host_ir_schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        host_ir_schema_version: SemVer::default(),
     };
 
     let report = validate_startup_dag(&request);
@@ -1100,11 +1092,7 @@ fn missing_holder_for_top_fill_claim_fails_validation() {
         claim_holders,
         stage_dags: vec![],
         access_audits: vec![],
-        host_ir_schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
+        host_ir_schema_version: SemVer::default(),
     };
 
     let report = validate_startup_dag(&request);

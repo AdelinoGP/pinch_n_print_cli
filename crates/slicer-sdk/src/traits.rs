@@ -26,7 +26,7 @@ use crate::prepass_types::{
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
     ConfigView, ExtrusionPath3D, LayerAnnotation, LayerAnnotationKind, LayerCollectionIR,
-    PaintRegionIR, PaintSemantic, PrintEntity, RegionKey, SemVer, SemanticRegion, SupportPlanIR,
+    PaintRegionIR, PaintSemantic, PrintEntity, RegionKey, SemanticRegion, SupportPlanIR,
 };
 
 /// Paint region layer view for accessing painted regions.
@@ -47,14 +47,7 @@ impl PaintRegionLayerView {
     pub fn new(layer_index: u32) -> Self {
         Self {
             layer_index,
-            paint_regions: Arc::new(PaintRegionIR {
-                schema_version: SemVer {
-                    major: 0,
-                    minor: 1,
-                    patch: 0,
-                },
-                per_layer: std::collections::HashMap::new(),
-            }),
+            paint_regions: Arc::new(PaintRegionIR::default()),
             support_plan: None,
         }
     }
@@ -1148,19 +1141,10 @@ impl FinalizationOutputBuilder {
                         })
                         .collect();
                     let new_layer = LayerCollectionIR {
-                        schema_version: SemVer {
-                            major: 1,
-                            minor: 0,
-                            patch: 0,
-                        },
                         global_layer_index,
                         z: data.z,
                         ordered_entities,
-                        tool_changes: Vec::new(),
-                        z_hops: Vec::new(),
-                        annotations: Vec::new(),
-                        retracts: Vec::new(),
-                        travel_moves: Vec::new(),
+                        ..Default::default()
                     };
                     layers.insert(insert_pos, new_layer);
                 }

@@ -20,7 +20,7 @@ use slicer_host::{
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, LayerPaintMap, MeshIR,
     ObjectConfig, ObjectMesh, PaintRegionIR, PaintSemantic, PaintValue, Point2, Point3, Polygon,
-    ResolvedConfig, SemVer, SemanticRegion, StageId, Transform3d,
+    ResolvedConfig, SemanticRegion, StageId, Transform3d,
 };
 
 fn unit_tetra() -> IndexedTriangleSet {
@@ -68,11 +68,6 @@ fn default_resolved() -> ResolvedConfig {
 
 fn tetra_mesh_ir(object_id: &str) -> MeshIR {
     MeshIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         objects: vec![ObjectMesh {
             id: object_id.to_string(),
             mesh: unit_tetra(),
@@ -96,6 +91,7 @@ fn tetra_mesh_ir(object_id: &str) -> MeshIR {
                 z: 10.0,
             },
         },
+        ..Default::default()
     }
 }
 
@@ -170,12 +166,8 @@ fn ambiguous_triangle_paint_regions(layer_index: u32) -> PaintRegionIR {
         },
     );
     PaintRegionIR {
-        schema_version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
         per_layer,
+        ..Default::default()
     }
 }
 
@@ -373,18 +365,11 @@ impl GCodeEmitter for MinimalEmitter {
         _b: &Blackboard,
     ) -> Result<GCodeIR, PostpassError> {
         Ok(GCodeIR {
-            schema_version: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            commands: Vec::new(),
             metadata: PrintMetadata {
                 slicer_version: "test".into(),
-                estimated_print_time_s: 0,
-                filament_used_mm: Vec::new(),
-                layer_count: 0,
+                ..Default::default()
             },
+            ..Default::default()
         })
     }
 }
