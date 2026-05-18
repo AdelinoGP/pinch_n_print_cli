@@ -4,238 +4,250 @@
 
 - One atomic step at a time.
 - Each step maps back to one or more of `TASK-143`, `TASK-152b`, `TASK-120d2`.
-- TDD first: Step 2 lands failing tests; Step 3 lands the rejection guard; Step 4 lands the emission that makes the positive tests pass.
-- Each step honors the context-discipline preamble shared by `spec-packet-generator`, `swarm`, and `spec-review`. The fields below are not optional metadata — they are the budget contract for this step.
+- TDD first: Step 2 lands failing tests; Step 3 lands the WIT extension + SDK + host impl; Step 4 lands the marker fix + rejection guard; Step 5 lands the wipe-tower module emission that makes the positive tests pass.
+- Each step honors the context-discipline preamble shared by `spec-packet-generator`, `swarm`, and `spec-review`.
 
 ## Steps
 
-### Step 1: Confirm IR landscape and role table (pure dispatch)
+### Step 1: Confirm IR/WIT/host/config landscape (pure dispatch)
 
-- Task IDs:
-  - `TASK-143`
-  - `TASK-152b`
-- Objective: Confirm `ExtrusionRole::WipeTower` variant existence, `ToolChange` shape, and the role-to-`;TYPE:` mapping function location in `gcode_emit.rs`.
-- Precondition: packet is `active` (or implementer has user approval to begin).
-- Postcondition: implementer knows whether to add a variant in Step 3 and the exact `gcode_emit.rs` arm to patch.
-- Files allowed to read:
-  - (none direct — pure dispatch step.)
-- Files allowed to edit (≤ 3):
-  - (none.)
-- Files explicitly out-of-bounds for this step:
-  - the rest of `slice_ir.rs`; all of `OrcaSlicerDocumented/`; all source files (Steps 2-4 own those).
-- Expected sub-agent dispatches:
-  - "Confirm `ExtrusionRole::WipeTower` is still present at `crates/slicer-ir/src/slice_ir.rs:1233-1262` and `ToolChange` field shape at `1435-1442` is unchanged; FACT ≤ 5 lines."
-  - "Confirm `orca_type_label` at `crates/slicer-host/src/gcode_emit.rs:218-235` still maps `ExtrusionRole::WipeTower → \";TYPE:Wipe tower\"`; FACT pass/fail."
-  - "Confirm `PostpassError` at `crates/slicer-host/src/postpass.rs:39-59` still has the shape `FatalModule { stage_id, module_id, message } | GCodeEmit { message } | GCodeSerialization { message }` with no `MissingToolchangePurge` variant yet; FACT ≤ 5 lines."
-  - "Summarize OrcaSlicer `WipeTower2.cpp:1557-1640` Unload/Change/Load/Wipe call order; FACT ≤ 5 lines."
-  - "Confirm that no standalone `volume_to_length` helper exists in the codebase, and locate the per-segment forward extrusion math at `crates/slicer-host/src/gcode_emit.rs:363-371` (`E = distance * width * flow_factor`); LOCATIONS ≤ 3 entries. Step 4 implements the inverse `length_mm = volume_mm3 / (line_width_mm * layer_height_mm)` inline within `wipe-tower/src/lib.rs`."
+- Task IDs: `TASK-143`, `TASK-152b`, `TASK-120d2`
+- Objective: Reverify `ExtrusionRole::WipeTower` (variant at ~line 1336; range ≈ 1318-1350); locate current ranges for `ToolChange`, `LayerCollectionIR.tool_changes`, `ConfigValue`, the `GCodeCommand::ToolChange` emission, the bare `T<n>` writeln, the `finalization-output-builder` host impl block, and the `FinalizationOutputBuilder` SDK **struct** (NOT a trait — struct at ~line 704 of `crates/slicer-sdk/src/traits.rs`). Locate the `declare_resolved_config!` macro invocation in `crates/slicer-ir/src/resolved_config.rs` (the macro-driven SoT after commit `19e5791`) and confirm it accepts a `List<f64>` field shape. Search for any existing retract-distance config key. Reconfirm `orca_type_label` and `PostpassError` shapes (existing variants: `FatalModule`, `GCodeEmit`, `GCodeSerialization`). Confirm `config-value::float-list` exists.
+- Precondition: packet is `active`.
+- Postcondition: implementer has all line ranges, struct names, and dispatch returns needed to begin Step 2.
+- Files allowed to read: (none direct — pure dispatch step.)
+- Files allowed to edit (≤ 3): (none.)
+- Files explicitly out-of-bounds: every source file (Steps 2-5 own those).
+- Expected sub-agent dispatches (all from design.md "Expected Sub-Agent Dispatches" Step 1 list — 10 dispatches total).
 - Context cost: **S**
-- Authoritative docs:
-  - `docs/02_ir_schemas.md` — delegate SUMMARY about `ExtrusionRole` and `ToolChange` only.
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/GCode/WipeTower2.cpp:1557-1640` — delegate FACT.
-- Verification:
-  - Five FACT/LOCATIONS/SNIPPETS returns recorded in working notes.
-- Exit condition: Implementer can answer (a) is `ExtrusionRole::WipeTower` still at `slice_ir.rs:1233-1262`? (b) what is `ToolChange.after_entity_index`'s exact semantic? (c) does `orca_type_label` at `gcode_emit.rs:218-235` still map the variant to `";TYPE:Wipe tower"`? (d) what is `PostpassError`'s current variant set including `FatalModule`'s full field list (`{stage_id, module_id, message}`) — precondition for the additive `MissingToolchangePurge` insertion in Step 3? (e) confirmed no standalone `volume_to_length` helper — Step 4 will compute the inverse inline. Without these, Step 2 cannot start.
+- Authoritative docs: `docs/02_ir_schemas.md` — delegate SUMMARY.
+- OrcaSlicer refs: `WipeTower2.cpp:1557-1640` (delegate FACT).
+- Verification: 10 FACT/SNIPPET/LOCATIONS returns recorded.
+- Exit condition: implementer can answer every Step 1 question; without these, Step 2 cannot start.
 
 ### Step 2: TDD — write the failing tests + land fixtures
 
-- Task IDs:
-  - `TASK-143`
-  - `TASK-152b`
-- Objective: Land `crates/slicer-host/tests/gcode_toolchange_wrapping.rs` with three failing tests: `toolchange_emits_retract_prime_wipe`, `bare_toolchange_rejected`, and `purge_volume_within_tolerance`. Drop in the multi-material STL fixture and the OrcaSlicer reference G-code.
-- Precondition: Step 1 complete; implementer has the `ExtrusionRole` answer and the role-mapping function location.
-- Postcondition: `cargo test -p slicer-host --test gcode_toolchange_wrapping` compiles and reports three failing tests with assertion messages naming the missing retract/prime/marker.
+- Task IDs: `TASK-143`, `TASK-152b`
+- Objective: Land 5 new test files / test sets with failing or ignored tests. Drop in multi-material fixtures.
+- Precondition: Step 1 complete.
+- Postcondition: All new test surfaces compile. Tests for AC1, AC3, NC1 fail with expected assertion messages. Tests for AC7, AC8, AC9, NC5, NC6 are `#[ignore]` until Step 3 (the builder methods don't exist yet). AC4, AC6, NC4 are `#[ignore]` until Step 5.
 - Files allowed to read:
-  - `crates/slicer-host/tests/tool_ordering_tdd.rs` — full read (small, focused) for fixture-building idioms.
-  - `crates/slicer-ir/src/slice_ir.rs:1430-1470` — `ToolChange` definition (range).
-  - `crates/slicer-ir/src/slice_ir.rs:1520-1545` — `LayerCollectionIR` definition (range).
-- Files allowed to edit (≤ 3):
+  - `crates/slicer-host/tests/tool_ordering_tdd.rs` — idioms.
+  - `crates/slicer-ir/src/slice_ir.rs` — ranges from Step 1.
+- Files allowed to edit (≤ 6 — TDD-scaffold exception):
   - `crates/slicer-host/tests/gcode_toolchange_wrapping.rs` (new).
-  - `crates/slicer-host/tests/fixtures/multi_color_cube.stl` (new — synthetic 2-color cube, ≤ 64 KB).
-  - `crates/slicer-host/tests/fixtures/multi_color_cube.orca.gcode` (new — checked-in OrcaSlicer output for parity baseline, ≤ 256 KB).
-- Files explicitly out-of-bounds for this step:
-  - `crates/slicer-host/src/gcode_emit.rs` (Step 3).
-  - `modules/core-modules/wipe-tower/src/lib.rs` (Step 4).
-  - any source file other than the new test file.
+  - `crates/slicer-host/tests/finalization_builder_insert.rs` (new; `#[ignore]`).
+  - `crates/slicer-host/tests/finalization_builder_permute.rs` (new; `#[ignore]`).
+  - `crates/slicer-host/tests/finalization_builder_readback.rs` (new; `#[ignore]`).
+  - `crates/slicer-host/tests/wipe_tower_bed_bounds.rs` (new; `#[ignore]` AC6).
+  - `modules/core-modules/wipe-tower/src/lib.rs` — only the `#[cfg(test)] mod tests` block (AC4 + NC4; `#[ignore]`).
+  - `crates/slicer-host/tests/fixtures/multi_color_cube.stl` (new — ≤ 64 KB).
+  - `crates/slicer-host/tests/fixtures/multi_color_cube.orca.gcode` (new — ≤ 256 KB).
+- Files explicitly out-of-bounds for this step: every source/WIT/SDK/manifest/host file.
 - Expected sub-agent dispatches:
-  - "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping`; FACT (expect compile success + 3 test failures); if compile fails, SNIPPETS ≤ 20 lines of the compile error."
+  - "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping`; FACT compile success + 3 test failures; if compile fails, SNIPPETS ≤ 20 lines."
+  - "Run `cargo test -p slicer-host --test finalization_builder_insert`; FACT compile success + 2 ignored tests."
+  - "Run `cargo test -p slicer-host --test finalization_builder_permute`; FACT compile success + 2 ignored tests."
+  - "Run `cargo test -p slicer-host --test finalization_builder_readback`; FACT compile success + 1 ignored test."
+  - "Run `cargo test -p slicer-host --test wipe_tower_bed_bounds`; FACT compile success + 1 ignored test."
+  - "Run `cargo test -p wipe-tower --lib`; FACT compile success + 2 ignored tests."
 - Context cost: **M**
-- Authoritative docs:
-  - `docs/02_ir_schemas.md` — delegate fact-check on `LayerCollectionIR` shape used by the test fixture.
-- OrcaSlicer refs:
-  - None at this step (the OrcaSlicer reference G-code is dropped in as data, not read into the implementer's context).
-- Verification:
-  - `cargo test -p slicer-host --test gcode_toolchange_wrapping` — expect 3 failing tests; FAILURES list must contain `toolchange_emits_retract_prime_wipe`, `bare_toolchange_rejected`, `purge_volume_within_tolerance`.
-- Exit condition: file compiles, all 3 tests run, all 3 fail with assertion messages naming the missing retract/prime/marker. Fixtures committed.
+- Authoritative docs: `docs/02_ir_schemas.md` — delegate fact-check on `LayerCollectionIR` shape.
+- OrcaSlicer refs: None.
+- Verification: all 6 test surfaces compile; failing tests have meaningful assertion messages.
+- Exit condition: files compile; failing/ignored tests as specified; fixtures committed.
 
-### Step 3: Emitter — missing-purge guard + additive `PostpassError::MissingToolchangePurge` variant
+### Step 3: WIT extension + SDK struct impl + host impl (3 new finalization-output-builder methods + bed_shape config + ordering directive)
 
-- Task IDs:
-  - `TASK-143`
-  - `TASK-120d2`
-- Objective: In `crates/slicer-host/src/gcode_emit.rs`, add a guard around the existing T<n> emission at lines 1155-1156 so that, when `wipe_tower_enabled=true`, the ±N entities around the `ToolChange` must include at least one retract entity (negative E) before and at least one wipe-tower-role entity after; otherwise return `Err(PostpassError::MissingToolchangePurge { layer_index, tool_change_index })`. Add the additive variant `MissingToolchangePurge { layer_index: usize, tool_change_index: usize }` to `PostpassError` in `crates/slicer-host/src/postpass.rs:39-59`. `ExtrusionRole::WipeTower` at `slice_ir.rs:1233-1262` and the `orca_type_label` arm at `gcode_emit.rs:218-235` already exist — both are read-only verification only (no edits).
-- Precondition: Step 2 complete; the 3 failing tests are landed and compile.
-- Postcondition: `bare_toolchange_rejected` passes; `toolchange_emits_retract_prime_wipe` and `purge_volume_within_tolerance` still fail (Step 4 lands the emission).
+- Task IDs: `TASK-143`
+- Objective:
+  - **(3a)** Add 3 additive methods to `wit/world-finalization.wit::finalization-output-builder`: `insert-entity-at(layer-index, position: u32, path, region-key) -> result<_, string>`, `set-entity-order(layer-index, items: list<tuple<u32, bool>>) -> result<_, string>`, `get-ordered-entities(layer-index) -> list<print-entity-view>`.
+  - **(3b)** Extend the SDK **struct** `FinalizationOutputBuilder` in `crates/slicer-sdk/src/traits.rs` (struct at ~line 704; it is an action-recorder, NOT a trait). Add 3 new `impl` methods that each record a new `BuilderAction` variant, and extend the existing `apply_to` impl method (≈ lines 918-958) to handle the new actions, including:
+    - On `insert-entity-at(layer, position, path, rk)`: insert into `layer.ordered_entities` at `position` (validate bounds; `Err` on OOB); remap every `ToolChange.after_entity_index >= position` by +1; remap every `ZHop.after_entity_index >= position` by +1.
+    - On `set-entity-order(layer, items)`: validate length match + uniqueness + range (mirror PathOptimization's contract); apply permutation to `ordered_entities`; remap `ToolChange.after_entity_index` and `ZHop.after_entity_index` via the inverse permutation. Atomic on failure.
+    - On `get-ordered-entities(layer)`: return the current staged entity list for that layer as `Vec<PrintEntityView>` (read-back of in-flight builder state plus pre-existing entities). The WIT return type is `list<print-entity-view>` (`wit/world-finalization.wit:19-25`), distinct from PathOpt's `ordered-entity-view`.
+  - **(3c)** Implement the host-side bindings in `crates/slicer-host/src/wit_host.rs` for the 3 new methods (location confirmed by Step 1 dispatch).
+  - **(3d)** Declare `[config.schema.bed_shape]` (type `float-list`, required when `wipe_tower_enabled=true`) in `modules/core-modules/wipe-tower/wipe-tower.toml`. Add `bed_shape: List<f64>` field to the `declare_resolved_config!` invocation in `crates/slicer-ir/src/resolved_config.rs` (the macro-driven SoT after commit `19e5791`), default `[0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0]` (250 mm × 250 mm rectangle). If Step 1 reports the macro does not accept `List<f64>` fields, absorb a minimal macro extension here. Also, if Step 1 reports no existing retract-distance config key, declare `retract_length: f64` (default 2.0 mm) in both `wipe-tower.toml`'s `[config.schema]` and `resolved_config.rs` so Step 5a's retract entity reads it from config rather than hand-coding.
+  - **(3d2)** Declare `[compatibility].requires = ["com.core.skirt-brim", "com.core.part-cooling", "com.core.top-surface-ironing"]` in `modules/core-modules/wipe-tower/wipe-tower.toml`. This uses the existing documented TOML primitive (`docs/03_wit_and_manifest.md:817-822`); the DAG builder (`crates/slicer-host/src/dag.rs:93-102`) creates predecessor edges forcing wipe-tower last in `PostPass::LayerFinalization`, locking the `K+1` adjacency invariant against later sibling-module reordering. No new manifest key is needed.
+  - **(3e)** Run `./modules/core-modules/build-core-modules.sh` to rebuild every guest's bindgen output. Run `--check` to confirm fresh.
+  - **(3f)** Un-`#[ignore]` AC7, AC8, AC9, NC5, NC6 in the builder test files and confirm they pass.
+- Precondition: Step 2 complete.
+- Postcondition: AC7, AC8, AC9, NC5, NC6 pass. AC1, AC3, AC4, AC6, NC1, NC4 still fail (Steps 4 + 5 land the rest). Every guest `.wasm` is fresh.
 - Files allowed to read:
-  - `crates/slicer-host/src/gcode_emit.rs:1140-1170` (range — bare T<n> writeln at 1155-1156).
-  - `crates/slicer-host/src/gcode_emit.rs:218-235` — `orca_type_label` (read-only verification).
-  - `crates/slicer-host/src/postpass.rs:39-59` — `PostpassError` definition (for the additive variant).
-  - `crates/slicer-ir/src/slice_ir.rs:1435-1442` (range — `ToolChange`).
-  - Step 1 dispatch returns (in working notes).
-- Files allowed to edit (≤ 3):
-  - `crates/slicer-host/src/gcode_emit.rs` — add the guard around the bare T<n> writeln.
-  - `crates/slicer-host/src/postpass.rs` — add the additive `MissingToolchangePurge { layer_index: usize, tool_change_index: usize }` variant.
-  - (third slot unused — `slice_ir.rs` is read-only this step.)
+  - `wit/world-finalization.wit` (full, ~100 lines).
+  - `wit/deps/ir-types.wit:139-170` — PathOptimization mirror reference.
+  - `wit/deps/types.wit` — `polygon`, `point2`, `geometry` ranges.
+  - `wit/deps/config.wit` (full, small).
+  - `crates/slicer-sdk/src/traits.rs` — range-read `FinalizationOutputBuilder` **struct** (at ~line 704) + the `BuilderAction` enum + the `apply_to` impl method (≈ lines 918-958); located by Step 1.
+  - `crates/slicer-sdk/src/layer_collection_builder.rs:53-71` — PathOptimization permutation contract.
+  - `crates/slicer-host/src/wit_host.rs` — `finalization-output-builder` impl block (located in Step 1).
+  - `crates/slicer-ir/src/resolved_config.rs` — the `declare_resolved_config!` invocation (the macro-driven SoT after commit `19e5791`).
+  - `modules/core-modules/wipe-tower/wipe-tower.toml` (full, small).
+  - `modules/core-modules/{skirt-brim,part-cooling,top-surface-ironing}/<name>.toml` — read-only confirmation of the three sibling `[module].id` values that get listed in wipe-tower's new `[compatibility].requires` entry.
+  - `docs/03_wit_and_manifest.md` (range 817-822 for the `[compatibility].requires` semantics).
+- Files allowed to edit (≤ 7 — exception for cross-cutting WIT/SDK/host change):
+  - `wit/world-finalization.wit` — 3 additive method declarations.
+  - `crates/slicer-sdk/src/traits.rs` — extend `FinalizationOutputBuilder` **struct** (impl methods + new `BuilderAction` variants) + `apply_to` impl extension.
+  - `crates/slicer-host/src/wit_host.rs` — host-side impl.
+  - `modules/core-modules/wipe-tower/wipe-tower.toml` — `[config.schema.bed_shape]` entry + (conditionally) `[config.schema.retract_length]` + `[compatibility].requires` list.
+  - `crates/slicer-ir/src/resolved_config.rs` — `bed_shape: List<f64>` field added to the `declare_resolved_config!` invocation; (conditionally) `retract_length: f64`.
+  - `crates/slicer-host/tests/finalization_builder_insert.rs` — remove `#[ignore]`.
+  - `crates/slicer-host/tests/finalization_builder_permute.rs` — remove `#[ignore]`.
+  - `crates/slicer-host/tests/finalization_builder_readback.rs` — remove `#[ignore]`.
 - Files explicitly out-of-bounds for this step:
-  - `crates/slicer-ir/src/slice_ir.rs` — read-only verification only; the `ExtrusionRole::WipeTower` variant already exists at lines 1233-1262.
-  - `modules/core-modules/wipe-tower/src/lib.rs` (Step 4).
-  - any test file other than running the existing tests.
-- Expected sub-agent dispatches:
-  - "Run `cargo check --workspace`; FACT pass/fail." (after edit)
-  - "Run `cargo clippy --workspace -- -D warnings`; FACT pass/fail." (after edit)
-  - "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping bare_toolchange_rejected -- --nocapture`; FACT pass/fail."
-- Context cost: **S–M** (reduced from M — no `slice_ir.rs` edit, no role-mapping arm edit).
-- Authoritative docs:
-  - `docs/02_ir_schemas.md` — additive variant rules.
-  - Packet 11's emission contract — confirmed `;TYPE:<RoleName>` form (the `WipeTower` arm at `orca_type_label` already complies).
-- OrcaSlicer refs:
-  - None at this step (Orca ordering is referenced in Step 4).
-- Verification:
-  - `cargo check --workspace` — must pass.
-  - `cargo clippy --workspace -- -D warnings` — must pass.
-  - `cargo test -p slicer-host --test gcode_toolchange_wrapping bare_toolchange_rejected -- --nocapture` — must pass.
-  - `cargo test -p slicer-host --test gcode_toolchange_wrapping toolchange_emits_retract_prime_wipe -- --nocapture` — expected to still fail.
-- Exit condition: `bare_toolchange_rejected` green; clippy clean; check clean; the other two tests still failing with messages naming the missing wipe-tower entities.
+  - `modules/core-modules/wipe-tower/src/lib.rs` (Step 5).
+  - `crates/slicer-host/src/gcode_emit.rs` (Step 4).
+  - `crates/slicer-host/src/postpass.rs` (Step 4).
+  - `wit/host-api.wit` — explicitly NO change (the prior draft's `print-bed-shape` is rejected).
+  - Every `wit/world-*.wit` other than `world-finalization.wit`.
+  - PathOptimization's `layer-collection-builder` definition — the new methods go on the **finalization** builder.
+- Expected sub-agent dispatches (from design.md Step 3 list — 7 dispatches).
+- Context cost: **M**
+- Authoritative docs: `docs/03_wit_and_manifest.md` — finalization-builder section + config-value types + manifest schema syntax. `docs/08_coordinate_system.md` — units for polygon.
+- OrcaSlicer refs: None.
+- Verification: `cargo check` clean; `build-core-modules.sh` succeeds and `--check` reports fresh; clippy clean; AC7 + AC8 + AC9 + NC5 + NC6 green.
+- Exit condition: WIT extension lands, every guest is fresh, builder ACs/NCs green, bed_shape config declared and reachable from `ConfigView`.
 
-### Step 4: Wipe-tower module emits retract/prime/wipe entities + role marker
+### Step 4: Marker spelling fix + emitter guard + additive `PostpassError::MissingToolchangePurge`
 
-- Task IDs:
-  - `TASK-143`
-- Objective: In `modules/core-modules/wipe-tower/src/lib.rs`, for each `ToolChange` in `LayerCollectionIR.tool_changes` (when `wipe_tower_enabled=true`), insert these `PrintEntity` rows around `ToolChange.after_entity_index`: (a) one retract entity (negative E delta sized per `wipe_tower_purge_volume` retract length), (b) one travel entity to `(wipe_tower_x, wipe_tower_y)`, (c) the tower polygon walls + rectilinear infill rows with `ExtrusionRole::WipeTower`, (d) the wipe rows with the same role, (e) one prime entity whose cumulative positive E delta equals `wipe_tower_purge_volume` mm via the project's `volume_to_length` convention (confirmed by Step 1 dispatch). Insert in a single mutation so `ToolChange.after_entity_index` remains consistent across the loop. Add two `#[cfg(test)] mod tests` cases: `emits_wipe_tower_role_marker` (AC4) and `tower_geometry_within_bed_outside_objects` (AC6).
+- Task IDs: `TASK-143`, `TASK-120d2`
+- Objective:
+  - **(4a)** Change `orca_type_label` at `crates/slicer-host/src/gcode_emit.rs:271` from `ExtrusionRole::WipeTower => ";TYPE:Wipe tower"` to `=> ";TYPE:Prime tower"`. One-line string change.
+  - **(4b)** In `gcode_emit.rs` near the toolchange emission path (~516-525), add a defensive check: when `wipe_tower_enabled=true`, each `ToolChange` must be bracketed by at least one retract entity (negative E) before and at least one `ExtrusionRole::WipeTower` entity after. On failure return `Err(PostpassError::MissingToolchangePurge { layer_index, tool_change_index })`.
+  - **(4c)** Add the additive variant `MissingToolchangePurge { layer_index: u32, tool_change_index: u32 }` to `PostpassError` in `crates/slicer-host/src/postpass.rs` (≈ lines 40-60). Types are `u32` (not `usize`) to match `ToolChange.after_entity_index: u32` and the IR's `layer-idx` convention.
 - Precondition: Step 3 complete.
-- Postcondition: `toolchange_emits_retract_prime_wipe` passes; `purge_volume_within_tolerance` passes for the fixture; both new module unit tests pass.
+- Postcondition: `bare_toolchange_rejected` (NC1) passes; AC1, AC3, AC4, AC5, AC6, NC4 still fail (Step 5 lands the emission).
 - Files allowed to read:
-  - `modules/core-modules/wipe-tower/wipe-tower.toml` — full read (small).
-  - `crates/slicer-ir/src/slice_ir.rs:1430-1470` and `1520-1545` (ranges).
-  - `crates/slicer-host/src/layer_finalization.rs:80-110` (range).
-  - The role-to-`;TYPE:` mapping function location (read-only confirmation that Step 3 wired it correctly).
+  - `crates/slicer-host/src/gcode_emit.rs` — ranges from Step 1 (259-276; 385-410; 516-525).
+  - `crates/slicer-host/src/postpass.rs` (≈ lines 40-60; existing variants `FatalModule`, `GCodeEmit`, `GCodeSerialization`).
+  - `crates/slicer-ir/src/slice_ir.rs` — `ToolChange` range from Step 1.
 - Files allowed to edit (≤ 3):
-  - `modules/core-modules/wipe-tower/src/lib.rs` — emission logic + the new `#[cfg(test)] mod tests` block.
-  - (one helper module under `modules/core-modules/wipe-tower/src/` if the existing layout already splits geometry into a helper — keep it within the wipe-tower module's directory; do NOT add a new file unless the existing layout already does so.)
-  - (no third slot expected.)
-- Files explicitly out-of-bounds for this step:
-  - `crates/slicer-host/src/gcode_emit.rs` (Step 3 done; do not re-edit).
-  - All other core-modules (`skirt-brim`, `part-cooling`, `top-surface-ironing`, etc.) — must NOT touch.
-  - `crates/slicer-ir/src/slice_ir.rs` (Step 3 done).
+  - `crates/slicer-host/src/gcode_emit.rs` — (a) spelling fix; (b) guard.
+  - `crates/slicer-host/src/postpass.rs` — additive variant.
+- Files explicitly out-of-bounds: `slice_ir.rs` (read-only); `modules/core-modules/wipe-tower/src/lib.rs` (Step 5); `wit/host-api.wit` (no change).
 - Expected sub-agent dispatches:
-  - "Confirm no other `PostPass::LayerFinalization` module reads `LayerCollectionIR.entities.len()` or asserts entity-count invariants; LOCATIONS ≤ 10 entries from `modules/core-modules/{skirt-brim,part-cooling,top-surface-ironing}/src/lib.rs`."
-  - "Run `./modules/core-modules/build-core-modules.sh`; FACT exit code + last 5 lines."
-  - "Run `cargo test -p wipe-tower --lib`; FACT pass/fail (expect 2 new tests green)."
-  - "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping`; FACT pass/fail (expect all 3 green)."
-- Context cost: **M**
-- Authoritative docs:
-  - `docs/08_coordinate_system.md` — direct read for unit math (1 mm = 10,000 units).
-  - `docs/03_wit_and_manifest.md` — range-read wipe-tower manifest schema only.
-- OrcaSlicer refs:
-  - `OrcaSlicerDocumented/src/libslic3r/GCode/WipeTower2.cpp:1557-1640` — call-ordering reference (delegated; do not load).
-- Verification:
-  - `./modules/core-modules/build-core-modules.sh` — WASM rebuild succeeds.
-  - `cargo test -p wipe-tower --lib` — all module tests green (including the 2 new unit tests).
-  - `cargo test -p slicer-host --test gcode_toolchange_wrapping` — all 3 integration tests green.
-- Exit condition: WASM build clean; all module + integration tests green.
+  - "Run `cargo check --workspace`; FACT pass/fail."
+  - "Run `cargo clippy --workspace -- -D warnings`; FACT pass/fail."
+  - "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping bare_toolchange_rejected -- --nocapture`; FACT pass/fail."
+- Context cost: **S**
+- Authoritative docs: `docs/02_ir_schemas.md` (additive variant rules); `docs/11_operational_governance_and_acceptance_gate.md` §1 (DEVIATION_LOG for user-visible spelling change).
+- OrcaSlicer refs: `ExtrusionEntity.cpp:628-654` (already audited).
+- Verification: `cargo check` clean; `clippy` clean; NC1 green.
+- Exit condition: marker fix landed, additive variant in place, NC1 green.
 
-### Step 5: End-to-end CLI verification + AC scripts
+### Step 5: Wipe-tower module emits retract/travel/prime/wipe entities via `insert_entity_at` + bed-bounds check
 
-- Task IDs:
-  - `TASK-143`
-  - `TASK-152b`
-- Objective: Slice the multi-material fixture end-to-end through `slicer-cli` and run the awk/python AC and NC scripts from `packet.spec.md` against the produced G-code.
-- Precondition: Steps 1-4 complete.
-- Postcondition: `target/test-output/multi_color_cube.gcode` exists. Every AC command (AC1, AC2a, AC2b, AC3, AC4, AC5, AC6) exits 0. NC1 (`cargo test ... bare_toolchange_rejected`) exits 0 — the unit test asserts the rejection path is reached. NC2 and NC3 are regression sentinels that exit 0 against correct gcode (they only exit non-zero against regressed output).
+- Task IDs: `TASK-143`
+- Objective:
+  - **(5a)** In `modules/core-modules/wipe-tower/src/lib.rs::generate_purge_paths` (≈ lib.rs:136-204; Step 1 reverifies line range), extend the returned `Vec<(ExtrusionPath3D, RegionKey)>` to contain, in order per `ToolChange`: (a) retract entity with negative E delta equal to the `retract_length` config key (declared in Step 3d if not pre-existing — never hand-code a literal), (b) travel entity to `(wipe_tower_x, wipe_tower_y)` at zero E delta, (c) existing rectilinear scan-line wall entities tagged `ExtrusionRole::WipeTower`, (d) prime entity whose cumulative positive E delta equals `wipe_tower_purge_volume` mm via `length_mm = volume_mm3 / (line_width_mm * layer_height_mm)`.
+  - **(5b)** Rewrite `run_finalization` (lib.rs:249-295) to use the new `output.insert_entity_at(layer_index, after_entity_index + 1 + offset, path, region_key)` for each entity (offset increments per entity so they cluster contiguously). Replace the existing `output.push_entity_with_priority(...)` call with the new positional insertion.
+  - **(5c)** Read `bed_shape` from `config.get("bed_shape")` (expect `ConfigValue::List` containing `ConfigValue::Float` items, format `[x0, y0, x1, y1, …]`). Parse into a `Polygon` (or simple `Vec<(f32, f32)>`). On every tower vertex, verify containment via simple point-in-polygon test (or polygon-polygon intersection check against object footprints from `host-services::object-bounds`). On failure return `ModuleError::fatal` naming the violating coordinate.
+  - **(5d)** Un-`#[ignore]` AC4 (`emits_prime_tower_role_marker`), AC6 (`tower_geometry_within_config_bed_outside_objects`), NC4 (`tower_outside_bed_returns_fatal`).
+- Precondition: Step 4 complete.
+- Postcondition: AC1, AC3, AC4, AC6, NC4 pass. NC1 stays green.
 - Files allowed to read:
-  - The produced G-code (via awk/grep/python only; never load full).
+  - `modules/core-modules/wipe-tower/wipe-tower.toml` — full.
+  - `crates/slicer-ir/src/slice_ir.rs` — ranges from Step 1 (`ToolChange`, `TravelRetract`, `LayerCollectionIR.tool_changes`, `ConfigValue`).
+  - `crates/slicer-ir/src/resolved_config.rs` — `bed_shape` and `retract_length` field declarations from Step 3.
+  - `crates/slicer-host/src/layer_finalization.rs:80-110` — orchestration.
+  - `crates/slicer-sdk/src/traits.rs` — `FinalizationOutputBuilder` **struct** (range from Step 1, with the new methods added in Step 3).
 - Files allowed to edit (≤ 3):
-  - (none — script-only verification step.)
-- Files explicitly out-of-bounds for this step:
-  - source code (no edits this step).
+  - `modules/core-modules/wipe-tower/src/lib.rs` — extend `generate_purge_paths`; rewrite `run_finalization`; add `#[cfg(test)] mod tests` cases for AC4 + NC4 (or un-`#[ignore]` the ones from Step 2).
+  - (one helper file under `modules/core-modules/wipe-tower/src/` only if the existing module layout already splits into helpers.)
+- Files explicitly out-of-bounds: `crates/slicer-host/src/gcode_emit.rs` (done); `crates/slicer-host/src/postpass.rs` (done); `crates/slicer-host/src/wit_host.rs` (done); all other core-modules; `crates/slicer-ir/src/slice_ir.rs` (read-only).
+- Expected sub-agent dispatches:
+  - "Confirm wipe-tower's `[compatibility].requires` from Step 3d2 actually forces it last in the DAG topological order. Inspect `crates/slicer-host/src/dag.rs` topological sort output for `PostPass::LayerFinalization` and confirm `com.core.wipe-tower` appears AFTER `com.core.skirt-brim`, `com.core.part-cooling`, and `com.core.top-surface-ironing`. FACT pass/fail + ordered module list."
+  - "Confirm no other `PostPass::LayerFinalization` module pushes entities into the same layers wipe-tower modifies (which would break the K+1 adjacency even with wipe-tower running last, since sibling entities have already been recorded). LOCATIONS ≤ 10 entries from skirt-brim, part-cooling, top-surface-ironing src/lib.rs showing any `push_entity_*` or `insert_entity_*` calls in their `run_finalization` impls."
+  - "Run `./modules/core-modules/build-core-modules.sh`; FACT exit code + last 5 lines."
+  - "Run `cargo test -p wipe-tower --lib`; FACT pass/fail (expect AC4 + NC4 green)."
+  - "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping`; FACT pass/fail (expect AC1 + AC3 + NC1 green)."
+  - "Run `cargo test -p slicer-host --test wipe_tower_bed_bounds`; FACT pass/fail (expect AC6 green)."
+- Context cost: **M**
+- Authoritative docs: `docs/08_coordinate_system.md` (units); `docs/03_wit_and_manifest.md` (wipe-tower manifest schema).
+- OrcaSlicer refs: `WipeTower2.cpp:1557-1640` (delegated).
+- Verification: WASM rebuild clean; module + integration tests green; bed-bounds tests green.
+- Exit condition: AC1/AC3/AC4/AC6/NC1/NC4 all green.
+
+### Step 6: End-to-end CLI verification + AC scripts
+
+- Task IDs: `TASK-143`, `TASK-152b`
+- Objective: Slice the multi-material fixture end-to-end through `slicer-cli` and run AC2a, AC2b, AC5, NC2, NC3 scripts against the produced G-code.
+- Precondition: Steps 1-5 complete.
+- Postcondition: `target/test-output/multi_color_cube.gcode` exists; AC2a, AC2b, AC5 exit 0; NC2, NC3 exit 0 on correct gcode.
+- Files allowed to read: the produced G-code (via awk/grep/python; never load full).
+- Files allowed to edit (≤ 3): none.
+- Files explicitly out-of-bounds: source code.
 - Expected sub-agent dispatches:
   - "Run `cargo run --bin slicer-cli --release --slice --input crates/slicer-host/tests/fixtures/multi_color_cube.stl --output target/test-output/multi_color_cube.gcode`; FACT exit code + last 5 lines."
-  - "Run each AC and NC pipe-suffixed command from `packet.spec.md` against `target/test-output/multi_color_cube.gcode`; FACT pass/fail per command, ≤ 1 line per AC/NC."
+  - "Run each AC and NC pipe-suffixed command from `packet.spec.md` against the produced G-code; FACT pass/fail per command."
 - Context cost: **S**
-- Authoritative docs:
-  - None (verification only).
-- OrcaSlicer refs:
-  - None (reference `.gcode` is already checked in from Step 2).
-- Verification:
-  - All 7 AC commands exit 0 (the three `cargo test -p ...` already passed in Step 4; the two awks for AC2a/AC2b and the python for AC5 must pass on the produced file).
-  - NC1 exits 0 — `cargo test ... bare_toolchange_rejected` is a unit test of the rejection path; it passes when the negative behavior is correctly implemented.
-  - NC2 and NC3 exit 0 against the produced correct gcode — they are regression sentinels (silent on correct output; exit non-zero only against regressed output).
-  - **Optional sentinel-teeth proof** (recommended once per packet closure): copy `target/test-output/multi_color_cube.gcode` to `target/test-output/multi_color_cube.corrupted.gcode`, hand-corrupt it (delete the retract line preceding one `T<n>` to forge NC2's bug pattern; delete all `;TYPE:Wipe tower` and `;TYPE:Prime tower` lines to forge NC3's bug pattern), re-run the NC2 and NC3 commands against the corrupted file, and confirm both exit non-zero. Record FACT pass/fail in the closure notes; do NOT commit the corrupted file.
-- Exit condition: every AC command exits 0 on the fresh end-to-end output; all three NC commands exit 0 on the correct output; the optional sentinel-teeth proof (if run) confirms NC2/NC3 exit non-zero on a hand-corrupted copy.
+- Authoritative docs: None.
+- OrcaSlicer refs: None.
+- Verification: AC2a, AC2b, AC5, NC2, NC3 all exit 0 on the produced output.
+- **Optional sentinel-teeth proof** (recommended once per packet closure): hand-corrupt a copy of the produced G-code to forge NC2/NC3 bug patterns; confirm NC2/NC3 exit non-zero against the corruption. Record FACT; do NOT commit the corrupted file.
+- Exit condition: every AC/NC pipe-suffixed command exits as expected on the fresh end-to-end output.
 
-### Step 6: DEVIATION_LOG entry + docs/07 status update + packet status flip
+### Step 7: DEVIATION_LOG entry + docs/07 status update + docs/03 + packet status flip
 
-- Task IDs:
-  - `TASK-143`
-  - `TASK-152b`
-  - `TASK-120d2`
-- Objective: Append one `docs/DEVIATION_LOG.md` entry recording (a) the integration completion across packets 17/19/11, and (b) the AC6 stub-bounds follow-up: the wipe-tower module currently lacks host-service `bed_polygon` access, so AC6 ran against module-internal stubs; real cross-module bed-bounds enforcement is deferred to a follow-up packet. Update `docs/07_implementation_status.md` notes for the three task IDs to reference packet 58's closure. Flip this packet's `status:` from `draft` to `implemented` after the acceptance ceremony completes.
-- Precondition: Step 5 complete; all ACs green.
-- Postcondition: Deviation log entry present; `docs/07` updated at exactly the three TASK-### lines; this packet's `packet.spec.md` is `status: implemented`.
+- Task IDs: `TASK-143`, `TASK-152b`, `TASK-120d2`
+- Objective:
+  - Append one `docs/DEVIATION_LOG.md` entry recording: (a) integration completion across packets 17/19/11; (b) `;TYPE:Wipe tower` → `;TYPE:Prime tower` spelling correction; (c) three additive methods (`insert-entity-at`, `set-entity-order`, `get-ordered-entities`) on `finalization-output-builder` mirroring PathOptimization; (d) `bed_shape` config addition; (e) rejected alternatives (host-services accessor; stage migration).
+  - Add a one-paragraph description of the three new finalization-builder methods (with the index-remap invariants) to `docs/03_wit_and_manifest.md`'s finalization-builder section.
+  - Update `docs/07_implementation_status.md` notes for TASK-143, TASK-152b, TASK-120d2.
+  - Flip this packet's `status:` from `draft` to `implemented` after the acceptance ceremony.
+- Precondition: Step 6 complete; all ACs green.
+- Postcondition: Deviation log entry present; `docs/03` describes the new accessors; `docs/07` updated; `packet.spec.md` `status: implemented`.
 - Files allowed to read:
   - `docs/11_operational_governance_and_acceptance_gate.md` §1 (range, ≤ 60 lines).
-  - `docs/DEVIATION_LOG.md` — read only the most recent 3 entries (via `git log -p -n 3 docs/DEVIATION_LOG.md` through a sub-agent) for format reference; do not load full file.
-  - `docs/07_implementation_status.md` — narrow line edits only at the three TASK-### lines (LOCATIONS from sub-agent first); do NOT load full file.
-- Files allowed to edit (≤ 3):
-  - `docs/DEVIATION_LOG.md` — append exactly one entry.
-  - `docs/07_implementation_status.md` — narrow line edits at TASK-143, TASK-152b, TASK-120d2 only.
-  - `.ralph/specs/58_gcode-toolchange-purge-integration/packet.spec.md` — flip `status: draft` → `status: implemented` after the acceptance ceremony passes.
-- Files explicitly out-of-bounds for this step:
-  - All other docs.
-  - Source code.
-  - Other packets' directories — per the cross-packet mutation rule, do NOT touch `.ralph/specs/17_*`, `.ralph/specs/19_*`, `.ralph/specs/11_*`, `.ralph/specs/15_*`, `.ralph/specs/34_*`.
+  - `docs/DEVIATION_LOG.md` — most recent 3 entries (via sub-agent).
+  - `docs/07_implementation_status.md` — narrow lines only.
+  - `docs/03_wit_and_manifest.md` — finalization-builder section range (Step 1 dispatch).
+- Files allowed to edit (≤ 4):
+  - `docs/DEVIATION_LOG.md` — one appended entry.
+  - `docs/07_implementation_status.md` — three TASK-### lines.
+  - `docs/03_wit_and_manifest.md` — one-paragraph addition.
+  - `.ralph/specs/58_gcode-toolchange-purge-integration/packet.spec.md` — `status:` flip.
+- Files explicitly out-of-bounds: all other docs; source code; other packets' directories.
 - Expected sub-agent dispatches:
-  - "Locate the line ranges for TASK-143, TASK-152b, TASK-120d2 in `docs/07_implementation_status.md`; LOCATIONS ≤ 6 entries."
-  - "Show the most recent 3 entries of `docs/DEVIATION_LOG.md`; SNIPPETS ≤ 30 lines each, for format reference."
+  - "Locate line ranges for TASK-143, TASK-152b, TASK-120d2 in `docs/07_implementation_status.md`; LOCATIONS ≤ 6 entries."
+  - "Show most recent 3 entries of `docs/DEVIATION_LOG.md`; SNIPPETS ≤ 30 lines each."
+  - "Locate `finalization-output-builder` section header in `docs/03_wit_and_manifest.md`; LOCATIONS 1 entry."
 - Context cost: **S**
-- Authoritative docs:
-  - `docs/11_operational_governance_and_acceptance_gate.md` §1.
-- OrcaSlicer refs:
-  - None.
-- Verification:
-  - `git diff docs/DEVIATION_LOG.md` — shows exactly one appended entry.
-  - `git diff docs/07_implementation_status.md` — only the three TASK-### lines edited (no unrelated changes).
-  - `git diff .ralph/specs/58_gcode-toolchange-purge-integration/packet.spec.md` — only the `status:` line changed.
-- Exit condition: deviation log entry committed, docs/07 updated, packet `packet.spec.md` set to `status: implemented` after the acceptance ceremony.
+- Authoritative docs: `docs/11_operational_governance_and_acceptance_gate.md` §1.
+- OrcaSlicer refs: None.
+- Verification: `git diff` shows expected scoped changes only.
+- Exit condition: all docs updated, packet `status: implemented`.
 
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
 | --- | --- | --- |
-| Step 1 | S | Pure dispatch — four FACT/SNIPPETS/LOCATIONS returns; no direct file reads. |
-| Step 2 | M | New test file + STL + reference G-code; reads `tool_ordering_tdd.rs` and ranged IR. |
-| Step 3 | S–M | Emitter guard + additive `PostpassError` variant + clippy clean (no IR edit; role-mapping arm already in place). |
-| Step 4 | M | Module emission + 2 new unit tests + WASM rebuild + neighbor invariant check. |
-| Step 5 | S | Script-only verification; no source edits. |
-| Step 6 | S | Docs update; narrow line edits via sub-agent. |
+| Step 1 | S | Pure dispatch — 10 FACT/SNIPPETS/LOCATIONS returns. |
+| Step 2 | M | 5 new test files + module test scaffolding + STL + reference G-code. |
+| Step 3 | M | WIT extension + SDK struct impl + host impl + `apply_to` index-remap + bed_shape config + `[compatibility].requires` ordering + full guest rebuild + 5 builder ACs/NCs verified. |
+| Step 4 | S | One-line spelling fix + guard + additive variant + clippy. |
+| Step 5 | M | Module emission extension + bed-bounds check + 2 unit tests un-`#[ignore]`d + WASM rebuild. |
+| Step 6 | S | Script-only verification. |
+| Step 7 | S | Docs update. |
 
 Aggregate: **M** (within budget; no single step is L).
 
 ## Packet Completion Gate
 
-- All 6 steps complete with their exit conditions met.
-- Every pipe-suffixed AC and NC command in `packet.spec.md` re-runs PASS (or expected-FAIL for NCs).
-- `docs/07_implementation_status.md` updated for TASK-143, TASK-152b, TASK-120d2.
+- All 7 steps complete with their exit conditions met.
+- Every pipe-suffixed AC and NC command in `packet.spec.md` re-runs PASS.
+- `./modules/core-modules/build-core-modules.sh --check` reports fresh for every guest.
+- `docs/07_implementation_status.md` updated for the three task IDs.
+- `docs/03_wit_and_manifest.md` records the three new builder methods + index-remap invariants.
 - `docs/DEVIATION_LOG.md` entry recorded.
 - `packet.spec.md` ready to move to `status: implemented`.
-- Final acceptance-ceremony workspace gate: `cargo test --workspace` returns PASS via sub-agent (the only `--workspace` test invocation in the packet, per the project's Test Discipline rule).
+- Final acceptance-ceremony workspace gate: `cargo test --workspace` returns PASS via sub-agent (the only `--workspace` test invocation in the packet, per Test Discipline).
 
 ## Acceptance Ceremony
 
-- Re-dispatch every pipe-suffixed acceptance criterion command from `packet.spec.md` and every negative case; record FACT pass/fail per AC and per NC.
+- Re-dispatch every pipe-suffixed AC + NC command from `packet.spec.md`; record FACT pass/fail.
 - Run `cargo clippy --workspace -- -D warnings` (must pass).
-- Run `cargo test --workspace` exactly once via sub-agent with FACT pass/fail return — this is the packet's only workspace-wide invocation, used solely as the closure gate.
-- Run `./modules/core-modules/build-core-modules.sh` (must pass).
-- Confirm the implementer's peak context usage stayed under 70%; if not, log it as a packet-authoring lesson and consider tightening Step 4's scope in any follow-up.
+- Run `./modules/core-modules/build-core-modules.sh --check` (must report fresh).
+- Run `cargo test --workspace` exactly once via sub-agent with FACT pass/fail return — packet's only workspace-wide invocation.
+- Confirm implementer's peak context usage stayed under 70%.
 - Flip `packet.spec.md` `status: draft` → `status: implemented`.

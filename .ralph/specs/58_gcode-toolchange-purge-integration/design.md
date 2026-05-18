@@ -2,142 +2,234 @@
 
 ## Controlling Code Paths
 
-- **Primary code path**: `wipe-tower` module's per-layer fn under `run_finalization` inserts purge `PrintEntity` rows into each `LayerCollectionIR` → `GCodeEmitter` (in `crates/slicer-host/src/gcode_emit.rs`) serializes those entities in order with `;TYPE:Wipe tower` markers and a defensive guard around the existing bare `T<n>` emission at lines 1155-1156.
+- **Primary code path**: `wipe-tower` module's `run_finalization` (`modules/core-modules/wipe-tower/src/lib.rs:249-295`) calls `generate_purge_paths` (lib.rs:136-204) for each `ToolChange`. The new design extends `generate_purge_paths` to return an ordered `Vec<(ExtrusionPath3D, RegionKey)>` containing the retract entity, the travel entity, the existing rectilinear scan-line wall entities, and the prime entity, in that order. `run_finalization` then uses the **new** `FinalizationOutputBuilder::insert_entity_at(layer_index, after_entity_index + 1, …)` to place each entity at a deterministic position adjacent to the `ToolChange`. The host's `GCodeEmitter` (`crates/slicer-host/src/gcode_emit.rs`) emits `T<n>` between entity `after_entity_index` and `after_entity_index + 1`, naturally bracketing the inserted purge entities. A defensive guard near `emit_gcode`'s ToolChange emission (lines 516-525) returns `PostpassError::MissingToolchangePurge` when bracketing fails under `wipe_tower_enabled=true`.
+- **Marker spelling fix**: `orca_type_label` at `gcode_emit.rs:271` changes `WipeTower → ";TYPE:Wipe tower"` to `=> ";TYPE:Prime tower"` (OrcaSlicer parity, `ExtrusionEntity.cpp:648`).
+- **Bed-shape path**: `bed_shape` declared as `float-list` in `wipe-tower.toml`'s `[config.schema]` and in the host-side printer profile schema. Module reads via `config.get("bed_shape")` and parses the `Vec<f64>` as `[x0, y0, x1, y1, …]` into a `Polygon`. No `host-services` WIT change.
+- **Finalization builder extension**: `wit/world-finalization.wit::finalization-output-builder` gains three additive methods (`insert-entity-at`, `set-entity-order`, `get-ordered-entities`) — implemented host-side in `crates/slicer-host/src/wit_host.rs` and exposed through the SDK **action-recorder struct** `FinalizationOutputBuilder` (NOT a trait) in `crates/slicer-sdk/src/traits.rs` (struct definition at ~line 704; `apply_to` impl block at ~lines 918-958). The struct records builder actions; `apply_to` drains them onto `&mut Vec<LayerCollectionIR>`. The three new methods are added as struct `impl` methods (recording a new `BuilderAction` variant each) plus a corresponding `apply_to` arm. Conceptually they mirror PathOptimization's `layer-collection-builder` capability surface (`wit/deps/ir-types.wit:139-170`) but adapted for finalization's multi-layer view (each method takes `layer-index`) and the read-back uses finalization-stage `print-entity-view` (`wit/world-finalization.wit:19-25`) rather than PathOpt's `ordered-entity-view` (`wit/deps/ir-types.wit:149-156`), because finalization sees the richer entity record (entity-id, topo-order).
+- **Intra-stage ordering (wipe-tower runs last)**: `modules/core-modules/wipe-tower/wipe-tower.toml` declares `[compatibility].requires = ["com.core.skirt-brim", "com.core.part-cooling", "com.core.top-surface-ironing"]`. Per `docs/03_wit_and_manifest.md:817-822` and `docs/04_host_scheduler.md:762-765`, `[compatibility].requires` is the documented TOML-level primitive for intra-stage ordering; the DAG builder (`crates/slicer-host/src/dag.rs:93-102`) creates an `A → wipe-tower` edge for every declared `A`, forcing wipe-tower last in `PostPass::LayerFinalization`. No new manifest key is added.
 - **Neighboring tests/fixtures**:
-  - `crates/slicer-host/tests/tool_ordering_tdd.rs` — closest neighbor; demonstrates `LayerCollectionIR` assembly idioms and tool-index propagation via `region_key.region_id`.
-  - `modules/core-modules/wipe-tower/src/lib.rs` and `modules/core-modules/wipe-tower/wipe-tower.toml` — module under change.
-  - `crates/slicer-host/tests/fixtures/` — target dir for the new STL + reference G-code (Step 2 adds the files).
-- **OrcaSlicer comparison surface**: `WipeTower2.cpp:1557-1640` for Unload/Change/Load/Wipe ordering; `WipeTower2.cpp:2069-2205` for `finish_layer()` perimeter+infill polygon emission shape.
+  - `crates/slicer-host/tests/tool_ordering_tdd.rs` — `LayerCollectionIR` assembly idioms.
+  - `crates/slicer-host/tests/finalization_live_tdd.rs:7,50` — load_wipe_tower test (verify it still passes after stage hasn't moved).
+  - `crates/slicer-host/tests/finalization_aware_travel_tdd.rs:31,62` — wipe-tower travel reconciliation.
+  - `modules/core-modules/wipe-tower/src/lib.rs` and `wipe-tower.toml` — module under change.
+- **OrcaSlicer comparison surface**: `WipeTower2.cpp:1557-1640` ordering; `WipeTower2.cpp:2069-2205` finish_layer; `ExtrusionEntity.cpp:628-654` role-to-`;TYPE:` mapping.
 
 ## Architecture Constraints
 
-- `wipe-tower` runs in `PostPass::LayerFinalization` and mutates `&mut Vec<LayerCollectionIR>`. It MUST NOT run after `PostPass::GCodeEmit`. The sequential `for module in &stage.modules` loop at `crates/slicer-host/src/layer_finalization.rs:83-108` consumes a module ordering that is populated upstream during `ExecutionPlan` build; the Step 4 dispatch confirms `wipe-tower` is positioned last among entity-injecting `LayerFinalization` modules (`skirt-brim`, `part-cooling`, `top-surface-ironing`).
-- New entities added by `wipe-tower` use existing IR fields. Adding fields to `ToolChange` or `PrintEntity` is out of scope. `ExtrusionRole::WipeTower` already exists at `crates/slicer-ir/src/slice_ir.rs:1233-1262` (confirmed during spec-review); no enum change required. Step 1 reverifies the variant has not been removed.
-- The `wipe_tower_enabled` config flag is the canonical gate. When `false`, the wipe-tower module skips emission entirely (existing behavior from packet 17 — verify, do not modify).
-- Per `docs/02_ir_schemas.md` determinism contract, purge entity positions must be deterministic given the same input. Use `wipe_tower_x`, `wipe_tower_y`, `wipe_tower_width`, `line_width` from config — no RNG, no allocation-order dependence.
-- Coordinate units: X/Y in scaled integers (1 unit = 100 nm, per `docs/08_coordinate_system.md`). Z in mm `f32`. Tower polygon vertices via `Point2::from_mm`.
-- Per packet 11's emission contract, role labels are `;TYPE:<RoleName>`. The wipe-tower role label is `;TYPE:Wipe tower` (with that exact spelling and capitalization, matching OrcaSlicer ecosystem `;TYPE:` parity). The user's ACs accept either `Wipe tower` or `Prime tower`; this packet emits `Wipe tower`. If Step 1's dispatch on `docs/02_ir_schemas.md`'s role table mandates `Prime tower`, update AC4/AC5/NC2 spelling in lockstep before Step 3 begins.
+- `wipe-tower` runs in `PostPass::LayerFinalization` and mutates `&mut Vec<LayerCollectionIR>` via the `FinalizationOutputBuilder` action-recorder **struct** (whose `apply_to` impl method drains recorded actions). Senior-review audit confirmed migrating wipe-tower to `Layer::PathOptimization` is infeasible (three fatal blockers — see **Stage-Migration Rejected** below); the module stays in finalization.
+- New entities added by wipe-tower use existing IR fields. Adding fields to `ToolChange` or `PrintEntity` is out of scope. `ExtrusionRole::WipeTower` already exists in `crates/slicer-ir/src/slice_ir.rs` (variant at ~line 1336; the surrounding `enum ExtrusionRole` block spans roughly 1318-1350; Step 1 reverifies exact lines) and is first-class in `wit/deps/types.wit:24-29`. `PrimeTower` is at ~line 1338; `Skirt` is the last variant in the same block.
+- The `wipe_tower_enabled` config flag is the canonical gate. When `false`, wipe-tower skips emission entirely.
+- Per `docs/02_ir_schemas.md` determinism contract, purge entity positions must be deterministic given the same input. Use `wipe_tower_x`, `wipe_tower_y`, `wipe_tower_width`, `line_width` from config — no RNG.
+- Coordinate units: `ExtrusionPath3D.points` already in mm; bed_shape config values are mm. No unit conversion at boundaries.
+- Per packet 11's emission contract, role labels are `;TYPE:<RoleName>`. **OrcaSlicer's canonical role-name for the wipe-tower extrusion is "Prime tower"** (`ExtrusionEntity.cpp:648`).
+- `WipeTower` is first-class at the WIT boundary; host-to-WIT translation at `wit_host.rs:4747-4768` is direct passthrough. `PrimeTower`/`Skirt` use `Custom("slicer.builtin/...")` tags — not affected by this packet.
+
+## Stage-Migration Rejected
+
+A senior-review pass evaluated moving wipe-tower from `PostPass::LayerFinalization` to `Layer::PathOptimization` (where `set-entity-order` already exists). **Rejected** on three fatal blockers:
+
+- **B1**: `layer-collection-builder` in PathOptimization (`wit/deps/ir-types.wit:167-170`) exposes only `set-entity-order` and `get-ordered-entities`. No `push-entity-*`. Wipe-tower couldn't emit its scan lines.
+- **B2**: PathOptimization's read-side has no `tool_changes()` accessor. Wipe-tower couldn't see what to react to. Tool changes accumulate in `arena.deferred_tool_changes` (`crates/slicer-host/src/dispatch.rs:2830`) but aren't exposed to sibling modules.
+- **B3**: `wit/world-layer.wit::run-path-optimization` exposes `layer-index` only — no `z`, no layer-height. Wipe-tower can't size tower geometry.
+
+Plus the stage order is fixed in `crates/slicer-host/src/execution_plan.rs:27-48` and inserting an intermediate stage is a workspace-wide refactor.
+
+**Conclusion**: keep wipe-tower in finalization; add the missing primitives (positional insert, permutation, read-back) to `finalization-output-builder` instead.
 
 ## Code Change Surface
 
-- **Selected approach** — "Entity-level injection". The `wipe-tower` module inserts dedicated `PrintEntity` rows (tagged with `ExtrusionRole::WipeTower`) into each layer's entity list immediately before and after each `ToolChange.after_entity_index`. The `GCodeEmitter` already serializes entities in order, and `orca_type_label` at `gcode_emit.rs:218-235` already maps `ExtrusionRole::WipeTower → ";TYPE:Wipe tower"` (and `PrimeTower → ";TYPE:Prime tower"`). The only new emitter code is a defensive guard that rejects an unbracketed `ToolChange` under `wipe_tower_enabled=true`, plus an additive `PostpassError::MissingToolchangePurge` variant in `postpass.rs`.
+- **Selected approach** — "Three-method WIT extension on `finalization-output-builder` + `bed_shape` config (via `declare_resolved_config!` macro) + `[compatibility].requires` ordering directive + entity-injection inside `generate_purge_paths` + one-line marker spelling fix + defensive guard." The wipe-tower module uses the new `insert-entity-at` to place retract/travel/prime/wipe entities at `after_entity_index + 1`, bracketing the `T<n>`. The host's `apply_to` (the impl block on the `FinalizationOutputBuilder` struct at `crates/slicer-sdk/src/traits.rs` ≈ lines 918-958) is extended to handle the new methods and to remap `ToolChange.after_entity_index` and `ZHop.after_entity_index` on insert/permute (the **Locked Invariants** in `packet.spec.md`).
 
 - **Exact functions, traits, manifests, tests, or fixtures expected to change**:
-  - `modules/core-modules/wipe-tower/src/lib.rs::run_finalization` (or the per-layer inner fn it dispatches to) — for each `LayerCollectionIR.tool_changes` entry, emit, in order: a retract entity (negative E delta), a travel entity to tower X/Y, the tower wall + infill polygon entities with `ExtrusionRole::WipeTower`, the wipe rows, and a prime entity whose cumulative E delta equals `wipe_tower_purge_volume` mm (converted to extrusion length via the existing `volume_to_length` analog or by `length = volume / cross_section_area(line_width, layer_height)`).
-  - `crates/slicer-host/src/gcode_emit.rs::orca_type_label` at lines 218-235 — already returns `";TYPE:Wipe tower"` for `ExtrusionRole::WipeTower` and `";TYPE:Prime tower"` for `ExtrusionRole::PrimeTower`. **No edit required**; Step 1 verifies the arm remains intact.
-  - `crates/slicer-host/src/gcode_emit.rs` tool-change emission block at lines 1155-1156 — add a defensive check: when `wipe_tower_enabled=true`, the ±N surrounding entities of a `ToolChange` must include at least one retract (negative E) before and at least one `ExtrusionRole::WipeTower` entity after; otherwise return `PostpassError::MissingToolchangePurge { layer_index, tool_change_index }`.
-  - `crates/slicer-host/src/postpass.rs::PostpassError` at lines 39-59 — add the additive `MissingToolchangePurge { layer_index: usize, tool_change_index: usize }` variant. Existing variants (`FatalModule`, `GCodeEmit { message }`, `GCodeSerialization { message }`) are untouched.
-  - `crates/slicer-ir/src/slice_ir.rs::ExtrusionRole` at lines 1233-1262 — `WipeTower` variant already present. **No edit required**.
-  - **New**: `crates/slicer-host/tests/gcode_toolchange_wrapping.rs` — TDD-first integration tests for AC1, AC3, NC1.
-  - **New**: `modules/core-modules/wipe-tower/src/lib.rs#tests` — unit tests for AC4 (role marker) and AC6 (geometry bounds).
-  - **New**: `crates/slicer-host/tests/fixtures/multi_color_cube.stl` and `multi_color_cube.orca.gcode` — checked-in fixtures used by AC2, AC3, AC5, NC2, NC3.
+  - `wit/world-finalization.wit::finalization-output-builder` — add 3 additive methods. The resource definition near lines 62-104 grows.
+  - `crates/slicer-sdk/src/traits.rs::FinalizationOutputBuilder` — this type is a **struct** (action-recorder), not a trait; add 3 new `impl` methods that record `BuilderAction` variants and extend the existing `apply_to` impl method (at ≈ lines 918-958) to handle the new actions and remap `ToolChange.after_entity_index` / `ZHop.after_entity_index` on insert/permute.
+  - `crates/slicer-host/src/wit_host.rs` — host-side impl of the 3 new builder methods (location confirmed by Step 1 dispatch).
+  - `modules/core-modules/wipe-tower/wipe-tower.toml` — add `[config.schema.bed_shape]` entry (type `float-list`, required when `wipe_tower_enabled=true`).
+  - `crates/slicer-ir/src/resolved_config.rs` (the macro-driven `declare_resolved_config!` SoT introduced by commit `19e5791`) — add `bed_shape: List<f64>` field with default `[0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0]` (250 mm × 250 mm rectangle). Step 1 reverifies the macro accepts a `List<f64>` shape; if it does not, the packet absorbs a small macro extension. The host populates `ConfigView` from `ResolvedConfig`; modules read `config.get("bed_shape")`.
+  - `modules/core-modules/wipe-tower/wipe-tower.toml` — also add `[compatibility].requires = ["com.core.skirt-brim", "com.core.part-cooling", "com.core.top-surface-ironing"]` so wipe-tower runs last in `PostPass::LayerFinalization` (documented intra-stage ordering primitive, `docs/03_wit_and_manifest.md:817-822` + `docs/04_host_scheduler.md:762-765`).
+  - `modules/core-modules/wipe-tower/src/lib.rs::generate_purge_paths` (lib.rs:136-204) — extend return value with retract, travel, and prime entities. Each new entity is tagged `ExtrusionRole::WipeTower`. The prime entity's cumulative positive E delta equals `wipe_tower_purge_volume / (line_width * layer_height)` mm.
+  - `modules/core-modules/wipe-tower/src/lib.rs::run_finalization` (lib.rs:249-295) — call `output.insert_entity_at(layer_index, tc.after_entity_index + 1, path, region_key)` for each generated entity (in order: retract, travel, walls, prime). Read `bed_shape` from `config.get("bed_shape")`; on out-of-bed placement return `ModuleError::fatal` naming the violating coordinate.
+  - `crates/slicer-host/src/gcode_emit.rs::orca_type_label` at line 271 — change `WipeTower => ";TYPE:Wipe tower"` to `=> ";TYPE:Prime tower"`. One-line string change.
+  - `crates/slicer-host/src/gcode_emit.rs::emit_gcode` (around lines 516-525) — add a defensive check: when `wipe_tower_enabled=true`, each `ToolChange` must be bracketed by at least one retract entity before and at least one `ExtrusionRole::WipeTower` entity after; otherwise return `PostpassError::MissingToolchangePurge { layer_index, tool_change_index }`.
+  - `crates/slicer-host/src/postpass.rs::PostpassError` (≈ lines 40-60; existing variants `FatalModule`, `GCodeEmit`, `GCodeSerialization`) — add additive `MissingToolchangePurge { layer_index: u32, tool_change_index: u32 }`. Types are `u32` to match `ToolChange.after_entity_index: u32` and the IR's `layer-idx` convention.
+  - **New**: `crates/slicer-host/tests/gcode_toolchange_wrapping.rs` — AC1, AC3, NC1.
+  - **New**: `crates/slicer-host/tests/finalization_builder_insert.rs` — AC7, NC5.
+  - **New**: `crates/slicer-host/tests/finalization_builder_permute.rs` — AC8, NC6.
+  - **New**: `crates/slicer-host/tests/finalization_builder_readback.rs` — AC9.
+  - **New**: `crates/slicer-host/tests/wipe_tower_bed_bounds.rs` — AC6.
+  - **New**: `modules/core-modules/wipe-tower/src/lib.rs#tests` — AC4 (`emits_prime_tower_role_marker`), NC4 (`tower_outside_bed_returns_fatal`).
+  - **New**: `crates/slicer-host/tests/fixtures/multi_color_cube.stl` and `multi_color_cube.orca.gcode`.
+  - **Docs**: `docs/03_wit_and_manifest.md` — one-paragraph addition under `finalization-output-builder` describing the three new methods and the index-remap invariants.
 
 - **Rejected alternatives** (must choose one):
-  1. **"Emitter-level wrapping"** — synthesize retract/prime moves at G-code emit time from config alone. Rejected because purge geometry depends on layer-level state (object footprints, prior wipe-tower remnants) that the `wipe-tower` module already owns. Synthesizing twice violates the source-of-truth rule and duplicates determinism risk.
-  2. **"New `PurgeIR` IR struct attached to `ToolChange`"** — add a `purge: Option<PurgeSequence>` field. Rejected because it introduces a new versioned IR shape for a fix fully expressible as additional `PrintEntity` rows tagged with one new (additive) role variant. Bigger blast radius, more migration surface, no behavioral gain.
-  3. **"Flip `wipe_tower_enabled` default to true"** — out of scope per the user's bugfix-only directive. Default behavior unchanged.
-  4. **"Borrow OrcaSlicer's `;Wipe_Tower_Start` / `;Wipe_Tower_End` marker pair"** — rejected because packet 11's emission contract uses `;TYPE:<RoleName>` exclusively. A parallel marker style fragments the contract and breaks G-code consumers (slicers, viewers) that rely on the `;TYPE:` convention.
+  1. **"Emitter-level wrapping (host-only)"** — synthesize retract/prime moves at G-code emit time from config alone. Rejected because purge geometry depends on layer-level state owned by the wipe-tower module.
+  2. **"`push-entity-with-priority` with role-based priority for bracketing"** — append entities and rely on stable-sort priorities to land them adjacent to `after_entity_index`. Rejected after senior-review audit: priorities cluster entities by role, not by position; wipe-tower entities sort into one block at a position determined by their role priority, not adjacent to the ToolChange.
+  3. **"New `PurgeIR` IR struct attached to `ToolChange`"** — add `purge: Option<PurgeSequence>` field. Rejected: bigger blast radius, more migration surface, no behavioral gain over an additive role-tagged entity list.
+  4. **"Flip `wipe_tower_enabled` default to true"** — out of scope per the bugfix-only directive.
+  5. **"Keep `;TYPE:Wipe tower` and document the divergence"** — rejected. OrcaSlicer's canonical mapping is `erWipeTower → "Prime tower"`; downstream parity tooling looks for that spelling.
+  6. **"Add `host-services::print-bed-shape` WIT accessor"** — original draft's choice. Rejected after senior-review: bed shape is a printer-profile property, idiomatically expressed as config. Using `config-value::float-list` requires zero WIT change.
+  7. **"Migrate wipe-tower to `Layer::PathOptimization`"** — explored and rejected; three fatal blockers documented in **Stage-Migration Rejected** above.
+  8. **"First-class `prime-tower` / `skirt` in `wit/deps/types.wit::extrusion-role`"** — out of scope. Wipe-tower only emits `WipeTower` (first-class).
+  9. **"Add only `insert-entity-at`, skip `set-entity-order` and `get-ordered-entities`"** — rejected per user directive: mirror PathOptimization's capability surface so future packets don't need a second WIT pass for permutation/read-back.
 
 ## Files in Scope (read + edit)
 
-Four primary edit targets (one is a single additive variant on `PostpassError`):
+Primary edit targets (the `≤ 3 per step` rule applies per implementation step, not aggregated):
 
-- `modules/core-modules/wipe-tower/src/lib.rs` — primary; emit retract/prime/wipe entities around each `ToolChange`; tag with `ExtrusionRole::WipeTower`; add two unit tests in `#[cfg(test)] mod tests`.
-- `crates/slicer-host/src/gcode_emit.rs` — primary; add `MissingToolchangePurge` guard around the existing T<n> writeln at lines 1155-1156. `orca_type_label` (218-235) already maps the `WipeTower` role — no edit there.
-- `crates/slicer-host/src/postpass.rs` — **additive only**: one new `PostpassError::MissingToolchangePurge { layer_index, tool_change_index }` variant in the enum at lines 39-59.
-- `crates/slicer-host/tests/gcode_toolchange_wrapping.rs` — primary; new TDD file driving the wrapping invariant + parity check + rejection test.
+- `wit/world-finalization.wit` — 3 additive method declarations on `finalization-output-builder`.
+- `crates/slicer-sdk/src/traits.rs` — `FinalizationOutputBuilder` **struct** (action-recorder) impl extension + `apply_to` impl-method extension (index remap).
+- `crates/slicer-host/src/wit_host.rs` — host-side impl of the 3 new builder methods.
+- `modules/core-modules/wipe-tower/src/lib.rs` — extend `generate_purge_paths`; rewrite `run_finalization` to use `insert_entity_at`; add bed-bounds check; add unit tests.
+- `modules/core-modules/wipe-tower/wipe-tower.toml` — `[config.schema.bed_shape]` entry.
+- Host-side printer-profile config schema (file located by Step 1) — add `bed_shape` key.
+- `crates/slicer-host/src/gcode_emit.rs` — one-line spelling fix at 271; guard near 516-525.
+- `crates/slicer-host/src/postpass.rs` — additive variant at 39-59.
+- Test files: 5 new files (`gcode_toolchange_wrapping.rs`, `finalization_builder_insert.rs`, `finalization_builder_permute.rs`, `finalization_builder_readback.rs`, `wipe_tower_bed_bounds.rs`) plus `#[cfg(test)] mod tests` additions inside `modules/core-modules/wipe-tower/src/lib.rs`.
 
-`crates/slicer-ir/src/slice_ir.rs` is **read-only** — `ExtrusionRole::WipeTower` already exists at lines 1233-1262.
-
-Test fixture files (`multi_color_cube.stl`, `multi_color_cube.orca.gcode`) are data, not code; they do not count against the file limit.
+`crates/slicer-ir/src/slice_ir.rs` is **read-only** — `ExtrusionRole::WipeTower` already exists.
 
 ## Read-Only Context
 
-- `docs/02_ir_schemas.md` — delegate via SUMMARY for `ExtrusionRole` variants and `ToolChange`/`PrintEntity`/`LayerCollectionIR` shapes. Do not load directly.
-- `docs/03_wit_and_manifest.md` — range-read the wipe-tower manifest schema and the `FinalizationOutputBuilder` exports only.
-- `docs/04_host_scheduler.md` — range-read the LayerFinalization → GCodeEmit boundary only.
-- `docs/08_coordinate_system.md` — direct read (short file).
-- `docs/09_progress_events.md` — direct read; confirm no progress event is being violated.
-- `docs/11_operational_governance_and_acceptance_gate.md` — range-read §1 (deviation log entry format) only.
-- `crates/slicer-ir/src/slice_ir.rs:1435-1469` — `ToolChange` (1435-1442) and `TravelRetract` (1455-1469) definitions (range-read).
-- `crates/slicer-ir/src/slice_ir.rs:740-760` — `ActiveRegion.tool_index` at line 750 (range-read; field is single-line amid comments).
-- `crates/slicer-ir/src/slice_ir.rs:1524-1543` — `LayerCollectionIR.tool_changes` at line 1534 (range-read).
-- `crates/slicer-ir/src/slice_ir.rs:1233-1262` — `ExtrusionRole` enum (range-read; `WipeTower` and `PrimeTower` variants already present).
-- `crates/slicer-host/src/gcode_emit.rs:290-410` — current toolchange emission entry (range-read).
-- `crates/slicer-host/src/gcode_emit.rs:1140-1170` — bare `T<n>` writeln at 1155-1156 (range-read).
-- `crates/slicer-host/src/gcode_emit.rs:218-235` — `orca_type_label` role-to-`;TYPE:` mapping (read-only verification; already includes `WipeTower` and `PrimeTower` arms).
-- `modules/core-modules/wipe-tower/wipe-tower.toml` — full read (small).
-- `crates/slicer-host/src/layer_finalization.rs:80-110` — `execute_layer_finalization` orchestration (range-read).
-- `crates/slicer-host/tests/tool_ordering_tdd.rs` — full read for idioms (small, focused).
+- `docs/02_ir_schemas.md` — delegate via SUMMARY.
+- `docs/03_wit_and_manifest.md` — range-read finalization-builder section, config-value types, manifest schema syntax. Step 7 appends a paragraph.
+- `docs/04_host_scheduler.md` — range-read LayerFinalization → GCodeEmit boundary.
+- `docs/08_coordinate_system.md` — direct read.
+- `docs/09_progress_events.md` — direct read.
+- `docs/11_operational_governance_and_acceptance_gate.md` — range-read §1.
+- `crates/slicer-ir/src/slice_ir.rs` — `ExtrusionRole` block (≈ lines 1318-1350; `WipeTower` at ~1336, `PrimeTower` at ~1338, `Skirt` is the last variant in the same block; Step 1 reverifies exact lines).
+- `crates/slicer-ir/src/slice_ir.rs` — `ToolChange`, `TravelRetract`, `LayerCollectionIR.tool_changes`, `ConfigValue` ranges located via Step 1 dispatch.
+- `crates/slicer-host/src/gcode_emit.rs:259-276` — `orca_type_label`; the `WipeTower` arm at line 271 is the one-line change.
+- `crates/slicer-host/src/gcode_emit.rs:385-410` — per-layer tool-change lookup.
+- `crates/slicer-host/src/gcode_emit.rs:516-525` — `GCodeCommand::ToolChange` emission.
+- `crates/slicer-host/src/gcode_emit.rs:1275-1290` — bare `T<n>` writeln.
+- `crates/slicer-sdk/src/traits.rs` — `FinalizationOutputBuilder` struct at ~line 704; `apply_to` impl method at ~lines 918-958 (gains insert/permute remap logic).
+- `crates/slicer-sdk/src/layer_collection_builder.rs:53-71` — PathOptimization's `set-entity-order` contract (mirror reference for the finalization-side equivalent).
+- `crates/slicer-host/src/wit_host.rs` — `finalization-output-builder` impl block (Step 1 dispatch locates).
+- `wit/host-api.wit` — read-only verification (no edits).
+- `wit/world-finalization.wit` — full read (~100 lines).
+- `wit/deps/types.wit` — range-read `extrusion-role`, `polygon`, `point2`.
+- `wit/deps/config.wit` — full read (small).
+- `wit/deps/ir-types.wit:139-170` — `gcode-output-builder.push-tool-change` and PathOptimization `layer-collection-builder` (mirror reference for the new finalization-side methods).
+- `wit/world-finalization.wit:19-25` — `print-entity-view` record (return type for the new `get-ordered-entities`).
+- `docs/03_wit_and_manifest.md:817-822` — `[compatibility].requires` manifest key documentation.
+- `docs/04_host_scheduler.md:762-765` — finalization-stage ordering guarantees.
+- `crates/slicer-host/src/dag.rs:93-102` — DAG edge creation for `requires_modules`.
+- `modules/core-modules/{skirt-brim,part-cooling,top-surface-ironing}/<name>.toml` — read-only inspection of sibling `[module].id` values to populate `wipe-tower.toml`'s new `[compatibility].requires` list.
+- `modules/core-modules/wipe-tower/wipe-tower.toml` — full read.
+- `crates/slicer-host/src/layer_finalization.rs:80-110` — orchestration.
+- `crates/slicer-host/tests/tool_ordering_tdd.rs` — full read for idioms.
 
 ## Out-of-Bounds Files
 
 - All of `OrcaSlicerDocumented/` — delegate every parity check.
 - `target/`, `Cargo.lock`, any `.wasm` artifact.
-- Any crate not listed above (`slicer-helpers`, `slicer-cli`, other `modules/core-modules/*/src/lib.rs`).
-- Other module manifests in `modules/core-modules/` outside `wipe-tower/` — not relevant.
-- `docs/14_deviation_audit_history.md` — read-only audit trail; only `docs/DEVIATION_LOG.md` itself is appended.
-- `docs/07_implementation_status.md` in full — use a sub-agent to locate the three TASK-### line ranges for Step 6, do not load.
+- Crates not on the change list (`slicer-helpers`, `slicer-cli`, other core-modules).
+- Other module manifests outside `wipe-tower/`.
+- `docs/14_deviation_audit_history.md` — read-only audit trail.
+- `docs/07_implementation_status.md` in full — locate line ranges via dispatch.
+- Every `wit/world-*.wit` other than `world-finalization.wit` — read-only invariant check in Step 5.
+- `crates/slicer-sdk/src/traits.rs` in full — range-read only the `FinalizationOutputBuilder` **struct** (at ~line 704), its action-enum, and `apply_to` (≈ 918-958).
 
 ## Expected Sub-Agent Dispatches
 
-- **Step 1**: "Confirm `ExtrusionRole::WipeTower` is still present at `crates/slicer-ir/src/slice_ir.rs:1233-1262` and the exact `ToolChange` field shape at `1435-1442` is unchanged; FACT ≤ 5 lines." — purpose: reverify pre-resolved facts (no enum edit planned).
-- **Step 1**: "Confirm `orca_type_label` at `crates/slicer-host/src/gcode_emit.rs:218-235` still maps `ExtrusionRole::WipeTower → \";TYPE:Wipe tower\"`; FACT pass/fail." — purpose: reverify pre-resolved fact (no mapping edit planned).
-- **Step 1**: "Confirm `PostpassError` at `crates/slicer-host/src/postpass.rs:39-59` still has the shape `FatalModule { stage_id, module_id, message } | GCodeEmit { message } | GCodeSerialization { message }` (no `MissingToolchangePurge` yet); FACT ≤ 5 lines." — purpose: confirm Step 3's additive variant insertion site.
-- **Step 1**: "Summarize OrcaSlicer `WipeTower2.cpp:1557-1640` Unload/Change/Load/Wipe call order; FACT, ≤ 5 lines." — purpose: confirm Unload/Change/Load/Wipe ordering without loading the file.
-- **Step 2**: "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping`; FACT pass/fail and (on fail) SNIPPETS ≤ 20 lines of the first failing assertion." — Step verification (expect 3 failures at this stage).
-- **Step 3**: "Run `cargo check --workspace`; FACT pass/fail." — type-check after the emitter edit.
-- **Step 3**: "Run `cargo clippy --workspace -- -D warnings`; FACT pass/fail." — lint gate.
-- **Step 3**: "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping bare_toolchange_rejected -- --nocapture`; FACT pass/fail." — verify the rejection guard.
-- **Step 4**: "Confirm no other `PostPass::LayerFinalization` module reads `LayerCollectionIR.entities.len()` or asserts entity-count invariants; LOCATIONS ≤ 10 entries from `modules/core-modules/{skirt-brim,part-cooling,top-surface-ironing}/src/lib.rs`." — invariant safety.
-- **Step 4**: "Run `./modules/core-modules/build-core-modules.sh`; FACT exit code + last 5 lines." — WASM rebuild.
-- **Step 4**: "Run `cargo test -p wipe-tower --lib`; FACT pass/fail (expect the 2 new tests green)." — module verification.
-- **Step 4**: "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping`; FACT pass/fail (expect all 3 green)." — wrapping verification.
-- **Step 5**: "Run `cargo run --bin slicer-cli --release --slice --input ... --output ...`; FACT exit code + last 5 lines." — end-to-end slice.
-- **Step 5**: "Run each AC and NC pipe-suffixed command from `packet.spec.md` against the produced G-code; FACT pass/fail per command, ≤ 1 line per AC/NC." — final verification.
-- **Step 6**: "Locate the line ranges for TASK-143, TASK-152b, TASK-120d2 in `docs/07_implementation_status.md`; LOCATIONS ≤ 6 entries." — narrow line edits without loading the full file.
-- **Step 6**: "Show the most recent 3 entries of `docs/DEVIATION_LOG.md`; SNIPPETS ≤ 30 lines each." — format reference.
+- **Step 1** (pure dispatch, confirm landscape):
+  - "Confirm `ExtrusionRole::WipeTower` in `crates/slicer-ir/src/slice_ir.rs` (expected variant at ~line 1336; block range ≈ 1318-1350); locate current ranges for `ToolChange`, `TravelRetract`, `LayerCollectionIR.tool_changes`, `ConfigValue`; LOCATIONS ≤ 8 entries."
+  - "Confirm `orca_type_label` at `gcode_emit.rs:259-276` currently maps `WipeTower → \";TYPE:Wipe tower\"` at line 271; FACT pass/fail with exact line."
+  - "Confirm `PostpassError` at `postpass.rs:39-59` lacks `MissingToolchangePurge`; FACT ≤ 5 lines listing current variants."
+  - "Locate `GCodeCommand::ToolChange` emission in `gcode_emit.rs::emit_gcode` (expected ~516-525) and the bare `T<n>` writeln (expected ~1283-1284); LOCATIONS ≤ 4 entries."
+  - "Open `crates/slicer-ir/src/resolved_config.rs` (the macro-driven SoT after commit `19e5791`). Locate the `declare_resolved_config!` invocation and confirm whether the macro accepts a `List<f64>` field shape (needed to add `bed_shape`). FACT ≤ 5 lines + SNIPPETS ≤ 15 lines of the macro invocation showing an existing list-typed field if any."
+  - "Search `crates/slicer-ir/src/resolved_config.rs` and `modules/core-modules/wipe-tower/wipe-tower.toml` for an existing retract-distance config key (`retract_length`, `retraction_distance`, `retract_distance`, or similar). FACT — key name + type if it exists, or 'no existing retract-distance key' if none."
+  - "Locate the `finalization-output-builder` host impl block in `crates/slicer-host/src/wit_host.rs`; LOCATIONS ≤ 3 entries."
+  - "Locate the `FinalizationOutputBuilder` **struct** definition in `crates/slicer-sdk/src/traits.rs` (struct at ~line 704, NOT a trait); SNIPPET ≤ 30 lines showing the struct + the variant-enum it records actions into."
+  - "Confirm `wit/deps/types.wit` exports `polygon` and `point2` from `geometry`; SNIPPET ≤ 10 lines."
+  - "Confirm `wit/deps/config.wit::config-value` includes `float-list(list<f64>)`; SNIPPET ≤ 15 lines."
+  - "Summarize OrcaSlicer `WipeTower2.cpp:1557-1640` Unload/Change/Load/Wipe call order; FACT ≤ 5 lines."
+- **Step 2** (TDD scaffolding):
+  - "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping`; FACT compile success + 3 test failures."
+  - "Run `cargo test -p slicer-host --test wipe_tower_bed_bounds`; FACT compile success + 1 ignored test."
+  - "Run `cargo test -p slicer-host --test finalization_builder_insert`; FACT compile success + tests ignored until Step 3."
+  - "Run `cargo test -p wipe-tower --lib`; FACT compile success + ignored module tests."
+- **Step 3** (WIT extension + SDK + host impl):
+  - "Run `cargo check --workspace`; FACT pass/fail."
+  - "Run `./modules/core-modules/build-core-modules.sh`; FACT exit code + last 5 lines."
+  - "Run `./modules/core-modules/build-core-modules.sh --check`; FACT pass/fail."
+  - "Run `cargo clippy --workspace -- -D warnings`; FACT pass/fail."
+  - "Run `cargo test -p slicer-host --test finalization_builder_insert`; FACT pass/fail (expect AC7 + NC5 green)."
+  - "Run `cargo test -p slicer-host --test finalization_builder_permute`; FACT pass/fail (expect AC8 + NC6 green)."
+  - "Run `cargo test -p slicer-host --test finalization_builder_readback`; FACT pass/fail (expect AC9 green)."
+- **Step 4** (marker fix + guard + variant):
+  - "Run `cargo check --workspace`; FACT pass/fail."
+  - "Run `cargo clippy --workspace -- -D warnings`; FACT pass/fail."
+  - "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping bare_toolchange_rejected -- --nocapture`; FACT pass/fail."
+- **Step 5** (module emission + bed-bounds check):
+  - "Confirm no other `PostPass::LayerFinalization` module asserts entity-count invariants; LOCATIONS ≤ 10 entries from `modules/core-modules/{skirt-brim,part-cooling,top-surface-ironing}/src/lib.rs`."
+  - "Run `./modules/core-modules/build-core-modules.sh`; FACT exit code + last 5 lines."
+  - "Run `cargo test -p wipe-tower --lib`; FACT pass/fail (expect AC4 + NC4 green)."
+  - "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping`; FACT pass/fail (expect AC1 + AC3 + NC1 green)."
+  - "Run `cargo test -p slicer-host --test wipe_tower_bed_bounds`; FACT pass/fail (expect AC6 green)."
+- **Step 6** (end-to-end CLI):
+  - "Run `cargo run --bin slicer-cli --release --slice --input ... --output ...`; FACT exit code + last 5 lines."
+  - "Run each AC and NC pipe-suffixed command from `packet.spec.md` against the produced G-code; FACT pass/fail per command."
+- **Step 7** (docs + status):
+  - "Locate line ranges for TASK-143, TASK-152b, TASK-120d2 in `docs/07_implementation_status.md`; LOCATIONS ≤ 6 entries."
+  - "Show most recent 3 entries of `docs/DEVIATION_LOG.md`; SNIPPETS ≤ 30 lines each."
+  - "Locate `finalization-output-builder` section header in `docs/03_wit_and_manifest.md`; LOCATIONS 1 entry."
 
 ## Data and Contract Notes
 
-- **IR contracts**: `ExtrusionRole::WipeTower` is additive; no migration burden. `ToolChange` shape is unchanged. `LayerCollectionIR.tool_changes` is read-only for `gcode_emit.rs` (existing behavior).
-- **WIT boundary**: `wipe-tower` continues to call `push-print-entity` (or its existing equivalent) via the layer-collection-builder WIT. No WIT change.
-- **Determinism**: tower X/Y from config keys; line spacing from `line_width`; purge volume from `wipe_tower_purge_volume`. No RNG. The wipe-tower module already enforces deterministic emission for skirt-brim and top-surface-ironing — follow the same pattern.
-- **Scheduler**: `wipe-tower` is one of several `PostPass::LayerFinalization` modules. Per `crates/slicer-host/src/layer_finalization.rs:83-108`, modules run sequentially on the same `&mut Vec<LayerCollectionIR>`. The Step 4 dispatch confirms that no neighboring finalization module asserts entity-count invariants that adding wipe-tower entities would break.
+- **IR contracts**: `ExtrusionRole::WipeTower` unchanged. `ToolChange` shape unchanged. `LayerCollectionIR.tool_changes` remains read-only for `gcode_emit.rs`. The `apply_to` function in the SDK grows to remap `ToolChange.after_entity_index` and `ZHop` indices on insert/permute.
+- **WIT boundary**: 3 additive methods on `finalization-output-builder`. No change to `host-services`, `layer-collection-view`, `extrusion-role`, or any other resource. Guest bindgen invalidation rebuilds every guest.
+- **Marker contract**: Packet 11's `;TYPE:<RoleName>` contract unchanged. `orca_type_label:271` correction aligns ModularSlicer's RoleName with OrcaSlicer's canonical "Prime tower".
+- **Config contract**: `bed_shape: float-list` is a new printer-profile config key. The host populates it from the active printer profile; modules read via `ConfigView`. Format documented in `wipe-tower.toml`'s schema entry and in the deviation log.
+- **Determinism**: tower X/Y from config; spacing from `line_width`; volume from `wipe_tower_purge_volume`; retract/prime E from `wipe_tower_purge_volume`/`line_width`/`layer_height`; insert positions from `after_entity_index + offset` (deterministic). No RNG.
+- **Scheduler**: wipe-tower stays in `PostPass::LayerFinalization`. Modules in the stage run sequentially per `crates/slicer-host/src/layer_executor.rs:414-418`. Step 5 dispatch confirms no neighboring finalization module asserts entity-count invariants that adding wipe-tower entities would break.
 
 ## Locked Assumptions and Invariants
 
-- `wipe_tower_enabled=false` (the default for non-multi-material slices) keeps current behavior. No regression to single-color paths.
-- The wipe-tower module is the **only** emitter of `ExtrusionRole::WipeTower` entities and `;TYPE:Wipe tower` markers. No other module emits this role.
-- `ToolChange.after_entity_index` semantics are stable across `path-optimization-default` (which pushes the tool changes) and `wipe-tower` (which reads them). Both ordering and indexing were closed by packet 19; this packet does not perturb either.
-- Purge geometry vertices are scaled integers (100 nm units) and computed in the same `Point2` arithmetic the rest of the codebase uses.
-- The new fixture is < 64 KB STL and < 256 KB OrcaSlicer reference G-code; both are checked into the repo (not git-lfs).
-- The codebase has no standalone `volume_to_length` helper. The forward per-segment extrusion math at `crates/slicer-host/src/gcode_emit.rs:363-371` is `E = distance * width * flow_factor`. The wipe-tower module needs the inverse direction (given a target purge volume, compute the prime length); implement inline as `length_mm = volume_mm3 / (line_width_mm * layer_height_mm)` using `wipe_tower_purge_volume`, `line_width`, and the active layer height. Do NOT add a new shared helper as part of this packet — keep the conversion local to `wipe-tower/src/lib.rs`.
+- `wipe_tower_enabled=false` keeps current behavior. No regression to single-color paths.
+- Wipe-tower is the only emitter of `ExtrusionRole::WipeTower` entities and `;TYPE:Prime tower` markers.
+- `ToolChange.after_entity_index` semantics are stable across `path-optimization-default` and `wipe-tower`. This packet does not perturb either.
+- Purge geometry vertices in mm. `bed_shape` config in mm.
+- New fixture < 64 KB STL and < 256 KB OrcaSlicer reference G-code; checked in (not git-lfs).
+- No standalone `volume_to_length` helper. Wipe-tower computes inverse inline as `length_mm = volume_mm3 / (line_width_mm * layer_height_mm)`.
+- After WIT extension lands, every guest `.wasm` is invalidated. `./modules/core-modules/build-core-modules.sh` must run before any integration test executes; `--check` must report fresh before Step 5.
+- **Insert/permute index remap**: see `packet.spec.md` Locked Invariants section. The host's `apply_to` is the sole owner of this remap logic; modules MUST NOT pre-adjust indices themselves.
 
 ## Risks and Tradeoffs
 
-- **Risk**: another `PostPass::LayerFinalization` module re-orders entities after `wipe-tower` runs. → **Mitigation**: Step 4 dispatch verifies finalization order keeps `wipe-tower` last among entity-injecting modules, or the new integration test asserts the post-finalization ordering directly.
-- **Design decision (was a risk)**: AC6 runs against module-internal stub `PrintConfig.bed_polygon` and stub object footprint. The wipe-tower module does not currently have host-service access to live bed-bounds; exposing it would expand scope beyond this bugfix. → **Resolution**: AC6 is gated on the stub; real cross-module bed-bounds enforcement is deferred to a follow-up packet recorded in Step 6's `docs/DEVIATION_LOG.md` entry.
-- **Risk**: ±20% purge-volume parity (AC3) is sensitive to extrusion-width quirks between Slicer A and B. → **Mitigation**: tolerance is loose; the test reports a SNIPPETS diff on first failure so the gap is visible without a re-run.
-- **Tradeoff**: adding `MissingToolchangePurge` to `PostpassError` enlarges the error enum by one variant (from 3 to 4). Acceptable — silent regression to a bare `T<n>` is the bug this packet fixes; the explicit error is the regression guard.
-- **Tradeoff**: emitting `;TYPE:Wipe tower` rather than OrcaSlicer's `;Wipe_Tower_Start/End` makes side-by-side diff against Orca files slightly more verbose. Acceptable — packet 11 owns the marker style. (The `orca_type_label` arm for this is already in place at `gcode_emit.rs:218-235`.)
+- **Risk**: another `PostPass::LayerFinalization` module pushes entities into the same layer after wipe-tower runs, causing the post-apply stable sort to land a non-wipe-tower entity between index `K` and `K+1` and breaking the bracketing invariant. → **Mitigation**: Step 3 adds `[compatibility].requires = ["com.core.skirt-brim", "com.core.part-cooling", "com.core.top-surface-ironing"]` to `wipe-tower.toml`. The DAG builder (`crates/slicer-host/src/dag.rs:93-102`) creates predecessor edges forcing wipe-tower last in its stage. Tradeoff: `[compatibility].requires` enforces presence of the listed modules; if any is removed from the active configuration wipe-tower will refuse to load. Acceptable because all three are core modules shipped together.
+- **Risk**: `crates/slicer-ir/src/resolved_config.rs::declare_resolved_config!` macro may not accept a `List<f64>` field shape today. → **Mitigation**: Step 1 dispatch confirms macro support. If it does not support list-typed fields, the packet absorbs a minimal macro extension (documented as a sub-task in Step 3d).
+- **Risk**: no existing retract-distance config key for the retract entity's E delta in `generate_purge_paths`. → **Mitigation**: Step 1 dispatch surveys existing keys; Step 3 declares a new `retract_length: f64` (default 2.0 mm) in both `wipe-tower.toml`'s `[config.schema]` and `resolved_config.rs` if none is found, rather than hand-coding a literal in the module.
+- **Risk**: ±20% purge-volume parity (AC3) is sensitive to extrusion-width differences. → **Mitigation**: loose tolerance; test reports SNIPPETS diff on first failure.
+- **Tradeoff**: WIT extension invalidates every guest `.wasm`. → Acceptable per project workflow.
+- **Tradeoff**: adding 3 new builder methods enlarges the `finalization-output-builder` resource from 6 → 9 methods. Acceptable — user explicitly requested mirroring PathOptimization's capability surface for future packets.
+- **Tradeoff**: `set-entity-order` and `get-ordered-entities` are not exercised beyond smoke tests in this packet. Listed as YAGNI risk; mitigated by user's explicit forward-looking directive.
+- **Tradeoff**: changing `orca_type_label`'s `WipeTower` arm from `";TYPE:Wipe tower"` to `";TYPE:Prime tower"` is a user-visible G-code change. Acceptable — no shipped tooling depends on the old spelling, and OrcaSlicer parity is the project goal. Recorded in Step 7 DEVIATION_LOG.
+- **Tradeoff**: `apply_to` index-remap logic is new and the most subtle correctness risk in this packet. Mitigated by AC7/AC8/NC5/NC6 covering all four scenarios (insert in-bounds, insert OOB, permute valid, permute malformed).
 
 ## Context Cost Estimate
 
-- Aggregate (sum across 6 steps): **M**.
-- Largest single step: **M** (Step 4 — module emission + 2 unit tests + WASM rebuild; the new entities and their geometry are the bulk of the work).
-- Highest-risk dispatch: the `OrcaSlicer WipeTower2.cpp:1557-1640` ordering summary — must return FACT in ≤ 5 lines. If the response exceeds the contract, re-dispatch with tighter scope; do not paste oversize replies.
+- Aggregate: **M**.
+- Largest single step: **M** (Step 3 — WIT extension + SDK struct-impl extension + host impl + index-remap logic in `apply_to` + 3 builder tests + `[compatibility].requires` ordering directive).
+- Highest-risk dispatch: the host-side printer-profile field locator in Step 1 — if the schema indirection is complex, the dispatch should return SUMMARY (≤ 200 words) rather than FACT to give the implementer enough context to add `bed_shape` correctly. Re-dispatch if needed.
 
 ## Open Questions
 
-None blocking activation. The packet is ready to move from `draft` to `active` after user review.
+None blocking activation.
 
-**Resolved facts** (pre-confirmed during spec-review; Step 1 reverifies they have not regressed):
+**Resolved facts** (pre-confirmed during refinement audits; Step 1 reverifies):
 
-- `ExtrusionRole::WipeTower` already exists at `crates/slicer-ir/src/slice_ir.rs:1233-1262` (variant at line 1251; `PrimeTower` at 1253). No additive enum variant needed.
-- `orca_type_label` at `crates/slicer-host/src/gcode_emit.rs:218-235` already maps `ExtrusionRole::WipeTower → ";TYPE:Wipe tower"` (line 230) and `PrimeTower → ";TYPE:Prime tower"` (line 231). No mapping edit needed.
-- The codebase error type for the emit path is `PostpassError` at `crates/slicer-host/src/postpass.rs:39-59`. Current variants: `FatalModule { stage_id, module_id, message }`, `GCodeEmit { message }`, `GCodeSerialization { message }`. Packet 58's `MissingToolchangePurge { layer_index, tool_change_index }` is added additively.
-- AC6 runs against module-internal stubs — real host-service bed-bounds access is out of scope; follow-up is tracked in Step 6's `docs/DEVIATION_LOG.md` entry. AC6's wording explicitly says "stub bed_polygon" / "stub object footprints".
-- `docs/02_ir_schemas.md` does NOT publish a separate `;TYPE:` role table; the authoritative `;TYPE:` mapping lives at `orca_type_label` in `gcode_emit.rs` (already includes the `Wipe tower` / `Prime tower` arms). AC4/AC5/NC2 spelling is correct as written.
-- No standalone `volume_to_length` helper exists. The forward per-segment math `E = distance * width * flow_factor` lives at `gcode_emit.rs:363-371`. Step 4 computes the inverse inline within `wipe-tower/src/lib.rs` per the formula in the locked-assumptions section above.
-- `slice_ir.rs:750`'s `tool_index` field is on struct `ActiveRegion` (not `ObjectLayerRegion`).
+- `ExtrusionRole::WipeTower` in `slice_ir.rs` at ~line 1336 (re-verified after recent IR edits); `PrimeTower` at ~1338; `Skirt` is the last variant in the same block. The `enum ExtrusionRole` block spans roughly lines 1318-1350. Step 1 reverifies exact lines before any edit. `PrimeTower` / `Skirt` are Custom-tagged across WIT and not relevant to this packet.
+- `orca_type_label` at `gcode_emit.rs:259-276` currently maps `WipeTower → ";TYPE:Wipe tower"` at line 271 and `PrimeTower → ";TYPE:Prime tower"` at line 272.
+- `PostpassError` at `postpass.rs` (≈ lines 40-60) has variants `FatalModule { stage_id, module_id, message }`, `GCodeEmit { message }`, `GCodeSerialization { message }`. The additive variant added by this packet uses `u32` (not `usize`) for `layer_index` and `tool_change_index` to match `ToolChange.after_entity_index: u32`.
+- OrcaSlicer canonical mapping at `ExtrusionEntity.cpp:648`: `erWipeTower → "Prime tower"`. No separate `erPrimeTower` exists. ModularSlicer's `;TYPE:Prime tower` is the parity-correct spelling.
+- `wit/deps/config.wit::config-value` includes `float-list(list<f64>)` — zero-WIT-change path for `bed_shape`.
+- `wit/world-finalization.wit::finalization-output-builder` currently has 6 methods (`push-entity-to-layer`, `push-entity-with-priority`, `modify-entity`, `sort-layer-by`, `insert-synthetic-layer-after`, `insert-synthetic-layer`). None provide positional intra-layer insertion or permutation. This packet adds 3.
+- `wit/deps/ir-types.wit:139-170` — PathOptimization's `layer-collection-builder` has `set-entity-order(items: list<tuple<u32, bool>>) -> result<_, string>` and `get-ordered-entities() -> list<ordered-entity-view>`. **Mirror reference for the finalization-side additions, with two intentional differences**: (a) finalization methods take an additional `layer-index` parameter because finalization sees `Vec<LayerCollectionIR>`; (b) `get-ordered-entities` returns `list<print-entity-view>` (defined at `wit/world-finalization.wit:19-25`, with `entity-id` and `topo-order` fields) rather than PathOpt's `ordered-entity-view` (`wit/deps/ir-types.wit:149-156`), because finalization sees the richer entity record.
+- `crates/slicer-sdk/src/traits.rs` — `FinalizationOutputBuilder` is a **struct** at ~line 704 (NOT a trait); its `apply_to` impl method at ~lines 918-958 is the host-side bookkeeping that grows to handle insert/permute index remap.
+- `ToolChange.after_entity_index: u32` and `ZHop.after_entity_index: u32` (in `crates/slicer-ir/src/slice_ir.rs`) — both fields are `u32`; the remap invariant covers `ZHop.after_entity_index` specifically.
+- Sibling `PostPass::LayerFinalization` modules: `com.core.skirt-brim`, `com.core.part-cooling`, `com.core.top-surface-ironing` (per their `[module].id` declarations in `modules/core-modules/*/`). None currently use `[compatibility].requires` for ordering.
+- Wipe-tower module currently reads `view.tool_changes()` (lib.rs:260,278) and emits `WipeTower`-role scan-line walls (lib.rs:187). Today `generate_purge_paths` (lib.rs:136-204) emits walls only — no retract, no travel, no prime.
+- No standalone `volume_to_length` helper.
+- Stage migration to `Layer::PathOptimization` is infeasible (three blockers documented above).
+- No `bed_shape` config key exists today — grep returned zero hits.
