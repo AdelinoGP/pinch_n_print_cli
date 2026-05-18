@@ -3,64 +3,61 @@
 ## Controlling Code Paths
 
 - **Primary code path:**
+  - **`GCodeCommand::ExtrusionMode { absolute: bool }` (NEW variant)** at `crates/slicer-ir/src/slice_ir.rs:1697`. Additive. The existing variants (`Move, Retract, Unretract, FanSpeed, Temperature, ToolChange, Comment, Raw`) are unchanged.
+  - **Emitter promotion** at `crates/slicer-host/src/gcode_emit.rs:304` (`DefaultGCodeEmitter::emit_gcode`). The body, which currently builds `Vec<GCodeCommand>` from layer IRs, is updated to push `GCodeCommand::ExtrusionMode { absolute }` as the FIRST command. `absolute` is derived from the same flavor decision that today drives the M82-vs-M83 selection at the serializer (`:1154-1156`).
+  - **Serializer rewrite** at `crates/slicer-host/src/gcode_emit.rs:1107` (`DefaultGCodeSerializer::serialize_gcode`):
+    - Remove the hard-coded `M82\n` / `M83\n` writes at `:1154-1156`.
+    - Add a `GCodeCommand::ExtrusionMode { absolute }` arm in the per-command renderer match (sibling to the `Temperature` arm at `:1280-1281`). Render `"M82\n"` when `absolute == true`, `"M83\n"` otherwise.
   - **NEW core module** `modules/core-modules/machine-gcode-emit/` with three files:
-    - `machine-gcode-emit.toml` — declares four `[config.schema.<key>]` blocks (verbatim shape below).
+    - `machine-gcode-emit.toml` — declares `[stage] id = "PostPass::GCodePostProcess"` and four `[config.schema.<key>]` blocks. Other top-level keys (`[module]`, `[ir-access]`, `[claims]`, `[compatibility]`, `[hints]`) mirror `modules/core-modules/part-cooling/part-cooling.toml`'s shape.
     - `Cargo.toml` — mirrors `modules/core-modules/part-cooling/Cargo.toml`.
-    - `src/lib.rs` — implements `FinalizationModule` with a REAL `run_finalization` body that reads the four config keys from `&ConfigView`, runs a private `substitute_placeholders(template: &str, lookup: &HashMap<String, ConfigValue>) -> String` helper (≤ 60 LOC, scoped to this module file) on both templates, and calls `output.push_print_start_gcode(resolved_start)` + `output.push_print_end_gcode(resolved_end)`.
-  - **WIT contract extension** (`wit/world-finalization.wit:62-104`, the `finalization-output-builder` resource): add two new methods — `push-print-start-gcode: func(text: string) -> result<_, string>;` and `push-print-end-gcode: func(text: string) -> result<_, string>;`. Additive; no existing method removed.
-  - **SDK extension** (`crates/slicer-sdk/src/traits.rs`): the `FinalizationOutputBuilder` impl at `:717` gets two new methods `push_print_start_gcode(&mut self, text: String)` and `push_print_end_gcode(&mut self, text: String)`. Internal storage adds two `Option<String>` fields on the struct at `:704-:715`. The `FinalizationModule` trait at `:1196` is unchanged in signature.
-  - **Host enum extension** (`crates/slicer-host/src/wit_host.rs:837`): `FinalizationBuilderPush` grows from 6 variants to 8 by adding `PrintStartGcode(String)` and `PrintEndGcode(String)`. The bindgen-generated `finalization-output-builder` resource bridge near `:4895-:5020` (where existing variants are pushed onto `data.pushes`) gets two new push sites mirroring the new WIT methods.
-  - **Dispatch routing** (`crates/slicer-host/src/dispatch.rs`): `dispatch_finalization_call` at `:1079` returns the captured `Vec<wit_host::FinalizationBuilderPush>`. The apply-site loop at `:2892-:2978` (inside `FinalizationStageRunner`) gains two new match arms that DEPOSIT the resolved strings into NEW `Option<String>` fields on `GCodeIR` — `gcode_ir.print_start_gcode` and `gcode_ir.print_end_gcode`. The deposit happens via the existing pipeline path that produces the `GCodeIR` consumed by the host serializer.
-  - **IR extension** (`crates/slicer-ir/src/slice_ir.rs:1781`): `GCodeIR` grows by two additive fields `pub print_start_gcode: Option<String>,` and `pub print_end_gcode: Option<String>,`. The existing `Default for GCodeIR` impl at `:1790` extends to initialize both to `None`. No existing field removed or changed.
-  - **Host serializer** (`crates/slicer-host/src/gcode_emit.rs`): `DefaultGCodeSerializer::serialize_gcode()` body at `:1021` reads `gcode_ir.print_start_gcode` / `gcode_ir.print_end_gcode` and emits at the contractual byte positions:
-    - Start string AFTER `serialize_header_block` (`:667`) + `serialize_width_comments` (`:712`) emission, BEFORE the M82/M83 preamble emission (M83 at `:1067`, M82 at `:1069`).
-    - End string AFTER the last layer's commands, BEFORE the `ThumbnailAwareSerializer` wrapper (`:973`) appends THUMBNAIL/CONFIG_BLOCK.
-    - Empty / whitespace-only ⇒ no bytes emitted.
-  - **The serializer contains NO `substitute_placeholders` helper.** Substitution lives in the WASM guest module.
-  - `crates/slicer-host/src/pipeline.rs:435-449` — the build site of `effective_config: HashMap<String, ConfigValue>`. **Not modified**, but cited so the lookup type and origin (which the guest module sees through `ConfigView`) are unambiguous.
+    - `src/lib.rs` — implements the SDK's GCodePostProcess trait (exact name confirmed in Step 4 via single dispatch; likely `GCodePostProcessModule`, mirroring `FinalizationModule`'s naming). Body reads four keys from `ConfigView`, runs a private `substitute_placeholders(template: &str, lookup: &HashMap<String, ConfigValue>) -> String` helper (≤ 60 LOC), and rebuilds the output command list as `[Raw(resolved_start), ...existing input commands..., Raw(resolved_end)]`. Empty/whitespace resolved templates SKIP the corresponding `Raw` push.
+  - **Scheduler** at `crates/slicer-host/src/execution_plan.rs:38` and `crates/slicer-host/src/postpass.rs:215`. UNCHANGED. The new module slots into the existing `PostPass::GCodePostProcess` stage.
+  - **WIT** at `wit/world-postpass.wit:26` (`run-gcode-postprocess` export) and `wit/deps/ir-types.wit:144` (`gcode-output-builder.push-raw`). UNCHANGED structurally. `wit/deps/ir-types.wit`'s `gcode-command` variant set MAY need a new `extrusion-mode(extrusion-mode-payload)` variant if `gcode-command` is mirrored across the WIT boundary; confirm via single dispatch in Step 3.
 
 - **Neighboring tests or fixtures:**
-  - `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` — the packet-55 fixture pattern: small STL fixture, slicer invocation, output scan against literal sentinels. The new test file mirrors this structure.
-  - `crates/slicer-host/tests/gcode_emit_tdd.rs:1-120` — layer fixture pattern.
-  - `crates/slicer-host/tests/postpass_gcode_emit_contract_tdd.rs:1-80` — slicer-cli invocation harness pattern.
-  - The new test file exercises END-TO-END flow: `slicer-cli` invocation → `ResolvedConfig` → module reads keys → module substitutes → module pushes via new variants → dispatch routes to `GCodeIR` fields → serializer emits at correct positions.
+  - `crates/slicer-host/tests/gcode_emit_tdd.rs` — packet-52/54 regression. CRITICAL: contains existing assertions about `M82`/`M83` presence in the output. After the promotion, these must continue to pass without modification.
+  - `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` — packet-55 regression; fixture pattern reused.
+  - `crates/slicer-host/tests/postpass_gcode_emit_contract_tdd.rs` — postpass dispatch contract; slicer-cli invocation harness pattern.
+  - The new test file `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` exercises END-TO-END: `slicer-cli` → `ResolvedConfig` → emitter (now pushing `ExtrusionMode` head) → `GCodePostProcess` module (prepends `Raw(start)`, re-emits, appends `Raw(end)`) → serializer → file scan.
 
 - **OrcaSlicer comparison surface:**
-  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.hpp` (`machine_start_gcode` / `machine_end_gcode` field declarations) — confirms key names.
-  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` (stock defaults `add` + `set_default_value`) — defaults intentionally not borrowed.
-  - `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:3181` / `:3200` / `:3258` — start-block-then-preamble ordering (borrowed).
-  - `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:3544` — end-block-after-CONFIG ordering (intentionally not borrowed; explained under Risks and Tradeoffs).
-  - `OrcaSlicerDocumented/src/libslic3r/PlaceholderParser.cpp` (`apply_config()` symbol-table contract) — borrowed.
+  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.hpp` — confirms `machine_start_gcode` / `machine_end_gcode` field names.
+  - `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` — stock defaults; intentionally NOT borrowed.
+  - `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` (machine_start_gcode write, extrusion-mode preamble) — ordering `machine_start_gcode` THEN preamble (borrowed; produced naturally by prepending `Raw(start)` before the `ExtrusionMode` head command).
+  - `OrcaSlicerDocumented/src/libslic3r/GCode.cpp` (machine_end_gcode write) — end-block-after-CONFIG ordering; intentionally NOT borrowed.
+  - `OrcaSlicerDocumented/src/libslic3r/PlaceholderParser.cpp` (`apply_config()` only) — symbol-table contract; borrowed.
 
 ## Architecture Constraints
 
 - All config keys use snake_case literals (per `CLAUDE.md` Config Key Naming Convention). The four new keys conform.
-- Config keys consumed by the runtime are declared in a core-module `[config.schema.<key>]` block (canonical schema-declaration site). Precedent: `modules/core-modules/part-cooling/part-cooling.toml`, `modules/core-modules/seam-placer/seam-placer.toml` (for the `string` type). This packet introduces `modules/core-modules/machine-gcode-emit/` for the four keys.
-- The substitution work runs INSIDE the new module's `run_finalization` body (in the WASM guest). The serializer only places the resolved strings. This matches the architectural rule that modules do the work their names imply: a module called `machine-gcode-emit` emits machine gcode.
-- The substituted start string appears BEFORE the M82/M83 preamble (packet-54 invariant). This matches OrcaSlicer ordering.
-- The substituted end string appears BEFORE the THUMBNAIL_BLOCK + CONFIG_BLOCK footer emitted by `ThumbnailAwareSerializer`.
-- The four new config keys flow into CONFIG_BLOCK automatically via packet-55's `serialize_config_block()` (at `crates/slicer-host/src/gcode_emit.rs:928`) because that helper iterates the effective `ConfigView`. No explicit CONFIG_BLOCK wiring is needed in this packet.
-- The substitution helper is a private free function INSIDE the module's `src/lib.rs`, NOT a public API. If a future packet (arithmetic, conditionals) needs it elsewhere, that future packet may promote it; this packet does not.
-- The helper performs ONE pass. A substituted value containing `[other_key]` is NOT re-scanned. This avoids non-termination and matches the principle of least surprise.
-- Empty / whitespace-only resolved string ⇒ no bytes emitted. No header comment line, no blank line, no phantom sentinel. This is what makes the default `machine_end_gcode = "PRINT_END"` distinguishable from a user-set `machine_end_gcode = ""`.
-- Additive WIT/SDK/IR change. No existing variant removed, no existing field changed. The original packet text declared "No new WIT contracts" — that constraint was authored against the pass-1 no-op design and is explicitly rescinded by this refinement.
+- Config keys consumed by the runtime are declared in a core-module `[config.schema.<key>]` block. Precedent: `modules/core-modules/part-cooling/part-cooling.toml` (int keys), `modules/core-modules/seam-placer/seam-placer.toml` (string keys).
+- The substitution work runs INSIDE the new module's `run_gcode_postprocess` body (in the WASM guest). The serializer only renders commands. This matches the rule that modules do the work their names imply: a module called `machine-gcode-emit` emits machine gcode.
+- The substituted start string appears BEFORE the `ExtrusionMode` command (which serializes as `M82` or `M83`). This matches OrcaSlicer ordering.
+- The substituted end string appears AFTER the last command, BEFORE the `ThumbnailAwareSerializer` wrapper's `THUMBNAIL_BLOCK` + `CONFIG_BLOCK` append (which lives outside `GCodeIR.commands`).
+- The four new config keys flow into `CONFIG_BLOCK` automatically via packet-55's `serialize_config_block()` (`crates/slicer-host/src/gcode_emit.rs:928`). No explicit CONFIG_BLOCK wiring is needed.
+- The substitution helper is a private free function INSIDE the module's `src/lib.rs`, NOT a public API. If a future packet needs it elsewhere, that packet may promote it.
+- The helper performs ONE pass. A substituted value containing `[other_key]` is NOT re-scanned. Avoids non-termination and matches least surprise.
+- Empty / whitespace-only resolved template ⇒ the module SKIPS the corresponding `Raw` push. The resulting serialized output contains zero bytes for that block.
+- Additive IR change: ONE new `GCodeCommand` variant. No existing variant removed or changed; no `GCodeIR` field added or removed.
+- Zero change to `wit/world-finalization.wit`, `wit/world-postpass.wit`, `FinalizationBuilderPush`, `dispatch.rs`, or `GCodeIR`.
 
 ## TOML Manifest Shape (verbatim)
 
-The new module's manifest mirrors `modules/core-modules/part-cooling/part-cooling.toml`'s shape — the `[module]` header keys (`id`, `version`, `display-name`, `description`, `author`, `license`, `wit-world`) and the separate `[stage]` block are copied verbatim. The `[config.schema.<key>]` blocks declare the four keys exactly:
+The new module's manifest mirrors `modules/core-modules/part-cooling/part-cooling.toml`'s shape. The `[stage]` block sets `id = "PostPass::GCodePostProcess"` (NOT `LayerFinalization`). The `wit-world` references whichever WIT world the existing `GCodePostProcess` modules use (confirm via Step 4 dispatch — most likely `slicer:world-postpass@1.0.0`).
 
 ```toml
 [module]
 id           = "com.core.machine-gcode-emit"
 version      = "0.1.0"
 display-name = "Machine G-code Emit"
-description  = "Emits machine_start_gcode / machine_end_gcode with minimal [key] substitution against the effective ConfigView. Reads four config keys and pushes the resolved start/end strings via the FinalizationOutputBuilder's print-boundary methods."
+description  = "Emits machine_start_gcode / machine_end_gcode by prepending and appending Raw commands to the GCodePostProcess stream after running [key] substitution against the effective ConfigView."
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-finalization@1.0.0"
+wit-world    = "slicer:world-postpass@1.0.0"
 
 [stage]
-id = "PostPass::LayerFinalization"
+id = "PostPass::GCodePostProcess"
 
 [ir-access]
 reads  = []
@@ -120,254 +117,249 @@ estimated-ms-per-layer = 0
 layer-parallel-safe    = true
 ```
 
-The `[module]` block's exact key names (`id`, `version`, `display-name`, `description`, `author`, `license`, `wit-world`) are NOT placeholders — they must match `part-cooling.toml`'s shape verbatim. Triple-quoted `"""..."""` is used for `machine_start_gcode`'s multi-line default so newlines are preserved exactly.
+The `[module]` header keys (`id`, `version`, `display-name`, `description`, `author`, `license`, `wit-world`) must match `part-cooling.toml`'s key shape verbatim — only the values differ. Triple-quoted `"""..."""` preserves newlines exactly. The `wit-world` value MAY differ from `part-cooling.toml`'s `slicer:world-finalization@1.0.0` — verify the correct postpass world via a Step 4 dispatch before writing.
 
 ## src/lib.rs shape
 
+The implementer copies `modules/core-modules/part-cooling/src/lib.rs` as the trait-wiring skeleton, then replaces the body. The exact trait name and signature for `GCodePostProcess` modules is identified in Step 4 by reading `crates/slicer-sdk/src/traits.rs` ranged. Approximate shape:
+
 ```rust
-//! Core module: emits machine_start_gcode / machine_end_gcode with minimal [key] substitution
-//! against the effective ConfigView. The module reads four declared config keys, runs a private
-//! single-pass substitution helper on both templates, and pushes the resolved start/end strings
-//! through FinalizationOutputBuilder::push_print_start_gcode / push_print_end_gcode. The host
-//! serializer (gcode_emit.rs) places those resolved strings at the contractual byte offsets;
-//! it does no substitution itself.
+//! Core module: emits machine_start_gcode / machine_end_gcode by prepending and appending
+//! Raw commands to the GCodePostProcess stream. Performs single-pass [key] substitution
+//! against the effective ConfigView. Substitution lives in the WASM guest; the host
+//! serializer just renders the command list.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
 
 use std::collections::HashMap;
 
-use slicer_ir::{ConfigValue, ConfigView};
+use slicer_ir::{ConfigValue, GCodeCommand};
 use slicer_sdk::error::ModuleError;
 use slicer_sdk::slicer_module;
-use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCollectionView};
+use slicer_sdk::traits::{ConfigView, GCodeOutputBuilder, GCodePostProcessModule};
+// (Exact trait + builder names confirmed in Step 4.)
 
-/// Machine-gcode-emit finalization module.
+/// Machine-gcode-emit GCodePostProcess module.
 pub struct MachineGcodeEmit;
 
 #[slicer_module]
-impl FinalizationModule for MachineGcodeEmit {
+impl GCodePostProcessModule for MachineGcodeEmit {
     fn on_print_start(_config: &ConfigView) -> Result<Self, ModuleError> {
         Ok(Self)
     }
 
-    fn run_finalization(
+    fn run_gcode_postprocess(
         &self,
-        _layers: &[LayerCollectionView],
-        output: &mut FinalizationOutputBuilder,
+        commands: &[GCodeCommand],
+        output: &mut GCodeOutputBuilder,
         config: &ConfigView,
     ) -> Result<(), ModuleError> {
-        // 1. Read the four declared keys from ConfigView.
         let start_template = config.get_string("machine_start_gcode").unwrap_or_default();
         let end_template   = config.get_string("machine_end_gcode").unwrap_or_default();
         let bed_temp       = config.get_int("bed_temperature_initial_layer_single").unwrap_or(60);
         let nozzle_temp    = config.get_int("nozzle_temperature_initial_layer").unwrap_or(215);
 
-        // 2. Build a lookup HashMap<String, ConfigValue> for substitution.
         let mut lookup: HashMap<String, ConfigValue> = HashMap::new();
         lookup.insert("bed_temperature_initial_layer_single".into(), ConfigValue::Int(bed_temp));
         lookup.insert("nozzle_temperature_initial_layer".into(),     ConfigValue::Int(nozzle_temp));
-        // Other keys may be added by future packets.
 
-        // 3. Single-pass substitution on both templates.
         let resolved_start = substitute_placeholders(&start_template, &lookup);
         let resolved_end   = substitute_placeholders(&end_template,   &lookup);
 
-        // 4. Push the resolved strings via the new print-boundary methods.
-        output.push_print_start_gcode(resolved_start);
-        output.push_print_end_gcode(resolved_end);
+        if !resolved_start.trim().is_empty() {
+            output.push_raw(resolved_start);
+        }
+        // Re-emit every input command. The exact SDK method (push-each vs extend) is
+        // confirmed in Step 4; whichever the SDK exposes is what we use.
+        for cmd in commands {
+            output.push_command(cmd.clone());
+        }
+        if !resolved_end.trim().is_empty() {
+            output.push_raw(resolved_end);
+        }
 
         Ok(())
     }
 }
 
 /// Single-pass `[snake_case_key]` substitution. Unknown keys pass through verbatim;
-/// unclosed `[` is treated as literal text. ≤ 60 LOC.
+/// unclosed `[` is treated as literal. ≤ 60 LOC.
 fn substitute_placeholders(template: &str, lookup: &HashMap<String, ConfigValue>) -> String {
-    // Implementation sketch — full body fills in:
-    //   - Walk `template` left-to-right.
-    //   - On `[`, scan to matching `]` on the same line; if no match, treat `[` as literal.
-    //   - If the bracketed identifier is in `lookup`, append the stringified ConfigValue.
-    //   - Otherwise, append the original `[key]` substring verbatim.
-    //   - Single pass — do not re-scan substituted values.
-    String::new() // placeholder; real body is implemented during Step 4
+    // Walk left-to-right; on `[`, scan to matching `]` on the same line; on no match,
+    // emit `[` literally. On match, emit stringified ConfigValue. Single pass.
+    // Real body fills in during Step 4.
+    String::new()
 }
 ```
 
-The exact `ConfigView` API surface (`get_string` / `get_int` / a unified `get`) is whichever the SDK provides today; the implementer mirrors `part-cooling`'s pattern verbatim and treats absent keys as defaults that match the manifest declaration.
+The exact `ConfigView` API (`get_string` / `get_int` vs unified `get`) and the exact `GCodeOutputBuilder` method names (`push_raw`, `push_command`, possibly `extend_from_snapshot`) are whichever the SDK exposes today. The implementer mirrors `part-cooling`'s pattern verbatim and the WIT contract in `wit/deps/ir-types.wit:144`.
 
 ## Code Change Surface
 
-- **Selected approach:** New core module performs real substitution work (matching its name) inside `run_finalization`; the resolved strings are shipped to the serializer through two new `FinalizationBuilderPush` variants routed by the dispatch layer into two new additive `GCodeIR` fields. The serializer places the strings at the contractual byte offsets. Minimal blast radius for the architectural correctness it gains (modules do the work their names imply).
+- **Selected approach:** Promote `M82`/`M83` from the hard-coded serializer preamble to a new `GCodeCommand::ExtrusionMode` variant pushed by the emitter; then add a `PostPass::GCodePostProcess` module that prepends `Raw(machine_start_gcode)` and appends `Raw(machine_end_gcode)` to `GCodeIR.commands`, with substitution performed inside the WASM guest. Minimal blast radius: zero new WIT methods, zero new IR fields, zero new dispatch arms, zero byte-offset arithmetic in the serializer.
 
 - **Exact functions, traits, manifests, tests, or fixtures expected to change:**
-  1. `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml` — NEW manifest (≤ 70 LOC) declaring four `[config.schema.<key>]` blocks per the TOML shape above.
-  2. `modules/core-modules/machine-gcode-emit/Cargo.toml` — NEW Cargo manifest (≤ 25 LOC) mirroring `modules/core-modules/part-cooling/Cargo.toml`.
-  3. `modules/core-modules/machine-gcode-emit/src/lib.rs` — NEW Rust source. `MachineGcodeEmit` struct + `#[slicer_module] impl FinalizationModule` with a REAL `run_finalization` body that reads the four keys, runs `substitute_placeholders` (≤ 60 LOC, private to the module file), and calls the two new builder methods. Total file size ~120-150 LOC.
-  4. `wit/world-finalization.wit` — additive: 2 new methods on `finalization-output-builder` (~2 lines of WIT).
-  5. `crates/slicer-sdk/src/traits.rs` — additive: 2 new methods on `FinalizationOutputBuilder` impl + 2 `Option<String>` fields on the struct (≈ 15 LOC total).
-  6. `crates/slicer-host/src/wit_host.rs` — additive: 2 new variants on `FinalizationBuilderPush` enum + 2 new push sites in the bindgen-generated resource bridge near `:4895-:5020` (≈ 25-30 LOC).
-  7. `crates/slicer-host/src/dispatch.rs` — additive: 2 new match arms inside the apply-site loop at `:2892-:2978`. The arms deposit the resolved strings into the new `GCodeIR` fields (≈ 15-20 LOC).
-  8. `crates/slicer-ir/src/slice_ir.rs` — additive: 2 `Option<String>` fields on `GCodeIR` at `:1781` + `Default` impl update at `:1790` (≈ 6 LOC).
-  9. `crates/slicer-host/src/gcode_emit.rs` — read `gcode_ir.print_start_gcode` and `gcode_ir.print_end_gcode` inside `DefaultGCodeSerializer::serialize_gcode()` body at `:1021` and insert at the contractual byte positions. No `substitute_placeholders` helper added (it lives in the module). ≈ 20-25 LOC total addition.
-  10. `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` — NEW test file. 9 positive + 3 negative tests = 12 total; reuses the predecessor STL fixture and the same `slicer-cli` invocation harness used by the packet-55 tests. ≤ 400 LOC. Exercises end-to-end (`slicer-cli` → `ResolvedConfig` → module → dispatch → `GCodeIR` → serializer → file scan).
-  11. `docs/07_implementation_status.md` — append three rows for TASK-193, TASK-193a, TASK-193b in the appropriate queued/in-progress section. Edit via worker dispatch.
+  1. `crates/slicer-ir/src/slice_ir.rs` — additive: 1 new variant on `GCodeCommand` (`ExtrusionMode { absolute: bool }`) (≈ 5 LOC including any derived-trait coverage).
+  2. `crates/slicer-host/src/gcode_emit.rs` — two coupled edits:
+     - In `DefaultGCodeEmitter::emit_gcode` (`:304`), push `ExtrusionMode { absolute }` as the head command (≈ 6 LOC).
+     - In `DefaultGCodeSerializer::serialize_gcode` (`:1107`), remove the hard-coded `M82`/`M83` writes at `:1154-1156` (≈ -8 LOC) and add an `ExtrusionMode { absolute }` arm in the per-command renderer (≈ 6 LOC).
+  3. `wit/deps/ir-types.wit` — additive: 1 new `extrusion-mode(extrusion-mode-payload)` variant in the `gcode-command` variant ONLY IF `gcode-command` is mirrored in WIT. If not, skip. (Confirmed via Step 3 dispatch.) (≈ 0-4 lines of WIT.)
+  4. `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml` — NEW manifest (≤ 70 LOC).
+  5. `modules/core-modules/machine-gcode-emit/Cargo.toml` — NEW Cargo manifest (≤ 25 LOC).
+  6. `modules/core-modules/machine-gcode-emit/src/lib.rs` — NEW Rust source. `MachineGcodeEmit` struct + `#[slicer_module] impl GCodePostProcessModule` with a real body. Total ~120-150 LOC.
+  7. `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` — NEW test file. 10 positive + 3 negative = 13 tests; reuses the predecessor STL fixture and the same `slicer-cli` invocation harness. ≤ 400 LOC.
+  8. `docs/07_implementation_status.md` — append three rows for TASK-193, TASK-193a, TASK-193b in the appropriate queued section. Edit via worker dispatch.
 
 - **Rejected alternatives:**
-  - **A. No-op `FinalizationModule` (schema-only stub).** Rejected on architectural-honesty grounds: a module named `machine-gcode-emit` that doesn't emit machine gcode is misnamed and breaks the pattern of every other module doing the work it claims to do. Was the pass-1 refinement's design; reverted in pass 2 after user pushback.
-  - **B. Host-only substitution + injection.** Rejected: leaves no module owner for the four config keys, contradicting the architectural rule that config keys live in module manifests.
-  - **C. Module emits via existing layer-scoped `LayerAnnotation::Raw` against layer 0 / last layer.** Rejected: layer 0's annotations land inside the layer's commands, not before HEADER_BLOCK. The byte-offset contract (start block BEFORE M82/M83 preamble) cannot be satisfied. New `PrintStartGcode` / `PrintEndGcode` variants are required to express the correct emission boundary.
-  - **D. `TextPostProcess` injects after serialization.** Rejected: positioning relative to HEADER_BLOCK_END / first G1 / CONFIG_BLOCK_START is structurally a serializer concern.
+  - **A. Keep current packet-59 draft design (finalization-stage + `FinalizationBuilderPush` variants + `Option<String>` IR fields + dispatch arms + byte-offset placement in serializer).** Rejected: significantly more surface area for what amounts to "prepend/append text to the print stream". Adds two WIT methods, two enum variants, two IR fields, two dispatch arms, and ~25 LOC of byte-offset arithmetic in the serializer — all to express something the existing `GCodePostProcess` contract already supports natively.
+  - **B. GCodePostProcess module WITHOUT promoting M82/M83.** Rejected: `Raw(machine_start_gcode)` at index 0 of `GCodeIR.commands` would appear AFTER the hard-coded `M82`/`M83` lines (which the serializer writes between `HEADER_BLOCK` and the command loop). Deviates from OrcaSlicer ordering. Acceptable functionally, but the user explicitly chose the promotion approach.
+  - **C. `TextPostProcess` module injecting after serialization.** Rejected: positioning relative to `HEADER_BLOCK_END` / `CONFIG_BLOCK_START` would require string-search and splice, which is fragile and structurally a serializer concern. `GCodePostProcess` operates on typed commands and is the right layer.
+  - **D. Move M82/M83 into the *commands list* but build them as `Raw("M82")` instead of a typed `ExtrusionMode` variant.** Rejected: less type-safe and inconsistent with `M104/M109` (`GCodeCommand::Temperature`) and other typed variants. A typed variant pays a small cost (one match arm in the renderer) for IR clarity, debug-print quality, and forward compatibility with any future tool that inspects `GCodeIR.commands` for extrusion-mode state.
   - **E. Full OrcaSlicer `PlaceholderParser` grammar.** Rejected on scope. Tracked as three follow-up packets (arithmetic, conditionals, builtins).
-- **Routing choice for the new `FinalizationBuilderPush` variants:** the apply-site loop in `dispatch.rs` writes the resolved strings into NEW `Option<String>` fields on `GCodeIR` (option 4a in the refinement notes), NOT into ad-hoc serializer constructor arguments (option 4b). Justification: explicit IR fields are easier to test (the `GCodeIR` struct is observable from postpass tests), easier to trace in a debugger (a typed field rather than a map merge), and naturally serializable via the existing `Serialize, Deserialize` derives on `GCodeIR`. Option 4b (passing the strings through pipeline.rs into the serializer constructor) would require touching `crates/slicer-host/src/pipeline.rs:435-449` which is otherwise unmodified by this packet, and would couple the serializer signature to print-boundary concerns instead of exposing them through the IR contract.
 
 ## Files in Scope (read + edit)
 
 Primary edit targets:
 
-- `wit/world-finalization.wit` — additive: 2 new methods on `finalization-output-builder` (~2 lines).
-- `crates/slicer-sdk/src/traits.rs` — additive: 2 new `FinalizationOutputBuilder` methods + 2 struct fields (≈ 15 LOC).
-- `crates/slicer-host/src/wit_host.rs` — additive: 2 new variants on `FinalizationBuilderPush` + 2 push sites in resource bridge (≈ 25-30 LOC).
-- `crates/slicer-host/src/dispatch.rs` — additive: 2 new match arms in apply-site loop (≈ 15-20 LOC).
-- `crates/slicer-ir/src/slice_ir.rs` — additive: 2 fields on `GCodeIR` + `Default` extension (≈ 6 LOC).
-- `crates/slicer-host/src/gcode_emit.rs` — read GCodeIR fields + insert at byte positions (≈ 20-25 LOC). NO `substitute_placeholders` helper here.
-- `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` — NEW (≤ 400 LOC).
+- `crates/slicer-ir/src/slice_ir.rs` — additive: 1 new `GCodeCommand` variant (≈ 5 LOC).
+- `crates/slicer-host/src/gcode_emit.rs` — emitter push + serializer arm; remove hard-coded M82/M83 writes (net ≈ +4 LOC).
+- `wit/deps/ir-types.wit` — additive variant ONLY IF `gcode-command` is mirrored in WIT (≈ 0-4 lines).
 - `modules/core-modules/machine-gcode-emit/machine-gcode-emit.toml` — NEW (≤ 70 LOC).
 - `modules/core-modules/machine-gcode-emit/Cargo.toml` — NEW (≤ 25 LOC).
 - `modules/core-modules/machine-gcode-emit/src/lib.rs` — NEW (~120-150 LOC including the `substitute_placeholders` helper).
+- `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` — NEW (≤ 400 LOC).
 
 Secondary edit (worker dispatch only):
 
-- `docs/07_implementation_status.md` — append three rows (TASK-193, TASK-193a, TASK-193b). NEVER loaded into the implementer's context; all reads/edits via worker dispatch.
+- `docs/07_implementation_status.md` — append three rows. NEVER loaded into the implementer's context; all reads/edits via worker dispatch.
 
 ## Read-Only Context
 
 Files the implementer is allowed to read but not edit. Range-read when > 300 lines.
 
-- `crates/slicer-host/src/gcode_emit.rs:667-:740` — HEADER + width comments; purpose: confirm byte boundary AFTER which the start block is inserted.
-- `crates/slicer-host/src/gcode_emit.rs:928-:1020` — CONFIG_BLOCK at `:928` + `ThumbnailAwareSerializer` at `:973`; purpose: confirm the end block is emitted by the INNER serializer (before the wrapper's THUMBNAIL/CONFIG_BLOCK append).
-- `crates/slicer-host/src/gcode_emit.rs:1021-:1166` — `DefaultGCodeSerializer::serialize_gcode()` body + preamble emission (M83 at `:1067`, M82 at `:1069`); purpose: identify both insertion points by inspection.
-- `crates/slicer-host/src/dispatch.rs:1070-:1100` — `dispatch_finalization_call` entry at `:1079`; purpose: function signature.
-- `crates/slicer-host/src/dispatch.rs:2885-:2980` — apply-site loop at `:2892-:2978`; purpose: where the new match arms slot in.
-- `crates/slicer-host/src/wit_host.rs:830-:895` — `FinalizationBuilderPush` enum at `:837`; purpose: existing 6 variants, where to insert 2 new ones.
-- `crates/slicer-host/src/wit_host.rs:4895-:5020` — existing bindgen-generated bridge push sites; purpose: pattern to mirror for the 2 new methods.
-- `crates/slicer-host/src/pipeline.rs:435-449` — `effective_config: HashMap<String, ConfigValue>` build site; purpose: confirm the lookup map's type and origin (consumed indirectly via `ConfigView` from the guest).
-- `crates/slicer-ir/src/slice_ir.rs:550-:580` — `ConfigValue` enum at `:557` (`Bool`, `Int`, `Float`, `String`, `List`); purpose: stringification rules.
-- `crates/slicer-ir/src/slice_ir.rs:1779-:1799` — `GCodeIR` struct at `:1781` + `Default` impl at `:1790`; purpose: site of the additive field extension.
-- `crates/slicer-sdk/src/traits.rs:700-:730` — `FinalizationOutputBuilder` struct at `:704` + impl start at `:717`; purpose: where to add the 2 new methods.
-- `crates/slicer-sdk/src/traits.rs:1196-:1230` — `FinalizationModule` trait at `:1196`; purpose: confirm signature unchanged.
-- `wit/world-finalization.wit` — full read OK (file is short, ≤ 130 lines); purpose: see resource `:62-104` and add 2 methods inside.
-- `modules/core-modules/part-cooling/part-cooling.toml` (full — ≤ 100 lines) — purpose: `[module]` / `[stage]` / `[config.schema.<key>]` shape for `int` keys.
-- `modules/core-modules/part-cooling/Cargo.toml` (full — ≤ 25 lines) — purpose: Cargo manifest template.
-- `modules/core-modules/part-cooling/src/lib.rs` (full — 150 LOC) — purpose: the `FinalizationModule` impl precedent (the implementer copies the trait wiring and replaces the body with the substitution + push calls).
-- `modules/core-modules/seam-placer/seam-placer.toml` (full — ≤ 50 lines) — purpose: `string`-type `[config.schema.<key>]` precedent (`seam_mode`).
-- `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` (full file) — purpose: TDD scaffolding pattern (slicer invocation, output scan, sentinel substring assertions).
-- `crates/slicer-host/tests/gcode_emit_tdd.rs:1-120` — purpose: layer fixture + M104/M109 capture pattern.
-- `crates/slicer-host/tests/postpass_gcode_emit_contract_tdd.rs:1-80` — purpose: slicer-cli invocation harness pattern.
-- `.ralph/specs/55_gcode-header-thumbnail-config-blocks/packet.spec.md` (already loaded in generation context) — purpose: row-formatting precedent for docs/07 edit dispatch.
+- `crates/slicer-host/src/gcode_emit.rs:300-:340` — `DefaultGCodeEmitter::emit_gcode` entry; purpose: identify the push site for the head `ExtrusionMode` command.
+- `crates/slicer-host/src/gcode_emit.rs:670-:740` — `serialize_header_block` + `serialize_width_comments`; purpose: confirm header structure unchanged.
+- `crates/slicer-host/src/gcode_emit.rs:1100-:1170` — `serialize_gcode` body + the soon-to-be-removed M82/M83 writes at `:1154-1156`; purpose: identify removal site and confirm surrounding logic.
+- `crates/slicer-host/src/gcode_emit.rs:1270-:1300` — existing per-command renderer arms (`Temperature` at `:1280-1281`); purpose: model the new `ExtrusionMode` arm on the existing variants.
+- `crates/slicer-host/src/postpass.rs:140-:280` — `GCodeEmitter` / `GCodeSerializer` traits and the `execute_postpass_with_instrumentation` body where `run_gcode_postprocess` is dispatched at `:215`.
+- `crates/slicer-host/src/execution_plan.rs:38-:80` — confirm `PostPass::GCodePostProcess` is in the canonical stage-ID list.
+- `crates/slicer-ir/src/slice_ir.rs:1697-:1770` — `GCodeCommand` enum; purpose: site of the additive variant.
+- `crates/slicer-ir/src/slice_ir.rs:1779-:1799` — `GCodeIR` struct (UNCHANGED in this packet; reference only).
+- `crates/slicer-ir/src/slice_ir.rs:550-:580` — `ConfigValue` enum at `:557`; purpose: stringification rules for substitution.
+- `crates/slicer-sdk/src/traits.rs` — ranged dispatch to find the GCodePostProcess module trait name and signature; purpose: model `MachineGcodeEmit`'s impl.
+- `wit/world-postpass.wit` — full read OK (≤ 50 lines); purpose: `run-gcode-postprocess` export signature.
+- `wit/deps/ir-types.wit` — full read OK (≤ 200 lines); purpose: `gcode-output-builder` resource methods + `gcode-command` variant set.
+- `modules/core-modules/part-cooling/part-cooling.toml` (full — ≤ 100 lines) — `[module]` / `[stage]` / `[config.schema.<key>]` shape; note: this module uses `LayerFinalization`, NOT `GCodePostProcess`; the new module switches stage but reuses the file shape.
+- `modules/core-modules/part-cooling/Cargo.toml` (full — ≤ 25 lines).
+- `modules/core-modules/part-cooling/src/lib.rs` (full — 150 LOC) — `#[slicer_module]` precedent; trait differs but wiring shape is the same.
+- `modules/core-modules/seam-placer/seam-placer.toml` (full — ≤ 50 lines) — string-type `[config.schema.<key>]` precedent.
+- `crates/slicer-host/tests/gcode_emit_tdd.rs:1-120` — layer fixture + M82/M83 capture pattern (CRITICAL: confirms regression target).
+- `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` (full) — TDD scaffolding pattern.
+- `crates/slicer-host/tests/postpass_gcode_emit_contract_tdd.rs:1-80` — slicer-cli invocation harness pattern.
 
 ## Out-of-Bounds Files
 
-Files the implementer must NOT load directly. The implementer should delegate any fact-checks against this list.
+Files the implementer must NOT load directly. Delegate any fact-checks against this list.
 
-- `OrcaSlicerDocumented/**` — delegate ALL parity checks; the FACT dispatches enumerated in `packet.spec.md` are the only OrcaSlicer evidence this packet needs. In particular, NEVER read `OrcaSlicerDocumented/src/libslic3r/PlaceholderParser.cpp` (~2400 lines of Boost.Spirit grammar).
+- `OrcaSlicerDocumented/**` — delegate ALL parity checks. NEVER read `OrcaSlicerDocumented/src/libslic3r/PlaceholderParser.cpp` (~2400 lines of Boost.Spirit grammar).
 - `target/`, `Cargo.lock`, generated WASM under `modules/core-modules/*/dist/` — never load.
 - Vendored deps — never load.
-- `docs/07_implementation_status.md` — > 500 lines; never load full; worker dispatch only.
+- `docs/07_implementation_status.md` — > 500 lines; worker dispatch only.
 - `docs/02_ir_schemas.md` — > 300 lines; range-read only at the ranges listed above.
-- `crates/slicer-host/src/gcode_emit.rs` — > 1100 lines; range-read at the three ranges listed above. Read-only outside the touched insertion points; the file is touched only for the read-from-GCodeIR + insertion-point additions in Step 5.
-- `crates/slicer-host/src/dispatch.rs` — > 3000 lines; range-read at the two ranges listed above.
-- `crates/slicer-host/src/wit_host.rs` — multi-thousand lines; range-read at the two ranges listed above. **Touched only by Step 3 to add 2 enum variants + 2 bridge push sites** — not "out of bounds" overall, but read-restricted.
-- `crates/slicer-ir/src/slice_ir.rs` — > 1600 lines; range-read at the two ranges listed above.
-- `crates/slicer-sdk/src/traits.rs` — > 1200 lines; range-read at the two ranges listed above.
-- All other core modules (`modules/core-modules/{seam-placer,arrange,monotonic-fill,…}/src/**`) beyond what is enumerated in Read-Only Context — delegate any pattern checks.
-- All other crates (`slicer-cli`, `slicer-helpers`, etc.) beyond the change surface — delegate trait/impl lookups; do not browse.
-- All other packets (`.ralph/specs/01*` through `58_*`) other than packet 55 — delegate any pattern checks.
+- `crates/slicer-host/src/gcode_emit.rs` — > 1100 lines; range-read at the four ranges listed above.
+- `crates/slicer-host/src/dispatch.rs` — > 3000 lines; **NOT TOUCHED in this packet** — no new match arms needed. If a sub-agent reads it for any reason, range-read only.
+- `crates/slicer-host/src/wit_host.rs` — multi-thousand lines; **NOT TOUCHED in this packet** — no new `FinalizationBuilderPush` variants. If read at all, range-read only.
+- `crates/slicer-ir/src/slice_ir.rs` — > 1600 lines; range-read at the listed ranges.
+- `crates/slicer-sdk/src/traits.rs` — > 1200 lines; range-read only the GCodePostProcess trait section.
+- All other core modules (`modules/core-modules/{arrange,monotonic-fill,…}/src/**`) beyond the enumerated reads — delegate any pattern checks.
+- All other crates (`slicer-cli`, `slicer-helpers`, etc.) beyond the change surface — delegate.
+- All other packets (`.ralph/specs/01*` through `58_*`) other than packet 55 — delegate.
 
 ## Expected Sub-Agent Dispatches
 
-Implementers should plan for at least the following dispatches.
-
 - **Step 1 dispatches:**
-  - "In `docs/07_implementation_status.md`, find the line range where queued / in-progress G-code-output TASK entries live. Return LOCATIONS, ≤ 5 entries, each with the adjacent row's verbatim text." — purpose: find insertion point.
-  - "Append three rows to `docs/07_implementation_status.md` after `<insertion-point-line>`: TASK-193, TASK-193a, TASK-193b. Return FACT: bytes appended." — purpose: edit.
-  - "`grep -n 'TASK-193' docs/07_implementation_status.md` — return FACT (hits = 3 expected)." — purpose: verification.
+  - "In `docs/07_implementation_status.md`, find the line range where queued / in-progress G-code-output TASK entries live (proximity to TASK-184 / TASK-185 / TASK-191 / TASK-192a). Return LOCATIONS, ≤ 5 entries, each with the adjacent row's verbatim text." — insertion point.
+  - "Append three rows to `docs/07_implementation_status.md` immediately after `<insertion-point>`: TASK-193, TASK-193a, TASK-193b. Match adjacent row format. Return FACT: bytes appended + line numbers." — edit.
+  - "`grep -n 'TASK-193' docs/07_implementation_status.md` — return FACT (hits = 3 expected)." — verification.
 - **Step 2 dispatches:**
-  - "In `crates/slicer-host/tests/`, find the small STL fixture path used by `gcode_header_thumbnail_config_blocks_tdd.rs` and `gcode_emit_tdd.rs`. Return FACT: exact `concat!(env!('CARGO_MANIFEST_DIR'), '/../../resources/<filename>.stl')`." — purpose: reuse fixture.
+  - "In `crates/slicer-host/tests/`, find the small STL fixture path used by `gcode_emit_tdd.rs` and `gcode_header_thumbnail_config_blocks_tdd.rs`. Return FACT: exact `concat!(env!('CARGO_MANIFEST_DIR'), '/../../resources/<filename>.stl')`." — reuse fixture.
 - **Step 3 dispatches:**
-  - "Run `grep -rn 'FinalizationBuilderPush' crates/ test-guests/ modules/` and report all sites that match a guest- or host-side reference to the enum. Return FACT (≤ 20 lines)." — purpose: WIT/Type Changes Checklist (identify every site that references the enum to mirror the addition).
-  - "Run `cargo build --tests` after the WIT/SDK/dispatch/IR additions. Return FACT pass/fail; SNIPPETS (≤ 30 lines) on fail." — purpose: validate Step 3.
+  - "In `wit/deps/ir-types.wit`, does the WIT `gcode-command` variant set mirror the Rust `GCodeCommand` enum? Return FACT: yes/no + the line containing the WIT variant declaration if yes." — decide whether WIT needs editing.
+  - "Run `cargo build --tests` after adding `GCodeCommand::ExtrusionMode` + emitter push + serializer arm. Return FACT pass/fail; SNIPPETS (≤ 30 lines) on fail." — validate compilation.
+  - "Run `cargo test -p slicer-host --test gcode_emit_tdd`. Return FACT pass/fail; SNIPPETS (≤ 20 lines) on fail." — regression after promotion.
+  - "Run `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- extrusion_mode_still_emitted_after_promotion --nocapture`. Return FACT pass/fail." — promotion sentry.
 - **Step 4 dispatches:**
-  - "After writing `modules/core-modules/machine-gcode-emit/{machine-gcode-emit.toml, Cargo.toml, src/lib.rs}`, run `./modules/core-modules/build-core-modules.sh` then `./modules/core-modules/build-core-modules.sh --check`. Return FACT: '--check returned clean' or SNIPPETS (≤ 20 lines) of the STALE list." — purpose: guest-wasm freshness.
-  - "Run `./test-guests/build-test-guests.sh --check` (the WIT change in Step 3 invalidates test-guest bindgen). Return FACT clean/stale." — purpose: test-guest freshness.
-  - "Locate the host manifest-discovery API for module `[config.schema.<key>]` lookup (likely `crates/slicer-host/src/manifest.rs` near the `ConfigFieldEntry` parse site at `:827-:828`). Return FACT: API name + file:line, ≤ 6 lines. If no test-friendly API exists, return FACT: 'no direct API; AC uses CONFIG_BLOCK fallback'." — purpose: AC implementation choice.
-  - "Run `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- module_manifest_registers_four_keys_with_expected_types_and_defaults --nocapture`. Return FACT (pass/fail); SNIPPETS (≤ 20 lines) on fail." — purpose: validate Step 4.
-  - "Run `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- new_keys_appear_in_config_block --nocapture`. Return FACT (pass/fail)." — purpose: validate CONFIG_BLOCK propagation.
+  - "In `crates/slicer-sdk/src/traits.rs`, find the GCodePostProcess module trait (likely named `GCodePostProcessModule` or similar). Return FACT: trait name + full signature + file:line." — model the impl.
+  - "After writing `modules/core-modules/machine-gcode-emit/{machine-gcode-emit.toml, Cargo.toml, src/lib.rs}`, run `./modules/core-modules/build-core-modules.sh` then `--check`. Return FACT clean/stale." — guest WASM build + freshness.
+  - "Run `./test-guests/build-test-guests.sh --check`. Return FACT clean/stale." — test-guest freshness.
+  - "Locate the host manifest-discovery API for `[config.schema.<key>]` lookup (likely `crates/slicer-host/src/manifest.rs`). Return FACT: API name + file:line, ≤ 6 lines. If absent, return 'no direct API; use CONFIG_BLOCK fallback'." — AC implementation choice.
+  - "Run `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd`. Return FACT pass/fail; SNIPPETS (≤ 20 lines) on fail." — full AC sweep.
 - **Step 5 dispatches:**
-  - "From `crates/slicer-host/src/gcode_emit.rs`, return SNIPPETS (≤ 30 lines) of the exact insertion site after `serialize_header_block` + `serialize_width_comments` calls within `DefaultGCodeSerializer::serialize_gcode()` body (line ~`:1021`-onwards, up to but not crossing the M83 emission at `:1067`). Cite file:line." — purpose: locate start-block insertion.
-  - "From `crates/slicer-host/src/gcode_emit.rs`, return SNIPPETS (≤ 30 lines) of the inner serializer's final accumulation point before the function returns (end-block insertion site). Cite file:line." — purpose: locate end-block insertion.
-  - "Run `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd`. Return FACT pass/fail; SNIPPETS (≤ 20 lines) on first-failing-assertion." — purpose: AC turn-green.
-  - "Run `cargo test -p slicer-host --test gcode_header_thumbnail_config_blocks_tdd`. Return FACT pass/fail." — purpose: packet-55 regression.
-  - "Run `cargo test -p slicer-host --test gcode_emit_tdd`. Return FACT pass/fail." — purpose: packet-52/54 regression.
+  - "Run `cargo test -p slicer-host --test postpass_gcode_emit_contract_tdd`. Return FACT pass/fail." — postpass regression.
+  - "Run `cargo test -p slicer-host --test gcode_header_thumbnail_config_blocks_tdd`. Return FACT pass/fail." — packet-55 regression.
+  - "Run `./modules/core-modules/build-core-modules.sh --check`. Return FACT clean/stale." — guest-wasm re-verification.
+  - "Run `./test-guests/build-test-guests.sh --check`. Return FACT clean/stale." — test-guest re-verification.
+  - "Run `cargo check --workspace`. Return FACT pass/fail; SNIPPETS (≤ 30 lines) of first error on fail." — workspace gate.
+  - "Run `cargo clippy --workspace -- -D warnings`. Return FACT pass/fail; SNIPPETS (≤ 30 lines) of first warning on fail." — lint gate.
 - **Step 6 dispatches:**
-  - "Run `cargo test -p slicer-host --test postpass_gcode_emit_contract_tdd`. Return FACT." — purpose: postpass regression.
-  - "Run `./modules/core-modules/build-core-modules.sh --check`. Return FACT clean/stale." — purpose: guest-wasm freshness re-verification.
-  - "Run `./test-guests/build-test-guests.sh --check`. Return FACT clean/stale." — purpose: test-guest freshness re-verification.
-  - "Run `cargo check --workspace`. Return FACT pass/fail; SNIPPETS (≤ 30 lines) of first error on fail." — purpose: workspace gate.
-  - "Run `cargo clippy --workspace -- -D warnings`. Return FACT pass/fail; SNIPPETS (≤ 30 lines) of first warning on fail." — purpose: lint gate.
-- **Step 7 dispatches:**
-  - Re-dispatch every pipe-suffixed AC command from `packet.spec.md` (12 total).
-  - "Run `cargo test --workspace` once at closure ceremony — return FACT pass/fail; on fail SNIPPETS (≤ 40 lines) of the first failing test name + assertion. NEVER return the full test output." — purpose: final closure gate per CLAUDE.md test discipline.
-  - "Update `docs/07_implementation_status.md` rows for TASK-193 / TASK-193a / TASK-193b to status `[x]`; return FACT: rows updated." — purpose: backlog close.
+  - Re-dispatch every pipe-suffixed AC command from `packet.spec.md` (13 total: 10 positive + 3 negative).
+  - "Run `cargo test --workspace` once. Return FACT pass/fail; on fail SNIPPETS (≤ 40 lines) of first failing test name + assertion. NEVER return the full output (>1000 tests)." — closure ceremony.
+  - "Update `docs/07_implementation_status.md` rows for TASK-193 / TASK-193a / TASK-193b to status `[x]`; return FACT: rows updated." — backlog close.
 
 ## Data and Contract Notes
 
-- **IR contract touched:** additive only. `GCodeIR` (`crates/slicer-ir/src/slice_ir.rs:1781`) grows by two `Option<String>` fields (`print_start_gcode`, `print_end_gcode`), both defaulting to `None`. No existing field changed; no variant removed; the `schema_version`, `commands`, and `metadata` fields and the `CURRENT_GCODE_IR_SCHEMA_VERSION` constant are untouched. If `docs/02_ir_schemas.md` documents `GCodeIR`'s field set, that doc gets a single-line append; the change does not require a `schema_version` bump because no consumer needs the new fields to interpret the existing ones.
-- **WIT boundary considerations:** `wit/world-finalization.wit:62-104` (the `finalization-output-builder` resource) gets two new methods. Additive — no method removed or changed. The new module declares `wit-world = "slicer:world-finalization@1.0.0"` (same as part-cooling). The CLAUDE.md WIT/Type Changes Checklist applies — search all `wit_host.rs`, `dispatch.rs`, and `wit_guest` modules for the affected type, verify type identity matches across component boundaries, run `cargo build --tests`, and update both inline WIT and external package references consistently.
-- **SDK contract touched:** additive. `FinalizationOutputBuilder` impl gets two new methods (`push_print_start_gcode`, `push_print_end_gcode`) and the struct gets two `Option<String>` fields. No existing method or field changed. `FinalizationModule` trait signature is unchanged.
-- **Dispatch contract touched:** additive. `FinalizationBuilderPush` (`wit_host.rs:837`) grows from 6 to 8 variants. The apply-site loop in `dispatch.rs` (`:2892-:2978`) gets two new match arms. Old guests that don't emit the new variants continue to behave exactly as before.
+- **IR contract touched:** additive only. `GCodeCommand` gains one new variant `ExtrusionMode { absolute: bool }`. All existing variants and `GCodeIR` fields are unchanged. `docs/02_ir_schemas.md` gets a single-line append for the new variant if it documents the enum. No `schema_version` bump is required — old consumers that match all existing variants will see a new variant they don't recognize ONLY if they read an IR produced by this version of the slicer; in practice the IR is produced and consumed by the same version, so no cross-version compatibility concern arises.
+- **WIT boundary considerations:** `wit/world-postpass.wit` and `wit/world-finalization.wit` are unchanged. `wit/deps/ir-types.wit`'s `gcode-command` variant set MAY need a new `extrusion-mode` variant if it mirrors the Rust enum; Step 3 confirms via dispatch. If touched, the CLAUDE.md WIT/Type Changes Checklist applies. The new module declares `wit-world = "slicer:world-postpass@1.0.0"` (or whichever string the existing GCodePostProcess host uses).
+- **SDK contract touched:** none. The new module consumes the existing GCodePostProcess trait surface unchanged. No SDK methods added.
+- **Dispatch contract touched:** none. The existing `runner.run_gcode_postprocess(...)` loop at `crates/slicer-host/src/postpass.rs:215` already executes against `&mut gcode_ir`; the new module slots in as one more iteration of that loop.
 - **Determinism or scheduler constraints:** The substituted block is deterministic given the same effective `ConfigView`. The module's `substitute_placeholders()` helper iterates the template left-to-right; HashMap key lookup is value-equality and does not introduce ordering nondeterminism. Empty / whitespace-only ⇒ zero bytes.
-- **CONFIG_BLOCK propagation:** Packet 55's `serialize_config_block()` (at `:928`) iterates the effective `ConfigView` and emits `; <key> = <value>` per key. The four new keys flow through automatically once declared in the manifest and resolved into `effective_config`. AC `new_keys_appear_in_config_block` verifies this propagation; no additional CONFIG_BLOCK wiring code is added.
-- **Multi-line `String` value in CONFIG_BLOCK:** The default `machine_start_gcode` contains `\n` characters. Packet 55's CONFIG_BLOCK formatter handles multi-line values per its existing convention (single comment line with `\n` literalized, or per-continuation `; `). Whichever it picked applies. AC `new_keys_appear_in_config_block` asserts equality after un-escaping; a Step 5 SNIPPETS dispatch confirms the exact wire format.
+- **CONFIG_BLOCK propagation:** Packet 55's `serialize_config_block()` at `:928` iterates the effective `ConfigView` and emits `; <key> = <value>` per key. The four new keys flow through automatically once declared in the manifest and resolved into `effective_config`. AC `new_keys_appear_in_config_block` verifies this.
+- **Multi-line `String` value in CONFIG_BLOCK:** The default `machine_start_gcode` contains `\n` characters. Packet 55's CONFIG_BLOCK formatter handles multi-line values per its existing convention. Whichever it picked applies. AC `new_keys_appear_in_config_block` asserts equality after un-escaping; a Step 4 SNIPPETS dispatch confirms the exact wire format.
 
 ## Locked Assumptions and Invariants
 
-- The implementer must preserve the byte-offset ordering established by packets 54 / 55:
-  - `HEADER_BLOCK_START` < width comments < (NEW: resolved start string) < M82/M83 preamble < first `;LAYER_CHANGE` < first `G1` extrusion move.
-  - last `G1` extrusion move < (NEW: resolved end string) < `THUMBNAIL_BLOCK_START` (if present) < `CONFIG_BLOCK_START` < `CONFIG_BLOCK_END` < EOF.
-- The module's `substitute_placeholders()` is single-pass — substituted values are not re-scanned.
-- The module's `substitute_placeholders()` does not panic, does not infinite-loop, and does not allocate unboundedly. For an N-byte template with K placeholders, runtime is O(N + K · avg-key-length) and allocation is one output `String` of ≤ N + K · max-value-length bytes.
-- Empty/whitespace-only resolved string ⇒ emit zero bytes (no header comment, no blank line). A user explicitly setting `machine_end_gcode = ""` must produce a file structurally identical (modulo CONFIG_BLOCK's listing of the empty value) to a file produced without the end block.
-- `FinalizationBuilderPush` adds exactly two new variants (`PrintStartGcode(String)`, `PrintEndGcode(String)`). No existing variant changed.
-- `GCodeIR` adds exactly two new fields (`print_start_gcode: Option<String>`, `print_end_gcode: Option<String>`). Both default to `None`.
-- `FinalizationOutputBuilder` adds exactly two new push methods. Internal storage uses two `Option<String>` fields (single-value, not Vec — there is exactly one print-start and one print-end per slicing run).
-- The four new config keys' defaults are EXACTLY as specified in `packet.spec.md` Goal and in the TOML Manifest Shape section above.
-- The host serializer (`gcode_emit.rs`) contains NO substitution logic. All substitution happens inside the WASM guest module.
+- The implementer MUST preserve byte-level ordering established by packets 54 / 55:
+  - `; HEADER_BLOCK_START` < width comments < (NEW: resolved start string) < `M82` or `M83` line < first `;LAYER_CHANGE` < first `G1` extrusion move.
+  - last `G1` extrusion move < (NEW: resolved end string) < `; THUMBNAIL_BLOCK_START` (if present) < `; CONFIG_BLOCK_START` < `; CONFIG_BLOCK_END` < EOF.
+- After the promotion, exactly one `M82` or `M83` line appears in default output, in the same byte position relative to surrounding markers as before — only its origin shifts from a serializer hard-coded write to a typed command pushed by the emitter.
+- The module's `substitute_placeholders()` is single-pass. Substituted values are not re-scanned.
+- `substitute_placeholders()` does not panic, does not infinite-loop, and does not allocate unboundedly. For an N-byte template with K placeholders, runtime is O(N + K · avg-key-length).
+- Empty/whitespace-only resolved string ⇒ the module SKIPS the corresponding `Raw` push. Output contains zero bytes for that block.
+- `GCodeCommand` grows by exactly one variant (`ExtrusionMode { absolute: bool }`). All other variants unchanged.
+- `GCodeIR` struct is UNCHANGED.
+- `FinalizationBuilderPush` is UNCHANGED.
+- `dispatch.rs` is UNCHANGED.
+- `wit/world-finalization.wit` and `wit/world-postpass.wit` are UNCHANGED structurally.
+- The host serializer contains NO substitution logic. All substitution happens inside the WASM guest.
+- The four new config keys' defaults are EXACTLY as specified in `packet.spec.md` Goal.
 
 ## Risks and Tradeoffs
 
-- **Risk: WIT contract addition.** Two new methods on `finalization-output-builder` (~2 lines of WIT) + two new variants on `FinalizationBuilderPush` (~8 LOC SDK + matching dispatch) + ~25-30 LOC dispatch routing + two `Option<String>` fields on `GCodeIR`. CLAUDE.md's WIT/Type Changes Checklist applies. The addition is additive (no existing variant removed or changed), so older guests continue to build; only the new module exercises the new variants. The original packet declared "No new WIT contracts" — that constraint was authored against a different architecture and is rescinded by this refinement, explicitly noted here.
-- **Risk: cross-component diagnostics for unknown placeholders.** With substitution moved into the WASM guest, host-side `log::warn!` capture for unknown placeholders is not trivially available. Pass-2 refinement DROPS the WARN-capture requirement from the negative AC (renamed `unknown_placeholder_passes_through_verbatim`); the verbatim-presence assertion still proves passthrough. Cross-component diagnostic forwarding is tracked as a separate future packet.
-- **Risk: end-block position differs from OrcaSlicer.** OrcaSlicer emits `machine_end_gcode` AFTER its CONFIG_BLOCK (`OrcaSlicerDocumented/src/libslic3r/GCode.cpp:3544`). We emit it BEFORE THUMBNAIL/CONFIG_BLOCK because our CONFIG_BLOCK is structurally a footer wrapper. **Mitigation:** comments after the last printable command are ignored by all firmwares. Documented as an intentional deviation in `requirements.md`.
-- **Risk: range enforcement is declarative-only (see Out-of-Scope).** The manifest declares `min = 0, max = 120` (bed) and `min = 0, max = 300` (nozzle) but `ResolvedConfig::apply_cli_key` (`crates/slicer-ir/src/resolved_config.rs:194`) does not consult these. A user passing `nozzle_temperature_initial_layer = 999` will get `M109 S999` in the output. Tracked as a separate future TASK-### packet.
-- **Risk: multi-line `machine_start_gcode` value in CONFIG_BLOCK may be unparseable by some downstream tools.** Whichever convention packet 55 picked applies. **Mitigation:** Step 5 dispatch confirms the exact wire format; AC `new_keys_appear_in_config_block` validates round-trip via un-escaping.
-- **Risk: guest-wasm staleness after adding the new module AND after the WIT change.** Per CLAUDE.md Guest WASM Staleness, `cargo build` does NOT rebuild `modules/core-modules/*/target/wasm32-*/release/*.wasm` and the WIT change invalidates every guest's bindgen output. **Mitigation:** Step 4 mandates running `./modules/core-modules/build-core-modules.sh` once after the new module is created, then `--check` to confirm clean. Step 6 re-runs both `--check` commands.
+- **Risk: M82/M83 promotion breaks `gcode_emit_tdd.rs` or other suites.** The packet-54 regression suite asserts presence/position of `M82`/`M83`. After the promotion, the line appears in the same byte position by construction (the emitter pushes `ExtrusionMode` at index 0; the serializer renders it as the first per-command output, right after the header/width comments). **Mitigation:** Step 3 includes `cargo test -p slicer-host --test gcode_emit_tdd` as the immediate falsifying check. If the suite breaks, investigate the exact byte offset assertion and adjust either the test (preferred — assertion should compare position relative to markers, not absolute byte offsets) or surface as a packet-local risk.
+- **Risk: cross-component diagnostics for unknown placeholders.** With substitution in the WASM guest, host-side `log::warn!` capture is not trivially available. The negative AC `unknown_placeholder_passes_through_verbatim` asserts verbatim passthrough only. Cross-component diagnostic forwarding is tracked as a separate future packet.
+- **Risk: end-block position differs from OrcaSlicer.** OrcaSlicer emits `machine_end_gcode` AFTER its CONFIG_BLOCK. We emit it BEFORE `CONFIG_BLOCK` because our CONFIG_BLOCK is structurally a metadata footer that the printer ignores. **Mitigation:** Documented as an intentional deviation here and in `requirements.md`; the printer-visible ordering is correct (machine_end_gcode is the last printable command).
+- **Risk: range enforcement is declarative-only.** The manifest declares `min = 0, max = 120` (bed) and `min = 0, max = 300` (nozzle) but `ResolvedConfig::apply_cli_key` does not consult these. A user passing `nozzle_temperature_initial_layer = 999` gets `M109 S999`. Tracked as a separate future packet.
+- **Risk: multi-line `machine_start_gcode` value in CONFIG_BLOCK may be unparseable by some downstream tools.** Whichever convention packet 55 picked applies. **Mitigation:** Step 4 dispatch confirms wire format; AC `new_keys_appear_in_config_block` validates round-trip via un-escaping.
+- **Risk: guest-wasm staleness after the new module AND after the `slicer-ir` variant change.** Per CLAUDE.md Guest WASM Staleness, `slicer-ir` is a universal guest dep — adding a variant invalidates every guest's bindgen output. **Mitigation:** Steps 4 and 5 both dispatch `--check`.
 - **Risk: future "arithmetic" packet breaks one-pass invariant.** Adding `[bed*2]` evaluation means substituted output could contain identifiers that look like further placeholders. **Mitigation:** scope boundary is clear; future packet decides whether to re-scan or to extend the helper into a tokenizer.
-- **Tradeoff: minimal substitution vs full OrcaSlicer parity.** Accepted at scope-approval gate. Users who need conditionals can either wait for the follow-up packet or write the literal expansion themselves.
-- **Tradeoff: option 4a (IR fields) vs option 4b (constructor plumbing) for routing the new variants.** Chose option 4a (explicit `Option<String>` fields on `GCodeIR`) because IR fields are easier to test and trace than implicit map merges; option 4b would couple the serializer constructor to print-boundary concerns.
+- **Risk: `Raw` command in the middle of the stream may surprise other GCodePostProcess modules that match `GCodeCommand` exhaustively.** **Mitigation:** `Raw` is an existing variant; any module that matches `GCodeCommand` already handles `Raw`. The new module's only contribution is two more `Raw` instances at the boundaries.
+- **Tradeoff: minimal substitution vs full OrcaSlicer parity.** Accepted at scope-approval gate. Users who need conditionals can wait for the follow-up packet or expand the literal value.
+- **Tradeoff: typed `ExtrusionMode` variant vs `Raw("M82")` shortcut.** Chose typed variant for IR clarity, debug-print quality, and parity with how M104/M109 are modeled (`Temperature`, not `Raw`).
 
 ## Context Cost Estimate
 
 - Aggregate (sum across all steps): **`M`**.
-- Largest single step: Step 3 (WIT/SDK/dispatch/IR extension touching 5 files in additive form) or Step 4 (create the module with real `run_finalization`) — both `M`.
-- Highest-risk dispatch: the `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd` failure return. **Required return format:** FACT pass / SNIPPETS ≤ 20 lines (test name + assertion + minimal context). NEVER return the full test runner output.
+- Largest single step: Step 3 (`GCodeCommand` variant + emitter push + serializer arm; touches 2 source files + possibly 1 WIT file; runs regression suite) — `M`.
+- Highest-risk dispatch: the `cargo test -p slicer-host --test gcode_emit_tdd` regression check in Step 3. **Required return format:** FACT pass / SNIPPETS ≤ 20 lines on fail. NEVER return the full test runner output.
 
 ## Open Questions
 
-All open questions resolved at the scope-approval gate. **No remaining blockers for activation.** The non-blocking confirmations below are tactical and resolve during Step 4 / Step 5 dispatches:
+All open questions resolved at the scope-approval gate. **No remaining blockers for activation.** The non-blocking confirmations below resolve during Steps 3/4 dispatches:
 
-- **Non-blocking confirmation (Step 4):** Whether the host's manifest-discovery API exposes a test-friendly lookup of `[config.schema.<key>]` blocks. If yes, AC `module_manifest_registers_four_keys_with_expected_types_and_defaults` asserts directly on the loaded manifest. If no, the AC falls back to asserting the four `; <key> = <default>` lines in the CONFIG_BLOCK of `out.gcode`.
-- **Non-blocking confirmation (Step 4):** Whether the SDK's `ConfigView` exposes `get_string` / `get_int` separately or via a unified `get` returning `ConfigValue`. The module's `src/lib.rs` mirrors `part-cooling`'s pattern verbatim — whichever shape that uses is what this module uses too.
-- **Non-blocking confirmation (Step 5):** Whether the inner `DefaultGCodeSerializer::serialize_gcode()` end-point is unambiguously identifiable, or whether the implementation needs a small refactor to expose a clean injection point. If a refactor is needed, surface it as a packet-local risk and split into a follow-up packet rather than expanding scope.
+- **Non-blocking confirmation (Step 3):** Whether `wit/deps/ir-types.wit` mirrors `GCodeCommand` and therefore needs an `extrusion-mode` variant addition. If yes, the WIT edit lands in this step. If no, the IR change is purely Rust-internal.
+- **Non-blocking confirmation (Step 4):** The exact SDK trait name for GCodePostProcess modules (likely `GCodePostProcessModule`) and its method signatures. Identified via a single ranged read of `crates/slicer-sdk/src/traits.rs`.
+- **Non-blocking confirmation (Step 4):** Whether the SDK exposes a `extend_from_snapshot(commands: &[GCodeCommand])` helper on the output builder, or whether the module must `push_command(cmd.clone())` per item. Either pattern is acceptable; the implementer uses whichever exists.
+- **Non-blocking confirmation (Step 4):** Whether the host's manifest-discovery API exposes a test-friendly lookup of `[config.schema.<key>]` blocks. If yes, AC `module_manifest_registers_four_keys_with_expected_types_and_defaults` asserts directly on the manifest. If no, the AC falls back to CONFIG_BLOCK substring presence.
 
-None of the non-blocking confirmations changes scope, interface, or verification strategy — they are tactical implementation choices. They do NOT block activation.
+None of these change scope, interface, or verification strategy.
