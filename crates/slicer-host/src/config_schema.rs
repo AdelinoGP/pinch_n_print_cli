@@ -43,6 +43,11 @@ pub enum ConfigUnit {
 }
 
 /// Full schema definition for a single configuration field.
+///
+/// Construction goes through [`ConfigFieldSchemaBuilder`], which uses
+/// non-consuming `&mut self -> &mut Self` setters — see spec §6.3 — so
+/// the existing `FullConfigSchema::default()` loop bodies stay readable
+/// when each row sets a different mix of optionals.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ConfigFieldSchema {
     /// The field key (e.g., "density", "pattern").
@@ -77,6 +82,165 @@ pub struct ConfigFieldSchema {
     pub max_list_length: Option<usize>,
     /// Single-field validation expression.
     pub validate: Option<String>,
+}
+
+/// Builder for [`ConfigFieldSchema`].
+///
+/// Required identity fields (`key`, `field_type`) are positional
+/// arguments to [`ConfigFieldSchemaBuilder::new`]; everything else is
+/// optional and set via non-consuming `&mut self -> &mut Self` setters.
+/// Terminal `build(&self)` clones the configured fields into a finished
+/// [`ConfigFieldSchema`]. The non-consuming style is the documented
+/// per-struct exception (spec §3.2 / §6.3) — it keeps the
+/// `FullConfigSchema::default()` row builders readable.
+#[derive(Debug, Clone)]
+pub struct ConfigFieldSchemaBuilder {
+    key: String,
+    field_type: ConfigFieldType,
+    default: Option<ConfigValue>,
+    display: Option<String>,
+    description: Option<String>,
+    group: Option<String>,
+    unit: ConfigUnit,
+    advanced: bool,
+    min: Option<f64>,
+    max: Option<f64>,
+    step: Option<f64>,
+    max_length: Option<usize>,
+    enum_values: Option<Vec<String>>,
+    min_list_length: Option<usize>,
+    max_list_length: Option<usize>,
+    validate: Option<String>,
+}
+
+impl ConfigFieldSchemaBuilder {
+    /// Start a new builder for the given key and field type.
+    pub fn new(key: impl Into<String>, field_type: ConfigFieldType) -> Self {
+        Self {
+            key: key.into(),
+            field_type,
+            default: None,
+            display: None,
+            description: None,
+            group: None,
+            unit: ConfigUnit::None,
+            advanced: false,
+            min: None,
+            max: None,
+            step: None,
+            max_length: None,
+            enum_values: None,
+            min_list_length: None,
+            max_list_length: None,
+            validate: None,
+        }
+    }
+
+    /// Set the default value.
+    pub fn default_value(&mut self, v: ConfigValue) -> &mut Self {
+        self.default = Some(v);
+        self
+    }
+
+    /// Set the UI display name.
+    pub fn display(&mut self, s: impl Into<String>) -> &mut Self {
+        self.display = Some(s.into());
+        self
+    }
+
+    /// Set the tooltip / description.
+    pub fn description(&mut self, s: impl Into<String>) -> &mut Self {
+        self.description = Some(s.into());
+        self
+    }
+
+    /// Set the UI grouping hint.
+    pub fn group(&mut self, s: impl Into<String>) -> &mut Self {
+        self.group = Some(s.into());
+        self
+    }
+
+    /// Set the unit for numeric fields.
+    pub fn unit(&mut self, u: ConfigUnit) -> &mut Self {
+        self.unit = u;
+        self
+    }
+
+    /// Mark as advanced.
+    pub fn advanced(&mut self, b: bool) -> &mut Self {
+        self.advanced = b;
+        self
+    }
+
+    /// Set the minimum value for numeric fields.
+    pub fn min(&mut self, v: f64) -> &mut Self {
+        self.min = Some(v);
+        self
+    }
+
+    /// Set the maximum value for numeric fields.
+    pub fn max(&mut self, v: f64) -> &mut Self {
+        self.max = Some(v);
+        self
+    }
+
+    /// Set the step for numeric fields.
+    pub fn step(&mut self, v: f64) -> &mut Self {
+        self.step = Some(v);
+        self
+    }
+
+    /// Set the max length for string fields.
+    pub fn max_length(&mut self, n: usize) -> &mut Self {
+        self.max_length = Some(n);
+        self
+    }
+
+    /// Set the allowed values for enum fields.
+    pub fn enum_values(&mut self, v: Vec<String>) -> &mut Self {
+        self.enum_values = Some(v);
+        self
+    }
+
+    /// Set the minimum list length.
+    pub fn min_list_length(&mut self, n: usize) -> &mut Self {
+        self.min_list_length = Some(n);
+        self
+    }
+
+    /// Set the maximum list length.
+    pub fn max_list_length(&mut self, n: usize) -> &mut Self {
+        self.max_list_length = Some(n);
+        self
+    }
+
+    /// Set the single-field validation expression.
+    pub fn validate(&mut self, expr: impl Into<String>) -> &mut Self {
+        self.validate = Some(expr.into());
+        self
+    }
+
+    /// Build the finished [`ConfigFieldSchema`] (non-consuming).
+    pub fn build(&self) -> ConfigFieldSchema {
+        ConfigFieldSchema {
+            key: self.key.clone(),
+            field_type: self.field_type.clone(),
+            default: self.default.clone(),
+            display: self.display.clone(),
+            description: self.description.clone(),
+            group: self.group.clone(),
+            unit: self.unit.clone(),
+            advanced: self.advanced,
+            min: self.min,
+            max: self.max,
+            step: self.step,
+            max_length: self.max_length,
+            enum_values: self.enum_values.clone(),
+            min_list_length: self.min_list_length,
+            max_list_length: self.max_list_length,
+            validate: self.validate.clone(),
+        }
+    }
 }
 
 /// Cross-field validation rule.
@@ -128,6 +292,7 @@ pub struct FullConfigSchema {
 impl Default for FullConfigSchema {
     fn default() -> Self {
         let mut fields = BTreeMap::new();
+
         let speed_keys = [
             ("outer_wall_speed", 60.0),
             ("inner_wall_speed", 60.0),
@@ -158,27 +323,12 @@ impl Default for FullConfigSchema {
         ];
 
         for (key, default_val) in speed_keys {
-            fields.insert(
-                key.to_string(),
-                ConfigFieldSchema {
-                    key: key.to_string(),
-                    field_type: ConfigFieldType::Float,
-                    default: Some(ConfigValue::Float(default_val)),
-                    display: None,
-                    description: None,
-                    group: Some("Speed".to_string()),
-                    unit: ConfigUnit::MillimetersPerSecond,
-                    advanced: false,
-                    min: Some(0.0),
-                    max: None,
-                    step: None,
-                    max_length: None,
-                    enum_values: None,
-                    min_list_length: None,
-                    max_list_length: None,
-                    validate: None,
-                },
-            );
+            let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Float);
+            b.default_value(ConfigValue::Float(default_val))
+                .group("Speed")
+                .unit(ConfigUnit::MillimetersPerSecond)
+                .min(0.0);
+            fields.insert(key.to_string(), b.build());
         }
 
         let cooling_int_keys = [
@@ -189,27 +339,14 @@ impl Default for FullConfigSchema {
         ];
 
         for (key, default_val, max) in cooling_int_keys {
-            fields.insert(
-                key.to_string(),
-                ConfigFieldSchema {
-                    key: key.to_string(),
-                    field_type: ConfigFieldType::Int,
-                    default: Some(ConfigValue::Int(default_val)),
-                    display: None,
-                    description: None,
-                    group: Some("Cooling".to_string()),
-                    unit: ConfigUnit::None,
-                    advanced: false,
-                    min: Some(0.0),
-                    max,
-                    step: None,
-                    max_length: None,
-                    enum_values: None,
-                    min_list_length: None,
-                    max_list_length: None,
-                    validate: None,
-                },
-            );
+            let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Int);
+            b.default_value(ConfigValue::Int(default_val))
+                .group("Cooling")
+                .min(0.0);
+            if let Some(max_val) = max {
+                b.max(max_val);
+            }
+            fields.insert(key.to_string(), b.build());
         }
 
         let cooling_bool_keys = [
@@ -218,50 +355,18 @@ impl Default for FullConfigSchema {
         ];
 
         for (key, default_val) in cooling_bool_keys {
-            fields.insert(
-                key.to_string(),
-                ConfigFieldSchema {
-                    key: key.to_string(),
-                    field_type: ConfigFieldType::Bool,
-                    default: Some(ConfigValue::Bool(default_val)),
-                    display: None,
-                    description: None,
-                    group: Some("Cooling".to_string()),
-                    unit: ConfigUnit::None,
-                    advanced: false,
-                    min: None,
-                    max: None,
-                    step: None,
-                    max_length: None,
-                    enum_values: None,
-                    min_list_length: None,
-                    max_list_length: None,
-                    validate: None,
-                },
-            );
+            let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Bool);
+            b.default_value(ConfigValue::Bool(default_val))
+                .group("Cooling");
+            fields.insert(key.to_string(), b.build());
         }
 
-        fields.insert(
-            "use_relative_e_distances".to_string(),
-            ConfigFieldSchema {
-                key: "use_relative_e_distances".to_string(),
-                field_type: ConfigFieldType::Bool,
-                default: Some(ConfigValue::Bool(true)),
-                display: None,
-                description: None,
-                group: Some("Extrusion".to_string()),
-                unit: ConfigUnit::None,
-                advanced: false,
-                min: None,
-                max: None,
-                step: None,
-                max_length: None,
-                enum_values: None,
-                min_list_length: None,
-                max_list_length: None,
-                validate: None,
-            },
-        );
+        {
+            let mut b =
+                ConfigFieldSchemaBuilder::new("use_relative_e_distances", ConfigFieldType::Bool);
+            b.default_value(ConfigValue::Bool(true)).group("Extrusion");
+            fields.insert("use_relative_e_distances".to_string(), b.build());
+        }
 
         let cooling_float_keys = [
             (
@@ -273,27 +378,12 @@ impl Default for FullConfigSchema {
         ];
 
         for (key, default_val, unit) in cooling_float_keys {
-            fields.insert(
-                key.to_string(),
-                ConfigFieldSchema {
-                    key: key.to_string(),
-                    field_type: ConfigFieldType::Float,
-                    default: Some(ConfigValue::Float(default_val)),
-                    display: None,
-                    description: None,
-                    group: Some("Cooling".to_string()),
-                    unit,
-                    advanced: false,
-                    min: Some(0.0),
-                    max: None,
-                    step: None,
-                    max_length: None,
-                    enum_values: None,
-                    min_list_length: None,
-                    max_list_length: None,
-                    validate: None,
-                },
-            );
+            let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Float);
+            b.default_value(ConfigValue::Float(default_val))
+                .group("Cooling")
+                .unit(unit)
+                .min(0.0);
+            fields.insert(key.to_string(), b.build());
         }
 
         // Line-width keys (OrcaSlicer 0.4 mm nozzle parity defaults)
@@ -306,26 +396,14 @@ impl Default for FullConfigSchema {
         ];
 
         for (key, default_val) in width_keys {
-            fields
-                .entry(key.to_string())
-                .or_insert_with(|| ConfigFieldSchema {
-                    key: key.to_string(),
-                    field_type: ConfigFieldType::Float,
-                    default: Some(ConfigValue::Float(default_val)),
-                    display: None,
-                    description: None,
-                    group: Some("Extrusion".to_string()),
-                    unit: ConfigUnit::Millimeters,
-                    advanced: false,
-                    min: Some(0.0),
-                    max: None,
-                    step: None,
-                    max_length: None,
-                    enum_values: None,
-                    min_list_length: None,
-                    max_list_length: None,
-                    validate: None,
-                });
+            fields.entry(key.to_string()).or_insert_with(|| {
+                let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Float);
+                b.default_value(ConfigValue::Float(default_val))
+                    .group("Extrusion")
+                    .unit(ConfigUnit::Millimeters)
+                    .min(0.0);
+                b.build()
+            });
         }
 
         // Filament / printer geometry keys required by packet 55 (AC7)
@@ -336,55 +414,26 @@ impl Default for FullConfigSchema {
         ];
 
         for (key, default_val) in filament_float_keys {
-            fields.insert(
-                key.to_string(),
-                ConfigFieldSchema {
-                    key: key.to_string(),
-                    field_type: ConfigFieldType::Float,
-                    default: Some(ConfigValue::Float(default_val)),
-                    display: None,
-                    description: None,
-                    group: Some("Filament".to_string()),
-                    unit: if key == "filament_diameter" || key == "max_z_height" {
-                        ConfigUnit::Millimeters
-                    } else {
-                        ConfigUnit::None
-                    },
-                    advanced: false,
-                    min: Some(0.0),
-                    max: None,
-                    step: None,
-                    max_length: None,
-                    enum_values: None,
-                    min_list_length: None,
-                    max_list_length: None,
-                    validate: None,
-                },
-            );
+            let unit = if key == "filament_diameter" || key == "max_z_height" {
+                ConfigUnit::Millimeters
+            } else {
+                ConfigUnit::None
+            };
+            let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Float);
+            b.default_value(ConfigValue::Float(default_val))
+                .group("Filament")
+                .unit(unit)
+                .min(0.0);
+            fields.insert(key.to_string(), b.build());
         }
 
         // thumbnail_path — empty string = no thumbnail block
-        fields.insert(
-            "thumbnail_path".to_string(),
-            ConfigFieldSchema {
-                key: "thumbnail_path".to_string(),
-                field_type: ConfigFieldType::String,
-                default: Some(ConfigValue::String(String::new())),
-                display: None,
-                description: None,
-                group: Some("Output".to_string()),
-                unit: ConfigUnit::None,
-                advanced: false,
-                min: None,
-                max: None,
-                step: None,
-                max_length: None,
-                enum_values: None,
-                min_list_length: None,
-                max_list_length: None,
-                validate: None,
-            },
-        );
+        {
+            let mut b = ConfigFieldSchemaBuilder::new("thumbnail_path", ConfigFieldType::String);
+            b.default_value(ConfigValue::String(String::new()))
+                .group("Output");
+            fields.insert("thumbnail_path".to_string(), b.build());
+        }
 
         Self {
             fields,
@@ -801,87 +850,78 @@ fn parse_field_schema(
         });
     }
 
-    // Parse default value
-    let default = table
+    let mut b = ConfigFieldSchemaBuilder::new(key, field_type.clone());
+
+    if let Some(default) = table
         .get("default")
-        .map(|v| parse_config_value(v, &field_type));
-
-    // Parse numeric constraints
-    let min = table.get("min").and_then(parse_numeric_value);
-    let max = table.get("max").and_then(parse_numeric_value);
-    let step = table.get("step").and_then(parse_numeric_value);
-
-    // Parse string constraints
-    let max_length = table
+        .map(|v| parse_config_value(v, &field_type))
+    {
+        b.default_value(default);
+    }
+    if let Some(min) = table.get("min").and_then(parse_numeric_value) {
+        b.min(min);
+    }
+    if let Some(max) = table.get("max").and_then(parse_numeric_value) {
+        b.max(max);
+    }
+    if let Some(step) = table.get("step").and_then(parse_numeric_value) {
+        b.step(step);
+    }
+    if let Some(max_length) = table
         .get("max_length")
-        .and_then(|v| v.as_integer().map(|i| i as usize));
-
-    // Parse enum values
-    let enum_values = table.get("values").and_then(|v| {
+        .and_then(|v| v.as_integer().map(|i| i as usize))
+    {
+        b.max_length(max_length);
+    }
+    if let Some(values) = table.get("values").and_then(|v| {
         v.as_array().map(|arr| {
             arr.iter()
                 .filter_map(|item| item.as_str().map(String::from))
-                .collect()
+                .collect::<Vec<_>>()
         })
-    });
-
-    // Parse list constraints
-    let min_list_length = table
+    }) {
+        b.enum_values(values);
+    }
+    if let Some(min_list_length) = table
         .get("min_list_length")
-        .and_then(|v| v.as_integer().map(|i| i as usize));
-    let max_list_length = table
+        .and_then(|v| v.as_integer().map(|i| i as usize))
+    {
+        b.min_list_length(min_list_length);
+    }
+    if let Some(max_list_length) = table
         .get("max_list_length")
-        .and_then(|v| v.as_integer().map(|i| i as usize));
-
-    // Parse display and description
-    let display = table
-        .get("display")
-        .and_then(|v| v.as_str().map(String::from));
-    let description = table
-        .get("description")
-        .and_then(|v| v.as_str().map(String::from));
-
-    // Parse group
-    let group = table
-        .get("group")
-        .and_then(|v| v.as_str().map(String::from));
-
-    // Parse unit
-    let unit = table
+        .and_then(|v| v.as_integer().map(|i| i as usize))
+    {
+        b.max_list_length(max_list_length);
+    }
+    if let Some(display) = table.get("display").and_then(|v| v.as_str()) {
+        b.display(display);
+    }
+    if let Some(description) = table.get("description").and_then(|v| v.as_str()) {
+        b.description(description);
+    }
+    if let Some(group) = table.get("group").and_then(|v| v.as_str()) {
+        b.group(group);
+    }
+    if let Some(unit) = table
         .get("unit")
         .and_then(|v| v.as_str())
         .map(parse_config_unit)
-        .unwrap_or(ConfigUnit::None);
-
-    // Parse advanced flag (defaults to false)
-    let advanced = table
+    {
+        b.unit(unit);
+    }
+    if table
         .get("advanced")
         .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+        .unwrap_or(false)
+    {
+        b.advanced(true);
+    }
+    if let Some(validate) = table.get("validate").and_then(|v| v.as_str()) {
+        b.validate(validate);
+    }
 
-    // Parse validate expression
-    let validate = table
-        .get("validate")
-        .and_then(|v| v.as_str().map(String::from));
-
-    Ok(ConfigFieldSchema {
-        key: key.to_string(),
-        field_type,
-        default,
-        display,
-        description,
-        group,
-        unit,
-        advanced,
-        min,
-        max,
-        step,
-        max_length,
-        enum_values,
-        min_list_length,
-        max_list_length,
-        validate,
-    })
+    Ok(b.build())
 }
 
 /// Parses a TOML value into a ConfigValue based on the expected field type.
@@ -1041,4 +1081,38 @@ pub fn build_config_schema_json(modules: &[crate::manifest::LoadedModule]) -> se
         .collect();
 
     serde_json::json!({ "schema": schema_entries })
+}
+
+#[cfg(test)]
+mod builder_smoke_tests {
+    use super::*;
+
+    #[test]
+    fn config_field_schema_builder_round_trips_minimal_field() {
+        let schema = ConfigFieldSchemaBuilder::new("density", ConfigFieldType::Float).build();
+        assert_eq!(schema.key, "density");
+        assert_eq!(schema.field_type, ConfigFieldType::Float);
+        assert_eq!(schema.default, None);
+        assert_eq!(schema.unit, ConfigUnit::None);
+        assert!(!schema.advanced);
+        assert_eq!(schema.min, None);
+        assert_eq!(schema.max, None);
+    }
+
+    #[test]
+    fn config_field_schema_builder_populates_float_with_min_max() {
+        let mut b = ConfigFieldSchemaBuilder::new("ironing_speed", ConfigFieldType::Float);
+        b.default_value(ConfigValue::Float(20.0))
+            .group("Cooling")
+            .unit(ConfigUnit::MillimetersPerSecond)
+            .min(0.0)
+            .max(200.0);
+        let schema = b.build();
+        assert_eq!(schema.key, "ironing_speed");
+        assert_eq!(schema.default, Some(ConfigValue::Float(20.0)));
+        assert_eq!(schema.group, Some("Cooling".to_string()));
+        assert_eq!(schema.unit, ConfigUnit::MillimetersPerSecond);
+        assert_eq!(schema.min, Some(0.0));
+        assert_eq!(schema.max, Some(200.0));
+    }
 }

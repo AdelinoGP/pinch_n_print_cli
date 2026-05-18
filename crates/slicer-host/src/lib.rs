@@ -52,9 +52,10 @@ pub use config_resolution::{
 pub use config_schema::{
     build_config_schema_json, get_advanced_fields, get_basic_fields, get_field_schema,
     group_fields_by_ui_group, parse_config_schema, query_config_schema, validate_config,
-    validate_field_value, ConfigFieldSchema, ConfigFieldType, ConfigSchemaParseError,
-    ConfigSchemaParseErrorKind, ConfigUnit, ConfigValidationError, ConfigValidationErrorKind,
-    ConfigValue, CrossValidateRule, CrossValidateSeverity, FullConfigSchema,
+    validate_field_value, ConfigFieldSchema, ConfigFieldSchemaBuilder, ConfigFieldType,
+    ConfigSchemaParseError, ConfigSchemaParseErrorKind, ConfigUnit, ConfigValidationError,
+    ConfigValidationErrorKind, ConfigValue, CrossValidateRule, CrossValidateSeverity,
+    FullConfigSchema,
 };
 pub use dag::{build_intra_stage_dag, EdgeTo, ModuleNode};
 pub use dispatch::{
@@ -65,9 +66,10 @@ pub use dispatch::{
 pub use execution_plan::{
     bind_module_config_view, build_execution_plan, build_live_execution_plan,
     dedup_same_claim_modules_for_test, load_live_modules_for_plan, parse_cli_config_source,
-    CompiledModule, CompiledStage, ConfigSourceParseError, ExecutionModuleBinding, ExecutionPlan,
-    ExecutionPlanError, ExecutionPlanRequest, IrAccessMask, LiveModuleBinding, LiveModuleLoadError,
-    LiveModuleLoadOutput, SortedStageModules, DEFAULT_REGION_MAP_CAP, MAX_LAYER_INDEX, STAGE_ORDER,
+    CompiledModule, CompiledModuleBuilder, CompiledStage, ConfigSourceParseError,
+    ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError, ExecutionPlanRequest, IrAccessMask,
+    LiveModuleBinding, LiveModuleLoadError, LiveModuleLoadOutput, SortedStageModules,
+    DEFAULT_REGION_MAP_CAP, MAX_LAYER_INDEX, STAGE_ORDER,
 };
 pub use gcode_emit::{
     serialize_thumbnail_block, DefaultGCodeEmitter, DefaultGCodeSerializer,
@@ -94,6 +96,7 @@ pub use layer_slice::{execute_layer_slice, LayerSliceError};
 pub use manifest::{
     load_module_from_paths, load_modules_from_roots, ConfigFieldEntry, ConfigSchema,
     DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport, LoadedModule,
+    LoadedModuleBuilder,
 };
 pub use mesh_analysis::{execute_mesh_analysis, MeshAnalysisConfig, MeshAnalysisError};
 pub use mesh_segmentation::{

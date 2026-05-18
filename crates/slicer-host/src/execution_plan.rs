@@ -633,6 +633,11 @@ pub struct CompiledStage {
 }
 
 /// One loaded module bound to immutable runtime execution metadata.
+///
+/// Construction goes through [`CompiledModuleBuilder`]: pass the two
+/// required identity fields (`module_id`, `instance_pool`) to
+/// [`CompiledModuleBuilder::new`], then chain setters for the optional
+/// fields and call [`CompiledModuleBuilder::build`].
 #[derive(Debug, Clone)]
 pub struct CompiledModule {
     /// Reverse-domain module identifier.
@@ -657,6 +662,89 @@ pub struct CompiledModule {
     /// `compute_serial_edges_from_compiled` can emit
     /// `EdgeReason::ExplicitRequires` rows alongside `IrWriteRead`.
     pub requires_modules: Vec<ModuleId>,
+}
+
+/// Builder for [`CompiledModule`]. Required identity fields
+/// (`module_id`, `instance_pool`) are positional arguments to
+/// [`CompiledModuleBuilder::new`]; the remaining fields default to
+/// empty/`None` and are set via chained `Self`-consuming setters.
+#[must_use = "CompiledModuleBuilder must be finalized with .build()"]
+#[derive(Debug, Clone)]
+pub struct CompiledModuleBuilder {
+    module_id: ModuleId,
+    instance_pool: Arc<WasmInstancePool>,
+    ir_read_mask: IrAccessMask,
+    ir_write_mask: IrAccessMask,
+    config_view: Arc<ConfigView>,
+    claims: Vec<String>,
+    wasm_component: Option<Arc<WasmComponent>>,
+    requires_modules: Vec<ModuleId>,
+}
+
+impl CompiledModuleBuilder {
+    /// Start a new builder for the given module identifier and instance pool.
+    pub fn new(module_id: impl Into<ModuleId>, instance_pool: Arc<WasmInstancePool>) -> Self {
+        Self {
+            module_id: module_id.into(),
+            instance_pool,
+            ir_read_mask: IrAccessMask::default(),
+            ir_write_mask: IrAccessMask::default(),
+            config_view: Arc::new(ConfigView::default()),
+            claims: Vec::new(),
+            wasm_component: None,
+            requires_modules: Vec::new(),
+        }
+    }
+
+    /// Set the frozen IR read access mask.
+    pub fn ir_read_mask(mut self, mask: IrAccessMask) -> Self {
+        self.ir_read_mask = mask;
+        self
+    }
+
+    /// Set the frozen IR write access mask.
+    pub fn ir_write_mask(mut self, mask: IrAccessMask) -> Self {
+        self.ir_write_mask = mask;
+        self
+    }
+
+    /// Set the frozen module-specific config view.
+    pub fn config_view(mut self, view: Arc<ConfigView>) -> Self {
+        self.config_view = view;
+        self
+    }
+
+    /// Set the manifest-declared held claim ids.
+    pub fn claims(mut self, claims: Vec<String>) -> Self {
+        self.claims = claims;
+        self
+    }
+
+    /// Attach the compiled WASM component (or `None` for non-WASM fixtures).
+    pub fn wasm_component(mut self, component: Option<Arc<WasmComponent>>) -> Self {
+        self.wasm_component = component;
+        self
+    }
+
+    /// Set the manifest-declared required peer modules.
+    pub fn requires_modules(mut self, requires_modules: Vec<ModuleId>) -> Self {
+        self.requires_modules = requires_modules;
+        self
+    }
+
+    /// Finalize into a [`CompiledModule`].
+    pub fn build(self) -> CompiledModule {
+        CompiledModule {
+            module_id: self.module_id,
+            instance_pool: self.instance_pool,
+            ir_read_mask: self.ir_read_mask,
+            ir_write_mask: self.ir_write_mask,
+            config_view: self.config_view,
+            claims: self.claims,
+            wasm_component: self.wasm_component,
+            requires_modules: self.requires_modules,
+        }
+    }
 }
 
 /// Minimal immutable IR access-mask representation for runtime planning.
@@ -971,46 +1059,38 @@ mod dedup_tests {
     use slicer_ir::SemVer;
 
     use super::dedup_same_claim_modules;
-    use crate::manifest::{ConfigFieldEntry, ConfigSchema, LoadDiagnostic, LoadedModule};
+    use crate::manifest::{ConfigFieldEntry, LoadDiagnostic, LoadedModule, LoadedModuleBuilder};
 
     fn loaded(id: &str, stage: &str, holds: &[&str]) -> LoadedModule {
-        LoadedModule {
-            id: id.into(),
-            version: SemVer {
+        LoadedModuleBuilder::new(
+            id,
+            SemVer {
                 major: 0,
                 minor: 1,
                 patch: 0,
             },
-            stage: stage.into(),
-            wit_world: "slicer:world-layer@1.0.0".into(),
-            ir_reads: Vec::new(),
-            ir_writes: Vec::new(),
-            claims: holds.iter().map(|s| (*s).to_string()).collect(),
-            requires_claims: Vec::new(),
-            incompatible_with: Vec::new(),
-            requires_modules: Vec::new(),
-            min_host_version: SemVer {
-                major: 0,
-                minor: 1,
-                patch: 0,
-            },
-            min_ir_schema: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            max_ir_schema: SemVer {
-                major: 2,
-                minor: 0,
-                patch: 0,
-            },
-            config_schema: ConfigSchema::default(),
-            overridable_per_region: Vec::new(),
-            overridable_per_layer: Vec::new(),
-            layer_parallel_safe: true,
-            wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
-            placeholder_wasm: false,
-        }
+            stage,
+            "slicer:world-layer@1.0.0",
+            PathBuf::from(format!("fixtures/{id}.wasm")),
+        )
+        .claims(holds.iter().map(|s| (*s).to_string()).collect())
+        .min_host_version(SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        })
+        .min_ir_schema(SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        })
+        .max_ir_schema(SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        })
+        .layer_parallel_safe(true)
+        .build()
     }
 
     #[test]

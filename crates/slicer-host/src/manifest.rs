@@ -15,6 +15,11 @@ fn is_false(b: &bool) -> bool {
 }
 
 /// Runtime module record produced by manifest ingestion.
+///
+/// Construction goes through [`LoadedModuleBuilder`] (call
+/// [`LoadedModuleBuilder::new`] with the five manifest-derived identity
+/// fields, set the optional ones via chained setters, then call
+/// [`LoadedModuleBuilder::build`]). Field reads remain via `pub` access.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LoadedModule {
     /// Reverse-domain module identifier.
@@ -59,6 +64,179 @@ pub struct LoadedModule {
     /// runtime dispatch will skip them with a diagnostic rather than
     /// attempting component compilation.
     pub placeholder_wasm: bool,
+}
+
+/// Builder for [`LoadedModule`]. Required identity fields
+/// (`id`, `version`, `stage`, `wit_world`, `wasm_path`) are positional
+/// arguments to [`LoadedModuleBuilder::new`]; every other field has a
+/// safe empty/zero default and is set via a chained `with_*`-style setter.
+///
+/// All setters consume `self` and return `Self`. Call [`Self::build`] to
+/// produce the finished [`LoadedModule`].
+#[must_use = "LoadedModuleBuilder must be finalized with .build()"]
+#[derive(Debug, Clone)]
+pub struct LoadedModuleBuilder {
+    id: ModuleId,
+    version: SemVer,
+    stage: StageId,
+    wit_world: String,
+    wasm_path: PathBuf,
+    ir_reads: Vec<String>,
+    ir_writes: Vec<String>,
+    claims: Vec<String>,
+    requires_claims: Vec<String>,
+    incompatible_with: Vec<String>,
+    requires_modules: Vec<ModuleId>,
+    min_host_version: SemVer,
+    min_ir_schema: SemVer,
+    max_ir_schema: SemVer,
+    config_schema: ConfigSchema,
+    overridable_per_region: Vec<String>,
+    overridable_per_layer: Vec<String>,
+    layer_parallel_safe: bool,
+    placeholder_wasm: bool,
+}
+
+impl LoadedModuleBuilder {
+    /// Start a new builder from the five manifest-derived identity fields.
+    pub fn new(
+        id: impl Into<ModuleId>,
+        version: SemVer,
+        stage: impl Into<StageId>,
+        wit_world: impl Into<String>,
+        wasm_path: impl Into<PathBuf>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            version,
+            stage: stage.into(),
+            wit_world: wit_world.into(),
+            wasm_path: wasm_path.into(),
+            ir_reads: Vec::new(),
+            ir_writes: Vec::new(),
+            claims: Vec::new(),
+            requires_claims: Vec::new(),
+            incompatible_with: Vec::new(),
+            requires_modules: Vec::new(),
+            min_host_version: SemVer::default(),
+            min_ir_schema: SemVer::default(),
+            max_ir_schema: SemVer::default(),
+            config_schema: ConfigSchema::default(),
+            overridable_per_region: Vec::new(),
+            overridable_per_layer: Vec::new(),
+            layer_parallel_safe: false,
+            placeholder_wasm: false,
+        }
+    }
+
+    /// Set declared IR-access read paths.
+    pub fn ir_reads(mut self, reads: Vec<String>) -> Self {
+        self.ir_reads = reads;
+        self
+    }
+
+    /// Set declared IR-access write paths.
+    pub fn ir_writes(mut self, writes: Vec<String>) -> Self {
+        self.ir_writes = writes;
+        self
+    }
+
+    /// Set claims held by this module.
+    pub fn claims(mut self, claims: Vec<String>) -> Self {
+        self.claims = claims;
+        self
+    }
+
+    /// Set claims required from other modules.
+    pub fn requires_claims(mut self, requires_claims: Vec<String>) -> Self {
+        self.requires_claims = requires_claims;
+        self
+    }
+
+    /// Set explicit incompatibility declarations.
+    pub fn incompatible_with(mut self, incompatible_with: Vec<String>) -> Self {
+        self.incompatible_with = incompatible_with;
+        self
+    }
+
+    /// Set required peer modules.
+    pub fn requires_modules(mut self, requires_modules: Vec<ModuleId>) -> Self {
+        self.requires_modules = requires_modules;
+        self
+    }
+
+    /// Set minimum host version accepted by the module.
+    pub fn min_host_version(mut self, v: SemVer) -> Self {
+        self.min_host_version = v;
+        self
+    }
+
+    /// Set inclusive minimum IR schema version.
+    pub fn min_ir_schema(mut self, v: SemVer) -> Self {
+        self.min_ir_schema = v;
+        self
+    }
+
+    /// Set exclusive maximum IR schema version.
+    pub fn max_ir_schema(mut self, v: SemVer) -> Self {
+        self.max_ir_schema = v;
+        self
+    }
+
+    /// Set the per-module config schema payload.
+    pub fn config_schema(mut self, schema: ConfigSchema) -> Self {
+        self.config_schema = schema;
+        self
+    }
+
+    /// Set keys overridable per region.
+    pub fn overridable_per_region(mut self, keys: Vec<String>) -> Self {
+        self.overridable_per_region = keys;
+        self
+    }
+
+    /// Set keys overridable per layer.
+    pub fn overridable_per_layer(mut self, keys: Vec<String>) -> Self {
+        self.overridable_per_layer = keys;
+        self
+    }
+
+    /// Set the effective layer-parallel safety flag.
+    pub fn layer_parallel_safe(mut self, safe: bool) -> Self {
+        self.layer_parallel_safe = safe;
+        self
+    }
+
+    /// Mark the companion `.wasm` as a known placeholder.
+    pub fn placeholder_wasm(mut self, placeholder: bool) -> Self {
+        self.placeholder_wasm = placeholder;
+        self
+    }
+
+    /// Finalize into a [`LoadedModule`].
+    pub fn build(self) -> LoadedModule {
+        LoadedModule {
+            id: self.id,
+            version: self.version,
+            stage: self.stage,
+            wit_world: self.wit_world,
+            ir_reads: self.ir_reads,
+            ir_writes: self.ir_writes,
+            claims: self.claims,
+            requires_claims: self.requires_claims,
+            incompatible_with: self.incompatible_with,
+            requires_modules: self.requires_modules,
+            min_host_version: self.min_host_version,
+            min_ir_schema: self.min_ir_schema,
+            max_ir_schema: self.max_ir_schema,
+            config_schema: self.config_schema,
+            overridable_per_region: self.overridable_per_region,
+            overridable_per_layer: self.overridable_per_layer,
+            layer_parallel_safe: self.layer_parallel_safe,
+            wasm_path: self.wasm_path,
+            placeholder_wasm: self.placeholder_wasm,
+        }
+    }
 }
 
 /// A single config field entry parsed from a module manifest `[config.schema]`
@@ -756,8 +934,11 @@ fn known_stage_ids() -> &'static [&'static str] {
 
 #[cfg(test)]
 mod tests {
-    use super::{effective_parallel_safety, parse_semver, DiagnosticLevel};
-    use std::path::Path;
+    use super::{
+        effective_parallel_safety, parse_semver, ConfigSchema, DiagnosticLevel, LoadedModuleBuilder,
+    };
+    use slicer_ir::SemVer;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn parse_semver_accepts_three_part_versions() {
@@ -780,5 +961,62 @@ mod tests {
         assert!(!effective);
         assert_eq!(diagnostics.len(), 1);
         assert_eq!(diagnostics[0].level, DiagnosticLevel::Warning);
+    }
+
+    #[test]
+    fn loaded_module_builder_round_trips_minimal_fields() {
+        let module = LoadedModuleBuilder::new(
+            "com.test.module",
+            SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            "Layer::Slice",
+            "slicer:world-layer@1.0.0",
+            PathBuf::from("fixtures/test.wasm"),
+        )
+        .build();
+
+        assert_eq!(module.id, "com.test.module");
+        assert_eq!(module.version.major, 1);
+        assert_eq!(module.stage, "Layer::Slice");
+        assert_eq!(module.wit_world, "slicer:world-layer@1.0.0");
+        assert_eq!(module.wasm_path, PathBuf::from("fixtures/test.wasm"));
+        assert!(module.ir_reads.is_empty());
+        assert!(module.ir_writes.is_empty());
+        assert!(module.claims.is_empty());
+        assert!(module.requires_modules.is_empty());
+        assert_eq!(module.config_schema, ConfigSchema::default());
+        assert!(!module.layer_parallel_safe);
+        assert!(!module.placeholder_wasm);
+    }
+
+    #[test]
+    fn loaded_module_builder_carries_optional_fields() {
+        let module = LoadedModuleBuilder::new(
+            "com.test.full",
+            SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            "Layer::Perimeters",
+            "slicer:world-layer@1.0.0",
+            PathBuf::from("fixtures/full.wasm"),
+        )
+        .ir_reads(vec!["SliceIR".to_string()])
+        .ir_writes(vec!["PerimeterIR".to_string()])
+        .claims(vec!["perimeter-generator".to_string()])
+        .requires_modules(vec!["com.test.helper".to_string()])
+        .layer_parallel_safe(true)
+        .placeholder_wasm(false)
+        .build();
+
+        assert_eq!(module.ir_reads, vec!["SliceIR".to_string()]);
+        assert_eq!(module.ir_writes, vec!["PerimeterIR".to_string()]);
+        assert_eq!(module.claims, vec!["perimeter-generator".to_string()]);
+        assert_eq!(module.requires_modules, vec!["com.test.helper".to_string()]);
+        assert!(module.layer_parallel_safe);
     }
 }
