@@ -120,9 +120,11 @@ The attribute string is decoded as a whole-facet state value:
   - `"8"` → state 2
 - Two hex characters (encoded as `byte = nibble_high << 4 | nibble_low`):
   - `"0C"` → state 3, `"1C"` → state 4, `"2C"` → state 5, … up to `"DC"` → state 16.
-- Strings longer than two characters represent subdivision and are rejected with
-  `ModelLoadError::PaintMetadata`.
-- Any hex nibble with non-zero split bits (subdivision markers) is likewise rejected.
+- Strings longer than two characters represent subdivision: a hex-encoded
+  recursive tree of sub-triangle states. Packet 50a added the decoder.
+  The dominant state across the sub-tree is stamped onto `facet_values[i]`;
+  per-leaf 3D triangle geometry for subdivided facets is captured in
+  `PaintLayer.strokes` (see "Stroke geometry" below).
 
 #### Channel decode contracts
 
@@ -148,8 +150,21 @@ Channel-specific constraints:
 (`Custom("seam_enforcer")` + `Custom("seam_blocker")`).
 All other channels produce at most one layer.
 
-Whole-facet painting only is currently supported; `TriangleSelector` subdivision
-is deferred to a future packet.
+#### Stroke geometry (packet 50a)
+
+`PaintLayer.strokes` is populated **only for subdivided facets**. Whole-facet
+attributes (single-character or two-character state strings) produce no stroke
+geometry — only a `facet_values[i]` entry — because the entire triangle carries
+one paint value and 3D stroke geometry would be redundant.
+
+`PaintStroke.triangles` carries world-space sub-triangle geometry in slicer
+units (1 unit = 100 nm); the 3MF document supplies coordinates in millimetres
+and the loader applies `mm_to_units()` before commit. The dominant state for a
+subdivided facet is determined by leaf-area majority across the decoded
+sub-tree and written into `facet_values[i]`. Downstream stages may consume
+either source: `Layer::Slice` reads `facet_values` for whole-triangle paint
+decisions; `Layer::SlicePostProcess` may consult `strokes` when sub-facet
+boundary accuracy matters.
 
 ```rust
 pub enum PaintSemantic {
@@ -379,7 +394,12 @@ pub struct ResolvedConfig {
     pub infill_angle: f32,
     pub infill_speed: f32,
     pub solid_infill_speed: f32,
+    /// Multi-layer top-surface window. Default 3. Set per region by
+    /// `PrePass::RegionMapping` from `top_shell_layers` config; can be
+    /// overridden per object or per paint semantic. **Default deviates
+    /// from OrcaSlicer's 4** (packet 35).
     pub top_shell_layers: u32,
+    /// Multi-layer bottom-surface window. Default 3 (packet 35).
     pub bottom_shell_layers: u32,
 
     // Support
@@ -637,6 +657,12 @@ pub struct PerimeterRegion {
     /// Remaining area after wall insets — consumed by Infill stage.
     pub infill_areas: Vec<ExPolygon>,
     pub seam_candidates: Vec<SeamCandidate>,
+    /// **Origin-scoped commit (packet 22):** `resolved_seam` is committed only
+    /// on the `PerimeterRegion` whose `(object_id, region_id)` matches the
+    /// origin region the seam was placed for. The value is *not* broadcast to
+    /// every region sharing the same `region_id` across objects. `seam-placer`
+    /// modules must select from `seam_candidates` (a pre-populated
+    /// `resolved_seam` is never guaranteed at the time `seam-placer` runs).
     pub resolved_seam: Option<SeamPosition>,
 }
 
@@ -717,6 +743,14 @@ pub struct Point3WithWidth {
     pub z: f32,
     pub width: f32,           // local extrusion width in mm
     pub flow_factor: f32,     // multiplier on base extrusion volume
+    /// Overhang quartile classification for wall-family roles
+    /// (`OuterWall`/`InnerWall`/`ThinWall`). Populated by the
+    /// overhang classifier prepass inside `DefaultGCodeEmitter::emit_gcode`
+    /// immediately before per-layer emission; `None` for non-wall roles
+    /// and for any path that has not been classified yet. Values are
+    /// `1..=4` corresponding to the four overhang speed buckets
+    /// (`overhang_1_4_speed` … `overhang_4_4_speed`). Added in packet 57.
+    pub overhang_quartile: Option<u8>,
 }
 
 pub struct SeamCandidate {
@@ -840,9 +874,47 @@ the `support_planner_is_deterministic_across_runs` test.
 
 ---
 
+## IR 9c — SeamPlanIR
+
+**Stage:** Output of `PrePass::SeamPlanning` (optional; only present when a
+`seam-planner` module is loaded — packet 23-rev1).
+
+**Producer:** A module holding the `seam-planner` claim on
+`PrePass::SeamPlanning`. The stage is ordered after `PrePass::LayerPlanning`
+and before `PrePass::PaintSegmentation`; its prerequisites are
+`MeshIR` (via `MeshObjectView` parameters) and `LayerPlanIR`.
+
+**Consumers:** `Layer::PerimetersPostProcess` modules that hold the
+`seam-placer` claim. The plan is advisory — `seam-placer` may use it as a
+strong prior or fall back to per-layer scoring over `SeamCandidate`s.
+
+```rust
+pub struct SeamPlanIR {
+    pub schema_version: SemVer,
+    /// One entry per planned `(global_layer_index, object_id, region_id)` triple.
+    /// **Duplicate key contract:** two entries with identical
+    /// `(global_layer_index, object_id, region_id)` are a fatal IR validation
+    /// error; the host rejects the plan at commit time.
+    pub entries: Vec<SeamPlanEntry>,
+}
+
+pub struct SeamPlanEntry {
+    pub global_layer_index: u32,
+    pub object_id: ObjectId,
+    pub region_id: RegionId,
+    /// Pre-planned seam vertex on the outermost wall loop, in `Point2` units.
+    pub seam_xy: Point2,
+    /// Optional rationale tag for diagnostics; e.g. "vertex-cluster", "concave-fit".
+    pub reason: Option<String>,
+}
+```
+
+---
+
 ## IR 10 — LayerCollectionIR
 
 **Stage:** Output of `Layer::PathOptimization`
+**Current schema_version: 2.0.0** (Major bump by packet 39 — `TravelMove.entity_idx: u32` renamed to `entity_id: u64`; new `entity_id: u64` field on `PrintEntity`. Travel anchors are now decoupled from positional indices, so finalization-stage entity insertion no longer invalidates anchors.)
 
 **Ownership lifecycle — three phases:**
 
@@ -894,6 +966,25 @@ pub struct PrintEntity {
     pub role: ExtrusionRole,
     pub region_key: RegionKey,
     pub topo_order: u32,       // guaranteed predecessors appear earlier in ordered_entities
+    /// Stable per-layer entity identifier. Assigned at construction by
+    /// `LayerEntityIdGen::next()`; never reused within a single
+    /// `LayerCollectionIR`. Reserved value `0` means "uninitialized" /
+    /// sentinel; the generator starts at `1`. Travel anchors and
+    /// finalization mutations reference entities by this id, not by
+    /// positional index, so inserting or sorting entities cannot
+    /// invalidate anchors. Added in packet 39.
+    pub entity_id: u64,
+}
+
+pub struct TravelMove {
+    /// Travel anchor: the entity this travel was emitted before.
+    /// Replaces the previous `entity_idx: u32` positional anchor;
+    /// the emitter resolves it via an `entity_id -> index` map
+    /// built per-layer. Added in packet 39.
+    pub entity_id: u64,
+    pub from: Point3WithWidth,
+    pub to: Point3WithWidth,
+    pub speed: f32,
 }
 
 pub struct ToolChange {
@@ -917,6 +1008,50 @@ pub enum ExtrusionRole {
 }
 ```
 
+### Extrusion-role default priority (Normative)
+
+`ExtrusionRole::default_priority()` returns a `u32` used by
+`PostPass::LayerFinalization::push_entity_with_priority` to order entities
+inserted into a layer when the inserting module does not supply an explicit
+priority. Lower numbers print earlier. Added in packet 40.
+
+| Role                  | `default_priority()` |
+|-----------------------|----------------------|
+| `Skirt` (`Custom("slicer.builtin/skirt@1")`)        | 100 |
+| `Brim`  (`Custom("slicer.builtin/brim@1")`)         | 110 |
+| `PrimeTower`          | 200 |
+| `WipeTower`           | 210 |
+| `OuterWall`           | 300 |
+| `InnerWall`           | 310 |
+| `ThinWall`            | 320 |
+| `BridgeInfill`        | 400 |
+| `TopSolidInfill`      | 410 |
+| `BottomSolidInfill`   | 420 |
+| `SparseInfill`        | 430 |
+| `SupportMaterial`     | 500 |
+| `SupportInterface`    | 510 |
+| `Ironing`             | 900 |
+| `Custom(_)` (unknown) | 1000 |
+
+When two entities share a `default_priority` (or two callers pass equal
+explicit priorities), insertion order is preserved (stable sort).
+
+### Stable entity IDs (Normative — packet 39)
+
+- `PrintEntity.entity_id: u64` and `TravelMove.entity_id: u64` are populated
+  by a single `LayerEntityIdGen` per `LayerCollectionIR`. The generator is
+  per-layer and never reused across layers.
+- ID `0` is the reserved "uninitialized" sentinel; valid IDs start at `1`.
+- Producers in `Layer::Perimeters`, `Layer::Infill`, and `Layer::Support`
+  stamp every entity at construction. Finalization (`PostPass::LayerFinalization`)
+  stamps fresh IDs on entities it inserts; sorts and inserts never rewrite
+  existing IDs.
+- `GCodeEmit` resolves travels by building an `entity_id -> index` map per
+  layer; lookup is `O(1)` per travel.
+- `validate_travel_anchors(layer: &LayerCollectionIR) -> Result<(), ValidateError>`
+  short-circuits on the first dangling travel anchor; finalization invokes
+  it before the layer is handed off to `PostPass::GCodeEmit`.
+
 ---
 
 ## IR 11 — GCodeIR
@@ -936,13 +1071,36 @@ pub enum GCodeCommand {
         e: Option<f32>, f: Option<f32>,
         role: ExtrusionRole,
     },
-    Retract    { length: f32, speed: f32 },
-    Unretract  { length: f32, speed: f32 },
+    /// Retract.
+    /// `mode` selects whether the emitter writes a parameterised
+    /// `G1 E-<length> F<speed>` (Gcode mode) or a parameterless `G10`
+    /// (Firmware mode). Length / speed are still carried in firmware
+    /// mode for diagnostics but are not serialized. Added in packet 34.
+    Retract    { length: f32, speed: f32, mode: RetractMode },
+    /// Unretract — symmetric inverse of Retract.
+    /// `mode = Gcode` emits `G1 E<length> F<speed>`; `mode = Firmware`
+    /// emits `G11`. M207/M208 are intentionally never emitted —
+    /// firmware-side retract tuning is the printer's start G-code's job
+    /// (OrcaSlicer parity).
+    Unretract  { length: f32, speed: f32, mode: RetractMode },
     FanSpeed   { value: u8 },
     Temperature { tool: u32, celsius: f32, wait: bool },
     ToolChange  { from: u32, to: u32 },
     Comment     { text: String },
     Raw         { text: String },       // escape hatch for printer-specific codes
+}
+
+/// Per-command retract / unretract emission mode. Added in packet 34.
+/// Default is `Gcode` (preserves packet-15 emission bit-for-bit).
+/// Every `Retract` / `Unretract` in a single print carries the same
+/// value — the field is per-command for matcher-exhaustiveness rather
+/// than for per-command variation.
+pub enum RetractMode {
+    /// `G1 E-<length> F<speed>` / `G1 E<length> F<speed>`.
+    Gcode,
+    /// Parameterless `G10` / `G11`. Length / speed in the IR are
+    /// carried but not serialized.
+    Firmware,
 }
 
 pub struct PrintMetadata {
@@ -952,6 +1110,102 @@ pub struct PrintMetadata {
     pub slicer_version: String,
 }
 ```
+
+### G-code envelope blocks (Normative — packet 55)
+
+`PostPass::GCodeEmit` wraps the per-layer command stream in four canonical
+envelope blocks. Block sentinels and ordering are part of the wire-format
+contract — frontends and post-processors parse these tokens.
+
+**Envelope sequence (top to bottom of the `.gcode` output):**
+
+```
+; HEADER_BLOCK_START
+;   <semicolon-prefixed metadata lines: model name, layer count, filament
+;    used, max Z, slicer version, etc.>
+; HEADER_BLOCK_END
+; THUMBNAIL_BLOCK_START                          (only when --thumbnail set)
+;   <Base64-encoded PNG, 76 chars per line, each prefixed with "; ">
+; THUMBNAIL_BLOCK_END
+; ; <per-role width comments, e.g. "; outer_wall_width = 0.42">
+<machine_start_gcode expanded — packet 59>
+M83  (or M82 — packet 54)
+<per-layer ;TYPE: blocks with G1/G0 moves>
+<machine_end_gcode expanded — packet 59>
+; CONFIG_BLOCK_START
+;   <serialized ResolvedConfig as `; key = value` per line>
+; CONFIG_BLOCK_END
+```
+
+**Block-ordering rules (normative):**
+
+1. `HEADER_BLOCK_*` and `THUMBNAIL_BLOCK_*` precede the first `;TYPE:` block.
+2. `CONFIG_BLOCK_*` follows the last `;TYPE:` block and is the final
+   semicolon-prefixed content in the file.
+3. The machine start / end G-code wraps the layer stream but sits *inside*
+   the envelope — header/thumbnail come first, config-dump comes last
+   (OrcaSlicer parity).
+
+**Thumbnail format:**
+
+- Triggered by `--thumbnail <path>` CLI flag pointing to a PNG file.
+- Bytes are validated against the PNG magic header (`\x89PNG\r\n\x1a\n`);
+  non-PNG inputs are a fatal error.
+- Base64-encoded with 76 characters per line, each line prefixed by `"; "`,
+  matching OrcaSlicer's wire format exactly so downstream tools (printer
+  UIs, gcode preview viewers) parse it identically.
+
+**Configurable header fields (config keys, packet 55):**
+
+| Key | Type | Default | Purpose |
+|---|---|---|---|
+| `filament_diameter` | f32 (mm) | `1.75` | Header `; filament_diameter` line; consumed by some post-processors. |
+| `filament_density` | f32 (g/cm³) | `1.24` | Header `; filament_density` line. |
+| `max_z_height` | f32 (mm) | `0.0` (auto) | Hard cap reported in header; `0.0` means "use per-print z_max". |
+| `thumbnail_path` | string | `""` | Alternative to the `--thumbnail` CLI flag; CLI wins when both set. |
+
+### Stream-level extrusion mode (Normative — packet 54)
+
+`GCodeCommand::Move.e` is a signed delta in **relative** extrusion mode
+(M83) and an absolute position in **absolute** mode (M82). Mode is a
+stream-level invariant — the emitter writes the appropriate `M82` / `M83`
+preamble once per print and resets the E-accumulator with `G92 E0` on
+mode change or layer reset. Mode is selected by the config key
+`use_relative_e_distances` (boolean; default `true` → M83). Carrier
+helper: `DefaultGCodeSerializer::with_extrusion_mode(mode)`.
+
+### Polyline simplification and precision (Normative — packet 60)
+
+Seven `ResolvedConfig` keys control simplification of polyline geometry
+at G-code emit and slice-layer finalization. All units are millimetres
+unless stated.
+
+| Key                       | Type | Default        | Consumer                                                          |
+|---------------------------|------|----------------|-------------------------------------------------------------------|
+| `gcode_resolution`        | f32  | `0.0125 mm`    | Per-role Douglas-Peucker tolerance for wall-family / brim roles.  |
+| `infill_resolution`       | f32  | `0.0125 mm`    | Per-role tolerance for infill / solid-infill / bridge / top / bottom. |
+| `support_resolution`      | f32  | `0.05 mm`      | Per-role tolerance for support material / interface.              |
+| `min_segment_length`      | f32  | `0.025 mm`     | Drop adjacent segments shorter than this after D-P.               |
+| `gcode_xy_decimals`       | u32  | `3`            | Decimal places for X / Y / Z token formatting (via `format_xyz`). |
+| `perimeter_arc_tolerance` | f32  | `0.0025 mm`    | Clipper2 arc-tolerance for `slicer_core::polygon_ops::offset(...)` — read per-module by `classic-perimeters` and `arachne-perimeters`. |
+| `slice_closing_radius`    | f32  | `0.0 mm` (off) | Per-layer Clipper2 `inflate(+r) → inflate(-r)` round-trip after `simplify_polygon_points` in `triangle_mesh_slicer`. |
+
+Per-role tolerance dispatch (consumed by `tolerance_for_role` in
+`gcode_emit.rs`):
+
+| `ExtrusionRole`                                                   | Tolerance source     |
+|-------------------------------------------------------------------|----------------------|
+| `OuterWall`, `InnerWall`, `ThinWall`, `Custom("…/brim@1")`        | `gcode_resolution`   |
+| `TopSolidInfill`, `BottomSolidInfill`, `SparseInfill`, `BridgeInfill` | `infill_resolution`  |
+| `SupportMaterial`, `SupportInterface`                             | `support_resolution` |
+| Travel (synthetic — no `ExtrusionRole`), `Custom(_)` (unknown)    | `0.0` (no D-P)       |
+
+Legacy-equivalent mode is `gcode_resolution = infill_resolution = support_resolution = min_segment_length = 0.0`, `gcode_xy_decimals = 4`, `perimeter_arc_tolerance = 0.0`, `slice_closing_radius = 0.0`. Setting all seven to those values produces byte-identical G-code to the pre-packet-60 output.
+
+The `format_xyz(value: f32, decimals: u32) -> String` helper formats the
+X / Y / Z tokens; F (feedrate), E (extrusion), and temperature continue
+to use the previous `format_coord` (which is byte-identical to its
+pre-packet-60 behavior at `{:.4}`).
 
 ---
 

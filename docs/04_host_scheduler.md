@@ -111,6 +111,11 @@ pub static STAGE_ORDER: &[StageId] = &[
     StageId::LayerSupport,
     StageId::LayerSupportPostProcess,
     StageId::LayerPathOptimization,
+    // PathOptimization note (packet 33): nearest-neighbour entity ordering is
+    // owned entirely by `path-optimization-default`. The host carries no
+    // entity-ordering fallback. When no module claims `path-optimization` on a
+    // layer, `LayerCollectionIR.ordered_entities` retains the order produced by
+    // upstream per-layer stages (no reorder). Packet 18 is marked superseded.
     // ── rayon join happens here ──────────────────────────────────────────
     // PostPass tier — all stages below are sequential, whole-print.
     // Full Vec<LayerCollectionIR> visible. Never parallelized.
@@ -229,7 +234,7 @@ pub enum SchedulerError {
 ### Validation Passes (in order)
 
 1. **Stage ID validation** — manifest `stage` must exist in `STAGE_ORDER`
-2. **Global claim conflicts** — two enabled modules hold the same claim globally
+2. **Global claim conflicts** — two enabled modules hold the same claim globally. For the four fill-role claims (`top-fill`, `bottom-fill`, `bridge-fill`, `sparse-fill`, introduced in packet 37) the pass rejects two modules holding the same fill-role claim for the same `(layer, object, region)` triple. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Per-region overrides may transfer a fill-role claim to a different module.
 3. **Per-region claim conflicts** — same claim remains after region-level filtering
 4. **Incompatibility declarations** — explicit `incompatible-with` pairs
 5. **Missing dependencies** — `requires` modules absent or disabled
@@ -627,6 +632,10 @@ pub struct WasmInstancePool {
 }
 ```
 
+### Modifier-Part and Negative-Volume Routing (packets 56b / 56c)
+
+Modifier parts (3MF `Metadata/model_settings.config`) are routed into `MeshIR.objects[].modifier_volumes` by the host loader (packet 56b). Negative-volume and support-subtype modifiers (`ModifierScope::Support`, negative-volume difference) are applied during `PrePass::MeshSegmentation`: the host subtracts negative-volume triangles from the object's segmented region map and routes support-subtype modifiers into the Support claim's per-region override stream (packet 56c).
+
 ### PrePass Execution (sequential)
 
 ```rust
@@ -673,6 +682,15 @@ A stage scheduled before its prerequisites are committed produces
 the prepass without invoking any module. This guard short-circuits before
 dispatch so module-side error handling for "the IR I need wasn't committed"
 is unnecessary.
+
+#### Precision-Key Touch Points (packet 60)
+
+`Layer::Slice` (host-built-in): reads `slice_closing_radius` from `ResolvedConfig`; this key is consumed by `slicer_core::triangle_mesh_slicer` to close open contours at the slice plane.
+
+`PostPass::GCodeEmit` (host-built-in): reads seven precision keys from `ResolvedConfig` (see `docs/02_ir_schemas.md` "Polyline simplification and precision" subsection). Key routing:
+- `gcode_resolution`, `infill_resolution`, `support_resolution`, `min_segment_length`, `gcode_xy_decimals` — consumed inside `DefaultGCodeEmitter` during G-code serialization.
+- `perimeter_arc_tolerance` — read by perimeter modules at module-load time and threaded into every `slicer_core::polygon_ops::offset(...)` call.
+- `slice_closing_radius` — consumed by `slicer_core::triangle_mesh_slicer` at the host-built-in `Layer::Slice` stage (see above).
 
 ### Per-Layer Execution (rayon parallel)
 
@@ -745,6 +763,31 @@ Finalization ordering guarantees:
 - Modules execute sequentially in stage order.
 - Module B always sees the fully committed output of module A.
 - If two modules insert at the same position, order is deterministic by module execution order.
+
+Top-surface ironing is performed at `PostPass::LayerFinalization` (not at `Layer::InfillPostProcess`) so the module sees the full layer sequence and can detect the topmost-layer index via the multi-layer `top_solid_layers` window (packet 38-rev1). The module appends `Ironing`-role entities via the finalization builder; ordering uses the role's default priority `900` (Ironing prints last on its layer).
+
+#### Post-Finalization Travel Reconciliation (packet 20)
+
+After `execute_layer_finalization` returns and before `execute_postpass` runs,
+the host performs a built-in travel-reconciliation pass. Skirt, brim, wipe-
+tower, and prime-tower entities inserted by finalization modules have
+endpoints the per-layer `Layer::PathOptimization` could not have seen, so the
+host recomputes travel transitions against those new endpoints.
+
+Reconciliation contract (normative):
+
+- Walks `layer_irs` once and recomputes `TravelMove.entity_id` and endpoint XY
+  against the post-finalization entity sequence.
+- **Model extrusion entity ordering is invariant** — only travel anchors and
+  endpoints change. The reconciliation must not reorder, drop, or rewrite any
+  `PrintEntity`.
+- Retract/unretract pairing and Z-hop matching are re-validated; mismatches
+  surface as fatal `RECONCILED_TRAVEL_INCONSISTENT` errors.
+- No module-visible surface — this is a host built-in tucked between
+  `PostPass::LayerFinalization` and `PostPass::GCodeEmit`.
+
+The reconciled `Vec<LayerCollectionIR>` is then handed to `execute_postpass`
+as the immutable slice argument.
 pub fn execute_per_layer(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,  // read-only after PrePass
@@ -833,6 +876,67 @@ Normative behavior:
 - Slice result metadata must include `degraded=true` if any non-fatal error occurred.
 
 See progress event schema: `./docs/09_progress_events.md`.
+
+### PostPass::GCodeEmit Emission Contract (packet 11, Normative)
+
+`PostPass::GCodeEmit` is the **sole owner of final G-code text formatting**;
+modules are forbidden from producing OrcaSlicer-specific strings (`;LAYER_CHANGE`,
+`;TYPE:`, `;Z:`, `;HEIGHT:`) themselves. The host emits these per-layer in
+exactly this order before the first extrusion entity on each layer:
+
+```
+;LAYER_CHANGE
+;Z:<value>
+;HEIGHT:<value>
+```
+
+Field derivation:
+
+- `;Z:<value>` — `LayerCollectionIR.z` formatted with `gcode_xy_decimals`
+  (packet 60).
+- `;HEIGHT:<value>` — derived from the difference between consecutive
+  `LayerCollectionIR.z` values: `height_i = z_{i+1} - z_i`. The first layer
+  uses `z_0` directly. The **terminal layer falls back to the last non-zero
+  delta** (`height_N = height_{N-1}`) — never zero, because OrcaSlicer
+  post-processors reject zero-height comments.
+
+`ExtrusionRole` → `;TYPE:` label mapping (host-canonical, OrcaSlicer parity):
+
+| `ExtrusionRole`        | `;TYPE:` label      |
+|------------------------|---------------------|
+| `OuterWall`            | `Outer wall`        |
+| `InnerWall`            | `Inner wall`        |
+| `ThinWall`             | `Thin wall`         |
+| `TopSolidInfill`       | `Top surface`       |
+| `BottomSolidInfill`    | `Bottom surface`    |
+| `SparseInfill`         | `Sparse infill`     |
+| `BridgeInfill`         | `Bridge`            |
+| `SupportMaterial`      | `Support`           |
+| `SupportInterface`     | `Support interface` |
+| `Skirt`                | `Skirt/Brim`        |
+| `WipeTower`            | `Prime tower`       |
+| `PrimeTower`           | `Prime tower`       |
+| `Ironing`              | `Ironing`           |
+| `Custom(s)`            | `s` verbatim        |
+
+Modules that attempt to emit any of these strings via `Raw(text)` are accepted
+(the escape hatch is intentional) but doing so duplicates the host-emitted
+markers and is logged as a `MUDDIED_GCODE_PREAMBLE` warning.
+
+### Deferred Tool-Change Queue (packet 19)
+
+`gcode-output-builder.push-tool-change(from_tool, to_tool)` is the canonical
+surface for inserting `ToolChange { from, to }` commands. Calls at
+`Layer::PathOptimization` are queued and deferred — they are *not* committed
+mid-layer. The host drains the queue at `PostPass::LayerFinalization` time,
+inserting the `ToolChange` commands at the appropriate entity boundaries based
+on per-region `tool_index` transitions.
+
+Host-side tool-grouping in `layer_executor.rs` is intentionally absent;
+re-ordering entities to consolidate same-tool runs is the path-optimization
+module's responsibility (via `LayerCollectionBuilder::set_entity_order`). The
+host neither sorts by tool nor synthesises tool-change records — both are
+data-driven from module output.
 
 ### PostPass Execution (sequential)
 

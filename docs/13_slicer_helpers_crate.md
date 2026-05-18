@@ -251,6 +251,24 @@ impl DecimateConfigBuilder {
 }
 
 pub fn decimate(mesh: MeshIR, config: DecimateConfig) -> Result<DecimateResult, DecimateError>
+
+/// Douglas-Peucker polyline simplification in millimetres (packet 60).
+/// `tolerance_mm = 0.0` short-circuits and returns the input unchanged
+/// (zero-cost legacy path). Used at per-role G-code emit for wall, infill,
+/// and support polyline simplification.
+pub fn simplify_polyline_mm(
+    points: &[Point3WithWidth],
+    tolerance_mm: f32,
+) -> Vec<Point3WithWidth>;
+
+/// Drop adjacent segments shorter than `min_segment_length_mm` (packet 60).
+/// Preserves endpoints unconditionally; collapses runs of short segments
+/// into single segments to the next viable vertex. `min_segment_length_mm
+/// = 0.0` is a no-op (zero-cost legacy path).
+pub fn drop_short_segments_mm(
+    points: &[Point3WithWidth],
+    min_segment_length_mm: f32,
+) -> Vec<Point3WithWidth>;
 ```
 
 ### CLI Subcommand: `pnp decimate`

@@ -23,6 +23,50 @@ This applies to **every** `Point2`, `Polygon`, `ExPolygon`, and any other 2D int
 - Any module converting Z to scaled integer units for internal math must convert back to mm before writing IR.
 - `catchup_z_bottom` and `effective_layer_height` must remain finite, non-negative, and deterministic under the rounding policy in `02_ir_schemas.md`.
 
+## Transform Application — Query-Time, Not Load-Time (Normative — packet 10)
+
+Object mesh transforms (`ObjectMesh.transform`) are **not** baked into mesh
+vertices at load time. Raw vertices stay in object-local space; transforms
+apply at host-service query time (raycasts, normals, bounding queries).
+
+Conventions:
+
+- **Layout:** column-major `f64[16]`. Translation occupies indices `12`, `13`,
+  `14` (column 3). The fourth row is `[0, 0, 0, 1]` (no projective component).
+- **World-space Z is canonical for layer planning.** Object-local Z is never
+  used by `PrePass::LayerPlanning` or the per-layer Z dispatch. Modules that
+  need world Z must query via `host_services::object_bounds(object_id)` or
+  `raycast_z_down`; the host applies the transform during the query.
+- **Z extents:** if a transformed object has `z_max <= z_min`
+  (degenerate / inside-out / non-finite), `object_world_z_extent(object_id)`
+  returns `None` and the object contributes zero layers. This is not an
+  error — it surfaces as a slicing warning in the per-object diagnostics.
+- **Scale constraints:** non-uniform scale is rejected with fatal error
+  `NON_UNIFORM_SCALE_UNSUPPORTED { object_id, scale_x, scale_y, scale_z }`.
+  Mirroring (negative scale) is allowed if all three signs match (uniform
+  inversion).
+- **Floor enforcement:** if the transformed object's `z_min < 0.0` after the
+  build-plate floor adjustment, the host emits fatal `WORLD_Z_BELOW_FLOOR
+  { object_id, z_min }` — slicing below the build plate is never permitted.
+
+## F-Token Formatting Convention (Normative — packet 52)
+
+G-code F tokens are emitted in **mm/min**, not mm/s, matching OrcaSlicer's
+wire format. Internally, every speed field in IR (`ExtrusionPath3D.speed`,
+`ConfigView`'s `*_speed` keys, `TravelMove.speed`) is stored in **mm/s**.
+
+Conversion happens exactly once, at the `format_feedrate(speed_mm_s)` call
+inside `DefaultGCodeEmitter`:
+
+```rust
+fn format_feedrate(speed_mm_s: f32) -> String {
+    format!("F{:.0}", speed_mm_s * 60.0)
+}
+```
+
+Modules must always work in mm/s; emitting mm/min internally is a contract
+violation that double-scales at the boundary.
+
 ---
 
 ## Quick Reference

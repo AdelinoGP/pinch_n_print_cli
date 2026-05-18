@@ -5,6 +5,20 @@ is passed. Captures per-layer / per-stage / per-module timing, host-side
 memory accounting, and the DAG-derived explanation of which modules ran
 serially and why.
 
+## Related G-code artifacts
+
+The slicer report does not include the G-code preamble itself (header lines,
+thumbnail PNG block, config-dump block); those are emitted directly into the
+`.gcode` file by `PostPass::GCodeEmit`. Packet 55 standardised the preamble
+format. See `docs/01_system_architecture.md` GCodeEmit section for the contract.
+
+Machine start / end G-code (`machine_start_gcode` / `machine_end_gcode` config
+keys) is emitted by a designated finalization module before the first layer and
+after the last layer. Macro expansion is documented in
+`docs/03_wit_and_manifest.md` 'Machine start / end G-code emission' (packet 59).
+The slicer report records these as `phase_start` / `phase_complete` markers but
+does not include the literal G-code text.
+
 ## CLI
 
 ```bash

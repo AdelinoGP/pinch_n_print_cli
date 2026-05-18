@@ -91,6 +91,8 @@ Use this table as the first-hop index when answering architecture or implementat
 | Governance and acceptance gate policy                     | `./docs/11_operational_governance_and_acceptance_gate.md` |
 | Numeric acceptance thresholds                             | `./docs/12_architecture_gate_metrics.md`                  |
 | slicer-helpers crate (repair, decimate, STEP import)      | `./docs/13_slicer_helpers_crate.md`                       |
+| Catalogue of all recognised config keys                   | `./docs/15_config_keys_reference.md`                      |
+| Slicer HTML debugging report (opt-in)                     | `./docs/16_slicer_report.md`                              |
 | Active architecture deviations                            | `./docs/DEVIATION_LOG.md`                                 |
 | Audit provenance and retired XML crosswalk                | `./docs/14_deviation_audit_history.md`                    |
 

@@ -346,7 +346,7 @@ PostPass::LayerFinalization
   Output: Vec<LayerCollectionIR> (modified in place)
   Purpose: Cross-layer features that require visibility of the full print
            before G-code can be emitted.
-  Built-in modules:  WipeTower, Skirt/Brim
+  Built-in modules:  WipeTower, Skirt/Brim, PartCooling
   Optional modules:  SequentialPrintOrder, MinLayerTimeEnforcer,
                      FlushVolumeCalculator, PrimeTower
 
@@ -356,6 +356,8 @@ PostPass::GCodeEmit  [host-built-in]
   Purpose: Serialize ordered extrusion entities to structured G-code commands.
            Tool change / wipe tower sequencing.
            Fan speed and temperature scheduling.
+           Machine-level start and end G-code (printer preamble / postamble)
+           is module-owned (see machine start/end note below).
 
 PostPass::GCodePostProcess
   Input:  GCodeIR
@@ -368,6 +370,68 @@ PostPass::TextPostProcess  [last resort only]
   Purpose: Raw text mutation for features that cannot be expressed in GCodeIR.
            Single-threaded. Use sparingly.
 ```
+
+#### Stable Entity-ID Invariant (packet 39)
+
+Entities and travels within `LayerCollectionIR` carry stable `u64 entity_id` values assigned at producer time by per-layer `LayerEntityIdGen` instances. `PostPass::LayerFinalization` may sort, insert, drop, or mutate entities without invalidating travel anchors — anchors reference IDs, not positional indices. The host validates `entity_id` resolution and rejects mutations that target unknown IDs (packet 39). See `docs/02_ir_schemas.md` IR 10 "Stable entity IDs" for the full contract.
+
+#### Finalization Mutation API (packets 40 / 41)
+
+`PostPass::LayerFinalization` holds the primary-responsibility role for layer mutation in the post-PrePass phase. Modules call serialisable mutation primitives: `push_entity_with_priority`, `modify_entity`, `sort_layer_by`, and `insert_synthetic_layer_after`. Packet 40 introduced the primitives; packet 41 made the mutation enums serialisable across the WIT boundary via `EntityMutation`, `SortKey`, and `SyntheticLayerData`. The closure-based draft from packet 40 is superseded by the enum-based API. See `docs/05_module_sdk.md` "Finalization mutation API".
+
+#### PathOptimization Module Ordering (packet 33)
+
+Nearest-neighbour entity ordering lives in the `path-optimization-default` module (packet 33). The host no longer carries an entity-ordering fallback — packet 18 is marked superseded. If no module calls `LayerCollectionBuilder::set_entity_order`, the host emits entities in the raw assembly order produced by `assemble_ordered_entities` (perimeters, then infill, then support per region, in `RegionMapIR` order). Modules that need NN ordering must explicitly request it; the host does not synthesise it.
+
+#### Retract and Z-Hop Policy Ownership (packet 15)
+
+`path-optimization-default` is the canonical owner of retract / no-retract policy and Z-hop planning for the `Layer::PathOptimization` stage. External travels (region-to-region or object-to-object) emit retract → travel → unretract; internal travels (within one connected region) emit travel only. Z-hop entries are deferred to the per-layer `z_hops` queue and matched at finalization. Every retract must be paired with a downstream unretract; mismatches are caught by validation at `LayerCollectionBuilder` commit.
+
+#### Support Stage Paint Precedence (packet 13)
+
+`Layer::Support` resolves paint-driven enforcement in this order before any geometric overhang test:
+
+1. `PaintSemantic::SupportBlocker` region → no support, regardless of `needs_support` or overhang angle.
+2. `PaintSemantic::SupportEnforcer` region → support is committed, regardless of `needs_support` or overhang angle.
+3. Otherwise → fall through to the per-module algorithm (overhang angle threshold, planner consumption).
+
+This makes paint semantics the highest authority on whether a region carries support; the geometric pass only runs when paint is silent.
+
+#### MMU Tool-Index Propagation (packet 50b)
+
+When `paint-segmentation` produces `PaintSemantic::Material` regions with `PaintValue::ToolIndex(n)`, the tool index is propagated end-to-end:
+
+1. `Layer::Perimeters` writes `tool_index` onto `WallLoop.feature_flags` via paint annotation.
+2. `Layer::PathOptimization`'s `assemble_ordered_entities` calls `dominant_tool_index()` on each entity's feature flags and stamps the dominant value into `RegionKey.region_id` (paint-derived regions reuse the `region_id` slot to carry tool index, since multi-material print regions are otherwise indistinguishable).
+3. `PostPass::GCodeEmit` emits `GCodeCommand::ToolChange { from, to }` at each `region_id` transition, surfacing as `T{n}` in the serialized G-code.
+
+The flow is purely data-driven; no module needs to opt in beyond declaring `paint-segmentation` reads on `Material` semantics.
+
+#### Post-Finalization Travel Reconciliation (packet 20)
+
+After `PostPass::LayerFinalization` commits, the host performs a second-pass travel reconciliation. Skirt, brim, wipe-tower, and prime-tower entities inserted by finalization modules have endpoints the per-layer `Layer::PathOptimization` pass could not have seen, so the host recomputes travel transitions against those new endpoints. The reconciliation is bounded:
+
+- Only travel-move `entity_id` and endpoint XY are recomputed; **model extrusion entity ordering is invariant**.
+- The reconciliation runs before `PostPass::GCodeEmit` so emit sees a consistent travel graph.
+- Travel rejections (retract/unretract pairing, Z-hop matching) re-validate at this point; mismatches surface as fatal `RECONCILED_TRAVEL_INCONSISTENT` errors.
+
+This phase has no module-visible surface; it is a host built-in tucked between `PostPass::LayerFinalization` and `PostPass::GCodeEmit`.
+
+#### Ironing Relocation (packet 38-rev1)
+
+Top-surface ironing is performed at `PostPass::LayerFinalization` (packet 38-rev1), not at `Layer::InfillPostProcess`. The relocation gives the ironing module the full-layer-sequence visibility needed to detect topmost-layer indices via the multi-layer `top_solid_layers` window.
+
+#### Part Cooling Fan Modulation (packet 53)
+
+Part cooling fan modulation lives in `PostPass::LayerFinalization`. The `PartCooling` module reads per-layer time budgets and target temperatures from `ResolvedConfig` (`fan_speed_min`, `fan_speed_max`, `slow_down_for_layer_cooling`, `min_layer_time`) and inserts `GCodeCommand::FanSpeed` entities at the appropriate layer transitions (packet 53).
+
+#### Toolchange and Purge Integration (packet 58)
+
+Multi-tool toolchanges flow through `GCodeCommand::ToolChange { from, to }` in the post-finalization stream. When `WipeTower` or `PrimeTower` is loaded, the finalization module that holds the corresponding claim inserts purge moves (extrude, wipe, position) between the `ToolChange` command and the next non-toolchange entity. Purge moves use `ExtrusionRole::WipeTower` or `ExtrusionRole::PrimeTower` so the per-role speed dispatch (packet 52) applies. Packet 58 wired this integration end-to-end; before this packet, toolchange G-code was emitted without coordinated purge moves. See `docs/02_ir_schemas.md` IR 11 for the `ToolChange` command shape.
+
+#### Machine Start / End G-code Emission Boundary (packet 59)
+
+Machine-level start and end G-code (printer preamble / postamble) is module-owned. A designated finalization module reads `machine_start_gcode` and `machine_end_gcode` from `ResolvedConfig`, expands macros (`{first_layer_temperature}`, `{bed_temperature}`, `{filament_type}`, `{nozzle_diameter}`, `{tool_count}`, `{layer_count}`, `{print_time_estimate_s}`, `{x_max}`, `{y_max}`, `{z_max}`), and emits the resulting commands before the first layer (start) and after the last layer (end). Packet 59 moved this from a host built-in to a module-owned contract; see `docs/03_wit_and_manifest.md` "Machine start / end G-code emission" for the manifest surface.
 
 ---
 

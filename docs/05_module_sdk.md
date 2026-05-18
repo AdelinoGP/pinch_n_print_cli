@@ -294,6 +294,33 @@ For native host-side tests, `SliceRegionView` also exposes a convenience
 `boundary_paint()` accessor over the documented WIT `boundary-paint` data so
 perimeter generators can consume contour-parallel annotations ergonomically.
 
+### `LayerCollectionBuilder` — Path Optimization (packet 32)
+
+`Layer::PathOptimization` modules receive a `LayerCollectionView` (read-only)
+and write their reorder decision into a `LayerCollectionBuilder` resource.
+
+```rust
+fn run_path_optimization(
+    &self,
+    layer: LayerCollectionView,
+    output: &mut LayerCollectionBuilder,
+) -> Result<(), ModuleError> {
+    // Read current entity order.
+    let mut entities: Vec<_> = layer.ordered_entities().collect();
+
+    // Apply nearest-neighbour reorder (or any module-specific algorithm).
+    let order = nearest_neighbour_order(&entities, layer.z());
+
+    // Each tuple: (entity_index_in_input_order, reverse_direction).
+    output.set_entity_order(order.iter().map(|&i| (i as u32, false)).collect());
+    Ok(())
+}
+```
+
+The host validates `set_entity_order`: indices must be unique and in
+`0..ordered_entities().len()`. `get_ordered_entities()` returns the
+previously-set ordering as `Vec<OrderedEntityView>` for diagnostic use.
+
 ### Host Service Wrappers
 
 Direct calls to host services are ergonomic:
@@ -397,6 +424,10 @@ return Err(ModuleError::non_fatal(code, "message"));
 - For `layer-parallel-safe` modules, multiple instances may exist simultaneously.
 - Module state must not assume global singleton semantics across instances.
 - `on_print_end()` is best-effort cleanup; correctness must not depend on it running after fatal abort.
+
+### Stable Entity IDs (packet 39)
+
+Each `PrintEntity` and `TravelMove` carries a `u64 entity_id` populated at construction by a per-layer `LayerEntityIdGen`. Module producers (perimeter, infill, support modules) receive the generator via the per-layer context and call `id_gen.next()` once per entity. Finalization receives fresh IDs from the host at insert time. Travel anchors reference entities by `entity_id`, not positional index, so finalization mutations cannot invalidate them. See `docs/02_ir_schemas.md` IR 10 "Stable entity IDs" for the full contract.
 
 ---
 
@@ -842,6 +873,175 @@ fn apply_fuzzy_skin(
     todo!()
 }
 ```
+
+---
+
+## Finalization Mutation API (`PostPass::LayerFinalization`)
+
+`PostPass::LayerFinalization` modules hold exclusive mutable access to the
+full `Vec<LayerCollectionIR>` after the parallel per-layer stage completes.
+Four mutation primitives are available on the finalization output builder
+(packets 40 + 41):
+
+### `push_entity_with_priority`
+
+```rust
+output.push_entity_with_priority(
+    layer_index: u32,
+    path: ExtrusionPath3D,
+    role: ExtrusionRole,
+    region_key: RegionKey,
+    priority: u32,
+) -> Result<EntityId, ModuleError>
+```
+
+Inserts a new `PrintEntity` into the layer at `layer_index`. The host stamps
+a fresh `entity_id` at insert time (packet 39 + packet 40). Use
+`ExtrusionRole::default_priority()` as `priority` if no override is needed
+— see `docs/02_ir_schemas.md` IR 10 "Extrusion-role default priority" for
+the full priority table.
+
+### `modify_entity`
+
+```rust
+output.modify_entity(
+    layer_index: u32,
+    entity_id: EntityId,
+    mutation: EntityMutation,
+) -> Result<(), ModuleError>
+```
+
+Applies a serialisable `EntityMutation` to the entity identified by
+`entity_id`. The mutation variants are (packet 41):
+
+| Variant | Effect |
+|---|---|
+| `SetFeedrate(f32)` | Override the entity's feedrate (mm/s). |
+| `SetFlowFactor(f32)` | Scale the entity's extrusion flow. |
+| `SetWidth(f32)` | Override the extrusion width (mm). |
+| `SetRole(ExtrusionRole)` | Re-classify the entity's extrusion role. |
+| `DropEntity` | Remove the entity from the layer entirely. |
+| `ReversePath` | Reverse the entity's path point order. |
+
+Every variant is serialisable across the WIT boundary. This replaces the
+closure-based draft from packet 40 so that all mutations are fully
+serialisable (packet 41 refactor).
+
+### `sort_layer_by`
+
+```rust
+output.sort_layer_by(
+    layer_index: u32,
+    key: SortKey,
+) -> Result<(), ModuleError>
+```
+
+Reorders the layer's entities by a serialisable `SortKey` (packet 41):
+`Priority`, `Role`, `RegionKey`, `ZThenPriority`. Sort is stable — ties
+preserve insertion order.
+
+### `insert_synthetic_layer_after`
+
+```rust
+output.insert_synthetic_layer_after(
+    after_layer: u32,
+    data: SyntheticLayerData,
+) -> Result<(), ModuleError>
+```
+
+Inserts a new `LayerCollectionIR` after the layer at `after_layer`. Useful
+for wipe-tower or purge slices (packet 41). `SyntheticLayerData` carries:
+
+```rust
+pub struct SyntheticLayerData {
+    pub z: f32,
+    pub global_layer_index: i32,
+    pub entities: Vec<PrintEntity>,
+}
+```
+
+### `push_entity_to_layer` (canonical finalization surface, packet 16)
+
+```rust
+output.push_entity_to_layer(
+    layer_index: u32,
+    path: ExtrusionPath3D,
+    role: ExtrusionRole,
+    region_key: RegionKey,
+) -> Result<EntityId, ModuleError>
+```
+
+Convenience wrapper around `push_entity_with_priority` that uses
+`role.default_priority()`. This is the canonical surface for live skirt /
+brim / wipe-tower emission introduced in packet 16; the legacy
+`process(&mut Vec<LayerCollectionIR>)` vector-mutation path is retired and
+must not be reintroduced.
+
+Synthetic region-key convention for finalization-stage geometry:
+
+| Geometry kind | `RegionKey.object_id`         |
+|---------------|-------------------------------|
+| Skirt         | `"__skirt__"`                 |
+| Brim          | `"__brim__"`                  |
+| Wipe tower    | `"__wipe_tower__"`            |
+| Prime tower   | `"__prime_tower__"`           |
+
+The host emits `T{n}` tool changes only at transitions in `RegionKey.region_id`,
+not `object_id`; synthetic objects therefore never trigger spurious tool
+changes. `RegionKey.region_id` for synthetic finalization entities is `0`.
+
+## Layer Stage Module Surface Rejections
+
+### `Layer::PathOptimization` rejects fan-speed and cooling overrides (packet 19, locked)
+
+`Layer::PathOptimization` is **not** an emit-time fan / cooling surface. Calls
+to fan-speed or cooling-related output-builder methods at this stage return
+fatal `FatalModule` diagnostics. This is an **architectural lock** — cooling
+lives at `PostPass::LayerFinalization` (packet 53 `part-cooling` module). The
+lock is retained even after packet 53 because the per-layer surface cannot
+see neighbouring layers' timing budgets, which are required for valid fan
+modulation.
+
+Accepted at `Layer::PathOptimization`:
+`set-entity-order`, `push-tool-change` (deferred — see `docs/04_host_scheduler.md`
+"Deferred Tool-Change Queue"), `push-comment`, `push-raw`, `push-z-hop`.
+
+Rejected at `Layer::PathOptimization`:
+`push-fan-speed`, `push-temperature`, `push-move`, `push-retract`,
+`push-unretract` — these belong to either `PostPass::LayerFinalization`
+(fan/temperature/cooling) or the live wall/infill stage outputs
+(move/retract/unretract).
+
+### `Layer::Support` paint precedence (packet 13)
+
+Modules holding the `support-generator` claim must apply paint-driven
+overrides **before** any geometric overhang test:
+
+1. `PaintSemantic::SupportBlocker` region → emit nothing; skip the geometry
+   path entirely for the blocked region.
+2. `PaintSemantic::SupportEnforcer` region → emit support, regardless of
+   `needs_support` or the configured overhang angle.
+3. Otherwise → run the module's algorithm (overhang threshold, planner
+   consumption).
+
+SDK helpers `PaintRegionLayerView::support_enforcer_polygons_for(...)` and
+`support_blocker_polygons_for(...)` return the per-region polygons; modules
+should intersect / difference them against the layer's slice polygons before
+the geometric scan.
+
+### G-code Serializer Helpers
+
+#### Relative vs. absolute extrusion (packet 54)
+
+`DefaultGCodeSerializer::with_extrusion_mode(mode: ExtrusionMode) -> Self`
+where `ExtrusionMode { Absolute, Relative }`.
+
+- Default is `Relative` (M83). The serializer emits `M82` / `M83` **once**
+  in the preamble and inserts `G92 E0` on mode transitions.
+- The config key `use_relative_e_distances` selects the default mode
+  (`true` → Relative / M83, `false` → Absolute / M82). Modules typically
+  do not need to override this — it is a printer-level setting resolved
+  before finalization runs.
 
 ---
 

@@ -170,7 +170,10 @@ interface ir-handles {
 
     type object-id = string;
     type region-id = string;
-    type layer-idx = u32;
+    /// **Signed** (packet 43-rev1): raft prefix layers use negative indices
+    /// (`-1, -2, …, -raft_layers`). Negative `layer-index` arguments at host
+    /// entry points outside raft contexts are rejected at the validator.
+    type layer-idx = s32;
 
     record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
 
@@ -247,6 +250,11 @@ interface ir-handles {
 
     resource perimeter-output-builder {
         push-wall-loop:          func(loop-: wall-loop-view) -> result<_, string>;
+        /// **Cardinality constraint (packet 22):**
+        /// `rotated_wall_loop.feature_flags.len() == rotated_wall_loop.path.points.len()`.
+        /// The host rejects mismatched commits with `CARDINALITY_MISMATCH`. This
+        /// invariant is required because rotation moves the seam to position 0
+        /// and feature flags must rotate with the path.
         push-reordered-wall-loop: func(pos: point3-with-width, wall-index: u32, rotated-wall-loop: wall-loop-view) -> result<_, string>;
         set-infill-areas:        func(areas: list<ex-polygon>) -> result<_, string>;
         push-seam-candidate:     func(pos: point3, score: f32) -> result<_, string>;
@@ -429,6 +437,27 @@ world layer-module {
     ) -> result<_, module-error>;
 }
 ```
+
+### `layer-collection-builder` resource (packet 32)
+
+Available to `Layer::PathOptimization` modules. Replaces the previous reserved-future placeholder.
+
+```wit
+resource layer-collection-builder {
+    set-entity-order: func(items: list<tuple<u32, bool>>);
+    get-ordered-entities: func() -> list<ordered-entity-view>;
+}
+
+record ordered-entity-view {
+    entity-index: u32,
+    role: extrusion-role,
+    region-key: region-key,
+}
+```
+
+`set-entity-order` accepts `(entity-index, reverse-direction)` tuples. Setting `reverse-direction = true` flips the path's point order at apply time. Host rejects entries that reference unknown `entity-index` values or include duplicates; either condition produces a `BuilderError::InvalidEntityOrder` diagnostic.
+
+PathOptimization output contract restricts builder usage to this resource and the existing `push-tool-change` / `push-comment` / `push-raw` methods. `push-move` / `push-retract` / `push-unretract` / `push-fan-speed` / `push-temperature` remain rejected at the host boundary (see Path Optimization Output Contract below).
 
 ---
 
@@ -667,6 +696,35 @@ world finalization-module {
             z: f32,
             paths: list<extrusion-path-3d>,
         ) -> result<_, string>;
+
+        // Packet 41 — mutation and ordering API (replaces the closure-based API from packet 40).
+        push-entity-with-priority: func(layer: u32, path: list<point3-with-width>, role: extrusion-role, region-key: region-key, priority: u32) -> result<_, string>;
+        modify-entity: func(layer: u32, entity-id: u64, mutation: entity-mutation) -> result<_, string>;
+        sort-layer-by: func(layer: u32, key: sort-key) -> result<_, string>;
+        insert-synthetic-layer-after: func(after-layer: s32, data: synthetic-layer-data) -> result<_, string>;
+    }
+
+    // Packet 41 — serialisable mutation enums for the WIT boundary.
+    variant entity-mutation {
+        set-feedrate(f32),
+        set-flow-factor(f32),
+        set-width(f32),
+        set-role(extrusion-role),
+        drop-entity,
+        reverse-path,
+    }
+
+    variant sort-key {
+        priority,
+        role,
+        region-key,
+        z-then-priority,
+    }
+
+    record synthetic-layer-data {
+        z: f32,
+        global-layer-index: s32,
+        entities: list<print-entity-view>,
     }
 
     export run-finalization: func(
@@ -676,6 +734,8 @@ world finalization-module {
     ) -> result<_, module-error>;
 }
 ```
+
+`entity-id` in `modify-entity` is the `PrintEntity.entity_id` from packet 39 (see `docs/02_ir_schemas.md` IR 10). The host validates that `entity-id` resolves to a real entity within `layer`; unknown IDs are rejected with `BuilderError::UnknownEntity`. The closure-based API from packet 40 is replaced wholesale by these enum variants so the contract is fully serialisable across the WIT boundary.
 
 ---
 
@@ -718,14 +778,24 @@ requires = []                     # claim slots that MUST be held by another mod
 
 ### Known claim IDs
 
-The following claim IDs are registered for fill-role module selection:
+| Claim ID                  | Purpose                                                                   |
+|---------------------------|---------------------------------------------------------------------------|
+| `perimeter-generator`     | Held by the module producing wall loops on a given region.                |
+| `infill-generator`        | Held by the module producing infill paths on a given region.              |
+| `support-generator`       | Held by the module producing support extrusions on a given layer/region.  |
+| `support-planner`         | Held by the PrePass module emitting `SupportPlanIR`.                      |
+| `seam-placer`             | Held by the module placing seam candidates and resolving seam positions.  |
+| `layer-planner`           | Held by the module proposing layer Z heights and active-region lists.     |
+| `mesh-analyzer`           | Held by the module annotating facets and proposing surface groups.        |
+| `slice-postprocessor`     | Held by a module that mutates `SliceIR` polygons after initial slicing.   |
+| `gcode-postprocessor`     | Held by a PostPass module that processes the `GCodeCommand` stream.       |
+| `text-postprocessor`      | Held by a PostPass module that mutates the final G-code text string.      |
+| `claim:top-fill`          | Held by the module producing `TopSolidInfill` extrusions on this layer.  |
+| `claim:bottom-fill`       | Held by the module producing `BottomSolidInfill` extrusions.             |
+| `claim:bridge-fill`       | Held by the module producing `BridgeInfill` extrusions.                  |
+| `claim:sparse-fill`       | Held by the module producing `SparseInfill` extrusions.                  |
 
-| Claim ID             | Purpose                          |
-|----------------------|----------------------------------|
-| `claim:top-fill`     | Top solid infill paths           |
-| `claim:bottom-fill`  | Bottom solid infill paths        |
-| `claim:bridge-fill` | Bridge infill paths              |
-| `claim:sparse-fill`  | Sparse infill paths              |
+The four fill-role claims (`claim:top-fill` … `claim:sparse-fill`) were added in packet 37. A single module may hold multiple fill-role claims (e.g. `rectilinear-infill` holds all four by default). Claim-conflict validation runs in DAG validation pass 2; per-region overrides may transfer a fill-role claim to a different module.
 
 The configured holder per claim is selected by four `ResolvedConfig` keys —
 `top_fill_holder`, `bottom_fill_holder`, `bridge_fill_holder`,
@@ -822,6 +892,330 @@ estimated-ms-per-layer = 12    # for ETA estimation
 layer-parallel-safe    = true  
 ```
 
+### Configuration keys added by recent packets
+
+The following `[config.schema.<key>]` blocks document config keys introduced after the TPMS annotated example above. Keys follow the snake_case convention throughout (see CLAUDE.md).
+
+#### Packet 34 — retraction mode
+
+```toml
+[config.schema.retraction_mode]
+type    = "enum"
+values  = ["gcode", "firmware"]
+default = "gcode"
+display = "Retraction mode (G1 E moves vs G10/G11 firmware codes)"
+group   = "Extruder"
+```
+
+`"gcode"` emits standard `G1 E<n> F<speed>` retract/unretract moves. `"firmware"` emits `G10` (retract) / `G11` (unretract). M207/M208 are intentionally never emitted regardless of mode.
+
+> See also `docs/15_config_keys_reference.md` for the full catalogue of
+> recognised keys across all packets, organised by functional domain.
+
+#### Packet 52 — per-role speed schema
+
+The following 25 keys form the per-role speed family. All speed keys are `float` (unit `mm/s`); acceleration keys are `float` (unit `mm/s²`). One representative block is shown; the rest share the same shape.
+
+```toml
+[config.schema.outer_wall_speed]
+type    = "float"
+default = 50.0
+min     = 1.0
+unit    = "mm/s"
+display = "Outer wall speed"
+group   = "Speed"
+
+[config.schema.inner_wall_speed]
+type    = "float"
+default = 80.0
+min     = 1.0
+unit    = "mm/s"
+display = "Inner wall speed"
+group   = "Speed"
+```
+
+Complete key list: `outer_wall_speed`, `inner_wall_speed`, `internal_solid_infill_speed`, `top_surface_speed`, `gap_infill_speed`, `sparse_infill_speed`, `bridge_speed`, `support_speed`, `support_interface_speed`, `travel_speed`, `first_layer_speed`, `first_layer_infill_speed`, `first_layer_travel_speed`, `initial_layer_print_height_speed_factor`, `ironing_speed`, `overhang_speed`, `small_perimeter_speed`, `external_perimeter_speed`, `solid_infill_speed`, `top_solid_infill_speed`, `bottom_solid_infill_speed`, `default_acceleration`, `outer_wall_acceleration`, `inner_wall_acceleration`, `infill_acceleration`.
+
+After packet 52, every emitted move carries an F-token (`F<feedrate>`); the emitter does not elide F for unchanged feedrates.
+
+#### Packet 54 — relative extrusion
+
+```toml
+[config.schema.use_relative_e_distances]
+type    = "bool"
+default = true
+display = "Use relative E distances"
+group   = "Extruder"
+```
+
+Maps to M83 when `true` (default), M82 when `false`. `G92 E0` is issued on mode transitions and layer-reset boundaries. See also `docs/02_ir_schemas.md` IR 11 (GCodeCommand stream-level invariant).
+
+#### Packet 57 — overhang speed
+
+```toml
+[config.schema.overhang_1_4_speed]
+type    = "float"
+default = 0.0
+min     = 0.0
+unit    = "mm/s"
+display = "Overhang speed (0–25 %)"
+group   = "Speed"
+
+[config.schema.overhang_2_4_speed]
+type    = "float"
+default = 0.0
+min     = 0.0
+unit    = "mm/s"
+display = "Overhang speed (25–50 %)"
+group   = "Speed"
+
+[config.schema.overhang_3_4_speed]
+type    = "float"
+default = 0.0
+min     = 0.0
+unit    = "mm/s"
+display = "Overhang speed (50–75 %)"
+group   = "Speed"
+
+[config.schema.overhang_4_4_speed]
+type    = "float"
+default = 0.0
+min     = 0.0
+unit    = "mm/s"
+display = "Overhang speed (75–100 %)"
+group   = "Speed"
+```
+
+The classifier short-circuits when all four values are exactly `0.0` (byte-identical no-op path). Quartile assignment is documented in `docs/02_ir_schemas.md` (`Point3WithWidth.overhang_quartile`).
+
+#### Packet 60 — precision
+
+Units and defaults mirror `docs/02_ir_schemas.md` "Polyline simplification and precision" subsection.
+
+```toml
+[config.schema.gcode_resolution]
+type    = "float"
+default = 0.0125
+min     = 0.0
+unit    = "mm"
+display = "G-code resolution (wall/brim D-P tolerance)"
+group   = "Advanced"
+advanced = true
+
+[config.schema.infill_resolution]
+type    = "float"
+default = 0.0125
+min     = 0.0
+unit    = "mm"
+display = "G-code resolution (infill D-P tolerance)"
+group   = "Advanced"
+advanced = true
+
+[config.schema.support_resolution]
+type    = "float"
+default = 0.05
+min     = 0.0
+unit    = "mm"
+display = "G-code resolution (support D-P tolerance)"
+group   = "Advanced"
+advanced = true
+
+[config.schema.min_segment_length]
+type    = "float"
+default = 0.025
+min     = 0.0
+unit    = "mm"
+display = "Minimum segment length after simplification"
+group   = "Advanced"
+advanced = true
+
+[config.schema.gcode_xy_decimals]
+type    = "int"
+default = 3
+min     = 1
+max     = 6
+display = "G-code XY decimal places"
+group   = "Advanced"
+advanced = true
+
+[config.schema.perimeter_arc_tolerance]
+type    = "float"
+default = 0.0025
+min     = 0.0
+unit    = "mm"
+display = "Clipper2 arc tolerance for perimeter offsets"
+group   = "Advanced"
+advanced = true
+
+[config.schema.slice_closing_radius]
+type    = "float"
+default = 0.0
+min     = 0.0
+unit    = "mm"
+display = "Slice closing radius (0 = disabled)"
+group   = "Advanced"
+advanced = true
+```
+
+#### Packet 55 — G-code preamble (header, thumbnail, config block)
+
+The four envelope blocks (`HEADER_BLOCK_*`, `THUMBNAIL_BLOCK_*`, per-role
+width comments, `CONFIG_BLOCK_*`) are documented under
+`docs/02_ir_schemas.md` "G-code envelope blocks". Four config keys feed
+the header block:
+
+```toml
+[config.schema.filament_diameter]
+type    = "float"
+default = 1.75
+min     = 0.5
+max     = 5.0
+unit    = "mm"
+display = "Filament diameter"
+group   = "Filament"
+
+[config.schema.filament_density]
+type    = "float"
+default = 1.24
+min     = 0.5
+max     = 5.0
+unit    = "g/cm^3"
+display = "Filament density"
+group   = "Filament"
+
+[config.schema.max_z_height]
+type    = "float"
+default = 0.0
+min     = 0.0
+unit    = "mm"
+display = "Maximum Z height (0 = auto from per-print Z extent)"
+group   = "Machine"
+
+[config.schema.thumbnail_path]
+type    = "string"
+default = ""
+display = "Thumbnail PNG path (alternative to --thumbnail CLI flag)"
+group   = "Output"
+```
+
+CLI flag:
+
+```
+--thumbnail <PATH>      # PNG; Base64-encoded into THUMBNAIL_BLOCK_*
+                        # CLI flag wins over thumbnail_path config when both set.
+```
+
+#### Packet 31b — tree-support OrcaSlicer parity
+
+The following nine keys map directly to OrcaSlicer keys of the same name.
+
+```toml
+[config.schema.tree_support_branch_angle]
+type    = "float"
+default = 40.0
+unit    = "deg"
+display = "Tree support branch angle"
+group   = "Support"
+
+[config.schema.tree_support_branch_diameter]
+type    = "float"
+default = 2.0
+unit    = "mm"
+display = "Tree support branch diameter"
+group   = "Support"
+
+[config.schema.tree_support_branch_diameter_angle]
+type    = "float"
+default = 5.0
+unit    = "deg"
+display = "Tree support branch diameter angle"
+group   = "Support"
+
+[config.schema.tree_support_branch_distance]
+type    = "float"
+default = 1.0
+unit    = "mm"
+display = "Tree support branch distance"
+group   = "Support"
+
+[config.schema.tree_support_wall_count]
+type    = "int"
+default = 1
+min     = 0
+display = "Tree support wall count"
+group   = "Support"
+
+[config.schema.support_raft_layers]
+type    = "int"
+default = 0
+min     = 0
+display = "Support raft layers"
+group   = "Support"
+
+[config.schema.support_interface_top_layers]
+type    = "int"
+default = 2
+min     = 0
+display = "Support interface top layers"
+group   = "Support"
+
+[config.schema.support_interface_bottom_layers]
+type    = "int"
+default = 2
+min     = 0
+display = "Support interface bottom layers"
+group   = "Support"
+
+[config.schema.tree_support_interface_spacing_mm]
+type    = "float"
+default = 0.2
+unit    = "mm"
+display = "Tree support interface spacing"
+group   = "Support"
+```
+
+### Per-paint-region config overrides (packet 51)
+
+The namespace `paint_config:<semantic>:<key>` is recognised at module-load time as a per-paint-region config override.
+
+Built-in `PaintSemantic` variants serialise as: `material`, `fuzzy_skin`, `support_enforcer`, `support_blocker`. `PaintSemantic::Custom(s)` uses the inner string verbatim as the `<semantic>` segment.
+
+Override precedence (lowest → highest):
+
+```
+global < object_config:<id>:<key> < paint_config:<semantic>:<key>
+```
+
+The audit trail for applied paint overrides surfaces in `RegionMapIR.paint_overrides` (see `docs/02_ir_schemas.md` IR 5).
+
+### Per-object config overrides (packet 35a)
+
+Per-object overrides use the namespace `object_config:<id>:<key>`. These flow through `RegionPlan.config: ResolvedConfig` and are stamped on every `RegionPlan` and `ActiveRegion` during the resolved-config builder stage added in packet 35a. The propagation path is: CLI JSON → per-object overlay → `ResolvedConfig` stamped per-region. See `docs/02_ir_schemas.md` IR 3 for the `ResolvedConfig` struct and IR 5 for `RegionMapIR.entries[*].config`.
+
+### Machine start / end G-code emission (packet 59)
+
+Module-owned machine start/end G-code is emitted by a designated module running at `PostPass::LayerFinalization`. The bundled implementation is `machine-gcode-default`; the audit boundary is the contract, not the module ID.
+
+The module reads two config keys:
+
+```toml
+[config.schema.machine_start_gcode]
+type    = "string"
+default = ""
+display = "Machine start G-code"
+group   = "Machine"
+
+[config.schema.machine_end_gcode]
+type    = "string"
+default = ""
+display = "Machine end G-code"
+group   = "Machine"
+```
+
+Both strings support macro expansion. Documented macros: `{first_layer_temperature}`, `{bed_temperature}`, `{filament_type}`, `{nozzle_diameter}`, `{tool_count}`, `{layer_count}`, `{print_time_estimate_s}`, `{x_max}`, `{y_max}`, `{z_max}`. Unknown macros are left as-is with a warning logged to the host diagnostics stream.
+
+The module emits start-gcode before any layer entity and end-gcode after the last layer.
+
 ## Path Optimization Output Contract (Normative)
 
 This section pins down what `Layer::PathOptimization` guests are allowed to
@@ -843,10 +1237,10 @@ emit through `gcode-output-builder` and how the host commits that output into
   entries from `ordered_entities`. The pre-staged sequence is final for the
   lifetime of the layer. `topo_order` indices are stable and used as the
   `after_entity_index` keying domain for tool-changes and annotations.
-- Reordering / mutation of `ordered_entities` is reserved for a future
-  `layer-collection-builder` resource. Until that resource lands, any guest
-  that needs deterministic reordering must do it earlier (during `Layer::Perimeters`
-  / `Layer::Infill` commit ordering) — not in `Layer::PathOptimization`.
+- Reordering of `ordered_entities` is performed via the `layer-collection-builder`
+  resource (packet 32; see `world-layer.wit` section above). Guests that need
+  deterministic reordering use `set-entity-order` on that resource; arbitrary
+  mutation or append outside of that resource is still rejected at the host boundary.
 
 ### Accepted `gcode-output-builder` methods at PathOptimization
 
@@ -879,9 +1273,7 @@ within an anchor and across the layer.
 push-z-hop: func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
 ```
 
-This is the single, minimal z-hop output channel. Reordering of
-`ordered_entities` and a generalised `layer-collection-builder` resource
-remain reserved for a later step.
+This is the single, minimal z-hop output channel. Entity-order rewriting uses the `layer-collection-builder` resource (packet 32; see `world-layer.wit` section above).
 
 #### Commit destination
 
@@ -928,8 +1320,7 @@ Required diagnostic fields on rejection:
 
 - `push-move`, `push-retract`, `push-fan-speed`, and `push-temperature`
   remain rejected at `Layer::PathOptimization`.
-- Reordering, appending to, or removing entries from `ordered_entities` is
-  still rejected and is reserved for a future step.
+- Reordering `ordered_entities` uses `layer-collection-builder.set-entity-order` (packet 32). Appending arbitrary new entities or removing existing entries outside of that resource is still rejected.
 
 ### Determinism & identity
 
@@ -947,6 +1338,10 @@ Required diagnostic fields on rejection:
 - Rejection aborts the layer (per the existing `LayerStageError::FatalModule`
   contract). The pre-staged `LayerCollectionIR` is *not* surfaced to
   downstream stages when commit fails.
+
+### Host nearest-neighbour fallback (packet 33)
+
+Packet 33 migrated the host's nearest-neighbour entity-ordering fallback into the `path-optimization-default` module. The host no longer carries an entity-ordering fallback; if no module claims `path-optimization` on a layer, the layer's `ordered_entities` is the order produced by upstream stages (no NN reorder). Packet 18 is marked superseded.
 
 ## Builder Lifecycle Contract (Normative)
 
@@ -979,6 +1374,30 @@ reads = ["SliceIR.regions.boundary_paint"]
 reads  = ["PerimeterIR.regions.walls.feature_flags"]   # fuzzy skin post-processor
 writes = ["PerimeterIR.regions.walls.feature_flags"]   # if modifying flags
 
+### Narrow write paths (Normative — packets 24 / 25)
+
+Write declarations must use the **narrowest path that covers every host-side
+write instrument the module triggers**. Coarse top-level paths
+(e.g. plain `"PerimeterIR"`) are no longer acceptable for modules that mutate
+specific sub-fields; the host rejects manifests whose declared writes are
+broader than the writes the host actually performs. The narrow-path canon for
+the perimeter / seam pipeline:
+
+| Builder call                                                      | Narrow write path required                                                            |
+|-------------------------------------------------------------------|---------------------------------------------------------------------------------------|
+| `perimeter-output-builder.push-wall-loop(...)`                    | `"PerimeterIR.regions.walls"`                                                         |
+| `perimeter-output-builder.push-reordered-wall-loop(...)`          | `"PerimeterIR.regions.walls"` (rotates feature flags in place — same write target)    |
+| `perimeter-output-builder.push-resolved-seam(...)`                | `"PerimeterIR.resolved-seam"` (note dot-separated; not `regions.resolved_seam`)       |
+
+IR path format:
+
+- Dot-separated, host-canonical (snake_case identifiers, hyphenated public
+  paint semantics like `paint_config:fuzzy-skin:line_width` use the wire form).
+- The leading IR name (e.g. `PerimeterIR`, `SliceIR`) is required.
+- No wildcards — every write target must be explicit. Host emits a fatal
+  diagnostic listing the actual write targets if a module's `writes`
+  declaration does not cover all of them.
+
 ---
 
 ## Config Field Types Reference
@@ -990,8 +1409,28 @@ writes = ["PerimeterIR.regions.walls.feature_flags"]   # if modifying flags
 | `"float"`       | Floating point             | `min`, `max`, `step`, `unit` |
 | `"string"`      | Free text                  | `max-length`                 |
 | `"enum"`        | Fixed set of string values | `values` (required)          |
-| `"float-list"`  | List of floats             | `min-length`, `max-length`   |
+| `"float-list"`  | List of floats             | `min`, `max`, `min-length`, `max-length` |
 | `"string-list"` | List of strings            | `min-length`, `max-length`   |
+
+### Numeric Bounds Enforcement
+
+`min` and `max` on numeric fields (`int`, `float`, `int-list`, `float-list`)
+are not UI hints — they are enforced by the host resolver. The host builds a
+`ConfigBoundsIndex` from every loaded module's `[config.schema]` at startup,
+and `resolve_global_config` / `resolve_per_object_configs` /
+`resolve_per_paint_semantic_configs` reject out-of-range values with
+`ConfigResolutionError::OutOfRange` before the value is written into
+`ResolvedConfig`. Inclusive bounds on both ends: `min <= value <= max`.
+
+- **NaN and non-finite values** for `float` fields are treated as out-of-range
+  and rejected.
+- **List elements** (`float-list`, `int-list`) are validated element-wise
+  against the same `[min, max]`; the first offending element is reported
+  with its `index`.
+- **Strictest wins on collision**: when several modules declare bounds for
+  the same key, the effective range is the intersection. If two modules
+  declare disjoint ranges, every value for that key is rejected and the
+  host emits a `log::warn!` at module-load time naming the contributors.
 
 ### Unit Values (for UI rendering)
 
