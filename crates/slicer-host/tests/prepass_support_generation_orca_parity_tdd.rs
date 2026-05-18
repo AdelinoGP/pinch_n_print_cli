@@ -22,10 +22,6 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
-use slicer_host::{
-    validate_config, ConfigFieldSchemaBuilder, ConfigFieldType, ConfigValue as HostConfigValue,
-    FullConfigSchema,
-};
 use slicer_ir::{
     ConfigKey, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, Point2, Polygon,
     SemVer, SupportPlanEntry,
@@ -452,75 +448,6 @@ fn directed_hausdorff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
                 .fold(f32::INFINITY, f32::min)
         })
         .fold(0.0_f32, f32::max)
-}
-
-// ── Negative ACs (host-side config validation) ────────────────────────────
-
-fn make_float_schema(key: &str, min: f64, max: f64) -> FullConfigSchema {
-    let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Float);
-    b.unit(slicer_host::ConfigUnit::Millimeters)
-        .min(min)
-        .max(max);
-    FullConfigSchema {
-        fields: BTreeMap::from([(key.to_string(), b.build())]),
-        cross_validate: vec![],
-    }
-}
-
-fn make_int_schema(key: &str, min: i64, max: i64) -> FullConfigSchema {
-    let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Int);
-    b.min(min as f64).max(max as f64);
-    FullConfigSchema {
-        fields: BTreeMap::from([(key.to_string(), b.build())]),
-        cross_validate: vec![],
-    }
-}
-
-fn float_config(key: &str, value: f64) -> BTreeMap<String, HostConfigValue> {
-    BTreeMap::from([(key.to_string(), HostConfigValue::Float(value))])
-}
-
-fn int_config(key: &str, value: i64) -> BTreeMap<String, HostConfigValue> {
-    BTreeMap::from([(key.to_string(), HostConfigValue::Int(value))])
-}
-
-/// AC-N1: tree_support_branch_diameter_angle = 80.0 → error.
-/// Valid range is typically 0-60 degrees; 80 is out of range.
-#[test]
-fn diameter_angle_out_of_range_rejects_load() {
-    let schema = make_float_schema("tree_support_branch_diameter_angle", 0.0, 60.0);
-    let config = float_config("tree_support_branch_diameter_angle", 80.0);
-
-    let errors = validate_config(&schema, &config);
-
-    assert!(
-        !errors.is_empty(),
-        "AC-N1: diameter_angle=80.0 must be rejected (valid range 0-60); \
-         got {} errors — host-side config validation not yet enforcing range",
-        errors.len()
-    );
-    let msg = errors.first().map(|e| e.message.as_str()).unwrap_or("");
-    assert!(
-        msg.contains("tree_support_branch_diameter_angle") || msg.contains("80"),
-        "AC-N1 error message should mention the field or value; got: {msg}"
-    );
-}
-
-/// AC-N2: support_raft_layers = -1 → error.
-/// Raft layers must be non-negative.
-#[test]
-fn negative_raft_layers_rejects_load() {
-    let schema = make_int_schema("support_raft_layers", 0, 10);
-    let config = int_config("support_raft_layers", -1);
-
-    let errors = validate_config(&schema, &config);
-
-    assert!(
-        !errors.is_empty(),
-        "AC-N2: support_raft_layers=-1 must be rejected (must be >= 0); \
-         got {} errors — host-side config validation not yet enforcing non-negative",
-        errors.len()
-    );
 }
 
 /// AC-N3: node dropped when avoidance rejects all moves → warn diagnostic.

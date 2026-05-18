@@ -2,80 +2,9 @@
 
 //! TDD tests for packet 52 (TASK-153): per-role feedrate emission on the live G-code path.
 
-use slicer_host::config_schema::{
-    validate_config, ConfigFieldType, ConfigValidationErrorKind, ConfigValue, FullConfigSchema,
-};
 use slicer_host::{Blackboard, DefaultGCodeEmitter, GCodeEmitter};
 use slicer_ir::*;
 use std::sync::Arc;
-
-#[test]
-fn speed_keys_registered_with_defaults() {
-    let schema = FullConfigSchema::default();
-    let expected_keys = vec![
-        ("outer_wall_speed", 60.0),
-        ("inner_wall_speed", 60.0),
-        ("thin_wall_speed", 30.0),
-        ("top_surface_speed", 100.0),
-        ("bottom_surface_speed", 100.0),
-        ("sparse_infill_speed", 100.0),
-        ("bridge_speed", 25.0),
-        ("internal_bridge_speed", 37.5),
-        ("support_speed", 80.0),
-        ("support_interface_speed", 80.0),
-        ("gap_infill_speed", 30.0),
-        ("ironing_speed", 20.0),
-        ("skirt_speed", 50.0),
-        ("wipe_tower_speed", 90.0),
-        ("prime_tower_speed", 90.0),
-        ("travel_speed", 120.0),
-        ("travel_speed_z", 0.0),
-        ("initial_layer_speed", 30.0),
-        ("initial_layer_infill_speed", 60.0),
-        ("initial_layer_travel_speed", 120.0),
-        ("wipe_speed", 96.0),
-        ("overhang_1_4_speed", 0.0),
-        ("overhang_2_4_speed", 0.0),
-        ("overhang_3_4_speed", 0.0),
-        ("overhang_4_4_speed", 0.0),
-        ("filament_ironing_speed", 0.0),
-    ];
-
-    for (key, default_val) in expected_keys {
-        let field = schema.fields.get(key);
-        assert!(field.is_some(), "Key {} not found in schema", key);
-        let field = field.unwrap();
-        assert_eq!(field.field_type(), &ConfigFieldType::Float);
-        assert_eq!(
-            field.default(),
-            Some(&ConfigValue::Float(default_val)),
-            "Incorrect default for {}",
-            key
-        );
-    }
-}
-
-#[test]
-fn rejects_non_float_speed_config() {
-    let schema = FullConfigSchema::default();
-    if schema.fields.is_empty() {
-        assert!(false, "Schema is empty");
-    }
-
-    let mut values = std::collections::BTreeMap::new();
-    values.insert(
-        "outer_wall_speed".to_string(),
-        ConfigValue::String("fast".to_string()),
-    );
-
-    let errors = validate_config(&schema, &values);
-    assert!(
-        !errors.is_empty(),
-        "Expected validation error for string value"
-    );
-    assert_eq!(errors[0].field.as_deref(), Some("outer_wall_speed"));
-    assert_eq!(errors[0].kind, ConfigValidationErrorKind::TypeMismatch);
-}
 
 fn dummy_blackboard() -> Blackboard {
     let mesh_ir = MeshIR {
@@ -563,29 +492,6 @@ fn rejects_stale_f_window() {
         "Stale-F-window predicate should detect a > 200-move gap; saw max window of {}",
         max_window
     );
-}
-
-#[test]
-fn overhang_speed_keys_registered_with_defaults() {
-    let schema = FullConfigSchema::default();
-    let keys = [
-        "overhang_1_4_speed",
-        "overhang_2_4_speed",
-        "overhang_3_4_speed",
-        "overhang_4_4_speed",
-    ];
-    for key in keys {
-        let field = schema.fields.get(key);
-        assert!(field.is_some(), "Key {} not found in schema", key);
-        let field = field.unwrap();
-        assert_eq!(field.field_type(), &ConfigFieldType::Float);
-        assert_eq!(
-            field.default(),
-            Some(&ConfigValue::Float(0.0)),
-            "Incorrect default for {}",
-            key
-        );
-    }
 }
 
 #[test]

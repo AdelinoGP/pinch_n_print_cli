@@ -7,7 +7,6 @@
 pub mod blackboard;
 pub mod cli;
 pub mod config_resolution;
-pub mod config_schema;
 pub mod dag;
 pub mod dispatch;
 pub mod dispatch_helpers;
@@ -49,14 +48,6 @@ pub use config_resolution::{
     paint_semantic_namespace_key, resolve_global_config, resolve_per_object_configs,
     resolve_per_paint_semantic_configs, ConfigResolutionError, UnknownSemanticWarning,
 };
-pub use config_schema::{
-    build_config_schema_json, get_advanced_fields, get_basic_fields, get_field_schema,
-    group_fields_by_ui_group, parse_config_schema, query_config_schema, validate_config,
-    validate_field_value, ConfigFieldSchema, ConfigFieldSchemaBuilder, ConfigFieldType,
-    ConfigSchemaParseError, ConfigSchemaParseErrorKind, ConfigUnit, ConfigValidationError,
-    ConfigValidationErrorKind, ConfigValue, CrossValidateRule, CrossValidateSeverity,
-    FullConfigSchema,
-};
 pub use dag::{build_intra_stage_dag, EdgeTo, ModuleNode};
 pub use dispatch::{
     apply_entity_order_proposal, commit_layer_outputs_for_test, export_name_for_stage,
@@ -94,9 +85,9 @@ pub use layer_finalization::{
 };
 pub use layer_slice::{execute_layer_slice, LayerSliceError};
 pub use manifest::{
-    load_module_from_paths, load_modules_from_roots, ConfigFieldEntry, ConfigSchema,
-    DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport, LoadedModule,
-    LoadedModuleBuilder,
+    build_config_schema_json, load_module_from_paths, load_modules_from_roots, ConfigFieldEntry,
+    ConfigSchema, DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport,
+    LoadedModule, LoadedModuleBuilder,
 };
 pub use mesh_analysis::{execute_mesh_analysis, MeshAnalysisConfig, MeshAnalysisError};
 pub use mesh_segmentation::{

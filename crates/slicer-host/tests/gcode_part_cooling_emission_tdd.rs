@@ -6,12 +6,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use part_cooling::PartCooling;
-use slicer_host::config_schema::{
-    validate_config, ConfigFieldType, ConfigValidationErrorKind, ConfigValue as SchemaConfigValue,
-    FullConfigSchema,
-};
 use slicer_host::{
-    Blackboard, DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer,
+    load_module_from_paths, Blackboard, DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter,
+    GCodeSerializer,
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, IndexedTriangleSet,
@@ -196,121 +193,102 @@ fn layer_sections(text: &str) -> Vec<&str> {
 }
 
 // ============================================================================
-// Config schema tests (already green from Step 2)
+// Config schema tests
 // ============================================================================
 
+/// Loads the part-cooling module manifest from `modules/core-modules/` and
+/// asserts that the eight cooling-related config keys are declared with the
+/// expected types and defaults. The previous version of this test asserted
+/// against a host-side `FullConfigSchema::default()` registry that was a
+/// hand-maintained duplicate of this TOML; the registry was removed and the
+/// assertions are now TOML-backed.
 #[test]
 fn cooling_keys_registered() {
-    let schema = FullConfigSchema::default();
+    let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("modules")
+        .join("core-modules")
+        .join("part-cooling");
+    let manifest_path = manifest_dir.join("part-cooling.toml");
+    let wasm_path = manifest_dir.join("part-cooling.wasm");
+    let module = load_module_from_paths(&manifest_path, &wasm_path)
+        .expect("part-cooling.toml must ingest cleanly");
+    let entries = &module.config_schema().entries;
 
+    // (key, expected field_type, expected default-as-TOML-literal)
     let expected_int_keys = [
-        ("fan_speed_min", 51i64),
-        ("fan_speed_max", 255i64),
-        ("disable_fan_first_layers", 1i64),
-        ("overhang_fan_speed", 100i64),
+        ("fan_speed_min", "51"),
+        ("fan_speed_max", "255"),
+        ("disable_fan_first_layers", "1"),
+        ("overhang_fan_speed", "100"),
     ];
-
-    for (key, default_val) in expected_int_keys {
-        let field = schema.fields.get(key);
-        assert!(field.is_some(), "Key {} not found in schema", key);
-        let field = field.unwrap();
+    for (key, default_literal) in expected_int_keys {
+        let entry = entries
+            .get(key)
+            .unwrap_or_else(|| panic!("part-cooling.toml is missing key {key}"));
+        assert_eq!(entry.field_type, "int", "expected int type for {key}");
         assert_eq!(
-            field.field_type(),
-            &ConfigFieldType::Int,
-            "Expected Int type for {}",
-            key
+            entry.default.as_deref(),
+            Some(default_literal),
+            "incorrect default for {key}"
         );
         assert_eq!(
-            field.default(),
-            Some(&SchemaConfigValue::Int(default_val)),
-            "Incorrect default for {}",
-            key
-        );
-        assert_eq!(
-            field.group(),
+            entry.group.as_deref(),
             Some("Cooling"),
-            "Expected Cooling group for {}",
-            key
+            "expected Cooling group for {key}"
         );
     }
 
     let expected_bool_keys = [
-        ("enable_overhang_fan", true),
-        ("slow_down_for_layer_cooling", true),
+        ("enable_overhang_fan", "true"),
+        ("slow_down_for_layer_cooling", "true"),
     ];
-
-    for (key, default_val) in expected_bool_keys {
-        let field = schema.fields.get(key);
-        assert!(field.is_some(), "Key {} not found in schema", key);
-        let field = field.unwrap();
+    for (key, default_literal) in expected_bool_keys {
+        let entry = entries
+            .get(key)
+            .unwrap_or_else(|| panic!("part-cooling.toml is missing key {key}"));
+        assert_eq!(entry.field_type, "bool", "expected bool type for {key}");
         assert_eq!(
-            field.field_type(),
-            &ConfigFieldType::Bool,
-            "Expected Bool type for {}",
-            key
+            entry.default.as_deref(),
+            Some(default_literal),
+            "incorrect default for {key}"
         );
         assert_eq!(
-            field.default(),
-            Some(&SchemaConfigValue::Bool(default_val)),
-            "Incorrect default for {}",
-            key
-        );
-        assert_eq!(
-            field.group(),
+            entry.group.as_deref(),
             Some("Cooling"),
-            "Expected Cooling group for {}",
-            key
+            "expected Cooling group for {key}"
         );
     }
 
-    let expected_float_keys = [("slow_down_min_speed", 10.0), ("slow_down_layer_time", 5.0)];
-
-    for (key, default_val) in expected_float_keys {
-        let field = schema.fields.get(key);
-        assert!(field.is_some(), "Key {} not found in schema", key);
-        let field = field.unwrap();
-        assert_eq!(
-            field.field_type(),
-            &ConfigFieldType::Float,
-            "Expected Float type for {}",
-            key
+    // Floats: compare numerically because the TOML crate may serialize 10.0
+    // back as "10.0" or "10" depending on version.
+    let expected_float_keys = [
+        ("slow_down_min_speed", 10.0_f64),
+        ("slow_down_layer_time", 5.0),
+    ];
+    for (key, expected_default) in expected_float_keys {
+        let entry = entries
+            .get(key)
+            .unwrap_or_else(|| panic!("part-cooling.toml is missing key {key}"));
+        assert_eq!(entry.field_type, "float", "expected float type for {key}");
+        let raw = entry
+            .default
+            .as_deref()
+            .unwrap_or_else(|| panic!("missing default for {key}"));
+        let parsed: f64 = raw
+            .parse()
+            .unwrap_or_else(|_| panic!("non-numeric default '{raw}' for {key}"));
+        assert!(
+            (parsed - expected_default).abs() < f64::EPSILON,
+            "incorrect default for {key}: expected {expected_default}, got {parsed}"
         );
         assert_eq!(
-            field.default(),
-            Some(&SchemaConfigValue::Float(default_val)),
-            "Incorrect default for {}",
-            key
-        );
-        assert_eq!(
-            field.group(),
+            entry.group.as_deref(),
             Some("Cooling"),
-            "Expected Cooling group for {}",
-            key
+            "expected Cooling group for {key}"
         );
     }
-}
-
-#[test]
-fn rejects_malformed_cooling_config() {
-    let schema = FullConfigSchema::default();
-    if schema.fields.is_empty() {
-        assert!(false, "Schema is empty");
-    }
-
-    let mut values = std::collections::BTreeMap::new();
-    // fan_speed_min expects Int, supply String
-    values.insert(
-        "fan_speed_min".to_string(),
-        SchemaConfigValue::String("fast".to_string()),
-    );
-
-    let errors = validate_config(&schema, &values);
-    assert!(
-        !errors.is_empty(),
-        "Expected validation error for string value in int field"
-    );
-    assert_eq!(errors[0].field.as_deref(), Some("fan_speed_min"));
-    assert_eq!(errors[0].kind, ConfigValidationErrorKind::TypeMismatch);
 }
 
 // ============================================================================

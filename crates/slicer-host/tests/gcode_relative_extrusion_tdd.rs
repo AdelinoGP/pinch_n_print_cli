@@ -1,12 +1,5 @@
 //! TDD tests for Track B: use_relative_e_distances config key and G-code relative extrusion.
-//!
-//! AC tests 1 (config_schema_registers_bool_default_true) must pass at Step 2B.
-//! All other tests are stubs marked #[ignore] until Step 3B.
 
-use slicer_host::config_schema::{
-    get_field_schema, validate_field_value, ConfigFieldType, ConfigValidationErrorKind,
-    ConfigValue, FullConfigSchema,
-};
 use slicer_host::{DefaultGCodeSerializer, GCodeSerializer};
 use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR, PrintMetadata};
 
@@ -77,44 +70,6 @@ fn xyzf_tokens(line: &str) -> Vec<&str> {
             matches!(first, 'G' | 'X' | 'Y' | 'Z' | 'F')
         })
         .collect()
-}
-
-// ---------------------------------------------------------------------------
-// AC-1 (LIVE): config schema registers use_relative_e_distances as Bool/true
-// ---------------------------------------------------------------------------
-
-#[test]
-fn config_schema_registers_bool_default_true() {
-    let schema = FullConfigSchema::default();
-
-    let field = get_field_schema(&schema, "use_relative_e_distances")
-        .expect("use_relative_e_distances must be registered in FullConfigSchema::default()");
-
-    // Must be a Bool field
-    assert_eq!(
-        field.field_type(),
-        &ConfigFieldType::Bool,
-        "use_relative_e_distances must have field_type Bool"
-    );
-
-    // Default must be Bool(true)
-    assert_eq!(
-        field.default(),
-        Some(&ConfigValue::Bool(true)),
-        "use_relative_e_distances default must be Bool(true)"
-    );
-
-    // Non-bool value must be rejected with TypeMismatch
-    let bad_value = ConfigValue::Int(1);
-    let result = validate_field_value(field, &bad_value);
-    assert!(result.is_err(), "non-bool value must be rejected");
-    let err = result.unwrap_err();
-    assert_eq!(
-        err.kind,
-        ConfigValidationErrorKind::TypeMismatch,
-        "rejection must be TypeMismatch, got {:?}",
-        err.kind
-    );
 }
 
 // ---------------------------------------------------------------------------

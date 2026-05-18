@@ -1054,6 +1054,52 @@ fn known_stage_ids() -> &'static [&'static str] {
     ]
 }
 
+/// Build the documented config-schema JSON response from loaded modules.
+///
+/// Per `docs/01_system_architecture.md`, the config-schema query response
+/// format is:
+/// ```jsonc
+/// {"schema": [
+///   {
+///     "module": "com.community.tpms-infill",
+///     "fields": [
+///       {"key": "pattern", "type": "enum", "values": [...],
+///        "default": "...", "display": "...", "group": "..."}
+///     ]
+///   }
+/// ]}
+/// ```
+pub fn build_config_schema_json(modules: &[LoadedModule]) -> serde_json::Value {
+    let schema_entries: Vec<serde_json::Value> = modules
+        .iter()
+        .filter(|m| !m.config_schema.entries.is_empty())
+        .map(|m| {
+            let fields: Vec<serde_json::Value> = m
+                .config_schema
+                .entries
+                .iter()
+                .map(|(key, entry)| {
+                    serde_json::json!({
+                        "key": key,
+                        "type": entry.field_type,
+                        "default": entry.default,
+                        "min": entry.min,
+                        "max": entry.max,
+                        "display": entry.display,
+                        "group": entry.group,
+                    })
+                })
+                .collect();
+            serde_json::json!({
+                "module": m.id,
+                "fields": fields,
+            })
+        })
+        .collect();
+
+    serde_json::json!({ "schema": schema_entries })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
