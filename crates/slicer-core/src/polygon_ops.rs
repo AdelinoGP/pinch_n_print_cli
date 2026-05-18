@@ -182,7 +182,12 @@ pub fn validate_polygon_simplicity(poly: &ExPolygon) -> Result<(), PolygonSimpli
 }
 
 /// Offsets polygons by `delta_mm` millimeters.
-pub fn offset(polygons: &[ExPolygon], delta_mm: f32, join: OffsetJoinType) -> Vec<ExPolygon> {
+pub fn offset(
+    polygons: &[ExPolygon],
+    delta_mm: f32,
+    join: OffsetJoinType,
+    arc_tolerance_mm: f32,
+) -> Vec<ExPolygon> {
     use clipper2_rust::inflate_paths_64;
     use clipper2_rust::{EndType, JoinType};
 
@@ -204,7 +209,14 @@ pub fn offset(polygons: &[ExPolygon], delta_mm: f32, join: OffsetJoinType) -> Ve
     // inflate_paths_64 signature: inflate_paths_64(&paths, delta, join_type, end_type, miter_limit, arc_tolerance)
     // We use EndType::Polygon for closed polygon offsetting
     // miter_limit and arc_tolerance can be defaults (2.0 and 0.0)
-    let result_paths = inflate_paths_64(&paths, delta_units, join_type, EndType::Polygon, 2.0, 0.0);
+    let result_paths = inflate_paths_64(
+        &paths,
+        delta_units,
+        join_type,
+        EndType::Polygon,
+        2.0,
+        (arc_tolerance_mm * 10_000.0) as f64,
+    );
 
     // Convert result paths back to ExPolygon
     // Note: Same limitation as clip_polygons - treats every path as separate ExPolygon with no holes

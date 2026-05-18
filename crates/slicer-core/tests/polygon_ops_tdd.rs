@@ -49,7 +49,7 @@ fn boolean_ops_produce_expected_presence_for_overlapping_squares() {
 #[test]
 fn offset_outward_expands_bounds() {
     let input = square(0.0, 0.0, 10.0, 10.0);
-    let expanded = offset(&[input], 0.4, OffsetJoinType::Miter);
+    let expanded = offset(&[input], 0.4, OffsetJoinType::Miter, 0.0);
 
     assert!(!expanded.is_empty(), "offset should return geometry");
 
@@ -78,6 +78,23 @@ fn degenerate_polygon_is_ignored() {
     let result = union(&[degenerate], &[normal]);
 
     assert_eq!(result.len(), 1, "degenerate geometry should be ignored");
+}
+
+#[test]
+fn offset_arc_tolerance_reduces_vertex_count() {
+    // Square contour offset by +1.0 with Round join, comparing arc_tolerance 0.0 vs 0.5.
+    // arc_tolerance 0.5 should produce strictly fewer vertices on the rounded corners.
+    let sq = square(0.0, 0.0, 10.0, 10.0);
+    let fine = offset(&[sq.clone()], 1.0, OffsetJoinType::Round, 0.0);
+    let coarse = offset(&[sq], 1.0, OffsetJoinType::Round, 0.5);
+    let fine_count: usize = fine.iter().map(|p| p.contour.points.len()).sum();
+    let coarse_count: usize = coarse.iter().map(|p| p.contour.points.len()).sum();
+    assert!(
+        coarse_count < fine_count,
+        "coarse={} not less than fine={}",
+        coarse_count,
+        fine_count
+    );
 }
 
 #[test]

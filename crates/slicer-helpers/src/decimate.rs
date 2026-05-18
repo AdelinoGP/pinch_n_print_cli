@@ -253,6 +253,102 @@ fn compact_mesh(
     )
 }
 
+// ── Polyline decimation (2-D, mm-space, f32) ──────────────────────────────────
+
+/// Simplify a 2-D polyline using an iterative Douglas-Peucker algorithm.
+///
+/// Operates in mm-space (`f32`). Both endpoints are always preserved.
+///
+/// * `tolerance_mm <= 0.0` — returns a clone of the input unchanged.
+/// * `pts.len() <= 2` — returns a clone of the input unchanged.
+pub fn simplify_polyline_mm(pts: &[(f32, f32)], tolerance_mm: f32) -> Vec<(f32, f32)> {
+    if pts.len() <= 2 || tolerance_mm <= 0.0 {
+        return pts.to_vec();
+    }
+
+    let last = pts.len() - 1;
+    let tol_sq = tolerance_mm * tolerance_mm;
+
+    let mut keep = vec![false; pts.len()];
+    keep[0] = true;
+    keep[last] = true;
+
+    let mut stack: Vec<(usize, usize)> = Vec::new();
+    stack.push((0, last));
+
+    while let Some((start, end)) = stack.pop() {
+        if end - start < 2 {
+            continue;
+        }
+
+        let (sx, sy) = pts[start];
+        let (ex, ey) = pts[end];
+        let dx = ex - sx;
+        let dy = ey - sy;
+        let chord_len_sq = dx * dx + dy * dy;
+
+        let mut max_dist_sq = 0.0f32;
+        let mut max_idx = start + 1;
+
+        for i in (start + 1)..end {
+            let (px, py) = pts[i];
+            let dist_sq = if chord_len_sq == 0.0 {
+                let ox = px - sx;
+                let oy = py - sy;
+                ox * ox + oy * oy
+            } else {
+                let cross = dx * (py - sy) - dy * (px - sx);
+                cross * cross / chord_len_sq
+            };
+            if dist_sq > max_dist_sq {
+                max_dist_sq = dist_sq;
+                max_idx = i;
+            }
+        }
+
+        if max_dist_sq > tol_sq {
+            keep[max_idx] = true;
+            stack.push((start, max_idx));
+            stack.push((max_idx, end));
+        }
+    }
+
+    pts.iter()
+        .enumerate()
+        .filter_map(|(i, &p)| if keep[i] { Some(p) } else { None })
+        .collect()
+}
+
+/// Remove short segments from a 2-D polyline.
+///
+/// Operates in mm-space (`f32`). The first and last points are always preserved.
+///
+/// * `min_len_mm <= 0.0` — returns a clone of the input unchanged.
+/// * `pts.len() <= 2` — returns a clone of the input unchanged.
+pub fn drop_short_segments_mm(pts: &[(f32, f32)], min_len_mm: f32) -> Vec<(f32, f32)> {
+    if pts.len() <= 2 || min_len_mm <= 0.0 {
+        return pts.to_vec();
+    }
+
+    let min_len_sq = min_len_mm * min_len_mm;
+    let mut result: Vec<(f32, f32)> = Vec::with_capacity(pts.len());
+    result.push(pts[0]);
+
+    let last_idx = pts.len() - 1;
+    for i in 1..last_idx {
+        let (lx, ly) = *result.last().unwrap();
+        let (px, py) = pts[i];
+        let dx = px - lx;
+        let dy = py - ly;
+        if dx * dx + dy * dy >= min_len_sq {
+            result.push(pts[i]);
+        }
+    }
+
+    result.push(pts[last_idx]);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,5 +412,51 @@ mod tests {
         assert_eq!(cfg.target_ratio, Some(0.25));
         assert!((cfg.max_error - 0.5).abs() < f32::EPSILON);
         assert!(cfg.aggressive);
+    }
+
+    // ── Polyline decimation tests ─────────────────────────────────────────────
+
+    #[test]
+    fn dp_collapses_collinear_to_endpoints() {
+        let pts = vec![(0.0f32, 0.0f32), (1.0, 0.0), (2.0, 0.0)];
+        let result = simplify_polyline_mm(&pts, 0.1);
+        assert_eq!(result, vec![(0.0f32, 0.0f32), (2.0, 0.0)]);
+    }
+
+    #[test]
+    fn dp_zero_tolerance_is_identity() {
+        let pts = vec![(0.0f32, 0.0f32), (1.0, 0.5), (2.0, -0.3), (3.0, 1.0)];
+        let result = simplify_polyline_mm(&pts, 0.0);
+        assert_eq!(result.len(), pts.len());
+        for (r, p) in result.iter().zip(pts.iter()) {
+            assert_eq!(r.0.to_bits(), p.0.to_bits());
+            assert_eq!(r.1.to_bits(), p.1.to_bits());
+        }
+    }
+
+    #[test]
+    fn dp_non_positive_tolerance_is_identity() {
+        let pts = vec![(0.0f32, 0.0f32), (1.0, 0.5), (2.0, -0.3), (3.0, 1.0)];
+        // tol = 0.0
+        let result_zero = simplify_polyline_mm(&pts, 0.0);
+        assert_eq!(result_zero.len(), pts.len());
+        for (r, p) in result_zero.iter().zip(pts.iter()) {
+            assert_eq!(r.0.to_bits(), p.0.to_bits());
+            assert_eq!(r.1.to_bits(), p.1.to_bits());
+        }
+        // tol = -0.5
+        let result_neg = simplify_polyline_mm(&pts, -0.5);
+        assert_eq!(result_neg.len(), pts.len());
+        for (r, p) in result_neg.iter().zip(pts.iter()) {
+            assert_eq!(r.0.to_bits(), p.0.to_bits());
+            assert_eq!(r.1.to_bits(), p.1.to_bits());
+        }
+    }
+
+    #[test]
+    fn min_segment_drops_micro_and_preserves_endpoints() {
+        let pts = vec![(0.0f32, 0.0f32), (0.01, 0.0), (0.02, 0.0), (1.0, 0.0)];
+        let result = drop_short_segments_mm(&pts, 0.05);
+        assert_eq!(result, vec![(0.0f32, 0.0f32), (1.0, 0.0)]);
     }
 }

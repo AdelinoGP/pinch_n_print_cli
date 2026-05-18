@@ -63,7 +63,7 @@ pub use execution_plan::{
     DEFAULT_REGION_MAP_CAP, MAX_LAYER_INDEX, STAGE_ORDER,
 };
 pub use gcode_emit::{
-    serialize_thumbnail_block, DefaultGCodeEmitter, DefaultGCodeSerializer,
+    serialize_thumbnail_block, tolerance_for_role, DefaultGCodeEmitter, DefaultGCodeSerializer,
     ThumbnailAwareSerializer,
 };
 pub use instance_pool::{

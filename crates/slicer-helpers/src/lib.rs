@@ -19,6 +19,7 @@ pub use repair::{RepairError, RepairResult, RepairStats, RepairWarning, MAX_REPA
 
 // Re-export public functions.
 pub use decimate::decimate;
+pub use decimate::{drop_short_segments_mm, simplify_polyline_mm};
 pub use import::step::{import_step, merge_step_meshes};
 pub use repair::repair;
 

@@ -281,7 +281,10 @@ fn main() {
                     layer: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
                     finalization: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
                     postpass: Box::new(WasmRuntimeDispatcher::new(Arc::clone(&engine))),
-                    emitter: Box::new(DefaultGCodeEmitter::new("slicer-host 0.1.0".into())),
+                    emitter: Box::new(
+                        DefaultGCodeEmitter::new("slicer-host 0.1.0".into())
+                            .with_resolved_config(default_resolved_config.clone()),
+                    ),
                     serializer: {
                         let relative = match config_source.get("use_relative_e_distances") {
                             Some(slicer_ir::ConfigValue::Bool(b)) => *b,

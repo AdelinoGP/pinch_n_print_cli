@@ -106,7 +106,7 @@ fn bench_offset(c: &mut Criterion) {
         let subject = square_grid(*n);
         g.bench_with_input(BenchmarkId::from_parameter(n * n), n, |b, _| {
             b.iter(|| {
-                let r = offset(black_box(&subject), 0.4, OffsetJoinType::Miter);
+                let r = offset(black_box(&subject), 0.4, OffsetJoinType::Miter, 0.0);
                 black_box(r);
             })
         });

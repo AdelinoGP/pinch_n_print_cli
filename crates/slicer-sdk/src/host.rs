@@ -250,7 +250,7 @@ pub fn offset_polygons(
     delta_mm: f32,
     join: OffsetJoinType,
 ) -> Vec<ExPolygon> {
-    slicer_core::polygon_ops::offset(polygons, delta_mm, to_core_join(join))
+    slicer_core::polygon_ops::offset(polygons, delta_mm, to_core_join(join), 0.0)
 }
 
 /// Simplifies a polygon by removing collinear vertices, mirroring the

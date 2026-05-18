@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 60_configurable-slicing-precision
 task_ids:
   - TASK-201

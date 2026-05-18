@@ -52,6 +52,8 @@ pub struct ArachnePerimeters {
     outer_speed_factor: f32,
     /// Speed factor for inner walls (inner_wall_speed / BASE_SPEED).
     inner_speed_factor: f32,
+    /// Arc tolerance for polygon offset operations (mm).
+    perimeter_arc_tolerance: f32,
 }
 
 impl ArachnePerimeters {
@@ -91,11 +93,17 @@ impl LayerModule for ArachnePerimeters {
             _ => BASE_SPEED,
         };
 
+        let perimeter_arc_tolerance = match config.get("perimeter_arc_tolerance") {
+            Some(ConfigValue::Float(v)) => *v as f32,
+            _ => 0.0125,
+        };
+
         Ok(Self {
             wall_count,
             line_width,
             outer_speed_factor: outer_wall_speed / BASE_SPEED,
             inner_speed_factor: inner_wall_speed / BASE_SPEED,
+            perimeter_arc_tolerance,
         })
     }
 
@@ -154,7 +162,12 @@ impl ArachnePerimeters {
                 -self.line_width
             };
 
-            let inset = offset(&current, delta, OffsetJoinType::Miter);
+            let inset = offset(
+                &current,
+                delta,
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
             if inset.is_empty() {
                 break;
             }
@@ -247,7 +260,12 @@ impl ArachnePerimeters {
         // Infill area: inset innermost boundary by half line width
         let innermost = &boundaries[boundaries.len() - 1];
         if !innermost.is_empty() {
-            let infill = offset(innermost, -(self.line_width / 2.0), OffsetJoinType::Miter);
+            let infill = offset(
+                innermost,
+                -(self.line_width / 2.0),
+                OffsetJoinType::Miter,
+                self.perimeter_arc_tolerance,
+            );
             if !infill.is_empty() {
                 let _ = output.set_infill_areas(infill);
             }

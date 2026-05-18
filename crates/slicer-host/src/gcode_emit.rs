@@ -25,6 +25,7 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
+use slicer_helpers::{drop_short_segments_mm, simplify_polyline_mm};
 use slicer_ir::{
     ConfigValue, ExtrusionRole, GCodeCommand, GCodeIR, LayerAnnotationKind, LayerCollectionIR,
     PrintMetadata, ResolvedConfig,
@@ -131,6 +132,10 @@ pub struct DefaultGCodeEmitter {
     slicer_version: String,
     /// Feedrate configuration.
     feedrate_config: FeedrateConfig,
+    /// Decimal places for XYZ coordinate values in emitted GCode comments (default 3).
+    gcode_xy_decimals: u32,
+    /// Resolved slicer config for precision / simplification parameters.
+    resolved_config: ResolvedConfig,
 }
 
 impl DefaultGCodeEmitter {
@@ -139,6 +144,8 @@ impl DefaultGCodeEmitter {
         Self {
             slicer_version,
             feedrate_config: FeedrateConfig::default(),
+            gcode_xy_decimals: 3,
+            resolved_config: ResolvedConfig::default(),
         }
     }
 
@@ -147,7 +154,15 @@ impl DefaultGCodeEmitter {
         Self {
             slicer_version,
             feedrate_config,
+            gcode_xy_decimals: 3,
+            resolved_config: ResolvedConfig::default(),
         }
+    }
+
+    /// Sets the resolved slicer config (precision / simplification parameters).
+    pub fn with_resolved_config(mut self, cfg: ResolvedConfig) -> Self {
+        self.resolved_config = cfg;
+        self
     }
 
     /// Resolves the feedrate (in mm/min) for a given extrusion role, speed factor multiplier,
@@ -260,6 +275,32 @@ fn orca_type_label(role: &ExtrusionRole) -> &'static str {
     }
 }
 
+/// Return the D-P simplification tolerance (mm) for a given extrusion role.
+///
+/// Exhaustive — adding an ExtrusionRole variant must force a compile error here so
+/// the new variant gets an explicit precision policy rather than silently inheriting one.
+pub fn tolerance_for_role(role: &ExtrusionRole, cfg: &ResolvedConfig) -> f32 {
+    match role {
+        // Perimeter / wall family and skirt/brim: tightest tolerance.
+        ExtrusionRole::OuterWall
+        | ExtrusionRole::InnerWall
+        | ExtrusionRole::ThinWall
+        | ExtrusionRole::Skirt => cfg.gcode_resolution,
+        // Infill family: relaxed tolerance.
+        ExtrusionRole::SparseInfill
+        | ExtrusionRole::TopSolidInfill
+        | ExtrusionRole::BottomSolidInfill
+        | ExtrusionRole::BridgeInfill
+        | ExtrusionRole::Ironing
+        | ExtrusionRole::WipeTower
+        | ExtrusionRole::PrimeTower => cfg.infill_resolution,
+        // Support family: support tolerance.
+        ExtrusionRole::SupportMaterial | ExtrusionRole::SupportInterface => cfg.support_resolution,
+        // Travel and other custom moves: no simplification.
+        ExtrusionRole::Custom(_) => 0.0,
+    }
+}
+
 impl GCodeEmitter for DefaultGCodeEmitter {
     fn emit_gcode(
         &self,
@@ -311,10 +352,13 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 text: ";LAYER_CHANGE".to_string(),
             });
             commands.push(GCodeCommand::Raw {
-                text: format!(";Z:{}", format_coord(layer_z)),
+                text: format!(";Z:{}", format_xyz(layer_z, self.gcode_xy_decimals)),
             });
             commands.push(GCodeCommand::Raw {
-                text: format!(";HEIGHT:{}", format_coord(height_delta)),
+                text: format!(
+                    ";HEIGHT:{}",
+                    format_xyz(height_delta, self.gcode_xy_decimals)
+                ),
             });
 
             // Cross-layer tool reset: path-optimization-default only records
@@ -389,9 +433,49 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 }
                 prev_role = Some(role.clone());
 
+                // Apply per-role polyline simplification (D-P + min-segment).
+                // Extract XY mm-pairs for the helpers, then remap kept indices
+                // back onto the original Point3WithWidth slice so metadata is preserved.
+                let tol = tolerance_for_role(role, &self.resolved_config);
+                let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
+                let simplified_points: Vec<&slicer_ir::Point3WithWidth> = if points.len() >= 2 {
+                    let xy: Vec<(f32, f32)> = points.iter().map(|p| (p.x, p.y)).collect();
+                    let simplified_xy = if tol > 0.0 {
+                        simplify_polyline_mm(&xy, tol)
+                    } else {
+                        xy.clone()
+                    };
+                    let pruned_xy = if self.resolved_config.min_segment_length > 0.0 && !is_travel {
+                        drop_short_segments_mm(
+                            &simplified_xy,
+                            self.resolved_config.min_segment_length,
+                        )
+                    } else {
+                        simplified_xy
+                    };
+                    // Map kept (x,y) pairs back to original point indices.
+                    // Both slices are in emission order; match on coordinate identity.
+                    let mut kept = Vec::with_capacity(pruned_xy.len());
+                    let mut search_from = 0usize;
+                    for (kx, ky) in &pruned_xy {
+                        for i in search_from..points.len() {
+                            if (points[i].x - kx).abs() < f32::EPSILON
+                                && (points[i].y - ky).abs() < f32::EPSILON
+                            {
+                                kept.push(&points[i]);
+                                search_from = i + 1;
+                                break;
+                            }
+                        }
+                    }
+                    kept
+                } else {
+                    points.iter().collect()
+                };
+
                 // Emit Move commands for each point in the path
                 let mut prev_point: Option<&slicer_ir::Point3WithWidth> = None;
-                for point in points {
+                for point in simplified_points {
                     // Calculate extrusion (E) based on travel distance and width
                     let e_delta = if let Some(prev) = prev_point {
                         // Calculate 3D distance
@@ -609,6 +693,8 @@ pub struct DefaultGCodeSerializer {
     top_surface_line_width: f32,
     /// Extrusion width for support material in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.35).
     support_line_width: f32,
+    /// Decimal places for XYZ coordinate values in serialized GCode (default 3).
+    gcode_xy_decimals: u32,
 }
 
 impl DefaultGCodeSerializer {
@@ -633,6 +719,7 @@ impl DefaultGCodeSerializer {
             sparse_infill_line_width: 0.45,
             top_surface_line_width: 0.42,
             support_line_width: 0.35,
+            gcode_xy_decimals: 3,
         }
     }
 
@@ -1090,13 +1177,13 @@ impl GCodeSerializer for DefaultGCodeSerializer {
                     let cmd = if is_travel { "G0" } else { "G1" };
                     write!(output, "{cmd}").unwrap();
                     if let Some(x_val) = x {
-                        write!(output, " X{}", format_coord(*x_val)).unwrap();
+                        write!(output, " X{}", format_xyz(*x_val, self.gcode_xy_decimals)).unwrap();
                     }
                     if let Some(y_val) = y {
-                        write!(output, " Y{}", format_coord(*y_val)).unwrap();
+                        write!(output, " Y{}", format_xyz(*y_val, self.gcode_xy_decimals)).unwrap();
                     }
                     if let Some(z_val) = z {
-                        write!(output, " Z{}", format_coord(*z_val)).unwrap();
+                        write!(output, " Z{}", format_xyz(*z_val, self.gcode_xy_decimals)).unwrap();
                     }
                     if let Some(e_val) = e {
                         if self.relative {
@@ -1301,9 +1388,19 @@ pub fn reconcile_finalization_travel(
 }
 
 /// Format a coordinate value, trimming unnecessary trailing zeros.
-fn format_coord(value: f32) -> String {
+/// Uses fixed 4-decimal precision (legacy behavior for F/E/temperature emit).
+pub fn format_coord(value: f32) -> String {
     // Format with enough precision, then trim trailing zeros
     let s = format!("{:.4}", value);
+    let s = s.trim_end_matches('0');
+    let s = s.trim_end_matches('.');
+    s.to_string()
+}
+
+/// Format an XYZ coordinate value with configurable decimal precision,
+/// trimming unnecessary trailing zeros.
+pub fn format_xyz(value: f32, decimals: u32) -> String {
+    let s = format!("{:.*}", decimals as usize, value);
     let s = s.trim_end_matches('0');
     let s = s.trim_end_matches('.');
     s.to_string()

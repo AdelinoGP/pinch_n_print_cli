@@ -2409,7 +2409,7 @@ impl hs::Host for HostExecutionContext {
             hs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
             hs::OffsetJoinType::Square => slicer_core::polygon_ops::OffsetJoinType::Square,
         };
-        let result = slicer_core::polygon_ops::offset(&ir_polys, delta_mm, ir_join);
+        let result = slicer_core::polygon_ops::offset(&ir_polys, delta_mm, ir_join, 0.0);
         Ok(ir_to_wit_expolygons(&result))
     }
 
@@ -3190,7 +3190,7 @@ pub fn ir_offset_polygons(
     delta_mm: f32,
     join: slicer_core::polygon_ops::OffsetJoinType,
 ) -> Vec<slicer_ir::ExPolygon> {
-    slicer_core::polygon_ops::offset(polys, delta_mm, join)
+    slicer_core::polygon_ops::offset(polys, delta_mm, join, 0.0)
 }
 
 /// Simplify a polygon by removing collinear points.

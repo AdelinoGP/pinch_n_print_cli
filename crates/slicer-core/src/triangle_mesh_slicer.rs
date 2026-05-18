@@ -6,6 +6,8 @@ use slicer_ir::{ExPolygon, IndexedTriangleSet, Point2, Point3, Polygon};
 
 use std::collections::HashMap;
 
+use crate::polygon_ops::{self, OffsetJoinType};
+
 /// Represents a line segment intersection with a slicing plane.
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -378,6 +380,20 @@ fn is_collinear(a: Point2, b: Point2, c: Point2) -> bool {
     let bcx = c.x - b.x;
     let bcy = c.y - b.y;
     abx * bcy - aby * bcx == 0
+}
+
+/// Applies the OrcaSlicer `slice_closing_radius` inflate/deflate round-trip to a layer's
+/// polygons.
+///
+/// Offsets all polygons outward by `r` mm (Round join), then inward by `r` mm.  The net
+/// effect fuses cracks and gaps narrower than `2r` while leaving wider features unchanged.
+/// When `r == 0.0` this function must NOT be called (gate at the call site).
+///
+/// This is the testable unit for AC-7 and NEG-3; call it from the host slice stage after
+/// `slice_mesh_ex` returns.
+pub fn apply_slice_closing_radius(polygons: Vec<ExPolygon>, r: f32) -> Vec<ExPolygon> {
+    let inflated = polygon_ops::offset(&polygons, r, OffsetJoinType::Round, 0.0);
+    polygon_ops::offset(&inflated, -r, OffsetJoinType::Round, 0.0)
 }
 
 /// Convert polygons to ExPolygons using boolean union

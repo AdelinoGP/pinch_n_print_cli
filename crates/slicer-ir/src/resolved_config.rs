@@ -375,6 +375,22 @@ declare_resolved_config! {
     /// Module ID holding `claim:sparse-fill`.
     plain                        sparse_fill_holder: String = String::from("rectilinear-infill");
 
+    // Precision / resolution
+    /// G-code path resolution in mm (OrcaSlicer: gcode_resolution).
+    cli "gcode_resolution"       gcode_resolution: f32 = 0.0125 => extract_float;
+    /// Infill path resolution in mm (OrcaSlicer: infill_anchor_max).
+    cli "infill_resolution"      infill_resolution: f32 = 0.04 => extract_float;
+    /// Support path resolution in mm (OrcaSlicer: support_resolution).
+    cli "support_resolution"     support_resolution: f32 = 0.0375 => extract_float;
+    /// Minimum segment length in mm (OrcaSlicer: min_length_factor).
+    cli "min_segment_length"     min_segment_length: f32 = 0.05 => extract_float;
+    /// Number of decimal places for G-code XY coordinates.
+    cli "gcode_xy_decimals"      gcode_xy_decimals: u32 = 3 => extract_int_as_u32;
+    /// Arc tolerance for perimeter arcs in mm (OrcaSlicer: arc_fitting_tolerance).
+    cli "perimeter_arc_tolerance" perimeter_arc_tolerance: f32 = 0.0125 => extract_float;
+    /// Slice closing radius in mm (OrcaSlicer: slice_closing_radius).
+    cli "slice_closing_radius"   slice_closing_radius: f32 = 0.049 => extract_float;
+
     // Support
     /// Whether support is enabled.
     cli "support_enabled"        support_enabled: bool = false => extract_bool;

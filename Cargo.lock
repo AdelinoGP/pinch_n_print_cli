@@ -2325,6 +2325,7 @@ dependencies = [
  "serde_json",
  "skirt-brim",
  "slicer-core",
+ "slicer-helpers",
  "slicer-ir",
  "slicer-sdk",
  "stl_io",

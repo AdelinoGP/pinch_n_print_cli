@@ -297,6 +297,7 @@ pub fn assemble_bridge_areas(
             &intersection_result,
             br.expansion_margin_mm,
             OffsetJoinType::Miter,
+            0.0,
         );
 
         // Intersect expanded result back with infill_areas to keep inside region

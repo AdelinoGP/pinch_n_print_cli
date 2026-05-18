@@ -39,6 +39,8 @@ pub struct ClassicPerimeters {
     outer_speed_factor: f32,
     /// Speed factor for inner walls (inner_wall_speed / BASE_SPEED).
     inner_speed_factor: f32,
+    /// Arc tolerance for polygon offset operations (mm).
+    perimeter_arc_tolerance: f32,
 }
 
 #[slicer_module]
@@ -66,11 +68,17 @@ impl LayerModule for ClassicPerimeters {
             _ => BASE_SPEED,
         };
 
+        let perimeter_arc_tolerance = match config.get("perimeter_arc_tolerance") {
+            Some(ConfigValue::Float(v)) => *v as f32,
+            _ => 0.0125,
+        };
+
         Ok(Self {
             wall_count,
             line_width,
             outer_speed_factor: outer_wall_speed / BASE_SPEED,
             inner_speed_factor: inner_wall_speed / BASE_SPEED,
+            perimeter_arc_tolerance,
         })
     }
 
@@ -109,7 +117,12 @@ impl LayerModule for ClassicPerimeters {
                     -self.line_width
                 };
 
-                let inset_result = offset(&current_polygons, inset_delta, OffsetJoinType::Miter);
+                let inset_result = offset(
+                    &current_polygons,
+                    inset_delta,
+                    OffsetJoinType::Miter,
+                    self.perimeter_arc_tolerance,
+                );
                 if inset_result.is_empty() {
                     break;
                 }
@@ -185,6 +198,7 @@ impl LayerModule for ClassicPerimeters {
                     &current_polygons,
                     -(self.line_width / 2.0),
                     OffsetJoinType::Miter,
+                    self.perimeter_arc_tolerance,
                 );
                 if !infill.is_empty() {
                     let _ = output.set_infill_areas(infill);
