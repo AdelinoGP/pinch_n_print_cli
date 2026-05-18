@@ -13,10 +13,10 @@ use std::sync::Arc;
 use slicer_host::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_host::{
     build_config_schema_json, build_execution_plan, build_wasm_instance_pool,
-    load_modules_from_roots, Blackboard, CompiledModule, CompiledStage, ExecutionModuleBinding,
-    ExecutionPlan, ExecutionPlanRequest, FinalizationError, FinalizationOutput,
-    FinalizationStageRunner, GCodeEmitter, GCodeSerializer, IrAccessMask, LayerArena,
-    LayerStageError, LayerStageOutput, LayerStageRunner, PostpassError, PostpassOutput,
+    load_modules_from_roots, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
+    ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest, FinalizationError,
+    FinalizationOutput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer, IrAccessMask,
+    LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner, PostpassError, PostpassOutput,
     PostpassStageRunner, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
     SortedStageModules, WasmArtifactMetadata,
 };
@@ -352,20 +352,15 @@ fn manifest_driven_pipeline_runs_to_completion() {
         )
         .unwrap(),
     );
-    let compiled_module = CompiledModule {
-        module_id: m.id.clone(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask {
+    let compiled_module = CompiledModuleBuilder::new(m.id.clone(), pool)
+        .ir_read_mask(IrAccessMask {
             paths: m.ir_reads.clone(),
-        },
-        ir_write_mask: IrAccessMask {
+        })
+        .ir_write_mask(IrAccessMask {
             paths: m.ir_writes.clone(),
-        },
-        config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-        claims: Vec::new(),
-        wasm_component: None,
-        requires_modules: Vec::new(),
-    };
+        })
+        .config_view(Arc::new(ConfigView::from_map(HashMap::new())))
+        .build();
 
     let plan = ExecutionPlan {
         prepass_stages: Vec::new(),

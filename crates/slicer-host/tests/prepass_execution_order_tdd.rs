@@ -10,11 +10,12 @@ use std::sync::Arc;
 
 use slicer_host::{
     build_wasm_instance_pool, instance_pool::WasmArtifactMetadata, Blackboard,
-    BlackboardPrepassSlot, CompiledModule, CompiledStage, ConfigSchema, ExecutionPlan,
-    IrAccessMask, LoadedModule, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
+    BlackboardPrepassSlot, CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan,
+    LoadedModuleBuilder, PrepassExecutionError, PrepassStageOutput,
+    PrepassStageRunner,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectLayerRef,
+    BoundingBox3, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectLayerRef,
     ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SupportGeometryIR,
     SupportPlanIR, SurfaceClassificationIR, Transform3d,
 };
@@ -125,27 +126,18 @@ fn blackboard_with_prereqs(mesh: MeshIR) -> Blackboard {
 }
 
 fn compiled_stub_module(stage_id: &str, module_id: &str) -> CompiledModule {
-    let loaded = LoadedModule {
-        id: module_id.into(),
-        version: semver(0, 1, 0),
-        stage: stage_id.to_string(),
-        wit_world: "slicer:world-prepass@1.0.0".to_string(),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: vec!["support-planner".to_string()],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: false,
-        wasm_path: PathBuf::from(format!("fixtures/{module_id}.wasm")),
-        placeholder_wasm: false,
-    };
+    let loaded = LoadedModuleBuilder::new(
+        module_id,
+        semver(0, 1, 0),
+        stage_id,
+        "slicer:world-prepass@1.0.0",
+        PathBuf::from(format!("fixtures/{module_id}.wasm")),
+    )
+    .claims(vec!["support-planner".to_string()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
             &loaded,
@@ -156,16 +148,7 @@ fn compiled_stub_module(stage_id: &str, module_id: &str) -> CompiledModule {
         )
         .expect("fixture pool must build"),
     );
-    CompiledModule {
-        module_id: loaded.id.clone(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-        claims: Vec::new(),
-        wasm_component: None,
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(loaded.id.clone(), pool).build()
 }
 
 /// A stub runner that returns an empty `SupportPlanIR` for any stage call,

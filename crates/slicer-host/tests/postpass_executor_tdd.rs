@@ -22,9 +22,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_host::{
-    build_wasm_instance_pool, execute_postpass, Blackboard, CompiledModule, CompiledStage,
-    ConfigSchema, ExecutionModuleBinding, ExecutionPlan, GCodeEmitter, GCodeSerializer,
-    PostpassError, PostpassOutput, PostpassStageRunner, WasmArtifactMetadata,
+    build_wasm_instance_pool, execute_postpass, Blackboard, CompiledModule, CompiledModuleBuilder,
+    CompiledStage, ExecutionModuleBinding, ExecutionPlan, GCodeEmitter, GCodeSerializer,
+    LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageRunner, WasmArtifactMetadata,
 };
 use slicer_ir::{
     BoundingBox3, ConfigView, ExtrusionRole, GCodeCommand, GCodeIR, LayerCollectionIR, MeshIR,
@@ -675,44 +675,23 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         wasm_component: None,
     };
 
-    CompiledModule {
-        module_id: binding.module.id.clone(),
-        instance_pool: Arc::clone(&binding.instance_pool),
-        ir_read_mask: slicer_host::IrAccessMask {
-            paths: binding.module.ir_reads.clone(),
-        },
-        ir_write_mask: slicer_host::IrAccessMask {
-            paths: binding.module.ir_writes.clone(),
-        },
-        config_view: Arc::clone(&binding.config_view),
-        claims: Vec::new(),
-        wasm_component: None,
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(binding.module.id.clone(), Arc::clone(&binding.instance_pool))
+        .config_view(Arc::clone(&binding.config_view))
+        .build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_host::LoadedModule {
-    slicer_host::LoadedModule {
-        id: String::from(id),
-        version: semver(1, 0, 0),
-        stage: String::from(stage),
-        wit_world: String::from("slicer:world-postpass@1.0.0"),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: false,
-        wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        stage,
+        "slicer:world-postpass@1.0.0",
+        PathBuf::from(format!("fixtures/{id}.wasm")),
+    )
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build()
 }
 
 fn mesh_fixture() -> MeshIR {

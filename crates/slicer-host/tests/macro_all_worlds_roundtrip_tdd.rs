@@ -34,8 +34,9 @@ use slicer_host::wit_host::{
     BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
 };
 use slicer_host::{
-    Blackboard, CompiledModule, FinalizationOutput, FinalizationStageRunner, IrAccessMask,
-    LoadedModule, PrepassStageOutput, PrepassStageRunner, WasmEngine, WasmRuntimeDispatcher,
+    Blackboard, CompiledModule, CompiledModuleBuilder, FinalizationOutput, FinalizationStageRunner,
+    LoadedModule, LoadedModuleBuilder, PrepassStageOutput, PrepassStageRunner, WasmEngine,
+    WasmRuntimeDispatcher,
 };
 use slicer_ir::{ConfigValue, ConfigView, GlobalLayer, StageId};
 
@@ -71,27 +72,18 @@ fn empty_mesh_ir() -> Arc<slicer_ir::MeshIR> {
 }
 
 fn make_loaded_module(id: &str, stage: &str, wit_world: &str) -> LoadedModule {
-    LoadedModule {
-        id: id.to_string(),
-        version: semver(1, 0, 0),
-        stage: stage.to_string(),
-        wit_world: wit_world.to_string(),
-        ir_reads: Vec::new(),
-        ir_writes: Vec::new(),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: Default::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: true,
-        wasm_path: std::path::PathBuf::from("/dev/null"),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        stage,
+        wit_world,
+        std::path::PathBuf::from("/dev/null"),
+    )
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .build()
 }
 
 fn guest_component_path(name: &str) -> PathBuf {
@@ -132,16 +124,10 @@ fn make_module(
         )
         .expect("build instance pool"),
     );
-    CompiledModule {
-        module_id: module_id.to_string(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: Vec::new() },
-        ir_write_mask: IrAccessMask { paths: Vec::new() },
-        config_view: Arc::new(config),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(module_id, pool)
+        .config_view(Arc::new(config))
+        .wasm_component(Some(component))
+        .build()
 }
 
 fn intentional_error_config(code: i64) -> ConfigView {

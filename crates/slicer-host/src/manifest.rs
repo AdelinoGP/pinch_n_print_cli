@@ -463,51 +463,74 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
         });
     }
 
+    let module = LoadedModuleBuilder::new(
+        module_id,
+        version,
+        stage,
+        wit_world,
+        wasm_path.to_path_buf(),
+    )
+    .ir_reads(required_string_array(
+        &root,
+        manifest_path,
+        "ir-access.reads",
+    )?)
+    .ir_writes(required_string_array(
+        &root,
+        manifest_path,
+        "ir-access.writes",
+    )?)
+    .claims(validate_claim_ids(
+        &required_string_array(&root, manifest_path, "claims.holds")?,
+        manifest_path,
+    )?)
+    .requires_claims(required_string_array(
+        &root,
+        manifest_path,
+        "claims.requires",
+    )?)
+    .incompatible_with(required_string_array(
+        &root,
+        manifest_path,
+        "compatibility.incompatible-with",
+    )?)
+    .requires_modules(required_string_array(
+        &root,
+        manifest_path,
+        "compatibility.requires",
+    )?)
+    .min_host_version(required_semver(
+        &root,
+        manifest_path,
+        "compatibility.min-host-version",
+    )?)
+    .min_ir_schema(required_semver(
+        &root,
+        manifest_path,
+        "compatibility.min-ir-schema",
+    )?)
+    .max_ir_schema(required_semver(
+        &root,
+        manifest_path,
+        "compatibility.max-ir-schema",
+    )?)
+    .config_schema(config_schema)
+    .overridable_per_region(required_string_array(
+        &root,
+        manifest_path,
+        "config.overridable-per-region.keys",
+    )?)
+    .overridable_per_layer(required_string_array(
+        &root,
+        manifest_path,
+        "config.overridable-per-layer.keys",
+    )?)
+    .layer_parallel_safe(layer_parallel_safe)
+    .placeholder_wasm(placeholder_wasm)
+    .build();
+
     Ok(IngestedManifest {
-        module: LoadedModule {
-            id: module_id,
-            version,
-            stage,
-            wit_world,
-            ir_reads: required_string_array(&root, manifest_path, "ir-access.reads")?,
-            ir_writes: required_string_array(&root, manifest_path, "ir-access.writes")?,
-            claims: validate_claim_ids(
-                &required_string_array(&root, manifest_path, "claims.holds")?,
-                manifest_path,
-            )?,
-            requires_claims: required_string_array(&root, manifest_path, "claims.requires")?,
-            incompatible_with: required_string_array(
-                &root,
-                manifest_path,
-                "compatibility.incompatible-with",
-            )?,
-            requires_modules: required_string_array(
-                &root,
-                manifest_path,
-                "compatibility.requires",
-            )?,
-            min_host_version: required_semver(
-                &root,
-                manifest_path,
-                "compatibility.min-host-version",
-            )?,
-            min_ir_schema: required_semver(&root, manifest_path, "compatibility.min-ir-schema")?,
-            max_ir_schema: required_semver(&root, manifest_path, "compatibility.max-ir-schema")?,
-            config_schema,
-            overridable_per_region: required_string_array(
-                &root,
-                manifest_path,
-                "config.overridable-per-region.keys",
-            )?,
-            overridable_per_layer: required_string_array(
-                &root,
-                manifest_path,
-                "config.overridable-per-layer.keys",
-            )?,
-            layer_parallel_safe,
-            wasm_path: wasm_path.to_path_buf(),
-            placeholder_wasm,
-        },
+        module,
         diagnostics,
     })
 }

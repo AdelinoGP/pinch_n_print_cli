@@ -25,8 +25,8 @@ use std::sync::Arc;
 
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_host::{
-    Blackboard, CompiledModule, IrAccessMask, LoadedModule, PostpassOutput, PostpassStageRunner,
-    WasmEngine, WasmRuntimeDispatcher,
+    Blackboard, CompiledModule, CompiledModuleBuilder, LoadedModule, LoadedModuleBuilder,
+    PostpassOutput, PostpassStageRunner, WasmEngine, WasmRuntimeDispatcher,
 };
 use slicer_ir::{ConfigValue, ConfigView, StageId};
 
@@ -39,27 +39,17 @@ fn semver(major: u32, minor: u32, patch: u32) -> slicer_ir::SemVer {
 }
 
 fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
-    LoadedModule {
-        id: id.to_string(),
-        version: semver(1, 0, 0),
-        stage: stage.to_string(),
-        wit_world: "slicer:world-postpass@1.0.0".to_string(),
-        ir_reads: Vec::new(),
-        ir_writes: Vec::new(),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: Default::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: false,
-        wasm_path: std::path::PathBuf::from("/dev/null"),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        stage,
+        "slicer:world-postpass@1.0.0",
+        std::path::PathBuf::from("/dev/null"),
+    )
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build()
 }
 
 const GUEST_COMPONENT: &str = concat!(
@@ -122,16 +112,10 @@ fn make_module_with_config(
         )
         .expect("build instance pool"),
     );
-    CompiledModule {
-        module_id: module_id.to_string(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: Vec::new() },
-        ir_write_mask: IrAccessMask { paths: Vec::new() },
-        config_view: Arc::new(config),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(module_id, pool)
+        .config_view(Arc::new(config))
+        .wasm_component(Some(component))
+        .build()
 }
 
 fn text_of(out: PostpassOutput) -> String {

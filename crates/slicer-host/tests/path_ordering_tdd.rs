@@ -9,10 +9,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_host::instance_pool::build_wasm_instance_pool;
-use slicer_host::manifest::LoadedModule;
+use slicer_host::manifest::LoadedModuleBuilder;
 use slicer_host::{
-    execute_per_layer, Blackboard, CompiledModule, CompiledStage, ConfigSchema,
-    ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LayerArena, LayerStageError,
+    execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
+    ExecutionModuleBinding, ExecutionPlan, LayerArena, LayerStageError,
     LayerStageOutput, LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmRuntimeDispatcher,
 };
 
@@ -90,39 +90,18 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
     let path_opt_component = load_path_optimization_module(&engine);
 
     // Build a proper CompiledModule with the real wasm_component.
-    let path_opt_loaded = LoadedModule {
-        id: "com.core.path-optimization-default".to_string(),
-        version: semver(),
-        stage: "Layer::PathOptimization".to_string(),
-        wit_world: String::new(),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: vec![],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        max_ir_schema: SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
-        placeholder_wasm: false,
-    };
+    let path_opt_loaded = LoadedModuleBuilder::new(
+        "com.core.path-optimization-default",
+        semver(),
+        "Layer::PathOptimization",
+        String::new(),
+        PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
+    )
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .layer_parallel_safe(true)
+    .build();
     let path_opt_pool = Arc::new(
         build_wasm_instance_pool(
             &path_opt_loaded,
@@ -133,16 +112,11 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module = Arc::new(CompiledModule {
-        module_id: path_opt_loaded.id.clone(),
-        instance_pool: Arc::clone(&path_opt_pool),
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-        claims: Vec::new(),
-        wasm_component: Some(path_opt_component),
-        requires_modules: Vec::new(),
-    });
+    let path_opt_module = Arc::new(
+        CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+            .wasm_component(Some(path_opt_component))
+            .build(),
+    );
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let runner =
@@ -287,39 +261,18 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
 
-    let path_opt_loaded = LoadedModule {
-        id: "com.core.path-optimization-default".to_string(),
-        version: semver(),
-        stage: "Layer::PathOptimization".to_string(),
-        wit_world: String::new(),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: vec![],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        max_ir_schema: SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
-        placeholder_wasm: false,
-    };
+    let path_opt_loaded = LoadedModuleBuilder::new(
+        "com.core.path-optimization-default",
+        semver(),
+        "Layer::PathOptimization",
+        String::new(),
+        PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
+    )
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .layer_parallel_safe(true)
+    .build();
     let path_opt_pool = Arc::new(
         build_wasm_instance_pool(
             &path_opt_loaded,
@@ -330,16 +283,11 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module = Arc::new(CompiledModule {
-        module_id: path_opt_loaded.id.clone(),
-        instance_pool: Arc::clone(&path_opt_pool),
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-        claims: Vec::new(),
-        wasm_component: Some(path_opt_component),
-        requires_modules: Vec::new(),
-    });
+    let path_opt_module = Arc::new(
+        CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+            .wasm_component(Some(path_opt_component))
+            .build(),
+    );
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let runner =
@@ -400,39 +348,18 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
 
-    let path_opt_loaded = LoadedModule {
-        id: "com.core.path-optimization-default".to_string(),
-        version: semver(),
-        stage: "Layer::PathOptimization".to_string(),
-        wit_world: String::new(),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: vec![],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        max_ir_schema: SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
-        placeholder_wasm: false,
-    };
+    let path_opt_loaded = LoadedModuleBuilder::new(
+        "com.core.path-optimization-default",
+        semver(),
+        "Layer::PathOptimization",
+        String::new(),
+        PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
+    )
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .layer_parallel_safe(true)
+    .build();
     let path_opt_pool = Arc::new(
         build_wasm_instance_pool(
             &path_opt_loaded,
@@ -443,16 +370,11 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module = Arc::new(CompiledModule {
-        module_id: path_opt_loaded.id.clone(),
-        instance_pool: Arc::clone(&path_opt_pool),
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-        claims: Vec::new(),
-        wasm_component: Some(path_opt_component),
-        requires_modules: Vec::new(),
-    });
+    let path_opt_module = Arc::new(
+        CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+            .wasm_component(Some(path_opt_component))
+            .build(),
+    );
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let runner =
@@ -511,39 +433,18 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
         let engine = Arc::new(WasmEngine::new());
         let path_opt_component = load_path_optimization_module(&engine);
 
-        let path_opt_loaded = LoadedModule {
-            id: "com.core.path-optimization-default".to_string(),
-            version: semver(),
-            stage: "Layer::PathOptimization".to_string(),
-            wit_world: String::new(),
-            ir_reads: vec![],
-            ir_writes: vec![],
-            claims: vec![],
-            requires_claims: vec![],
-            incompatible_with: vec![],
-            requires_modules: vec![],
-            min_host_version: SemVer {
-                major: 0,
-                minor: 1,
-                patch: 0,
-            },
-            min_ir_schema: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            max_ir_schema: SemVer {
-                major: 2,
-                minor: 0,
-                patch: 0,
-            },
-            config_schema: ConfigSchema::default(),
-            overridable_per_region: vec![],
-            overridable_per_layer: vec![],
-            layer_parallel_safe: true,
-            wasm_path: PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
-            placeholder_wasm: false,
-        };
+        let path_opt_loaded = LoadedModuleBuilder::new(
+            "com.core.path-optimization-default",
+            semver(),
+            "Layer::PathOptimization",
+            String::new(),
+            PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
+        )
+        .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+        .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+        .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+        .layer_parallel_safe(true)
+        .build();
         let path_opt_pool = Arc::new(
             build_wasm_instance_pool(
                 &path_opt_loaded,
@@ -554,16 +455,11 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             )
             .expect("fixture pool"),
         );
-        let path_opt_module = Arc::new(CompiledModule {
-            module_id: path_opt_loaded.id.clone(),
-            instance_pool: Arc::clone(&path_opt_pool),
-            ir_read_mask: IrAccessMask { paths: vec![] },
-            ir_write_mask: IrAccessMask { paths: vec![] },
-            config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-            claims: Vec::new(),
-            wasm_component: Some(path_opt_component),
-            requires_modules: Vec::new(),
-        });
+        let path_opt_module = Arc::new(
+            CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+                .wasm_component(Some(path_opt_component))
+                .build(),
+        );
 
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
         let runner =
@@ -617,39 +513,18 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
 
-    let path_opt_loaded = LoadedModule {
-        id: "com.core.path-optimization-default".to_string(),
-        version: semver(),
-        stage: "Layer::PathOptimization".to_string(),
-        wit_world: String::new(),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: vec![],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        max_ir_schema: SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
-        placeholder_wasm: false,
-    };
+    let path_opt_loaded = LoadedModuleBuilder::new(
+        "com.core.path-optimization-default",
+        semver(),
+        "Layer::PathOptimization",
+        String::new(),
+        PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
+    )
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .layer_parallel_safe(true)
+    .build();
     let path_opt_pool = Arc::new(
         build_wasm_instance_pool(
             &path_opt_loaded,
@@ -660,16 +535,11 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module = Arc::new(CompiledModule {
-        module_id: path_opt_loaded.id.clone(),
-        instance_pool: Arc::clone(&path_opt_pool),
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-        claims: Vec::new(),
-        wasm_component: Some(path_opt_component),
-        requires_modules: Vec::new(),
-    });
+    let path_opt_module = Arc::new(
+        CompiledModuleBuilder::new(path_opt_loaded.id.clone(), Arc::clone(&path_opt_pool))
+            .wasm_component(Some(path_opt_component))
+            .build(),
+    );
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let runner =
@@ -879,43 +749,18 @@ fn stage(stage_id: &str, module_id: &str) -> CompiledStage {
 }
 
 fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
-    let loaded = LoadedModule {
-        id: module_id.to_string(),
-        version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        stage: stage_id.to_string(),
-        wit_world: String::new(),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: vec![],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        max_ir_schema: SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from(format!("fixtures/{module_id}.wasm")),
-        placeholder_wasm: false,
-    };
+    let loaded = LoadedModuleBuilder::new(
+        module_id,
+        SemVer { major: 1, minor: 0, patch: 0 },
+        stage_id,
+        String::new(),
+        PathBuf::from(format!("fixtures/{module_id}.wasm")),
+    )
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .layer_parallel_safe(true)
+    .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
             &loaded,
@@ -932,14 +777,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
         wasm_component: None,
     };
-    CompiledModule {
-        module_id: binding.module.id.clone(),
-        instance_pool: Arc::clone(&pool),
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::clone(&binding.config_view),
-        claims: Vec::new(),
-        wasm_component: None,
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(binding.module.id.clone(), Arc::clone(&pool))
+        .config_view(Arc::clone(&binding.config_view))
+        .build()
 }

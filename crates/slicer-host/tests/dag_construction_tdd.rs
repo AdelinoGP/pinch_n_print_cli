@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use slicer_host::{build_intra_stage_dag, ConfigSchema, LoadedModule, ModuleNode};
+use slicer_host::{build_intra_stage_dag, LoadedModule, LoadedModuleBuilder, ModuleNode};
 use slicer_ir::SemVer;
 
 #[test]
@@ -220,27 +220,21 @@ fn loaded_module(
     ir_writes: &[&str],
     requires_modules: &[&str],
 ) -> LoadedModule {
-    LoadedModule {
-        id: String::from(id),
-        version: semver(1, 0, 0),
-        stage: String::from(stage),
-        wit_world: String::from("slicer:world-layer@1.0.0"),
-        ir_reads: strings(ir_reads),
-        ir_writes: strings(ir_writes),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: strings(requires_modules),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        stage,
+        "slicer:world-layer@1.0.0",
+        PathBuf::from(format!("fixtures/{id}.wasm")),
+    )
+    .ir_reads(strings(ir_reads))
+    .ir_writes(strings(ir_writes))
+    .requires_modules(strings(requires_modules))
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .build()
 }
 
 fn strings(values: &[&str]) -> Vec<String> {

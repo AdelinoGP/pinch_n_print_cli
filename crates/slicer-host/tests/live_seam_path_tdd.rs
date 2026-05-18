@@ -288,9 +288,9 @@ fn resolved_seam_is_applied_only_to_origin_region() {
 #[test]
 fn path_optimization_stays_comment_only_after_seam_resolution() {
     use slicer_host::instance_pool::build_wasm_instance_pool;
-    use slicer_host::manifest::LoadedModule;
+    use slicer_host::manifest::LoadedModuleBuilder;
     use slicer_host::{
-        Blackboard, CompiledModule, IrAccessMask, LayerArena, LayerStageRunner, WasmEngine,
+        Blackboard, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmEngine,
         WasmRuntimeDispatcher,
     };
     use slicer_ir::{BoundingBox3, GlobalLayer, LayerAnnotationKind, LayerCollectionIR, Point3};
@@ -319,43 +319,20 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
             .expect("path-optimization-default.wasm must compile"),
     );
 
-    let loaded = LoadedModule {
-        id: "com.core.path-optimization-default".to_string(),
-        version: slicer_ir::SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        stage: "Layer::PathOptimization".to_string(),
-        wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: vec!["PerimeterIR".to_string()],
-        ir_writes: vec!["LayerCollectionIR".to_string()],
-        claims: vec![],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: slicer_ir::SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: slicer_ir::SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        max_ir_schema: slicer_ir::SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: Default::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: wasm_path.clone(),
-        placeholder_wasm: false,
-    };
+    let loaded = LoadedModuleBuilder::new(
+        "com.core.path-optimization-default",
+        slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        "Layer::PathOptimization",
+        "slicer:world-layer@1.0.0",
+        wasm_path.clone(),
+    )
+    .ir_reads(vec!["PerimeterIR".to_string()])
+    .ir_writes(vec!["LayerCollectionIR".to_string()])
+    .min_host_version(slicer_ir::SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(slicer_ir::SemVer { major: 1, minor: 0, patch: 0 })
+    .max_ir_schema(slicer_ir::SemVer { major: 2, minor: 0, patch: 0 })
+    .layer_parallel_safe(true)
+    .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
             &loaded,
@@ -366,18 +343,12 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         )
         .expect("instance pool must build"),
     );
-    let module = CompiledModule {
-        module_id: loaded.id.clone(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(slicer_ir::ConfigView::from_map(
+    let module = CompiledModuleBuilder::new(loaded.id.clone(), pool)
+        .config_view(Arc::new(slicer_ir::ConfigView::from_map(
             std::collections::HashMap::new(),
-        )),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    };
+        )))
+        .wasm_component(Some(component))
+        .build();
 
     // Build PerimeterIR with resolved_seam set on one wall loop.
     let layer_z = 0.2;
@@ -781,9 +752,9 @@ fn seam_z_outside_layer_envelope_rejected() {
 #[test]
 fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     use slicer_host::instance_pool::build_wasm_instance_pool;
-    use slicer_host::manifest::LoadedModule;
+    use slicer_host::manifest::LoadedModuleBuilder;
     use slicer_host::{
-        Blackboard, CompiledModule, IrAccessMask, LayerArena, LayerStageRunner, WasmEngine,
+        Blackboard, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmEngine,
         WasmRuntimeDispatcher,
     };
     use slicer_ir::{
@@ -816,46 +787,24 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
             .expect("seam-placer.wasm must compile"),
     );
 
-    let loaded = LoadedModule {
-        id: "com.core.seam-placer".to_string(),
-        version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        stage: "Layer::PerimetersPostProcess".to_string(),
-        wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: vec!["PerimeterIR".to_string()],
-        ir_writes: vec![
-            "PerimeterIR.resolved-seam".to_string(),
-            "PerimeterIR.regions.walls".to_string(),
-        ],
-        claims: vec!["seam-placer".to_string()],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        max_ir_schema: SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: Default::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: wasm_path.clone(),
-        placeholder_wasm: false,
-    };
+    let loaded = LoadedModuleBuilder::new(
+        "com.core.seam-placer",
+        SemVer { major: 0, minor: 1, patch: 0 },
+        "Layer::PerimetersPostProcess",
+        "slicer:world-layer@1.0.0",
+        wasm_path.clone(),
+    )
+    .ir_reads(vec!["PerimeterIR".to_string()])
+    .ir_writes(vec![
+        "PerimeterIR.resolved-seam".to_string(),
+        "PerimeterIR.regions.walls".to_string(),
+    ])
+    .claims(vec!["seam-placer".to_string()])
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .layer_parallel_safe(true)
+    .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
             &loaded,
@@ -866,18 +815,12 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         )
         .expect("instance pool must build"),
     );
-    let module = CompiledModule {
-        module_id: loaded.id.clone(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(slicer_ir::ConfigView::from_map(
+    let module = CompiledModuleBuilder::new(loaded.id.clone(), pool)
+        .config_view(Arc::new(slicer_ir::ConfigView::from_map(
             std::collections::HashMap::new(),
-        )),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    };
+        )))
+        .wasm_component(Some(component))
+        .build();
 
     let layer_z = 0.2;
     let layer_index = 0u32;

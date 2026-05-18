@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_host::{
-    Blackboard, CompiledModule, FinalizationStageRunner, IrAccessMask, LoadedModule, WasmEngine,
-    WasmRuntimeDispatcher,
+    Blackboard, CompiledModule, CompiledModuleBuilder, FinalizationStageRunner, LoadedModule,
+    LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, MeshIR, Point3,
+    BoundingBox3, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, MeshIR, Point3,
     Point3WithWidth, PrintEntity, SemVer, ToolChange, ZHop,
 };
 
@@ -61,27 +61,17 @@ fn load_guest(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {
 }
 
 fn make_loaded_module(id: &str) -> LoadedModule {
-    LoadedModule {
-        id: id.to_string(),
-        version: semver(1, 0, 0),
-        stage: "PostPass::LayerFinalization".to_string(),
-        wit_world: "slicer:world-finalization@1.0.0".to_string(),
-        ir_reads: Vec::new(),
-        ir_writes: Vec::new(),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: Default::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: false,
-        wasm_path: PathBuf::from("/dev/null"),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        "PostPass::LayerFinalization",
+        "slicer:world-finalization@1.0.0",
+        PathBuf::from("/dev/null"),
+    )
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build()
 }
 
 fn make_module(id: &str, component: Arc<slicer_host::WasmComponent>) -> CompiledModule {
@@ -96,16 +86,9 @@ fn make_module(id: &str, component: Arc<slicer_host::WasmComponent>) -> Compiled
         )
         .expect("build instance pool"),
     );
-    CompiledModule {
-        module_id: id.to_string(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: Vec::new() },
-        ir_write_mask: IrAccessMask { paths: Vec::new() },
-        config_view: Arc::new(ConfigView::new()),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(id, pool)
+        .wasm_component(Some(component))
+        .build()
 }
 
 fn witness_entity(layer: &LayerCollectionIR) -> &PrintEntity {

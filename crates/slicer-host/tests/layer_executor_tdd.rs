@@ -12,9 +12,10 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use slicer_host::{
-    build_wasm_instance_pool, execute_per_layer, Blackboard, CompiledModule, CompiledStage,
-    ConfigSchema, ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LayerArena,
-    LayerExecutionError, LayerStageError, LayerStageOutput, LayerStageRunner, WasmArtifactMetadata,
+    build_wasm_instance_pool, execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder,
+    CompiledStage, ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LayerArena,
+    LayerExecutionError, LayerStageError, LayerStageOutput, LayerStageRunner,
+    LoadedModuleBuilder, WasmArtifactMetadata,
 };
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, MeshIR, ObjectMesh, Point3,
@@ -559,55 +560,43 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         wasm_component: None,
     };
 
-    CompiledModule {
-        module_id: binding.module.id.clone(),
-        instance_pool: Arc::clone(&binding.instance_pool),
-        ir_read_mask: IrAccessMask {
+    CompiledModuleBuilder::new(binding.module.id.clone(), Arc::clone(&binding.instance_pool))
+        .ir_read_mask(IrAccessMask {
             paths: binding.module.ir_reads.clone(),
-        },
-        ir_write_mask: IrAccessMask {
+        })
+        .ir_write_mask(IrAccessMask {
             paths: binding.module.ir_writes.clone(),
-        },
-        config_view: Arc::clone(&binding.config_view),
-        claims: Vec::new(),
-        wasm_component: None,
-        requires_modules: Vec::new(),
-    }
+        })
+        .config_view(Arc::clone(&binding.config_view))
+        .build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_host::LoadedModule {
-    slicer_host::LoadedModule {
-        id: String::from(id),
-        version: semver(1, 0, 0),
-        stage: String::from(stage),
-        wit_world: String::from("slicer:world-layer@1.0.0"),
-        ir_reads: match stage {
-            "Layer::Perimeters" => vec![String::from("SliceIR.regions")],
-            "Layer::Infill" => vec![
-                String::from("SliceIR.regions"),
-                String::from("PerimeterIR.wall_loops"),
-            ],
-            _ => Vec::new(),
-        },
-        ir_writes: match stage {
-            "Layer::Perimeters" => vec![String::from("PerimeterIR.wall_loops")],
-            "Layer::Infill" => vec![String::from("InfillIR.paths")],
-            _ => Vec::new(),
-        },
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        stage,
+        "slicer:world-layer@1.0.0",
+        PathBuf::from(format!("fixtures/{id}.wasm")),
+    )
+    .ir_reads(match stage {
+        "Layer::Perimeters" => vec![String::from("SliceIR.regions")],
+        "Layer::Infill" => vec![
+            String::from("SliceIR.regions"),
+            String::from("PerimeterIR.wall_loops"),
+        ],
+        _ => Vec::new(),
+    })
+    .ir_writes(match stage {
+        "Layer::Perimeters" => vec![String::from("PerimeterIR.wall_loops")],
+        "Layer::Infill" => vec![String::from("InfillIR.paths")],
+        _ => Vec::new(),
+    })
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .build()
 }
 
 fn mesh_fixture() -> MeshIR {

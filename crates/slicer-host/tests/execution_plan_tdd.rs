@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_host::{
-    build_execution_plan, build_wasm_instance_pool, CompiledModule, ConfigFieldEntry, ConfigSchema,
-    ExecutionModuleBinding, ExecutionPlanRequest, SortedStageModules, WasmArtifactMetadata,
+    build_execution_plan, build_wasm_instance_pool, CompiledModule, ConfigFieldEntry,
+    ExecutionModuleBinding, ExecutionPlanRequest, LoadedModuleBuilder, SortedStageModules,
+    WasmArtifactMetadata,
 };
 use slicer_ir::{
     ActiveRegion, ConfigValue, ConfigView, GlobalLayer, RegionKey, RegionPlan, ResolvedConfig,
@@ -231,27 +232,20 @@ fn loaded_module(
     layer_parallel_safe: bool,
     wit_world: &str,
 ) -> slicer_host::LoadedModule {
-    slicer_host::LoadedModule {
-        id: String::from(id),
-        version: semver(1, 0, 0),
-        stage: String::from(stage),
-        wit_world: String::from(wit_world),
-        ir_reads: strings(ir_reads),
-        ir_writes: strings(ir_writes),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe,
-        wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        stage,
+        wit_world,
+        PathBuf::from(format!("fixtures/{id}.wasm")),
+    )
+    .ir_reads(strings(ir_reads))
+    .ir_writes(strings(ir_writes))
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(layer_parallel_safe)
+    .build()
 }
 
 fn strings(values: &[&str]) -> Vec<String> {

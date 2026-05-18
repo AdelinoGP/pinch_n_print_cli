@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_host::{bind_module_config_view, ConfigFieldEntry, ConfigSchema, LoadedModule};
+use slicer_host::{bind_module_config_view, ConfigFieldEntry, ConfigSchema, LoadedModule, LoadedModuleBuilder};
 use slicer_ir::{ConfigValue, ConfigView, SemVer};
 
 fn sem() -> SemVer {
@@ -35,35 +35,18 @@ fn module_with_config_keys(id: &str, keys: &[&str]) -> LoadedModule {
             },
         );
     }
-    LoadedModule {
-        id: id.to_string(),
-        version: sem(),
-        stage: "PrePass::MeshAnalysis".to_string(),
-        wit_world: "slicer:world-prepass@1.0.0".to_string(),
-        ir_reads: Vec::new(),
-        ir_writes: Vec::new(),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: sem(),
-        max_ir_schema: SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: ConfigSchema { entries },
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: false,
-        wasm_path: PathBuf::from("fixtures/mod.wasm"),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        sem(),
+        "PrePass::MeshAnalysis",
+        "slicer:world-prepass@1.0.0",
+        PathBuf::from("fixtures/mod.wasm"),
+    )
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(sem())
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .config_schema(ConfigSchema { entries })
+    .build()
 }
 
 fn source() -> HashMap<String, ConfigValue> {

@@ -25,7 +25,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use slicer_host::{load_module_from_paths, LoadedModule};
+use slicer_host::{load_module_from_paths, LoadedModule, LoadedModuleBuilder};
 use slicer_ir::SemVer;
 
 // ── Stage → required (reads, writes) contract from docs/01 ────────────────
@@ -356,30 +356,24 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 #[test]
 fn seam_placer_narrow_manifest_write_validates() {
     // Build a minimal DagValidationRequest with seam-placer and its audit
-    let seam_placer = LoadedModule {
-        id: "com.core.seam-placer".into(),
-        version: semver(0, 1, 0),
-        stage: "Layer::PerimetersPostProcess".into(),
-        wit_world: "slicer:world-layer@1.0.0".into(),
-        ir_reads: vec!["PerimeterIR".into()],
-        ir_writes: vec![
-            "PerimeterIR.resolved-seam".into(),
-            "PerimeterIR.regions.walls".into(),
-        ],
-        claims: vec!["seam-placer".into()],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: slicer_host::ConfigSchema::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from("modules/core-modules/seam-placer/seam-placer.wasm"),
-        placeholder_wasm: false,
-    };
+    let seam_placer = LoadedModuleBuilder::new(
+        "com.core.seam-placer",
+        semver(0, 1, 0),
+        "Layer::PerimetersPostProcess",
+        "slicer:world-layer@1.0.0",
+        PathBuf::from("modules/core-modules/seam-placer/seam-placer.wasm"),
+    )
+    .ir_reads(vec!["PerimeterIR".into()])
+    .ir_writes(vec![
+        "PerimeterIR.resolved-seam".into(),
+        "PerimeterIR.regions.walls".into(),
+    ])
+    .claims(vec!["seam-placer".into()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .build();
 
     // Simulate runtime audit from seam-placer execution:
     // - push_resolved_seam → records "PerimeterIR.resolved-seam"
@@ -427,28 +421,22 @@ fn seam_placer_narrow_manifest_write_validates() {
 /// validate_undeclared_access must flag this as an error (coarse path not declared).
 #[test]
 fn coarse_write_rejected_against_narrow_manifest() {
-    let perimeter_module = LoadedModule {
-        id: "com.core.perimeter-gen".into(),
-        version: semver(0, 1, 0),
-        stage: "Layer::Perimeters".into(),
-        wit_world: "slicer:world-layer@1.0.0".into(),
-        ir_reads: vec!["SliceIR".into(), "PaintRegionIR".into()],
-        // Only declares narrow path
-        ir_writes: vec!["PerimeterIR.resolved-seam".into()],
-        claims: vec!["perimeter-generator".into()],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: slicer_host::ConfigSchema::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
-        placeholder_wasm: false,
-    };
+    let perimeter_module = LoadedModuleBuilder::new(
+        "com.core.perimeter-gen",
+        semver(0, 1, 0),
+        "Layer::Perimeters",
+        "slicer:world-layer@1.0.0",
+        PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
+    )
+    .ir_reads(vec!["SliceIR".into(), "PaintRegionIR".into()])
+    // Only declares narrow path
+    .ir_writes(vec!["PerimeterIR.resolved-seam".into()])
+    .claims(vec!["perimeter-generator".into()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .build();
 
     // Runtime audit contains coarse "PerimeterIR" (pre-fix fallback behavior)
     // This should be rejected since manifest only declares narrow "PerimeterIR.resolved-seam"
@@ -488,27 +476,21 @@ fn coarse_write_rejected_against_narrow_manifest() {
 /// (pre-fix instrumentation state). This should pass validation when declared.
 #[test]
 fn perimeter_narrow_write_audit() {
-    let perimeter_module = LoadedModule {
-        id: "com.core.perimeter-gen".into(),
-        version: semver(0, 1, 0),
-        stage: "Layer::Perimeters".into(),
-        wit_world: "slicer:world-layer@1.0.0".into(),
-        ir_reads: vec!["SliceIR".into(), "PaintRegionIR".into()],
-        ir_writes: vec!["PerimeterIR.regions.walls".into()],
-        claims: vec!["perimeter-generator".into()],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: slicer_host::ConfigSchema::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
-        placeholder_wasm: false,
-    };
+    let perimeter_module = LoadedModuleBuilder::new(
+        "com.core.perimeter-gen",
+        semver(0, 1, 0),
+        "Layer::Perimeters",
+        "slicer:world-layer@1.0.0",
+        PathBuf::from("modules/core-modules/classic-perimeters/classic-perimeters.wasm"),
+    )
+    .ir_reads(vec!["SliceIR".into(), "PaintRegionIR".into()])
+    .ir_writes(vec!["PerimeterIR.regions.walls".into()])
+    .claims(vec!["perimeter-generator".into()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .build();
 
     // Narrow runtime write matches manifest
     let audit = ModuleAccessAudit {

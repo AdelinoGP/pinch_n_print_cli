@@ -375,10 +375,9 @@ mod _stale_build_plan {
         engine: &Arc<WasmEngine>,
     ) -> slicer_host::ExecutionPlan {
         use slicer_host::{
-            build_wasm_instance_pool, CompiledModule, CompiledStage, ExecutionPlan, IrAccessMask,
-            WasmArtifactMetadata,
+            build_wasm_instance_pool, CompiledModule, CompiledModuleBuilder, CompiledStage,
+            ExecutionPlan, IrAccessMask, WasmArtifactMetadata,
         };
-        use slicer_ir::ConfigView;
 
         let mut prepass_stages: Vec<CompiledStage> = Vec::new();
         let mut per_layer_stages: Vec<CompiledStage> = Vec::new();
@@ -435,20 +434,17 @@ mod _stale_build_plan {
                         }
                     };
 
-                    CompiledModule {
-                        module_id: m.id.clone(),
-                        instance_pool: pool,
-                        ir_read_mask: IrAccessMask {
+                    CompiledModuleBuilder::new(m.id.clone(), pool)
+                        .ir_read_mask(IrAccessMask {
                             paths: m.ir_reads.clone(),
-                        },
-                        ir_write_mask: IrAccessMask {
+                        })
+                        .ir_write_mask(IrAccessMask {
                             paths: m.ir_writes.clone(),
-                        },
-                        config_view: Arc::new(ConfigView::new()),
-                        claims: m.claims.clone(),
-                        wasm_component,
-                        requires_modules: m.requires_modules.clone(),
-                    }
+                        })
+                        .claims(m.claims.clone())
+                        .wasm_component(wasm_component)
+                        .requires_modules(m.requires_modules.clone())
+                        .build()
                 })
                 .collect();
 

@@ -27,8 +27,8 @@ use std::sync::Arc;
 
 use slicer_host::{
     build_wasm_instance_pool, execute_prepass_with_builtins, instance_pool::WasmArtifactMetadata,
-    Blackboard, CompiledModule, CompiledStage, ConfigSchema, ExecutionPlan, IrAccessMask,
-    LoadedModule, WasmEngine, WasmRuntimeDispatcher,
+    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan,
+    LoadedModule, LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
@@ -140,31 +140,24 @@ fn cube_mesh() -> MeshIR {
 }
 
 fn loaded_seam_planner(wasm_path: std::path::PathBuf) -> LoadedModule {
-    LoadedModule {
-        id: "com.core.seam-planner-default".into(),
-        version: semver(0, 1, 0),
-        stage: "PrePass::SeamPlanning".into(),
-        wit_world: "slicer:world-prepass@1.0.0".into(),
-        ir_reads: vec![
-            "MeshIR.objects".into(),
-            "SurfaceClassificationIR.per_object".into(),
-            "LayerPlanIR.global_layers".into(),
-        ],
-        ir_writes: vec!["SeamPlanIR.entries".into()],
-        claims: vec!["seam-planner".into()],
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: false,
+    LoadedModuleBuilder::new(
+        "com.core.seam-planner-default",
+        semver(0, 1, 0),
+        "PrePass::SeamPlanning",
+        "slicer:world-prepass@1.0.0",
         wasm_path,
-        placeholder_wasm: false,
-    }
+    )
+    .ir_reads(vec![
+        "MeshIR.objects".into(),
+        "SurfaceClassificationIR.per_object".into(),
+        "LayerPlanIR.global_layers".into(),
+    ])
+    .ir_writes(vec!["SeamPlanIR.entries".into()])
+    .claims(vec!["seam-planner".into()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build()
 }
 
 fn compile_seam_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
@@ -197,16 +190,10 @@ fn compile_seam_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         "seam_mode".to_string(),
         ConfigValue::String("nearest".to_string()),
     );
-    CompiledModule {
-        module_id: loaded.id.clone(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(ConfigView::from_map(config_map)),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(loaded.id.clone(), pool)
+        .config_view(Arc::new(ConfigView::from_map(config_map)))
+        .wasm_component(Some(component))
+        .build()
 }
 
 #[test]

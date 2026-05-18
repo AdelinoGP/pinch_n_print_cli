@@ -17,7 +17,7 @@ use slicer_host::progress_events::{
 };
 use slicer_host::{
     build_intra_stage_dag, build_wasm_instance_pool, validate_startup_dag, AccessKind,
-    ConfigSchema, DagValidationPass, DagValidationRequest, InstancePoolMode, LoadedModule,
+    DagValidationPass, DagValidationRequest, InstancePoolMode, LoadedModule, LoadedModuleBuilder,
     ModuleAccessAudit, SchedulerError, StageDag, WasmArtifactMetadata,
 };
 use slicer_ir::{ModifierScope, ModifierVolume, RegionKey, SemVer};
@@ -33,27 +33,20 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 }
 
 fn loaded_module(id: &str, stage: &str, reads: &[&str], writes: &[&str]) -> LoadedModule {
-    LoadedModule {
-        id: id.to_string(),
-        version: semver(1, 0, 0),
-        stage: stage.to_string(),
-        wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: reads.iter().map(|s| s.to_string()).collect(),
-        ir_writes: writes.iter().map(|s| s.to_string()).collect(),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        stage,
+        "slicer:world-layer@1.0.0",
+        PathBuf::from(format!("fixtures/{id}.wasm")),
+    )
+    .ir_reads(reads.iter().map(|s| s.to_string()).collect())
+    .ir_writes(writes.iter().map(|s| s.to_string()).collect())
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .build()
 }
 
 fn artifact_meta(shared_memory: bool) -> WasmArtifactMetadata {

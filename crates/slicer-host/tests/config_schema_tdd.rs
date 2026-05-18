@@ -12,8 +12,8 @@ use std::path::Path;
 use slicer_host::{
     get_advanced_fields, get_basic_fields, get_field_schema, group_fields_by_ui_group,
     parse_config_schema, query_config_schema, validate_config, validate_field_value,
-    ConfigFieldSchema, ConfigFieldType, ConfigSchemaParseErrorKind, ConfigUnit,
-    ConfigValidationErrorKind, ConfigValue, CrossValidateRule, CrossValidateSeverity,
+    ConfigFieldSchema, ConfigFieldSchemaBuilder, ConfigFieldType, ConfigSchemaParseErrorKind,
+    ConfigUnit, ConfigValidationErrorKind, ConfigValue, CrossValidateRule, CrossValidateSeverity,
     FullConfigSchema,
 };
 
@@ -712,115 +712,63 @@ fn get_basic_fields_returns_only_non_advanced() {
 fn make_tpms_infill_schema() -> FullConfigSchema {
     let mut fields = BTreeMap::new();
 
-    fields.insert(
-        "pattern".into(),
-        ConfigFieldSchema {
-            key: "pattern".into(),
-            field_type: ConfigFieldType::Enum,
-            default: Some(ConfigValue::String("schwartz-d".into())),
-            display: Some("TPMS Pattern".into()),
-            description: Some("Which TPMS surface family to use".into()),
-            group: Some("Pattern".into()),
-            unit: ConfigUnit::None,
-            advanced: false,
-            min: None,
-            max: None,
-            step: None,
-            max_length: None,
-            enum_values: Some(vec!["schwartz-d".into(), "fischer-koch-s".into()]),
-            min_list_length: None,
-            max_list_length: None,
-            validate: None,
-        },
-    );
+    fields.insert("pattern".into(), {
+        let mut b = ConfigFieldSchemaBuilder::new("pattern", ConfigFieldType::Enum);
+        b.default_value(ConfigValue::String("schwartz-d".into()))
+            .display("TPMS Pattern")
+            .description("Which TPMS surface family to use")
+            .group("Pattern")
+            .enum_values(vec!["schwartz-d".into(), "fischer-koch-s".into()]);
+        b.build()
+    });
 
-    fields.insert(
-        "density".into(),
-        ConfigFieldSchema {
-            key: "density".into(),
-            field_type: ConfigFieldType::Float,
-            default: Some(ConfigValue::Float(0.15)),
-            display: Some("Infill Density".into()),
-            description: None,
-            group: Some("Pattern".into()),
-            unit: ConfigUnit::Ratio,
-            advanced: false,
-            min: Some(0.05),
-            max: Some(0.95),
-            step: Some(0.01),
-            max_length: None,
-            enum_values: None,
-            min_list_length: None,
-            max_list_length: None,
-            validate: Some("value > 0.0 && value < 1.0".into()),
-        },
-    );
+    fields.insert("density".into(), {
+        let mut b = ConfigFieldSchemaBuilder::new("density", ConfigFieldType::Float);
+        b.default_value(ConfigValue::Float(0.15))
+            .display("Infill Density")
+            .group("Pattern")
+            .unit(ConfigUnit::Ratio)
+            .min(0.05)
+            .max(0.95)
+            .step(0.01)
+            .validate("value > 0.0 && value < 1.0");
+        b.build()
+    });
 
-    fields.insert(
-        "multiline-count".into(),
-        ConfigFieldSchema {
-            key: "multiline-count".into(),
-            field_type: ConfigFieldType::Int,
-            default: Some(ConfigValue::Int(1)),
-            display: Some("Parallel Passes".into()),
-            description: None,
-            group: Some("Pattern".into()),
-            unit: ConfigUnit::None,
-            advanced: false,
-            min: Some(1.0),
-            max: Some(4.0),
-            step: None,
-            max_length: None,
-            enum_values: None,
-            min_list_length: None,
-            max_list_length: None,
-            validate: None,
-        },
-    );
+    fields.insert("multiline-count".into(), {
+        let mut b = ConfigFieldSchemaBuilder::new("multiline-count", ConfigFieldType::Int);
+        b.default_value(ConfigValue::Int(1))
+            .display("Parallel Passes")
+            .group("Pattern")
+            .min(1.0)
+            .max(4.0);
+        b.build()
+    });
 
-    fields.insert(
-        "marching-cell-size".into(),
-        ConfigFieldSchema {
-            key: "marching-cell-size".into(),
-            field_type: ConfigFieldType::Float,
-            default: Some(ConfigValue::Float(0.40)),
-            display: Some("Marching Cell Size (mm)".into()),
-            description: None,
-            group: Some("Advanced".into()),
-            unit: ConfigUnit::Millimeters,
-            advanced: true,
-            min: Some(0.10),
-            max: Some(1.00),
-            step: Some(0.05),
-            max_length: None,
-            enum_values: None,
-            min_list_length: None,
-            max_list_length: None,
-            validate: None,
-        },
-    );
+    fields.insert("marching-cell-size".into(), {
+        let mut b = ConfigFieldSchemaBuilder::new("marching-cell-size", ConfigFieldType::Float);
+        b.default_value(ConfigValue::Float(0.40))
+            .display("Marching Cell Size (mm)")
+            .group("Advanced")
+            .unit(ConfigUnit::Millimeters)
+            .advanced(true)
+            .min(0.10)
+            .max(1.00)
+            .step(0.05);
+        b.build()
+    });
 
-    fields.insert(
-        "raster-precision".into(),
-        ConfigFieldSchema {
-            key: "raster-precision".into(),
-            field_type: ConfigFieldType::Float,
-            default: Some(ConfigValue::Float(0.004)),
-            display: Some("Raster Precision (mm)".into()),
-            description: None,
-            group: Some("Advanced".into()),
-            unit: ConfigUnit::Millimeters,
-            advanced: true,
-            min: Some(0.001),
-            max: Some(0.010),
-            step: None,
-            max_length: None,
-            enum_values: None,
-            min_list_length: None,
-            max_list_length: None,
-            validate: None,
-        },
-    );
+    fields.insert("raster-precision".into(), {
+        let mut b = ConfigFieldSchemaBuilder::new("raster-precision", ConfigFieldType::Float);
+        b.default_value(ConfigValue::Float(0.004))
+            .display("Raster Precision (mm)")
+            .group("Advanced")
+            .unit(ConfigUnit::Millimeters)
+            .advanced(true)
+            .min(0.001)
+            .max(0.010);
+        b.build()
+    });
 
     FullConfigSchema {
         fields,
@@ -835,49 +783,17 @@ fn make_tpms_infill_schema() -> FullConfigSchema {
 fn make_schema_with_cross_validate() -> FullConfigSchema {
     let mut fields = BTreeMap::new();
 
-    fields.insert(
-        "marching-cell-size".into(),
-        ConfigFieldSchema {
-            key: "marching-cell-size".into(),
-            field_type: ConfigFieldType::Float,
-            default: Some(ConfigValue::Float(0.40)),
-            display: None,
-            description: None,
-            group: None,
-            unit: ConfigUnit::None,
-            advanced: false,
-            min: None,
-            max: None,
-            step: None,
-            max_length: None,
-            enum_values: None,
-            min_list_length: None,
-            max_list_length: None,
-            validate: None,
-        },
-    );
+    fields.insert("marching-cell-size".into(), {
+        let mut b = ConfigFieldSchemaBuilder::new("marching-cell-size", ConfigFieldType::Float);
+        b.default_value(ConfigValue::Float(0.40));
+        b.build()
+    });
 
-    fields.insert(
-        "raster-precision".into(),
-        ConfigFieldSchema {
-            key: "raster-precision".into(),
-            field_type: ConfigFieldType::Float,
-            default: Some(ConfigValue::Float(0.004)),
-            display: None,
-            description: None,
-            group: None,
-            unit: ConfigUnit::None,
-            advanced: false,
-            min: None,
-            max: None,
-            step: None,
-            max_length: None,
-            enum_values: None,
-            min_list_length: None,
-            max_list_length: None,
-            validate: None,
-        },
-    );
+    fields.insert("raster-precision".into(), {
+        let mut b = ConfigFieldSchemaBuilder::new("raster-precision", ConfigFieldType::Float);
+        b.default_value(ConfigValue::Float(0.004));
+        b.build()
+    });
 
     FullConfigSchema {
         fields,
@@ -900,127 +816,44 @@ fn make_valid_tpms_config() -> BTreeMap<String, ConfigValue> {
 }
 
 fn make_bool_field(key: &str, default: bool) -> ConfigFieldSchema {
-    ConfigFieldSchema {
-        key: key.into(),
-        field_type: ConfigFieldType::Bool,
-        default: Some(ConfigValue::Bool(default)),
-        display: None,
-        description: None,
-        group: None,
-        unit: ConfigUnit::None,
-        advanced: false,
-        min: None,
-        max: None,
-        step: None,
-        max_length: None,
-        enum_values: None,
-        min_list_length: None,
-        max_list_length: None,
-        validate: None,
-    }
+    let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Bool);
+    b.default_value(ConfigValue::Bool(default));
+    b.build()
 }
 
 fn make_int_field(key: &str, default: i64, min: i64, max: i64) -> ConfigFieldSchema {
-    ConfigFieldSchema {
-        key: key.into(),
-        field_type: ConfigFieldType::Int,
-        default: Some(ConfigValue::Int(default)),
-        display: None,
-        description: None,
-        group: None,
-        unit: ConfigUnit::None,
-        advanced: false,
-        min: Some(min as f64),
-        max: Some(max as f64),
-        step: None,
-        max_length: None,
-        enum_values: None,
-        min_list_length: None,
-        max_list_length: None,
-        validate: None,
-    }
+    let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Int);
+    b.default_value(ConfigValue::Int(default))
+        .min(min as f64)
+        .max(max as f64);
+    b.build()
 }
 
 fn make_float_field(key: &str, default: f64, min: f64, max: f64) -> ConfigFieldSchema {
-    ConfigFieldSchema {
-        key: key.into(),
-        field_type: ConfigFieldType::Float,
-        default: Some(ConfigValue::Float(default)),
-        display: None,
-        description: None,
-        group: None,
-        unit: ConfigUnit::None,
-        advanced: false,
-        min: Some(min),
-        max: Some(max),
-        step: None,
-        max_length: None,
-        enum_values: None,
-        min_list_length: None,
-        max_list_length: None,
-        validate: None,
-    }
+    let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Float);
+    b.default_value(ConfigValue::Float(default))
+        .min(min)
+        .max(max);
+    b.build()
 }
 
 fn make_string_field(key: &str, max_length: usize) -> ConfigFieldSchema {
-    ConfigFieldSchema {
-        key: key.into(),
-        field_type: ConfigFieldType::String,
-        default: None,
-        display: None,
-        description: None,
-        group: None,
-        unit: ConfigUnit::None,
-        advanced: false,
-        min: None,
-        max: None,
-        step: None,
-        max_length: Some(max_length),
-        enum_values: None,
-        min_list_length: None,
-        max_list_length: None,
-        validate: None,
-    }
+    let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::String);
+    b.max_length(max_length);
+    b.build()
 }
 
 fn make_enum_field(key: &str, values: Vec<&str>) -> ConfigFieldSchema {
-    ConfigFieldSchema {
-        key: key.into(),
-        field_type: ConfigFieldType::Enum,
-        default: Some(ConfigValue::String(values[0].into())),
-        display: None,
-        description: None,
-        group: None,
-        unit: ConfigUnit::None,
-        advanced: false,
-        min: None,
-        max: None,
-        step: None,
-        max_length: None,
-        enum_values: Some(values.into_iter().map(String::from).collect()),
-        min_list_length: None,
-        max_list_length: None,
-        validate: None,
-    }
+    let first = values[0].to_string();
+    let enum_vals: Vec<String> = values.into_iter().map(String::from).collect();
+    let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Enum);
+    b.default_value(ConfigValue::String(first))
+        .enum_values(enum_vals);
+    b.build()
 }
 
 fn make_float_list_field(key: &str, min_len: usize, max_len: usize) -> ConfigFieldSchema {
-    ConfigFieldSchema {
-        key: key.into(),
-        field_type: ConfigFieldType::FloatList,
-        default: None,
-        display: None,
-        description: None,
-        group: None,
-        unit: ConfigUnit::None,
-        advanced: false,
-        min: None,
-        max: None,
-        step: None,
-        max_length: None,
-        enum_values: None,
-        min_list_length: Some(min_len),
-        max_list_length: Some(max_len),
-        validate: None,
-    }
+    let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::FloatList);
+    b.min_list_length(min_len).max_list_length(max_len);
+    b.build()
 }

@@ -21,8 +21,8 @@ use std::sync::Arc;
 
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_host::{
-    Blackboard, CompiledModule, FinalizationStageRunner, IrAccessMask, LoadedModule, WasmEngine,
-    WasmRuntimeDispatcher,
+    Blackboard, CompiledModule, CompiledModuleBuilder, FinalizationStageRunner, LoadedModule,
+    LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR,
@@ -81,27 +81,17 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
 }
 
 fn make_loaded_module(id: &str) -> LoadedModule {
-    LoadedModule {
-        id: id.to_string(),
-        version: semver(1, 0, 0),
-        stage: "PostPass::LayerFinalization".to_string(),
-        wit_world: "slicer:world-finalization@1.0.0".to_string(),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: vec![],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: Default::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: false,
-        wasm_path: PathBuf::from("/dev/null"),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        "PostPass::LayerFinalization",
+        "slicer:world-finalization@1.0.0",
+        PathBuf::from("/dev/null"),
+    )
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build()
 }
 
 fn make_module(id: &str, component: Arc<slicer_host::WasmComponent>) -> CompiledModule {
@@ -124,16 +114,10 @@ fn make_module_with_config(
         )
         .expect("build instance pool"),
     );
-    CompiledModule {
-        module_id: id.to_string(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(config),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(id, pool)
+        .config_view(Arc::new(config))
+        .wasm_component(Some(component))
+        .build()
 }
 
 fn load_guest(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {

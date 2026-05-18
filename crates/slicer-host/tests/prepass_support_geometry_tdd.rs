@@ -30,8 +30,8 @@ use std::sync::Arc;
 use slicer_host::{
     build_wasm_instance_pool, dedup_same_claim_modules_for_test, execute_prepass,
     execute_prepass_with_builtins, instance_pool::WasmArtifactMetadata, Blackboard,
-    BlackboardPrepassSlot, CompiledModule, CompiledStage, ConfigSchema, DiagnosticLevel,
-    ExecutionPlan, IrAccessMask, LoadDiagnostic, LoadedModule, PrepassExecutionError,
+    BlackboardPrepassSlot, CompiledModule, CompiledModuleBuilder, CompiledStage, DiagnosticLevel,
+    ExecutionPlan, LoadDiagnostic, LoadedModule, LoadedModuleBuilder, PrepassExecutionError,
     PrepassStageOutput, PrepassStageRunner, WasmEngine, WasmRuntimeDispatcher,
 };
 use slicer_ir::{
@@ -189,32 +189,25 @@ fn identity4() -> [f64; 16] {
 }
 
 fn loaded_support_planner_module(id: &str, wasm_path: PathBuf) -> LoadedModule {
-    LoadedModule {
-        id: id.into(),
-        version: semver(0, 1, 0),
-        stage: "PrePass::SupportGeometry".into(),
-        wit_world: "slicer:world-prepass@1.0.0".into(),
-        ir_reads: vec![
-            "MeshIR.objects".into(),
-            "SurfaceClassificationIR.per_object".into(),
-            "LayerPlanIR.global_layers".into(),
-            "PaintRegionIR.per_layer".into(),
-        ],
-        ir_writes: vec!["SupportPlanIR.entries".into()],
-        claims: vec!["support-planner".into()],
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: false,
+    LoadedModuleBuilder::new(
+        id,
+        semver(0, 1, 0),
+        "PrePass::SupportGeometry",
+        "slicer:world-prepass@1.0.0",
         wasm_path,
-        placeholder_wasm: false,
-    }
+    )
+    .ir_reads(vec![
+        "MeshIR.objects".into(),
+        "SurfaceClassificationIR.per_object".into(),
+        "LayerPlanIR.global_layers".into(),
+        "PaintRegionIR.per_layer".into(),
+    ])
+    .ir_writes(vec!["SupportPlanIR.entries".into()])
+    .claims(vec!["support-planner".into()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build()
 }
 
 fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
@@ -242,16 +235,10 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         )
         .expect("instance pool must build"),
     );
-    CompiledModule {
-        module_id: loaded.id.clone(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(ConfigView::from_map(default_planner_config_map())),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(loaded.id.clone(), pool)
+        .config_view(Arc::new(ConfigView::from_map(default_planner_config_map())))
+        .wasm_component(Some(component))
+        .build()
 }
 
 fn default_planner_config_map() -> HashMap<String, ConfigValue> {
@@ -658,27 +645,18 @@ fn compiled_native_stage(stage_id: &str, module_ids: &[&str]) -> CompiledStage {
 }
 
 fn compiled_native_module(stage_id: &str, module_id: &str) -> CompiledModule {
-    let loaded = LoadedModule {
-        id: module_id.into(),
-        version: semver(0, 1, 0),
-        stage: stage_id.to_string(),
-        wit_world: "slicer:world-prepass@1.0.0".to_string(),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: vec!["support-planner".to_string()],
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: false,
-        wasm_path: PathBuf::from(format!("fixtures/{module_id}.wasm")),
-        placeholder_wasm: false,
-    };
+    let loaded = LoadedModuleBuilder::new(
+        module_id,
+        semver(0, 1, 0),
+        stage_id,
+        "slicer:world-prepass@1.0.0",
+        PathBuf::from(format!("fixtures/{module_id}.wasm")),
+    )
+    .claims(vec!["support-planner".to_string()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
             &loaded,
@@ -689,16 +667,7 @@ fn compiled_native_module(stage_id: &str, module_id: &str) -> CompiledModule {
         )
         .expect("fixture instance pool must build"),
     );
-    CompiledModule {
-        module_id: loaded.id.clone(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-        claims: Vec::new(),
-        wasm_component: None,
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(loaded.id.clone(), pool).build()
 }
 
 #[derive(Default)]

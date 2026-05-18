@@ -6,8 +6,8 @@ use std::thread;
 use std::time::Duration;
 
 use slicer_host::{
-    build_wasm_instance_pool, ConfigSchema, InstancePoolError, InstancePoolMode, LoadedModule,
-    WasmArtifactMetadata,
+    build_wasm_instance_pool, InstancePoolError, InstancePoolMode, LoadedModule,
+    LoadedModuleBuilder, WasmArtifactMetadata,
 };
 use slicer_ir::SemVer;
 
@@ -174,27 +174,18 @@ fn loaded_module(
     layer_parallel_safe: bool,
     wit_world: &str,
 ) -> LoadedModule {
-    LoadedModule {
-        id: String::from(id),
-        version: semver(1, 0, 0),
-        stage: String::from(stage),
-        wit_world: String::from(wit_world),
-        ir_reads: Vec::new(),
-        ir_writes: Vec::new(),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe,
-        wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        stage,
+        wit_world,
+        PathBuf::from(format!("fixtures/{id}.wasm")),
+    )
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(layer_parallel_safe)
+    .build()
 }
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {

@@ -3,9 +3,8 @@
 use std::path::PathBuf;
 
 use slicer_host::{
-    build_intra_stage_dag, validate_startup_dag, AccessKind, ClaimHolder, ConfigSchema,
-    ConflictScope, DagValidationPass, DagValidationRequest, ModuleAccessAudit, SchedulerError,
-    StageDag,
+    build_intra_stage_dag, validate_startup_dag, AccessKind, ClaimHolder, ConflictScope,
+    DagValidationPass, DagValidationRequest, ModuleAccessAudit, SchedulerError, StageDag,
 };
 use slicer_ir::SemVer;
 
@@ -310,27 +309,17 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
         // MissingComponent and empty reads — but the pipeline setup was still exercised.
         if stage.starts_with("PostPass::") {
             // Build a minimal LoadedModule just for pool construction.
-            let dummy_module = slicer_host::LoadedModule {
-                id: module_id.to_string(),
-                version: semver(1, 0, 0),
-                stage: stage.to_string(),
-                wit_world: wit_world.to_string(),
-                ir_reads: Vec::new(),
-                ir_writes: Vec::new(),
-                claims: Vec::new(),
-                requires_claims: Vec::new(),
-                incompatible_with: Vec::new(),
-                requires_modules: Vec::new(),
-                min_host_version: semver(0, 1, 0),
-                min_ir_schema: semver(1, 0, 0),
-                max_ir_schema: semver(2, 0, 0),
-                config_schema: ConfigSchema::default(),
-                overridable_per_region: Vec::new(),
-                overridable_per_layer: Vec::new(),
-                layer_parallel_safe: false,
-                wasm_path: PathBuf::from("dummy.wasm"),
-                placeholder_wasm: false,
-            };
+            let dummy_module = slicer_host::manifest::LoadedModuleBuilder::new(
+                module_id.to_string(),
+                semver(1, 0, 0),
+                stage.to_string(),
+                wit_world.to_string(),
+                PathBuf::from("dummy.wasm"),
+            )
+            .min_host_version(semver(0, 1, 0))
+            .min_ir_schema(semver(1, 0, 0))
+            .max_ir_schema(semver(2, 0, 0))
+            .build();
             // Build pool via the proper factory function.
             let instance_pool = Arc::new(
                 build_wasm_instance_pool(
@@ -342,16 +331,11 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
             );
 
             // Build a minimal CompiledModule for dispatch call.
-            let compiled = slicer_host::CompiledModule {
-                module_id: module_id.to_string(),
+            let compiled = slicer_host::CompiledModuleBuilder::new(
+                module_id.to_string(),
                 instance_pool,
-                wasm_component: None,
-                ir_read_mask: Default::default(),
-                ir_write_mask: Default::default(),
-                config_view: Arc::new(slicer_ir::ConfigView::new()),
-                claims: Vec::new(),
-                requires_modules: Vec::new(),
-            };
+            )
+            .build();
 
             // Build minimal MeshIR and Blackboard for dispatch call.
             let mesh_ir = slicer_ir::MeshIR::default();
@@ -576,27 +560,23 @@ impl LoadedModuleBuilder {
 
     fn build(self) -> slicer_host::LoadedModule {
         let id = self.id;
-        slicer_host::LoadedModule {
-            id: id.clone(),
-            version: semver(1, 0, 0),
-            stage: self.stage,
-            wit_world: self.wit_world,
-            ir_reads: self.ir_reads,
-            ir_writes: self.ir_writes,
-            claims: self.claims,
-            requires_claims: Vec::new(),
-            incompatible_with: self.incompatible_with,
-            requires_modules: self.requires_modules,
-            min_host_version: semver(0, 1, 0),
-            min_ir_schema: self.min_ir_schema,
-            max_ir_schema: self.max_ir_schema,
-            config_schema: ConfigSchema::default(),
-            overridable_per_region: Vec::new(),
-            overridable_per_layer: Vec::new(),
-            layer_parallel_safe: true,
-            wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
-            placeholder_wasm: false,
-        }
+        slicer_host::manifest::LoadedModuleBuilder::new(
+            id.clone(),
+            semver(1, 0, 0),
+            self.stage,
+            self.wit_world,
+            PathBuf::from(format!("fixtures/{id}.wasm")),
+        )
+        .ir_reads(self.ir_reads)
+        .ir_writes(self.ir_writes)
+        .claims(self.claims)
+        .incompatible_with(self.incompatible_with)
+        .requires_modules(self.requires_modules)
+        .min_host_version(semver(0, 1, 0))
+        .min_ir_schema(self.min_ir_schema)
+        .max_ir_schema(self.max_ir_schema)
+        .layer_parallel_safe(true)
+        .build()
     }
 }
 

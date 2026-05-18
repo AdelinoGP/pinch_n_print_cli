@@ -16,8 +16,8 @@ use std::sync::Arc;
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_host::{
     apply_entity_order_proposal, execute_per_layer, project_ordered_entities, Blackboard,
-    CompiledModule, CompiledStage, ExecutionPlan, IrAccessMask, LayerArena, LoadedModule,
-    WasmEngine, WasmRuntimeDispatcher, HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS,
+    CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan, LayerArena, LoadedModule,
+    LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher, HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS,
 };
 use slicer_ir::{
     BoundingBox3, ExPolygon, ExtrusionPath3D, ExtrusionRole, GlobalLayer, LayerCollectionIR,
@@ -440,27 +440,17 @@ fn empty_mesh_ir() -> Arc<MeshIR> {
 }
 
 fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
-    LoadedModule {
-        id: id.to_string(),
-        version: semver_v(1, 0, 0),
-        stage: stage.to_string(),
-        wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: Vec::new(),
-        ir_writes: Vec::new(),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver_v(0, 1, 0),
-        min_ir_schema: semver_v(1, 0, 0),
-        max_ir_schema: semver_v(2, 0, 0),
-        config_schema: Default::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: false,
-        wasm_path: PathBuf::from("/dev/null"),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver_v(1, 0, 0),
+        stage,
+        "slicer:world-layer@1.0.0",
+        PathBuf::from("/dev/null"),
+    )
+    .min_host_version(semver_v(0, 1, 0))
+    .min_ir_schema(semver_v(1, 0, 0))
+    .max_ir_schema(semver_v(2, 0, 0))
+    .build()
 }
 
 fn make_module(
@@ -479,16 +469,9 @@ fn make_module(
         )
         .expect("build instance pool"),
     );
-    CompiledModule {
-        module_id: id.to_string(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: Vec::new() },
-        ir_write_mask: IrAccessMask { paths: Vec::new() },
-        config_view: Arc::new(slicer_ir::ConfigView::new()),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(id, pool)
+        .wasm_component(Some(component))
+        .build()
 }
 
 fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {

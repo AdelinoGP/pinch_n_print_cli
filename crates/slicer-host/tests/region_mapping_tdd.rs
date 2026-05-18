@@ -24,9 +24,10 @@ use std::sync::Arc;
 use slicer_host::{
     build_execution_plan, build_wasm_instance_pool, execute_prepass_with_builtins,
     execute_region_mapping, execute_region_mapping_with_cap, Blackboard, CompiledModule,
-    CompiledStage, ConfigSchema, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest,
-    IrAccessMask, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
-    RegionMappingBuiltinError, RegionMappingError, SortedStageModules, WasmArtifactMetadata,
+    CompiledModuleBuilder, CompiledStage, ConfigSchema, ExecutionModuleBinding, ExecutionPlan,
+    ExecutionPlanRequest, LoadedModuleBuilder, PrepassExecutionError, PrepassStageOutput,
+    PrepassStageRunner, RegionMappingBuiltinError, RegionMappingError, SortedStageModules,
+    WasmArtifactMetadata,
 };
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
@@ -565,51 +566,32 @@ fn loaded_module(stage: &str, module_id: &str, config: ConfigView) -> slicer_hos
     let config_schema = ConfigSchema {
         entries: schema_entries,
     };
-    slicer_host::LoadedModule {
-        id: module_id.to_string(),
-        version: sv(1, 0, 0),
-        stage: stage.to_string(),
-        wit_world: "slicer:world-postpass@1.0.0".to_string(),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: vec![],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: sv(0, 1, 0),
-        min_ir_schema: sv(1, 0, 0),
-        max_ir_schema: sv(2, 0, 0),
-        config_schema,
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: false,
-        wasm_path: std::path::PathBuf::from(format!("fixtures/{module_id}.wasm")),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        module_id,
+        sv(1, 0, 0),
+        stage,
+        "slicer:world-postpass@1.0.0",
+        std::path::PathBuf::from(format!("fixtures/{module_id}.wasm")),
+    )
+    .min_host_version(sv(0, 1, 0))
+    .min_ir_schema(sv(1, 0, 0))
+    .max_ir_schema(sv(2, 0, 0))
+    .config_schema(config_schema)
+    .build()
 }
 
 fn compiled_module(stage: &str, module_id: &str, config: ConfigView) -> CompiledModule {
-    let loaded = slicer_host::LoadedModule {
-        id: module_id.to_string(),
-        version: sv(1, 0, 0),
-        stage: stage.to_string(),
-        wit_world: "slicer:world-postpass@1.0.0".to_string(),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: vec![],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: sv(0, 1, 0),
-        min_ir_schema: sv(1, 0, 0),
-        max_ir_schema: sv(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: false,
-        wasm_path: std::path::PathBuf::from(format!("fixtures/{module_id}.wasm")),
-        placeholder_wasm: false,
-    };
+    let loaded = LoadedModuleBuilder::new(
+        module_id,
+        sv(1, 0, 0),
+        stage,
+        "slicer:world-postpass@1.0.0",
+        std::path::PathBuf::from(format!("fixtures/{module_id}.wasm")),
+    )
+    .min_host_version(sv(0, 1, 0))
+    .min_ir_schema(sv(1, 0, 0))
+    .max_ir_schema(sv(2, 0, 0))
+    .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
             &loaded,
@@ -620,16 +602,9 @@ fn compiled_module(stage: &str, module_id: &str, config: ConfigView) -> Compiled
         )
         .unwrap(),
     );
-    CompiledModule {
-        module_id: module_id.to_string(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(config),
-        claims: Vec::new(),
-        wasm_component: None,
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(module_id, pool)
+        .config_view(Arc::new(config))
+        .build()
 }
 
 #[allow(dead_code)]

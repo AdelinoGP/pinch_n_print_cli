@@ -26,7 +26,7 @@
 
 use slicer_host::{
     build_intra_stage_dag, validate_startup_dag, ClaimHolder, ConflictScope, DagValidationRequest,
-    LoadedModule, SchedulerError, StageDag,
+    LoadedModule, LoadedModuleBuilder, SchedulerError, StageDag,
 };
 use slicer_ir::SemVer;
 use std::path::PathBuf;
@@ -42,27 +42,20 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 }
 
 fn loaded_module(id: &str, stage: &str, claim: &str) -> LoadedModule {
-    LoadedModule {
-        id: id.to_string(),
-        version: semver(0, 1, 0),
-        stage: stage.to_string(),
-        wit_world: String::from("slicer:world-layer@1.0.0"),
-        ir_reads: Vec::new(),
-        ir_writes: Vec::new(),
-        claims: vec![claim.to_string()],
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: slicer_host::ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from("/tmp/placeholder.wasm"),
-        placeholder_wasm: true,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(0, 1, 0),
+        stage,
+        "slicer:world-layer@1.0.0",
+        PathBuf::from("/tmp/placeholder.wasm"),
+    )
+    .claims(vec![claim.to_string()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .placeholder_wasm(true)
+    .build()
 }
 
 fn stage_dag_for(stage: &str, modules: &[LoadedModule]) -> StageDag {

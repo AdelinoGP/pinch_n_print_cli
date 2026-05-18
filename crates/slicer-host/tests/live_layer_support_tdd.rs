@@ -393,9 +393,9 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 use slicer_host::instance_pool::build_wasm_instance_pool;
-use slicer_host::manifest::LoadedModule;
+use slicer_host::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_host::{
-    Blackboard, CompiledModule, IrAccessMask, LayerArena, LayerStageRunner, WasmEngine,
+    Blackboard, CompiledModule, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmEngine,
     WasmRuntimeDispatcher,
 };
 use slicer_ir::{
@@ -463,16 +463,10 @@ fn compile_support_module(
         "support_density".to_string(),
         slicer_ir::ConfigValue::Float(20.0),
     );
-    CompiledModule {
-        module_id: loaded.id.clone(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(slicer_ir::ConfigView::from_map(config_map)),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(loaded.id.clone(), pool)
+        .config_view(Arc::new(slicer_ir::ConfigView::from_map(config_map)))
+        .wasm_component(Some(component))
+        .build()
 }
 
 fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
@@ -520,47 +514,25 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
-    let loaded = LoadedModule {
-        id: "com.core.tree-support".to_string(),
-        version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        stage: "Layer::Support".to_string(),
-        wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: vec![
-            "SliceIR".to_string(),
-            "SurfaceClassificationIR".to_string(),
-            "PaintRegionIR".to_string(),
-        ],
-        ir_writes: vec!["SupportIR".to_string()],
-        claims: vec!["support-generator".to_string()],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        max_ir_schema: SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: Default::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: tree_support_wasm_path(),
-        placeholder_wasm: false,
-    };
+    let loaded = LoadedModuleBuilder::new(
+        "com.core.tree-support",
+        SemVer { major: 0, minor: 1, patch: 0 },
+        "Layer::Support",
+        "slicer:world-layer@1.0.0",
+        tree_support_wasm_path(),
+    )
+    .ir_reads(vec![
+        "SliceIR".to_string(),
+        "SurfaceClassificationIR".to_string(),
+        "PaintRegionIR".to_string(),
+    ])
+    .ir_writes(vec!["SupportIR".to_string()])
+    .claims(vec!["support-generator".to_string()])
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .layer_parallel_safe(true)
+    .build();
 
     let module = compile_support_module(&engine, loaded, &tree_support_wasm_path());
 
@@ -630,47 +602,25 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
-    let loaded = LoadedModule {
-        id: "com.core.traditional-support".to_string(),
-        version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        stage: "Layer::Support".to_string(),
-        wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: vec![
-            "SliceIR".to_string(),
-            "SurfaceClassificationIR".to_string(),
-            "PaintRegionIR".to_string(),
-        ],
-        ir_writes: vec!["SupportIR".to_string()],
-        claims: vec!["support-generator".to_string()],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        max_ir_schema: SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: Default::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: traditional_support_wasm_path(),
-        placeholder_wasm: false,
-    };
+    let loaded = LoadedModuleBuilder::new(
+        "com.core.traditional-support",
+        SemVer { major: 0, minor: 1, patch: 0 },
+        "Layer::Support",
+        "slicer:world-layer@1.0.0",
+        traditional_support_wasm_path(),
+    )
+    .ir_reads(vec![
+        "SliceIR".to_string(),
+        "SurfaceClassificationIR".to_string(),
+        "PaintRegionIR".to_string(),
+    ])
+    .ir_writes(vec!["SupportIR".to_string()])
+    .claims(vec!["support-generator".to_string()])
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .layer_parallel_safe(true)
+    .build();
 
     let module = compile_support_module(&engine, loaded, &traditional_support_wasm_path());
 
@@ -740,47 +690,25 @@ fn support_deterministic_across_repeated_runs() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
-    let loaded = LoadedModule {
-        id: "com.core.tree-support".to_string(),
-        version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        stage: "Layer::Support".to_string(),
-        wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: vec![
-            "SliceIR".to_string(),
-            "SurfaceClassificationIR".to_string(),
-            "PaintRegionIR".to_string(),
-        ],
-        ir_writes: vec!["SupportIR".to_string()],
-        claims: vec!["support-generator".to_string()],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        max_ir_schema: SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: Default::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: true,
-        wasm_path: tree_support_wasm_path(),
-        placeholder_wasm: false,
-    };
+    let loaded = LoadedModuleBuilder::new(
+        "com.core.tree-support",
+        SemVer { major: 0, minor: 1, patch: 0 },
+        "Layer::Support",
+        "slicer:world-layer@1.0.0",
+        tree_support_wasm_path(),
+    )
+    .ir_reads(vec![
+        "SliceIR".to_string(),
+        "SurfaceClassificationIR".to_string(),
+        "PaintRegionIR".to_string(),
+    ])
+    .ir_writes(vec!["SupportIR".to_string()])
+    .claims(vec!["support-generator".to_string()])
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .layer_parallel_safe(true)
+    .build();
 
     let module = compile_support_module(&engine, loaded, &tree_support_wasm_path());
 
@@ -907,43 +835,21 @@ fn support_enforcer_blocker_paint_precedence() {
     );
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &LoadedModule {
-                id: "com.test.support".to_string(),
-                version: SemVer {
-                    major: 1,
-                    minor: 0,
-                    patch: 0,
-                },
-                stage: "Layer::Support".to_string(),
-                wit_world: "slicer:world-layer@1.0.0".to_string(),
-                ir_reads: vec!["SliceIR".to_string(), "PaintRegionIR".to_string()],
-                ir_writes: vec!["SupportIR".to_string()],
-                claims: vec!["support-generator".to_string()],
-                requires_claims: vec![],
-                incompatible_with: vec![],
-                requires_modules: vec![],
-                min_host_version: SemVer {
-                    major: 0,
-                    minor: 1,
-                    patch: 0,
-                },
-                min_ir_schema: SemVer {
-                    major: 1,
-                    minor: 0,
-                    patch: 0,
-                },
-                max_ir_schema: SemVer {
-                    major: 2,
-                    minor: 0,
-                    patch: 0,
-                },
-                config_schema: Default::default(),
-                overridable_per_region: vec![],
-                overridable_per_layer: vec![],
-                layer_parallel_safe: true,
-                wasm_path: guest_path,
-                placeholder_wasm: false,
-            },
+            &LoadedModuleBuilder::new(
+                "com.test.support",
+                SemVer { major: 1, minor: 0, patch: 0 },
+                "Layer::Support",
+                "slicer:world-layer@1.0.0",
+                guest_path,
+            )
+            .ir_reads(vec!["SliceIR".to_string(), "PaintRegionIR".to_string()])
+            .ir_writes(vec!["SupportIR".to_string()])
+            .claims(vec!["support-generator".to_string()])
+            .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+            .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+            .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+            .layer_parallel_safe(true)
+            .build(),
             1,
             slicer_host::instance_pool::WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -951,18 +857,12 @@ fn support_enforcer_blocker_paint_precedence() {
         )
         .expect("instance pool must build"),
     );
-    let module = CompiledModule {
-        module_id: "com.test.support".to_string(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: vec![] },
-        ir_write_mask: IrAccessMask { paths: vec![] },
-        config_view: Arc::new(slicer_ir::ConfigView::from_map(
+    let module = CompiledModuleBuilder::new("com.test.support", pool)
+        .config_view(Arc::new(slicer_ir::ConfigView::from_map(
             std::collections::HashMap::new(),
-        )),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    };
+        )))
+        .wasm_component(Some(component))
+        .build();
 
     // Build PaintRegionIR: layer 0, 1 enforcer region, 1 blocker region
     // (paint_order: enforcer=0, blocker=1 — enforcer has precedence)
@@ -1106,8 +1006,8 @@ mod planner_consuming_tier {
 
     use slicer_host::{
         build_wasm_instance_pool, instance_pool::WasmArtifactMetadata, Blackboard, CompiledModule,
-        IrAccessMask, LayerArena, LayerStageRunner, LoadedModule, WasmEngine,
-        WasmRuntimeDispatcher,
+        CompiledModuleBuilder, LayerArena, LayerStageRunner, LoadedModule, LoadedModuleBuilder,
+        WasmEngine, WasmRuntimeDispatcher,
     };
     use slicer_ir::{
         BoundingBox3, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
@@ -1146,27 +1046,21 @@ mod planner_consuming_tier {
         wasm_path: std::path::PathBuf,
         reads: Vec<&str>,
     ) -> LoadedModule {
-        LoadedModule {
-            id: id.to_string(),
-            version: semver(0, 1, 0),
-            stage: "Layer::Support".to_string(),
-            wit_world: "slicer:world-layer@1.0.0".to_string(),
-            ir_reads: reads.into_iter().map(String::from).collect(),
-            ir_writes: vec!["SupportIR".to_string()],
-            claims: vec!["support-generator".to_string()],
-            requires_claims: vec![],
-            incompatible_with: vec![],
-            requires_modules: vec![],
-            min_host_version: semver(0, 1, 0),
-            min_ir_schema: semver(1, 0, 0),
-            max_ir_schema: semver(2, 0, 0),
-            config_schema: Default::default(),
-            overridable_per_region: vec![],
-            overridable_per_layer: vec![],
-            layer_parallel_safe: true,
+        LoadedModuleBuilder::new(
+            id,
+            semver(0, 1, 0),
+            "Layer::Support",
+            "slicer:world-layer@1.0.0",
             wasm_path,
-            placeholder_wasm: false,
-        }
+        )
+        .ir_reads(reads.into_iter().map(String::from).collect())
+        .ir_writes(vec!["SupportIR".to_string()])
+        .claims(vec!["support-generator".to_string()])
+        .min_host_version(semver(0, 1, 0))
+        .min_ir_schema(semver(1, 0, 0))
+        .max_ir_schema(semver(2, 0, 0))
+        .layer_parallel_safe(true)
+        .build()
     }
 
     fn compile_module(
@@ -1193,16 +1087,10 @@ mod planner_consuming_tier {
         let mut config_map = std::collections::HashMap::new();
         config_map.insert("support_enabled".to_string(), ConfigValue::Bool(true));
         config_map.insert("support_density".to_string(), ConfigValue::Float(20.0));
-        CompiledModule {
-            module_id: loaded.id.clone(),
-            instance_pool: pool,
-            ir_read_mask: IrAccessMask { paths: vec![] },
-            ir_write_mask: IrAccessMask { paths: vec![] },
-            config_view: Arc::new(ConfigView::from_map(config_map)),
-            claims: Vec::new(),
-            wasm_component: Some(component),
-            requires_modules: Vec::new(),
-        }
+        CompiledModuleBuilder::new(loaded.id.clone(), pool)
+            .config_view(Arc::new(ConfigView::from_map(config_map)))
+            .wasm_component(Some(component))
+            .build()
     }
 
     fn make_slice_ir(layer_index: u32, z: f32) -> slicer_ir::SliceIR {

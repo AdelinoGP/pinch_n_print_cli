@@ -20,8 +20,8 @@ use slicer_host::progress_events::{
     ProgressError, ProgressEvent, ProgressPhase, SliceEventCollector,
 };
 use slicer_host::{
-    build_intra_stage_dag, validate_startup_dag, ConfigSchema, DagValidationPass,
-    DagValidationRequest, LoadedModule, SchedulerError, StageDag,
+    build_intra_stage_dag, validate_startup_dag, DagValidationPass, DagValidationRequest,
+    LoadedModule, LoadedModuleBuilder, SchedulerError, StageDag,
 };
 use slicer_ir::{
     ActiveRegion, ExPolygon, GlobalLayer, LayerPaintMap, NonPlanarShellRef, PaintRegionIR,
@@ -40,27 +40,19 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 }
 
 fn loaded_module_for_compat(id: &str, min_ir: SemVer, max_ir: SemVer) -> LoadedModule {
-    LoadedModule {
-        id: id.to_string(),
-        version: semver(1, 0, 0),
-        stage: "Layer::Support".to_string(),
-        wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: Vec::new(),
-        ir_writes: vec!["SharedIR.placeholder".to_string()],
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: min_ir,
-        max_ir_schema: max_ir,
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        "Layer::Support",
+        "slicer:world-layer@1.0.0",
+        PathBuf::from(format!("fixtures/{id}.wasm")),
+    )
+    .ir_writes(vec!["SharedIR.placeholder".to_string()])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(min_ir)
+    .max_ir_schema(max_ir)
+    .layer_parallel_safe(true)
+    .build()
 }
 
 fn dag_request_for(host_ir: SemVer, modules: Vec<LoadedModule>) -> DagValidationRequest {

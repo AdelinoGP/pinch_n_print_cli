@@ -17,9 +17,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_host::{
-    execute_prepass_with_builtins, Blackboard, CompiledModule, CompiledStage,
-    ExecutionModuleBinding, ExecutionPlan, PrepassExecutionError, PrepassStageOutput,
-    PrepassStageRunner, WasmArtifactMetadata,
+    execute_prepass_with_builtins, Blackboard, CompiledModule, CompiledModuleBuilder,
+    CompiledStage, ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LoadedModuleBuilder,
+    PrepassExecutionError, PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
 };
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
@@ -261,47 +261,34 @@ fn compiled_layer_planning_module() -> CompiledModule {
         wasm_component: None,
     };
 
-    CompiledModule {
-        module_id: binding.module.id.clone(),
-        instance_pool: Arc::clone(&binding.instance_pool),
-        ir_read_mask: slicer_host::IrAccessMask {
+    CompiledModuleBuilder::new(binding.module.id.clone(), Arc::clone(&binding.instance_pool))
+        .ir_read_mask(IrAccessMask {
             paths: binding.module.ir_reads.clone(),
-        },
-        ir_write_mask: slicer_host::IrAccessMask {
+        })
+        .ir_write_mask(IrAccessMask {
             paths: binding.module.ir_writes.clone(),
-        },
-        config_view: Arc::clone(&binding.config_view),
-        claims: Vec::new(),
-        wasm_component: None,
-        requires_modules: Vec::new(),
-    }
+        })
+        .config_view(Arc::clone(&binding.config_view))
+        .build()
 }
 
 fn loaded_layer_planning_module() -> slicer_host::LoadedModule {
-    slicer_host::LoadedModule {
-        id: String::from("com.example.layer-planning"),
-        version: semver(1, 0, 0),
-        stage: String::from("PrePass::LayerPlanning"),
-        wit_world: String::from("slicer:world-prepass@1.0.0"),
-        ir_reads: vec![
-            String::from("MeshIR.objects"),
-            String::from("SurfaceClassificationIR.per_object"),
-        ],
-        ir_writes: vec![String::from("LayerPlanIR.global_layers")],
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: slicer_host::ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: false,
-        wasm_path: std::path::PathBuf::from("fixtures/com.example.layer-planning.wasm"),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        "com.example.layer-planning",
+        semver(1, 0, 0),
+        "PrePass::LayerPlanning",
+        "slicer:world-prepass@1.0.0",
+        std::path::PathBuf::from("fixtures/com.example.layer-planning.wasm"),
+    )
+    .ir_reads(vec![
+        String::from("MeshIR.objects"),
+        String::from("SurfaceClassificationIR.per_object"),
+    ])
+    .ir_writes(vec![String::from("LayerPlanIR.global_layers")])
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build()
 }
 
 // ============================================================================

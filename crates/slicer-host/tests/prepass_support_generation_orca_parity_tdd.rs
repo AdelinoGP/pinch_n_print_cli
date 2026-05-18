@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 
 use slicer_host::{
-    validate_config, ConfigFieldSchema, ConfigFieldType, ConfigValue as HostConfigValue,
+    validate_config, ConfigFieldSchemaBuilder, ConfigFieldType, ConfigValue as HostConfigValue,
     FullConfigSchema,
 };
 use slicer_ir::{
@@ -457,55 +457,19 @@ fn directed_hausdorff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
 // ── Negative ACs (host-side config validation) ────────────────────────────
 
 fn make_float_schema(key: &str, min: f64, max: f64) -> FullConfigSchema {
+    let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Float);
+    b.unit(slicer_host::ConfigUnit::Millimeters).min(min).max(max);
     FullConfigSchema {
-        fields: BTreeMap::from([(
-            key.to_string(),
-            ConfigFieldSchema {
-                key: key.to_string(),
-                field_type: ConfigFieldType::Float,
-                default: None,
-                display: None,
-                description: None,
-                group: None,
-                unit: slicer_host::ConfigUnit::Millimeters,
-                advanced: false,
-                min: Some(min),
-                max: Some(max),
-                step: None,
-                max_length: None,
-                enum_values: None,
-                min_list_length: None,
-                max_list_length: None,
-                validate: None,
-            },
-        )]),
+        fields: BTreeMap::from([(key.to_string(), b.build())]),
         cross_validate: vec![],
     }
 }
 
 fn make_int_schema(key: &str, min: i64, max: i64) -> FullConfigSchema {
+    let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Int);
+    b.min(min as f64).max(max as f64);
     FullConfigSchema {
-        fields: BTreeMap::from([(
-            key.to_string(),
-            ConfigFieldSchema {
-                key: key.to_string(),
-                field_type: ConfigFieldType::Int,
-                default: None,
-                display: None,
-                description: None,
-                group: None,
-                unit: slicer_host::ConfigUnit::None,
-                advanced: false,
-                min: Some(min as f64),
-                max: Some(max as f64),
-                step: None,
-                max_length: None,
-                enum_values: None,
-                min_list_length: None,
-                max_list_length: None,
-                validate: None,
-            },
-        )]),
+        fields: BTreeMap::from([(key.to_string(), b.build())]),
         cross_validate: vec![],
     }
 }

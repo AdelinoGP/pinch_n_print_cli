@@ -260,7 +260,7 @@ impl PipelineInstrumentation for NoopInstrumentation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manifest::ConfigSchema;
+    use crate::manifest::LoadedModuleBuilder;
     use slicer_ir::SemVer;
     use std::path::PathBuf;
 
@@ -270,43 +270,37 @@ mod tests {
         ir_writes: &[&str],
         requires_modules: &[&str],
     ) -> LoadedModule {
-        LoadedModule {
-            id: id.to_string(),
-            version: SemVer {
+        LoadedModuleBuilder::new(
+            id,
+            SemVer {
                 major: 1,
                 minor: 0,
                 patch: 0,
             },
-            stage: "Layer::Perimeters".to_string(),
-            wit_world: "slicer:world-layer@1.0.0".to_string(),
-            ir_reads: ir_reads.iter().map(|s| s.to_string()).collect(),
-            ir_writes: ir_writes.iter().map(|s| s.to_string()).collect(),
-            claims: Vec::new(),
-            requires_claims: Vec::new(),
-            incompatible_with: Vec::new(),
-            requires_modules: requires_modules.iter().map(|s| s.to_string()).collect(),
-            min_host_version: SemVer {
-                major: 0,
-                minor: 1,
-                patch: 0,
-            },
-            min_ir_schema: SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            max_ir_schema: SemVer {
-                major: 2,
-                minor: 0,
-                patch: 0,
-            },
-            config_schema: ConfigSchema::default(),
-            overridable_per_region: Vec::new(),
-            overridable_per_layer: Vec::new(),
-            layer_parallel_safe: true,
-            wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
-            placeholder_wasm: false,
-        }
+            "Layer::Perimeters",
+            "slicer:world-layer@1.0.0",
+            PathBuf::from(format!("fixtures/{id}.wasm")),
+        )
+        .ir_reads(ir_reads.iter().map(|s| s.to_string()).collect())
+        .ir_writes(ir_writes.iter().map(|s| s.to_string()).collect())
+        .requires_modules(requires_modules.iter().map(|s| s.to_string()).collect())
+        .min_host_version(SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        })
+        .min_ir_schema(SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        })
+        .max_ir_schema(SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        })
+        .layer_parallel_safe(true)
+        .build()
     }
 
     #[test]
@@ -382,20 +376,15 @@ mod tests {
             )
             .expect("pool should build for synthetic fixture"),
         );
-        CompiledModule {
-            module_id: id.to_string(),
-            instance_pool: pool,
-            ir_read_mask: IrAccessMask {
+        crate::execution_plan::CompiledModuleBuilder::new(id.to_string(), pool)
+            .ir_read_mask(IrAccessMask {
                 paths: ir_reads.iter().map(|s| s.to_string()).collect(),
-            },
-            ir_write_mask: IrAccessMask {
+            })
+            .ir_write_mask(IrAccessMask {
                 paths: ir_writes.iter().map(|s| s.to_string()).collect(),
-            },
-            config_view: Arc::new(slicer_ir::ConfigView::new()),
-            claims: Vec::new(),
-            wasm_component: None,
-            requires_modules: requires_modules.iter().map(|s| s.to_string()).collect(),
-        }
+            })
+            .requires_modules(requires_modules.iter().map(|s| s.to_string()).collect())
+            .build()
     }
 
     #[test]

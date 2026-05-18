@@ -15,12 +15,12 @@ use std::sync::{Arc, Mutex};
 
 use slicer_host::dispatch::{export_name_for_stage, DispatchPhase, WasmRuntimeDispatcher};
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
-use slicer_host::manifest::LoadedModule;
+use slicer_host::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_host::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_host::postpass::{GCodeEmitter, GCodeSerializer};
 use slicer_host::{
-    Blackboard, CompiledModule, CompiledStage, ExecutionPlan, FinalizationStageRunner,
-    IrAccessMask, LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner,
+    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan,
+    FinalizationStageRunner, LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner,
     PostpassStageRunner, PrepassStageRunner, WasmEngine,
 };
 use slicer_ir::{
@@ -176,27 +176,18 @@ fn load_postpass_guest(engine: &WasmEngine) -> Arc<slicer_host::WasmComponent> {
 }
 
 fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
-    LoadedModule {
-        id: id.to_string(),
-        version: semver(1, 0, 0),
-        stage: stage.to_string(),
-        wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: Vec::new(),
-        ir_writes: Vec::new(),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: Default::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: true,
-        wasm_path: std::path::PathBuf::from("/dev/null"),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        semver(1, 0, 0),
+        stage,
+        "slicer:world-layer@1.0.0",
+        std::path::PathBuf::from("/dev/null"),
+    )
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .layer_parallel_safe(true)
+    .build()
 }
 
 fn make_compiled_module(engine: &WasmEngine, id: &str, stage: &str, wat: &str) -> CompiledModule {
@@ -228,16 +219,10 @@ fn make_compiled_module_with_config(
         )
         .unwrap(),
     );
-    CompiledModule {
-        module_id: id.to_string(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: Vec::new() },
-        ir_write_mask: IrAccessMask { paths: Vec::new() },
-        config_view: Arc::new(config),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(id, pool)
+        .config_view(Arc::new(config))
+        .wasm_component(Some(component))
+        .build()
 }
 
 fn make_compiled_module_no_wasm(id: &str, stage: &str) -> CompiledModule {
@@ -252,16 +237,7 @@ fn make_compiled_module_no_wasm(id: &str, stage: &str) -> CompiledModule {
         )
         .unwrap(),
     );
-    CompiledModule {
-        module_id: id.to_string(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: Vec::new() },
-        ir_write_mask: IrAccessMask { paths: Vec::new() },
-        config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-        claims: Vec::new(),
-        wasm_component: None,
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(id, pool).build()
 }
 
 struct MinimalEmitter;
@@ -6582,16 +6558,9 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
         )
         .unwrap(),
     );
-    let compiled = CompiledModule {
-        module_id: "com.test.seam-planner".to_string(),
-        instance_pool: pool,
-        ir_read_mask: Default::default(),
-        ir_write_mask: Default::default(),
-        config_view: Arc::new(ConfigView::from_map(Default::default())),
-        claims: Vec::new(),
-        wasm_component: Some(component),
-        requires_modules: Vec::new(),
-    };
+    let compiled = CompiledModuleBuilder::new("com.test.seam-planner", pool)
+        .wasm_component(Some(component))
+        .build();
 
     // Build a blackboard with a committed LayerPlanIR (SeamPlanning's required slot).
     // The seam-planner-default module may or may not produce entries depending

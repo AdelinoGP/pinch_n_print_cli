@@ -18,9 +18,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_host::{
-    build_wasm_instance_pool, execute_postpass, Blackboard, CompiledModule, CompiledStage,
-    ConfigSchema, ExecutionPlan, GCodeEmitter, GCodeSerializer, PostpassError, PythonBinding,
-    PythonBridge, PythonBridgeError, PythonBridgePhase, PythonPostpassRunner, WasmArtifactMetadata,
+    build_wasm_instance_pool, execute_postpass, Blackboard, CompiledModule, CompiledModuleBuilder,
+    CompiledStage, ExecutionPlan, GCodeEmitter, GCodeSerializer, LoadedModuleBuilder, PostpassError,
+    PythonBinding, PythonBridge, PythonBridgeError, PythonBridgePhase, PythonPostpassRunner,
+    WasmArtifactMetadata,
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, GCodeCommand, GCodeIR, IndexedTriangleSet,
@@ -334,27 +335,17 @@ fn python_text_stage(module_id: &str, config: ConfigView) -> CompiledStage {
 }
 
 fn compiled_module(stage_id: &str, module_id: &str, config: ConfigView) -> CompiledModule {
-    let loaded = slicer_host::LoadedModule {
-        id: module_id.to_string(),
-        version: semver(1, 0, 0),
-        stage: stage_id.to_string(),
-        wit_world: "slicer:world-postpass@1.0.0".to_string(),
-        ir_reads: vec![],
-        ir_writes: vec![],
-        claims: vec![],
-        requires_claims: vec![],
-        incompatible_with: vec![],
-        requires_modules: vec![],
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: vec![],
-        overridable_per_layer: vec![],
-        layer_parallel_safe: false,
-        wasm_path: PathBuf::from(format!("fixtures/{module_id}.wasm")),
-        placeholder_wasm: false,
-    };
+    let loaded = LoadedModuleBuilder::new(
+        module_id,
+        semver(1, 0, 0),
+        stage_id,
+        "slicer:world-postpass@1.0.0",
+        PathBuf::from(format!("fixtures/{module_id}.wasm")),
+    )
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
             &loaded,
@@ -365,16 +356,9 @@ fn compiled_module(stage_id: &str, module_id: &str, config: ConfigView) -> Compi
         )
         .expect("pool"),
     );
-    CompiledModule {
-        module_id: module_id.to_string(),
-        instance_pool: pool,
-        ir_read_mask: slicer_host::IrAccessMask { paths: vec![] },
-        ir_write_mask: slicer_host::IrAccessMask { paths: vec![] },
-        config_view: Arc::new(config),
-        claims: Vec::new(),
-        wasm_component: None,
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(module_id, pool)
+        .config_view(Arc::new(config))
+        .build()
 }
 
 fn mesh_fixture() -> MeshIR {

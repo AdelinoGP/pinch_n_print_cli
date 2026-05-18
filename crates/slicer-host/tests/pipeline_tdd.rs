@@ -9,14 +9,14 @@ use std::sync::{Arc, Mutex};
 
 use slicer_host::pipeline::{run_pipeline, PipelineConfig, PipelineError, PipelineStageRunners};
 use slicer_host::{
-    build_wasm_instance_pool, Blackboard, CompiledModule, CompiledStage, ConfigSchema,
+    build_wasm_instance_pool, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
     ExecutionPlan, FinalizationError, FinalizationOutput, FinalizationStageRunner, GCodeEmitter,
-    GCodeSerializer, IrAccessMask, LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner,
-    LoadedModule, PostpassError, PostpassOutput, PostpassStageRunner, PrepassExecutionError,
+    GCodeSerializer, LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner,
+    LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageRunner, PrepassExecutionError,
     PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR, MeshIR, Point3,
+    BoundingBox3, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR, MeshIR, Point3,
     PrintMetadata, SemVer, StageId,
 };
 
@@ -206,27 +206,17 @@ fn noop_runners() -> PipelineStageRunners {
 }
 
 fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
-    let loaded = LoadedModule {
-        id: module_id.into(),
-        version: semver(1, 0, 0),
-        stage: stage_id.into(),
-        wit_world: "slicer:world-prepass@1.0.0".into(),
-        ir_reads: Vec::new(),
-        ir_writes: Vec::new(),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: semver(0, 1, 0),
-        min_ir_schema: semver(1, 0, 0),
-        max_ir_schema: semver(2, 0, 0),
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: false,
-        wasm_path: PathBuf::from(format!("fixtures/{module_id}.wasm")),
-        placeholder_wasm: false,
-    };
+    let loaded = LoadedModuleBuilder::new(
+        module_id,
+        semver(1, 0, 0),
+        stage_id,
+        "slicer:world-prepass@1.0.0",
+        PathBuf::from(format!("fixtures/{module_id}.wasm")),
+    )
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
             &loaded,
@@ -237,16 +227,7 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
         )
         .expect("fixture module should build a pool"),
     );
-    CompiledModule {
-        module_id: module_id.into(),
-        instance_pool: pool,
-        ir_read_mask: IrAccessMask { paths: Vec::new() },
-        ir_write_mask: IrAccessMask { paths: Vec::new() },
-        config_view: Arc::new(ConfigView::new()),
-        claims: Vec::new(),
-        wasm_component: None,
-        requires_modules: Vec::new(),
-    }
+    CompiledModuleBuilder::new(module_id, pool).build()
 }
 
 // ---------- Test 1: empty modules produces empty gcode ----------

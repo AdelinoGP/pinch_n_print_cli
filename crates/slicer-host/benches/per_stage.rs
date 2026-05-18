@@ -18,47 +18,24 @@ use std::path::PathBuf;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 use slicer_host::instrumentation::compute_serial_edges_for_stage;
-use slicer_host::manifest::{ConfigSchema, LoadedModule};
+use slicer_host::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_ir::SemVer;
 
 fn loaded_module(id: &str, ir_reads: &[&str], ir_writes: &[&str]) -> LoadedModule {
-    LoadedModule {
-        id: id.to_string(),
-        version: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        stage: "Layer::Perimeters".to_string(),
-        wit_world: "slicer:world-layer@1.0.0".to_string(),
-        ir_reads: ir_reads.iter().map(|s| s.to_string()).collect(),
-        ir_writes: ir_writes.iter().map(|s| s.to_string()).collect(),
-        claims: Vec::new(),
-        requires_claims: Vec::new(),
-        incompatible_with: Vec::new(),
-        requires_modules: Vec::new(),
-        min_host_version: SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        },
-        min_ir_schema: SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        },
-        max_ir_schema: SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        },
-        config_schema: ConfigSchema::default(),
-        overridable_per_region: Vec::new(),
-        overridable_per_layer: Vec::new(),
-        layer_parallel_safe: true,
-        wasm_path: PathBuf::from(format!("fixtures/{id}.wasm")),
-        placeholder_wasm: false,
-    }
+    LoadedModuleBuilder::new(
+        id,
+        SemVer { major: 1, minor: 0, patch: 0 },
+        "Layer::Perimeters",
+        "slicer:world-layer@1.0.0",
+        PathBuf::from(format!("fixtures/{id}.wasm")),
+    )
+    .ir_reads(ir_reads.iter().map(|s| s.to_string()).collect())
+    .ir_writes(ir_writes.iter().map(|s| s.to_string()).collect())
+    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .layer_parallel_safe(true)
+    .build()
 }
 
 /// Build N modules where module i writes path Pi and module i+1 reads Pi,
