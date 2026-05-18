@@ -13,7 +13,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_host::{bind_module_config_view, ConfigFieldEntry, ConfigSchema, LoadedModule, LoadedModuleBuilder};
+use slicer_host::{
+    bind_module_config_view, ConfigFieldEntry, ConfigSchema, LoadedModule, LoadedModuleBuilder,
+};
 use slicer_ir::{ConfigValue, ConfigView, SemVer};
 
 fn sem() -> SemVer {
@@ -42,9 +44,17 @@ fn module_with_config_keys(id: &str, keys: &[&str]) -> LoadedModule {
         "slicer:world-prepass@1.0.0",
         PathBuf::from("fixtures/mod.wasm"),
     )
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
     .min_ir_schema(sem())
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .config_schema(ConfigSchema { entries })
     .build()
 }
@@ -72,9 +82,17 @@ fn module_with_config_keys_stage_world(
         wit_world,
         PathBuf::from("fixtures/mod.wasm"),
     )
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
     .min_ir_schema(sem())
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .config_schema(ConfigSchema { entries })
     .build()
 }

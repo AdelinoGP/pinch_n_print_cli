@@ -63,10 +63,7 @@ fn get_field_schema_returns_full_field_definition() {
     assert_eq!(density.unit(), &ConfigUnit::Ratio);
     assert_eq!(density.group(), Some("Pattern"));
     assert!(!density.advanced());
-    assert_eq!(
-        density.validate(),
-        Some("value > 0.0 && value < 1.0")
-    );
+    assert_eq!(density.validate(), Some("value > 0.0 && value < 1.0"));
 }
 
 #[test]
@@ -383,10 +380,7 @@ fn parse_float_field_extracts_all_properties() {
     assert_eq!(density.display(), Some("Infill Density"));
     assert_eq!(density.unit(), &ConfigUnit::Ratio);
     assert_eq!(density.group(), Some("Pattern"));
-    assert_eq!(
-        density.validate(),
-        Some("value > 0.0 && value < 1.0")
-    );
+    assert_eq!(density.validate(), Some("value > 0.0 && value < 1.0"));
 }
 
 #[test]
@@ -680,7 +674,9 @@ fn group_fields_by_ui_group_collects_by_group_name() {
     assert!(advanced_fields
         .iter()
         .any(|f| f.key() == "marching-cell-size"));
-    assert!(advanced_fields.iter().any(|f| f.key() == "raster-precision"));
+    assert!(advanced_fields
+        .iter()
+        .any(|f| f.key() == "raster-precision"));
 }
 
 #[test]

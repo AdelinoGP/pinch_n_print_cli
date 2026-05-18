@@ -12,8 +12,8 @@ use slicer_host::instance_pool::build_wasm_instance_pool;
 use slicer_host::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_host::{
     execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
-    ExecutionModuleBinding, ExecutionPlan, LayerArena, LayerStageError,
-    LayerStageOutput, LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmRuntimeDispatcher,
+    ExecutionModuleBinding, ExecutionPlan, LayerArena, LayerStageError, LayerStageOutput,
+    LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmRuntimeDispatcher,
 };
 
 const PATH_OPT_WASM: &str = concat!(
@@ -456,9 +456,21 @@ fn path_optimization_loaded_module() -> LoadedModule {
         String::new(),
         PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
     )
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build()
 }
@@ -556,14 +568,30 @@ fn stage(stage_id: &str, module_id: &str) -> CompiledStage {
 fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded = LoadedModuleBuilder::new(
         module_id,
-        SemVer { major: 1, minor: 0, patch: 0 },
+        SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         stage_id,
         String::new(),
         PathBuf::from(format!("fixtures/{module_id}.wasm")),
     )
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build();
     let pool = Arc::new(

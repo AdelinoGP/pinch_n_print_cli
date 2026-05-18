@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use slicer_host::{
     build_wasm_instance_pool, execute_prepass_with_builtins, instance_pool::WasmArtifactMetadata,
-    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan,
-    LoadedModule, LoadedModuleBuilder, PrepassExecutionError, WasmEngine, WasmRuntimeDispatcher,
+    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan, LoadedModule,
+    LoadedModuleBuilder, PrepassExecutionError, WasmEngine, WasmRuntimeDispatcher,
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,

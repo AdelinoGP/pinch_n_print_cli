@@ -24,16 +24,32 @@ use slicer_ir::SemVer;
 fn loaded_module(id: &str, ir_reads: &[&str], ir_writes: &[&str]) -> LoadedModule {
     LoadedModuleBuilder::new(
         id,
-        SemVer { major: 1, minor: 0, patch: 0 },
+        SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         "Layer::Perimeters",
         "slicer:world-layer@1.0.0",
         PathBuf::from(format!("fixtures/{id}.wasm")),
     )
     .ir_reads(ir_reads.iter().map(|s| s.to_string()).collect())
     .ir_writes(ir_writes.iter().map(|s| s.to_string()).collect())
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build()
 }

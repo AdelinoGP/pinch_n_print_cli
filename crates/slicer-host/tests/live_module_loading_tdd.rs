@@ -141,7 +141,11 @@ fn load_live_modules_for_plan_discovers_manifests_from_module_dir() {
 
     let out = load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 2)
         .expect("load");
-    let ids: Vec<String> = out.bindings.iter().map(|b| b.module.id().to_string()).collect();
+    let ids: Vec<String> = out
+        .bindings
+        .iter()
+        .map(|b| b.module.id().to_string())
+        .collect();
     assert!(ids.contains(&"com.example.a".to_string()));
     assert!(ids.contains(&"com.example.b".to_string()));
 }
@@ -356,7 +360,9 @@ fn live_plan_preserves_seeded_planner_object_height_keys_for_real_core_modules()
         .expect("default planner module present");
 
     assert!(
-        planner_module.config_view().contains_key(&object_height_key),
+        planner_module
+            .config_view()
+            .contains_key(&object_height_key),
         "real planner binding must preserve seeded wildcard-expanded key '{}'",
         object_height_key,
     );
@@ -444,9 +450,11 @@ fn valid_component_binary_is_compiled_and_attached_to_live_binding() {
         "valid component must be compiled and attached"
     );
     // No per-module warning diagnostic on the happy path.
-    assert!(out.diagnostics.iter().all(
-        |d| d.path != binding.module.wasm_path() || !matches!(d.level, DiagnosticLevel::Warning)
-    ));
+    assert!(out
+        .diagnostics
+        .iter()
+        .all(|d| d.path != binding.module.wasm_path()
+            || !matches!(d.level, DiagnosticLevel::Warning)));
 }
 
 #[test]
@@ -568,11 +576,8 @@ fn mixed_valid_and_invalid_binaries_load_deterministically_side_by_side() {
     );
     let out =
         load_live_modules_for_plan(std::slice::from_ref(&PathBuf::from(dir.path())), 1).unwrap();
-    let by_id: std::collections::HashMap<&str, &slicer_host::LiveModuleBinding> = out
-        .bindings
-        .iter()
-        .map(|b| (b.module.id(), b))
-        .collect();
+    let by_id: std::collections::HashMap<&str, &slicer_host::LiveModuleBinding> =
+        out.bindings.iter().map(|b| (b.module.id(), b)).collect();
     assert!(by_id["com.example.ok"].wasm_component.is_some());
     assert!(by_id["com.example.bad"].wasm_component.is_none());
     assert!(by_id["com.example.ph"].wasm_component.is_none());

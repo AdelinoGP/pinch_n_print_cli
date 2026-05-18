@@ -556,7 +556,9 @@ fn core_modules_build_a_multi_tier_execution_plan() {
     let postpass_count = report
         .modules
         .iter()
-        .filter(|m| m.stage().starts_with("PostPass::") && m.stage() != "PostPass::LayerFinalization")
+        .filter(|m| {
+            m.stage().starts_with("PostPass::") && m.stage() != "PostPass::LayerFinalization"
+        })
         .count();
 
     assert!(

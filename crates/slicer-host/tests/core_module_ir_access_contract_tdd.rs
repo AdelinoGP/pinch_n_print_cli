@@ -176,7 +176,11 @@ fn core_module_ir_access_covers_required_roots_from_stage_io_contract() {
         };
 
         for root in required_reads {
-            if !module.ir_reads().iter().any(|p| path_mentions_root(p, root)) {
+            if !module
+                .ir_reads()
+                .iter()
+                .any(|p| path_mentions_root(p, root))
+            {
                 offenders
                     .entry(stem.clone())
                     .or_default()
@@ -184,7 +188,11 @@ fn core_module_ir_access_covers_required_roots_from_stage_io_contract() {
             }
         }
         for root in required_writes {
-            if !module.ir_writes().iter().any(|p| path_mentions_root(p, root)) {
+            if !module
+                .ir_writes()
+                .iter()
+                .any(|p| path_mentions_root(p, root))
+            {
                 offenders
                     .entry(stem.clone())
                     .or_default()
@@ -270,7 +278,8 @@ fn core_module_reads_are_restricted_to_upstream_ir_root_set() {
             if !ok {
                 offenders.push(format!(
                     "{stem} (stage {}): read '{declared}' is not a declared upstream IR root {:?}",
-                    module.stage(), allowed_upstream_roots
+                    module.stage(),
+                    allowed_upstream_roots
                 ));
             }
         }
@@ -307,14 +316,18 @@ fn seam_planner_default_declares_prepass_contract_roots() {
     };
 
     assert_eq!(
-        module.stage(), "PrePass::SeamPlanning",
+        module.stage(),
+        "PrePass::SeamPlanning",
         "seam-planner-default must declare stage = PrePass::SeamPlanning"
     );
 
     let required_reads = ["MeshIR", "SurfaceClassificationIR", "LayerPlanIR"];
     for root in &required_reads {
         assert!(
-            module.ir_reads().iter().any(|p| path_mentions_root(p, root)),
+            module
+                .ir_reads()
+                .iter()
+                .any(|p| path_mentions_root(p, root)),
             "seam-planner-default must declare read root '{}'",
             root
         );

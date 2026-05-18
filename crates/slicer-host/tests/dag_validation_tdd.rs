@@ -331,11 +331,9 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
             );
 
             // Build a minimal CompiledModule for dispatch call.
-            let compiled = slicer_host::CompiledModuleBuilder::new(
-                module_id.to_string(),
-                instance_pool,
-            )
-            .build();
+            let compiled =
+                slicer_host::CompiledModuleBuilder::new(module_id.to_string(), instance_pool)
+                    .build();
 
             // Build minimal MeshIR and Blackboard for dispatch call.
             let mesh_ir = slicer_ir::MeshIR::default();

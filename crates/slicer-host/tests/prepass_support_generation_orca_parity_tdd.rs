@@ -458,7 +458,9 @@ fn directed_hausdorff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
 
 fn make_float_schema(key: &str, min: f64, max: f64) -> FullConfigSchema {
     let mut b = ConfigFieldSchemaBuilder::new(key, ConfigFieldType::Float);
-    b.unit(slicer_host::ConfigUnit::Millimeters).min(min).max(max);
+    b.unit(slicer_host::ConfigUnit::Millimeters)
+        .min(min)
+        .max(max);
     FullConfigSchema {
         fields: BTreeMap::from([(key.to_string(), b.build())]),
         cross_validate: vec![],

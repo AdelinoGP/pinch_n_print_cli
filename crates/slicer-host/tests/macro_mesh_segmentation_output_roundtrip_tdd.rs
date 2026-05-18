@@ -13,7 +13,9 @@ use std::sync::Arc;
 use slicer_host::dispatch::WasmRuntimeDispatcher;
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_host::manifest::{LoadedModule, LoadedModuleBuilder};
-use slicer_host::{Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner, WasmEngine};
+use slicer_host::{
+    Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner, WasmEngine,
+};
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh,
     Point3, SemVer, Transform3d,

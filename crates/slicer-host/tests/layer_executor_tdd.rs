@@ -14,8 +14,8 @@ use std::sync::{Arc, Mutex};
 use slicer_host::{
     build_wasm_instance_pool, execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder,
     CompiledStage, ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LayerArena,
-    LayerExecutionError, LayerStageError, LayerStageOutput, LayerStageRunner,
-    LoadedModuleBuilder, WasmArtifactMetadata,
+    LayerExecutionError, LayerStageError, LayerStageOutput, LayerStageRunner, LoadedModuleBuilder,
+    WasmArtifactMetadata,
 };
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, MeshIR, ObjectMesh, Point3,
@@ -401,7 +401,11 @@ impl LayerStageRunner for ScriptedRunner {
         _blackboard: &Blackboard,
         _arena: &mut LayerArena,
     ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        let key = (layer.index, stage_id.clone(), module.module_id().to_string());
+        let key = (
+            layer.index,
+            stage_id.clone(),
+            module.module_id().to_string(),
+        );
 
         // Record invocation
         self.invocations.lock().unwrap().push(key.clone());
@@ -560,15 +564,18 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&binding.instance_pool))
-        .ir_read_mask(IrAccessMask {
-            paths: binding.module.ir_reads().to_vec(),
-        })
-        .ir_write_mask(IrAccessMask {
-            paths: binding.module.ir_writes().to_vec(),
-        })
-        .config_view(Arc::clone(&binding.config_view))
-        .build()
+    CompiledModuleBuilder::new(
+        binding.module.id().to_string(),
+        Arc::clone(&binding.instance_pool),
+    )
+    .ir_read_mask(IrAccessMask {
+        paths: binding.module.ir_reads().to_vec(),
+    })
+    .ir_write_mask(IrAccessMask {
+        paths: binding.module.ir_writes().to_vec(),
+    })
+    .config_view(Arc::clone(&binding.config_view))
+    .build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_host::LoadedModule {

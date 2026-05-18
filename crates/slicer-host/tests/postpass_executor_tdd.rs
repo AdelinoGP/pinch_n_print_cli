@@ -675,9 +675,12 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&binding.instance_pool))
-        .config_view(Arc::clone(&binding.config_view))
-        .build()
+    CompiledModuleBuilder::new(
+        binding.module.id().to_string(),
+        Arc::clone(&binding.instance_pool),
+    )
+    .config_view(Arc::clone(&binding.config_view))
+    .build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_host::LoadedModule {
@@ -887,9 +890,10 @@ impl PostpassStageRunner for OrderTrackingRunner {
         _blackboard: &Blackboard,
         _gcode_ir: &mut GCodeIR,
     ) -> Result<PostpassOutput, PostpassError> {
-        self.calls
-            .borrow_mut()
-            .push((module.module_id().to_string(), "GCodePostProcess".to_string()));
+        self.calls.borrow_mut().push((
+            module.module_id().to_string(),
+            "GCodePostProcess".to_string(),
+        ));
         Ok(PostpassOutput::GCodeSuccess)
     }
 
@@ -900,9 +904,10 @@ impl PostpassStageRunner for OrderTrackingRunner {
         _blackboard: &Blackboard,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
-        self.calls
-            .borrow_mut()
-            .push((module.module_id().to_string(), "TextPostProcess".to_string()));
+        self.calls.borrow_mut().push((
+            module.module_id().to_string(),
+            "TextPostProcess".to_string(),
+        ));
         Ok(PostpassOutput::TextSuccess { text })
     }
 }

@@ -309,8 +309,11 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&binding.instance_pool))
-        .build()
+    CompiledModuleBuilder::new(
+        binding.module.id().to_string(),
+        Arc::clone(&binding.instance_pool),
+    )
+    .build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_host::LoadedModule {

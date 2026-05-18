@@ -321,16 +321,32 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
 
     let loaded = LoadedModuleBuilder::new(
         "com.core.path-optimization-default",
-        slicer_ir::SemVer { major: 1, minor: 0, patch: 0 },
+        slicer_ir::SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         "Layer::PathOptimization",
         "slicer:world-layer@1.0.0",
         wasm_path.clone(),
     )
     .ir_reads(vec!["PerimeterIR".to_string()])
     .ir_writes(vec!["LayerCollectionIR".to_string()])
-    .min_host_version(slicer_ir::SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(slicer_ir::SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(slicer_ir::SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(slicer_ir::SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(slicer_ir::SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(slicer_ir::SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build();
     let pool = Arc::new(
@@ -789,7 +805,11 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
 
     let loaded = LoadedModuleBuilder::new(
         "com.core.seam-placer",
-        SemVer { major: 0, minor: 1, patch: 0 },
+        SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
         "Layer::PerimetersPostProcess",
         "slicer:world-layer@1.0.0",
         wasm_path.clone(),
@@ -800,9 +820,21 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         "PerimeterIR.regions.walls".to_string(),
     ])
     .claims(vec!["seam-placer".to_string()])
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build();
     let pool = Arc::new(

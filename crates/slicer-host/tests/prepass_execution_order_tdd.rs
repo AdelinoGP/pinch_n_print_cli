@@ -11,13 +11,12 @@ use std::sync::Arc;
 use slicer_host::{
     build_wasm_instance_pool, instance_pool::WasmArtifactMetadata, Blackboard,
     BlackboardPrepassSlot, CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan,
-    LoadedModuleBuilder, PrepassExecutionError, PrepassStageOutput,
-    PrepassStageRunner,
+    LoadedModuleBuilder, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
 };
 use slicer_ir::{
-    BoundingBox3, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectLayerRef,
-    ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SupportGeometryIR,
-    SupportPlanIR, SurfaceClassificationIR, Transform3d,
+    BoundingBox3, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectLayerRef, ObjectMesh,
+    Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SupportGeometryIR, SupportPlanIR,
+    SurfaceClassificationIR, Transform3d,
 };
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {

@@ -22,8 +22,8 @@ use slicer_host::{
     Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner, WasmEngine,
 };
 use slicer_ir::{
-    BoundingBox3, FacetPaintData, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh,
-    PaintLayer, PaintSemantic, PaintValue, Point3, SemVer, Transform3d,
+    BoundingBox3, FacetPaintData, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, PaintLayer,
+    PaintSemantic, PaintValue, Point3, SemVer, Transform3d,
 };
 use std::sync::Arc;
 

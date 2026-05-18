@@ -516,7 +516,11 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
 
     let loaded = LoadedModuleBuilder::new(
         "com.core.tree-support",
-        SemVer { major: 0, minor: 1, patch: 0 },
+        SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
         "Layer::Support",
         "slicer:world-layer@1.0.0",
         tree_support_wasm_path(),
@@ -528,9 +532,21 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
     ])
     .ir_writes(vec!["SupportIR".to_string()])
     .claims(vec!["support-generator".to_string()])
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build();
 
@@ -604,7 +620,11 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 
     let loaded = LoadedModuleBuilder::new(
         "com.core.traditional-support",
-        SemVer { major: 0, minor: 1, patch: 0 },
+        SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
         "Layer::Support",
         "slicer:world-layer@1.0.0",
         traditional_support_wasm_path(),
@@ -616,9 +636,21 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
     ])
     .ir_writes(vec!["SupportIR".to_string()])
     .claims(vec!["support-generator".to_string()])
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build();
 
@@ -692,7 +724,11 @@ fn support_deterministic_across_repeated_runs() {
 
     let loaded = LoadedModuleBuilder::new(
         "com.core.tree-support",
-        SemVer { major: 0, minor: 1, patch: 0 },
+        SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        },
         "Layer::Support",
         "slicer:world-layer@1.0.0",
         tree_support_wasm_path(),
@@ -704,9 +740,21 @@ fn support_deterministic_across_repeated_runs() {
     ])
     .ir_writes(vec!["SupportIR".to_string()])
     .claims(vec!["support-generator".to_string()])
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build();
 
@@ -837,7 +885,11 @@ fn support_enforcer_blocker_paint_precedence() {
         build_wasm_instance_pool(
             &LoadedModuleBuilder::new(
                 "com.test.support",
-                SemVer { major: 1, minor: 0, patch: 0 },
+                SemVer {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                },
                 "Layer::Support",
                 "slicer:world-layer@1.0.0",
                 guest_path,
@@ -845,9 +897,21 @@ fn support_enforcer_blocker_paint_precedence() {
             .ir_reads(vec!["SliceIR".to_string(), "PaintRegionIR".to_string()])
             .ir_writes(vec!["SupportIR".to_string()])
             .claims(vec!["support-generator".to_string()])
-            .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-            .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-            .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+            .min_host_version(SemVer {
+                major: 0,
+                minor: 1,
+                patch: 0,
+            })
+            .min_ir_schema(SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            })
+            .max_ir_schema(SemVer {
+                major: 2,
+                minor: 0,
+                patch: 0,
+            })
             .layer_parallel_safe(true)
             .build(),
             1,

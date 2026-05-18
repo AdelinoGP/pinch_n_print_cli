@@ -261,15 +261,18 @@ fn compiled_layer_planning_module() -> CompiledModule {
         wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&binding.instance_pool))
-        .ir_read_mask(IrAccessMask {
-            paths: binding.module.ir_reads().to_vec(),
-        })
-        .ir_write_mask(IrAccessMask {
-            paths: binding.module.ir_writes().to_vec(),
-        })
-        .config_view(Arc::clone(&binding.config_view))
-        .build()
+    CompiledModuleBuilder::new(
+        binding.module.id().to_string(),
+        Arc::clone(&binding.instance_pool),
+    )
+    .ir_read_mask(IrAccessMask {
+        paths: binding.module.ir_reads().to_vec(),
+    })
+    .ir_write_mask(IrAccessMask {
+        paths: binding.module.ir_writes().to_vec(),
+    })
+    .config_view(Arc::clone(&binding.config_view))
+    .build()
 }
 
 fn loaded_layer_planning_module() -> slicer_host::LoadedModule {

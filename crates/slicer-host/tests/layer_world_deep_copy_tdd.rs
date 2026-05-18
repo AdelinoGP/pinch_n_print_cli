@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_host::{
     execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
-    ExecutionPlan, LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner,
-    LoadedModule, LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
+    ExecutionPlan, LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner, LoadedModule,
+    LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 use slicer_ir::{
     BoundingBox3, ExPolygon, GlobalLayer, LoopType, MeshIR, PerimeterIR, PerimeterRegion, Point2,

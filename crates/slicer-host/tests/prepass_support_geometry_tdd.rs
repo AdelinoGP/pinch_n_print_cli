@@ -508,7 +508,8 @@ fn support_planner_claim_dedup() {
         "exactly one holder of `support-planner` must survive"
     );
     assert_eq!(
-        kept[0].id(), "com.core.support-planner-a",
+        kept[0].id(),
+        "com.core.support-planner-a",
         "alphabetical first winner (support-planner-a) must be kept"
     );
     assert_eq!(diagnostics.len(), 1);

@@ -12,8 +12,8 @@ use slicer_host::instance_pool::build_wasm_instance_pool;
 use slicer_host::manifest::LoadedModuleBuilder;
 use slicer_host::{
     execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
-    ExecutionModuleBinding, ExecutionPlan, LayerArena, LayerStageError,
-    LayerStageOutput, LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmRuntimeDispatcher,
+    ExecutionModuleBinding, ExecutionPlan, LayerArena, LayerStageError, LayerStageOutput,
+    LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmRuntimeDispatcher,
 };
 
 const PATH_OPT_WASM: &str = concat!(
@@ -97,9 +97,21 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
         String::new(),
         PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
     )
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build();
     let path_opt_pool = Arc::new(
@@ -268,9 +280,21 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         String::new(),
         PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
     )
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build();
     let path_opt_pool = Arc::new(
@@ -355,9 +379,21 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
         String::new(),
         PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
     )
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build();
     let path_opt_pool = Arc::new(
@@ -440,9 +476,21 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             String::new(),
             PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
         )
-        .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-        .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-        .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+        .min_host_version(SemVer {
+            major: 0,
+            minor: 1,
+            patch: 0,
+        })
+        .min_ir_schema(SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        })
+        .max_ir_schema(SemVer {
+            major: 2,
+            minor: 0,
+            patch: 0,
+        })
         .layer_parallel_safe(true)
         .build();
         let path_opt_pool = Arc::new(
@@ -456,9 +504,12 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             .expect("fixture pool"),
         );
         let path_opt_module = Arc::new(
-            CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
-                .wasm_component(Some(path_opt_component))
-                .build(),
+            CompiledModuleBuilder::new(
+                path_opt_loaded.id().to_string(),
+                Arc::clone(&path_opt_pool),
+            )
+            .wasm_component(Some(path_opt_component))
+            .build(),
         );
 
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -520,9 +571,21 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         String::new(),
         PathBuf::from("fixtures/com.core.path-optimization-default.wasm"),
     )
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build();
     let path_opt_pool = Arc::new(
@@ -751,14 +814,30 @@ fn stage(stage_id: &str, module_id: &str) -> CompiledStage {
 fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded = LoadedModuleBuilder::new(
         module_id,
-        SemVer { major: 1, minor: 0, patch: 0 },
+        SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
         stage_id,
         String::new(),
         PathBuf::from(format!("fixtures/{module_id}.wasm")),
     )
-    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-    .max_ir_schema(SemVer { major: 2, minor: 0, patch: 0 })
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
     .layer_parallel_safe(true)
     .build();
     let pool = Arc::new(

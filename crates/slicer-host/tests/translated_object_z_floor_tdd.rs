@@ -135,14 +135,17 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
         config_view: Arc::new(ConfigView::new()),
         wasm_component: None,
     };
-    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&binding.instance_pool))
-        .ir_read_mask(IrAccessMask {
-            paths: binding.module.ir_reads().to_vec(),
-        })
-        .ir_write_mask(IrAccessMask {
-            paths: binding.module.ir_writes().to_vec(),
-        })
-        .build()
+    CompiledModuleBuilder::new(
+        binding.module.id().to_string(),
+        Arc::clone(&binding.instance_pool),
+    )
+    .ir_read_mask(IrAccessMask {
+        paths: binding.module.ir_reads().to_vec(),
+    })
+    .ir_write_mask(IrAccessMask {
+        paths: binding.module.ir_writes().to_vec(),
+    })
+    .build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_host::LoadedModule {

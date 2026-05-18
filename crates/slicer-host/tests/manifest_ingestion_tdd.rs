@@ -831,9 +831,12 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
     for module in &report.modules {
         let expected_placeholder = !NON_PLACEHOLDER.contains(&module.id());
         assert_eq!(
-            module.placeholder_wasm(), expected_placeholder,
+            module.placeholder_wasm(),
+            expected_placeholder,
             "core module {} placeholder_wasm mismatch (expected {}, got {})",
-            module.id(), expected_placeholder, module.placeholder_wasm()
+            module.id(),
+            expected_placeholder,
+            module.placeholder_wasm()
         );
     }
 }

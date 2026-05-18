@@ -19,9 +19,9 @@ use std::sync::Arc;
 
 use slicer_host::{
     build_wasm_instance_pool, execute_postpass, Blackboard, CompiledModule, CompiledModuleBuilder,
-    CompiledStage, ExecutionPlan, GCodeEmitter, GCodeSerializer, LoadedModuleBuilder, PostpassError,
-    PythonBinding, PythonBridge, PythonBridgeError, PythonBridgePhase, PythonPostpassRunner,
-    WasmArtifactMetadata,
+    CompiledStage, ExecutionPlan, GCodeEmitter, GCodeSerializer, LoadedModuleBuilder,
+    PostpassError, PythonBinding, PythonBridge, PythonBridgeError, PythonBridgePhase,
+    PythonPostpassRunner, WasmArtifactMetadata,
 };
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, GCodeCommand, GCodeIR, IndexedTriangleSet,

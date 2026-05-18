@@ -26,8 +26,8 @@ use slicer_host::{
     PrepassStageOutput, PrepassStageRunner, SerialEdge, TierKind, WasmArtifactMetadata,
 };
 use slicer_ir::{
-    BoundingBox3, GCodeIR, GlobalLayer, LayerCollectionIR, MeshIR, Point3,
-    PrintMetadata, SemVer, StageId,
+    BoundingBox3, GCodeIR, GlobalLayer, LayerCollectionIR, MeshIR, Point3, PrintMetadata, SemVer,
+    StageId,
 };
 
 // ── helpers (mirrored from pipeline_tdd.rs — duplication across integration
