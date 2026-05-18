@@ -2,8 +2,9 @@
 status: draft
 packet: 59_machine-start-end-gcode-emission
 task_ids:
-  - TASK-193    # emit machine_start_gcode / machine_end_gcode with minimal [key] substitution
-  - TASK-193a   # register machine_start_gcode, machine_end_gcode, bed_temperature_initial_layer_single, nozzle_temperature_initial_layer in FullConfigSchema
+  - TASK-193    # emit machine_start_gcode / machine_end_gcode with minimal [key] substitution at correct serializer positions
+  - TASK-193a   # create modules/core-modules/machine-gcode-emit/ owning the four config keys and running real [key] substitution in run_finalization
+  - TASK-193b   # extend FinalizationBuilderPush + finalization-output-builder WIT with PrintStartGcode / PrintEndGcode print-boundary variants
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
@@ -12,61 +13,78 @@ context_cost_estimate: M
 
 ## Goal
 
-Emit a configurable printer start sequence before the first extrusion move and a configurable finish sequence after the last move, both substituted from a host-level config schema using a minimal `[key_name]` placeholder pass. Concretely:
+Emit a configurable printer start sequence before the first extrusion move and a configurable finish sequence after the last move, both produced by a NEW core module that performs real `[key_name]` placeholder substitution against `ResolvedConfig` and ships the resolved strings to the host serializer via two NEW print-boundary variants on the existing `FinalizationBuilderPush` enum. Concretely:
 
-1. Register four new host-level config keys in `crates/slicer-host/src/config_schema.rs::FullConfigSchema::default()` (parallel to the `thumbnail_path` precedent from packet 55):
-   - `machine_start_gcode` (String) — default exactly:
-     ```
-     M190 S[bed_temperature_initial_layer_single]
-     M109 S[nozzle_temperature_initial_layer]
-     PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single]
-     ```
-   - `machine_end_gcode` (String) — default exactly `PRINT_END`.
-   - `bed_temperature_initial_layer_single` (Int) — default `60`, registered range `0..=120`.
-   - `nozzle_temperature_initial_layer` (Int) — default `215`, registered range `0..=300`.
-2. Add a private `substitute_placeholders(template: &str, lookup: &HashMap<String, ConfigValue>) -> String` helper in `crates/slicer-host/src/gcode_emit.rs` that replaces every `[snake_case_key]` token whose key resolves in `lookup`. Unknown tokens pass through verbatim and emit a `log::warn!("unknown placeholder: {key}")` line (the `log` crate is already in `crates/slicer-host/Cargo.toml:20` as `log = "0.4"`; no new dependency). `[` not followed by a matching `]` on the same line is treated as literal text. No arithmetic, no conditionals, no loops, no `{var}` syntax.
-3. In `DefaultGCodeSerializer::serialize_gcode()`:
-   - After the existing HEADER_BLOCK + extrusion-width comments (currently emitted at file head, see `crates/slicer-host/src/gcode_emit.rs:626-740`; `serialize_header_block` at `:626`, `serialize_width_comments` at `:671`) and before the existing M82/M83 preamble (currently emitted near `:979-1166`; M83 at `:1026`, M82 at `:1028`), insert the substituted `machine_start_gcode` block followed by a single trailing newline.
-   - After the last layer's commands and before the `ThumbnailAwareSerializer`-owned THUMBNAIL_BLOCK / CONFIG_BLOCK footer (CONFIG-block emitter `serialize_config_block` at `:887`; wrapper `impl ThumbnailAwareSerializer` at `:932`; inner-serializer call at `:950`; THUMBNAIL/CONFIG append at `:953-974`), insert the substituted `machine_end_gcode` block followed by a single trailing newline.
-   - When the resolved (post-substitution) block is empty (or whitespace-only), emit nothing — no header comment, no blank line, no phantom block.
-4. Add no new IR fields, no new module manifests, no new WIT contracts.
+1. Create a new core module `modules/core-modules/machine-gcode-emit/`, mirroring `modules/core-modules/part-cooling/` in file shape, with three files:
+   - `machine-gcode-emit.toml` — manifest declaring four `[config.schema.<key>]` blocks (verbatim TOML below).
+   - `Cargo.toml` — mirrors `modules/core-modules/part-cooling/Cargo.toml`.
+   - `src/lib.rs` — implements `FinalizationModule` with a REAL `run_finalization` body (NOT a no-op). It reads `machine_start_gcode`, `machine_end_gcode`, `bed_temperature_initial_layer_single`, and `nozzle_temperature_initial_layer` from the `&ConfigView` argument, runs a private `substitute_placeholders(template: &str, lookup: &HashMap<String, ConfigValue>) -> String` helper (≤ 60 LOC, scoped to this module) on both templates, pushes the resolved start string via `output.push_print_start_gcode(resolved_start)` and the resolved end string via `output.push_print_end_gcode(resolved_end)`, then returns `Ok(())`.
+   - The four config keys with declared defaults:
+     - `machine_start_gcode` (string) — default exactly:
+       ```
+       M190 S[bed_temperature_initial_layer_single]
+       M109 S[nozzle_temperature_initial_layer]
+       PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single]
+       ```
+     - `machine_end_gcode` (string) — default exactly `PRINT_END`.
+     - `bed_temperature_initial_layer_single` (int) — default `60`; `min = 0`, `max = 120` (declarative metadata only — see Out of Scope).
+     - `nozzle_temperature_initial_layer` (int) — default `215`; `min = 0`, `max = 300` (declarative metadata only — see Out of Scope).
 
-Order of operations matches OrcaSlicer (start gcode BEFORE preamble; see `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:3200` then `:3258`). Substitution is INTENTIONALLY a narrow subset of OrcaSlicer's `PlaceholderParser`; arithmetic / conditionals / loops are out of scope and tracked as future TASK-### entries.
+2. Extend the WIT contract (`wit/world-finalization.wit:62-104`, the `finalization-output-builder` resource). Add two new methods (additive — no existing method removed or changed):
+   - `push-print-start-gcode: func(text: string) -> result<_, string>;`
+   - `push-print-end-gcode: func(text: string) -> result<_, string>;`
+
+3. Extend the SDK trait (`crates/slicer-sdk/src/traits.rs`). The existing `FinalizationOutputBuilder` impl at `:717` and the `FinalizationModule` trait at `:1196` are unchanged in signature. Add two methods on `FinalizationOutputBuilder` impl: `push_print_start_gcode(&mut self, text: String)` and `push_print_end_gcode(&mut self, text: String)`. Add two corresponding variants to the `FinalizationBuilderPush` enum currently defined at `crates/slicer-host/src/wit_host.rs:837` (the enum has 6 variants today; this adds variants 7 and 8): `PrintStartGcode(String)` and `PrintEndGcode(String)`.
+
+4. Extend dispatch routing (`crates/slicer-host/src/dispatch.rs`). The existing apply-site loop at `:2892-2978` (inside `dispatch_finalization_call` at `:1079`) processes 6 variants today. Add match arms for the 2 new variants that DEPOSIT the resolved strings into NEW `Option<String>` fields on `GCodeIR` (`print_start_gcode`, `print_end_gcode`) added to the struct at `crates/slicer-ir/src/slice_ir.rs:1781`. (Selected from the two routing options in `design.md` — see Rejected Alternatives for the trade-off.)
+
+5. Extend the host serializer (`crates/slicer-host/src/gcode_emit.rs`). The serializer has NO `substitute_placeholders` helper — substitution happens inside the WASM guest, not host-side. The serializer READS `gcode_ir.print_start_gcode` and `gcode_ir.print_end_gcode` from the IR and INSERTS them at exact byte positions inside `DefaultGCodeSerializer::serialize_gcode()` body at `:1021`:
+   - Start block: AFTER the `serialize_header_block` (`:667`) + `serialize_width_comments` (`:712`) emission, BEFORE the M82/M83 preamble emission (M83 at `:1067`, M82 at `:1069`). Followed by one trailing `\n` when non-empty.
+   - End block: AFTER the last layer's commands, BEFORE the `ThumbnailAwareSerializer` (`:973`) wrapper's THUMBNAIL/CONFIG_BLOCK append. The inner serializer appends the end block at the end of its buffer; the wrapper concatenates THUMBNAIL/CONFIG after that.
+   - Empty / whitespace-only resolved string ⇒ emit zero bytes (no header comment, no blank line, no phantom marker).
+
+Order of operations matches OrcaSlicer (start gcode BEFORE preamble; see `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:3200` then `:3258`). Substitution is INTENTIONALLY a narrow subset of OrcaSlicer's `PlaceholderParser`; arithmetic / conditionals / loops are out of scope and tracked as future packets.
 
 ## Scope Boundaries
 
 - In scope:
-  - New TDD test file `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs`.
-  - Registering `machine_start_gcode`, `machine_end_gcode`, `bed_temperature_initial_layer_single`, `nozzle_temperature_initial_layer` in `crates/slicer-host/src/config_schema.rs::FullConfigSchema::default()` with the defaults listed in the Goal.
-  - One private helper `substitute_placeholders(template: &str, lookup: &HashMap<String, ConfigValue>) -> String` in `crates/slicer-host/src/gcode_emit.rs` (≤ 60 LOC including unknown-key warning and unclosed-bracket passthrough).
-  - Wiring the substituted start block into `DefaultGCodeSerializer::serialize_gcode()` after HEADER_BLOCK + width comments, before the M82/M83 preamble.
-  - Wiring the substituted end block into the same serializer after the last layer's commands, before the THUMBNAIL/CONFIG footer (which is emitted by `ThumbnailAwareSerializer` per packet 55).
-  - Adding TASK-193 and TASK-193a entries to `docs/07_implementation_status.md` (worker dispatch — never load the full backlog file into the implementer's context).
+  - New core module `modules/core-modules/machine-gcode-emit/` with three files exactly as enumerated in the Goal.
+  - WIT contract extension: two new methods on `finalization-output-builder` (`wit/world-finalization.wit:62-104`).
+  - SDK extension: two new variants on `FinalizationBuilderPush` (`crates/slicer-host/src/wit_host.rs:837` — currently 6 variants) + two new methods on `FinalizationOutputBuilder` impl (`crates/slicer-sdk/src/traits.rs:717`).
+  - Dispatch routing extension: two new match arms inside `dispatch_finalization_call` apply-site loop (`crates/slicer-host/src/dispatch.rs:2892-2978`) that deposit resolved strings into new `GCodeIR` fields.
+  - IR additive extension: two `Option<String>` fields on `GCodeIR` (`crates/slicer-ir/src/slice_ir.rs:1781`) — `print_start_gcode` and `print_end_gcode`. No variants removed, no existing field changed.
+  - Host serializer wiring: read those two fields inside `DefaultGCodeSerializer::serialize_gcode()` and insert at the contractual byte positions specified above.
+  - New TDD test file `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` (9 positive + 3 negative = 12 tests).
+  - Build the new module's `.wasm` via `./modules/core-modules/build-core-modules.sh` and confirm `--check` returns clean.
+  - Append TASK-193, TASK-193a, TASK-193b rows to `docs/07_implementation_status.md` via worker dispatch.
 - Out of scope:
-  - Arithmetic expressions in placeholders (`[bed*2]`, `[x+5]`). Tracked as a separate future packet.
-  - Conditionals (`{if cond}...{elsif}...{else}...{endif}`), loops (`{for x in ...}{endfor}`), builtin functions. Tracked as separate future packets.
+  - **Range enforcement of `min`/`max` from module manifest.** `min`/`max` are parsed into `ConfigFieldEntry` (`crates/slicer-host/src/manifest.rs:827-828`) but not enforced at runtime — `ResolvedConfig::apply_cli_key` (`crates/slicer-ir/src/resolved_config.rs:194`) accepts any numeric value. Tracked as a separate future TASK-### packet. The declared ranges in this packet's manifest are declarative-only.
+  - Arithmetic in placeholders (`[bed*2]`, `[x+5]`). Tracked as a separate future packet.
+  - Conditionals (`{if ...}{endif}`), loops (`{for ...}{endfor}`), builtin functions. Tracked as separate future packets.
   - `{var}` brace-syntax placeholders. Only `[key]` square-bracket syntax in this packet.
   - Per-extruder / per-region / per-object placeholders.
-  - OrcaSlicer's custom-gcode placeholder validator (`OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp:9700-9701`).
-  - Adding ANY further temperature, fan, filament, or printer-profile keys beyond the four enumerated above.
-  - Modifying `ThumbnailAwareSerializer` ordering or `CONFIG_BLOCK` contents (other than the four new keys naturally appearing in the block by virtue of being in the effective `ConfigView`).
+  - OrcaSlicer's custom-gcode placeholder validator.
+  - Adopting OrcaSlicer's stock `machine_start_gcode` / `machine_end_gcode` defaults. We intentionally use the user-specified Klipper PRINT_START / PRINT_END macros.
+  - Adding ANY further temperature / fan / filament / printer-profile keys beyond the four enumerated.
   - Multi-extruder M104/M109 tool-index variants (`M109 T1 S...`).
-  - Real-PRINT_START macro semantics (homing, ABL probing, purge, etc.) — those live in printer firmware/Klipper config, not in the slicer.
-  - Emitting M82/M83 / G90 / G21 changes beyond what packet 54 already produces.
-  - Modifying `GCodeIR`, `LayerCollectionIR`, `ConfigView`, or any IR contract in `docs/02_ir_schemas.md`.
+  - Real-PRINT_START macro semantics (homing, ABL probing, purge). Those live in printer firmware / Klipper config.
+  - Modifying `M82`/`M83`/`G90`/`G21` preamble emission established by packet 54.
+  - Modifying `ThumbnailAwareSerializer` ordering or CONFIG_BLOCK contents (beyond the four new keys naturally appearing via packet 55's automatic CONFIG_BLOCK propagation).
+  - Cross-component WARN-log forwarding from the WASM guest to the host. With substitution in the guest, host-side `log::warn!` capture for unknown placeholders is not trivially available; the negative AC for unknown placeholders has been relaxed to a verbatim-presence check (renamed `unknown_placeholder_passes_through_verbatim`). Forwarding is tracked as a separate future packet.
 
 ## Prerequisites and Blockers
 
 - Depends on:
-  - Packet 55 (HEADER_BLOCK + CONFIG_BLOCK + `ThumbnailAwareSerializer`) — landed; this packet inserts BETWEEN existing emission sites and relies on the `;TYPE:` and CONFIG_BLOCK_START byte-offset anchors that packet 55 established.
-  - Packet 54 (M82/M83 preamble + `with_extrusion_mode` constructor) — landed; this packet's start-block insertion site is "immediately before the preamble line(s) that packet 54 emits". Verify the preamble's serialization offset at implementation time (Step 4) via a small dispatch.
+  - Packet 55 (HEADER_BLOCK + CONFIG_BLOCK + `ThumbnailAwareSerializer`) — landed. This packet's start-block insertion site sits AFTER `serialize_header_block` (`:667`) + `serialize_width_comments` (`:712`); end-block sits BEFORE the `ThumbnailAwareSerializer` (`:973`) wrapper's THUMBNAIL/CONFIG append.
+  - Packet 54 (M82/M83 preamble + `with_extrusion_mode` constructor) — landed. This packet's start-block insertion site is "immediately before the preamble line(s) at gcode_emit.rs:1067-1069".
 - Unblocks:
-  - Future "OrcaSlicer placeholder-parser arithmetic" packet (would extend the helper added here to support `[a+b]`, `[a*b]` etc.).
-  - Future "OrcaSlicer placeholder-parser control flow" packet (would add `{if}/{elsif}/{else}/{endif}` and `{for}`).
+  - Future "OrcaSlicer placeholder-parser arithmetic" packet (extends the module's substitution helper to support `[a+b]`, `[a*b]`).
+  - Future "OrcaSlicer placeholder-parser control flow" packet (adds `{if}{elsif}{else}{endif}` and `{for}`).
   - Future "printer-profile import" packet (a JSON/INI loader for OrcaSlicer printer profiles would populate these four keys among many others).
+  - Future "manifest range enforcement" packet (wires `ConfigFieldEntry::min/max` into `ResolvedConfig::apply_cli_key`).
+  - Future "cross-component WARN-log forwarding" packet (re-introduces the dropped WARN assertion against unknown placeholders).
 - Activation blockers:
-  - **No packet currently has `status: active`** (verified by grep `status: active` on `.ralph/specs/**/packet.spec.md` — zero matches; packets 56c, 57, 58 are all `status: draft`). This packet can activate immediately upon explicit user OK; no swap is needed. (Packet 58 `58_gcode-toolchange-purge-integration` is a peer-draft; its file surface — toolchange / purge integration — does not overlap with this packet's start/end emission file surface, so the two are independently activatable.)
-  - **Goal §1 is invalidated and must be redesigned before activation.** The `crates/slicer-host/src/config_schema.rs::FullConfigSchema::default()` registration site that this packet depends on (parallel to the packet-55 `thumbnail_path` precedent) has been removed: `config_schema.rs` and the entire `FullConfigSchema` / `ConfigFieldSchema` / `validate_*` parallel hierarchy were deleted because no production code consumed them (the runtime path uses `slicer_ir::ResolvedConfig` and the per-key `FeedrateConfig::default()` in `gcode_emit.rs`). Before activating, this packet must pick a new home for the four host-level keys (`machine_start_gcode`, `machine_end_gcode`, `bed_temperature_initial_layer_single`, `nozzle_temperature_initial_layer`) — recommended options: (a) introduce a `MachineGcodeConfig` struct in `crates/slicer-host/src/gcode_emit.rs` with `impl Default` analogous to `FeedrateConfig`, or (b) have the CLI insert the defaults into `config_source` if no override is supplied. The AC at line 79 (`schema_registers_four_keys_with_expected_types_and_defaults`) and the AC at line 86 (`rejects_temp_out_of_registered_range`, which relies on the deleted `validate_config` range checker) must be rewritten against whichever home is chosen.
+  - No activation blockers remaining. The four keys are owned by the new `machine-gcode-emit` core module; the module runs real `[key]` substitution against `ResolvedConfig` and emits the resolved strings via two new `FinalizationBuilderPush` variants (additive WIT/SDK change). The host serializer consumes the resolved strings from `GCodeIR` fields and places them at the contractual byte offsets.
 
 ## Acceptance Criteria
 
@@ -77,44 +95,46 @@ Order of operations matches OrcaSlicer (start gcode BEFORE preamble; see `OrcaSl
 - **Given** a `slicer-cli` invocation with `--config user.json` setting `machine_start_gcode = "G28 ; home all\nG1 Z5 F600"`, **when** `out.gcode` is scanned, **then** the two lines `G28 ; home all` and `G1 Z5 F600` each appear exactly once between `HEADER_BLOCK_END` and the first extrusion move, AND no `M190`, `M109`, or `PRINT_START` line appears anywhere in the file (the default has been fully replaced). | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- user_override_replaces_default --nocapture`
 - **Given** a `--config user.json` setting `bed_temperature_initial_layer_single = 65` and `nozzle_temperature_initial_layer = 220` (and the default `machine_start_gcode`), **when** `out.gcode` is scanned, **then** the start block contains the lines `M190 S65`, `M109 S220`, and `PRINT_START EXTRUDER=220 BED=65` (each exactly once) and contains no `S60`, `S215`, `EXTRUDER=215`, or `BED=60` substring. | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- substitution_uses_overridden_temp_values --nocapture`
 - **Given** a `--config user.json` setting `machine_end_gcode = ""` (empty string override), **when** `out.gcode` is scanned, **then** `PRINT_END` is absent from the file AND the byte range between the last `G1` line's terminating `\n` and `CONFIG_BLOCK_START` contains zero non-whitespace characters (no phantom block, no stray blank lines beyond one optional separator). | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- empty_end_gcode_emits_no_block --nocapture`
-- **Given** the host config schema is queried via `FullConfigSchema::default()`, **when** the keys `machine_start_gcode`, `machine_end_gcode`, `bed_temperature_initial_layer_single`, and `nozzle_temperature_initial_layer` are looked up, **then** each is registered with type (`String`, `String`, `Int`, `Int`) respectively and default value matching the Goal section (default start template literal, `"PRINT_END"`, `60`, `215`). | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- schema_registers_four_keys_with_expected_types_and_defaults --nocapture`
-- **Given** a default slicing run, **when** `CONFIG_BLOCK_START..CONFIG_BLOCK_END` is parsed, **then** each of `; machine_start_gcode = ...`, `; machine_end_gcode = PRINT_END`, `; bed_temperature_initial_layer_single = 60`, and `; nozzle_temperature_initial_layer = 215` appears exactly once (the four new keys flow through packet 55's CONFIG_BLOCK emission without further wiring). Multi-line `machine_start_gcode` value MAY be emitted on a single comment line with `\n` literalized as `\\n` OR via the existing packet-55 multi-line-value convention — the test asserts exact-key-presence and exact-value-equality against the registered default after un-escaping. | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- new_keys_appear_in_config_block --nocapture`
+- **Given** the `machine-gcode-emit` core module manifest is loaded via the existing host manifest-discovery path, **when** the four keys are looked up, **then** each is registered with type (`string`, `string`, `int`, `int`) respectively and default value matching the Goal section (default start template literal, `"PRINT_END"`, `60`, `215`). If the manifest-discovery API is not directly queryable from a test, the assertion falls back to verifying that all four `; machine_start_gcode = ...`, `; machine_end_gcode = PRINT_END`, `; bed_temperature_initial_layer_single = 60`, `; nozzle_temperature_initial_layer = 215` lines appear in the CONFIG_BLOCK of `out.gcode` produced from a default invocation. | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- module_manifest_registers_four_keys_with_expected_types_and_defaults --nocapture`
+- **Given** a default slicing run, **when** `CONFIG_BLOCK_START..CONFIG_BLOCK_END` is parsed, **then** each of `; machine_start_gcode = ...`, `; machine_end_gcode = PRINT_END`, `; bed_temperature_initial_layer_single = 60`, and `; nozzle_temperature_initial_layer = 215` appears exactly once (the four new keys flow through packet 55's CONFIG_BLOCK emission without further wiring). Multi-line `machine_start_gcode` value MAY be emitted on a single comment line with `\n` literalized as `\\n` OR via the existing packet-55 multi-line-value convention — the test asserts exact-key-presence and exact-value-equality against the declared default after un-escaping. | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- new_keys_appear_in_config_block --nocapture`
 
 ## Negative Test Cases
 
-- **Given** a `--config user.json` setting `machine_start_gcode = "TEMP [no_such_key] DONE"`, **when** the slicer is run, **then** the produced output contains the literal `TEMP [no_such_key] DONE` (passthrough — the unknown token is left exactly as written), AND a `log` record at WARN level is emitted whose formatted message contains the substring `unknown placeholder: no_such_key`. The test captures `log` output via a custom `log::Log` impl installed with `log::set_boxed_logger` that buffers records into a `Mutex<Vec<String>>` (~30 LOC; no new dependency — `log = "0.4"` is already in `crates/slicer-host/Cargo.toml:20`). | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- unknown_placeholder_passes_through_with_warning --nocapture`
-- **Given** a `--config user.json` setting `machine_start_gcode = "PREFIX [unclosed SUFFIX"` (no closing `]` on the same line), **when** the slicer is run, **then** the produced output contains the literal `PREFIX [unclosed SUFFIX` exactly as written, the substitution does not panic, does not infinite-loop, and does not emit a WARN log for this case (an unclosed bracket is not a "placeholder" — it is literal text). | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- unclosed_bracket_treated_as_literal --nocapture`
-- **Given** a `--config user.json` setting `nozzle_temperature_initial_layer = 999` (above registered max of 300), **when** `slicer-cli` is run, **then** it exits with a non-zero status code and stderr contains the substring `nozzle_temperature_initial_layer` AND a numeric reference to the violated bound (`300` or `range`). No `.gcode` output file is produced (or, if pre-existing, is not modified — assertion uses file mtime equality). | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- rejects_temp_out_of_registered_range --nocapture`
+- **Given** a `--config user.json` setting `machine_start_gcode = "TEMP [no_such_key] DONE"`, **when** the slicer is run, **then** the produced output contains the literal `TEMP [no_such_key] DONE`. (Renamed from `unknown_placeholder_passes_through_with_warning`. Substring-presence assertion is preserved verbatim; the prior WARN-log capture clause has been DROPPED because substitution now runs in a WASM guest and cross-component log forwarding is a separate future packet — see Out of Scope.) | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- unknown_placeholder_passes_through_verbatim --nocapture`
+- **Given** a `--config user.json` setting `machine_start_gcode = "PREFIX [unclosed SUFFIX"` (no closing `]` on the same line), **when** the slicer is run, **then** the produced output contains the literal `PREFIX [unclosed SUFFIX` exactly as written, the substitution does not panic and does not infinite-loop (an unclosed bracket is treated as literal text). | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- unclosed_bracket_treated_as_literal --nocapture`
 - **Given** the produced `out.gcode` from a default invocation, **when** scanned, **then** the literal substring `M190` does NOT appear inside the byte range `HEADER_BLOCK_START..HEADER_BLOCK_END`, does NOT appear after any `G1` line with `E` token (i.e., not after the first extrusion), and does NOT appear inside the byte range `CONFIG_BLOCK_START..CONFIG_BLOCK_END`. This negative case catches regression of any future serializer change that emits `M190` in the wrong band. | `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- start_block_not_inside_other_blocks --nocapture`
 
 ## Verification
 
 - `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd` — dispatch as FACT pass/fail; SNIPPETS (≤ 20 lines) on first-failing-assertion.
-- `cargo test -p slicer-host --test gcode_header_thumbnail_config_blocks_tdd` — packet 55 regression; HEADER/THUMBNAIL/CONFIG block ordering must not break.
-- `cargo test -p slicer-host --test gcode_emit_tdd` — packet 52/54 regression; M82/M83 preamble and per-role feedrate emission must not break.
+- `cargo test -p slicer-host --test gcode_header_thumbnail_config_blocks_tdd` — packet 55 regression.
+- `cargo test -p slicer-host --test gcode_emit_tdd` — packet 52/54 regression.
 - `cargo test -p slicer-host --test postpass_gcode_emit_contract_tdd` — postpass pipeline regression.
+- `./modules/core-modules/build-core-modules.sh --check` — guest WASM freshness (CLAUDE.md Guest WASM Staleness).
+- `./test-guests/build-test-guests.sh --check` — test-guest freshness (CLAUDE.md Guest WASM Staleness; triggered by the WIT change).
 - `cargo check --workspace`
 - `cargo clippy --workspace -- -D warnings`
 
 ## Authoritative Docs
 
 - `docs/01_system_architecture.md` — finalization stage, serializer role; delegate a SUMMARY (file is long).
-- `docs/02_ir_schemas.md` — `ConfigView`, `ResolvedConfig`, `ConfigValue` enum; load directly only the ≤ 40-line `ConfigValue` enum section and the `ResolvedConfig` struct section. Delegate ranged lookups if uncertain.
-- `docs/03_wit_and_manifest.md` — host-level vs module-level config schema, key validation; load directly only the schema-validation section.
-- `docs/07_implementation_status.md` — DELEGATE every read. Step 1 of this packet appends TASK-193 / TASK-193a rows via a worker; the implementer must never load the full backlog file.
-- `docs/14_deviation_audit_history.md` + `docs/DEVIATION_LOG.md` — no deviation expected; if a host-level config key registration requires one, file it here.
+- `docs/02_ir_schemas.md` — `ConfigView`, `ResolvedConfig`, `ConfigValue` enum; range-read only the `ConfigValue` enum section and the `GCodeIR` struct section.
+- `docs/03_wit_and_manifest.md` — module-manifest schema, key validation; load directly only the `[config.schema.<key>]` section.
+- `docs/05_module_sdk.md` — `#[slicer_module]` macro and `FinalizationModule` trait; range-read only the smallest example with a non-no-op body.
+- `docs/07_implementation_status.md` — DELEGATE every read. Step 1 of this packet appends TASK-193 / TASK-193a / TASK-193b rows via a worker.
+- `docs/14_deviation_audit_history.md` + `docs/DEVIATION_LOG.md` — no deviation expected; if review requires, file the end-block-before-CONFIG_BLOCK ordering difference here.
 
 For each doc above: if > 300 lines, delegate. Default rule wins.
 
 ## OrcaSlicer Reference Obligations
 
-All reads delegated; never load OrcaSlicer source into the implementer's context. The five FACTs below are the only OrcaSlicer evidence this packet needs.
+All reads delegated; never load OrcaSlicer source into the implementer's context.
 
-- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.hpp:1243` and `:1288` — FACT, ≤ 6 lines: confirm field names are exactly `machine_end_gcode` and `machine_start_gcode` (snake_case, no `print_` prefix). Confirms our key naming.
-- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp:5599-5606` (start) and `:1927-1934` (end) — FACT, ≤ 8 lines: at `:5599` / `:1927` is the `def = this->add("machine_{start,end}_gcode", coString);` declaration; the actual default-value `set_default_value(new ConfigOptionString(...))` lives at `:5606` and `:1934` and contains the stock OrcaSlicer defaults (`"G28 ; home all axes\nG1 Z5 F5000 ; lift nozzle\n"` and `"M104 S0 ; turn off temperature\nG28 X0  ; home X axis\nM84     ; disable motors\n"`). We DELIBERATELY do not adopt OrcaSlicer's defaults — ours are user-specified Klipper PRINT_START / PRINT_END macros. Record this as an intentional deviation in `requirements.md`.
-- `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:3181` (placeholder substitution) and `:3200` (start gcode write) and `:3258` (preamble after start gcode) — FACT, ≤ 12 lines: confirm OrcaSlicer's ordering is `machine_start_gcode` THEN preamble (G90/M83). Our serializer must match this ordering: substituted start block inserted BEFORE the existing packet-54 M82/M83 preamble.
-- `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:3544` — FACT, ≤ 6 lines: confirm end gcode is the final block before file close (in OrcaSlicer's flow it comes AFTER CONFIG_BLOCK; in our flow it comes BEFORE — this is an intentional difference because our CONFIG_BLOCK is emitted by `ThumbnailAwareSerializer` as a wrapper and must remain at file tail). Record as intentional deviation.
-- `OrcaSlicerDocumented/src/libslic3r/PlaceholderParser.cpp:164` (`apply_config()`) — FACT, ≤ 10 lines: confirm placeholder substitution sources config values from the same symbol table that holds `bed_temperature_initial_layer_single` etc. Our minimal helper mirrors this by accepting a `HashMap<String, ConfigValue>` view of the effective config. Do NOT read the full `process()` grammar implementation (`:2433`) — out of scope.
+- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.hpp` (machine_start/end_gcode field declarations) — FACT, ≤ 6 lines: confirm field names are exactly `machine_end_gcode` and `machine_start_gcode` (snake_case, no `print_` prefix).
+- `OrcaSlicerDocumented/src/libslic3r/PrintConfig.cpp` (stock-default `add`/`set_default_value`) — FACT, ≤ 8 lines: confirm OrcaSlicer's stock defaults; we DELIBERATELY do not adopt them.
+- `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:3181` (placeholder substitution) and `:3200` (start gcode write) and `:3258` (preamble after start gcode) — FACT, ≤ 12 lines: confirm ordering is `machine_start_gcode` THEN preamble. Our serializer must match: resolved start string inserted BEFORE the existing packet-54 M82/M83 preamble.
+- `OrcaSlicerDocumented/src/libslic3r/GCode.cpp:3544` — FACT, ≤ 6 lines: confirm end gcode is the final block before file close in OrcaSlicer; in our flow it comes BEFORE THUMBNAIL/CONFIG_BLOCK (intentional difference because our CONFIG_BLOCK is structurally a footer wrapper).
+- `OrcaSlicerDocumented/src/libslic3r/PlaceholderParser.cpp` (`apply_config()`) — FACT, ≤ 10 lines: confirm placeholder substitution sources config values from the same symbol table that holds `bed_temperature_initial_layer_single` etc. Our minimal helper mirrors this by accepting a `HashMap<String, ConfigValue>` view of the effective config. Do NOT read the full `process()` grammar — out of scope.
 
 ## Packet Files
 
@@ -134,26 +154,32 @@ This packet was generated against the context_discipline preamble shared by `spe
 
 Specific hazards:
 
-- `crates/slicer-host/src/gcode_emit.rs` is **1286 lines** (above the 600-line direct-read budget). Range-read `:626-:740` (HEADER + width + thumbnail; `serialize_header_block` at `:626`, `serialize_width_comments` at `:671`), `:887-:977` (CONFIG_BLOCK + `ThumbnailAwareSerializer` wrapper at `:932`; inner-serializer call at `:950`; THUMBNAIL/CONFIG append at `:953-974`), and `:979-:1166` (`serialize_gcode` body at `:980` + M82/M83 preamble at `:1026`/`:1028`). Never load the full file.
-- `crates/slicer-host/src/config_schema.rs` is **1044 lines** (above the 600-line direct-read budget — range-read only, do NOT load full). New key registrations follow the existing `String` pattern at `:367-:387` (the `thumbnail_path` precedent) and the existing `Int`+range pattern at `:191-:212` (`fan_speed_min` with `min: Some(0.0), max: Some(255.0)`). Dispatch SNIPPETS for those two ranges plus ≤ 1 additional SNIPPETS to find the appropriate insertion section for the 4 new entries.
-- `crates/slicer-ir/src/slice_ir.rs` is **1654 lines** (above the 600-line direct-read budget). Range-read `:433-:444` (`ConfigValue` enum) and `:618-:730` (`ResolvedConfig`; `extensions: HashMap<String, ConfigValue>` field at `:693`) only.
-- `OrcaSlicerDocumented/` MUST be delegated. The packet's parity claims rest on the five FACT dispatches enumerated above and nothing else.
-- `docs/07_implementation_status.md` is > 500 lines. NEVER load it directly. All reads and edits go through worker dispatches.
+- `crates/slicer-host/src/gcode_emit.rs` is **> 1100 lines** (above the 600-line direct-read budget). Range-read `:667-:740` (HEADER + width comments; `serialize_header_block` at `:667`, `serialize_width_comments` at `:712`), `:928-:1020` (CONFIG_BLOCK at `:928` + `ThumbnailAwareSerializer` wrapper at `:973`), and `:1021-:1166` (`DefaultGCodeSerializer::serialize_gcode` body at `:1021` + M83 at `:1067` + M82 at `:1069`). Never load the full file.
+- `crates/slicer-host/src/dispatch.rs` is **> 3000 lines**. Range-read `:1070-:1100` (`dispatch_finalization_call` entry at `:1079`) and `:2885-:2980` (apply-site loop). Never load the full file.
+- `crates/slicer-host/src/wit_host.rs` — range-read `:830-:895` (`FinalizationBuilderPush` enum at `:837`). Never load the full file.
+- `crates/slicer-host/src/pipeline.rs:435-449` — the `effective_config: HashMap<String, ConfigValue>` build site. Range-read only.
+- `crates/slicer-ir/src/slice_ir.rs` is **> 1600 lines**. Range-read `:550-:580` (`ConfigValue` enum at `:557`) and `:1779-:1799` (`GCodeIR` struct at `:1781`). Never load the full file.
+- `crates/slicer-sdk/src/traits.rs` — range-read `:700-:730` (`FinalizationOutputBuilder` struct + impl) and `:1196-:1230` (`FinalizationModule` trait).
+- `wit/world-finalization.wit:55-110` — full read OK (file is short).
+- `modules/core-modules/part-cooling/{part-cooling.toml, Cargo.toml, src/lib.rs}` — full reads OK (each is small). These are the `FinalizationModule` shape precedent the implementer copies.
+- `OrcaSlicerDocumented/` MUST be delegated. The five FACT dispatches enumerated above are the only OrcaSlicer evidence this packet needs.
+- `docs/07_implementation_status.md` is > 500 lines. NEVER load it directly.
 
 Sub-agent return formats:
 
 - OrcaSlicer FACTs (5 dispatches above): ≤ 12 lines each, no code blocks > 4 lines.
 - `cargo test`: FACT pass/fail; SNIPPETS (≤ 20 lines) on first-failing-assertion.
-- Schema-registration completeness check (end of Step 3): LOCATIONS list of every registered key matching `machine_*` or `*_temperature_initial_layer*`, ≤ 8 entries.
-- `serialize_gcode()` insertion-point lookup (Step 4): SNIPPETS (≤ 30 lines) of the two byte ranges where start/end blocks are inserted.
+- WIT/dispatch/SDK alignment dispatches (Step 3): LOCATIONS + ≤ 10 lines each.
+- Module-manifest registration completeness check (end of Step 4): LOCATIONS list of every `[config.schema.<key>]` block in `machine-gcode-emit.toml` (expected count = 4), ≤ 8 entries.
+- `serialize_gcode()` insertion-point lookup (Step 5): SNIPPETS (≤ 30 lines) of the two byte ranges where start/end blocks are inserted.
 
 ### Test Fixture Convention
 
-- This packet's tests reuse the same small `.stl` fixture used by `gcode_emit_tdd.rs` and `gcode_header_thumbnail_config_blocks_tdd.rs` (resolve the path via `concat!(env!("CARGO_MANIFEST_DIR"), "/../../resources/<fixture>.stl")` — confirm the exact filename via a single LOCATIONS dispatch against the predecessor test files in Step 2). NO new STL fixture is created.
+- This packet's tests reuse the same small `.stl` fixture used by `gcode_emit_tdd.rs` and `gcode_header_thumbnail_config_blocks_tdd.rs` (resolve via `concat!(env!("CARGO_MANIFEST_DIR"), "/../../resources/<fixture>.stl")` — confirm the exact filename via a single LOCATIONS dispatch against the predecessor test files in Step 2). NO new STL fixture is created.
 - The `--config user.json` overrides used in ACs are materialized inline at test runtime via `std::env::temp_dir()` + `serde_json::to_writer`. NO new committed config fixtures.
 
 ### Test Discipline Reminder
 
-Per `CLAUDE.md` / Test Discipline: `cargo test --workspace` is FORBIDDEN as a per-AC verification command in this packet. Every AC above uses the targeted `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- <test_name> --nocapture` form. The packet-level workspace gate appears only at the closure ceremony in `implementation-plan.md` Step 6 and is dispatched to a sub-agent that returns FACT pass/fail.
+Per `CLAUDE.md` / Test Discipline: `cargo test --workspace` is FORBIDDEN as a per-AC verification command in this packet. Every AC above uses the targeted `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- <test_name> --nocapture` form. The packet-level workspace gate appears only at the closure ceremony in `implementation-plan.md` Step 7 and is dispatched to a sub-agent that returns FACT pass/fail.
 
-Aggregate context cost: M. No step is L. If implementation reveals that the start-block insertion point in `serialize_gcode()` is not a clean injection (e.g., requires refactoring the preamble emission path), surface as a packet-local risk in `design.md` Open Questions and split that work into a follow-up packet rather than expanding this packet's scope.
+Aggregate context cost: M. No step is L. If implementation reveals that the start-block or end-block insertion point in `serialize_gcode()` is not a clean injection (e.g., requires refactoring the preamble emission path or the wrapper's seam), surface as a packet-local risk in `design.md` Open Questions and split that work into a follow-up packet rather than expanding this packet's scope.
