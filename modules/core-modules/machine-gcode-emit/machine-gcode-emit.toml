@@ -11,8 +11,8 @@ wit-world    = "slicer:world-postpass@1.0.0"
 id = "PostPass::GCodePostProcess"
 
 [ir-access]
-reads  = []
-writes = []
+reads  = ["GCodeIR"]
+writes = ["GCodeIR"]
 
 [claims]
 holds    = []
