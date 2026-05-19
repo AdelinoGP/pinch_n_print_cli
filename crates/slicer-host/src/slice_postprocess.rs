@@ -171,6 +171,117 @@ pub fn paint_annotation_warning_to_progress_event(
     )
 }
 
+/// Coalesce a sequence of paint-annotation warnings into one progress event
+/// per `(global_layer_index, object_id, region_id, semantic, polygon_index)`
+/// group, preserving the input ordering of first occurrence per group.
+///
+/// Each emitted event carries a message that includes the number of affected
+/// contour points and the first/last contour-point index in the group, so a
+/// single structurally-noisy paint region produces one log line per polygon
+/// per semantic instead of one line per contour point.
+///
+/// `timestamp_ms_base` is the timestamp of the first emitted event; subsequent
+/// events receive `timestamp_ms_base + i` where `i` is the group index. The
+/// individual `SlicePostProcessPaintAnnotationWarning` values are still
+/// available on the annotation result for callers that need per-point detail.
+pub fn paint_annotation_warnings_to_progress_events(
+    warnings: &[SlicePostProcessPaintAnnotationWarning],
+    slice_id: String,
+    module_id: String,
+    timestamp_ms_base: u64,
+) -> Vec<ProgressEvent> {
+    // Group by (layer, object_id, region_id, semantic, polygon_index) while
+    // preserving the order in which each group was first encountered.
+    type GroupKey<'a> = (u32, &'a str, u64, &'a PaintSemantic, usize);
+    let mut order: Vec<GroupKey> = Vec::new();
+    let mut groups: std::collections::HashMap<
+        GroupKey,
+        Vec<&SlicePostProcessPaintAnnotationWarning>,
+    > = std::collections::HashMap::new();
+
+    for w in warnings {
+        let key: GroupKey = (
+            w.global_layer_index,
+            w.object_id.as_str(),
+            w.region_id,
+            &w.semantic,
+            w.polygon_index,
+        );
+        if !groups.contains_key(&key) {
+            order.push(key);
+        }
+        groups.entry(key).or_default().push(w);
+    }
+
+    order
+        .into_iter()
+        .enumerate()
+        .map(|(i, key)| {
+            let members = &groups[&key];
+            let first = members
+                .first()
+                .expect("group must contain at least one warning");
+            let reason_label = match first.reason {
+                SlicePostProcessPaintAnnotationWarningReason::NumericalEdgeAmbiguity => {
+                    "numerical-edge-ambiguity"
+                }
+            };
+            let count = members.len();
+            let first_cpi = members
+                .iter()
+                .map(|w| w.contour_point_index)
+                .min()
+                .expect("non-empty group");
+            let last_cpi = members
+                .iter()
+                .map(|w| w.contour_point_index)
+                .max()
+                .expect("non-empty group");
+            let message = if count == 1 {
+                format!(
+                    "paint annotation fell back to deterministic default ({reason}) on layer {layer} \
+                     object='{obj}' region={rid} semantic={sem:?} polygon={pi} contour_point={cpi}",
+                    reason = reason_label,
+                    layer = first.global_layer_index,
+                    obj = first.object_id,
+                    rid = first.region_id,
+                    sem = first.semantic,
+                    pi = first.polygon_index,
+                    cpi = first_cpi,
+                )
+            } else {
+                format!(
+                    "paint annotation fell back to deterministic default ({reason}) on layer {layer} \
+                     object='{obj}' region={rid} semantic={sem:?} polygon={pi} on {count} contour points \
+                     (first={first_cpi}, last={last_cpi})",
+                    reason = reason_label,
+                    layer = first.global_layer_index,
+                    obj = first.object_id,
+                    rid = first.region_id,
+                    sem = first.semantic,
+                    pi = first.polygon_index,
+                )
+            };
+            ProgressEvent::module_error(
+                slice_id.clone(),
+                ProgressPhase::PerLayer,
+                String::from("Layer::SlicePostProcess"),
+                first.global_layer_index,
+                module_id.clone(),
+                timestamp_ms_base + i as u64,
+                ProgressError {
+                    code: first.code as u32,
+                    message,
+                    fatal: false,
+                    suggestion: Some(String::from(
+                        "regenerate paint regions with denser sampling, or accept the deterministic default",
+                    )),
+                },
+            )
+        })
+        .collect()
+}
+
 /// Annotate one final `SliceIR` layer with contour-parallel `boundary_paint`.
 pub fn execute_slice_postprocess_paint_annotation(
     request: SlicePostProcessPaintAnnotationRequest,
@@ -260,77 +371,42 @@ pub fn execute_slice_postprocess_paint_annotation(
                             point_paint.push(Some(value));
                         }
                         Ok(None) => {
-                            // Point is not in any paint region for this semantic
-                            // Check if it might be on a boundary (numerical edge case)
-                            // Try with Exclude to see if the result changes
-                            match point_in_paint_region(
+                            // Point is not in any paint region for this semantic.
+                            // Two cases:
+                            //   (a) point is within integer-grid quantization noise
+                            //       (≤ 1 unit ≈ 100 nm) of a paint-region edge —
+                            //       genuine numerical edge ambiguity; emit a 504
+                            //       and use the deterministic fallback.
+                            //   (b) point is unambiguously outside all painted
+                            //       regions — silently use a region-level default
+                            //       so the semantic still carries a value.
+                            if is_point_numerically_ambiguous(
                                 &paint_regions,
                                 layer_index,
                                 semantic,
                                 *point,
-                                BoundaryInclusion::Exclude,
                             ) {
-                                Ok(exclude_result) => {
-                                    // If Include gave None but the point is very close to a region
-                                    // we treat it as ambiguous. In this test setup, the fixture
-                                    // creates a triangle that doesn't contain certain points,
-                                    // so we check if the point might be numerically ambiguous.
-                                    // The test fixture places point (10.0, 0.0001) which is
-                                    // barely outside the triangle (0,0)-(10,0)-(0,10).
-                                    // We need a heuristic for ambiguity.
-                                    let _ = exclude_result;
-                                    // For now, consider points that are very close to regions
-                                    // as potentially ambiguous. The test expects point index 2
-                                    // (10.0, 0.0001) to be flagged as ambiguous.
-                                    // We'll check if the point is "nearly" in any region.
-                                    if is_point_numerically_ambiguous(
-                                        &paint_regions,
-                                        layer_index,
-                                        semantic,
-                                        *point,
-                                    ) {
-                                        let fallback_value = default_fallback_value(semantic);
-                                        point_paint.push(Some(fallback_value.clone()));
-                                        warnings.push(SlicePostProcessPaintAnnotationWarning {
-                                            code: 504,
-                                            global_layer_index: layer_index,
-                                            object_id: region.object_id.clone(),
-                                            region_id: region.region_id,
-                                            semantic: semantic.clone(),
-                                            polygon_index,
-                                            contour_point_index,
-                                            fallback_value,
-                                            reason:
-                                                SlicePostProcessPaintAnnotationWarningReason::NumericalEdgeAmbiguity,
-                                        });
-                                        degraded = true;
-                                    } else {
-                                        // Point is clearly outside all regions
-                                        // For built-in semantics with required_semantics,
-                                        // we still need to provide a value since the semantic
-                                        // is required. Use the value from the paint region.
-                                        let regions = paint_regions.get(layer_index, semantic);
-                                        if !regions.is_empty() {
-                                            // Use the first region's value as the default
-                                            point_paint.push(Some(regions[0].value.clone()));
-                                        } else {
-                                            point_paint.push(None);
-                                        }
-                                    }
-                                }
-                                Err(PaintRegionQueryError::DeterministicConflict) => {
-                                    // Shouldn't happen for None result, but handle it
-                                    return Err(
-                                        SlicePostProcessPaintAnnotationError::DeterministicConflict {
-                                            code: 503,
-                                            global_layer_index: layer_index,
-                                            object_id: region.object_id.clone(),
-                                            region_id: region.region_id,
-                                            semantic: semantic.clone(),
-                                            polygon_index,
-                                            contour_point_index,
-                                        },
-                                    );
+                                let fallback_value = default_fallback_value(semantic);
+                                point_paint.push(Some(fallback_value.clone()));
+                                warnings.push(SlicePostProcessPaintAnnotationWarning {
+                                    code: 504,
+                                    global_layer_index: layer_index,
+                                    object_id: region.object_id.clone(),
+                                    region_id: region.region_id,
+                                    semantic: semantic.clone(),
+                                    polygon_index,
+                                    contour_point_index,
+                                    fallback_value,
+                                    reason:
+                                        SlicePostProcessPaintAnnotationWarningReason::NumericalEdgeAmbiguity,
+                                });
+                                degraded = true;
+                            } else {
+                                let regions = paint_regions.get(layer_index, semantic);
+                                if !regions.is_empty() {
+                                    point_paint.push(Some(regions[0].value.clone()));
+                                } else {
+                                    point_paint.push(None);
                                 }
                             }
                         }
@@ -442,9 +518,14 @@ fn is_point_numerically_ambiguous(
         return false;
     }
 
-    // Check distance from point to each region's polygon edges
-    // If the point is very close to an edge (within a small epsilon), it's ambiguous
-    const EPSILON_UNITS: i64 = 10; // 10 units = 1 micrometer at 100nm scale
+    // A point only counts as numerically ambiguous when it lies within the
+    // integer-grid quantization noise of a paint-region edge. The coordinate
+    // unit is 100 nm, so 1 unit is the smallest representable non-zero
+    // displacement — anything strictly above 1 unit is real separation, not
+    // ambiguity. (A previous value of 10 units / 1 µm was inherited from a
+    // hand-crafted test fixture and produced thousands of false positives on
+    // paint regions composed of un-unioned per-facet projected triangles.)
+    const EPSILON_UNITS: i64 = 1;
 
     for region in regions {
         for polygon in &region.polygons {

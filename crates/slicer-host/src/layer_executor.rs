@@ -20,7 +20,7 @@ use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
 use crate::layer_slice::{execute_layer_slice, LayerSliceError};
 use crate::progress_events::ProgressEvent;
 use crate::slice_postprocess::{
-    execute_slice_postprocess_paint_annotation, paint_annotation_warning_to_progress_event,
+    execute_slice_postprocess_paint_annotation, paint_annotation_warnings_to_progress_events,
     SlicePostProcessPaintAnnotationError, SlicePostProcessPaintAnnotationRequest,
 };
 use crate::{
@@ -645,13 +645,16 @@ fn run_paint_annotation(
 
     // Surface deterministic, non-fatal fallback warnings through the
     // existing progress-event adapter (docs/09 §ModuleError; docs/11 §73-75).
-    for (i, warning) in result.warnings.iter().enumerate() {
-        let event = paint_annotation_warning_to_progress_event(
-            warning,
-            String::new(),
-            String::from("com.host.slice-postprocess-paint-annotator"),
-            i as u64,
-        );
+    // Per-point warnings are coalesced into one event per
+    // (object, region, semantic, polygon) group so structurally-noisy paint
+    // regions don't drown the log in identical lines.
+    let events = paint_annotation_warnings_to_progress_events(
+        &result.warnings,
+        String::new(),
+        String::from("com.host.slice-postprocess-paint-annotator"),
+        0,
+    );
+    for event in events {
         sink.record(event);
     }
 

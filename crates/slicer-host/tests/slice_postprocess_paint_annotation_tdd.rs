@@ -718,3 +718,175 @@ fn paint_annotation_fallback_value_is_deterministic_for_each_semantic() {
         assert_eq!(w.reason, R::NumericalEdgeAmbiguity);
     }
 }
+
+// Regression: prior to the EPSILON_UNITS tightening (10 → 1), a contour point
+// that sat several integer units (sub-µm but well above grid quantization) from
+// a paint-region polygon edge was misclassified as "numerical edge ambiguity"
+// and emitted a code-504 warning per point. On real slices with per-facet
+// projected paint regions this produced hundreds of warnings per layer. After
+// the fix, only points within 1 unit (100 nm, integer-grid noise) of an edge
+// fire — points further away are silently assigned a region-level default.
+#[test]
+fn paint_annotation_does_not_warn_for_points_outside_grid_quantization_window() {
+    use slicer_host::execute_slice_postprocess_paint_annotation;
+
+    // Paint region triangle (0,0) - (10,0) - (0,10), value ToolIndex(3).
+    // Contour point at (10.0, 0.0005) is 5 integer units (= 0.5 µm) above the
+    // segment (0,0)-(10,0) extended past its right endpoint, projected onto
+    // that segment. Strictly outside the triangle (Include == None).
+    let regions = paint_region_ir(
+        7,
+        vec![(
+            PaintSemantic::Material,
+            vec![semantic_region(
+                "five-unit-offset-object",
+                vec![polygon(vec![(0.0, 0.0), (10.0, 0.0), (0.0, 10.0)])],
+                PaintValue::ToolIndex(3),
+                0,
+            )],
+        )],
+    );
+
+    let result =
+        execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
+            slice_ir: slice_fixture(
+                7,
+                vec![region_fixture(
+                    "five-unit-offset-object",
+                    0,
+                    vec![polygon(vec![
+                        (0.0, 0.0),
+                        (10.0, 0.0),
+                        (10.0, 0.0005),
+                        (0.0, 10.0),
+                    ])],
+                )],
+            ),
+            paint_regions: Arc::new(regions),
+            required_semantics: vec![PaintSemantic::Material],
+            modifier_projections: vec![],
+        })
+        .expect("annotation must not error on a 5-unit-offset point");
+
+    assert!(
+        !result.degraded,
+        "5-unit (0.5 µm) offset is above grid-quantization noise and must not degrade"
+    );
+    assert!(
+        result.warnings.is_empty(),
+        "5-unit (0.5 µm) offset must not fire a code-504 warning; got {} warnings: {:?}",
+        result.warnings.len(),
+        result.warnings,
+    );
+    // The point is outside all paint regions; it should receive the
+    // region-level default value (the only painted region's value) silently.
+    let region = &result.slice_ir.regions[0];
+    let material = &region.boundary_paint[&PaintSemantic::Material][0];
+    assert_eq!(material[2], Some(PaintValue::ToolIndex(3)));
+}
+
+// Aggregation contract: per-point warnings within the same
+// (layer, object, region, semantic, polygon) group MUST coalesce into one
+// progress event whose message reports a count and the first/last contour
+// indices, so a structurally-noisy paint region never produces one event per
+// contour point.
+#[test]
+fn paint_annotation_warnings_aggregate_into_one_event_per_polygon_semantic_group() {
+    use slicer_host::paint_annotation_warnings_to_progress_events;
+
+    let mk = |cpi: usize, sem: PaintSemantic, poly: usize| SlicePostProcessPaintAnnotationWarning {
+        code: 504,
+        global_layer_index: 240,
+        object_id: String::from("obj-1"),
+        region_id: 0,
+        semantic: sem,
+        polygon_index: poly,
+        contour_point_index: cpi,
+        fallback_value: PaintValue::Flag(false),
+        reason: SlicePostProcessPaintAnnotationWarningReason::NumericalEdgeAmbiguity,
+    };
+
+    // 4 warnings on the same (layer/obj/region/semantic/polygon) group → 1 event.
+    // 2 warnings on a different semantic → 1 event.
+    // 1 warning on a different polygon → 1 event.
+    // Expect 3 events total, in first-occurrence order.
+    let warnings = vec![
+        mk(255, PaintSemantic::FuzzySkin, 2),
+        mk(348, PaintSemantic::FuzzySkin, 2),
+        mk(662, PaintSemantic::SupportBlocker, 2),
+        mk(940, PaintSemantic::FuzzySkin, 2),
+        mk(5, PaintSemantic::FuzzySkin, 3),
+        mk(700, PaintSemantic::SupportBlocker, 2),
+        mk(1001, PaintSemantic::FuzzySkin, 2),
+    ];
+
+    let events = paint_annotation_warnings_to_progress_events(
+        &warnings,
+        String::new(),
+        String::from("com.host.slice-postprocess-paint-annotator"),
+        0,
+    );
+
+    assert_eq!(
+        events.len(),
+        3,
+        "must emit exactly one event per (polygon, semantic) group; got {} events",
+        events.len(),
+    );
+
+    // First group: FuzzySkin/polygon=2, 4 points (255, 348, 940, 1001),
+    // first=255, last=1001.
+    let e0_err = events[0].error.as_ref().expect("error payload");
+    assert_eq!(e0_err.code, 504);
+    assert!(!e0_err.fatal);
+    assert!(
+        e0_err.message.contains("semantic=FuzzySkin"),
+        "msg={}",
+        e0_err.message
+    );
+    assert!(
+        e0_err.message.contains("polygon=2"),
+        "msg={}",
+        e0_err.message
+    );
+    assert!(
+        e0_err.message.contains("on 4 contour points"),
+        "msg={}",
+        e0_err.message
+    );
+    assert!(
+        e0_err.message.contains("first=255") && e0_err.message.contains("last=1001"),
+        "msg={}",
+        e0_err.message
+    );
+
+    // Second group: SupportBlocker/polygon=2, 2 points (662, 700).
+    let e1_err = events[1].error.as_ref().expect("error payload");
+    assert!(
+        e1_err.message.contains("semantic=SupportBlocker")
+            && e1_err.message.contains("polygon=2")
+            && e1_err.message.contains("on 2 contour points")
+            && e1_err.message.contains("first=662")
+            && e1_err.message.contains("last=700"),
+        "msg={}",
+        e1_err.message,
+    );
+
+    // Third group: FuzzySkin/polygon=3, 1 point — singleton uses the original
+    // per-point message format (no count/first/last suffix) to avoid noise on
+    // genuine isolated ambiguity.
+    let e2_err = events[2].error.as_ref().expect("error payload");
+    assert!(
+        e2_err.message.contains("semantic=FuzzySkin")
+            && e2_err.message.contains("polygon=3")
+            && e2_err.message.contains("contour_point=5")
+            && !e2_err.message.contains("on 1 contour points"),
+        "msg={}",
+        e2_err.message,
+    );
+
+    // Timestamps are deterministic and monotonically increasing from the base.
+    assert_eq!(events[0].timestamp_ms, 0);
+    assert_eq!(events[1].timestamp_ms, 1);
+    assert_eq!(events[2].timestamp_ms, 2);
+}

@@ -115,9 +115,9 @@ pub use region_mapping::{
 };
 pub use slice_postprocess::{
     execute_slice_postprocess_paint_annotation, paint_annotation_warning_to_progress_event,
-    SlicePostProcessPaintAnnotationError, SlicePostProcessPaintAnnotationRequest,
-    SlicePostProcessPaintAnnotationResult, SlicePostProcessPaintAnnotationWarning,
-    SlicePostProcessPaintAnnotationWarningReason,
+    paint_annotation_warnings_to_progress_events, SlicePostProcessPaintAnnotationError,
+    SlicePostProcessPaintAnnotationRequest, SlicePostProcessPaintAnnotationResult,
+    SlicePostProcessPaintAnnotationWarning, SlicePostProcessPaintAnnotationWarningReason,
 };
 pub use support_geometry::{
     commit_support_geometry_builtin, execute_support_geometry, SupportGeometryBuiltinError,
