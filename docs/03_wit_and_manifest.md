@@ -1,5 +1,17 @@
 # ModularSlicer — WIT Interfaces & Module Manifest Schema
 
+> **Source of truth.** The on-disk `wit/*.wit` files in this repo are the
+> authoritative WIT contract. The WIT code blocks reproduced in this document
+> are derived for reading convenience and have been observed to drift behind
+> the on-disk schema (e.g. new record fields, additional resource methods,
+> renamed enum variants). When the doc and `wit/` disagree, `wit/` wins; treat
+> the doc divergence as a bug to be filed against this document.
+>
+> Likewise, the TOML manifest schema in this document is the parsed surface
+> recognised by `crates/slicer-host/src/manifest.rs`. Sections or keys that
+> appear here but are not read by the parser are noted inline with a
+> `<!-- VERIFY: ... -->` tag.
+
 ---
 
 ## WIT File Organization
@@ -268,11 +280,15 @@ interface ir-handles {
 
     resource gcode-output-builder {
         push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
-        push-retract:     func(length: f32, speed: f32) -> result<_, string>;
-        push-unretract:   func(length: f32, speed: f32) -> result<_, string>;
+        // `mode: retract-mode` selects parameterised G1 E (Gcode mode) vs
+        // parameterless G10/G11 (Firmware mode); see packet 34.
+        push-retract:     func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
+        push-unretract:   func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
         push-fan-speed:   func(value: u8) -> result<_, string>;
         push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-        push-tool-change: func(from-tool: u32, to-tool: u32) -> result<_, string>;
+        // `after-entity-index` anchors the tool change to a specific entity
+        // position in the layer's ordered_entities (see `LayerCollectionIR.tool_changes`).
+        push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
         push-comment:     func(text: string) -> result<_, string>;
         push-raw:         func(text: string) -> result<_, string>;
         push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
@@ -442,17 +458,20 @@ world layer-module {
 
 Available to `Layer::PathOptimization` modules. Replaces the previous reserved-future placeholder.
 
+**Source of truth:** `wit/deps/ir-types.wit`. The resource and the
+`ordered-entity-view` record are defined there.
+
 ```wit
 resource layer-collection-builder {
-    set-entity-order: func(items: list<tuple<u32, bool>>);
+    // Returns `result<_, string>` so commit-time validation surfaces as an error.
+    set-entity-order:     func(items: list<tuple<u32, bool>>) -> result<_, string>;
     get-ordered-entities: func() -> list<ordered-entity-view>;
 }
 
-record ordered-entity-view {
-    entity-index: u32,
-    role: extrusion-role,
-    region-key: region-key,
-}
+// Confirm the exact field set against the on-disk WIT; the record currently
+// carries fields such as `original-index`, `region-key`, `role`, `start-point`,
+// `end-point`, and `point-count` (the older `entity-index` field was renamed
+// to `original-index`).
 ```
 
 `set-entity-order` accepts `(entity-index, reverse-direction)` tuples. Setting `reverse-direction = true` flips the path's point order at apply time. Host rejects entries that reference unknown `entity-index` values or include duplicates; either condition produces a `BuilderError::InvalidEntityOrder` diagnostic.
@@ -527,7 +546,9 @@ world prepass-module {
         layer-index: layer-idx,
         semantic: string,
         polygons: list<ex-polygon>,
-        value: string,
+        // `paint-value-input` is a typed variant — see `wit/deps/ir-types.wit`
+        // for its definition: `flag(bool) | scalar(f32) | tool-index(u32) | custom(string)`.
+        value: paint-value-input,
     }
 
     resource paint-segmentation-output {
@@ -568,27 +589,20 @@ world prepass-module {
         config: config-view,
     ) -> result<_, module-error>;
 
-    // SupportGeneration stage
+    // SupportGeometry stage
     // Multi-layer organic tree-support planning. Walks layers top-to-bottom,
     // groups overhang/enforcer contacts via per-layer Prim MST, and emits
     // per-(layer, object, region) branch geometry consumed directly by
     // Layer::Support modules that declare SupportPlanIR as a read.
-    record support-plan-entry {
-        global-layer-index: layer-idx,
-        object-id: object-id,
-        region-id: region-id,
-        branch-segments: list<list<point3-with-width>>,
-    }
-
-    resource support-geometry-output {
-        push-support-plan: func(entry: support-plan-entry) -> result<_, string>;
-    }
-
-    export run-support-geometry: func(
-        objects: list<mesh-object-view>,
-        output: support-geometry-output,
-        config: config-view,
-    ) -> result<_, module-error>;
+    //
+    // **Source of truth:** `wit/world-prepass.wit`. The on-disk signature of
+    // `run-support-geometry` takes `(objects, layer-plan: layer-plan-view,
+    // region-segmentation: region-segmentation-view,
+    // support-geometry: support-geometry-view)` and returns
+    // `support-geometry-output` directly (not `result<_, module-error>`).
+    // `support-geometry-output` is a **record**, not a resource. The
+    // accompanying records `layer-plan-view`, `region-segmentation-view`,
+    // and `support-geometry-view` are defined in the on-disk WIT.
 }
 ```
 
@@ -602,11 +616,12 @@ package slicer:world-postpass@1.0.0;
 world postpass-module {
     import slicer:host-api/host-services;
     import slicer:config/config-types.{config-view};
-    import slicer:ir-types/ir-handles.{gcode-output-builder, gcode-move-cmd};
+    import slicer:ir-types/ir-handles.{gcode-output-builder, gcode-move-cmd, retract-mode};
 
     record module-error { code: u32, message: string, fatal: bool }
 
-    record gcode-retract-cmd { length: f32, speed: f32 }
+    // `mode: retract-mode` selects parameterised G1 E vs G10/G11; see packet 34.
+    record gcode-retract-cmd { length: f32, speed: f32, mode: retract-mode }
     record gcode-fan-speed-cmd { value: u8 }
     record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
     record gcode-tool-change-cmd { from-tool: u32, to-tool: u32 }
@@ -640,102 +655,53 @@ world postpass-module {
 
 ## `world-finalization.wit`
 
-```wit
-package slicer:world-finalization@1.0.0;
+**Source of truth:** `wit/world-finalization.wit`. The shape below summarises
+the world; for exact field order, parameter names, and return types, read the
+on-disk file.
 
-world finalization-module {
-    import slicer:host-api/host-services;
-    import slicer:config/config-types.{config-view};
-    use slicer:ir-types/ir-handles.{
-        layer-idx, extrusion-path-3d, region-key,
-    };
+The `finalization-module` world exposes a single export
+`run-finalization(layers, output, config) -> result<_, module-error>`. It
+imports `slicer:host-api/host-services`, `slicer:config/config-types.{config-view}`,
+and uses `slicer:ir-types/ir-handles.{layer-idx, extrusion-path-3d, region-key}`
+plus `slicer:types/geometry.{extrusion-role}`.
 
-    record module-error { code: u32, message: string, fatal: bool }
+Resources, records, and enums (current at time of writing — confirm against
+`wit/world-finalization.wit`):
 
-    record tool-change-view {
-        after-entity-index: u32,
-        from-tool: u32,
-        to-tool: u32,
-    }
+- `layer-collection-view` — read-only view of one completed layer:
+  `layer-index() -> layer-idx`, `z() -> f32`, `entity-count() -> u32`,
+  `ordered-entities() -> list<print-entity-view>`,
+  `tool-changes() -> list<tool-change-view>`,
+  `z-hops() -> list<z-hop-view>`.
+- `print-entity-view` (record): `entity-id: u64`, `path: extrusion-path-3d`,
+  `role: extrusion-role`, `region-key: region-key`, `topo-order: u32`.
+  The `entity-id` is the stable per-layer ID from packet 39 (see
+  `docs/02_ir_schemas.md` IR 10).
+- `tool-change-view` (record): `after-entity-index: u32`, `from-tool: u32`,
+  `to-tool: u32`.
+- `z-hop-view` (record): `after-entity-index: u32`, `hop-height: f32`.
+- `finalization-output-builder` (resource) — the mutation API:
+  - `push-entity-to-layer(layer-index, path, region-key) -> result<_, string>`
+  - `push-entity-with-priority(layer-index, path, region-key, priority) -> result<_, string>`
+    — note `extrusion-path-3d` already carries the role; there is no separate `role` parameter.
+  - `modify-entity(layer-index, entity-id, mutation) -> result<_, string>`
+  - `sort-layer-by(layer-index, key) -> result<_, string>`
+  - `insert-synthetic-layer(z, paths) -> result<_, string>` and
+    `insert-synthetic-layer-after(idx, layer-data) -> result<_, string>`
+- `entity-mutation` (variant) — packet 41 enum-serialisable mutations.
+  Confirm the current variant set against `wit/world-finalization.wit`; at the
+  time of writing it is a narrow set rather than the speculative six-variant
+  enum some older drafts of this doc described.
+- `sort-key` (enum, not variant) — sort discriminators consumed by
+  `sort-layer-by`. Names follow the form `by-<…>`; read the on-disk file for
+  the current set.
+- `synthetic-layer-data` (record) — `z: f32`, `paths: list<extrusion-path-3d>`.
 
-    record print-entity-view {
-        path: extrusion-path-3d,
-        role: extrusion-role,
-        region-key: region-key,
-        topo-order: u32,
-    }
-
-    record z-hop-view {
-        after-entity-index: u32,
-        hop-height: f32,
-    }
-
-    // Read-only view of one completed layer.
-    resource layer-collection-view {
-        layer-index:  func() -> layer-idx;
-        z:            func() -> f32;
-        entity-count: func() -> u32;
-        ordered-entities: func() -> list<print-entity-view>;
-        tool-changes: func() -> list<tool-change-view>;
-        z-hops: func() -> list<z-hop-view>;
-    }
-
-    // Output builder — may append to existing layers or insert synthetic ones.
-    resource finalization-output-builder {
-        // Append extrusion paths to an existing layer.
-        push-entity-to-layer: func(
-            layer-index: layer-idx,
-            path: extrusion-path-3d,
-            region-key: region-key,
-        ) -> result<_, string>;
-
-        // Insert a new synthetic layer at an arbitrary Z.
-        // The host merges synthetic layers into the final sequence
-        // sorted by Z before PostPass::GCodeEmit runs.
-        insert-synthetic-layer: func(
-            z: f32,
-            paths: list<extrusion-path-3d>,
-        ) -> result<_, string>;
-
-        // Packet 41 — mutation and ordering API (replaces the closure-based API from packet 40).
-        push-entity-with-priority: func(layer: u32, path: list<point3-with-width>, role: extrusion-role, region-key: region-key, priority: u32) -> result<_, string>;
-        modify-entity: func(layer: u32, entity-id: u64, mutation: entity-mutation) -> result<_, string>;
-        sort-layer-by: func(layer: u32, key: sort-key) -> result<_, string>;
-        insert-synthetic-layer-after: func(after-layer: s32, data: synthetic-layer-data) -> result<_, string>;
-    }
-
-    // Packet 41 — serialisable mutation enums for the WIT boundary.
-    variant entity-mutation {
-        set-feedrate(f32),
-        set-flow-factor(f32),
-        set-width(f32),
-        set-role(extrusion-role),
-        drop-entity,
-        reverse-path,
-    }
-
-    variant sort-key {
-        priority,
-        role,
-        region-key,
-        z-then-priority,
-    }
-
-    record synthetic-layer-data {
-        z: f32,
-        global-layer-index: s32,
-        entities: list<print-entity-view>,
-    }
-
-    export run-finalization: func(
-        layers: list<layer-collection-view>,
-        output: finalization-output-builder,
-        config: config-view,
-    ) -> result<_, module-error>;
-}
-```
-
-`entity-id` in `modify-entity` is the `PrintEntity.entity_id` from packet 39 (see `docs/02_ir_schemas.md` IR 10). The host validates that `entity-id` resolves to a real entity within `layer`; unknown IDs are rejected with `BuilderError::UnknownEntity`. The closure-based API from packet 40 is replaced wholesale by these enum variants so the contract is fully serialisable across the WIT boundary.
+Host validation: the host validates that `entity-id` in `modify-entity`
+resolves to a real entity within `layer`; unknown IDs are rejected with
+`BuilderError::UnknownEntity`. The closure-based API from packet 40 is
+superseded by the enum-based mutation API so the contract is fully
+serialisable across the WIT boundary.
 
 ---
 
@@ -745,15 +711,20 @@ Full annotated example for a TPMS infill module:
 
 ```toml
 # ── Identity ────────────────────────────────────────────────────────────────
+# The host parser (`crates/slicer-host/src/manifest.rs`) currently reads only
+# `id`, `version`, and `wit-world` from this section. `display-name`,
+# `description`, `author`, `license`, and `homepage` are accepted in TOML but
+# not stored on the LoadedModule — they are informational metadata for
+# humans / future tooling.
 [module]
-id           = "com.community.tpms-infill"  # reverse-domain, globally unique
-version      = "1.2.0"                       # semver
-display-name = "TPMS Infill"
-description  = "Schwartz-D and Fischer-Koch-S triply periodic minimal surface infill"
-author       = "community"
-license      = "MIT"
-homepage     = "https://github.com/example/tpms-infill"
-wit-world    = "slicer:world-layer@1.0.0"   # must match an installed WIT world
+id           = "com.community.tpms-infill"  # reverse-domain, globally unique (parsed)
+version      = "1.2.0"                       # semver (parsed)
+display-name = "TPMS Infill"                 # informational
+description  = "Schwartz-D and Fischer-Koch-S triply periodic minimal surface infill"  # informational
+author       = "community"                   # informational
+license      = "MIT"                         # informational
+homepage     = "https://github.com/example/tpms-infill"  # informational
+wit-world    = "slicer:world-layer@1.0.0"   # parsed; must match an installed WIT world
 
 # ── Stage declaration ────────────────────────────────────────────────────────
 # Exactly one stage per module. Two stages = two .wasm files.
@@ -871,6 +842,10 @@ max-ir-schema     = "2.0.0"      # exclusive upper bound
   advanced = true
 
 # ── Cross-field validation ────────────────────────────────────────────────────
+# <!-- VERIFY: as of this writing, `manifest.rs` does not parse
+#      `[[config.cross-validate]]`; the rule is not enforced at module load.
+#      Treat this section as a forward-looking design item until the parser
+#      and validator catch up. -->
 [[config.cross-validate]]
 rule     = "marching-cell-size >= raster-precision * 10"
 message  = "Marching cell size should be at least 10x the raster precision"
@@ -885,11 +860,15 @@ keys = ["density"]      # density can vary per-layer; pattern cannot
 
 # ── Hints ─────────────────────────────────────────────────────────────────────
 [hints]
-estimated-ms-per-layer = 12    # for ETA estimation
+# <!-- VERIFY: `manifest.rs` parses only `layer-parallel-safe`; other hint
+#      keys (e.g. `estimated-ms-per-layer`) are accepted in TOML but not stored
+#      on LoadedModule. They are no-ops at runtime today. -->
+estimated-ms-per-layer = 12    # informational; not consumed by the host today
 # layer-parallel-safe must be false for PostPass::LayerFinalization modules.
-# The host emits a startup warning if a finalization module sets this to true.
+# The host normalises finalization-stage manifests to `false` and logs a
+# warning if `true` is set (`manifest.rs::finalization_parallel_hint_is_normalized_and_warned`).
 # All other stages: true allows the host to run multiple layers simultaneously.
-layer-parallel-safe    = true  
+layer-parallel-safe    = true
 ```
 
 ### Configuration keys added by recent packets
@@ -1447,6 +1426,13 @@ and `resolve_global_config` / `resolve_per_object_configs` /
 ## Validation Expression Language
 
 Used in `validate` (single field) and `cross-validate.rule` (multi-field). Deliberately restricted — no loops, no I/O, no function calls.
+
+<!-- VERIFY: as of this writing the parser stores `validate`/`cross-validate`
+     strings but does not interpret them at module load. The grammar below is
+     the forward-looking design; do not assume runtime enforcement. The
+     numeric-bounds enforcement above (`min`/`max`) is independent of this
+     grammar and is enforced today by `ConfigBoundsIndex`. -->
+
 
 ```
 Literals:   0, 1.5, true, false, "string"

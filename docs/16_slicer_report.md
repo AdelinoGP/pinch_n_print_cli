@@ -117,7 +117,7 @@ correctness; they bound the level of detail the report can surface.
    validation entirely). If the validation model evolves to allow
    claim-induced ordering, add an `EdgeReason::ClaimConflict` variant.
 
-### WASM linear-memory sampling
+## WASM linear-memory sampling
 
 Each per-call `wasmtime::Store` installs a `MemTracker` (in
 `crates/slicer-host/src/wit_host.rs`) as its `ResourceLimiter`. The

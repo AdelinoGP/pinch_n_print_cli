@@ -1,5 +1,20 @@
 # ModularSlicer — Host Scheduler
 
+> **Reading this doc.** The Rust snippets below illustrate the scheduler's
+> contracts and data flow. They are NOT literal copies of the production
+> source — they elide error variants, instrumentation hooks, and lifetimes
+> for clarity. For the authoritative implementation see:
+>
+> - `crates/slicer-host/src/execution_plan.rs` — `ExecutionPlan`,
+>   `CompiledStage`, `CompiledModule`, `CompiledModuleBuilder`.
+> - `crates/slicer-host/src/prepass.rs` — `execute_prepass` family.
+> - `crates/slicer-host/src/layer_executor.rs` — `execute_per_layer` family.
+> - `crates/slicer-host/src/layer_finalization.rs` — `execute_layer_finalization`.
+> - `crates/slicer-host/src/postpass.rs` — `execute_postpass` family.
+> - `crates/slicer-host/src/topology.rs` — `topological_sort`.
+> - `crates/slicer-host/src/validation.rs` — DAG validation passes.
+> - `crates/slicer-host/src/manifest.rs` — manifest parser + `LoadedModule`.
+
 The scheduler has four phases, all completing before a single layer is sliced. Phases 1–3 are pure data transformation — no WASM executes until Phase 4.
 
 ```
@@ -668,14 +683,14 @@ Each PrePass stage declares which already-committed Blackboard slots it
 requires. The `required_slots()` table is the single source of truth — modules
 must not run their own ad-hoc presence checks for these slots.
 
-| Stage                              | Required Slots                                               |
-|------------------------------------|--------------------------------------------------------------|
-| `PrePass::MeshAnalysis`            | (none)                                                       |
-| `PrePass::LayerPlanning`           | `SurfaceClassification`                                      |
-| `PrePass::SeamPlanning`            | `LayerPlan`                                                  |
-| `PrePass::PaintSegmentation`       | `SurfaceClassification`, `LayerPlan`                        |
-| `PrePass::RegionMapping`           | `LayerPlan`                                                  |
-| `PrePass::SupportGeometry`         | `MeshIR`, `LayerPlan`, `RegionMap`, `SupportGeometry`        |
+| Stage                              | Required Slots                                                            |
+|------------------------------------|---------------------------------------------------------------------------|
+| `PrePass::MeshAnalysis`            | (none)                                                                    |
+| `PrePass::LayerPlanning`           | `SurfaceClassification`                                                   |
+| `PrePass::SeamPlanning`            | `LayerPlan`                                                               |
+| `PrePass::PaintSegmentation`       | `SurfaceClassification`, `LayerPlan`                                      |
+| `PrePass::RegionMapping`           | `LayerPlan`                                                               |
+| `PrePass::SupportGeometry`         | `MeshIR`, `LayerPlan`, `RegionMap`, `SupportGeometry` (committed by the host built-in within this stage before the guest runs) |
 
 A stage scheduled before its prerequisites are committed produces
 `PrepassExecutionError::MissingRequiredPrepass { stage_id, slot }` and aborts

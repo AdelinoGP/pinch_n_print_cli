@@ -4,15 +4,23 @@
 
 The SDK is a set of Rust crates that make writing, testing, and validating modules fast. A module author needs no knowledge of the host internals — only the SDK crates and the WIT interface.
 
+The relevant crates live directly under the workspace root:
+
 ```
-slicer-sdk/
-├── crates/
-│   ├── slicer-sdk/        # Core: re-exports WIT types, provides helpers, registers exports
-│   ├── slicer-test/       # Test harness: mock host, IR builders, assertion helpers
-│   └── slicer-macros/     # Proc-macros: #[slicer_module], #[module_test]
-└── cli/
-    └── slicer-cli/        # `slicer new` / `slicer build` / `slicer test` / `slicer validate`
+crates/
+├── slicer-sdk/      # Core: re-exports WIT types, provides helpers, registers exports
+├── slicer-test/     # Test harness: mock host, IR builders, assertion helpers
+└── slicer-macros/   # Proc-macros: #[slicer_module], #[module_test]
+cli/
+└── slicer-cli/      # Developer CLI binary (binary name: `slicer`).
+                     # Subcommands: new, build, test, validate, run.
 ```
+
+> **Source of truth.** This document is the authoring guide. For the exact
+> trait signatures, output-builder methods, and return types, read
+> `crates/slicer-sdk/src/traits.rs` and `crates/slicer-sdk/src/prelude.rs`.
+> Examples below are illustrative; if a signature here disagrees with the
+> SDK source, the SDK source wins.
 
 ---
 
@@ -146,10 +154,15 @@ impl PrepassModule for MySupportPlanner {
         Ok(Self)
     }
 
+    // Real signature (see `crates/slicer-sdk/src/traits.rs::PrepassModule`):
+    // takes `objects`, `layer_plan`, `region_segmentation`, `support_geometry`,
+    // `output`, and `config` — read those for the current view types.
     fn run_support_geometry(
         &self,
         objects: &[MeshObjectView],
-        support_geometry: SupportGeometryView,
+        _layer_plan: &LayerPlanView,
+        _region_segmentation: &RegionSegmentationView,
+        _support_geometry: &SupportGeometryView,
         output: &mut SupportGeometryOutput,
         _config: &ConfigView,
     ) -> Result<(), ModuleError> {
@@ -889,40 +902,40 @@ Four mutation primitives are available on the finalization output builder
 output.push_entity_with_priority(
     layer_index: u32,
     path: ExtrusionPath3D,
-    role: ExtrusionRole,
     region_key: RegionKey,
     priority: u32,
-) -> Result<EntityId, ModuleError>
+) -> Result<(), String>
 ```
 
-Inserts a new `PrintEntity` into the layer at `layer_index`. The host stamps
-a fresh `entity_id` at insert time (packet 39 + packet 40). Use
-`ExtrusionRole::default_priority()` as `priority` if no override is needed
-— see `docs/02_ir_schemas.md` IR 10 "Extrusion-role default priority" for
-the full priority table.
+Inserts a new `PrintEntity` into the layer at `layer_index`. The
+`ExtrusionRole` is carried inside `ExtrusionPath3D`, so there is no
+separate `role` parameter. The host stamps a fresh `entity_id` at insert
+time (packet 39 + packet 40). Use `ExtrusionRole::default_priority()` as
+`priority` if no override is needed — see `docs/02_ir_schemas.md` IR 10
+"Extrusion-role default priority" for the full priority table.
 
 ### `modify_entity`
 
 ```rust
 output.modify_entity(
-    layer_index: u32,
-    entity_id: EntityId,
+    layer: u32,
+    entity_id: u64,
     mutation: EntityMutation,
-) -> Result<(), ModuleError>
+) -> Result<(), String>
 ```
 
 Applies a serialisable `EntityMutation` to the entity identified by
-`entity_id`. The mutation variants are (packet 41):
+`entity_id`. The mutation variants currently defined in
+`crates/slicer-sdk/src/traits.rs::EntityMutation` are:
 
 | Variant | Effect |
 |---|---|
-| `SetFeedrate(f32)` | Override the entity's feedrate (mm/s). |
-| `SetFlowFactor(f32)` | Scale the entity's extrusion flow. |
-| `SetWidth(f32)` | Override the extrusion width (mm). |
-| `SetRole(ExtrusionRole)` | Re-classify the entity's extrusion role. |
-| `DropEntity` | Remove the entity from the layer entirely. |
-| `ReversePath` | Reverse the entity's path point order. |
+| `SetSpeedFactor(f32)` | Override the entity's path-level speed factor. |
+| `SetFlowFactor(f32)`  | Scale the entity's extrusion flow. |
 
+(Earlier drafts of this document listed `SetWidth`, `SetRole`, `DropEntity`,
+and `ReversePath`. Those variants are not currently present in the SDK or
+WIT — only `SetSpeedFactor` and `SetFlowFactor` are wired through.)
 Every variant is serialisable across the WIT boundary. This replaces the
 closure-based draft from packet 40 so that all mutations are fully
 serialisable (packet 41 refactor).
@@ -931,32 +944,33 @@ serialisable (packet 41 refactor).
 
 ```rust
 output.sort_layer_by(
-    layer_index: u32,
+    layer: u32,
     key: SortKey,
-) -> Result<(), ModuleError>
+) -> Result<(), String>
 ```
 
-Reorders the layer's entities by a serialisable `SortKey` (packet 41):
-`Priority`, `Role`, `RegionKey`, `ZThenPriority`. Sort is stable — ties
-preserve insertion order.
+Reorders the layer's entities by a serialisable `SortKey` (packet 41).
+The current `crates/slicer-sdk/src/traits.rs::SortKey` variants are
+`ByPriorityAndEntityId`, `ByEntityId`, and `ByObjectIdThenPriority`. Sort
+is stable — ties preserve insertion order.
 
 ### `insert_synthetic_layer_after`
 
 ```rust
 output.insert_synthetic_layer_after(
-    after_layer: u32,
+    idx: u32,
     data: SyntheticLayerData,
-) -> Result<(), ModuleError>
+) -> Result<(), String>
 ```
 
-Inserts a new `LayerCollectionIR` after the layer at `after_layer`. Useful
-for wipe-tower or purge slices (packet 41). `SyntheticLayerData` carries:
+Inserts a new `LayerCollectionIR` after the layer at index `idx`. Useful
+for wipe-tower or purge slices (packet 41). `SyntheticLayerData` carries
+the new layer's Z plus its extrusion paths:
 
 ```rust
 pub struct SyntheticLayerData {
     pub z: f32,
-    pub global_layer_index: i32,
-    pub entities: Vec<PrintEntity>,
+    pub paths: Vec<ExtrusionPath3D>,
 }
 ```
 
@@ -966,14 +980,14 @@ pub struct SyntheticLayerData {
 output.push_entity_to_layer(
     layer_index: u32,
     path: ExtrusionPath3D,
-    role: ExtrusionRole,
     region_key: RegionKey,
-) -> Result<EntityId, ModuleError>
+) -> Result<(), String>
 ```
 
-Convenience wrapper around `push_entity_with_priority` that uses
-`role.default_priority()`. This is the canonical surface for live skirt /
-brim / wipe-tower emission introduced in packet 16; the legacy
+Convenience wrapper around `push_entity_with_priority` that records the
+entity at priority `0`. The `ExtrusionRole` is carried inside
+`ExtrusionPath3D`. This is the canonical surface for live skirt / brim /
+wipe-tower emission introduced in packet 16; the legacy
 `process(&mut Vec<LayerCollectionIR>)` vector-mutation path is retired and
 must not be reintroduced.
 

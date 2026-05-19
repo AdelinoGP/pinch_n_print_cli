@@ -468,14 +468,14 @@ declares reads/writes that contradict this table, the manifest is incorrect.
 
 `X` indicates the consumer stage depends on data written by the producer stage.
 
-| Producer \ Consumer   | MeshAnalysis | LayerPlanning | PaintSegmentation | SupportGeneration | RegionMapping | Slice | SlicePostProcess | Perimeters | Infill | Support | PathOptimization | LayerFinalization | GCodeEmit |
-|-----------------------|--------------|---------------|-------------------|-------------------|---------------|-------|------------------|------------|--------|---------|------------------|-------------------|-----------|
-| MeshSegmentation      |              | `X`           | `X`               |                   |               | `X`   |                  |            |        |         |                  |                   |           |
-| MeshAnalysis          |              | `X`           | `X`               | `X`               |               |       |                  |            |        | `X`     |                  |                   |           |
-| LayerPlanning         |              |               | `X`               | `X`               | `X`           | `X`   |                  |            |        |         |                  |                   |           |
-| PaintSegmentation     |              |               |                   | `X`               |               |       | `X`              | `X`        |        | `X`     |                  |                   |           |
-| SupportGeneration     |              |               |                   |                   |               |       |                  |            |        | `X`     |                  |                   |           |
-| RegionMapping         |              |               |                   |                   |               | `X`   | `X`              | `X`        | `X`    | `X`     | `X`              |                   |           |
+| Producer \ Consumer   | MeshAnalysis | LayerPlanning | PaintSegmentation | SupportGeometry | RegionMapping | Slice | SlicePostProcess | Perimeters | Infill | Support | PathOptimization | LayerFinalization | GCodeEmit |
+|-----------------------|--------------|---------------|-------------------|-----------------|---------------|-------|------------------|------------|--------|---------|------------------|-------------------|-----------|
+| MeshSegmentation      |              | `X`           | `X`               |                 |               | `X`   |                  |            |        |         |                  |                   |           |
+| MeshAnalysis          |              | `X`           | `X`               | `X`             |               |       |                  |            |        | `X`     |                  |                   |           |
+| LayerPlanning         |              |               | `X`               | `X`             | `X`           | `X`   |                  |            |        |         |                  |                   |           |
+| PaintSegmentation     |              |               |                   | `X`             |               |       | `X`              | `X`        |        | `X`     |                  |                   |           |
+| SupportGeometry       |              |               |                   |                 |               |       |                  |            |        | `X`     |                  |                   |           |
+| RegionMapping         |              |               |                   |                 |               | `X`   | `X`              | `X`        | `X`    | `X`     | `X`              |                   |           |
 | Slice                 |              |               |                   |                   |               |       | `X`              | `X`        | `X`    | `X`     |                  |                   |           |
 | SlicePostProcess      |              |               |                   |                   |               |       |                  | `X`        |        |         |                  |                   |           |
 | Perimeters            |              |               |                   |                   |               |       |                  |            |        |         | `X`              |                   |           |
@@ -542,7 +542,7 @@ Per rayon thread (N threads, N ≤ CPU cores):
 
 Per WASM instance:
 ┌─────────────────────────────────────┐
-│ WASM linear memory (4MB default)    │
+│ WASM linear memory                  │
 │  Module's own working memory        │
 │  No shared memory with host         │
 │  IR data crosses boundary as        │
@@ -554,42 +554,18 @@ Per WASM instance:
 
 ## Inter-Process Communication (Host ↔ Frontend)
 
-The host exposes a simple line-delimited JSON protocol on stdout (or a Unix socket for persistent sessions).
+The host emits a line-delimited JSON event stream during slicing. **For the
+authoritative event schema, ordering guarantees, and transport details, see
+`./docs/09_progress_events.md`.** Event types are `phase_start`,
+`phase_complete`, `layer_start`, `layer_complete`, `module_error`,
+`validation_error`, and `slice_complete`. The runtime emitter is implemented in
+`crates/slicer-host/src/progress_events.rs`.
 
-```jsonc
-// Progress event
-{"event": "progress", "stage": "Layer::Perimeters", "module":"com.community.tpms-infill" , "layer": 42, "total": 200}
-
-// Layer complete
-{"event": "layer_done", "layer": 42, "elapsed_ms": 14}
-
-// Warning
-{"event": "warning", "source": "com.community.tpms-infill", "message": "..."}
-
-// Error
-{"event": "error", "fatal": true, "source": "scheduler", "message": "..."}
-
-// Done
-{"event": "done", "output_path": "/tmp/model.gcode", "elapsed_ms": 1842}
-```
-
-Config schema query (frontend asks, host responds):
-
-```jsonc
-// Request
-{"query": "config_schema"}
-
-// Response — one entry per module, per field
-{"schema": [
-  {
-    "module": "com.community.tpms-infill",
-    "fields": [
-      {"key": "pattern", "type": "enum", "values": ["schwartz-d", "fischer-koch-s"],
-       "default": "schwartz-d", "display": "TPMS Pattern", "group": "Pattern"}
-    ]
-  }
-]}
-```
+The frontend can also query the loaded modules' config schemas (one entry per
+module, per field — `{key, type, values, default, display, group}`). The CLI
+subcommand and JSON shape are implemented in `crates/slicer-host/src/main.rs`
+(`ConfigSchema` subcommand) and documented in `./docs/03_wit_and_manifest.md`
+under "Manifest config schema query".
 
 ---
 
@@ -673,37 +649,23 @@ Validation rule:
 
 ## Module Search Path
 
-The host searches for modules in this order:
+The current host (`slicer-host`) takes a single `--module-dir <path>` plus an
+explicit `--module <wasm-path>` on the CLI; CLI parsing and validation live in
+`crates/slicer-host/src/cli.rs`. Within a module directory, the host discovers
+modules by scanning for `*.toml` manifests; a manifest is loadable only when
+`<stem>.wasm` exists next to it.
 
-1. `{executable_dir}/modules/` — bundled core modules
-2. `{config_dir}/modules/` — user-installed community modules
-   - Linux: `~/.config/modular-slicer/modules/`
-   - macOS: `~/Library/Application Support/modular-slicer/modules/`
-   - Windows: `%APPDATA%\modular-slicer\modules\`
-3. Paths specified via `--module-path` CLI argument (can be repeated)
+Each loadable module directory must contain:
 
-Within one search root:
+- `<module-name>.wasm` — compiled WASM component
+- `<module-name>.toml` — manifest
+- (Optional) `<module-name>.py` — Python script (TextPostProcess tier only)
 
-- Host discovers modules by `*.toml` manifests.
-- A manifest is loadable only if `<stem>.wasm` exists in the same directory.
-- Duplicate `module.id` across roots resolves by root precedence (earlier root wins, later duplicate emits warning).
+<!-- VERIFY: multi-root search (`{executable_dir}/modules/`, `{config_dir}/modules/`,
+     `--module-path` repetition, `SLICER_MODULE_PATH` env override) is not
+     present in cli.rs and may be a forward-looking design item. Until it
+     ships, do not document precedence rules as authoritative. -->
 
-Explicit precedence (highest first):
-
-1. `--module-path` entries, in CLI order
-2. `{config_dir}/modules/`
-3. `{executable_dir}/modules/`
-
-Environment override:
-
-- `SLICER_MODULE_PATH` (path-list) is inserted after CLI paths and before `{config_dir}/modules/`.
-- If both CLI and environment provide the same path, host de-duplicates by canonical absolute path.
-
-Each module directory must contain:
-
-- `{module-name}.wasm` — compiled WASM component
-- `{module-name}.toml` — manifest
-- (Optional) `{module-name}.py` — Python bridge script (TextPostProcess tier only)
 
 ## `PostPass::LayerFinalization` Module Constraint
 

@@ -72,7 +72,11 @@ All numeric thresholds are defined in:
 
 Evidence artifacts must be stored under:
 
-- `./evidence/<release-id>/`
+- `./docs/evidence/<release-id>/`
+
+<!-- VERIFY: `docs/evidence/` does not exist at the time of writing — it
+     will be created when evidence is first staged for a gate decision. -->
+
 
 ## Gate Rubric
 
@@ -99,7 +103,7 @@ When gate state is `CONDITIONAL`, all items below are mandatory:
 2. Assign a single decision owner (`Architecture Owner` or delegated `Release Owner`).
 3. Set an escalation SLA: unresolved conditional items must be re-evaluated within 7 calendar days.
 4. Record explicit ship/no-ship scope constraints (for example feature flags or disabled modules).
-5. Add links to mitigation evidence in `./evidence/<release-id>/conditional/`.
+5. Add links to mitigation evidence in `./docs/evidence/<release-id>/conditional/`.
 
 `CONDITIONAL` automatically downgrades to `FAIL` if:
 
@@ -113,8 +117,9 @@ When gate state is `CONDITIONAL`, all items below are mandatory:
 
 Any intentional deviation from architecture docs must include:
 
-- Deviation ID (for example `DEV-2026-03-014`)
-- Affected ./docs/sections
+- Deviation ID (sequential `DEV-NNN`, e.g. `DEV-014`, matching the existing
+  numbering in `docs/DEVIATION_LOG.md`)
+- Affected `docs/` sections
 - Risk classification (`critical|high|medium|low`)
 - Rationale
 - Mitigation plan and target closure date

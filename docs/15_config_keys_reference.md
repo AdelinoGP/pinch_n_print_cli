@@ -17,15 +17,18 @@ Each entry below lists:
 - **Packet** — packet that introduced the key.
 - **Module(s)** — primary consumer(s). `[host]` means consumed by a host
   built-in (e.g. `DefaultGCodeEmitter`).
-- **Source-of-truth** — definitive file (manifest TOML for module-owned keys,
-  `crates/slicer-host/src/config_schema.rs` for host-registered keys).
+- **Source-of-truth** — definitive file (manifest TOML for module-owned keys;
+  the relevant consumer struct under `crates/slicer-host/src/` for
+  host-registered keys — e.g. `gcode_emit.rs::FeedrateConfig` for per-role
+  print speeds. <!-- VERIFY: there is no single `crates/slicer-host/src/config_schema.rs`
+  file; host-registered defaults live alongside their consumers. -->).
 
 ---
 
 ## Print speeds (packet 52)
 
 26 per-role float keys (mm/s); registered in
-`crates/slicer-host/src/config_schema.rs`. Consumed by
+the consumer's config struct under `crates/slicer-host/src/` (e.g. `gcode_emit.rs::FeedrateConfig`). Consumed by
 `DefaultGCodeEmitter::resolve_feedrate(role, paint_layer, …)` which emits
 F-tokens in mm/min (see `docs/08_coordinate_system.md` "F-Token Formatting
 Convention").
@@ -69,7 +72,7 @@ classifier for byte-identical pre-packet-57 output.
 
 Eight keys consumed by the `part-cooling` finalization-stage module
 (`modules/core-modules/part-cooling/`). Registered in
-`crates/slicer-host/src/config_schema.rs`.
+the consumer's config struct under `crates/slicer-host/src/` (e.g. `gcode_emit.rs::FeedrateConfig`).
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
@@ -110,7 +113,7 @@ Source-of-truth: each module's manifest TOML
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `use_relative_e_distances` | bool | `true` (M83) | `false` selects M82. The serializer issues `G92 E0` on mode transition and layer reset. Source-of-truth: `crates/slicer-host/src/config_schema.rs`. |
+| `use_relative_e_distances` | bool | `true` (M83) | `false` selects M82. The serializer issues `G92 E0` on mode transition and layer reset. Source-of-truth: the consumer's config struct under `crates/slicer-host/src/` (e.g. `gcode_emit.rs::FeedrateConfig`). |
 
 ---
 
@@ -132,7 +135,7 @@ Source-of-truth: `modules/core-modules/path-optimization-default/manifest.toml`.
 
 Four keys feeding the `HEADER_BLOCK_*` envelope. See
 `docs/02_ir_schemas.md` "G-code envelope blocks" for the full envelope
-format. Registered in `crates/slicer-host/src/config_schema.rs`.
+format. Registered in the consumer's config struct under `crates/slicer-host/src/` (e.g. `gcode_emit.rs::FeedrateConfig`).
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
@@ -149,8 +152,8 @@ CLI flag: `--thumbnail <PATH>` for the PNG file; encoded as
 ## Machine start / end G-code (packet 59)
 
 Four keys read by the designated `PostPass::LayerFinalization` machine-gcode
-module (default: `machine-gcode-default`). Source-of-truth:
-`modules/core-modules/machine-gcode-default/manifest.toml`.
+module (default: `machine-gcode-emit`). Source-of-truth:
+`modules/core-modules/machine-gcode-emit/manifest.toml`.
 
 | Key | Type | Default | Range | Notes |
 |---|---|---|---|---|
@@ -173,7 +176,7 @@ arithmetic / conditionals):
 
 Seven keys carried on `ResolvedConfig`; all-zero / defaults short-circuit to
 byte-identical pre-packet-60 output. Registered in
-`crates/slicer-host/src/config_schema.rs`; `perimeter_arc_tolerance`
+the consumer's config struct under `crates/slicer-host/src/` (e.g. `gcode_emit.rs::FeedrateConfig`); `perimeter_arc_tolerance`
 additionally registered in `classic-perimeters` and `arachne-perimeters`
 manifests.
 
@@ -199,7 +202,7 @@ per-role tolerance dispatch table.
 | `top_shell_layers` | int | `3` | `[1, 10]` | **Default deviates from OrcaSlicer's `4`.** Window for top-surface classification in `classify_region_surfaces`. |
 | `bottom_shell_layers` | int | `3` | `[1, 10]` | Window for bottom-surface classification. |
 
-Source-of-truth: `crates/slicer-host/src/config_schema.rs`. Per-region
+Source-of-truth: the consumer's config struct under `crates/slicer-host/src/` (e.g. `gcode_emit.rs::FeedrateConfig`). Per-region
 override is automatic via `RegionMapIR.entries[*].config` once `RegionMapping`
 runs.
 

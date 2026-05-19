@@ -55,17 +55,11 @@ G-code F tokens are emitted in **mm/min**, not mm/s, matching OrcaSlicer's
 wire format. Internally, every speed field in IR (`ExtrusionPath3D.speed`,
 `ConfigView`'s `*_speed` keys, `TravelMove.speed`) is stored in **mm/s**.
 
-Conversion happens exactly once, at the `format_feedrate(speed_mm_s)` call
-inside `DefaultGCodeEmitter`:
-
-```rust
-fn format_feedrate(speed_mm_s: f32) -> String {
-    format!("F{:.0}", speed_mm_s * 60.0)
-}
-```
-
-Modules must always work in mm/s; emitting mm/min internally is a contract
-violation that double-scales at the boundary.
+The conversion to mm/min happens inside `DefaultGCodeEmitter::resolve_feedrate`
+(see `crates/slicer-host/src/gcode_emit.rs`) — that function returns a
+mm/min value ready for `F{:.0}` serialization. Modules must always work in
+mm/s; emitting mm/min internally is a contract violation that double-scales
+at the boundary.
 
 ---
 
@@ -133,15 +127,19 @@ OrcaSlicer's `SCALED_EPSILON = 1` (1 nm) is used throughout its codebase as a ne
 
 In ModularSlicer, our unit is 100 nm, so a direct port would give `SCALED_EPSILON = 1` meaning 100 nm, which is 100× larger than intended.
 
-Use the ModularSlicer constant instead:
+Use a ModularSlicer constant instead. The convention is:
 
 ```rust
-// crates/slicer-core/src/geometry.rs
-pub const SCALED_EPSILON: i64 = 1;  // 1 unit = 100 nm
-// This is equivalent to OrcaSlicer's SCALED_EPSILON of 1 (1 nm)
-// divided by 100, then rounded up to nearest integer = 1.
-// Effectively the same tolerance at our precision floor.
+// SCALED_EPSILON: i64 = 1;  // 1 unit = 100 nm
+// Equivalent to OrcaSlicer's SCALED_EPSILON of 1 (1 nm) divided by 100,
+// then rounded up to nearest integer = 1. Effectively the same tolerance
+// at our precision floor.
 ```
+
+<!-- VERIFY: at the time of writing, there is no canonical `SCALED_EPSILON`
+     constant exported from `crates/slicer-core/src/`. Choose or introduce
+     the appropriate named constant in the consuming crate (see "Named
+     epsilon constants" below) rather than re-using a bare `SCALED_EPSILON`. -->
 
 If you find yourself tempted to use `100` as an epsilon "to match OrcaSlicer",
 you are off by a factor of 100. The correct epsilon is `1`.
@@ -246,16 +244,21 @@ The Clipper2 documentation recommends keeping values below 4.6 × 10¹⁸ (max i
 
 **Rule: Never port `SCALED_EPSILON * N` directly.**
 
-Every multiplied epsilon usage must be replaced with a named constant from `crates/slicer-core/src/geometry.rs` that documents the physical meaning.
-If the right named constant does not exist, add it with a full comment before using it. A PR containing `SCALED_EPSILON * N` for any N > 1 should be rejected in code review.
+Every multiplied epsilon usage must be replaced with a named constant in the consuming crate (typically `slicer-core` or `slicer-helpers`) that documents the physical meaning. If the right named constant does not exist, add it with a full comment before using it. A PR containing `SCALED_EPSILON * N` for any N > 1 should be rejected in code review.
 
-Named epsilon constants and their physical meanings:
+<!-- VERIFY: there is no single `crates/slicer-core/src/geometry.rs` file
+     today; geometry utilities live across `aabb_lines_2d.rs`, `aabb_tree.rs`,
+     `paint_region.rs`, `polygon_ops.rs`, and `triangle_mesh_slicer.rs`.
+     Place new named epsilons next to the code that consumes them and
+     re-export from `slicer_core::lib` if widely shared. -->
+
+Suggested named epsilons and their physical meanings (define when first needed):
 
 ```rust
-pub const POINT_COINCIDENCE_EPSILON: i64 = 1;    // 100nm  — coincident point merge threshold
-pub const MIN_SEGMENT_LENGTH:        i64 = 10;   // 1µm    — degenerate edge collapse threshold
-pub const MIN_POLYGON_AREA:          i64 = 250_000; // 50µm² — degenerate polygon discard
-pub const MIN_PRINTABLE_WIDTH:       i64 = 100;  // 10µm   — Arachne minimum bead width
+pub const POINT_COINCIDENCE_EPSILON: i64 = 1;       // 100 nm  — coincident point merge threshold
+pub const MIN_SEGMENT_LENGTH:        i64 = 10;      // 1 µm    — degenerate edge collapse threshold
+pub const MIN_POLYGON_AREA:          i64 = 250_000; // 50 µm²  — degenerate polygon discard
+pub const MIN_PRINTABLE_WIDTH:       i64 = 100;     // 10 µm   — Arachne minimum bead width
 ```
 
 ---
@@ -269,7 +272,7 @@ When porting any file from `OrcaSlicer_Documented/`:
 - [ ] Replace `scale_(x)` calls with `mm_to_units(x)`
 - [ ] Replace `unscale(x)` calls with `units_to_mm(x)`
 - [ ] Do NOT port `SCALED_EPSILON` directly — use ModularSlicer's constant
-- [ ] Do NOT port `SCALED_EPSILON * N` for any N > 1 — use a named constant from `crates/slicer-core/src/geometry.rs` instead
+- [ ] Do NOT port `SCALED_EPSILON * N` for any N > 1 — define or re-use a named constant in the consuming `slicer-core` / `slicer-helpers` module instead
 - [ ] If the ported logic uses Z, verify Z remains in millimeters and is not accidentally scaled like X/Y
 - [ ] Add a porting comment at the top of the new file:
       `// Ported from OrcaSlicer_Documented/src/libslic3r/XYZ.cpp`

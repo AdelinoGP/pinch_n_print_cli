@@ -2,6 +2,13 @@
 
 All IRs are defined in `crates/slicer-ir/src/`. They are the shared contract between the host and all modules. IR types are re-exported by the SDK crate for module authors.
 
+The struct definitions in this document are the **normative spec**; the Rust types under `crates/slicer-ir/src/` implement them. If the code and this document disagree, treat the discrepancy as a bug to be filed against whichever side drifted. Canonical source files:
+
+- `crates/slicer-ir/src/slice_ir.rs` — most IR structs (Slice/Perimeter/Infill/Support/LayerCollection/GCode and their nested types).
+- `crates/slicer-ir/src/resolved_config.rs` — `ResolvedConfig` and config-merge helpers.
+- `crates/slicer-ir/src/entity_id.rs` — `LayerEntityIdGen` and stable-id contract.
+- `crates/slicer-ir/src/validation.rs` — `validate_travel_anchors`.
+
 Every IR struct carries `schema_version: SemVer`. The host enforces compatibility at module load time.
 
 ## ⚠️ **Coordinate System**
@@ -76,7 +83,7 @@ pub struct ObjectMesh {
     pub id: ObjectId,                       // stable UUID string
     pub mesh: IndexedTriangleSet,           // host-owned; serialized to WASM only for single-pass modules
                                                // (PaintSegmentation, MeshSegmentation, SeamPlanning,
-                                               // SupportGeneration); not serialized for multi-pass
+                                               // SupportGeometry); not serialized for multi-pass
                                                // per-layer modules
     pub transform: Transform3d,             // world-space placement (column-major f64)
     pub config: ObjectConfig,               // raw user config, not yet override-resolved
@@ -591,7 +598,7 @@ pub struct SliceIR {
 pub struct SlicedRegion {
     pub object_id: ObjectId,
     pub region_id: RegionId,
-    /// Closed polygon islands. Coordinates in scaled integers (nanometers).
+    /// Closed polygon islands. Coordinates in scaled integer units (1 unit = 100 nm = 10⁻⁴ mm).
     pub polygons: Vec<ExPolygon>,
     /// Inset polygons available for infill (updated by Perimeters stage).
     pub infill_areas: Vec<ExPolygon>,
@@ -634,7 +641,7 @@ pub struct Polygon {
     pub points: Vec<Point2>,
 }
 
-pub struct Point2 { pub x: i64, pub y: i64 }   // scaled integer nanometers
+pub struct Point2 { pub x: i64, pub y: i64 }   // 1 unit = 100 nm = 10⁻⁴ mm
 ```
 
 ---
@@ -950,15 +957,20 @@ current layer and cannot see or modify any other layer's `LayerCollectionIR`.
 ```rust
 pub struct LayerCollectionIR {
     pub schema_version: SemVer,
-    /// Signed to support raft prefix layers. Raft entries use negative indices                                                                       
-    /// (`-1, -2, ..., -raft_layers`) so raft always sorts before model layers.                                                                       
-    pub global_layer_index: i32, 
+    /// Signed to support raft prefix layers. Raft entries use negative indices
+    /// (`-1, -2, ..., -raft_layers`) so raft always sorts before model layers.
+    pub global_layer_index: i32,
     pub z: f32,
     /// Ordered, ready-to-emit extrusion entities.
     /// Produced by travel minimization + DAG topo sort.
     pub ordered_entities: Vec<PrintEntity>,
     pub tool_changes: Vec<ToolChange>,
     pub z_hops: Vec<ZHop>,
+    /// Guest-emitted per-layer annotations (comments / raw G-code lines).
+    pub annotations: Vec<LayerAnnotation>,
+    /// Travels between entities. Anchors are by `entity_id`, not positional index
+    /// (packet 39), so finalization mutations cannot dangle anchors.
+    pub travel_moves: Vec<TravelMove>,
 }
 
 pub struct PrintEntity {

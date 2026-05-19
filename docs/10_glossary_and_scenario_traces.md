@@ -197,4 +197,10 @@ Evidence files should be stored under:
 - `./docs/evidence/<release-id>/scenario-1-*`
 - `./docs/evidence/<release-id>/scenario-2-*`
 - `./docs/evidence/<release-id>/scenario-3-*`
+
+<!-- VERIFY: `docs/evidence/` does not exist at the time of writing. The
+     path is the prescribed location for the Architecture Acceptance Gate
+     evidence (see `docs/11_operational_governance_and_acceptance_gate.md`);
+     it will be created when evidence is first staged. -->
+
 - `./docs/evidence/<release-id>/scenario-4-*`

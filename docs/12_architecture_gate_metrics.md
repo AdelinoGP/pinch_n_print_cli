@@ -41,6 +41,13 @@ Canonical hash method (normative):
 - `high_region_count_modifier_stress_500l`
 - `support_enforcer_blocker_conflict_80l`
 
+<!-- VERIFY: at the time of writing, none of these named fixtures are
+     materialised under `resources/`. The only Benchy-family fixtures present
+     are `benchy.stl`, `benchy_4color.3mf`, and `benchy_painted.3mf`. The
+     named-fixture set above is the gate-evidence target; the fixtures (with
+     deterministic config snapshots) must be added before a gate run can
+     produce evidence matching these IDs. -->
+
 Fixture governance:
 
 - Any fixture change requires changelog entry and baseline refresh.

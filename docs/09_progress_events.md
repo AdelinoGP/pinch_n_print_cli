@@ -4,9 +4,15 @@ This document is authoritative for structured runtime events emitted by the host
 
 ## Transport
 
-- Default transport: JSON Lines (`.jsonl`) on stdout.
-- Optional transport: explicit event file via `--log-events <path>`.
+- Default transport: JSON Lines (`.jsonl`) on **stderr**. G-code is written to
+  stdout, so the event stream is intentionally separated from G-code output to
+  avoid interleaving. See `crates/slicer-host/src/main.rs` and
+  `JsonLinesEmitter` in `crates/slicer-host/src/progress_events.rs`.
 - Every event is a single JSON object on one line.
+- <!-- VERIFY: an explicit `--log-events <path>` CLI flag is referenced in the
+     `progress_events.rs` doc-comment but is not currently exposed by
+     `crates/slicer-host/src/cli.rs`. Until it ships, events stream only to
+     stderr. -->
 
 Buffering requirement:
 

@@ -1,5 +1,15 @@
 # ModularSlicer — slicer-helpers Crate
 
+> **Status (as of this writing).** The `repair`, `decimate`, and STEP import
+> Rust APIs in this document are implemented and shipped in `crates/slicer-helpers/src/`.
+> The `pnp <subcommand>` CLI surface described below (`pnp repair`,
+> `pnp decimate`, `pnp import`, `pnp slice`) is **forward-looking design** —
+> the workspace contains no `pnp` binary, and neither `slicer-host` nor the
+> `slicer` developer CLI currently expose these subcommands. Until the CLI
+> wiring lands, callers must invoke the helpers via the library API
+> (`slicer_helpers::repair`, `slicer_helpers::decimate`,
+> `slicer_helpers::import::import_step`).
+
 ## Purpose
 
 `slicer-helpers` is a library crate providing **pre-pipeline mesh processing operations**. It runs before any WASM module is loaded and before the slicing pipeline starts. Its outputs are `MeshIR` values (or modified `MeshIR` values) consumed by the host's standard pipeline entry point.
@@ -72,12 +82,13 @@ crates/slicer-helpers/
 | `wasmtime`      | No      | No WASM runtime in this crate                                       |
 | Any GUI crate   | No      | Zero UI code                                                        |
 
-New workspace dependencies required in root `Cargo.toml`:
+Workspace dependencies pinned in the root `Cargo.toml`:
 
 ```toml
-meshopt    = "0.3"
-truck-stepio  = "0.2"
-truck-meshing = "0.2"
+meshopt       = "0.6"
+truck-stepio  = "0.3"
+truck-meshalgo = "0.4"   # provides BRep meshing; truck-meshing was not used
+truck-modeling = "0.6"   # dev-dependency for test fixtures
 ```
 
 ---
@@ -451,9 +462,13 @@ Warnings are **not** errors. Operations that produce warnings still return `Ok(r
 
 ---
 
-## Integration with Host CLI
+## Integration with Host CLI (Forward-looking)
 
-The host binary (`slicer-host`) exposes `repair`, `decimate`, and `import` as top-level subcommands via `clap`. Each subcommand calls directly into the corresponding `slicer-helpers` function. No WASM runtime is initialized for these subcommands.
+The design intent is for a single host binary (working name `pnp`) to expose
+`repair`, `decimate`, `import`, and `slice` as top-level subcommands via
+`clap`. Each subcommand would call directly into the corresponding
+`slicer-helpers` function (or, for `slice`, into the full pipeline). No WASM
+runtime would be initialised for the non-slice subcommands.
 
 ```
 pnp slice    — full slicing pipeline (WASM modules, scheduler)
@@ -462,7 +477,14 @@ pnp decimate — slicer-helpers::decimate()
 pnp import   — slicer-helpers::import_step()
 ```
 
-These subcommands must serialize all progress and result data as line-delimited JSON to stdout, matching the event protocol defined in `./docs/01_system_architecture.md §Inter-Process Communication`, so the Unity frontend can consume them uniformly.
+<!-- VERIFY: at the time of writing, the `pnp` binary does not exist in the
+     workspace. `slicer-host` currently exposes a `run` subcommand that maps
+     to the full pipeline (see `crates/slicer-host/src/cli.rs`), and the
+     module-author CLI binary is `slicer` (from `cli/slicer-cli`). The
+     `pnp <subcommand>` integration above is the target shape; until it
+     lands, run helpers via the library API. -->
+
+These subcommands must serialize all progress and result data as line-delimited JSON to stderr (matching the event protocol defined in `./docs/09_progress_events.md`), so the Unity frontend can consume them uniformly.
 
 Example output for `pnp repair --stats`:
 

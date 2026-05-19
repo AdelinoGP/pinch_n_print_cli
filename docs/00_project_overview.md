@@ -50,7 +50,7 @@ The primary failure mode of existing slicers (OrcaSlicer, PrusaSlicer) that this
 
 - Stable ABI across compiler versions, platforms, and languages
 - Modules can be written in Rust, C, C++, or any WASM-targeting language
-- Python modules supported via a host-side Python bridge (for GCode post-processing tier)
+- Python post-processing scripts run via an embedded PyO3 interpreter inside the host (no subprocess); see `crates/slicer-host/src/python_bridge.rs`
 - Community modules ship as `.wasm` + `.toml` — no build toolchain required for users
 
 ### State Model: ECS-inside-Blackboard
@@ -113,45 +113,50 @@ Precedence rule for conflicts:
 ```
 modular-slicer/
 ├── crates/
-│   ├── slicer-host/          # Main binary: CLI, WASM runtime, scheduler
+│   ├── slicer-host/          # Main binary + library: CLI, WASM runtime, scheduler
 │   ├── slicer-core/          # Core algorithms (slicing, Clipper ops, geometry)
 │   ├── slicer-ir/            # IR type definitions (shared between host and SDK)
 │   ├── slicer-sdk/           # Module authoring SDK (imported by module crates)
 │   ├── slicer-test/          # Test harness for module unit tests
-│   └── slicer-macros/        # Proc-macros (#[slicer_module], #[test_module])
+│   ├── slicer-macros/        # Proc-macros (#[slicer_module], #[module_test])
+│   ├── slicer-schema/        # Shared config/manifest schema types
+│   └── slicer-helpers/       # Pre-pipeline mesh ops (repair, decimate, STEP import)
 ├── cli/
-│   └── slicer-cli/           # `slicer new`, `slicer build`, `slicer test`, `slicer validate`
+│   └── slicer-cli/           # Module-author CLI (binary name: `slicer`)
+│                             # Subcommands: new, build, test, validate, run
 ├── modules/
-│   ├── core-modules/         # Built-in modules (arachne walls, rectilinear infill, etc.)
-│   └── example-modules/      # Reference implementations for SDK documentation
+│   └── core-modules/         # Built-in modules (arachne walls, rectilinear infill, etc.)
 ├── wit/
-│   ├── deps/                 # Shared WIT type definitions
+│   ├── deps/                 # Shared WIT type definitions (types, config, ir-types)
+│   ├── host-api.wit          # Services the host exposes to all modules
 │   ├── world-layer.wit       # Per-layer module world
 │   ├── world-prepass.wit     # PrePass module world
+│   ├── world-finalization.wit # Finalization module world
 │   └── world-postpass.wit    # PostPass module world
-├── ./docs/                     # This documentation set
-└── tests/
-    ├── integration/          # Full-pipeline integration tests
-    └── fixtures/             # STL/3MF test models
+├── resources/                # STL / 3MF / OBJ test fixtures
+└── docs/                     # This documentation set
 ```
 
 ---
 
 ## Technology Stack
 
-| Component     | Technology                              | Version              |
+Pinned versions live in the workspace `Cargo.toml`; the table below records the
+minimum/current pin for each component.
+
+| Component     | Technology                              | Pinned version       |
 |---------------|-----------------------------------------|----------------------|
-| Host language | Rust                                    | 1.78+ (edition 2021) |
-| WASM runtime  | wasmtime                                | 20.0+                |
-| WIT tooling   | wit-bindgen                             | 0.24+                |
-| Parallelism   | rayon                                   | 1.10+                |
-| Geometry      | geo, nalgebra                           | latest stable        |
-| Polygon ops   | clipper2-rust                           | latest stable        |
-| Serialization | serde + bincode                         | latest stable        |
+| Host language | Rust                                    | 1.91.0 (edition 2021)|
+| WASM runtime  | wasmtime                                | 43.0.0               |
+| WIT tooling   | wit-bindgen                             | 0.57.1               |
+| Parallelism   | rayon                                   | 1.80                 |
+| Geometry      | geo, nalgebra                           | 0.28, 0.32           |
+| Polygon ops   | clipper2-rust                           | 1.0.3                |
+| Serialization | serde + bincode                         | 1.0.228, 1.3.3       |
 | Config format | TOML (manifests), JSON (runtime config) | —                    |
-| Testing       | cargo test + nextest                    | —                    |
-| Python bridge | pyo3 + wasmtime-py                      | —                    |
-| CLI framework | clap                                    | 4.x                  |
+| Testing       | cargo test                              | —                    |
+| Python bridge | pyo3 (embedded interpreter)             | 0.28.3               |
+| CLI framework | clap                                    | 4.6.1                |
 
 ---
 
