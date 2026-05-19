@@ -101,6 +101,35 @@ world finalization-module {
             z: f32,
             paths: list<extrusion-path-3d>,
         ) -> result<_, string>;
+
+        // Insert a new entity at a specific positional index within an existing layer.
+        // Entities at indices >= position are shifted right by 1.
+        // All ToolChange, ZHop, and TravelRetract after_entity_index references >= position
+        // are incremented by 1 to preserve anchoring. ATOMIC: if position is out of bounds
+        // the call returns Err and the layer is not mutated.
+        insert-entity-at: func(
+            layer-index: layer-idx,
+            position: u32,
+            path: extrusion-path-3d,
+            region-key: region-key,
+        ) -> result<_, string>;
+
+        // Reorder all entities in an existing layer according to a permutation.
+        // `items` must be a permutation of 0..N where N == ordered_entities.len().
+        // The entity originally at items[k].0 moves to position k; if items[k].1 is true
+        // the entity is marked reversed (path-reversal is a no-op TODO for this packet).
+        // All ToolChange, ZHop, and TravelRetract after_entity_index references are
+        // remapped through the inverse permutation. ATOMIC: invalid permutations return Err.
+        set-entity-order: func(
+            layer-index: layer-idx,
+            items: list<tuple<u32, bool>>,
+        ) -> result<_, string>;
+
+        // Return a snapshot of all entities in the layer in their current order.
+        // This is a synchronous read against the host's staged layer state.
+        get-ordered-entities: func(
+            layer-index: layer-idx,
+        ) -> list<print-entity-view>;
     }
 
     export run-finalization: func(

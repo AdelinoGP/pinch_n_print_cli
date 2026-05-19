@@ -971,6 +971,9 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                 sort-layer-by: func(layer-index: u32, key: sort-key) -> result<_, string>;
                 insert-synthetic-layer-after: func(idx: u32, layer-data: synthetic-layer-data) -> result<_, string>;
                 insert-synthetic-layer: func(z: f32, paths: list<extrusion-path-3d>) -> result<_, string>;
+                insert-entity-at: func(layer-index: layer-idx, position: u32, path: extrusion-path-3d, region-key: region-key) -> result<_, string>;
+                set-entity-order: func(layer-index: layer-idx, items: list<tuple<u32, bool>>) -> result<_, string>;
+                get-ordered-entities: func(layer-index: layer-idx) -> list<print-entity-view>;
             }
 
             export run-finalization: func(
@@ -1233,6 +1236,19 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                                     data.paths.iter().map(__slicer_path_ir_to_wit).collect();
                                 let wit_data = SyntheticLayerData { z: data.z, paths: wit_paths };
                                 let _ = output.insert_synthetic_layer_after(*idx, &wit_data);
+                            }
+                            ::slicer_sdk::traits::MergeOp::InsertEntityAt { layer, position, path, region_key } => {
+                                let wit_path = __slicer_path_ir_to_wit(path);
+                                let wit_region_key = RegionKey {
+                                    layer_index: region_key.global_layer_index,
+                                    object_id: region_key.object_id.clone(),
+                                    region_id: region_key.region_id.to_string(),
+                                };
+                                let _ = output.insert_entity_at(*layer, *position, &wit_path, &wit_region_key);
+                            }
+                            ::slicer_sdk::traits::MergeOp::SetEntityOrder { layer, items } => {
+                                let wit_items: ::std::vec::Vec<(u32, bool)> = items.iter().copied().collect();
+                                let _ = output.set_entity_order(*layer, &wit_items);
                             }
                         }
                     }

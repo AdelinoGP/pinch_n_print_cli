@@ -887,6 +887,24 @@ pub enum FinalizationBuilderPush {
         /// Extrusion paths belonging to the synthetic layer.
         paths: Vec<slicer_ir::ExtrusionPath3D>,
     },
+    /// Guest requested `insert-entity-at(layer_index, position, path, region_key)`.
+    InsertEntityAt {
+        /// Layer index the entity is inserted into.
+        layer_index: u32,
+        /// Positional index within ordered_entities at which to insert.
+        position: u32,
+        /// Extrusion path content.
+        path: slicer_ir::ExtrusionPath3D,
+        /// Region key for the new entity.
+        region_key: slicer_ir::RegionKey,
+    },
+    /// Guest requested `set-entity-order(layer_index, items)`.
+    SetEntityOrder {
+        /// Layer index whose entity order is being set.
+        layer_index: u32,
+        /// Permutation: items[new_position] = (original_position, reversed).
+        items: Vec<(u32, bool)>,
+    },
 }
 
 /// Backing data for finalization `finalization-output-builder` resource.
@@ -1039,6 +1057,19 @@ pub mod finalization {
                         z: f32,
                         paths: list<extrusion-path3d>,
                     ) -> result<_, string>;
+                    insert-entity-at: func(
+                        layer-index: layer-idx,
+                        position: u32,
+                        path: extrusion-path3d,
+                        region-key: region-key,
+                    ) -> result<_, string>;
+                    set-entity-order: func(
+                        layer-index: layer-idx,
+                        items: list<tuple<u32, bool>>,
+                    ) -> result<_, string>;
+                    get-ordered-entities: func(
+                        layer-index: layer-idx,
+                    ) -> list<print-entity-view>;
                 }
 
                 export run-finalization: func(
@@ -1445,6 +1476,13 @@ pub struct HostExecutionContext {
     /// world-finalization.wit §finalization-output-builder).
     pub(crate) finalization_pushes: Vec<FinalizationBuilderPush>,
 
+    /// Snapshot of all `LayerCollectionIR` layers passed into the finalization
+    /// stage for this invocation. Populated by `push_finalization_layer_view`
+    /// so that `get_ordered_entities` can serve synchronous read-backs against
+    /// the pre-apply layer state without needing to search the resource table.
+    /// Empty for all non-finalization stages.
+    pub(crate) finalization_layer_snapshot: Vec<slicer_ir::LayerCollectionIR>,
+
     /// Layer-collection ordering proposal captured during a
     /// `Layer::PathOptimization` call via
     /// `layer-collection-builder.set-entity-order`. `None` means the
@@ -1568,6 +1606,7 @@ impl HostExecutionContextBuilder {
             seam_plan_entries: Vec::new(),
             support_plan_entries: Vec::new(),
             finalization_pushes: Vec::new(),
+            finalization_layer_snapshot: Vec::new(),
             layer_collection_proposal: None,
             host_get_ordered_entities_call_count: 0,
             runtime_reads: Vec::new(),
@@ -1985,10 +2024,15 @@ impl HostExecutionContext {
     /// `LayerCollectionIR`. Returns the typed wit-bindgen handle so it
     /// can be forwarded into `call_run_finalization` as part of the
     /// `list<layer-collection-view>` parameter.
+    ///
+    /// Also captures the layer into `finalization_layer_snapshot` so that
+    /// `get_ordered_entities` can serve synchronous read-backs against the
+    /// pre-apply layer state during the finalization call.
     pub fn push_finalization_layer_view(
         &mut self,
         ir: &slicer_ir::LayerCollectionIR,
     ) -> wasmtime::Result<Resource<finalization::LayerCollectionView>> {
+        self.finalization_layer_snapshot.push(ir.clone());
         let rep = self.table.push(LayerCollectionViewData::from_ir(ir))?;
         Ok(Resource::new_own(rep.rep()))
     }
@@ -5013,6 +5057,91 @@ mod finalization_impls {
             });
             Ok(Ok(()))
         }
+        fn insert_entity_at(
+            &mut self,
+            self_: Resource<fm::FinalizationOutputBuilder>,
+            layer_index: u32,
+            position: u32,
+            path: fgeo::ExtrusionPath3d,
+            region_key: fm::RegionKey,
+        ) -> wasmtime::Result<Result<(), String>> {
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get_mut(&typed)?;
+            let region_id = match super::parse_canonical_region_id(&region_key.region_id) {
+                Ok(region_id) => region_id,
+                Err(reason) => {
+                    return Ok(Err(format!(
+                        "finalization-output-builder: region '{}'/'{}' has invalid region-id: {reason}",
+                        region_key.object_id, region_key.region_id
+                    )));
+                }
+            };
+            let ir_region_key = slicer_ir::RegionKey {
+                global_layer_index: region_key.layer_index,
+                object_id: region_key.object_id,
+                region_id,
+            };
+            data.pushes.push(FinalizationBuilderPush::InsertEntityAt {
+                layer_index,
+                position,
+                path: finalization_path_wit_to_ir(&path),
+                region_key: ir_region_key,
+            });
+            Ok(Ok(()))
+        }
+
+        fn set_entity_order(
+            &mut self,
+            self_: Resource<fm::FinalizationOutputBuilder>,
+            layer_index: u32,
+            items: Vec<(u32, bool)>,
+        ) -> wasmtime::Result<Result<(), String>> {
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get_mut(&typed)?;
+            data.pushes
+                .push(FinalizationBuilderPush::SetEntityOrder { layer_index, items });
+            Ok(Ok(()))
+        }
+
+        fn get_ordered_entities(
+            &mut self,
+            _self_: Resource<fm::FinalizationOutputBuilder>,
+            layer_index: u32,
+        ) -> wasmtime::Result<Vec<fm::PrintEntityView>> {
+            // Minimum-viable implementation: return the layer's current staged
+            // ordered_entities from the host's layer snapshot. In-flight pushes
+            // not yet applied via apply_to are not reflected here; a full
+            // implementation would replay staged pushes (follow-up work).
+            self.runtime_reads.push(String::from("LayerCollectionIR"));
+            let result: Vec<fm::PrintEntityView> = self
+                .finalization_layer_snapshot
+                .iter()
+                .find(|l| l.global_layer_index == layer_index)
+                .map(|layer| {
+                    layer
+                        .ordered_entities
+                        .iter()
+                        .map(|e| {
+                            let path_wit = finalization_path_ir_to_wit(&e.path);
+                            let role_wit = finalization_role_ir_to_wit(&e.role);
+                            fm::PrintEntityView {
+                                entity_id: e.entity_id,
+                                path: path_wit,
+                                role: role_wit,
+                                region_key: fm::RegionKey {
+                                    layer_index: e.region_key.global_layer_index,
+                                    object_id: e.region_key.object_id.clone(),
+                                    region_id: e.region_key.region_id.to_string(),
+                                },
+                                topo_order: e.topo_order,
+                            }
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            Ok(result)
+        }
+
         fn drop(&mut self, rep: Resource<fm::FinalizationOutputBuilder>) -> wasmtime::Result<()> {
             // Move captured pushes onto the HostExecutionContext before
             // the resource's storage is reclaimed, so the dispatch path

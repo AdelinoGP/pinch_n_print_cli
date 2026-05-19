@@ -2375,6 +2375,7 @@ dependencies = [
  "uuid",
  "wasmtime",
  "wat",
+ "wipe-tower",
  "zip",
 ]
 

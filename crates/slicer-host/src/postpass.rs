@@ -57,6 +57,14 @@ pub enum PostpassError {
         /// Stable human-readable detail.
         message: String,
     },
+    /// A ToolChange was emitted without surrounding retract/prime entities while
+    /// `wipe_tower_enabled` is true.
+    MissingToolchangePurge {
+        /// Layer index (global) where the bare ToolChange was detected.
+        layer_index: u32,
+        /// Index of the ToolChange within `layer.tool_changes` (0-based).
+        tool_change_index: u32,
+    },
 }
 
 impl fmt::Display for PostpassError {
@@ -74,6 +82,15 @@ impl fmt::Display for PostpassError {
             Self::GCodeSerialization { message } => {
                 write!(f, "gcode serialization failed: {message}")
             }
+            Self::MissingToolchangePurge {
+                layer_index,
+                tool_change_index,
+            } => write!(
+                f,
+                "missing toolchange purge: layer {layer_index} tool_change[{tool_change_index}] \
+                 has no ExtrusionRole::WipeTower entity after the tool change; \
+                 ensure wipe-tower module runs before gcode emit"
+            ),
         }
     }
 }

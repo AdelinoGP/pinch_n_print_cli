@@ -7,7 +7,7 @@
   - `TASK-152b` — Mixed-tool ordering / `push-tool-change` (closed in packet 19; emission gap remains).
   - `TASK-120d2` — Retract/unretract pair emission (closed in packet 15; toolchange-specific wrap missing).
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `active`
 - Aggregate context cost: `M`
 
 ## Problem Statement

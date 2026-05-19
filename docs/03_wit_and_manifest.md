@@ -703,6 +703,15 @@ resolves to a real entity within `layer`; unknown IDs are rejected with
 superseded by the enum-based mutation API so the contract is fully
 serialisable across the WIT boundary.
 
+**Positional insertion and permutation (Packet 58, 2026-05-18)**:
+`finalization-output-builder` exposes three additional methods that mirror PathOptimization's `layer-collection-builder` capability surface:
+
+- `insert-entity-at(layer-index, position: u32, path, region-key) -> result<_, string>` — inserts an entity at a specific position in the layer's `ordered_entities` list. On apply, `ToolChange.after_entity_index >= position` and `ZHop.after_entity_index >= position` are each incremented by 1 to preserve their positional references. Out-of-bounds position returns `Err` with no mutation.
+- `set-entity-order(layer-index, items: list<tuple<u32, bool>>) -> result<_, string>` — permutes the layer's entities by the supplied index list (one entry per existing entity; the boolean is a reverse flag). On apply, `ToolChange.after_entity_index` and `ZHop.after_entity_index` are remapped through the inverse permutation. Malformed proposals (length mismatch, duplicates, out-of-range indices) return `Err` with no mutation.
+- `get-ordered-entities(layer-index) -> list<print-entity-view>` — returns the staged state of the layer's `ordered_entities`. The SDK path observes both completed and in-flight builder state; the host-side WIT impl currently returns the pre-apply layer snapshot only (in-flight pushes are not reflected until `apply_to` runs). Module authors who need the staged state during the same `run_finalization` call should rely on the SDK side; the host accessor is a snapshot of pre-existing entities.
+
+The index-remap invariants are owned by the SDK's `apply_to` (`crates/slicer-sdk/src/traits.rs::FinalizationOutputBuilder::apply_to`); modules must not pre-adjust indices themselves. `wipe-tower` uses `insert-entity-at(layer, tc.after_entity_index + 1 + offset, ...)` to bracket each `T<n>` with retract + travel + prime + wipe entities.
+
 ---
 
 ## Module Manifest Schema (TOML)

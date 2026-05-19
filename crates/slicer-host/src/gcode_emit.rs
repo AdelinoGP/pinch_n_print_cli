@@ -268,7 +268,7 @@ fn orca_type_label(role: &ExtrusionRole) -> &'static str {
         ExtrusionRole::SupportMaterial => ";TYPE:Support",
         ExtrusionRole::SupportInterface => ";TYPE:Support interface",
         ExtrusionRole::Skirt => ";TYPE:Skirt/Brim",
-        ExtrusionRole::WipeTower => ";TYPE:Wipe tower",
+        ExtrusionRole::WipeTower => ";TYPE:Prime tower",
         ExtrusionRole::PrimeTower => ";TYPE:Prime tower",
         ExtrusionRole::Ironing => ";TYPE:Ironing",
         ExtrusionRole::Custom(_) => ";TYPE:Custom",
@@ -382,11 +382,14 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                 }
             }
 
-            // Build lookup maps for tool_changes and z_hops by after_entity_index
-            let tool_changes: HashMap<u32, &_> = layer
+            // Build lookup maps for tool_changes and z_hops by after_entity_index.
+            // Value is (tc_index_in_layer, &ToolChange) so the guard can report
+            // the 0-based tool_change_index for PostpassError::MissingToolchangePurge.
+            let tool_changes: HashMap<u32, (u32, &_)> = layer
                 .tool_changes
                 .iter()
-                .map(|tc| (tc.after_entity_index, tc))
+                .enumerate()
+                .map(|(i, tc)| (tc.after_entity_index, (i as u32, tc)))
                 .collect();
             let z_hops: HashMap<u32, &_> = layer
                 .z_hops
@@ -512,38 +515,14 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     prev_point = Some(point);
                 }
 
-                // Check for tool change after this entity
-                if let Some(tc) = tool_changes.get(&entity_idx) {
-                    commands.push(GCodeCommand::ToolChange {
-                        after_entity_index: tc.after_entity_index,
-                        from: tc.from_tool,
-                        to: tc.to_tool,
-                    });
-                    current_tool = tc.to_tool;
-                }
-
-                // Emit Comment/Raw annotations attached to this entity index,
-                // in the deterministic order they appear in `annotations`.
-                for ann in layer
-                    .annotations
-                    .iter()
-                    .filter(|a| a.after_entity_index == entity_idx)
-                {
-                    match &ann.kind {
-                        LayerAnnotationKind::Comment(text) => {
-                            commands.push(GCodeCommand::Comment { text: text.clone() });
-                        }
-                        LayerAnnotationKind::Raw(text) => {
-                            commands.push(GCodeCommand::Raw { text: text.clone() });
-                        }
-                    }
-                }
-
-                // Emit canonical retract/z-hop/travel/unretract sequence after this entity.
+                // Emit canonical retract/z-hop/travel/unretract sequence after this entity,
+                // BEFORE any ToolChange. OrcaSlicer ordering: retract → z-hop → travel →
+                // T<n> → (unretract handled by next-entity start or wipe-tower prime).
                 let entity_retracts = retracts_by_entity.get(&entity_idx);
                 let entity_travels = travel_moves_by_entity.get(&entity.entity_id);
                 let entity_z_hop = z_hops.get(&entity_idx);
 
+                // 1. Retracts (before tool change and travel)
                 if let Some(retracts) = entity_retracts {
                     for r in retracts.iter().filter(|r| !r.is_unretract) {
                         commands.push(GCodeCommand::Retract {
@@ -553,6 +532,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         });
                     }
                 }
+                // 2. Z-hop up (before travel)
                 if let Some(zh) = entity_z_hop {
                     let hop_z = layer_z + zh.hop_height;
                     commands.push(GCodeCommand::Move {
@@ -568,6 +548,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         role: ExtrusionRole::Custom("Travel".to_string()),
                     });
                 }
+                // 3. Travel moves (before tool change)
                 if let Some(travels) = entity_travels {
                     for tm in travels.iter() {
                         debug_assert!(
@@ -591,6 +572,61 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         });
                     }
                 }
+
+                // 4. Check for tool change after this entity (AFTER retract/travel)
+                if let Some((tc_index, tc)) = tool_changes.get(&entity_idx) {
+                    // Defensive guard: verify that at least one ExtrusionRole::WipeTower
+                    // entity follows each ToolChange in the layer. If not, the wipe-tower
+                    // module has not emitted purge geometry, and the bare ToolChange would
+                    // produce bad output (NC1).
+                    //
+                    // Guard is ONLY active when wipe_tower_enabled=true. Single-material
+                    // prints (wipe_tower_enabled=false, the default) skip the check entirely.
+                    if self.resolved_config.wipe_tower_enabled {
+                        // Heuristic: check `layer.ordered_entities[tc.after_entity_index+1..]`
+                        // for any entity with role == WipeTower. This is the minimum-viable
+                        // guard that makes NC1 pass; fuller retract/prime detection lives in
+                        // the wipe-tower module (Step 5).
+                        let has_wipe_after = layer
+                            .ordered_entities
+                            .iter()
+                            .skip((tc.after_entity_index as usize).saturating_add(1))
+                            .any(|e| matches!(e.role, ExtrusionRole::WipeTower));
+
+                        if !has_wipe_after {
+                            return Err(PostpassError::MissingToolchangePurge {
+                                layer_index: layer.global_layer_index,
+                                tool_change_index: *tc_index,
+                            });
+                        }
+                    }
+
+                    commands.push(GCodeCommand::ToolChange {
+                        after_entity_index: tc.after_entity_index,
+                        from: tc.from_tool,
+                        to: tc.to_tool,
+                    });
+                    current_tool = tc.to_tool;
+                }
+
+                // 5. Emit Comment/Raw annotations attached to this entity index,
+                // in the deterministic order they appear in `annotations`.
+                for ann in layer
+                    .annotations
+                    .iter()
+                    .filter(|a| a.after_entity_index == entity_idx)
+                {
+                    match &ann.kind {
+                        LayerAnnotationKind::Comment(text) => {
+                            commands.push(GCodeCommand::Comment { text: text.clone() });
+                        }
+                        LayerAnnotationKind::Raw(text) => {
+                            commands.push(GCodeCommand::Raw { text: text.clone() });
+                        }
+                    }
+                }
+
+                // 6. Z-hop down (after tool change)
                 if let Some(zh) = entity_z_hop {
                     commands.push(GCodeCommand::Move {
                         x: None,
@@ -606,6 +642,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     });
                     let _ = zh;
                 }
+                // 7. Unretracts (after tool change, before next entity)
                 if let Some(retracts) = entity_retracts {
                     for r in retracts.iter().filter(|r| r.is_unretract) {
                         commands.push(GCodeCommand::Unretract {

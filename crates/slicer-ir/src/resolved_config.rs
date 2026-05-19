@@ -142,6 +142,38 @@ pub fn extract_bool(key: &str, value: &ConfigValue) -> Result<bool, ConfigResolu
     }
 }
 
+/// Extract a `Vec<f64>` from a `List(Vec<ConfigValue::Float>)` `ConfigValue`.
+///
+/// Each element must be a `Float` (or `Int`, coerced to `f64`). Returns
+/// `TypeMismatch` if the outer value is not a `List`, or if any element
+/// is neither `Float` nor `Int`.
+#[doc(hidden)]
+pub fn extract_float_list(
+    key: &str,
+    value: &ConfigValue,
+) -> Result<Vec<f64>, ConfigResolutionError> {
+    match value {
+        ConfigValue::List(items) => items
+            .iter()
+            .enumerate()
+            .map(|(i, v)| match v {
+                ConfigValue::Float(f) => Ok(*f),
+                ConfigValue::Int(n) => Ok(*n as f64),
+                other => Err(ConfigResolutionError::TypeMismatch {
+                    key: format!("{key}[{i}]"),
+                    expected: "Float",
+                    actual: variant_name(other),
+                }),
+            })
+            .collect(),
+        other => Err(ConfigResolutionError::TypeMismatch {
+            key: key.to_string(),
+            expected: "List",
+            actual: variant_name(other),
+        }),
+    }
+}
+
 // ── Declarative DSL ────────────────────────────────────────────────────────
 
 /// Declare every `ResolvedConfig` field in one place. Each line is one of:
@@ -450,6 +482,16 @@ declare_resolved_config! {
     cli_opt "smoothificator_target_height" smoothificator_target_height: Option<f32> = None => extract_float;
     /// Smoothificator adaptive mode (optional).
     cli_opt "smoothificator_adaptive"      smoothificator_adaptive: Option<bool> = None => extract_bool;
+
+    // Printer bed / tool-change (module-contributed)
+    /// Printer bed polygon as [x0, y0, x1, y1, ...] in mm.
+    /// Default: 250 × 250 mm square.
+    cli "bed_shape" bed_shape: Vec<f64> = vec![0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0] => extract_float_list;
+    /// Retract length in mm before tool change.
+    cli "retract_length" retract_length: f32 = 2.0 => extract_float;
+    /// Whether the wipe tower is enabled for multi-material purge.
+    /// Default false matches single-material shipping behavior.
+    cli "wipe_tower_enabled" wipe_tower_enabled: bool = false => extract_bool;
 }
 
 // Touch the imports the macro expansion implicitly relies on, so a future

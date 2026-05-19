@@ -1,5 +1,5 @@
 ---
-status: active
+status: draft
 packet: 59_machine-start-end-gcode-emission
 task_ids:
   - TASK-193    # emit configurable machine_start_gcode / machine_end_gcode via a PostPass::GCodePostProcess module that prepends/appends Raw commands carrying the resolved templates

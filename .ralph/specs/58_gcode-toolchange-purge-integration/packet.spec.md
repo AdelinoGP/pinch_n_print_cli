@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 58_gcode-toolchange-purge-integration
 task_ids:
   - TASK-143
@@ -85,7 +85,7 @@ This packet closes all three.
 
 - **AC5 — marker count ≥ tool-change layers**: as before. | `python -c "import re,sys; lines=open('target/test-output/multi_color_cube.gcode').readlines(); tc_layers=len({i for i,l in enumerate(lines) if re.match(r'T[0-9]+',l)}); pt=sum(1 for l in lines if ';TYPE:Prime tower' in l); sys.exit(0 if pt>=tc_layers else 1)"`
 
-- **AC6 — tower placement against config-supplied bed polygon**: **Given** `wipe_tower_enabled=true` and `bed_shape=[0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0]` set in the printer profile, **when** the wipe-tower module emits a tower polygon for the first layer of the multi-material fixture, **then** every tower vertex is inside the bed polygon AND the tower polygon does not intersect any object's footprint bounding box (via existing `host-services::object-bounds`). | `cargo test -p slicer-host --test wipe_tower_bed_bounds tower_geometry_within_config_bed_outside_objects -- --nocapture`
+- **AC6 — tower placement against config-supplied bed polygon**: **Given** `wipe_tower_enabled=true` and `bed_shape=[0.0, 0.0, 250.0, 0.0, 250.0, 250.0, 0.0, 250.0]` set in the printer profile, **when** the wipe-tower module emits a tower polygon for the first layer of the multi-material fixture, **then** every tower vertex is inside the bed polygon AND the tower polygon does not intersect any object's footprint bounding box (via existing `host-services::object-bounds`). | `cargo test -p slicer-host --test wipe_tower_bed_bounds tower_geometry_within_config_bed_outside_objects -- --nocapture` (The object-footprint intersection half is deferred to a follow-up packet; see DEV-053 follow-up note. Bed-containment is the only AC6 assertion enforced by this packet's tests.)
 
 - **AC7 — `insert-entity-at` semantics**: **Given** a layer with `N` staged entities and a `ToolChange` at `after_entity_index=K` (`0 ≤ K < N`), **when** a module calls `insert-entity-at(layer_index, position=K+1, path, region_key)`, **then** after `apply_to`: (a) the new entity occupies index `K+1` in `ordered_entities`; (b) the original entities at indices `K+1..N` shift to `K+2..N+1`; (c) the `ToolChange.after_entity_index` is still `K` (unchanged because the insert is AFTER the tool change's reference entity); (d) any other `ToolChange` with `after_entity_index >= K+1` is incremented by 1; (e) any `ZHop` index `>= K+1` is incremented by 1. | `cargo test -p slicer-host --test finalization_builder_insert insert_at_position_remaps_indices -- --nocapture`
 
@@ -121,7 +121,7 @@ Supplemental packet-level commands (not per-criterion):
 - `cargo test -p wipe-tower`
 - `./modules/core-modules/build-core-modules.sh` (mandatory after WIT extension)
 - `./modules/core-modules/build-core-modules.sh --check` (must report fresh)
-- `cargo run --bin slicer-cli --release --slice --input crates/slicer-host/tests/fixtures/multi_color_cube.stl --output target/test-output/multi_color_cube.gcode`
+- `cargo run --bin slicer-host --release -- run --model crates/slicer-host/tests/fixtures/multi_color_cube.stl --module-dir modules/core-modules --output target/test-output/multi_color_cube.gcode`
 
 (`cargo test --workspace` is invoked exactly once at the acceptance ceremony in `implementation-plan.md`, per Test Discipline.)
 
@@ -165,3 +165,13 @@ All reads delegated; never load into the implementer's context.
 This packet was generated against the context_discipline preamble shared by `spec-packet-generator`, `swarm`, and `spec-review`. Downstream agents must treat `design.md`'s code change surface as authoritative, honor the out-of-bounds list, delegate every cargo run and authoritative-doc fact-check, stop reading at 60% context, and hand off at 85%.
 
 Aggregate context cost is the sum of per-step costs in `implementation-plan.md`. No single step is L.
+
+## Doc Impact Statement
+
+This packet touches WIT contracts, host config, user-visible G-code output, and the backlog. Docs updated by Step 7:
+
+- `docs/03_wit_and_manifest.md` §finalization-output-builder — adds one paragraph describing `insert-entity-at`, `set-entity-order`, `get-ordered-entities` with index-remap invariants. Verify: `grep -n "insert-entity-at" docs/03_wit_and_manifest.md`.
+- `docs/07_implementation_status.md` §TASK-143 / §TASK-152b / §TASK-120d2 — adds "(integration gap closed: packet 58, 2026-05-18)" notation to each row. Verify: `grep -n "packet 58" docs/07_implementation_status.md`.
+- `docs/DEVIATION_LOG.md` §DEV-053 — appended entry recording: `;TYPE:Wipe tower` → `;TYPE:Prime tower` marker spelling correction (user-visible), three new builder methods, `bed_shape` config addition, rejected alternatives (host-services accessor, stage migration). Verify: `grep -n "DEV-053" docs/DEVIATION_LOG.md`.
+
+No other authoritative docs (`docs/02`, `docs/04`, `docs/05`, `docs/08`, `docs/09`, `docs/11`) need updates — schemas, scheduler behavior, SDK lifecycle, units, and progress events are unchanged.

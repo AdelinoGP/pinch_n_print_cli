@@ -690,6 +690,35 @@ pub enum MergeOp {
         /// Minimal payload (`z` plus extrusion paths) used to construct the new layer.
         data: SyntheticLayerData,
     },
+    /// Insert a new entity at a specific positional index within an existing layer.
+    ///
+    /// Entities at indices >= `position` shift right by 1. All positional
+    /// after_entity_index references (ToolChange, ZHop, TravelRetract) with
+    /// `after_entity_index >= position` are incremented by 1. Bounds-checked
+    /// at apply_to time; out-of-bounds `position` returns Err atomically.
+    InsertEntityAt {
+        /// Global layer index of the target layer.
+        layer: u32,
+        /// Index at which to insert the new entity (0 = prepend).
+        position: u32,
+        /// Extrusion path for the new entity.
+        path: ExtrusionPath3D,
+        /// Region key for the new entity.
+        region_key: RegionKey,
+    },
+    /// Reorder all entities in a layer according to a permutation.
+    ///
+    /// `items[k] = (old_index, reversed)` means the entity originally at `old_index`
+    /// moves to position `k`. The items must form a valid permutation of `0..N`
+    /// where `N == ordered_entities.len()`. After reordering, all positional
+    /// after_entity_index references are remapped through the inverse permutation.
+    /// Validated atomically at apply_to time.
+    SetEntityOrder {
+        /// Global layer index of the target layer.
+        layer: u32,
+        /// Permutation: items[new_position] = (original_position, reversed).
+        items: Vec<(u32, bool)>,
+    },
 }
 
 /// Priority-aware entity push record (Packet-40).
@@ -823,6 +852,44 @@ impl FinalizationOutputBuilder {
         paths: Vec<ExtrusionPath3D>,
     ) -> Result<(), String> {
         self.synthetic_layers.push((z, paths));
+        Ok(())
+    }
+
+    /// Insert a new entity at a specific positional index within an existing layer.
+    ///
+    /// Records the operation as a deferred `MergeOp::InsertEntityAt`. Bounds
+    /// validation (`position <= ordered_entities.len()`) and index-remap of
+    /// ToolChange/ZHop/TravelRetract references are performed by `apply_to`.
+    pub fn insert_entity_at(
+        &mut self,
+        layer_index: u32,
+        position: u32,
+        path: ExtrusionPath3D,
+        region_key: RegionKey,
+    ) -> Result<(), String> {
+        self.merge_ops.push(MergeOp::InsertEntityAt {
+            layer: layer_index,
+            position,
+            path,
+            region_key,
+        });
+        Ok(())
+    }
+
+    /// Reorder all entities in a layer according to a permutation.
+    ///
+    /// Records the operation as a deferred `MergeOp::SetEntityOrder`. Permutation
+    /// validation and index-remap of ToolChange/ZHop/TravelRetract references are
+    /// performed by `apply_to`.
+    pub fn set_entity_order(
+        &mut self,
+        layer_index: u32,
+        items: Vec<(u32, bool)>,
+    ) -> Result<(), String> {
+        self.merge_ops.push(MergeOp::SetEntityOrder {
+            layer: layer_index,
+            items,
+        });
         Ok(())
     }
 
@@ -1147,6 +1214,137 @@ impl FinalizationOutputBuilder {
                         ..Default::default()
                     };
                     layers.insert(insert_pos, new_layer);
+                }
+
+                MergeOp::InsertEntityAt {
+                    layer: layer_idx,
+                    position,
+                    path,
+                    region_key,
+                } => {
+                    let layer = match layers
+                        .iter_mut()
+                        .find(|l| l.global_layer_index == layer_idx)
+                    {
+                        Some(l) => l,
+                        None => {
+                            return Err(format!("insert_entity_at: layer {} not found", layer_idx));
+                        }
+                    };
+                    let n = layer.ordered_entities.len();
+                    if position as usize > n {
+                        return Err(format!(
+                            "position {} out of bounds; layer has {} entities",
+                            position, n
+                        ));
+                    }
+                    // Generate next entity_id = max existing + 1, or 1 if empty.
+                    let next_id = layer
+                        .ordered_entities
+                        .iter()
+                        .map(|e| e.entity_id)
+                        .max()
+                        .map(|m| m + 1)
+                        .unwrap_or(1);
+                    let role = path.role.clone();
+                    let new_entity = PrintEntity {
+                        entity_id: next_id,
+                        path,
+                        role,
+                        region_key,
+                        topo_order: position,
+                    };
+                    layer.ordered_entities.insert(position as usize, new_entity);
+                    // Remap all positional after_entity_index references >= position.
+                    for tc in layer.tool_changes.iter_mut() {
+                        if tc.after_entity_index >= position {
+                            tc.after_entity_index += 1;
+                        }
+                    }
+                    for zh in layer.z_hops.iter_mut() {
+                        if zh.after_entity_index >= position {
+                            zh.after_entity_index += 1;
+                        }
+                    }
+                    for tr in layer.retracts.iter_mut() {
+                        if tr.after_entity_index >= position {
+                            tr.after_entity_index += 1;
+                        }
+                    }
+                }
+
+                MergeOp::SetEntityOrder {
+                    layer: layer_idx,
+                    items,
+                } => {
+                    let layer = match layers
+                        .iter_mut()
+                        .find(|l| l.global_layer_index == layer_idx)
+                    {
+                        Some(l) => l,
+                        None => {
+                            return Err(format!("set_entity_order: layer {} not found", layer_idx));
+                        }
+                    };
+                    let n = layer.ordered_entities.len();
+                    // Validate: items.len() must equal n.
+                    if items.len() != n {
+                        return Err(format!(
+                            "invalid permutation: expected {} items, got {}",
+                            n,
+                            items.len()
+                        ));
+                    }
+                    // Validate: items must be a permutation of 0..n.
+                    let mut seen = vec![false; n];
+                    for &(idx, _) in &items {
+                        if idx as usize >= n {
+                            return Err(format!(
+                                "invalid permutation: index {} out of range (layer has {} entities)",
+                                idx, n
+                            ));
+                        }
+                        if seen[idx as usize] {
+                            return Err(format!(
+                                "invalid permutation: index {} appears more than once",
+                                idx
+                            ));
+                        }
+                        seen[idx as usize] = true;
+                    }
+                    // Build the reordered entity vec.
+                    // new_entities[k] = original_entities[items[k].0]
+                    // Reversal (items[k].1 == true) is a no-op TODO for this packet.
+                    let original = layer.ordered_entities.clone();
+                    let new_entities: Vec<PrintEntity> = items
+                        .iter()
+                        .map(|&(old_idx, _reversed)| original[old_idx as usize].clone())
+                        .collect();
+                    // Build inverse permutation: inverse[old_idx] = new_idx.
+                    let mut inverse = vec![0u32; n];
+                    for (new_idx, &(old_idx, _)) in items.iter().enumerate() {
+                        inverse[old_idx as usize] = new_idx as u32;
+                    }
+                    // Remap positional after_entity_index references.
+                    for tc in layer.tool_changes.iter_mut() {
+                        let old = tc.after_entity_index as usize;
+                        if old < n {
+                            tc.after_entity_index = inverse[old];
+                        }
+                    }
+                    for zh in layer.z_hops.iter_mut() {
+                        let old = zh.after_entity_index as usize;
+                        if old < n {
+                            zh.after_entity_index = inverse[old];
+                        }
+                    }
+                    for tr in layer.retracts.iter_mut() {
+                        let old = tr.after_entity_index as usize;
+                        if old < n {
+                            tr.after_entity_index = inverse[old];
+                        }
+                    }
+                    layer.ordered_entities = new_entities;
                 }
             }
         }

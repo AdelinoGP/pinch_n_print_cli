@@ -2974,6 +2974,25 @@ impl FinalizationStageRunner for WasmRuntimeDispatcher {
                     // Legacy append-to-end: collected here and appended after apply_to().
                     legacy_synthetic_layers.push((z, paths));
                 }
+                wit_host::FinalizationBuilderPush::InsertEntityAt {
+                    layer_index,
+                    position,
+                    path,
+                    region_key,
+                } => {
+                    sdk_builder
+                        .insert_entity_at(layer_index, position, path, region_key)
+                        .unwrap_or_else(|e| {
+                            log::warn!("finalization: insert_entity_at rejected: {e}")
+                        });
+                }
+                wit_host::FinalizationBuilderPush::SetEntityOrder { layer_index, items } => {
+                    sdk_builder
+                        .set_entity_order(layer_index, items)
+                        .unwrap_or_else(|e| {
+                            log::warn!("finalization: set_entity_order rejected: {e}")
+                        });
+                }
             }
         }
 

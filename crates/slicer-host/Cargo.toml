@@ -45,6 +45,9 @@ path = "../../modules/core-modules/skirt-brim"
 
 [dev-dependencies.support-planner]
 path = "../../modules/core-modules/support-planner"
+
+[dev-dependencies.wipe-tower]
+path = "../../modules/core-modules/wipe-tower"
 # NOTE: no module crate dev-dependencies. SDK-level trait tests belong in
 # the module's own `tests/` directory; host-level tests must exercise
 # either pure host plumbing (blackboard, dispatch routing, claim dedup)
