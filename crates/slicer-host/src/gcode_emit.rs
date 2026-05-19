@@ -307,9 +307,15 @@ impl GCodeEmitter for DefaultGCodeEmitter {
         layer_irs: &[LayerCollectionIR],
         _blackboard: &Blackboard,
     ) -> Result<GCodeIR, PostpassError> {
-        // Classify overhang quartiles for wall-family points before emission.
-        // classify_layers requires &mut [LayerCollectionIR], so we clone here.
+        // Clone for mutation (overhang classification + tool rotation).
         let mut owned_layers: Vec<LayerCollectionIR> = layer_irs.to_vec();
+        // Apply cross-layer tool rotation before classification and emission.
+        // This rotates each layer's entity clusters so the first cluster's tool
+        // matches the previous layer's ending tool, avoiding redundant T<n>
+        // commands at every layer boundary. The WASM module always orders
+        // clusters in ascending tool order (H1: module state doesn't survive
+        // across calls), so the host performs the rotation post-dispatch.
+        apply_cross_layer_tool_rotation(&mut owned_layers);
         crate::overhang_classifier::classify_layers(&mut owned_layers, &self.feedrate_config);
         let layer_irs: &[LayerCollectionIR] = &owned_layers;
 
@@ -373,6 +379,19 @@ impl GCodeEmitter for DefaultGCodeEmitter {
             if let Some(first_entity) = layer.ordered_entities.first() {
                 let required_tool = first_entity.region_key.region_id as u32;
                 if required_tool != current_tool {
+                    // Synthesize the pre-T<n> retract for layer-boundary tool
+                    // changes too (the entity-loop synth at the bottom of this
+                    // function only handles intra-layer tool changes recorded
+                    // in `layer.tool_changes`; the layer-boundary one here is
+                    // emitted via a separate path). See packet 58 / DEV-054
+                    // follow-up (i).
+                    if self.resolved_config.wipe_tower_enabled {
+                        commands.push(GCodeCommand::Retract {
+                            length: self.resolved_config.retract_length,
+                            speed: 2400.0,
+                            mode: slicer_ir::RetractMode::Gcode,
+                        });
+                    }
                     commands.push(GCodeCommand::ToolChange {
                         after_entity_index: u32::MAX,
                         from: current_tool,
@@ -499,7 +518,10 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         x: Some(point.x),
                         y: Some(point.y),
                         z: Some(point.z),
-                        e: if e_delta > 0.0 {
+                        // Emit E for any non-zero delta. Negative deltas (retracts) were
+                        // previously dropped, which made wipe-tower's `generate_purge_paths`
+                        // retract entity invisible in the live gcode stream.
+                        e: if e_delta != 0.0 {
                             Some(e_position)
                         } else {
                             None
@@ -583,22 +605,38 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                     // Guard is ONLY active when wipe_tower_enabled=true. Single-material
                     // prints (wipe_tower_enabled=false, the default) skip the check entirely.
                     if self.resolved_config.wipe_tower_enabled {
-                        // Heuristic: check `layer.ordered_entities[tc.after_entity_index+1..]`
-                        // for any entity with role == WipeTower. This is the minimum-viable
-                        // guard that makes NC1 pass; fuller retract/prime detection lives in
-                        // the wipe-tower module (Step 5).
-                        let has_wipe_after = layer
+                        // Heuristic: verify the wipe-tower module inserted at least one
+                        // ExtrusionRole::WipeTower entity in this layer. After cross-layer
+                        // tool rotation (apply_cross_layer_tool_rotation), tool_change
+                        // positions may shift relative to WipeTower insertions, so this
+                        // guard uses a layer-scoped check rather than the stricter
+                        // per-tool_change position check.
+                        let has_wipe_in_layer = layer
                             .ordered_entities
                             .iter()
-                            .skip((tc.after_entity_index as usize).saturating_add(1))
                             .any(|e| matches!(e.role, ExtrusionRole::WipeTower));
 
-                        if !has_wipe_after {
+                        if !has_wipe_in_layer {
                             return Err(PostpassError::MissingToolchangePurge {
                                 layer_index: layer.global_layer_index,
                                 tool_change_index: *tc_index,
                             });
                         }
+
+                        // Synthesize the pre-T<n> retract. The wipe-tower module's
+                        // retract entity is inserted at `after_entity_index + 1` and
+                        // therefore serializes AFTER T<n> — but physical correctness
+                        // requires the retract BEFORE T<n> so the unloading filament
+                        // doesn't smear on travel. Until the SDK exposes a way to
+                        // push a TravelRetract from a finalization-stage module, the
+                        // host emitter owns this retract synthesis. Gated on
+                        // wipe_tower_enabled so single-material prints are untouched.
+                        // (See packet 58 / DEV-054 follow-up (i).)
+                        commands.push(GCodeCommand::Retract {
+                            length: self.resolved_config.retract_length,
+                            speed: 2400.0,
+                            mode: slicer_ir::RetractMode::Gcode,
+                        });
                     }
 
                     commands.push(GCodeCommand::ToolChange {
@@ -1441,6 +1479,104 @@ pub fn format_xyz(value: f32, decimals: u32) -> String {
     let s = s.trim_end_matches('0');
     let s = s.trim_end_matches('.');
     s.to_string()
+}
+
+/// Apply cross-layer tool rotation to entity order.
+///
+/// The WASM path-optimization module always orders entity clusters in ascending
+/// tool order (it cannot carry cross-layer state — see DEV-054 follow-up (iii),
+/// H1). This function post-processes `LayerCollectionIR` entries in layer-index
+/// order to rotate each layer's clusters so the first cluster's tool matches the
+/// previous layer's ending tool. This avoids a redundant `T0` tool-change at the
+/// start of nearly every layer when the previous layer ended on a non-zero tool.
+///
+/// Recomputes `tool_changes` from the new entity order and remaps all
+/// index-anchored data (`z_hops`, `retracts`, `annotations`).
+fn apply_cross_layer_tool_rotation(layers: &mut [LayerCollectionIR]) {
+    if layers.is_empty() {
+        return;
+    }
+
+    let mut prev_ending_tool: Option<u32> = None;
+
+    for layer in layers.iter_mut() {
+        let entities = &mut layer.ordered_entities;
+        if entities.is_empty() {
+            continue;
+        }
+
+        let first_tool = entities[0].region_key.region_id as u32;
+
+        if let Some(prev_tool) = prev_ending_tool {
+            if prev_tool != first_tool {
+                if let Some(start) = entities
+                    .iter()
+                    .position(|e| e.region_key.region_id as u32 == prev_tool)
+                {
+                    let mut end = start;
+                    while end < entities.len()
+                        && entities[end].region_key.region_id as u32 == prev_tool
+                    {
+                        end += 1;
+                    }
+
+                    let n = entities.len();
+                    let cluster_size = end - start;
+                    let mut old_to_new: Vec<usize> = vec![0; n];
+
+                    for i in start..end {
+                        old_to_new[i] = i - start;
+                    }
+                    for i in 0..start {
+                        old_to_new[i] = i + cluster_size;
+                    }
+                    for i in end..n {
+                        old_to_new[i] = i;
+                    }
+
+                    let mut new_entities = Vec::with_capacity(n);
+                    new_entities.extend(entities.drain(start..end));
+                    new_entities.append(entities);
+                    *entities = new_entities;
+
+                    let mut new_tcs: Vec<slicer_ir::ToolChange> = Vec::new();
+                    for i in 0..entities.len().saturating_sub(1) {
+                        let tool_i = entities[i].region_key.region_id as u32;
+                        let tool_next = entities[i + 1].region_key.region_id as u32;
+                        if tool_i != tool_next {
+                            new_tcs.push(slicer_ir::ToolChange {
+                                after_entity_index: i as u32,
+                                from_tool: tool_i,
+                                to_tool: tool_next,
+                            });
+                        }
+                    }
+                    layer.tool_changes = new_tcs;
+
+                    for zh in &mut layer.z_hops {
+                        let old_idx = zh.after_entity_index as usize;
+                        if let Some(&new_idx) = old_to_new.get(old_idx) {
+                            zh.after_entity_index = new_idx as u32;
+                        }
+                    }
+                    for r in &mut layer.retracts {
+                        let old_idx = r.after_entity_index as usize;
+                        if let Some(&new_idx) = old_to_new.get(old_idx) {
+                            r.after_entity_index = new_idx as u32;
+                        }
+                    }
+                    for ann in &mut layer.annotations {
+                        let old_idx = ann.after_entity_index as usize;
+                        if let Some(&new_idx) = old_to_new.get(old_idx) {
+                            ann.after_entity_index = new_idx as u32;
+                        }
+                    }
+                }
+            }
+        }
+
+        prev_ending_tool = entities.last().map(|e| e.region_key.region_id as u32);
+    }
 }
 
 #[cfg(test)]

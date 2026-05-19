@@ -126,6 +126,10 @@ struct ToolChangeRecord {
 /// Returns the permutation `(original_index, reversal)` ordered by tool and
 /// a vector of `ToolChangeRecord` describing each tool-index boundary with
 /// correct **global** after_entity_index in the final concatenated permutation.
+///
+/// Cross-layer tool ordering (avoiding redundant layer-boundary T emissions)
+/// is handled by the host's gcode emitter, which post-processes entity order
+/// before emission. The module always emits clusters in ascending tool order.
 fn group_then_nearest_neighbor(
     entities: &[OrderedEntityView],
 ) -> (Vec<(u32, bool)>, Vec<ToolChangeRecord>) {
@@ -133,7 +137,6 @@ fn group_then_nearest_neighbor(
         return (Vec::new(), Vec::new());
     }
 
-    // Cluster by tool_index; each cluster preserves original assembly order.
     let mut clusters: std::collections::BTreeMap<u32, Vec<&OrderedEntityView>> =
         std::collections::BTreeMap::new();
     for entity in entities {
@@ -143,19 +146,16 @@ fn group_then_nearest_neighbor(
             .push(entity);
     }
 
-    // Pass 1: build final permutation and track global position of each entity.
+    let ordered_keys: Vec<u32> = clusters.keys().copied().collect();
+
     let mut final_permutation: Vec<(u32, bool)> = Vec::with_capacity(entities.len());
-    // Maps original_index -> global position in final_permutation
-    let mut global_position: std::collections::HashMap<u32, usize> =
-        std::collections::HashMap::new();
-    for (&_tool_idx, cluster_entities) in &clusters {
+    for &tool_idx in &ordered_keys {
+        let cluster_entities = &clusters[&tool_idx];
         for (orig_idx, reversal) in nearest_neighbor_permutation(cluster_entities) {
-            global_position.insert(orig_idx, final_permutation.len());
             final_permutation.push((orig_idx, reversal));
         }
     }
 
-    // Pass 2: emit tool-change records at tool-index boundaries, using global positions.
     let mut tool_change_records: Vec<ToolChangeRecord> = Vec::new();
     let mut prev_tool = None;
     let mut prev_global_pos = 0usize;
@@ -179,6 +179,10 @@ fn group_then_nearest_neighbor(
 }
 
 /// Default path-optimization module.
+///
+/// Cross-layer tool ordering (avoiding redundant layer-boundary T emissions)
+/// is handled by the host's gcode emitter, which post-processes entity order
+/// before emission. This module always emits clusters in ascending tool order.
 pub struct PathOptimizationDefault {
     emit_layer_markers: bool,
     retract_length: f32,
@@ -243,7 +247,6 @@ impl LayerModule for PathOptimizationDefault {
                 .set_entity_order(items)
                 .map_err(|e| ModuleError::fatal(6, e))?;
 
-            // Emit deferred tool changes at each tool-index boundary.
             for record in tool_changes {
                 output
                     .push_tool_change(record.after_entity_index, record.from_tool, record.to_tool)
