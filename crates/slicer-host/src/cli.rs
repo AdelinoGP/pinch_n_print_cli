@@ -30,9 +30,16 @@ pub enum HostCommands {
         /// Path to the output G-code file (default: stdout).
         #[arg(long)]
         output: Option<String>,
-        /// Directory to search for additional modules (default: ".").
-        #[arg(long, default_value = ".")]
-        module_dir: String,
+        /// Directory to search for additional modules. May be repeated.
+        /// When omitted, only platform default paths and
+        /// `SLICER_MODULE_PATH` (env) entries are searched.
+        #[arg(long = "module-dir", value_name = "PATH")]
+        module_dir: Vec<PathBuf>,
+        /// Disable the platform default module search paths
+        /// (`{config_dir}/modules/` and `{executable_dir}/modules/`).
+        /// `--module-dir` and `SLICER_MODULE_PATH` still take effect.
+        #[arg(long = "no-default-module-paths")]
+        no_default_module_paths: bool,
         /// Path to a PNG thumbnail image to embed in the G-code header.
         #[arg(long)]
         thumbnail: Option<PathBuf>,
@@ -48,9 +55,13 @@ pub enum HostCommands {
     },
     /// Query the combined config schema from loaded modules.
     ConfigSchema {
-        /// Directory to search for modules.
-        #[arg(long, default_value = ".")]
-        module_dir: String,
+        /// Directory to search for modules. May be repeated.
+        #[arg(long = "module-dir", value_name = "PATH")]
+        module_dir: Vec<PathBuf>,
+        /// Disable the platform default module search paths
+        /// (`{config_dir}/modules/` and `{executable_dir}/modules/`).
+        #[arg(long = "no-default-module-paths")]
+        no_default_module_paths: bool,
     },
 }
 
@@ -65,8 +76,10 @@ pub struct HostRunOptions {
     pub config_path: Option<PathBuf>,
     /// Optional path to the output G-code file.
     pub output_path: Option<PathBuf>,
-    /// Directory to search for additional modules.
-    pub module_dir: PathBuf,
+    /// Directories to search for additional modules, in CLI order.
+    pub module_dirs: Vec<PathBuf>,
+    /// When true, suppress the platform default module search paths.
+    pub no_default_module_paths: bool,
 }
 
 /// Errors from CLI argument validation.
@@ -99,8 +112,11 @@ impl std::error::Error for CliError {}
 
 /// Validate parsed CLI run arguments into [`HostRunOptions`].
 ///
-/// Checks that module, model, and config (if provided) files exist,
-/// and that the module directory exists.
+/// Checks that module, model, and config (if provided) files exist, and
+/// that every supplied module directory exists. Path-assembly precedence
+/// (CLI > env > platform defaults) is the responsibility of
+/// [`crate::assemble_search_roots`]; this validator only confirms that
+/// each user-supplied directory is present.
 ///
 /// # Errors
 ///
@@ -110,7 +126,7 @@ pub fn validate_run_options(
     model: &str,
     config: Option<&str>,
     output: Option<&str>,
-    module_dir: &str,
+    module_dirs: &[&str],
 ) -> Result<HostRunOptions, CliError> {
     let module_path = PathBuf::from(module);
     if !module_path.exists() {
@@ -132,9 +148,13 @@ pub fn validate_run_options(
         None
     };
 
-    let module_dir_path = PathBuf::from(module_dir);
-    if !module_dir_path.exists() {
-        return Err(CliError::MissingModuleDir(module_dir_path));
+    let mut module_dir_paths: Vec<PathBuf> = Vec::with_capacity(module_dirs.len());
+    for dir in module_dirs {
+        let p = PathBuf::from(dir);
+        if !p.exists() {
+            return Err(CliError::MissingModuleDir(p));
+        }
+        module_dir_paths.push(p);
     }
 
     let output_path = output.map(PathBuf::from);
@@ -144,6 +164,7 @@ pub fn validate_run_options(
         model_path,
         config_path,
         output_path,
-        module_dir: module_dir_path,
+        module_dirs: module_dir_paths,
+        no_default_module_paths: false,
     })
 }

@@ -649,11 +649,49 @@ Validation rule:
 
 ## Module Search Path
 
-The current host (`slicer-host`) takes a single `--module-dir <path>` plus an
-explicit `--module <wasm-path>` on the CLI; CLI parsing and validation live in
-`crates/slicer-host/src/cli.rs`. Within a module directory, the host discovers
-modules by scanning for `*.toml` manifests; a manifest is loadable only when
-`<stem>.wasm` exists next to it.
+`slicer-host` assembles module search roots from CLI flags, an env var, and
+two platform defaults, in the priority order listed below. Within each root
+the discovery contract is unchanged: `*.toml` manifests at the root level or
+one subdirectory deep, each requiring a same-stem `*.wasm` companion.
+Assembly lives in `crates/slicer-host/src/module_search_path.rs`
+(`assemble_search_roots`); per-root scanning and intra-root `module.id`
+deduplication live in `crates/slicer-host/src/manifest.rs`
+(`load_modules_from_roots`).
+
+### Priority tiers (highest first)
+
+1. **`--module-dir <PATH>`** — CLI flag, repeatable; entries are taken in
+   the order given on the command line.
+2. **`SLICER_MODULE_PATH`** — env var, OS PATH-style list (split via
+   `std::env::split_paths`). Entries are appended after all CLI dirs.
+3. **`{config_dir}/modules/`** — resolved via
+   `directories::ProjectDirs::from("", "", "modular-slicer").config_dir()`.
+   On Linux this is `$XDG_CONFIG_HOME/modular-slicer/modules/` (typically
+   `~/.config/modular-slicer/modules/`); on macOS,
+   `~/Library/Application Support/modular-slicer/modules/`; on Windows,
+   `%APPDATA%\modular-slicer\config\modules\`. Silently skipped if absent.
+4. **`{executable_dir}/modules/`** — relative to the running binary via
+   `std::env::current_exe()`. Silently skipped if absent.
+
+Tiers 3 and 4 are omitted entirely when `--no-default-module-paths` is
+passed. Tiers 1 and 2 always apply.
+
+### Canonical-path deduplication of roots
+
+Before scanning, the assembled list is deduplicated by canonical absolute
+path (`std::fs::canonicalize`; falls back to `std::path::absolute` for
+paths that do not yet exist on disk). The first occurrence of each path
+wins; later duplicates are dropped silently. This is a user-friendly
+dedup, not a configuration error.
+
+### Intra-root `module.id` deduplication
+
+After roots are assembled, `load_modules_from_roots` walks them in order
+and dedups discovered modules by `module.id`. The first root's module
+wins, and later duplicates emit a `DiagnosticLevel::Warning` on stderr.
+This is independent of (and runs after) the canonical-path dedup above.
+
+### Per-root layout
 
 Each loadable module directory must contain:
 
@@ -661,10 +699,14 @@ Each loadable module directory must contain:
 - `<module-name>.toml` — manifest
 - (Optional) `<module-name>.py` — Python script (TextPostProcess tier only)
 
-<!-- VERIFY: multi-root search (`{executable_dir}/modules/`, `{config_dir}/modules/`,
-     `--module-path` repetition, `SLICER_MODULE_PATH` env override) is not
-     present in cli.rs and may be a forward-looking design item. Until it
-     ships, do not document precedence rules as authoritative. -->
+Modules may live flat at the root or nested one level deep in
+subdirectories (the layout used by `modules/core-modules/`). The scanner
+recognises both; `Cargo.toml` files inside subdirectories are excluded.
+
+### Diagnostics
+
+Setting `SLICER_DEBUG_PATHS=1` causes the host to print the assembled
+roots on stderr in priority order before module discovery begins.
 
 
 ## `PostPass::LayerFinalization` Module Constraint

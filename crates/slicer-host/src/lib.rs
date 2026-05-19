@@ -22,6 +22,7 @@ pub mod mesh_analysis;
 pub mod mesh_segmentation;
 pub mod model_loader;
 pub mod model_loader_sidecar;
+pub mod module_search_path;
 pub mod negative_part_subtract;
 pub mod overhang_classifier;
 pub mod paint_segmentation;
@@ -94,6 +95,7 @@ pub use mesh_analysis::{execute_mesh_analysis, MeshAnalysisConfig, MeshAnalysisE
 pub use mesh_segmentation::{
     execute_mesh_segmentation, DegenerateStrokeReason, MeshSegmentationError,
 };
+pub use module_search_path::{assemble_search_roots, SLICER_MODULE_PATH_ENV};
 pub use paint_segmentation::{execute_paint_segmentation, PaintSegmentationError};
 pub use postpass::{
     execute_postpass, GCodeEmitter, GCodeSerializer, PostpassError, PostpassOutput,

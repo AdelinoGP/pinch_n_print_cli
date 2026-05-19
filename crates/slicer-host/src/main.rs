@@ -21,10 +21,10 @@ use slicer_host::progress_events::{
 };
 use slicer_host::report::{allocator as report_alloc, AccountingAllocator, Collector};
 use slicer_host::{
-    build_config_schema_json, build_live_execution_plan, load_live_modules_for_plan,
-    load_modules_from_roots, parse_cli_config_source, resolve_global_config,
-    resolve_per_object_configs, ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer,
-    HostCli, HostCommands,
+    assemble_search_roots, build_config_schema_json, build_live_execution_plan,
+    load_live_modules_for_plan, load_modules_from_roots, parse_cli_config_source,
+    resolve_global_config, resolve_per_object_configs, ConfigBoundsIndex, DefaultGCodeEmitter,
+    DefaultGCodeSerializer, HostCli, HostCommands,
 };
 
 /// No-op prepass runner for MVP (no WASM modules loaded yet).
@@ -124,6 +124,7 @@ fn main() {
             config,
             output,
             module_dir,
+            no_default_module_paths,
             thumbnail,
             report,
             report_verbose,
@@ -196,14 +197,15 @@ fn main() {
             // index (from each module's manifest `[config.schema]`) is in
             // scope and can reject out-of-range CLI values alongside variant
             // TypeMismatches.
-            let module_dir_path = std::path::PathBuf::from(&module_dir);
-            let loaded = match load_live_modules_for_plan(
-                std::slice::from_ref(&module_dir_path),
-                num_cpus_guess(),
-            ) {
+            let search_roots = assemble_search_roots(&module_dir, no_default_module_paths);
+            let loaded = match load_live_modules_for_plan(&search_roots, num_cpus_guess()) {
                 Ok(out) => out,
                 Err(e) => {
-                    eprintln!("error: failed to load modules from '{module_dir}': {e}");
+                    eprintln!(
+                        "error: failed to load modules from {} root(s) {:?}: {e}",
+                        search_roots.len(),
+                        search_roots,
+                    );
                     std::process::exit(1);
                 }
             };
@@ -349,9 +351,12 @@ fn main() {
                 }
             }
         }
-        HostCommands::ConfigSchema { module_dir } => {
-            let path = std::path::PathBuf::from(module_dir);
-            let report = match load_modules_from_roots(&[path]) {
+        HostCommands::ConfigSchema {
+            module_dir,
+            no_default_module_paths,
+        } => {
+            let search_roots = assemble_search_roots(&module_dir, no_default_module_paths);
+            let report = match load_modules_from_roots(&search_roots) {
                 Ok(r) => r,
                 Err(e) => {
                     eprintln!("error loading modules: {e:?}");

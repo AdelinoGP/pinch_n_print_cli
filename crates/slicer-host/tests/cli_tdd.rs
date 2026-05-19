@@ -3,6 +3,7 @@
 use clap::Parser;
 use slicer_host::cli::{CliError, HostCli, HostCommands};
 use std::io::Write;
+use std::path::PathBuf;
 
 #[test]
 fn run_requires_module_and_model() {
@@ -38,6 +39,7 @@ fn run_parses_all_flags() {
             config,
             output,
             module_dir,
+            no_default_module_paths,
             thumbnail: _,
             report: _,
             report_verbose: _,
@@ -46,7 +48,8 @@ fn run_parses_all_flags() {
             assert_eq!(model, "/tmp/model.stl");
             assert_eq!(config.as_deref(), Some("/tmp/config.json"));
             assert_eq!(output.as_deref(), Some("/tmp/out.gcode"));
-            assert_eq!(module_dir, "/modules");
+            assert_eq!(module_dir, vec![PathBuf::from("/modules")]);
+            assert!(!no_default_module_paths);
         }
         _ => panic!("expected Run command"),
     }
@@ -69,11 +72,16 @@ fn run_optional_config_and_output() {
             config,
             output,
             module_dir,
+            no_default_module_paths,
             ..
         } => {
             assert!(config.is_none(), "config should be None");
             assert!(output.is_none(), "output should be None");
-            assert_eq!(module_dir, ".", "module_dir should default to '.'");
+            assert!(
+                module_dir.is_empty(),
+                "module_dir should be an empty Vec when --module-dir is absent"
+            );
+            assert!(!no_default_module_paths);
         }
         _ => panic!("expected Run command"),
     }
@@ -85,8 +93,15 @@ fn config_schema_default_dir() {
         .expect("config-schema with no args should parse");
 
     match cli.command {
-        HostCommands::ConfigSchema { module_dir } => {
-            assert_eq!(module_dir, ".", "module_dir should default to '.'");
+        HostCommands::ConfigSchema {
+            module_dir,
+            no_default_module_paths,
+        } => {
+            assert!(
+                module_dir.is_empty(),
+                "module_dir should be an empty Vec when --module-dir is absent"
+            );
+            assert!(!no_default_module_paths);
         }
         _ => panic!("expected ConfigSchema command"),
     }
@@ -98,8 +113,12 @@ fn config_schema_custom_dir() {
         .expect("config-schema with --module-dir should parse");
 
     match cli.command {
-        HostCommands::ConfigSchema { module_dir } => {
-            assert_eq!(module_dir, "/foo");
+        HostCommands::ConfigSchema {
+            module_dir,
+            no_default_module_paths,
+        } => {
+            assert_eq!(module_dir, vec![PathBuf::from("/foo")]);
+            assert!(!no_default_module_paths);
         }
         _ => panic!("expected ConfigSchema command"),
     }
@@ -117,7 +136,7 @@ fn validate_run_options_missing_model() {
         "/nonexistent/model.stl",
         None,
         None,
-        ".",
+        &["."],
     );
 
     assert!(result.is_err());
@@ -136,7 +155,7 @@ fn validate_run_options_missing_module() {
         "/nonexistent/model.stl",
         None,
         None,
-        ".",
+        &["."],
     );
 
     assert!(result.is_err());
@@ -164,7 +183,7 @@ fn validate_run_options_valid() {
         model_path.to_str().unwrap(),
         None,
         Some("/tmp/out.gcode"),
-        dir.path().to_str().unwrap(),
+        &[dir.path().to_str().unwrap()],
     )
     .expect("should validate successfully");
 
@@ -175,5 +194,6 @@ fn validate_run_options_valid() {
         opts.output_path.as_deref(),
         Some(std::path::Path::new("/tmp/out.gcode"))
     );
-    assert_eq!(opts.module_dir, dir.path());
+    assert_eq!(opts.module_dirs, vec![dir.path().to_path_buf()]);
+    assert!(!opts.no_default_module_paths);
 }
