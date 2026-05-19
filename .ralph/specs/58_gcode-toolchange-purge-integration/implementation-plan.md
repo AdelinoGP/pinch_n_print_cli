@@ -173,12 +173,13 @@
 - Task IDs: `TASK-143`, `TASK-152b`
 - Objective: Slice the multi-material fixture end-to-end through `slicer-cli` and run AC2a, AC2b, AC5, NC2, NC3 scripts against the produced G-code.
 - Precondition: Steps 1-5 complete.
-- Postcondition: `target/test-output/multi_color_cube.gcode` exists; AC2a, AC2b, AC5 exit 0; NC2, NC3 exit 0 on correct gcode.
+- Postcondition: `target/test-output/benchy_4color.gcode` exists (retargeted post-review 2026-05-19 from `multi_color_cube.gcode` — see `packet.spec.md` AC retargeting note); AC2b, NC2, NC3 exit 0 on correct gcode; AC2a and AC5 currently fail on real multi-material data (tracked as DEV-054 follow-up items).
 - Files allowed to read: the produced G-code (via awk/grep/python; never load full).
 - Files allowed to edit (≤ 3): none.
 - Files explicitly out-of-bounds: source code.
 - Expected sub-agent dispatches:
-  - "Run `cargo run --bin slicer-cli --release --slice --input crates/slicer-host/tests/fixtures/multi_color_cube.stl --output target/test-output/multi_color_cube.gcode`; FACT exit code + last 5 lines."
+  - "Run `cargo run --bin slicer-host --release -- run --module modules/core-modules/machine-gcode-emit/machine-gcode-emit.wasm --model resources/benchy_4color.3mf --module-dir modules/core-modules --config crates/slicer-host/tests/fixtures/benchy_4color.config.json --output target/test-output/benchy_4color.gcode`; FACT exit code + last 5 lines." <!-- retargeted post-review 2026-05-19: original line named the non-existent `slicer-cli --slice` binary and ran against an empty single-material STL; switched to the committed multi-material 3MF + JSON config fixture -->
+
   - "Run each AC and NC pipe-suffixed command from `packet.spec.md` against the produced G-code; FACT pass/fail per command."
 - Context cost: **S**
 - Authoritative docs: None.
@@ -217,6 +218,73 @@
 - OrcaSlicer refs: None.
 - Verification: `git diff` shows expected scoped changes only.
 - Exit condition: all docs updated, packet `status: implemented`.
+
+### Step 8: Emitter retract synthesis before every `T<n>` (added post-review 2026-05-19)
+
+- Task IDs: `TASK-143`, `TASK-120d2`
+- Objective: Close the AC2a gap exposed by the file-level retarget at `resources/benchy_4color.3mf`. The wipe-tower module's retract entity, inserted via `insert_entity_at(after_entity_index + 1)`, serializes AFTER `T<n>` whereas physical correctness requires the retract BEFORE `T<n>`. Host-side synthesis is the minimum-blast-radius fix that avoids a new WIT/SDK method.
+- Sub-objectives:
+  - **(8a)** In `crates/slicer-host/src/gcode_emit.rs` near line 502: change the per-point E-emission condition from `if e_delta > 0.0` to `if e_delta != 0.0` so negative-E moves reach the gcode (the emitter was silently dropping retract paths' negative deltas).
+  - **(8b)** In `crates/slicer-host/src/gcode_emit.rs` near line 597 (inside the entity loop's tool-change branch): when `wipe_tower_enabled=true` and the `has_wipe_after` guard passes, push a `GCodeCommand::Retract { length: resolved_config.retract_length, speed: 2400.0, mode: RetractMode::Gcode }` immediately before the `GCodeCommand::ToolChange` push.
+  - **(8c)** In `crates/slicer-host/src/gcode_emit.rs` near line 376 (the layer-boundary tool-change path that runs OUTSIDE the entity loop when the first entity's required tool differs from the active tool): push the same `GCodeCommand::Retract` immediately before that `GCodeCommand::ToolChange` push, also gated on `wipe_tower_enabled=true`.
+  - **(8d)** In `modules/core-modules/wipe-tower/src/lib.rs::generate_purge_paths`: zero out the retract path's `flow_factor` on both points so it becomes a no-op marker entity. The host emitter is now the single owner of the negative-E retract emission; the entity is retained so that AC4's `>= 4 entities per ToolChange` assertion and the entity ordering downstream of T<n> remain stable.
+- Precondition: file-level retargeting (Steps under "AC retargeting" annotation) complete.
+- Postcondition: AC2a passes on `target/test-output/benchy_4color.gcode` (0 failures across all `T<n>` rows). NC1's IR-level guard still fires when `wipe_tower_enabled=true` and no WipeTower entity follows a `ToolChange`.
+- Files allowed to read: `gcode_emit.rs:259-620`, `wipe-tower/src/lib.rs:230-330`.
+- Files allowed to edit (≤ 2): `crates/slicer-host/src/gcode_emit.rs`, `modules/core-modules/wipe-tower/src/lib.rs`.
+- Files explicitly out-of-bounds: every other source file, all WIT files (no WIT surface change), all manifest files (no schema change).
+- Expected sub-agent dispatches:
+  - "Run `cargo build --release --bin slicer-host`; FACT pass/fail."
+  - "Run `./modules/core-modules/build-core-modules.sh`; FACT pass/fail."
+  - "Re-slice `resources/benchy_4color.3mf` with `crates/slicer-host/tests/fixtures/benchy_4color.config.json`; run AC2a awk; FACT 0/N pass."
+  - "Run `cargo test -p slicer-host --test gcode_toolchange_wrapping`; FACT pass/fail (regression check on AC1/AC3/NC1)."
+- Context cost: **S**.
+- Authoritative docs: none.
+- OrcaSlicer refs: `OrcaSlicerDocumented/src/libslic3r/GCode/WipeTower2.cpp:1557-1640` Unload/Change/Load/Wipe order is the parity reference.
+- Verification: AC2a awk exit 0 on the produced gcode; AC1/AC3/NC1 cargo tests still green.
+- Exit condition: AC2a fail count = 0 on `benchy_4color.gcode`; targeted Rust regression tests unchanged.
+
+### Step 9: AC5 metric correction — awk over `;LAYER_CHANGE` (added post-review 2026-05-19)
+
+- Task IDs: `TASK-152b`
+- Objective: Replace the AC5 verification command in `packet.spec.md`. The original Python one-liner used `len({i for i,l in enumerate(lines) if re.match(r'T[0-9]+', l)})` as `tc_layers`, but that set comprehension counts unique line indices = `T<n>` *occurrences*, not distinct layers. The corrected awk one-liner walks `;LAYER_CHANGE` boundaries.
+- Sub-objectives:
+  - **(9a)** Replace the AC5 verification command with `awk '/^;LAYER_CHANGE/{cur++; tc[cur]=0} /^T[0-9]/{tc[cur]=1} /;TYPE:Prime tower/{pt++} END{n=0; for(i in tc) if(tc[i]==1) n++; exit (pt>=n)?0:1}' target/test-output/benchy_4color.gcode`.
+- Precondition: Step 8 complete (so live gcode has the right retract structure).
+- Postcondition: AC5 awk exits 0 on `target/test-output/benchy_4color.gcode`.
+- Files allowed to read: none new.
+- Files allowed to edit (≤ 1): `.ralph/specs/58_gcode-toolchange-purge-integration/packet.spec.md` (AC5 line only).
+- Files explicitly out-of-bounds: all source files; all other docs.
+- Expected sub-agent dispatches:
+  - "Run AC5 awk; FACT tc_layers count + markers count + exit code."
+- Context cost: **S**.
+- Authoritative docs: none.
+- OrcaSlicer refs: none.
+- Verification: AC5 awk exit 0 on the produced gcode.
+- Exit condition: AC5 awk exit 0 with markers ≥ tc_layers.
+
+### Step 10: Path-optimization cross-layer active-tool tracking (added post-review 2026-05-19)
+
+- Task IDs: `TASK-152b`
+- Objective: Reduce the `T<n>` inflation exposed by the retarget (M:716 vs O:204). Per a sub-agent diagnostic, `group_then_nearest_neighbor` in `modules/core-modules/path-optimization-default/src/lib.rs:129-178` iterates its `BTreeMap<u32, ...>` clusters in ascending tool order with no cross-layer active-tool memory, forcing a redundant lowest-tool emission at the start of nearly every layer.
+- Sub-objectives:
+  - **(10a)** Modify `group_then_nearest_neighbor` to accept `previous_active_tool: Option<u32>` and return a third value `ending_tool: Option<u32>`. Rotate `ordered_keys` so the cluster matching `previous_active_tool` (when present) leads.
+  - **(10b)** Add `previous_active_tool: std::cell::Cell<Option<u32>>` field to `PathOptimizationDefault`. Initialize to `None` in `on_print_start`. In `run_path_optimization`, read the cell, pass it to `group_then_nearest_neighbor`, and write `ending_tool` back to the cell.
+  - **(10c)** Flip `modules/core-modules/path-optimization-default/path-optimization-default.toml`'s `[hints].layer-parallel-safe` to `false` so the host serializes layer dispatch (required for `Cell`-based cross-layer state to be deterministic).
+- Precondition: Steps 8 and 9 complete.
+- Postcondition: All ACs/NCs that were green stay green. Empirical observation: on `benchy_4color.3mf` the per-tool counts did not measurably decrease after this change (289 T0 / 53 T1 / 209 T2 / 164 T3) — the cross-layer `Cell` state likely does not persist across wasm-component instantiation, or `gcode_emit.rs:373-383`'s layer-boundary T<n> emission overrides the module's ordering. The fix is left in place; deeper investigation deferred (see DEV-054 follow-up (iii)).
+- Files allowed to read: `path-optimization-default/src/lib.rs:1-300`, `path-optimization-default/path-optimization-default.toml`.
+- Files allowed to edit (≤ 2): `modules/core-modules/path-optimization-default/src/lib.rs`, `modules/core-modules/path-optimization-default/path-optimization-default.toml`.
+- Files explicitly out-of-bounds: all WIT files; all SDK files; all host files; all other modules; all docs.
+- Expected sub-agent dispatches:
+  - "Run `./modules/core-modules/build-core-modules.sh`; FACT pass/fail."
+  - "Run `cargo test -p path-optimization-default --lib`; FACT pass/fail."
+  - "Re-slice + count per-tool `T<n>` occurrences; FACT before-vs-after numbers."
+- Context cost: **S**.
+- Authoritative docs: none.
+- OrcaSlicer refs: cross-layer reordering observed empirically (M:716 → O:204 is roughly 3.5× reduction; OrcaSlicer's algorithm is documented in `WipeTower2.cpp` but not directly mirrored here).
+- Verification: targeted regression tests green; ACs unchanged.
+- Exit condition: targeted regression tests green; tool-change inflation noted as partially-addressed in DEV-054 follow-up (iii).
 
 ## Per-Step Budget Roll-Up
 

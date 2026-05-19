@@ -1,0 +1,10 @@
+{
+  "wipe_tower_enabled": true,
+  "wipe_tower_x": 121.31,
+  "wipe_tower_y": 141.22,
+  "wipe_tower_width": 60.0,
+  "wipe_tower_purge_volume": 45.0,
+  "line_width": 0.4,
+  "retract_length": 2.0,
+  "bed_shape": [0.0, 0.0, 250.0, 0.0, 250.0, 210.0, 0.0, 210.0]
+}

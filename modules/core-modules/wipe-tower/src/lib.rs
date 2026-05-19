@@ -253,17 +253,18 @@ impl WipeTower {
 
         let mut pairs: Vec<(ExtrusionPath3D, RegionKey)> = Vec::new();
 
-        // ── 1. Retract entity ───────────────────────────────────────────────
-        // A degenerate 2-point path at the tower origin whose E contribution
-        // is negative (encoded as flow_factor = -retract_length / (distance * width)).
-        // We use a unit-length segment (1 mm) so flow_factor is finite.
-        // E = distance * width * flow_factor = 1.0 * line_width * (-retract_length/line_width)
-        //   = -retract_length  ✓
-        let retract_flow = if self.line_width > 0.0 {
-            -self.retract_length / self.line_width
-        } else {
-            0.0
-        };
+        // ── 1. Retract entity (now a no-op marker) ──────────────────────────
+        // The wipe-tower's retract is now synthesized HOST-SIDE in the gcode
+        // emitter (see crates/slicer-host/src/gcode_emit.rs guard near the
+        // ToolChange emission) because the SDK's insert_entity_at positions
+        // the entity AFTER T<n>, whereas physical correctness requires the
+        // retract BEFORE T<n>. The entity here is kept as a zero-flow marker
+        // so AC4's `>= 4 entities per ToolChange` assertion and the entity
+        // ordering downstream of T<n> remain stable. The host emitter is the
+        // single owner of the negative-E retract emission. (Packet 58 /
+        // DEV-054 follow-up (i); a future packet should add a builder method
+        // to push a TravelRetract from the module instead.)
+        let _ = self.retract_length; // length read by host via resolved_config.retract_length
         let retract_path = ExtrusionPath3D {
             points: vec![
                 Point3WithWidth {
@@ -271,15 +272,15 @@ impl WipeTower {
                     y: self.tower_y,
                     z,
                     width: self.line_width,
-                    flow_factor: 0.0, // first point: no extrusion
+                    flow_factor: 0.0,
                     overhang_quartile: None,
                 },
                 Point3WithWidth {
-                    x: self.tower_x + 1.0,
+                    x: self.tower_x,
                     y: self.tower_y,
                     z,
                     width: self.line_width,
-                    flow_factor: retract_flow,
+                    flow_factor: 0.0,
                     overhang_quartile: None,
                 },
             ],

@@ -43,7 +43,7 @@ No prior packet is being superseded — each completed its declared scope. This 
 - Make `run_finalization` use `insert-entity-at(after_entity_index + 1)` to place purge entities adjacent to the `ToolChange`, bracketing the `T<n>` emission. Read `bed_shape` from config and validate tower vertices.
 - Change `orca_type_label` at `crates/slicer-host/src/gcode_emit.rs:271` so `ExtrusionRole::WipeTower → ";TYPE:Prime tower"`.
 - Add `PostpassError::MissingToolchangePurge { layer_index, tool_change_index }` additively to the enum at `crates/slicer-host/src/postpass.rs:39-59`, plus a defensive guard in `gcode_emit.rs`.
-- Fixture: `crates/slicer-host/tests/fixtures/multi_color_cube.stl` + `multi_color_cube.orca.gcode`.
+- Fixture: `crates/slicer-host/tests/fixtures/multi_color_cube.stl` + `multi_color_cube.orca.gcode` (committed by the original packet for AC2a/AC2b/AC5/NC2/NC3; retained as historical artifact). Post-review 2026-05-19: the live file-level scripts are retargeted at `resources/benchy_4color.3mf` (committed multi-material 3MF carrying an embedded prime-tower object) + `crates/slicer-host/tests/fixtures/benchy_4color.config.json` (sets `wipe_tower_enabled=true` and wipe-tower coords from the 3MF). See packet.spec.md AC retargeting note.
 - New test files:
   - `crates/slicer-host/tests/gcode_toolchange_wrapping.rs` (AC1, AC3, NC1) — TDD-first.
   - `crates/slicer-host/tests/finalization_builder_insert.rs` (AC7, NC5).
@@ -124,7 +124,7 @@ All delegated. Never load `OrcaSlicerDocumented/` directly.
 - `cargo test -p wipe-tower`
 - `./modules/core-modules/build-core-modules.sh` (mandatory after WIT extension)
 - `./modules/core-modules/build-core-modules.sh --check` (must report fresh)
-- `cargo run --bin slicer-cli --release --slice --input crates/slicer-host/tests/fixtures/multi_color_cube.stl --output target/test-output/multi_color_cube.gcode`
+- `cargo run --bin slicer-host --release -- run --module modules/core-modules/machine-gcode-emit/machine-gcode-emit.wasm --model resources/benchy_4color.3mf --module-dir modules/core-modules --config crates/slicer-host/tests/fixtures/benchy_4color.config.json --output target/test-output/benchy_4color.gcode` (retargeted post-review 2026-05-19: original line named the non-existent `slicer-cli --slice` binary and ran against an empty single-material STL — the canonical CLI is `slicer-host run`, and the live multi-material verification target is `resources/benchy_4color.3mf` + `benchy_4color.config.json`)
 - AC and NC awk/python scripts from `packet.spec.md` against the produced G-code.
 
 All delegation-friendly (exit code, FACT pass/fail).

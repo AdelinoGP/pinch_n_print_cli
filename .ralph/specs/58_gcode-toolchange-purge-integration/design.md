@@ -58,7 +58,7 @@ Plus the stage order is fixed in `crates/slicer-host/src/execution_plan.rs:27-48
   - **New**: `crates/slicer-host/tests/finalization_builder_readback.rs` — AC9.
   - **New**: `crates/slicer-host/tests/wipe_tower_bed_bounds.rs` — AC6.
   - **New**: `modules/core-modules/wipe-tower/src/lib.rs#tests` — AC4 (`emits_prime_tower_role_marker`), NC4 (`tower_outside_bed_returns_fatal`).
-  - **New**: `crates/slicer-host/tests/fixtures/multi_color_cube.stl` and `multi_color_cube.orca.gcode`.
+  - **New**: `crates/slicer-host/tests/fixtures/multi_color_cube.stl` and `multi_color_cube.orca.gcode` (historical artifact). Post-review 2026-05-19: additionally committed `crates/slicer-host/tests/fixtures/benchy_4color.config.json` to drive the live multi-material verification against `resources/benchy_4color.3mf` — see `packet.spec.md` AC retargeting note.
   - **Docs**: `docs/03_wit_and_manifest.md` — one-paragraph addition under `finalization-output-builder` describing the three new methods and the index-remap invariants.
 
 - **Rejected alternatives** (must choose one):

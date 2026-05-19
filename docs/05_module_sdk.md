@@ -933,9 +933,6 @@ Applies a serialisable `EntityMutation` to the entity identified by
 | `SetSpeedFactor(f32)` | Override the entity's path-level speed factor. |
 | `SetFlowFactor(f32)`  | Scale the entity's extrusion flow. |
 
-(Earlier drafts of this document listed `SetWidth`, `SetRole`, `DropEntity`,
-and `ReversePath`. Those variants are not currently present in the SDK or
-WIT — only `SetSpeedFactor` and `SetFlowFactor` are wired through.)
 Every variant is serialisable across the WIT boundary. This replaces the
 closure-based draft from packet 40 so that all mutations are fully
 serialisable (packet 41 refactor).
