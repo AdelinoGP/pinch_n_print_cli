@@ -918,6 +918,12 @@ pub enum FinalizationBuilderPush {
 pub struct FinalizationOutputBuilderData {
     /// Captured push stream in guest-emission order.
     pub pushes: Vec<FinalizationBuilderPush>,
+    /// Layer indices that have already been permuted via `set-entity-order`
+    /// within this builder's lifetime. Used to enforce the packet-58 locked
+    /// invariant "single permutation per layer per `run_finalization`
+    /// invocation" (mirrors PathOptimization's contract on
+    /// `layer-collection-builder`).
+    pub permuted_layers: std::collections::HashSet<u32>,
 }
 
 #[allow(missing_docs)]
@@ -5098,6 +5104,11 @@ mod finalization_impls {
         ) -> wasmtime::Result<Result<(), String>> {
             let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
             let data = self.table.get_mut(&typed)?;
+            if !data.permuted_layers.insert(layer_index) {
+                return Ok(Err(format!(
+                    "set-entity-order called twice for layer {layer_index} within one run-finalization"
+                )));
+            }
             data.pushes
                 .push(FinalizationBuilderPush::SetEntityOrder { layer_index, items });
             Ok(Ok(()))
@@ -5105,40 +5116,118 @@ mod finalization_impls {
 
         fn get_ordered_entities(
             &mut self,
-            _self_: Resource<fm::FinalizationOutputBuilder>,
+            self_: Resource<fm::FinalizationOutputBuilder>,
             layer_index: u32,
         ) -> wasmtime::Result<Vec<fm::PrintEntityView>> {
-            // Minimum-viable implementation: return the layer's current staged
-            // ordered_entities from the host's layer snapshot. In-flight pushes
-            // not yet applied via apply_to are not reflected here; a full
-            // implementation would replay staged pushes (follow-up work).
+            // Returns the staged state of `layer_index`'s ordered_entities,
+            // simulating every recorded push / insert / permutation against the
+            // pre-apply snapshot captured by `push_finalization_output_builder`.
+            // Packet-58 locked invariant: this read-back reflects both
+            // pre-existing entities and in-flight builder actions. Priority
+            // sorting is intentionally NOT simulated (that is `apply_to`'s job);
+            // pushes are appended in record order.
             self.runtime_reads.push(String::from("LayerCollectionIR"));
-            let result: Vec<fm::PrintEntityView> = self
+
+            let mut staged: Vec<slicer_ir::PrintEntity> = self
                 .finalization_layer_snapshot
                 .iter()
                 .find(|l| l.global_layer_index == layer_index)
-                .map(|layer| {
-                    layer
-                        .ordered_entities
-                        .iter()
-                        .map(|e| {
-                            let path_wit = finalization_path_ir_to_wit(&e.path);
-                            let role_wit = finalization_role_ir_to_wit(&e.role);
-                            fm::PrintEntityView {
-                                entity_id: e.entity_id,
-                                path: path_wit,
-                                role: role_wit,
-                                region_key: fm::RegionKey {
-                                    layer_index: e.region_key.global_layer_index,
-                                    object_id: e.region_key.object_id.clone(),
-                                    region_id: e.region_key.region_id.to_string(),
-                                },
-                                topo_order: e.topo_order,
-                            }
-                        })
-                        .collect()
-                })
+                .map(|l| l.ordered_entities.clone())
                 .unwrap_or_default();
+            let mut next_id: u64 = staged.iter().map(|e| e.entity_id).max().unwrap_or(0) + 1;
+
+            let typed: Resource<FinalizationOutputBuilderData> = Resource::new_borrow(self_.rep());
+            let data = self.table.get(&typed)?;
+
+            for op in &data.pushes {
+                match op {
+                    FinalizationBuilderPush::EntityToLayer {
+                        layer_index: li,
+                        path,
+                        region_key,
+                    }
+                    | FinalizationBuilderPush::EntityToLayerWithPriority {
+                        layer_index: li,
+                        path,
+                        region_key,
+                        ..
+                    } if *li == layer_index => {
+                        staged.push(slicer_ir::PrintEntity {
+                            entity_id: next_id,
+                            path: path.clone(),
+                            role: path.role.clone(),
+                            region_key: region_key.clone(),
+                            topo_order: 0,
+                        });
+                        next_id += 1;
+                    }
+                    FinalizationBuilderPush::InsertEntityAt {
+                        layer_index: li,
+                        position,
+                        path,
+                        region_key,
+                    } if *li == layer_index => {
+                        let pos = (*position as usize).min(staged.len());
+                        staged.insert(
+                            pos,
+                            slicer_ir::PrintEntity {
+                                entity_id: next_id,
+                                path: path.clone(),
+                                role: path.role.clone(),
+                                region_key: region_key.clone(),
+                                topo_order: 0,
+                            },
+                        );
+                        next_id += 1;
+                    }
+                    FinalizationBuilderPush::SetEntityOrder {
+                        layer_index: li,
+                        items,
+                    } if *li == layer_index => {
+                        if items.len() != staged.len() {
+                            continue;
+                        }
+                        let mut seen = vec![false; staged.len()];
+                        let mut valid = true;
+                        for &(idx, _) in items {
+                            let i = idx as usize;
+                            if i >= staged.len() || seen[i] {
+                                valid = false;
+                                break;
+                            }
+                            seen[i] = true;
+                        }
+                        if !valid {
+                            continue;
+                        }
+                        let original = staged.clone();
+                        staged = items
+                            .iter()
+                            .map(|&(old_idx, _)| original[old_idx as usize].clone())
+                            .collect();
+                    }
+                    _ => {}
+                }
+            }
+
+            let result: Vec<fm::PrintEntityView> = staged
+                .iter()
+                .map(|e| {
+                    let path_wit = finalization_path_ir_to_wit(&e.path);
+                    let role_wit = finalization_role_ir_to_wit(&e.role);
+                    fm::PrintEntityView {
+                        entity_id: e.entity_id,
+                        path: path_wit,
+                        role: role_wit,
+                        region_key: fm::RegionKey {
+                            layer_index: e.region_key.global_layer_index,
+                            object_id: e.region_key.object_id.clone(),
+                            region_id: e.region_key.region_id.to_string(),
+                        },
+                        topo_order: e.topo_order,
+                    }
+                })
+                .collect();
             Ok(result)
         }
 

@@ -1594,4 +1594,208 @@ mod tests {
         let _serializer = DefaultGCodeSerializer::new();
         let _default_serializer = DefaultGCodeSerializer::default();
     }
+
+    // ── apply_cross_layer_tool_rotation regression tests (packet 58 / DEV-054 (iii)) ──
+    //
+    // The function rotates each layer's first cluster to match the previous
+    // layer's ending tool, suppressing redundant T<n> emissions at layer
+    // boundaries. These tests cover the contract directly (the function is
+    // pure Rust; no WASM boundary).
+
+    fn tool_entity(entity_id: u64, layer: u32, tool: u32) -> slicer_ir::PrintEntity {
+        slicer_ir::PrintEntity {
+            entity_id,
+            path: slicer_ir::ExtrusionPath3D {
+                points: vec![slicer_ir::Point3WithWidth {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.2 * layer as f32,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                }],
+                role: slicer_ir::ExtrusionRole::OuterWall,
+                speed_factor: 1.0,
+            },
+            role: slicer_ir::ExtrusionRole::OuterWall,
+            region_key: slicer_ir::RegionKey {
+                global_layer_index: layer,
+                object_id: "obj".to_string(),
+                region_id: tool as u64,
+            },
+            topo_order: 0,
+        }
+    }
+
+    fn layer_with_tools(layer_index: u32, tools: &[u32]) -> slicer_ir::LayerCollectionIR {
+        let entities: Vec<_> = tools
+            .iter()
+            .enumerate()
+            .map(|(i, &t)| tool_entity((i + 1) as u64, layer_index, t))
+            .collect();
+        let mut tcs = Vec::new();
+        for i in 0..entities.len().saturating_sub(1) {
+            let from = entities[i].region_key.region_id as u32;
+            let to = entities[i + 1].region_key.region_id as u32;
+            if from != to {
+                tcs.push(slicer_ir::ToolChange {
+                    after_entity_index: i as u32,
+                    from_tool: from,
+                    to_tool: to,
+                });
+            }
+        }
+        slicer_ir::LayerCollectionIR {
+            global_layer_index: layer_index,
+            z: 0.2 * (layer_index + 1) as f32,
+            ordered_entities: entities,
+            tool_changes: tcs,
+            ..Default::default()
+        }
+    }
+
+    /// Empty layer list and single-layer input must not panic or rotate.
+    #[test]
+    fn apply_cross_layer_tool_rotation_handles_empty_and_singleton() {
+        // Empty: no-op.
+        let mut empty: Vec<slicer_ir::LayerCollectionIR> = Vec::new();
+        apply_cross_layer_tool_rotation(&mut empty);
+        assert!(empty.is_empty());
+
+        // Singleton: nothing to rotate against; layer left intact.
+        let original = layer_with_tools(0, &[0, 0, 1, 1]);
+        let mut singleton = vec![original.clone()];
+        apply_cross_layer_tool_rotation(&mut singleton);
+        assert_eq!(
+            singleton[0]
+                .ordered_entities
+                .iter()
+                .map(|e| e.region_key.region_id)
+                .collect::<Vec<_>>(),
+            original
+                .ordered_entities
+                .iter()
+                .map(|e| e.region_key.region_id)
+                .collect::<Vec<_>>(),
+            "single layer must not be rotated"
+        );
+        assert_eq!(
+            singleton[0].tool_changes.len(),
+            original.tool_changes.len(),
+            "tool_changes must be preserved for singleton input"
+        );
+    }
+
+    /// Golden case: layer 0 ends on tool 2; layer 1 starts in ascending order
+    /// [0, 1, 2, 3]. The tool-2 cluster in layer 1 must rotate to the front,
+    /// producing [2, 0, 1, 3], and tool_changes for layer 1 must be recomputed
+    /// to reflect the new order (so the first transition is 2→0 at index 0,
+    /// not the redundant 0-leads layer-boundary emission).
+    #[test]
+    fn apply_cross_layer_tool_rotation_rotates_matching_cluster_to_front() {
+        // Layer 0 ends on tool 2.
+        let layer0 = layer_with_tools(0, &[0, 0, 1, 2, 2]);
+        // Layer 1 in ascending tool order — one entity per tool.
+        let layer1 = layer_with_tools(1, &[0, 1, 2, 3]);
+        let mut layers = vec![layer0, layer1];
+
+        apply_cross_layer_tool_rotation(&mut layers);
+
+        let new_tools: Vec<u64> = layers[1]
+            .ordered_entities
+            .iter()
+            .map(|e| e.region_key.region_id)
+            .collect();
+        assert_eq!(
+            new_tools,
+            vec![2u64, 0, 1, 3],
+            "layer 1's tool-2 cluster (single entity) must rotate to position 0"
+        );
+
+        // Recomputed tool_changes must reflect the new order: 2→0 at idx 0,
+        // 0→1 at idx 1, 1→3 at idx 2.
+        let new_tcs: Vec<(u32, u32, u32)> = layers[1]
+            .tool_changes
+            .iter()
+            .map(|tc| (tc.after_entity_index, tc.from_tool, tc.to_tool))
+            .collect();
+        assert_eq!(new_tcs, vec![(0, 2, 0), (1, 0, 1), (2, 1, 3)]);
+    }
+
+    /// When layer N's ending tool already matches layer N+1's leading tool,
+    /// no rotation occurs and the layer's data is identical to its input.
+    #[test]
+    fn apply_cross_layer_tool_rotation_noop_when_tool_already_matches() {
+        let layer0 = layer_with_tools(0, &[0, 1, 1]); // ends on 1
+        let layer1 = layer_with_tools(1, &[1, 2, 3]); // starts with 1
+        let original_layer1 = layer1.clone();
+        let mut layers = vec![layer0, layer1];
+
+        apply_cross_layer_tool_rotation(&mut layers);
+
+        let after: Vec<u64> = layers[1]
+            .ordered_entities
+            .iter()
+            .map(|e| e.region_key.region_id)
+            .collect();
+        let before: Vec<u64> = original_layer1
+            .ordered_entities
+            .iter()
+            .map(|e| e.region_key.region_id)
+            .collect();
+        assert_eq!(
+            after, before,
+            "matching boundary tool must not trigger rotation"
+        );
+        assert_eq!(layers[1].tool_changes, original_layer1.tool_changes);
+    }
+
+    /// Rotation must remap every positional anchor: z_hops, retracts, and
+    /// annotations. Layer 1: [0, 1, 2] with a ZHop after index 0 and a
+    /// TravelRetract after index 1; layer 0 ends on tool 2. After rotation
+    /// layer 1 becomes [2, 0, 1]; old_to_new[0]=1, old_to_new[1]=2,
+    /// old_to_new[2]=0; so the ZHop's anchor moves 0 → 1 and the retract's
+    /// anchor moves 1 → 2.
+    #[test]
+    fn apply_cross_layer_tool_rotation_remaps_zhops_retracts_annotations() {
+        let layer0 = layer_with_tools(0, &[2, 2]); // ends on tool 2
+        let mut layer1 = layer_with_tools(1, &[0, 1, 2]);
+        layer1.z_hops = vec![slicer_ir::ZHop {
+            after_entity_index: 0,
+            hop_height: 0.3,
+        }];
+        layer1.retracts = vec![slicer_ir::TravelRetract {
+            after_entity_index: 1,
+            length: 0.8,
+            speed: 1800.0,
+            ..Default::default()
+        }];
+        layer1.annotations = vec![slicer_ir::LayerAnnotation {
+            after_entity_index: 2,
+            kind: slicer_ir::LayerAnnotationKind::Comment("hello".to_string()),
+        }];
+
+        let mut layers = vec![layer0, layer1];
+        apply_cross_layer_tool_rotation(&mut layers);
+
+        let new_tools: Vec<u64> = layers[1]
+            .ordered_entities
+            .iter()
+            .map(|e| e.region_key.region_id)
+            .collect();
+        assert_eq!(new_tools, vec![2u64, 0, 1]);
+
+        assert_eq!(
+            layers[1].z_hops[0].after_entity_index, 1,
+            "ZHop anchor must remap from old 0 to new 1"
+        );
+        assert_eq!(
+            layers[1].retracts[0].after_entity_index, 2,
+            "TravelRetract anchor must remap from old 1 to new 2"
+        );
+        assert_eq!(
+            layers[1].annotations[0].after_entity_index, 0,
+            "Annotation anchor must remap from old 2 to new 0"
+        );
+    }
 }

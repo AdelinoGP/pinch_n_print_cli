@@ -227,7 +227,7 @@
   - **(8a)** In `crates/slicer-host/src/gcode_emit.rs` near line 502: change the per-point E-emission condition from `if e_delta > 0.0` to `if e_delta != 0.0` so negative-E moves reach the gcode (the emitter was silently dropping retract paths' negative deltas).
   - **(8b)** In `crates/slicer-host/src/gcode_emit.rs` near line 597 (inside the entity loop's tool-change branch): when `wipe_tower_enabled=true` and the `has_wipe_after` guard passes, push a `GCodeCommand::Retract { length: resolved_config.retract_length, speed: 2400.0, mode: RetractMode::Gcode }` immediately before the `GCodeCommand::ToolChange` push.
   - **(8c)** In `crates/slicer-host/src/gcode_emit.rs` near line 376 (the layer-boundary tool-change path that runs OUTSIDE the entity loop when the first entity's required tool differs from the active tool): push the same `GCodeCommand::Retract` immediately before that `GCodeCommand::ToolChange` push, also gated on `wipe_tower_enabled=true`.
-  - **(8d)** In `modules/core-modules/wipe-tower/src/lib.rs::generate_purge_paths`: zero out the retract path's `flow_factor` on both points so it becomes a no-op marker entity. The host emitter is now the single owner of the negative-E retract emission; the entity is retained so that AC4's `>= 4 entities per ToolChange` assertion and the entity ordering downstream of T<n> remain stable.
+  - **(8d)** In `modules/core-modules/wipe-tower/src/lib.rs::generate_purge_paths`: remove the retract entity entirely. The host emitter is the single owner of the negative-E retract emission (sub-objectives 8b and 8c). The module now emits 3 entities per ToolChange (travel + scan-lines + prime); AC4's count assertion is updated from `>= 4` to `>= 3` accordingly. The module's `retract_length` field and accessor remain in place for future builder primitives that can place a real `TravelRetract` from the module side (DEV-054 follow-up (i)). **Superseded by Fix G (post-review 2026-05-19 cycle 2):** the earlier "zero out the retract path's flow_factor" approach produced a dead marker entity solely to satisfy the `>= 4` count assertion; that SoC violation was removed.
 - Precondition: file-level retargeting (Steps under "AC retargeting" annotation) complete.
 - Postcondition: AC2a passes on `target/test-output/benchy_4color.gcode` (0 failures across all `T<n>` rows). NC1's IR-level guard still fires when `wipe_tower_enabled=true` and no WipeTower entity follows a `ToolChange`.
 - Files allowed to read: `gcode_emit.rs:259-620`, `wipe-tower/src/lib.rs:230-330`.
@@ -263,28 +263,36 @@
 - Verification: AC5 awk exit 0 on the produced gcode.
 - Exit condition: AC5 awk exit 0 with markers ≥ tc_layers.
 
-### Step 10: Path-optimization cross-layer active-tool tracking (added post-review 2026-05-19)
+### Step 10: Host-side cross-layer tool rotation in `gcode_emit.rs` (added post-review 2026-05-19; rewritten 2026-05-19 cycle 2)
+
+> **Spec drift note**: an earlier draft of Step 10 described a module-side
+> `Cell<Option<u32>>`-based design in `path-optimization-default/src/lib.rs`
+> that was empirically a no-op (the wasm-component instantiation does not
+> preserve the `Cell` across layer dispatch). That draft is **superseded**.
+> Commit `add656b` removed the `Cell` approach and implemented the fix
+> host-side instead, where cross-layer state survives naturally. The text
+> below describes what actually shipped.
 
 - Task IDs: `TASK-152b`
-- Objective: Reduce the `T<n>` inflation exposed by the retarget (M:716 vs O:204). Per a sub-agent diagnostic, `group_then_nearest_neighbor` in `modules/core-modules/path-optimization-default/src/lib.rs:129-178` iterates its `BTreeMap<u32, ...>` clusters in ascending tool order with no cross-layer active-tool memory, forcing a redundant lowest-tool emission at the start of nearly every layer.
+- Objective: Reduce the `T<n>` inflation exposed by the retarget (M:716 vs O:204). The host-side `gcode_emit.rs` had a layer-boundary T<n> emitter that fired whenever the first entity of a new layer was on a different tool than the active one. Because `path-optimization-default::group_then_nearest_neighbor` iterates its `BTreeMap<u32, ...>` clusters in ascending tool order, every multi-tool layer started on tool 0 — forcing a redundant 0-tool emission at the start of nearly every layer. The fix is to rotate the first cluster of each layer to match the previous layer's ending tool BEFORE gcode emission walks the layers.
 - Sub-objectives:
-  - **(10a)** Modify `group_then_nearest_neighbor` to accept `previous_active_tool: Option<u32>` and return a third value `ending_tool: Option<u32>`. Rotate `ordered_keys` so the cluster matching `previous_active_tool` (when present) leads.
-  - **(10b)** Add `previous_active_tool: std::cell::Cell<Option<u32>>` field to `PathOptimizationDefault`. Initialize to `None` in `on_print_start`. In `run_path_optimization`, read the cell, pass it to `group_then_nearest_neighbor`, and write `ending_tool` back to the cell.
-  - **(10c)** Flip `modules/core-modules/path-optimization-default/path-optimization-default.toml`'s `[hints].layer-parallel-safe` to `false` so the host serializes layer dispatch (required for `Cell`-based cross-layer state to be deterministic).
+  - **(10a)** Add `apply_cross_layer_tool_rotation(layers: &mut [LayerCollectionIR])` in `crates/slicer-host/src/gcode_emit.rs`. For each layer, if the first entity's tool differs from the previous layer's ending tool, find the cluster matching the previous tool and rotate it to position 0. After rotation, recompute `tool_changes` from the new entity order and remap all positional anchors (`z_hops`, `retracts`, `annotations`) through the old→new index map.
+  - **(10b)** Call `apply_cross_layer_tool_rotation(&mut owned_layers)` once in the emitter, BEFORE the per-layer entity walk that emits gcode commands.
+  - **(10c)** Remove the abandoned module-side `Cell`-based approach from `modules/core-modules/path-optimization-default/src/lib.rs` (commit `add656b` deleted the `Cell` field and the `group_then_nearest_neighbor` signature changes). The TOML `[hints].layer-parallel-safe` is **left as `true`** — the fix does not depend on serialized layer dispatch since host-side state survives naturally.
 - Precondition: Steps 8 and 9 complete.
-- Postcondition: All ACs/NCs that were green stay green. Empirical observation: on `benchy_4color.3mf` the per-tool counts did not measurably decrease after this change (289 T0 / 53 T1 / 209 T2 / 164 T3) — the cross-layer `Cell` state likely does not persist across wasm-component instantiation, or `gcode_emit.rs:373-383`'s layer-boundary T<n> emission overrides the module's ordering. The fix is left in place; deeper investigation deferred (see DEV-054 follow-up (iii)).
-- Files allowed to read: `path-optimization-default/src/lib.rs:1-300`, `path-optimization-default/path-optimization-default.toml`.
-- Files allowed to edit (≤ 2): `modules/core-modules/path-optimization-default/src/lib.rs`, `modules/core-modules/path-optimization-default/path-optimization-default.toml`.
-- Files explicitly out-of-bounds: all WIT files; all SDK files; all host files; all other modules; all docs.
+- Postcondition: All ACs/NCs that were green stay green. Empirical result on `benchy_4color.3mf`: `T<n>` count drops from 716 to 506 (with wipe tower enabled), confirming the layer-boundary T<n> path was the inflation source. `path-optimization-default`'s `[hints].layer-parallel-safe` remains `true` (no parallelism cost from this fix).
+- Files allowed to read: `crates/slicer-host/src/gcode_emit.rs`, `modules/core-modules/path-optimization-default/src/lib.rs`.
+- Files allowed to edit (≤ 2): `crates/slicer-host/src/gcode_emit.rs`, `modules/core-modules/path-optimization-default/src/lib.rs`.
+- Files explicitly out-of-bounds: all WIT files; all SDK files; all other modules; the `path-optimization-default.toml` manifest must NOT be flipped (the empirical no-op approach is abandoned).
 - Expected sub-agent dispatches:
+  - "Run `cargo test -p slicer-host --lib gcode_emit::tests`; FACT pass/fail (covers `apply_cross_layer_tool_rotation_*` unit tests)."
   - "Run `./modules/core-modules/build-core-modules.sh`; FACT pass/fail."
-  - "Run `cargo test -p path-optimization-default --lib`; FACT pass/fail."
-  - "Re-slice + count per-tool `T<n>` occurrences; FACT before-vs-after numbers."
+  - "Re-slice + count per-tool `T<n>` occurrences; FACT before-vs-after numbers (expect ~30% reduction)."
 - Context cost: **S**.
 - Authoritative docs: none.
-- OrcaSlicer refs: cross-layer reordering observed empirically (M:716 → O:204 is roughly 3.5× reduction; OrcaSlicer's algorithm is documented in `WipeTower2.cpp` but not directly mirrored here).
-- Verification: targeted regression tests green; ACs unchanged.
-- Exit condition: targeted regression tests green; tool-change inflation noted as partially-addressed in DEV-054 follow-up (iii).
+- OrcaSlicer refs: `WipeTower2.cpp` documents OrcaSlicer's algorithm; the host-side rotation here is the minimal equivalent.
+- Verification: 4 new unit tests in `gcode_emit::tests` (`apply_cross_layer_tool_rotation_handles_empty_and_singleton`, `apply_cross_layer_tool_rotation_rotates_matching_cluster_to_front`, `apply_cross_layer_tool_rotation_noop_when_tool_already_matches`, `apply_cross_layer_tool_rotation_remaps_zhops_retracts_annotations`) all green; targeted regression tests green; `T<n>` count on benchy_4color reduced to 506.
+- Exit condition: 4 unit tests green; benchy_4color `T<n>` count ≤ 600; AC2a/AC4/AC5 still pass on the produced gcode.
 
 ## Per-Step Budget Roll-Up
 

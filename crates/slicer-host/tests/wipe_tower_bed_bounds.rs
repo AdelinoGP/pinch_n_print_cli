@@ -3,8 +3,9 @@
 //! Packet 58_gcode-toolchange-purge-integration, Step 2 scaffolding.
 //! AC6 — tower vertices are inside the bed polygon.
 //!
-//! Note: the "outside object footprint" half of AC6 is deferred as a TODO;
-//! this test verifies bed-containment only.
+//! Bed-containment only. The object-footprint non-intersection half of AC6 is
+//! deferred to a follow-up packet (DEV-054 follow-up (i)) — the test name now
+//! reflects this scope rather than over-claiming "outside_objects".
 
 #![allow(missing_docs)]
 
@@ -73,19 +74,20 @@ fn layer_with_tool_change() -> LayerCollectionIR {
     }
 }
 
-/// AC6 — tower geometry within config bed, outside object footprint.
+/// AC6 — tower geometry within config-supplied bed polygon (bed-containment half).
 ///
 /// Setup: `wipe_tower_enabled=true`, `bed_shape=[0,0, 250,0, 250,250, 0,250]`
 /// (250×250 mm bed), `wipe_tower_x=10.0`, `wipe_tower_y=10.0`,
-/// `wipe_tower_width=60.0`, object footprint well inside `[0,0]-[100,100]` (no
-/// intersection check — TODO). When the wipe-tower module emits purge paths
-/// for the first layer, `run_finalization` must return `Ok`, at least one
+/// `wipe_tower_width=60.0`. When the wipe-tower module emits purge paths for
+/// the first layer, `run_finalization` must return `Ok`, at least one
 /// `WipeTower` entity must be produced, and all path points of every
 /// `WipeTower` entity must lie within `[0, 250] × [0, 250]`.
 ///
-/// Note: the object-footprint non-intersection check is deferred as a TODO.
+/// The "outside object footprint" half of AC6 is deferred to a follow-up
+/// packet (DEV-054 follow-up (i)) and intentionally NOT asserted here. The
+/// test name reflects only the assertions that actually run.
 #[test]
-fn tower_geometry_within_config_bed_outside_objects() {
+fn tower_geometry_within_config_bed_only() {
     let config = config_from_pairs(&[
         ("wipe_tower_enabled", ConfigValue::Bool(true)),
         ("wipe_tower_x", ConfigValue::Float(10.0)),
@@ -156,7 +158,7 @@ fn tower_geometry_within_config_bed_outside_objects() {
         }
     }
 
-    // TODO: verify that the tower polygon does not intersect the object's
-    // footprint bounding box (object is in [0,0]-[100,100]; tower at [10,10]).
-    // This requires object-footprint tracking, deferred to a future step.
+    // Object-footprint non-intersection is deferred to a follow-up packet
+    // (DEV-054 follow-up (i)). When that lands, replace this comment with the
+    // assertion and rename the test back to include "outside_objects".
 }

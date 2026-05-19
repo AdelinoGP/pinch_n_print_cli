@@ -741,6 +741,10 @@ pub struct FinalizationOutputBuilder {
     merge_ops: Vec<MergeOp>,
     /// Per-layer annotations (raw GCode / comments) to splice into the emitted output.
     annotations: Vec<(u32, LayerAnnotation)>,
+    /// Layer indices already permuted via `set_entity_order` within this builder's
+    /// lifetime. Enforces the packet-58 locked invariant "single permutation per
+    /// layer per `run_finalization` invocation".
+    permuted_layers: std::collections::HashSet<u32>,
 }
 
 impl FinalizationOutputBuilder {
@@ -752,6 +756,7 @@ impl FinalizationOutputBuilder {
             priority_pushes: Vec::new(),
             merge_ops: Vec::new(),
             annotations: Vec::new(),
+            permuted_layers: std::collections::HashSet::new(),
         }
     }
 
@@ -876,16 +881,116 @@ impl FinalizationOutputBuilder {
         Ok(())
     }
 
+    /// Return the staged ordered entities for `layer_index`, reflecting every
+    /// push / insert / permutation recorded so far against the supplied
+    /// `initial` layer set.
+    ///
+    /// This is the read-back side of the packet-58 locked invariant
+    /// "`get-ordered-entities` reflects staged state". The method simulates
+    /// the builder's recorded actions against the initial layer's
+    /// `ordered_entities` without mutating either the builder or the layer:
+    ///
+    /// 1. `push_entity_*` calls are appended in record order (priority sorting
+    ///    is intentionally NOT simulated — that is `apply_to`'s job).
+    /// 2. `insert_entity_at` insertions are applied at the recorded position
+    ///    (clamped to the current staged length).
+    /// 3. `set_entity_order` permutations are applied when well-formed;
+    ///    malformed proposals are skipped (they will fail at `apply_to` time).
+    /// 4. Synthetic entities receive unique `entity_id` values monotonically
+    ///    above the max id in the initial layer.
+    pub fn get_ordered_entities(
+        &self,
+        layer_index: u32,
+        initial: &[LayerCollectionIR],
+    ) -> Vec<slicer_ir::PrintEntity> {
+        let mut staged = initial
+            .iter()
+            .find(|l| l.global_layer_index == layer_index)
+            .map(|l| l.ordered_entities.clone())
+            .unwrap_or_default();
+
+        let mut next_id: u64 = staged.iter().map(|e| e.entity_id).max().unwrap_or(0) + 1;
+
+        let make_entity =
+            |id: u64, path: &ExtrusionPath3D, region_key: &RegionKey| -> slicer_ir::PrintEntity {
+                slicer_ir::PrintEntity {
+                    entity_id: id,
+                    path: path.clone(),
+                    role: path.role.clone(),
+                    region_key: region_key.clone(),
+                    topo_order: 0,
+                }
+            };
+
+        // 1. Replay legacy pushes (push_entity_to_layer / push_entity_with_priority).
+        //    Both methods mirror into `entity_pushes`, so iterating that slice covers both.
+        for (li, path, rk) in &self.entity_pushes {
+            if *li == layer_index {
+                staged.push(make_entity(next_id, path, rk));
+                next_id += 1;
+            }
+        }
+
+        // 2. Replay deferred merge_ops in record order.
+        for op in &self.merge_ops {
+            match op {
+                MergeOp::InsertEntityAt {
+                    layer,
+                    position,
+                    path,
+                    region_key,
+                } if *layer == layer_index => {
+                    let pos = (*position as usize).min(staged.len());
+                    staged.insert(pos, make_entity(next_id, path, region_key));
+                    next_id += 1;
+                }
+                MergeOp::SetEntityOrder { layer, items } if *layer == layer_index => {
+                    if items.len() != staged.len() {
+                        continue;
+                    }
+                    let mut seen = vec![false; staged.len()];
+                    let mut valid = true;
+                    for &(idx, _) in items {
+                        let i = idx as usize;
+                        if i >= staged.len() || seen[i] {
+                            valid = false;
+                            break;
+                        }
+                        seen[i] = true;
+                    }
+                    if !valid {
+                        continue;
+                    }
+                    let original = staged.clone();
+                    staged = items
+                        .iter()
+                        .map(|&(old_idx, _)| original[old_idx as usize].clone())
+                        .collect();
+                }
+                _ => {}
+            }
+        }
+
+        staged
+    }
+
     /// Reorder all entities in a layer according to a permutation.
     ///
     /// Records the operation as a deferred `MergeOp::SetEntityOrder`. Permutation
     /// validation and index-remap of ToolChange/ZHop/TravelRetract references are
-    /// performed by `apply_to`.
+    /// performed by `apply_to`. Returns `Err` if this layer has already been
+    /// permuted within this builder's lifetime (packet-58 locked invariant:
+    /// single permutation per layer per `run_finalization` invocation).
     pub fn set_entity_order(
         &mut self,
         layer_index: u32,
         items: Vec<(u32, bool)>,
     ) -> Result<(), String> {
+        if !self.permuted_layers.insert(layer_index) {
+            return Err(format!(
+                "set_entity_order called twice for layer {layer_index} within one run-finalization"
+            ));
+        }
         self.merge_ops.push(MergeOp::SetEntityOrder {
             layer: layer_index,
             items,

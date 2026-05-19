@@ -2,7 +2,8 @@
 //!
 //! Packet 58_gcode-toolchange-purge-integration, Step 3 implementation.
 //!
-//! AC9: get-ordered-entities reflects the currently staged state.
+//! AC9: get-ordered-entities reflects the currently staged state (pre-existing
+//! entities + in-flight pushes + in-flight inserts + in-flight permutations).
 
 #![allow(missing_docs)]
 
@@ -67,22 +68,28 @@ fn layer_with_2_entities() -> LayerCollectionIR {
 
 // ── AC9 ────────────────────────────────────────────────────────────────────────
 
-/// AC9 — get-ordered-entities reflects staged state (push + insert).
+/// AC9 — `get_ordered_entities` reflects staged state including pre-existing,
+/// pushed, and inserted entities.
 ///
-/// Minimum-viable test: build a layer with 2 pre-existing entities, push 1
-/// additional entity via `push_entity_to_layer`, insert 1 entity via
-/// `insert_entity_at` at position 1, then call `apply_to`. The layer must end
-/// with 4 entities total (2 pre-existing + 1 pushed + 1 inserted); all 4 IDs
-/// must be distinct; and exactly one of the original entity IDs (1, 2) must
-/// sit at index 0 or index 2 (the inserted entity occupies position 1 relative
-/// to the phase-1 result).
+/// Setup: layer 0 has 2 pre-existing entities (ids 1, 2). A module pushes 1
+/// entity via `push_entity_to_layer`, then inserts 1 entity at position 1 via
+/// `insert_entity_at`. Calling `get_ordered_entities(0, &initial)` BEFORE
+/// `apply_to` is invoked must return a 4-element vector:
 ///
-/// The test validates the SDK apply_to path which is the authoritative
-/// read-back of staged state (minimum viable for AC9).
+/// - Index 0: the original entity at position 0 (id=1).
+/// - Index 1: the inserted entity (new synthetic id).
+/// - Index 2: the original entity at position 1 (id=2).
+/// - Index 3: the pushed entity (appended after the originals, then shifted
+///   right by the insert at position 1 — wait: insertion came AFTER the push,
+///   so the staged order after push is [orig[0], orig[1], pushed], and
+///   inserting at position 1 produces [orig[0], inserted, orig[1], pushed]).
+///
+/// All 4 entity_id values must be distinct. The originals (1, 2) must still
+/// appear. Two new ids must be generated.
 #[test]
 fn get_ordered_entities_reflects_staged_state() {
-    let mut layers = vec![layer_with_2_entities()];
-    let original_ids: std::collections::HashSet<u64> = layers[0]
+    let initial = vec![layer_with_2_entities()];
+    let original_ids: std::collections::HashSet<u64> = initial[0]
         .ordered_entities
         .iter()
         .map(|e| e.entity_id)
@@ -90,46 +97,113 @@ fn get_ordered_entities_reflects_staged_state() {
 
     let mut output = FinalizationOutputBuilder::new();
 
-    // Push 1 entity (appended, priority=0)
+    // Sanity: with no operations, the read-back equals the initial layer's entities.
+    let pre = output.get_ordered_entities(0, &initial);
+    assert_eq!(
+        pre.len(),
+        2,
+        "with no staged operations, read-back should equal initial state"
+    );
+    assert_eq!(pre[0].entity_id, 1);
+    assert_eq!(pre[1].entity_id, 2);
+
+    // Push 1 entity to layer 0 → appended.
     output
         .push_entity_to_layer(0, path(), region_key(0))
         .expect("push_entity_to_layer should succeed");
 
-    // Insert 1 entity at position 1 (between first and second entity in post-push order)
-    output
-        .insert_entity_at(0, 1, path(), region_key(0))
-        .expect("insert_entity_at should succeed at record time");
-
-    let result = output.apply_to(&mut layers);
-    assert!(result.is_ok(), "apply_to failed: {:?}", result);
-
-    let layer = &layers[0];
-
-    // Total count: 2 original + 1 pushed + 1 inserted = 4
+    let after_push = output.get_ordered_entities(0, &initial);
     assert_eq!(
-        layer.ordered_entities.len(),
-        4,
-        "should have 4 entities after push + insert"
+        after_push.len(),
+        3,
+        "after one push, staged state should have 3 entities"
+    );
+    assert!(
+        !original_ids.contains(&after_push[2].entity_id),
+        "the newly pushed entity at index 2 should carry a fresh id"
     );
 
-    // All 4 entity IDs must be distinct
-    let all_ids: std::collections::HashSet<u64> =
-        layer.ordered_entities.iter().map(|e| e.entity_id).collect();
-    assert_eq!(all_ids.len(), 4, "all 4 entity IDs should be distinct");
+    // Insert 1 entity at position 1 → splits the original [1, 2] pair.
+    output
+        .insert_entity_at(0, 1, path(), region_key(0))
+        .expect("insert_entity_at should succeed");
 
-    // The 2 original IDs should still be present
-    for &orig_id in &original_ids {
+    let staged = output.get_ordered_entities(0, &initial);
+
+    // (a) Total count: 2 original + 1 pushed + 1 inserted = 4.
+    assert_eq!(
+        staged.len(),
+        4,
+        "after push + insert, staged state should have 4 entities"
+    );
+
+    // (b) Originals must still be present.
+    let staged_ids: std::collections::HashSet<u64> = staged.iter().map(|e| e.entity_id).collect();
+    for &orig in &original_ids {
         assert!(
-            all_ids.contains(&orig_id),
-            "original entity_id={orig_id} should still be present after apply_to"
+            staged_ids.contains(&orig),
+            "original entity_id={orig} should still be present"
         );
     }
 
-    // The 2 new entity IDs (pushed + inserted) should be distinct from originals
-    let new_ids: Vec<u64> = all_ids.difference(&original_ids).copied().collect();
+    // (c) All 4 ids distinct.
     assert_eq!(
-        new_ids.len(),
-        2,
-        "there should be exactly 2 newly generated entity IDs"
+        staged_ids.len(),
+        4,
+        "all 4 staged entity ids must be distinct"
     );
+
+    // (d) The inserted entity sits at index 1 — between original[0] (id=1)
+    //     and original[1] (id=2). Verify the insert position semantics.
+    assert_eq!(
+        staged[0].entity_id, 1,
+        "index 0 must still hold the first original entity"
+    );
+    assert!(
+        !original_ids.contains(&staged[1].entity_id),
+        "index 1 must hold the inserted (new-id) entity"
+    );
+    assert_eq!(
+        staged[2].entity_id, 2,
+        "index 2 must hold the second original entity (shifted right by the insert)"
+    );
+
+    // (e) Calling get_ordered_entities does NOT consume or apply the operations.
+    //     A subsequent apply_to must still produce 4 entities in the same order.
+    let mut layers = initial.clone();
+    output
+        .apply_to(&mut layers)
+        .expect("apply_to must succeed after read-back");
+    assert_eq!(
+        layers[0].ordered_entities.len(),
+        4,
+        "apply_to should still produce 4 entities — read-back must not consume ops"
+    );
+}
+
+/// AC9 — `get_ordered_entities` also reflects a `set_entity_order` permutation.
+#[test]
+fn get_ordered_entities_reflects_permutation() {
+    let initial = vec![LayerCollectionIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        global_layer_index: 0,
+        z: 0.2,
+        ordered_entities: vec![make_entity(1, 0), make_entity(2, 0), make_entity(3, 0)],
+        ..Default::default()
+    }];
+
+    let mut output = FinalizationOutputBuilder::new();
+    output
+        .set_entity_order(0, vec![(2, false), (0, false), (1, false)])
+        .expect("set_entity_order should succeed");
+
+    let staged = output.get_ordered_entities(0, &initial);
+    assert_eq!(staged.len(), 3);
+    assert_eq!(staged[0].entity_id, 3, "new[0] should be original[2]");
+    assert_eq!(staged[1].entity_id, 1, "new[1] should be original[0]");
+    assert_eq!(staged[2].entity_id, 2, "new[2] should be original[1]");
 }

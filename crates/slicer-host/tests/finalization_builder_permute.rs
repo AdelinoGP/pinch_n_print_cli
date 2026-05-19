@@ -175,3 +175,68 @@ fn set_entity_order_malformed_rejected() {
         "entity order should be unchanged after rejected set_entity_order"
     );
 }
+
+// ── Single-permutation invariant (packet 58 locked invariant) ─────────────────
+
+/// Packet-58 locked invariant: `set-entity-order` may be called at most once per
+/// `(layer, run_finalization invocation)`. The second call on the same layer
+/// must return `Err` at record time and leave the builder's queue unaffected so
+/// the first permutation still applies correctly.
+#[test]
+fn set_entity_order_called_twice_rejected() {
+    let mut layers = vec![layer_with_3_entities()];
+    let orig = layers[0].ordered_entities.clone();
+
+    let mut output = FinalizationOutputBuilder::new();
+    // First call on layer 0: a valid permutation.
+    output
+        .set_entity_order(0, vec![(2, false), (0, false), (1, false)])
+        .expect("first set_entity_order on layer 0 should succeed");
+
+    // Second call on the SAME layer: must be rejected at record time.
+    let second = output.set_entity_order(0, vec![(0, false), (1, false), (2, false)]);
+    assert!(
+        second.is_err(),
+        "second set_entity_order on the same layer must return Err"
+    );
+    let err = second.unwrap_err();
+    assert!(
+        err.contains("twice") && err.contains("layer 0"),
+        "error must name the duplicate-layer condition; got: {err}"
+    );
+
+    // The first permutation still applies cleanly — no corruption from the rejected call.
+    output
+        .apply_to(&mut layers)
+        .expect("apply_to should succeed for the single accepted permutation");
+    assert_eq!(layers[0].ordered_entities[0].entity_id, orig[2].entity_id);
+    assert_eq!(layers[0].ordered_entities[1].entity_id, orig[0].entity_id);
+    assert_eq!(layers[0].ordered_entities[2].entity_id, orig[1].entity_id);
+}
+
+/// Permuting two distinct layers in one builder is allowed — the invariant is
+/// per-layer, not per-builder.
+#[test]
+fn set_entity_order_on_distinct_layers_allowed() {
+    let mut layers = vec![
+        layer_with_3_entities(),
+        LayerCollectionIR {
+            global_layer_index: 1,
+            z: 0.4,
+            ordered_entities: vec![make_entity(10, 1), make_entity(11, 1)],
+            ..Default::default()
+        },
+    ];
+
+    let mut output = FinalizationOutputBuilder::new();
+    output
+        .set_entity_order(0, vec![(2, false), (0, false), (1, false)])
+        .expect("set_entity_order on layer 0 should succeed");
+    output
+        .set_entity_order(1, vec![(1, false), (0, false)])
+        .expect("set_entity_order on layer 1 (distinct) should also succeed");
+
+    output
+        .apply_to(&mut layers)
+        .expect("apply_to should accept two distinct-layer permutations");
+}

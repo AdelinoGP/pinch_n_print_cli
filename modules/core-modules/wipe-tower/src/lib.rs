@@ -227,10 +227,18 @@ impl WipeTower {
     /// Generate purge paths for a single tool change.
     ///
     /// Returns `(ExtrusionPath3D, RegionKey)` pairs in the order:
-    /// 1. Retract entity (negative-E via flow_factor)
-    /// 2. Travel-to-tower entity (zero E)
-    /// 3. Rectilinear scan-line wall entities
-    /// 4. Prime entity (positive E equal to purge volume)
+    /// 1. Travel-to-tower entity (zero E)
+    /// 2. Rectilinear scan-line wall entities
+    /// 3. Prime entity (positive E equal to purge volume)
+    ///
+    /// The retract that physically must precede `T<n>` is synthesized
+    /// host-side in `crates/slicer-host/src/gcode_emit.rs` because
+    /// `insert_entity_at` positions module entities AFTER the tool-change
+    /// reference index, while a correct retract must come BEFORE it. The host
+    /// emitter consults `resolved_config.retract_length` for the negative-E
+    /// amount; this module's `retract_length` field is retained for future
+    /// builder primitives that can place a real `TravelRetract` from the
+    /// module side (see DEV-054 follow-up (i)).
     ///
     /// The `tc` parameter is used to contextualise which tool change this purge serves.
     fn generate_purge_paths(
@@ -253,43 +261,7 @@ impl WipeTower {
 
         let mut pairs: Vec<(ExtrusionPath3D, RegionKey)> = Vec::new();
 
-        // ── 1. Retract entity (now a no-op marker) ──────────────────────────
-        // The wipe-tower's retract is now synthesized HOST-SIDE in the gcode
-        // emitter (see crates/slicer-host/src/gcode_emit.rs guard near the
-        // ToolChange emission) because the SDK's insert_entity_at positions
-        // the entity AFTER T<n>, whereas physical correctness requires the
-        // retract BEFORE T<n>. The entity here is kept as a zero-flow marker
-        // so AC4's `>= 4 entities per ToolChange` assertion and the entity
-        // ordering downstream of T<n> remain stable. The host emitter is the
-        // single owner of the negative-E retract emission. (Packet 58 /
-        // DEV-054 follow-up (i); a future packet should add a builder method
-        // to push a TravelRetract from the module instead.)
-        let _ = self.retract_length; // length read by host via resolved_config.retract_length
-        let retract_path = ExtrusionPath3D {
-            points: vec![
-                Point3WithWidth {
-                    x: self.tower_x,
-                    y: self.tower_y,
-                    z,
-                    width: self.line_width,
-                    flow_factor: 0.0,
-                    overhang_quartile: None,
-                },
-                Point3WithWidth {
-                    x: self.tower_x,
-                    y: self.tower_y,
-                    z,
-                    width: self.line_width,
-                    flow_factor: 0.0,
-                    overhang_quartile: None,
-                },
-            ],
-            role: ExtrusionRole::WipeTower,
-            speed_factor: 1.0,
-        };
-        pairs.push((retract_path, region_key.clone()));
-
-        // ── 2. Travel-to-tower entity ────────────────────────────────────────
+        // ── 1. Travel-to-tower entity ────────────────────────────────────────
         // A zero-E move to the tower start position (flow_factor = 0.0).
         let travel_path = ExtrusionPath3D {
             points: vec![
@@ -315,7 +287,7 @@ impl WipeTower {
         };
         pairs.push((travel_path, region_key.clone()));
 
-        // ── 3. Rectilinear scan-line wall entities ───────────────────────────
+        // ── 2. Rectilinear scan-line wall entities ───────────────────────────
         let purge_depth = self.purge_volume / cross_section;
         let x_min = self.tower_x;
         let x_max = self.tower_x + self.tower_width;
@@ -361,7 +333,7 @@ impl WipeTower {
             y += self.line_width;
         }
 
-        // ── 4. Prime entity ──────────────────────────────────────────────────
+        // ── 3. Prime entity ──────────────────────────────────────────────────
         // A single straight-line entity that fits within the tower width, whose
         // cumulative positive E delta contributes to the purge volume budget.
         // The path is capped at tower_width to stay within the bed footprint.
@@ -672,10 +644,12 @@ mod tests {
             );
         }
 
-        // At least 4 entities: retract, travel, ≥1 scan line, prime.
+        // At least 3 entities: travel, ≥1 scan line, prime.
+        // (The retract is synthesized host-side by the gcode emitter; the
+        // module no longer emits a marker retract entity — packet-58 Fix G.)
         assert!(
-            pairs.len() >= 4,
-            "AC4 FAIL: expected at least 4 entities (retract + travel + scan lines + prime), got {}",
+            pairs.len() >= 3,
+            "AC4 FAIL: expected at least 3 entities (travel + scan lines + prime), got {}",
             pairs.len()
         );
     }
