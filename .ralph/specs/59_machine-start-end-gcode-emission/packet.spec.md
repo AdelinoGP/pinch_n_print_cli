@@ -128,6 +128,14 @@ Substitution is INTENTIONALLY a narrow subset of OrcaSlicer's `PlaceholderParser
 
 For each doc above: if > 300 lines, delegate. Default rule wins.
 
+## Doc Impact Statement
+
+- `docs/02_ir_schemas.md` §"GCodeCommand" — `rg -q "ExtrusionMode" docs/02_ir_schemas.md`
+- `docs/02_ir_schemas.md` §"Machine Start/End G-code" — `rg -q "machine_start_gcode" docs/02_ir_schemas.md`
+- `docs/03_wit_and_manifest.md` §"Config Schema" — `rg -q "machine_start_gcode" docs/03_wit_and_manifest.md`
+- `docs/07_implementation_status.md` §"Task Backlog" — `rg -q "TASK-194" docs/07_implementation_status.md`
+- `docs/15_config_keys_reference.md` §"Machine G-code" — `rg -q "machine_start_gcode" docs/15_config_keys_reference.md`
+
 ## OrcaSlicer Reference Obligations
 
 All reads delegated; never load OrcaSlicer source into the implementer's context.

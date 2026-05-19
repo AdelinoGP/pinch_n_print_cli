@@ -1100,6 +1100,11 @@ pub enum GCodeCommand {
     ToolChange  { from: u32, to: u32 },
     Comment     { text: String },
     Raw         { text: String },       // escape hatch for printer-specific codes
+    /// Extrusion mode selector (M82 = absolute, M83 = relative).
+    /// Pushed by `DefaultGCodeEmitter::emit_gcode` as the first command
+    /// so that `PostPass::GCodePostProcess` modules can prepend
+    /// `machine_start_gcode` before it. Added in packet 59.
+    ExtrusionMode { absolute: bool },
 }
 
 /// Per-command retract / unretract emission mode. Added in packet 34.
@@ -1176,12 +1181,12 @@ M83  (or M82 — packet 54)
 | `max_z_height` | f32 (mm) | `0.0` (auto) | Hard cap reported in header; `0.0` means "use per-print z_max". |
 | `thumbnail_path` | string | `""` | Alternative to the `--thumbnail` CLI flag; CLI wins when both set. |
 
-### Stream-level extrusion mode (Normative — packet 54)
+### Stream-level extrusion mode (Normative — packet 54, 59)
 
 `GCodeCommand::Move.e` is a signed delta in **relative** extrusion mode
 (M83) and an absolute position in **absolute** mode (M82). Mode is a
-stream-level invariant — the emitter writes the appropriate `M82` / `M83`
-preamble once per print and resets the E-accumulator with `G92 E0` on
+stream-level invariant — the emitter pushes `GCodeCommand::ExtrusionMode { absolute }`
+as the first command (packet 59) and resets the E-accumulator with `G92 E0` on
 mode change or layer reset. Mode is selected by the config key
 `use_relative_e_distances` (boolean; default `true` → M83). Carrier
 helper: `DefaultGCodeSerializer::with_extrusion_mode(mode)`.
