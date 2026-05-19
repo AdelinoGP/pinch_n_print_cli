@@ -173,10 +173,15 @@ fn emit_empty_layers_produces_minimal_gcode_ir() {
     );
     let gcode_ir = result.unwrap();
 
-    // Empty layers should produce empty commands list
+    // Empty layers should produce exactly one command: the head ExtrusionMode.
+    assert_eq!(
+        gcode_ir.commands.len(),
+        1,
+        "empty layers should produce exactly 1 command (head ExtrusionMode)"
+    );
     assert!(
-        gcode_ir.commands.is_empty(),
-        "empty layers should produce empty commands"
+        matches!(gcode_ir.commands[0], GCodeCommand::ExtrusionMode { .. }),
+        "index-0 command should be ExtrusionMode"
     );
 
     // Metadata should have layer_count = 0
@@ -217,16 +222,18 @@ fn emit_single_layer_single_entity_produces_move_commands() {
     );
     let gcode_ir = result.unwrap();
 
-    // Should have 3 Move commands (one per point)
+    // Should have 1 ExtrusionMode + 3 Move commands (one per point)
     // Plus 4 header lines: ;LAYER_CHANGE, ;Z:0.2, ;HEIGHT:0.2, ;TYPE:Outer wall
+    // Total = 1 (ExtrusionMode) + 4 (headers) + 3 (moves) = 8
     assert_eq!(
         gcode_ir.commands.len(),
-        7,
-        "should produce 7 commands (4 headers + 3 moves) for a single-entity layer"
+        8,
+        "should produce 8 commands (1 ExtrusionMode + 4 headers + 3 moves) for a single-entity layer"
     );
 
-    // Verify first move has correct coordinates (index 4 = first Move after 3 header + 1 ;TYPE)
-    match &gcode_ir.commands[4] {
+    // Index 0 is the head ExtrusionMode.
+    // Verify first move has correct coordinates (index 5 = first Move after ExtrusionMode + 3 header + 1 ;TYPE)
+    match &gcode_ir.commands[5] {
         GCodeCommand::Move { x, y, z, role, .. } => {
             assert_eq!(*x, Some(0.0));
             assert_eq!(*y, Some(0.0));
@@ -237,7 +244,7 @@ fn emit_single_layer_single_entity_produces_move_commands() {
     }
 
     // Verify second move
-    match &gcode_ir.commands[5] {
+    match &gcode_ir.commands[6] {
         GCodeCommand::Move { x, y, z, .. } => {
             assert_eq!(*x, Some(10.0));
             assert_eq!(*y, Some(0.0));
@@ -247,7 +254,7 @@ fn emit_single_layer_single_entity_produces_move_commands() {
     }
 
     // Verify third move
-    match &gcode_ir.commands[6] {
+    match &gcode_ir.commands[7] {
         GCodeCommand::Move { x, y, z, .. } => {
             assert_eq!(*x, Some(10.0));
             assert_eq!(*y, Some(10.0));
@@ -289,21 +296,22 @@ fn emit_multiple_layers_preserves_z_order() {
     let gcode_ir = result.unwrap();
 
     // Should have 2 Move commands
+    // Index 0: ExtrusionMode (head)
     // Layer 1: 3 header Raw + 1 ;TYPE Raw + 1 Move = 5 commands
     // Layer 2: 3 header Raw + 1 Move = 4 commands (no new ;TYPE - same role as prev layer)
-    // Total = 9 commands
-    assert_eq!(gcode_ir.commands.len(), 9);
+    // Total = 1 + 9 = 10 commands
+    assert_eq!(gcode_ir.commands.len(), 10);
 
-    // First command should be at z=0.2 (Move at index 4 after 3 header + 1 ;TYPE for layer 1)
-    match &gcode_ir.commands[4] {
+    // First move is at index 5 (after ExtrusionMode + 3 header + 1 ;TYPE for layer 1)
+    match &gcode_ir.commands[5] {
         GCodeCommand::Move { z, .. } => {
             assert_eq!(*z, Some(0.2), "first command should be at z=0.2");
         }
         other => panic!("expected Move command, got {:?}", other),
     }
 
-    // Second command should be at z=0.4 (Move at index 8 after 3 header for layer 2)
-    match &gcode_ir.commands[8] {
+    // Second move is at index 9 (after ExtrusionMode + layer1(5) + 3 header for layer 2)
+    match &gcode_ir.commands[9] {
         GCodeCommand::Move { z, .. } => {
             assert_eq!(*z, Some(0.4), "second command should be at z=0.4");
         }
@@ -352,15 +360,15 @@ fn emit_tool_change_at_correct_position() {
     );
     let gcode_ir = result.unwrap();
 
-    // Should have: 3 header + 1 ;TYPE + 3 Move + 1 ToolChange = 8 commands
-    assert_eq!(gcode_ir.commands.len(), 8, "should produce 8 commands");
+    // Should have: 1 ExtrusionMode + 3 header + 1 ;TYPE + 3 Move + 1 ToolChange = 9 commands
+    assert_eq!(gcode_ir.commands.len(), 9, "should produce 9 commands");
 
-    // Commands 4 and 5 should be Move (after 3 header + 1 ;TYPE lines)
-    assert!(matches!(&gcode_ir.commands[4], GCodeCommand::Move { .. }));
+    // Commands 5 and 6 should be Move (after ExtrusionMode + 3 header + 1 ;TYPE lines)
     assert!(matches!(&gcode_ir.commands[5], GCodeCommand::Move { .. }));
+    assert!(matches!(&gcode_ir.commands[6], GCodeCommand::Move { .. }));
 
-    // Command 6 should be ToolChange
-    match &gcode_ir.commands[6] {
+    // Command 7 should be ToolChange
+    match &gcode_ir.commands[7] {
         GCodeCommand::ToolChange {
             after_entity_index: _,
             from,
@@ -369,11 +377,11 @@ fn emit_tool_change_at_correct_position() {
             assert_eq!(*from, 0);
             assert_eq!(*to, 1);
         }
-        other => panic!("expected ToolChange command at index 6, got {:?}", other),
+        other => panic!("expected ToolChange command at index 7, got {:?}", other),
     }
 
-    // Command 7 should be Move
-    assert!(matches!(&gcode_ir.commands[7], GCodeCommand::Move { .. }));
+    // Command 8 should be Move
+    assert!(matches!(&gcode_ir.commands[8], GCodeCommand::Move { .. }));
 }
 
 // ============================================================================

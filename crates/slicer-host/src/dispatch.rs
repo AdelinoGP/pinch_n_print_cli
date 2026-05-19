@@ -219,6 +219,15 @@ fn convert_gcode_command_to_postpass_wit(
         }),
         GCodeCommand::Comment { text } => wit_host::postpass::GcodeCommand::Comment(text.clone()),
         GCodeCommand::Raw { text } => wit_host::postpass::GcodeCommand::Raw(text.clone()),
+        // ExtrusionMode is not yet a WIT variant; pass through as Raw so postpass
+        // modules see the correct M82/M83 line.
+        GCodeCommand::ExtrusionMode { absolute } => {
+            wit_host::postpass::GcodeCommand::Raw(if *absolute {
+                "M82".to_string()
+            } else {
+                "M83".to_string()
+            })
+        }
     }
 }
 

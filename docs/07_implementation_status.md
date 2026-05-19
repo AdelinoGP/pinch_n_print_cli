@@ -144,6 +144,9 @@ Last updated: 2026-05-08
 - [x] TASK-192b — New host stage apply_negative_part_subtract; per-layer 2D polygon subtract via polygon_ops::difference for negative_part modifier volumes. (56c_threemf-negative-and-support-subtype-routing)
 - [x] TASK-192c — Synthetic PaintRegionIR emission for support_enforcer and support_blocker modifier volumes via paint_segmentation piggyback. (56c_threemf-negative-and-support-subtype-routing)
 - [x] TASK-193 — TDD coverage: synthetic-fixture E2E (threemf_subtypes_synthetic_e2e_tdd.rs); negative_part, support_enforcer, support_blocker, ordering, degenerate cases. No-regression sweep. Acceptance ceremony. (56c_threemf-negative-and-support-subtype-routing)
+- [x] TASK-194 — Emit configurable `machine_start_gcode` / `machine_end_gcode` via a `PostPass::GCodePostProcess` module that prepends/appends `Raw` commands carrying the resolved templates. (59_machine-start-end-gcode-emission)
+- [x] TASK-194a — Create `modules/core-modules/machine-gcode-emit/` declaring four `[config.schema.*]` entries; `run_gcode_postprocess` performs real `[key]` substitution against the effective `ConfigView` and rebuilds the command list as `[Raw(start), ...existing..., Raw(end)]`. (59_machine-start-end-gcode-emission)
+- [x] TASK-194b — Promote `M82`/`M83` from the hard-coded `DefaultGCodeSerializer` preamble to a new `GCodeCommand::ExtrusionMode { absolute: bool }` variant pushed by `DefaultGCodeEmitter` so a `GCodePostProcess` module can prepend before it. (59_machine-start-end-gcode-emission)
 
 ### Workstream 4 — Progress events and Python bridge coverage
 

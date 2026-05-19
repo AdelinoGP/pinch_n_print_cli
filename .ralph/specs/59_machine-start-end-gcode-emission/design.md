@@ -209,7 +209,7 @@ The exact `ConfigView` API (`get_string` / `get_int` vs unified `get`) and the e
   5. `modules/core-modules/machine-gcode-emit/Cargo.toml` — NEW Cargo manifest (≤ 25 LOC).
   6. `modules/core-modules/machine-gcode-emit/src/lib.rs` — NEW Rust source. `MachineGcodeEmit` struct + `#[slicer_module] impl GCodePostProcessModule` with a real body. Total ~120-150 LOC.
   7. `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` — NEW test file. 10 positive + 3 negative = 13 tests; reuses the predecessor STL fixture and the same `slicer-cli` invocation harness. ≤ 400 LOC.
-  8. `docs/07_implementation_status.md` — append three rows for TASK-193, TASK-193a, TASK-193b in the appropriate queued section. Edit via worker dispatch.
+  8. `docs/07_implementation_status.md` — append three rows for TASK-194, TASK-194a, TASK-194b in the appropriate queued section. Edit via worker dispatch.
 
 - **Rejected alternatives:**
   - **A. Keep current packet-59 draft design (finalization-stage + `FinalizationBuilderPush` variants + `Option<String>` IR fields + dispatch arms + byte-offset placement in serializer).** Rejected: significantly more surface area for what amounts to "prepend/append text to the print stream". Adds two WIT methods, two enum variants, two IR fields, two dispatch arms, and ~25 LOC of byte-offset arithmetic in the serializer — all to express something the existing `GCodePostProcess` contract already supports natively.
@@ -280,8 +280,8 @@ Files the implementer must NOT load directly. Delegate any fact-checks against t
 
 - **Step 1 dispatches:**
   - "In `docs/07_implementation_status.md`, find the line range where queued / in-progress G-code-output TASK entries live (proximity to TASK-184 / TASK-185 / TASK-191 / TASK-192a). Return LOCATIONS, ≤ 5 entries, each with the adjacent row's verbatim text." — insertion point.
-  - "Append three rows to `docs/07_implementation_status.md` immediately after `<insertion-point>`: TASK-193, TASK-193a, TASK-193b. Match adjacent row format. Return FACT: bytes appended + line numbers." — edit.
-  - "`grep -n 'TASK-193' docs/07_implementation_status.md` — return FACT (hits = 3 expected)." — verification.
+  - "Append three rows to `docs/07_implementation_status.md` immediately after `<insertion-point>`: TASK-194, TASK-194a, TASK-194b. Match adjacent row format. Return FACT: bytes appended + line numbers." — edit.
+  - "`grep -n 'TASK-194' docs/07_implementation_status.md` — return FACT (hits = 3 expected)." — verification.
 - **Step 2 dispatches:**
   - "In `crates/slicer-host/tests/`, find the small STL fixture path used by `gcode_emit_tdd.rs` and `gcode_header_thumbnail_config_blocks_tdd.rs`. Return FACT: exact `concat!(env!('CARGO_MANIFEST_DIR'), '/../../resources/<filename>.stl')`." — reuse fixture.
 - **Step 3 dispatches:**
@@ -305,7 +305,7 @@ Files the implementer must NOT load directly. Delegate any fact-checks against t
 - **Step 6 dispatches:**
   - Re-dispatch every pipe-suffixed AC command from `packet.spec.md` (13 total: 10 positive + 3 negative).
   - "Run `cargo test --workspace` once. Return FACT pass/fail; on fail SNIPPETS (≤ 40 lines) of first failing test name + assertion. NEVER return the full output (>1000 tests)." — closure ceremony.
-  - "Update `docs/07_implementation_status.md` rows for TASK-193 / TASK-193a / TASK-193b to status `[x]`; return FACT: rows updated." — backlog close.
+  - "Update `docs/07_implementation_status.md` rows for TASK-194 / TASK-194a / TASK-194b to status `[x]`; return FACT: rows updated." — backlog close.
 
 ## Data and Contract Notes
 
@@ -363,3 +363,31 @@ All open questions resolved at the scope-approval gate. **No remaining blockers 
 - **Non-blocking confirmation (Step 4):** Whether the host's manifest-discovery API exposes a test-friendly lookup of `[config.schema.<key>]` blocks. If yes, AC `module_manifest_registers_four_keys_with_expected_types_and_defaults` asserts directly on the manifest. If no, the AC falls back to CONFIG_BLOCK substring presence.
 
 None of these change scope, interface, or verification strategy.
+
+## Implementation Deviations (post-implementation, 2026-05-18)
+
+Three small scope expansions surfaced during implementation. All Low severity, all packet-local, none affect output behavior or external contracts. Recorded here rather than in `docs/DEVIATION_LOG.md` because none rise to architecture-level concern.
+
+### IDEV-1 — `crates/slicer-host/src/dispatch.rs` modified despite "UNCHANGED" assertion
+
+- **Asserted in design.md:** `dispatch.rs` listed under "Locked Assumptions and Invariants" as unchanged.
+- **Actual:** A small bridge arm was added at the WIT host→guest boundary converting `GCodeCommand::ExtrusionMode { absolute }` → `GcodeCommand::Raw("M82")` or `Raw("M83")`.
+- **Why:** The WASM guest re-emit loop in the new `machine-gcode-emit` module cannot push the typed `ExtrusionMode` variant — `GcodeOutputBuilder` exposes per-variant push methods but no `push_extrusion_mode`. The bridge keeps the typed Rust variant on the host side and only flattens it for the cross-component transport.
+- **Output impact:** None. Byte-level M82\n / M83\n still appear at the same position.
+- **Follow-up:** A future packet adding `push_extrusion_mode` to `GcodeOutputBuilder` (with a matching WIT method on `gcode-output-builder`) could remove the bridge and let the guest re-emit the typed variant directly.
+
+### IDEV-2 — `crates/slicer-macros/src/lib.rs` patched at two sites; not anticipated by the WIT/Type Changes Checklist
+
+- **Asserted in design.md / CLAUDE.md:** The WIT/Type Changes Checklist enumerates `wit_host.rs`, `dispatch.rs`, and `wit_guest` modules as the sites to grep when a WIT-mirrored type changes. `crates/slicer-macros/src/lib.rs` is not listed.
+- **Actual:** Two `match` sites in the proc macro (around `:849` and `:2932`) exhaustively destructure `GcodeOutputCommand::Command(GCodeCommand::*)`. Adding the new `ExtrusionMode` variant in Step 3 broke every core-module and test-guest WASM build until both sites grew an `ExtrusionMode` arm that passes through to `push_raw` (mirroring IDEV-1's bridge semantics).
+- **Why:** The macro's generated re-emit code is the guest-side analogue of the host's `dispatch.rs` arm. With no `push_extrusion_mode` builder method, the macro must collapse to `push_raw`.
+- **Output impact:** None. Mechanical and minimal — one arm per match site.
+- **Follow-up:** Update CLAUDE.md's WIT/Type Changes Checklist to include `crates/slicer-macros/src/lib.rs` for any `GCodeCommand` variant addition. (Not in scope for this packet.)
+
+### IDEV-3 — WIT variant added to `wit/world-postpass.wit`, not `wit/deps/ir-types.wit`
+
+- **Asserted in design.md:** "Files in Scope" and "Code Change Surface" pointed at `wit/deps/ir-types.wit` as the conditional WIT edit target if `gcode-command` was mirrored.
+- **Actual:** `gcode-command` is declared in `wit/world-postpass.wit:15-24`, not in `wit/deps/ir-types.wit`. The new `record gcode-extrusion-mode-cmd { absolute: bool }` and `extrusion-mode(gcode-extrusion-mode-cmd)` arm landed at the actual declaration site.
+- **Why:** A scope-description error in design.md, not a design defect. The Step 3 dispatch verified the actual location before editing.
+- **Output impact:** None. The edit landed at the correct unambiguous site.
+- **Follow-up:** Future packets touching `gcode-command` should refer to `wit/world-postpass.wit:15-24` rather than `wit/deps/ir-types.wit`.

@@ -1761,6 +1761,11 @@ pub enum GCodeCommand {
         /// Raw text
         text: String,
     },
+    /// Extrusion mode selector (M82 = absolute, M83 = relative)
+    ExtrusionMode {
+        /// `true` = absolute-E mode (M82); `false` = relative-E mode (M83).
+        absolute: bool,
+    },
 }
 
 /// Print metadata

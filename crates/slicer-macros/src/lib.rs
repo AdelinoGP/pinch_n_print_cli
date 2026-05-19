@@ -845,6 +845,11 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
                         ) => {
                             let _ = wit.push_raw(text);
                         }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::ExtrusionMode { absolute }
+                        ) => {
+                            let _ = wit.push_raw(&if *absolute { "M82\n".to_string() } else { "M83\n".to_string() });
+                        }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::ZHop { after_entity_index, hop_height } => {
                             let _ = wit.push_z_hop(*after_entity_index, *hop_height);
                         }
@@ -2938,6 +2943,11 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                             ::slicer_sdk::postpass_types::GcodeCommand::Raw { text }
                         ) => {
                             let _ = wit.push_raw(text);
+                        }
+                        ::slicer_sdk::postpass_types::GcodeOutputCommand::Command(
+                            ::slicer_sdk::postpass_types::GcodeCommand::ExtrusionMode { absolute }
+                        ) => {
+                            let _ = wit.push_raw(&if *absolute { "M82\n".to_string() } else { "M83\n".to_string() });
                         }
                         ::slicer_sdk::postpass_types::GcodeOutputCommand::ZHop { after_entity_index, hop_height } => {
                             let _ = wit.push_z_hop(*after_entity_index, *hop_height);

@@ -85,6 +85,7 @@ MODULES=(
     "seam-planner-default:seam_planner_default_guest"
     "seam-placer:seam_placer_guest"
     "part-cooling:part_cooling_guest"
+    "machine-gcode-emit:machine_gcode_emit_guest"
     "skirt-brim:skirt_brim_guest"
     "support-planner:support_planner_guest"
     "support-surface-ironing:support_surface_ironing_guest"

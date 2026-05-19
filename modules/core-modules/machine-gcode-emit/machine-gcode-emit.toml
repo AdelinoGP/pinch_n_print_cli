@@ -1,0 +1,68 @@
+[module]
+id           = "com.core.machine-gcode-emit"
+version      = "0.1.0"
+display-name = "Machine G-code Emit"
+description  = "Emits machine_start_gcode / machine_end_gcode by prepending and appending Raw commands to the GCodePostProcess stream after running [key] substitution against the effective ConfigView."
+author       = "modular-slicer"
+license      = "MIT"
+wit-world    = "slicer:world-postpass@1.0.0"
+
+[stage]
+id = "PostPass::GCodePostProcess"
+
+[ir-access]
+reads  = []
+writes = []
+
+[claims]
+holds    = []
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "2.0.0"
+
+[config.schema]
+
+[config.schema.machine_start_gcode]
+type    = "string"
+default = """M190 S[bed_temperature_initial_layer_single]
+M109 S[nozzle_temperature_initial_layer]
+PRINT_START EXTRUDER=[nozzle_temperature_initial_layer] BED=[bed_temperature_initial_layer_single]"""
+display = "Machine Start G-code"
+group   = "Machine G-code"
+
+[config.schema.machine_end_gcode]
+type    = "string"
+default = "PRINT_END"
+display = "Machine End G-code"
+group   = "Machine G-code"
+
+[config.schema.bed_temperature_initial_layer_single]
+type    = "int"
+default = 60
+min     = 0
+max     = 120
+display = "Bed Temperature (Initial Layer)"
+group   = "Machine G-code"
+
+[config.schema.nozzle_temperature_initial_layer]
+type    = "int"
+default = 215
+min     = 0
+max     = 300
+display = "Nozzle Temperature (Initial Layer)"
+group   = "Machine G-code"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 0
+layer-parallel-safe    = true

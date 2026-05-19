@@ -3,7 +3,7 @@
 ## Execution Rules
 
 - One atomic step at a time.
-- Each step must map back to TASK-193, TASK-193a, or TASK-193b.
+- Each step must map back to TASK-194, TASK-194a, or TASK-194b.
 - TDD first (Step 2), then promote M82/M83 to a typed `GCodeCommand` variant (Step 3), then create the GCodePostProcess module (Step 4), then regression sweep (Step 5), then completion gate (Step 6).
 - Each step honors the context-discipline preamble. The fields below are not optional metadata — they are the budget contract for this step.
 - The implementer MUST stop reading at 60% context and hand off at 85%.
@@ -11,18 +11,18 @@
 
 ## Steps
 
-### Step 1: Append TASK-193 / TASK-193a / TASK-193b rows to docs/07
+### Step 1: Append TASK-194 / TASK-194a / TASK-194b rows to docs/07
 
 - Task IDs:
-  - `TASK-193`
-  - `TASK-193a`
-  - `TASK-193b`
+  - `TASK-194`
+  - `TASK-194a`
+  - `TASK-194b`
 - Objective: Add three queued backlog rows so the packet's task IDs exist before any code change.
-- Precondition: None of TASK-193, TASK-193a, TASK-193b appears in `docs/07_implementation_status.md`.
+- Precondition: None of TASK-194, TASK-194a, TASK-194b appears in `docs/07_implementation_status.md`.
 - Postcondition: Three rows present with status `[ ]` (queued), placed near other in-progress / queued G-code-output tasks. Row texts:
-  - TASK-193 — "Emit configurable `machine_start_gcode` / `machine_end_gcode` via a `PostPass::GCodePostProcess` module that prepends/appends `Raw` commands carrying the resolved templates."
-  - TASK-193a — "Create `modules/core-modules/machine-gcode-emit/` declaring four `[config.schema.*]` entries; `run_gcode_postprocess` performs real `[key]` substitution against the effective `ConfigView` and rebuilds the command list as `[Raw(start), ...existing..., Raw(end)]`."
-  - TASK-193b — "Promote `M82`/`M83` from the hard-coded `DefaultGCodeSerializer` preamble to a new `GCodeCommand::ExtrusionMode { absolute: bool }` variant pushed by `DefaultGCodeEmitter` so a `GCodePostProcess` module can prepend before it."
+  - TASK-194 — "Emit configurable `machine_start_gcode` / `machine_end_gcode` via a `PostPass::GCodePostProcess` module that prepends/appends `Raw` commands carrying the resolved templates."
+  - TASK-194a — "Create `modules/core-modules/machine-gcode-emit/` declaring four `[config.schema.*]` entries; `run_gcode_postprocess` performs real `[key]` substitution against the effective `ConfigView` and rebuilds the command list as `[Raw(start), ...existing..., Raw(end)]`."
+  - TASK-194b — "Promote `M82`/`M83` from the hard-coded `DefaultGCodeSerializer` preamble to a new `GCodeCommand::ExtrusionMode { absolute: bool }` variant pushed by `DefaultGCodeEmitter` so a `GCodePostProcess` module can prepend before it."
 - Files allowed to read:
   - `.ralph/specs/55_gcode-header-thumbnail-config-blocks/packet.spec.md:3-6` — TASK-184 / TASK-185 row-format precedent.
 - Files allowed to edit (≤ 3):
@@ -32,22 +32,22 @@
   - All source crates (this step is docs-only).
 - Expected sub-agent dispatches:
   - `Q: "In docs/07_implementation_status.md, find the line range where queued / in-progress G-code-output TASK entries live (proximity to TASK-184 / TASK-185 / TASK-191 / TASK-192a). Return LOCATIONS, ≤ 5 entries, each with the adjacent row's verbatim text. Do not return the rest of the file." | Scope: docs/07_implementation_status.md | Return format: LOCATIONS`
-  - `Q: "Append three rows to docs/07_implementation_status.md immediately after line <insertion-line>: TASK-193, TASK-193a, TASK-193b (texts above). All status [ ] queued. Match the row format of the adjacent rows verbatim. Return FACT: bytes appended + line numbers of the three new rows." | Scope: docs/07_implementation_status.md | Return format: FACT`
-  - `Q: "Run 'grep -n TASK-193 docs/07_implementation_status.md' and return FACT (expected: exactly 3 hits — TASK-193, TASK-193a, TASK-193b)." | Scope: docs/07_implementation_status.md | Return format: FACT`
+  - `Q: "Append three rows to docs/07_implementation_status.md immediately after line <insertion-line>: TASK-194, TASK-194a, TASK-194b (texts above). All status [ ] queued. Match the row format of the adjacent rows verbatim. Return FACT: bytes appended + line numbers of the three new rows." | Scope: docs/07_implementation_status.md | Return format: FACT`
+  - `Q: "Run 'grep -n TASK-194 docs/07_implementation_status.md' and return FACT (expected: exactly 3 hits — TASK-194, TASK-194a, TASK-194b)." | Scope: docs/07_implementation_status.md | Return format: FACT`
 - Context cost: `S`.
 - Authoritative docs:
   - `docs/07_implementation_status.md` — delegate every interaction.
 - OrcaSlicer refs: none.
 - Verification:
   - The final `grep -n` FACT returns exactly 3 hits.
-- Exit condition: TASK-193, TASK-193a, TASK-193b present as queued rows in `docs/07_implementation_status.md`.
+- Exit condition: TASK-194, TASK-194a, TASK-194b present as queued rows in `docs/07_implementation_status.md`.
 
 ### Step 2: Write red TDD test file with all 13 failing assertions
 
 - Task IDs:
-  - `TASK-193`
-  - `TASK-193a`
-  - `TASK-193b`
+  - `TASK-194`
+  - `TASK-194a`
+  - `TASK-194b`
 - Objective: Materialize all 10 positive + 3 negative acceptance criteria as failing Rust tests in a new file. The test exercises the END-TO-END pipeline: `slicer-cli` invocation → `ResolvedConfig` → emitter pushes `ExtrusionMode` head → `GCodePostProcess` module reads keys, substitutes, prepends `Raw(start)`, re-emits snapshot, appends `Raw(end)` → serializer renders the new command list → byte-level file scan.
 - Precondition: `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` does not exist; Step 1 complete.
 - Postcondition: New test file present; compiles; all 13 tests present by name and all 13 FAIL (red state). No test is `#[ignore]`. No production code modified.
@@ -73,7 +73,7 @@
 ### Step 3: Promote M82/M83 to `GCodeCommand::ExtrusionMode`
 
 - Task IDs:
-  - `TASK-193b`
+  - `TASK-194b`
 - Objective: Add `GCodeCommand::ExtrusionMode { absolute: bool }` as a new additive variant; update `DefaultGCodeEmitter::emit_gcode` to push it as the head command; remove the hard-coded `M82`/`M83` writes from `DefaultGCodeSerializer::serialize_gcode` at `:1154-1156` and add an `ExtrusionMode` arm to the per-command renderer. The net effect on default output is bit-identical: the M82 (or M83) line appears in the same byte position as before, just sourced from a typed command instead of a hard-coded preamble write.
 - Precondition: Step 2 complete; 13 tests red.
 - Postcondition:
@@ -125,8 +125,8 @@
 ### Step 4: Create `modules/core-modules/machine-gcode-emit/` with real `run_gcode_postprocess`
 
 - Task IDs:
-  - `TASK-193a`
-  - `TASK-193` (the module produces TASK-193's emission)
+  - `TASK-194a`
+  - `TASK-194` (the module produces TASK-194's emission)
 - Objective: Create the new core module that performs real `[key]` substitution and rebuilds `GCodeIR.commands` as `[Raw(start), ...existing..., Raw(end)]`. Three files: `machine-gcode-emit.toml` (manifest with `[stage] id = "PostPass::GCodePostProcess"`), `Cargo.toml` (mirrors part-cooling), `src/lib.rs` (~120-150 LOC including a private `substitute_placeholders` helper). Build via `./modules/core-modules/build-core-modules.sh`; confirm `--check` clean. Confirm `./test-guests/build-test-guests.sh --check` clean (the Step 3 `slicer-ir` variant addition invalidates universal-guest-dep bindgen).
 - Precondition: Step 3 complete; the `ExtrusionMode` regression sentry AC is green.
 - Postcondition:
@@ -176,9 +176,9 @@
 ### Step 5: Regression sweep + workspace gates
 
 - Task IDs:
-  - `TASK-193`
-  - `TASK-193a`
-  - `TASK-193b`
+  - `TASK-194`
+  - `TASK-194a`
+  - `TASK-194b`
 - Objective: Confirm no broader regression and that workspace lint gates remain clean.
 - Precondition: Step 4 complete; all 13 ACs green.
 - Postcondition:
@@ -209,15 +209,15 @@
 ### Step 6: Packet completion gate
 
 - Task IDs:
-  - `TASK-193`
-  - `TASK-193a`
-  - `TASK-193b`
+  - `TASK-194`
+  - `TASK-194a`
+  - `TASK-194b`
 - Objective: Final acceptance ceremony — re-dispatch every pipe-suffixed AC command from `packet.spec.md`, run `cargo test --workspace` ONCE per CLAUDE.md test discipline, mark docs/07 rows `[x]`, prepare `packet.spec.md` for status flip.
 - Precondition: Step 5 complete.
 - Postcondition:
   - Every pipe-suffixed AC command in `packet.spec.md` re-dispatched and FACT-pass.
   - `cargo test --workspace` returns FACT pass.
-  - `docs/07_implementation_status.md` rows for TASK-193 / TASK-193a / TASK-193b updated to `[x]`.
+  - `docs/07_implementation_status.md` rows for TASK-194 / TASK-194a / TASK-194b updated to `[x]`.
   - `packet.spec.md` frontmatter ready to flip from `draft` to `implemented` — the implementer asks the user before flipping.
 - Files allowed to read: none direct.
 - Files allowed to edit (≤ 3):
@@ -228,7 +228,7 @@
 - Expected sub-agent dispatches:
   - 13 FACT dispatches: re-run every pipe-suffixed `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- <test_name> --nocapture` command from `packet.spec.md`. Each returns FACT pass/fail.
   - `Q: "Run 'cargo test --workspace'. Return FACT pass/fail; SNIPPETS (≤ 40 lines) of first failing test name + assertion on fail. NEVER return the full test output (the suite is > 1000 tests)." | Scope: workspace | Return format: FACT`
-  - `Q: "Update docs/07_implementation_status.md rows for TASK-193, TASK-193a, TASK-193b from '[ ]' to '[x]'. Return FACT: 'rows updated' + the three new full-row lines after edit." | Scope: docs/07_implementation_status.md | Return format: FACT`
+  - `Q: "Update docs/07_implementation_status.md rows for TASK-194, TASK-194a, TASK-194b from '[ ]' to '[x]'. Return FACT: 'rows updated' + the three new full-row lines after edit." | Scope: docs/07_implementation_status.md | Return format: FACT`
 - Context cost: `S`.
 - Authoritative docs:
   - `docs/11_operational_governance_and_acceptance_gate.md` — closure ceremony.
@@ -258,7 +258,7 @@
 - Every step exit condition is met.
 - All 13 packet acceptance criteria are FACT-green.
 - `./modules/core-modules/build-core-modules.sh --check` and `./test-guests/build-test-guests.sh --check` both return clean at packet closure (re-verified during Step 5).
-- `docs/07_implementation_status.md` updated for TASK-193, TASK-193a, TASK-193b to status `[x]` (via worker dispatch).
+- `docs/07_implementation_status.md` updated for TASK-194, TASK-194a, TASK-194b to status `[x]` (via worker dispatch).
 - No prior packet status transition needed.
 - `packet.spec.md` ready to flip from `status: draft` to `status: implemented` — the implementer asks the user explicitly before flipping.
 

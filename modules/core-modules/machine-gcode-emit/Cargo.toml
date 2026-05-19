@@ -1,0 +1,19 @@
+[package]
+name = "machine-gcode-emit"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Machine start/end G-code emitter for GCodePostProcess stage"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-schema = { path = "../../../crates/slicer-schema" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+[dev-dependencies]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wit-bindgen = "0.24"
+
+[lints]
+workspace = true

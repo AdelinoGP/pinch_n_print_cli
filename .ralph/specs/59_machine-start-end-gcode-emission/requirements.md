@@ -3,9 +3,9 @@
 ## Packet Metadata
 
 - Grouped task IDs:
-  - `TASK-193`  — emit configurable `machine_start_gcode` / `machine_end_gcode` via a `PostPass::GCodePostProcess` module that prepends/appends `Raw` commands carrying the resolved templates.
-  - `TASK-193a` — create `modules/core-modules/machine-gcode-emit/` declaring four `[config.schema.*]` keys; `run_gcode_postprocess` performs real `[key]` substitution against the effective `ConfigView` and rebuilds the command list as `[Raw(start), ...existing..., Raw(end)]`.
-  - `TASK-193b` — promote `M82`/`M83` from the hard-coded serializer preamble to a new `GCodeCommand::ExtrusionMode { absolute: bool }` variant pushed by `DefaultGCodeEmitter`, so a downstream `GCodePostProcess` module can prepend before it.
+  - `TASK-194`  — emit configurable `machine_start_gcode` / `machine_end_gcode` via a `PostPass::GCodePostProcess` module that prepends/appends `Raw` commands carrying the resolved templates.
+  - `TASK-194a` — create `modules/core-modules/machine-gcode-emit/` declaring four `[config.schema.*]` keys; `run_gcode_postprocess` performs real `[key]` substitution against the effective `ConfigView` and rebuilds the command list as `[Raw(start), ...existing..., Raw(end)]`.
+  - `TASK-194b` — promote `M82`/`M83` from the hard-coded serializer preamble to a new `GCodeCommand::ExtrusionMode { absolute: bool }` variant pushed by `DefaultGCodeEmitter`, so a downstream `GCodePostProcess` module can prepend before it.
 - Backlog source: `docs/07_implementation_status.md`
 - Packet status: `draft`
 - Aggregate context cost: `M` (no single step is `L`)
@@ -55,9 +55,9 @@ This packet does NOT reopen or supersede any prior packet. Packets 54 (preamble)
     5. Re-emits every command from the snapshot input list (via the SDK's idiomatic pass-through pattern — likely `output.extend_from_snapshot(input)` or per-variant push; the implementer mirrors whichever shape the SDK exposes).
     6. Pushes the resolved end as one `Raw` command (skip if empty/whitespace).
     7. Returns `Ok(())`.
-- Add new TDD test file `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` covering the 9 positive ACs and 3 negative ACs from `packet.spec.md` (12 tests total). The test exercises END-TO-END: `slicer-cli` invocation → `ResolvedConfig` → emitter builds commands with `ExtrusionMode` at head → `GCodePostProcess` module reads keys, substitutes, prepends `Raw(start)`, re-emits, appends `Raw(end)` → serializer renders the new command list → byte-level file scan.
+- Add new TDD test file `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` covering the 10 positive ACs and 3 negative ACs from `packet.spec.md` (13 tests total). The test exercises END-TO-END: `slicer-cli` invocation → `ResolvedConfig` → emitter builds commands with `ExtrusionMode` at head → `GCodePostProcess` module reads keys, substitutes, prepends `Raw(start)`, re-emits, appends `Raw(end)` → serializer renders the new command list → byte-level file scan.
 - Build the new core module's `.wasm` via `./modules/core-modules/build-core-modules.sh` and confirm `--check` returns clean.
-- Add TASK-193, TASK-193a, TASK-193b entries to `docs/07_implementation_status.md` via worker dispatch.
+- Add TASK-194, TASK-194a, TASK-194b entries to `docs/07_implementation_status.md` via worker dispatch.
 
 ## Out of Scope
 
@@ -139,9 +139,9 @@ All reads delegated; never load OrcaSlicer source into the implementer's context
 For each step in `implementation-plan.md`:
 
 - **Step 1 — Docs/07 task entries**
-  - Precondition: TASK-193, TASK-193a, TASK-193b not present in docs/07.
+  - Precondition: TASK-194, TASK-194a, TASK-194b not present in docs/07.
   - Postcondition: three rows appended with status `[ ]` (queued).
-  - Falsifying check: `grep -n "TASK-193" docs/07_implementation_status.md` returns 3 hits.
+  - Falsifying check: `grep -n "TASK-194" docs/07_implementation_status.md` returns 3 hits.
   - Files allowed to read: `.ralph/specs/55_gcode-header-thumbnail-config-blocks/packet.spec.md:3-6` (row-formatting precedent).
   - Files allowed to edit (≤ 3): `docs/07_implementation_status.md` (via worker dispatch only).
   - Expected sub-agent dispatches: 1 LOCATIONS dispatch; 1 edit dispatch; 1 FACT dispatch.
@@ -149,7 +149,7 @@ For each step in `implementation-plan.md`:
 
 - **Step 2 — TDD test file with 12 failing assertions**
   - Precondition: no `machine_start_end_gcode_emission_tdd.rs` test file.
-  - Postcondition: test file present, all 12 tests compile-pass and assertion-fail (red).
+  - Postcondition: test file present, all 13 tests compile-pass and assertion-fail (red).
   - Falsifying check: `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd 2>&1 | tail -50` returns exit non-zero AND every test is `FAILED`.
   - Files allowed to read: `crates/slicer-host/tests/gcode_header_thumbnail_config_blocks_tdd.rs` (full), `crates/slicer-host/tests/gcode_emit_tdd.rs:1-120`, `crates/slicer-host/tests/postpass_gcode_emit_contract_tdd.rs:1-80`.
   - Files allowed to edit (≤ 3): `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` (new).
@@ -157,7 +157,7 @@ For each step in `implementation-plan.md`:
   - Step context cost: `M`.
 
 - **Step 3 — Promote M82/M83 to `GCodeCommand::ExtrusionMode`**
-  - Precondition: Step 2 complete; 12 tests red.
+  - Precondition: Step 2 complete; 13 tests red.
   - Postcondition: `GCodeCommand` has 9 variants (was 8); `DefaultGCodeEmitter::emit_gcode` pushes `ExtrusionMode { absolute }` as the head command; `DefaultGCodeSerializer::serialize_gcode` no longer hard-codes M82/M83 at `:1154-1156` and has a new arm rendering `ExtrusionMode` in the per-command loop; `cargo test -p slicer-host --test gcode_emit_tdd` passes (the packet-54 regression suite confirms M82/M83 still appear in output); the AC `extrusion_mode_still_emitted_after_promotion` turns green.
   - Falsifying check: `cargo test -p slicer-host --test gcode_emit_tdd` passes; `cargo test -p slicer-host --test machine_start_end_gcode_emission_tdd -- extrusion_mode_still_emitted_after_promotion --nocapture` passes.
   - Files allowed to read: `crates/slicer-ir/src/slice_ir.rs:1697-:1770` (`GCodeCommand` enum); `crates/slicer-host/src/gcode_emit.rs:300-:340` (emitter entry), `:1100-:1170` (serializer body + M82/M83 writes), `:1270-:1300` (per-command renderer arms); `wit/deps/ir-types.wit` (full — short).

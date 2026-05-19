@@ -136,16 +136,22 @@ pub struct DefaultGCodeEmitter {
     gcode_xy_decimals: u32,
     /// Resolved slicer config for precision / simplification parameters.
     resolved_config: ResolvedConfig,
+    /// `true` = relative-E mode (M83); `false` = absolute-E mode (M82).
+    /// Must match the `DefaultGCodeSerializer`'s extrusion-mode setting.
+    relative: bool,
 }
 
 impl DefaultGCodeEmitter {
     /// Creates a new `DefaultGCodeEmitter` with the given slicer version.
+    ///
+    /// Defaults to relative-E mode (M83) to match `DefaultGCodeSerializer::new()`.
     pub fn new(slicer_version: String) -> Self {
         Self {
             slicer_version,
             feedrate_config: FeedrateConfig::default(),
             gcode_xy_decimals: 3,
             resolved_config: ResolvedConfig::default(),
+            relative: true,
         }
     }
 
@@ -156,7 +162,17 @@ impl DefaultGCodeEmitter {
             feedrate_config,
             gcode_xy_decimals: 3,
             resolved_config: ResolvedConfig::default(),
+            relative: true,
         }
+    }
+
+    /// Sets the extrusion mode.
+    ///
+    /// - `relative = true`  → emits `M83` (relative-E); must match the serializer.
+    /// - `relative = false` → emits `M82` (absolute-E); must match the serializer.
+    pub fn with_extrusion_mode(mut self, relative: bool) -> Self {
+        self.relative = relative;
+        self
     }
 
     /// Sets the resolved slicer config (precision / simplification parameters).
@@ -321,7 +337,11 @@ impl GCodeEmitter for DefaultGCodeEmitter {
 
         let layer_count = layer_irs.len() as u32;
 
-        let mut commands = Vec::new();
+        // Push ExtrusionMode as index-0 so postpass modules (Step 4) can prepend
+        // machine_start_gcode BEFORE it via commands.insert(0, Raw(...)).
+        let mut commands = vec![GCodeCommand::ExtrusionMode {
+            absolute: !self.relative,
+        }];
         // Track filament used per tool (tool index -> filament mm)
         let mut filament_per_tool: HashMap<u32, f32> = HashMap::new();
         // Current tool (default 0)
@@ -1224,19 +1244,14 @@ impl GCodeSerializer for DefaultGCodeSerializer {
             self.support_line_width,
         ));
 
-        // Preamble: emit extruder mode selector exactly once.
-        if self.relative {
-            writeln!(output, "M83").unwrap();
-        } else {
-            writeln!(output, "M82").unwrap();
-        }
-
         // e_accumulator tracks the absolute E position seen so far (from GCodeIR,
         // which always stores absolute E values).  Only used in relative mode to
         // compute per-move deltas.
         let mut e_accumulator: f64 = 0.0;
 
-        for command in &gcode_ir.commands {
+        // ExtrusionMode is now at index 0 of gcode_ir.commands (pushed by the emitter).
+        // The per-command renderer handles it — no special-case prepend needed here.
+        for command in gcode_ir.commands.iter() {
             match command {
                 GCodeCommand::Move {
                     x,
@@ -1360,6 +1375,13 @@ impl GCodeSerializer for DefaultGCodeSerializer {
                 }
                 GCodeCommand::Comment { text } => {
                     writeln!(output, "; {}", text).unwrap();
+                }
+                GCodeCommand::ExtrusionMode { absolute } => {
+                    if *absolute {
+                        writeln!(output, "M82").unwrap();
+                    } else {
+                        writeln!(output, "M83").unwrap();
+                    }
                 }
             }
         }

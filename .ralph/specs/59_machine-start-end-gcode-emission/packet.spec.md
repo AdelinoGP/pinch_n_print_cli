@@ -1,10 +1,10 @@
 ---
-status: draft
+status: implemented
 packet: 59_machine-start-end-gcode-emission
 task_ids:
-  - TASK-193    # emit configurable machine_start_gcode / machine_end_gcode via a PostPass::GCodePostProcess module that prepends/appends Raw commands carrying the resolved templates
-  - TASK-193a   # create modules/core-modules/machine-gcode-emit/ declaring four [config.schema.*] keys; run_gcode_postprocess performs real [key] substitution against the effective ConfigView and prepends/appends Raw commands
-  - TASK-193b   # promote M82/M83 from the hard-coded serializer preamble to a new GCodeCommand::ExtrusionMode { absolute: bool } variant pushed by DefaultGCodeEmitter, so a downstream GCodePostProcess module can prepend before it
+  - TASK-194    # emit configurable machine_start_gcode / machine_end_gcode via a PostPass::GCodePostProcess module that prepends/appends Raw commands carrying the resolved templates
+  - TASK-194a   # create modules/core-modules/machine-gcode-emit/ declaring four [config.schema.*] keys; run_gcode_postprocess performs real [key] substitution against the effective ConfigView and prepends/appends Raw commands
+  - TASK-194b   # promote M82/M83 from the hard-coded serializer preamble to a new GCodeCommand::ExtrusionMode { absolute: bool } variant pushed by DefaultGCodeEmitter, so a downstream GCodePostProcess module can prepend before it
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
@@ -53,9 +53,9 @@ Substitution is INTENTIONALLY a narrow subset of OrcaSlicer's `PlaceholderParser
   - New core module `modules/core-modules/machine-gcode-emit/` with `machine-gcode-emit.toml`, `Cargo.toml`, `src/lib.rs`, declaring `[stage] id = "PostPass::GCodePostProcess"` and four `[config.schema.<key>]` blocks.
   - Module `src/lib.rs` implements the SDK trait corresponding to `run-gcode-postprocess` with a real (non-no-op) body: reads keys → substitutes → prepends `Raw(start)` → re-emits snapshot → appends `Raw(end)`.
   - Private `substitute_placeholders` helper inside the module (≤ 60 LOC).
-  - New TDD test file `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` (9 positive + 3 negative = 12 tests).
+  - New TDD test file `crates/slicer-host/tests/machine_start_end_gcode_emission_tdd.rs` (10 positive + 3 negative = 13 tests).
   - WASM build via `./modules/core-modules/build-core-modules.sh` and `--check` clean.
-  - Append TASK-193 / TASK-193a / TASK-193b rows to `docs/07_implementation_status.md` via worker dispatch.
+  - Append TASK-194 / TASK-194a / TASK-194b rows to `docs/07_implementation_status.md` via worker dispatch.
 - Out of scope:
   - Any change to `wit/world-finalization.wit`, `wit/world-postpass.wit`, or any other WIT file beyond what the IR variant addition requires (which may be zero — `GCodeCommand` is represented via `ir-types.wit` at `wit/deps/ir-types.wit`; if `ExtrusionMode` is exposed across the WIT boundary, that addition is in scope but limited to the variant itself).
   - Any change to `FinalizationBuilderPush` or `dispatch.rs` — the simpler design does not need them.

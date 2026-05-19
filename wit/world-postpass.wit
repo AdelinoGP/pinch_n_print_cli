@@ -11,6 +11,7 @@ world postpass-module {
     record gcode-fan-speed-cmd { value: u8 }
     record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
     record gcode-tool-change-cmd { from-tool: u32, to-tool: u32 }
+    record gcode-extrusion-mode-cmd { absolute: bool }
 
     variant gcode-command {
         move(gcode-move-cmd),
@@ -21,6 +22,7 @@ world postpass-module {
         tool-change(gcode-tool-change-cmd),
         comment(string),
         raw(string),
+        extrusion-mode(gcode-extrusion-mode-cmd),
     }
 
     export run-gcode-postprocess: func(
