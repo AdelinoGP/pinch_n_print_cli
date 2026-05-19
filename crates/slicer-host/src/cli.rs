@@ -18,9 +18,10 @@ pub struct HostCli {
 pub enum HostCommands {
     /// Run the slicing pipeline on a model.
     Run {
-        /// Path to the compiled WASM module.
+        /// Path to a compiled WASM module (legacy; modules are normally
+        /// discovered from --module-dir directories).
         #[arg(long)]
-        module: String,
+        module: Option<String>,
         /// Path to the input 3D model (STL, OBJ, or 3MF).
         #[arg(long)]
         model: String,
@@ -68,8 +69,8 @@ pub enum HostCommands {
 /// Validated runtime options derived from CLI arguments.
 #[derive(Debug, Clone)]
 pub struct HostRunOptions {
-    /// Path to the compiled WASM module.
-    pub module_path: PathBuf,
+    /// Optional path to a compiled WASM module (legacy).
+    pub module_path: Option<PathBuf>,
     /// Path to the input 3D model.
     pub model_path: PathBuf,
     /// Optional path to a JSON configuration file.
@@ -122,16 +123,21 @@ impl std::error::Error for CliError {}
 ///
 /// Returns [`CliError`] if any required path does not exist.
 pub fn validate_run_options(
-    module: &str,
+    module: Option<&str>,
     model: &str,
     config: Option<&str>,
     output: Option<&str>,
     module_dirs: &[&str],
 ) -> Result<HostRunOptions, CliError> {
-    let module_path = PathBuf::from(module);
-    if !module_path.exists() {
-        return Err(CliError::MissingModule(module_path));
-    }
+    let module_path = if let Some(module) = module {
+        let p = PathBuf::from(module);
+        if !p.exists() {
+            return Err(CliError::MissingModule(p));
+        }
+        Some(p)
+    } else {
+        None
+    };
 
     let model_path = PathBuf::from(model);
     if !model_path.exists() {
