@@ -13,6 +13,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_host::dispatch::{export_name_for_stage, DispatchPhase, WasmRuntimeDispatcher};
 use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_host::manifest::{LoadedModule, LoadedModuleBuilder};
@@ -1874,7 +1875,12 @@ fn real_paint_region_data_visible_through_production_support_dispatch() {
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let paint_ir = make_paint_region_ir(7, 3, 1);
     blackboard
-        .commit_paint_regions(Arc::new(paint_ir))
+        .commit_paint_regions(
+            Arc::new(paint_ir),
+            Arc::new(PaintRegionRTreeIndex {
+                trees: HashMap::default(),
+            }),
+        )
         .expect("commit paint regions");
 
     let layer = GlobalLayer {
@@ -1959,7 +1965,12 @@ fn paint_region_layer_mismatch_produces_empty_view() {
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     let paint_ir = make_paint_region_ir(5, 2, 0); // paint at layer 5
     blackboard
-        .commit_paint_regions(Arc::new(paint_ir))
+        .commit_paint_regions(
+            Arc::new(paint_ir),
+            Arc::new(PaintRegionRTreeIndex {
+                trees: HashMap::default(),
+            }),
+        )
         .expect("commit");
 
     let layer = GlobalLayer {
@@ -2001,8 +2012,13 @@ fn paint_region_isolation_across_sequential_dispatches() {
 
     // First dispatch: 3 enforcers at layer 0
     let mut bb1 = Blackboard::new(empty_mesh_ir(), 1);
-    bb1.commit_paint_regions(Arc::new(make_paint_region_ir(0, 3, 0)))
-        .unwrap();
+    bb1.commit_paint_regions(
+        Arc::new(make_paint_region_ir(0, 3, 0)),
+        Arc::new(PaintRegionRTreeIndex {
+            trees: HashMap::default(),
+        }),
+    )
+    .unwrap();
     let module1 =
         make_compiled_module_with("com.test.support", "Layer::Support", Arc::clone(&component));
     let layer = GlobalLayer {
@@ -2026,8 +2042,13 @@ fn paint_region_isolation_across_sequential_dispatches() {
 
     // Second dispatch: 1 enforcer at layer 0
     let mut bb2 = Blackboard::new(empty_mesh_ir(), 1);
-    bb2.commit_paint_regions(Arc::new(make_paint_region_ir(0, 1, 2)))
-        .unwrap();
+    bb2.commit_paint_regions(
+        Arc::new(make_paint_region_ir(0, 1, 2)),
+        Arc::new(PaintRegionRTreeIndex {
+            trees: HashMap::default(),
+        }),
+    )
+    .unwrap();
     let module2 = make_compiled_module_with(
         "com.test.support2",
         "Layer::Support",
@@ -2062,7 +2083,12 @@ fn paint_region_deterministic_across_repeated_dispatches() {
 
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     blackboard
-        .commit_paint_regions(Arc::new(make_paint_region_ir(0, 2, 1)))
+        .commit_paint_regions(
+            Arc::new(make_paint_region_ir(0, 2, 1)),
+            Arc::new(PaintRegionRTreeIndex {
+                trees: HashMap::default(),
+            }),
+        )
         .unwrap();
 
     let layer = GlobalLayer {
@@ -2133,7 +2159,12 @@ fn non_paint_stage_not_affected_by_blackboard_paint_data() {
     // Run with paint
     let mut bb_with_paint = Blackboard::new(empty_mesh_ir(), 1);
     bb_with_paint
-        .commit_paint_regions(Arc::new(make_paint_region_ir(0, 5, 3)))
+        .commit_paint_regions(
+            Arc::new(make_paint_region_ir(0, 5, 3)),
+            Arc::new(PaintRegionRTreeIndex {
+                trees: HashMap::default(),
+            }),
+        )
         .unwrap();
     let module2 =
         make_compiled_module_with("com.test.infill2", "Layer::Infill", Arc::clone(&component));
@@ -2405,7 +2436,12 @@ fn slice_and_paint_both_visible_in_same_support_dispatch() {
 
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     blackboard
-        .commit_paint_regions(Arc::new(make_paint_region_ir(0, 2, 1)))
+        .commit_paint_regions(
+            Arc::new(make_paint_region_ir(0, 2, 1)),
+            Arc::new(PaintRegionRTreeIndex {
+                trees: HashMap::default(),
+            }),
+        )
         .unwrap();
 
     let layer = GlobalLayer {
@@ -5018,7 +5054,7 @@ fn paint_segmentation_dispatch_returns_empty_paint_regions_for_unpainted_mesh() 
     .expect("paint-segmentation dispatch must succeed");
 
     match result.0 {
-        PrepassStageOutput::PaintRegions(ir) => {
+        PrepassStageOutput::PaintRegions(ir, _) => {
             assert_eq!(
                 ir.schema_version,
                 SemVer {
@@ -5106,7 +5142,7 @@ fn paint_segmentation_collects_config_driven_regions() {
     .expect("paint-segmentation dispatch must succeed");
 
     let ir = match result.0 {
-        PrepassStageOutput::PaintRegions(ir) => ir,
+        PrepassStageOutput::PaintRegions(ir, _) => ir,
         other => panic!("wrong variant: {:?}", std::mem::discriminant(&other)),
     };
 
@@ -5215,7 +5251,7 @@ fn paint_segmentation_dispatch_is_deterministic() {
         )
         .expect("dispatch succeeds");
         match result.0 {
-            PrepassStageOutput::PaintRegions(ir) => ir,
+            PrepassStageOutput::PaintRegions(ir, _) => ir,
             _ => panic!("wrong variant"),
         }
     };

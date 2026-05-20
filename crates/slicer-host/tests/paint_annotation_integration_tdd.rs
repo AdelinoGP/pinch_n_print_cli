@@ -11,12 +11,15 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use rstar::RTree;
+use slicer_core::paint_region::{PaintRegionRTreeEntry, PaintRegionRTreeIndex};
 use slicer_host::progress_events::{ProgressEvent, ProgressPhase};
 use slicer_host::{
     execute_per_layer_with_events, Blackboard, CompiledModule, ExecutionPlan, LayerArena,
     LayerExecutionError, LayerProgressSink, LayerStageError, LayerStageOutput, LayerStageRunner,
     SlicePostProcessPaintAnnotationError,
 };
+use slicer_ir::slice_ir::BoundingBox2;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, LayerPaintMap, MeshIR,
     ObjectConfig, ObjectMesh, PaintRegionIR, PaintSemantic, PaintValue, Point2, Point3, Polygon,
@@ -179,6 +182,73 @@ fn material_only_on_other_layer() -> PaintRegionIR {
     ambiguous_triangle_paint_regions(7)
 }
 
+/// Build an `Arc<PaintRegionRTreeIndex>` companion for a `PaintRegionIR`,
+/// computing per-region AABBs where `aabb` is `None`.
+fn build_paint_region_rtree_index(ir: &PaintRegionIR) -> Arc<PaintRegionRTreeIndex> {
+    let mut trees: HashMap<u32, HashMap<PaintSemantic, RTree<PaintRegionRTreeEntry>>> =
+        HashMap::new();
+    for (&layer_index, layer_map) in &ir.per_layer {
+        let mut semantic_map: HashMap<PaintSemantic, RTree<PaintRegionRTreeEntry>> = HashMap::new();
+        for (semantic, regions) in &layer_map.semantic_regions {
+            let entries: Vec<PaintRegionRTreeEntry> = regions
+                .iter()
+                .enumerate()
+                .map(|(region_index, region)| {
+                    let aabb = region
+                        .aabb
+                        .unwrap_or_else(|| aabb_from_expolygons(&region.polygons));
+                    PaintRegionRTreeEntry {
+                        min_x: aabb.min.x as f64,
+                        min_y: aabb.min.y as f64,
+                        max_x: aabb.max.x as f64,
+                        max_y: aabb.max.y as f64,
+                        region_index,
+                    }
+                })
+                .collect();
+            let tree = if entries.is_empty() {
+                RTree::new()
+            } else {
+                RTree::bulk_load(entries)
+            };
+            semantic_map.insert(semantic.clone(), tree);
+        }
+        trees.insert(layer_index, semantic_map);
+    }
+    Arc::new(PaintRegionRTreeIndex { trees })
+}
+
+fn expoly_vertex_aabb(polygons: &[ExPolygon]) -> BoundingBox2 {
+    let mut min_x = i64::MAX;
+    let mut min_y = i64::MAX;
+    let mut max_x = i64::MIN;
+    let mut max_y = i64::MIN;
+    for expoly in polygons {
+        for pt in &expoly.contour.points {
+            min_x = min_x.min(pt.x);
+            min_y = min_y.min(pt.y);
+            max_x = max_x.max(pt.x);
+            max_y = max_y.max(pt.y);
+        }
+        for hole in &expoly.holes {
+            for pt in &hole.points {
+                min_x = min_x.min(pt.x);
+                min_y = min_y.min(pt.y);
+                max_x = max_x.max(pt.x);
+                max_y = max_y.max(pt.y);
+            }
+        }
+    }
+    BoundingBox2 {
+        min: Point2 { x: min_x, y: min_y },
+        max: Point2 { x: max_x, y: max_y },
+    }
+}
+
+fn aabb_from_expolygons(polygons: &[ExPolygon]) -> BoundingBox2 {
+    expoly_vertex_aabb(polygons)
+}
+
 struct VecSink(Mutex<Vec<ProgressEvent>>);
 
 impl LayerProgressSink for VecSink {
@@ -208,8 +278,9 @@ fn paint_annotation_is_invoked_on_real_per_layer_path_and_warnings_reach_sink() 
     let layer = layer_at(0, 0.1, "obj-a");
     let plan = plan_empty(vec![layer]);
     let mut bb = Blackboard::new(Arc::clone(&mesh), plan.global_layers.len());
-    bb.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0)))
-        .unwrap();
+    let ir = Arc::new(ambiguous_triangle_paint_regions(0));
+    let rtree = build_paint_region_rtree_index(&ir);
+    bb.commit_paint_regions(ir, rtree).unwrap();
 
     let sink = VecSink(Mutex::new(Vec::new()));
     let (layer_irs, _layer_audits) =
@@ -239,10 +310,12 @@ fn paint_annotation_degraded_fallback_is_deterministic_across_repeated_runs() {
     let plan2 = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
     let mut bb1 = Blackboard::new(Arc::clone(&mesh), 1);
     let mut bb2 = Blackboard::new(Arc::clone(&mesh), 1);
-    bb1.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0)))
-        .unwrap();
-    bb2.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0)))
-        .unwrap();
+    let ir1 = Arc::new(ambiguous_triangle_paint_regions(0));
+    let rt1 = build_paint_region_rtree_index(&ir1);
+    bb1.commit_paint_regions(ir1, rt1).unwrap();
+    let ir2 = Arc::new(ambiguous_triangle_paint_regions(0));
+    let rt2 = build_paint_region_rtree_index(&ir2);
+    bb2.commit_paint_regions(ir2, rt2).unwrap();
 
     let sink_a = VecSink(Mutex::new(Vec::new()));
     let sink_b = VecSink(Mutex::new(Vec::new()));
@@ -265,8 +338,9 @@ fn paint_annotation_missing_required_semantic_surfaces_typed_fatal_error() {
     let mesh = Arc::new(tetra_mesh_ir("obj-a"));
     let plan = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
     let mut bb = Blackboard::new(Arc::clone(&mesh), plan.global_layers.len());
-    bb.commit_paint_regions(Arc::new(material_only_on_other_layer()))
-        .unwrap();
+    let ir = Arc::new(material_only_on_other_layer());
+    let rtree = build_paint_region_rtree_index(&ir);
+    bb.commit_paint_regions(ir, rtree).unwrap();
 
     let sink = VecSink(Mutex::new(Vec::new()));
     let err = execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink)
@@ -406,8 +480,9 @@ fn runtime_sink_forwards_paint_warning_to_both_jsonl_emitter_and_slice_event_col
     let mesh = Arc::new(tetra_mesh_ir("obj-a"));
     let plan = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
     let mut bb = Blackboard::new(Arc::clone(&mesh), plan.global_layers.len());
-    bb.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0)))
-        .unwrap();
+    let ir = Arc::new(ambiguous_triangle_paint_regions(0));
+    let rtree = build_paint_region_rtree_index(&ir);
+    bb.commit_paint_regions(ir, rtree).unwrap();
 
     let (raw_emitter, emitter) = capture_emitter();
     let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
@@ -447,8 +522,9 @@ fn runtime_sink_jsonl_output_is_byte_identical_across_repeated_runs() {
     let run_once = || -> Vec<u8> {
         let plan = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
         let mut bb = Blackboard::new(Arc::clone(&mesh), 1);
-        bb.commit_paint_regions(Arc::new(ambiguous_triangle_paint_regions(0)))
-            .unwrap();
+        let ir = Arc::new(ambiguous_triangle_paint_regions(0));
+        let rtree = build_paint_region_rtree_index(&ir);
+        bb.commit_paint_regions(ir, rtree).unwrap();
         let (raw, emitter) = capture_emitter();
         let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
         let sink = RuntimeProgressSink::new(emitter, collector);

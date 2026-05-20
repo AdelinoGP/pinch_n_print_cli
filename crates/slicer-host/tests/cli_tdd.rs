@@ -8,10 +8,7 @@ use std::path::PathBuf;
 #[test]
 fn run_requires_model_not_module() {
     let result = HostCli::try_parse_from(["slicer-host", "run"]);
-    assert!(
-        result.is_err(),
-        "run without --model should fail"
-    );
+    assert!(result.is_err(), "run without --model should fail");
     let result = HostCli::try_parse_from(["slicer-host", "run", "--model", "model.stl"]);
     assert!(
         result.is_ok(),

@@ -3,13 +3,13 @@
 use std::sync::Arc;
 
 use rayon::prelude::*;
+use rstar::AABB;
 
 use slicer_core::paint_region::{
-    ex_polygon_contains_point, point_in_paint_regions, BoundaryInclusion, PaintRegionQueryError,
+    ex_polygon_contains_point, point_in_paint_region, BoundaryInclusion, PaintRegionQueryError,
+    PaintRegionRTreeIndex,
 };
-use slicer_ir::{
-    ExPolygon, PaintRegionIR, PaintSemantic, PaintValue, SemanticRegion, SliceIR,
-};
+use slicer_ir::{ExPolygon, PaintRegionIR, PaintSemantic, PaintValue, SemanticRegion, SliceIR};
 
 use crate::progress_events::{ProgressError, ProgressEvent, ProgressPhase};
 
@@ -20,6 +20,8 @@ pub struct SlicePostProcessPaintAnnotationRequest {
     pub slice_ir: SliceIR,
     /// Immutable per-layer paint regions produced by `PrePass::PaintSegmentation`.
     pub paint_regions: Arc<PaintRegionIR>,
+    /// Companion spatial index for O(log N) region lookup (optional; falls back to linear scan).
+    pub paint_region_rtree: Option<Arc<PaintRegionRTreeIndex>>,
     /// Semantics that must be annotatable for this layer.
     pub required_semantics: Vec<PaintSemantic>,
     /// Per-layer modifier volume projections for fuzzy-skin annotation.
@@ -295,6 +297,7 @@ pub fn execute_slice_postprocess_paint_annotation(
         paint_regions,
         required_semantics,
         modifier_projections,
+        paint_region_rtree,
     } = request;
 
     let layer_index = slice_ir.global_layer_index;
@@ -380,11 +383,13 @@ pub fn execute_slice_postprocess_paint_annotation(
                     for (contour_point_index, point) in
                         polygon.contour.points.iter().enumerate()
                     {
-                        match point_in_paint_regions(
-                            semantic_regions,
+                        match point_in_paint_region(
+                            &paint_regions,
+                            layer_index,
                             semantic,
                             *point,
                             BoundaryInclusion::Include,
+                            paint_region_rtree.as_deref(),
                         ) {
                             Ok(Some(value)) => {
                                 point_paint.push(Some(value));
@@ -402,6 +407,9 @@ pub fn execute_slice_postprocess_paint_annotation(
                                 if is_point_numerically_ambiguous(
                                     semantic_regions,
                                     *point,
+                                    layer_index,
+                                    semantic,
+                                    paint_region_rtree.as_deref(),
                                 ) {
                                     let fallback_value =
                                         default_fallback_value(semantic);
@@ -544,6 +552,9 @@ fn default_fallback_value(semantic: &PaintSemantic) -> PaintValue {
 fn is_point_numerically_ambiguous(
     regions: &[SemanticRegion],
     point: slicer_ir::Point2,
+    layer_index: u32,
+    semantic: &PaintSemantic,
+    rtree_index: Option<&PaintRegionRTreeIndex>,
 ) -> bool {
     if regions.is_empty() {
         return false;
@@ -558,16 +569,50 @@ fn is_point_numerically_ambiguous(
     // paint regions composed of un-unioned per-facet projected triangles.)
     const EPSILON_UNITS: i64 = 1;
 
-    for region in regions {
-        for polygon in &region.polygons {
-            // Check distance to contour edges
-            if is_point_near_polygon_edge(&polygon.contour.points, point, EPSILON_UNITS) {
-                return true;
+    if let Some(rtree_index) = rtree_index {
+        let tree = match rtree_index.trees.get(&layer_index) {
+            Some(layer_trees) => match layer_trees.get(semantic) {
+                Some(tree) => tree,
+                None => return false,
+            },
+            None => return false,
+        };
+
+        if tree.size() == 0 {
+            return false;
+        }
+
+        let eps = EPSILON_UNITS as f64;
+        let lo = [point.x as f64 - eps, point.y as f64 - eps];
+        let hi = [point.x as f64 + eps, point.y as f64 + eps];
+        let query_aabb = AABB::from_corners(lo, hi);
+
+        let candidate_indices: Vec<usize> = tree
+            .locate_in_envelope_intersecting(&query_aabb)
+            .map(|entry| entry.region_index)
+            .collect();
+
+        for &candidate_index in &candidate_indices {
+            let region = &regions[candidate_index];
+            for polygon in &region.polygons {
+                if is_point_near_polygon_edge(&polygon.contour.points, point, EPSILON_UNITS) {
+                    return true;
+                }
             }
         }
-    }
 
-    false
+        false
+    } else {
+        for region in regions {
+            for polygon in &region.polygons {
+                if is_point_near_polygon_edge(&polygon.contour.points, point, EPSILON_UNITS) {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
 }
 
 /// Checks if a point is within epsilon distance of any edge of a polygon.

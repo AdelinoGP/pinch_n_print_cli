@@ -198,6 +198,7 @@ fn support_paint_policy(
         &PaintSemantic::SupportBlocker,
         centroid,
         BoundaryInclusion::Include,
+        None,
     )
     .ok()
     .flatten()
@@ -213,6 +214,7 @@ fn support_paint_policy(
         &PaintSemantic::SupportEnforcer,
         centroid,
         BoundaryInclusion::Include,
+        None,
     )
     .ok()
     .flatten()

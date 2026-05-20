@@ -268,6 +268,7 @@ fn scenario_2_higher_paint_order_wins_for_custom_overlap() {
             y: 50_000,
         },
         BoundaryInclusion::Include,
+        None,
     )
     .expect("non-conflicting overlap must resolve");
     assert_eq!(result, Some(PaintValue::Scalar(0.75)));
@@ -285,6 +286,7 @@ fn scenario_2_equal_paint_order_conflicting_values_are_fatal() {
             y: 50_000,
         },
         BoundaryInclusion::Include,
+        None,
     )
     .expect_err("equal paint_order with different values must be a deterministic conflict");
     assert!(matches!(err, PaintRegionQueryError::DeterministicConflict));

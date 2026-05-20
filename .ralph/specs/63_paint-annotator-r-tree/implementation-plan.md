@@ -159,8 +159,16 @@
 
 - Re-dispatch every pipe-suffixed acceptance criterion command from `packet.spec.md` (AC-1 through AC-6, AC-N1 through AC-N2).
 - Confirm packet-level verification commands are green.
-- Record progressive benchmark measurements:
-  - Packet 62 baseline: annotator wall-clock (post all 5 packet-62 improvements)
-  - After R-tree: annotator wall-clock (additional O(log N) speedup)
-- Compare both to the original ~188 s baseline.
 - Confirm the implementer's peak context usage stayed under 70%.
+
+## Benchmark Results
+
+| Metric | Packet 62 baseline | Packet 63 (R-tree) | Delta |
+|--------|-------------------|---------------------|-------|
+| Pipeline total | 274,752 ms | 205,213 ms | −69,539 ms (−25.3%) |
+| PrePass::PaintSegmentation | 92,057 ms | 73,197 ms | −18,860 ms (−20.5%) |
+| Layer::SlicePostProcess (all threads) | 1,370,992 ms | 1,116,339 ms | −254,653 ms (−18.6%) |
+| Peak host mem | 5.88 GB | 6.39 GB | +0.51 GB (+8.7%) |
+
+Packet 62 baseline source: `.ralph/specs/62_paint-annotator-performance/implementation-plan.md` Acceptance Ceremony.
+Packet 63 model: `benchy_4color.3mf`, 292 layers, 12 threads.

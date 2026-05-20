@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_host::{
     build_wasm_instance_pool, execute_prepass, Blackboard, CompiledModule, CompiledModuleBuilder,
     CompiledStage, ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LoadedModuleBuilder,
@@ -310,9 +311,12 @@ fn rotated_object_world_extent_is_degenerate() {
             ),
             (
                 String::from("com.example.paint-segmentation"),
-                Ok(PrepassStageOutput::PaintRegions(Arc::new(
-                    paint_regions_fixture(),
-                ))),
+                Ok(PrepassStageOutput::PaintRegions(
+                    Arc::new(paint_regions_fixture()),
+                    Arc::new(PaintRegionRTreeIndex {
+                        trees: HashMap::default(),
+                    }),
+                )),
             ),
             (
                 String::from("com.example.region-mapping"),

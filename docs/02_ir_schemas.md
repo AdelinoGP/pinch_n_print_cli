@@ -531,6 +531,10 @@ impl PaintRegionIR {
 }
 ```
 
+### Companion `PaintRegionRTreeIndex` (not stored on IR)
+
+A companion `PaintRegionRTreeIndex` (defined in `slicer-core`) wraps a per-`(layer_index, semantic)` `rstar::RTree<(BoundingBox2, usize)>` spatial index, rebuilt from scratch each pipeline run alongside `PaintRegionIR` at `harvest_paint_segmentation_ir` time. It is NOT stored on the IR (not serialized, not in `PartialEq`), but passed as a separate `Arc` through the blackboard and annotation request. The query path `point_in_paint_region` uses it for O(log N) candidate selection, falling back to linear scan when absent.
+
 ### Paint Region Resolution Contract
 
 - `PaintRegionIR` is the canonical source for all paint semantics in downstream stages.

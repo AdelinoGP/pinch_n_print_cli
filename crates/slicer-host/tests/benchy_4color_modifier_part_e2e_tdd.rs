@@ -284,6 +284,7 @@ fn modifier_projections_annotate_contour_points() {
             paint_regions,
             required_semantics: vec![PaintSemantic::FuzzySkin],
             modifier_projections: modifier_projections.clone(),
+            paint_region_rtree: None,
         })
         .expect("paint annotation must succeed for in-band layer");
 
@@ -342,6 +343,7 @@ fn modifier_projections_annotate_contour_points() {
             paint_regions: below_paint_regions,
             required_semantics: vec![PaintSemantic::FuzzySkin],
             modifier_projections: below_projections,
+            paint_region_rtree: None,
         })
         .expect("paint annotation must succeed for below-band layer");
 
@@ -429,6 +431,7 @@ fn modifier_projection_z_band_restriction() {
             paint_regions: layer0_paint_regions.clone(),
             required_semantics: vec![PaintSemantic::FuzzySkin],
             modifier_projections: in_projections,
+            paint_region_rtree: None,
         })
         .expect("in-band annotation");
 
@@ -446,6 +449,7 @@ fn modifier_projection_z_band_restriction() {
             paint_regions: layer1_paint_regions,
             required_semantics: vec![PaintSemantic::FuzzySkin],
             modifier_projections: below_projections,
+            paint_region_rtree: None,
         })
         .expect("below-band annotation");
 

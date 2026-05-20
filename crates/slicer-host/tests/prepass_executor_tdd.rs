@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_host::{
     build_wasm_instance_pool, execute_prepass, Blackboard, BlackboardError, BlackboardPrepassSlot,
     CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionModuleBinding, ExecutionPlan,
@@ -54,9 +55,12 @@ fn prepass_executor_locks_down_stage_order_full_commit_set_and_shared_mesh_input
             ),
             (
                 String::from("com.example.paint-segmentation"),
-                Ok(PrepassStageOutput::PaintRegions(Arc::new(
-                    paint_regions_fixture(),
-                ))),
+                Ok(PrepassStageOutput::PaintRegions(
+                    Arc::new(paint_regions_fixture()),
+                    Arc::new(PaintRegionRTreeIndex {
+                        trees: HashMap::default(),
+                    }),
+                )),
             ),
             (
                 String::from("com.example.region-mapping"),
@@ -140,9 +144,12 @@ fn prepass_executor_rejects_missing_required_prepass_before_running_dependent_st
         &["com.example.paint-segmentation"],
         vec![(
             String::from("com.example.paint-segmentation"),
-            Ok(PrepassStageOutput::PaintRegions(Arc::new(
-                paint_regions_fixture(),
-            ))),
+            Ok(PrepassStageOutput::PaintRegions(
+                Arc::new(paint_regions_fixture()),
+                Arc::new(PaintRegionRTreeIndex {
+                    trees: HashMap::default(),
+                }),
+            )),
         )],
         0,
     );

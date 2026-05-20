@@ -25,6 +25,8 @@ thread_local! {
     static LAST_WASM_MEM_SAMPLE: Cell<(u64, u64)> = const { Cell::new((0, 0)) };
 }
 
+use rstar::RTree;
+use slicer_core::paint_region::{PaintRegionRTreeEntry, PaintRegionRTreeIndex};
 use slicer_ir::{
     GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, RetractMode, SeamPosition, StageId,
 };
@@ -2000,13 +2002,15 @@ mod tests {
 /// | `scalar(f32)`                    | `PaintValue::Scalar(f32)`     |
 /// | `tool-index(u32)`                | `PaintValue::ToolIndex(u32)`  |
 /// | `custom(string)`                 | `PaintValue::Custom(String)`  |
-fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_ir::PaintRegionIR {
+fn harvest_paint_segmentation_ir(
+    ctx: wit_host::HostExecutionContext,
+) -> (slicer_ir::PaintRegionIR, PaintRegionRTreeIndex) {
     use rayon::prelude::*;
+    use slicer_ir::slice_ir::BoundingBox2;
     use slicer_ir::{
         ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon,
         SemanticRegion,
     };
-    use slicer_ir::slice_ir::BoundingBox2;
     use std::cmp::Ordering;
     use std::collections::HashMap;
     use wit_host::prepass::PaintValueInput;
@@ -2062,13 +2066,22 @@ fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_
             .iter()
             .map(|ep| ExPolygon {
                 contour: Polygon {
-                    points: ep.contour.points.iter().map(|pt| Point2 { x: pt.x, y: pt.y }).collect(),
+                    points: ep
+                        .contour
+                        .points
+                        .iter()
+                        .map(|pt| Point2 { x: pt.x, y: pt.y })
+                        .collect(),
                 },
                 holes: ep
                     .holes
                     .iter()
                     .map(|h| Polygon {
-                        points: h.points.iter().map(|pt| Point2 { x: pt.x, y: pt.y }).collect(),
+                        points: h
+                            .points
+                            .iter()
+                            .map(|pt| Point2 { x: pt.x, y: pt.y })
+                            .collect(),
                     })
                     .collect(),
             })
@@ -2081,65 +2094,78 @@ fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_
     // Second pass: union per-group, compute AABB — parallel over groups
     let results: Vec<(u32, PaintSemantic, SemanticRegion)> = groups
         .into_par_iter()
-        .map(|((layer_index, object_id, semantic, hashable_value), entries)| {
-            let value = match hashable_value {
-                HashablePaintValue::Flag(b) => PaintValue::Flag(b),
-                HashablePaintValue::Scalar(bits) => PaintValue::Scalar(f32::from_bits(bits)),
-                HashablePaintValue::ToolIndex(n) => PaintValue::ToolIndex(n),
-                HashablePaintValue::Custom(s) => PaintValue::Custom(s),
-            };
+        .map(
+            |((layer_index, object_id, semantic, hashable_value), entries)| {
+                let value = match hashable_value {
+                    HashablePaintValue::Flag(b) => PaintValue::Flag(b),
+                    HashablePaintValue::Scalar(bits) => PaintValue::Scalar(f32::from_bits(bits)),
+                    HashablePaintValue::ToolIndex(n) => PaintValue::ToolIndex(n),
+                    HashablePaintValue::Custom(s) => PaintValue::Custom(s),
+                };
 
-            let all_polygons: Vec<ExPolygon> =
-                entries.iter().flat_map(|(_, polys)| polys.clone()).collect();
-            let paint_order = entries.iter().map(|(po, _)| *po).min().unwrap_or(0);
+                let all_polygons: Vec<ExPolygon> = entries
+                    .iter()
+                    .flat_map(|(_, polys)| polys.clone())
+                    .collect();
+                let paint_order = entries.iter().map(|(po, _)| *po).min().unwrap_or(0);
 
-            let unioned = if all_polygons.len() <= 1 {
-                all_polygons
-            } else {
-                slicer_core::union(&all_polygons, &[])
-            };
+                let unioned = if all_polygons.len() <= 1 {
+                    all_polygons
+                } else {
+                    slicer_core::union(&all_polygons, &[])
+                };
 
-            // Compute AABB from unioned contour points
-            let (min_x, min_y, max_x, max_y) = unioned
-                .iter()
-                .flat_map(|ep| &ep.contour.points)
-                .fold(
-                    (i64::MAX, i64::MAX, i64::MIN, i64::MIN),
-                    |(min_x, min_y, max_x, max_y), pt| {
-                        (min_x.min(pt.x), min_y.min(pt.y), max_x.max(pt.x), max_y.max(pt.y))
+                // Compute AABB from unioned contour points
+                let (min_x, min_y, max_x, max_y) =
+                    unioned.iter().flat_map(|ep| &ep.contour.points).fold(
+                        (i64::MAX, i64::MAX, i64::MIN, i64::MIN),
+                        |(min_x, min_y, max_x, max_y), pt| {
+                            (
+                                min_x.min(pt.x),
+                                min_y.min(pt.y),
+                                max_x.max(pt.x),
+                                max_y.max(pt.y),
+                            )
+                        },
+                    );
+                let aabb = if min_x <= max_x && min_y <= max_y {
+                    Some(BoundingBox2 {
+                        min: Point2 { x: min_x, y: min_y },
+                        max: Point2 { x: max_x, y: max_y },
+                    })
+                } else {
+                    None
+                };
+
+                (
+                    layer_index,
+                    semantic,
+                    SemanticRegion {
+                        object_id,
+                        polygons: unioned,
+                        value,
+                        paint_order,
+                        aabb,
                     },
-                );
-            let aabb = if min_x <= max_x && min_y <= max_y {
-                Some(BoundingBox2 {
-                    min: Point2 { x: min_x, y: min_y },
-                    max: Point2 { x: max_x, y: max_y },
-                })
-            } else {
-                None
-            };
-
-            (
-                layer_index,
-                semantic,
-                SemanticRegion {
-                    object_id,
-                    polygons: unioned,
-                    value,
-                    paint_order,
-                    aabb,
-                },
-            )
-        })
+                )
+            },
+        )
         .collect();
 
     // Build per_layer HashMap sequentially from parallel results
     let mut per_layer: HashMap<u32, LayerPaintMap> = HashMap::new();
     for (layer_index, semantic, region) in results {
-        let layer = per_layer.entry(layer_index).or_insert_with(|| LayerPaintMap {
-            global_layer_index: layer_index,
-            semantic_regions: HashMap::new(),
-        });
-        layer.semantic_regions.entry(semantic).or_default().push(region);
+        let layer = per_layer
+            .entry(layer_index)
+            .or_insert_with(|| LayerPaintMap {
+                global_layer_index: layer_index,
+                semantic_regions: HashMap::new(),
+            });
+        layer
+            .semantic_regions
+            .entry(semantic)
+            .or_default()
+            .push(region);
     }
 
     // Sort each semantic bucket for byte-deterministic output
@@ -2165,10 +2191,43 @@ fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_
         }
     }
 
-    PaintRegionIR {
-        per_layer,
-        ..Default::default()
+    // Build PaintRegionRTreeIndex: per (layer_index, semantic) spatial index
+    let mut trees: HashMap<u32, HashMap<PaintSemantic, RTree<PaintRegionRTreeEntry>>> =
+        HashMap::new();
+    for (&layer_index, layer_map) in &per_layer {
+        let mut semantic_map: HashMap<PaintSemantic, RTree<PaintRegionRTreeEntry>> = HashMap::new();
+        for (semantic, regions) in &layer_map.semantic_regions {
+            let entries: Vec<PaintRegionRTreeEntry> = regions
+                .iter()
+                .enumerate()
+                .map(|(region_index, region)| {
+                    let aabb = region.aabb.unwrap_or_default();
+                    PaintRegionRTreeEntry {
+                        min_x: aabb.min.x as f64,
+                        min_y: aabb.min.y as f64,
+                        max_x: aabb.max.x as f64,
+                        max_y: aabb.max.y as f64,
+                        region_index,
+                    }
+                })
+                .collect();
+            let tree = if entries.is_empty() {
+                RTree::new()
+            } else {
+                RTree::bulk_load(entries)
+            };
+            semantic_map.insert(semantic.clone(), tree);
+        }
+        trees.insert(layer_index, semantic_map);
     }
+
+    (
+        PaintRegionIR {
+            per_layer,
+            ..Default::default()
+        },
+        PaintRegionRTreeIndex { trees },
+    )
 }
 
 /// Public façade over [`harvest_paint_segmentation_ir`] for integration tests.
@@ -2176,7 +2235,7 @@ fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_
 /// Exposed via `crate::dispatch_helpers::harvest_paint_segmentation_ir_from_ctx`.
 pub fn harvest_paint_segmentation_ir_pub(
     ctx: wit_host::HostExecutionContext,
-) -> slicer_ir::PaintRegionIR {
+) -> (slicer_ir::PaintRegionIR, PaintRegionRTreeIndex) {
     harvest_paint_segmentation_ir(ctx)
 }
 
@@ -2258,11 +2317,11 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
         }
 
         // For the PaintSegmentation stage, convert collected paint-region
-        // entries to PaintRegionIR.
+        // entries to PaintRegionIR and build spatial index.
         if stage_id == "PrePass::PaintSegmentation" {
-            let ir = harvest_paint_segmentation_ir(ctx);
+            let (ir, rtree) = harvest_paint_segmentation_ir(ctx);
             return Ok((
-                PrepassStageOutput::PaintRegions(Arc::new(ir)),
+                PrepassStageOutput::PaintRegions(Arc::new(ir), Arc::new(rtree)),
                 runtime_reads,
             ));
         }

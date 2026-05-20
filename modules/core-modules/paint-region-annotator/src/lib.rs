@@ -71,6 +71,7 @@ impl LayerModule for PaintRegionAnnotator {
                             semantic,
                             point,
                             BoundaryInclusion::Include,
+                            None,
                         ) {
                             Ok(value) => per_point.push(value),
                             Err(PaintRegionQueryError::DeterministicConflict) => {

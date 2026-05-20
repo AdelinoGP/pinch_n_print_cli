@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_host::{
     Blackboard, BlackboardError, BlackboardPrepassSlot, LayerArena, LayerArenaError, LayerArenaSlot,
 };
@@ -35,7 +36,12 @@ fn blackboard_contract_exposes_arc_backed_prepass_reads_and_exactly_once_layer_d
         .commit_layer_plan(Arc::clone(&layer_plan))
         .expect("layer plan should commit once");
     blackboard
-        .commit_paint_regions(Arc::clone(&paint))
+        .commit_paint_regions(
+            Arc::clone(&paint),
+            Arc::new(PaintRegionRTreeIndex {
+                trees: HashMap::default(),
+            }),
+        )
         .expect("paint regions should commit once");
     blackboard
         .commit_region_map(Arc::clone(&region_map))

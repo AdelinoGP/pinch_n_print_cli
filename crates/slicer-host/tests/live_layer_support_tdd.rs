@@ -18,6 +18,9 @@
 
 #![allow(missing_docs)]
 
+use std::collections::HashMap;
+
+use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_host::dispatch::commit_layer_outputs_for_test;
 use slicer_host::wit_host::{
     ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3WithWidth,
@@ -999,7 +1002,12 @@ fn support_enforcer_blocker_paint_precedence() {
         1,
     );
     blackboard
-        .commit_paint_regions(Arc::clone(&paint_ir))
+        .commit_paint_regions(
+            Arc::clone(&paint_ir),
+            Arc::new(PaintRegionRTreeIndex {
+                trees: HashMap::default(),
+            }),
+        )
         .expect("commit_paint_regions must succeed");
 
     let layer = GlobalLayer {

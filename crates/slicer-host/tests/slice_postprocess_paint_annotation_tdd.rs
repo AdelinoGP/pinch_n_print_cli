@@ -29,6 +29,7 @@ fn slice_postprocess_paint_annotation_keeps_boundary_paint_present_but_empty_whe
             paint_regions: Arc::new(empty_layer_paint_regions(7)),
             required_semantics: Vec::new(),
             modifier_projections: vec![],
+            paint_region_rtree: None,
         })
         .expect(
             "regions/layers without paint must still keep boundary_paint present as an empty map",
@@ -66,6 +67,7 @@ fn slice_postprocess_paint_annotation_writes_semantic_entries_parallel_to_each_f
             paint_regions: Arc::new(material_and_fuzzy_regions(3)),
             required_semantics: vec![PaintSemantic::Material, PaintSemantic::FuzzySkin],
             modifier_projections: vec![],
+            paint_region_rtree: None,
         })
         .expect("annotation should write one contour-parallel entry per polygon for each semantic");
 
@@ -131,6 +133,7 @@ fn slice_postprocess_paint_annotation_rejects_stale_boundary_paint_after_polygon
             paint_regions: Arc::new(material_regions(5, PaintValue::ToolIndex(1))),
             required_semantics: vec![PaintSemantic::Material],
             modifier_projections: vec![],
+            paint_region_rtree: None,
         }),
         Err(
             SlicePostProcessPaintAnnotationError::BoundaryPaintCardinalityMismatch {
@@ -164,6 +167,7 @@ fn slice_postprocess_paint_annotation_propagates_equal_precedence_custom_conflic
             paint_regions: Arc::new(conflicting_custom_regions(2, semantic.clone())),
             required_semantics: vec![semantic.clone()],
             modifier_projections: vec![],
+            paint_region_rtree: None,
         }),
         Err(
             SlicePostProcessPaintAnnotationError::DeterministicConflict {
@@ -198,6 +202,7 @@ fn slice_postprocess_paint_annotation_defaults_unresolved_points_and_marks_degra
             PaintSemantic::SupportBlocker,
         ],
         modifier_projections: vec![],
+            paint_region_rtree: None,
     })
     .expect(
         "numerically unresolved points should degrade with deterministic defaults instead of aborting",
@@ -289,6 +294,7 @@ fn slice_postprocess_paint_annotation_requires_paint_region_data_for_required_se
             paint_regions: Arc::new(empty_layer_paint_regions(11)),
             required_semantics: vec![PaintSemantic::Material],
             modifier_projections: vec![],
+            paint_region_rtree: None,
         }),
         Err(
             SlicePostProcessPaintAnnotationError::MissingPaintRegionSemantic {
@@ -537,6 +543,7 @@ fn paint_annotation_repeated_runs_emit_byte_identical_warnings() {
             PaintSemantic::SupportBlocker,
         ],
         modifier_projections: vec![],
+        paint_region_rtree: None,
     };
 
     let a = execute_slice_postprocess_paint_annotation(mk_request()).unwrap();
@@ -578,6 +585,7 @@ fn paint_annotation_warnings_ordered_region_then_semantic_then_polygon_then_poin
                 PaintSemantic::SupportBlocker,
             ],
             modifier_projections: vec![],
+            paint_region_rtree: None,
         })
         .unwrap();
 
@@ -629,6 +637,7 @@ fn paint_annotation_warnings_propagate_to_slice_event_collector_as_degraded() {
             paint_regions: Arc::new(partially_resolved_builtin_regions(42)),
             required_semantics: vec![PaintSemantic::Material],
             modifier_projections: vec![],
+            paint_region_rtree: None,
         })
         .unwrap();
 
@@ -692,6 +701,7 @@ fn paint_annotation_fallback_value_is_deterministic_for_each_semantic() {
                 PaintSemantic::SupportBlocker,
             ],
             modifier_projections: vec![],
+            paint_region_rtree: None,
         })
         .unwrap();
 
@@ -766,6 +776,7 @@ fn paint_annotation_does_not_warn_for_points_outside_grid_quantization_window() 
             paint_regions: Arc::new(regions),
             required_semantics: vec![PaintSemantic::Material],
             modifier_projections: vec![],
+            paint_region_rtree: None,
         })
         .expect("annotation must not error on a 5-unit-offset point");
 

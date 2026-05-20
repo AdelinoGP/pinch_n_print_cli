@@ -15,6 +15,7 @@ use slicer_ir::{Point2, Point3WithWidth};
 pub use aabb_tree::{AabbTree, ClosestPointHit, RayHit};
 pub use paint_region::{
     ex_polygon_contains_point, point_in_paint_region, BoundaryInclusion, PaintRegionQueryError,
+    PaintRegionRTreeEntry, PaintRegionRTreeIndex,
 };
 pub use polygon_ops::{
     clip_polygons, difference, intersection, offset, union, xor, ClipOperation, OffsetJoinType,

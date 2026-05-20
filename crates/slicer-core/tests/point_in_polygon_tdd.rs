@@ -98,6 +98,7 @@ fn query(
         semantic,
         Point2::from_mm(x_mm, y_mm),
         boundary_inclusion,
+        None,
     )
 }
 
@@ -350,6 +351,7 @@ fn support_semantics_query_independently_without_cross_semantic_override_leakage
             &PaintSemantic::SupportEnforcer,
             point,
             BoundaryInclusion::Include,
+            None,
         ),
         Ok(Some(PaintValue::Flag(true)))
     );
@@ -360,6 +362,7 @@ fn support_semantics_query_independently_without_cross_semantic_override_leakage
             &PaintSemantic::SupportBlocker,
             point,
             BoundaryInclusion::Include,
+            None,
         ),
         Ok(Some(PaintValue::Flag(true)))
     );

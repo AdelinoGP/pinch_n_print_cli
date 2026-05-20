@@ -1,5 +1,9 @@
 //! Paint-region point query helpers.
 
+use std::collections::HashMap;
+
+use rstar::{RTree, RTreeObject, AABB};
+
 use slicer_ir::{
     ExPolygon, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon, SemanticRegion,
 };
@@ -13,6 +17,41 @@ pub enum BoundaryInclusion {
     Exclude,
 }
 
+/// An entry in the paint region R-Tree spatial index.
+#[derive(Clone, Debug)]
+pub struct PaintRegionRTreeEntry {
+    /// Minimum X coordinate (in 100 nm units, cast to f64).
+    pub min_x: f64,
+    /// Minimum Y coordinate (in 100 nm units, cast to f64).
+    pub min_y: f64,
+    /// Maximum X coordinate (in 100 nm units, cast to f64).
+    pub max_x: f64,
+    /// Maximum Y coordinate (in 100 nm units, cast to f64).
+    pub max_y: f64,
+    /// Index into the SemanticRegion Vec for this (layer_index, semantic) key.
+    pub region_index: usize,
+}
+
+impl RTreeObject for PaintRegionRTreeEntry {
+    type Envelope = AABB<[f64; 2]>;
+
+    fn envelope(&self) -> Self::Envelope {
+        AABB::from_corners([self.min_x, self.min_y], [self.max_x, self.max_y])
+    }
+}
+
+/// Spatial index companion for [`PaintRegionIR`], mapping each
+/// `(layer_index, semantic)` to an `rstar::RTree` for O(log N) region lookups.
+///
+/// This index is NOT stored on the IR — it is a companion type built alongside
+/// the IR and passed through the annotation pipeline separately. When absent,
+/// [`point_in_paint_region`] falls back to linear scan.
+#[derive(Clone, Debug)]
+pub struct PaintRegionRTreeIndex {
+    /// Per-layer, per-semantic R-tree mapping bounding boxes to region indices.
+    pub trees: HashMap<u32, HashMap<PaintSemantic, RTree<PaintRegionRTreeEntry>>>,
+}
+
 /// Deterministic point-query failures for paint-region lookups.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PaintRegionQueryError {
@@ -21,15 +60,73 @@ pub enum PaintRegionQueryError {
 }
 
 /// Queries the paint value for a single point on one layer and semantic.
+///
+/// When `rtree_index` is `Some`, uses spatial index for O(log N) candidate
+/// selection. When `None`, falls back to linear scan over all regions.
 pub fn point_in_paint_region(
     paint_regions: &PaintRegionIR,
     layer_index: u32,
     semantic: &PaintSemantic,
     point: Point2,
     boundary_inclusion: BoundaryInclusion,
+    rtree_index: Option<&PaintRegionRTreeIndex>,
 ) -> Result<Option<PaintValue>, PaintRegionQueryError> {
-    let regions = paint_regions.get(layer_index, semantic);
-    point_in_paint_regions(regions, semantic, point, boundary_inclusion)
+    if let Some(rtree_index) = rtree_index {
+        let tree = match rtree_index.trees.get(&layer_index) {
+            Some(layer_trees) => match layer_trees.get(semantic) {
+                Some(tree) => tree,
+                None => return Ok(None),
+            },
+            None => return Ok(None),
+        };
+
+        if tree.size() == 0 {
+            return Ok(None);
+        }
+
+        let point_f = [point.x as f64, point.y as f64];
+        let query_aabb = AABB::from_corners(point_f, point_f);
+
+        let candidate_indices: Vec<usize> = tree
+            .locate_in_envelope_intersecting(&query_aabb)
+            .map(|entry| entry.region_index)
+            .collect();
+
+        if candidate_indices.is_empty() {
+            return Ok(None);
+        }
+
+        let regions = paint_regions.get(layer_index, semantic);
+
+        let mut winner: Option<(&PaintValue, u64)> = None;
+
+        for &candidate_index in &candidate_indices {
+            let region = &regions[candidate_index];
+            if !semantic_region_contains_point(region, point, boundary_inclusion) {
+                continue;
+            }
+
+            match winner {
+                None => winner = Some((&region.value, region.paint_order)),
+                Some((_, current_order)) if region.paint_order > current_order => {
+                    winner = Some((&region.value, region.paint_order));
+                }
+                Some((current_value, current_order))
+                    if region.paint_order == current_order
+                        && matches!(semantic, PaintSemantic::Custom(_))
+                        && current_value != &region.value =>
+                {
+                    return Err(PaintRegionQueryError::DeterministicConflict);
+                }
+                Some(_) => {}
+            }
+        }
+
+        Ok(winner.map(|(value, _)| value.clone()))
+    } else {
+        let regions = paint_regions.get(layer_index, semantic);
+        point_in_paint_regions(regions, semantic, point, boundary_inclusion)
+    }
 }
 
 /// Queries the paint value for a point against a pre-fetched slice of semantic

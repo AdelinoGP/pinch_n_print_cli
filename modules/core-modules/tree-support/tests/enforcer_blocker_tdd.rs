@@ -78,6 +78,7 @@ fn paint_ir_with_semantic(semantic: PaintSemantic, value: PaintValue) -> Arc<Pai
         polygons: vec![square_expoly()],
         value,
         paint_order: 1,
+        aabb: None,
     };
 
     let mut semantic_regions = HashMap::new();
@@ -105,12 +106,14 @@ fn paint_ir_both_blocker_and_enforcer() -> Arc<PaintRegionIR> {
         polygons: vec![square_expoly()],
         value: PaintValue::Flag(true),
         paint_order: 1,
+        aabb: None,
     };
     let enforcer_region = SemanticRegion {
         object_id: "obj1".to_string(),
         polygons: vec![square_expoly()],
         value: PaintValue::Flag(true),
         paint_order: 1,
+        aabb: None,
     };
 
     let mut semantic_regions = HashMap::new();

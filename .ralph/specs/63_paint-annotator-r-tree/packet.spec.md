@@ -35,7 +35,7 @@ This packet adds the `rstar` crate to `slicer-core` dependencies, defines a `Pai
 
 - **AC-5. Given** a `PaintRegionIR` built without a companion `PaintRegionRTreeIndex` (deserialized from disk, or index not built), **when** `point_in_paint_region` is called with `rtree_index: None`, **then** the function falls back to the existing linear-scan-with-AABB-pre-filter path from packet 62 — no panic on missing index. | `cargo test -p slicer-host --test core_module_ir_access_contract_tdd`
 
-- **AC-6. Given** the end-to-end benchy_4color pipeline run, **when** the `--report` HTML is inspected, **then** the `com.host.slice-postprocess-paint-annotator` wall-clock time is further reduced relative to the packet-62 baseline (additional 20-50% reduction expected from O(N) → O(log N) region selection). | `cargo run --bin slicer-host --release -- run --model resources/benchy_4color.stl --module-dir modules/core-modules --output /tmp/out.gcode --report /tmp/slicer-report.html`
+- **AC-6. Given** the end-to-end benchy_4color pipeline run, **when** the `--report` HTML is inspected, **then** the `Layer::SlicePostProcess` wall-clock time (which includes paint annotation) is further reduced relative to the packet-62 baseline (additional 20-50% reduction expected from O(N) → O(log N) region selection). | `cargo run --bin slicer-host --release -- run --model resources/benchy_4color.3mf --module-dir modules/core-modules --output /tmp/out.gcode --report /tmp/slicer-report.html`
 
 ## Negative Test Cases
 

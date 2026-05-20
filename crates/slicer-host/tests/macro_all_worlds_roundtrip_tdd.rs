@@ -312,7 +312,7 @@ fn prepass_paintseg_macro_guest_round_trips_typed_config_and_result() {
     let (out, _reads) = PrepassStageRunner::run_stage(&dispatcher, &stage, &module, &bb)
         .expect("custom_payload path must succeed through macro-arm typed glue");
     match out {
-        PrepassStageOutput::PaintRegions(ir) => {
+        PrepassStageOutput::PaintRegions(ir, _) => {
             assert!(
                 !ir.per_layer.is_empty(),
                 "macro-arm must drain push_paint_region into a non-empty PaintRegionIR"

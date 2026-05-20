@@ -6,6 +6,7 @@
 use std::fmt;
 use std::sync::Arc;
 
+use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_ir::{
     InfillIR, LayerAnnotation, LayerCollectionIR, LayerPlanIR, MeshIR, MeshSegmentationIR,
     PaintRegionIR, PerimeterIR, RegionMapIR, RetractMode, SeamPlanIR, SliceIR, SupportGeometryIR,
@@ -61,6 +62,7 @@ pub struct Blackboard {
     seam_plan: Option<Arc<SeamPlanIR>>,
     support_plan: Option<Arc<SupportPlanIR>>,
     paint_regions: Option<Arc<PaintRegionIR>>,
+    paint_region_rtree: Option<Arc<PaintRegionRTreeIndex>>,
     region_map: Option<Arc<RegionMapIR>>,
     support_geometry: Option<Arc<SupportGeometryIR>>,
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
@@ -182,6 +184,7 @@ impl Blackboard {
             seam_plan: None,
             support_plan: None,
             paint_regions: None,
+            paint_region_rtree: None,
             region_map: None,
             support_geometry: None,
             layer_outputs: Some((0..layer_count).map(|_| None).collect()),
@@ -267,19 +270,36 @@ impl Blackboard {
         self.support_plan.as_ref()
     }
 
-    /// Commit `PaintRegionIR` exactly once.
-    pub fn commit_paint_regions(&mut self, ir: Arc<PaintRegionIR>) -> Result<(), BlackboardError> {
+    /// Commit `PaintRegionIR` and companion `PaintRegionRTreeIndex` exactly once.
+    pub fn commit_paint_regions(
+        &mut self,
+        ir: Arc<PaintRegionIR>,
+        rtree: Arc<PaintRegionRTreeIndex>,
+    ) -> Result<(), BlackboardError> {
         commit_prepass(
             &mut self.paint_regions,
             ir,
             BlackboardPrepassSlot::PaintRegions,
-        )
+        )?;
+        if self.paint_region_rtree.is_some() {
+            return Err(BlackboardError::DuplicatePrepassCommit {
+                slot: BlackboardPrepassSlot::PaintRegions,
+            });
+        }
+        self.paint_region_rtree = Some(rtree);
+        Ok(())
     }
 
     /// Return the committed paint regions, if available.
     #[must_use]
     pub fn paint_regions(&self) -> Option<&Arc<PaintRegionIR>> {
         self.paint_regions.as_ref()
+    }
+
+    /// Return the committed paint region R-tree index, if available.
+    #[must_use]
+    pub fn paint_region_rtree(&self) -> Option<&Arc<PaintRegionRTreeIndex>> {
+        self.paint_region_rtree.as_ref()
     }
 
     /// Commit `RegionMapIR` exactly once.

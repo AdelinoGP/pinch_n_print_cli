@@ -630,11 +630,13 @@ fn run_paint_annotation(
         projections
     };
 
+    let paint_region_rtree = blackboard.paint_region_rtree().cloned();
     let request = SlicePostProcessPaintAnnotationRequest {
         slice_ir,
         paint_regions,
         required_semantics: required_semantics.to_vec(),
         modifier_projections,
+        paint_region_rtree,
     };
     let result = execute_slice_postprocess_paint_annotation(request).map_err(|source| {
         LayerExecutionError::PaintAnnotation {

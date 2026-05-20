@@ -316,7 +316,7 @@ mod transport_round_trip_tests {
         .expect("wasmtime call")
         .expect("push must succeed");
 
-        let ir = harvest_paint_segmentation_ir_from_ctx(ctx);
+        let (ir, _rtree) = harvest_paint_segmentation_ir_from_ctx(ctx);
 
         let layer = ir.per_layer.get(&3).expect("layer 3 must exist");
         let regions = layer
@@ -365,7 +365,7 @@ mod transport_round_trip_tests {
         )
         .expect("wasmtime call")
         .expect("push A must succeed");
-        let ir_a = harvest_paint_segmentation_ir_from_ctx(ctx_a);
+        let (ir_a, _rtree) = harvest_paint_segmentation_ir_from_ctx(ctx_a);
         let regions_a = ir_a
             .per_layer
             .get(&1)
@@ -397,7 +397,7 @@ mod transport_round_trip_tests {
         )
         .expect("wasmtime call")
         .expect("push B must succeed");
-        let ir_b = harvest_paint_segmentation_ir_from_ctx(ctx_b);
+        let (ir_b, _rtree) = harvest_paint_segmentation_ir_from_ctx(ctx_b);
         let regions_b = ir_b
             .per_layer
             .get(&1)
@@ -434,7 +434,7 @@ mod transport_round_trip_tests {
         .expect("wasmtime call")
         .expect("push must succeed");
 
-        let ir = harvest_paint_segmentation_ir_from_ctx(ctx);
+        let (ir, _rtree) = harvest_paint_segmentation_ir_from_ctx(ctx);
         let regions = ir
             .per_layer
             .get(&0)

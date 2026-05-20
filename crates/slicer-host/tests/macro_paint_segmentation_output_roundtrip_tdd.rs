@@ -242,7 +242,7 @@ fn hole_bearing_typed_value_round_trips() {
     );
 
     let ir = match result {
-        Ok((PrepassStageOutput::PaintRegions(ir), _)) => ir,
+        Ok((PrepassStageOutput::PaintRegions(ir, _), _)) => ir,
         Ok((PrepassStageOutput::None, _)) => {
             panic!("AC-5 FAIL: got None — guest did not emit any paint regions");
         }
@@ -328,7 +328,7 @@ fn custom_semantic_and_custom_value_round_trip() {
     );
 
     let ir = match result {
-        Ok((PrepassStageOutput::PaintRegions(ir), _)) => ir,
+        Ok((PrepassStageOutput::PaintRegions(ir, _), _)) => ir,
         Ok((PrepassStageOutput::None, _)) => {
             panic!("AC-6 FAIL: got None — guest did not emit any paint regions");
         }
@@ -625,7 +625,7 @@ fn no_fixture_yields_empty_harvest() {
     );
 
     match result {
-        Ok((PrepassStageOutput::PaintRegions(ir), _)) => {
+        Ok((PrepassStageOutput::PaintRegions(ir, _), _)) => {
             assert!(
                 ir.per_layer.is_empty(),
                 "AC-7: no fixture must produce empty per_layer harvest, got {:?}",
@@ -811,7 +811,7 @@ fn mmu_model_paint_layers_yield_non_empty_per_layer() {
     );
 
     let ir = match result {
-        Ok((PrepassStageOutput::PaintRegions(ir), _)) => ir,
+        Ok((PrepassStageOutput::PaintRegions(ir, _), _)) => ir,
         Ok((PrepassStageOutput::None, _)) => {
             panic!("AC-7 FAIL: got None — production guest emitted no paint regions for MMU model");
         }

@@ -6,6 +6,7 @@ authors = ["ModularSlicer Team"]
 
 [dependencies]
 clipper2-rust = { workspace = true }
+rstar = "0.12"
 slicer-ir = { path = "../slicer-ir" }
 
 [dev-dependencies]

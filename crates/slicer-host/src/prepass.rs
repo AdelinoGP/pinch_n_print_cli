@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::sync::Arc;
 
+use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_ir::{
     ConfigKey, ConfigValue, LayerPlanIR, MeshSegmentationIR, ModuleId, PaintRegionIR,
     PaintSemantic, RegionMapIR, ResolvedConfig, SeamPlanIR, StageId, SupportGeometryIR,
@@ -19,7 +20,7 @@ use crate::validation::ModuleAccessAudit;
 use crate::{Blackboard, BlackboardError, BlackboardPrepassSlot, CompiledModule, ExecutionPlan};
 
 /// One committed output produced by a prepass stage invocation.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum PrepassStageOutput {
     /// Stage produced no blackboard commit.
     None,
@@ -33,8 +34,8 @@ pub enum PrepassStageOutput {
     SeamPlan(Arc<SeamPlanIR>),
     /// Stage produced `SupportPlanIR`.
     SupportPlan(Arc<SupportPlanIR>),
-    /// Stage produced `PaintRegionIR`.
-    PaintRegions(Arc<PaintRegionIR>),
+    /// Stage produced `PaintRegionIR` and companion `PaintRegionRTreeIndex`.
+    PaintRegions(Arc<PaintRegionIR>, Arc<PaintRegionRTreeIndex>),
     /// Stage produced `RegionMapIR`.
     RegionMap(Arc<RegionMapIR>),
     /// Stage produced `SupportGeometryIR`.
@@ -290,7 +291,7 @@ fn ir_path_for_prepass_output(output: &PrepassStageOutput) -> Option<String> {
         PrepassStageOutput::LayerPlan(_) => Some(String::from("LayerPlanIR")),
         PrepassStageOutput::SeamPlan(_) => Some(String::from("SeamPlanIR")),
         PrepassStageOutput::SupportPlan(_) => Some(String::from("SupportPlanIR")),
-        PrepassStageOutput::PaintRegions(_) => Some(String::from("PaintRegionIR")),
+        PrepassStageOutput::PaintRegions(..) => Some(String::from("PaintRegionIR")),
         PrepassStageOutput::RegionMap(_) => Some(String::from("RegionMapIR")),
         PrepassStageOutput::SupportGeometry(_) => Some(String::from("SupportGeometryIR")),
         // MeshAnalysisAuxiliary is auxiliary data, not a primary IR commit.
@@ -600,7 +601,7 @@ fn commit_stage_output(
         PrepassStageOutput::LayerPlan(ir) => blackboard.commit_layer_plan(ir),
         PrepassStageOutput::SeamPlan(ir) => blackboard.commit_seam_plan(ir),
         PrepassStageOutput::SupportPlan(ir) => blackboard.commit_support_plan(ir),
-        PrepassStageOutput::PaintRegions(ir) => blackboard.commit_paint_regions(ir),
+        PrepassStageOutput::PaintRegions(ir, rtree) => blackboard.commit_paint_regions(ir, rtree),
         PrepassStageOutput::RegionMap(ir) => blackboard.commit_region_map(ir),
         PrepassStageOutput::SupportGeometry(ir) => blackboard.commit_support_geometry(ir),
         // Mesh-analysis auxiliary pushes are surfaced for observability
