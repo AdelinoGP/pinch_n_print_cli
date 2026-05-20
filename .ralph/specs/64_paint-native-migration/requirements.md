@@ -3,6 +3,7 @@
 ## Packet Metadata
 
 - Grouped task IDs:
+  - `TASK-204` (new — paint module-to-host consolidation; primary task for this packet)
   - `TASK-136` (open — E2E progress-event coverage for paint-annotation failure codes 501-504; tangentially relevant)
 - Backlog source: `docs/07_implementation_status.md`
 - Packet status: `draft`
@@ -70,7 +71,7 @@ This packet completes the consolidation: delete both WASM modules, wire the host
   - AC-4: WASM module can still override `Layer::PaintRegionAnnotation` (guard preserved)
   - AC-5: Shared `group_and_union_paint_regions()` produces byte-identical output to pre-change harvest
   - AC-6: Dead WIT code removed, support modules still receive `PaintRegionLayerView`
-  - AC-7: Per-point `par_chunks(32)` saturates threads, output matches serial path
+  - AC-7: Per-point `par_chunks(32)` output is byte-identical to serial path (gating); AC-7b: thread utilization observed via report wall-clock (non-gating)
   - AC-8: `union_paint_regions_at_harvest: false` skips union, still computes AABB
   - AC-9: Migrated WASM tests pass against host functions
   - AC-10: Host test files updated, no `.wasm` loading of deleted modules
@@ -88,13 +89,14 @@ This packet completes the consolidation: delete both WASM modules, wire the host
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `cargo test -p slicer-host --test paint_segmentation_executor_tdd` | AC-5: shared function parity; AC-N3: error handling | FACT pass/fail |
+| `cargo test -p slicer-host --test paint_segmentation_executor_tdd` | AC-5: shared function parity; AC-8: `union_toggle_false_skips_union_but_computes_aabb`; AC-N3: error handling | FACT pass/fail |
 | `cargo test -p slicer-host --test paint_segmentation_host_tdd` | AC-9: migrated WASM tests pass | FACT pass/fail |
 | `cargo test -p slicer-host --test paint_region_annotator_host_tdd` | AC-9: migrated annotator tests pass | FACT pass/fail |
 | `cargo test -p slicer-host --test slice_postprocess_paint_annotation_tdd` | AC-2: identical output; AC-7: per-point parallelism | FACT pass/fail |
 | `cargo test -p slicer-host --test dispatch_tdd` | AC-10: dispatch tests updated | FACT pass/fail |
 | `cargo test -p slicer-host --test macro_paint_segmentation_output_roundtrip_tdd` | AC-10: roundtrip tests updated | FACT pass/fail |
 | `cargo test -p slicer-host --test prepass_executor_tdd` | AC-3: WASM override preserved | FACT pass/fail |
+| `cargo test -p slicer-host --test layer_executor_tdd` | AC-4: `Layer::PaintRegionAnnotation` WASM override preserved | FACT pass/fail |
 | `cargo test -p slicer-host --test benchy_end_to_end_tdd` | AC-10: e2e tests updated | FACT pass/fail |
 | `cargo test -p slicer-host --test manifest_ingestion_tdd` | AC-10: manifest tests updated | FACT pass/fail |
 | `cargo test -p slicer-host --test paint_annotation_integration_tdd` | AC-N4: code 503 fatal on conflict | FACT pass/fail |
@@ -105,7 +107,7 @@ This packet completes the consolidation: delete both WASM modules, wire the host
 | `cargo clippy --workspace -- -D warnings` | Lint gate | FACT pass/fail |
 | `bash modules/core-modules/build-core-modules.sh` | AC-N1, AC-N2: no build attempt for deleted modules | FACT pass/fail |
 | `bash modules/core-modules/build-core-modules.sh --check` | AC-N5: no stale `.wasm` report | FACT pass/fail |
-| `cargo run --bin slicer-host --release -- run --model resources/benchy_4color.3mf --module-dir modules/core-modules --output /tmp/out.gcode --report /tmp/slicer-report.html` | AC-1: pipeline runs without module errors; benchmark opportunity | FACT: pass/fail + report metadata timestamp |
+| `cargo run --bin slicer-host --release -- run --model resources/benchy_4color.3mf --module-dir modules/core-modules --output ./tmp/out.gcode --report ./tmp/slicer-report.html` | AC-1: pipeline runs without module errors; benchmark opportunity | FACT: pass/fail + report metadata timestamp |
 
 ## Step Completion Expectations
 

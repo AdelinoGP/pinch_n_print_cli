@@ -2,10 +2,11 @@
 status: draft
 packet: 64_paint-native-migration
 task_ids:
-  - TASK-136   # [ ] open — E2E progress-event coverage for paint-annotation failure codes 501-504
+  - TASK-204   # [ ] new — paint module-to-host consolidation (primary task for this packet)
+  - TASK-136   # [ ] open — E2E progress-event coverage for paint-annotation failure codes 501-504 (tangential)
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
-copy_note: Consoldiates paint-segmentation and paint-region-annotator from WASM modules into host-native pipeline stages. Adds dedicated Layer::PaintRegionAnnotation stage. Depends on packet 62 (BoundingBox2, union, AABB, cache, early-break, par_iter) and packet 63 (R-tree spatial index). No existing TASK-### directly covers module-to-host migration; TASK-136 is tangentially relevant for the code 504 warning path now exercised by the always-on host annotator.
+copy_note: Consoldiates paint-segmentation and paint-region-annotator from WASM modules into host-native pipeline stages. Adds dedicated Layer::PaintRegionAnnotation stage. Depends on packet 62 (BoundingBox2, union, AABB, cache, early-break, par_iter) and packet 63 (R-tree spatial index). No pre-existing TASK-### covered module-to-host migration, so this packet mints TASK-204 as its primary task ID; TASK-136 is tangentially relevant for the code 504 warning path now exercised by the always-on host annotator.
 ---
 
 # Packet Contract: 64_paint-native-migration
@@ -27,7 +28,7 @@ This packet deletes two WASM core modules and their manifests, removes the dead 
 
 ## Acceptance Criteria
 
-- **AC-1. Given** the `paint-segmentation` and `paint-region-annotator` module directories deleted from `modules/core-modules/` and removed from `build-core-modules.sh`, **when** the host runs the full pipeline on `benchy_4color.3mf`, **then** no error log mentions missing modules, `PrePass::PaintSegmentation` completes via the host `execute_paint_segmentation()` fallback, and `PaintRegionIR` is committed to the blackboard. | `cargo run --bin slicer-host --release -- run --model resources/benchy_4color.3mf --module-dir modules/core-modules --output /tmp/out.gcode --report /tmp/slicer-report.html 2>&1 | Select-String -Pattern "paint-segmentation|paint-region-annotator" | Measure-Object | ForEach-Object { if ($_.Count -eq 0) { "PASS: no missing-module errors" } else { "FAIL" } }`
+- **AC-1. Given** the `paint-segmentation` and `paint-region-annotator` module directories deleted from `modules/core-modules/` and removed from `build-core-modules.sh`, **when** the host runs the full pipeline on `benchy_4color.3mf`, **then** no error log mentions missing modules, `PrePass::PaintSegmentation` completes via the host `execute_paint_segmentation()` fallback, and `PaintRegionIR` is committed to the blackboard. | `cargo run --bin slicer-host --release -- run --model resources/benchy_4color.3mf --module-dir modules/core-modules --output ./tmp/out.gcode --report ./tmp/slicer-report.html 2>&1 | Select-String -Pattern "paint-segmentation|paint-region-annotator" | Measure-Object | ForEach-Object { if ($_.Count -eq 0) { "PASS: no missing-module errors" } else { "FAIL" } }`
 
 - **AC-2. Given** the `Layer::PaintRegionAnnotation` stage inserted before `Layer::SlicePostProcess` in `STAGE_ORDER`, **when** a layer is processed, **then** `execute_slice_postprocess_paint_annotation` runs in the `PaintRegionAnnotation` stage handler and produces identical `boundary_paint` output to the pre-change `SlicePostProcess`-embedded path for the same input. | `cargo test -p slicer-host --test slice_postprocess_paint_annotation_tdd`
 
@@ -39,9 +40,11 @@ This packet deletes two WASM core modules and their manifests, removes the dead 
 
 - **AC-6. Given** the dead WIT code removed (`paint_region_entries` field, `HostPaintSegmentationOutput` impl, `harvest_paint_segmentation_ir`, `object_mesh_to_wit_paint_segmentation_view`, unused `ir_to_wit_paint_*_view` converters, `harvest_paint_segmentation_ir_from_ctx` facade), **when** the workspace compiles, **then** no `unused` warnings reference these symbols and `tree-support` and `traditional-support` still receive valid `PaintRegionLayerView` handles. | `cargo check --workspace`
 
-- **AC-7. Given** the per-point parallelism change (`par_chunks(32)` on a flattened `Vec<Point2>` of contour points across all polygons for a given semantic), **when** processing a benchy_4color layer (~1,000–2,000 contour points), **then** all 16 threads show utilization > 50% in the per-layer paint annotation stage, and the `boundary_paint` output is identical to the pre-change serial-path output. | `cargo test -p slicer-host --test slice_postprocess_paint_annotation_tdd`
+- **AC-7. Given** the per-point parallelism change (`par_chunks(32)` on a flattened `Vec<Point2>` of contour points across all polygons for a given semantic), **when** processing a benchy_4color layer (~1,000–2,000 contour points), **then** the `boundary_paint` output is byte-identical to the pre-change serial-path output for the same input — i.e. the result is order-independent and unaffected by chunking. | `cargo test -p slicer-host --test slice_postprocess_paint_annotation_tdd`
 
-- **AC-8. Given** the config key `union_paint_regions_at_harvest` added to the paint segmentation config schema with default `true`, **when** set to `false` and the pipeline runs, **then** `group_and_union_paint_regions()` skips the `slicer_core::union()` call, each `SemanticRegion` retains individual per-facet polygons, and AABB is still computed. | `cargo test -p slicer-host --test paint_segmentation_executor_tdd`
+- **AC-7b (observational, non-gating). Given** the `par_chunks(32)` annotation path on a 16-thread machine, **when** the end-to-end report run is executed, **then** the `PaintRegionAnnotation` stage wall-clock in the report shows speedup consistent with multi-thread utilization. This is a qualitative observation recorded in the Acceptance Ceremony benchmark log, **not** a binary closure gate (a unit test cannot assert thread utilization). | `cargo run --bin slicer-host --release -- run --model resources/benchy_4color.3mf --module-dir modules/core-modules --output ./tmp/out.gcode --report ./tmp/slicer-report.html`
+
+- **AC-8. Given** the config key `union_paint_regions_at_harvest` added to the paint segmentation config schema with default `true`, **when** set to `false` and `group_and_union_paint_regions()` runs, **then** the `slicer_core::union()` call is skipped, each `SemanticRegion` retains individual per-facet polygons (polygon count equals the input facet count, not the unioned count), and AABB is still computed (`aabb.is_some()`). A **new** test `union_toggle_false_skips_union_but_computes_aabb` must be added to `paint_segmentation_executor_tdd.rs` asserting exactly this — the AC is not satisfied by the pre-existing default-`true` assertions alone. | `cargo test -p slicer-host --test paint_segmentation_executor_tdd -- union_toggle_false_skips_union_but_computes_aabb`
 
 - **AC-9. Given** the 11 WASM `paint_segmentation_tdd.rs` tests moved to `slicer-host/tests/paint_segmentation_host_tdd.rs` and the 9 WASM `paint_region_annotator_tdd.rs` tests moved to `slicer-host/tests/paint_region_annotator_host_tdd.rs`, **when** run against the host functions `execute_paint_segmentation()` and `execute_slice_postprocess_paint_annotation()`, **then** all migrated tests pass with the same assertion values. | `cargo test -p slicer-host --test paint_segmentation_host_tdd`
 
@@ -49,7 +52,7 @@ This packet deletes two WASM core modules and their manifests, removes the dead 
 
 - **AC-11. Given** the `docs/04_host_scheduler.md` updated with the new `Layer::PaintRegionAnnotation` stage, **when** `rg 'Layer::PaintRegionAnnotation' docs/04_host_scheduler.md` is run, **then** the stage is documented with its stage order, handler, and WASM override instructions. | `rg -q 'Layer::PaintRegionAnnotation' docs/04_host_scheduler.md`
 
-- **AC-12. Given** the `docs/07_implementation_status.md` updated with a new task row for this consolidation, **when** `rg 'TASK-###' docs/07_implementation_status.md` (with the actual assigned task ID) is run, **then** the row exists with status `[x]` and a reference to this packet. | `rg -q 'paint-native-migration' docs/07_implementation_status.md`
+- **AC-12. Given** the `docs/07_implementation_status.md` updated with a new task row `TASK-204` for this consolidation, **when** `rg 'paint-native-migration' docs/07_implementation_status.md` is run, **then** the row exists with status `[x]`, carries the `TASK-204` ID, and references this packet. | `rg -q 'paint-native-migration' docs/07_implementation_status.md`
 
 ## Negative Test Cases
 
@@ -81,7 +84,7 @@ This packet deletes two WASM core modules and their manifests, removes the dead 
 
 1. `docs/04_host_scheduler.md` §"Layer Stage Order" — add `Layer::PaintRegionAnnotation` entry documenting its position between `Layer::Slice` and `Layer::SlicePostProcess`, its host handler (`execute_slice_postprocess_paint_annotation`), and the WASM override contract (any module claiming `Layer::PaintRegionAnnotation` runs instead of the host handler). Document the `PrePass::PaintSegmentation` host fallback contract (WASM module runs if present; `execute_paint_segmentation()` runs otherwise). | `rg -q 'Layer::PaintRegionAnnotation' docs/04_host_scheduler.md`
 2. `docs/04_host_scheduler.md` §"PrePass Stage Order" — document that `PrePass::PaintSegmentation` is now guard-based: a WASM module may claim it and override the host, otherwise `execute_paint_segmentation()` runs as the built-in handler. | `rg -q 'guard-based fallback' docs/04_host_scheduler.md`
-3. `docs/07_implementation_status.md` — add new task row for TASK-XXX tracking this consolidation, with status `[x]` and a reference to `64_paint-native-migration`. | `rg -q 'paint-native-migration' docs/07_implementation_status.md`
+3. `docs/07_implementation_status.md` — add new task row `TASK-204` tracking this consolidation, with status `[x]` and a reference to `64_paint-native-migration`. | `rg -q 'paint-native-migration' docs/07_implementation_status.md`
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

@@ -12,6 +12,7 @@
 ### Step 1: Extract shared `group_and_union_paint_regions()` and bring `execute_paint_segmentation()` to feature parity
 
 - Task IDs:
+  - TASK-204
   - TASK-136
 - Objective: Extract the grouping+union+AABB+sort logic from `harvest_paint_segmentation_ir()` into a shared free function `group_and_union_paint_regions(entries: Vec<PaintFacetEntry>) -> PaintRegionIR` in `paint_segmentation.rs`. Replace `execute_paint_segmentation()`'s internal `push_polygon_region()` calls with a call to the shared function, bringing the host implementation to feature parity with the WASM+harvest path (unioned polygons, computed AABB, descending paint_order sort). The `harvest_paint_segmentation_ir()` also calls the shared function — existing output is unchanged, proving byte-identical parity.
 - Precondition: `cargo check --workspace` clean on HEAD. Packet 62 and packet 63 changes are already landed.
@@ -42,6 +43,7 @@
 ### Step 2: Add `Layer::PaintRegionAnnotation` stage variant and stage ordering
 
 - Task IDs:
+  - TASK-204
   - TASK-136
 - Objective: Add `Layer::PaintRegionAnnotation` variant to the `Layer` stage enum, insert it before `Layer::SlicePostProcess` in `STAGE_ORDER`, and add `"Layer::PaintRegionAnnotation"` to `known_stage_ids()`. No handler is wired yet — pure infrastructure.
 - Precondition: Step 1 complete. `cargo check --workspace` clean.
@@ -71,6 +73,7 @@
 ### Step 3: Move host paint annotator to `Layer::PaintRegionAnnotation` handler
 
 - Task IDs:
+  - TASK-204
   - TASK-136
 - Objective: Add the `Layer::PaintRegionAnnotation` handler in `layer_executor.rs` that calls `execute_slice_postprocess_paint_annotation()`. Remove the post-loop `paint_annotation_ran` guard and the host annotator call from the `SlicePostProcess` section. The annotator should run during the new stage, not after `SlicePostProcess` modules. Add the guard-based fallback: if a WASM module claimed `Layer::PaintRegionAnnotation` and ran, skip the host handler.
 - Precondition: Step 2 complete. `Layer::PaintRegionAnnotation` variant exists and compiles.
@@ -85,6 +88,7 @@
   - `crates/slicer-host/src/slice_postprocess.rs` — function body unchanged in this step
 - Expected sub-agent dispatches:
   - "Run `cargo test -p slicer-host --test slice_postprocess_paint_annotation_tdd`; return FACT (pass) or SNIPPETS"
+  - "Run `cargo test -p slicer-host --test layer_executor_tdd`; return FACT (pass) or SNIPPETS" — AC-4: WASM module claiming `Layer::PaintRegionAnnotation` overrides the host handler
   - "Run `cargo check --workspace`; return FACT pass/fail"
 - Context cost: `M`
 - Authoritative docs:
@@ -92,12 +96,14 @@
 - OrcaSlicer refs: none
 - Verification:
   - `cargo test -p slicer-host --test slice_postprocess_paint_annotation_tdd`
+  - `cargo test -p slicer-host --test layer_executor_tdd`
   - `cargo check --workspace`
-- Exit condition: `cargo test -p slicer-host --test slice_postprocess_paint_annotation_tdd` passes. `paint_annotation_ran` is removed. The `PaintRegionAnnotation` handler code path is exercised.
+- Exit condition: `cargo test -p slicer-host --test slice_postprocess_paint_annotation_tdd` and `layer_executor_tdd` pass. `paint_annotation_ran` is removed. The `PaintRegionAnnotation` handler code path is exercised, and a WASM module claiming the stage skips the host handler (AC-4).
 
 ### Step 4: Wire `execute_paint_segmentation()` as `PrePass::PaintSegmentation` host fallback
 
 - Task IDs:
+  - TASK-204
   - TASK-136
 - Objective: Add a guard-based host fallback for `PrePass::PaintSegmentation` in `dispatch.rs` / `prepass.rs`. If a WASM module claims the stage and runs (via existing `dispatch_prepass_call()`), the host fallback is skipped. If no module ran, call `execute_paint_segmentation(blackboard.mesh(), blackboard.surface_classification(), blackboard.layer_plan())` and commit the result via `blackboard.commit_paint_regions()`. Map `PaintSegmentationError` variants to the prepass error type.
 - Precondition: Step 1 complete (shared function available). Step 3 complete (guard pattern established for `Layer::PaintRegionAnnotation`).
@@ -126,6 +132,7 @@
 ### Step 5: Migrate WASM module tests to host test files
 
 - Task IDs:
+  - TASK-204
   - TASK-136
 - Objective: Move `paint_segmentation_tdd.rs` (11 tests) and `paint_region_annotator_tdd.rs` (9 tests) from the deleted module directories to `crates/slicer-host/tests/`. Port the paint-segmentation tests from WASM `PrepassModule::run_paint_segmentation()` calls to host `execute_paint_segmentation()` calls. The paint-region-annotator tests already call host types directly — minimal import changes needed.
 - Precondition: Steps 1-4 complete. Host functions are wired and tested.
@@ -153,6 +160,7 @@
 ### Step 6: Rewrite host test files that load `.wasm` to exercise guard-based fallbacks
 
 - Task IDs:
+  - TASK-204
   - TASK-136
 - Objective: Rewrite 5 host test files that load paint-segmentation or paint-region-annotator `.wasm` files to instead exercise the guard-based host fallback path. Each rewrite must preserve the original test's assertion strength while removing `.wasm` path dependencies.
 - Precondition: Steps 1-4 complete (guard-based fallbacks wired). Step 5 complete (migrated tests pass — confirms host functions are correct).
@@ -192,6 +200,7 @@
 ### Step 7: Delete WASM module directories, update build script, clean stale artifacts
 
 - Task IDs:
+  - TASK-204
   - TASK-136
 - Objective: Delete `modules/core-modules/paint-segmentation/` and `modules/core-modules/paint-region-annotator/` entirely. Remove both from `build-core-modules.sh`. Delete stale `.wasm` artifacts. Run `--check` to verify no stale references.
 - Precondition: Steps 1-6 complete. All tests pass without loading `.wasm` from these modules. No code references the deleted modules.
@@ -222,6 +231,7 @@
 ### Step 8: Remove dead WIT code
 
 - Task IDs:
+  - TASK-204
   - TASK-136
 - Objective: Remove all WIT code that existed solely for the paint-segmentation WASM guest: `paint_region_entries` field on `HostExecutionContext`, `push_paint_segmentation_output()`, `paint_region_entries()` getter, `HostPaintSegmentationOutput` trait impl, `PaintSegmentationOutputData` struct, `object_mesh_to_wit_paint_segmentation_view()`, `ir_to_wit_paint_stroke_view()`, `ir_to_wit_paint_layer_view()`, WIT records `paint-region-entry` and `paint-segmentation-output`, `harvest_paint_segmentation_ir()` function body, and `harvest_paint_segmentation_ir_from_ctx()` in `dispatch_helpers.rs`. **Keep** everything needed by `tree-support` and `traditional-support`: `PaintRegionLayerData`, `paint_region_ir_to_layer_data()`, `paint_semantic_key()`, `paint_semantic_to_string()`, `ir_to_wit_paint_value_view()`, `push_paint_region_layer_view()`, `HostPaintRegionLayerView` impl, `build_paint_layer_data()`.
 - Precondition: Step 7 complete (modules deleted — dead code is now truly unreferenced).
@@ -251,10 +261,11 @@
 ### Step 9: Apply per-point parallelism with `par_chunks(32)`
 
 - Task IDs:
+  - TASK-204
   - TASK-136
 - Objective: Replace the current per-polygon `par_iter()` in `execute_slice_postprocess_paint_annotation` with a flattened-per-semantic `par_chunks(32)` on contour points. For each semantic, collect all contour points from all polygons in all regions into a single `Vec<Point2>` (with index tracking), apply `par_chunks(32).map(...)` for containment checks, and merge thread-local `warnings` and `degraded` flags.
 - Precondition: Steps 1-8 complete. `execute_slice_postprocess_paint_annotation` is the always-on handler for `Layer::PaintRegionAnnotation`. All existing annotation tests pass.
-- Postcondition: Contour points are processed in parallel chunks of 32. Results are identical to the serial path (verified by `slice_postprocess_paint_annotation_tdd`). On a 16-thread benchy_4color run, all threads show >50% utilization during the `PaintRegionAnnotation` stage.
+- Postcondition: Contour points are processed in parallel chunks of 32. **Gating:** results are byte-identical to the serial path (verified by `slice_postprocess_paint_annotation_tdd` — AC-7). **Observational (non-gating, AC-7b):** on a 16-thread benchy_4color run the `PaintRegionAnnotation` stage wall-clock in the report shows multi-thread speedup; recorded in the Acceptance Ceremony benchmark log, not asserted by a unit test.
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-host/src/slice_postprocess.rs` — read lines 357-430 (contour point loop body with current `par_iter()`)
 - Files allowed to edit (≤ 3):
@@ -277,10 +288,11 @@
 ### Step 10: Add `union_paint_regions_at_harvest` config toggle
 
 - Task IDs:
+  - TASK-204
   - TASK-136
 - Objective: Add a `bool` config key `union_paint_regions_at_harvest` (default `true`) to `group_and_union_paint_regions()`. When `false`, the function skips `slicer_core::union()` but still computes AABB from individual polygon contour points and still sorts regions. The config key is documented as a temporary benchmarking toggle.
 - Precondition: Step 1 complete (shared function exists). Steps 2-9 complete.
-- Postcondition: `union_paint_regions_at_harvest: true` produces unioned polygons (current behavior). `false` produces un-unioned polygons with AABB. Both paths produce semantically correct `PaintRegionIR`.
+- Postcondition: `union_paint_regions_at_harvest: true` produces unioned polygons (current behavior). `false` produces un-unioned polygons with AABB. Both paths produce semantically correct `PaintRegionIR`. A new test `union_toggle_false_skips_union_but_computes_aabb` is added to `paint_segmentation_executor_tdd.rs` asserting the `false` path retains per-facet polygon count and `aabb.is_some()` (AC-8).
 - Files allowed to read (with line-range hints when > 300 lines):
   - `crates/slicer-host/src/paint_segmentation.rs` — read `group_and_union_paint_regions()` and `execute_paint_segmentation()` for config plumbing
 - Files allowed to edit (≤ 3):
@@ -288,21 +300,23 @@
 - Files explicitly out-of-bounds for this step:
   - All other files — config change only
 - Expected sub-agent dispatches:
-  - "Run `cargo test -p slicer-host --test paint_segmentation_executor_tdd`; return FACT or SNIPPETS" — both config paths tested
+  - "Run `cargo test -p slicer-host --test paint_segmentation_executor_tdd`; return FACT or SNIPPETS" — both config paths tested, incl. new `union_toggle_false_skips_union_but_computes_aabb`
   - "Run `cargo check --workspace`; return FACT pass/fail"
 - Context cost: `S`
 - Authoritative docs: none — config toggle only
 - OrcaSlicer refs: none
 - Verification:
+  - `cargo test -p slicer-host --test paint_segmentation_executor_tdd -- union_toggle_false_skips_union_but_computes_aabb`
   - `cargo test -p slicer-host --test paint_segmentation_executor_tdd`
   - `cargo check --workspace`
-- Exit condition: `cargo test -p slicer-host --test paint_segmentation_executor_tdd` passes. The `false` path is tested.
+- Exit condition: `cargo test -p slicer-host --test paint_segmentation_executor_tdd` passes, including the new `union_toggle_false_skips_union_but_computes_aabb` test that exercises the `false` path.
 
 ### Step 11: Update documentation
 
 - Task IDs:
+  - TASK-204
   - TASK-136
-- Objective: Update `docs/04_host_scheduler.md` with the new `Layer::PaintRegionAnnotation` stage and guard-based fallback contracts for both stages. Update `docs/07_implementation_status.md` with a new task row for this consolidation.
+- Objective: Update `docs/04_host_scheduler.md` with the new `Layer::PaintRegionAnnotation` stage and guard-based fallback contracts for both stages. Update `docs/07_implementation_status.md` with the new `TASK-204` row for this consolidation (status `[x]`, references `64_paint-native-migration`).
 - Precondition: Steps 1-10 complete. All tests pass.
 - Postcondition: Both doc files contain the specified content (verifiable by `rg` commands in the Doc Impact Statement).
 - Files allowed to read (with line-range hints when > 300 lines):
@@ -350,13 +364,15 @@
 - All 11 steps complete.
 - Every step exit condition is met.
 - Packet acceptance criteria green (each verification command dispatched and returned PASS):
-  - `cargo test -p slicer-host --test paint_segmentation_executor_tdd` → PASS (AC-5, AC-8)
+  - `cargo test -p slicer-host --test paint_segmentation_executor_tdd` → PASS (AC-5)
+  - `cargo test -p slicer-host --test paint_segmentation_executor_tdd -- union_toggle_false_skips_union_but_computes_aabb` → PASS (AC-8)
   - `cargo test -p slicer-host --test paint_segmentation_host_tdd` → PASS (AC-9)
   - `cargo test -p slicer-host --test paint_region_annotator_host_tdd` → PASS (AC-9)
   - `cargo test -p slicer-host --test slice_postprocess_paint_annotation_tdd` → PASS (AC-2, AC-7)
   - `cargo test -p slicer-host --test dispatch_tdd` → PASS (AC-10)
   - `cargo test -p slicer-host --test macro_paint_segmentation_output_roundtrip_tdd` → PASS (AC-10)
   - `cargo test -p slicer-host --test prepass_executor_tdd` → PASS (AC-3)
+  - `cargo test -p slicer-host --test layer_executor_tdd` → PASS (AC-4)
   - `cargo test -p slicer-host --test benchy_end_to_end_tdd` → PASS (AC-10)
   - `cargo test -p slicer-host --test manifest_ingestion_tdd` → PASS (AC-10)
   - `cargo test -p slicer-host --test paint_annotation_integration_tdd` → PASS (AC-N4)

@@ -131,7 +131,7 @@
 - "Run `cargo test -p slicer-host --test paint_region_annotator_host_tdd`; return FACT or SNIPPETS" — purpose: validate Step 5 migrated annotator tests
 - "Run `bash modules/core-modules/build-core-modules.sh && bash modules/core-modules/build-core-modules.sh --check`; return FACT pass/fail" — purpose: validate Step 7 module deletion and AC-N5 stale check
 - "Run `cargo clippy --workspace -- -D warnings`; return FACT pass/fail" — purpose: lint gate after all steps
-- "Run `cargo run --bin slicer-host --release -- run --model resources/benchy_4color.3mf --module-dir modules/core-modules --output /tmp/out.gcode --report /tmp/slicer-report.html`; return FACT (annotator stage wall time + report timestamp)" — purpose: validate AC-1 end-to-end
+- "Run `cargo run --bin slicer-host --release -- run --model resources/benchy_4color.3mf --module-dir modules/core-modules --output ./tmp/out.gcode --report ./tmp/slicer-report.html`; return FACT (annotator stage wall time + report timestamp)" — purpose: validate AC-1 end-to-end
 - "Find all callers of `harvest_paint_segmentation_ir` after deletion; return LOCATIONS" — purpose: confirm no orphan call sites in Step 8
 - "Summarize `docs/01_system_architecture.md` §'dispatch lifecycle' for the PrePass and per-layer staging sections; return SUMMARY ≤ 200 words" — purpose: confirm dispatch contract before Step 4 wiring
 
