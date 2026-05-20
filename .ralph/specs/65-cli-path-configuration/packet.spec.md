@@ -1,6 +1,6 @@
 ---
 status: draft
-packet: 64-cli-path-configuration
+packet: 65-cli-path-configuration
 task_ids:
   - TASK-204
   - TASK-205
@@ -10,7 +10,7 @@ backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
 
-# Packet Contract: 64-cli-path-configuration
+# Packet Contract: 65-cli-path-configuration
 
 ## Goal
 
