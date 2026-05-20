@@ -87,14 +87,42 @@
   - `cargo test -p slicer-host --test slicer_report_html_tdd`
 - Exit condition: Two-column table renders correctly; existing tests pass; rendered HTML contains both column headers.
 
+### Step 3.5: Embed LLM-readable JSON block
+
+- Task IDs: none
+- Objective: Add `#[derive(Serialize)]` to model structs consumed by the JSON summary. Add `LlmReport` struct and `render_llm_data()` in `render.rs`. Embed `<script type="application/json" id="slicer-report-data">` in `render_html()`. Add JSON assertions to the TDD test.
+- Precondition: Step 3 complete (two-column Phase Totals renders correctly).
+- Postcondition: `render_html()` output contains a `<script type="application/json" id="slicer-report-data">` block with valid JSON. The JSON block exists for both populated and empty reports. Test assertions confirm tag presence and parseable JSON with required keys.
+- Files allowed to read:
+  - `crates/slicer-host/src/report/model.rs` — full file (161 lines) to identify structs needing `#[derive(Serialize)]`: `SliceMeta`, `LayerRecord`, `ModuleRecord`, `ParallelismRecord`, `PhaseWallTimes`
+  - `crates/slicer-host/src/report/render.rs` — lines 37-57 (render_html), 390-457 (render_serial_edges, to know where to place `render_llm_data` call), 1-7 (imports area)
+  - `crates/slicer-host/Cargo.toml` — lines 18-19 (confirm serde/serde_json deps — read-only)
+  - `crates/slicer-host/tests/slicer_report_html_tdd.rs` — full file (177 lines, for assertion placement)
+- Files allowed to edit:
+  - `crates/slicer-host/src/report/model.rs` — add `#[derive(Serialize)]` to `SliceMeta`, `LayerRecord`, `ModuleRecord`, `ParallelismRecord`, `MemDelta`, and `PhaseWallTimes`; add `use serde::Serialize;`
+  - `crates/slicer-host/src/report/render.rs` — add `LlmReport` struct (derive `Serialize`) and `render_llm_data()` function; add `use serde::Serialize;`; call from `render_html()`
+  - `crates/slicer-host/tests/slicer_report_html_tdd.rs` — add assertion: `<script type="application/json" id="slicer-report-data">` tag exists; extract and parse JSON; verify required keys (`total_wallclock_ms`, `peak_host_memory_bytes`, `layer_count`, `module_count`, `threads_observed`, `phases`, `module_aggregates`, `per_layer_summary`)
+- Files explicitly out-of-bounds for this step: none
+- Expected sub-agent dispatches:
+  - "Run `cargo test -p slicer-host --test slicer_report_html_tdd`; return FACT (pass/fail + failing test name if any)" — purpose: verify JSON assertions pass
+  - "Run `cargo test -p slicer-host --test slicer_report_html_tdd -- --nocapture`; extract the `<script type=\"application/json\" id=\"slicer-report-data\">...</script>` block; search for keys `total_wallclock_ms`, `phases`, `module_aggregates`, `per_layer_summary`; return FACT (all keys found / missing X)" — purpose: AC-7 key validation
+- Context cost: `M` (adds derives to model.rs + ~60 lines of new code in render.rs + test assertions + serde import; spans 3 files)
+- Authoritative docs: none (self-documenting code)
+- Verification:
+  - `cargo check -p slicer-host`
+  - `cargo test -p slicer-host --test slicer_report_html_tdd`
+  - `rg -q 'slicer-report-data' crates/slicer-host/src/report/render.rs && rg -q 'render_llm_data' crates/slicer-host/src/report/render.rs && echo PASS || echo FAIL`
+  - `rg -q 'Serialize' crates/slicer-host/src/report/model.rs && echo PASS || echo FAIL`
+- Exit condition: JSON block exists in rendered HTML; test assertions pass (tag found, JSON parseable, all required keys present); empty-report test also shows JSON block.
+
 ### Step 4: Update docs/16_slicer_report.md
 
 - Task IDs: none
-- Objective: Update the Phase Totals bullet in `docs/16_slicer_report.md` to describe the two-column layout.
-- Precondition: Step 3 complete (rendered output has two columns).
-- Postcondition: Doc describes "wall-clock" and "worker total (aggregate thread time)" columns for Phase Totals.
+- Objective: Update the Phase Totals bullet in `docs/16_slicer_report.md` to describe the two-column layout. Add a new paragraph documenting the JSON data block.
+- Precondition: Step 3 complete (rendered output has two columns). Step 3.5 complete (JSON block renders correctly).
+- Postcondition: Doc describes "wall-clock" and "worker total (aggregate thread time)" columns for Phase Totals. A new paragraph documents the `<script type="application/json" id="slicer-report-data">` block, its purpose, and key structure.
 - Files allowed to read:
-  - `docs/16_slicer_report.md` — lines 36-51 (§"What the report shows" Phase Totals bullet)
+  - `docs/16_slicer_report.md` — lines 36-51 (§"What the report shows" Phase Totals bullet), full file (147 lines — identify insertion point for JSON paragraph after the "What the report shows" list)
 - Files allowed to edit:
   - `docs/16_slicer_report.md`
 - Files explicitly out-of-bounds: none for this step
@@ -103,7 +131,8 @@
 - Authoritative docs: same file being edited
 - Verification:
   - `rg -q 'Worker total' docs/16_slicer_report.md && rg -q 'aggregate thread' docs/16_slicer_report.md && echo PASS || echo FAIL`
-- Exit condition: Doc grep confirms updated text.
+  - `rg -q 'slicer-report-data' docs/16_slicer_report.md && echo PASS || echo FAIL`
+- Exit condition: Doc grep confirms both Phase Totals update and JSON block documentation present.
 
 ### Step 5: Final gate
 
@@ -133,20 +162,21 @@
 | Step 1 | S | Add one struct + one field to 161-line file |
 | Step 2 | M | Range-read 4 sections of 504-line collector, 3 edit locations |
 | Step 3 | M | Range-read 3 sections of 457-line renderer, ~30 lines edited |
-| Step 4 | S | One-bullet doc update |
+| Step 3.5 | M | Add serde derives to model.rs + ~60 lines render.rs + test assertions |
+| Step 4 | S | Two-paragraph doc update |
 | Step 5 | S | Dispatch-only final gate |
-| **Aggregate** | **M** | Largest single step: M |
+| **Aggregate** | **M** | Largest single step: M (Steps 2 and 3.5) |
 
 ## Packet Completion Gate
 
 - All steps complete.
 - Every step exit condition is met.
-- All acceptance criteria (`AC-1` through `AC-5`) dispatched and returning PASS.
+- All acceptance criteria (`AC-1` through `AC-8`, `AC-N2`) dispatched and returning PASS.
 - `packet.spec.md` ready to move to `status: implemented`.
 
 ## Acceptance Ceremony
 
 - Re-dispatch every pipe-suffixed acceptance criterion command from `packet.spec.md`.
 - Confirm Step 5 gate commands pass (`cargo check`, `cargo clippy`, `cargo test`).
-- Confirm `docs/16_slicer_report.md` grep returns a hit for updated text.
+- Confirm `docs/16_slicer_report.md` greps return hits for both Phase Totals update and JSON block documentation.
 - Record any remaining packet-local risk before moving to `status: implemented`.

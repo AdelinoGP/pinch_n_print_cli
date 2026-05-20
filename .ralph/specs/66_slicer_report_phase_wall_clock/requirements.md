@@ -15,6 +15,8 @@ A user reading the report sees the header `total: 5000 ms` (wall-clock) next to 
 
 The fix records actual phase start/end wall-clock timestamps in the collector, passes them through the model, and renders a two-column Phase Totals table: wall-clock vs. aggregate worker total.
 
+Separately, the HTML report currently has no machine-readable data channel. LLMs and automated analysis tools parsing the report must scrape visual table markup, which is fragile and loses structure (column meanings, units, relationships). The fix embeds a structured JSON summary block (`<script type="application/json" id="slicer-report-data">`) that carries phase timing, per-module aggregates, per-layer summaries, memory, and thread counts in a parseable format invisible to human viewers.
+
 ## In Scope
 
 - Add `PhaseWallTimes` struct (`prepass_ns`, `perlayer_ns`, `postpass_ns`) to `model.rs` and a `phase_times` field on `SliceMeta`
@@ -25,6 +27,12 @@ The fix records actual phase start/end wall-clock timestamps in the collector, p
 - Update `docs/16_slicer_report.md` §"What the report shows" Phase Totals bullet
 - Verify existing `slicer_report_html_tdd.rs` tests pass without regression
 - The "Per-Module Aggregate" and "Per-Stage Aggregate" tables retain their existing `Total (ms)` columns (sum of durations) — these are explicitly aggregates, not wall-clock
+- Derive `serde::Serialize` on report model structs consumed by the JSON summary (`SliceMeta`, `LayerRecord`, `StageRecord`, `ModuleRecord`, `ParallelismRecord`, and new `PhaseWallTimes`)
+- Add a `LlmReport` struct (or inline serde helper) in `render.rs` that curates the JSON summary from the `Report`: total wall-clock, peak memory, thread/layer/module counts, phase wall-clock + worker totals, per-module aggregate rows, per-layer summary rows
+- Add `render_llm_data()` function in `render.rs` that serializes the curated summary with `serde_json::to_string_pretty` and wraps it in `<script type="application/json" id="slicer-report-data">…</script>`
+- Call `render_llm_data()` from `render_html()` after the existing serial-edges section, before `</body></html>`
+- The JSON block renders for all report states, including empty / zero-layer runs
+- Update `docs/16_slicer_report.md` with a paragraph documenting the JSON block, its purpose, and key structure
 
 ## Out of Scope
 
@@ -37,6 +45,10 @@ The fix records actual phase start/end wall-clock timestamps in the collector, p
 - OrcaSlicer parity (no OrcaSlicer equivalent for this debugging report)
 - Adding dedicated benchmark targets for the report collector
 - Changing the phase bracket granularity in `pipeline.rs` (already correct — phase brackets exist at `pipeline.rs:339,357-365,368-398`)
+- Including the full per-module-per-layer detail table in the JSON (only summary-level data; per-module-per-layer is verbose-only)
+- Adding a JSON schema document or version negotiation header (v1 only; no external schema file)
+- Changing any existing HTML table markup — the JSON block is an addition, not a replacement
+- Exposing raw nanosecond values in JSON (values are in milliseconds for human+LLM readability; the existing `fmt_ms()` rounding is reused)
 
 ## Authoritative Docs
 
@@ -48,8 +60,8 @@ The fix records actual phase start/end wall-clock timestamps in the collector, p
 
 ## Acceptance Summary
 
-- Positive cases: `AC-1` through `AC-5` from `packet.spec.md`. `AC-1` confirms the `PhaseWallTimes` struct shape. `AC-2` confirms collector wiring. `AC-3` and `AC-4` confirm renderer output structure and correctness. `AC-5` confirms doc update.
-- Negative cases: None. This packet does not change validation, enforcement, contract boundaries, or error-handling behavior — it adds a new display column to existing report infrastructure.
+- Positive cases: `AC-1` through `AC-8` from `packet.spec.md`. `AC-1` confirms the `PhaseWallTimes` struct shape. `AC-2` confirms collector wiring. `AC-3` and `AC-4` confirm renderer output structure and correctness. `AC-5` confirms doc update. `AC-6` and `AC-7` confirm the JSON block exists and contains all required keys with correct types. `AC-8` confirms the JSON block renders for empty reports.
+- Negative cases: `AC-N2` from `packet.spec.md` — confirms JSON key names do not leak into visible HTML elements. No other negative cases apply; this packet does not change validation, enforcement, or contract boundaries — it adds display columns and a structured data block to existing report infrastructure.
 - Cross-packet impact: None.
 
 ## Verification Commands
@@ -64,11 +76,16 @@ The fix records actual phase start/end wall-clock timestamps in the collector, p
 | `rg -q 'Wall \(ms\)' crates/slicer-host/src/report/render.rs` | AC-3: column header in renderer | FACT pass/fail |
 | `cargo test -p slicer-host --test slicer_report_html_tdd -- collector_full_run_produces_well_formed_html` | AC-4: full report renders correctly | FACT pass/fail |
 | `rg -q 'Worker total' docs/16_slicer_report.md` | AC-5: doc updated | FACT pass/fail |
+| `cargo test -p slicer-host --test slicer_report_html_tdd -- collector_full_run_produces_well_formed_html --nocapture 2>&1 \| rg 'slicer-report-data'` | AC-6: JSON script tag exists in rendered HTML | FACT (tag found / not found) |
+| `cargo test -p slicer-host --test slicer_report_html_tdd -- collector_full_run_produces_well_formed_html` | AC-7: JSON contains all required keys (test asserts parseable JSON with key checks) | FACT pass/fail; SNIPPETS ≤ 20 lines on failure |
+| `cargo test -p slicer-host --test slicer_report_html_tdd -- collector_no_phases_produces_empty_but_valid_html --nocapture 2>&1 \| rg 'slicer-report-data'` | AC-8: JSON block exists for empty report | FACT (tag found / not found) |
+| `cargo test -p slicer-host --test slicer_report_html_tdd -- collector_full_run_produces_well_formed_html` | AC-N2: JSON not in visible elements (verified by test assertion) | FACT pass/fail |
+| `rg -q 'slicer-report-data' docs/16_slicer_report.md` | Doc updated with JSON block documentation | FACT pass/fail |
 
 ## Step Completion Expectations
 
 - Cross-step invariant: No step may regress existing `slicer_report_html_tdd` tests. After each step, run `cargo test -p slicer-host --test slicer_report_html_tdd` to confirm.
-- Step ordering rationale: Model changes (Step 1) must precede collector changes (Step 2) because the collector references `PhaseWallTimes`. Collector changes must precede renderer changes (Step 3) because the renderer reads `SliceMeta.phase_times`. Doc changes (Step 4) are independent but are best done last to reflect the final output.
+- Step ordering rationale: Model changes (Step 1) must precede collector changes (Step 2) because the collector references `PhaseWallTimes`. Collector changes must precede renderer changes (Step 3) because the renderer reads `SliceMeta.phase_times`. The JSON embedding (Step 3.5) must follow the renderer changes because it builds on the two-column Phase Totals output and the serialized data references `slice_meta.phase_times`. Doc changes (Step 4) are independent but are best done last to reflect the final output.
 - No shared scratch state across steps.
 
 ## Context Discipline Notes
