@@ -110,6 +110,23 @@ pub struct PaintLayer {
 
 ```
 
+### Shared geometry types
+
+```rust
+/// 2D axis-aligned bounding box used as spatial pre-filter for paint region
+/// point queries. Uses Point2 in native 100 nm units.
+/// Computed at harvest time; never serialized.
+pub struct BoundingBox2 {
+    pub min: Point2,
+    pub max: Point2,
+}
+
+impl BoundingBox2 {
+    /// Returns true if point is within the box (inclusive bounds).
+    pub fn contains_point(&self, point: Point2) -> bool { /* ... */ }
+}
+```
+
 ### 3MF paint-metadata extraction
 
 The host 3MF loader (`model_loader.rs::parse_3mf_model_xml`) recognizes four
@@ -485,6 +502,16 @@ pub struct SemanticRegion {
     /// Increasing ordinal used to resolve overlaps for the same semantic.
     /// Higher value means "painted later" and therefore higher precedence.
     pub paint_order: u64,
+    /// Optional axis-aligned bounding box pre-filter. Computed at
+    /// `harvest_paint_segmentation_ir` time from unioned polygon contour
+    /// points. Set to `None` when deserialized from storage (field is
+    /// `#[serde(skip_deserializing, default)]`).
+    /// Used as a reconstruction-only optimization in
+    /// `semantic_region_contains_point` — when present and the point is
+    /// outside the AABB, the full polygon containment check is skipped.
+    /// When absent (e.g., deserialized IR), queries fall through to full
+    /// polygon containment without error.
+    pub aabb: Option<BoundingBox2>,
 }
 
 impl PaintRegionIR {

@@ -945,6 +945,7 @@ fn support_enforcer_blocker_paint_precedence() {
             }],
             value: PaintValue::Flag(true),
             paint_order: 0,
+            aabb: None,
         };
         semantic_regions.insert(PaintSemantic::SupportEnforcer, vec![enforcer_region]);
 
@@ -963,6 +964,7 @@ fn support_enforcer_blocker_paint_precedence() {
             }],
             value: PaintValue::Flag(true),
             paint_order: 1,
+            aabb: None,
         };
         semantic_regions.insert(PaintSemantic::SupportBlocker, vec![blocker_region]);
 

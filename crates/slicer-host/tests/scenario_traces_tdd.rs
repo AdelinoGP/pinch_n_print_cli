@@ -230,12 +230,14 @@ fn paint_ir_with_two_custom_regions(layer_idx: u32, orders: (u64, u64)) -> Paint
             polygons: vec![inside.clone()],
             value: PaintValue::Scalar(0.25),
             paint_order: orders.0,
+            aabb: None,
         },
         SemanticRegion {
             object_id: "obj".to_string(),
             polygons: vec![inside],
             value: PaintValue::Scalar(0.75),
             paint_order: orders.1,
+            aabb: None,
         },
     ];
     let mut semantic_regions = HashMap::new();

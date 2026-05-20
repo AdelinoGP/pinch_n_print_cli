@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 62_paint-annotator-performance
 task_ids:
   - TASK-130c   # [x] completed — provides ExPolygon-bearing paint-region transport

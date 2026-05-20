@@ -114,6 +114,25 @@ pub struct BoundingBox3 {
     pub max: Point3,
 }
 
+/// 2D bounding box in scaled integer units (1 unit = 100 nm)
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct BoundingBox2 {
+    /// Minimum corner of the bounding box
+    pub min: Point2,
+    /// Maximum corner of the bounding box
+    pub max: Point2,
+}
+
+impl BoundingBox2 {
+    /// Returns true if the point is inside or on the bounding box edges.
+    pub fn contains_point(&self, point: Point2) -> bool {
+        point.x >= self.min.x
+            && point.x <= self.max.x
+            && point.y >= self.min.y
+            && point.y <= self.max.y
+    }
+}
+
 /// 3D transformation (column-major 4x4 matrix)
 ///
 /// **Hazard:** `Transform3d::default()` is an all-zeros matrix, not the
@@ -981,6 +1000,9 @@ pub struct SemanticRegion {
     pub value: PaintValue,
     /// Paint order (higher means painted later)
     pub paint_order: u64,
+    /// Pre-computed axis-aligned bounding box (reconstructed, not serialized)
+    #[serde(skip_deserializing, default)]
+    pub aabb: Option<BoundingBox2>,
 }
 
 /// Layer paint map

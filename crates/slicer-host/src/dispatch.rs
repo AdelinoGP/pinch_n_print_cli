@@ -2001,12 +2001,35 @@ mod tests {
 /// | `tool-index(u32)`                | `PaintValue::ToolIndex(u32)`  |
 /// | `custom(string)`                 | `PaintValue::Custom(String)`  |
 fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_ir::PaintRegionIR {
+    use rayon::prelude::*;
     use slicer_ir::{
         ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon,
         SemanticRegion,
     };
+    use slicer_ir::slice_ir::BoundingBox2;
+    use std::cmp::Ordering;
     use std::collections::HashMap;
     use wit_host::prepass::PaintValueInput;
+
+    /// Hash+Eq surrogate for PaintValue (which derives only PartialEq)
+    #[derive(Clone, Hash, Eq, PartialEq)]
+    enum HashablePaintValue {
+        Flag(bool),
+        Scalar(u32),
+        ToolIndex(u32),
+        Custom(String),
+    }
+
+    impl From<&PaintValueInput> for HashablePaintValue {
+        fn from(v: &PaintValueInput) -> Self {
+            match v {
+                PaintValueInput::Flag(b) => HashablePaintValue::Flag(*b),
+                PaintValueInput::Scalar(f) => HashablePaintValue::Scalar(f.to_bits()),
+                PaintValueInput::ToolIndex(n) => HashablePaintValue::ToolIndex(*n),
+                PaintValueInput::Custom(s) => HashablePaintValue::Custom(s.clone()),
+            }
+        }
+    }
 
     let parse_semantic = |s: &str| -> PaintSemantic {
         match s {
@@ -2025,57 +2048,121 @@ fn harvest_paint_segmentation_ir(ctx: wit_host::HostExecutionContext) -> slicer_
         }
     };
 
-    let mut per_layer: HashMap<u32, LayerPaintMap> = HashMap::new();
+    // First pass: group per-facet entries by (layer_index, object_id, semantic, value)
+    let mut groups: HashMap<
+        (u32, String, PaintSemantic, HashablePaintValue),
+        Vec<(u64, Vec<ExPolygon>)>,
+    > = HashMap::new();
+
     for (idx, entry) in ctx.paint_region_entries.into_iter().enumerate() {
-        let layer_index = entry.layer_index as u32; // validator at wit_host.rs push_paint_region rejects negative
-        let layer = per_layer
-            .entry(layer_index)
-            .or_insert_with(|| LayerPaintMap {
-                global_layer_index: layer_index,
-                semantic_regions: HashMap::new(),
-            });
+        let layer_index = entry.layer_index as u32;
         let semantic = parse_semantic(&entry.semantic);
         let polygons: Vec<ExPolygon> = entry
             .polygons
             .iter()
             .map(|ep| ExPolygon {
                 contour: Polygon {
-                    points: ep
-                        .contour
-                        .points
-                        .iter()
-                        .map(|pt| Point2 { x: pt.x, y: pt.y })
-                        .collect(),
+                    points: ep.contour.points.iter().map(|pt| Point2 { x: pt.x, y: pt.y }).collect(),
                 },
                 holes: ep
                     .holes
                     .iter()
                     .map(|h| Polygon {
-                        points: h
-                            .points
-                            .iter()
-                            .map(|pt| Point2 { x: pt.x, y: pt.y })
-                            .collect(),
+                        points: h.points.iter().map(|pt| Point2 { x: pt.x, y: pt.y }).collect(),
                     })
                     .collect(),
             })
             .collect();
-        let value = match entry.value {
-            PaintValueInput::Flag(b) => PaintValue::Flag(b),
-            PaintValueInput::Scalar(f) => PaintValue::Scalar(f),
-            PaintValueInput::ToolIndex(n) => PaintValue::ToolIndex(n),
-            PaintValueInput::Custom(s) => PaintValue::Custom(s),
-        };
-        layer
-            .semantic_regions
-            .entry(semantic)
-            .or_default()
-            .push(SemanticRegion {
-                object_id: entry.object_id,
-                polygons,
-                value,
-                paint_order: idx as u64,
+        let value_key = HashablePaintValue::from(&entry.value);
+        let key = (layer_index, entry.object_id.clone(), semantic, value_key);
+        groups.entry(key).or_default().push((idx as u64, polygons));
+    }
+
+    // Second pass: union per-group, compute AABB — parallel over groups
+    let results: Vec<(u32, PaintSemantic, SemanticRegion)> = groups
+        .into_par_iter()
+        .map(|((layer_index, object_id, semantic, hashable_value), entries)| {
+            let value = match hashable_value {
+                HashablePaintValue::Flag(b) => PaintValue::Flag(b),
+                HashablePaintValue::Scalar(bits) => PaintValue::Scalar(f32::from_bits(bits)),
+                HashablePaintValue::ToolIndex(n) => PaintValue::ToolIndex(n),
+                HashablePaintValue::Custom(s) => PaintValue::Custom(s),
+            };
+
+            let all_polygons: Vec<ExPolygon> =
+                entries.iter().flat_map(|(_, polys)| polys.clone()).collect();
+            let paint_order = entries.iter().map(|(po, _)| *po).min().unwrap_or(0);
+
+            let unioned = if all_polygons.len() <= 1 {
+                all_polygons
+            } else {
+                slicer_core::union(&all_polygons, &[])
+            };
+
+            // Compute AABB from unioned contour points
+            let (min_x, min_y, max_x, max_y) = unioned
+                .iter()
+                .flat_map(|ep| &ep.contour.points)
+                .fold(
+                    (i64::MAX, i64::MAX, i64::MIN, i64::MIN),
+                    |(min_x, min_y, max_x, max_y), pt| {
+                        (min_x.min(pt.x), min_y.min(pt.y), max_x.max(pt.x), max_y.max(pt.y))
+                    },
+                );
+            let aabb = if min_x <= max_x && min_y <= max_y {
+                Some(BoundingBox2 {
+                    min: Point2 { x: min_x, y: min_y },
+                    max: Point2 { x: max_x, y: max_y },
+                })
+            } else {
+                None
+            };
+
+            (
+                layer_index,
+                semantic,
+                SemanticRegion {
+                    object_id,
+                    polygons: unioned,
+                    value,
+                    paint_order,
+                    aabb,
+                },
+            )
+        })
+        .collect();
+
+    // Build per_layer HashMap sequentially from parallel results
+    let mut per_layer: HashMap<u32, LayerPaintMap> = HashMap::new();
+    for (layer_index, semantic, region) in results {
+        let layer = per_layer.entry(layer_index).or_insert_with(|| LayerPaintMap {
+            global_layer_index: layer_index,
+            semantic_regions: HashMap::new(),
+        });
+        layer.semantic_regions.entry(semantic).or_default().push(region);
+    }
+
+    // Sort each semantic bucket for byte-deterministic output
+    for layer_map in per_layer.values_mut() {
+        for regions in layer_map.semantic_regions.values_mut() {
+            regions.sort_by(|a, b| {
+                b.paint_order
+                    .cmp(&a.paint_order)
+                    .then_with(|| a.object_id.cmp(&b.object_id))
+                    .then_with(|| match (&a.value, &b.value) {
+                        (PaintValue::Flag(la), PaintValue::Flag(rb)) => la.cmp(rb),
+                        (PaintValue::Flag(_), _) => Ordering::Less,
+                        (_, PaintValue::Flag(_)) => Ordering::Greater,
+                        (PaintValue::Scalar(la), PaintValue::Scalar(rb)) => la.total_cmp(rb),
+                        (PaintValue::Scalar(_), PaintValue::ToolIndex(_)) => Ordering::Less,
+                        (PaintValue::ToolIndex(_), PaintValue::Scalar(_)) => Ordering::Greater,
+                        (PaintValue::ToolIndex(la), PaintValue::ToolIndex(rb)) => la.cmp(rb),
+                        (PaintValue::Custom(la), PaintValue::Custom(rb)) => la.cmp(rb),
+                        (PaintValue::Custom(_), _) => Ordering::Greater,
+                        (_, PaintValue::Custom(_)) => Ordering::Less,
+                    })
             });
+        }
     }
 
     PaintRegionIR {

@@ -1816,6 +1816,7 @@ fn make_paint_region_ir(
                 }],
                 value: PaintValue::Flag(true),
                 paint_order: i as u64,
+                aabb: None,
             })
             .collect();
         semantic_regions.insert(PaintSemantic::SupportEnforcer, regions);
@@ -1838,6 +1839,7 @@ fn make_paint_region_ir(
                 }],
                 value: PaintValue::Flag(true),
                 paint_order: i as u64,
+                aabb: None,
             })
             .collect();
         semantic_regions.insert(PaintSemantic::SupportBlocker, regions);

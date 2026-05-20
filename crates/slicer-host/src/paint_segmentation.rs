@@ -183,6 +183,7 @@ pub fn execute_paint_segmentation(
                         polygons: polys,
                         value: PaintValue::Flag(true),
                         paint_order: 0,
+                        aabb: None,
                     });
                 } else {
                     // Union new polygons into the existing region for this object.
@@ -224,6 +225,7 @@ fn push_polygon_region(
         polygons: vec![polygon],
         value,
         paint_order,
+        aabb: None,
     });
 }
 

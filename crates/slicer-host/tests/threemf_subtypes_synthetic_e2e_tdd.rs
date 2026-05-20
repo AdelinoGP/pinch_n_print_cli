@@ -548,6 +548,7 @@ fn support_enforcer_flows_through_paint_overrides() {
             polygons: vec![],
             value: PaintValue::Flag(true),
             paint_order: 0,
+            aabb: None,
         }],
     );
     let mut per_layer = HashMap::new();

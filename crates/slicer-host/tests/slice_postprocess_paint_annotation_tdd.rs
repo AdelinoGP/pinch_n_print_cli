@@ -474,6 +474,7 @@ fn semantic_region(
         polygons,
         value,
         paint_order,
+        aabb: None,
     }
 }
 

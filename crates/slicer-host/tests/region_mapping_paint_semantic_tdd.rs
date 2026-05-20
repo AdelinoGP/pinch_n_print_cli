@@ -117,6 +117,7 @@ fn paint_region_ir_single(
         polygons: vec![],
         value: PaintValue::Flag(true),
         paint_order: 0,
+        aabb: None,
     };
     let mut semantic_regions = HashMap::new();
     semantic_regions.insert(semantic, vec![region]);
@@ -276,12 +277,14 @@ fn overlap_precedence_is_deterministic() {
         polygons: vec![],
         value: PaintValue::Flag(true),
         paint_order: 0,
+        aabb: None,
     };
     let region_zzz = SemanticRegion {
         object_id: "obj-c".to_string(),
         polygons: vec![],
         value: PaintValue::Flag(true),
         paint_order: 1,
+        aabb: None,
     };
     let mut semantic_regions = HashMap::new();
     semantic_regions.insert(sem_aaa.clone(), vec![region_aaa]);

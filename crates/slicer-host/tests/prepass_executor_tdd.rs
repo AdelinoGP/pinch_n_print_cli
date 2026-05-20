@@ -449,6 +449,7 @@ fn paint_regions_fixture() -> PaintRegionIR {
                         polygons: vec![square_polygon()],
                         value: PaintValue::ToolIndex(0),
                         paint_order: 1,
+                        aabb: None,
                     }],
                 )]),
             },

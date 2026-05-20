@@ -89,6 +89,7 @@ fn fuzzy_paint_regions(layer_index: u32) -> PaintRegionIR {
                         }],
                         value: PaintValue::Flag(false),
                         paint_order: 0,
+                        aabb: None,
                     }],
                 )]),
             },

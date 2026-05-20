@@ -28,9 +28,21 @@ pub fn point_in_paint_region(
     point: Point2,
     boundary_inclusion: BoundaryInclusion,
 ) -> Result<Option<PaintValue>, PaintRegionQueryError> {
+    let regions = paint_regions.get(layer_index, semantic);
+    point_in_paint_regions(regions, semantic, point, boundary_inclusion)
+}
+
+/// Queries the paint value for a point against a pre-fetched slice of semantic
+/// regions (avoiding redundant `PaintRegionIR::get` lookups).
+pub fn point_in_paint_regions(
+    regions: &[SemanticRegion],
+    semantic: &PaintSemantic,
+    point: Point2,
+    boundary_inclusion: BoundaryInclusion,
+) -> Result<Option<PaintValue>, PaintRegionQueryError> {
     let mut winner: Option<(&PaintValue, u64)> = None;
 
-    for region in paint_regions.get(layer_index, semantic) {
+    for region in regions {
         if !semantic_region_contains_point(region, point, boundary_inclusion) {
             continue;
         }
@@ -47,6 +59,11 @@ pub fn point_in_paint_region(
             {
                 return Err(PaintRegionQueryError::DeterministicConflict);
             }
+            Some((_, current_order)) if region.paint_order < current_order => {
+                // Regions are sorted descending by paint_order (Step 2 harvest).
+                // No remaining region can override the current winner.
+                break;
+            }
             Some(_) => {}
         }
     }
@@ -59,6 +76,11 @@ fn semantic_region_contains_point(
     point: Point2,
     boundary_inclusion: BoundaryInclusion,
 ) -> bool {
+    if let Some(ref aabb) = region.aabb {
+        if !aabb.contains_point(point) {
+            return false;
+        }
+    }
     region
         .polygons
         .iter()

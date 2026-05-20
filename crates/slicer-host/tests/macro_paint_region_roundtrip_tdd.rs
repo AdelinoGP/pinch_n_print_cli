@@ -45,6 +45,7 @@ fn material_semantic_region(object_id: &str, paint_order: u64, tool_index: u32) 
         polygons: vec![square_polygon(0, 0, 10_000)], // 1mm square
         value: PaintValue::ToolIndex(tool_index),
         paint_order,
+        aabb: None,
     }
 }
 
@@ -55,6 +56,7 @@ fn fuzzy_skin_semantic_region(object_id: &str, paint_order: u64) -> SemanticRegi
         polygons: vec![square_polygon(5_000, 5_000, 5_000)], // 0.5mm square offset
         value: PaintValue::Flag(true),
         paint_order,
+        aabb: None,
     }
 }
 
@@ -65,6 +67,7 @@ fn support_enforcer_semantic_region(object_id: &str, paint_order: u64) -> Semant
         polygons: vec![square_polygon(2_000, 2_000, 6_000)], // 0.6mm square
         value: PaintValue::Flag(true),
         paint_order,
+        aabb: None,
     }
 }
 
@@ -256,6 +259,7 @@ fn paint_region_ir_custom_semantic_roundtrip() {
                         polygons: vec![square_polygon(0, 0, 8_000)],
                         value: PaintValue::Scalar(0.75),
                         paint_order: 10,
+                        aabb: None,
                     }],
                 )]),
             },
@@ -284,12 +288,14 @@ fn paint_region_ir_paint_order_preserved_through_roundtrip() {
         polygons: vec![square_polygon(0, 0, 5_000)],
         value: PaintValue::Flag(true),
         paint_order: 1, // Lower precedence
+        aabb: None,
     };
     let region_high = SemanticRegion {
         object_id: "obj-1".to_string(),
         polygons: vec![square_polygon(2_000, 2_000, 6_000)],
         value: PaintValue::Flag(true),
         paint_order: 5, // Higher precedence
+        aabb: None,
     };
 
     // After round-trip, paint_order should be identical
@@ -324,12 +330,14 @@ fn paint_region_ir_multiple_regions_same_semantic_roundtrip() {
                             polygons: vec![square_polygon(0, 0, 10_000)],
                             value: PaintValue::ToolIndex(0),
                             paint_order: 0,
+                            aabb: None,
                         },
                         SemanticRegion {
                             object_id: "obj-1".to_string(),
                             polygons: vec![square_polygon(5_000, 5_000, 5_000)],
                             value: PaintValue::ToolIndex(1),
                             paint_order: 1,
+                            aabb: None,
                         },
                     ],
                 )]),

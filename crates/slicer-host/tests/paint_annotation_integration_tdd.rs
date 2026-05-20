@@ -155,6 +155,7 @@ fn ambiguous_triangle_paint_regions(layer_index: u32) -> PaintRegionIR {
             polygons: vec![polygon(vec![(0.0, 0.0), (9.8999, 0.0), (0.0, 9.8999)])],
             value: PaintValue::ToolIndex(3),
             paint_order: 0,
+            aabb: None,
         }],
     );
     let mut per_layer = HashMap::new();

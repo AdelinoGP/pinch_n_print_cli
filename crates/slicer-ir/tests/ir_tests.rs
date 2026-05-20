@@ -393,6 +393,7 @@ mod tests {
             polygons: vec![],
             value: PaintValue::Flag(true),
             paint_order: 1,
+            aabb: None,
         };
 
         test_serde_roundtrip!(region);
