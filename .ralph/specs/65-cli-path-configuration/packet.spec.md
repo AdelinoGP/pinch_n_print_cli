@@ -37,7 +37,7 @@ This packet refactors the `crates/slicer-host/src/cli.rs` and `main.rs` entry po
 
 ## Negative Test Cases
 
-- **AC-N1. Given** a CLI invocation that passes `--module` (a now-removed flag), **when** clap parses the arguments, **then** parsing fails with a non-zero exit code. | `cargo run --bin slicer-host -- run --module /tmp/mod.wasm --model /tmp/model.stl 2>&1; if ($LASTEXITCODE -ne 0) { echo PASS } else { echo FAIL }`
+- **AC-N1. Given** a CLI invocation that passes `--module` (a now-removed flag), **when** clap parses the arguments, **then** parsing fails with a non-zero exit code. | `cargo run --bin slicer-host -- run --module ./tmp/mod.wasm --model ./tmp/model.stl 2>&1; if ($LASTEXITCODE -ne 0) { echo PASS } else { echo FAIL }`
 
 ## Verification
 

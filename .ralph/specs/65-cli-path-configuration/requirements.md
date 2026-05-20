@@ -93,7 +93,7 @@ Refinements:
 | `rg -q 'model(:.*)? PathBuf' crates/slicer-host/src/cli.rs && rg -q 'config(:.*)? PathBuf' crates/slicer-host/src/cli.rs && rg -q 'output(:.*)? PathBuf' crates/slicer-host/src/cli.rs && echo PASS \|\| echo FAIL` | AC-4: String→PathBuf | FACT |
 | `cargo test -p slicer-host --test cli_tdd -- output_path_creates_parent_dir --nocapture` | AC-5: parent-dir creation | FACT pass/fail; SNIPPETS assertion on failure |
 | `rg -c 'validate_run_options' crates/slicer-host/src/main.rs \| rg '^0$' -q && echo PASS \|\| echo FAIL` | AC-6: main.rs doesn't call validate_run_options | FACT |
-| `cargo run --bin slicer-host -- run --module /tmp/mod.wasm --model /tmp/model.stl 2>&1; if ($LASTEXITCODE -ne 0) { echo PASS } else { echo FAIL }` | AC-N1: --module rejected | FACT |
+| `cargo run --bin slicer-host -- run --module ./tmp/mod.wasm --model ./tmp/model.stl 2>&1; if ($LASTEXITCODE -ne 0) { echo PASS } else { echo FAIL }` | AC-N1: --module rejected | FACT |
 | `rg -c 'validate_run_options\|CliError\|--module' crates/slicer-host/tests/ \| rg '^0$' -q && echo PASS \|\| echo FAIL` | Cross-step: no test references to deleted symbols | FACT |
 | `cargo check --workspace` | Workspace build | FACT pass/fail |
 | `cargo clippy --workspace -- -D warnings` | Lint | FACT pass/fail |

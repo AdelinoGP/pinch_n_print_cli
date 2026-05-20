@@ -90,7 +90,7 @@
   - `crates/slicer-host/src/report/collector.rs` — not yet
 - Expected sub-agent dispatches:
   - "Run `cargo run --bin slicer-host -- run --help 2>&1 | rg -q -- '--module' && echo FAIL || echo PASS`; return FACT" — confirm flag removed from help
-  - "Run `cargo run --bin slicer-host -- run --module /tmp/mod.wasm --model /tmp/model.stl 2>&1; echo EXIT:$LASTEXITCODE`; return FACT" — confirm clap rejects removed flag (exit != 0)
+  - "Run `cargo run --bin slicer-host -- run --module ./tmp/mod.wasm --model ./tmp/model.stl 2>&1; echo EXIT:$LASTEXITCODE`; return FACT" — confirm clap rejects removed flag (exit != 0)
   - "Run `cargo check --workspace`; return FACT pass/fail" — validate compile
 - Context cost: **S**
 - Authoritative docs: None beyond the files listed above.
