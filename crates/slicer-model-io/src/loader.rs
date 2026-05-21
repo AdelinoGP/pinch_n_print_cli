@@ -322,8 +322,8 @@ struct Parsed3mfObject {
 struct ParsedComponent {
     objectid: u32,
     transform: Option<[f64; 16]>,
-    /// `p:path` attribute â€” references an external .model file inside the 3MF archive.
-    external_path: Option<String>,
+    /// Sub-model file path inside the 3MF archive (e.g. `/3D/Objects/Cube_1.model`).
+    path: Option<String>,
 }
 
 struct ParsedBuildItem {
@@ -473,219 +473,6 @@ fn apply_transform_to_paint_data(pd: &mut FacetPaintData, m: &[f64; 16]) {
         // Drop strokes that became empty (all triangles were degenerate).
         layer.strokes.retain(|s| !s.triangles.is_empty());
     }
-}
-
-/// Load external .model files referenced via `p:path` on component elements
-/// (3MF production extension). Parses each external model file and merges its
-/// `<object>` definitions into the main objects map so `resolve_object` can
-/// find them by their local id.
-fn load_external_model_objects(
-    objects: &mut HashMap<u32, Parsed3mfObject>,
-    archive: &mut zip::ZipArchive<impl Read + Seek>,
-) -> Result<(), ModelLoadError> {
-    let mut visited: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-
-    loop {
-        let new_paths: Vec<String> = objects
-            .values()
-            .flat_map(|o| o.components.iter())
-            .filter_map(|c| c.external_path.clone())
-            .filter(|p| !visited.contains(p))
-            .collect();
-
-        let mut batch: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-        for p in new_paths {
-            batch.insert(p);
-        }
-
-        if batch.is_empty() {
-            break;
-        }
-
-        for ext_path in &batch {
-            visited.insert(ext_path.clone());
-            // The p:path may have a leading slash; strip it for archive lookup.
-            let archive_path = ext_path.trim_start_matches('/');
-
-            let xml_bytes = match archive.by_name(archive_path) {
-                Ok(mut file) => {
-                    let mut buf = Vec::new();
-                    file.read_to_end(&mut buf)
-                        .map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
-                    buf
-                }
-                Err(_) => {
-                    // External file not found in archive â€” the component will be
-                    // resolved normally (inline mesh must exist in the main doc).
-                    continue;
-                }
-            };
-
-            // Parse the external model file and merge its objects into the main map.
-            let mut reader = quick_xml::Reader::from_reader(xml_bytes.as_slice());
-            reader.config_mut().trim_text(true);
-
-            let mut current_object_id: Option<u32> = None;
-            let mut current_mesh: Option<MeshCollector> = None;
-            let mut current_components: Vec<ParsedComponent> = Vec::new();
-            let mut current_object_transform: Option<[f64; 16]> = None;
-            let mut in_components = false;
-            let mut buf = Vec::new();
-
-            loop {
-                match reader.read_event_into(&mut buf) {
-                    Ok(quick_xml::events::Event::Start(ref e))
-                    | Ok(quick_xml::events::Event::Empty(ref e)) => {
-                        let name_bytes = e.name().as_ref().to_vec();
-                        let local = local_name(&name_bytes);
-                        match local {
-                            b"object" => {
-                                let mut id: Option<u32> = None;
-                                let mut transform: Option<[f64; 16]> = None;
-                                for attr in e.attributes().flatten() {
-                                    match local_name(attr.key.as_ref()) {
-                                        b"id" => id = Some(parse_u32(&attr.value)?),
-                                        b"transform" => {
-                                            transform = Some(parse_3mf_transform(&attr.value)?)
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                let object_id = id.ok_or_else(|| {
-                                    ModelLoadError::ThreeMfParse(
-                                        "external model object missing id attribute".into(),
-                                    )
-                                })?;
-                                current_object_id = Some(object_id);
-                                current_mesh = None;
-                                current_components = Vec::new();
-                                current_object_transform = transform;
-                            }
-                            b"mesh" if current_object_id.is_some() => {
-                                current_mesh = Some(MeshCollector::new());
-                            }
-                            b"vertex" => {
-                                if let Some(ref mut mc) = current_mesh {
-                                    let (mut x, mut y, mut z) = (0.0f32, 0.0f32, 0.0f32);
-                                    for attr in e.attributes().flatten() {
-                                        match attr.key.as_ref() {
-                                            b"x" => x = parse_f32(&attr.value)?,
-                                            b"y" => y = parse_f32(&attr.value)?,
-                                            b"z" => z = parse_f32(&attr.value)?,
-                                            _ => {}
-                                        }
-                                    }
-                                    mc.vertices.push(Point3 { x, y, z });
-                                }
-                            }
-                            b"triangle" => {
-                                if let Some(ref mut mc) = current_mesh {
-                                    let mut v1: Option<u32> = None;
-                                    let mut v2: Option<u32> = None;
-                                    let mut v3: Option<u32> = None;
-                                    for attr in e.attributes().flatten() {
-                                        match attr.key.as_ref() {
-                                            b"v1" => v1 = Some(parse_u32(&attr.value)?),
-                                            b"v2" => v2 = Some(parse_u32(&attr.value)?),
-                                            b"v3" => v3 = Some(parse_u32(&attr.value)?),
-                                            _ => {}
-                                        }
-                                    }
-                                    mc.indices.push(v1.ok_or_else(|| {
-                                        ModelLoadError::ThreeMfParse("triangle missing v1".into())
-                                    })?);
-                                    mc.indices.push(v2.ok_or_else(|| {
-                                        ModelLoadError::ThreeMfParse("triangle missing v2".into())
-                                    })?);
-                                    mc.indices.push(v3.ok_or_else(|| {
-                                        ModelLoadError::ThreeMfParse("triangle missing v3".into())
-                                    })?);
-                                    mc.fuzzy_states.push(None);
-                                    mc.support_states.push(None);
-                                    mc.seam_states.push(None);
-                                    mc.color_states.push(None);
-                                }
-                            }
-                            b"components" if current_object_id.is_some() => {
-                                in_components = true;
-                            }
-                            b"component" if in_components => {
-                                let mut objectid: Option<u32> = None;
-                                let mut transform: Option<[f64; 16]> = None;
-                                let mut external_path: Option<String> = None;
-                                for attr in e.attributes().flatten() {
-                                    match local_name(attr.key.as_ref()) {
-                                        b"objectid" => objectid = Some(parse_u32(&attr.value)?),
-                                        b"transform" => {
-                                            transform = Some(parse_3mf_transform(&attr.value)?)
-                                        }
-                                        b"path" => {
-                                            external_path = Some(
-                                                std::str::from_utf8(&attr.value)
-                                                    .map_err(|e| {
-                                                        ModelLoadError::ThreeMfParse(e.to_string())
-                                                    })?
-                                                    .to_string(),
-                                            );
-                                        }
-                                        _ => {}
-                                    }
-                                }
-                                let oid = objectid.ok_or_else(|| {
-                                    ModelLoadError::ThreeMfParse(
-                                        "external component missing objectid".into(),
-                                    )
-                                })?;
-                                current_components.push(ParsedComponent {
-                                    objectid: oid,
-                                    transform,
-                                    external_path,
-                                });
-                            }
-                            _ => {}
-                        }
-                    }
-                    Ok(quick_xml::events::Event::End(ref e)) => {
-                        let name_bytes = e.name().as_ref().to_vec();
-                        let local = local_name(&name_bytes);
-                        match local {
-                            b"object" => {
-                                if let Some(object_id) = current_object_id.take() {
-                                    let mesh_data = match current_mesh.take() {
-                                        Some(mut mc) if !mc.vertices.is_empty() => {
-                                            let vertices = std::mem::take(&mut mc.vertices);
-                                            let indices = std::mem::take(&mut mc.indices);
-                                            Some((IndexedTriangleSet { vertices, indices }, None))
-                                        }
-                                        _ => None,
-                                    };
-                                    // Only insert if the object doesn't already exist
-                                    // (main model definitions take priority).
-                                    objects.entry(object_id).or_insert(Parsed3mfObject {
-                                        mesh: mesh_data,
-                                        components: std::mem::take(&mut current_components),
-                                        transform: current_object_transform.take(),
-                                    });
-                                }
-                            }
-                            b"components" => in_components = false,
-                            _ => {}
-                        }
-                    }
-                    Ok(quick_xml::events::Event::Eof) => break,
-                    Err(e) => {
-                        return Err(ModelLoadError::ThreeMfParse(format!(
-                            "XML parse error in external model {archive_path}: {e}"
-                        )));
-                    }
-                    _ => {}
-                }
-                buf.clear();
-            }
-        } // end for ext_path in batch
-    } // end loop
-
-    Ok(())
 }
 
 fn resolve_object(
@@ -996,7 +783,34 @@ fn load_3mf(reader: &mut (impl Read + Seek)) -> Result<Vec<ThreeMfPart>, ModelLo
     }; // model_file is dropped here, releasing borrow on archive
 
     let sidecar = parse_3mf_sidecar(&mut archive);
-    parse_3mf_model_xml(&xml_bytes, &sidecar, &mut archive)
+
+    // Pre-read all sub-model files (referenced via <component p:path="...">)
+    let mut sub_models: std::collections::HashMap<String, Vec<u8>> =
+        std::collections::HashMap::new();
+    let model_path_lower = model_path.to_lowercase();
+    let mut sub_model_names: Vec<String> = Vec::new();
+    for i in 0..archive.len() {
+        if let Some(name) = archive.name_for_index(i) {
+            let lower = name.to_lowercase();
+            if lower.ends_with(".model") && name != model_path && lower != model_path_lower {
+                sub_model_names.push(name.to_string());
+            }
+        }
+    }
+    for name in &sub_model_names {
+        let read_result = {
+            let mut file = archive
+                .by_name(name)
+                .map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)
+                .map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
+            buf
+        };
+        sub_models.insert(name.clone(), read_result);
+    }
+
+    parse_3mf_model_xml(&xml_bytes, &sidecar, &sub_models)
 }
 
 /// Find the 3D model XML path inside a 3MF ZIP archive.
@@ -1014,6 +828,384 @@ fn find_model_path<R: Read + Seek>(archive: &zip::ZipArchive<R>) -> Result<Strin
     ))
 }
 
+/// Parse `<object>` elements from a sub-model XML file and insert them into the
+/// supplied `objects` HashMap. Mesh and components are parsed but build items
+/// are ignored (sub-models only contribute geometry, not build placement).
+fn parse_sub_model_objects(
+    xml_bytes: &[u8],
+    objects: &mut HashMap<u32, Parsed3mfObject>,
+) -> Result<(), ModelLoadError> {
+    use quick_xml::events::Event;
+    use quick_xml::Reader;
+
+    let mut reader = Reader::from_reader(xml_bytes);
+    reader.config_mut().trim_text(true);
+
+    let mut current_object_id: Option<u32> = None;
+    let mut current_mesh: Option<MeshCollector> = None;
+    let mut current_components: Vec<ParsedComponent> = Vec::new();
+    let mut current_object_transform: Option<[f64; 16]> = None;
+    let mut in_components = false;
+    let mut buf = Vec::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
+                let name_bytes = e.name().as_ref().to_vec();
+                let local = local_name(&name_bytes);
+                match local {
+                    b"object" => {
+                        let mut id: Option<u32> = None;
+                        let mut transform: Option<[f64; 16]> = None;
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"id" => {
+                                    id = Some(parse_u32(&attr.value)?);
+                                }
+                                b"transform" => {
+                                    transform = Some(parse_3mf_transform(&attr.value)?);
+                                }
+                                _ => {}
+                            }
+                        }
+                        current_object_id = id;
+                        current_object_transform = transform;
+                        current_mesh = Some(MeshCollector::new());
+                        current_components = Vec::new();
+                        in_components = false;
+                    }
+                    b"mesh" => {
+                        // content handled by inner elements (vertices, triangles)
+                    }
+                    b"vertices" => {}
+                    b"vertex" => {
+                        if let Some(ref mut mc) = current_mesh {
+                            let mut x = 0.0f32;
+                            let mut y = 0.0f32;
+                            let mut z = 0.0f32;
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"x" => x = parse_f32(&attr.value)?,
+                                    b"y" => y = parse_f32(&attr.value)?,
+                                    b"z" => z = parse_f32(&attr.value)?,
+                                    _ => {}
+                                }
+                            }
+                            mc.vertices.push(Point3 { x, y, z });
+                        }
+                    }
+                    b"triangles" => {}
+                    b"triangle" => {
+                        if let Some(ref mut mc) = current_mesh {
+                            let mut v1: Option<u32> = None;
+                            let mut v2: Option<u32> = None;
+                            let mut v3: Option<u32> = None;
+                            let mut fuzzy_state: Option<u32> = None;
+                            let mut support_state: Option<u32> = None;
+                            let mut seam_state: Option<u32> = None;
+                            let mut color_state: Option<u32> = None;
+                            let mut color_hex: Option<String> = None;
+                            let mut color_byte_offset: usize = 0;
+                            let mut support_hex: Option<String> = None;
+                            let mut support_byte_offset: usize = 0;
+                            for attr in e.attributes().flatten() {
+                                match attr.key.as_ref() {
+                                    b"v1" => v1 = Some(parse_u32(&attr.value)?),
+                                    b"v2" => v2 = Some(parse_u32(&attr.value)?),
+                                    b"v3" => v3 = Some(parse_u32(&attr.value)?),
+                                    b"paint_fuzzy_skin" => {
+                                        let value_str =
+                                            std::str::from_utf8(&attr.value).map_err(|_| {
+                                                ModelLoadError::PaintMetadata {
+                                                    reason:
+                                                        "paint_fuzzy_skin value is not valid UTF-8"
+                                                            .into(),
+                                                    byte_offset: reader.error_position() as usize,
+                                                }
+                                            })?;
+                                        let state = decode_paint_hex_state(
+                                            value_str,
+                                            reader.error_position() as usize,
+                                        )?;
+                                        if state > 1 {
+                                            return Err(ModelLoadError::PaintMetadata {
+                                                reason: format!(
+                                                    "paint_fuzzy_skin state {state} is not supported \
+                                                     (only state 1 is valid)"
+                                                ),
+                                                byte_offset: reader.error_position() as usize,
+                                            });
+                                        }
+                                        if state == 1 {
+                                            fuzzy_state = Some(state);
+                                            mc.has_any_paint = true;
+                                        }
+                                    }
+                                    b"paint_supports" => {
+                                        let value_str =
+                                            std::str::from_utf8(&attr.value).map_err(|_| {
+                                                ModelLoadError::PaintMetadata {
+                                                    reason:
+                                                        "paint_supports value is not valid UTF-8"
+                                                            .into(),
+                                                    byte_offset: reader.error_position() as usize,
+                                                }
+                                            })?;
+                                        support_hex = Some(value_str.to_string());
+                                        support_byte_offset = reader.error_position() as usize;
+                                        let state = decode_paint_hex_state(
+                                            value_str,
+                                            reader.error_position() as usize,
+                                        )?;
+                                        if state > 2 {
+                                            return Err(ModelLoadError::PaintMetadata {
+                                                reason: format!(
+                                                    "paint_supports state {state} is not supported \
+                                                     (only states 1-2 are valid)"
+                                                ),
+                                                byte_offset: reader.error_position() as usize,
+                                            });
+                                        }
+                                        if state > 0 {
+                                            support_state = Some(state);
+                                            mc.has_any_paint = true;
+                                        }
+                                    }
+                                    b"paint_seam" => {
+                                        let value_str =
+                                            std::str::from_utf8(&attr.value).map_err(|_| {
+                                                ModelLoadError::PaintMetadata {
+                                                    reason: "paint_seam value is not valid UTF-8"
+                                                        .into(),
+                                                    byte_offset: reader.error_position() as usize,
+                                                }
+                                            })?;
+                                        let state = decode_paint_hex_state(
+                                            value_str,
+                                            reader.error_position() as usize,
+                                        )?;
+                                        if state > 2 {
+                                            return Err(ModelLoadError::PaintMetadata {
+                                                reason: format!(
+                                                    "paint_seam state {state} is not supported \
+                                                     (only states 1-2 are valid)"
+                                                ),
+                                                byte_offset: reader.error_position() as usize,
+                                            });
+                                        }
+                                        if state > 0 {
+                                            seam_state = Some(state);
+                                            mc.has_any_paint = true;
+                                        }
+                                    }
+                                    b"paint_color" => {
+                                        let value_str =
+                                            std::str::from_utf8(&attr.value).map_err(|_| {
+                                                ModelLoadError::PaintMetadata {
+                                                    reason: "paint_color value is not valid UTF-8"
+                                                        .into(),
+                                                    byte_offset: reader.error_position() as usize,
+                                                }
+                                            })?;
+                                        color_hex = Some(value_str.to_string());
+                                        color_byte_offset = reader.error_position() as usize;
+                                        let state = decode_paint_hex_state(
+                                            value_str,
+                                            reader.error_position() as usize,
+                                        )?;
+                                        if state > 16 {
+                                            return Err(ModelLoadError::PaintMetadata {
+                                                reason: format!(
+                                                    "paint_color state {state} is not supported (only \
+                                                     states 1-16 are valid)"
+                                                ),
+                                                byte_offset: reader.error_position() as usize,
+                                            });
+                                        }
+                                        if state > 0 {
+                                            color_state = Some(state);
+                                            mc.has_any_paint = true;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                            }
+
+                            if let Some(hex) = &color_hex {
+                                if hex.len() > 2 && color_state.is_some_and(|s| s != 0) {
+                                    let v1_idx = v1.unwrap_or(0) as usize;
+                                    let v2_idx = v2.unwrap_or(0) as usize;
+                                    let v3_idx = v3.unwrap_or(0) as usize;
+                                    if v1_idx < mc.vertices.len()
+                                        && v2_idx < mc.vertices.len()
+                                        && v3_idx < mc.vertices.len()
+                                    {
+                                        let tri_verts = [
+                                            mc.vertices[v1_idx],
+                                            mc.vertices[v2_idx],
+                                            mc.vertices[v3_idx],
+                                        ];
+                                        if let Ok(pairs) = decode_paint_hex_strokes(
+                                            hex,
+                                            tri_verts,
+                                            color_byte_offset,
+                                        ) {
+                                            for (sub_verts, sub_state) in pairs {
+                                                mc.color_strokes.push(PaintStroke {
+                                                    triangles: vec![sub_verts],
+                                                    semantic: PaintSemantic::Material,
+                                                    value: PaintValue::ToolIndex(
+                                                        sub_state.saturating_sub(1),
+                                                    ),
+                                                });
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if let Some(hex) = &support_hex {
+                                if hex.len() > 2 && support_state.is_some_and(|s| s != 0) {
+                                    let v1_idx = v1.unwrap_or(0) as usize;
+                                    let v2_idx = v2.unwrap_or(0) as usize;
+                                    let v3_idx = v3.unwrap_or(0) as usize;
+                                    if v1_idx < mc.vertices.len()
+                                        && v2_idx < mc.vertices.len()
+                                        && v3_idx < mc.vertices.len()
+                                    {
+                                        let tri_verts = [
+                                            mc.vertices[v1_idx],
+                                            mc.vertices[v2_idx],
+                                            mc.vertices[v3_idx],
+                                        ];
+                                        if let Ok(pairs) = decode_paint_hex_strokes(
+                                            hex,
+                                            tri_verts,
+                                            support_byte_offset,
+                                        ) {
+                                            for (sub_verts, sub_state) in pairs {
+                                                let stroke = PaintStroke {
+                                                    triangles: vec![sub_verts],
+                                                    semantic: if sub_state == 1 {
+                                                        PaintSemantic::SupportEnforcer
+                                                    } else {
+                                                        PaintSemantic::SupportBlocker
+                                                    },
+                                                    value: PaintValue::Flag(true),
+                                                };
+                                                if sub_state == 1 {
+                                                    mc.support_strokes_enforcer.push(stroke);
+                                                } else {
+                                                    mc.support_strokes_blocker.push(stroke);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            mc.indices.push(v1.ok_or_else(|| {
+                                ModelLoadError::ThreeMfParse("triangle missing v1".into())
+                            })?);
+                            mc.indices.push(v2.ok_or_else(|| {
+                                ModelLoadError::ThreeMfParse("triangle missing v2".into())
+                            })?);
+                            mc.indices.push(v3.ok_or_else(|| {
+                                ModelLoadError::ThreeMfParse("triangle missing v3".into())
+                            })?);
+
+                            mc.fuzzy_states.push(fuzzy_state);
+                            mc.support_states.push(support_state);
+                            mc.seam_states.push(seam_state);
+                            mc.color_states.push(color_state);
+                        }
+                    }
+                    b"components" if current_object_id.is_some() => {
+                        in_components = true;
+                    }
+                    b"component" if in_components => {
+                        let mut objectid: Option<u32> = None;
+                        let mut transform: Option<[f64; 16]> = None;
+                        let mut path: Option<String> = None;
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"objectid" => {
+                                    objectid = Some(parse_u32(&attr.value)?);
+                                }
+                                b"transform" => {
+                                    transform = Some(parse_3mf_transform(&attr.value)?);
+                                }
+                                b"p:path" => {
+                                    path = Some(
+                                        std::str::from_utf8(&attr.value)
+                                            .map_err(|e| {
+                                                ModelLoadError::ThreeMfParse(e.to_string())
+                                            })?
+                                            .to_string(),
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
+                        let oid = objectid.ok_or_else(|| {
+                            ModelLoadError::ThreeMfParse("3MF component missing objectid".into())
+                        })?;
+                        current_components.push(ParsedComponent {
+                            objectid: oid,
+                            transform,
+                            path,
+                        });
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::End(ref e)) => {
+                let name_bytes = e.name().as_ref().to_vec();
+                let local = local_name(&name_bytes);
+                match local {
+                    b"object" => {
+                        if let Some(object_id) = current_object_id.take() {
+                            let mesh_data = match current_mesh.take() {
+                                Some(mut mc) if !mc.vertices.is_empty() => {
+                                    let facet_count = mc.indices.len() / 3;
+                                    let has_paint = mc.has_any_paint;
+                                    let vertices = std::mem::take(&mut mc.vertices);
+                                    let indices = std::mem::take(&mut mc.indices);
+                                    let paint_data = if has_paint {
+                                        Some(mc.build_paint_data(facet_count)?)
+                                    } else {
+                                        None
+                                    };
+                                    Some((IndexedTriangleSet { vertices, indices }, paint_data))
+                                }
+                                _ => None,
+                            };
+                            // Only insert if not already present (main model objects take priority)
+                            objects.entry(object_id).or_insert(Parsed3mfObject {
+                                mesh: mesh_data,
+                                components: std::mem::take(&mut current_components),
+                                transform: current_object_transform.take(),
+                            });
+                        }
+                    }
+                    b"components" => {
+                        in_components = false;
+                    }
+                    _ => {}
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => {
+                return Err(ModelLoadError::ThreeMfParse(format!(
+                    "XML parse error in sub-model: {e}"
+                )));
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    Ok(())
+}
+
 /// Parse 3MF model XML into a list of (IndexedTriangleSet, optional paint data, modifier volumes)
 /// per build item.
 ///
@@ -1027,7 +1219,7 @@ fn find_model_path<R: Read + Seek>(archive: &zip::ZipArchive<R>) -> Result<Strin
 fn parse_3mf_model_xml(
     xml_bytes: &[u8],
     sidecar: &HashMap<u32, ObjectSidecarInfo>,
-    archive: &mut zip::ZipArchive<impl Read + Seek>,
+    sub_models: &HashMap<String, Vec<u8>>,
 ) -> Result<Vec<ThreeMfPart>, ModelLoadError> {
     use quick_xml::events::Event;
     use quick_xml::Reader;
@@ -1316,7 +1508,7 @@ fn parse_3mf_model_xml(
                     b"component" if in_components => {
                         let mut objectid: Option<u32> = None;
                         let mut transform: Option<[f64; 16]> = None;
-                        let mut external_path: Option<String> = None;
+                        let mut path: Option<String> = None;
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
                                 b"objectid" => {
@@ -1325,19 +1517,16 @@ fn parse_3mf_model_xml(
                                 b"transform" => {
                                     transform = Some(parse_3mf_transform(&attr.value)?);
                                 }
-                                _ => {
-                                    // Check for p:path (production extension).
-                                    let local = local_name(attr.key.as_ref());
-                                    if local == b"path" {
-                                        external_path = Some(
-                                            std::str::from_utf8(&attr.value)
-                                                .map_err(|e| {
-                                                    ModelLoadError::ThreeMfParse(e.to_string())
-                                                })?
-                                                .to_string(),
-                                        );
-                                    }
+                                b"p:path" => {
+                                    path = Some(
+                                        std::str::from_utf8(&attr.value)
+                                            .map_err(|e| {
+                                                ModelLoadError::ThreeMfParse(e.to_string())
+                                            })?
+                                            .to_string(),
+                                    );
                                 }
+                                _ => {}
                             }
                         }
                         let oid = objectid.ok_or_else(|| {
@@ -1346,7 +1535,7 @@ fn parse_3mf_model_xml(
                         current_components.push(ParsedComponent {
                             objectid: oid,
                             transform,
-                            external_path,
+                            path,
                         });
                     }
                     b"build" => {
@@ -1428,6 +1617,28 @@ fn parse_3mf_model_xml(
         buf.clear();
     }
 
+    // Resolve sub-model references (<component p:path="...">)
+    // Collect referenced paths first to avoid borrowing objects while mutating.
+    // Strip leading '/' from paths — 3MF p:path uses "/3D/Objects/..." but
+    // archive entries use "3D/Objects/...".
+    let mut paths_to_resolve: Vec<String> = Vec::new();
+    for obj in objects.values() {
+        for comp in &obj.components {
+            if let Some(ref path) = comp.path {
+                let normalized = path.strip_prefix('/').unwrap_or(path);
+                if !paths_to_resolve.contains(&normalized.to_string())
+                    && sub_models.contains_key(normalized)
+                {
+                    paths_to_resolve.push(normalized.to_string());
+                }
+            }
+        }
+    }
+    for path in &paths_to_resolve {
+        let sub_xml = &sub_models[path];
+        parse_sub_model_objects(sub_xml, &mut objects)?;
+    }
+
     if build_items.is_empty() {
         let first_obj = objects
             .values()
@@ -1439,12 +1650,6 @@ fn parse_3mf_model_xml(
             .ok_or_else(|| ModelLoadError::ThreeMfParse("no geometry found in 3MF".into()))?;
         return Ok(vec![(its, paint, Vec::new(), HashMap::new())]);
     }
-
-    // Load external model files referenced via p:path on component elements.
-    // The production extension allows components to reference separate .model
-    // files inside the archive. We parse those files and merge their objects
-    // into the main objects map so resolve_object can find them by id.
-    load_external_model_objects(&mut objects, archive)?;
 
     let mut results = Vec::new();
     for item in &build_items {

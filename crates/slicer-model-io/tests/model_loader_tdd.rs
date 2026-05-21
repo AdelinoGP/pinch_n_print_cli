@@ -828,3 +828,244 @@ fn load_3mf_4color_layer_count_at_least_two() {
         pd.layers.len()
     );
 }
+
+// ---------------------------------------------------------------------------
+// cube_4color.3mf loader tests
+// ---------------------------------------------------------------------------
+
+fn cube_4color_path() -> PathBuf {
+    PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../resources/cube_4color.3mf"
+    ))
+}
+
+fn cube_fuzzy_painted_path() -> PathBuf {
+    PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../resources/cube_fuzzyPainted.3mf"
+    ))
+}
+
+#[test]
+fn load_3mf_cube_4color_loads() {
+    let path = cube_4color_path();
+    let result = load_model(&path);
+    assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+    let mesh_ir = result.unwrap();
+    let pd = mesh_ir.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint_data must be Some");
+    let has_material = pd
+        .layers
+        .iter()
+        .any(|l| matches!(l.semantic, PaintSemantic::Material));
+    assert!(has_material, "expected Material layer in cube_4color");
+}
+
+#[test]
+fn load_3mf_cube_4color_material_spans_4_tool_indices() {
+    let path = cube_4color_path();
+    let mesh = load_model(&path).unwrap();
+    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
+    let mat = pd
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::Material)
+        .expect("no Material layer");
+    let indices: std::collections::HashSet<u32> = mat
+        .facet_values
+        .iter()
+        .filter_map(|v| {
+            if let Some(PaintValue::ToolIndex(n)) = v {
+                Some(*n)
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        indices.len(),
+        4,
+        "expected exactly 4 distinct ToolIndex values (0=orange, 1=green, 2=blue, 3=red), got {}: {:?}",
+        indices.len(),
+        indices
+    );
+    for expected in [0, 1, 2, 3] {
+        assert!(
+            indices.contains(&expected),
+            "expected ToolIndex({expected}) present"
+        );
+    }
+}
+
+#[test]
+fn load_3mf_cube_4color_strokes_populated() {
+    let path = cube_4color_path();
+    let mesh = load_model(&path).unwrap();
+    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
+    let mat = pd
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::Material)
+        .expect("no Material layer");
+    assert!(
+        !mat.strokes.is_empty(),
+        "Material strokes must be non-empty; cube_4color has hex subdivision (circles, banding)"
+    );
+    for stroke in &mat.strokes {
+        for tri in &stroke.triangles {
+            let [a, b, c] = tri;
+            assert!(
+                a != b && b != c && a != c,
+                "degenerate stroke triangle found: a={a:?} b={b:?} c={c:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn load_3mf_cube_4color_no_fuzzy_layer() {
+    let path = cube_4color_path();
+    let mesh = load_model(&path).unwrap();
+    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
+    let has_fuzzy = pd
+        .layers
+        .iter()
+        .any(|l| l.semantic == PaintSemantic::FuzzySkin);
+    assert!(
+        !has_fuzzy,
+        "cube_4color has no fuzzy skin painting; FuzzySkin layer must be absent"
+    );
+}
+
+#[test]
+fn load_3mf_cube_4color_facet_coverage() {
+    let path = cube_4color_path();
+    let mesh = load_model(&path).unwrap();
+    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
+    let mat = pd
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::Material)
+        .expect("no Material layer");
+    let facet_count = mat.facet_values.len();
+    assert_eq!(facet_count, 12, "cube has 12 triangles");
+    let painted: usize = mat
+        .facet_values
+        .iter()
+        .filter(|v| matches!(v, Some(PaintValue::ToolIndex(_))))
+        .count();
+    let unpainted: usize = mat.facet_values.iter().filter(|v| v.is_none()).count();
+    assert!(
+        painted >= 9,
+        "at least 9 of 12 facets must have Material paint, got {painted}"
+    );
+    assert!(
+        unpainted >= 1,
+        "at least 1 facet must be unpainted (bottom face has unpainted triangle), got {unpainted}"
+    );
+    assert_eq!(painted + unpainted, 12, "all facets accounted for");
+}
+
+// ---------------------------------------------------------------------------
+// cube_fuzzyPainted.3mf loader tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn load_3mf_cube_fuzzy_painted_loads() {
+    let path = cube_fuzzy_painted_path();
+    let result = load_model(&path);
+    assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+    let mesh_ir = result.unwrap();
+    let pd = mesh_ir.objects[0]
+        .paint_data
+        .as_ref()
+        .expect("paint_data must be Some");
+    let has_fuzzy = pd
+        .layers
+        .iter()
+        .any(|l| l.semantic == PaintSemantic::FuzzySkin);
+    assert!(has_fuzzy, "expected FuzzySkin layer in cube_fuzzyPainted");
+}
+
+#[test]
+fn load_3mf_cube_fuzzy_painted_partial_coverage() {
+    let path = cube_fuzzy_painted_path();
+    let mesh = load_model(&path).unwrap();
+    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
+    let fuzzy = pd
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::FuzzySkin)
+        .expect("no FuzzySkin layer");
+    let painted: usize = fuzzy
+        .facet_values
+        .iter()
+        .filter(|v| matches!(v, Some(PaintValue::Flag(true))))
+        .count();
+    let unpainted: usize = fuzzy.facet_values.iter().filter(|v| v.is_none()).count();
+    assert_eq!(
+        painted, 7,
+        "expected 7 facets FuzzySkin Flag(true) (front fully+fuzzy circle+ back half), got {painted}"
+    );
+    assert_eq!(
+        unpainted, 5,
+        "expected 5 facets unpainted FuzzySkin (left+back half+bottom), got {unpainted}"
+    );
+    assert_eq!(painted + unpainted, 12, "all 12 facets accounted for");
+}
+
+#[test]
+fn load_3mf_cube_fuzzy_painted_facet_count_matches_mesh() {
+    let path = cube_fuzzy_painted_path();
+    let mesh = load_model(&path).unwrap();
+    let tri_count = mesh.objects[0].mesh.indices.len() / 3;
+    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
+    let fuzzy = pd
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::FuzzySkin)
+        .expect("no FuzzySkin layer");
+    assert_eq!(
+        fuzzy.facet_values.len(),
+        tri_count,
+        "facet_values length {} must match triangle count {}",
+        fuzzy.facet_values.len(),
+        tri_count
+    );
+}
+
+#[test]
+fn load_3mf_cube_fuzzy_painted_no_material_layer() {
+    let path = cube_fuzzy_painted_path();
+    let mesh = load_model(&path).unwrap();
+    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
+    let has_material = pd
+        .layers
+        .iter()
+        .any(|l| l.semantic == PaintSemantic::Material);
+    assert!(
+        !has_material,
+        "cube_fuzzyPainted has no paint_color attributes; Material layer must be absent"
+    );
+}
+
+#[test]
+fn load_3mf_cube_fuzzy_painted_fuzzy_strokes_are_empty() {
+    let path = cube_fuzzy_painted_path();
+    let mesh = load_model(&path).unwrap();
+    let pd = mesh.objects[0].paint_data.as_ref().unwrap();
+    let fuzzy = pd
+        .layers
+        .iter()
+        .find(|l| l.semantic == PaintSemantic::FuzzySkin)
+        .expect("no FuzzySkin layer");
+    assert!(
+        fuzzy.strokes.is_empty(),
+        "3MF fuzzy skin hex subdivision (circles) is parsed by model_loader but \
+         strokes are hardcoded to Vec::new() in model_loader.rs:1627. \
+         Once fixed, fuzzy circles will become distinguishable from full-face fuzzy paint."
+    );
+}
