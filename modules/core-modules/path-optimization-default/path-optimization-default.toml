@@ -60,6 +60,14 @@ default = "gcode"
 display = "Retraction Mode"
 group   = "Travel Retraction"
 
+[config.schema.wall_sequence]
+type        = "enum"
+values      = ["inner_outer", "outer_inner"]
+default     = "inner_outer"
+display     = "Wall Sequence"
+group       = "Path Optimization"
+description = "Wall ordering: inner_outer prints inner walls first, outer_inner prints outer walls first"
+
 [config.overridable-per-region]
 keys = []
 

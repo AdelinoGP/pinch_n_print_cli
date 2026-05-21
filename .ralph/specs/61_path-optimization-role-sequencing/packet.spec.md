@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 61_path-optimization-role-sequencing
 task_ids:
   - TASK-152h
