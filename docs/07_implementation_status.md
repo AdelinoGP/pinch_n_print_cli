@@ -148,6 +148,10 @@ Last updated: 2026-05-08
 - [x] TASK-194 — Emit configurable `machine_start_gcode` / `machine_end_gcode` via a `PostPass::GCodePostProcess` module that prepends/appends `Raw` commands carrying the resolved templates. (59_machine-start-end-gcode-emission)
 - [x] TASK-194a — Create `modules/core-modules/machine-gcode-emit/` declaring four `[config.schema.*]` entries; `run_gcode_postprocess` performs real `[key]` substitution against the effective `ConfigView` and rebuilds the command list as `[Raw(start), ...existing..., Raw(end)]`. (59_machine-start-end-gcode-emission)
 - [x] TASK-194b — Promote `M82`/`M83` from the hard-coded `DefaultGCodeSerializer` preamble to a new `GCodeCommand::ExtrusionMode { absolute: bool }` variant pushed by `DefaultGCodeEmitter` so a `GCodePostProcess` module can prepend before it. (59_machine-start-end-gcode-emission)
+- [x] TASK-204: Normalize String CLI arg types to PathBuf
+- [x] TASK-205: Complete HostRunOptions, delete validate_run_options and CliError
+- [x] TASK-206: Remove dead --module flag
+- [x] TASK-207: Create parent directories for --output and --report paths
 
 ### Workstream 4 — Progress events and Python bridge coverage
 

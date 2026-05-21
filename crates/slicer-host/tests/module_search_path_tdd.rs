@@ -15,15 +15,8 @@ use std::path::PathBuf;
 
 #[test]
 fn cli_module_dir_is_empty_vec_when_flag_absent() {
-    let cli = HostCli::try_parse_from([
-        "slicer-host",
-        "run",
-        "--module",
-        "/tmp/mod.wasm",
-        "--model",
-        "/tmp/model.stl",
-    ])
-    .expect("parse with no --module-dir");
+    let cli = HostCli::try_parse_from(["slicer-host", "run", "--model", "/tmp/model.stl"])
+        .expect("parse with no --module-dir");
 
     match cli.command {
         HostCommands::Run { module_dir, .. } => assert!(module_dir.is_empty()),
@@ -36,8 +29,6 @@ fn cli_module_dir_single_value() {
     let cli = HostCli::try_parse_from([
         "slicer-host",
         "run",
-        "--module",
-        "/tmp/mod.wasm",
         "--model",
         "/tmp/model.stl",
         "--module-dir",
@@ -58,8 +49,6 @@ fn cli_module_dir_repeated_preserves_order() {
     let cli = HostCli::try_parse_from([
         "slicer-host",
         "run",
-        "--module",
-        "/tmp/mod.wasm",
         "--model",
         "/tmp/model.stl",
         "--module-dir",
@@ -88,15 +77,8 @@ fn cli_module_dir_repeated_preserves_order() {
 
 #[test]
 fn cli_no_default_module_paths_defaults_false() {
-    let cli = HostCli::try_parse_from([
-        "slicer-host",
-        "run",
-        "--module",
-        "/tmp/mod.wasm",
-        "--model",
-        "/tmp/model.stl",
-    ])
-    .expect("parse without flag");
+    let cli = HostCli::try_parse_from(["slicer-host", "run", "--model", "/tmp/model.stl"])
+        .expect("parse without flag");
 
     match cli.command {
         HostCommands::Run {
@@ -112,8 +94,6 @@ fn cli_no_default_module_paths_true_when_given() {
     let cli = HostCli::try_parse_from([
         "slicer-host",
         "run",
-        "--module",
-        "/tmp/mod.wasm",
         "--model",
         "/tmp/model.stl",
         "--no-default-module-paths",

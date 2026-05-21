@@ -1,19 +1,15 @@
 //! TDD tests for the slicer-host CLI argument parsing.
 
 use clap::Parser;
-use slicer_host::cli::{CliError, HostCli, HostCommands};
-use std::io::Write;
+use slicer_host::cli::{HostCli, HostCommands};
 use std::path::PathBuf;
 
 #[test]
-fn run_requires_model_not_module() {
+fn run_requires_model() {
     let result = HostCli::try_parse_from(["slicer-host", "run"]);
     assert!(result.is_err(), "run without --model should fail");
     let result = HostCli::try_parse_from(["slicer-host", "run", "--model", "model.stl"]);
-    assert!(
-        result.is_ok(),
-        "run with --model but without --module should succeed"
-    );
+    assert!(result.is_ok(), "run with --model should succeed");
 }
 
 #[test]
@@ -21,8 +17,6 @@ fn run_parses_all_flags() {
     let cli = HostCli::try_parse_from([
         "slicer-host",
         "run",
-        "--module",
-        "/tmp/mod.wasm",
         "--model",
         "/tmp/model.stl",
         "--config",
@@ -36,20 +30,16 @@ fn run_parses_all_flags() {
 
     match cli.command {
         HostCommands::Run {
-            module,
             model,
             config,
             output,
             module_dir,
             no_default_module_paths,
-            thumbnail: _,
-            report: _,
-            report_verbose: _,
+            ..
         } => {
-            assert_eq!(module.as_deref(), Some("/tmp/mod.wasm"));
-            assert_eq!(model, "/tmp/model.stl");
-            assert_eq!(config.as_deref(), Some("/tmp/config.json"));
-            assert_eq!(output.as_deref(), Some("/tmp/out.gcode"));
+            assert_eq!(model, PathBuf::from("/tmp/model.stl"));
+            assert_eq!(config, Some(PathBuf::from("/tmp/config.json")));
+            assert_eq!(output, Some(PathBuf::from("/tmp/out.gcode")));
             assert_eq!(module_dir, vec![PathBuf::from("/modules")]);
             assert!(!no_default_module_paths);
         }
@@ -59,15 +49,8 @@ fn run_parses_all_flags() {
 
 #[test]
 fn run_optional_config_and_output() {
-    let cli = HostCli::try_parse_from([
-        "slicer-host",
-        "run",
-        "--module",
-        "/tmp/mod.wasm",
-        "--model",
-        "/tmp/model.stl",
-    ])
-    .expect("should parse with only required flags");
+    let cli = HostCli::try_parse_from(["slicer-host", "run", "--model", "/tmp/model.stl"])
+        .expect("should parse with only required flags");
 
     match cli.command {
         HostCommands::Run {
@@ -75,6 +58,7 @@ fn run_optional_config_and_output() {
             output,
             module_dir,
             no_default_module_paths,
+            model: _,
             ..
         } => {
             assert!(config.is_none(), "config should be None");
@@ -87,6 +71,24 @@ fn run_optional_config_and_output() {
         }
         _ => panic!("expected Run command"),
     }
+}
+
+#[test]
+fn output_path_creates_parent_dir() {
+    use slicer_host::report::Collector;
+
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("subdir").join("out.gcode");
+
+    let collector = Collector::new_with_verbose("test", false);
+    let result = collector.finish_and_render_to(&nested);
+    assert!(
+        result.is_ok(),
+        "should create parent dir and write report: {:?}",
+        result.err()
+    );
+    assert!(nested.exists(), "report file should exist after write");
+    assert!(nested.parent().unwrap().exists(), "parent dir should exist");
 }
 
 #[test]
@@ -124,78 +126,4 @@ fn config_schema_custom_dir() {
         }
         _ => panic!("expected ConfigSchema command"),
     }
-}
-
-#[test]
-fn validate_run_options_missing_model() {
-    // Create a real module file but use a nonexistent model path.
-    let dir = tempfile::tempdir().unwrap();
-    let module_path = dir.path().join("mod.wasm");
-    std::fs::File::create(&module_path).unwrap();
-
-    let result = slicer_host::cli::validate_run_options(
-        Some(module_path.to_str().unwrap()),
-        "/nonexistent/model.stl",
-        None,
-        None,
-        &["."],
-    );
-
-    assert!(result.is_err());
-    match result.unwrap_err() {
-        CliError::MissingModel(p) => {
-            assert_eq!(p.to_str().unwrap(), "/nonexistent/model.stl");
-        }
-        other => panic!("expected MissingModel, got: {:?}", other),
-    }
-}
-
-#[test]
-fn validate_run_options_missing_module() {
-    let result = slicer_host::cli::validate_run_options(
-        Some("/nonexistent/mod.wasm"),
-        "/nonexistent/model.stl",
-        None,
-        None,
-        &["."],
-    );
-
-    assert!(result.is_err());
-    match result.unwrap_err() {
-        CliError::MissingModule(p) => {
-            assert_eq!(p.to_str().unwrap(), "/nonexistent/mod.wasm");
-        }
-        other => panic!("expected MissingModule, got: {:?}", other),
-    }
-}
-
-#[test]
-fn validate_run_options_valid() {
-    let dir = tempfile::tempdir().unwrap();
-    let module_path = dir.path().join("mod.wasm");
-    let model_path = dir.path().join("model.stl");
-
-    let mut f = std::fs::File::create(&module_path).unwrap();
-    f.write_all(b"fake wasm").unwrap();
-    let mut f = std::fs::File::create(&model_path).unwrap();
-    f.write_all(b"fake stl").unwrap();
-
-    let opts = slicer_host::cli::validate_run_options(
-        Some(module_path.to_str().unwrap()),
-        model_path.to_str().unwrap(),
-        None,
-        Some("/tmp/out.gcode"),
-        &[dir.path().to_str().unwrap()],
-    )
-    .expect("should validate successfully");
-
-    assert_eq!(opts.module_path.as_deref(), Some(module_path.as_path()));
-    assert_eq!(opts.model_path, model_path);
-    assert!(opts.config_path.is_none());
-    assert_eq!(
-        opts.output_path.as_deref(),
-        Some(std::path::Path::new("/tmp/out.gcode"))
-    );
-    assert_eq!(opts.module_dirs, vec![dir.path().to_path_buf()]);
-    assert!(!opts.no_default_module_paths);
 }

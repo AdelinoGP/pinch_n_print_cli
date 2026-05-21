@@ -232,6 +232,9 @@ impl Collector {
     pub fn finish_and_render_to(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
         let report = self.finalize();
         let html = render_html(&report);
+        if let Some(parent) = path.as_ref().parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         std::fs::write(path, html)
     }
 

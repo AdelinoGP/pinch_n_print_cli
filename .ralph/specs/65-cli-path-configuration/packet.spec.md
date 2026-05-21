@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 65-cli-path-configuration
 task_ids:
   - TASK-204

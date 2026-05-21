@@ -24,7 +24,7 @@ use slicer_host::{
     assemble_search_roots, build_config_schema_json, build_live_execution_plan,
     load_live_modules_for_plan, load_modules_from_roots, parse_cli_config_source,
     resolve_global_config, resolve_per_object_configs, ConfigBoundsIndex, DefaultGCodeEmitter,
-    DefaultGCodeSerializer, HostCli, HostCommands,
+    DefaultGCodeSerializer, HostCli, HostCommands, HostRunOptions,
 };
 
 /// No-op prepass runner for MVP (no WASM modules loaded yet).
@@ -119,7 +119,6 @@ fn main() {
     let cli = HostCli::parse();
     match cli.command {
         HostCommands::Run {
-            module: _,
             model,
             config,
             output,
@@ -129,9 +128,31 @@ fn main() {
             report,
             report_verbose,
         } => {
+            // Inline existence checks before constructing HostRunOptions.
+            if !model.exists() {
+                eprintln!("error: model file not found: {}", model.display());
+                std::process::exit(1);
+            }
+            if let Some(ref cfg) = config {
+                if !cfg.exists() {
+                    eprintln!("error: config file not found: {}", cfg.display());
+                    std::process::exit(1);
+                }
+            }
+
+            let opts = HostRunOptions {
+                model_path: model,
+                config_path: config,
+                output_path: output,
+                module_dirs: module_dir,
+                no_default_module_paths,
+                thumbnail,
+                report,
+                report_verbose,
+            };
+
             // Load model
-            let model_path = std::path::Path::new(&model);
-            let mesh_ir = match load_model(model_path) {
+            let mesh_ir = match load_model(&opts.model_path) {
                 Ok(ir) => Arc::new(ir),
                 Err(e) => {
                     eprintln!("error: failed to load model: {e}");
@@ -145,7 +166,7 @@ fn main() {
             // `bind_module_config_view` inside `build_live_execution_plan`.
             // Passing an empty source here is explicitly NOT a placeholder:
             // it's the real config source when the user doesn't supply one.
-            let mut config_source = match config.as_deref() {
+            let mut config_source = match opts.config_path.as_ref() {
                 Some(path) => match std::fs::read_to_string(path) {
                     Ok(text) => match parse_cli_config_source(&text) {
                         Ok(map) => map,
@@ -163,9 +184,7 @@ fn main() {
             };
 
             // Insert thumbnail_path into config_source when --thumbnail is supplied.
-            // pipeline.rs reads the file and validates PNG magic; errors surface as
-            // PipelineError and produce a non-zero exit below.
-            if let Some(ref thumb_path) = thumbnail {
+            if let Some(ref thumb_path) = opts.thumbnail {
                 config_source.insert(
                     "thumbnail_path".to_string(),
                     slicer_ir::ConfigValue::String(thumb_path.to_string_lossy().to_string()),
@@ -173,9 +192,7 @@ fn main() {
             }
 
             // Seed planner-visible per-object world heights from the cached
-            // `ObjectMesh.world_z_extent` field before module binding. This is
-            // the documented live-path contract surface for LayerPlanning and
-            // stays outside the later immutable ConfigView binding step.
+            // `ObjectMesh.world_z_extent` field before module binding.
             for object in &mesh_ir.objects {
                 let key = format!("object_height:{}", object.id);
                 if config_source.contains_key(&key) {
@@ -187,17 +204,9 @@ fn main() {
                 }
             }
 
-            // Discover and plan every module under --module-dir. Modules
-            // are topologically sorted within each stage and laid out in
-            // the canonical STAGE_ORDER. Non-fatal discovery diagnostics
-            // are surfaced on stderr; fatal failures terminate with a
-            // structured message (docs/04 §Fixed Stage Order).
-            //
-            // Loaded before config resolution so the merged numeric-bounds
-            // index (from each module's manifest `[config.schema]`) is in
-            // scope and can reject out-of-range CLI values alongside variant
-            // TypeMismatches.
-            let search_roots = assemble_search_roots(&module_dir, no_default_module_paths);
+            // Discover and plan every module under --module-dir.
+            let search_roots =
+                assemble_search_roots(&opts.module_dirs, opts.no_default_module_paths);
             let loaded = match load_live_modules_for_plan(&search_roots, num_cpus_guess()) {
                 Ok(out) => out,
                 Err(e) => {
@@ -220,11 +229,6 @@ fn main() {
             let config_bounds =
                 ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
 
-            // Resolve the global fallback config and per-object overlays from the
-            // raw config source.  Resolution is strict: a wrong-typed value
-            // (e.g. `top_shell_layers: "four"`) or a numeric value outside the
-            // module-declared `[min, max]` exits immediately with a message
-            // that includes the offending key (NC-2 pin).
             let default_resolved_config =
                 match resolve_global_config(&config_source, &config_bounds) {
                     Ok(cfg) => cfg,
@@ -247,12 +251,6 @@ fn main() {
                 }
             };
 
-            // The live plan/build path. Every per-module ConfigView is
-            // synthesised through `bind_module_config_view` inside this
-            // helper; the plan-build guardrail
-            // (`ExecutionPlanError::UndeclaredConfigKey`) fails closed if
-            // a module's declared-read invariant is ever violated (docs/03
-            // §host-boundary enforcement; docs/02 §pre-filtered config).
             let plan = match build_live_execution_plan(
                 loaded.sorted_stages,
                 loaded.bindings,
@@ -267,11 +265,6 @@ fn main() {
                 }
             };
 
-            // Build WasmRuntimeDispatcher instances backed by the same engine
-            // that compiled the module components.  Using the same engine is
-            // required: wasmtime ties compiled Components to the Engine instance
-            // that produced them, and creating a second Engine would cause
-            // component instantiation to fail at dispatch time.
             let engine = Arc::clone(&loaded.engine);
             let config = PipelineConfig {
                 mesh_ir,
@@ -298,24 +291,20 @@ fn main() {
                 bounds: Arc::new(config_bounds),
             };
 
-            // Route per-layer progress events (including host-built-in
-            // paint-annotation degraded-success warnings) through the real
-            // JSONL emitter on stderr and aggregate them into a
-            // `SliceEventCollector`. G-code continues to go to stdout, so
-            // the JSONL transport targets stderr to avoid interleaving.
             let emitter: Arc<dyn ProgressEventEmitter> =
                 Arc::new(JsonLinesEmitter::new(std::io::stderr()));
             let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
             let sink = RuntimeProgressSink::new(emitter, Arc::clone(&collector));
 
-            // Branch on --report. When absent, take the original code path
-            // (zero overhead, no allocator counters incremented). When
-            // present, install the Collector + enable the accounting
-            // allocator for the duration of the slice.
-            let result = if let Some(ref report_path) = report {
+            let result = if let Some(ref report_path) = opts.report {
+                if let Some(parent) = report_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
                 report_alloc::enable();
-                let collector =
-                    Arc::new(Collector::new_with_verbose(model.clone(), report_verbose));
+                let collector = Arc::new(Collector::new_with_verbose(
+                    opts.model_path.to_string_lossy().to_string(),
+                    opts.report_verbose,
+                ));
                 let r = run_pipeline_with_instrumentation(
                     config,
                     &config_source,
@@ -323,9 +312,6 @@ fn main() {
                     collector.as_ref(),
                 );
                 report_alloc::disable();
-                // Render and write the report regardless of pipeline outcome
-                // — partial timing data is still useful when debugging a
-                // failing slice.
                 if let Err(e) = collector.finish_and_render_to(report_path) {
                     eprintln!("warning: failed to write slicer report: {e}");
                 }
@@ -336,7 +322,10 @@ fn main() {
 
             match result {
                 Ok(result) => {
-                    if let Some(out_path) = output {
+                    if let Some(out_path) = opts.output_path {
+                        if let Some(parent) = out_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
                         if let Err(e) = std::fs::write(&out_path, &result.gcode_text) {
                             eprintln!("error: failed to write output: {e}");
                             std::process::exit(1);
