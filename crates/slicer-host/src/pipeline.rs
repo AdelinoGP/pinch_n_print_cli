@@ -294,11 +294,9 @@ pub fn run_pipeline_with_raw_config(
 ///   per-layer / postpass stage, carrying the serial-edge reasons derived
 ///   from the compiled IR access masks (see
 ///   [`compute_serial_edges_from_compiled`]).
-/// - Per-stage / per-module brackets in all three tiers. Per-layer
-///   additionally brackets `on_layer_start/end` around each layer.
-///   Host built-ins inside prepass (MeshAnalysis, SupportGeometry,
-///   RegionMapping) and postpass (GCode emit / serialize) are not
-///   bracketed — they are not user-visible modules.
+/// - Per-stage / per-module brackets in all three tiers (including host
+///   built-ins). Per-layer additionally brackets `on_layer_start/end`
+///   around each layer.
 pub fn run_pipeline_with_instrumentation(
     config: PipelineConfig,
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,

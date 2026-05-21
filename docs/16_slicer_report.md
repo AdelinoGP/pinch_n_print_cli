@@ -78,10 +78,7 @@ Hook points: `pipeline.rs::run_pipeline_with_instrumentation` brackets
 each phase; `layer_executor.rs::execute_single_layer` brackets layer /
 stage / module boundaries for per-layer; `prepass.rs` and `postpass.rs`
 have `_with_instrumentation` variants that bracket per-stage and
-per-module for those tiers. Host built-ins inside prepass
-(MeshAnalysis, SupportGeometry, RegionMapping) and postpass (GCode
-emit / serialize) are not bracketed — they are not user-visible
-modules.
+per-module for those tiers, including host built-ins.
 
 ## Global allocator contract
 

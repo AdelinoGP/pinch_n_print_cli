@@ -18,3 +18,4 @@ modules/core-modules/*/wit-guest/target/
 .env
 .claude/settings.local.json
 .claude/worktrees/
+tmp/
