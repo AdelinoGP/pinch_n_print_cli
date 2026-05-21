@@ -402,6 +402,7 @@ fn support_enforcer_emits_paint_region() {
         Arc::clone(&mesh_ir),
         empty_surface_ir(),
         Arc::clone(&layer_plan),
+        true,
     )
     .expect("paint segmentation should succeed");
 
@@ -450,6 +451,7 @@ fn support_blocker_emits_paint_region() {
         Arc::clone(&mesh_ir),
         empty_surface_ir(),
         Arc::clone(&layer_plan),
+        true,
     )
     .expect("paint segmentation should succeed");
 
@@ -485,6 +487,7 @@ fn empty_support_enforcer_emits_nothing() {
         Arc::clone(&mesh_ir),
         empty_surface_ir(),
         Arc::clone(&layer_plan),
+        true,
     )
     .expect("paint segmentation should succeed for empty modifier");
 
@@ -512,6 +515,7 @@ fn support_enforcer_flows_through_paint_overrides() {
         Arc::clone(&mesh_ir),
         empty_surface_ir(),
         Arc::clone(&layer_plan),
+        true,
     )
     .expect("paint segmentation should succeed");
 
@@ -664,6 +668,7 @@ fn empty_support_blocker_emits_nothing() {
         Arc::clone(&mesh_ir),
         empty_surface_ir(),
         Arc::clone(&layer_plan),
+        true,
     )
     .expect("paint segmentation should succeed for empty modifier");
 

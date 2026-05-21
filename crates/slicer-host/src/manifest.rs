@@ -1039,6 +1039,7 @@ fn known_stage_ids() -> &'static [&'static str] {
         "PrePass::SupportGeometry",
         "PrePass::RegionMapping",
         "Layer::Slice",
+        "Layer::PaintRegionAnnotation",
         "Layer::SlicePostProcess",
         "Layer::Perimeters",
         "Layer::PerimetersPostProcess",

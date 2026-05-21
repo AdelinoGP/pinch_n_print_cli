@@ -358,6 +358,8 @@ fn execute_single_layer_inner(
     // Layer::SlicePostProcess module runs. Skipped if a caller has already
     // pre-seeded a slice (e.g. integration tests).
     if arena.slice().is_none() {
+        let stage_id = "Layer::Slice".to_string();
+        let module_id = "<host-built-in>".to_string();
         let layer_idx = layer.index as usize;
         let global_layers = &plan.global_layers;
         let next_layer_z = global_layers.get(layer_idx + 1).map(|l| l.z);
@@ -366,6 +368,8 @@ fn execute_single_layer_inner(
             .and_then(|i| global_layers.get(i))
             .map(|l| l.z);
         let surface_class = blackboard.surface_classification().map(|arc| arc.as_ref());
+        instrumentation.on_stage_start(&stage_id, Some(layer.index));
+        instrumentation.on_module_start(&stage_id, Some(layer.index), &module_id);
         let slice_ir = execute_layer_slice(
             blackboard.mesh().as_ref(),
             layer,
@@ -375,18 +379,24 @@ fn execute_single_layer_inner(
             blackboard.region_map().map(|arc| arc.as_ref()),
             blackboard.layer_plan().map(|arc| arc.as_ref()),
         )
-        .map_err(|source| LayerExecutionError::LayerSlice {
-            layer_index: layer.index,
-            source,
+        .map_err(|source| {
+            instrumentation.on_stage_end(&stage_id, Some(layer.index));
+            LayerExecutionError::LayerSlice {
+                layer_index: layer.index,
+                source,
+            }
         })?;
-        arena
-            .set_slice(slice_ir)
-            .map_err(|_| LayerExecutionError::FatalLayer {
+        arena.set_slice(slice_ir).map_err(|_| {
+            instrumentation.on_stage_end(&stage_id, Some(layer.index));
+            LayerExecutionError::FatalLayer {
                 layer_index: layer.index,
                 stage_id: "Layer::Slice".to_string(),
                 module_id: "<host-built-in>".to_string(),
                 message: "slice arena slot already occupied".to_string(),
-            })?;
+            }
+        })?;
+        instrumentation.on_module_end(&stage_id, Some(layer.index), &module_id, 0, 0);
+        instrumentation.on_stage_end(&stage_id, Some(layer.index));
     }
 
     // Execute stages sequentially in deterministic order.
@@ -394,7 +404,6 @@ fn execute_single_layer_inner(
     // `LayerCollectionIR.ordered_entities` into the arena so the path-
     // optimization commit path (and any downstream per-layer stage) can see
     // the same entity sequence that the host emitter will consume.
-    let mut paint_annotation_ran = false;
     for stage in &plan.per_layer_stages {
         if stage.stage_id == "Layer::PathOptimization" && arena.layer_collection().is_none() {
             let ordered_entities = assemble_ordered_entities(
@@ -466,22 +475,44 @@ fn execute_single_layer_inner(
             }
         }
 
-        // Host-built-in paint annotation runs once, at the end of the
-        // `Layer::SlicePostProcess` stage (docs/04 §Full Lifecycle and
-        // docs/10 §Paint Region Resolution). This must happen before any
-        // downstream stage consumes `SlicedRegion.boundary_paint`.
-        if !paint_annotation_ran && stage.stage_id == "Layer::SlicePostProcess" {
-            run_paint_annotation(blackboard, required_semantics, sink, &mut arena, layer)?;
-            paint_annotation_ran = true;
+        // Host-built-in paint-annotation runs at the `Layer::PaintRegionAnnotation`
+        // stage (docs/04 §Full Lifecycle and docs/10 §Paint Region Resolution).
+        // If a WASM module is registered for this stage, it handles the annotation
+        // and the host handler is skipped.
+        if stage.stage_id == "Layer::PaintRegionAnnotation" && stage.modules.is_empty() {
+            let pa_module_id = "<host-built-in-paint-annotator>".to_string();
+            instrumentation.on_module_start(&stage.stage_id, Some(layer.index), &pa_module_id);
+            run_paint_annotation(
+                blackboard,
+                required_semantics,
+                sink,
+                &mut arena,
+                layer,
+                &stage.stage_id,
+            )?;
+            instrumentation.on_module_end(&stage.stage_id, Some(layer.index), &pa_module_id, 0, 0);
         }
         instrumentation.on_stage_end(&stage.stage_id, Some(layer.index));
     }
 
-    // Fallback: if no `Layer::SlicePostProcess` stage was scheduled but paint
-    // data is committed, still run the built-in annotator so boundary_paint
-    // is populated before finalization.
+    // Safety-net: if no `Layer::PaintRegionAnnotation` stage was in the
+    // execution plan (e.g. tests that construct plans by hand), run the host
+    // annotator. Production plans always include this stage via
+    // `build_execution_plan`, so this path is only exercised when the plan
+    // is built outside the normal pipeline.
+    let paint_annotation_ran = plan
+        .per_layer_stages
+        .iter()
+        .any(|s| s.stage_id == "Layer::PaintRegionAnnotation");
     if !paint_annotation_ran {
-        run_paint_annotation(blackboard, required_semantics, sink, &mut arena, layer)?;
+        run_paint_annotation(
+            blackboard,
+            required_semantics,
+            sink,
+            &mut arena,
+            layer,
+            "Layer::PaintRegionAnnotation",
+        )?;
     }
 
     // If `Layer::PathOptimization` pre-staged a LayerCollectionIR, take it and
@@ -585,6 +616,7 @@ fn run_paint_annotation(
     sink: &(dyn LayerProgressSink + Sync),
     arena: &mut LayerArena,
     layer: &GlobalLayer,
+    event_stage: &str,
 ) -> Result<(), LayerExecutionError> {
     if required_semantics.is_empty() {
         return Ok(());
@@ -650,12 +682,15 @@ fn run_paint_annotation(
     // Per-point warnings are coalesced into one event per
     // (object, region, semantic, polygon) group so structurally-noisy paint
     // regions don't drown the log in identical lines.
-    let events = paint_annotation_warnings_to_progress_events(
+    let mut events = paint_annotation_warnings_to_progress_events(
         &result.warnings,
         String::new(),
         String::from("com.host.slice-postprocess-paint-annotator"),
         0,
     );
+    for event in &mut events {
+        event.stage = Some(event_stage.to_string());
+    }
     for event in events {
         sink.record(event);
     }

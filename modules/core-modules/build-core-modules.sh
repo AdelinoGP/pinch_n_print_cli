@@ -74,13 +74,11 @@ done
 MODULES=(
     "layer-planner-default:layer_planner_default_guest"
     "mesh-segmentation:mesh_segmentation_guest"
-    "paint-segmentation:paint_segmentation_guest"
     "arachne-perimeters:arachne_perimeters_guest"
     "classic-perimeters:classic_perimeters_guest"
     "fuzzy-skin:fuzzy_skin_guest"
     "gyroid-infill:gyroid_infill_guest"
     "lightning-infill:lightning_infill_guest"
-    "paint-region-annotator:paint_region_annotator_guest"
     "rectilinear-infill:rectilinear_infill_guest"
     "seam-planner-default:seam_planner_default_guest"
     "seam-placer:seam_placer_guest"
@@ -97,8 +95,7 @@ MODULES=(
 )
 
 # Modules whose stages the host dispatcher does not yet route
-# (`PrePass::MeshSegmentation`, `PrePass::PaintSegmentation`; see the
-# `resolve_world_glue` comment in `crates/slicer-macros/src/lib.rs`).
+# (see the `resolve_world_glue` comment in `crates/slicer-macros/src/lib.rs`).
 # The `#[slicer_module]` macro intentionally leaves these stages on the
 # placeholder-export path, which would produce a small but incomplete
 # `.wasm` that is detected as a real component and then fails typed

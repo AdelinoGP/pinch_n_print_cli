@@ -33,6 +33,7 @@ pub const STAGE_ORDER: &[&str] = &[
     "PrePass::PaintSegmentation",
     "PrePass::RegionMapping",
     "Layer::Slice",
+    "Layer::PaintRegionAnnotation",
     "Layer::SlicePostProcess",
     "Layer::Perimeters",
     "Layer::PerimetersPostProcess",
@@ -1050,6 +1051,39 @@ pub fn build_execution_plan(
         } else if sorted_stage.stage_id.starts_with("PostPass::") {
             postpass_stages.push(compiled_stage);
         }
+    }
+
+    // Always-on host built-in: Layer::PaintRegionAnnotation must appear in the
+    // per-layer plan even when no WASM module claims it, so the host annotator
+    // runs before downstream stages (Perimeters, Infill, etc.) need boundary_paint.
+    let paint_stage_id = "Layer::PaintRegionAnnotation".to_string();
+    if !per_layer_stages
+        .iter()
+        .any(|s| s.stage_id == paint_stage_id)
+    {
+        // Insert before the first stage in STAGE_ORDER that comes after
+        // PaintRegionAnnotation (SlicePostProcess, then Perimeters, then
+        // any later Layer stage).
+        let insert_at = per_layer_stages
+            .iter()
+            .position(|s| {
+                s.stage_id == "Layer::SlicePostProcess"
+                    || s.stage_id == "Layer::Perimeters"
+                    || s.stage_id == "Layer::PerimetersPostProcess"
+                    || s.stage_id == "Layer::Infill"
+                    || s.stage_id == "Layer::InfillPostProcess"
+                    || s.stage_id == "Layer::Support"
+                    || s.stage_id == "Layer::SupportPostProcess"
+                    || s.stage_id == "Layer::PathOptimization"
+            })
+            .unwrap_or(per_layer_stages.len());
+        per_layer_stages.insert(
+            insert_at,
+            CompiledStage {
+                stage_id: paint_stage_id,
+                modules: Vec::new(),
+            },
+        );
     }
 
     // ── Precompute module_region_index for O(1) resolve_active_regions ──

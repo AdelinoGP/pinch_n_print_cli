@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 63_paint-annotator-r-tree
 task_ids: []
 backlog_source: docs/07_implementation_status.md

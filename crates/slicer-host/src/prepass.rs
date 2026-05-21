@@ -4,7 +4,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::sync::Arc;
 
-use slicer_core::paint_region::PaintRegionRTreeIndex;
+use rstar::RTree;
+use slicer_core::paint_region::{PaintRegionRTreeEntry, PaintRegionRTreeIndex};
 use slicer_ir::{
     ConfigKey, ConfigValue, LayerPlanIR, MeshSegmentationIR, ModuleId, PaintRegionIR,
     PaintSemantic, RegionMapIR, ResolvedConfig, SeamPlanIR, StageId, SupportGeometryIR,
@@ -14,6 +15,7 @@ use slicer_ir::{
 use crate::config_resolution::resolve_per_paint_semantic_configs;
 use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
 use crate::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
+use crate::paint_segmentation::PaintSegmentationError;
 use crate::region_mapping::{commit_region_mapping_builtin, RegionMappingBuiltinError};
 use crate::support_geometry::SupportGeometryBuiltinError;
 use crate::validation::ModuleAccessAudit;
@@ -166,6 +168,11 @@ pub enum PrepassExecutionError {
         /// Underlying support geometry failure.
         source: SupportGeometryBuiltinError,
     },
+    /// The host-built-in `PrePass::PaintSegmentation` stage failed.
+    PaintSegmentation {
+        /// Underlying paint segmentation failure.
+        source: PaintSegmentationError,
+    },
 }
 
 impl fmt::Display for PrepassExecutionError {
@@ -198,6 +205,9 @@ impl fmt::Display for PrepassExecutionError {
             }
             Self::SupportGeometry { source } => {
                 write!(f, "built-in PrePass::SupportGeometry failed: {source}")
+            }
+            Self::PaintSegmentation { source } => {
+                write!(f, "built-in PrePass::PaintSegmentation failed: {source}")
             }
         }
     }
@@ -364,9 +374,8 @@ pub(crate) fn execute_prepass_with_builtins_configured(
 }
 
 /// Instrumented version of [`execute_prepass_with_builtins_configured`] that
-/// brackets each user prepass stage and module via `instrumentation`.
-/// Host built-ins (MeshAnalysis, SupportGeometry, RegionMapping) are not
-/// bracketed — they aren't user-visible modules.
+/// brackets each prepass stage and module (including host built-ins) via
+/// `instrumentation`.
 pub(crate) fn execute_prepass_with_builtins_configured_instr(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
@@ -378,23 +387,42 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
     instrumentation: &(dyn PipelineInstrumentation + Sync),
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     if blackboard.surface_classification().is_none() {
-        let ir = execute_mesh_analysis(blackboard.mesh().as_ref())
-            .map_err(|source| PrepassExecutionError::MeshAnalysis { source })?;
+        let stage_id = "PrePass::MeshAnalysis".to_string();
+        let module_id = "<host-built-in>".to_string();
+        instrumentation.on_stage_start(&stage_id, None);
+        instrumentation.on_module_start(&stage_id, None, &module_id);
+        let ir = execute_mesh_analysis(blackboard.mesh().as_ref()).map_err(|source| {
+            instrumentation.on_stage_end(&stage_id, None);
+            PrepassExecutionError::MeshAnalysis { source }
+        })?;
         blackboard
             .commit_surface_classification(std::sync::Arc::new(ir))
-            .map_err(|source| PrepassExecutionError::Blackboard {
-                stage_id: "PrePass::MeshAnalysis".to_string(),
-                module_id: "<host-built-in>".to_string(),
-                source,
+            .map_err(|source| {
+                instrumentation.on_stage_end(&stage_id, None);
+                PrepassExecutionError::Blackboard {
+                    stage_id: "PrePass::MeshAnalysis".to_string(),
+                    module_id: "<host-built-in>".to_string(),
+                    source,
+                }
             })?;
+        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
+        instrumentation.on_stage_end(&stage_id, None);
     }
     // Host-built-in PrePass::SupportGeometry runs before user prepass stages
     // so that SupportGeometryIR is available as a prerequisite slot.
     // Skip if already committed (idempotent per blackboard contract).
     if blackboard.support_geometry().is_none() && blackboard.layer_plan().is_some() {
+        let stage_id = "PrePass::SupportGeometry".to_string();
+        let module_id = "<host-built-in>".to_string();
         use crate::support_geometry::commit_support_geometry_builtin;
-        commit_support_geometry_builtin(blackboard)
-            .map_err(|source| PrepassExecutionError::SupportGeometry { source })?;
+        instrumentation.on_stage_start(&stage_id, None);
+        instrumentation.on_module_start(&stage_id, None, &module_id);
+        commit_support_geometry_builtin(blackboard).map_err(|source| {
+            instrumentation.on_stage_end(&stage_id, None);
+            PrepassExecutionError::SupportGeometry { source }
+        })?;
+        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
+        instrumentation.on_stage_end(&stage_id, None);
     }
     /// Gather paint semantics from the blackboard and resolve per-semantic
     /// config overrides from the raw config source.  Called immediately
@@ -453,12 +481,16 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
     //    (those requiring RegionMap) run in phase-2 after RegionMapping.
     let layer_plan_existed = blackboard.layer_plan().is_some();
     if layer_plan_existed && blackboard.region_map().is_none() {
+        let stage_id = "PrePass::RegionMapping".to_string();
+        let module_id = "<host-built-in>".to_string();
         let paint_semantic_configs = build_paint_semantic_configs(
             blackboard,
             default_resolved_config,
             raw_config_source,
             bounds,
         );
+        instrumentation.on_stage_start(&stage_id, None);
+        instrumentation.on_module_start(&stage_id, None, &module_id);
         commit_region_mapping_builtin(
             plan,
             blackboard,
@@ -466,7 +498,12 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             default_resolved_config,
             &paint_semantic_configs,
         )
-        .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
+        .map_err(|source| {
+            instrumentation.on_stage_end(&stage_id, None);
+            PrepassExecutionError::RegionMapping { source }
+        })?;
+        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
+        instrumentation.on_stage_end(&stage_id, None);
     }
     // Phase-1: early stages that don't require RegionMap.
     let early_stages: Vec<_> = plan
@@ -491,17 +528,29 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
     // committed by phase-1 user-prepass stages (e.g. PrePass::PaintSegmentation)
     // is visible to the RegionMapping built-in (packet 51 — AC-4 ordering fix).
     if blackboard.support_geometry().is_none() && blackboard.layer_plan().is_some() {
+        let stage_id = "PrePass::SupportGeometry".to_string();
+        let module_id = "<host-built-in>".to_string();
         use crate::support_geometry::commit_support_geometry_builtin;
-        commit_support_geometry_builtin(blackboard)
-            .map_err(|source| PrepassExecutionError::SupportGeometry { source })?;
+        instrumentation.on_stage_start(&stage_id, None);
+        instrumentation.on_module_start(&stage_id, None, &module_id);
+        commit_support_geometry_builtin(blackboard).map_err(|source| {
+            instrumentation.on_stage_end(&stage_id, None);
+            PrepassExecutionError::SupportGeometry { source }
+        })?;
+        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
+        instrumentation.on_stage_end(&stage_id, None);
     }
     if blackboard.layer_plan().is_some() && blackboard.region_map().is_none() {
+        let stage_id = "PrePass::RegionMapping".to_string();
+        let module_id = "<host-built-in>".to_string();
         let paint_semantic_configs = build_paint_semantic_configs(
             blackboard,
             default_resolved_config,
             raw_config_source,
             bounds,
         );
+        instrumentation.on_stage_start(&stage_id, None);
+        instrumentation.on_module_start(&stage_id, None, &module_id);
         commit_region_mapping_builtin(
             plan,
             blackboard,
@@ -509,7 +558,12 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             default_resolved_config,
             &paint_semantic_configs,
         )
-        .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
+        .map_err(|source| {
+            instrumentation.on_stage_end(&stage_id, None);
+            PrepassExecutionError::RegionMapping { source }
+        })?;
+        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
+        instrumentation.on_stage_end(&stage_id, None);
     }
     // Phase-2: late stages that require RegionMap.
     let late_stages: Vec<_> = plan
@@ -525,6 +579,47 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         let late_audits =
             execute_prepass_with_instrumentation(&late_plan, blackboard, runner, instrumentation)?;
         audits.extend(late_audits);
+    }
+    // Host fallback for PrePass::PaintSegmentation: if no WASM module
+    // committed paint regions during the phase-1 or phase-2 module loops,
+    // run the host built-in implementation (when the required upstream
+    // IR is available).
+    if blackboard.paint_regions().is_none()
+        && blackboard.surface_classification().is_some()
+        && blackboard.layer_plan().is_some()
+    {
+        let stage_id = "PrePass::PaintSegmentation".to_string();
+        let module_id = "<host-built-in>".to_string();
+        instrumentation.on_stage_start(&stage_id, None);
+        instrumentation.on_module_start(&stage_id, None, &module_id);
+        let union_at_harvest = raw_config_source
+            .get(&ConfigKey::from("union_paint_regions_at_harvest"))
+            .map(|v| matches!(v, ConfigValue::Bool(true)))
+            .unwrap_or(true);
+        let paint_ir = crate::paint_segmentation::execute_paint_segmentation(
+            blackboard.mesh().clone(),
+            // SAFETY: guarded by .is_some() above
+            blackboard.surface_classification().cloned().unwrap(),
+            blackboard.layer_plan().cloned().unwrap(),
+            union_at_harvest,
+        )
+        .map_err(|source| {
+            instrumentation.on_stage_end(&stage_id, None);
+            PrepassExecutionError::PaintSegmentation { source }
+        })?;
+        let rtree = build_paint_region_rtree_index(&paint_ir);
+        blackboard
+            .commit_paint_regions(paint_ir, rtree)
+            .map_err(|source| {
+                instrumentation.on_stage_end(&stage_id, None);
+                PrepassExecutionError::Blackboard {
+                    stage_id: "PrePass::PaintSegmentation".to_string(),
+                    module_id: "<host-built-in>".to_string(),
+                    source,
+                }
+            })?;
+        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
+        instrumentation.on_stage_end(&stage_id, None);
     }
     Ok(audits)
 }
@@ -618,4 +713,38 @@ fn commit_stage_output(
         module_id: module_id.clone(),
         source,
     })
+}
+
+/// Build an `Arc<PaintRegionRTreeIndex>` companion for a `PaintRegionIR`,
+/// computing per-region AABBs where `aabb` is `None`.
+fn build_paint_region_rtree_index(ir: &PaintRegionIR) -> Arc<PaintRegionRTreeIndex> {
+    let mut trees: HashMap<u32, HashMap<PaintSemantic, RTree<PaintRegionRTreeEntry>>> =
+        HashMap::new();
+    for (&layer_index, layer_map) in &ir.per_layer {
+        let mut semantic_map: HashMap<PaintSemantic, RTree<PaintRegionRTreeEntry>> = HashMap::new();
+        for (semantic, regions) in &layer_map.semantic_regions {
+            let entries: Vec<PaintRegionRTreeEntry> = regions
+                .iter()
+                .enumerate()
+                .map(|(region_index, region)| {
+                    let aabb = region.aabb.unwrap_or_default();
+                    PaintRegionRTreeEntry {
+                        min_x: aabb.min.x as f64,
+                        min_y: aabb.min.y as f64,
+                        max_x: aabb.max.x as f64,
+                        max_y: aabb.max.y as f64,
+                        region_index,
+                    }
+                })
+                .collect();
+            let tree = if entries.is_empty() {
+                RTree::new()
+            } else {
+                RTree::bulk_load(entries)
+            };
+            semantic_map.insert(semantic.clone(), tree);
+        }
+        trees.insert(layer_index, semantic_map);
+    }
+    Arc::new(PaintRegionRTreeIndex { trees })
 }

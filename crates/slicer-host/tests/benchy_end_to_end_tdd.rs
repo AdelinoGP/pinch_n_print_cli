@@ -75,7 +75,7 @@ fn assert_path_exists(p: &Path, label: &str) {
 // Smoke / diagnosability guards
 // ---------------------------------------------------------------------------
 
-/// Smoke guard: the real binary, real model, empty `--module-dir`
+/// Smoke guard: the real binary, real model and real core modules
 /// writes a real `.gcode` file. Tolerates empty output (zero layers)
 /// — this tier only fails on structural regressions.
 #[test]
@@ -83,8 +83,11 @@ fn benchy_e2e_real_pipeline_produces_gcode() {
     let model = fixture_stl();
     assert_path_exists(&model, "model STL");
 
-    let cached =
-        common::slicer_cache::cached_run(&model, common::slicer_cache::ModuleDirKind::Empty, None);
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    );
     let outcome = common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
 
@@ -115,8 +118,11 @@ fn benchy_e2e_module_discovery_runs_on_live_path() {
     let model = fixture_stl();
     assert_path_exists(&model, "model STL");
 
-    let cached =
-        common::slicer_cache::cached_run(&model, common::slicer_cache::ModuleDirKind::Empty, None);
+    let cached = common::slicer_cache::cached_run(
+        &model,
+        common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    );
     let outcome = common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
 
@@ -129,8 +135,8 @@ fn benchy_e2e_module_discovery_runs_on_live_path() {
     }
 }
 
-/// Determinism guard for the empty-`--module-dir` smoke path: two
-/// identical invocations produce byte-identical G-code output files.
+/// Determinism guard: two identical invocations with core modules
+/// produce byte-identical G-code output files.
 #[test]
 fn benchy_e2e_is_deterministic() {
     let model = fixture_stl();
@@ -138,7 +144,7 @@ fn benchy_e2e_is_deterministic() {
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let modules =
-        common::slicer_cache::module_dir_path(&common::slicer_cache::ModuleDirKind::Empty);
+        common::slicer_cache::module_dir_path(&common::slicer_cache::ModuleDirKind::CoreModules);
     let out_a = tmp.path().join("a.gcode");
     let out_b = tmp.path().join("b.gcode");
 
@@ -202,7 +208,6 @@ fn benchy_e2e_against_real_core_modules_is_diagnosable() {
         "rectilinear-infill",
         "traditional-support",
         "layer-planner-default",
-        "paint-region-annotator",
     ] {
         let regressed = stderr.contains(&format!("{canonical}/{canonical}.wasm: companion .wasm"))
             && stderr.contains("placeholder");
@@ -903,9 +908,7 @@ fn canonical_core_module_artifacts_are_real_components() {
         "tree-support",
         "layer-planner-default",
         "mesh-segmentation",
-        "paint-segmentation",
         "path-optimization-default",
-        "paint-region-annotator",
         "skirt-brim",
         "wipe-tower",
         "fuzzy-skin",
@@ -969,9 +972,8 @@ fn canonical_core_module_artifacts_are_real_components() {
 /// components — no prepass stage should be left at the documented
 /// 8-byte placeholder anymore. If future work splits out a new
 /// prepass stage, this test is the first place that should catch the
-/// regression. `mesh_segmentation_is_a_real_routed_component` and
-/// `paint_segmentation_is_a_real_routed_component` verify the real
-/// binaries.
+/// regression. `mesh_segmentation_is_a_real_routed_component`
+/// verifies the real binary.
 #[test]
 fn no_un_routed_prepass_modules_remain() {
     // Intentionally empty: all historically un-routed prepass stages
@@ -1005,26 +1007,21 @@ fn mesh_segmentation_is_a_real_routed_component() {
     );
 }
 
-/// Regression guard for Step C: the canonical `paint-segmentation.wasm`
-/// artifact must be a real component-model binary (not an 8-byte
-/// placeholder) and carry the `\0asm` magic prefix.
+/// Host fallback verification: `execute_paint_segmentation` returns
+/// an empty result for unpainted meshes.
 #[test]
-fn paint_segmentation_is_a_real_routed_component() {
-    let path = core_modules_dir()
-        .join("paint-segmentation")
-        .join("paint-segmentation.wasm");
-    let meta = std::fs::metadata(&path).expect("stat paint-segmentation.wasm");
+fn paint_segmentation_host_fallback_returns_empty_for_unpainted_mesh() {
+    use slicer_host::execute_paint_segmentation;
+
+    let mesh = std::sync::Arc::new(slicer_ir::MeshIR::default());
+    let sc = std::sync::Arc::new(slicer_ir::SurfaceClassificationIR::default());
+    let lp = std::sync::Arc::new(slicer_ir::LayerPlanIR::default());
+
+    let result = execute_paint_segmentation(mesh, sc, lp, true)
+        .expect("host fallback must succeed for unpainted mesh");
     assert!(
-        meta.len() >= 10_000,
-        "paint-segmentation.wasm is {} bytes; a real wit-bindgen component is \
-         ~30 KB+. Rebuild via modules/core-modules/build-core-modules.sh.",
-        meta.len(),
-    );
-    let bytes = std::fs::read(&path).expect("read paint-segmentation.wasm");
-    assert_eq!(
-        &bytes[0..4],
-        b"\0asm",
-        "paint-segmentation.wasm missing WASM magic; likely a bad rebuild."
+        result.per_layer.is_empty(),
+        "unpainted mesh must produce empty per_layer"
     );
 }
 

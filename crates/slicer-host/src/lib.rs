@@ -9,7 +9,6 @@ pub mod cli;
 pub mod config_resolution;
 pub mod dag;
 pub mod dispatch;
-pub mod dispatch_helpers;
 pub mod execution_plan;
 pub mod gcode_emit;
 pub mod instance_pool;

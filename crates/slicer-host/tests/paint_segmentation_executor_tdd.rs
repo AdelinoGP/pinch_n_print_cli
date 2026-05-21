@@ -3,12 +3,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use slicer_host::paint_segmentation::{group_and_union_paint_regions, PaintFacetEntry};
 use slicer_host::{execute_paint_segmentation, PaintSegmentationError};
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, FacetClass, FacetPaintData, GlobalLayer, IndexedTriangleSet,
-    LayerPlanIR, MeshIR, ObjectConfig, ObjectLayerRef, ObjectMesh, ObjectSurfaceData, PaintLayer,
-    PaintRegionIR, PaintSemantic, PaintValue, Point3, ResolvedConfig, SemVer,
-    SurfaceClassificationIR, Transform3d,
+    ActiveRegion, BoundingBox3, ExPolygon, FacetClass, FacetPaintData, GlobalLayer,
+    IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectConfig, ObjectLayerRef, ObjectMesh,
+    ObjectSurfaceData, PaintLayer, PaintRegionIR, PaintSemantic, PaintValue, Point2, Point3,
+    Polygon, ResolvedConfig, SemVer, SurfaceClassificationIR, Transform3d,
 };
 
 #[test]
@@ -21,6 +22,7 @@ fn material_paint_preserves_tool_index_and_only_populates_intersected_authoritat
         Arc::clone(&mesh),
         Arc::new(custom_surface),
         Arc::new(layer_plan),
+        true,
     )
     .expect("material paint should project into PaintRegionIR using the authoritative layer plan");
 
@@ -45,6 +47,7 @@ fn support_and_fuzzy_semantics_are_emitted_as_independent_paint_region_families(
         Arc::clone(&mesh),
         Arc::new(scene_surface_fixture(&[("semantic-object", 1)])),
         Arc::new(layer_plan_fixture(&[0], &[("semantic-object", &[0])])),
+        true,
     )
     .expect("all documented built-in semantic families should appear in PaintRegionIR");
 
@@ -71,6 +74,7 @@ fn custom_semantics_preserve_module_key_and_stable_paint_order() {
         Arc::clone(&mesh),
         Arc::new(scene_surface_fixture(&[("custom-object", 2)])),
         Arc::new(layer_plan_fixture(&[0], &[("custom-object", &[0])])),
+        true,
     )
     .expect("custom semantics should be preserved for downstream module ownership");
 
@@ -91,6 +95,7 @@ fn authoritative_layers_without_paint_still_get_empty_layer_maps() {
         Arc::clone(&mesh),
         Arc::new(scene_surface_fixture(&[("plain-object", 1)])),
         Arc::new(layer_plan_fixture(&[0, 1], &[("plain-object", &[0])])),
+        true,
     )
     .expect("every authoritative layer should produce a LayerPaintMap entry");
 
@@ -113,6 +118,7 @@ fn equal_precedence_conflicting_custom_values_fail_fatally_and_deterministically
             Arc::clone(&mesh),
             Arc::new(scene_surface_fixture(&[("conflict-object", 2)])),
             Arc::new(layer_plan_fixture(&[0], &[("conflict-object", &[0])])),
+            true,
         ),
         Err(PaintSegmentationError::DeterministicConflict {
             global_layer_index: 0,
@@ -132,11 +138,171 @@ fn missing_required_upstream_object_data_is_reported_as_a_fatal_contract_error()
             Arc::clone(&mesh),
             Arc::new(scene_surface_fixture(&[])),
             Arc::new(layer_plan_fixture(&[0], &[("painted-object", &[0])])),
+            true,
         ),
         Err(PaintSegmentationError::MissingSurfaceObject {
             object_id: String::from("painted-object"),
         })
     );
+}
+
+#[test]
+fn union_toggle_false_skips_union_but_computes_aabb() {
+    let poly_a = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(10.0, 0.0),
+                Point2::from_mm(0.0, 10.0),
+            ],
+        },
+        holes: Vec::new(),
+    };
+    let poly_b = ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(10.0, 0.0),
+                Point2::from_mm(5.0, 10.0),
+            ],
+        },
+        holes: Vec::new(),
+    };
+    let entry = PaintFacetEntry {
+        layer_index: 10,
+        object_id: "test-obj".to_string(),
+        semantic: PaintSemantic::Material,
+        value: PaintValue::ToolIndex(1),
+        paint_order: 0,
+        polygons: vec![poly_a, poly_b],
+    };
+
+    let result = group_and_union_paint_regions(vec![entry.clone()], false);
+    let region = &result.per_layer[&10].semantic_regions[&PaintSemantic::Material][0];
+    assert_eq!(
+        region.polygons.len(),
+        2,
+        "union=false: polygon count should equal input facet count"
+    );
+    assert!(
+        region.aabb.is_some(),
+        "union=false: aabb should be computed"
+    );
+
+    let result = group_and_union_paint_regions(vec![entry], true);
+    let region = &result.per_layer[&10].semantic_regions[&PaintSemantic::Material][0];
+    assert!(
+        region.polygons.len() < 2,
+        "union=true: polygon count should be reduced (unioned)"
+    );
+    assert!(region.aabb.is_some(), "union=true: aabb should be computed");
+}
+
+#[test]
+fn many_facets_across_many_layers_does_not_explode() {
+    let facet_count = 1000u32;
+    let layer_count = 100u32;
+    let object_id = "bulk-object";
+
+    let mesh = Arc::new(mesh_fixture(vec![painted_bulk_object(
+        facet_count,
+        object_id,
+    )]));
+    let surface = Arc::new(bulk_surface_fixture(object_id, facet_count));
+    let layers: Vec<u32> = (0..layer_count).collect();
+    let layer_plan = Arc::new(layer_plan_fixture(&layers, &[(object_id, &layers)]));
+
+    let start = std::time::Instant::now();
+    let paint_regions = execute_paint_segmentation(
+        Arc::clone(&mesh),
+        Arc::clone(&surface),
+        Arc::clone(&layer_plan),
+        true,
+    )
+    .expect("large paint segmentation should not OOM or hang");
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed.as_secs() < 30,
+        "paint segmentation took too long: {elapsed:?}"
+    );
+    assert_eq!(paint_regions.per_layer.len() as u32, layer_count);
+
+    let total_regions: usize = paint_regions
+        .per_layer
+        .values()
+        .flat_map(|m| m.semantic_regions.values())
+        .map(|v| v.len())
+        .sum();
+
+    assert!(
+        total_regions <= facet_count as usize,
+        "entries should be aggregated, not O(facets×layers); got {total_regions}"
+    );
+}
+
+#[test]
+fn group_and_union_preserves_deterministic_output_across_threads() {
+    let mut entries = Vec::new();
+    for i in 0..120u32 {
+        let layer = i % 10;
+        let obj = format!("obj-{}", i / 10);
+        entries.push(PaintFacetEntry {
+            layer_index: layer,
+            object_id: obj,
+            semantic: PaintSemantic::Material,
+            value: PaintValue::ToolIndex(i % 3),
+            paint_order: 0,
+            polygons: vec![
+                ExPolygon {
+                    contour: Polygon {
+                        points: vec![
+                            Point2::from_mm(0.0, 0.0),
+                            Point2::from_mm(10.0, 0.0),
+                            Point2::from_mm(5.0, 10.0),
+                        ],
+                    },
+                    holes: Vec::new(),
+                },
+                ExPolygon {
+                    contour: Polygon {
+                        points: vec![
+                            Point2::from_mm(1.0, 1.0),
+                            Point2::from_mm(9.0, 1.0),
+                            Point2::from_mm(5.0, 9.0),
+                        ],
+                    },
+                    holes: Vec::new(),
+                },
+            ],
+        });
+    }
+
+    let run1 = group_and_union_paint_regions(entries.clone(), true);
+    let run2 = group_and_union_paint_regions(entries.clone(), true);
+    let run3 = group_and_union_paint_regions(entries, true);
+
+    assert_eq!(
+        run1, run2,
+        "deterministic output across runs (run1 vs run2)"
+    );
+    assert_eq!(
+        run2, run3,
+        "deterministic output across runs (run2 vs run3)"
+    );
+
+    for layer_map in run1.per_layer.values() {
+        for regions in layer_map.semantic_regions.values() {
+            for region in regions {
+                assert!(
+                    region.aabb.is_some(),
+                    "all regions must have aabb computed; missing for object={}, value={:?}",
+                    region.object_id,
+                    region.value,
+                );
+            }
+        }
+    }
 }
 
 fn assert_layer_keys(paint_regions: &PaintRegionIR, expected_layers: &[u32]) {
@@ -390,6 +556,65 @@ fn identity_transform() -> Transform3d {
         matrix: [
             1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
         ],
+    }
+}
+
+fn bulk_mesh(facet_count: u32) -> IndexedTriangleSet {
+    let mut vertices = Vec::with_capacity(facet_count as usize * 3);
+    let mut indices = Vec::with_capacity(facet_count as usize * 3);
+    for i in 0..facet_count {
+        let base = i * 3;
+        let x = (i % 50) as f32;
+        let y = (i / 50) as f32;
+        vertices.push(point3(x, y, 0.0));
+        vertices.push(point3(x + 1.0, y, 0.15));
+        vertices.push(point3(x, y + 1.0, 0.3));
+        indices.push(base);
+        indices.push(base + 1);
+        indices.push(base + 2);
+    }
+    IndexedTriangleSet { vertices, indices }
+}
+
+fn bulk_paint_data(facet_count: u32) -> FacetPaintData {
+    FacetPaintData {
+        layers: vec![PaintLayer {
+            semantic: PaintSemantic::Material,
+            facet_values: (0..facet_count)
+                .map(|i| Some(PaintValue::ToolIndex(if i % 2 == 0 { 1 } else { 2 })))
+                .collect(),
+            strokes: Vec::new(),
+        }],
+    }
+}
+
+fn painted_bulk_object(facet_count: u32, object_id: &str) -> ObjectMesh {
+    ObjectMesh {
+        id: String::from(object_id),
+        mesh: bulk_mesh(facet_count),
+        transform: identity_transform(),
+        config: ObjectConfig {
+            data: HashMap::new(),
+        },
+        modifier_volumes: Vec::new(),
+        paint_data: Some(bulk_paint_data(facet_count)),
+        world_z_extent: None,
+    }
+}
+
+fn bulk_surface_fixture(object_id: &str, facet_count: u32) -> SurfaceClassificationIR {
+    SurfaceClassificationIR {
+        schema_version: schema_version(),
+        per_object: [(
+            String::from(object_id),
+            ObjectSurfaceData {
+                facet_classes: vec![FacetClass::Normal; facet_count as usize],
+                surface_groups: Vec::new(),
+                bridge_regions: Vec::new(),
+                overhang_regions: Vec::new(),
+            },
+        )]
+        .into(),
     }
 }
 

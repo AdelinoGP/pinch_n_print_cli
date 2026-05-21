@@ -118,6 +118,7 @@ pub static STAGE_ORDER: &[StageId] = &[
     StageId::PrePassPaintSegmentation,
     StageId::PrePassRegionMapping,   // host-built-in, not a module stage
     StageId::LayerSlice,             // host-built-in
+    StageId::LayerPaintRegionAnnotation, // host-built-in; WASM override contract — any module claiming this stage runs instead of the host
     StageId::LayerSlicePostProcess,
     StageId::LayerPerimeters,
     StageId::LayerPerimetersPostProcess,
@@ -698,6 +699,8 @@ the prepass without invoking any module. This guard short-circuits before
 dispatch so module-side error handling for "the IR I need wasn't committed"
 is unnecessary.
 
+`PrePass::PaintSegmentation` follows a guard-based fallback contract: if a WASM module claims this stage in its manifest, the module runs and produces `PaintRegionIR`. If no module claims the stage, the host built-in `execute_paint_segmentation()` handles it.
+
 #### Precision-Key Touch Points (packet 60)
 
 `Layer::Slice` (host-built-in): reads `slice_closing_radius` from `ResolvedConfig`; this key is consumed by `slicer_core::triangle_mesh_slicer` to close open contours at the slice plane.
@@ -706,6 +709,10 @@ is unnecessary.
 - `gcode_resolution`, `infill_resolution`, `support_resolution`, `min_segment_length`, `gcode_xy_decimals` — consumed inside `DefaultGCodeEmitter` during G-code serialization.
 - `perimeter_arc_tolerance` — read by perimeter modules at module-load time and threaded into every `slicer_core::polygon_ops::offset(...)` call.
 - `slice_closing_radius` — consumed by `slicer_core::triangle_mesh_slicer` at the host-built-in `Layer::Slice` stage (see above).
+
+#### Layer::PaintRegionAnnotation Stage (packet 64)
+
+`Layer::PaintRegionAnnotation` sits between `Layer::Slice` and `Layer::SlicePostProcess` in the per-layer stage order. The host handler `execute_slice_postprocess_paint_annotation()` annotates slice-region entities with paint data from `PaintRegionIR`. This stage follows a guard-based fallback contract: any WASM module claiming `Layer::PaintRegionAnnotation` in its manifest runs instead of the host built-in, providing a full override contract. When no module claims the stage, the host built-in handles it.
 
 ### Per-Layer Execution (rayon parallel)
 
@@ -1035,6 +1042,7 @@ slice command
   ├─ execute_per_layer()  [rayon::par_iter]
   │    └─ per layer (parallel):
   │         ├─ LayerSlice              (host-built-in)
+  │         ├─ LayerPaintRegionAnnotation  (host-built-in; WASM override)
   │         ├─ LayerSlicePostProcess
   │         ├─ LayerPerimeters
   │         ├─ LayerPerimetersPostProcess

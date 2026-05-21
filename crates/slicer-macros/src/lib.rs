@@ -2617,6 +2617,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                             polygons: sr.polygons.iter().map(__slicer_wit_expolygon_to_ir).collect(),
                             value: __slicer_wit_paintvalue_to_ir(&sr.value),
                             paint_order: idx as u64,
+                            aabb: None,
                         })
                         .collect();
                     semantic_regions.insert(ir_semantic, ir_regions);

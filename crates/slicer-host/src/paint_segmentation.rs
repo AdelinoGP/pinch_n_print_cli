@@ -4,7 +4,9 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use rayon::prelude::*;
 use slicer_core::{slice_mesh_ex, union};
+use slicer_ir::slice_ir::BoundingBox2;
 use slicer_ir::{
     ConfigValue, ExPolygon, LayerPaintMap, LayerPlanIR, MeshIR, PaintRegionIR, PaintSemantic,
     PaintValue, Point2, Point3, Polygon, SemanticRegion, SurfaceClassificationIR,
@@ -47,11 +49,212 @@ pub enum PaintSegmentationError {
     },
 }
 
+impl std::fmt::Display for PaintSegmentationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingSurfaceObject { object_id } => {
+                write!(f, "surface classification data missing for object '{object_id}'")
+            }
+            Self::MissingLayerParticipation { object_id } => {
+                write!(f, "layer participation data missing for object '{object_id}'")
+            }
+            Self::MalformedFacetValues {
+                object_id,
+                layer_index,
+                expected_facets,
+                actual_facet_values,
+            } => write!(
+                f,
+                "object '{object_id}' paint layer {layer_index}: expected {expected_facets} facet values, got {actual_facet_values}"
+            ),
+            Self::DeterministicConflict {
+                global_layer_index,
+                object_id,
+                semantic,
+                paint_order,
+            } => write!(
+                f,
+                "deterministic conflict at layer {global_layer_index}, object '{object_id}', semantic {semantic:?}, paint order {paint_order}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for PaintSegmentationError {}
+
+/// A single facet-paint entry collected during execution or WIT harvesting.
+/// These are the raw input to [`group_and_union_paint_regions`].
+#[derive(Debug, Clone)]
+pub struct PaintFacetEntry {
+    /// Global layer index this entry belongs to.
+    pub layer_index: u32,
+    /// Object identifier.
+    pub object_id: String,
+    /// Paint semantic family.
+    pub semantic: PaintSemantic,
+    /// Paint value payload.
+    pub value: PaintValue,
+    /// Render order (lower = earlier).
+    pub paint_order: u64,
+    /// Polygons contributed by this entry (typically 1 per facet).
+    pub polygons: Vec<ExPolygon>,
+}
+
+/// Hashable wrapper for `PaintValue` so it can be used as a HashMap key.
+#[derive(Clone, Hash, Eq, PartialEq)]
+enum HashablePaintValue {
+    Flag(bool),
+    Scalar(u32),
+    ToolIndex(u32),
+    Custom(String),
+}
+
+impl From<&PaintValue> for HashablePaintValue {
+    fn from(v: &PaintValue) -> Self {
+        match v {
+            PaintValue::Flag(b) => HashablePaintValue::Flag(*b),
+            PaintValue::Scalar(f) => HashablePaintValue::Scalar(f.to_bits()),
+            PaintValue::ToolIndex(n) => HashablePaintValue::ToolIndex(*n),
+            PaintValue::Custom(s) => HashablePaintValue::Custom(s.clone()),
+        }
+    }
+}
+
+/// Group facet entries by `(layer_index, object_id, PaintSemantic, PaintValue)`,
+/// union polygons per group, compute AABB, and build a sorted `PaintRegionIR`.
+pub fn group_and_union_paint_regions(
+    entries: Vec<PaintFacetEntry>,
+    union_paint_regions_at_harvest: bool,
+) -> PaintRegionIR {
+    let mut groups: HashMap<
+        (u32, String, PaintSemantic, HashablePaintValue),
+        Vec<(u64, Vec<ExPolygon>)>,
+    > = HashMap::new();
+
+    for entry in entries {
+        let key = (
+            entry.layer_index,
+            entry.object_id.clone(),
+            entry.semantic.clone(),
+            HashablePaintValue::from(&entry.value),
+        );
+        groups
+            .entry(key)
+            .or_default()
+            .push((entry.paint_order, entry.polygons));
+    }
+
+    let mut per_layer: HashMap<u32, LayerPaintMap> = HashMap::new();
+
+    // Process groups in parallel — each group's union can be expensive.
+    let group_vec: Vec<_> = groups.into_iter().collect();
+    let results: Vec<(u32, PaintSemantic, SemanticRegion)> = group_vec
+        .into_par_iter()
+        .map(
+            |((layer_index, object_id, semantic, hashable_value), group_entries)| {
+                let value = match hashable_value {
+                    HashablePaintValue::Flag(b) => PaintValue::Flag(b),
+                    HashablePaintValue::Scalar(bits) => PaintValue::Scalar(f32::from_bits(bits)),
+                    HashablePaintValue::ToolIndex(n) => PaintValue::ToolIndex(n),
+                    HashablePaintValue::Custom(s) => PaintValue::Custom(s),
+                };
+
+                let all_polygons: Vec<ExPolygon> = group_entries
+                    .iter()
+                    .flat_map(|(_, polys)| polys.clone())
+                    .collect();
+                let paint_order = group_entries.iter().map(|(po, _)| *po).min().unwrap_or(0);
+
+                let unioned = if union_paint_regions_at_harvest && all_polygons.len() > 1 {
+                    slicer_core::union(&all_polygons, &[])
+                } else {
+                    all_polygons
+                };
+
+                let (min_x, min_y, max_x, max_y) =
+                    unioned.iter().flat_map(|ep| &ep.contour.points).fold(
+                        (i64::MAX, i64::MAX, i64::MIN, i64::MIN),
+                        |(min_x, min_y, max_x, max_y), pt| {
+                            (
+                                min_x.min(pt.x),
+                                min_y.min(pt.y),
+                                max_x.max(pt.x),
+                                max_y.max(pt.y),
+                            )
+                        },
+                    );
+                let aabb = if min_x <= max_x && min_y <= max_y {
+                    Some(BoundingBox2 {
+                        min: Point2 { x: min_x, y: min_y },
+                        max: Point2 { x: max_x, y: max_y },
+                    })
+                } else {
+                    None
+                };
+
+                (
+                    layer_index,
+                    semantic,
+                    SemanticRegion {
+                        object_id,
+                        polygons: unioned,
+                        value,
+                        paint_order,
+                        aabb,
+                    },
+                )
+            },
+        )
+        .collect();
+
+    for (layer_index, semantic, region) in results {
+        let layer = per_layer
+            .entry(layer_index)
+            .or_insert_with(|| LayerPaintMap {
+                global_layer_index: layer_index,
+                semantic_regions: HashMap::new(),
+            });
+        layer
+            .semantic_regions
+            .entry(semantic)
+            .or_default()
+            .push(region);
+    }
+
+    for layer_map in per_layer.values_mut() {
+        for regions in layer_map.semantic_regions.values_mut() {
+            regions.sort_by(|a, b| {
+                b.paint_order
+                    .cmp(&a.paint_order)
+                    .then_with(|| a.object_id.cmp(&b.object_id))
+                    .then_with(|| match (&a.value, &b.value) {
+                        (PaintValue::Flag(la), PaintValue::Flag(rb)) => la.cmp(rb),
+                        (PaintValue::Flag(_), _) => Ordering::Less,
+                        (_, PaintValue::Flag(_)) => Ordering::Greater,
+                        (PaintValue::Scalar(la), PaintValue::Scalar(rb)) => la.total_cmp(rb),
+                        (PaintValue::Scalar(_), PaintValue::ToolIndex(_)) => Ordering::Less,
+                        (PaintValue::ToolIndex(_), PaintValue::Scalar(_)) => Ordering::Greater,
+                        (PaintValue::ToolIndex(la), PaintValue::ToolIndex(rb)) => la.cmp(rb),
+                        (PaintValue::Custom(la), PaintValue::Custom(rb)) => la.cmp(rb),
+                        (PaintValue::Custom(_), _) => Ordering::Greater,
+                        (_, PaintValue::Custom(_)) => Ordering::Less,
+                    })
+            });
+        }
+    }
+
+    PaintRegionIR {
+        per_layer,
+        ..Default::default()
+    }
+}
+
 /// Convert segmented whole-triangle paint assignments into immutable per-layer paint regions.
 pub fn execute_paint_segmentation(
     mesh_ir: Arc<MeshIR>,
     surface_classification_ir: Arc<SurfaceClassificationIR>,
     layer_plan_ir: Arc<LayerPlanIR>,
+    union_paint_regions_at_harvest: bool,
 ) -> Result<Arc<PaintRegionIR>, PaintSegmentationError> {
     let mut per_layer = layer_plan_ir
         .global_layers
@@ -66,6 +269,13 @@ pub fn execute_paint_segmentation(
             )
         })
         .collect::<HashMap<_, _>>();
+
+    // Aggregate facet entries by (layer_index, object_id, semantic, value, paint_order)
+    // so we don't create O(facets × layers) individual entries.
+    let mut entry_accumulator: HashMap<
+        (u32, String, PaintSemantic, HashablePaintValue, u64),
+        PaintFacetEntry,
+    > = HashMap::new();
 
     for object in &mesh_ir.objects {
         let Some(paint_data) = &object.paint_data else {
@@ -109,39 +319,61 @@ pub fn execute_paint_segmentation(
                 let polygon = projected_facets[facet_index].clone();
 
                 for object_layer in participating_layers {
-                    let layer_map = per_layer
-                        .get_mut(&object_layer.global_layer_index)
-                        .ok_or_else(|| PaintSegmentationError::MissingLayerParticipation {
-                            object_id: object.id.clone(),
-                        })?;
-
-                    let semantic_regions = layer_map
-                        .semantic_regions
-                        .entry(layer.semantic.clone())
-                        .or_insert_with(Vec::new);
-
+                    // Conflict detection: check accumulator for same
+                    // (layer, object_id, semantic, paint_order) with a
+                    // different value whose polygons overlap this facet.
                     if matches!(layer.semantic, PaintSemantic::Custom(_)) {
-                        detect_custom_conflict(
-                            &object.id,
-                            object_layer.global_layer_index,
-                            &layer.semantic,
-                            value.clone(),
-                            paint_order as u64,
-                            &polygon,
-                            semantic_regions,
-                        )?;
+                        let conflict_value = HashablePaintValue::from(value);
+                        for ((l, oid, sem, hv, po), existing) in entry_accumulator.iter() {
+                            if *l == object_layer.global_layer_index
+                                && *oid == object.id
+                                && *sem == layer.semantic
+                                && *po == paint_order as u64
+                                && *hv != conflict_value
+                                && existing
+                                    .polygons
+                                    .iter()
+                                    .any(|ep| polygons_overlap(ep, &polygon))
+                            {
+                                return Err(PaintSegmentationError::DeterministicConflict {
+                                    global_layer_index: object_layer.global_layer_index,
+                                    object_id: object.id.clone(),
+                                    semantic: layer.semantic.clone(),
+                                    paint_order: paint_order as u64,
+                                });
+                            }
+                        }
                     }
 
-                    push_polygon_region(
-                        semantic_regions,
-                        &object.id,
-                        value.clone(),
+                    let acc_key = (
+                        object_layer.global_layer_index,
+                        object.id.clone(),
+                        layer.semantic.clone(),
+                        HashablePaintValue::from(value),
                         paint_order as u64,
-                        polygon.clone(),
                     );
+                    entry_accumulator
+                        .entry(acc_key)
+                        .or_insert_with(|| PaintFacetEntry {
+                            layer_index: object_layer.global_layer_index,
+                            object_id: object.id.clone(),
+                            semantic: layer.semantic.clone(),
+                            value: value.clone(),
+                            paint_order: paint_order as u64,
+                            polygons: Vec::new(),
+                        })
+                        .polygons
+                        .push(polygon.clone());
                 }
             }
         }
+    }
+
+    // Group, union, and compute AABBs via shared function
+    let entries: Vec<PaintFacetEntry> = entry_accumulator.into_values().collect();
+    let facet_ir = group_and_union_paint_regions(entries, union_paint_regions_at_harvest);
+    for (layer_index, layer_map) in facet_ir.per_layer {
+        per_layer.insert(layer_index, layer_map);
     }
 
     // Emit synthetic PaintRegionIR entries for support_enforcer and support_blocker
@@ -206,108 +438,6 @@ pub fn execute_paint_segmentation(
     }))
 }
 
-fn push_polygon_region(
-    semantic_regions: &mut Vec<SemanticRegion>,
-    object_id: &str,
-    value: PaintValue,
-    paint_order: u64,
-    polygon: ExPolygon,
-) {
-    if let Some(existing_region) = semantic_regions.iter_mut().find(|region| {
-        region.object_id == object_id && region.value == value && region.paint_order == paint_order
-    }) {
-        existing_region.polygons.push(polygon);
-        return;
-    }
-
-    semantic_regions.push(SemanticRegion {
-        object_id: object_id.to_owned(),
-        polygons: vec![polygon],
-        value,
-        paint_order,
-        aabb: None,
-    });
-}
-
-fn detect_custom_conflict(
-    object_id: &str,
-    global_layer_index: u32,
-    semantic: &PaintSemantic,
-    value: PaintValue,
-    paint_order: u64,
-    polygon: &ExPolygon,
-    semantic_regions: &[SemanticRegion],
-) -> Result<(), PaintSegmentationError> {
-    for region in semantic_regions {
-        if region.object_id != object_id
-            || region.paint_order != paint_order
-            || region.value == value
-        {
-            continue;
-        }
-
-        if region
-            .polygons
-            .iter()
-            .any(|existing| polygons_overlap(existing, polygon))
-        {
-            return Err(PaintSegmentationError::DeterministicConflict {
-                global_layer_index,
-                object_id: object_id.to_owned(),
-                semantic: semantic.clone(),
-                paint_order,
-            });
-        }
-    }
-
-    Ok(())
-}
-
-fn project_facet(
-    mesh: &slicer_ir::IndexedTriangleSet,
-    matrix: &[f64; 16],
-    facet_index: usize,
-) -> ExPolygon {
-    let index_base = facet_index * 3;
-    let contour = (0..3)
-        .map(|offset| {
-            let vertex_index = mesh.indices[index_base + offset] as usize;
-            let vertex = mesh.vertices[vertex_index];
-            let transformed = transform_point(vertex, matrix);
-            Point2::from_mm(transformed.x, transformed.y)
-        })
-        .collect::<Vec<_>>();
-
-    ExPolygon {
-        contour: Polygon { points: contour },
-        holes: Vec::new(),
-    }
-}
-
-fn transform_point(point: Point3, matrix: &[f64; 16]) -> Point3 {
-    let x = f64::from(point.x);
-    let y = f64::from(point.y);
-    let z = f64::from(point.z);
-    let transformed_x = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
-    let transformed_y = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
-    let transformed_z = matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14];
-    let transformed_w = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
-
-    if transformed_w != 0.0 && transformed_w != 1.0 {
-        return Point3 {
-            x: (transformed_x / transformed_w) as f32,
-            y: (transformed_y / transformed_w) as f32,
-            z: (transformed_z / transformed_w) as f32,
-        };
-    }
-
-    Point3 {
-        x: transformed_x as f32,
-        y: transformed_y as f32,
-        z: transformed_z as f32,
-    }
-}
-
 fn compare_semantic_regions(left: &SemanticRegion, right: &SemanticRegion) -> Ordering {
     left.object_id
         .cmp(&right.object_id)
@@ -349,6 +479,48 @@ fn polygon_signature(polygons: &[ExPolygon]) -> Vec<Vec<(i64, i64)>> {
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+fn project_facet(
+    mesh: &slicer_ir::IndexedTriangleSet,
+    matrix: &[f64; 16],
+    facet_index: usize,
+) -> ExPolygon {
+    let index_base = facet_index * 3;
+    let contour = (0..3)
+        .map(|offset| {
+            let vertex_index = mesh.indices[index_base + offset] as usize;
+            let vertex = mesh.vertices[vertex_index];
+            let transformed = transform_point(vertex, matrix);
+            Point2::from_mm(transformed.x, transformed.y)
+        })
+        .collect::<Vec<_>>();
+
+    ExPolygon {
+        contour: Polygon { points: contour },
+        holes: Vec::new(),
+    }
+}
+
+fn transform_point(point: Point3, matrix: &[f64; 16]) -> Point3 {
+    let x = f64::from(point.x);
+    let y = f64::from(point.y);
+    let z = f64::from(point.z);
+    let transformed_x = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
+    let transformed_y = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
+    let transformed_z = matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14];
+    let transformed_w = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
+
+    let w = if transformed_w == 0.0 {
+        1.0
+    } else {
+        transformed_w
+    };
+    Point3 {
+        x: (transformed_x / w) as f32,
+        y: (transformed_y / w) as f32,
+        z: (transformed_z / w) as f32,
+    }
 }
 
 fn polygons_overlap(left: &ExPolygon, right: &ExPolygon) -> bool {

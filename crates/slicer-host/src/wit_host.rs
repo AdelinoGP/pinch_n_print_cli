@@ -468,10 +468,10 @@ pub struct LayerPlanOutputData;
 pub struct MeshSegmentationOutputData;
 /// Backing data for prepass `paint-segmentation-output` resource.
 ///
-/// Paint-region entries emitted by `push-paint-region` during a WIT prepass
-/// invocation are stored on `HostExecutionContext::paint_region_entries`.
-/// This struct is just a table-entry tag so the resource-handle lifecycle
-/// works; the actual data lives on the context.
+/// This struct is a table-entry tag so the resource-handle lifecycle
+/// works for test-guest linking. The host-native paint segmentation
+/// path (`execute_paint_segmentation`) does not use this resource;
+/// `push-paint-region` is a no-op stub.
 pub struct PaintSegmentationOutputData;
 /// Backing data for prepass `seam-planning-output` resource.
 ///
@@ -572,30 +572,6 @@ pub mod prepass {
 
                 use geometry.{ex-polygon};
 
-                variant paint-value-input {
-                    flag(bool),
-                    scalar(f32),
-                    tool-index(u32),
-                    custom(string),
-                }
-
-                record paint-region-entry {
-                    object-id: object-id,
-                    layer-index: layer-idx,
-                    semantic: string,
-                    polygons: list<ex-polygon>,
-                    value: paint-value-input,
-                }
-                resource paint-segmentation-output {
-                    push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
-                }
-
-                export run-paint-segmentation: func(
-                    objects: list<paint-segmentation-object-view>,
-                    output: paint-segmentation-output,
-                    config: config-view,
-                ) -> result<_, module-error>;
-
                 record region-layer-proposal {
                     object-id: object-id, region-id: region-id,
                     effective-layer-height: f32,
@@ -648,19 +624,32 @@ pub mod prepass {
                     paint-layers: list<paint-layer-view>,
                 }
 
-                /// Read-only view of an object for paint segmentation, including
-                /// transform and layer participation.
+                variant paint-value-input {
+                    flag(bool), scalar(f32), tool-index(u32), custom(string)
+                }
+                record paint-region-entry {
+                    object-id: object-id,
+                    layer-index: layer-idx,
+                    semantic: string,
+                    polygons: list<ex-polygon>,
+                    value: paint-value-input,
+                }
+                resource paint-segmentation-output {
+                    push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
+                }
+
+                export run-paint-segmentation: func(
+                    objects: list<paint-segmentation-object-view>,
+                    output: paint-segmentation-output,
+                    config: config-view,
+                ) -> result<_, module-error>;
+
                 record paint-segmentation-object-view {
                     object-id: object-id,
-                    /// Mesh vertices as point3 coordinates.
                     vertices: list<point3>,
-                    /// Triangle indices (3 per triangle), indexing into vertices.
                     triangles: list<tuple<u32, u32, u32>>,
-                    /// All paint layers on this object.
                     paint-layers: list<paint-layer-view>,
-                    /// 4x4 column-major transform matrix (16 elements).
                     transform-matrix: list<f64>,
-                    /// Global layer indices this object participates in.
                     participating-layer-indices: list<u32>,
                 }
 
@@ -1453,13 +1442,6 @@ pub struct HostExecutionContext {
     /// deterministic `MeshSegmentationIR.marks` sequence.
     pub(crate) mesh_segmentation_marks: Vec<(String, u32, String, String)>,
 
-    /// Paint-region entries collected from `push-paint-region` calls
-    /// during a prepass `run-paint-segmentation` invocation. Stored as
-    /// raw `prepass::PaintRegionEntry` records so the harvest helper
-    /// can convert them to `PaintRegionIR` without losing any field.
-    /// Empty for all non-prepass stages.
-    pub(crate) paint_region_entries: Vec<prepass::PaintRegionEntry>,
-
     /// Seam-plan entries collected during a prepass `run-seam-planning`
     /// invocation. Stored as raw `prepass::SeamPlanEntry` records so the
     /// harvest helper can convert them to `SeamPlanIR` without losing any field.
@@ -1608,7 +1590,6 @@ impl HostExecutionContextBuilder {
             mesh_analysis_annotations: Vec::new(),
             mesh_analysis_surface_groups: Vec::new(),
             mesh_segmentation_marks: Vec::new(),
-            paint_region_entries: Vec::new(),
             seam_plan_entries: Vec::new(),
             support_plan_entries: Vec::new(),
             finalization_pushes: Vec::new(),
@@ -1736,11 +1717,6 @@ impl HostExecutionContext {
     /// Triangle paint marks collected during `run-mesh-segmentation`.
     pub fn mesh_segmentation_marks(&self) -> &[(String, u32, String, String)] {
         &self.mesh_segmentation_marks
-    }
-
-    /// Paint-region entries collected during `run-paint-segmentation`.
-    pub fn paint_region_entries(&self) -> &[prepass::PaintRegionEntry] {
-        &self.paint_region_entries
     }
 
     /// Seam-plan entries collected during `run-seam-planning`.
@@ -1980,8 +1956,7 @@ impl HostExecutionContext {
     /// Push a paint-segmentation-output resource (prepass world). The
     /// returned handle is what the host passes into
     /// `run-paint-segmentation`; guest calls to `push-paint-region` go
-    /// through `HostPaintSegmentationOutput::push_paint_region` below,
-    /// which appends entries to `paint_region_entries`.
+    /// through `HostPaintSegmentationOutput::push_paint_region` below.
     pub fn push_paint_segmentation_output(
         &mut self,
     ) -> wasmtime::Result<Resource<prepass::PaintSegmentationOutput>> {
@@ -2913,65 +2888,6 @@ pub fn project_support_geometry_view(
     });
     prepass::SupportGeometryView {
         entries: sorted_entries,
-    }
-}
-
-/// Convert a slicer-ir `ObjectMesh` to a WIT `PaintSegmentationObjectView` for PaintSegmentation.
-///
-/// This converter includes the transform matrix and participating layer indices
-/// needed by paint segmentation modules to project 3D paint onto layers.
-pub fn object_mesh_to_wit_paint_segmentation_view(
-    mesh: &slicer_ir::ObjectMesh,
-    participating_layer_indices: &[u32],
-) -> prepass::PaintSegmentationObjectView {
-    let vertices: Vec<prepass::Point3> = mesh
-        .mesh
-        .vertices
-        .iter()
-        .map(|v| prepass::Point3 {
-            x: v.x,
-            y: v.y,
-            z: v.z,
-        })
-        .collect();
-
-    // Convert indexed triangles to list of tuples
-    let triangles: Vec<(u32, u32, u32)> = mesh
-        .mesh
-        .indices
-        .chunks(3)
-        .map(|chunk| (chunk[0], chunk[1], chunk[2]))
-        .collect();
-
-    // Convert paint layers if present
-    let paint_layers: Vec<prepass::PaintLayerView> = if let Some(ref paint_data) = mesh.paint_data {
-        paint_data
-            .layers
-            .iter()
-            .map(ir_to_wit_paint_layer_view)
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    prepass::PaintSegmentationObjectView {
-        object_id: mesh.id.clone(),
-        vertices,
-        triangles,
-        paint_layers,
-        // Validate transform matrix length — Transform3d.matrix is [f64; 16],
-        // and the WIT type is list<f64> (not a fixed 16-tuple). Enforce the
-        // invariant at the boundary to catch any future changes.
-        transform_matrix: {
-            let mat = &mesh.transform.matrix;
-            assert!(
-                mat.len() == 16,
-                "transform-matrix must have exactly 16 elements, got {}",
-                mat.len()
-            );
-            mat.to_vec()
-        },
-        participating_layer_indices: participating_layer_indices.to_vec(),
     }
 }
 
@@ -4380,58 +4296,6 @@ mod prepass_impls {
         }
     }
 
-    impl pm::HostPaintSegmentationOutput for HostExecutionContext {
-        fn push_paint_region(
-            &mut self,
-            _handle: Resource<pm::PaintSegmentationOutput>,
-            entry: pm::PaintRegionEntry,
-        ) -> wasmtime::Result<Result<(), String>> {
-            // Validate before collecting. Empty object_id / semantic
-            // would corrupt the per-layer keying in PaintRegionIR; an
-            // empty polygon list is a no-op and is similarly rejected
-            // because the guest is required to emit one region entry
-            // per (layer, semantic, object, value) group — zero-polygon
-            // entries are never correct per docs/02 §Paint Region IR.
-            if entry.layer_index < 0 {
-                return Ok(Err(format!(
-                    "paint-segmentation-output: layer-index must be non-negative (got {})",
-                    entry.layer_index
-                )));
-            }
-            if entry.object_id.is_empty() {
-                return Ok(Err(String::from(
-                    "paint-segmentation-output: object-id must be non-empty",
-                )));
-            }
-            if entry.semantic.is_empty() {
-                return Ok(Err(String::from(
-                    "paint-segmentation-output: semantic must be non-empty",
-                )));
-            }
-            if entry.polygons.is_empty() {
-                return Ok(Err(String::from(
-                    "paint-segmentation-output: polygons list must not be empty",
-                )));
-            }
-            for (i, ep) in entry.polygons.iter().enumerate() {
-                if ep.contour.points.len() < 3 {
-                    return Ok(Err(format!(
-                        "paint-segmentation-output: polygon[{i}] contour must have \
-                         at least 3 points (got {})",
-                        ep.contour.points.len()
-                    )));
-                }
-            }
-            self.paint_region_entries.push(entry);
-            Ok(Ok(()))
-        }
-        fn drop(&mut self, rep: Resource<pm::PaintSegmentationOutput>) -> wasmtime::Result<()> {
-            let typed: Resource<PaintSegmentationOutputData> = Resource::new_own(rep.rep());
-            self.table.delete(typed)?;
-            Ok(())
-        }
-    }
-
     impl pm::HostSeamPlanningOutput for HostExecutionContext {
         fn push_seam_plan(
             &mut self,
@@ -4504,6 +4368,21 @@ mod prepass_impls {
         }
         fn drop(&mut self, rep: Resource<pm::MeshSegmentationOutput>) -> wasmtime::Result<()> {
             let typed: Resource<MeshSegmentationOutputData> = Resource::new_own(rep.rep());
+            self.table.delete(typed)?;
+            Ok(())
+        }
+    }
+
+    impl pm::HostPaintSegmentationOutput for HostExecutionContext {
+        fn push_paint_region(
+            &mut self,
+            _handle: Resource<pm::PaintSegmentationOutput>,
+            _entry: pm::PaintRegionEntry,
+        ) -> wasmtime::Result<Result<(), String>> {
+            Ok(Ok(())) // no-op stub — paint segmentation is host-native now
+        }
+        fn drop(&mut self, rep: Resource<pm::PaintSegmentationOutput>) -> wasmtime::Result<()> {
+            let typed: Resource<PaintSegmentationOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
             Ok(())
         }

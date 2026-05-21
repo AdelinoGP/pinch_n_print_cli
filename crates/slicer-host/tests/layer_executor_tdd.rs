@@ -11,15 +11,22 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use rstar::RTree;
+use slicer_core::paint_region::{PaintRegionRTreeEntry, PaintRegionRTreeIndex};
+use slicer_host::progress_events::ProgressEvent;
 use slicer_host::{
-    build_wasm_instance_pool, execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder,
-    CompiledStage, ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LayerArena,
-    LayerExecutionError, LayerStageError, LayerStageOutput, LayerStageRunner, LoadedModuleBuilder,
-    WasmArtifactMetadata,
+    build_execution_plan, build_wasm_instance_pool, execute_per_layer,
+    execute_per_layer_with_events, Blackboard, CompiledModule, CompiledModuleBuilder,
+    CompiledStage, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest, IrAccessMask,
+    LayerArena, LayerExecutionError, LayerProgressSink, LayerStageError, LayerStageOutput,
+    LayerStageRunner, LoadedModuleBuilder, SortedStageModules, WasmArtifactMetadata,
 };
+use slicer_ir::slice_ir::BoundingBox2;
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, MeshIR, ObjectMesh, Point3,
-    ResolvedConfig, SemVer, StageId, Transform3d,
+    ActiveRegion, BoundingBox3, ConfigValue, ConfigView, ExPolygon, GlobalLayer,
+    IndexedTriangleSet, LayerPaintMap, MeshIR, ObjectConfig, ObjectMesh, PaintRegionIR,
+    PaintSemantic, PaintValue, Point2, Point3, Polygon, ResolvedConfig, SemVer, SemanticRegion,
+    StageId, Transform3d,
 };
 
 // ============================================================================
@@ -1085,4 +1092,349 @@ impl LayerStageRunner for CatchupMetadataRecordingRunner {
         }
         Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
     }
+}
+
+// ============================================================================
+// Regression test: paint annotation runs when PaintRegionAnnotation stage is
+// NOT in the execution plan (Bug 3 from packet 64).
+// ============================================================================
+
+fn tetra_mesh_for_layer() -> MeshIR {
+    MeshIR {
+        schema_version: semver(1, 0, 0),
+        objects: vec![ObjectMesh {
+            id: "test-object".to_string(),
+            mesh: IndexedTriangleSet {
+                vertices: vec![
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 10.0,
+                        y: 0.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 10.0,
+                        z: 0.0,
+                    },
+                    Point3 {
+                        x: 0.0,
+                        y: 0.0,
+                        z: 10.0,
+                    },
+                ],
+                indices: vec![0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3],
+            },
+            transform: Transform3d {
+                matrix: identity4(),
+            },
+            config: ObjectConfig {
+                data: HashMap::new(),
+            },
+            modifier_volumes: Vec::new(),
+            paint_data: None,
+            world_z_extent: None,
+        }],
+        build_volume: BoundingBox3 {
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 10.0,
+                y: 10.0,
+                z: 10.0,
+            },
+        },
+    }
+}
+
+fn paint_annotation_layer_at(index: u32, z: f32, object_id: &str) -> GlobalLayer {
+    GlobalLayer {
+        index,
+        z,
+        active_regions: vec![ActiveRegion {
+            object_id: object_id.to_string(),
+            region_id: 0,
+            resolved_config: ResolvedConfig::default(),
+            effective_layer_height: 0.2,
+            nonplanar_shell: None,
+            is_catchup_layer: false,
+            catchup_z_bottom: 0.0,
+            tool_index: 0,
+        }],
+        has_nonplanar: false,
+        is_sync_layer: false,
+    }
+}
+
+fn paint_polygon(points_mm: Vec<(f32, f32)>) -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: points_mm
+                .into_iter()
+                .map(|(x, y)| Point2::from_mm(x, y))
+                .collect(),
+        },
+        holes: Vec::new(),
+    }
+}
+
+fn ambiguous_triangle_paint_regions(layer_index: u32) -> PaintRegionIR {
+    let mut semantic_regions: HashMap<PaintSemantic, Vec<SemanticRegion>> = HashMap::new();
+    semantic_regions.insert(
+        PaintSemantic::Material,
+        vec![SemanticRegion {
+            object_id: "test-object".to_string(),
+            polygons: vec![paint_polygon(vec![
+                (0.0, 0.0),
+                (9.8999, 0.0),
+                (0.0, 9.8999),
+            ])],
+            value: PaintValue::ToolIndex(3),
+            paint_order: 0,
+            aabb: None,
+        }],
+    );
+    let mut per_layer = HashMap::new();
+    per_layer.insert(
+        layer_index,
+        LayerPaintMap {
+            global_layer_index: layer_index,
+            semantic_regions,
+        },
+    );
+    PaintRegionIR {
+        per_layer,
+        ..Default::default()
+    }
+}
+
+fn expoly_vertex_aabb(polygons: &[ExPolygon]) -> BoundingBox2 {
+    let mut min_x = i64::MAX;
+    let mut min_y = i64::MAX;
+    let mut max_x = i64::MIN;
+    let mut max_y = i64::MIN;
+    for expoly in polygons {
+        for pt in &expoly.contour.points {
+            min_x = min_x.min(pt.x);
+            min_y = min_y.min(pt.y);
+            max_x = max_x.max(pt.x);
+            max_y = max_y.max(pt.y);
+        }
+        for hole in &expoly.holes {
+            for pt in &hole.points {
+                min_x = min_x.min(pt.x);
+                min_y = min_y.min(pt.y);
+                max_x = max_x.max(pt.x);
+                max_y = max_y.max(pt.y);
+            }
+        }
+    }
+    BoundingBox2 {
+        min: Point2 { x: min_x, y: min_y },
+        max: Point2 { x: max_x, y: max_y },
+    }
+}
+
+fn aabb_from_expolygons(polygons: &[ExPolygon]) -> BoundingBox2 {
+    expoly_vertex_aabb(polygons)
+}
+
+fn build_paint_region_rtree_index(ir: &PaintRegionIR) -> Arc<PaintRegionRTreeIndex> {
+    let mut trees: HashMap<u32, HashMap<PaintSemantic, RTree<PaintRegionRTreeEntry>>> =
+        HashMap::new();
+    for (&layer_index, layer_map) in &ir.per_layer {
+        let mut semantic_map: HashMap<PaintSemantic, RTree<PaintRegionRTreeEntry>> = HashMap::new();
+        for (semantic, regions) in &layer_map.semantic_regions {
+            let entries: Vec<PaintRegionRTreeEntry> = regions
+                .iter()
+                .enumerate()
+                .map(|(region_index, region)| {
+                    let aabb = region
+                        .aabb
+                        .unwrap_or_else(|| aabb_from_expolygons(&region.polygons));
+                    PaintRegionRTreeEntry {
+                        min_x: aabb.min.x as f64,
+                        min_y: aabb.min.y as f64,
+                        max_x: aabb.max.x as f64,
+                        max_y: aabb.max.y as f64,
+                        region_index,
+                    }
+                })
+                .collect();
+            let tree = if entries.is_empty() {
+                RTree::new()
+            } else {
+                RTree::bulk_load(entries)
+            };
+            semantic_map.insert(semantic.clone(), tree);
+        }
+        trees.insert(layer_index, semantic_map);
+    }
+    Arc::new(PaintRegionRTreeIndex { trees })
+}
+
+struct VecSink(Mutex<Vec<ProgressEvent>>);
+
+impl LayerProgressSink for VecSink {
+    fn record(&self, event: ProgressEvent) {
+        self.0.lock().unwrap().push(event);
+    }
+}
+
+#[test]
+fn paint_annotation_runs_when_stage_present_with_no_modules() {
+    let mesh = Arc::new(tetra_mesh_for_layer());
+    let layer = paint_annotation_layer_at(0, 0.1, "test-object");
+    let plan = ExecutionPlan {
+        prepass_stages: Vec::new(),
+        per_layer_stages: vec![
+            CompiledStage {
+                stage_id: "Layer::PaintRegionAnnotation".into(),
+                modules: Vec::new(),
+            },
+            CompiledStage {
+                stage_id: "Layer::Perimeters".into(),
+                modules: Vec::new(),
+            },
+        ],
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
+        global_layers: Arc::new(vec![layer]),
+        region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
+    };
+    let mut bb = Blackboard::new(Arc::clone(&mesh), plan.global_layers.len());
+
+    let ir = Arc::new(ambiguous_triangle_paint_regions(0));
+    let rtree = build_paint_region_rtree_index(&ir);
+    bb.commit_paint_regions(ir, rtree)
+        .expect("commit paint regions");
+
+    let sink = VecSink(Mutex::new(Vec::new()));
+    let runner = ScriptedRunner::new().with_default_success();
+    let (layer_irs, _audits) =
+        execute_per_layer_with_events(&plan, &bb, &runner, &sink).expect("per-layer exec ok");
+    assert_eq!(layer_irs.len(), 1);
+
+    let events = sink.0.lock().unwrap().clone();
+    assert!(
+        !events.is_empty(),
+        "paint annotation must run and produce progress events"
+    );
+}
+
+// ============================================================================
+// Regression test: PaintRegionAnnotation always in plan before Perimeters
+// ============================================================================
+
+#[test]
+fn paint_annotation_stage_is_always_in_plan_before_perimeters() {
+    let module = LoadedModuleBuilder::new(
+        "com.example.perimeters",
+        SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        "Layer::Perimeters",
+        "slicer:world-layer@1.0.0",
+        PathBuf::from("fixtures/com.example.perimeters.wasm"),
+    )
+    .ir_reads(vec!["SliceIR.regions".into()])
+    .ir_writes(vec!["PerimeterIR.wall_loops".into()])
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
+    .layer_parallel_safe(true)
+    .build();
+
+    let instance_pool = Arc::new(
+        build_wasm_instance_pool(
+            &module,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("fixture module should build a pool"),
+    );
+
+    let binding = ExecutionModuleBinding {
+        module,
+        instance_pool,
+        config_view: Arc::new(ConfigView::default()),
+        wasm_component: None,
+    };
+
+    let sorted_stages = vec![SortedStageModules {
+        stage_id: "Layer::Perimeters".into(),
+        module_ids: vec!["com.example.perimeters".into()],
+    }];
+
+    let request = ExecutionPlanRequest {
+        sorted_stages,
+        module_bindings: vec![binding],
+        global_layers: Arc::new(vec![GlobalLayer {
+            index: 0,
+            z: 0.2,
+            active_regions: vec![ActiveRegion {
+                object_id: "test-object".into(),
+                region_id: 0,
+                resolved_config: ResolvedConfig::default(),
+                effective_layer_height: 0.2,
+                nonplanar_shell: None,
+                is_catchup_layer: false,
+                catchup_z_bottom: 0.0,
+                tool_index: 0,
+            }],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        }]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+
+    let plan = build_execution_plan(&request).expect("plan should build successfully");
+
+    let paint_stage_ids: Vec<&str> = plan
+        .per_layer_stages
+        .iter()
+        .map(|s| s.stage_id.as_str())
+        .collect();
+
+    assert!(
+        paint_stage_ids.contains(&"Layer::PaintRegionAnnotation"),
+        "PaintRegionAnnotation must be in per_layer_stages even with no module claiming it; got: {paint_stage_ids:?}"
+    );
+
+    let paint_pos = paint_stage_ids
+        .iter()
+        .position(|&s| s == "Layer::PaintRegionAnnotation")
+        .unwrap();
+    let perim_pos = paint_stage_ids
+        .iter()
+        .position(|&s| s == "Layer::Perimeters")
+        .unwrap();
+    assert!(
+        paint_pos < perim_pos,
+        "PaintRegionAnnotation (index {paint_pos}) must appear before Perimeters (index {perim_pos})"
+    );
 }

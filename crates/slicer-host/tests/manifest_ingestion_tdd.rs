@@ -601,12 +601,12 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 21 core modules as of 2026-05-17 (part-cooling
-    // landed alongside packet 57 — TASK-182).
+    // We expect exactly 22 core modules as of 2026-05-20 (machine-gcode-emit
+    // landed alongside packet 64).
     assert_eq!(
         report.modules.len(),
-        21,
-        "expected 21 core modules, got {}: {:?}",
+        20,
+        "expected 20 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| m.id()).collect::<Vec<_>>()
     );
@@ -801,9 +801,12 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
     // Modules with a real component-model .wasm produced by
     // `modules/core-modules/build-core-modules.sh`. They must not be
     // flagged as placeholders; every other core module still is.
-    // Every documented prepass stage is now routed: `mesh-segmentation`
-    // landed in Step B (2026-04-14) and `paint-segmentation` in Step C
-    // (2026-04-15). Every core module should be a real component.
+    // Modules with a real component-model .wasm produced by
+    // `modules/core-modules/build-core-modules.sh`. They must not be
+    // flagged as placeholders; every other core module still is.
+    // `paint-segmentation` and `paint-region-annotator` .wasm still
+    // exist on disk (deletion is Step 7), so they remain non-placeholder
+    // until that step removes the build artifacts.
     const NON_PLACEHOLDER: &[&str] = &[
         "com.core.layer-planner-default",
         "com.core.mesh-segmentation",
@@ -822,6 +825,7 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
         "com.core.seam-planner-default",
         "com.core.support-planner",
         "com.core.fuzzy-skin",
+        "com.core.machine-gcode-emit",
         "com.core.support-surface-ironing",
         "com.core.skirt-brim",
         "com.core.top-surface-ironing",
@@ -861,8 +865,7 @@ fn core_module_placeholder_warnings_include_module_ids() {
     // One placeholder warning per core module whose companion .wasm is
     // still an 8-byte stub. Modules built by
     // `modules/core-modules/build-core-modules.sh` do not produce a
-    // placeholder warning. Today: `com.core.layer-planner-default` is
-    // real; the remaining 15 core modules are still placeholders.
+    // placeholder warning. The count is derived dynamically.
     let total_modules = report.modules.len();
     let real_count = report
         .modules

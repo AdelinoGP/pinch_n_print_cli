@@ -28,7 +28,7 @@ fn prepass_executor_locks_down_stage_order_full_commit_set_and_shared_mesh_input
         compiled_stage("PrePass::LayerPlanning", &["com.example.layer-planning"]),
         compiled_stage(
             "PrePass::PaintSegmentation",
-            &["com.example.paint-segmentation"],
+            &["com.example.secondary-analysis"],
         ),
         compiled_stage("PrePass::RegionMapping", &["com.example.region-mapping"]),
     ]);
@@ -37,7 +37,7 @@ fn prepass_executor_locks_down_stage_order_full_commit_set_and_shared_mesh_input
         &[
             "com.example.mesh-analysis",
             "com.example.layer-planning",
-            "com.example.paint-segmentation",
+            "com.example.secondary-analysis",
             "com.example.region-mapping",
         ],
         vec![
@@ -54,7 +54,7 @@ fn prepass_executor_locks_down_stage_order_full_commit_set_and_shared_mesh_input
                 )),
             ),
             (
-                String::from("com.example.paint-segmentation"),
+                String::from("com.example.secondary-analysis"),
                 Ok(PrepassStageOutput::PaintRegions(
                     Arc::new(paint_regions_fixture()),
                     Arc::new(PaintRegionRTreeIndex {
@@ -80,7 +80,7 @@ fn prepass_executor_locks_down_stage_order_full_commit_set_and_shared_mesh_input
         vec![
             String::from("com.example.mesh-analysis"),
             String::from("com.example.layer-planning"),
-            String::from("com.example.paint-segmentation"),
+            String::from("com.example.secondary-analysis"),
             String::from("com.example.region-mapping"),
         ]
     );
@@ -137,13 +137,13 @@ fn prepass_executor_rejects_missing_required_prepass_before_running_dependent_st
     let mut blackboard = Blackboard::new(mesh, 0);
     let plan = execution_plan_fixture(vec![compiled_stage(
         "PrePass::PaintSegmentation",
-        &["com.example.paint-segmentation"],
+        &["com.example.secondary-analysis"],
     )]);
 
     let runner = ScriptedRunner::new(
-        &["com.example.paint-segmentation"],
+        &["com.example.secondary-analysis"],
         vec![(
-            String::from("com.example.paint-segmentation"),
+            String::from("com.example.secondary-analysis"),
             Ok(PrepassStageOutput::PaintRegions(
                 Arc::new(paint_regions_fixture()),
                 Arc::new(PaintRegionRTreeIndex {

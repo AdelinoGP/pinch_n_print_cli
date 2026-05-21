@@ -15,9 +15,9 @@ use rstar::RTree;
 use slicer_core::paint_region::{PaintRegionRTreeEntry, PaintRegionRTreeIndex};
 use slicer_host::progress_events::{ProgressEvent, ProgressPhase};
 use slicer_host::{
-    execute_per_layer_with_events, Blackboard, CompiledModule, ExecutionPlan, LayerArena,
-    LayerExecutionError, LayerProgressSink, LayerStageError, LayerStageOutput, LayerStageRunner,
-    SlicePostProcessPaintAnnotationError,
+    execute_per_layer_with_events, execute_prepass_with_builtins, Blackboard, CompiledModule,
+    ExecutionPlan, LayerArena, LayerExecutionError, LayerProgressSink, LayerStageError,
+    LayerStageOutput, LayerStageRunner, SlicePostProcessPaintAnnotationError,
 };
 use slicer_ir::slice_ir::BoundingBox2;
 use slicer_ir::{
@@ -300,7 +300,7 @@ fn paint_annotation_is_invoked_on_real_per_layer_path_and_warnings_reach_sink() 
     assert_eq!(err.code, 504);
     assert!(!err.fatal, "paint-fallback warnings must be non-fatal");
     assert_eq!(event.phase, Some(ProgressPhase::PerLayer));
-    assert_eq!(event.stage.as_deref(), Some("Layer::SlicePostProcess"));
+    assert_eq!(event.stage.as_deref(), Some("Layer::PaintRegionAnnotation"));
 }
 
 #[test]
@@ -512,7 +512,7 @@ fn runtime_sink_forwards_paint_warning_to_both_jsonl_emitter_and_slice_event_col
         .all(|l| l.contains("\"event\":\"module_error\"")));
     assert!(lines
         .iter()
-        .all(|l| l.contains("\"stage\":\"Layer::SlicePostProcess\"")));
+        .all(|l| l.contains("\"stage\":\"Layer::PaintRegionAnnotation\"")));
 }
 
 #[test]
@@ -608,5 +608,26 @@ fn main_production_entry_path_uses_run_pipeline_with_events() {
     assert!(
         main_src.contains("JsonLinesEmitter::new"),
         "main.rs must wire the JSONL emitter as the documented transport"
+    );
+}
+
+#[test]
+fn empty_plan_with_no_layers_does_not_trigger_prepass_error() {
+    let mesh = Arc::new(tetra_mesh_ir("obj-a"));
+    let plan = ExecutionPlan {
+        prepass_stages: Vec::new(),
+        per_layer_stages: Vec::new(),
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
+        global_layers: Arc::new(Vec::new()),
+        region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
+    };
+    let mut bb = Blackboard::new(Arc::clone(&mesh), 0);
+
+    let result = execute_prepass_with_builtins(&plan, &mut bb, &NoopPrepassRunner);
+    assert!(
+        result.is_ok(),
+        "prepass must complete without error when no layer plan exists"
     );
 }

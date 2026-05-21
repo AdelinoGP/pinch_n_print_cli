@@ -172,3 +172,24 @@
 
 Packet 62 baseline source: `.ralph/specs/62_paint-annotator-performance/implementation-plan.md` Acceptance Ceremony.
 Packet 63 model: `benchy_4color.3mf`, 292 layers, 12 threads.
+
+| Metric | Packet 63 (R-tree) | Packet 64 (native migration) | Delta |
+|--------|---------------------|------------------------------|-------|
+| Pipeline total | 205,213 ms | 113,829 ms | −91,384 ms (−44.5%) |
+| PrePass::PaintSegmentation | 73,197 ms | 67,376 ms | −5,821 ms (−8.0%) |
+| PaintAnnotation (all threads) | 1,116,339 ms | 540,390 ms | −575,949 ms (−51.6%) |
+| Peak host mem | 6.39 GB | 6.80 GB | +0.41 GB (+6.4%) |
+
+Packet 64 model: `benchy_4color.3mf`, 292 layers, 12 threads.
+Packet 64 changes: WASM guest deleted → host-native path always-on; `group_and_union_paint_regions()` using `par_iter()` for union+AABB across groups; dedicated `Layer::PaintRegionAnnotation` stage running `par_chunks(32)` per-point parallelism; `PrePass::PaintSegmentation` host fallback with parallel group processing.
+Stage naming note: Packet 63 metric "Layer::SlicePostProcess" renamed to "PaintAnnotation" in packet 64, reflecting the dedicated `Layer::PaintRegionAnnotation` stage.
+
+### `par_chunks` size tradeoff
+
+| Chunk size | Total | PaintSegmentation | PaintAnnotation | Peak mem |
+|------------|-------|-------------------|-----------------|----------|
+| 32 | 113,829 ms | 67,376 ms | 540,390 ms | 6.80 GB |
+| 64 | 122,908 ms | 72,252 ms | 561,510 ms | 7.05 GB |
+| Delta | +8.0% | +7.2% | +3.9% | +3.7% |
+
+`par_chunks(32)` is the sweet spot. Larger chunks reduce task count (less parallelism across threads) and increase per-chunk working memory without offsetting the task dispatch overhead.

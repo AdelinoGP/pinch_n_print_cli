@@ -360,88 +360,82 @@ pub fn execute_slice_postprocess_paint_annotation(
                 }
             }
 
-            // Build boundary_paint for this semantic via parallel polygon iteration
+            // Build boundary_paint for this semantic via flattened point par_chunks(32)
             let object_id = region.object_id.clone();
             let region_id = region.region_id;
-            let polygon_results: Result<
-                Vec<(
-                    Vec<Option<PaintValue>>,
-                    Vec<SlicePostProcessPaintAnnotationWarning>,
-                    bool,
-                )>,
-                SlicePostProcessPaintAnnotationError,
-            > = region
-                .polygons
-                .par_iter()
-                .enumerate()
-                .map(|(polygon_index, polygon)| {
-                    let mut point_paint: Vec<Option<PaintValue>> =
-                        Vec::with_capacity(polygon.contour.points.len());
-                    let mut local_warnings = Vec::new();
-                    let mut local_degraded = false;
 
-                    for (contour_point_index, point) in
-                        polygon.contour.points.iter().enumerate()
-                    {
-                        match point_in_paint_region(
-                            &paint_regions,
-                            layer_index,
-                            semantic,
-                            *point,
-                            BoundaryInclusion::Include,
-                            paint_region_rtree.as_deref(),
-                        ) {
-                            Ok(Some(value)) => {
-                                point_paint.push(Some(value));
-                            }
-                            Ok(None) => {
-                                // Point is not in any paint region for this semantic.
-                                // Two cases:
-                                //   (a) point is within integer-grid quantization noise
-                                //       (≤ 1 unit ≈ 100 nm) of a paint-region edge —
-                                //       genuine numerical edge ambiguity; emit a 504
-                                //       and use the deterministic fallback.
-                                //   (b) point is unambiguously outside all painted
-                                //       regions — silently use a region-level default
-                                //       so the semantic still carries a value.
-                                if is_point_numerically_ambiguous(
-                                    semantic_regions,
-                                    *point,
-                                    layer_index,
-                                    semantic,
-                                    paint_region_rtree.as_deref(),
-                                ) {
-                                    let fallback_value =
-                                        default_fallback_value(semantic);
-                                    point_paint.push(Some(fallback_value.clone()));
-                                    local_warnings.push(
-                                        SlicePostProcessPaintAnnotationWarning {
-                                            code: 504,
-                                            global_layer_index: layer_index,
-                                            object_id: object_id.clone(),
-                                            region_id,
-                                            semantic: semantic.clone(),
-                                            polygon_index,
-                                            contour_point_index,
-                                            fallback_value,
-                                            reason:
-                                                SlicePostProcessPaintAnnotationWarningReason::NumericalEdgeAmbiguity,
-                                        },
-                                    );
-                                    local_degraded = true;
-                                } else {
-                                    if !semantic_regions.is_empty() {
-                                        point_paint.push(Some(
-                                            semantic_regions[0].value.clone(),
-                                        ));
+            let flat_points: Vec<(slicer_ir::Point2, usize, usize)> = region
+                .polygons
+                .iter()
+                .enumerate()
+                .flat_map(|(polygon_index, polygon)| {
+                    polygon
+                        .contour
+                        .points
+                        .iter()
+                        .enumerate()
+                        .map(move |(point_index, &point)| (point, polygon_index, point_index))
+                })
+                .collect();
+
+            let flat_results: Vec<(
+                Option<PaintValue>,
+                Vec<SlicePostProcessPaintAnnotationWarning>,
+                bool,
+            )> = flat_points
+                .par_chunks(32)
+                .map(|chunk| {
+                    chunk
+                        .iter()
+                        .map(|&(point, polygon_index, contour_point_index)| {
+                            match point_in_paint_region(
+                                &paint_regions,
+                                layer_index,
+                                semantic,
+                                point,
+                                BoundaryInclusion::Include,
+                                paint_region_rtree.as_deref(),
+                            ) {
+                                Ok(Some(value)) => {
+                                    Ok((Some(value), Vec::new(), false))
+                                }
+                                Ok(None) => {
+                                    if is_point_numerically_ambiguous(
+                                        semantic_regions,
+                                        point,
+                                        layer_index,
+                                        semantic,
+                                        paint_region_rtree.as_deref(),
+                                    ) {
+                                        let fallback_value =
+                                            default_fallback_value(semantic);
+                                        Ok((
+                                            Some(fallback_value.clone()),
+                                            vec![SlicePostProcessPaintAnnotationWarning {
+                                                code: 504,
+                                                global_layer_index: layer_index,
+                                                object_id: object_id.clone(),
+                                                region_id,
+                                                semantic: semantic.clone(),
+                                                polygon_index,
+                                                contour_point_index,
+                                                fallback_value,
+                                                reason: SlicePostProcessPaintAnnotationWarningReason::NumericalEdgeAmbiguity,
+                                            }],
+                                            true,
+                                        ))
+                                    } else if !semantic_regions.is_empty() {
+                                        Ok((
+                                            Some(semantic_regions[0].value.clone()),
+                                            Vec::new(),
+                                            false,
+                                        ))
                                     } else {
-                                        point_paint.push(None);
+                                        Ok((None, Vec::new(), false))
                                     }
                                 }
-                            }
-                            Err(PaintRegionQueryError::DeterministicConflict) => {
-                                return Err(
-                                    SlicePostProcessPaintAnnotationError::DeterministicConflict {
+                                Err(PaintRegionQueryError::DeterministicConflict) => {
+                                    Err(SlicePostProcessPaintAnnotationError::DeterministicConflict {
                                         code: 503,
                                         global_layer_index: layer_index,
                                         object_id: object_id.clone(),
@@ -449,22 +443,26 @@ pub fn execute_slice_postprocess_paint_annotation(
                                         semantic: semantic.clone(),
                                         polygon_index,
                                         contour_point_index,
-                                    },
-                                );
+                                    })
+                                }
                             }
-                        }
-                    }
-
-                    Ok((point_paint, local_warnings, local_degraded))
+                        })
+                        .collect::<Result<Vec<_>, SlicePostProcessPaintAnnotationError>>()
                 })
+                .collect::<Result<Vec<Vec<_>>, SlicePostProcessPaintAnnotationError>>()?
+                .into_iter()
+                .flatten()
                 .collect();
 
-            let polygon_results = polygon_results?;
-
             let mut semantic_paint: Vec<Vec<Option<PaintValue>>> =
-                Vec::with_capacity(polygon_results.len());
-            for (point_paint, w, d) in polygon_results {
-                semantic_paint.push(point_paint);
+                Vec::with_capacity(region.polygons.len());
+            for polygon in &region.polygons {
+                semantic_paint.push(Vec::with_capacity(polygon.contour.points.len()));
+            }
+
+            for (result_index, (paint_value, w, d)) in flat_results.into_iter().enumerate() {
+                let (_, polygon_index, _) = flat_points[result_index];
+                semantic_paint[polygon_index].push(paint_value);
                 warnings.extend(w);
                 if d {
                     degraded = true;

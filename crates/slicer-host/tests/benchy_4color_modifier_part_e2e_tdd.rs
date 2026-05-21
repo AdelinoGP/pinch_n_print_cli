@@ -3,6 +3,7 @@
 #![allow(missing_docs)]
 
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -10,13 +11,14 @@ use std::sync::Arc;
 use slicer_core::slice_mesh_ex;
 use slicer_host::model_loader::load_model;
 use slicer_host::{
-    execute_region_mapping, execute_slice_postprocess_paint_annotation, ExecutionPlan,
-    SlicePostProcessPaintAnnotationRequest, SlicePostProcessPaintAnnotationResult,
+    execute_paint_segmentation, execute_region_mapping, execute_slice_postprocess_paint_annotation,
+    ExecutionPlan, SlicePostProcessPaintAnnotationRequest, SlicePostProcessPaintAnnotationResult,
 };
 use slicer_ir::{
-    ActiveRegion, ConfigValue, ExPolygon, GlobalLayer, LayerPaintMap, LayerPlanIR, MeshIR,
-    PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon, ResolvedConfig, SemVer,
-    SemanticRegion, SliceIR, SlicedRegion,
+    ActiveRegion, ConfigValue, ExPolygon, FacetClass, GlobalLayer, LayerPaintMap, LayerPlanIR,
+    MeshIR, ObjectLayerRef, ObjectSurfaceData, PaintRegionIR, PaintSemantic, PaintValue, Point2,
+    Polygon, ResolvedConfig, SemVer, SemanticRegion, SliceIR, SlicedRegion,
+    SurfaceClassificationIR,
 };
 
 fn repo_root() -> PathBuf {
@@ -519,5 +521,242 @@ fn empty_modifier_volume_stamps_no_regions() {
         stamped_count, 0,
         "empty modifier_volumes must produce 0 stamped regions, \
          got stamped_count={stamped_count}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Full pipeline paint diagnostic: prepass extraction → per-layer annotation
+// ---------------------------------------------------------------------------
+
+/// Full pipeline paint-region diagnostic for `benchy_4color.3mf`.
+///
+/// Runs the host-side pipeline (paint extraction + paint annotation) end-to-end
+/// on a real 4-color painted model and reports exactly at which stage Material
+/// ToolIndex values are lost.
+///
+/// Failure mode 1: `STAGE=prepass_paint_extraction` — `execute_paint_segmentation`
+///     produced fewer than 4 distinct Material ToolIndex values. The 3MF paint
+///     strokes exist, but the paint-extraction IR pipeline dropped them.
+/// Failure mode 2: `STAGE=prepass_material_semantic` — the extracted
+///     `PaintRegionIR` has no `PaintSemantic::Material` key in any layer. The
+///     paint data reached the IR but with a wrong semantic label.
+/// Failure mode 3: `STAGE=per_layer_paint_annotation` — `execute_slice_postprocess_
+///     paint_annotation` produced zero contour points with `Material/ToolIndex`
+///     boundary_paint. The PaintRegionIR has correct semantics, but the annotation
+///     step did not project them onto SlicedRegion contour points. This could be
+///     a bounding-box mismatch, polygon emptiness, or semantic routing bug.
+#[test]
+fn benchy_4color_full_pipeline_paint_diagnostic() {
+    let path = benchy_4color_3mf();
+    assert!(path.exists(), "fixture missing: {}", path.display());
+
+    let mesh = load_model(&path).expect("load benchy_4color.3mf should succeed");
+    let object = &mesh.objects[0];
+    let object_id = &object.id;
+    let facet_count = object.mesh.indices.len() / 3;
+
+    // ---- Prepass phase: SurfaceClassificationIR + LayerPlanIR ----
+    let sc = SurfaceClassificationIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        per_object: HashMap::from([(
+            object_id.clone(),
+            ObjectSurfaceData {
+                facet_classes: vec![FacetClass::Normal; facet_count],
+                surface_groups: Vec::new(),
+                bridge_regions: Vec::new(),
+                overhang_regions: Vec::new(),
+            },
+        )]),
+    };
+
+    let layer_count = 20u32;
+    let global_layer_indices: Vec<u32> = (0..layer_count).collect();
+    let lp = Arc::new(LayerPlanIR {
+        schema_version: SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        global_layers: global_layer_indices
+            .iter()
+            .map(|idx| GlobalLayer {
+                index: *idx,
+                z: 0.2 * (*idx as f32 + 1.0),
+                active_regions: vec![ActiveRegion {
+                    object_id: object_id.clone(),
+                    region_id: 0,
+                    resolved_config: ResolvedConfig::default(),
+                    effective_layer_height: 0.2,
+                    nonplanar_shell: None,
+                    is_catchup_layer: false,
+                    catchup_z_bottom: 0.0,
+                    tool_index: 0,
+                }],
+                has_nonplanar: false,
+                is_sync_layer: false,
+            })
+            .collect(),
+        object_participation: HashMap::from([(
+            object_id.clone(),
+            global_layer_indices
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(local_idx, global_idx)| ObjectLayerRef {
+                    local_layer_index: local_idx as u32,
+                    global_layer_index: global_idx,
+                    effective_layer_height: 0.2,
+                })
+                .collect(),
+        )]),
+    });
+
+    // ---- Prepass execution: extract paint regions from 3MF strokes ----
+    let paint_result =
+        execute_paint_segmentation(Arc::new(mesh.clone()), Arc::new(sc), Arc::clone(&lp), true)
+            .expect("execute_paint_segmentation must succeed for benchy_4color");
+
+    // CHECK 1: At least 4 distinct ToolIndex Material regions after prepass
+    let mut paint_tool_indices = BTreeSet::new();
+    let mut material_region_count = 0usize;
+    for layer_map in paint_result.per_layer.values() {
+        if let Some(regions) = layer_map.semantic_regions.get(&PaintSemantic::Material) {
+            material_region_count += regions.len();
+            for region in regions {
+                if let PaintValue::ToolIndex(t) = region.value {
+                    paint_tool_indices.insert(t);
+                }
+            }
+        }
+    }
+
+    assert!(
+        !paint_result.per_layer.is_empty(),
+        "STAGE=prepass_paint_extraction — paint_regions.per_layer is empty; \
+         the 3MF paint strokes produced zero per-layer paint data."
+    );
+    assert!(
+        material_region_count > 0,
+        "STAGE=prepass_paint_extraction — zero Material semantic regions found; \
+         paint strokes may have been parsed under a different semantic."
+    );
+    eprintln!(
+        "DIAGNOSTIC: paint_tool_indices after prepass extraction = {:?}",
+        paint_tool_indices
+    );
+    assert!(
+        paint_tool_indices.len() >= 4,
+        "STAGE=prepass_paint_extraction — expected >= 4 distinct Material ToolIndex \
+         values, got {}: {:?}. 3MF paint strokes exist but the paint-extraction IR \
+         pipeline dropped them.",
+        paint_tool_indices.len(),
+        paint_tool_indices
+    );
+
+    // CHECK 2: Material semantic exists in required_semantics (derived from per_layer keys)
+    let has_material_semantic = paint_result
+        .per_layer
+        .values()
+        .any(|lm| lm.semantic_regions.contains_key(&PaintSemantic::Material));
+    assert!(
+        has_material_semantic,
+        "STAGE=prepass_material_semantic — PaintSemantic::Material is absent from all \
+         per_layer semantic_regions keys. The IR contains no Material semantic, so the \
+         per-layer paint annotator will have nothing to project."
+    );
+
+    // ---- Per-layer phase: slice the mesh and run paint annotation ----
+    // Pick a layer Z where the mesh has sliced polygons.
+    let test_z = 2.0;
+    let test_layer_idx = 10u32;
+
+    let sliced_polys: Vec<ExPolygon> = slice_mesh_ex(&object.mesh, &[test_z])
+        .into_iter()
+        .next()
+        .unwrap_or_default();
+
+    assert!(
+        !sliced_polys.is_empty(),
+        "sliced_polys are empty at Z={test_z}; test cannot proceed. \
+         Pick a Z that intersects the benchy_4color mesh."
+    );
+
+    let paint_regions = paint_result;
+    let required_semantics = vec![PaintSemantic::Material];
+
+    let slice_ir = SliceIR {
+        global_layer_index: test_layer_idx,
+        z: test_z,
+        regions: vec![SlicedRegion {
+            object_id: object_id.clone(),
+            region_id: 0,
+            polygons: sliced_polys.clone(),
+            infill_areas: sliced_polys,
+            nonplanar_surface: None,
+            effective_layer_height: 0.2,
+            boundary_paint: HashMap::new(),
+            is_top_surface: false,
+            is_bottom_surface: false,
+            is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
+        }],
+        ..Default::default()
+    };
+
+    let annotation_result =
+        execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
+            slice_ir,
+            paint_regions,
+            required_semantics,
+            modifier_projections: vec![],
+            paint_region_rtree: None,
+        })
+        .expect("execute_slice_postprocess_paint_annotation must succeed");
+
+    // CHECK 3: boundary_paint has at least one contour point with Material/ToolIndex
+    let material_tool_count: usize = annotation_result
+        .slice_ir
+        .regions
+        .iter()
+        .flat_map(|r| r.boundary_paint.get(&PaintSemantic::Material))
+        .flatten()
+        .flatten()
+        .filter(|pv| matches!(pv, Some(PaintValue::ToolIndex(_))))
+        .count();
+
+    let boundary_tool_vals: BTreeSet<u32> = annotation_result
+        .slice_ir
+        .regions
+        .iter()
+        .flat_map(|r| r.boundary_paint.get(&PaintSemantic::Material))
+        .flatten()
+        .flatten()
+        .filter_map(|pv| match pv {
+            Some(PaintValue::ToolIndex(t)) => Some(*t),
+            _ => None,
+        })
+        .collect();
+
+    eprintln!(
+        "DIAGNOSTIC: boundary_paint Material tool indices on layer Z={test_z} = {:?}",
+        boundary_tool_vals
+    );
+    eprintln!("DIAGNOSTIC: boundary_paint Material contour point count = {material_tool_count}");
+
+    assert!(
+        material_tool_count > 0,
+        "STAGE=per_layer_paint_annotation — zero contour points have \
+         PaintSemantic::Material / PaintValue::ToolIndex(...) in boundary_paint. \
+         PaintRegionIR contains {material_region_count} Material regions with \
+         tool indices {paint_tool_indices:?}, but execute_slice_postprocess_paint_annotation \
+         did not project them onto SlicedRegion contour points. Possible causes: \
+         (a) polygon contour points fall outside paint region bounding boxes, \
+         (b) bounding-box mismatch between mesh and paint stroke coordinates, \
+         (c) semantic routing mismatch (paint stored under a different PaintSemantic key)."
     );
 }

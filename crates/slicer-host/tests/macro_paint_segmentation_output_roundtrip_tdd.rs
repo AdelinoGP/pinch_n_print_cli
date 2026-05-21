@@ -1,11 +1,8 @@
-//! TDD harness for PaintSegmentation macro-arm output drain round-trip (Packet-43).
+//! Host-fallback tests for `execute_paint_segmentation` (Packet-64).
 //!
-//! Tests in this file are RED today:
-//! - Source-level grep tests fail because the macro arm not yet drained / comments not yet removed.
-//! - Dispatch tests fail because sdk-prepass-guest does not yet emit paint fixtures.
-//! - Docs tests fail because docs/07 and DEVIATION_LOG are not yet updated.
-//!
-//! After Step 2 (drain) + Step 3 (guest fixtures) + Step 7 (docs), all tests should be GREEN.
+//! Tests verify the guard-based host fallback path for paint-segmentation
+//! without loading any `.wasm` module. Source/doc-level tests from the
+//! original Packet-43 roundtrip harness are preserved below.
 //!
 //! Verification: cargo test -p slicer-host --test macro_paint_segmentation_output_roundtrip_tdd
 
@@ -14,162 +11,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use slicer_host::dispatch::WasmRuntimeDispatcher;
-use slicer_host::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
-use slicer_host::manifest::{LoadedModule, LoadedModuleBuilder};
-use slicer_host::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner, WasmEngine,
-};
+use slicer_host::{execute_paint_segmentation, PaintSegmentationError};
 use slicer_ir::{
-    BoundingBox3, ConfigValue, ConfigView, FacetPaintData, IndexedTriangleSet, LayerPlanIR, MeshIR,
-    ObjectConfig, ObjectLayerRef, ObjectMesh, PaintLayer, PaintSemantic, PaintValue, Point3,
-    SemVer, Transform3d,
+    BoundingBox3, FacetPaintData, GlobalLayer, LayerPlanIR, MeshIR, ObjectMesh, ObjectSurfaceData,
+    PaintLayer, PaintSemantic, PaintValue, Point3, SurfaceClassificationIR, Transform3d,
 };
-
-// ── Path to the sdk-prepass-paintseg-guest component ─────────────────────────
-
-const SDK_PREPASS_GUEST_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/sdk-prepass-paintseg-guest.component.wasm"
-);
-
-const PRODUCTION_PAINT_SEG_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../modules/core-modules/paint-segmentation/paint-segmentation.wasm"
-);
-
-// ── Harness helpers ───────────────────────────────────────────────────────────
-
-fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer {
-        major,
-        minor,
-        patch,
-    }
-}
-
-fn identity_transform() -> Transform3d {
-    Transform3d {
-        matrix: [
-            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-        ],
-    }
-}
-
-fn minimal_object(id: &str) -> ObjectMesh {
-    ObjectMesh {
-        id: id.to_string(),
-        mesh: IndexedTriangleSet {
-            vertices: vec![
-                Point3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-                Point3 {
-                    x: 1.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-                Point3 {
-                    x: 0.0,
-                    y: 1.0,
-                    z: 0.0,
-                },
-            ],
-            indices: vec![0, 1, 2],
-        },
-        transform: identity_transform(),
-        config: ObjectConfig {
-            data: HashMap::new(),
-        },
-        modifier_volumes: Vec::new(),
-        paint_data: None,
-        world_z_extent: None,
-    }
-}
-
-fn blackboard_with_objects(object_ids: &[&str]) -> Blackboard {
-    let objects: Vec<ObjectMesh> = object_ids.iter().map(|id| minimal_object(id)).collect();
-    let mesh = Arc::new(MeshIR {
-        schema_version: semver(1, 0, 0),
-        objects,
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 1.0,
-                y: 1.0,
-                z: 1.0,
-            },
-        },
-    });
-    Blackboard::new(mesh, 0)
-}
-
-fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
-    LoadedModuleBuilder::new(
-        id,
-        semver(1, 0, 0),
-        stage,
-        "slicer:world-prepass@1.0.0",
-        std::path::PathBuf::from("/dev/null"),
-    )
-    .min_host_version(semver(0, 1, 0))
-    .min_ir_schema(semver(1, 0, 0))
-    .max_ir_schema(semver(2, 0, 0))
-    .layer_parallel_safe(true)
-    .build()
-}
-
-fn make_compiled_module_with_config(
-    id: &str,
-    stage: &str,
-    component: Arc<slicer_host::WasmComponent>,
-    config: ConfigView,
-) -> CompiledModule {
-    let loaded = make_loaded_module(id, stage);
-    let pool = Arc::new(
-        build_wasm_instance_pool(
-            &loaded,
-            1,
-            WasmArtifactMetadata {
-                uses_shared_memory: false,
-            },
-        )
-        .unwrap(),
-    );
-    CompiledModuleBuilder::new(id, pool)
-        .config_view(Arc::new(config))
-        .wasm_component(Some(component))
-        .build()
-}
-
-fn load_sdk_prepass_guest(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmComponent>> {
-    let path = std::path::Path::new(SDK_PREPASS_GUEST_PATH);
-    if !path.exists() {
-        return None;
-    }
-    let bytes = std::fs::read(path).expect("read sdk-prepass-paintseg-guest.component.wasm");
-    match engine.compile_component(&bytes) {
-        Ok(c) => Some(Arc::new(c)),
-        Err(e) => panic!("failed to compile sdk-prepass-paintseg-guest: {e}"),
-    }
-}
-
-/// Build a ConfigView with a `fixture_case` key for driving guest fixture branches.
-/// Step 3 guest will dispatch on this key to emit the right fixture data.
-fn fixture_config(case: &str) -> ConfigView {
-    let mut m = HashMap::new();
-    m.insert(
-        "fixture_case".to_string(),
-        ConfigValue::String(case.to_string()),
-    );
-    ConfigView::from_map(m)
-}
 
 // ── AC-1: source-level drain string grep ─────────────────────────────────────
 
@@ -207,216 +53,191 @@ fn macro_arm_drains_regions_to_wit() {
     );
 }
 
-// ── AC-5: hole-bearing typed value round-trip ─────────────────────────────────
+// ── Host fallback: empty mesh ────────────────────────────────────────────────
 
-/// AC-5: Dispatch PaintSegmentation with fixture_case="hole_bearing".
-/// The paintseg guest emits 1 region on layer 0, semantic=FuzzySkin,
-/// object_id="obj-a", PaintValue::Custom("test-semantic|hole-bearing"),
-/// with a polygon that has 1 hole (4-point contour, 4-point hole).
+/// `execute_paint_segmentation` with no objects produces empty `per_layer`.
 #[test]
-fn hole_bearing_typed_value_round_trips() {
-    use slicer_host::PrepassStageOutput;
+fn host_fallback_empty_mesh_yields_empty_per_layer() {
+    let mesh = Arc::new(MeshIR::default());
+    let sc = Arc::new(SurfaceClassificationIR::default());
+    let lp = Arc::new(LayerPlanIR::default());
 
-    let engine = Arc::new(WasmEngine::new());
-    let component = match load_sdk_prepass_guest(&engine) {
-        Some(c) => c,
-        None => {
-            eprintln!("SKIP: sdk-prepass-paintseg-guest.component.wasm missing");
-            return;
-        }
-    };
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let module = make_compiled_module_with_config(
-        "com.test.paint-seg-hole",
-        "PrePass::PaintSegmentation",
-        component,
-        fixture_config("hole_bearing"),
-    );
-    let blackboard = blackboard_with_objects(&["obj-a"]);
-
-    let result = PrepassStageRunner::run_stage(
-        &dispatcher,
-        &"PrePass::PaintSegmentation".to_string(),
-        &module,
-        &blackboard,
-    );
-
-    let ir = match result {
-        Ok((PrepassStageOutput::PaintRegions(ir, _), _)) => ir,
-        Ok((PrepassStageOutput::None, _)) => {
-            panic!("AC-5 FAIL: got None — guest did not emit any paint regions");
-        }
-        Ok((other, _)) => panic!(
-            "AC-5 FAIL: unexpected variant {:?}",
-            std::mem::discriminant(&other)
-        ),
-        Err(e) => panic!("AC-5 FAIL: dispatch error: {e}"),
-    };
-
-    // Guest emits on layer 0 with FuzzySkin semantic.
-    let layer_map = ir
-        .per_layer
-        .get(&0)
-        .expect("AC-5: per_layer must contain layer index 0");
-    let regions = layer_map
-        .semantic_regions
-        .get(&PaintSemantic::FuzzySkin)
-        .expect("AC-5: layer 0 must have FuzzySkin semantic");
-    assert!(
-        !regions.is_empty(),
-        "AC-5: FuzzySkin regions must be non-empty"
-    );
-    let region = regions
-        .iter()
-        .find(|r| r.object_id == "obj-a")
-        .expect("AC-5: must find region for obj-a");
-
-    // Exactly 1 polygon with at least 1 hole.
-    assert_eq!(
-        region.polygons.len(),
-        1,
-        "AC-5: must have exactly 1 polygon"
-    );
-    assert!(
-        !region.polygons[0].holes.is_empty(),
-        "AC-5: polygon[0] must have at least 1 hole"
-    );
-
-    // Value must be the Custom string the guest injected.
-    match &region.value {
-        PaintValue::Custom(s) => assert!(
-            s.contains("test-semantic|hole-bearing"),
-            "AC-5: Custom value must contain 'test-semantic|hole-bearing', got '{s}'"
-        ),
-        other => panic!("AC-5: expected PaintValue::Custom, got {:?}", other),
-    }
-    assert_eq!(region.object_id, "obj-a", "AC-5: object_id must be obj-a");
+    let ir = execute_paint_segmentation(mesh, sc, lp, true)
+        .expect("host fallback must succeed for empty mesh");
+    assert!(ir.per_layer.is_empty());
 }
 
-// ── AC-6: custom paint value round-trip ──────────────────────────────────────
+// ── Host fallback: objects with paint_data produce Material regions ───────────
 
-/// AC-6: Dispatch PaintSegmentation with fixture_case="custom_payload".
-/// The paintseg guest emits a region with PaintSemantic::FuzzySkin,
-/// value=PaintValue::Custom("test-semantic|DEADBEEF"), object_id="obj-a",
-/// layer=0, 1 polygon (triangle, no holes).
+/// `execute_paint_segmentation` processes FacetPaintData into PaintRegionIR
+/// with the correct PaintSemantic::Material region.
 #[test]
-fn custom_semantic_and_custom_value_round_trip() {
-    use slicer_host::PrepassStageOutput;
-
-    let engine = Arc::new(WasmEngine::new());
-    let component = match load_sdk_prepass_guest(&engine) {
-        Some(c) => c,
-        None => {
-            eprintln!("SKIP: sdk-prepass-paintseg-guest.component.wasm missing");
-            return;
-        }
+fn host_fallback_painted_object_produces_material_region() {
+    let object = ObjectMesh {
+        id: "obj-a".into(),
+        mesh: slicer_ir::IndexedTriangleSet {
+            vertices: vec![
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.2,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+            ],
+            indices: vec![0, 1, 2],
+        },
+        transform: Transform3d {
+            matrix: [
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        },
+        config: slicer_ir::ObjectConfig {
+            data: HashMap::new(),
+        },
+        modifier_volumes: Vec::new(),
+        paint_data: Some(FacetPaintData {
+            layers: vec![PaintLayer {
+                semantic: PaintSemantic::Material,
+                facet_values: vec![Some(PaintValue::ToolIndex(0))],
+                strokes: Vec::new(),
+            }],
+        }),
+        world_z_extent: Some((0.0, 0.2)),
     };
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let module = make_compiled_module_with_config(
-        "com.test.paint-seg-custom",
-        "PrePass::PaintSegmentation",
-        component,
-        fixture_config("custom_payload"),
+
+    let mesh = Arc::new(MeshIR {
+        objects: vec![object],
+        build_volume: BoundingBox3 {
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+        },
+        ..Default::default()
+    });
+    let sc = Arc::new(SurfaceClassificationIR {
+        per_object: HashMap::from([("obj-a".into(), ObjectSurfaceData::default())]),
+        ..Default::default()
+    });
+    let lp = Arc::new(LayerPlanIR {
+        global_layers: vec![GlobalLayer {
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: true,
+        }],
+        object_participation: HashMap::from([(
+            "obj-a".into(),
+            vec![slicer_ir::ObjectLayerRef {
+                local_layer_index: 0,
+                global_layer_index: 0,
+                effective_layer_height: 0.2,
+            }],
+        )]),
+        ..Default::default()
+    });
+
+    let ir = execute_paint_segmentation(mesh, sc, lp, true).expect("host fallback must succeed");
+    assert!(
+        !ir.per_layer.is_empty(),
+        "per_layer must be non-empty for painted model"
     );
-    let blackboard = blackboard_with_objects(&["obj-a"]);
-
-    let result = PrepassStageRunner::run_stage(
-        &dispatcher,
-        &"PrePass::PaintSegmentation".to_string(),
-        &module,
-        &blackboard,
-    );
-
-    let ir = match result {
-        Ok((PrepassStageOutput::PaintRegions(ir, _), _)) => ir,
-        Ok((PrepassStageOutput::None, _)) => {
-            panic!("AC-6 FAIL: got None — guest did not emit any paint regions");
-        }
-        Ok((other, _)) => panic!(
-            "AC-6 FAIL: unexpected variant {:?}",
-            std::mem::discriminant(&other)
-        ),
-        Err(e) => panic!("AC-6 FAIL: dispatch error: {e}"),
-    };
-
-    // Guest emits on layer 0 with FuzzySkin semantic.
-    let layer_map = ir
+    let has_material = ir
         .per_layer
-        .get(&0)
-        .expect("AC-6: per_layer must contain layer 0");
-    let regions = layer_map
-        .semantic_regions
-        .get(&PaintSemantic::FuzzySkin)
-        .expect("AC-6: must find FuzzySkin semantic on layer 0");
-    let region = regions
-        .iter()
-        .find(|r| r.object_id == "obj-a")
-        .expect("AC-6: must find region for obj-a");
-
-    // Value must be byte-for-byte Custom("test-semantic|DEADBEEF").
-    match &region.value {
-        PaintValue::Custom(s) => assert_eq!(
-            s, "test-semantic|DEADBEEF",
-            "AC-6: Custom payload must be 'test-semantic|DEADBEEF', got '{s}'"
-        ),
-        other => panic!("AC-6: expected PaintValue::Custom, got {:?}", other),
-    }
+        .values()
+        .any(|lm| lm.semantic_regions.contains_key(&PaintSemantic::Material));
+    assert!(has_material, "must contain Material semantic region");
 }
 
-// ── AC-14: push failure surfaces as fatal module error ───────────────────────
+// ── Host fallback: error on missing surface classification ─────────────────────
 
-/// AC-14: Dispatch PaintSegmentation with fixture_case="force_push_failure".
-/// The paintseg guest emits a region with empty `polygons: vec![]`.
-/// The host validator (wit_host.rs:4089-4127) rejects this with
-/// "paint-segmentation-output: polygons list must not be empty".
-/// The macro arm surfaces ModuleError { code: 10, fatal: true } as
-/// PrepassExecutionError::FatalModule.
+/// Missing `SurfaceClassificationIR` data for a painted object surfaces
+/// as `PaintSegmentationError::MissingSurfaceObject`.
 #[test]
-fn push_failure_surfaces_as_fatal_module_error() {
-    use slicer_host::PrepassStageOutput;
-
-    let engine = Arc::new(WasmEngine::new());
-    let component = match load_sdk_prepass_guest(&engine) {
-        Some(c) => c,
-        None => {
-            eprintln!("SKIP: sdk-prepass-paintseg-guest.component.wasm missing");
-            return;
-        }
+fn host_fallback_missing_surface_errors() {
+    let object = ObjectMesh {
+        id: "obj-a".into(),
+        mesh: slicer_ir::IndexedTriangleSet {
+            vertices: vec![
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.2,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+            ],
+            indices: vec![0, 1, 2],
+        },
+        transform: Transform3d {
+            matrix: [
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        },
+        config: slicer_ir::ObjectConfig {
+            data: HashMap::new(),
+        },
+        modifier_volumes: Vec::new(),
+        paint_data: Some(FacetPaintData {
+            layers: vec![PaintLayer {
+                semantic: PaintSemantic::Material,
+                facet_values: vec![Some(PaintValue::ToolIndex(2))],
+                strokes: Vec::new(),
+            }],
+        }),
+        world_z_extent: Some((0.0, 0.2)),
     };
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let module = make_compiled_module_with_config(
-        "com.test.paint-seg-empty-poly",
-        "PrePass::PaintSegmentation",
-        component,
-        fixture_config("force_push_failure"),
-    );
-    let blackboard = blackboard_with_objects(&["obj-a"]);
 
-    let result = PrepassStageRunner::run_stage(
-        &dispatcher,
-        &"PrePass::PaintSegmentation".to_string(),
-        &module,
-        &blackboard,
-    );
+    let mesh = Arc::new(MeshIR {
+        objects: vec![object],
+        build_volume: BoundingBox3 {
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+        },
+        ..Default::default()
+    });
+    let sc = Arc::new(SurfaceClassificationIR::default());
+    let lp = Arc::new(LayerPlanIR::default());
 
-    // Dispatch must return Err with FatalModule discriminant.
-    match result {
-        Err(e) => {
-            let dbg = format!("{:?}", e);
-            assert!(
-                dbg.contains("FatalModule"),
-                "AC-14: error must be FatalModule, got: {dbg}"
-            );
+    let err =
+        execute_paint_segmentation(mesh, sc, lp, true).expect_err("missing surface must error");
+    match err {
+        PaintSegmentationError::MissingSurfaceObject { object_id } => {
+            assert_eq!(object_id, "obj-a");
         }
-        Ok((PrepassStageOutput::None, _)) => {
-            panic!(
-                "AC-14 FAIL: got Ok(None) — force_push_failure fixture must trigger host rejection"
-            );
-        }
-        Ok((other, _)) => panic!(
-            "AC-14 FAIL: expected Err(FatalModule) but got Ok({:?})",
-            std::mem::discriminant(&other)
-        ),
+        other => panic!("expected MissingSurfaceObject, got: {other:?}"),
     }
 }
 
@@ -537,110 +358,178 @@ fn dev_025_audit_history_complete() {
     }
 }
 
-// ── Negative-1: empty polygons rejected at host validator ────────────────────
+// ── Host fallback: malformed facet values error ───────────────────────────────
 
-/// Negative-1: Host-validator rejection framing of the force_push_failure fixture.
-/// A region with empty polygons vec must be rejected; dispatch must Err with FatalModule
-/// containing the validator message "polygons list must not be empty".
+/// Mismatched facet value count vs triangle count surfaces as
+/// `PaintSegmentationError::MalformedFacetValues`.
 #[test]
-fn empty_polygons_rejected_at_host_validator() {
-    use slicer_host::PrepassStageOutput;
-
-    let engine = Arc::new(WasmEngine::new());
-    let component = match load_sdk_prepass_guest(&engine) {
-        Some(c) => c,
-        None => {
-            eprintln!("SKIP: sdk-prepass-paintseg-guest.component.wasm missing");
-            return;
-        }
+fn host_fallback_malformed_facet_values_errors() {
+    let object = ObjectMesh {
+        id: "obj".into(),
+        mesh: slicer_ir::IndexedTriangleSet {
+            vertices: vec![
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+            ],
+            indices: vec![0, 1, 2],
+        },
+        transform: Transform3d {
+            matrix: [
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        },
+        config: slicer_ir::ObjectConfig {
+            data: HashMap::new(),
+        },
+        modifier_volumes: Vec::new(),
+        paint_data: Some(FacetPaintData {
+            layers: vec![PaintLayer {
+                semantic: PaintSemantic::Material,
+                // 1 triangle but 2 facet_values -> mismatch
+                facet_values: vec![
+                    Some(PaintValue::ToolIndex(1)),
+                    Some(PaintValue::ToolIndex(2)),
+                ],
+                strokes: Vec::new(),
+            }],
+        }),
+        world_z_extent: Some((0.0, 0.2)),
     };
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let module = make_compiled_module_with_config(
-        "com.test.paint-seg-neg1",
-        "PrePass::PaintSegmentation",
-        component,
-        fixture_config("force_push_failure"),
-    );
-    let blackboard = blackboard_with_objects(&["obj-a"]);
 
-    let result = PrepassStageRunner::run_stage(
-        &dispatcher,
-        &"PrePass::PaintSegmentation".to_string(),
-        &module,
-        &blackboard,
-    );
+    let mesh = Arc::new(MeshIR {
+        objects: vec![object],
+        build_volume: BoundingBox3 {
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+        },
+        ..Default::default()
+    });
+    let sc = Arc::new(SurfaceClassificationIR {
+        per_object: HashMap::from([("obj".into(), ObjectSurfaceData::default())]),
+        ..Default::default()
+    });
+    let lp = Arc::new(LayerPlanIR {
+        global_layers: vec![GlobalLayer {
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: true,
+        }],
+        object_participation: HashMap::from([(
+            "obj".into(),
+            vec![slicer_ir::ObjectLayerRef {
+                local_layer_index: 0,
+                global_layer_index: 0,
+                effective_layer_height: 0.2,
+            }],
+        )]),
+        ..Default::default()
+    });
 
-    match result {
-        Err(e) => {
-            let dbg = format!("{:?}", e);
-            assert!(
-                dbg.contains("FatalModule"),
-                "Neg-1: error must be FatalModule, got: {dbg}"
-            );
+    let err = execute_paint_segmentation(mesh, sc, lp, true)
+        .expect_err("malformed facet values must error");
+    match err {
+        PaintSegmentationError::MalformedFacetValues {
+            object_id,
+            expected_facets,
+            actual_facet_values,
+            ..
+        } => {
+            assert_eq!(object_id, "obj");
+            assert_eq!(expected_facets, 1, "1 triangle = 1 facet");
+            assert_eq!(actual_facet_values, 2, "2 values provided");
         }
-        Ok((PrepassStageOutput::None, _)) => {
-            panic!(
-                "Neg-1 FAIL: got Ok(None) — force_push_failure must trigger host validator rejection"
-            );
-        }
-        Ok((other, _)) => panic!(
-            "Neg-1 FAIL: expected Err(FatalModule), got Ok({:?})",
-            std::mem::discriminant(&other)
-        ),
+        other => panic!("expected MalformedFacetValues, got: {other:?}"),
     }
 }
 
-// ── AC-7: no fixture yields empty harvest ─────────────────────────────────────
+// ── Host fallback: unpainted object yields empty per_layer ─────────────────────
 
-/// AC-7: Dispatch PaintSegmentation with no fixture_case set (default / no-op branch).
-/// The paintseg guest does nothing, so the harvest must produce an empty PaintRegionIR
-/// (per_layer.is_empty()) and dispatch must not return a fatal error.
+/// Object with no paint_data produces empty per_layer (no error).
 #[test]
-fn no_fixture_yields_empty_harvest() {
-    use slicer_host::PrepassStageOutput;
-
-    let engine = Arc::new(WasmEngine::new());
-    let component = match load_sdk_prepass_guest(&engine) {
-        Some(c) => c,
-        None => {
-            eprintln!("SKIP: sdk-prepass-paintseg-guest.component.wasm missing");
-            return;
-        }
+fn host_fallback_unpainted_object_yields_empty_per_layer() {
+    let object = ObjectMesh {
+        id: "obj".into(),
+        mesh: slicer_ir::IndexedTriangleSet {
+            vertices: vec![
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+            ],
+            indices: vec![0, 1, 2],
+        },
+        transform: Transform3d {
+            matrix: [
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        },
+        config: slicer_ir::ObjectConfig {
+            data: HashMap::new(),
+        },
+        modifier_volumes: Vec::new(),
+        paint_data: None,
+        world_z_extent: None,
     };
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    // No fixture_case key → default branch → no push_paint_region calls.
-    let module = make_compiled_module_with_config(
-        "com.test.paint-seg-noop",
-        "PrePass::PaintSegmentation",
-        component,
-        ConfigView::from_map(HashMap::new()),
-    );
-    let blackboard = blackboard_with_objects(&["obj-a"]);
 
-    let result = PrepassStageRunner::run_stage(
-        &dispatcher,
-        &"PrePass::PaintSegmentation".to_string(),
-        &module,
-        &blackboard,
-    );
+    let mesh = Arc::new(MeshIR {
+        objects: vec![object],
+        build_volume: BoundingBox3 {
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+        },
+        ..Default::default()
+    });
+    let sc = Arc::new(SurfaceClassificationIR {
+        per_object: HashMap::from([("obj".into(), ObjectSurfaceData::default())]),
+        ..Default::default()
+    });
+    let lp = Arc::new(LayerPlanIR::default());
 
-    match result {
-        Ok((PrepassStageOutput::PaintRegions(ir, _), _)) => {
-            assert!(
-                ir.per_layer.is_empty(),
-                "AC-7: no fixture must produce empty per_layer harvest, got {:?}",
-                ir.per_layer.keys().collect::<Vec<_>>()
-            );
-        }
-        Ok((PrepassStageOutput::None, _)) => {
-            // Also acceptable: dispatcher returned None when no regions were pushed.
-        }
-        Ok((other, _)) => panic!(
-            "AC-7 FAIL: unexpected variant {:?}",
-            std::mem::discriminant(&other)
-        ),
-        Err(e) => panic!("AC-7 FAIL: no fixture must not error, got: {e}"),
-    }
+    let ir =
+        execute_paint_segmentation(mesh, sc, lp, true).expect("unpainted object must not error");
+    assert!(ir.per_layer.is_empty());
 }
 
 // ── Negative-2: no early return bypasses drain ───────────────────────────────
@@ -682,24 +571,15 @@ fn no_early_return_bypasses_drain() {
     );
 }
 
-// ── AC-7: production WASM produces non-empty per_layer for MMU paint data ─────
+// ── Host fallback: MMU paint data produces non-empty per_layer ────────────────
 
-fn load_production_paint_seg(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmComponent>> {
-    let path = std::path::Path::new(PRODUCTION_PAINT_SEG_PATH);
-    if !path.exists() {
-        return None;
-    }
-    let bytes = std::fs::read(path).expect("read paint-segmentation.wasm");
-    match engine.compile_component(&bytes) {
-        Ok(c) => Some(Arc::new(c)),
-        Err(e) => panic!("failed to compile paint-segmentation: {e}"),
-    }
-}
-
-fn object_with_mmu_paint(id: &str) -> ObjectMesh {
-    ObjectMesh {
-        id: id.to_string(),
-        mesh: IndexedTriangleSet {
+/// `execute_paint_segmentation` with MMU paint data produces non-empty
+/// per_layer containing Material regions.
+#[test]
+fn host_fallback_mmu_paint_data_yields_material_regions() {
+    let object = ObjectMesh {
+        id: "obj-a".into(),
+        mesh: slicer_ir::IndexedTriangleSet {
             vertices: vec![
                 Point3 {
                     x: 0.0,
@@ -719,8 +599,12 @@ fn object_with_mmu_paint(id: &str) -> ObjectMesh {
             ],
             indices: vec![0, 1, 2],
         },
-        transform: identity_transform(),
-        config: ObjectConfig {
+        transform: Transform3d {
+            matrix: [
+                1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+            ],
+        },
+        config: slicer_ir::ObjectConfig {
             data: HashMap::new(),
         },
         modifier_volumes: Vec::new(),
@@ -732,17 +616,10 @@ fn object_with_mmu_paint(id: &str) -> ObjectMesh {
             }],
         }),
         world_z_extent: Some((0.0, 0.2)),
-    }
-}
+    };
 
-fn blackboard_with_mmu_objects(object_ids: &[&str]) -> Blackboard {
-    let objects: Vec<ObjectMesh> = object_ids
-        .iter()
-        .map(|id| object_with_mmu_paint(id))
-        .collect();
     let mesh = Arc::new(MeshIR {
-        schema_version: semver(1, 0, 0),
-        objects,
+        objects: vec![object],
         build_volume: BoundingBox3 {
             min: Point3 {
                 x: 0.0,
@@ -755,76 +632,35 @@ fn blackboard_with_mmu_objects(object_ids: &[&str]) -> Blackboard {
                 z: 1.0,
             },
         },
+        ..Default::default()
     });
-    let mut bb = Blackboard::new(mesh, 1);
-    let layer_plan = LayerPlanIR {
-        schema_version: semver(1, 0, 0),
-        global_layers: vec![],
-        object_participation: object_ids
-            .iter()
-            .map(|id| {
-                (
-                    id.to_string(),
-                    vec![ObjectLayerRef {
-                        local_layer_index: 0,
-                        global_layer_index: 0,
-                        effective_layer_height: 0.2,
-                    }],
-                )
-            })
-            .collect(),
-    };
-    bb.commit_layer_plan(Arc::new(layer_plan))
-        .expect("commit_layer_plan must succeed on fresh blackboard");
-    bb
-}
+    let sc = Arc::new(SurfaceClassificationIR {
+        per_object: HashMap::from([("obj-a".into(), ObjectSurfaceData::default())]),
+        ..Default::default()
+    });
+    let lp = Arc::new(LayerPlanIR {
+        global_layers: vec![GlobalLayer {
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: true,
+        }],
+        object_participation: HashMap::from([(
+            "obj-a".into(),
+            vec![slicer_ir::ObjectLayerRef {
+                local_layer_index: 0,
+                global_layer_index: 0,
+                effective_layer_height: 0.2,
+            }],
+        )]),
+        ..Default::default()
+    });
 
-#[test]
-fn mmu_model_paint_layers_yield_non_empty_per_layer() {
-    use slicer_host::PrepassStageOutput;
-
-    let engine = Arc::new(WasmEngine::new());
-    let component = match load_production_paint_seg(&engine) {
-        Some(c) => c,
-        None => {
-            eprintln!(
-                "SKIP: paint-segmentation.wasm not built; \
-                 run ./modules/core-modules/build-core-modules.sh"
-            );
-            return;
-        }
-    };
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let module = make_compiled_module_with_config(
-        "com.orca.paint-segmentation",
-        "PrePass::PaintSegmentation",
-        component,
-        ConfigView::from_map(HashMap::new()),
-    );
-    let blackboard = blackboard_with_mmu_objects(&["obj-a"]);
-
-    let result = PrepassStageRunner::run_stage(
-        &dispatcher,
-        &"PrePass::PaintSegmentation".to_string(),
-        &module,
-        &blackboard,
-    );
-
-    let ir = match result {
-        Ok((PrepassStageOutput::PaintRegions(ir, _), _)) => ir,
-        Ok((PrepassStageOutput::None, _)) => {
-            panic!("AC-7 FAIL: got None — production guest emitted no paint regions for MMU model");
-        }
-        Ok((other, _)) => panic!(
-            "AC-7 FAIL: unexpected output variant {:?}",
-            std::mem::discriminant(&other)
-        ),
-        Err(e) => panic!("AC-7 FAIL: dispatch error: {e}"),
-    };
-
+    let ir = execute_paint_segmentation(mesh, sc, lp, true).expect("host fallback must succeed");
     assert!(
         !ir.per_layer.is_empty(),
-        "AC-7: per_layer must be non-empty for a model with MMU paint data"
+        "MMU paint data must produce non-empty per_layer"
     );
     let has_material = ir
         .per_layer
@@ -832,6 +668,6 @@ fn mmu_model_paint_layers_yield_non_empty_per_layer() {
         .any(|lm| lm.semantic_regions.contains_key(&PaintSemantic::Material));
     assert!(
         has_material,
-        "AC-7: per_layer must contain Material semantic regions for ToolIndex paint data"
+        "per_layer must contain Material semantic regions"
     );
 }

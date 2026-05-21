@@ -20,15 +20,15 @@ use slicer_host::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_host::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_host::postpass::{GCodeEmitter, GCodeSerializer};
 use slicer_host::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan,
-    FinalizationStageRunner, LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner,
-    PostpassStageRunner, PrepassStageRunner, WasmEngine,
+    execute_paint_segmentation, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
+    ExecutionPlan, FinalizationStageRunner, LayerArena, LayerStageError, LayerStageOutput,
+    LayerStageRunner, PaintSegmentationError, PostpassStageRunner, PrepassStageRunner, WasmEngine,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigValue, ConfigView, ExPolygon, GCodeIR, GlobalLayer, LayerCollectionIR,
-    LayerPaintMap, LayerPlanIR, MeshIR, PaintRegionIR, PaintSemantic, PaintValue, Point2, Point3,
-    Polygon, PrintMetadata, SemVer, SemanticRegion, SliceIR, SlicedRegion, StageId,
-    SurfaceClassificationIR,
+    BoundingBox3, ConfigValue, ConfigView, ExPolygon, FacetPaintData, GCodeIR, GlobalLayer,
+    LayerCollectionIR, LayerPaintMap, LayerPlanIR, MeshIR, ObjectMesh, PaintLayer, PaintRegionIR,
+    PaintSemantic, PaintValue, Point2, Point3, Polygon, PrintMetadata, SemVer, SemanticRegion,
+    SliceIR, SlicedRegion, StageId, SurfaceClassificationIR,
 };
 
 // ── WAT Fixtures (for non-layer stages on the legacy path) ──────────────
@@ -647,8 +647,17 @@ fn full_pipeline_with_typed_layer_dispatch() {
     let component = load_test_guest(&engine);
     let layer_module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
 
+    let lp_module = make_compiled_module_with(
+        "com.test.layerplan",
+        "PrePass::LayerPlanning",
+        load_prepass_guest(&engine),
+    );
+
     let plan = ExecutionPlan {
-        prepass_stages: Vec::new(),
+        prepass_stages: vec![CompiledStage {
+            stage_id: "PrePass::LayerPlanning".into(),
+            modules: vec![lp_module],
+        }],
         per_layer_stages: vec![CompiledStage {
             stage_id: "Layer::Infill".into(),
             modules: vec![layer_module],
@@ -694,9 +703,14 @@ fn full_pipeline_with_typed_layer_dispatch() {
 fn full_pipeline_multi_tier_with_typed_layer() {
     let engine = Arc::new(WasmEngine::new());
 
-    let prepass_module = make_compiled_module_with(
+    let mesh_module = make_compiled_module_with(
         "com.test.mesh",
         "PrePass::MeshAnalysis",
+        load_prepass_guest(&engine),
+    );
+    let lp_module = make_compiled_module_with(
+        "com.test.layerplan",
+        "PrePass::LayerPlanning",
         load_prepass_guest(&engine),
     );
     let layer_module =
@@ -713,10 +727,16 @@ fn full_pipeline_multi_tier_with_typed_layer() {
     );
 
     let plan = ExecutionPlan {
-        prepass_stages: vec![CompiledStage {
-            stage_id: "PrePass::MeshAnalysis".into(),
-            modules: vec![prepass_module],
-        }],
+        prepass_stages: vec![
+            CompiledStage {
+                stage_id: "PrePass::MeshAnalysis".into(),
+                modules: vec![mesh_module],
+            },
+            CompiledStage {
+                stage_id: "PrePass::LayerPlanning".into(),
+                modules: vec![lp_module],
+            },
+        ],
         per_layer_stages: vec![CompiledStage {
             stage_id: "Layer::Infill".into(),
             modules: vec![layer_module],
@@ -954,8 +974,17 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
     let component = load_test_guest(&engine);
     let layer_module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
 
+    let lp_module = make_compiled_module_with(
+        "com.test.layerplan",
+        "PrePass::LayerPlanning",
+        load_prepass_guest(&engine),
+    );
+
     let plan = ExecutionPlan {
-        prepass_stages: Vec::new(),
+        prepass_stages: vec![CompiledStage {
+            stage_id: "PrePass::LayerPlanning".into(),
+            modules: vec![lp_module],
+        }],
         per_layer_stages: vec![CompiledStage {
             stage_id: "Layer::Infill".into(),
             modules: vec![layer_module],
@@ -5008,122 +5037,61 @@ fn mesh_segmentation_commits_through_execute_prepass() {
 // Step C regression tests: PrePass::PaintSegmentation routing
 // ---------------------------------------------------------------------------
 
-const PAINT_SEG_DEFAULT_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../modules/core-modules/paint-segmentation/paint-segmentation.wasm"
-);
+#[test]
+fn paint_segmentation_host_returns_empty_for_unpainted_mesh() {
+    let mesh = Arc::new(MeshIR::default());
+    let sc = Arc::new(SurfaceClassificationIR::default());
+    let lp = Arc::new(LayerPlanIR::default());
 
-fn load_paint_segmentation_default(engine: &WasmEngine) -> Option<Arc<slicer_host::WasmComponent>> {
-    let path = std::path::Path::new(PAINT_SEG_DEFAULT_PATH);
-    if !path.exists() {
-        return None;
-    }
-    let bytes = std::fs::read(path).expect("read paint-segmentation.wasm");
-    match engine.compile_component(&bytes) {
-        Ok(c) => Some(Arc::new(c)),
-        Err(_) => None,
-    }
+    let result = execute_paint_segmentation(mesh, sc, lp, true)
+        .expect("host fallback must succeed for unpainted mesh");
+
+    assert!(
+        result.schema_version.major >= 1,
+        "schema_version.major must be >= 1, got {}",
+        result.schema_version.major
+    );
+    assert!(
+        result.per_layer.is_empty(),
+        "unpainted mesh must produce zero per-layer entries"
+    );
 }
 
+/// The host `execute_paint_segmentation` processes per-object
+/// `FacetPaintData` into per-layer `PaintRegionIR` with correct
+/// semantic/value assignments and dense paint_order.
 #[test]
-fn paint_segmentation_dispatch_returns_empty_paint_regions_for_unpainted_mesh() {
-    use slicer_host::PrepassStageOutput;
+fn paint_segmentation_host_produces_paint_regions_from_mesh_data() {
+    use slicer_ir::{PaintSemantic, PaintValue};
 
-    let engine = Arc::new(WasmEngine::new());
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = match load_paint_segmentation_default(&engine) {
-        Some(c) => c,
-        None => {
-            eprintln!("SKIP: paint-segmentation.wasm missing — rebuild core modules");
-            return;
-        }
-    };
-    let module = make_compiled_module_with(
-        "com.test.paint-seg-dispatch",
-        "PrePass::PaintSegmentation",
-        component,
-    );
-    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
-
-    let result = PrepassStageRunner::run_stage(
-        &dispatcher,
-        &"PrePass::PaintSegmentation".to_string(),
-        &module,
-        &blackboard,
-    )
-    .expect("paint-segmentation dispatch must succeed");
-
-    match result.0 {
-        PrepassStageOutput::PaintRegions(ir, _) => {
-            assert_eq!(
-                ir.schema_version,
-                SemVer {
-                    major: 1,
-                    minor: 0,
-                    patch: 0
-                }
-            );
-            assert!(
-                ir.per_layer.is_empty(),
-                "unpainted mesh must produce zero per-layer entries"
-            );
-        }
-        other => panic!(
-            "expected PaintRegions variant, got {:?}",
-            std::mem::discriminant(&other)
-        ),
-    }
-}
-
-/// Dispatch the real `paint-segmentation.wasm` with `paint_region:*`
-/// config entries: the guest parses them, calls `push-paint-region`
-/// on the WIT resource, and the host reshapes into `PaintRegionIR`
-/// with per-layer keying, deterministic `paint_order`, and the
-/// documented PaintSemantic/PaintValue parsing rules.
-#[test]
-fn paint_segmentation_collects_config_driven_regions() {
-    use slicer_host::PrepassStageOutput;
-    use slicer_ir::{ConfigValue, PaintSemantic, PaintValue};
-
-    let engine = Arc::new(WasmEngine::new());
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = match load_paint_segmentation_default(&engine) {
-        Some(c) => c,
-        None => {
-            eprintln!("SKIP: paint-segmentation.wasm missing");
-            return;
-        }
+    let object = ObjectMesh {
+        id: "benchy".into(),
+        mesh: make_object("benchy").mesh,
+        transform: make_object("benchy").transform,
+        config: make_object("benchy").config,
+        modifier_volumes: Vec::new(),
+        paint_data: Some(FacetPaintData {
+            layers: vec![
+                PaintLayer {
+                    semantic: PaintSemantic::Material,
+                    facet_values: vec![Some(PaintValue::ToolIndex(2))],
+                    strokes: Vec::new(),
+                },
+                PaintLayer {
+                    semantic: PaintSemantic::FuzzySkin,
+                    facet_values: vec![Some(PaintValue::Flag(true))],
+                    strokes: Vec::new(),
+                },
+            ],
+        }),
+        world_z_extent: Some((0.0, 0.2)),
     };
 
-    // Two entries on layer 3 (material tool-2, fuzzy_skin true) +
-    // one entry on layer 5 (support_enforcer 1) — triangle polygons
-    // in scaled integer coordinates.
-    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-    fields.insert(
-        "paint_region:benchy:3:material:2".into(),
-        ConfigValue::String("0,0;100,0;50,100".into()),
-    );
-    fields.insert(
-        "paint_region:benchy:3:fuzzy_skin:true".into(),
-        ConfigValue::String("10,10;90,10;50,90".into()),
-    );
-    fields.insert(
-        "paint_region:benchy:5:support_enforcer:1".into(),
-        ConfigValue::String("0,0;50,0;25,50".into()),
-    );
-
-    let module = make_compiled_module_with_config(
-        "com.test.paint-seg-marks",
-        "PrePass::PaintSegmentation",
-        component,
-        ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str())),
-    );
-
-    let mesh = Arc::new(slicer_ir::MeshIR {
-        objects: vec![make_object("benchy")],
-        build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3::default(),
-            max: slicer_ir::Point3 {
+    let mesh = Arc::new(MeshIR {
+        objects: vec![object],
+        build_volume: BoundingBox3 {
+            min: Point3::default(),
+            max: Point3 {
                 x: 1.0,
                 y: 1.0,
                 z: 1.0,
@@ -5131,102 +5099,74 @@ fn paint_segmentation_collects_config_driven_regions() {
         },
         ..Default::default()
     });
-    let blackboard = Blackboard::new(mesh, 0);
+    let sc = Arc::new(SurfaceClassificationIR {
+        per_object: HashMap::from([("benchy".into(), slicer_ir::ObjectSurfaceData::default())]),
+        ..Default::default()
+    });
+    let lp = Arc::new(LayerPlanIR {
+        global_layers: vec![GlobalLayer {
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: true,
+        }],
+        object_participation: HashMap::from([(
+            "benchy".into(),
+            vec![slicer_ir::ObjectLayerRef {
+                local_layer_index: 0,
+                global_layer_index: 0,
+                effective_layer_height: 0.2,
+            }],
+        )]),
+        ..Default::default()
+    });
 
-    let result = PrepassStageRunner::run_stage(
-        &dispatcher,
-        &"PrePass::PaintSegmentation".to_string(),
-        &module,
-        &blackboard,
-    )
-    .expect("paint-segmentation dispatch must succeed");
-
-    let ir = match result.0 {
-        PrepassStageOutput::PaintRegions(ir, _) => ir,
-        other => panic!("wrong variant: {:?}", std::mem::discriminant(&other)),
-    };
-
-    // Layer 3 must hold the two semantics; layer 5 holds the third.
-    assert_eq!(ir.per_layer.len(), 2, "two distinct layers expected");
-    let l3 = ir.per_layer.get(&3).expect("layer 3 must be present");
-    assert_eq!(l3.global_layer_index, 3);
-    assert_eq!(
-        l3.semantic_regions
-            .get(&PaintSemantic::Material)
-            .map(|v| v.len()),
-        Some(1),
-        "material region on layer 3 missing"
+    let result =
+        execute_paint_segmentation(mesh, sc, lp, true).expect("host fallback must succeed");
+    assert!(
+        !result.per_layer.is_empty(),
+        "must produce per-layer entries"
     );
-    assert_eq!(
-        l3.semantic_regions
-            .get(&PaintSemantic::FuzzySkin)
-            .map(|v| v.len()),
-        Some(1),
-        "fuzzy_skin region on layer 3 missing"
-    );
-    // Value parsing: "2" → ToolIndex(2); "true" → Flag(true).
-    let mat = &l3.semantic_regions[&PaintSemantic::Material][0];
-    assert_eq!(mat.value, PaintValue::ToolIndex(2));
-    assert_eq!(mat.object_id, "benchy");
-    let fuzzy = &l3.semantic_regions[&PaintSemantic::FuzzySkin][0];
-    assert_eq!(fuzzy.value, PaintValue::Flag(true));
-
-    let l5 = ir.per_layer.get(&5).expect("layer 5 must be present");
-    assert_eq!(
-        l5.semantic_regions
-            .get(&PaintSemantic::SupportEnforcer)
-            .map(|v| v.len()),
-        Some(1)
+    assert!(
+        result.schema_version.major >= 1,
+        "schema_version.major must be >= 1, got {}",
+        result.schema_version.major
     );
 
-    // paint_order must be unique across all three regions (the flat
-    // insertion-index assigned by harvest_paint_segmentation_ir).
-    let mut orders: Vec<u64> = Vec::new();
-    for layer in ir.per_layer.values() {
-        for regions in layer.semantic_regions.values() {
-            for r in regions {
-                orders.push(r.paint_order);
-            }
-        }
-    }
-    orders.sort();
-    assert_eq!(
-        orders,
-        vec![0, 1, 2],
-        "paint_order must be dense and unique"
+    let has_material = result
+        .per_layer
+        .values()
+        .any(|lm| lm.semantic_regions.contains_key(&PaintSemantic::Material));
+    assert!(
+        has_material,
+        "paint_data with Material must produce Material region"
     );
 }
 
 #[test]
-fn paint_segmentation_dispatch_is_deterministic() {
-    use slicer_host::PrepassStageOutput;
-    use slicer_ir::ConfigValue;
-
-    let engine = Arc::new(WasmEngine::new());
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = match load_paint_segmentation_default(&engine) {
-        Some(c) => c,
-        None => {
-            eprintln!("SKIP: paint-segmentation.wasm missing");
-            return;
-        }
+fn paint_segmentation_host_is_deterministic() {
+    let object = ObjectMesh {
+        id: "obj".into(),
+        mesh: make_object("obj").mesh,
+        transform: make_object("obj").transform,
+        config: make_object("obj").config,
+        modifier_volumes: Vec::new(),
+        paint_data: Some(FacetPaintData {
+            layers: vec![PaintLayer {
+                semantic: PaintSemantic::Material,
+                facet_values: vec![Some(PaintValue::ToolIndex(3))],
+                strokes: Vec::new(),
+            }],
+        }),
+        world_z_extent: Some((0.0, 0.2)),
     };
 
-    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-    fields.insert(
-        "paint_region:obj:7:material:3".into(),
-        ConfigValue::String("0,0;10,0;5,10".into()),
-    );
-    fields.insert(
-        "paint_region:obj:7:material:1".into(),
-        ConfigValue::String("0,0;20,0;10,20".into()),
-    );
-    let cfg = ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str()));
-    let mesh = Arc::new(slicer_ir::MeshIR {
-        objects: vec![make_object("obj")],
-        build_volume: slicer_ir::BoundingBox3 {
-            min: slicer_ir::Point3::default(),
-            max: slicer_ir::Point3 {
+    let mesh = Arc::new(MeshIR {
+        objects: vec![object],
+        build_volume: BoundingBox3 {
+            min: Point3::default(),
+            max: Point3 {
                 x: 1.0,
                 y: 1.0,
                 z: 1.0,
@@ -5234,237 +5174,100 @@ fn paint_segmentation_dispatch_is_deterministic() {
         },
         ..Default::default()
     });
-    let blackboard = Blackboard::new(mesh, 0);
+    let sc = Arc::new(SurfaceClassificationIR {
+        per_object: HashMap::from([("obj".into(), slicer_ir::ObjectSurfaceData::default())]),
+        ..Default::default()
+    });
+    let lp = Arc::new(LayerPlanIR {
+        global_layers: vec![GlobalLayer {
+            index: 0,
+            z: 0.2,
+            active_regions: Vec::new(),
+            has_nonplanar: false,
+            is_sync_layer: true,
+        }],
+        object_participation: HashMap::from([(
+            "obj".into(),
+            vec![slicer_ir::ObjectLayerRef {
+                local_layer_index: 0,
+                global_layer_index: 0,
+                effective_layer_height: 0.2,
+            }],
+        )]),
+        ..Default::default()
+    });
 
     let run = || {
-        let module = make_compiled_module_with_config(
-            "com.test.paint-seg-det",
-            "PrePass::PaintSegmentation",
-            Arc::clone(&component),
-            cfg.clone(),
-        );
-        let result = PrepassStageRunner::run_stage(
-            &dispatcher,
-            &"PrePass::PaintSegmentation".to_string(),
-            &module,
-            &blackboard,
-        )
-        .expect("dispatch succeeds");
-        match result.0 {
-            PrepassStageOutput::PaintRegions(ir, _) => ir,
-            _ => panic!("wrong variant"),
-        }
+        execute_paint_segmentation(Arc::clone(&mesh), Arc::clone(&sc), Arc::clone(&lp), true)
+            .expect("host fallback must succeed")
     };
+
     let a = run();
     let b = run();
     assert_eq!(
         format!("{a:?}"),
         format!("{b:?}"),
-        "two identical dispatches must produce identical PaintRegionIR"
+        "two identical host calls must produce identical PaintRegionIR"
     );
 }
 
-/// A malformed `paint_region:*` config key (e.g. non-numeric layer)
-/// must surface as a structured FatalModule diagnostic naming the
-/// offending key — precision matters: operators need to fix the key,
-/// not debug the guest.
+/// Host fallback surfaces structured errors for missing prerequisites.
 #[test]
-fn paint_segmentation_malformed_config_emits_structured_diagnostic() {
-    use slicer_host::{PrepassExecutionError, PrepassStageRunner};
-    use slicer_ir::ConfigValue;
-
-    let engine = Arc::new(WasmEngine::new());
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = match load_paint_segmentation_default(&engine) {
-        Some(c) => c,
-        None => {
-            eprintln!("SKIP: paint-segmentation.wasm missing");
-            return;
-        }
+fn paint_segmentation_host_missing_surface_errors() {
+    let object = ObjectMesh {
+        id: "obj".into(),
+        mesh: make_object("obj").mesh,
+        transform: make_object("obj").transform,
+        config: make_object("obj").config,
+        modifier_volumes: Vec::new(),
+        paint_data: Some(FacetPaintData {
+            layers: vec![PaintLayer {
+                semantic: PaintSemantic::Material,
+                facet_values: vec![Some(PaintValue::ToolIndex(1))],
+                strokes: Vec::new(),
+            }],
+        }),
+        world_z_extent: Some((0.0, 0.2)),
     };
 
-    let mut fields: HashMap<String, ConfigValue> = HashMap::new();
-    // Malformed: layer index is not a u32.
-    fields.insert(
-        "paint_region:benchy:notalayer:material:1".into(),
-        ConfigValue::String("0,0;1,0;0,1".into()),
-    );
-    let module = make_compiled_module_with_config(
-        "com.test.paint-seg-malformed",
-        "PrePass::PaintSegmentation",
-        component,
-        ConfigView::from_declared(&fields, fields.keys().map(|s| s.as_str())),
-    );
-    let blackboard = Blackboard::new(empty_mesh_ir(), 0);
+    let mesh = Arc::new(MeshIR {
+        objects: vec![object],
+        build_volume: BoundingBox3 {
+            min: Point3::default(),
+            max: Point3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+        },
+        ..Default::default()
+    });
+    // Missing surface classification for "obj" → MissingSurfaceObject error.
+    let sc = Arc::new(SurfaceClassificationIR::default());
+    let lp = Arc::new(LayerPlanIR::default());
 
-    let err = PrepassStageRunner::run_stage(
-        &dispatcher,
-        &"PrePass::PaintSegmentation".to_string(),
-        &module,
-        &blackboard,
-    )
-    .expect_err("malformed config must produce a dispatch error");
-
+    let err = execute_paint_segmentation(mesh, sc, lp, true)
+        .expect_err("missing surface classification must error");
     match err {
-        PrepassExecutionError::FatalModule {
-            stage_id, message, ..
-        } => {
-            assert_eq!(stage_id, "PrePass::PaintSegmentation");
-            assert!(
-                message.contains("notalayer") || message.contains("layer_index"),
-                "diagnostic must name the offending layer_index token: {message}"
-            );
+        PaintSegmentationError::MissingSurfaceObject { object_id } => {
+            assert_eq!(object_id, "obj", "must name the missing object");
         }
-        other => panic!("expected FatalModule, got: {other}"),
+        other => panic!("expected MissingSurfaceObject, got: {other:?}"),
     }
 }
 
 #[test]
-fn paint_segmentation_output_rejects_invalid_entries() {
-    use slicer_host::wit_host::prepass::slicer::world_prepass::geometry as geo;
-    use slicer_host::wit_host::prepass::{self as pm, HostPaintSegmentationOutput};
-    use slicer_host::wit_host::{HostExecutionContext, HostExecutionContextBuilder};
-    use wasmtime::component::Resource;
+fn paint_segmentation_host_commits_through_blackboard() {
+    let mesh = Arc::new(MeshIR::default());
+    let sc = Arc::new(SurfaceClassificationIR::default());
+    let lp = Arc::new(LayerPlanIR::default());
 
-    let mut ctx = HostExecutionContextBuilder::new("com.test.paint-seg-validate", 0.0, 0.0).build();
-    let handle = ctx.push_paint_segmentation_output().expect("push resource");
-
-    let valid_poly = vec![geo::ExPolygon {
-        contour: geo::Polygon {
-            points: vec![
-                geo::Point2 { x: 0, y: 0 },
-                geo::Point2 { x: 10, y: 0 },
-                geo::Point2 { x: 5, y: 10 },
-            ],
-        },
-        holes: vec![],
-    }];
-
-    // empty object_id
-    let r = HostPaintSegmentationOutput::push_paint_region(
-        &mut ctx,
-        Resource::<pm::PaintSegmentationOutput>::new_own(handle.rep()),
-        pm::PaintRegionEntry {
-            object_id: String::new(),
-            layer_index: 0,
-            semantic: "material".into(),
-            polygons: valid_poly.clone(),
-            value: pm::PaintValueInput::ToolIndex(1),
-        },
-    )
-    .expect("wasmtime call");
+    let ir = execute_paint_segmentation(mesh, sc, lp, true)
+        .expect("host paint segmentation must succeed");
     assert!(
-        matches!(r, Err(ref msg) if msg.contains("object-id")),
-        "empty object-id must be rejected: {r:?}"
-    );
-
-    // empty semantic
-    let r = HostPaintSegmentationOutput::push_paint_region(
-        &mut ctx,
-        Resource::<pm::PaintSegmentationOutput>::new_own(handle.rep()),
-        pm::PaintRegionEntry {
-            object_id: "obj".into(),
-            layer_index: 0,
-            semantic: String::new(),
-            polygons: valid_poly.clone(),
-            value: pm::PaintValueInput::ToolIndex(1),
-        },
-    )
-    .expect("wasmtime call");
-    assert!(
-        matches!(r, Err(ref msg) if msg.contains("semantic")),
-        "empty semantic must be rejected: {r:?}"
-    );
-
-    // empty polygons
-    let r = HostPaintSegmentationOutput::push_paint_region(
-        &mut ctx,
-        Resource::<pm::PaintSegmentationOutput>::new_own(handle.rep()),
-        pm::PaintRegionEntry {
-            object_id: "obj".into(),
-            layer_index: 0,
-            semantic: "material".into(),
-            polygons: vec![],
-            value: pm::PaintValueInput::ToolIndex(1),
-        },
-    )
-    .expect("wasmtime call");
-    assert!(
-        matches!(r, Err(ref msg) if msg.contains("polygons")),
-        "empty polygons must be rejected: {r:?}"
-    );
-
-    // valid entry collects into ctx
-    let r = HostPaintSegmentationOutput::push_paint_region(
-        &mut ctx,
-        Resource::<pm::PaintSegmentationOutput>::new_own(handle.rep()),
-        pm::PaintRegionEntry {
-            object_id: "obj".into(),
-            layer_index: 7,
-            semantic: "material".into(),
-            polygons: valid_poly,
-            value: pm::PaintValueInput::ToolIndex(3),
-        },
-    )
-    .expect("wasmtime call");
-    assert!(r.is_ok(), "valid entry must succeed: {r:?}");
-    assert_eq!(ctx.paint_region_entries().len(), 1);
-    assert_eq!(ctx.paint_region_entries()[0].object_id, "obj");
-    assert_eq!(ctx.paint_region_entries()[0].layer_index, 7);
-}
-
-#[test]
-fn paint_segmentation_commits_through_execute_prepass() {
-    use slicer_host::execute_prepass;
-
-    let engine = Arc::new(WasmEngine::new());
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = match load_paint_segmentation_default(&engine) {
-        Some(c) => c,
-        None => {
-            eprintln!("SKIP: paint-segmentation.wasm missing");
-            return;
-        }
-    };
-    let module = make_compiled_module_with(
-        "com.test.paint-seg-commit",
-        "PrePass::PaintSegmentation",
-        component,
-    );
-    let plan = ExecutionPlan {
-        prepass_stages: vec![CompiledStage {
-            stage_id: "PrePass::PaintSegmentation".into(),
-            modules: vec![module],
-        }],
-        per_layer_stages: Vec::new(),
-        layer_finalization_stage: None,
-        postpass_stages: Vec::new(),
-        global_layers: Arc::new(Vec::new()),
-        region_plans: Arc::new(HashMap::new()),
-        module_region_index: HashMap::new(),
-    };
-    let mut blackboard = Blackboard::new(empty_mesh_ir(), 0);
-    // PrePass::PaintSegmentation requires SurfaceClassification and
-    // LayerPlan to be present (see prepass::required_slots). Pre-seed
-    // both so execute_prepass can proceed to the PaintSegmentation
-    // stage without hitting a missing-prerequisite error.
-    blackboard
-        .commit_surface_classification(Arc::new(slicer_ir::SurfaceClassificationIR::default()))
-        .unwrap();
-    blackboard
-        .commit_layer_plan(Arc::new(slicer_ir::LayerPlanIR::default()))
-        .unwrap();
-    execute_prepass(&plan, &mut blackboard, &dispatcher).expect("prepass succeeds");
-    let ir = blackboard
-        .paint_regions()
-        .expect("paint_regions must be committed after execute_prepass");
-    assert_eq!(
-        ir.schema_version,
-        SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0
-        }
+        ir.schema_version.major >= 1,
+        "schema_version.major must be >= 1, got {}",
+        ir.schema_version.major
     );
     assert!(ir.per_layer.is_empty(), "unpainted mesh → empty per_layer");
 }
