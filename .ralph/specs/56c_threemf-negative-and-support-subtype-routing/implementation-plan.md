@@ -7,8 +7,9 @@
 - TDD first, then implementation, then the narrowest falsifying validation.
 - Each step honors the context-discipline preamble. The fields below are not optional.
 - Aggregate context cost is **M**. Dispatch heavier steps (Steps 2, 3) to fresh workers.
-- This packet depends on Packets 56 AND 56b being `status: implemented`. Step 0 verifies the precondition.
+- This packet depends on Packets 56, 56b, AND 64 being `status: implemented`. Step 0 verifies the precondition.
 - This packet is the terminal closure of the original `56_threemf-modifier-and-subtype-sidecar-ingestion` slice. Step 7 runs `cargo test --workspace` exactly once.
+- **Implementation note**: All steps have been executed. The tests use IR-level builders (no 3MF archive parsing; see design.md §Selected Approach for rationale). The `paint_segmentation.rs` piggyback was implemented alongside Packet 64's host-native migration.
 
 ## Steps
 
@@ -35,17 +36,17 @@
 
 - Task IDs:
   - `TASK-193`
-- Objective: Author the failing E2E TDD `threemf_subtypes_synthetic_e2e_tdd.rs`. Tests cover (10 functions): `negative_part_removes_layer_polygon_area`, `negative_part_area_reduction_matches_cube_cross_section`, `negative_part_above_parent_no_subtract`, `empty_negative_part_no_subtract`, `support_enforcer_emits_paint_region`, `support_blocker_emits_paint_region`, `empty_support_enforcer_emits_nothing`, `empty_support_blocker_emits_nothing`, `negative_part_subtract_runs_before_paint_segmentation`, `support_enforcer_flows_through_paint_overrides`. Implement the in-memory `zip::write::ZipWriter` fixture builder (port from `threemf_transform_tdd.rs`).
+- Objective: Author the failing E2E TDD `threemf_subtypes_synthetic_e2e_tdd.rs`. Tests cover (10 functions): `negative_part_removes_layer_polygon_area`, `negative_part_area_reduction_matches_cube_cross_section`, `negative_part_above_parent_no_subtract`, `empty_negative_part_no_subtract`, `support_enforcer_emits_paint_region`, `support_blocker_emits_paint_region`, `empty_support_enforcer_emits_nothing`, `empty_support_blocker_emits_nothing`, `negative_part_subtract_runs_before_paint_segmentation`, `support_enforcer_flows_through_paint_overrides`. Build IR struct fixtures directly: `box_mesh()` for IndexedTriangleSet, `modifier_volume_with_subtype()` for ModifierVolume, `mesh_ir_with_modifier()` for MeshIR assembly — no 3MF archive parsing.
 - Precondition: Step 0 clean.
 - Postcondition: Test file compiles. The negative_part tests fail (no subtract stage exists yet). The support_* tests fail (no synthetic emission exists yet).
 - Files allowed to read:
-  - `crates/slicer-host/tests/threemf_transform_tdd.rs` — search for `ZipWriter::new` and the in-memory fixture builder pattern.
+  - `crates/slicer-host/tests/threemf_subtypes_synthetic_e2e_tdd.rs` — define IR builder helpers: `box_mesh()`, `modifier_volume_with_subtype()`, `mesh_ir_with_modifier()`, `layer_plan_with_z_values()` (pattern: build meshes and modifier volumes directly, no 3MF parsing).
   - `crates/slicer-host/src/layer_executor.rs` — narrow read around `run_paint_annotation` (≈ line 525) and the `arena.take_slice()` site. This is the per-layer insertion point for Step 2.
 - Files allowed to edit (≤ 3):
   - `crates/slicer-host/tests/threemf_subtypes_synthetic_e2e_tdd.rs` — NEW.
 - Files explicitly out-of-bounds: everything else.
 - Expected sub-agent dispatches:
-  - Question: "Show how `crates/slicer-host/tests/threemf_transform_tdd.rs` builds an in-memory `zip::write::ZipWriter` 3MF archive (the `3D/3dmodel.model` + minimal `[Content_Types].xml`). SNIPPETS, ≤ 30 lines." → SNIPPETS.
+  - Question: "Show the IR builder helpers (`box_mesh`, `modifier_volume_with_subtype`, `mesh_ir_with_modifier`) from `crates/slicer-host/tests/threemf_subtypes_synthetic_e2e_tdd.rs`. SNIPPETS, ≤ 30 lines." → SNIPPETS.
   - Question: "Run `cargo check -p slicer-host --tests` after Step 1's edits. FACT pass/fail." → FACT.
 - Context cost: `S`
 - Authoritative docs:
