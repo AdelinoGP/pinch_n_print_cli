@@ -176,8 +176,7 @@ fn render_llm_data(out: &mut String, r: &Report) {
         per_layer_summary,
     };
 
-    let json =
-        serde_json::to_string_pretty(&llm).unwrap_or_else(|_| "{}".to_string());
+    let json = serde_json::to_string_pretty(&llm).unwrap_or_else(|_| "{}".to_string());
     let _ = write!(
         out,
         "<script type=\"application/json\" id=\"slicer-report-data\">\n{json}\n</script>\n"
