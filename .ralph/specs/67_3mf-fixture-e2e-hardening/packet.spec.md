@@ -11,7 +11,7 @@ depends_on:
   - resources/bridge_support_enforcers.3mf (must exist on disk; support_enforcer + support_blocker fixture)
   - resources/benchy_4color.3mf (must exist on disk; modifier_part regression fixture)
 unblocks:
-  - 58_extruder-per-modifier-gcode (turns RED tests GREEN)
+  - 68_extruder-per-modifier-gcode (turns RED tests GREEN)
 ---
 
 # Packet Contract: 57_3mf-fixture-e2e-hardening

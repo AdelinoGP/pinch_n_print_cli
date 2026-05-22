@@ -34,7 +34,7 @@ This packet is a hardening-only packet — it adds integration tests for existin
 | Packet 56b (`56b_threemf-modifier-part-ir-routing`) | This packet depends on | Provides `resolve_object` branching and `ObjectMesh.modifier_volumes` population. Tests verify modifier_part regression. |
 | Packet 56c (`56c_threemf-negative-and-support-subtype-routing`) | This packet depends on | Provides `apply_negative_part_subtract` and support paint-segmentation piggyback. Tests verify both consumers end-to-end from disk fixtures. |
 | Packet 64 (`64_paint-native-migration`) | This packet depends on | Provides host-native `execute_paint_segmentation` with `union_paint_regions_at_harvest` parameter. Tests call this function directly. |
-| Packet 58 (`58_extruder-per-modifier-gcode`) | This packet unblocks | The two RED tests in this packet document expected extruder behavior. Packet 58 implements the consumer and turns them GREEN. |
+| Packet 58 (`68_extruder-per-modifier-gcode`) | This packet unblocks | The two RED tests in this packet document expected extruder behavior. Packet 58 implements the consumer and turns them GREEN. |
 
 ## Notes for Implementer
 
