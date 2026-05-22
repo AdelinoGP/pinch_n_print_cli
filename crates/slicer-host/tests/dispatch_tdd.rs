@@ -5571,8 +5571,6 @@ fn path_optimization_markers_appear_in_benchy_gcode() {
     let result = Command::new(bin)
         .args([
             "run",
-            "--module",
-            model.to_str().unwrap(),
             "--model",
             model.to_str().unwrap(),
             "--module-dir",

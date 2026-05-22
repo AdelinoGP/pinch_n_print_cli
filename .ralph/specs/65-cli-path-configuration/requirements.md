@@ -8,7 +8,7 @@
   - `TASK-206` — Remove dead `--module` flag
   - `TASK-207` — Create parent directories for `--output` and `--report` paths before write
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement

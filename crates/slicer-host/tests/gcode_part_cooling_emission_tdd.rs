@@ -556,12 +556,9 @@ fn rejects_cooling_missing_when_required() {
         config: Option<&std::path::Path>,
     ) -> std::process::Output {
         let bin = env!("CARGO_BIN_EXE_slicer-host");
-        let dummy_module = model;
         let mut cmd = std::process::Command::new(bin);
         cmd.args([
             "run",
-            "--module",
-            dummy_module.to_str().unwrap(),
             "--model",
             model.to_str().unwrap(),
             "--module-dir",

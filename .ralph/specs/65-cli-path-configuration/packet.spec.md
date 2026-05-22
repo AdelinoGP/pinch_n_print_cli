@@ -54,7 +54,7 @@ This packet refactors the `crates/slicer-host/src/cli.rs` and `main.rs` entry po
 
 ## Doc Impact Statement
 
-**`none`** — internal host-only refactor with no public surface change. No IR fields, WIT types, scheduler rules, claim IDs, manifest schemas, host services, or module SDK contracts are modified. The only external behavior change is `--module` flag removal and parent-dir creation for output files, both of which are invisible to modules and downstream consumers of the G-code output.
+**`none`** — internal host-only refactor with no public documentation change. No IR fields, WIT types, scheduler rules, claim IDs, manifest schemas, host services, or module SDK contracts are modified. The `--module` flag removal and parent-dir creation are internal CLI surface changes that don't affect any documented architecture contract. Test helpers under `crates/slicer-host/tests/` were updated to drop `--module` from binary invocations, but those files are live tests, not specification docs.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

@@ -247,16 +247,9 @@ pub fn run_slicer_host_uncached(
     config: Option<&Path>,
 ) -> std::process::Output {
     let bin = env!("CARGO_BIN_EXE_slicer-host");
-    // `--module` is a required CLI flag for the Run subcommand even
-    // though the live plan path is driven by `--module-dir`. Point it
-    // at any real file on disk; the runtime uses `--module-dir`
-    // discovery, not this arg. See benchy_end_to_end_tdd.rs:137-141.
-    let dummy_module = model;
     let mut cmd = Command::new(bin);
     cmd.args([
         "run",
-        "--module",
-        dummy_module.to_str().unwrap(),
         "--model",
         model.to_str().unwrap(),
         "--module-dir",
