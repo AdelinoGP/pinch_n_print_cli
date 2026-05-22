@@ -303,6 +303,8 @@ struct Parsed3mfObject {
 struct ParsedComponent {
     objectid: u32,
     transform: Option<[f64; 16]>,
+    /// `p:path` attribute — references an external .model file inside the 3MF archive.
+    external_path: Option<String>,
 }
 
 struct ParsedBuildItem {
@@ -444,6 +446,219 @@ fn apply_transform_to_paint_data(pd: &mut FacetPaintData, m: &[f64; 16]) {
         // Drop strokes that became empty (all triangles were degenerate).
         layer.strokes.retain(|s| !s.triangles.is_empty());
     }
+}
+
+/// Load external .model files referenced via `p:path` on component elements
+/// (3MF production extension). Parses each external model file and merges its
+/// `<object>` definitions into the main objects map so `resolve_object` can
+/// find them by their local id.
+fn load_external_model_objects(
+    objects: &mut HashMap<u32, Parsed3mfObject>,
+    archive: &mut zip::ZipArchive<impl Read + Seek>,
+) -> Result<(), ModelLoadError> {
+    let mut visited: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+
+    loop {
+        let new_paths: Vec<String> = objects
+            .values()
+            .flat_map(|o| o.components.iter())
+            .filter_map(|c| c.external_path.clone())
+            .filter(|p| !visited.contains(p))
+            .collect();
+
+        let mut batch: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for p in new_paths {
+            batch.insert(p);
+        }
+
+        if batch.is_empty() {
+            break;
+        }
+
+        for ext_path in &batch {
+            visited.insert(ext_path.clone());
+            // The p:path may have a leading slash; strip it for archive lookup.
+            let archive_path = ext_path.trim_start_matches('/');
+
+            let xml_bytes = match archive.by_name(archive_path) {
+                Ok(mut file) => {
+                    let mut buf = Vec::new();
+                    file.read_to_end(&mut buf)
+                        .map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
+                    buf
+                }
+                Err(_) => {
+                    // External file not found in archive — the component will be
+                    // resolved normally (inline mesh must exist in the main doc).
+                    continue;
+                }
+            };
+
+            // Parse the external model file and merge its objects into the main map.
+            let mut reader = quick_xml::Reader::from_reader(xml_bytes.as_slice());
+            reader.config_mut().trim_text(true);
+
+            let mut current_object_id: Option<u32> = None;
+            let mut current_mesh: Option<MeshCollector> = None;
+            let mut current_components: Vec<ParsedComponent> = Vec::new();
+            let mut current_object_transform: Option<[f64; 16]> = None;
+            let mut in_components = false;
+            let mut buf = Vec::new();
+
+            loop {
+                match reader.read_event_into(&mut buf) {
+                    Ok(quick_xml::events::Event::Start(ref e))
+                    | Ok(quick_xml::events::Event::Empty(ref e)) => {
+                        let name_bytes = e.name().as_ref().to_vec();
+                        let local = local_name(&name_bytes);
+                        match local {
+                            b"object" => {
+                                let mut id: Option<u32> = None;
+                                let mut transform: Option<[f64; 16]> = None;
+                                for attr in e.attributes().flatten() {
+                                    match local_name(attr.key.as_ref()) {
+                                        b"id" => id = Some(parse_u32(&attr.value)?),
+                                        b"transform" => {
+                                            transform = Some(parse_3mf_transform(&attr.value)?)
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                let object_id = id.ok_or_else(|| {
+                                    ModelLoadError::ThreeMfParse(
+                                        "external model object missing id attribute".into(),
+                                    )
+                                })?;
+                                current_object_id = Some(object_id);
+                                current_mesh = None;
+                                current_components = Vec::new();
+                                current_object_transform = transform;
+                            }
+                            b"mesh" if current_object_id.is_some() => {
+                                current_mesh = Some(MeshCollector::new());
+                            }
+                            b"vertex" => {
+                                if let Some(ref mut mc) = current_mesh {
+                                    let (mut x, mut y, mut z) = (0.0f32, 0.0f32, 0.0f32);
+                                    for attr in e.attributes().flatten() {
+                                        match attr.key.as_ref() {
+                                            b"x" => x = parse_f32(&attr.value)?,
+                                            b"y" => y = parse_f32(&attr.value)?,
+                                            b"z" => z = parse_f32(&attr.value)?,
+                                            _ => {}
+                                        }
+                                    }
+                                    mc.vertices.push(Point3 { x, y, z });
+                                }
+                            }
+                            b"triangle" => {
+                                if let Some(ref mut mc) = current_mesh {
+                                    let mut v1: Option<u32> = None;
+                                    let mut v2: Option<u32> = None;
+                                    let mut v3: Option<u32> = None;
+                                    for attr in e.attributes().flatten() {
+                                        match attr.key.as_ref() {
+                                            b"v1" => v1 = Some(parse_u32(&attr.value)?),
+                                            b"v2" => v2 = Some(parse_u32(&attr.value)?),
+                                            b"v3" => v3 = Some(parse_u32(&attr.value)?),
+                                            _ => {}
+                                        }
+                                    }
+                                    mc.indices.push(v1.ok_or_else(|| {
+                                        ModelLoadError::ThreeMfParse("triangle missing v1".into())
+                                    })?);
+                                    mc.indices.push(v2.ok_or_else(|| {
+                                        ModelLoadError::ThreeMfParse("triangle missing v2".into())
+                                    })?);
+                                    mc.indices.push(v3.ok_or_else(|| {
+                                        ModelLoadError::ThreeMfParse("triangle missing v3".into())
+                                    })?);
+                                    mc.fuzzy_states.push(None);
+                                    mc.support_states.push(None);
+                                    mc.seam_states.push(None);
+                                    mc.color_states.push(None);
+                                }
+                            }
+                            b"components" if current_object_id.is_some() => {
+                                in_components = true;
+                            }
+                            b"component" if in_components => {
+                                let mut objectid: Option<u32> = None;
+                                let mut transform: Option<[f64; 16]> = None;
+                                let mut external_path: Option<String> = None;
+                                for attr in e.attributes().flatten() {
+                                    match local_name(attr.key.as_ref()) {
+                                        b"objectid" => objectid = Some(parse_u32(&attr.value)?),
+                                        b"transform" => {
+                                            transform = Some(parse_3mf_transform(&attr.value)?)
+                                        }
+                                        b"path" => {
+                                            external_path = Some(
+                                                std::str::from_utf8(&attr.value)
+                                                    .map_err(|e| {
+                                                        ModelLoadError::ThreeMfParse(e.to_string())
+                                                    })?
+                                                    .to_string(),
+                                            );
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                let oid = objectid.ok_or_else(|| {
+                                    ModelLoadError::ThreeMfParse(
+                                        "external component missing objectid".into(),
+                                    )
+                                })?;
+                                current_components.push(ParsedComponent {
+                                    objectid: oid,
+                                    transform,
+                                    external_path,
+                                });
+                            }
+                            _ => {}
+                        }
+                    }
+                    Ok(quick_xml::events::Event::End(ref e)) => {
+                        let name_bytes = e.name().as_ref().to_vec();
+                        let local = local_name(&name_bytes);
+                        match local {
+                            b"object" => {
+                                if let Some(object_id) = current_object_id.take() {
+                                    let mesh_data = match current_mesh.take() {
+                                        Some(mut mc) if !mc.vertices.is_empty() => {
+                                            let vertices = std::mem::take(&mut mc.vertices);
+                                            let indices = std::mem::take(&mut mc.indices);
+                                            Some((IndexedTriangleSet { vertices, indices }, None))
+                                        }
+                                        _ => None,
+                                    };
+                                    // Only insert if the object doesn't already exist
+                                    // (main model definitions take priority).
+                                    objects.entry(object_id).or_insert(Parsed3mfObject {
+                                        mesh: mesh_data,
+                                        components: std::mem::take(&mut current_components),
+                                        transform: current_object_transform.take(),
+                                    });
+                                }
+                            }
+                            b"components" => in_components = false,
+                            _ => {}
+                        }
+                    }
+                    Ok(quick_xml::events::Event::Eof) => break,
+                    Err(e) => {
+                        return Err(ModelLoadError::ThreeMfParse(format!(
+                            "XML parse error in external model {archive_path}: {e}"
+                        )));
+                    }
+                    _ => {}
+                }
+                buf.clear();
+            }
+        } // end for ext_path in batch
+    } // end loop
+
+    Ok(())
 }
 
 fn resolve_object(
@@ -707,7 +922,7 @@ fn load_3mf(
     }; // model_file is dropped here, releasing borrow on archive
 
     let sidecar = parse_3mf_sidecar(&mut archive);
-    parse_3mf_model_xml(&xml_bytes, &sidecar)
+    parse_3mf_model_xml(&xml_bytes, &sidecar, &mut archive)
 }
 
 /// Find the 3D model XML path inside a 3MF ZIP archive.
@@ -738,6 +953,7 @@ fn find_model_path<R: Read + Seek>(archive: &zip::ZipArchive<R>) -> Result<Strin
 fn parse_3mf_model_xml(
     xml_bytes: &[u8],
     sidecar: &HashMap<u32, ObjectSidecarInfo>,
+    archive: &mut zip::ZipArchive<impl Read + Seek>,
 ) -> Result<
     Vec<(
         IndexedTriangleSet,
@@ -1033,6 +1249,7 @@ fn parse_3mf_model_xml(
                     b"component" if in_components => {
                         let mut objectid: Option<u32> = None;
                         let mut transform: Option<[f64; 16]> = None;
+                        let mut external_path: Option<String> = None;
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
                                 b"objectid" => {
@@ -1041,7 +1258,19 @@ fn parse_3mf_model_xml(
                                 b"transform" => {
                                     transform = Some(parse_3mf_transform(&attr.value)?);
                                 }
-                                _ => {}
+                                _ => {
+                                    // Check for p:path (production extension).
+                                    let local = local_name(attr.key.as_ref());
+                                    if local == b"path" {
+                                        external_path = Some(
+                                            std::str::from_utf8(&attr.value)
+                                                .map_err(|e| {
+                                                    ModelLoadError::ThreeMfParse(e.to_string())
+                                                })?
+                                                .to_string(),
+                                        );
+                                    }
+                                }
                             }
                         }
                         let oid = objectid.ok_or_else(|| {
@@ -1050,6 +1279,7 @@ fn parse_3mf_model_xml(
                         current_components.push(ParsedComponent {
                             objectid: oid,
                             transform,
+                            external_path,
                         });
                     }
                     b"build" => {
@@ -1142,6 +1372,12 @@ fn parse_3mf_model_xml(
             .ok_or_else(|| ModelLoadError::ThreeMfParse("no geometry found in 3MF".into()))?;
         return Ok(vec![(its, paint, Vec::new())]);
     }
+
+    // Load external model files referenced via p:path on component elements.
+    // The production extension allows components to reference separate .model
+    // files inside the archive. We parse those files and merge their objects
+    // into the main objects map so resolve_object can find them by id.
+    load_external_model_objects(&mut objects, archive)?;
 
     let mut results = Vec::new();
     for item in &build_items {

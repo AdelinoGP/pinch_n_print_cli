@@ -1,22 +1,26 @@
-# Task Map: 57_3mf-fixture-e2e-hardening
+# Task Map: 67_3mf-fixture-e2e-hardening
 
 ## Purpose
 
-This packet introduces TASK-205, which is not present in `docs/07_implementation_status.md` at packet-author time. Step 3 of `implementation-plan.md` appends it after the TASK-193 row registered by Packet 56c. This file maps TASK-205 to the implementation steps, the fixtures it exercises, and the packets whose behavior it verifies.
+This packet introduces TASK-208, which is not present in `docs/07_implementation_status.md` at packet-author time. Step 3 of `implementation-plan.md` appends it after the TASK-193 row registered by Packet 56c. This file maps TASK-208 to the implementation steps, the fixtures it exercises, and the packets whose behavior it verifies.
 
-This packet is a hardening-only packet — it adds integration tests for existing functionality. It makes zero production code changes. It is the first of a two-packet chain: Packet 57 adds the test harness and RED extruder tests; Packet 58 implements the extruder consumer and turns the RED tests GREEN.
+This packet is a hardening-only packet — it adds integration tests for existing functionality. It is the first of a two-packet chain: Packet 67 adds the test harness and RED extruder tests; Packet 68 implements the extruder consumer and turns the RED tests GREEN.
 
 ## Task-to-Step Mapping
 
 | TASK ID | Topic | Implementation steps | Deviations addressed | Authoritative docs | OrcaSlicer ref(s) |
 |---|---|---|---|---|---|
-| TASK-205 | 3MF fixture E2E integration tests: load real on-disk 3MF files through `load_model()` → full pipeline, verify all five subtype consumers (negative_part subtract, support_enforcer/blocker paint emission, modifier_part regression). 11 test functions (9 GREEN, 2 RED). | Step 1 (author test file), Step 2 (regression sweep), Step 3 (doc registration), Step 4 (pre-ceremony verification). | None. | `docs/02_ir_schemas.md` (IR shape refs); `docs/04_host_scheduler.md` (prepass ordering). | None. |
+| TASK-208 | 3MF fixture E2E integration tests: load real on-disk 3MF files through `load_model()` → full pipeline, verify all five subtype consumers (negative_part subtract, support_enforcer/blocker paint emission, modifier_part regression). 12 test functions (11 GREEN, 1 RED). | Step 1 (author test file), Step 2 (regression sweep), Step 3 (doc registration), Step 4 (pre-ceremony verification). | See packet.spec.md Deviations section. | `docs/02_ir_schemas.md` (IR shape refs); `docs/04_host_scheduler.md` (prepass ordering). | None. |
 
 ## Deviation Map
 
 | Deviation ID | Title | Registered by step | Closed by step | Owner packet |
 |---|---|---|---|---|---|
-| (none new) | This packet is test-only. No deviations. | — | — | — |
+| D1 | Scope violation: ~170 lines added to model_loader.rs for p:path extension support | — | Post-implementation review | 67 |
+| D2 | RED tests used `#[ignore]` instead of `assert!` per spec | — | Post-implementation review | 67 |
+| D3 | AC-R2 text demanded GCode assertion; test only checks config_delta.fields | — | Post-implementation review | 67 |
+| D4 | TASK-205 collision with pre-existing Packet 65 entry; renumbered to TASK-208 | — | Post-implementation review | 67 |
+| D5 | Packet slug mismatch: folder says 67, frontmatter said 57; downstream "58" vs "68" | — | Post-implementation review | 67 |
 
 ## Fixture Coverage Map
 
@@ -34,7 +38,7 @@ This packet is a hardening-only packet — it adds integration tests for existin
 | Packet 56b (`56b_threemf-modifier-part-ir-routing`) | This packet depends on | Provides `resolve_object` branching and `ObjectMesh.modifier_volumes` population. Tests verify modifier_part regression. |
 | Packet 56c (`56c_threemf-negative-and-support-subtype-routing`) | This packet depends on | Provides `apply_negative_part_subtract` and support paint-segmentation piggyback. Tests verify both consumers end-to-end from disk fixtures. |
 | Packet 64 (`64_paint-native-migration`) | This packet depends on | Provides host-native `execute_paint_segmentation` with `union_paint_regions_at_harvest` parameter. Tests call this function directly. |
-| Packet 58 (`68_extruder-per-modifier-gcode`) | This packet unblocks | The two RED tests in this packet document expected extruder behavior. Packet 58 implements the consumer and turns them GREEN. |
+| Packet 68 (`68_extruder-per-modifier-gcode`) | This packet unblocks | The two RED tests in this packet document expected extruder behavior. Packet 68 implements the consumer and turns them GREEN. |
 
 ## Notes for Implementer
 

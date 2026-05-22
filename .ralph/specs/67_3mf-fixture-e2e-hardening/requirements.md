@@ -1,4 +1,4 @@
-# Requirements: 57_3mf-fixture-e2e-hardening
+# Requirements: 67_3mf-fixture-e2e-hardening
 
 ## Problem Statement
 
@@ -9,19 +9,19 @@ This gap matters because:
 2. **Sidecar parsing → modifier_volume wiring** — the full `model_settings.config` → `ObjectSidecarInfo` → `ModifierVolume` path is only tested for classification (56's `threemf_sidecar_classification_tdd.rs`), not for consumer behavior.
 3. **Multi-object 3MF files** — `bridge_support_enforcers.3mf` has two objects with different support subtypes; no test verifies that each object's `modifier_volumes` are correctly partitioned.
 4. **Duplicate part IDs** — `bridge_support_enforcers.3mf` has part id=3 appearing twice per object (two support enforcer/blocker instances); the parser's handling of duplicate keys needs test coverage.
-5. **Extruder metadata gap** — `config_delta.fields["extruder"]` is parsed from sidecar metadata but no downstream consumer reads it. This packet adds RED tests documenting the expected behavior so Packet 58 can turn them GREEN.
+5. **Extruder metadata gap** — `config_delta.fields["extruder"]` is parsed from sidecar metadata but no downstream consumer reads it. This packet adds RED tests documenting the expected behavior so Packet 68 can turn them GREEN.
 
-This packet (57) adds `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` with 11 tests (9 GREEN, 2 RED) loading three real 3MF fixtures from `resources/`.
+This packet (67) adds `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` with 12 tests (11 GREEN, 1 RED) loading three real 3MF fixtures from `resources/`.
 
 ## Task ID
 
-- **TASK-205** — 3MF fixture E2E integration tests: load real on-disk 3MF files through `load_model()` → full pipeline, verify all five subtype consumers end-to-end. 11 test functions (9 GREEN for existing functionality, 2 RED documenting pending extruder behavior for Packet 58).
+- **TASK-208** — 3MF fixture E2E integration tests: load real on-disk 3MF files through `load_model()` → full pipeline, verify all five subtype consumers end-to-end. 12 test functions (11 GREEN for existing functionality, 1 RED documenting pending extruder behavior for Packet 68).
 
 ## In Scope
 
 - **Write:**
   - `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` — NEW. Integration tests loading `cube_positive_n_negative.3mf`, `bridge_support_enforcers.3mf`, `benchy_4color.3mf` from `resources/` through `load_model()` + full pipeline. Assertions on `SliceIR` polygon area, `PaintRegionIR` semantic entries, `ModifierVolume` metadata, multi-object partitioning, duplicate ID handling.
-  - `docs/07_implementation_status.md` — append TASK-205 row after TASK-193.
+  - `docs/07_implementation_status.md` — append TASK-208 row.
 
 - **Read-only:**
   - `crates/slicer-host/src/model_loader.rs` — `load_model()` public API (line 145). Informational only.
@@ -35,9 +35,9 @@ This packet (57) adds `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` with
 
 - Creating or modifying any 3MF fixture file (all three fixtures exist on disk).
 - Any change to production source files (`crates/slicer-host/src/**`, `crates/slicer-ir/`, `crates/slicer-core/`).
-- Implementing extruder GCode consumption (Packet 58).
-- Adding `PaintValue::ToolIndex` emission (Packet 58).
-- Per-region extruder tool-change GCode emission (Packet 58).
+- Implementing extruder GCode consumption (Packet 68).
+- Adding `PaintValue::ToolIndex` emission (Packet 68).
+- Per-region extruder tool-change GCode emission (Packet 68).
 - Creating `support_blocker` fixture (already exists in `bridge_support_enforcers.3mf`).
 - `<assemble>` / `<plate>` section parsing.
 - WIT changes, SDK changes, macros changes.
@@ -55,15 +55,15 @@ None. This packet is test-only. No OrcaSlicer parity is required — the tests v
 ## Acceptance Summary (references ACs by ID)
 
 - **AC-1 through AC-9** — Nine GREEN tests covering: negative_part subtract via full pipeline, transform baking, metadata population, support_enforcer paint emission, support_blocker paint emission, modifier_part regression, no-negative no-op, multi-object partitioning, duplicate part ID handling.
-- **AC-R1** (RED) — `extruder_metadata_reaches_tool_index`: support parts with extruder metadata produce `PaintValue::ToolIndex(0)` instead of `PaintValue::Flag(true)`. RED until Packet 58.
-- **AC-R2** (RED) — `extruder_per_object_vs_support_extruder`: GCode output contains `T0` for support regions and `T1` for normal part regions. RED until Packet 58.
+- **AC-R1** (RED) — `extruder_metadata_reaches_tool_index`: support parts with extruder metadata produce `PaintValue::ToolIndex(0)` instead of `PaintValue::Flag(true)`. RED until Packet 68.
+- **AC-R2** (RED) — `extruder_per_object_vs_support_extruder`: modifier_volumes carry extruder keys with at least one `ConfigValue::Int(0)`. Full T0/T1 GCode check deferred to Packet 68.
 - **AC-N1** — Missing fixture path returns `Err(ModelLoadError)` without panicking.
 
 ## Verification Commands
 
 | Command | Delegation hint | Expected |
 |---------|----------------|----------|
-| `cargo test -p slicer-host --test threemf_fixture_e2e_tdd` | FACT pass/fail per test | 9 GREEN, 2 RED with expected assertion |
+| `cargo test -p slicer-host --test threemf_fixture_e2e_tdd` | FACT pass/fail per test | 11 GREEN, 1 RED with expected assertion |
 | `cargo test -p slicer-host --test threemf_subtypes_synthetic_e2e_tdd` | FACT pass/fail | All GREEN (56c regression) |
 | `cargo test -p slicer-host --test threemf_sidecar_classification_tdd` | FACT pass/fail | All GREEN (56 regression) |
 | `cargo test -p slicer-host --test benchy_4color_modifier_part_e2e_tdd` | FACT pass/fail | All GREEN (56b regression) |

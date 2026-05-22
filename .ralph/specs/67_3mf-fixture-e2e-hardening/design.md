@@ -1,4 +1,4 @@
-# Design: 57_3mf-fixture-e2e-hardening
+# Design: 67_3mf-fixture-e2e-hardening
 
 ## Controlling Code Paths
 
@@ -28,7 +28,7 @@
 
 - `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` exists with 11 tests.
 - 9 GREEN tests exercise the full pipeline from disk 3MF → consumer behavior.
-- 2 RED tests document expected extruder behavior for Packet 58.
+- 2 RED tests document expected extruder behavior for Packet 68.
 - No production code changes.
 
 ## Neighboring Tests / Fixtures
@@ -54,7 +54,7 @@
 | Fixture path resolution | `Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/<name>.3mf")` | Matches existing pattern. Works with `cargo test` from workspace root or crate directory. |
 | Pipeline test depth | Call `load_model()` then individual host functions directly (`execute_paint_segmentation`, `apply_negative_part_subtract`). Do NOT run the full scheduler/executor. | Tests should be fast and deterministic. Full scheduler adds ~30s overhead and scheduler state setup complexity. Component-level integration is sufficient to catch transform/parsing bugs. |
 | Negative_part area verification | Compute polygon area before and after subtract. Assert reduction > 0 inside extent, bit-identical outside extent. | Same approach as `threemf_subtypes_synthetic_e2e_tdd.rs`. |
-| RED test assertion style | Plain `assert!` on the desired condition. Test name prefixed with comment `// RED — passes after Packet 58`. | Clear documentation. `cargo test` output shows "FAILED" not "ok". |
+| RED test assertion style | Plain `assert!` on the desired condition. Test name prefixed with comment `// RED — passes after Packet 68`. | Clear documentation. `cargo test` output shows "FAILED" not "ok". |
 | Duplicate part ID handling | Test that the loader does not panic. Document the actual behavior (supersede or accumulate). | The fixture has real-world duplicate IDs; the test hardens against regressions without prescribing the resolution strategy. |
 | Extruder RED tests scope | AC-R1 asserts `PaintValue::ToolIndex` on `SemanticRegion`. AC-R2 asserts `T0`/`T1` in GCode (requires full pipeline — may be a larger test). | AC-R1 is a focused IR-level assertion. AC-R2 is an end-to-end GCode assertion — if too complex for this packet, it can be downgraded to a `// TODO` comment in the test file. |
 
@@ -65,14 +65,14 @@
 | Run full scheduler/executor for each test | Too slow (~30s per test). Component-level integration (load_model + call specific functions) is equally effective for catching transform/parsing bugs. |
 | Use `#[should_panic]` for RED tests | `should_panic` hides the specific failure reason. Explicit `assert!` on the desired condition produces a clear failure message. |
 | Add a shared test helper crate for fixture loading | Over-engineering for 3 tests. Each test builds its path inline (matches existing pattern). |
-| Include GCode-level assertions in this packet | GCode emission requires `LayerCollectionIR` assembly which requires full scheduler execution. Deferred to Packet 58 which also implements the extruder consumer path. |
+| Include GCode-level assertions in this packet | GCode emission requires `LayerCollectionIR` assembly which requires full scheduler execution. Deferred to Packet 68 which also implements the extruder consumer path. |
 
 ## Code Change Surface
 
 Primary file this packet creates:
 
 1. `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` — NEW. ~400 lines. Imports `load_model`, `execute_paint_segmentation`, `apply_negative_part_subtract` from `slicer_host`. 11 test functions.
-2. `docs/07_implementation_status.md` — append TASK-205 row.
+2. `docs/07_implementation_status.md` — append TASK-208 row.
 
 ## Read-Only Context the Implementer Needs
 
@@ -108,7 +108,7 @@ Primary file this packet creates:
 3. Tests run as integration tests (`crates/slicer-host/tests/`) and have access to `slicer_host` public API via `use slicer_host::...`.
 4. RED tests fail with an assertion message, not a panic or compilation error. The test function compiles and runs; it just asserts a condition that isn't true yet.
 5. No production code changes. This packet does not touch any `src/` file.
-6. The two RED tests are documented as such in the test file with a `// RED — passes after Packet 58` comment.
+6. The two RED tests are documented as such in the test file with a `// RED — passes after Packet 68` comment.
 
 ## Risks and Tradeoffs
 
@@ -116,7 +116,7 @@ Primary file this packet creates:
 |---|---|
 | Fixtures change on disk (user modifies them) → tests break. | Tests assert specific subtype counts and metadata values. If fixtures change, test failures are explicit and point to the changed assertion. |
 | `load_model()` is slow for large fixtures. | `benchy_4color.3mf` and `cube_positive_n_negative.3mf` are small (< 1 MB). `bridge_support_enforcers.3mf` has PNG thumbnails but the 3MF parsing ignores non-XML entries. Tests should complete in < 5 seconds each. |
-| RED tests might be confusing in CI (they intentionally fail). | Test names include `_extruder_` prefix; comments in test body explain RED status. CI should be configured to allow known failures or the tests should be `#[ignore]` pending Packet 58. |
+| RED tests might be confusing in CI (they intentionally fail). | Test names include `_extruder_` prefix; comments in test body explain RED status. CI should be configured to allow known RED test failures. |
 | Duplicate part id=3 behavior is unspecified — test may need updating if the parser is changed. | The test asserts "does not panic" and "at least N modifier_volumes exist" — loose enough to accommodate either supersede or accumulate behavior. |
 | Component-level tests (not full scheduler) may miss integration issues. | Full scheduler E2E is tested by `benchy_4color_modifier_part_e2e_tdd.rs` and `benchy_painted_e2e_tdd.rs`. This packet's tests are complementary — they focus on the parse→route→consume chain that synthetic tests skip. |
 
