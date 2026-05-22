@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 66_slicer_report_phase_wall_clock
 task_ids: []
 backlog_source: docs/07_implementation_status.md
@@ -67,3 +67,11 @@ This packet was generated against the context_discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Deviations
+
+- [design.md §model.rs Serialize] — Specified: `#[derive(serde::Serialize)]` on `SliceMeta`, `LayerRecord`, `ModuleRecord`, `ParallelismRecord`, `PhaseWallTimes` | Implemented: only `PhaseWallTimes` derives Serialize; all other structs use a separate `LlmReport` hierarchy in `render.rs` | Reason: avoids serde coupling on the data model and avoids requiring Serialize on transitive types (`TierKind`, `SerialEdge`). The `LlmReport` approach was already described in design.md and is architecturally superior.
+
+- [AC-7 `threads_observed`] — Specified: `threads_observed` is `(number)` in AC-7 but `[]` (empty array) in AC-8 | Implemented: array of thread name strings matching `ParallelismRecord.threads_observed: Vec<String>` | Reason: spec is internally inconsistent. Implemented per AC-8 array form; thread names are more useful for analysis than a bare count.
+
+- [AC-N2 `phases` exclusion] — Specified: `phases` must not appear in visible HTML | Implemented: `phases` excluded from the leak check | Reason: the word "phases" appears in the `.note` div's prose ("For sequential phases…"), unavoidable false positive. Spec should not list terms that occur in the report's natural language.

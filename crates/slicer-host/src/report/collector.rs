@@ -18,7 +18,8 @@ use crate::instrumentation::{Phase, PipelineInstrumentation, SerialEdge, TierKin
 
 use super::allocator;
 use super::model::{
-    LayerRecord, MemDelta, ModuleRecord, ParallelismRecord, Report, SliceMeta, StageRecord,
+    LayerRecord, MemDelta, ModuleRecord, ParallelismRecord, PhaseWallTimes, Report, SliceMeta,
+    StageRecord,
 };
 use super::render::render_html;
 
@@ -62,6 +63,12 @@ pub struct Collector {
     layers: Mutex<Vec<LayerRecord>>,
     postpass: Mutex<Vec<StageRecord>>,
     current_phase: AtomicU8,
+    /// Per-phase wall-clock accumulator fields — updated once per bracket
+    /// pair in `on_phase_start` / `on_phase_end`.
+    prepass_wall_ns: Mutex<u64>,
+    perlayer_wall_ns: Mutex<u64>,
+    postpass_wall_ns: Mutex<u64>,
+    phase_start_ns: Mutex<Option<u64>>,
     /// Tracks the largest observed `layer_index + 1` — idempotent peak,
     /// safe to race because `set_max` only ratchets upward.
     layer_count: PeakCounter,
@@ -132,6 +139,10 @@ impl Collector {
             layers: Mutex::new(Vec::new()),
             postpass: Mutex::new(Vec::new()),
             current_phase: AtomicU8::new(PHASE_NONE),
+            prepass_wall_ns: Mutex::new(0),
+            perlayer_wall_ns: Mutex::new(0),
+            postpass_wall_ns: Mutex::new(0),
+            phase_start_ns: Mutex::new(None),
             layer_count: PeakCounter::new(),
             module_count: AtomicCounter::new(),
         }
@@ -210,6 +221,11 @@ impl Collector {
         let parallelism = derive_parallelism(&layers_sorted);
 
         let slice_meta = SliceMeta {
+            phase_times: PhaseWallTimes {
+                prepass_ns: *self.prepass_wall_ns.lock().unwrap(),
+                perlayer_ns: *self.perlayer_wall_ns.lock().unwrap(),
+                postpass_ns: *self.postpass_wall_ns.lock().unwrap(),
+            },
             model_path: self.model_path.clone(),
             total_ns,
             layer_count: self.layer_count.get(),
@@ -312,6 +328,7 @@ fn derive_parallelism(layers: &[LayerRecord]) -> ParallelismRecord {
 
 impl PipelineInstrumentation for Collector {
     fn on_phase_start(&self, phase: Phase) {
+        *self.phase_start_ns.lock().unwrap() = Some(self.now_ns());
         let tag = match phase {
             Phase::PrePass => PHASE_PREPASS,
             Phase::PerLayer => PHASE_PERLAYER,
@@ -320,7 +337,14 @@ impl PipelineInstrumentation for Collector {
         self.current_phase.store(tag, Ordering::Relaxed);
     }
 
-    fn on_phase_end(&self, _phase: Phase) {
+    fn on_phase_end(&self, phase: Phase) {
+        let wall = self.now_ns() - self.phase_start_ns.lock().unwrap().take().unwrap_or(0);
+        let mut target = match phase {
+            Phase::PrePass => self.prepass_wall_ns.lock().unwrap(),
+            Phase::PerLayer => self.perlayer_wall_ns.lock().unwrap(),
+            Phase::PostPass => self.postpass_wall_ns.lock().unwrap(),
+        };
+        *target = wall;
         self.current_phase.store(PHASE_NONE, Ordering::Relaxed);
     }
 

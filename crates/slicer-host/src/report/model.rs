@@ -124,9 +124,24 @@ pub struct ParallelismRecord {
     pub per_thread: BTreeMap<String, Vec<(u32, Nanos, Nanos)>>,
 }
 
+/// Per-phase wall-clock elapsed times recorded from the pipeline's
+/// `on_phase_start` / `on_phase_end` bracket callbacks.  All values are
+/// monotonic nanoseconds relative to the same base `Instant`.
+#[derive(Debug, Clone, Copy, Default, serde::Serialize)]
+pub struct PhaseWallTimes {
+    /// Wall-clock elapsed for the PrePass phase, in nanoseconds.
+    pub prepass_ns: u64,
+    /// Wall-clock elapsed for the PerLayer phase, in nanoseconds.
+    pub perlayer_ns: u64,
+    /// Wall-clock elapsed for the PostPass phase, in nanoseconds.
+    pub postpass_ns: u64,
+}
+
 /// Metadata about the slice this report describes.
 #[derive(Debug, Clone, Default)]
 pub struct SliceMeta {
+    /// Per-phase wall-clock durations.
+    pub phase_times: PhaseWallTimes,
     /// Path of the model that was sliced (informational).
     pub model_path: String,
     /// Total slice wall-clock in nanoseconds.

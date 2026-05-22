@@ -37,7 +37,13 @@ inlined-to-nothing `NoopInstrumentation` calls at each bracket point.
 
 - **Header**: model path, total wall-clock, layer count, module-call count,
   peak host memory in bytes, threads observed, peak concurrent layers.
-- **Phase Totals**: PrePass / PerLayer (sum of per-layer wall-clock) / PostPass.
+- **Phase Totals**: PrePass / PerLayer / PostPass with two time columns:
+  **Wall (ms)** — actual elapsed wall-clock for the phase bracket; and
+  **Worker total (ms)** — aggregate thread time (sum of per-duration across
+  all workers). For the PerLayer row, the worker total may exceed the wall
+  value when layers run in parallel; for sequential phases (PrePass,
+  PostPass) the two are identical. A note under the table explains the
+  distinction.
 - **Per-Module Aggregate (per-layer tier)**: by module id — calls, total ms,
   mean, p95, peak host Δ, peak WASM linear memory.
 - **Per-Layer table**: one row per layer with duration, worker thread,
@@ -57,6 +63,33 @@ inlined-to-nothing `NoopInstrumentation` calls at each bracket point.
 The HTML is a single self-contained file (~60–150 KB without
 `--report-verbose`; can grow to MBs with it). No external assets,
 one inline `<style>`, no JavaScript.
+
+## LLM-readable JSON data block
+
+Every slicer report embeds a `<script type="application/json" id="slicer-report-data">`
+block containing a curated JSON summary of phase timing, per-module
+aggregates, per-layer summaries, memory, and thread usage. The block is
+invisible in visual rendering (no `<style>` or `display:none` targets the
+`slicer-report-data` id; browsers ignore `<script>` tags with unrecognised
+MIME types). It is intended for LLMs and automated analysis tools that
+parse HTML structurally rather than scraping table markup.
+
+Top-level keys:
+
+- `total_wallclock_ms` (f64): total slice wall-clock in milliseconds
+- `peak_host_memory_bytes` (u64): peak host allocator bytes
+- `layer_count` (u32), `module_count` (u32), `threads_observed` (\[String\]),
+  `max_layers_concurrent` (usize)
+- `phases` (object): `prepass` / `perlayer` / `postpass` each with
+  `wall_ms` and `worker_total_ms`
+- `module_aggregates` (\[object\]): each object has `module_id`, `calls`,
+  `total_ms`, `mean_ms`, `p95_ms`, `peak_host_delta_bytes`, `wasm_peak_bytes`
+- `per_layer_summary` (\[object\]): each object has `layer_index`, `z_mm`,
+  `duration_ms`, `worker`, `stages`, `modules`, `host_delta_bytes`,
+  `host_peak_bytes`
+
+The JSON block exists for all report states, including empty / zero-layer
+runs where arrays are empty and counts are zero.
 
 ## Architecture
 

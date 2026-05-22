@@ -11,6 +11,62 @@ use crate::instrumentation::{EdgeReason, SerialEdge, TierKind};
 
 use super::model::{ModuleRecord, ParallelismRecord, Report, StageRecord};
 
+// ── LLM-readable JSON summary structures ──────────────────────────────
+
+#[derive(serde::Serialize)]
+struct LlmReport<'a> {
+    total_wallclock_ms: f64,
+    peak_host_memory_bytes: u64,
+    layer_count: u32,
+    module_count: u32,
+    threads_observed: &'a [String],
+    max_layers_concurrent: usize,
+    phases: LlmPhases,
+    module_aggregates: Vec<LlmModuleAggregate>,
+    per_layer_summary: Vec<LlmPerLayerSummary>,
+}
+
+#[derive(serde::Serialize)]
+struct LlmPhases {
+    prepass: LlmPhaseEntry,
+    perlayer: LlmPhaseEntry,
+    postpass: LlmPhaseEntry,
+}
+
+#[derive(serde::Serialize)]
+struct LlmPhaseEntry {
+    wall_ms: f64,
+    worker_total_ms: f64,
+}
+
+#[derive(serde::Serialize)]
+struct LlmModuleAggregate {
+    module_id: String,
+    calls: usize,
+    total_ms: f64,
+    mean_ms: f64,
+    p95_ms: f64,
+    #[serde(rename = "peak_host_delta_bytes")]
+    peak_host_bytes: u64,
+    wasm_peak_bytes: u64,
+}
+
+#[derive(serde::Serialize)]
+struct LlmPerLayerSummary {
+    layer_index: u32,
+    z_mm: f32,
+    duration_ms: f64,
+    worker: String,
+    stages: usize,
+    modules: usize,
+    host_delta_bytes: i64,
+    host_peak_bytes: u64,
+}
+
+fn ns_to_ms(ns: u64) -> f64 {
+    ns as f64 / 1_000_000.0
+}
+
 const STYLE: &str = r#"
 body { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
        margin: 1.5rem; color: #1a1a1a; background: #fafafa; }
@@ -34,6 +90,100 @@ summary { cursor: pointer; padding: 0.2rem 0; }
 .note { color: #888; font-size: 0.8rem; font-style: italic; margin-top: 0.4rem; }
 "#;
 
+fn render_llm_data(out: &mut String, r: &Report) {
+    let mut by_module: std::collections::BTreeMap<String, Vec<&ModuleRecord>> =
+        std::collections::BTreeMap::new();
+    for layer in &r.layers {
+        for stage in &layer.stages {
+            for module in &stage.modules {
+                by_module
+                    .entry(module.module_id.clone())
+                    .or_default()
+                    .push(module);
+            }
+        }
+    }
+
+    let module_aggregates: Vec<LlmModuleAggregate> = by_module
+        .iter()
+        .map(|(id, calls)| {
+            let durations_ns: Vec<u64> = calls.iter().map(|c| c.duration_ns()).collect();
+            let total_ns: u64 = durations_ns.iter().sum();
+            let mean_ns = if calls.is_empty() {
+                0
+            } else {
+                total_ns / calls.len() as u64
+            };
+            let p95_ns = percentile_ns(&durations_ns, 0.95);
+            let peak_host_bytes = calls.iter().map(|c| c.mem.host_peak).max().unwrap_or(0);
+            let wasm_peak_bytes = calls.iter().map(|c| c.mem.wasm_peak).max().unwrap_or(0);
+            LlmModuleAggregate {
+                module_id: id.clone(),
+                calls: calls.len(),
+                total_ms: ns_to_ms(total_ns),
+                mean_ms: ns_to_ms(mean_ns),
+                p95_ms: ns_to_ms(p95_ns),
+                peak_host_bytes,
+                wasm_peak_bytes,
+            }
+        })
+        .collect();
+
+    let per_layer_summary: Vec<LlmPerLayerSummary> = r
+        .layers
+        .iter()
+        .map(|l| {
+            let modules: usize = l.stages.iter().map(|s| s.modules.len()).sum();
+            LlmPerLayerSummary {
+                layer_index: l.layer_index,
+                z_mm: l.z_mm,
+                duration_ms: ns_to_ms(l.duration_ns()),
+                worker: l.worker_thread.clone(),
+                stages: l.stages.len(),
+                modules,
+                host_delta_bytes: l.mem.host_delta,
+                host_peak_bytes: l.mem.host_peak,
+            }
+        })
+        .collect();
+
+    let prepass_worker_ns: u64 = r.prepass.iter().map(|s| s.duration_ns()).sum();
+    let perlayer_worker_ns: u64 = r.layers.iter().map(|l| l.duration_ns()).sum();
+    let postpass_worker_ns: u64 = r.postpass.iter().map(|s| s.duration_ns()).sum();
+
+    let llm = LlmReport {
+        total_wallclock_ms: ns_to_ms(r.slice_meta.total_ns),
+        peak_host_memory_bytes: r.slice_meta.peak_host_bytes,
+        layer_count: r.slice_meta.layer_count,
+        module_count: r.slice_meta.module_count,
+        threads_observed: &r.parallelism.threads_observed,
+        max_layers_concurrent: r.parallelism.max_layers_concurrent,
+        phases: LlmPhases {
+            prepass: LlmPhaseEntry {
+                wall_ms: ns_to_ms(r.slice_meta.phase_times.prepass_ns),
+                worker_total_ms: ns_to_ms(prepass_worker_ns),
+            },
+            perlayer: LlmPhaseEntry {
+                wall_ms: ns_to_ms(r.slice_meta.phase_times.perlayer_ns),
+                worker_total_ms: ns_to_ms(perlayer_worker_ns),
+            },
+            postpass: LlmPhaseEntry {
+                wall_ms: ns_to_ms(r.slice_meta.phase_times.postpass_ns),
+                worker_total_ms: ns_to_ms(postpass_worker_ns),
+            },
+        },
+        module_aggregates,
+        per_layer_summary,
+    };
+
+    let json =
+        serde_json::to_string_pretty(&llm).unwrap_or_else(|_| "{}".to_string());
+    let _ = write!(
+        out,
+        "<script type=\"application/json\" id=\"slicer-report-data\">\n{json}\n</script>\n"
+    );
+}
+
 /// Render the report to a self-contained HTML document.
 pub fn render_html(r: &Report) -> String {
     let mut out = String::with_capacity(64 * 1024);
@@ -51,6 +201,7 @@ pub fn render_html(r: &Report) -> String {
     }
     render_parallelism(&mut out, &r.parallelism);
     render_serial_edges(&mut out, r);
+    render_llm_data(&mut out, r);
 
     let _ = write!(out, "</body></html>");
     out
@@ -164,34 +315,42 @@ fn render_header(out: &mut String, r: &Report) {
 }
 
 fn render_phase_summary(out: &mut String, r: &Report) {
-    let prepass_ns: u64 = r.prepass.iter().map(|s| s.duration_ns()).sum();
-    let perlayer_ns: u64 = r.layers.iter().map(|l| l.duration_ns()).sum();
-    let postpass_ns: u64 = r.postpass.iter().map(|s| s.duration_ns()).sum();
+    let wall = &r.slice_meta.phase_times;
+    let prepass_worker_ns: u64 = r.prepass.iter().map(|s| s.duration_ns()).sum();
+    let perlayer_worker_ns: u64 = r.layers.iter().map(|l| l.duration_ns()).sum();
+    let postpass_worker_ns: u64 = r.postpass.iter().map(|s| s.duration_ns()).sum();
 
     let _ = write!(out, "<h2>Phase Totals</h2>");
     let _ = write!(
         out,
-        "<table><thead><tr><th>Phase</th><th>Total (ms)</th><th>Count</th></tr></thead><tbody>"
+        "<table><thead><tr><th>Phase</th><th>Wall (ms)</th><th>Worker total (ms)</th><th>Count</th></tr></thead><tbody>"
     );
     let _ = write!(
         out,
-        "<tr><td class=\"tier-prepass\">PrePass</td><td>{}</td><td>{}</td></tr>",
-        fmt_ms(prepass_ns),
+        "<tr><td class=\"tier-prepass\">PrePass</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+        fmt_ms(wall.prepass_ns),
+        fmt_ms(prepass_worker_ns),
         r.prepass.len()
     );
     let _ = write!(
         out,
-        "<tr><td class=\"tier-perlayer\">PerLayer (wall-clock, sum)</td><td>{}</td><td>{}</td></tr>",
-        fmt_ms(perlayer_ns),
+        "<tr><td class=\"tier-perlayer\">PerLayer</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+        fmt_ms(wall.perlayer_ns),
+        fmt_ms(perlayer_worker_ns),
         r.layers.len()
     );
     let _ = write!(
         out,
-        "<tr><td class=\"tier-postpass\">PostPass</td><td>{}</td><td>{}</td></tr>",
-        fmt_ms(postpass_ns),
+        "<tr><td class=\"tier-postpass\">PostPass</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+        fmt_ms(wall.postpass_ns),
+        fmt_ms(postpass_worker_ns),
         r.postpass.len()
     );
     let _ = write!(out, "</tbody></table>");
+    let _ = write!(
+        out,
+        "<div class=\"note\">PerLayer is parallel (rayon). Wall time = elapsed clock; worker total = sum of per-layer durations across all threads. For sequential phases (PrePass, PostPass), the two are identical.</div>"
+    );
 }
 
 fn render_module_summary(out: &mut String, r: &Report) {

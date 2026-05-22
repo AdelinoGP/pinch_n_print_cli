@@ -6,10 +6,24 @@
 
 use std::thread;
 
+use serde_json::Value;
 use slicer_host::instrumentation::{
     EdgeReason, Phase, PipelineInstrumentation, SerialEdge, TierKind,
 };
 use slicer_host::report::Collector;
+
+/// Helper: extract the JSON block between <script type="application/json"
+/// id="slicer-report-data"> and </script>, parse it, and return the Value.
+fn extract_llm_json(html: &str) -> Value {
+    let start_tag = r#"<script type="application/json" id="slicer-report-data">"#;
+    let end_tag = "</script>";
+    let start = html.find(start_tag).expect("missing slicer-report-data script tag");
+    let content_start = start + start_tag.len();
+    let content = &html[content_start..];
+    let end = content.find(end_tag).expect("missing closing </script> for slicer-report-data");
+    let json_str = content[..end].trim();
+    serde_json::from_str(json_str).expect("slicer-report-data JSON must parse")
+}
 
 /// Simulate one full run with prepass / per-layer / postpass phases and
 /// verify the rendered HTML contains all expected sections and values.
@@ -83,7 +97,41 @@ fn collector_full_run_produces_well_formed_html() {
 
     let html = c.finish_and_render_to_string();
 
-    // Document structure
+    // ── JSON data block assertions ────────────────────────────
+    let json = extract_llm_json(&html);
+    assert!(json.get("total_wallclock_ms").is_some(), "JSON: total_wallclock_ms");
+    assert!(json.get("peak_host_memory_bytes").is_some(), "JSON: peak_host_memory_bytes");
+    assert_eq!(json.get("layer_count").and_then(|v| v.as_u64()), Some(3));
+    assert!(json.get("module_count").and_then(|v| v.as_u64()).unwrap() > 0);
+    assert!(json.get("threads_observed").and_then(|v| v.as_array()).is_some());
+
+    let phases = json.get("phases").expect("JSON: phases object");
+    for ph in &["prepass", "perlayer", "postpass"] {
+        let p = &phases[ph];
+        assert!(p["wall_ms"].as_f64().is_some(), "JSON: phases.{}.wall_ms", ph);
+        assert!(p["worker_total_ms"].as_f64().is_some(), "JSON: phases.{}.worker_total_ms", ph);
+    }
+
+    let mods = json["module_aggregates"].as_array().expect("JSON: module_aggregates array");
+    assert!(!mods.is_empty());
+    for m in mods {
+        assert!(m["module_id"].as_str().is_some(), "module_aggregates[].module_id");
+        assert!(m["calls"].as_u64().is_some());
+        assert!(m["total_ms"].as_f64().is_some());
+        assert!(m["mean_ms"].as_f64().is_some());
+        assert!(m["p95_ms"].as_f64().is_some());
+    }
+
+    let layers = json["per_layer_summary"].as_array().expect("JSON: per_layer_summary array");
+    assert_eq!(layers.len(), 3);
+    for l in layers {
+        assert!(l["layer_index"].as_u64().is_some(), "per_layer_summary[].layer_index");
+        assert!(l["z_mm"].as_f64().is_some());
+        assert!(l["duration_ms"].as_f64().is_some());
+        assert!(l["worker"].as_str().is_some());
+    }
+
+    // ── Document structure ──────────────────────────────────
     assert!(html.starts_with("<!doctype html>"), "should be an HTML doc");
     assert!(html.contains("<title>Slicer Report</title>"));
     assert!(html.ends_with("</body></html>"));
@@ -124,6 +172,25 @@ fn collector_full_run_produces_well_formed_html() {
             && html.contains("IrWriteRead: PerimeterIR.regions.walls"),
         "serial-edge section must label the IrWriteRead writer path"
     );
+
+    // AC-N2: JSON keys must not appear in visible HTML elements.
+    // Strip the <script> block, then check remaining HTML for leaked keys.
+    let start_tag = r#"<script type="application/json" id="slicer-report-data">"#;
+    let end_tag = "</script>";
+    let script_start = html.find(start_tag).unwrap();
+    let script_end = html[script_start..].find(end_tag).unwrap();
+    let visible = format!(
+        "{}{}",
+        &html[..script_start],
+        &html[script_start + script_end + end_tag.len()..]
+    );
+    for leaked in &["total_wallclock_ms", "module_aggregates", "per_layer_summary"] {
+        assert!(
+            !visible.contains(leaked),
+            "AC-N2: JSON key '{}' must not leak into visible HTML elements",
+            leaked
+        );
+    }
 }
 
 #[test]
@@ -131,6 +198,14 @@ fn collector_no_phases_produces_empty_but_valid_html() {
     let c = Collector::new("empty.stl");
     let html = c.finish_and_render_to_string();
     assert!(html.starts_with("<!doctype html>"));
+
+    let json = extract_llm_json(&html);
+    assert_eq!(json.get("layer_count").and_then(|v| v.as_u64()), Some(0));
+    assert!(json["per_layer_summary"].as_array().map(|a| a.is_empty()).unwrap_or(false),
+        "per_layer_summary must be empty array for no-layer report");
+    assert!(json["module_aggregates"].as_array().map(|a| a.is_empty()).unwrap_or(false),
+        "module_aggregates must be empty array for no-layer report");
+
     assert!(html.contains("<title>Slicer Report</title>"));
     assert!(html.ends_with("</body></html>"));
     // No layers means no per-layer table; per-module aggregate also absent.
