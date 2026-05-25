@@ -1,7 +1,21 @@
 //! CLI argument parsing for the slicer-host binary.
 
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// Write `contents` to `path`, creating any missing parent directories first.
+///
+/// Centralises the "create parent dir, then write" pattern used by the CLI for
+/// both `--output` G-code and `--report` HTML writes so each call site reports
+/// directory-creation failures distinctly from file-write failures.
+pub fn write_with_parents(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent)?;
+        }
+    }
+    std::fs::write(path, contents)
+}
 
 /// Top-level CLI parser for the slicer-host binary.
 #[derive(Parser, Debug)]

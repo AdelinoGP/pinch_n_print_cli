@@ -71,30 +71,32 @@ These are not individually severe bugs, but collectively they represent API surf
 
 Reference criteria by ID from `packet.spec.md`; do not copy them.
 
-- **AC-1** (HostRunOptions completeness): verifies the three missing fields are present. `rg` against `cli.rs`.
-- **AC-2** (dead code removal): verifies `validate_run_options` and `CliError` are gone from production source. `rg` against `src/`.
-- **AC-3** (--module removal): verifies the flag no longer appears in help text.
-- **AC-4** (String→PathBuf): verifies the type change compiled correctly. `rg` for `PathBuf` on the three args.
-- **AC-5** (parent-dir creation): verifies `--output` works when parent dir is absent. New dedicated test.
-- **AC-6** (HostRunOptions wired in): verifies `validate_run_options` is not referenced in `main.rs`.
+- **AC-1** (HostRunOptions completeness): verifies all three missing fields (`thumbnail`, `report`, `report_verbose`) are present. `rg` against `cli.rs`.
+- **AC-2** (dead code removal): verifies `validate_run_options` and `CliError` are gone from production source. `rg` exit-status check against `src/`.
+- **AC-3** (--module removal): verifies the bare flag no longer appears in help text (anchored so `--module-dir` does not produce a false-positive match).
+- **AC-4** (String→PathBuf): verifies the type change compiled correctly. `rg` for the literal `model: PathBuf`, `config: Option<PathBuf>`, `output: Option<PathBuf>` declarations.
+- **AC-5a** (report parent-dir creation): verifies the `--report` write path creates a missing parent. Dedicated test driving `Collector::finish_and_render_to` with a nested path.
+- **AC-5b** (output parent-dir creation): verifies the `--output` write path creates a missing parent. Dedicated test driving the shared `write_with_parents` helper (the same call site main.rs invokes for the gcode write) with a nested path.
+- **AC-6** (HostRunOptions wired in): verifies `validate_run_options` is not referenced in `main.rs` via exit-status check.
 - **AC-N1** (--module rejection): verifies clap rejects the removed flag.
 
 Refinements:
-- AC-5 parent-directory test must create a temp directory, derive a nested path one level deeper (e.g., `{tmp}/newdir/out.gcode`), run the pipeline (or a minimal harness), and assert the file exists after.
-- AC-6 must additionally verify that the 4 test files in `cli_tdd.rs` do not reference `validate_run_options`, `CliError`, or `--module`.
+- AC-5a and AC-5b each create a `tempfile::tempdir()`, derive a nested path one level deeper (e.g., `{tmp}/subdir/<file>`), invoke the production code path, and assert the file exists. AC-5b additionally asserts the written bytes round-trip correctly.
+- AC-6 must additionally verify that the test files in `cli_tdd.rs` do not reference `validate_run_options` or `CliError`. The `--module` substring is acceptable inside `--module-dir` test invocations.
 
 ## Verification Commands
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `rg -q 'thumbnail: Option<PathBuf>' crates/slicer-host/src/cli.rs && echo PASS \|\| echo FAIL` | AC-1: HostRunOptions has thumbnail | FACT |
-| `rg -c 'validate_run_options\|CliError' crates/slicer-host/src/ \| rg '^\$' -q && echo PASS \|\| echo FAIL` | AC-2: dead code removed from src/ | FACT |
-| `cargo run --bin slicer-host -- run --help 2>&1 \| rg -q -- '--module' && echo FAIL \|\| echo PASS` | AC-3: --module removed from help | FACT |
-| `rg -q 'model(:.*)? PathBuf' crates/slicer-host/src/cli.rs && rg -q 'config(:.*)? PathBuf' crates/slicer-host/src/cli.rs && rg -q 'output(:.*)? PathBuf' crates/slicer-host/src/cli.rs && echo PASS \|\| echo FAIL` | AC-4: String→PathBuf | FACT |
-| `cargo test -p slicer-host --test cli_tdd -- output_path_creates_parent_dir --nocapture` | AC-5: parent-dir creation | FACT pass/fail; SNIPPETS assertion on failure |
-| `rg -c 'validate_run_options' crates/slicer-host/src/main.rs \| rg '^0$' -q && echo PASS \|\| echo FAIL` | AC-6: main.rs doesn't call validate_run_options | FACT |
+| `rg -q 'thumbnail: Option<PathBuf>' crates/slicer-host/src/cli.rs && rg -q 'report: Option<PathBuf>' crates/slicer-host/src/cli.rs && rg -q 'report_verbose: bool' crates/slicer-host/src/cli.rs && echo PASS \|\| echo FAIL` | AC-1: HostRunOptions has all three new fields | FACT |
+| `rg -q 'validate_run_options\|CliError' crates/slicer-host/src/ && echo FAIL \|\| echo PASS` | AC-2: dead code removed from src/ (exit-status check) | FACT |
+| `cargo run --bin slicer-host -- run --help 2>&1 \| rg -q -- '--module($\|[^-A-Za-z])' && echo FAIL \|\| echo PASS` | AC-3: bare --module removed from help (anchored to exclude --module-dir) | FACT |
+| `rg -q 'model:\s*PathBuf' crates/slicer-host/src/cli.rs && rg -q 'config:\s*Option<PathBuf>' crates/slicer-host/src/cli.rs && rg -q 'output:\s*Option<PathBuf>' crates/slicer-host/src/cli.rs && echo PASS \|\| echo FAIL` | AC-4: String→PathBuf for all three Run-variant args | FACT |
+| `cargo test -p slicer-host --test cli_tdd -- report_path_creates_parent_dir --nocapture` | AC-5a: report parent-dir creation | FACT pass/fail; SNIPPETS assertion on failure |
+| `cargo test -p slicer-host --test cli_tdd -- output_path_creates_parent_dir --nocapture` | AC-5b: output parent-dir creation via `write_with_parents` | FACT pass/fail; SNIPPETS assertion on failure |
+| `rg -q 'validate_run_options' crates/slicer-host/src/main.rs && echo FAIL \|\| echo PASS` | AC-6: main.rs doesn't call validate_run_options (exit-status check) | FACT |
 | `cargo run --bin slicer-host -- run --module ./tmp/mod.wasm --model ./tmp/model.stl 2>&1; if ($LASTEXITCODE -ne 0) { echo PASS } else { echo FAIL }` | AC-N1: --module rejected | FACT |
-| `rg -c 'validate_run_options\|CliError\|--module' crates/slicer-host/tests/ \| rg '^0$' -q && echo PASS \|\| echo FAIL` | Cross-step: no test references to deleted symbols | FACT |
+| `rg -q 'validate_run_options\|CliError' crates/slicer-host/tests/ && echo FAIL \|\| echo PASS` | Cross-step: no test references to deleted symbols (--module-dir substrings are permitted) | FACT |
 | `cargo check --workspace` | Workspace build | FACT pass/fail |
 | `cargo clippy --workspace -- -D warnings` | Lint | FACT pass/fail |
 | `cargo test -p slicer-host --test cli_tdd` | CLI test suite | FACT pass/fail; SNIPPETS on failure |

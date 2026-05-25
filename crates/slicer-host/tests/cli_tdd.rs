@@ -1,7 +1,7 @@
 //! TDD tests for the slicer-host CLI argument parsing.
 
 use clap::Parser;
-use slicer_host::cli::{HostCli, HostCommands};
+use slicer_host::cli::{write_with_parents, HostCli, HostCommands};
 use std::path::PathBuf;
 
 #[test]
@@ -74,11 +74,11 @@ fn run_optional_config_and_output() {
 }
 
 #[test]
-fn output_path_creates_parent_dir() {
+fn report_path_creates_parent_dir() {
     use slicer_host::report::Collector;
 
     let dir = tempfile::tempdir().unwrap();
-    let nested = dir.path().join("subdir").join("out.gcode");
+    let nested = dir.path().join("subdir").join("report.html");
 
     let collector = Collector::new_with_verbose("test", false);
     let result = collector.finish_and_render_to(&nested);
@@ -89,6 +89,47 @@ fn output_path_creates_parent_dir() {
     );
     assert!(nested.exists(), "report file should exist after write");
     assert!(nested.parent().unwrap().exists(), "parent dir should exist");
+}
+
+#[test]
+fn output_path_creates_parent_dir() {
+    let dir = tempfile::tempdir().unwrap();
+    let nested = dir.path().join("subdir").join("nested").join("out.gcode");
+    assert!(
+        !nested.parent().unwrap().exists(),
+        "precondition: nested parent must not exist"
+    );
+
+    let result = write_with_parents(&nested, b"; test gcode\n");
+    assert!(
+        result.is_ok(),
+        "write_with_parents should create parents and write file: {:?}",
+        result.err()
+    );
+    assert!(nested.exists(), "output file should exist after write");
+    assert_eq!(
+        std::fs::read(&nested).unwrap(),
+        b"; test gcode\n",
+        "output file should contain the written bytes"
+    );
+}
+
+#[test]
+fn write_with_parents_handles_bare_filename() {
+    let dir = tempfile::tempdir().unwrap();
+    let prev = std::env::current_dir().unwrap();
+    std::env::set_current_dir(dir.path()).unwrap();
+    let bare = PathBuf::from("bare.gcode");
+
+    let result = write_with_parents(&bare, b"x");
+
+    std::env::set_current_dir(prev).unwrap();
+    assert!(
+        result.is_ok(),
+        "bare filename (no parent) should not error: {:?}",
+        result.err()
+    );
+    assert!(dir.path().join("bare.gcode").exists());
 }
 
 #[test]

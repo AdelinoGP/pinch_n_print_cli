@@ -27,10 +27,11 @@
   | `CliError` enum + `Display` | `cli.rs:86-110` | Delete entirely |
   | `lib.rs:47` re-exports | `lib.rs:47` | Remove `validate_run_options` and `CliError` from `pub use` |
   | `main.rs:121-163` run arm | `main.rs:121-163` | Remove `module: _,` from destructure; construct `HostRunOptions` via inline existence checks; use its fields for pipeline setup |
-  | `main.rs:329` report write | `main.rs:329` | Add `create_dir_all(parent)` before `finish_and_render_to` |
-  | `main.rs:340` output write | `main.rs:340` | Add `create_dir_all(parent)` before `std::fs::write` |
-  | `finish_and_render_to` | `collector.rs:232-236` | Add `create_dir_all(parent)` before `std::fs::write` |
-  | `cli_tdd.rs` tests | `cli_tdd.rs:8-204` | Delete 3 dead-code tests; remove `--module` from 4 remaining tests; change String literals to PathBuf; add `output_path_creates_parent_dir` test |
+  | `main.rs` report write | `main.rs:299-307` | Add `create_dir_all(parent)` before `finish_and_render_to`; report the I/O error as a `warning:` line instead of swallowing it |
+  | `main.rs` output write | `main.rs:325-330` | Replace inline `create_dir_all` + `std::fs::write` with a call to the new `write_with_parents` helper; error+exit on failure |
+  | `write_with_parents` helper | `cli.rs` | New public free function: `pub fn write_with_parents(path: &Path, contents: &[u8]) -> std::io::Result<()>`. Centralises the "create parent dir, then write" pattern. Re-exported from `lib.rs`. |
+  | `finish_and_render_to` | `collector.rs:232-236` | Add `create_dir_all(parent)` before `std::fs::write` (propagated via `?`) |
+  | `cli_tdd.rs` tests | `cli_tdd.rs:8-204` | Delete 3 dead-code tests; remove `--module` from 4 remaining tests; change String literals to PathBuf; add `report_path_creates_parent_dir`, `output_path_creates_parent_dir`, and `write_with_parents_handles_bare_filename` tests |
 
 ## Files in Scope (read + edit)
 

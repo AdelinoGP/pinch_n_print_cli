@@ -23,8 +23,8 @@ use slicer_host::report::{allocator as report_alloc, AccountingAllocator, Collec
 use slicer_host::{
     assemble_search_roots, build_config_schema_json, build_live_execution_plan,
     load_live_modules_for_plan, load_modules_from_roots, parse_cli_config_source,
-    resolve_global_config, resolve_per_object_configs, ConfigBoundsIndex, DefaultGCodeEmitter,
-    DefaultGCodeSerializer, HostCli, HostCommands, HostRunOptions,
+    resolve_global_config, resolve_per_object_configs, write_with_parents, ConfigBoundsIndex,
+    DefaultGCodeEmitter, DefaultGCodeSerializer, HostCli, HostCommands, HostRunOptions,
 };
 
 /// No-op prepass runner for MVP (no WASM modules loaded yet).
@@ -298,7 +298,12 @@ fn main() {
 
             let result = if let Some(ref report_path) = opts.report {
                 if let Some(parent) = report_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
+                    if let Err(e) = std::fs::create_dir_all(parent) {
+                        eprintln!(
+                            "warning: failed to create report parent directory {}: {e}",
+                            parent.display()
+                        );
+                    }
                 }
                 report_alloc::enable();
                 let collector = Arc::new(Collector::new_with_verbose(
@@ -323,11 +328,9 @@ fn main() {
             match result {
                 Ok(result) => {
                     if let Some(out_path) = opts.output_path {
-                        if let Some(parent) = out_path.parent() {
-                            let _ = std::fs::create_dir_all(parent);
-                        }
-                        if let Err(e) = std::fs::write(&out_path, &result.gcode_text) {
-                            eprintln!("error: failed to write output: {e}");
+                        if let Err(e) = write_with_parents(&out_path, result.gcode_text.as_bytes())
+                        {
+                            eprintln!("error: failed to write output {}: {e}", out_path.display());
                             std::process::exit(1);
                         }
                     } else {
