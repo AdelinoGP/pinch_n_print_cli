@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 68_extruder-per-modifier-gcode
 task_ids:
   - TASK-208
