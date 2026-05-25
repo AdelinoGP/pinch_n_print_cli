@@ -117,6 +117,12 @@ fn collector_full_run_produces_well_formed_html() {
         .get("threads_observed")
         .and_then(|v| v.as_array())
         .is_some());
+    assert!(
+        json.get("max_layers_concurrent")
+            .and_then(|v| v.as_u64())
+            .is_some(),
+        "AC-7: max_layers_concurrent must be present and a number"
+    );
 
     let phases = json.get("phases").expect("JSON: phases object");
     for ph in &["prepass", "perlayer", "postpass"] {
@@ -133,6 +139,24 @@ fn collector_full_run_produces_well_formed_html() {
         );
     }
 
+    // AC-4: PerLayer wall and worker_total must be non-zero for a non-empty run.
+    let perlayer_wall_ms = phases["perlayer"]["wall_ms"]
+        .as_f64()
+        .expect("AC-4: perlayer.wall_ms missing");
+    let perlayer_worker_ms = phases["perlayer"]["worker_total_ms"]
+        .as_f64()
+        .expect("AC-4: perlayer.worker_total_ms missing");
+    assert!(
+        perlayer_wall_ms > 0.0,
+        "AC-4: phases.perlayer.wall_ms must be > 0 for a non-empty run, got {}",
+        perlayer_wall_ms
+    );
+    assert!(
+        perlayer_worker_ms > 0.0,
+        "AC-4: phases.perlayer.worker_total_ms must be > 0 for a non-empty run, got {}",
+        perlayer_worker_ms
+    );
+
     let mods = json["module_aggregates"]
         .as_array()
         .expect("JSON: module_aggregates array");
@@ -146,6 +170,14 @@ fn collector_full_run_produces_well_formed_html() {
         assert!(m["total_ms"].as_f64().is_some());
         assert!(m["mean_ms"].as_f64().is_some());
         assert!(m["p95_ms"].as_f64().is_some());
+        assert!(
+            m["peak_host_delta_bytes"].as_u64().is_some(),
+            "AC-7: module_aggregates[].peak_host_delta_bytes"
+        );
+        assert!(
+            m["wasm_peak_bytes"].as_u64().is_some(),
+            "AC-7: module_aggregates[].wasm_peak_bytes"
+        );
     }
 
     let layers = json["per_layer_summary"]
@@ -160,7 +192,68 @@ fn collector_full_run_produces_well_formed_html() {
         assert!(l["z_mm"].as_f64().is_some());
         assert!(l["duration_ms"].as_f64().is_some());
         assert!(l["worker"].as_str().is_some());
+        assert!(
+            l["stages"].as_u64().is_some(),
+            "AC-7: per_layer_summary[].stages"
+        );
+        assert!(
+            l["modules"].as_u64().is_some(),
+            "AC-7: per_layer_summary[].modules"
+        );
+        assert!(
+            l["host_delta_bytes"].as_i64().is_some(),
+            "AC-7: per_layer_summary[].host_delta_bytes"
+        );
+        assert!(
+            l["host_peak_bytes"].as_u64().is_some(),
+            "AC-7: per_layer_summary[].host_peak_bytes"
+        );
     }
+
+    // AC-4: PerLayer HTML row shows distinct Wall and Worker total cells.
+    // Row format: <tr><td class="tier-perlayer">PerLayer</td>
+    //               <td>{wall}</td><td>{worker}</td><td>{count}</td></tr>
+    let row_marker = r#"<tr><td class="tier-perlayer">PerLayer</td>"#;
+    let row_start = html
+        .find(row_marker)
+        .expect("AC-4: PerLayer row missing from Phase Totals");
+    let after_marker = &html[row_start + row_marker.len()..];
+    let row_end = after_marker
+        .find("</tr>")
+        .expect("AC-4: malformed PerLayer row (no </tr>)");
+    let row_cells_html = &after_marker[..row_end];
+    let mut cells: Vec<&str> = Vec::new();
+    let mut cursor = row_cells_html;
+    while let Some(td_open) = cursor.find("<td>") {
+        let value_start = td_open + "<td>".len();
+        let value_end = cursor[value_start..]
+            .find("</td>")
+            .expect("AC-4: unbalanced <td>");
+        cells.push(&cursor[value_start..value_start + value_end]);
+        cursor = &cursor[value_start + value_end + "</td>".len()..];
+    }
+    assert_eq!(
+        cells.len(),
+        3,
+        "AC-4: PerLayer row must have wall, worker, count cells, got {:?}",
+        cells
+    );
+    let wall_cell: f64 = cells[0]
+        .parse()
+        .expect("AC-4: PerLayer Wall cell must be numeric");
+    let worker_cell: f64 = cells[1]
+        .parse()
+        .expect("AC-4: PerLayer Worker total cell must be numeric");
+    assert!(
+        wall_cell > 0.0,
+        "AC-4: PerLayer Wall (ms) cell must be > 0, got {}",
+        wall_cell
+    );
+    assert!(
+        worker_cell > 0.0,
+        "AC-4: PerLayer Worker total (ms) cell must be > 0, got {}",
+        worker_cell
+    );
 
     // ── Document structure ──────────────────────────────────
     assert!(html.starts_with("<!doctype html>"), "should be an HTML doc");
@@ -249,6 +342,13 @@ fn collector_no_phases_produces_empty_but_valid_html() {
             .map(|a| a.is_empty())
             .unwrap_or(false),
         "module_aggregates must be empty array for no-layer report"
+    );
+    assert!(
+        json["threads_observed"]
+            .as_array()
+            .map(|a| a.is_empty())
+            .unwrap_or(false),
+        "AC-8: threads_observed must be empty array for no-layer report"
     );
 
     assert!(html.contains("<title>Slicer Report</title>"));
