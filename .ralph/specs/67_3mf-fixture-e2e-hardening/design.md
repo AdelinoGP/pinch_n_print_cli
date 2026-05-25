@@ -26,10 +26,10 @@
 
 ### After this packet
 
-- `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` exists with 11 tests.
-- 9 GREEN tests exercise the full pipeline from disk 3MF → consumer behavior.
-- 2 RED tests document expected extruder behavior for Packet 68.
-- No production code changes.
+- `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` exists with 12 tests.
+- 11 GREEN tests exercise the full pipeline from disk 3MF → consumer behavior (including AC-R2, downgraded to a config-delta metadata check per D3).
+- 1 RED test (AC-R1) documents expected `PaintValue::ToolIndex` extruder behavior for Packet 68.
+- ~170 production-code lines added to `crates/slicer-host/src/model_loader.rs` to support 3MF production-extension `p:path` external-`.model` references (scope deviation D1; registered as DEV-055).
 
 ## Neighboring Tests / Fixtures
 
@@ -43,7 +43,7 @@
 - **No production code changes**: This packet is test-only. Zero edits to `crates/slicer-host/src/`, `crates/slicer-ir/`, `crates/slicer-core/`.
 - **Public API surface**: Tests call only functions already marked `pub` on the host crate. No `pub(crate)` internals accessed.
 - **Fixture immutability**: All three 3MF fixtures are read-only. Tests do not write or modify fixture files.
-- **RED test discipline**: The two RED tests (AC-R1, AC-R2) MUST fail with the specific assertion documented in their test body, not with panics, unrelated errors, or missing symbols. `#[should_panic]` is not used — tests use `assert!` on the expected (currently unfulfilled) condition.
+- **RED test discipline**: The RED test (AC-R1) MUST fail with the specific assertion documented in its test body, not with panics, unrelated errors, or missing symbols. `#[should_panic]` is not used — the test uses `assert!` on the expected (currently unfulfilled) condition. AC-R2 was downgraded to a GREEN config-delta metadata check per D3 (full T0/T1 GCode emission deferred to Packet 68).
 - **No WASM**: No guest WASM is involved in these tests. Host-native pipeline only.
 
 ## Selected Approach (Locked Decisions)
@@ -71,7 +71,7 @@
 
 Primary file this packet creates:
 
-1. `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` — NEW. ~400 lines. Imports `load_model`, `execute_paint_segmentation`, `apply_negative_part_subtract` from `slicer_host`. 11 test functions.
+1. `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` — NEW. ~800 lines. Imports `load_model`, `execute_paint_segmentation`, `apply_negative_part_subtract` from `slicer_host`. 12 test functions (11 GREEN + 1 RED).
 2. `docs/07_implementation_status.md` — append TASK-208 row.
 
 ## Read-Only Context the Implementer Needs
@@ -108,7 +108,7 @@ Primary file this packet creates:
 3. Tests run as integration tests (`crates/slicer-host/tests/`) and have access to `slicer_host` public API via `use slicer_host::...`.
 4. RED tests fail with an assertion message, not a panic or compilation error. The test function compiles and runs; it just asserts a condition that isn't true yet.
 5. No production code changes. This packet does not touch any `src/` file.
-6. The two RED tests are documented as such in the test file with a `// RED — passes after Packet 68` comment.
+6. The RED test (AC-R1) is documented as such in the test file with a `// RED — passes after Packet 68` comment. AC-R2 carries a comment noting the downgrade to config-delta metadata only per D3.
 
 ## Risks and Tradeoffs
 
@@ -123,7 +123,7 @@ Primary file this packet creates:
 ## Context Cost Estimate
 
 - Aggregate: **M** (single new test file, ~400 lines, no production code changes).
-- Largest step: Step 1 (authoring the test file with 11 test functions).
+- Largest step: Step 1 (authoring the test file with 12 test functions: 11 GREEN + 1 RED).
 - No L-rated step. Reading is limited to confirming 3 function signatures and the existing path-resolution pattern.
 
 ## Open Questions

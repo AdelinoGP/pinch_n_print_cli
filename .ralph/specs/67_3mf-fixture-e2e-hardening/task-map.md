@@ -38,13 +38,13 @@ This packet is a hardening-only packet — it adds integration tests for existin
 | Packet 56b (`56b_threemf-modifier-part-ir-routing`) | This packet depends on | Provides `resolve_object` branching and `ObjectMesh.modifier_volumes` population. Tests verify modifier_part regression. |
 | Packet 56c (`56c_threemf-negative-and-support-subtype-routing`) | This packet depends on | Provides `apply_negative_part_subtract` and support paint-segmentation piggyback. Tests verify both consumers end-to-end from disk fixtures. |
 | Packet 64 (`64_paint-native-migration`) | This packet depends on | Provides host-native `execute_paint_segmentation` with `union_paint_regions_at_harvest` parameter. Tests call this function directly. |
-| Packet 68 (`68_extruder-per-modifier-gcode`) | This packet unblocks | The two RED tests in this packet document expected extruder behavior. Packet 68 implements the consumer and turns them GREEN. |
+| Packet 68 (`68_extruder-per-modifier-gcode`) | This packet unblocks | The RED test (AC-R1) in this packet documents expected `PaintValue::ToolIndex` extruder behavior; AC-R2 (downgraded per D3) documents the metadata-side contract. Packet 68 implements the consumer and turns AC-R1 GREEN. |
 
 ## Notes for Implementer
 
 - This packet is test-only. Zero production files are modified.
 - All three 3MF fixtures exist on disk and are read-only. Tests use `Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/<name>.3mf")` for path resolution.
-- The two RED tests (AC-R1, AC-R2) intentionally fail. They use `assert!` on conditions that are not yet true. Test names include `_extruder_` and comments document the RED status.
+- The RED test (AC-R1) intentionally fails. It uses `assert!` on a condition that is not yet true. AC-R2 was downgraded to a GREEN config-delta metadata check per D3. Test names include `_extruder_` and comments document the RED status.
 - No `cargo test --workspace` is needed — the regression sweep covers Packet 56/56b/56c suites plus clippy.
 - The test file can import `load_model` via `use slicer_host::model_loader::load_model` (or equivalent public path — verify at Step 1 via FACT dispatch).
 - `execute_paint_segmentation` requires `Arc<MeshIR>`, `Arc<SurfaceClassificationIR>`, `Arc<LayerPlanIR>`, and a `bool`. For tests that only need paint region output (AC-4/AC-5), the implementer may need to produce placeholder `SurfaceClassificationIR` and `LayerPlanIR` — or find the minimal pipeline setup that produces these IRs from `load_model()` output.

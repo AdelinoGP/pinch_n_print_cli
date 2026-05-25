@@ -8,7 +8,7 @@
 - No production code edits — test-only packet.
 - Aggregate context cost is **M**. All steps are S or M.
 - This packet depends on Packet 56c being `status: implemented`. Step 0 verifies the precondition.
-- The two RED tests (AC-R1, AC-R2) intentionally fail — they document expected behavior for Packet 68. AC-R2 was downgraded to a metadata check (GREEN) per the packet deviation; only AC-R1 remains RED.
+- The RED test (AC-R1) intentionally fails — it documents expected behavior for Packet 68. AC-R2 was downgraded to a metadata check (GREEN) per the packet deviation (D3); only AC-R1 remains RED.
 
 ## Steps
 
@@ -58,7 +58,7 @@
 - Verification:
   - `cargo test -p slicer-host --test threemf_fixture_e2e_tdd` — 11 GREEN, 1 RED with specific assertion message.
   - `cargo check --workspace --tests` — compiles clean.
-- Exit condition: 9 GREEN tests pass, 2 RED tests fail with documented assertion messages. File compiles clean.
+- Exit condition: 11 GREEN tests pass, 1 RED test (AC-R1) fails with the documented assertion message. File compiles clean.
 
 ### Step 2: Regression sweep
 

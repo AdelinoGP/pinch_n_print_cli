@@ -20,7 +20,7 @@ unblocks:
 
 ## Goal
 
-Add integration tests in `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` that load real on-disk 3MF files (`cube_positive_n_negative.3mf`, `bridge_support_enforcers.3mf`, `benchy_4color.3mf`) through `load_model()` → full pipeline, asserting that: negative_part reduces per-layer polygon area, support_enforcer and support_blocker emit `PaintRegionIR` entries, modifier_part fuzzy-skin is intact (regression), modifier_volumes carry correct subtype/extruder metadata, duplicate part IDs don't panic, and models without negative parts skip subtract. Two RED tests document extruder metadata routing (for Packet 68).
+Add integration tests in `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` that load real on-disk 3MF files (`cube_positive_n_negative.3mf`, `bridge_support_enforcers.3mf`, `benchy_4color.3mf`) through `load_model()` → full pipeline, asserting that: negative_part reduces per-layer polygon area, support_enforcer and support_blocker emit `PaintRegionIR` entries, modifier_part fuzzy-skin is intact (regression), modifier_volumes carry correct subtype/extruder metadata, duplicate part IDs don't panic, and models without negative parts skip subtract. One RED test (AC-R1) documents `PaintValue::ToolIndex` extruder metadata routing for Packet 68; AC-R2 was downgraded to a GREEN config-delta-only metadata check (full T0/T1 GCode emission deferred to Packet 68) — see Deviations (D3).
 
 ## Scope Boundaries
 
