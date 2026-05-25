@@ -37,6 +37,8 @@ base64 = "0.22"
 slicer_sdk = { package = "slicer-sdk", path = "../slicer-sdk" }
 criterion = { workspace = true }
 toml = "0.8"
+assert_cmd = "2"
+predicates = "3"
 
 [dev-dependencies.part-cooling]
 path = "../../modules/core-modules/part-cooling"

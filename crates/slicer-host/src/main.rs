@@ -3,6 +3,8 @@
 //! Parses CLI arguments via clap and dispatches to the pipeline orchestration
 //! or config-schema query functions.
 
+mod helpers_cmd;
+
 #[global_allocator]
 static ALLOC: AccountingAllocator<std::alloc::System> =
     AccountingAllocator::new(std::alloc::System);
@@ -371,6 +373,50 @@ fn main() {
             };
             let json = build_config_schema_json(&report.modules);
             println!("{}", json);
+        }
+        HostCommands::Repair {
+            input,
+            output,
+            format,
+            stats,
+        } => {
+            std::process::exit(helpers_cmd::run_repair(&input, &output, format, stats));
+        }
+        HostCommands::Decimate {
+            input,
+            output,
+            target_count,
+            target_ratio,
+            max_error,
+            aggressive,
+            stats,
+        } => {
+            std::process::exit(helpers_cmd::run_decimate(
+                &input,
+                &output,
+                target_count,
+                target_ratio,
+                max_error,
+                aggressive,
+                stats,
+            ));
+        }
+        HostCommands::Import {
+            input,
+            output,
+            output_format,
+            merge_components,
+            no_repair,
+            stats,
+        } => {
+            std::process::exit(helpers_cmd::run_import(
+                &input,
+                &output,
+                output_format,
+                merge_components,
+                no_repair,
+                stats,
+            ));
         }
     }
 }

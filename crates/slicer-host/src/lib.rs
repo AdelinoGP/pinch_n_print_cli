@@ -43,7 +43,7 @@ pub use blackboard::{
     Blackboard, BlackboardError, BlackboardPrepassSlot, DeferredRetract, DeferredTravelMove,
     LayerArena, LayerArenaError, LayerArenaSlot,
 };
-pub use cli::{write_with_parents, HostCli, HostCommands, HostRunOptions};
+pub use cli::{write_with_parents, HostCli, HostCommands, HostRunOptions, OutputFormat};
 pub use config_resolution::{
     paint_semantic_namespace_key, resolve_global_config, resolve_per_object_configs,
     resolve_per_paint_semantic_configs, BoundsDeclaration, ConfigBoundsIndex,

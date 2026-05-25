@@ -155,7 +155,11 @@ fn edge_key(a: u32, b: u32) -> (u32, u32) {
 
 /// Normalize face orientation via BFS flood-fill from the triangle with
 /// the most-negative Z centroid. Handles multiple disconnected components.
-fn phase2_normalize_orientation(its: &mut IndexedTriangleSet, stats: &mut RepairStats) {
+///
+/// Exposed crate-internally so [`crate::decimate::decimate`] can run a single
+/// Phase 2 pass over each object after `meshopt::simplify`, per
+/// `docs/13_slicer_helpers_crate.md` §Decimation Algorithm step 4.
+pub(crate) fn phase2_normalize_orientation(its: &mut IndexedTriangleSet, stats: &mut RepairStats) {
     let tri_count = its.indices.len() / 3;
     if tri_count == 0 {
         return;

@@ -246,3 +246,78 @@ fn decimate_conflict_config_error() {
         "expected InvalidConfig error"
     );
 }
+
+#[test]
+fn decimate_normalizes_winding_after_simplify() {
+    // docs/13_slicer_helpers_crate.md §Decimation Algorithm step 4 requires a
+    // Phase 2 (orientation normalization) pass after `meshopt::simplify` so
+    // that any winding inconsistencies introduced by edge collapse are
+    // corrected. Without that pass, seeded inverted triangles survive
+    // simplification and the output mesh contains "same-direction" interior
+    // edges — both triangles around a manifold edge reference it in the same
+    // order, which breaks downstream pipeline assumptions.
+    //
+    // Test construction:
+    //   1. Build a clean UV sphere (consistent winding).
+    //   2. Manually flip the winding on every 5th triangle.
+    //   3. Decimate at ratio 0.5.
+    //   4. Assert: no manifold edge in the output has same-direction adjacency.
+    let mut its = sphere_2000();
+    let tri_count = its.indices.len() / 3;
+    for t in (0..tri_count).step_by(5) {
+        its.indices.swap(t * 3 + 1, t * 3 + 2);
+    }
+    let mesh = single_object_mesh(its);
+
+    let config = DecimateConfigBuilder::new()
+        .target_ratio(0.5)
+        .build()
+        .expect("builder should validate");
+
+    let result = decimate(mesh, config).expect("decimate should succeed");
+    let out_its = &result.mesh.objects[0].mesh;
+
+    // Count directed edges across all output triangles.
+    let mut directed: HashMap<(u32, u32), u32> = HashMap::new();
+    for t in 0..(out_its.indices.len() / 3) {
+        let i0 = out_its.indices[t * 3];
+        let i1 = out_its.indices[t * 3 + 1];
+        let i2 = out_its.indices[t * 3 + 2];
+        for (a, b) in [(i0, i1), (i1, i2), (i2, i0)] {
+            *directed.entry((a, b)).or_insert(0) += 1;
+        }
+    }
+
+    // For each canonical edge that's manifold (two-triangle adjacency, i.e.
+    // forward + reverse == 2), the two triangles must reference it in
+    // opposite directions: forward == 1 AND reverse == 1.
+    let mut same_direction_collisions = 0usize;
+    let mut manifold_edges_checked = 0usize;
+    let mut keys: Vec<(u32, u32)> = directed.keys().copied().collect();
+    keys.sort();
+    for (a, b) in keys {
+        if a >= b {
+            continue; // canonicalize: visit each undirected edge once
+        }
+        let forward = directed.get(&(a, b)).copied().unwrap_or(0);
+        let reverse = directed.get(&(b, a)).copied().unwrap_or(0);
+        if forward + reverse == 2 {
+            manifold_edges_checked += 1;
+            if forward != 1 || reverse != 1 {
+                same_direction_collisions += 1;
+            }
+        }
+    }
+
+    assert!(
+        manifold_edges_checked > 100,
+        "test setup invalid: expected the decimated sphere to have many \
+         manifold edges, got {manifold_edges_checked}"
+    );
+    assert_eq!(
+        same_direction_collisions, 0,
+        "after Phase 2 orientation pass, no manifold edge should have \
+         same-direction adjacency; found {same_direction_collisions} out of \
+         {manifold_edges_checked} manifold edges"
+    );
+}

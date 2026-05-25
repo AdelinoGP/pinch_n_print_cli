@@ -1,14 +1,20 @@
 # ModularSlicer — slicer-helpers Crate
 
-> **Status (as of this writing).** The `repair`, `decimate`, and STEP import
-> Rust APIs in this document are implemented and shipped in `crates/slicer-helpers/src/`.
-> The `pnp <subcommand>` CLI surface described below (`pnp repair`,
-> `pnp decimate`, `pnp import`, `pnp slice`) is **forward-looking design** —
-> the workspace contains no `pnp` binary, and neither `slicer-host` nor the
-> `slicer` developer CLI currently expose these subcommands. Until the CLI
-> wiring lands, callers must invoke the helpers via the library API
-> (`slicer_helpers::repair`, `slicer_helpers::decimate`,
-> `slicer_helpers::import::import_step`).
+> **Status (as of this writing).**
+> - The `repair`, `decimate`, and STEP import Rust APIs in this document are
+>   implemented and shipped in `crates/slicer-helpers/src/`.
+> - The CLI subcommands described below are exposed via the existing
+>   **`slicer-host`** binary (not a separate `pnp` binary, despite earlier
+>   drafts using that name). The live invocations are `slicer-host repair`,
+>   `slicer-host decimate`, and `slicer-host import`. The `slice` operation
+>   continues to be served by the pre-existing `slicer-host run` subcommand.
+> - On-disk **STL** input and output are wired through. **OBJ** and **3MF**
+>   inputs are accepted via the existing `slicer-host` mesh loaders, but
+>   OBJ/3MF *output* writers are not yet implemented — passing
+>   `--format obj` or `--format 3mf` (or `--output-format obj|3mf` to
+>   `import`) parses cleanly but fails at the write step with a clear
+>   "writer not yet implemented" error. See
+>   `docs/handoff_obj_3mf_writers.md` for the implementation handoff.
 
 ## Purpose
 
@@ -22,11 +28,11 @@ These operations are hosted here because they require native libraries or algori
 
 **In scope:**
 
-| Feature         | CLI subcommand | Description                                                                       |
-|-----------------|----------------|-----------------------------------------------------------------------------------|
-| Mesh repair     | `pnp repair`   | Manifold fixing: degenerate removal, orientation normalization, open-edge closure |
-| Mesh decimation | `pnp decimate` | QEM triangle-count reduction with configurable error budget                       |
-| STEP import     | `pnp import`   | STEP/STP → triangulated `MeshIR`, including unit normalization                    |
+| Feature         | CLI subcommand          | Description                                                                       |
+|-----------------|-------------------------|-----------------------------------------------------------------------------------|
+| Mesh repair     | `slicer-host repair`    | Manifold fixing: degenerate removal, orientation normalization, open-edge closure |
+| Mesh decimation | `slicer-host decimate`  | QEM triangle-count reduction with configurable error budget                       |
+| STEP import     | `slicer-host import`    | STEP/STP → triangulated `MeshIR`, including unit normalization                    |
 
 **Out of scope:**
 
@@ -95,24 +101,26 @@ truck-modeling = "0.6"   # dev-dependency for test fixtures
 
 ## Coordinate System Contract
 
-All operations in this crate **input and output values in Pinch_n_Print's internal coordinate system**:
+All operations in this crate input and output values via `slicer_ir::Point3`,
+whose storage is **`f32` in millimetres** today. The "1 internal unit = 100 nm"
+hazard described in `docs/08_coordinate_system.md` applies to the per-layer
+integer-coordinate modules (Clipper / `slicer-core` polygon math); it does
+**not** describe how `MeshIR` vertices are stored. The STEP importer therefore
+converts a STEP file's declared units directly into `f32 mm` and stores into
+`Point3`. All other operations (repair, decimate) receive and emit already-
+converted `mm` coordinates and must not apply any unit conversion.
 
-```
-1 internal unit = 100 nm = 0.0001 mm
-```
+Reference: `./docs/08_coordinate_system.md` — integer-coord unit definitions
+for downstream pipeline modules.
 
-The STEP importer is responsible for converting from the STEP file's declared units to internal units before populating `MeshIR`. All other operations (repair, decimate) receive and emit already-converted coordinates and must not apply any unit conversion.
+Unit conversion table for STEP import (STEP native → `f32 mm` in `Point3`):
 
-Reference: `./docs/08_coordinate_system.md` — normative unit definitions.
-
-Unit conversion table for STEP import:
-
-| STEP declared unit       | Factor to internal units |
-|--------------------------|--------------------------|
-| Millimetre (most common) | × 10,000                 |
-| Metre                    | × 10,000,000             |
-| Inch                     | × 254,000                |
-| Micrometre               | × 10                     |
+| STEP declared unit       | Factor to `f32 mm` |
+|--------------------------|--------------------|
+| Millimetre (most common) | × 1                |
+| Metre                    | × 1,000            |
+| Inch                     | × 25.4             |
+| Micrometre               | × 0.001            |
 
 If the STEP file declares no unit, the importer must default to millimetres and emit a structured warning.
 
@@ -142,7 +150,7 @@ If the mesh has multiple disconnected components, run one flood-fill per compone
 
 An open edge is an edge referenced by exactly one triangle. After Phases 1 and 2, collect all open edges, group them into boundary loops by shared vertex, and cap each loop with a fan of triangles originating at the loop centroid.
 
-If a boundary loop contains more than `MAX_REPAIR_CAP_VERTICES = 256` vertices, the repair emits a non-fatal `RepairWarning::LargeCapLoop` and skips that loop (it is too large to fan-cap reliably without introducing self-intersections). The caller receives the partial result with `repaired = false` on the affected component.
+If a boundary loop contains more than `MAX_REPAIR_CAP_VERTICES = 256` vertices, the repair emits a non-fatal `RepairWarning::LargeCapLoop { vertex_count }` and skips that loop (it is too large to fan-cap reliably without introducing self-intersections). The caller still receives `Ok(result)` with the partially-repaired mesh; the presence of `LargeCapLoop` in `result.stats.warnings` is the signal that one or more components were not fully closed. (There is no per-component `repaired` boolean; the warning vector is the sole indicator.)
 
 ### Output
 
@@ -175,16 +183,20 @@ pub enum RepairWarning {
 pub fn repair(mesh: MeshIR) -> Result<RepairResult, RepairError>
 ```
 
-### CLI Subcommand: `pnp repair`
+### CLI Subcommand: `slicer-host repair`
 
 ```
-pnp repair --input <path> --output <path> [--format <stl|obj|3mf>] [--stats]
+slicer-host repair --input <path> --output <path> [--format <stl|obj|3mf>] [--stats]
 
 Options:
-  --input     Input mesh file (STL, OBJ, 3MF, or STEP after conversion)
+  --input     Input mesh file (STL, OBJ, or 3MF)
   --output    Output mesh file path
-  --format    Output format (default: same as input)
-  --stats     Print repair statistics to stderr as JSON
+  --format    Output format. Defaults to inferring from the output extension,
+              then from the input extension. STL is currently the only wired
+              writer; --format obj and --format 3mf return an
+              "Unsupported" runtime error.
+  --stats     Emit start / warning / done events as line-delimited JSON
+              on stderr.
 ```
 
 Exit codes:
@@ -193,7 +205,7 @@ Exit codes:
 |------|------------------------------------------------------------------------|
 | 0    | Repair succeeded; mesh is fully manifold                               |
 | 1    | Repair partially succeeded; some loops were skipped (warnings present) |
-| 2    | Input file not found or unreadable                                     |
+| 2    | Input file not found or unreadable, or output writer unsupported       |
 | 3    | Input mesh is empty                                                    |
 
 ---
@@ -220,7 +232,11 @@ Decimation is implemented via the `meshopt` crate (Rust bindings to meshoptimize
 3. Reconstruct a `MeshIR` from the simplified buffers.
 4. Run a single pass of Phase 2 (orientation normalization) from the repair module to correct any winding inconsistencies introduced by edge collapse.
 
-Coordinates are converted to `f32` for meshopt processing and back to `i64` (internal units) on output. Precision loss from `f32` rounding is bounded by the meshopt error budget and is acceptable at typical decimation ratios.
+`MeshIR` vertices are already `f32 mm` (`slicer_ir::Point3`), so the
+conversion to meshopt's flat `f32` buffer is a direct copy. Phase 2 from
+`repair.rs` is run on each compacted `IndexedTriangleSet` before it is
+returned, so any winding inconsistencies introduced by edge collapse are
+normalised before downstream consumers see the result.
 
 ### Configuration
 
@@ -282,24 +298,27 @@ pub fn drop_short_segments_mm(
 ) -> Vec<Point3WithWidth>;
 ```
 
-### CLI Subcommand: `pnp decimate`
+### CLI Subcommand: `slicer-host decimate`
 
 ```
-pnp decimate --input <path> --output <path>
-             (--target-count <n> | --target-ratio <0.0–1.0>)
-             [--max-error <f32>]
-             [--aggressive]
-             [--stats]
+slicer-host decimate --input <path> --output <path>
+                     (--target-count <n> | --target-ratio <0.0–1.0>)
+                     [--max-error <f32>]
+                     [--aggressive]
+                     [--stats]
 
 Options:
-  --input          Input mesh file
-  --output         Output mesh file path
+  --input          Input mesh file (STL, OBJ, or 3MF)
+  --output         Output mesh file path (STL only at present; see status header)
   --target-count   Absolute target triangle count
   --target-ratio   Fraction of triangles to retain (e.g. 0.25 = keep 25%)
   --max-error      Maximum quadric error budget (default: 0.01)
   --aggressive     Use sloppy simplification (faster, lower quality)
-  --stats          Print result statistics to stderr as JSON
+  --stats          Emit start / done events as line-delimited JSON on stderr.
 ```
+
+`--target-count` and `--target-ratio` are mutually exclusive and exactly one
+is required. clap enforces this at parse time via an `ArgGroup`.
 
 Exit codes:
 
@@ -307,7 +326,7 @@ Exit codes:
 |------|-----------------------------------------------------------------------------------|
 | 0    | Decimation succeeded; target was reached                                          |
 | 1    | Decimation stopped early (max_error budget exhausted before target count reached) |
-| 2    | Input file not found or unreadable                                                |
+| 2    | Input file not found or unreadable, or output writer unsupported                  |
 | 3    | Input mesh is empty or has fewer triangles than target                            |
 
 ---
@@ -362,7 +381,7 @@ Vec<MeshIR>                   — one MeshIR per solid in the STEP file
 
 The triangulation tolerance passed to `truck-meshing` is fixed at **100 nm** (1 internal unit). This matches the coordinate system resolution and ensures no geometric detail finer than 1 internal unit is lost during tessellation.
 
-Finer tolerances produce more triangles without slicing benefit. Coarser tolerances may lose sharp edges on small features. The value is not user-configurable at the CLI level; use `pnp decimate` afterward to reduce triangle count if needed.
+Finer tolerances produce more triangles without slicing benefit. Coarser tolerances may lose sharp edges on small features. The value is not user-configurable at the CLI level; use `slicer-host decimate` afterward to reduce triangle count if needed.
 
 ### Output
 
@@ -397,29 +416,49 @@ pub enum StepWarning {
 ### Public API
 
 ```rust
-/// Import a STEP file. Returns one MeshIR per solid found in the file.
-/// Repair (Phase 1 + Phase 2) is applied automatically to each component.
+/// Import a STEP file with default options (repair pass enabled).
+/// Returns one MeshIR per solid found in the file.
 pub fn import_step(path: &Path) -> Result<StepImportResult, StepImportError>
+
+/// Options for [`import_step_with_options`].
+pub struct StepImportOptions {
+    /// When `true`, skip the automatic Phase 1+2 repair pass applied to each
+    /// tessellated component. Exposed so the CLI's `--no-repair` flag can
+    /// disable it.
+    pub skip_repair: bool,
+}
+
+/// Import a STEP file with custom options. `import_step(path)` is equivalent
+/// to `import_step_with_options(path, StepImportOptions::default())`.
+pub fn import_step_with_options(
+    path: &Path,
+    opts: StepImportOptions,
+) -> Result<StepImportResult, StepImportError>
 ```
 
-### CLI Subcommand: `pnp import`
+### CLI Subcommand: `slicer-host import`
 
 ```
-pnp import --input <path.step|path.stp>
-           --output <path> [--output-format <stl|obj|3mf>]
-           [--merge-components]
-           [--no-repair]
-           [--stats]
+slicer-host import --input <path.step|path.stp>
+                   --output <path>
+                   [--output-format <stl|obj|3mf>]
+                   [--merge-components]
+                   [--no-repair]
+                   [--stats]
 
 Options:
   --input             Input STEP or STP file
   --output            Output mesh file path. If the STEP file contains multiple
                       solids and --merge-components is not set, output path is
-                      used as a stem: <stem>_0.stl, <stem>_1.stl, etc.
-  --output-format     Output format (default: stl)
+                      used as a stem: <stem>_0.<ext>, <stem>_1.<ext>, etc.,
+                      where <ext> is taken from the supplied --output extension.
+  --output-format     Output format (default: stl; obj/3mf accepted but writer
+                      not yet implemented — see status header)
   --merge-components  Merge all solids into a single MeshIR before output
-  --no-repair         Skip the automatic repair pass (not recommended)
-  --stats             Print import statistics to stderr as JSON
+  --no-repair         Skip the automatic repair pass (sets
+                      StepImportOptions { skip_repair: true })
+  --stats             Emit start / warning / done events as line-delimited
+                      JSON on stderr.
 ```
 
 Exit codes:
@@ -462,35 +501,41 @@ Warnings are **not** errors. Operations that produce warnings still return `Ok(r
 
 ---
 
-## Integration with Host CLI (Forward-looking)
+## Integration with Host CLI
 
-The design intent is for a single host binary (working name `pnp`) to expose
-`repair`, `decimate`, `import`, and `slice` as top-level subcommands via
-`clap`. Each subcommand would call directly into the corresponding
-`slicer-helpers` function (or, for `slice`, into the full pipeline). No WASM
-runtime would be initialised for the non-slice subcommands.
+The helpers are exposed via the existing `slicer-host` binary's clap
+subcommand surface. No new binary was introduced — `slicer-host` already
+hosts the STL/OBJ/3MF mesh loaders (`crates/slicer-host/src/model_loader.rs`)
+and the JSON-Lines emitter machinery (`crates/slicer-host/src/progress_events.rs`),
+so adding helper subcommands there avoided extracting either to a shared
+crate.
 
 ```
-pnp slice    — full slicing pipeline (WASM modules, scheduler)
-pnp repair   — slicer-helpers::repair()
-pnp decimate — slicer-helpers::decimate()
-pnp import   — slicer-helpers::import_step()
+slicer-host run           — full slicing pipeline (WASM modules, scheduler)
+slicer-host config-schema — query combined config schema from loaded modules
+slicer-host repair        — slicer_helpers::repair()
+slicer-host decimate      — slicer_helpers::decimate()
+slicer-host import        — slicer_helpers::import_step_with_options()
 ```
 
-<!-- VERIFY: at the time of writing, the `pnp` binary does not exist in the
-     workspace. `slicer-host` currently exposes a `run` subcommand that maps
-     to the full pipeline (see `crates/slicer-host/src/cli.rs`), and the
-     module-author CLI binary is `slicer` (from `cli/slicer-cli`). The
-     `pnp <subcommand>` integration above is the target shape; until it
-     lands, run helpers via the library API. -->
+The three new subcommands are implemented in
+`crates/slicer-host/src/helpers_cmd.rs`. They do not initialise the WASM
+runtime — they short-circuit before any module loading happens.
 
-These subcommands must serialize all progress and result data as line-delimited JSON to stderr (matching the event protocol defined in `./docs/09_progress_events.md`), so the Unity frontend can consume them uniformly.
+When `--stats` is passed, each subcommand emits a sequence of line-delimited
+JSON events to **stderr**. The envelope is a flat `{"event": "<name>",
+"operation": "repair|decimate|import", ...payload}` shape (intentionally
+distinct from the slice-pipeline `ProgressEvent` schema in
+`./docs/09_progress_events.md`, which carries `slice_id`, `phase`, and
+other fields that do not apply to one-shot mesh operations). Event names
+are `start`, `warning` (zero or more), and `done`.
 
-Example output for `pnp repair --stats`:
+Example output for `slicer-host repair --stats`:
 
 ```jsonc
-{"event": "done", "operation": "repair", "degenerate_removed": 14,
- "faces_reoriented": 3, "open_edges_closed": 0, "warnings": []}
+{"event":"start","operation":"repair","input":"in.stl","output":"out.stl"}
+{"event":"done","operation":"repair","degenerate_removed":14,
+ "faces_reoriented":3,"open_edges_closed":0,"components":1,"warnings":[]}
 ```
 
 ---
@@ -546,11 +591,13 @@ Test fixture files required in `tests/resources/`:
 
 These tasks extend the Phase B sequence in `./docs/07_implementation_status.md`.
 
-| Task ID  | Description                                                                                                                  | Phase |
-|----------|------------------------------------------------------------------------------------------------------------------------------|-------|
-| TASK-055 | Create `crates/slicer-helpers/` workspace member; add `meshopt`, `truck-stepio`, `truck-meshing` to root `Cargo.toml`        | D     |
-| TASK-056 | Write failing tests in `repair_tdd.rs`; implement `repair.rs` (all three phases); all tests pass                             | D     |
-| TASK-057 | Write failing tests in `decimate_tdd.rs`; implement `decimate.rs` via meshopt; all tests pass                                | D     |
-| TASK-058 | Create STEP test fixtures; write failing tests in `import_step_tdd.rs`; implement `import/step.rs` via truck; all tests pass | D     |
+| Task ID  | Description                                                                                                                                                                                                                                                          | Phase | Status |
+|----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------|--------|
+| TASK-055 | Create `crates/slicer-helpers/` workspace member; add `meshopt`, `truck-stepio`, `truck-meshalgo` to root `Cargo.toml`                                                                                                                                               | D     | done   |
+| TASK-056 | Write failing tests in `repair_tdd.rs`; implement `repair.rs` (all three phases); all tests pass                                                                                                                                                                     | D     | done   |
+| TASK-057 | Write failing tests in `decimate_tdd.rs`; implement `decimate.rs` via meshopt; all tests pass. Includes the post-decimation Phase 2 orientation pass and the `decimate_normalizes_winding_after_simplify` regression test.                                            | D     | done   |
+| TASK-058 | Create STEP test fixtures; write failing tests in `import_step_tdd.rs`; implement `import/step.rs` via truck; all tests pass. Includes `StepImportOptions { skip_repair }` + `import_step_with_options` for CLI `--no-repair`.                                        | D     | done   |
+| TASK-059 | Wire `slicer-host repair`, `slicer-host decimate`, `slicer-host import` subcommands (`crates/slicer-host/src/cli.rs` + `helpers_cmd.rs`); STL writer; JSONL `--stats` events; integration tests in `crates/slicer-host/tests/helpers_cli.rs`.                         | D     | done   |
+| TASK-060 | Add OBJ and 3MF output writers; light up `--format obj` / `--format 3mf` / `--output-format obj|3mf` end-to-end. **See `docs/handoff_obj_3mf_writers.md` for the implementation handoff.**                                                                            | D     | open   |
 
 TASK-076 in Phase E ("File format loaders + admesh-based mesh repair integration") is superseded by TASK-056 for the repair component. TASK-076 retains responsibility for STL/OBJ/3MF host-side loaders only.

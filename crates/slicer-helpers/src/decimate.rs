@@ -208,6 +208,11 @@ pub fn decimate(mut mesh: MeshIR, config: DecimateConfig) -> Result<DecimateResu
         let (compacted_its, _) = compact_mesh(&obj.mesh.vertices, &new_indices);
         obj.mesh = compacted_its;
 
+        // Phase 2: correct winding inconsistencies introduced by edge collapse.
+        // docs/13_slicer_helpers_crate.md §Decimation Algorithm step 4.
+        let mut _phase2_stats = crate::repair::RepairStats::default();
+        crate::repair::phase2_normalize_orientation(&mut obj.mesh, &mut _phase2_stats);
+
         final_triangle_count += obj.mesh.indices.len() / 3;
         if result_error > max_achieved_error {
             max_achieved_error = result_error;

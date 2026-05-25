@@ -92,10 +92,36 @@ pub enum StepImportError {
     IoError(#[from] std::io::Error),
 }
 
+/// Options for [`import_step_with_options`].
+///
+/// `Default::default()` (`skip_repair = false`) matches the behavior of the
+/// no-options [`import_step`] entry point.
+#[derive(Debug, Clone, Default)]
+pub struct StepImportOptions {
+    /// When `true`, skip the automatic Phase 1+2 repair pass applied to each
+    /// tessellated component. Exposed so the CLI's `--no-repair` flag can
+    /// disable it. Not recommended in normal use — truck's tessellation can
+    /// produce non-manifold output on degenerate B-Rep input.
+    pub skip_repair: bool,
+}
+
 /// Import a STEP file. Returns one [`MeshIR`] per solid found in the file.
 ///
-/// Repair (Phase 1 + Phase 2) is applied automatically to each component.
+/// Equivalent to [`import_step_with_options`] with [`StepImportOptions`]
+/// default values. Repair (Phase 1 + Phase 2) is applied automatically to
+/// each component.
 pub fn import_step(path: &Path) -> Result<StepImportResult, StepImportError> {
+    import_step_with_options(path, StepImportOptions::default())
+}
+
+/// Import a STEP file with custom options.
+///
+/// See [`StepImportOptions`] for the available knobs. Returns one [`MeshIR`]
+/// per solid found in the file.
+pub fn import_step_with_options(
+    path: &Path,
+    opts: StepImportOptions,
+) -> Result<StepImportResult, StepImportError> {
     // 1. Read file.
     if !path.exists() {
         return Err(StepImportError::FileNotFound(path.to_path_buf()));
@@ -175,23 +201,26 @@ pub fn import_step(path: &Path) -> Result<StepImportResult, StepImportError> {
         });
     }
 
-    // 6. Apply repair (Phase 1 + Phase 2) to each component.
-    for (comp_idx, named) in meshes.iter_mut().enumerate() {
-        match repair::repair(named.mesh.clone()) {
-            Ok(repair_result) => {
-                let did_repair = repair_result.stats.degenerate_removed > 0
-                    || repair_result.stats.faces_reoriented > 0
-                    || repair_result.stats.open_edges_closed > 0;
-                if did_repair {
-                    warnings.push(StepWarning::RepairApplied {
-                        component_index: comp_idx,
-                        stats: repair_result.stats,
-                    });
+    // 6. Apply repair (Phase 1 + Phase 2) to each component, unless the
+    //    caller opted out via `StepImportOptions::skip_repair`.
+    if !opts.skip_repair {
+        for (comp_idx, named) in meshes.iter_mut().enumerate() {
+            match repair::repair(named.mesh.clone()) {
+                Ok(repair_result) => {
+                    let did_repair = repair_result.stats.degenerate_removed > 0
+                        || repair_result.stats.faces_reoriented > 0
+                        || repair_result.stats.open_edges_closed > 0;
+                    if did_repair {
+                        warnings.push(StepWarning::RepairApplied {
+                            component_index: comp_idx,
+                            stats: repair_result.stats,
+                        });
+                    }
+                    named.mesh = repair_result.mesh;
                 }
-                named.mesh = repair_result.mesh;
-            }
-            Err(_) => {
-                // Repair failed — keep the original mesh, no warning needed.
+                Err(_) => {
+                    // Repair failed — keep the original mesh, no warning needed.
+                }
             }
         }
     }
