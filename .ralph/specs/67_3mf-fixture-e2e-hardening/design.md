@@ -13,9 +13,9 @@
 
 | Fixture | Objects | Key subtypes | Tests using it |
 |---------|---------|-------------|----------------|
-| `resources/cube_positive_n_negative.3mf` | 1 composite (id=4) from 3 parts | parts: 2x normal_part (Cylinder, Cone), 1x negative_part (Cube with transform X-11.1 Y-11.9) | AC-1, AC-2, AC-3 |
-| `resources/bridge_support_enforcers.3mf` | 2 objects (id=4, id=5) on one plate | obj4: 1x normal_part + 3x support_enforcer (part id=3 duplicated); obj5: 1x normal_part + 3x support_blocker (part id=3 duplicated) | AC-4, AC-5, AC-8, AC-N1, AC-R1 |
-| `resources/benchy_4color.3mf` | 1 object with modifier parts | 1x normal_part + 3x modifier_part | AC-6, AC-7 |
+| `resources/cube_positive_n_negative.3mf` | 1 composite (id=4) from 3 parts; parent extruder=1 | parts: 2x normal_part (Cylinder, Cone), 1x negative_part (Cube with transform X-11.1 Y-11.9, extruder=0) | AC-1, AC-2, AC-3, AC-Loader-2, AC-Mod-1 |
+| `resources/bridge_support_enforcers.3mf` | 2 objects (id=4, id=5) on one plate; obj4 parent extruder=1; obj5 parent extruder=1 + enable_support=1 + support_type=tree(auto) | obj4: 1x normal_part + 3x support_enforcer (part id=3 duplicated, extruder=0); obj5: 1x normal_part + 3x support_blocker (extruder=0) | AC-4, AC-5, AC-8, AC-9, AC-Loader-2, AC-Mod-4, AC-Mod-5, AC-Mod-6 |
+| `resources/benchy_4color.3mf` | 1 object (id=3); parent extruder=1 | 1x normal_part + 1x modifier_part (extruder=0, fuzzy_skin=external) | AC-6, AC-7, AC-Loader-2, AC-Mod-2, AC-Mod-3 |
 
 ### State before this packet
 
@@ -26,10 +26,18 @@
 
 ### After this packet
 
-- `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` exists with 12 tests.
-- 11 GREEN tests exercise the full pipeline from disk 3MF → consumer behavior (including AC-R2, downgraded to a config-delta metadata check per D3).
-- 1 RED test (AC-R1) documents expected `PaintValue::ToolIndex` extruder behavior for Packet 68.
-- ~170 production-code lines added to `crates/slicer-host/src/model_loader.rs` to support 3MF production-extension `p:path` external-`.model` references (scope deviation D1; registered as DEV-055).
+- `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` has 17 tests (14 GREEN + 3 RED).
+  - 10 pre-existing GREEN tests (AC-1..9, AC-N1) unchanged.
+  - 1 new GREEN integration test for the loader fix (AC-Loader-2: `load_model_populates_object_config_data`).
+  - 5 new modifier-propagation tests:
+    - 3 RED gates for Packet 68's `stamp_modifier_config_deltas`: AC-Mod-1 (negative_part extruder), AC-Mod-2 (modifier_part fuzzy_skin), AC-Mod-3 (modifier_part extruder).
+    - 2 GREEN OrcaSlicer-parity guards: AC-Mod-4 (support_enforcer config not stamped), AC-Mod-5 (support_blocker config not stamped).
+  - 1 GREEN paint-segmentation parity guard: AC-Mod-6 (`support_enforcer_paint_value_is_flag_not_tool_index`).
+- `crates/slicer-host/tests/threemf_sidecar_classification_tdd.rs` gains 1 new GREEN unit test for the sidecar parser change (AC-Loader-1: `sidecar_parser_extracts_object_metadata`).
+- AC-R1 and AC-R2 are **withdrawn** (test bodies deleted) per D6 — both were premised on the OrcaSlicer-divergent contract that `support_enforcer` `extruder` propagates to a tool change.
+- ~170 production-code lines previously added to `crates/slicer-host/src/model_loader.rs` for `p:path` support (D1) remain in place.
+- ~65 additional production-code lines added across `crates/slicer-host/src/model_loader_sidecar.rs`, `crates/slicer-host/src/model_loader.rs`, and `crates/slicer-host/src/main.rs` for the object-metadata loader fix (D8): sidecar parser now extracts `<metadata>` entries when not inside a `<part>`; `load_model` populates `ObjectConfig.data` from an allowlist of `extruder`/`enable_support`/`support_type`; `main.rs` seeds `object_config:<id>:<key>` into `config_source` mirroring the existing `object_height:<id>` pattern at lines 196-205.
+- Packet 68 is amended in the same change (D7): subtype filter row added to `design.md` to exclude `support_enforcer`/`support_blocker` from `stamp_modifier_config_deltas`; AC-2 retargeted to synthetic-IR test; new `AC-Filter` reuses Packet 67's AC-Mod-4 as a permanent cross-packet regression guard.
 
 ## Neighboring Tests / Fixtures
 
@@ -40,10 +48,10 @@
 ## Architecture Constraints
 
 - **Coordinate system**: Scaled integer units (1 unit = 100 nm). All area assertions use ±0.005 mm² tolerance for Clipper2 rounding. No direct mm-to-unit conversion needed — `load_model()` produces world-space coordinates in the correct unit system.
-- **No production code changes**: This packet is test-only. Zero edits to `crates/slicer-host/src/`, `crates/slicer-ir/`, `crates/slicer-core/`.
+- **Bounded production code changes**: Originally specified as test-only; in practice, two scoped production fixes are now in scope: (a) the `p:path` external-`.model` parser in `model_loader.rs` (D1) and (b) the object-metadata loader fix across `model_loader_sidecar.rs`, `model_loader.rs`, and `main.rs` (D8). Zero edits to `crates/slicer-ir/` or `crates/slicer-core/`.
 - **Public API surface**: Tests call only functions already marked `pub` on the host crate. No `pub(crate)` internals accessed.
 - **Fixture immutability**: All three 3MF fixtures are read-only. Tests do not write or modify fixture files.
-- **RED test discipline**: The RED test (AC-R1) MUST fail with the specific assertion documented in its test body, not with panics, unrelated errors, or missing symbols. `#[should_panic]` is not used — the test uses `assert!` on the expected (currently unfulfilled) condition. AC-R2 was downgraded to a GREEN config-delta metadata check per D3 (full T0/T1 GCode emission deferred to Packet 68).
+- **RED test discipline**: The three RED tests (AC-Mod-1, AC-Mod-2, AC-Mod-3) MUST fail with the specific assertion documented in each test body, not with panics, unrelated errors, or missing symbols. `#[should_panic]` is not used — each test uses `assert!` on the expected (currently unfulfilled) condition. All three turn GREEN once Packet 68 lands `stamp_modifier_config_deltas` (with the ENFORCER/BLOCKER subtype filter per D7).
 - **No WASM**: No guest WASM is involved in these tests. Host-native pipeline only.
 
 ## Selected Approach (Locked Decisions)
@@ -52,11 +60,15 @@
 |---|---|---|
 | Test framework | Standard `#[test]` functions in `crates/slicer-host/tests/`. No custom test harness. | Matches existing pattern in `threemf_sidecar_classification_tdd.rs`, `benchy_4color_modifier_part_e2e_tdd.rs`. |
 | Fixture path resolution | `Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/<name>.3mf")` | Matches existing pattern. Works with `cargo test` from workspace root or crate directory. |
-| Pipeline test depth | Call `load_model()` then individual host functions directly (`execute_paint_segmentation`, `apply_negative_part_subtract`). Do NOT run the full scheduler/executor. | Tests should be fast and deterministic. Full scheduler adds ~30s overhead and scheduler state setup complexity. Component-level integration is sufficient to catch transform/parsing bugs. |
+| Pipeline test depth | Most tests call `load_model()` then individual host functions directly (`execute_paint_segmentation`, `apply_negative_part_subtract`). The new AC-Mod-* tests additionally call `execute_region_mapping_with_cap` via the `region_map_for_fixture` helper. Do NOT run the full scheduler/executor or load WASM modules. | Tests should be fast and deterministic. Full scheduler adds ~30s overhead, WASM staleness fragility, and scheduler state setup complexity. Component-level integration is sufficient to catch transform/parsing bugs and to exercise Packet 68's `RegionMapIR.entries[*].plan.config.extensions` contract. |
+| Modifier-propagation tests scope | 5 new `AC-Mod-*` tests assert on `RegionMapIR.entries[*].plan.config.extensions` after calling `execute_region_mapping_with_cap` via the `region_map_for_fixture` helper. The 6th (AC-Mod-6) asserts on `PaintRegionIR.per_layer[*].semantic_regions[SupportEnforcer]` after `execute_paint_segmentation`. No full scheduler / WASM module loading required. Three tests are RED until Packet 68 lands `stamp_modifier_config_deltas`; three are GREEN parity guards. | Tight contract on the data Packet 68 actually writes. Cheap to author. Sidesteps the loader-discard-of-parent-extruder gap (which would have blocked any GCode-level T-change assertion on the fixtures). |
+| OrcaSlicer parity filter | AC-Mod-4/5/6 codify the contract that `support_enforcer` and `support_blocker` `config_delta` MUST NOT propagate to `RegionPlan.config.extensions` or to `PaintValue::ToolIndex`. Per `OrcaSlicerDocumented/src/libslic3r/PrintApply.cpp:590-594`, those subtypes are excluded from region-config merging. | Catches the failure mode where Packet 68 forgets the subtype filter (D7), or where someone re-wires the divergent paint-segmentation routing that AC-R1 was testing for (D6). |
+| Loader fix scope | `crates/slicer-host/src/model_loader_sidecar.rs` extracts object-scoped `<metadata>` entries into a new `ObjectSidecarInfo.object_metadata` field; `crates/slicer-host/src/model_loader.rs` populates `ObjectMesh.config.data` with allowlist `extruder`/`enable_support`/`support_type`; `crates/slicer-host/src/main.rs` seeds `object_config:<id>:<key>` into `config_source` mirroring the existing `object_height:<id>` pattern (lines 196-205). | Smallest unblocking change for any future packet that wants legitimate multi-material GCode coverage. Allowlist discipline mirrors the part-level extraction at `model_loader.rs:761-801`. |
+| Test assertion mechanic | All AC-Mod-* tests use the "any entry has the key" pattern — walk `RegionMapIR.entries` and assert at least one (or no entry, for regression guards) has the expected `plan.config.extensions[k] == v`. Tests do NOT reimplement bbox-overlap detection. | Avoids circularity with Packet 68's own bbox logic. The fixture set is small enough that "any entry has the unusual key" is a strong positive signal; AC-Mod-4/5 cover the "stamped on the wrong fixture" failure mode. |
 | Negative_part area verification | Compute polygon area before and after subtract. Assert reduction > 0 inside extent, bit-identical outside extent. | Same approach as `threemf_subtypes_synthetic_e2e_tdd.rs`. |
 | RED test assertion style | Plain `assert!` on the desired condition. Test name prefixed with comment `// RED — passes after Packet 68`. | Clear documentation. `cargo test` output shows "FAILED" not "ok". |
 | Duplicate part ID handling | Test that the loader does not panic. Document the actual behavior (supersede or accumulate). | The fixture has real-world duplicate IDs; the test hardens against regressions without prescribing the resolution strategy. |
-| Extruder RED tests scope | AC-R1 asserts `PaintValue::ToolIndex` on `SemanticRegion`. AC-R2 asserts `T0`/`T1` in GCode (requires full pipeline — may be a larger test). | AC-R1 is a focused IR-level assertion. AC-R2 is an end-to-end GCode assertion — if too complex for this packet, it can be downgraded to a `// TODO` comment in the test file. |
+| Extruder RED tests scope (HISTORICAL — superseded by Modifier-propagation tests scope row above; AC-R1 and AC-R2 withdrawn per D6) | AC-R1 asserts `PaintValue::ToolIndex` on `SemanticRegion`. AC-R2 asserts `T0`/`T1` in GCode. | Both were premised on OrcaSlicer-divergent contracts (`PrintApply.cpp:590-594` excludes ENFORCER/BLOCKER from region-config merging). Replaced by AC-Mod-1..6. |
 
 ## Rejected Alternatives
 
@@ -65,14 +77,22 @@
 | Run full scheduler/executor for each test | Too slow (~30s per test). Component-level integration (load_model + call specific functions) is equally effective for catching transform/parsing bugs. |
 | Use `#[should_panic]` for RED tests | `should_panic` hides the specific failure reason. Explicit `assert!` on the desired condition produces a clear failure message. |
 | Add a shared test helper crate for fixture loading | Over-engineering for 3 tests. Each test builds its path inline (matches existing pattern). |
-| Include GCode-level assertions in this packet | GCode emission requires `LayerCollectionIR` assembly which requires full scheduler execution. Deferred to Packet 68 which also implements the extruder consumer path. |
+| Include GCode-level assertions in this packet | GCode emission requires `LayerCollectionIR` assembly + full WASM scheduler execution. Sidesteppable via `RegionMapIR.entries[*].plan.config.extensions` assertions which Packet 68 directly modifies. Synthetic-IR GCode assertion deferred to Packet 68 AC-2 (per D7). |
+| Reimplement bbox-overlap detection in AC-Mod-* tests | Would reimplement Packet 68's own overlap logic inside the test. Circular — a bug in Packet 68's bbox detection that also exists in the test would pass silently. "Any entry has the key" is sufficient because the stamped keys (`fuzzy_skin="external"`, the modifier's `extruder=0`) are uncommon enough that false-positive risk is near zero, and AC-Mod-4/5 catch "stamped wrong region" via the absence-on-bridge guard. |
+| Bundle GCode-level T0+T1 assertion on `bridge_support_enforcers.3mf` | Premised on an OrcaSlicer-divergent contract (D6); `support_enforcer` `extruder` is decorative in OrcaSlicer. Replaced by the AC-Mod-4/5/6 parity guards. |
 
 ## Code Change Surface
 
-Primary file this packet creates:
+Files this packet creates or modifies:
 
-1. `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` — NEW. ~800 lines. Imports `load_model`, `execute_paint_segmentation`, `apply_negative_part_subtract` from `slicer_host`. 12 test functions (11 GREEN + 1 RED).
-2. `docs/07_implementation_status.md` — append TASK-208 row.
+1. `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` — extends from 12 tests to 17 tests (14 GREEN + 3 RED). Adds `region_map_for_fixture` helper, `AC-Loader-2` integration test, `AC-Mod-1..6` modifier-propagation tests. Deletes AC-R1 and AC-R2 bodies.
+2. `crates/slicer-host/tests/threemf_sidecar_classification_tdd.rs` — adds 1 new test (`AC-Loader-1: sidecar_parser_extracts_object_metadata`).
+3. `crates/slicer-host/src/model_loader_sidecar.rs` — production: adds `object_metadata: BTreeMap<String, String>` field to `ObjectSidecarInfo`; parser extracts `<metadata>` entries when `inside_part == false` and `current_object_id.is_some()`. ~25 lines.
+4. `crates/slicer-host/src/model_loader.rs` — production: adds `object_metadata_to_config_data` allowlist converter; threads `HashMap<String, ConfigValue>` through the per-item 4-tuple from `parse_3mf_model_xml` → `load_3mf` → `load_model`; populates `ObjectConfig.data` per object. ~70 lines.
+5. `crates/slicer-host/src/main.rs` — production: adds `object_config:<id>:<key>` seeding loop mirroring the existing `object_height:<id>` pattern (lines 196-205). ~12 lines.
+6. `.ralph/specs/68_extruder-per-modifier-gcode/design.md` — Packet 68 amendment: subtype filter row added; AC-2 retargeted to synthetic-IR test.
+7. `.ralph/specs/68_extruder-per-modifier-gcode/packet.spec.md` — Packet 68 amendment: AC-2 retargeted; new `AC-Filter` reusing AC-Mod-4.
+8. `docs/07_implementation_status.md` — register TASK-208 (this packet) plus three follow-up TASK rows for downstream gaps (support_filament routing, real-fixture multi-material E2E, extended object metadata keys).
 
 ## Read-Only Context the Implementer Needs
 
@@ -108,7 +128,8 @@ Primary file this packet creates:
 3. Tests run as integration tests (`crates/slicer-host/tests/`) and have access to `slicer_host` public API via `use slicer_host::...`.
 4. RED tests fail with an assertion message, not a panic or compilation error. The test function compiles and runs; it just asserts a condition that isn't true yet.
 5. No production code changes. This packet does not touch any `src/` file.
-6. The RED test (AC-R1) is documented as such in the test file with a `// RED — passes after Packet 68` comment. AC-R2 carries a comment noting the downgrade to config-delta metadata only per D3.
+6. The three RED tests (AC-Mod-1, AC-Mod-2, AC-Mod-3) are documented as such in their banner comments and assertion messages, citing `stamp_modifier_config_deltas` (Packet 68) as the resolver. AC-Mod-4/5/6 messages cite the OrcaSlicer parity contract at `PrintApply.cpp:590-594` and `paint_segmentation.rs:416`.
+7. `ObjectMesh.config.data` is now populated for 3MF inputs (was empty before this packet). Most consumers read it indirectly via the `object_config:<id>:<key>` seed that `main.rs` injects into `config_source` before `resolve_per_object_configs`. Direct `obj.config.data` reads are also valid; the only callers found at design time were synthetic-IR test constructors that build their own ObjectMesh with `data: HashMap::new()` — those are unaffected.
 
 ## Risks and Tradeoffs
 

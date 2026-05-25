@@ -34,6 +34,10 @@ pub struct PartSidecarInfo {
 pub struct ObjectSidecarInfo {
     /// Map from part id to its sidecar metadata.
     pub parts: HashMap<u32, PartSidecarInfo>,
+    /// Object-scoped `<metadata key="…" value="…"/>` entries (between
+    /// `<object>` and its first `<part>`, or anywhere inside `<object>` not
+    /// nested in a `<part>`).
+    pub object_metadata: BTreeMap<String, String>,
 }
 
 /// Parse `Metadata/model_settings.config` from a 3MF ZIP archive.
@@ -80,6 +84,7 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
     let mut current_part_id: Option<u32> = None;
     let mut current_subtype = PartSubtype::NormalPart;
     let mut current_metadata: BTreeMap<String, String> = BTreeMap::new();
+    let mut current_object_metadata: BTreeMap<String, String> = BTreeMap::new();
     let mut inside_part = false;
 
     loop {
@@ -89,6 +94,7 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                 let local = sidecar_local_name(&name_bytes);
                 match local {
                     b"object" => {
+                        current_object_metadata = BTreeMap::new();
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"id" {
                                 if let Ok(s) = std::str::from_utf8(&attr.value) {
@@ -96,6 +102,7 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                                         current_object_id = Some(id);
                                         result.entry(id).or_insert_with(|| ObjectSidecarInfo {
                                             parts: HashMap::new(),
+                                            object_metadata: BTreeMap::new(),
                                         });
                                     }
                                 }
@@ -139,6 +146,24 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                             current_metadata.insert(key, val);
                         }
                     }
+                    b"metadata" if current_object_id.is_some() && !inside_part => {
+                        let mut key = String::new();
+                        let mut val = String::new();
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"key" => {
+                                    key = String::from_utf8_lossy(&attr.value).into_owned();
+                                }
+                                b"value" => {
+                                    val = String::from_utf8_lossy(&attr.value).into_owned();
+                                }
+                                _ => {}
+                            }
+                        }
+                        if !key.is_empty() {
+                            current_object_metadata.insert(key, val);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -151,6 +176,7 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                         if let (Some(oid), Some(pid)) = (current_object_id, current_part_id) {
                             let obj = result.entry(oid).or_insert_with(|| ObjectSidecarInfo {
                                 parts: HashMap::new(),
+                                object_metadata: BTreeMap::new(),
                             });
                             obj.parts.insert(
                                 pid,
@@ -163,6 +189,13 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
                         current_part_id = None;
                     }
                     b"object" => {
+                        if let Some(oid) = current_object_id {
+                            let obj = result.entry(oid).or_insert_with(|| ObjectSidecarInfo {
+                                parts: HashMap::new(),
+                                object_metadata: BTreeMap::new(),
+                            });
+                            obj.object_metadata = std::mem::take(&mut current_object_metadata);
+                        }
                         current_object_id = None;
                         inside_part = false;
                     }

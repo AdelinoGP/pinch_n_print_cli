@@ -8,7 +8,8 @@
 - No production code edits — test-only packet.
 - Aggregate context cost is **M**. All steps are S or M.
 - This packet depends on Packet 56c being `status: implemented`. Step 0 verifies the precondition.
-- The RED test (AC-R1) intentionally fails — it documents expected behavior for Packet 68. AC-R2 was downgraded to a metadata check (GREEN) per the packet deviation (D3); only AC-R1 remains RED.
+- Three RED tests intentionally fail — AC-Mod-1, AC-Mod-2, AC-Mod-3 — and document Packet 68's `stamp_modifier_config_deltas` contract. AC-R1 and AC-R2 are withdrawn (see D6).
+- The packet now includes a bounded production loader fix (D8): `model_loader_sidecar.rs`, `model_loader.rs`, and `main.rs`.
 
 ## Steps
 
@@ -33,9 +34,9 @@
 ### Step 1: Author the fixture E2E test file (TDD-RED/GREEN)
 
 - Task IDs: TASK-208
-- Objective: Create `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` with all 12 test functions. Tests load real 3MF fixtures from `resources/` and exercise `load_model()`, `execute_paint_segmentation()`, `apply_negative_part_subtract()`. 11 GREEN tests assert existing behavior; 1 RED test asserts expected extruder behavior (for Packet 68).
-- Precondition: Step 0 clean.
-- Postcondition: Test file compiles. 11 GREEN tests pass. 1 RED test fails with a specific assertion message (not a panic).
+- Objective: Maintain `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs`. Tests load real 3MF fixtures from `resources/` and exercise `load_model()`, `execute_paint_segmentation()`, `apply_negative_part_subtract()`, and `execute_region_mapping_with_cap()`. Delete AC-R1 and AC-R2 bodies. Add `region_map_for_fixture` helper + 6 AC-Mod-* tests + 1 AC-Loader-2 integration test. Net: 17 tests (14 GREEN + 3 RED).
+- Precondition: Step 0 clean. Loader fix (Step 1a) complete first.
+- Postcondition: Test file compiles. 14 GREEN tests pass. 3 RED tests (AC-Mod-1, AC-Mod-2, AC-Mod-3) fail with specific assertion messages (not panics).
 - Files allowed to read:
   - `crates/slicer-host/src/model_loader.rs` — narrow read at `load_model` (line 145) for function signature.
   - `crates/slicer-host/src/paint_segmentation.rs` — narrow read at `execute_paint_segmentation` (line 253) for 4-param signature.
@@ -56,9 +57,28 @@
   - `docs/02_ir_schemas.md` — narrow search for `ModifierVolume`, `PaintRegionIR`, `SemanticRegion` shapes.
 - OrcaSlicer refs: none.
 - Verification:
-  - `cargo test -p slicer-host --test threemf_fixture_e2e_tdd` — 11 GREEN, 1 RED with specific assertion message.
+  - `cargo test -p slicer-host --test threemf_fixture_e2e_tdd` — 14 GREEN, 3 RED with specific assertion messages.
   - `cargo check --workspace --tests` — compiles clean.
-- Exit condition: 11 GREEN tests pass, 1 RED test (AC-R1) fails with the documented assertion message. File compiles clean.
+- Exit condition: 14 GREEN tests pass, 3 RED tests (AC-Mod-1, AC-Mod-2, AC-Mod-3) fail with the documented assertion messages. File compiles clean.
+
+### Step 1a: Loader production fix (D8)
+
+- Task IDs: TASK-208
+- Objective: Apply the bounded production loader fix described in D8 and surface object-scoped sidecar metadata through `ObjectMesh.config.data`. Add AC-Loader-1 (sidecar surface) and AC-Loader-2 (load_model surface) tests.
+- Precondition: Step 0 clean.
+- Postcondition: `cargo test -p slicer-host --test threemf_sidecar_classification_tdd sidecar_parser_extracts_object_metadata -- --exact --nocapture` GREEN; `cargo test -p slicer-host --test threemf_fixture_e2e_tdd load_model_populates_object_config_data -- --exact --nocapture` GREEN.
+- Files allowed to edit:
+  - `crates/slicer-host/src/model_loader_sidecar.rs` (new `object_metadata` field + parser branch)
+  - `crates/slicer-host/src/model_loader.rs` (`object_metadata_to_config_data` allowlist; thread `HashMap<String, ConfigValue>` through the per-item tuple)
+  - `crates/slicer-host/src/main.rs` (`object_config:<id>:<key>` seed loop)
+  - `crates/slicer-host/tests/threemf_sidecar_classification_tdd.rs` (AC-Loader-1)
+  - `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` (AC-Loader-2)
+- Files explicitly out-of-bounds: all other production files; WIT, SDK, macros, OrcaSlicer source.
+- Context cost: M
+- Authoritative docs: none.
+- OrcaSlicer refs: none.
+- Verification: both new tests GREEN; `cargo check -p slicer-host --tests` clean.
+- Exit condition: AC-Loader-1 and AC-Loader-2 GREEN. Step 1 may begin.
 
 ### Step 2: Regression sweep
 
@@ -101,9 +121,9 @@
 ### Step 4: Pre-ceremony verification
 
 - Task IDs: TASK-208
-- Objective: Re-run every pipe-suffixed AC command from `packet.spec.md` to confirm 11 GREEN / 1 RED status before closure.
+- Objective: Re-run every pipe-suffixed AC command from `packet.spec.md` to confirm 15 GREEN / 3 RED status before closure.
 - Precondition: Step 3 complete.
-- Postcondition: All AC commands return expected results (11 pass, 1 fails with documented message).
+- Postcondition: All AC commands return expected results (15 pass across both `threemf_fixture_e2e_tdd` and `threemf_sidecar_classification_tdd`, 3 fail in `threemf_fixture_e2e_tdd` with documented messages).
 - Files allowed to read: `packet.spec.md` (this packet).
 - Files allowed to edit (≤ 3): none.
 - Files explicitly out-of-bounds: every source file.
@@ -113,32 +133,34 @@
 - Authoritative docs: this packet's `packet.spec.md`.
 - OrcaSlicer refs: none.
 - Verification: All AC commands return expected results.
-- Exit condition: 11 GREEN, 1 RED with documented messages.
+- Exit condition: 15 GREEN, 3 RED with documented messages.
 
 ## Per-Step Budget Roll-Up
 
 | Step | Context Cost | Notes |
 |---|---|---|
 | Step 0 | S | Precondition gate (two FACTs). |
-| Step 1 | M | Author 12 test functions with fixture loading, pipeline calls, area assertions. |
+| Step 1a | M | Loader production fix + AC-Loader-1/2 tests (D8). |
+| Step 1 | M | Author 17 test functions with fixture loading, pipeline calls, area assertions, RegionMapIR assertions. |
 | Step 2 | S | Regression sweep + clippy dispatches. |
-| Step 3 | S | Doc registration. |
+| Step 3 | S | Doc registration (TASK-208 + 3 follow-up TASK rows for downstream gaps per D8). |
 | Step 4 | S | Pre-ceremony AC verification dispatches. |
 
-Aggregate: **M** (1 M + 4 S).
+Aggregate: **L** (2 M + 4 S). The L size trips `CLAUDE.md`'s split threshold; rationale captured in D8.
 
 ## Packet Completion Gate
 
-- All 5 steps complete.
+- All 6 steps complete (Step 0, 1a, 1, 2, 3, 4).
 - Every step exit condition met.
-- 11 GREEN tests pass; 1 RED test fails with a documented assertion message.
-- `docs/07_implementation_status.md` updated with TASK-208 row.
+- 15 GREEN tests pass; 3 RED tests fail with documented assertion messages.
+- `docs/07_implementation_status.md` updated with TASK-208 row plus 3 follow-up TASK rows (D8 downstream gaps).
+- Packet 68 amendments shipped in the same change (D7).
 - All regression suites GREEN; clippy clean.
 - `packet.spec.md` ready to move to `status: implemented`.
 
 ## Acceptance Ceremony
 
 - Re-dispatch every pipe-suffixed AC command from `packet.spec.md` (Step 4).
-- Confirm 11 GREEN / 1 RED status matches expectations.
-- No `cargo test --workspace` required — this is a test-only packet with zero production code changes. The regression sweep (Step 2) covers all affected suites.
-- The RED test serves as hardening — it documents the extruder gap and will turn GREEN when Packet 68 lands.
+- Confirm 15 GREEN / 3 RED status matches expectations.
+- No `cargo test --workspace` required — the regression sweep (Step 2) plus the narrow new-test runs cover all affected surface.
+- The 3 RED tests serve as gating signals — they document Packet 68's `stamp_modifier_config_deltas` contract and turn GREEN when Packet 68 lands (with the ENFORCER/BLOCKER filter per D7).

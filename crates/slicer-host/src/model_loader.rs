@@ -183,14 +183,14 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
             items
                 .into_iter()
                 .enumerate()
-                .map(|(idx, (its, paint_data, modifiers))| {
+                .map(|(idx, (its, paint_data, modifiers, object_config_data))| {
                     let world_z_extent = compute_z_extent_from_mesh(&its);
                     ObjectMesh {
                         id: path_object_id(path, idx),
                         mesh: its,
                         transform: identity_transform(),
                         config: ObjectConfig {
-                            data: HashMap::new(),
+                            data: object_config_data,
                         },
                         modifier_volumes: modifiers,
                         paint_data,
@@ -896,6 +896,53 @@ fn resolve_object(
 }
 
 /// Load 3MF and return a list of (IndexedTriangleSet, optional paint data, modifier volumes) per build item.
+/// Convert allowlist object-level sidecar keys to typed `ConfigValue` entries.
+///
+/// Allowlist: `extruder` → `Int(i64)`, `enable_support` → `Bool` (parses
+/// `"1"`/`"0"`/`"true"`/`"false"`; warns and skips otherwise), `support_type`
+/// → `String`. Other keys are silently ignored. Mirrors the part-level
+/// conversion discipline at the modifier-volume site.
+fn object_metadata_to_config_data(
+    metadata: &std::collections::BTreeMap<String, String>,
+) -> HashMap<String, ConfigValue> {
+    let mut out = HashMap::new();
+    if let Some(s) = metadata.get("extruder") {
+        match s.parse::<i64>() {
+            Ok(v) => {
+                out.insert("extruder".to_string(), ConfigValue::Int(v));
+            }
+            Err(_) => {
+                log::warn!(
+                    target: "slicer_host::model_loader",
+                    "object-level extruder value '{}' is not a valid integer, skipping",
+                    s
+                );
+            }
+        }
+    }
+    if let Some(s) = metadata.get("enable_support") {
+        match s.as_str() {
+            "1" | "true" => {
+                out.insert("enable_support".to_string(), ConfigValue::Bool(true));
+            }
+            "0" | "false" => {
+                out.insert("enable_support".to_string(), ConfigValue::Bool(false));
+            }
+            other => {
+                log::warn!(
+                    target: "slicer_host::model_loader",
+                    "object-level enable_support value '{}' is not a valid bool, skipping",
+                    other
+                );
+            }
+        }
+    }
+    if let Some(s) = metadata.get("support_type") {
+        out.insert("support_type".to_string(), ConfigValue::String(s.clone()));
+    }
+    out
+}
+
 fn load_3mf(
     reader: &mut (impl Read + Seek),
 ) -> Result<
@@ -903,6 +950,7 @@ fn load_3mf(
         IndexedTriangleSet,
         Option<FacetPaintData>,
         Vec<ModifierVolume>,
+        HashMap<String, ConfigValue>,
     )>,
     ModelLoadError,
 > {
@@ -959,6 +1007,7 @@ fn parse_3mf_model_xml(
         IndexedTriangleSet,
         Option<FacetPaintData>,
         Vec<ModifierVolume>,
+        HashMap<String, ConfigValue>,
     )>,
     ModelLoadError,
 > {
@@ -1370,7 +1419,7 @@ fn parse_3mf_model_xml(
             .mesh
             .clone()
             .ok_or_else(|| ModelLoadError::ThreeMfParse("no geometry found in 3MF".into()))?;
-        return Ok(vec![(its, paint, Vec::new())]);
+        return Ok(vec![(its, paint, Vec::new(), HashMap::new())]);
     }
 
     // Load external model files referenced via p:path on component elements.
@@ -1389,7 +1438,11 @@ fn parse_3mf_model_xml(
             &mut Vec::new(),
             sidecar,
         )?;
-        results.push((its, paint, modifiers));
+        let object_config_data = sidecar
+            .get(&item.objectid)
+            .map(|info| object_metadata_to_config_data(&info.object_metadata))
+            .unwrap_or_default();
+        results.push((its, paint, modifiers, object_config_data));
     }
 
     if results.is_empty() {

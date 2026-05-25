@@ -204,6 +204,20 @@ fn main() {
                 }
             }
 
+            // Seed planner-visible per-object config from `ObjectMesh.config.data`
+            // (populated by the 3MF loader from object-scoped sidecar metadata).
+            // `resolve_per_object_configs` consumes the `object_config:<id>:<key>`
+            // prefix. CLI overrides set in `config_source` already win.
+            for object in &mesh_ir.objects {
+                for (subkey, value) in &object.config.data {
+                    let key = format!("object_config:{}:{}", object.id, subkey);
+                    if config_source.contains_key(&key) {
+                        continue;
+                    }
+                    config_source.insert(key, value.clone());
+                }
+            }
+
             // Discover and plan every module under --module-dir.
             let search_roots =
                 assemble_search_roots(&opts.module_dirs, opts.no_default_module_paths);

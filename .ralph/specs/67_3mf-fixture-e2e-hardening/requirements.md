@@ -55,17 +55,20 @@ None. This packet is test-only. No OrcaSlicer parity is required — the tests v
 ## Acceptance Summary (references ACs by ID)
 
 - **AC-1 through AC-9** — Nine GREEN tests covering: negative_part subtract via full pipeline, transform baking, metadata population, support_enforcer paint emission, support_blocker paint emission, modifier_part regression, no-negative no-op, multi-object partitioning, duplicate part ID handling.
-- **AC-R1** (RED) — `extruder_metadata_reaches_tool_index`: support parts with extruder metadata produce `PaintValue::ToolIndex(0)` instead of `PaintValue::Flag(true)`. RED until Packet 68.
-- **AC-R2** (RED) — `extruder_per_object_vs_support_extruder`: modifier_volumes carry extruder keys with at least one `ConfigValue::Int(0)`. Full T0/T1 GCode check deferred to Packet 68.
 - **AC-N1** — Missing fixture path returns `Err(ModelLoadError)` without panicking.
+- **AC-Loader-1, AC-Loader-2** — GREEN tests for the object-metadata loader fix (D8): sidecar parser surfaces object-scoped `<metadata>` into `ObjectSidecarInfo.object_metadata`; `load_model` populates `ObjectMesh.config.data` from the allowlist `extruder`/`enable_support`/`support_type`.
+- **AC-Mod-1, AC-Mod-2, AC-Mod-3** — RED until Packet 68. Each asserts that a modifier_volume's `config_delta` key is stamped into at least one `RegionMapIR.entries[*].plan.config.extensions` after `execute_region_mapping_with_cap`. Resolved by Packet 68's `stamp_modifier_config_deltas`.
+- **AC-Mod-4, AC-Mod-5** — GREEN OrcaSlicer-parity regression guards: no `support_enforcer`/`support_blocker` config_delta key reaches `RegionPlan.config.extensions` (per `PrintApply.cpp:590-594`).
+- **AC-Mod-6** — GREEN paint-segmentation parity guard: `SupportEnforcer` `SemanticRegion.value` is always `PaintValue::Flag(_)`, never `PaintValue::ToolIndex(_)`.
+- **AC-R1, AC-R2** — WITHDRAWN per D6 (test bodies deleted from `threemf_fixture_e2e_tdd.rs`). Both were premised on the OrcaSlicer-divergent claim that `support_enforcer` `extruder` propagates to a tool change.
 
 ## Verification Commands
 
 | Command | Delegation hint | Expected |
 |---------|----------------|----------|
-| `cargo test -p slicer-host --test threemf_fixture_e2e_tdd` | FACT pass/fail per test | 11 GREEN, 1 RED with expected assertion |
+| `cargo test -p slicer-host --test threemf_fixture_e2e_tdd` | FACT pass/fail per test | 14 GREEN, 3 RED (AC-Mod-1/2/3) with expected assertion messages |
+| `cargo test -p slicer-host --test threemf_sidecar_classification_tdd` | FACT pass/fail | All GREEN (56 regression + new AC-Loader-1) |
 | `cargo test -p slicer-host --test threemf_subtypes_synthetic_e2e_tdd` | FACT pass/fail | All GREEN (56c regression) |
-| `cargo test -p slicer-host --test threemf_sidecar_classification_tdd` | FACT pass/fail | All GREEN (56 regression) |
 | `cargo test -p slicer-host --test benchy_4color_modifier_part_e2e_tdd` | FACT pass/fail | All GREEN (56b regression) |
 | `cargo clippy --workspace -- -D warnings` | FACT pass/fail | Clean |
 

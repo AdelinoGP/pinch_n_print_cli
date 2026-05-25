@@ -37,6 +37,7 @@ Add a config-stamping step inside `execute_region_mapping_with_cap()`, between p
 per-object config resolution
   → stamp_modifier_config_deltas(mesh_ir, region_polygons, &mut base_config)
     → for each ModifierVolume in mesh_ir.modifier_volumes
+      → SKIP if subtype is "support_enforcer" or "support_blocker"  ← OrcaSlicer parity, see Subtype filter row
       → compute modifier 2D bbox from mesh vertices
       → if modifier bbox overlaps region extent
         → build overlay: ResolvedConfig with extensions = config_delta.fields (minus "subtype")
@@ -55,9 +56,12 @@ The GCode emitter already reads `required_tool = region_key.region_id as u32` �
 
 ### Key flow for extruder
 
+Applies only to modifier_volumes whose subtype is `negative_part` or `modifier_part` (see Subtype filter row below). `support_enforcer` and `support_blocker` modifier_volumes are skipped — OrcaSlicer parity (`PrintApply.cpp:590-594`).
+
 ```
 3MF sidecar → model_loader.rs → ModifierVolume.config_delta.fields["extruder"] = Int(0)
-  → region_mapping.rs stamp_modifier_config_deltas → RegionPlan.config.extensions["extruder"] = Int(0)
+  → region_mapping.rs stamp_modifier_config_deltas (subtype-filtered)
+    → RegionPlan.config.extensions["extruder"] = Int(0)
   → layer_executor.rs required_tool fallback → region_id = 0
   → gcode_emit.rs → T0
 ```
@@ -91,7 +95,8 @@ The OrcaSlicer comparison surface is documented in `requirements.md` §OrcaSlice
 | Config stamping location | Inside `execute_region_mapping_with_cap()`, after per-object config resolution, before paint_overrides | Per-object config is the base. Modifier config_delta overrides it. Paint overrides can further override. The ordering is: global → per-object → modifier_delta → paint. |
 | Overlap detection | 2D bounding-box overlap between modifier volume mesh and region polygon extent | Simple, correct for the global-scope `ModifierScope::AllFeatures` behavior. Polygon-level overlap can be refined later without changing the stamping mechanism. |
 | Merge mechanism | `overlay_resolved(&mut base, &overlay)` — the existing function at region_mapping.rs:100 | Single merge point. Already handles `extensions` key merging at line 193. |
-| Subtype exclusion | Filter out `"subtype"` key from config_delta.fields before stamping | `"subtype"` is routing metadata (support_enforcer, negative_part, modifier_part), not a config key. Stamping it into extensions would leak internal enum strings into consumer-facing config. |
+| Subtype exclusion | (a) Filter out `"subtype"` key from `config_delta.fields` before stamping. (b) Additionally, skip the entire modifier_volume if its subtype is `support_enforcer` or `support_blocker` — see new "Subtype filter" row. | (a) `"subtype"` is routing metadata, not a config key. (b) OrcaSlicer parity (see Subtype filter row). |
+| Subtype filter | `stamp_modifier_config_deltas` SKIPS modifier_volumes whose `config_delta.fields["subtype"]` is `String("support_enforcer")` or `String("support_blocker")`. Only `negative_part` and `modifier_part` subtypes participate in stamping. | Matches `OrcaSlicerDocumented/src/libslic3r/PrintApply.cpp:590-594` (`model_volume_solid_or_modifier()` excludes ENFORCER and BLOCKER from region-config merging). Without this filter, the bridge_support_enforcers.3mf fixture (parent extruder=1, enforcer extruder=0) would emit a spurious T0 in GCode that real OrcaSlicer does not emit. Packet 67's `AC-Mod-4` and `AC-Mod-5` (test names `support_enforcer_config_delta_not_stamped` and `support_blocker_config_delta_not_stamped`) are the permanent regression guards for this filter. |
 | ConfigValue defaults | Skip fields where `config_value == ConfigValue::default()` (e.g., `Int(0)`, `String("")`, `Bool(false)`) | Prevents noise in extensions. An explicit `extruder=0` is `Int(0)` which IS the default — but for extruder, value 0 is meaningful (tool index 0). The default-skip check applies only to truly empty values: empty string, empty list. Special-case: `Int(0)` for extruder IS stamped. Use a key-aware default check. |
 | Extruder tool routing | `layer_executor.rs`: `dominant_tool_index()` returns paint-derived tool if present. If `None`, fall back to `region_plan.config.extensions["extruder"]` cast to `u32`. | Paint-derived tools have higher priority (explicit per-facet paint). Config-stamped extruder is the default. The paint pipeline already handles MMU multi-material correctly. |
 | Non-extruder keys | Stamped into extensions but not consumed by this packet | `"fuzzy_skin"`, `"matrix"`, and future keys survive in config.extensions. Downstream modules can read them via `ConfigView::get_extension(key)`. No per-key consumption in this packet. |
@@ -110,12 +115,13 @@ The OrcaSlicer comparison surface is documented in `requirements.md` §OrcaSlice
 | Polygon-level overlap detection | Correct but complex. Bbox overlap achieves the same result for rectangular/cuboid modifier volumes (the common case). Polygon overlap is a refinement that can follow. |
 | Thread `config_delta` through a new PrePass stage | Adds complexity. Region Mapping already has all the inputs (MeshIR, polygons). A function call is simpler than a new stage. |
 | Stamp config into `paint_overrides` instead of `config.extensions` | `paint_overrides` is per-PaintSemantic, requiring a semantic key. Modifier config deltas are volume-driven, not paint-driven. The `config.extensions` bucket is the correct carrier. |
+| Stamp ENFORCER/BLOCKER config into RegionPlan | OrcaSlicer treats `support_enforcer` and `support_blocker` `extruder` (and all other config fields) as **decorative** (`OrcaSlicerDocumented/src/libslic3r/PrintApply.cpp:590-594` excludes them from `model_volume_solid_or_modifier()`). Stamping would cause spurious T-changes for `bridge_support_enforcers.3mf` where enforcer extruder=0 differs from the parent's extruder=1. See Subtype filter row. |
 
 ## Code Change Surface
 
 Primary files this packet edits:
 
-1. **`crates/slicer-host/src/region_mapping.rs`** — ~40 added lines. New function `stamp_modifier_config_deltas(mesh_ir: &MeshIR, region_extent: &BoundingBox2, base_config: &mut ResolvedConfig)` called inside `execute_region_mapping_with_cap()` after per-object config resolution. Iterates `mesh_ir.modifier_volumes`, computes 2D bbox from modifier mesh vertices, checks overlap with region extent, stamps non-subtype keys into base_config.extensions via `overlay_resolved()`.
+1. **`crates/slicer-host/src/region_mapping.rs`** — ~45 added lines. New function `stamp_modifier_config_deltas(mesh_ir: &MeshIR, region_extent: &BoundingBox2, base_config: &mut ResolvedConfig)` called inside `execute_region_mapping_with_cap()` after per-object config resolution. Iterates `mesh_ir.modifier_volumes`, **skips entries whose `config_delta.fields["subtype"]` is `String("support_enforcer")` or `String("support_blocker")`** (Subtype filter row), computes 2D bbox from modifier mesh vertices, checks overlap with region extent, stamps non-subtype keys into base_config.extensions via `overlay_resolved()`.
 
 2. **`crates/slicer-host/src/layer_executor.rs`** — ~8 added lines. In the `required_tool` resolution (line ~762), add a fallback: if `dominant_tool_index()` returns `None`, check `region_plan.config.extensions.get("extruder")`. If `Some(ConfigValue::Int(n))`, use `n as u32` for `region_id`.
 
@@ -164,6 +170,7 @@ Primary files this packet edits:
 ## Data and Contract Notes
 
 - `ConfigDelta.fields` is `HashMap<String, ConfigValue>`. Key `"subtype"` is excluded from stamping. All other keys are stamped.
+- Subtype values `support_enforcer` and `support_blocker` cause the entire modifier_volume to be skipped during stamping (OrcaSlicer parity; see Subtype filter row and `PrintApply.cpp:590-594`).
 - `ConfigValue::Int(i64)` — for `"extruder"`, cast to `u32` via `try_into().unwrap_or(0)`. Valid extruder values are 0-15.
 - `ConfigValue::String(s)` — for `"fuzzy_skin"`, `"matrix"`, and future keys. Copied verbatim into extensions.
 - `ConfigValue::Bool(b)`, `ConfigValue::Float(f)`, `ConfigValue::List(v)` — supported but not used by current fixtures. Future-proof.

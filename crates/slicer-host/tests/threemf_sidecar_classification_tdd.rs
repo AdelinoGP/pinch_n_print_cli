@@ -169,3 +169,79 @@ fn load_3mf_invokes_sidecar_parser_before_archive_drop() {
         result
     );
 }
+
+// AC-Loader-1: sidecar parser extracts object-scoped metadata.
+//
+// `model_loader_sidecar::ObjectSidecarInfo.object_metadata` must capture
+// `<metadata key="..." value="..."/>` entries that appear directly inside an
+// `<object>` block (not nested in a `<part>`). All three Packet 67 fixtures
+// have `extruder=1` at object scope; bridge obj5 additionally has
+// `enable_support=1` and `support_type=tree(auto)`.
+#[test]
+fn sidecar_parser_extracts_object_metadata() {
+    use slicer_host::model_loader_sidecar::parse_3mf_sidecar;
+    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fixtures = [
+        ("cube_positive_n_negative.3mf", 4u32),
+        ("benchy_4color.3mf", 3u32),
+    ];
+
+    for (name, expected_obj_id) in fixtures {
+        let path = repo_root.join("resources").join(name);
+        if !path.exists() {
+            eprintln!("SKIP: {} not found", path.display());
+            continue;
+        }
+        let file =
+            std::fs::File::open(&path).unwrap_or_else(|_| panic!("fixture not found: {:?}", path));
+        let mut archive = zip::ZipArchive::new(file).unwrap();
+        let result = parse_3mf_sidecar(&mut archive);
+        let obj = result
+            .get(&expected_obj_id)
+            .unwrap_or_else(|| panic!("{name}: object id {expected_obj_id} missing"));
+        assert_eq!(
+            obj.object_metadata.get("extruder").map(String::as_str),
+            Some("1"),
+            "{name}: object {expected_obj_id} must have extruder=1 in object_metadata"
+        );
+    }
+
+    // Bridge fixture has TWO objects with object-scoped metadata, including
+    // obj5 with enable_support and support_type.
+    let bridge_path = repo_root
+        .join("resources")
+        .join("bridge_support_enforcers.3mf");
+    if !bridge_path.exists() {
+        eprintln!("SKIP: {} not found", bridge_path.display());
+        return;
+    }
+    let file = std::fs::File::open(&bridge_path).unwrap();
+    let mut archive = zip::ZipArchive::new(file).unwrap();
+    let result = parse_3mf_sidecar(&mut archive);
+
+    let obj4 = result.get(&4).expect("bridge: object 4 missing");
+    assert_eq!(
+        obj4.object_metadata.get("extruder").map(String::as_str),
+        Some("1"),
+        "bridge obj4 must have extruder=1"
+    );
+
+    let obj5 = result.get(&5).expect("bridge: object 5 missing");
+    assert_eq!(
+        obj5.object_metadata.get("extruder").map(String::as_str),
+        Some("1"),
+        "bridge obj5 must have extruder=1"
+    );
+    assert_eq!(
+        obj5.object_metadata
+            .get("enable_support")
+            .map(String::as_str),
+        Some("1"),
+        "bridge obj5 must have enable_support=1"
+    );
+    assert_eq!(
+        obj5.object_metadata.get("support_type").map(String::as_str),
+        Some("tree(auto)"),
+        "bridge obj5 must have support_type=tree(auto)"
+    );
+}

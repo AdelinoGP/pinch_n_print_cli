@@ -9,7 +9,7 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -17,11 +17,14 @@ use slicer_core::slice_mesh_ex;
 use slicer_host::model_loader::load_model;
 use slicer_host::negative_part_subtract::apply_negative_part_subtract;
 use slicer_host::paint_segmentation::execute_paint_segmentation;
+use slicer_host::{
+    build_execution_plan, execute_region_mapping_with_cap, ExecutionPlan, ExecutionPlanRequest,
+};
 use slicer_ir::{
     ActiveRegion, ConfigValue, ExPolygon, FacetClass, GlobalLayer, LayerPaintMap, LayerPlanIR,
     MeshIR, ModifierVolume, ObjectLayerRef, ObjectSurfaceData, PaintRegionIR, PaintSemantic,
-    PaintValue, Polygon, ResolvedConfig, SliceIR, SlicedRegion, SurfaceClassificationIR,
-    CURRENT_SLICE_IR_SCHEMA_VERSION,
+    PaintValue, Polygon, RegionMapIR, ResolvedConfig, SliceIR, SlicedRegion,
+    SurfaceClassificationIR, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -143,6 +146,47 @@ fn layer_plan_for_mesh(mesh_ir: &MeshIR, layer_count: u32, layer_height_mm: f32)
         object_participation,
         ..Default::default()
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// region_map_for_fixture: shared scaffolding for AC-Mod-* tests.
+// Loads a 3MF fixture and runs paint_segmentation + region_mapping. Returns
+// None if the fixture is missing.
+// ─────────────────────────────────────────────────────────────────────────
+
+fn empty_execution_plan() -> ExecutionPlan {
+    let req = ExecutionPlanRequest {
+        sorted_stages: Vec::new(),
+        module_bindings: vec![],
+        global_layers: Arc::new(vec![]),
+        region_plans: Arc::new(HashMap::new()),
+    };
+    build_execution_plan(&req).expect("empty execution plan should build")
+}
+
+fn region_map_for_fixture(name: &str) -> Option<RegionMapIR> {
+    let path = fixture(name);
+    if skip_if_missing(&path) {
+        return None;
+    }
+    let mesh_ir: MeshIR =
+        load_model(&path).unwrap_or_else(|e| panic!("load_model({name}) failed: {e:?}"));
+    let sc = surface_classification_for_mesh(&mesh_ir);
+    let lp = layer_plan_for_mesh(&mesh_ir, 15, 0.2);
+    let paint_result: Arc<PaintRegionIR> =
+        execute_paint_segmentation(Arc::new(mesh_ir), Arc::new(sc), Arc::new(lp.clone()), true)
+            .expect("execute_paint_segmentation must succeed");
+    let plan = empty_execution_plan();
+    let empty_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
+    let result = execute_region_mapping_with_cap(
+        &lp,
+        &plan,
+        Some(&paint_result),
+        &empty_semantic_configs,
+        1024,
+    )
+    .expect("execute_region_mapping_with_cap must succeed");
+    Some(result)
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -669,104 +713,6 @@ fn duplicate_part_id_handled_gracefully() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// AC-R1 (RED): extruder_metadata_reaches_tool_index
-// RED — passes after Packet 68 implements the extruder consumer path.
-// ─────────────────────────────────────────────────────────────────────────
-
-#[test]
-fn extruder_metadata_reaches_tool_index() {
-    let path = fixture("bridge_support_enforcers.3mf");
-    if skip_if_missing(&path) {
-        return;
-    }
-
-    let mesh_ir: MeshIR = load_model(&path).expect("load bridge_support_enforcers.3mf");
-    let sc = surface_classification_for_mesh(&mesh_ir);
-    let lp = layer_plan_for_mesh(&mesh_ir, 15, 0.2);
-
-    let paint_result: Arc<PaintRegionIR> =
-        execute_paint_segmentation(Arc::new(mesh_ir), Arc::new(sc), Arc::new(lp), true)
-            .expect("execute_paint_segmentation must succeed");
-
-    // Find all SupportEnforcer SemanticRegions. Each should carry
-    // PaintValue::ToolIndex(0) (extruder=0 from the support part metadata),
-    // not PaintValue::Flag(true).
-    let all_enforcer_values: Vec<&PaintValue> = paint_result
-        .per_layer
-        .values()
-        .flat_map(|lm: &LayerPaintMap| {
-            lm.semantic_regions
-                .get(&PaintSemantic::SupportEnforcer)
-                .into_iter()
-                .flat_map(|regions| regions.iter().map(|r| &r.value))
-        })
-        .collect();
-
-    assert!(
-        !all_enforcer_values.is_empty(),
-        "must have SupportEnforcer regions to test extruder metadata"
-    );
-
-    let all_are_tool_index = all_enforcer_values
-        .iter()
-        .all(|v| matches!(v, PaintValue::ToolIndex(_)));
-
-    assert!(
-        all_are_tool_index,
-        "RED: SupportEnforcer SemanticRegion values should be PaintValue::ToolIndex(0), \
-         not PaintValue::Flag(true). Passes after Packet 68."
-    );
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// AC-R2 (GREEN): extruder_per_object_vs_support_extruder
-// Verifies extruder metadata is present on modifier_volumes. Full T0/T1 GCode
-// assertion deferred to Packet 68.
-// ─────────────────────────────────────────────────────────────────────────
-
-#[test]
-fn extruder_per_object_vs_support_extruder() {
-    let path = fixture("bridge_support_enforcers.3mf");
-    if skip_if_missing(&path) {
-        return;
-    }
-
-    let mesh_ir: MeshIR = load_model(&path).expect("load bridge_support_enforcers.3mf");
-
-    // The fixture has objects with different extruders: the parent object has
-    // extruder=1 and support parts have extruder=0. After full pipeline GCode
-    // emission, the output should contain both T0 (support regions) and T1
-    // (normal part regions) tool-change commands.
-    //
-    // TODO(AC-R2): Full T0/T1 GCode assertion requires LayerCollectionIR assembly
-    // and full scheduler → GCode emission (Packet 68). This test currently only
-    // verifies that the extruder metadata is present in the loaded mesh_ir.
-    // Replace the config_delta.fields check below with an actual GCode inspection
-    // when the GCode emission path is ready.
-
-    let extruders: Vec<&ConfigValue> = mesh_ir
-        .objects
-        .iter()
-        .flat_map(|obj| &obj.modifier_volumes)
-        .filter_map(|mv| mv.config_delta.fields.get("extruder"))
-        .collect();
-
-    assert!(
-        extruders.len() >= 2,
-        "bridge_support_enforcers.3mf must have modifier_volumes with extruder keys"
-    );
-
-    // At least one extruder should be 0 (support part). Full T0/T1 GCode
-    // check comes with Packet 68.
-    let has_extruder_0 = extruders.iter().any(|v| matches!(v, ConfigValue::Int(0)));
-    assert!(
-        has_extruder_0,
-        "modifier_volumes should include an extruder=0 entry. \
-         Full T0/T1 GCode assertion passes after Packet 68."
-    );
-}
-
-// ─────────────────────────────────────────────────────────────────────────
 // AC-N1: missing_fixture_returns_error
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -783,5 +729,267 @@ fn missing_fixture_returns_error() {
     assert!(
         result.is_err(),
         "load_model with nonexistent path must return Err"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-Loader-2: load_model populates ObjectConfig.data from sidecar
+// ─────────────────────────────────────────────────────────────────────────
+//
+// The 3MF loader must extract the object-scoped allowlist keys
+// (`extruder`, `enable_support`, `support_type`) from the sidecar and
+// populate `ObjectMesh.config.data` with typed `ConfigValue` entries.
+// All three Packet 67 fixtures have parent `extruder=1` at object scope;
+// bridge obj5 additionally carries `enable_support=1` and
+// `support_type=tree(auto)`.
+
+#[test]
+fn load_model_populates_object_config_data() {
+    // Each fixture's parent object(s) must surface `extruder=Int(1)` in
+    // `ObjectMesh.config.data` after load_model.
+    let fixtures = [
+        "cube_positive_n_negative.3mf",
+        "benchy_4color.3mf",
+        "bridge_support_enforcers.3mf",
+    ];
+    for name in fixtures {
+        let path = fixture(name);
+        if skip_if_missing(&path) {
+            continue;
+        }
+        let mesh_ir: MeshIR =
+            load_model(&path).unwrap_or_else(|e| panic!("load_model({name}) failed: {e:?}"));
+        assert!(
+            !mesh_ir.objects.is_empty(),
+            "{name}: load_model must return at least one object"
+        );
+        for (idx, obj) in mesh_ir.objects.iter().enumerate() {
+            assert_eq!(
+                obj.config.data.get("extruder"),
+                Some(&ConfigValue::Int(1)),
+                "{name} object[{idx}] (id={}) must have config.data[\"extruder\"] = Int(1) \
+                 from object-scoped sidecar metadata",
+                obj.id
+            );
+        }
+    }
+
+    // Bridge obj5 (second object in build order) additionally carries
+    // enable_support=1 and support_type=tree(auto).
+    let bridge_path = fixture("bridge_support_enforcers.3mf");
+    if skip_if_missing(&bridge_path) {
+        return;
+    }
+    let bridge_mesh: MeshIR = load_model(&bridge_path).expect("load bridge");
+    assert!(
+        bridge_mesh.objects.len() >= 2,
+        "bridge: expected at least 2 objects, found {}",
+        bridge_mesh.objects.len()
+    );
+    let obj5 = &bridge_mesh.objects[1];
+    assert_eq!(
+        obj5.config.data.get("enable_support"),
+        Some(&ConfigValue::Bool(true)),
+        "bridge obj5 must have enable_support = Bool(true)"
+    );
+    assert_eq!(
+        obj5.config.data.get("support_type"),
+        Some(&ConfigValue::String("tree(auto)".into())),
+        "bridge obj5 must have support_type = String(\"tree(auto)\")"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-Mod-1 (RED): negative_part_stamps_extruder_into_extensions
+// RED until Packet 68 lands `stamp_modifier_config_deltas`. Asserts that at
+// least one RegionPlan.config.extensions entry carries extruder=Int(0) from
+// the cube fixture's negative_part modifier (whose config_delta has
+// extruder=0). OrcaSlicer parity: negative_part IS in the stamp list
+// (MODEL_PART | NEGATIVE_VOLUME | PARAMETER_MODIFIER per
+// PrintApply.cpp:590-594).
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn negative_part_stamps_extruder_into_extensions() {
+    let Some(region_map) = region_map_for_fixture("cube_positive_n_negative.3mf") else {
+        return;
+    };
+
+    let stamped = region_map.entries.values().any(|plan| {
+        matches!(
+            plan.config.extensions.get("extruder"),
+            Some(ConfigValue::Int(0))
+        )
+    });
+
+    assert!(
+        stamped,
+        "RED: stamp_modifier_config_deltas (Packet 68) must stamp negative_part \
+         config_delta[\"extruder\"]=Int(0) into at least one RegionPlan.config.extensions. \
+         Fixture: cube_positive_n_negative.3mf has a negative_part with extruder=0."
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-Mod-2 (RED): modifier_part_stamps_fuzzy_skin_into_extensions
+// RED until Packet 68 lands `stamp_modifier_config_deltas`. The only
+// non-extruder config_delta key across all three Packet 67 fixtures is
+// benchy_4color's modifier_part fuzzy_skin="external". This is the canonical
+// "non-extruder key propagation" assertion.
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn modifier_part_stamps_fuzzy_skin_into_extensions() {
+    let Some(region_map) = region_map_for_fixture("benchy_4color.3mf") else {
+        return;
+    };
+
+    let stamped = region_map.entries.values().any(|plan| {
+        matches!(
+            plan.config.extensions.get("fuzzy_skin"),
+            Some(ConfigValue::String(s)) if s == "external"
+        )
+    });
+
+    assert!(
+        stamped,
+        "RED: stamp_modifier_config_deltas (Packet 68) must stamp modifier_part \
+         config_delta[\"fuzzy_skin\"]=String(\"external\") into at least one \
+         RegionPlan.config.extensions. Fixture: benchy_4color.3mf has a modifier_part \
+         with fuzzy_skin=external."
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-Mod-3 (RED): modifier_part_stamps_extruder_into_extensions
+// RED until Packet 68 lands `stamp_modifier_config_deltas`. Symmetric with
+// AC-Mod-2 but for the extruder key. Confirms modifier_part subtype is in
+// the stamp list (OrcaSlicer parity: PARAMETER_MODIFIER per
+// PrintApply.cpp:590-594).
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn modifier_part_stamps_extruder_into_extensions() {
+    let Some(region_map) = region_map_for_fixture("benchy_4color.3mf") else {
+        return;
+    };
+
+    let stamped = region_map.entries.values().any(|plan| {
+        matches!(
+            plan.config.extensions.get("extruder"),
+            Some(ConfigValue::Int(0))
+        )
+    });
+
+    assert!(
+        stamped,
+        "RED: stamp_modifier_config_deltas (Packet 68) must stamp modifier_part \
+         config_delta[\"extruder\"]=Int(0) into at least one RegionPlan.config.extensions. \
+         Fixture: benchy_4color.3mf has a modifier_part with extruder=0."
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-Mod-4 (GREEN regression guard): support_enforcer_config_delta_not_stamped
+// OrcaSlicer parity guard. The bridge_support_enforcers.3mf fixture has only
+// support_enforcer modifier_volumes on obj4 — no negative_part, no
+// modifier_part. Per PrintApply.cpp:590-594, SUPPORT_ENFORCER is excluded
+// from region config merging. NO RegionPlan.config.extensions should carry
+// the support_enforcer's config_delta keys.
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn support_enforcer_config_delta_not_stamped() {
+    let Some(region_map) = region_map_for_fixture("bridge_support_enforcers.3mf") else {
+        return;
+    };
+
+    let leaked = region_map
+        .entries
+        .values()
+        .any(|plan| plan.config.extensions.contains_key("extruder"));
+
+    assert!(
+        !leaked,
+        "OrcaSlicer parity (PrintApply.cpp:590-594): support_enforcer config_delta MUST \
+         NOT stamp into RegionPlan.config.extensions. If this fails after Packet 68 lands, \
+         Packet 68 forgot the ENFORCER/BLOCKER subtype filter in \
+         stamp_modifier_config_deltas."
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-Mod-5 (GREEN regression guard): support_blocker_config_delta_not_stamped
+// OrcaSlicer parity guard, symmetric with AC-Mod-4. The blocker side of the
+// bridge fixture (obj5) carries only support_blocker modifier_volumes;
+// SUPPORT_BLOCKER is also excluded by PrintApply.cpp:590-594. Asserts via
+// the same fixture as AC-Mod-4 — kept separate so each subtype's parity
+// contract is independently findable in test output.
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn support_blocker_config_delta_not_stamped() {
+    let Some(region_map) = region_map_for_fixture("bridge_support_enforcers.3mf") else {
+        return;
+    };
+
+    let leaked = region_map
+        .entries
+        .values()
+        .any(|plan| plan.config.extensions.contains_key("extruder"));
+
+    assert!(
+        !leaked,
+        "OrcaSlicer parity (PrintApply.cpp:590-594): support_blocker config_delta MUST \
+         NOT stamp into RegionPlan.config.extensions. If this fails after Packet 68 lands, \
+         Packet 68 forgot the ENFORCER/BLOCKER subtype filter in \
+         stamp_modifier_config_deltas. (See also AC-Mod-4 for the enforcer side.)"
+    );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AC-Mod-6 (GREEN parity guard): support_enforcer_paint_value_is_flag_not_tool_index
+// OrcaSlicer parity guard at the paint-segmentation surface. SupportEnforcer
+// SemanticRegions MUST carry PaintValue::Flag(_), never PaintValue::ToolIndex(_).
+// Per paint_segmentation.rs:416, value is hardcoded to Flag(true). If someone
+// re-wires the divergent extruder→ToolIndex routing that the withdrawn AC-R1
+// was testing for, this test catches the regression. See D6.
+// ─────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn support_enforcer_paint_value_is_flag_not_tool_index() {
+    let path = fixture("bridge_support_enforcers.3mf");
+    if skip_if_missing(&path) {
+        return;
+    }
+    let mesh_ir: MeshIR = load_model(&path).expect("load bridge_support_enforcers.3mf");
+    let sc = surface_classification_for_mesh(&mesh_ir);
+    let lp = layer_plan_for_mesh(&mesh_ir, 15, 0.2);
+    let paint_result: Arc<PaintRegionIR> =
+        execute_paint_segmentation(Arc::new(mesh_ir), Arc::new(sc), Arc::new(lp), true)
+            .expect("execute_paint_segmentation must succeed");
+
+    let mut saw_enforcer = false;
+    for lm in paint_result.per_layer.values() {
+        if let Some(regions) = lm.semantic_regions.get(&PaintSemantic::SupportEnforcer) {
+            for region in regions {
+                saw_enforcer = true;
+                assert!(
+                    matches!(region.value, PaintValue::Flag(_)),
+                    "OrcaSlicer parity: SupportEnforcer SemanticRegion must carry \
+                     PaintValue::Flag (decorative extruder field per PrintApply.cpp:590-594). \
+                     Found {:?}. If this fails, someone re-wired the divergent \
+                     extruder→PaintValue::ToolIndex path that AC-R1 was testing for \
+                     (withdrawn in Packet 67, see D6).",
+                    region.value
+                );
+            }
+        }
+    }
+
+    assert!(
+        saw_enforcer,
+        "bridge_support_enforcers.3mf must produce at least one SupportEnforcer \
+         SemanticRegion for the parity guard to be meaningful"
     );
 }
