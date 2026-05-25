@@ -1,4 +1,4 @@
-# Implementation Plan: 58_extruder-per-modifier-gcode
+# Implementation Plan: 68_extruder-per-modifier-gcode
 
 ## Execution Rules
 
@@ -7,21 +7,23 @@
 - TASK-209 maps to integration tests and doc registration.
 - Discovery step (Step 1) confirms assumptions before any edits — if assumptions are wrong, adjust design before coding.
 - Aggregate context cost is **M**. All steps are S or M.
-- This packet depends on Packets 57, 56c, 64, and 51 being `status: implemented`. Step 0 verifies.
+- This packet depends on Packets 67, 56c, 64, and 51 being `status: implemented`. Step 0 verifies.
+
+Note on test naming: the original Packet 67 RED tests this packet turns GREEN are `modifier_part_stamps_extruder_into_extensions`, `modifier_part_stamps_fuzzy_skin_into_extensions`, and `negative_part_stamps_extruder_into_extensions`. Earlier drafts of this plan referenced older names (`extruder_metadata_reaches_tool_index`, `extruder_per_object_vs_support_extruder`) that predated the Packet 67 finalization — those names no longer exist in the source tree.
 
 ## Steps
 
 ### Step 0: Precondition gate
 
 - Task IDs: TASK-208, TASK-209 (precursor)
-- Objective: Verify Packet 57 is `status: implemented`, fixtures exist, and the two RED tests from Packet 57 exist and fail as expected.
+- Objective: Verify Packet 67 is `status: implemented`, fixtures exist, and the two RED tests from Packet 67 exist and fail as expected.
 - Precondition: Packet activated.
 - Postcondition: All preconditions confirmed OR halt.
 - Files allowed to read: none directly. Pure dispatch step.
 - Files allowed to edit (≤ 3): none.
 - Files explicitly out-of-bounds: everything.
 - Expected sub-agent dispatches:
-  - "What is the `status:` value in the frontmatter of `.ralph/specs/57_3mf-fixture-e2e-hardening/packet.spec.md`? Return FACT one-line." → FACT. Expected: `implemented`.
+  - "What is the `status:` value in the frontmatter of `.ralph/specs/67_3mf-fixture-e2e-hardening/packet.spec.md`? Return FACT one-line." → FACT. Expected: `implemented`.
   - "Does `resources/bridge_support_enforcers.3mf` exist? Return FACT yes/no." → FACT. Expected: yes.
   - "Run `cargo test -p slicer-host --test threemf_fixture_e2e_tdd -- --list` and return FACT: do test names `extruder_metadata_reaches_tool_index` and `extruder_per_object_vs_support_extruder` appear in the list?" → FACT. Expected: both present.
   - "Run `cargo test -p slicer-host --test threemf_fixture_e2e_tdd extruder_metadata_reaches_tool_index -- --exact --nocapture` and return FACT: does it fail? Return assertion message." → FACT. Expected: fails.
@@ -80,7 +82,7 @@
 - Task IDs: TASK-208
 - Objective: In `layer_executor.rs`, add fallback: when `dominant_tool_index()` returns `None`, check `region_plan.config.extensions["extruder"]` for a `ConfigValue::Int(n)` and use `n as u32` for `region_id`-as-tool assignment.
 - Precondition: Step 2 clean (config_delta values reach `RegionPlan.config.extensions`).
-- Postcondition: `extruder_metadata_reaches_tool_index` (was RED from Packet 57) turned GREEN. The RED test originally asserted `PaintValue::ToolIndex` on `SemanticRegion` — this step instead asserts `ConfigValue::Int(0)` in `config.extensions` + full pipeline produces `T0`/`T1` in GCode.
+- Postcondition: `extruder_metadata_reaches_tool_index` (was RED from Packet 67) turned GREEN. The RED test originally asserted `PaintValue::ToolIndex` on `SemanticRegion` — this step instead asserts `ConfigValue::Int(0)` in `config.extensions` + full pipeline produces `T0`/`T1` in GCode.
 - Files allowed to read:
   - `crates/slicer-host/src/layer_executor.rs` — lines 756-766 (`dominant_tool_index` → `region_id` assignment).
 - Files allowed to edit (≤ 3):
@@ -98,9 +100,9 @@
 ### Step 4: Author integration tests
 
 - Task IDs: TASK-209
-- Objective: Extend `threemf_fixture_e2e_tdd.rs` with 5 new tests + update 2 RED tests from Packet 57. Turn the 2 RED tests GREEN (update their assertions to match the config-stamping path). Add new tests covering: config_delta extruder in extensions, non-extruder key survival, negative_part benign, subtype-only no-op, and conflicting modifier priority.
+- Objective: Extend `threemf_fixture_e2e_tdd.rs` with 5 new tests + update 2 RED tests from Packet 67. Turn the 2 RED tests GREEN (update their assertions to match the config-stamping path). Add new tests covering: config_delta extruder in extensions, non-extruder key survival, negative_part benign, subtype-only no-op, and conflicting modifier priority.
 - Precondition: Step 3 clean (config stamping + tool fallback implemented).
-- Postcondition: All 14+ fixture E2E tests GREEN (7-9 from Packet 57 + 2 RED turned GREEN + 5 new).
+- Postcondition: All 14+ fixture E2E tests GREEN (7-9 from Packet 67 + 2 RED turned GREEN + 5 new).
 - Files allowed to read:
   - `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` — full (existing RED test bodies for reference).
   - `crates/slicer-host/src/gcode_emit.rs` — narrow read at line 1374 for `T{n}` format confirmation.
@@ -148,13 +150,13 @@
   - `docs/07_implementation_status.md`
 - Files explicitly out-of-bounds: all source.
 - Expected sub-agent dispatches:
-  - "Append `[x] TASK-208` and `[x] TASK-209` rows after TASK-207 in `docs/07_implementation_status.md`, each naming packet `58_extruder-per-modifier-gcode`. TASK-208 summary: 'Stamp config_delta.fields from overlapping modifier volumes into RegionPlan.config.extensions; add config-extensions-driven required_tool fallback in layer_executor.rs.' TASK-209 summary: 'GCode and config integration tests: 7 tests proving extruder tool-change, non-extruder key survival, backward compatibility, and modifier priority.' Return the resulting two lines verbatim. SNIPPETS, ≤ 5 lines." → SNIPPETS.
+  - "Append `[x] TASK-208` and `[x] TASK-209` rows after TASK-207 in `docs/07_implementation_status.md`, each naming packet `68_extruder-per-modifier-gcode`. TASK-208 summary: 'Stamp config_delta.fields from per-object modifier_volumes into RegionPlan.config.extensions (subtype-filtered, global-per-object scope); add config-extensions-driven required_tool fallback in layer_executor.rs.' TASK-209 summary: 'Integration tests covering extruder/fuzzy_skin stamping, partial-pipeline T0/T1 emission, subtype-only no-op, conflicting modifier priority, and AC-Filter regression guard.' Return the resulting two lines verbatim. SNIPPETS, ≤ 5 lines." → SNIPPETS.
 - Context cost: S
 - Authoritative docs: none.
 - OrcaSlicer refs: none.
 - Verification:
-  - `rg -c 'TASK-208.*58_extruder-per-modifier-gcode' docs/07_implementation_status.md` → 1.
-  - `rg -c 'TASK-209.*58_extruder-per-modifier-gcode' docs/07_implementation_status.md` → 1.
+  - `rg -c 'TASK-208.*68_extruder-per-modifier-gcode' docs/07_implementation_status.md` → 1.
+  - `rg -c 'TASK-209.*68_extruder-per-modifier-gcode' docs/07_implementation_status.md` → 1.
 - Exit condition: Both `rg` checks pass.
 
 ### Step 7: Pre-ceremony verification
@@ -193,7 +195,7 @@ Aggregate: **M** (1 M + 7 S).
 
 - All 8 steps complete.
 - Every step exit condition met.
-- All fixture E2E tests GREEN (7-9 original from Packet 57 + 2 RED → GREEN + 5 new).
+- All fixture E2E tests GREEN (7-9 original from Packet 67 + 2 RED → GREEN + 5 new).
 - All regression suites GREEN (56/56b/56c/57); clippy clean.
 - `docs/07_implementation_status.md` updated with TASK-208, TASK-209 rows.
 - `packet.spec.md` ready to move to `status: implemented`.
@@ -203,5 +205,5 @@ Aggregate: **M** (1 M + 7 S).
 
 - Re-dispatch every pipe-suffixed AC command from `packet.spec.md` (Step 7).
 - Confirm all 9 ACs GREEN (7 positive + 2 negative).
-- The two RED tests from Packet 57 are now GREEN (updated assertions matching config-stamping path).
+- The two RED tests from Packet 67 are now GREEN (updated assertions matching config-stamping path).
 - No workspace-level gate required.

@@ -156,6 +156,8 @@ Last updated: 2026-05-08
 - [x] TASK-205: Complete HostRunOptions, delete validate_run_options and CliError
 - [x] TASK-206: Remove dead --module flag
 - [x] TASK-207: Create parent directories for --output and --report paths
+- [x] TASK-208: Stamp config_delta.fields from per-object modifier_volumes into RegionPlan.config.extensions via overlay_resolved (subtype-filtered, global-per-object scope); add config-extensions-driven required_tool fallback in layer_executor.rs. (68_extruder-per-modifier-gcode)
+- [x] TASK-209: Integration tests covering extruder/fuzzy_skin stamping, T0/T1 GCode emission (partial-pipeline synthetic harness), subtype-only no-op, conflicting modifier priority, and AC-Filter regression guard. (68_extruder-per-modifier-gcode)
 
 ### Workstream 4 — Progress events and Python bridge coverage
 

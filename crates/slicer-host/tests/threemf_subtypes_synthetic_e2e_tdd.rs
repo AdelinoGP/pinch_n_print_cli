@@ -583,6 +583,7 @@ fn support_enforcer_flows_through_paint_overrides() {
         &plan,
         Some(&whole_layer_paint),
         &paint_semantic_configs,
+        &[],
     )
     .expect("execute_region_mapping must succeed");
 

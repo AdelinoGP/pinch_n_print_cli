@@ -17,8 +17,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::{
-    LayerPlanIR, ModuleInvocation, PaintRegionIR, PaintSemantic, RegionKey, RegionMapIR,
-    RegionPlan, ResolvedConfig, StageId,
+    ConfigValue, LayerPlanIR, ModifierVolume, ModuleInvocation, ObjectMesh, PaintRegionIR,
+    PaintSemantic, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, StageId,
 };
 
 use crate::config_resolution::paint_semantic_namespace_key;
@@ -195,6 +195,66 @@ fn overlay_resolved(base: ResolvedConfig, overlay: &ResolvedConfig) -> ResolvedC
     r
 }
 
+/// Stamps `config_delta.fields` from each [`ModifierVolume`] entry into
+/// `base_config.extensions`, except the `"subtype"` key. Modifier volumes
+/// whose subtype is `support_enforcer` or `support_blocker` are skipped
+/// entirely — OrcaSlicer parity (`PrintApply.cpp:590-594`,
+/// `model_volume_solid_or_modifier()` excludes ENFORCER and BLOCKER from
+/// region-config merging).
+///
+/// Modifiers are applied in priority-ascending order so the highest-priority
+/// modifier wins via [`overlay_resolved`]'s last-writer semantics.
+///
+/// Applies globally per object (no bbox/polygon overlap check): the only
+/// in-use [`slicer_ir::ModifierScope`] variant is `AllFeatures`, and
+/// per-layer Z intervals are out of scope for this packet.
+fn stamp_modifier_config_deltas(
+    base_config: ResolvedConfig,
+    modifier_volumes: &[ModifierVolume],
+) -> ResolvedConfig {
+    // Sort modifier indices by priority ascending so higher-priority writes
+    // last (overlay_resolved is last-writer-wins on the `extensions` map).
+    let mut order: Vec<usize> = (0..modifier_volumes.len()).collect();
+    order.sort_by_key(|&i| modifier_volumes[i].priority);
+
+    let mut result = base_config;
+    for idx in order {
+        let mv = &modifier_volumes[idx];
+        // OrcaSlicer parity: skip support_enforcer / support_blocker entirely.
+        if let Some(ConfigValue::String(s)) = mv.config_delta.fields.get("subtype") {
+            if s == "support_enforcer" || s == "support_blocker" {
+                continue;
+            }
+        }
+        // Build a synthetic ResolvedConfig that carries only the non-subtype
+        // delta keys in its `extensions` bucket. All declared fields stay at
+        // their `Default` so `overlay_resolved` will leave the base values
+        // untouched — only the extension keys are merged.
+        //
+        // Truly-empty values (empty string, empty list) are skipped per
+        // design.md "ConfigValue defaults" row to avoid noise in extensions.
+        // Numeric/boolean zeros (`Int(0)`, `Float(0.0)`, `Bool(false)`) are
+        // meaningful and stamped — e.g., `Int(0)` for `extruder` is tool 0.
+        let mut overlay = ResolvedConfig::default();
+        for (k, v) in &mv.config_delta.fields {
+            if k == "subtype" {
+                continue;
+            }
+            match v {
+                ConfigValue::String(s) if s.is_empty() => continue,
+                ConfigValue::List(l) if l.is_empty() => continue,
+                _ => {}
+            }
+            overlay.extensions.insert(k.clone(), v.clone());
+        }
+        if overlay.extensions.is_empty() {
+            continue;
+        }
+        result = overlay_resolved(result, &overlay);
+    }
+    result
+}
+
 /// Compute overlapping paint semantics for a region at a given layer.
 ///
 /// Returns semantics sorted ascending by `paint_semantic_namespace_key`
@@ -251,25 +311,46 @@ pub fn execute_region_mapping(
     plan: &ExecutionPlan,
     paint_regions: Option<&PaintRegionIR>,
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
+    objects: &[ObjectMesh],
 ) -> Result<RegionMapIR, RegionMappingError> {
     execute_region_mapping_with_cap(
         layer_plan,
         plan,
         paint_regions,
         paint_semantic_configs,
+        objects,
         DEFAULT_REGION_MAP_CAP,
     )
 }
 
 /// Same as [`execute_region_mapping`] with a caller-supplied cap.
+///
+/// `objects` carries the per-object [`ObjectMesh`] data used to look up each
+/// region's `modifier_volumes` and stamp their non-`subtype` `config_delta`
+/// fields into `RegionPlan.config.extensions` (Packet 68 —
+/// `stamp_modifier_config_deltas`). Pass `&[]` to disable modifier stamping
+/// and preserve the pre-Packet-68 path (test fixtures with no modifier data).
+///
+/// Stamping order per region: `region.resolved_config` → modifier deltas
+/// (priority-ascending) → paint-semantic overlays. Paint overlays therefore
+/// win over modifier deltas, matching the
+/// global → per-object → modifier → paint precedence chain.
 pub fn execute_region_mapping_with_cap(
     layer_plan: &LayerPlanIR,
     plan: &ExecutionPlan,
     paint_regions: Option<&PaintRegionIR>,
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
+    objects: &[ObjectMesh],
     cap: usize,
 ) -> Result<RegionMapIR, RegionMappingError> {
-    execute_region_mapping_inner(layer_plan, plan, paint_regions, paint_semantic_configs, cap)
+    execute_region_mapping_inner(
+        layer_plan,
+        plan,
+        paint_regions,
+        paint_semantic_configs,
+        objects,
+        cap,
+    )
 }
 
 fn execute_region_mapping_inner(
@@ -277,6 +358,7 @@ fn execute_region_mapping_inner(
     plan: &ExecutionPlan,
     paint_regions: Option<&PaintRegionIR>,
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
+    objects: &[ObjectMesh],
     cap: usize,
 ) -> Result<RegionMapIR, RegionMappingError> {
     // --- Cap check with top-contributor diagnostics (docs/04 normative memory budget) ----
@@ -354,16 +436,37 @@ fn execute_region_mapping_inner(
                 stage_modules.insert(sid.clone(), invs.clone());
             }
 
+            // Stamp modifier-volume config_delta keys into a working
+            // config (Packet 68). Ordering: per-object base →
+            // modifier_delta → paint_overrides. We compute the
+            // modifier-stamped base first so paint overlays (which run
+            // last) can still override stamped values, matching
+            // global → per-object → modifier → paint precedence.
+            let modifier_stamped_base =
+                if let Some(obj) = objects.iter().find(|o| o.id == region.object_id) {
+                    if obj.modifier_volumes.is_empty() {
+                        region.resolved_config.clone()
+                    } else {
+                        stamp_modifier_config_deltas(
+                            region.resolved_config.clone(),
+                            &obj.modifier_volumes,
+                        )
+                    }
+                } else {
+                    region.resolved_config.clone()
+                };
+
             // Compute paint-semantic overlay (no-op when paint_regions is None).
             let (effective_config, paint_overrides) = if let Some(pr) = paint_regions {
                 let semantics = overlapping_semantics_for_region(layer.index, pr);
                 if semantics.is_empty() {
-                    // No overlap → bit-identical to pre-packet path.
-                    (region.resolved_config.clone(), BTreeMap::new())
+                    // No overlap → modifier-stamped base passes through.
+                    (modifier_stamped_base, BTreeMap::new())
                 } else {
                     // Apply each overlapping semantic in lex-ascending order;
-                    // the last semantic in sort order wins.
-                    let mut effective = region.resolved_config.clone();
+                    // the last semantic in sort order wins. Paint overlays
+                    // are applied on top of the modifier-stamped base.
+                    let mut effective = modifier_stamped_base;
                     let mut overrides: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
                     for sem in &semantics {
                         if let Some(sem_cfg) = paint_semantic_configs.get(sem) {
@@ -374,8 +477,8 @@ fn execute_region_mapping_inner(
                     (effective, overrides)
                 }
             } else {
-                // No paint data → bit-identical to pre-packet path.
-                (region.resolved_config.clone(), BTreeMap::new())
+                // No paint data → modifier-stamped base passes through.
+                (modifier_stamped_base, BTreeMap::new())
             };
 
             let plan_entry = RegionPlan {
@@ -421,34 +524,52 @@ pub fn commit_region_mapping_builtin(
     let Some(layer_plan) = blackboard.layer_plan().cloned() else {
         return Err(RegionMappingBuiltinError::MissingLayerPlan);
     };
+    // Clone the mesh Arc to satisfy the borrow checker — `blackboard` is
+    // `&mut`, so we need an owned handle to its `objects` slice for the
+    // duration of the `execute_region_mapping_with_cap` call and the
+    // subsequent commit-layer re-stamping loop.
+    let mesh_arc = Arc::clone(blackboard.mesh());
     let paint_regions = blackboard.paint_regions().map(|arc| arc.as_ref());
     let mut ir = execute_region_mapping_with_cap(
         layer_plan.as_ref(),
         plan,
         paint_regions,
         paint_semantic_configs,
+        &mesh_arc.objects,
         DEFAULT_REGION_MAP_CAP,
     )
     .map_err(RegionMappingBuiltinError::Mapping)?;
 
     // Stamp each RegionPlan.config from the per-object map, falling back to
     // the caller-supplied default when the object has no dedicated entry.
-    // When the region carries paint overlays (computed by execute_region_mapping
-    // above), re-apply them on top of the per-object base config so that the
-    // paint override is not clobbered.
+    // Modifier-volume config_delta keys (Packet 68) and paint overlays
+    // (Packet 51) are re-applied on top of the per-object base so neither
+    // is silently clobbered by this commit-layer overwrite.
     for (key, region_plan) in ir.entries.iter_mut() {
         let base_config = resolved_configs
             .get(&key.object_id)
             .cloned()
             .unwrap_or_else(|| default_resolved_config.clone());
+        // Re-apply modifier config_delta stamping on top of the per-object
+        // base config (matches the order in execute_region_mapping_inner so
+        // commit-layer output is consistent with the pre-commit pass).
+        let modifier_stamped =
+            if let Some(obj) = mesh_arc.objects.iter().find(|o| o.id == key.object_id) {
+                if obj.modifier_volumes.is_empty() {
+                    base_config
+                } else {
+                    stamp_modifier_config_deltas(base_config, &obj.modifier_volumes)
+                }
+            } else {
+                base_config
+            };
         if region_plan.paint_overrides.is_empty() {
-            // No paint data → bit-identical to pre-packet path.
-            region_plan.config = base_config;
+            region_plan.config = modifier_stamped;
         } else {
-            // Re-apply each paint overlay on top of the (freshly resolved)
-            // per-object base config, in lex-ascending order (same order used
-            // in execute_region_mapping) so the result is deterministic.
-            let mut effective = base_config;
+            // Re-apply each paint overlay on top of the modifier-stamped
+            // base config, in lex-ascending order (same order used in
+            // execute_region_mapping) so the result is deterministic.
+            let mut effective = modifier_stamped;
             for sem_cfg in region_plan.paint_overrides.values() {
                 effective = overlay_resolved(effective, sem_cfg);
             }

@@ -12,8 +12,9 @@ use std::collections::HashMap;
 
 use slicer_core::slice_mesh_ex;
 use slicer_ir::{
-    ExPolygon, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen, ModuleId, PaintRegionIR,
-    PaintSemantic, PerimeterIR, PrintEntity, RegionKey, StageId, SupportIR, WallFeatureFlags,
+    ConfigValue, ExPolygon, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen, ModuleId,
+    PaintRegionIR, PaintSemantic, PerimeterIR, PrintEntity, RegionKey, RegionMapIR, StageId,
+    SupportIR, WallFeatureFlags,
 };
 
 use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
@@ -411,6 +412,7 @@ fn execute_single_layer_inner(
                 arena.perimeter(),
                 arena.infill(),
                 arena.support(),
+                blackboard.region_map().map(|arc| arc.as_ref()),
             );
             arena.set_layer_collection(LayerCollectionIR {
                 global_layer_index: layer.index,
@@ -525,6 +527,7 @@ fn execute_single_layer_inner(
             arena.perimeter(),
             arena.infill(),
             arena.support(),
+            blackboard.region_map().map(|arc| arc.as_ref()),
         );
         LayerCollectionIR {
             global_layer_index: layer.index,
@@ -735,6 +738,7 @@ pub(crate) fn assemble_ordered_entities(
     perimeter: Option<&PerimeterIR>,
     infill: Option<&InfillIR>,
     support: Option<&SupportIR>,
+    region_map: Option<&RegionMapIR>,
 ) -> Vec<PrintEntity> {
     let mut out: Vec<PrintEntity> = Vec::new();
     let id_gen = LayerEntityIdGen::new();
@@ -754,12 +758,30 @@ pub(crate) fn assemble_ordered_entities(
 
     if let Some(perim) = perimeter {
         for region in &perim.regions {
+            // Pre-compute the per-region config-extensions "extruder" fallback
+            // (packet 68 / AC-2): when no paint-derived tool exists for a wall,
+            // a modifier-volume config delta stamped into
+            // `RegionPlan.config.extensions["extruder"]` selects the tool.
+            // Paint-derived tools (`dominant_tool_index`) still win.
+            let base_key = RegionKey {
+                global_layer_index,
+                object_id: region.object_id.clone(),
+                region_id: region.region_id,
+            };
+            let modifier_tool: Option<u64> = region_map
+                .and_then(|rm| rm.entries.get(&base_key))
+                .and_then(|rp| rp.config.extensions.get("extruder"))
+                .and_then(|v| match v {
+                    ConfigValue::Int(n) if *n >= 0 => Some(*n as u64),
+                    _ => None,
+                });
             for wl in &region.walls {
                 let paint_tool = dominant_tool_index(&wl.feature_flags);
+                let resolved_tool = paint_tool.or(modifier_tool).unwrap_or(region.region_id);
                 let entity_key = RegionKey {
                     global_layer_index,
                     object_id: region.object_id.clone(),
-                    region_id: paint_tool.unwrap_or(region.region_id),
+                    region_id: resolved_tool,
                 };
                 let role = wl.path.role.clone();
                 push(wl.path.clone(), role, entity_key, &mut out);

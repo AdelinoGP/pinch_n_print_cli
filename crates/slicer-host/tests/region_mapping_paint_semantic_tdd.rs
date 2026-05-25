@@ -175,6 +175,7 @@ fn region_overlap_applies_override() {
         &plan,
         Some(&paint_regions),
         &paint_semantic_configs,
+        &[],
     )
     .expect("execute_region_mapping must succeed");
     let key = RegionKey {
@@ -227,6 +228,7 @@ fn no_overlap_keeps_object_config() {
         &plan,
         Some(&paint_regions),
         &paint_semantic_configs,
+        &[],
     )
     .expect("execute_region_mapping must succeed");
     let key = RegionKey {
@@ -349,6 +351,7 @@ fn overlap_precedence_is_deterministic() {
         &plan,
         Some(&paint_regions),
         &paint_semantic_configs,
+        &[],
     )
     .expect("first execute_region_mapping must succeed");
     assert_result(&rm1);
@@ -358,6 +361,7 @@ fn overlap_precedence_is_deterministic() {
         &plan,
         Some(&paint_regions),
         &paint_semantic_configs,
+        &[],
     )
     .expect("second execute_region_mapping must succeed");
     assert_result(&rm2);

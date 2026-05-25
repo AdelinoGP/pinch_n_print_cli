@@ -483,6 +483,8 @@ fn compute_reachability(
 
 `PrePass::RegionMapping` is host-built-in and precomputes per-region execution context so Tier 2 has no config or claim resolution overhead.
 
+During region mapping, modifier volume `config_delta.fields` from every `modifier_volume` attached to a region's parent `ObjectMesh` are stamped into `RegionPlan.config.extensions` via `overlay_resolved` (priority-ascending, last-writer-wins), with `support_enforcer` and `support_blocker` subtypes filtered out for OrcaSlicer parity (`PrintApply.cpp:590-594`). Scope is global per object — the only `ModifierScope` variant in use is `AllFeatures`; bbox / polygon-level overlap is a future refinement when partial-volume scopes are introduced.
+
 ```rust
 fn build_region_map(
     layer_plan: &LayerPlanIR,

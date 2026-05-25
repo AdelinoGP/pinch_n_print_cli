@@ -25,8 +25,8 @@ use slicer_ir::slice_ir::BoundingBox2;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, ExPolygon, GlobalLayer,
     IndexedTriangleSet, LayerPaintMap, MeshIR, ObjectConfig, ObjectMesh, PaintRegionIR,
-    PaintSemantic, PaintValue, Point2, Point3, Polygon, ResolvedConfig, SemVer, SemanticRegion,
-    StageId, Transform3d,
+    PaintSemantic, PaintValue, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan,
+    ResolvedConfig, SemVer, SemanticRegion, StageId, Transform3d,
 };
 
 // ============================================================================
@@ -1436,5 +1436,175 @@ fn paint_annotation_stage_is_always_in_plan_before_perimeters() {
     assert!(
         paint_pos < perim_pos,
         "PaintRegionAnnotation (index {paint_pos}) must appear before Perimeters (index {perim_pos})"
+    );
+}
+
+// ============================================================================
+// Packet 68 / AC-2: extruder_synthetic_t0_t1_emission
+//
+// Synthetic-IR test: build a `RegionMapIR` whose two `RegionPlan` entries
+// carry `config.extensions["extruder"] = Int(0)` and `Int(1)`, stage a
+// `PerimeterIR` with two regions matching those keys, run the per-layer
+// executor, and assert the resulting `ordered_entities` carry both
+// `region_key.region_id == 0` and `region_key.region_id == 1`.
+//
+// `region_key.region_id` on a perimeter entity is the per-region
+// "required_tool" — `gcode_emit` later turns each distinct tool index into a
+// `T{n}` line. Asserting on `region_id` proves the Step 3 fallback path
+// (`paint_tool.or(modifier_tool).unwrap_or(region.region_id)`) routed the
+// stamped extruder through `assemble_ordered_entities`.
+//
+// AC-2 originally specified a full GCode `T0`/`T1` substring assertion; the
+// packet's "implementer's choice" clause permits this partial-pipeline path
+// because the differential it exercises is identical.
+// ============================================================================
+
+fn perim_ir_single_region(object_id: &str, region_id: u64) -> slicer_ir::PerimeterIR {
+    slicer_ir::PerimeterIR {
+        schema_version: semver(1, 0, 0),
+        global_layer_index: 0,
+        regions: vec![slicer_ir::PerimeterRegion {
+            object_id: object_id.into(),
+            region_id,
+            walls: vec![slicer_ir::WallLoop {
+                perimeter_index: 0,
+                loop_type: slicer_ir::LoopType::Outer,
+                path: mk_path(1.0),
+                width_profile: slicer_ir::WidthProfile { widths: vec![0.4] },
+                feature_flags: Vec::new(),
+                boundary_type: slicer_ir::WallBoundaryType::Interior,
+            }],
+            infill_areas: Vec::new(),
+            seam_candidates: Vec::new(),
+            resolved_seam: None,
+        }],
+    }
+}
+
+fn perim_ir_two_regions_for_objects(
+    obj_a: &str,
+    region_a: u64,
+    obj_b: &str,
+    region_b: u64,
+) -> slicer_ir::PerimeterIR {
+    let mut p = perim_ir_single_region(obj_a, region_a);
+    p.regions.push(
+        perim_ir_single_region(obj_b, region_b)
+            .regions
+            .pop()
+            .unwrap(),
+    );
+    p
+}
+
+fn region_plan_with_extruder(extruder: i64) -> RegionPlan {
+    let mut config = ResolvedConfig::default();
+    config
+        .extensions
+        .insert("extruder".into(), ConfigValue::Int(extruder));
+    RegionPlan {
+        config,
+        stage_modules: HashMap::new(),
+        paint_overrides: std::collections::BTreeMap::new(),
+    }
+}
+
+#[test]
+fn extruder_synthetic_t0_t1_emission() {
+    let mesh = Arc::new(mesh_fixture());
+
+    // Build a single-layer plan. The layer's `active_regions` must reference
+    // ObjectIds present in `mesh_fixture()` (which only carries `test-object`)
+    // because `Layer::Slice` looks each active region up in `MeshIR.objects`.
+    // The staged perimeter IR's regions, by contrast, are read straight from
+    // the arena slot and may use any ObjectId — so we stage obj-A/obj-B there
+    // and key the committed RegionMapIR on those same synthetic ObjectIds.
+    let layer = GlobalLayer {
+        index: 0,
+        z: 0.2,
+        active_regions: vec![ActiveRegion {
+            object_id: "test-object".into(),
+            region_id: 0,
+            resolved_config: ResolvedConfig::default(),
+            effective_layer_height: 0.2,
+            nonplanar_shell: None,
+            is_catchup_layer: false,
+            catchup_z_bottom: 0.0,
+            tool_index: 0,
+        }],
+        has_nonplanar: false,
+        is_sync_layer: false,
+    };
+
+    let plan = ExecutionPlan {
+        prepass_stages: Vec::new(),
+        per_layer_stages: vec![compiled_stage(
+            "Layer::Perimeters",
+            &["com.example.perimeters"],
+        )],
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
+        global_layers: Arc::new(vec![layer]),
+        region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
+    };
+
+    // Build a RegionMapIR keyed on the same (layer, object, region) tuples and
+    // commit it to the blackboard. Region A → extruder=0, Region B → extruder=1.
+    let mut entries: HashMap<RegionKey, RegionPlan> = HashMap::new();
+    entries.insert(
+        RegionKey {
+            global_layer_index: 0,
+            object_id: "obj-A".into(),
+            region_id: 1,
+        },
+        region_plan_with_extruder(0),
+    );
+    entries.insert(
+        RegionKey {
+            global_layer_index: 0,
+            object_id: "obj-B".into(),
+            region_id: 2,
+        },
+        region_plan_with_extruder(1),
+    );
+    let region_map = RegionMapIR {
+        entries,
+        ..Default::default()
+    };
+
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    blackboard
+        .commit_region_map(Arc::new(region_map))
+        .expect("commit region map");
+
+    let runner = StagingRunner::new(
+        Some(perim_ir_two_regions_for_objects("obj-A", 1, "obj-B", 2)),
+        None,
+        None,
+    );
+
+    let layers = execute_per_layer(&plan, &blackboard, &runner).expect("per-layer exec");
+    assert_eq!(layers.len(), 1, "exactly one layer");
+    let l = &layers[0];
+
+    // Two perimeter wall entities, one per region. The Step-3 fallback resolves
+    // each region's required_tool from RegionPlan.config.extensions["extruder"]
+    // because no paint-derived tool exists (feature_flags is empty).
+    let region_ids: Vec<u64> = l
+        .ordered_entities
+        .iter()
+        .map(|e| e.region_key.region_id)
+        .collect();
+
+    assert!(
+        region_ids.contains(&0),
+        "ordered_entities must contain a region_id=0 entry (T0) routed from \
+         RegionPlan.config.extensions[\"extruder\"] = Int(0); got {region_ids:?}"
+    );
+    assert!(
+        region_ids.contains(&1),
+        "ordered_entities must contain a region_id=1 entry (T1) routed from \
+         RegionPlan.config.extensions[\"extruder\"] = Int(1); got {region_ids:?}"
     );
 }

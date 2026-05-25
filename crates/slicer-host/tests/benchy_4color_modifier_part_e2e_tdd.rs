@@ -507,7 +507,7 @@ fn empty_modifier_volume_stamps_no_regions() {
     let plan = ExecutionPlan::default();
     let paint_semantic_configs = BTreeMap::new();
 
-    let region_map = execute_region_mapping(&layer_plan, &plan, None, &paint_semantic_configs)
+    let region_map = execute_region_mapping(&layer_plan, &plan, None, &paint_semantic_configs, &[])
         .expect("execute_region_mapping must succeed with empty modifier volumes");
 
     // No modifier volumes → no modifier-derived keys in any region.

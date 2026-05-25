@@ -1,4 +1,4 @@
-# Requirements: 58_extruder-per-modifier-gcode
+# Requirements: 68_extruder-per-modifier-gcode
 
 ## Problem Statement
 
@@ -20,14 +20,15 @@ The previous version of this packet proposed a narrow workaround: route only `ex
 ## Task IDs
 
 - **TASK-208** — Config delta stamping: in `region_mapping.rs`, for each region, find overlapping `ModifierVolume` entries and stamp their `config_delta.fields` (except `"subtype"`) into `RegionPlan.config.extensions` via `overlay_resolved()`. Add config-extensions-driven `required_tool` fallback in `layer_executor.rs` so the `"extruder"` key in `config.extensions` selects the tool when no paint-derived tool exists.
-- **TASK-209** — GCode and config integration tests: extend `threemf_fixture_e2e_tdd.rs` with 7 new/updated tests (turn 2 RED tests from Packet 57 GREEN, add 5 new). Assert `T0`/`T1` tool commands from config-stamped extruder, assert non-extruder keys survive end-to-end, assert backward compatibility, assert priority ordering for conflicting modifiers.
+- **TASK-209** — GCode and config integration tests: extend `threemf_fixture_e2e_tdd.rs` (and `layer_executor_tdd.rs` for the AC-2 synthetic harness) with config-stamping and tool-routing tests that turn Packet 67's 3 RED tests GREEN, add the 5 packet-prescribed positive/negative ACs (AC-1, AC-3, AC-4, AC-N1, AC-N2), and add the AC-2 synthetic `extruder` tool-index test. Assert `T0`/`T1` differentials (via `RegionKey.region_id` on `ordered_entities`) from config-stamped extruder, assert non-extruder keys survive end-to-end, assert backward compatibility, assert priority ordering for conflicting modifiers.
 
 ## In Scope
 
 - **Write:**
   - `crates/slicer-host/src/region_mapping.rs` — add `stamp_modifier_config_deltas()` function called inside `execute_region_mapping_with_cap()` (after per-object config resolution, before constructing `RegionPlan`). For each region, find `ModifierVolume` entries whose `applies_to` scope overlaps, read `config_delta.fields`, exclude `"subtype"`, and stamp remaining keys into a `ResolvedConfig.extensions` overlay applied via `overlay_resolved()`.
   - `crates/slicer-host/src/layer_executor.rs` — add config-extensions-driven `required_tool` fallback: when `dominant_tool_index()` returns `None` (no paint-derived tool), check `region_plan.config.extensions["extruder"]` and use its `ConfigValue::Int(n)` value for `region_id`-as-tool assignment.
-  - `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` — add 7 tests: `config_delta_extruder_stamped_into_extensions` (AC-1), `extruder_per_object_vs_support_extruder` (AC-2, was RED), `config_delta_non_extruder_key_survives` (AC-3, new), `negative_part_extruder_does_not_affect_subtract` (AC-4, was RED), `subtype_only_modifier_stamps_no_extensions` (AC-N1, new), `conflicting_extruder_modifier_priority_wins` (AC-N2, new), and regression pass-through for existing 9 tests from Packet 57.
+  - `crates/slicer-host/tests/threemf_fixture_e2e_tdd.rs` — add 5 tests: `config_delta_extruder_stamped_into_extensions` (AC-1), `config_delta_non_extruder_key_survives` (AC-3), `negative_part_extruder_does_not_affect_subtract` (AC-4), `subtype_only_modifier_stamps_no_extensions` (AC-N1), `conflicting_extruder_modifier_priority_wins` (AC-N2). Regression pass-through for all pre-existing tests from Packet 67 (including the 3 RED tests `modifier_part_stamps_extruder_into_extensions`, `modifier_part_stamps_fuzzy_skin_into_extensions`, `negative_part_stamps_extruder_into_extensions` which turn GREEN once `stamp_modifier_config_deltas` lands).
+  - `crates/slicer-host/tests/layer_executor_tdd.rs` — add 1 test: `extruder_synthetic_t0_t1_emission` (AC-2, partial-pipeline synthetic harness).
   - `docs/07_implementation_status.md` — append TASK-208 and TASK-209 rows after TASK-207.
 
 - **Read-only:**
@@ -70,9 +71,9 @@ Files to inspect for this packet:
 ## Acceptance Summary (references ACs by ID)
 
 - **AC-1** — `config_delta_extruder_stamped_into_extensions`: `RegionPlan.config.extensions["extruder"] = ConfigValue::Int(0)` for regions overlapping support_enforcer modifier volumes.
-- **AC-2** — `extruder_per_object_vs_support_extruder` (was RED in Packet 57): full pipeline GCode output contains both `T0` and `T1` commands.
+- **AC-2** — `extruder_synthetic_t0_t1_emission` (partial-pipeline synthetic harness in `layer_executor_tdd.rs`): two `RegionPlan` entries with `config.extensions["extruder"]` = `Int(0)` and `Int(1)` route through `assemble_ordered_entities` to produce `region_key.region_id` values 0 and 1, which `gcode_emit` then writes as `T0` and `T1`.
 - **AC-3** — `config_delta_non_extruder_key_survives`: non-extruder keys (`"fuzzy_skin"`) from `config_delta.fields` appear in `RegionPlan.config.extensions`.
-- **AC-4** — `negative_part_extruder_does_not_affect_subtract` (was RED in Packet 57): extruder on negative_part is benign; polygon output unchanged.
+- **AC-4** — `negative_part_extruder_does_not_affect_subtract`: extruder on negative_part is benign; `apply_negative_part_subtract` is geometry-only and post-subtract polygon area is strictly less than pre-subtract area, regardless of the `extruder` key on the negative_part's `config_delta`.
 - **AC-5** — `threemf_subtypes_synthetic_e2e_tdd` stays GREEN — no regression from config stamping on fixtures without non-subtype keys.
 - **AC-6** — `gcode_emit_tdd` stays GREEN — existing tool-change tests unaffected.
 - **AC-7** — `cargo clippy --workspace -- -D warnings` clean.

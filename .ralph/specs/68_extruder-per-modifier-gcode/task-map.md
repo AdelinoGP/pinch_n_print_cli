@@ -1,10 +1,10 @@
-# Task Map: 58_extruder-per-modifier-gcode
+# Task Map: 68_extruder-per-modifier-gcode
 
 ## Purpose
 
 This packet introduces TASK-208 and TASK-209, not present in `docs/07_implementation_status.md` at packet-author time. Step 6 of `implementation-plan.md` appends them after TASK-207. This file maps each task to implementation steps, the packets it depends on, and the tests it turns GREEN.
 
-This packet is the second of a two-packet chain: Packet 57 added the fixture test harness and RED extruder tests; Packet 58 implements full Region Config Modifiers (config_delta stamping) and turns the RED tests GREEN.
+This packet is the second of a two-packet chain: Packet 67 added the fixture test harness and RED extruder tests; Packet 68 implements full Region Config Modifiers (config_delta stamping) and turns the RED tests GREEN.
 
 ## Task-to-Step Mapping
 
@@ -28,7 +28,7 @@ This packet is the second of a two-packet chain: Packet 57 added the fixture tes
 | Packet 56c (`56c_threemf-negative-and-support-subtype-routing`) | Depends on | Populates `modifier_volumes` in `MeshIR`. Provides the support paint-segmentation piggyback. This packet reads `modifier_volumes` and stamps config from them. |
 | Packet 64 (`64_paint-native-migration`) | Depends on | Provides host-native paint pipeline. The config stamping runs in the host-native `PrePass::RegionMapping` path. |
 | Packet 51 (`51_regionmap-paint-semantic-aware`) | Depends on | TASK-181 provides `overlay_resolved()` (used for merging) and `paint_overrides` infrastructure (config-delta stamps before paint_overrides apply). |
-| Packet 57 (`57_3mf-fixture-e2e-hardening`) | Depends on | Provides fixture test harness and the two RED tests this packet turns GREEN. |
+| Packet 67 (`67_3mf-fixture-e2e-hardening`) | Depends on | Provides fixture test harness and the two RED tests this packet turns GREEN. |
 | (none) | Unblocks | Terminal packet in this chain. No further packets planned. Future work: per-key consumers (fuzzy_skin → fuzzy-skin module), polygon-level overlap, per-layer Z-range intervals. |
 
 ## Notes for Implementer
@@ -38,6 +38,6 @@ This packet is the second of a two-packet chain: Packet 57 added the fixture tes
 - The `ConfigDelta.fields` type (`HashMap<String, ConfigValue>`) is identical to `ResolvedConfig.extensions` type — direct copy with subtype filtering.
 - `ModifierVolume.mesh: IndexedTriangleSet` — compute the 2D bbox from `(x, y)` components of all vertices.
 - GCode tests search for `T0` and `T1` as string patterns. Position-independent. Case-sensitive.
-- Packet 57 must be `status: implemented` before this packet activates — Step 0 verifies.
+- Packet 67 must be `status: implemented` before this packet activates — Step 0 verifies.
 - No `cargo test --workspace` needed — targeted regression commands sufficient.
 - The `paint_segmentation.rs` approach from the previous packet version is replaced by the config-stamping approach. The existing paint pipeline (`PaintValue::ToolIndex`) is untouched; painted tools have higher priority than config-stamped tools.

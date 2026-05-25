@@ -1,4 +1,4 @@
-# Design: 58_extruder-per-modifier-gcode
+# Design: 68_extruder-per-modifier-gcode
 
 ## Controlling Code Paths
 
@@ -31,17 +31,18 @@ model_loader.rs:562-587 → ModifierVolume { config_delta: ConfigDelta { fields:
 
 ### After this packet
 
-Add a config-stamping step inside `execute_region_mapping_with_cap()`, between per-object config resolution and paint_overrides application:
+Add a config-stamping step inside `execute_region_mapping_with_cap()`, between per-object config resolution and paint_overrides application. Modifiers apply globally per object (see "Overlap detection" row in Selected Approach):
 
 ```
 per-object config resolution
-  → stamp_modifier_config_deltas(mesh_ir, region_polygons, &mut base_config)
-    → for each ModifierVolume in mesh_ir.modifier_volumes
-      → SKIP if subtype is "support_enforcer" or "support_blocker"  ← OrcaSlicer parity, see Subtype filter row
-      → compute modifier 2D bbox from mesh vertices
-      → if modifier bbox overlaps region extent
-        → build overlay: ResolvedConfig with extensions = config_delta.fields (minus "subtype")
-        → overlay_resolved(&mut base_config, &overlay)
+  → if any ObjectMesh in objects matches region.object_id
+    → stamp_modifier_config_deltas(base_config, &object.modifier_volumes)
+      → sort modifier_volumes by priority ascending (last-writer-wins)
+      → for each ModifierVolume in that order
+        → SKIP entirely if subtype is "support_enforcer" or "support_blocker"  ← OrcaSlicer parity (PrintApply.cpp:590-594)
+        → build overlay: ResolvedConfig with extensions = config_delta.fields
+          (minus "subtype"; minus truly-empty values — empty string / empty list)
+        → overlay_resolved(base_config, &overlay)  // returns new base
   → paint_overrides application (existing — can override config-delta stamped values)
   → RegionPlan { config, ... }
 ```
@@ -93,7 +94,7 @@ The OrcaSlicer comparison surface is documented in `requirements.md` §OrcaSlice
 |---|---|---|
 | Config key storage | `RegionPlan.config.extensions` (HashMap) | Already exists on `ResolvedConfig`. Carries unknown keys without IR schema changes. Typed fields can be promoted later. |
 | Config stamping location | Inside `execute_region_mapping_with_cap()`, after per-object config resolution, before paint_overrides | Per-object config is the base. Modifier config_delta overrides it. Paint overrides can further override. The ordering is: global → per-object → modifier_delta → paint. |
-| Overlap detection | 2D bounding-box overlap between modifier volume mesh and region polygon extent | Simple, correct for the global-scope `ModifierScope::AllFeatures` behavior. Polygon-level overlap can be refined later without changing the stamping mechanism. |
+| Overlap detection | Global per-object: every region whose `object_id` matches an `ObjectMesh.id` receives all of that object's modifier_volume `config_delta` stamps (subject to the subtype filter and priority ordering). No bbox/polygon overlap check is performed. | `ActiveRegion` does not carry polygon or bbox data (only `object_id`, `region_id`, `resolved_config`), so a 2D bbox-overlap check would require threading polygon data through the per-region loop. The only `ModifierScope` variant in use is `AllFeatures` and per-layer Z intervals are out of scope for this packet, so global-per-object application is semantically equivalent today. Bbox or polygon-level overlap remains a refinement path when partial-volume / Z-range scopes are introduced. |
 | Merge mechanism | `overlay_resolved(&mut base, &overlay)` — the existing function at region_mapping.rs:100 | Single merge point. Already handles `extensions` key merging at line 193. |
 | Subtype exclusion | (a) Filter out `"subtype"` key from `config_delta.fields` before stamping. (b) Additionally, skip the entire modifier_volume if its subtype is `support_enforcer` or `support_blocker` — see new "Subtype filter" row. | (a) `"subtype"` is routing metadata, not a config key. (b) OrcaSlicer parity (see Subtype filter row). |
 | Subtype filter | `stamp_modifier_config_deltas` SKIPS modifier_volumes whose `config_delta.fields["subtype"]` is `String("support_enforcer")` or `String("support_blocker")`. Only `negative_part` and `modifier_part` subtypes participate in stamping. | Matches `OrcaSlicerDocumented/src/libslic3r/PrintApply.cpp:590-594` (`model_volume_solid_or_modifier()` excludes ENFORCER and BLOCKER from region-config merging). Without this filter, the bridge_support_enforcers.3mf fixture (parent extruder=1, enforcer extruder=0) would emit a spurious T0 in GCode that real OrcaSlicer does not emit. Packet 67's `AC-Mod-4` and `AC-Mod-5` (test names `support_enforcer_config_delta_not_stamped` and `support_blocker_config_delta_not_stamped`) are the permanent regression guards for this filter. |
@@ -112,7 +113,8 @@ The OrcaSlicer comparison surface is documented in `requirements.md` §OrcaSlice
 | Add `extruder: Option<u32>` to `RegionPlan` | Unnecessary typed field. The `extensions` bucket carries it with zero IR cost. Would set precedent for adding one field per config key. |
 | Store extruder on `ModifierVolume` as a typed field | Requires `slicer-ir` schema bump. `config_delta` already carries the value generically. |
 | Create new `RegionPlan` entries for each modifier-driven config delta | OrcaSlicer creates distinct `PrintRegion`s, but our `RegionPlan` with `config` per region already handles distinct behavior. Creating new entries would require splitting region polygons by modifier overlap — complex, out of scope. |
-| Polygon-level overlap detection | Correct but complex. Bbox overlap achieves the same result for rectangular/cuboid modifier volumes (the common case). Polygon overlap is a refinement that can follow. |
+| 2D bounding-box overlap between modifier volume mesh and region polygon extent | `ActiveRegion` exposes no polygon data inside `execute_region_mapping_with_cap`; adding a bbox check would require threading polygon geometry through the per-region loop. With only `ModifierScope::AllFeatures` in use and per-layer Z intervals out of scope, bbox checking provides no observable behavior difference vs the global-per-object stamping that ships. Bbox / polygon-level overlap becomes valuable only when Z-range or partial-volume scopes are introduced. |
+| Polygon-level overlap detection | Correct but complex. Same scope-mismatch as the bbox alternative — the per-region loop has no polygon data and the in-use scope is global. Polygon overlap is a refinement that can follow once partial-scope modifier variants exist. |
 | Thread `config_delta` through a new PrePass stage | Adds complexity. Region Mapping already has all the inputs (MeshIR, polygons). A function call is simpler than a new stage. |
 | Stamp config into `paint_overrides` instead of `config.extensions` | `paint_overrides` is per-PaintSemantic, requiring a semantic key. Modifier config deltas are volume-driven, not paint-driven. The `config.extensions` bucket is the correct carrier. |
 | Stamp ENFORCER/BLOCKER config into RegionPlan | OrcaSlicer treats `support_enforcer` and `support_blocker` `extruder` (and all other config fields) as **decorative** (`OrcaSlicerDocumented/src/libslic3r/PrintApply.cpp:590-594` excludes them from `model_volume_solid_or_modifier()`). Stamping would cause spurious T-changes for `bridge_support_enforcers.3mf` where enforcer extruder=0 differs from the parent's extruder=1. See Subtype filter row. |
@@ -177,24 +179,24 @@ Primary files this packet edits:
 - `ResolvedConfig.extensions` is `HashMap<String, ConfigValue>` — same type as `ConfigDelta.fields`. Direct copy after filtering.
 - `overlay_resolved(&mut base, &overlay)` at region_mapping.rs:100-193 merges `extensions` at line 193: for each key in overlay.extensions, inserts into base.extensions (overwriting if present).
 - `ModifierVolume.priority: u32` — higher value = higher priority. The stamping loop sorts by priority ascending before stamping, so higher-priority modifiers stamp last and win.
-- `ModifierVolume.mesh: IndexedTriangleSet` — provides vertex positions in world space. The 2D bbox is computed from `(x, y)` components of all vertices.
+- `ModifierVolume.mesh: IndexedTriangleSet` — provides vertex positions in world space. Reserved for future bbox / polygon-level overlap refinement; not consumed by the current global-per-object stamping path.
 
 ## Locked Assumptions and Invariants
 
 1. `config_delta.fields` uses `ConfigKey = String` and `ConfigValue` enum — same types as `ResolvedConfig.extensions`. No type conversion needed between stamp source and destination.
 2. `overlay_resolved()` merges `extensions` keys by simple insertion (line 193: `base.extensions.insert(k, v)`). This is the last-writer-wins behavior needed for priority ordering.
-3. The per-region loop in `execute_region_mapping_with_cap()` has access to region polygon data sufficient to compute a 2D bbox for overlap checking.
+3. The per-region loop in `execute_region_mapping_with_cap()` does **not** have access to region polygon data — `ActiveRegion` carries only `object_id`, `region_id`, and `resolved_config`. Modifier-volume stamping therefore applies globally per object (matching `ModifierScope::AllFeatures`, the only variant in use) rather than via a bbox/polygon overlap test.
 4. `mesh_ir: &MeshIR` is available in the region-mapping prepass scope (either from function parameters or from the blackboard). If not directly available, it must be threaded through.
 5. `dominant_tool_index()` returns `None` when no paint-derived tool exists — the config-extensions fallback is only used in that case. Paint tools take precedence.
 6. The `"subtype"` exclusion filter is correct for all current and future modifier volumes. If a future modifier type uses `"subtype"` as a config key (unlikely), the exclusion can be narrowed.
-7. Modifier overlaps are computed per-region at region-mapping time. If a region's polygons span a superset of the modifier's extent, the modifier's config applies to all layers in that region. This is intentionally coarse — refinement to per-layer Z-range intervals is future work.
-8. Packet 57's fixture tests exist and are compilable — this packet extends them.
+7. Modifier-volume stamping is global per object: every region whose `object_id` matches an `ObjectMesh.id` receives all of that object's modifier_volume config_delta keys (subject to the subtype filter and priority ordering). This is intentionally coarse — refinement to bbox / polygon overlap or per-layer Z-range intervals is future work, and only becomes meaningful once `ModifierScope` variants other than `AllFeatures` are introduced.
+8. Packet 67's fixture tests exist and are compilable — this packet extends them.
 
 ## Risks and Tradeoffs
 
 | Risk | Mitigation |
 |---|---|
-| Bbox overlap is too coarse — a small modifier affects far-away regions in the same object | Bbox is correct for the common case (cuboid modifiers). For complex meshes, a region that doesn't overlap the modifier's bbox won't get stamped. False positive risk is low. If this becomes an issue, polygon-level overlap is the refinement path. |
+| Global per-object stamping is too coarse — a small modifier affects every region of the same object even where it doesn't geometrically overlap | Acceptable for the only `ModifierScope` variant in use (`AllFeatures`) and the only 3MF modifier subtypes in flight (`modifier_part`, `negative_part`). For complex meshes with partial-volume modifiers, the refinement path is bbox overlap (then polygon overlap), which can be added without changing the stamping API — `stamp_modifier_config_deltas` would gain a polygon/extent parameter and per-modifier filtering. |
 | `mesh_ir` not available in the region-mapping prepass scope | Step 1 discovery checks this. If unavailable, thread it through the function signature or store on the blackboard via a new prepass parameter. |
 | Existing `config.extensions` keys from CLI config could collide with modifier-stamped keys | The `overlay_resolved` merge is last-writer-wins. Modifier config_delta stamps after per-object but before paint. If CLI sets `extensions["extruder"]`, the modifier overrides it. This is correct behavior. |
 | `ConfigValue::Int(0)` for extruder is indistinguishable from an absent value | Special-case the default-skip: only skip empty strings and empty lists. `Int(0)` for `"extruder"` is meaningful. Use a key-aware check. |
@@ -212,4 +214,4 @@ Primary files this packet edits:
 
 - `[FWD]` Does `execute_region_mapping_with_cap()` have direct access to `mesh_ir: &MeshIR` or does it need to be threaded through? Checked in Step 1. If unavailable, the function signature adds a `mesh_ir: &MeshIR` parameter and callers are updated.
 - `[FWD]` Does `overlay_resolved()` at line 193 insert extensions keys or merge them? Checked in Step 1. If it inserts (not merges), last-writer-wins works correctly.
-- `[FWD]` What is the exact type of region extent data available in the per-region loop? Checked in Step 1. If no explicit bbox exists, compute from region polygons.
+- `[RESOLVED — design moved to global-per-object]` What is the exact type of region extent data available in the per-region loop? Step 1 discovery confirmed `ActiveRegion` exposes no polygon/bbox data; design pivoted to global-per-object stamping (see Selected Approach "Overlap detection" row).

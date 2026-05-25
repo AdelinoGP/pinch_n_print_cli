@@ -168,6 +168,7 @@ fn region_mapping_cap_exceeded_is_structured_fatal() {
         &plan,
         None,
         &std::collections::BTreeMap::new(),
+        &[],
         2,
     )
     .expect_err("must fail");
@@ -219,6 +220,7 @@ fn region_mapping_cap_exceeded_surfaces_top_contributors_and_remediation() {
         &plan,
         None,
         &std::collections::BTreeMap::new(),
+        &[],
         5,
     )
     .expect_err("must fail");
@@ -279,6 +281,7 @@ fn region_mapping_at_cap_is_accepted() {
         &plan,
         None,
         &std::collections::BTreeMap::new(),
+        &[],
         2,
     )
     .expect("region mapping at exactly the cap must be accepted");
@@ -303,8 +306,14 @@ fn region_mapping_duplicate_region_key_is_structured_fatal() {
     };
     let plan = empty_execution_plan();
 
-    let err = execute_region_mapping(&layer_plan, &plan, None, &std::collections::BTreeMap::new())
-        .expect_err("must fail");
+    let err = execute_region_mapping(
+        &layer_plan,
+        &plan,
+        None,
+        &std::collections::BTreeMap::new(),
+        &[],
+    )
+    .expect_err("must fail");
     match err {
         RegionMappingError::DuplicateRegionKey { key } => {
             assert_eq!(key.global_layer_index, 0);
@@ -366,6 +375,7 @@ fn region_mapping_builtin_commit_failure_surfaces_via_prepass_error() {
             &empty_execution_plan(),
             None,
             &std::collections::BTreeMap::new(),
+            &[],
         )
         .unwrap(),
     );
@@ -389,9 +399,9 @@ fn region_mapping_is_deterministic_for_same_input() {
     let plan = empty_execution_plan();
 
     let empty_map = std::collections::BTreeMap::new();
-    let a = execute_region_mapping(&layer_plan, &plan, None, &empty_map).unwrap();
-    let b = execute_region_mapping(&layer_plan, &plan, None, &empty_map).unwrap();
-    let c = execute_region_mapping(&layer_plan, &plan, None, &empty_map).unwrap();
+    let a = execute_region_mapping(&layer_plan, &plan, None, &empty_map, &[]).unwrap();
+    let b = execute_region_mapping(&layer_plan, &plan, None, &empty_map, &[]).unwrap();
+    let c = execute_region_mapping(&layer_plan, &plan, None, &empty_map, &[]).unwrap();
 
     assert_eq!(a, b);
     assert_eq!(b, c);

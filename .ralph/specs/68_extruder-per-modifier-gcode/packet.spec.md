@@ -1,22 +1,22 @@
 ---
 status: draft
-packet: 58_extruder-per-modifier-gcode
+packet: 68_extruder-per-modifier-gcode
 task_ids:
   - TASK-208
   - TASK-209
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 depends_on:
-  - 57_3mf-fixture-e2e-hardening (must be status: implemented; provides fixture test harness + RED extruder tests)
+  - 67_3mf-fixture-e2e-hardening (must be status: implemented; provides fixture test harness + RED extruder tests)
   - 56c_threemf-negative-and-support-subtype-routing (must be status: implemented; provides support paint-segmentation piggyback and modifier_volume population)
   - 64_paint-native-migration (must be status: implemented; provides host-native paint pipeline)
   - 51_regionmap-paint-semantic-aware (must be status: implemented; TASK-181 provides paint_overrides infrastructure and overlay_resolved)
 unblocks: []
 ---
 
-# Packet Contract: 58_extruder-per-modifier-gcode
+# Packet Contract: 68_extruder-per-modifier-gcode
 
-> Implements full Region Config Modifiers: stamps ALL `config_delta.fields` from 3MF modifier volumes into `RegionPlan.config.extensions` when modifier geometry overlaps a region. Replaces the narrow extruder-through-paint workaround with a general config-stamping mechanism that matches OrcaSlicer's `PrintApply::generate_print_object_regions()` behavior. Every `config_delta` key — `extruder`, `fuzzy_skin`, `matrix`, and future extensible keys — becomes a per-region config override. The `extruder` key feeds the existing `required_tool` → `T{n}` GCode emission path. Turns the two RED tests from Packet 57 GREEN and adds coverage proving non-extruder keys survive end-to-end.
+> Implements full Region Config Modifiers: stamps ALL `config_delta.fields` from 3MF modifier volumes (per `ObjectMesh`) into `RegionPlan.config.extensions`. Replaces the narrow extruder-through-paint workaround with a general config-stamping mechanism that matches OrcaSlicer's `PrintApply::generate_print_object_regions()` behavior. Every `config_delta` key — `extruder`, `fuzzy_skin`, `matrix`, and future extensible keys — becomes a per-region config override. The `extruder` key feeds the existing `required_tool` → `T{n}` GCode emission path. Turns Packet 67's three RED tests GREEN and adds coverage proving non-extruder keys survive end-to-end.
 
 ## Goal
 
@@ -30,21 +30,21 @@ Out of scope: WASM guest changes, WIT changes, IR schema changes, adding new typ
 
 ## Prerequisites and Blockers
 
-- **Packet 57** (`57_3mf-fixture-e2e-hardening`) must be `status: implemented`. Provides fixture test harness + RED extruder tests.
+- **Packet 67** (`67_3mf-fixture-e2e-hardening`) must be `status: implemented`. Provides fixture test harness + RED extruder tests.
 - **Packet 56c** (`56c_threemf-negative-and-support-subtype-routing`) must be `status: implemented`. Provides `modifier_volumes` populated in `MeshIR` with `config_delta.fields`.
 - **Packet 64** (`64_paint-native-migration`) must be `status: implemented`. Provides host-native `execute_paint_segmentation`.
 - **Packet 51** (`51_regionmap-paint-semantic-aware`) must be `status: implemented`. Provides `overlay_resolved()` and `paint_overrides` infrastructure reused for config stamping.
-- Fixtures `resources/bridge_support_enforcers.3mf` and `resources/cube_positive_n_negative.3mf` must exist on disk (confirmed by Packet 57).
+- Fixtures `resources/bridge_support_enforcers.3mf`, `resources/cube_positive_n_negative.3mf`, and `resources/benchy_4color.3mf` must exist on disk (confirmed by Packet 67).
 
 ## Acceptance Criteria
 
-- **AC-1. Given** `bridge_support_enforcers.3mf` is loaded and processed through `execute_region_mapping_with_cap`, **when** the resulting `RegionMapIR.entries[*].plan.config.extensions` is inspected for a region that overlaps a support_enforcer modifier volume carrying `config_delta.fields["extruder"] = ConfigValue::Int(0)`, **then** `config.extensions["extruder"]` is `ConfigValue::Int(0)`. | `cargo test -p slicer-host --test threemf_fixture_e2e_tdd config_delta_extruder_stamped_into_extensions -- --exact --nocapture`
+- **AC-1. Given** `cube_positive_n_negative.3mf` is loaded and processed through `execute_region_mapping_with_cap`, **when** the resulting `RegionMapIR.entries[*].plan.config.extensions` is inspected for a region whose `object_id` is the parent of a `negative_part` modifier volume carrying `config_delta.fields["extruder"] = ConfigValue::Int(0)`, **then** `config.extensions["extruder"]` is `ConfigValue::Int(0)`. (The earlier draft of this AC named `bridge_support_enforcers.3mf` + a `support_enforcer` volume; that combination is unsatisfiable because `support_enforcer` is filtered by the locked Subtype filter per `PrintApply.cpp:590-594`. The AC text now names the actually-stamped subtype and fixture.) | `cargo test -p slicer-host --test threemf_fixture_e2e_tdd config_delta_extruder_stamped_into_extensions -- --exact --nocapture`
 
-- **AC-2. Given** a hand-constructed synthetic `MeshIR` is built in-test with two `ObjectMesh` entries — object A with `ObjectConfig.data["extruder"] = Int(0)`, object B with `ObjectConfig.data["extruder"] = Int(1)` — **when** the full pipeline runs and emits GCode, **then** the resulting `gcode_text` contains at least one `T0` AND at least one `T1`. Mechanism (full WASM harness vs partial-pipeline construction) is the implementer's choice. Originally specified to use `bridge_support_enforcers.3mf` with a T0+T1 assertion; retargeted to synthetic-IR because `support_enforcer` `extruder` is decorative in OrcaSlicer (Packet 67 D6) and the bridge fixture cannot produce a meaningful T0/T1 differential without `support_filament` routing infrastructure that is not in this packet's scope. | `cargo test -p slicer-host --test layer_executor_tdd extruder_synthetic_t0_t1_emission -- --exact --nocapture` (test name suggested; implementer may relocate).
+- **AC-2. Given** a partial-pipeline synthetic harness builds a `RegionMapIR` with two `RegionPlan` entries carrying `config.extensions["extruder"] = ConfigValue::Int(0)` and `ConfigValue::Int(1)` respectively, paired with a `PerimeterIR` whose two regions key onto those plans, **when** `assemble_ordered_entities` runs against the staged blackboard, **then** the resulting `ordered_entities` carry both `region_key.region_id == 0` and `region_key.region_id == 1` — which `gcode_emit` later writes as `T0` and `T1` lines (the partial-pipeline path is the locked harness because the full WASM/GCode harness adds no signal beyond the `region_id` differential exercised here). | `cargo test -p slicer-host --test layer_executor_tdd extruder_synthetic_t0_t1_emission -- --exact --nocapture`
 
 - **AC-Filter. Given** `bridge_support_enforcers.3mf` is processed through `execute_region_mapping_with_cap`, **when** `RegionMapIR.entries[*].plan.config.extensions` is inspected, **then** NO entry contains the `extruder` key — `support_enforcer` and `support_blocker` subtypes are excluded from `stamp_modifier_config_deltas` per OrcaSlicer parity (`PrintApply.cpp:590-594`). This AC reuses Packet 67's `AC-Mod-4` test verbatim; it is a permanent cross-packet regression guard. Packet 68 MUST NOT regress this test. | `cargo test -p slicer-host --test threemf_fixture_e2e_tdd support_enforcer_config_delta_not_stamped -- --exact --nocapture`
 
-- **AC-3. Given** `bridge_support_enforcers.3mf` is processed through the full pipeline, **when** a modifier volume's `config_delta.fields` contains `"fuzzy_skin" = ConfigValue::String("all")` alongside `"extruder" = ConfigValue::Int(0)`, **then** both keys appear in `RegionPlan.config.extensions` for the overlapping region (proving non-extruder keys survive the stamp). | `cargo test -p slicer-host --test threemf_fixture_e2e_tdd config_delta_non_extruder_key_survives -- --exact --nocapture`
+- **AC-3. Given** `benchy_4color.3mf` is processed through the full pipeline, **when** a `modifier_part` volume's `config_delta.fields` contains `"fuzzy_skin" = ConfigValue::String("external")` alongside `"extruder" = ConfigValue::Int(0)`, **then** both keys appear together in `RegionPlan.config.extensions` for at least one region (proving non-extruder keys survive the stamp). (The earlier draft named `bridge_support_enforcers.3mf` + `fuzzy_skin = "all"`; the only volumes in that fixture carrying both keys are `support_enforcer`, which is filtered by the locked Subtype filter, so the AC was unsatisfiable. `benchy_4color.3mf` has a non-filtered `modifier_part` carrying both keys.) | `cargo test -p slicer-host --test threemf_fixture_e2e_tdd config_delta_non_extruder_key_survives -- --exact --nocapture`
 
 - **AC-4. Given** `cube_positive_n_negative.3mf` is processed (negative_part with extruder=0), **when** region mapping runs, **then** the negative_part modifier_volume extruder key does **not** alter polygon output — `apply_negative_part_subtract` is geometry-only and config stamping on regions unaffected by negative_part is benign. | `cargo test -p slicer-host --test threemf_fixture_e2e_tdd negative_part_extruder_does_not_affect_subtract -- --exact --nocapture`
 
@@ -54,7 +54,7 @@ Out of scope: WASM guest changes, WIT changes, IR schema changes, adding new typ
 
 - **AC-7. Given** clippy is the lint gate, **when** final commit CI runs, **then** `cargo clippy --workspace -- -D warnings` is green. | `cargo clippy --workspace -- -D warnings`
 
-- **AC-8. Given** this packet's doc registration step completes, **when** `docs/07_implementation_status.md` is inspected, **then** the file contains exactly two lines matching `TASK-208.*58_extruder-per-modifier-gcode` or `TASK-209.*58_extruder-per-modifier-gcode`. | `rg -c 'TASK-20[89].*58_extruder-per-modifier-gcode' docs/07_implementation_status.md` expecting `2`
+- **AC-8. Given** this packet's doc registration step completes, **when** `docs/07_implementation_status.md` is inspected, **then** the file contains exactly two lines matching `TASK-208.*68_extruder-per-modifier-gcode` or `TASK-209.*68_extruder-per-modifier-gcode`. | `rg -c 'TASK-20[89].*68_extruder-per-modifier-gcode' docs/07_implementation_status.md` expecting `2`
 
 - **AC-9. Given** this packet's doc registration step completes, **when** `docs/04_host_scheduler.md` is inspected, **then** the file mentions modifier config delta stamping in the region-mapping section. | `rg -q 'modifier.*config.delta' docs/04_host_scheduler.md; [ $? -eq 0 ] && echo PASS || echo FAIL`
 
@@ -66,7 +66,7 @@ Out of scope: WASM guest changes, WIT changes, IR schema changes, adding new typ
 
 ## Verification
 
-- `cargo test -p slicer-host --test threemf_fixture_e2e_tdd` — all tests GREEN: pre-existing GREEN from Packet 67 + AC-Mod-1/2/3 (Packet 67's 3 RED tests) turned GREEN by `stamp_modifier_config_deltas` + AC-Mod-4/5/6 (Packet 67's GREEN parity guards) stay GREEN (subtype filter enforced). Note: Packet 67's AC-R1 and AC-R2 are withdrawn (Packet 67 D6); the "2 RED turned GREEN" language from earlier Packet 68 drafts is superseded — 3 RED tests turn GREEN, and the AC-Mod-4/5 + AC-Filter guards stay GREEN.
+- `cargo test -p slicer-host --test threemf_fixture_e2e_tdd` — all tests GREEN: pre-existing GREEN from Packet 67 + Packet 67's 3 RED tests (`modifier_part_stamps_extruder_into_extensions`, `modifier_part_stamps_fuzzy_skin_into_extensions`, `negative_part_stamps_extruder_into_extensions`) turned GREEN by `stamp_modifier_config_deltas` + the AC-Filter regression guards (`support_enforcer_config_delta_not_stamped`, `support_blocker_config_delta_not_stamped`) stay GREEN (subtype filter enforced).
 - `cargo test -p slicer-host --test threemf_subtypes_synthetic_e2e_tdd` — 56c regression (must stay GREEN).
 - `cargo clippy --workspace -- -D warnings` — lint gate.
 
@@ -78,7 +78,7 @@ Out of scope: WASM guest changes, WIT changes, IR schema changes, adding new typ
 
 ## Doc Impact Statement (Required)
 
-- `docs/07_implementation_status.md` — append TASK-208 and TASK-209 rows after TASK-207. Verify: `rg -c 'TASK-208.*58_extruder-per-modifier-gcode' docs/07_implementation_status.md` → 1; `rg -c 'TASK-209.*58_extruder-per-modifier-gcode' docs/07_implementation_status.md` → 1.
+- `docs/07_implementation_status.md` — append TASK-208 and TASK-209 rows after TASK-207. Verify: `rg -c 'TASK-208.*68_extruder-per-modifier-gcode' docs/07_implementation_status.md` → 1; `rg -c 'TASK-209.*68_extruder-per-modifier-gcode' docs/07_implementation_status.md` → 1.
 - `docs/02_ir_schemas.md` — no changes. `ConfigDelta`, `RegionPlan.config.extensions`, and `ModifierVolume` already documented.
 - `docs/04_host_scheduler.md` — add one sentence noting that modifier config delta stamping occurs in region-mapping after per-object config resolution. Verify: `rg -q 'modifier.*config.delta' docs/04_host_scheduler.md`.
 - `docs/01_system_architecture.md` — no changes needed; `extensions` bucket contract is already documented.
