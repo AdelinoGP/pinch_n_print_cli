@@ -2464,6 +2464,7 @@ dependencies = [
  "tempfile",
  "tobj",
  "toml 0.8.23",
+ "top-surface-ironing",
  "uuid",
  "wasmtime",
  "wat",
