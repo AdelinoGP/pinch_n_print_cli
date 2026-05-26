@@ -638,25 +638,33 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
 /// Unknown claim IDs cause a LoadError with kind Validation.
 /// Fill-style claims (prefix `claim:`) are validated against FILL_CLAIM_IDS.
 /// Non-fill claims (e.g. `perimeter-generator`) are always accepted.
+/// Non-fill `claim:*` IDs that the catalog explicitly recognises beyond the
+/// four fill-role claims. Adding to this list lets a module hold a new claim
+/// that participates in dedup but is not interchangeable with the fill claims.
+const RECOGNIZED_NONFILL_CLAIM_IDS: &[&str] = &["claim:ironing"];
+
 fn validate_claim_ids(holds: &[String], manifest_path: &Path) -> Result<Vec<String>, LoadError> {
     for claim in holds {
         // Non-fill claim — always accept.
         if !claim.starts_with("claim:") {
             continue;
         }
-        // Fill-style claim: accept if in FILL_CLAIM_IDS, otherwise accept for
-        // forward-compatibility (future fill claims extend the set).
+        // Fill-style claim: accept if in FILL_CLAIM_IDS.
         if FILL_CLAIM_IDS.contains(&claim.as_str()) {
             continue;
         }
-        // Not a known fill claim — reject it.
+        // Recognised non-fill claim (e.g. `claim:ironing` for top-surface-ironing).
+        if RECOGNIZED_NONFILL_CLAIM_IDS.contains(&claim.as_str()) {
+            continue;
+        }
+        // Not a known claim — reject it.
         return Err(LoadError {
             path: manifest_path.to_path_buf(),
             field: Some(String::from("claims.holds")),
             kind: LoadErrorKind::Validation,
             message: format!(
                 "unknown claim ID '{claim}' — expected one of: \
-                 [\"claim:top-fill\", \"claim:bottom-fill\", \"claim:bridge-fill\", \"claim:sparse-fill\"]"
+                 [\"claim:top-fill\", \"claim:bottom-fill\", \"claim:bridge-fill\", \"claim:sparse-fill\", \"claim:ironing\"]"
             ),
         });
     }

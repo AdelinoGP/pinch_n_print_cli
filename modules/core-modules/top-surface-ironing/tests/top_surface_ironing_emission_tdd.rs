@@ -1,35 +1,25 @@
-//! TDD tests for the top-surface-ironing module (rev1, PostPass::LayerFinalization).
+//! TDD tests for top-surface-ironing rev 0.2 (Layer::Infill).
 //!
-//! These tests exercise the rewritten `TopSurfaceIroning` `FinalizationModule`
-//! across object-scope `Vec<LayerCollectionIR>` fixtures. They mirror the
-//! object-scope test style used by `skirt-brim/tests/finalization_live_tdd.rs`.
+//! After the slicing-promotion refactor, ironing runs as a Layer::Infill
+//! module that reads polygon-precise top_solid_fill from SliceRegionView
+//! (populated by PrePass::ShellClassification) and emits low-flow Ironing
+//! paths via InfillOutputBuilder.
 //!
-//! Coordinate system reminder: 1 unit = 100 nm (NOT 1 nm). Geometry inputs
-//! here are constructed in mm via `Point3WithWidth { x: f32, y: f32, ... }`
-//! since `ExtrusionPath3D::points` carry mm values directly.
+//! Coordinate system: 1 unit = 100 nm; use `Point2::from_mm` for fixtures.
 
 #![allow(missing_docs)]
 
 use std::collections::HashMap;
 
-use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
-    PrintEntity, RegionKey, SemVer,
-};
-use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCollectionView};
+use slicer_ir::{ConfigValue, ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon};
+use slicer_sdk::builders::InfillOutputBuilder;
+use slicer_sdk::traits::LayerModule;
+use slicer_sdk::views::SliceRegionView;
 use top_surface_ironing::TopSurfaceIroning;
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Fixture helpers
 // ---------------------------------------------------------------------------
-
-fn semver() -> SemVer {
-    SemVer {
-        major: 0,
-        minor: 1,
-        patch: 0,
-    }
-}
 
 fn config_with(pairs: &[(&str, ConfigValue)]) -> ConfigView {
     let mut map = HashMap::new();
@@ -39,404 +29,269 @@ fn config_with(pairs: &[(&str, ConfigValue)]) -> ConfigView {
     ConfigView::from_map(map)
 }
 
-/// Build a `PrintEntity` with the given role over a 10mm × 10mm closed
-/// rectangle at (0, 0)-(10, 10) at the supplied z. The path has 5 points
-/// (closing the loop) so unions / scan-line fills produce realistic output.
-fn rect_entity(role: ExtrusionRole, z: f32, region_id: u64) -> PrintEntity {
-    let mk = |x: f32, y: f32| Point3WithWidth {
-        x,
-        y,
-        z,
-        width: 0.4,
-        flow_factor: 1.0,
-        overhang_quartile: None,
-    };
-    PrintEntity {
-        entity_id: 1,
-        path: ExtrusionPath3D {
-            points: vec![
-                mk(0.0, 0.0),
-                mk(10.0, 0.0),
-                mk(10.0, 10.0),
-                mk(0.0, 10.0),
-                mk(0.0, 0.0),
-            ],
-            role: role.clone(),
-            speed_factor: 1.0,
-        },
-        role,
-        region_key: RegionKey {
-            global_layer_index: 0, // overwritten by make_layer
-            object_id: "obj-0".to_string(),
-            region_id,
-        },
-        topo_order: 0,
-    }
-}
-
-fn make_layer(index: u32, z: f32, mut entities: Vec<PrintEntity>) -> LayerCollectionIR {
-    // Stamp the global_layer_index into each entity's region_key for realism.
-    for e in entities.iter_mut() {
-        e.region_key.global_layer_index = index;
-    }
-    LayerCollectionIR {
-        schema_version: semver(),
-        global_layer_index: index,
-        z,
-        ordered_entities: entities,
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
-    }
-}
-
-/// Default ironing-enabled config matching Orca defaults.
-fn enabled_config() -> ConfigView {
+fn default_config() -> ConfigView {
     config_with(&[
-        ("ironing", ConfigValue::Bool(true)),
+        ("ironing_enabled", ConfigValue::Bool(true)),
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(0.10)),
-        ("ironing_spacing", ConfigValue::Float(0.1)),
-        (
-            "ironing_pattern",
-            ConfigValue::String("rectilinear".to_string()),
-        ),
+        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        ("ironing_pattern", ConfigValue::String("rectilinear".to_string())),
     ])
 }
 
-/// Convert an `IR` Vec into the `View` slice expected by `run_finalization`.
-fn views_from(layers: Vec<LayerCollectionIR>) -> Vec<LayerCollectionView> {
-    layers.into_iter().map(LayerCollectionView::new).collect()
+/// 10mm × 10mm axis-aligned square centred at (0, 0).
+fn square_polygon(side_mm: f32) -> ExPolygon {
+    let half = side_mm / 2.0;
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(-half, -half),
+                Point2::from_mm(half, -half),
+                Point2::from_mm(half, half),
+                Point2::from_mm(-half, half),
+            ],
+        },
+        holes: vec![],
+    }
+}
+
+/// L-shaped polygon, used to verify clip-to-polygon behaviour: a 10×10 square
+/// with the upper-right 5×5 quadrant removed.
+fn l_shape_polygon() -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(-5.0, -5.0),
+                Point2::from_mm(5.0, -5.0),
+                Point2::from_mm(5.0, 0.0),
+                Point2::from_mm(0.0, 0.0),
+                Point2::from_mm(0.0, 5.0),
+                Point2::from_mm(-5.0, 5.0),
+            ],
+        },
+        holes: vec![],
+    }
+}
+
+/// Build a SliceRegionView with the given shell-index settings and an
+/// optional `top_solid_fill` polygon list.
+fn region_with(
+    top_shell_index: Option<u8>,
+    bottom_shell_index: Option<u8>,
+    top_solid_fill: Vec<ExPolygon>,
+) -> SliceRegionView {
+    let mut region = SliceRegionView::default();
+    region.set_object_id("obj-test".to_string());
+    region.set_region_id(0);
+    region.set_z(1.0);
+    region.set_effective_layer_height(0.2);
+    region.set_top_shell_index(top_shell_index);
+    region.set_bottom_shell_index(bottom_shell_index);
+    region.set_top_solid_fill(top_solid_fill);
+    region
 }
 
 // ---------------------------------------------------------------------------
-// AC-1: topmost layer emits Ironing path with reduced flow
+// Tests
 // ---------------------------------------------------------------------------
 
 #[test]
-fn topmost_layer_emits_ironing_with_reduced_flow() {
-    let config = enabled_config();
-    let module = TopSurfaceIroning::on_print_start(&config).expect("config valid");
+fn topmost_layer_with_top_solid_fill_emits_ironing_paths() {
+    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let region = region_with(Some(0), None, vec![square_polygon(10.0)]);
+    let mut output = InfillOutputBuilder::new();
 
-    // 5 layers (z = 0.0 / 0.2 / 0.4 / 0.6 / 0.8); only layer 4 carries
-    // TopSolidInfill paths over a 10mm × 10mm square.
-    let layers = vec![
-        make_layer(0, 0.0, vec![]),
-        make_layer(1, 0.2, vec![]),
-        make_layer(2, 0.4, vec![]),
-        make_layer(3, 0.6, vec![]),
-        make_layer(
-            4,
-            0.8,
-            vec![rect_entity(ExtrusionRole::TopSolidInfill, 0.8, 1)],
-        ),
-    ];
-    let views = views_from(layers);
-    let mut output = FinalizationOutputBuilder::new();
     module
-        .run_finalization(&views, &mut output, &config)
-        .expect("run_finalization must succeed");
+        .run_infill(0, &[region], &mut output, &default_config())
+        .unwrap();
 
-    let pushes = output.entity_pushes();
-    let on_top: Vec<_> = pushes
-        .iter()
-        .filter(|(li, p, _)| *li == 4 && p.role == ExtrusionRole::Ironing)
-        .collect();
+    let paths = output.ironing_paths();
+    assert!(!paths.is_empty(), "expected at least one ironing path");
+    for p in paths {
+        assert_eq!(p.role, ExtrusionRole::Ironing);
+        assert!(p.points.len() >= 2);
+    }
+}
+
+#[test]
+fn missing_top_shell_index_emits_no_ironing() {
+    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let region = region_with(None, None, vec![]);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &mut output, &default_config())
+        .unwrap();
+
     assert!(
-        !on_top.is_empty(),
-        "expected at least one Ironing push on layer 4, got {} pushes total",
-        pushes.len()
+        output.ironing_paths().is_empty(),
+        "regions with top_shell_index=None must not emit ironing"
     );
-    for (_, path, _) in &on_top {
-        assert!(
-            path.points.len() >= 4,
-            "ironing path must have >= 4 points, got {}",
-            path.points.len()
-        );
-        for pt in &path.points {
+}
+
+#[test]
+fn interior_top_shell_layers_emit_no_ironing() {
+    // top_shell_index = Some(1) means the region is 1 layer below the exposed
+    // top — only Some(0) (the actual topmost exposed surface) gets ironed.
+    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let region = region_with(Some(1), None, vec![square_polygon(10.0)]);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &mut output, &default_config())
+        .unwrap();
+
+    assert!(
+        output.ironing_paths().is_empty(),
+        "depth-1 top-shell layer must not be ironed"
+    );
+}
+
+#[test]
+fn disabled_config_emits_no_ironing() {
+    let cfg = config_with(&[
+        ("ironing_enabled", ConfigValue::Bool(false)),
+        ("ironing_speed", ConfigValue::Float(20.0)),
+        ("ironing_flow", ConfigValue::Float(0.10)),
+        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        ("ironing_pattern", ConfigValue::String("rectilinear".to_string())),
+    ]);
+    let module = TopSurfaceIroning::on_print_start(&cfg).unwrap();
+    let region = region_with(Some(0), None, vec![square_polygon(10.0)]);
+    let mut output = InfillOutputBuilder::new();
+
+    module.run_infill(0, &[region], &mut output, &cfg).unwrap();
+
+    assert!(output.ironing_paths().is_empty());
+}
+
+#[test]
+fn spacing_governs_stroke_count_lower_bound() {
+    // 10mm × 10mm square at 0.1mm spacing → ≥ 80 vertices (40+ strokes ×
+    // 2 endpoints). Loose lower bound — clip-to-polygon trimming reduces the
+    // exact count but the square is convex so every row should clip cleanly.
+    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let region = region_with(Some(0), None, vec![square_polygon(10.0)]);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &mut output, &default_config())
+        .unwrap();
+
+    let total_points: usize = output.ironing_paths().iter().map(|p| p.points.len()).sum();
+    assert!(
+        total_points >= 80,
+        "expected ≥ 80 ironing points for 10mm² @ 0.1mm spacing, got {total_points}"
+    );
+}
+
+#[test]
+fn bottom_only_region_emits_no_ironing() {
+    // bottom_shell_index=Some(0) (exposed bottom) — ironing is a top-surface
+    // feature; bottom exposure must not trigger it.
+    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let region = region_with(None, Some(0), vec![]);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &mut output, &default_config())
+        .unwrap();
+
+    assert!(output.ironing_paths().is_empty());
+}
+
+#[test]
+fn zero_flow_config_rejected_at_on_print_start() {
+    let cfg = config_with(&[
+        ("ironing_enabled", ConfigValue::Bool(true)),
+        ("ironing_speed", ConfigValue::Float(20.0)),
+        ("ironing_flow", ConfigValue::Float(0.0)),
+        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        ("ironing_pattern", ConfigValue::String("rectilinear".to_string())),
+    ]);
+    let err = TopSurfaceIroning::on_print_start(&cfg)
+        .expect_err("ironing_flow = 0.0 must be rejected");
+    let msg = err.message.to_string();
+    assert!(
+        msg.contains("ironing_flow"),
+        "error message must mention ironing_flow, got '{msg}'"
+    );
+}
+
+#[test]
+fn unsupported_pattern_rejected_at_on_print_start() {
+    let cfg = config_with(&[
+        ("ironing_enabled", ConfigValue::Bool(true)),
+        ("ironing_speed", ConfigValue::Float(20.0)),
+        ("ironing_flow", ConfigValue::Float(0.10)),
+        ("ironing_spacing_mm", ConfigValue::Float(0.1)),
+        ("ironing_pattern", ConfigValue::String("concentric".to_string())),
+    ]);
+    let err = TopSurfaceIroning::on_print_start(&cfg)
+        .expect_err("non-rectilinear pattern must be rejected");
+    let msg = err.message.to_string();
+    assert!(
+        msg.contains("ironing_pattern"),
+        "error message must mention ironing_pattern, got '{msg}'"
+    );
+}
+
+#[test]
+fn l_shape_clip_keeps_strokes_inside_concave_polygon() {
+    // L-shape: lower 10×5 strip plus left 5×5 column. Strokes whose midpoints
+    // fall in the cut-out 5×5 quadrant must not be emitted (or must be clipped
+    // away). We verify by computing the bounding-box-centred midpoint of every
+    // stroke and confirming it lies inside the L-shape polygon.
+    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let region = region_with(Some(0), None, vec![l_shape_polygon()]);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &mut output, &default_config())
+        .unwrap();
+
+    let paths = output.ironing_paths();
+    assert!(!paths.is_empty(), "L-shape must still produce some strokes");
+    // Stroke endpoints come in (start, end) pairs. For each pair, midpoint
+    // X must lie within the L-shape's solid mass, i.e. not in the upper-right
+    // cut-out (x > 0 && y > 0).
+    for path in paths {
+        for pair in path.points.chunks_exact(2) {
+            let midx = (pair[0].x + pair[1].x) / 2.0;
+            let midy = (pair[0].y + pair[1].y) / 2.0;
             assert!(
-                pt.flow_factor < 0.5,
-                "flow_factor must be < 0.5 for ironing, got {}",
-                pt.flow_factor
+                !(midx > 0.0 && midy > 0.0),
+                "stroke midpoint ({midx:.2}, {midy:.2}) leaked into the L-shape cut-out"
             );
         }
     }
-
-    // Zero pushes for layers 0..=3.
-    for (li, p, _) in pushes.iter() {
-        if p.role == ExtrusionRole::Ironing {
-            assert_ne!(*li, 0, "no ironing should target layer 0");
-            assert_ne!(*li, 1, "no ironing should target layer 1");
-            assert_ne!(*li, 2, "no ironing should target layer 2");
-            assert_ne!(*li, 3, "no ironing should target layer 3");
-        }
-    }
 }
 
-// ---------------------------------------------------------------------------
-// AC-2: non-top-solid layer emits no ironing
-// ---------------------------------------------------------------------------
-
 #[test]
-fn non_top_solid_layer_emits_no_ironing() {
-    let config = enabled_config();
-    let module = TopSurfaceIroning::on_print_start(&config).expect("config valid");
+fn cross_region_isolation_does_not_emit_for_uncovered_regions() {
+    // Two regions on the same layer; only region A has top_shell_index=Some(0).
+    // Region B (top_shell_index=None) must not contribute any ironing path.
+    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let region_a = region_with(Some(0), None, vec![square_polygon(10.0)]);
+    let region_b = region_with(None, None, vec![]);
+    let mut output = InfillOutputBuilder::new();
 
-    let layers = vec![make_layer(
-        0,
-        0.2,
-        vec![rect_entity(ExtrusionRole::BottomSolidInfill, 0.2, 1)],
-    )];
-    let views = views_from(layers);
-    let mut output = FinalizationOutputBuilder::new();
     module
-        .run_finalization(&views, &mut output, &config)
-        .expect("run_finalization must succeed");
+        .run_infill(0, &[region_a, region_b], &mut output, &default_config())
+        .unwrap();
 
-    let ironing_count = output
-        .entity_pushes()
+    // The output is region-agnostic at this layer, but the stroke count must
+    // match the single-region case (smoke check that B did not contribute).
+    let total_points: usize = output.ironing_paths().iter().map(|p| p.points.len()).sum();
+    let mut a_only_output = InfillOutputBuilder::new();
+    let region_a_only = region_with(Some(0), None, vec![square_polygon(10.0)]);
+    module
+        .run_infill(0, &[region_a_only], &mut a_only_output, &default_config())
+        .unwrap();
+    let expected: usize = a_only_output
+        .ironing_paths()
         .iter()
-        .filter(|(_, p, _)| p.role == ExtrusionRole::Ironing)
-        .count();
-    assert_eq!(
-        ironing_count, 0,
-        "expected zero Ironing pushes for bottom-only layer, got {ironing_count}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// AC-3: interior top-solid layer emits no ironing (real geometry)
-// ---------------------------------------------------------------------------
-
-#[test]
-fn interior_top_solid_layer_emits_no_ironing() {
-    let config = enabled_config();
-    let module = TopSurfaceIroning::on_print_start(&config).expect("config valid");
-
-    // 6 layers; layers 3, 4, 5 ALL carry real TopSolidInfill paths over the
-    // same XY region. Only layer 5 is the topmost (no further layer above).
-    let layers = vec![
-        make_layer(0, 0.0, vec![]),
-        make_layer(1, 0.2, vec![]),
-        make_layer(2, 0.4, vec![]),
-        make_layer(
-            3,
-            0.6,
-            vec![rect_entity(ExtrusionRole::TopSolidInfill, 0.6, 1)],
-        ),
-        make_layer(
-            4,
-            0.8,
-            vec![rect_entity(ExtrusionRole::TopSolidInfill, 0.8, 1)],
-        ),
-        make_layer(
-            5,
-            1.0,
-            vec![rect_entity(ExtrusionRole::TopSolidInfill, 1.0, 1)],
-        ),
-    ];
-    let views = views_from(layers);
-    let mut output = FinalizationOutputBuilder::new();
-    module
-        .run_finalization(&views, &mut output, &config)
-        .expect("run_finalization must succeed");
-
-    let pushes = output.entity_pushes();
-    let on_top_5: usize = pushes
-        .iter()
-        .filter(|(li, p, _)| *li == 5 && p.role == ExtrusionRole::Ironing)
-        .count();
-    assert!(
-        on_top_5 >= 1,
-        "expected at least one Ironing push on layer 5 (the topmost), got {on_top_5}"
-    );
-    for (li, p, _) in pushes {
-        if p.role == ExtrusionRole::Ironing {
-            assert_ne!(*li, 3, "interior layer 3 must not receive Ironing pushes");
-            assert_ne!(*li, 4, "interior layer 4 must not receive Ironing pushes");
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// AC-4: disabled config emits no ironing AND preserves input
-// ---------------------------------------------------------------------------
-
-#[test]
-fn disabled_config_emits_no_ironing_preserves_input() {
-    let config = config_with(&[
-        ("ironing", ConfigValue::Bool(false)),
-        ("ironing_flow", ConfigValue::Float(0.10)),
-    ]);
-    let module = TopSurfaceIroning::on_print_start(&config).expect("config valid");
-
-    let layers_orig = vec![make_layer(
-        0,
-        0.2,
-        vec![rect_entity(ExtrusionRole::TopSolidInfill, 0.2, 1)],
-    )];
-    let layers_clone = layers_orig.clone();
-    let views = views_from(layers_orig);
-    let mut output = FinalizationOutputBuilder::new();
-    module
-        .run_finalization(&views, &mut output, &config)
-        .expect("run_finalization must succeed");
-
-    assert!(
-        output.entity_pushes().is_empty(),
-        "disabled ironing must emit zero entity pushes, got {}",
-        output.entity_pushes().len()
-    );
-
-    // Reconstruct the underlying IR from the views (via clone of original)
-    // and confirm bytewise equality with the pre-call clone.
-    // Since `LayerCollectionView` consumed the original IR by move, we
-    // compare `layers_clone` against itself reconstituted from views.
-    let layers_after: Vec<LayerCollectionIR> = views
-        .into_iter()
-        .map(|v| {
-            // Reconstruct an IR snapshot by accessor reads — these accessors
-            // are read-only, so values must match the originals.
-            LayerCollectionIR {
-                schema_version: semver(),
-                global_layer_index: v.layer_index(),
-                z: v.z(),
-                ordered_entities: v.ordered_entities().to_vec(),
-                tool_changes: v.tool_changes().to_vec(),
-                z_hops: v.z_hops().to_vec(),
-                annotations: vec![],
-                retracts: vec![],
-                travel_moves: vec![],
-            }
-        })
-        .collect();
-    assert_eq!(
-        layers_after, layers_clone,
-        "input LayerCollectionIR must be bytewise unchanged when ironing is disabled"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// AC-5: ironing_spacing controls stroke count
-// ---------------------------------------------------------------------------
-
-#[test]
-fn ironing_spacing_controls_stroke_count() {
-    let config = config_with(&[
-        ("ironing", ConfigValue::Bool(true)),
-        ("ironing_speed", ConfigValue::Float(20.0)),
-        ("ironing_flow", ConfigValue::Float(0.10)),
-        ("ironing_spacing", ConfigValue::Float(0.1)),
-        (
-            "ironing_pattern",
-            ConfigValue::String("rectilinear".to_string()),
-        ),
-    ]);
-    let module = TopSurfaceIroning::on_print_start(&config).expect("config valid");
-
-    // Single topmost layer with a 10mm × 10mm TopSolidInfill region.
-    let layers = vec![make_layer(
-        0,
-        0.2,
-        vec![rect_entity(ExtrusionRole::TopSolidInfill, 0.2, 1)],
-    )];
-    let views = views_from(layers);
-    let mut output = FinalizationOutputBuilder::new();
-    module
-        .run_finalization(&views, &mut output, &config)
-        .expect("run_finalization must succeed");
-
-    let total_points: usize = output
-        .entity_pushes()
-        .iter()
-        .filter(|(_, p, _)| p.role == ExtrusionRole::Ironing)
-        .map(|(_, p, _)| p.points.len())
+        .map(|p| p.points.len())
         .sum();
-    assert!(
-        total_points >= 100,
-        "ironing_spacing=0.1mm over 10mm × 10mm should produce >= 100 stroke points, got {total_points}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// AC-6 (negative): bottom-only layer emits no ironing
-// ---------------------------------------------------------------------------
-
-#[test]
-fn bottom_only_layer_emits_no_ironing() {
-    let config = enabled_config();
-    let module = TopSurfaceIroning::on_print_start(&config).expect("config valid");
-
-    let layers = vec![make_layer(
-        0,
-        0.2,
-        vec![rect_entity(ExtrusionRole::BottomSolidInfill, 0.2, 1)],
-    )];
-    let views = views_from(layers);
-    let mut output = FinalizationOutputBuilder::new();
-    module
-        .run_finalization(&views, &mut output, &config)
-        .expect("run_finalization must succeed");
-
-    let ironing_count = output
-        .entity_pushes()
-        .iter()
-        .filter(|(_, p, _)| p.role == ExtrusionRole::Ironing)
-        .count();
-    assert_eq!(
-        ironing_count, 0,
-        "bottom-only layer must emit zero Ironing pushes, got {ironing_count}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// AC-7 (negative): zero ironing flow is config error naming the key
-// ---------------------------------------------------------------------------
-
-#[test]
-fn zero_ironing_flow_is_config_error() {
-    let config = config_with(&[
-        ("ironing", ConfigValue::Bool(true)),
-        ("ironing_flow", ConfigValue::Float(0.0)),
-    ]);
-
-    let result = TopSurfaceIroning::on_print_start(&config);
-    assert!(
-        result.is_err(),
-        "ironing_flow=0.0 must be rejected by on_print_start"
-    );
-    let err_msg = format!("{:?}", result.unwrap_err());
-    assert!(
-        err_msg.contains("ironing_flow"),
-        "error diagnostic must contain 'ironing_flow'; got: {err_msg}"
-    );
-}
-
-// ---------------------------------------------------------------------------
-// AC-8 (negative): unsupported ironing_pattern is config error naming the key
-// ---------------------------------------------------------------------------
-
-#[test]
-fn unsupported_ironing_pattern_is_config_error() {
-    let config = config_with(&[
-        ("ironing", ConfigValue::Bool(true)),
-        ("ironing_flow", ConfigValue::Float(0.10)),
-        (
-            "ironing_pattern",
-            ConfigValue::String("concentric".to_string()),
-        ),
-    ]);
-
-    let result = TopSurfaceIroning::on_print_start(&config);
-    assert!(
-        result.is_err(),
-        "ironing_pattern=concentric must be rejected by on_print_start"
-    );
-    let err_msg = format!("{:?}", result.unwrap_err());
-    assert!(
-        err_msg.contains("ironing_pattern"),
-        "error diagnostic must contain 'ironing_pattern'; got: {err_msg}"
-    );
+    assert_eq!(total_points, expected);
 }

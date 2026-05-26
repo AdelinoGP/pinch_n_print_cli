@@ -1,35 +1,35 @@
 [module]
 id           = "com.core.top-surface-ironing"
-version      = "0.1.0"
+version      = "0.2.0"
 display-name = "Top Surface Ironing"
-description  = "Core top surface ironing module"
+description  = "Emits low-flow ironing strokes over polygon-precise top solid fill areas at the topmost exposed surface of each region."
 author       = "modular-slicer"
 license      = "MIT"
-wit-world    = "slicer:world-finalization@1.0.0"
+wit-world    = "slicer:world-layer@1.0.0"
 
 [stage]
-id = "PostPass::LayerFinalization"
+id = "Layer::Infill"
 
 [ir-access]
-reads  = ["LayerCollectionIR"]
-writes = ["LayerCollectionIR.ironing"]
+reads  = ["SliceIR"]
+writes = ["InfillIR"]
 
 [claims]
-holds    = []
+holds    = ["claim:ironing"]
 requires = []
 
 [compatibility]
 incompatible-with = []
 requires          = []
 min-host-version  = "0.1.0"
-min-ir-schema     = "1.0.0"
-max-ir-schema     = "2.0.0"
+min-ir-schema     = "3.0.0"
+max-ir-schema     = "3.0.0"
 
 [config.schema]
-[config.schema.ironing]
+[config.schema.ironing_enabled]
 type    = "bool"
-default = false
-display = "Ironing"
+default = true
+display = "Enable Ironing"
 group   = "TopSurface"
 
 [config.schema.ironing_speed]
@@ -48,7 +48,7 @@ max     = 1.0
 display = "Ironing Flow"
 group   = "TopSurface"
 
-[config.schema.ironing_spacing]
+[config.schema.ironing_spacing_mm]
 type    = "float"
 default = 0.1
 min     = 0.01
@@ -70,4 +70,4 @@ keys = []
 
 [hints]
 estimated-ms-per-layer = 10
-layer-parallel-safe    = false
+layer-parallel-safe    = true
