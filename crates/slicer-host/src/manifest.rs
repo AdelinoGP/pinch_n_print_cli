@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use slicer_ir::{ModuleId, SemVer, StageId};
 use toml::Value;
 
-use crate::validation::FILL_CLAIM_IDS;
 
 /// Helper for serde skip_serializing_if on bool.
 fn is_false(b: &bool) -> bool {
@@ -637,37 +636,25 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
 /// Validates that all held claim IDs are known fill-role claims.
 /// Unknown claim IDs cause a LoadError with kind Validation.
 /// Fill-style claims (prefix `claim:`) are validated against FILL_CLAIM_IDS.
-/// Non-fill claims (e.g. `perimeter-generator`) are always accepted.
-/// Non-fill `claim:*` IDs that the catalog explicitly recognises beyond the
-/// four fill-role claims. Adding to this list lets a module hold a new claim
-/// that participates in dedup but is not interchangeable with the fill claims.
-const RECOGNIZED_NONFILL_CLAIM_IDS: &[&str] = &["claim:ironing"];
-
-fn validate_claim_ids(holds: &[String], manifest_path: &Path) -> Result<Vec<String>, LoadError> {
-    for claim in holds {
-        // Non-fill claim — always accept.
-        if !claim.starts_with("claim:") {
-            continue;
-        }
-        // Fill-style claim: accept if in FILL_CLAIM_IDS.
-        if FILL_CLAIM_IDS.contains(&claim.as_str()) {
-            continue;
-        }
-        // Recognised non-fill claim (e.g. `claim:ironing` for top-surface-ironing).
-        if RECOGNIZED_NONFILL_CLAIM_IDS.contains(&claim.as_str()) {
-            continue;
-        }
-        // Not a known claim — reject it.
-        return Err(LoadError {
-            path: manifest_path.to_path_buf(),
-            field: Some(String::from("claims.holds")),
-            kind: LoadErrorKind::Validation,
-            message: format!(
-                "unknown claim ID '{claim}' — expected one of: \
-                 [\"claim:top-fill\", \"claim:bottom-fill\", \"claim:bridge-fill\", \"claim:sparse-fill\", \"claim:ironing\"]"
-            ),
-        });
-    }
+/// At manifest load time we accept any `claim:*` ID — the previous hardcoded
+/// `RECOGNIZED_NONFILL_CLAIM_IDS` allowlist (containing just `"claim:ironing"`)
+/// required every new non-fill claim to be added here, which silently rotted
+/// against the actual set of holders declared in core-module manifests.
+///
+/// Typos in claim IDs are caught downstream by the DAG validator's
+/// `MissingDependency` pass: a `requires`-side typo names a claim no module
+/// holds, surfacing as a structured error at startup. A `holds`-side typo
+/// (claim that nobody requires) is benign — the claim simply never fires.
+///
+/// Fill-role claims are still privileged: `FILL_CLAIM_IDS` defines the four
+/// interchangeable roles (top, bottom, bridge, sparse) that the dispatch
+/// pipeline routes to fill modules. Non-fill claims are opaque labels.
+fn validate_claim_ids(holds: &[String], _manifest_path: &Path) -> Result<Vec<String>, LoadError> {
+    // No load-time gating beyond the `claim:` prefix convention. Anything
+    // that doesn't start with `claim:` is a non-claim string (used by
+    // legacy `holds` entries) and passes through; anything that does is
+    // accepted as a potential holder. Catalog-wide validation happens in
+    // `validate_startup_dag::validate_missing_dependencies`.
     Ok(holds.to_vec())
 }
 
