@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use slicer_core::polygon_ops::{intersection, validate_polygon_simplicity};
-use slicer_host::layer_slice::{assemble_bridge_areas, execute_layer_slice};
+use slicer_host::prepass_slice::{assemble_bridge_areas, execute_prepass_slice_single_layer};
 use slicer_host::mesh_analysis::{execute_mesh_analysis_with, MeshAnalysisConfig};
 use slicer_ir::{
     ActiveRegion, BoundingBox3, BridgeRegion, ExPolygon, FacetClass, GlobalLayer,
@@ -891,7 +891,7 @@ fn non_bridge_region_has_empty_bridge_areas() {
         is_sync_layer: false,
     };
 
-    let slice_ir = execute_layer_slice(&mesh_ir, &layer, Some(&analysis), None, None, None, None)
+    let slice_ir = execute_prepass_slice_single_layer(&mesh_ir, &layer, Some(&analysis), None)
         .expect("execute_layer_slice must succeed");
 
     for region in &slice_ir.regions {
@@ -947,7 +947,7 @@ fn invalid_bridge_excluded_from_slice_areas() {
         is_sync_layer: false,
     };
 
-    let slice_ir = execute_layer_slice(&mesh_ir, &layer, Some(&result), None, None, None, None)
+    let slice_ir = execute_prepass_slice_single_layer(&mesh_ir, &layer, Some(&result), None)
         .expect("execute_layer_slice must succeed");
 
     for region in &slice_ir.regions {

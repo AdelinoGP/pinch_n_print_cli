@@ -25,7 +25,8 @@ use slicer_host::report::{allocator as report_alloc, AccountingAllocator, Collec
 use slicer_host::{
     assemble_search_roots, build_config_schema_json, build_live_execution_plan,
     load_live_modules_for_plan, load_modules_from_roots, parse_cli_config_source,
-    resolve_global_config, resolve_per_object_configs, write_with_parents, ConfigBoundsIndex,
+    resolve_global_config, resolve_per_object_configs, validate_support_layer_heights,
+    write_with_parents, ConfigBoundsIndex,
     DefaultGCodeEmitter, DefaultGCodeSerializer, HostCli, HostCommands, HostRunOptions,
 };
 
@@ -321,6 +322,10 @@ fn main() {
                     std::process::exit(1);
                 }
             };
+            if let Err(e) = validate_support_layer_heights(&resolved_configs_map) {
+                eprintln!("error: {e}");
+                std::process::exit(1);
+            }
 
             let plan = match build_live_execution_plan(
                 loaded.sorted_stages,

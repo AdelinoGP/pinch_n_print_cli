@@ -16,12 +16,6 @@ pub mod instrumentation;
 pub mod layer_executor;
 pub mod layer_finalization;
 pub mod prepass_slice;
-/// Backwards-compatible alias for the renamed `prepass_slice` module. Tests
-/// and external code that imported `slicer_host::layer_slice::*` keep
-/// working; new code should reference `prepass_slice` directly.
-pub mod layer_slice {
-    pub use crate::prepass_slice::*;
-}
 pub mod manifest;
 pub mod mesh_analysis;
 pub mod mesh_segmentation;
@@ -53,8 +47,8 @@ pub use blackboard::{
 pub use cli::{write_with_parents, HostCli, HostCommands, HostRunOptions, OutputFormat};
 pub use config_resolution::{
     paint_semantic_namespace_key, resolve_global_config, resolve_per_object_configs,
-    resolve_per_paint_semantic_configs, BoundsDeclaration, ConfigBoundsIndex,
-    ConfigResolutionError, UnknownSemanticWarning,
+    resolve_per_paint_semantic_configs, validate_support_layer_heights, BoundsDeclaration,
+    ConfigBoundsIndex, ConfigResolutionError, UnknownSemanticWarning,
 };
 pub use dag::{build_intra_stage_dag, EdgeTo, ModuleNode};
 pub use dispatch::{
@@ -112,8 +106,8 @@ pub use prepass::{
     SurfaceGroupRecord,
 };
 pub use prepass_slice::{
-    commit_slice_builtin, execute_layer_slice, execute_prepass_slice_all_layers,
-    execute_prepass_slice_single_layer, LayerSliceError,
+    commit_slice_builtin, execute_prepass_slice_all_layers, execute_prepass_slice_single_layer,
+    LayerSliceError,
 };
 pub use python_bridge::{
     PythonBinding, PythonBridge, PythonBridgeError, PythonBridgePhase, PythonPostpassRunner,

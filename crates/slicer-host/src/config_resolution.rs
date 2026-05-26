@@ -417,6 +417,39 @@ pub fn resolve_per_object_configs(
     Ok(result)
 }
 
+/// Validate per-object `support_layer_height_mm` settings against each
+/// object's effective layer height.
+///
+/// Rule: `support_layer_height_mm` of `0.0` means "use the object's
+/// effective layer height" (the historical default). Any non-zero value
+/// must be **at least** the object's effective layer height; the printer
+/// cannot extrude a support layer thinner than the nominal model layer.
+///
+/// "Effective layer height" is taken to be each per-object resolved
+/// config's `layer_height` field. Variable-layer-height plans may refine
+/// this at runtime (per-region `effective_layer_height` on `ActiveRegion`),
+/// but the input-domain gate here uses the configured per-object value.
+///
+/// Returns `Ok(())` when every object's setting is compatible, or the
+/// first offending [`ConfigResolutionError::SupportLayerHeightTooFine`]
+/// otherwise.
+pub fn validate_support_layer_heights(
+    per_object_configs: &BTreeMap<String, ResolvedConfig>,
+) -> Result<(), ConfigResolutionError> {
+    for (object_id, cfg) in per_object_configs {
+        let support_h = cfg.support_layer_height_mm;
+        let effective_h = cfg.layer_height;
+        if support_h > 0.0 && support_h < effective_h {
+            return Err(ConfigResolutionError::SupportLayerHeightTooFine {
+                object_id: object_id.clone(),
+                support_layer_height_mm: support_h,
+                effective_layer_height_mm: effective_h,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// Apply a flat override map (already stripped of the `object_config:<id>:`
 /// prefix) on top of a base [`ResolvedConfig`].
 fn apply_overlay(

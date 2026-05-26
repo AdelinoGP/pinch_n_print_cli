@@ -17,11 +17,11 @@ use slicer_core::polygon_ops::{intersection, offset, OffsetJoinType};
 use slicer_core::slice_mesh_ex;
 use slicer_core::triangle_mesh_slicer::apply_slice_closing_radius;
 use slicer_ir::{
-    ExPolygon, GlobalLayer, LayerPlanIR, MeshIR, ObjectId, ObjectMesh, ObjectSurfaceData, Polygon,
-    RegionKey, RegionMapIR, SliceIR, SlicedRegion, SurfaceClassificationIR, Transform3d,
+    ExPolygon, GlobalLayer, MeshIR, ObjectId, ObjectMesh, ObjectSurfaceData, Polygon, RegionKey,
+    RegionMapIR, SliceIR, SlicedRegion, SurfaceClassificationIR, Transform3d,
     CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
-use slicer_ir::{FacetClass, Point2, Point3};
+use slicer_ir::{Point2, Point3};
 
 use crate::blackboard::{Blackboard, BlackboardError};
 
@@ -133,43 +133,29 @@ fn any_polygon_contains(polygons: &[Polygon], pt: Point2) -> bool {
 // Public helper: classify_region_surfaces
 // ============================================================================
 
-/// Classify a region's external-surface flags from prepass classification +
-/// adjacent-layer Z.
+/// Detect whether the given region carries any bridge facets at this layer.
 ///
-/// Returns `(is_top_surface, is_bottom_surface, is_bridge)`.
+/// Returns `true` when at least one facet listed in
+/// `surface_data.bridge_regions[*].facet_indices` has a world-Z range
+/// straddling `layer_z` AND any of its three vertices' XY lies inside one
+/// of `region_polygons`.
 ///
-/// * Top: facet `z_min < next_layer_z`, `FacetClass::TopSurface`,
-///   any vertex XY ∈ region polygon.
-/// * Bottom: facet `z_max > prev_layer_z`, `FacetClass::BottomSurface`,
-///   any vertex XY ∈ region polygon.
-/// * Bridge: facet listed in `bridge_regions[*].facet_indices`, world-Z range
-///   straddles `layer_z`, any vertex XY ∈ region polygon.
-///
-/// Each window degrades to `false` when its corresponding `*_layer_z` is `None`.
+/// Top/bottom Z-window detection was removed in the slicing-promotion
+/// refactor — `PrePass::ShellClassification` computes `top_shell_index` /
+/// `bottom_shell_index` and the polygon-precise `top_solid_fill` /
+/// `bottom_solid_fill` cross-layer instead. The `next_layer_z` / `prev_layer_z`
+/// / `top_shell_layers` / `bottom_shell_layers` parameters that used to drive
+/// the dead per-layer top/bottom path are gone.
 pub fn classify_region_surfaces(
     object_mesh: &ObjectMesh,
     surface_data: &ObjectSurfaceData,
     region_polygons: &[Polygon],
     layer_z: f32,
-    next_layer_z: Option<f32>,
-    prev_layer_z: Option<f32>,
-    top_shell_layers: u32,
-    bottom_shell_layers: u32,
-) -> (bool, bool, bool) {
+) -> bool {
     let mesh = &object_mesh.mesh;
     let t = &object_mesh.transform;
     let tri_count = mesh.indices.len() / 3;
 
-    let mut is_top = false;
-    let mut is_bot = false;
-    let mut is_bridge = false;
-
-    // N=0 short-circuit: disable the respective flag regardless of geometry.
-    // The loop still runs for bridge detection.
-    let top_enabled = top_shell_layers > 0;
-    let bot_enabled = bottom_shell_layers > 0;
-
-    // Build a fast lookup set for bridge facet indices.
     let bridge_set: std::collections::HashSet<u32> = surface_data
         .bridge_regions
         .iter()
@@ -177,15 +163,13 @@ pub fn classify_region_surfaces(
         .collect();
 
     for tri_idx in 0..tri_count {
-        if is_top && is_bot && is_bridge {
-            break;
+        if !bridge_set.contains(&(tri_idx as u32)) {
+            continue;
         }
 
         let i0 = mesh.indices[tri_idx * 3] as usize;
         let i1 = mesh.indices[tri_idx * 3 + 1] as usize;
         let i2 = mesh.indices[tri_idx * 3 + 2] as usize;
-
-        // Guard against malformed meshes.
         if i0 >= mesh.vertices.len() || i1 >= mesh.vertices.len() || i2 >= mesh.vertices.len() {
             continue;
         }
@@ -196,75 +180,21 @@ pub fn classify_region_surfaces(
 
         let fz_min = wv0.z.min(wv1.z).min(wv2.z);
         let fz_max = wv0.z.max(wv1.z).max(wv2.z);
-
-        let facet_class = surface_data.facet_classes.get(tri_idx).copied();
-
-        // Top surface check.
-        // Window: facet z_min ∈ [layer_z, next_layer_z) — inclusive low, exclusive high.
-        // When next_layer_z is None the window is [layer_z, ∞).
-        // top_shell_layers=0 disables this check entirely.
-        if !is_top && top_enabled {
-            if let Some(FacetClass::TopSurface) = facet_class {
-                let in_window = match next_layer_z {
-                    Some(nz) => layer_z <= fz_min && fz_min < nz,
-                    None => layer_z <= fz_min,
-                };
-                if in_window {
-                    let p0 = Point2::from_mm(wv0.x, wv0.y);
-                    let p1 = Point2::from_mm(wv1.x, wv1.y);
-                    let p2 = Point2::from_mm(wv2.x, wv2.y);
-                    if any_polygon_contains(region_polygons, p0)
-                        || any_polygon_contains(region_polygons, p1)
-                        || any_polygon_contains(region_polygons, p2)
-                    {
-                        is_top = true;
-                    }
-                }
-            }
-        }
-
-        // Bottom surface check.
-        // Window: facet z_max ∈ (prev_layer_z, layer_z] — exclusive low, inclusive high.
-        // When prev_layer_z is None the window is (-∞, layer_z].
-        // bottom_shell_layers=0 disables this check entirely.
-        if !is_bot && bot_enabled {
-            if let Some(FacetClass::BottomSurface) = facet_class {
-                let in_window = match prev_layer_z {
-                    Some(pz) => pz < fz_max && fz_max <= layer_z,
-                    None => fz_max <= layer_z,
-                };
-                if in_window {
-                    let p0 = Point2::from_mm(wv0.x, wv0.y);
-                    let p1 = Point2::from_mm(wv1.x, wv1.y);
-                    let p2 = Point2::from_mm(wv2.x, wv2.y);
-                    if any_polygon_contains(region_polygons, p0)
-                        || any_polygon_contains(region_polygons, p1)
-                        || any_polygon_contains(region_polygons, p2)
-                    {
-                        is_bot = true;
-                    }
-                }
-            }
-        }
-
-        // Bridge check
-        if !is_bridge && bridge_set.contains(&(tri_idx as u32)) {
-            // Z range straddles layer_z: z_min ≤ layer_z ≤ z_max
-            if fz_min <= layer_z && layer_z <= fz_max {
-                let p0 = Point2::from_mm(wv0.x, wv0.y);
-                let p1 = Point2::from_mm(wv1.x, wv1.y);
-                let p2 = Point2::from_mm(wv2.x, wv2.y);
-                if any_polygon_contains(region_polygons, p0)
-                    || any_polygon_contains(region_polygons, p1)
-                    || any_polygon_contains(region_polygons, p2)
-                {
-                    is_bridge = true;
-                }
+        // Z range straddles layer_z: z_min ≤ layer_z ≤ z_max
+        if fz_min <= layer_z && layer_z <= fz_max {
+            let p0 = Point2::from_mm(wv0.x, wv0.y);
+            let p1 = Point2::from_mm(wv1.x, wv1.y);
+            let p2 = Point2::from_mm(wv2.x, wv2.y);
+            if any_polygon_contains(region_polygons, p0)
+                || any_polygon_contains(region_polygons, p1)
+                || any_polygon_contains(region_polygons, p2)
+            {
+                return true;
             }
         }
     }
 
-    (is_top, is_bot, is_bridge)
+    false
 }
 
 // ============================================================================
@@ -347,7 +277,7 @@ pub fn assemble_bridge_areas(
 }
 
 // ============================================================================
-// execute_layer_slice
+// execute_prepass_slice_single_layer
 // ============================================================================
 
 /// Produce the `SliceIR` for `layer` by slicing every referenced object mesh
@@ -357,20 +287,16 @@ pub fn assemble_bridge_areas(
 /// If `layer.active_regions` is empty the returned `SliceIR` has an empty
 /// `regions` vector (e.g. a layer with no participating objects).
 ///
-/// When `surface_class` is `Some`, the helper [`classify_region_surfaces`] is
-/// called for each region to populate `is_top_surface`, `is_bottom_surface`,
-/// and `is_bridge`. When it is `None` the three flags remain `false`.
-pub fn execute_layer_slice(
+/// When `surface_class` is `Some`, [`classify_region_surfaces`] is called per
+/// region to populate `is_bridge`. Top/bottom annotation is the job of
+/// `PrePass::ShellClassification`, not this function — `top_shell_index` and
+/// `bottom_shell_index` always emit as `None` here.
+pub fn execute_prepass_slice_single_layer(
     mesh: &MeshIR,
     layer: &GlobalLayer,
     surface_class: Option<&SurfaceClassificationIR>,
-    next_layer_z: Option<f32>,
-    prev_layer_z: Option<f32>,
     region_map: Option<&RegionMapIR>,
-    layer_plan: Option<&LayerPlanIR>,
 ) -> Result<SliceIR, LayerSliceError> {
-    let layer_idx = layer.index as usize;
-
     let mut regions = Vec::with_capacity(layer.active_regions.len());
     for active in &layer.active_regions {
         let object = mesh
@@ -418,13 +344,9 @@ pub fn execute_layer_slice(
         } else {
             None
         };
-        let (top_shell_layers, bottom_shell_layers, slice_closing_radius_mm) = match resolved_plan {
-            Some(plan) => (
-                plan.config.top_shell_layers,
-                plan.config.bottom_shell_layers,
-                plan.config.slice_closing_radius,
-            ),
-            None => (3u32, 3u32, 0.0_f32),
+        let slice_closing_radius_mm = match resolved_plan {
+            Some(plan) => plan.config.slice_closing_radius,
+            None => 0.0_f32,
         };
 
         // OrcaSlicer-style slice_closing_radius round-trip (`+r / -r` Clipper2),
@@ -439,46 +361,17 @@ pub fn execute_layer_slice(
             raw_polygons
         };
 
-        // Compute next/prev layer Z boundaries.
-        // When layer_plan is Some, walk the window; otherwise fall back to caller-supplied values.
-        let effective_next_z = if let Some(lp) = layer_plan {
-            if top_shell_layers == 0 {
-                // Window disabled; sentinel not used but provide a safe value.
-                None
-            } else {
-                let ahead_idx = layer_idx + top_shell_layers as usize;
-                match lp.global_layers.get(ahead_idx) {
-                    Some(gl) => Some(gl.z),
-                    None => Some(f32::INFINITY),
-                }
-            }
-        } else {
-            // No layer_plan: preserve single-layer semantics via caller-supplied value.
-            next_layer_z
-        };
-
-        let effective_prev_z = if let Some(lp) = layer_plan {
-            if bottom_shell_layers == 0 {
-                None
-            } else if layer_idx < bottom_shell_layers as usize {
-                Some(f32::NEG_INFINITY)
-            } else {
-                lp.global_layers
-                    .get(layer_idx - bottom_shell_layers as usize)
-                    .map(|gl| gl.z)
-                    .or(Some(f32::NEG_INFINITY))
-            }
-        } else {
-            // No layer_plan: preserve single-layer semantics via caller-supplied value.
-            prev_layer_z
-        };
-
-        // Extract region contours for classification (ExPolygon → Polygon).
+        // Extract region contours for bridge classification (ExPolygon → Polygon).
         // When the slice produces no polygons (e.g. flat/horizontal triangles are
         // skipped by the slicer), fall back to a bounding-box polygon derived from
-        // the object mesh's XY extents so that the XY containment check does not
-        // incorrectly exclude surface-classified facets.
-        let (is_top_surface, is_bottom_surface, is_bridge) = if let Some(sc) = surface_class {
+        // the object mesh's XY extents so the XY containment check does not
+        // incorrectly exclude bridge-classified facets.
+        //
+        // Top/bottom Z-window detection happens cross-layer in
+        // PrePass::ShellClassification — the per-layer top_shell_index /
+        // bottom_shell_index fields below stay None here and get populated
+        // by the slice-postprocess pass.
+        let is_bridge = if let Some(sc) = surface_class {
             if let Some(obj_data) = sc.per_object.get(&active.object_id) {
                 let contours: Vec<Polygon> = if polygons.is_empty() {
                     // Derive XY bounding box from the untransformed mesh vertices.
@@ -516,30 +409,13 @@ pub fn execute_layer_slice(
                 } else {
                     polygons.iter().map(|ep| ep.contour.clone()).collect()
                 };
-                classify_region_surfaces(
-                    object,
-                    obj_data,
-                    &contours,
-                    layer.z,
-                    effective_next_z,
-                    effective_prev_z,
-                    top_shell_layers,
-                    bottom_shell_layers,
-                )
+                classify_region_surfaces(object, obj_data, &contours, layer.z)
             } else {
-                (false, false, false)
+                false
             }
         } else {
-            (false, false, false)
+            false
         };
-
-        // Commit 1 bridge: translate legacy per-layer is_top/is_bottom bools to
-        // the new shell-index fields. Depth is unknown at this layer (the OLD
-        // algorithm has no cross-layer view); we emit Some(0) for the exposed
-        // case and rely on Commit 2's `PrePass::ShellClassification` to overwrite
-        // with proper depths and polygon-precise solid-fill geometry.
-        let top_shell_index = if is_top_surface { Some(0u8) } else { None };
-        let bottom_shell_index = if is_bottom_surface { Some(0u8) } else { None };
 
         let mut sliced_region = SlicedRegion {
             object_id: active.object_id.clone(),
@@ -549,8 +425,8 @@ pub fn execute_layer_slice(
             nonplanar_surface: None,
             effective_layer_height: active.effective_layer_height,
             boundary_paint: HashMap::new(),
-            top_shell_index,
-            bottom_shell_index,
+            top_shell_index: None,
+            bottom_shell_index: None,
             top_solid_fill: Vec::new(),
             bottom_solid_fill: Vec::new(),
             is_bridge,
@@ -593,25 +469,9 @@ pub fn execute_prepass_slice_all_layers(
     layer_plan
         .global_layers
         .iter()
-        .map(|gl| {
-            execute_layer_slice(
-                mesh.as_ref(),
-                gl,
-                surface_class,
-                None, // next_layer_z derived from layer_plan
-                None, // prev_layer_z derived from layer_plan
-                region_map,
-                Some(layer_plan.as_ref()),
-            )
-        })
+        .map(|gl| execute_prepass_slice_single_layer(mesh.as_ref(), gl, surface_class, region_map))
         .collect()
 }
-
-/// `execute_prepass_slice_single_layer` is the same per-layer entry point as
-/// [`execute_layer_slice`] — provided under the new name to make the
-/// post-Tier-2-removal call sites self-documenting. The original name remains
-/// the canonical export to keep the test surface narrow.
-pub use self::execute_layer_slice as execute_prepass_slice_single_layer;
 
 /// `PrePass::Slice` host built-in entry point. Computes the per-global-layer
 /// `Vec<SliceIR>` from blackboard reads and commits it via

@@ -46,6 +46,18 @@ pub enum ConfigResolutionError {
         /// Index of the offending element when `value` is a list element.
         index: Option<usize>,
     },
+    /// Per-object `support_layer_height_mm` is non-zero but less than the
+    /// object's effective layer height. The printer cannot extrude a
+    /// support layer thinner than the nominal model layer.
+    SupportLayerHeightTooFine {
+        /// The object whose support config is invalid.
+        object_id: String,
+        /// The configured support_layer_height_mm (mm).
+        support_layer_height_mm: f32,
+        /// The object's effective layer height in mm (its
+        /// `layer_height` field after per-object override resolution).
+        effective_layer_height_mm: f32,
+    },
 }
 
 impl std::fmt::Display for ConfigResolutionError {
@@ -83,6 +95,16 @@ impl std::fmt::Display for ConfigResolutionError {
                     ),
                 }
             }
+            Self::SupportLayerHeightTooFine {
+                object_id,
+                support_layer_height_mm,
+                effective_layer_height_mm,
+            } => write!(
+                f,
+                "object '{object_id}': support_layer_height_mm = {support_layer_height_mm} mm \
+                 is below the object's effective layer height ({effective_layer_height_mm} mm); \
+                 the printer cannot extrude a support layer thinner than the model layer"
+            ),
         }
     }
 }
@@ -468,6 +490,12 @@ declare_resolved_config! {
     plain                        support_type: SupportType = SupportType::Traditional;
     /// Support overhang angle threshold in degrees.
     cli "support_overhang_angle" support_overhang_angle: f32 = 45.0 => extract_float;
+    /// Support layer height in millimeters. `0.0` means "use the object's
+    /// effective layer height". Non-zero values must be at least the
+    /// object's effective layer height (printers cannot extrude a layer
+    /// thinner than the nominal model layer). Validated per-object in
+    /// `slicer_host::config_schema`.
+    cli "support_layer_height_mm" support_layer_height_mm: f32 = 0.0 => extract_float;
 
     // Non-planar (module-contributed)
     /// Maximum non-planar angle in degrees (optional).
