@@ -8,11 +8,13 @@
 #![warn(unused_must_use)]
 
 pub mod entity_id;
+pub mod polygon_predicate;
 pub mod resolved_config;
 pub mod slice_ir;
 pub mod validation;
 
 pub use entity_id::LayerEntityIdGen;
+pub use polygon_predicate::{point_in_contour_winding, point_in_polygon_winding};
 pub use resolved_config::{ConfigResolutionError, ResolvedConfig};
 pub use validation::validate_travel_anchors;
 

@@ -26,7 +26,8 @@ thread_local! {
 }
 
 use slicer_ir::{
-    GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, RetractMode, SeamPosition, StageId,
+    GCodeCommand, GCodeIR, GlobalLayer, InfillIR, LayerCollectionIR, RetractMode, SeamPosition,
+    StageId,
 };
 use slicer_sdk::traits::{EntityMutation, SortKey, SyntheticLayerData};
 
@@ -2448,9 +2449,22 @@ fn commit_layer_outputs(
             if stage_id == "Layer::InfillPostProcess" {
                 let _ = arena.take_infill();
             }
-            arena
-                .set_infill(ir)
-                .map_err(|e| LayerStageError::ArenaCommit { source: e })?;
+            // `Layer::Infill` runs multiple modules per region per layer
+            // (e.g. rectilinear-infill writes sparse/solid paths and
+            // top-surface-ironing writes ironing paths in the SAME stage).
+            // Each module fills disjoint fields of `InfillRegion`. If the
+            // arena slot is already occupied, MERGE region-by-region
+            // instead of failing with `SlotAlreadyOccupied`.
+            if let Some(mut existing) = arena.take_infill() {
+                merge_infill_ir(&mut existing, ir);
+                arena
+                    .set_infill(existing)
+                    .map_err(|e| LayerStageError::ArenaCommit { source: e })?;
+            } else {
+                arena
+                    .set_infill(ir)
+                    .map_err(|e| LayerStageError::ArenaCommit { source: e })?;
+            }
         }
         "Layer::Support" | "Layer::SupportPostProcess" => {
             let support = &ctx.support_output;
@@ -3090,4 +3104,31 @@ fn resolved_config_to_map(
         m.insert(k.clone(), v.clone());
     }
     m
+}
+
+/// Merge `incoming`'s regions into `existing` in place.
+///
+/// `Layer::Infill` runs multiple modules per layer that each write
+/// disjoint fields of `InfillRegion` (rectilinear/gyroid populate
+/// `sparse_infill` / `solid_infill`; top-surface-ironing populates
+/// `ironing`). When the layer-arena `infill` slot is already occupied,
+/// the dispatch layer calls this helper to append per-region paths
+/// instead of failing with `SlotAlreadyOccupied`.
+///
+/// Regions match on `(object_id, region_id)`. A region present in
+/// `incoming` but not `existing` is pushed as-is. The schema_version /
+/// global_layer_index of `existing` win on conflict.
+fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
+    for new_region in incoming.regions {
+        match existing.regions.iter_mut().find(|r| {
+            r.object_id == new_region.object_id && r.region_id == new_region.region_id
+        }) {
+            Some(target) => {
+                target.sparse_infill.extend(new_region.sparse_infill);
+                target.solid_infill.extend(new_region.solid_infill);
+                target.ironing.extend(new_region.ironing);
+            }
+            None => existing.regions.push(new_region),
+        }
+    }
 }

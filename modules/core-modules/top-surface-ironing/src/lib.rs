@@ -106,30 +106,17 @@ fn bbox_of_expoly(poly: &ExPolygon) -> Option<BBox2D> {
     Some(bb)
 }
 
-/// Even-odd point-in-polygon test on an `ExPolygon`'s contour (mm coordinates).
-///
-/// Treats the polygon as a simple contour without holes for clip-fit purposes —
-/// callers may union multiple ExPolygons into the same fill area, so the loose
-/// containment is sufficient for stroke clipping.
+/// Tolerance (mm) used by stroke-endpoint containment checks. Equal to one
+/// slicer integer-coordinate unit — points within ±0.0001 mm of a polygon
+/// edge count as inside, preventing the f32 even-odd test's flip on
+/// stroke endpoints that coincide with the contour.
+const STROKE_CONTAIN_EPS_MM: f64 = 0.001;
+
+/// Containment predicate used during stroke clipping. Delegates to the
+/// shared `slicer_ir::point_in_polygon_winding` (f64 winding-number with
+/// edge tolerance) so behaviour stays consistent across modules.
 fn point_in_polygon_mm(poly: &ExPolygon, px: f32, py: f32) -> bool {
-    let pts = &poly.contour.points;
-    if pts.len() < 3 {
-        return false;
-    }
-    let mut inside = false;
-    let n = pts.len();
-    let mut j = n - 1;
-    for i in 0..n {
-        let xi = units_to_mm(pts[i].x);
-        let yi = units_to_mm(pts[i].y);
-        let xj = units_to_mm(pts[j].x);
-        let yj = units_to_mm(pts[j].y);
-        if (yi > py) != (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi {
-            inside = !inside;
-        }
-        j = i;
-    }
-    inside
+    slicer_ir::point_in_polygon_winding(poly, px as f64, py as f64, STROKE_CONTAIN_EPS_MM)
 }
 
 /// Generate a rectilinear (horizontal-zigzag, snake) ironing polyline over
