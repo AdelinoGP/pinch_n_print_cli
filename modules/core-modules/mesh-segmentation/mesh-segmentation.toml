@@ -23,7 +23,7 @@ incompatible-with = []
 requires          = []
 min-host-version  = "0.1.0"
 min-ir-schema     = "1.0.0"
-max-ir-schema     = "2.0.0"
+max-ir-schema     = "4.0.0"
 
 [config.schema]
 # mesh_seg_mark:<object_id>:<facet_index>:<semantic> = <value>

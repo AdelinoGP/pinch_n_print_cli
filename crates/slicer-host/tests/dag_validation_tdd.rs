@@ -6,7 +6,7 @@ use slicer_host::{
     build_intra_stage_dag, validate_startup_dag, AccessKind, ClaimHolder, ConflictScope,
     DagValidationPass, DagValidationRequest, ModuleAccessAudit, SchedulerError, StageDag,
 };
-use slicer_ir::SemVer;
+use slicer_ir::{SemVer, CURRENT_SLICE_IR_SCHEMA_VERSION};
 
 #[test]
 fn report_contract_exposes_all_thirteen_documented_validation_passes() {
@@ -603,4 +603,133 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
         minor,
         patch,
     }
+}
+
+// ============================================================================
+// All-modules IR-schema window smoke (B1 regression)
+//
+// Loads the on-disk core-module manifests (without requiring a built .wasm),
+// constructs a LoadedModule per manifest reflecting the declared min/max
+// ir-schema windows, then runs validate_startup_dag with
+// host_ir_schema_version = CURRENT_SLICE_IR_SCHEMA_VERSION. Asserts zero
+// IrVersionCompatibility errors.
+//
+// Catches the next schema bump: any manifest whose `max-ir-schema` falls
+// behind the host version will produce an IrVersionIncompatible error here.
+// ============================================================================
+
+fn parse_semver_from_toml(value: &str) -> SemVer {
+    let parts: Vec<&str> = value.split('.').collect();
+    assert_eq!(
+        parts.len(),
+        3,
+        "expected MAJOR.MINOR.PATCH semver, got '{value}'"
+    );
+    SemVer {
+        major: parts[0].parse().expect("major"),
+        minor: parts[1].parse().expect("minor"),
+        patch: parts[2].parse().expect("patch"),
+    }
+}
+
+fn core_modules_root() -> PathBuf {
+    // CARGO_MANIFEST_DIR is the slicer-host crate root at test compile time.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("workspace root")
+        .join("modules")
+        .join("core-modules")
+}
+
+#[test]
+fn all_core_module_manifests_accept_current_host_ir_schema() {
+    use std::fs;
+
+    let root = core_modules_root();
+    assert!(
+        root.is_dir(),
+        "core-modules directory missing at {}",
+        root.display()
+    );
+
+    let mut modules = Vec::new();
+    for entry in fs::read_dir(&root).expect("read core-modules dir") {
+        let entry = entry.expect("read entry");
+        let module_dir = entry.path();
+        if !module_dir.is_dir() {
+            continue;
+        }
+        let module_name = entry.file_name().to_string_lossy().into_owned();
+        let manifest = module_dir.join(format!("{module_name}.toml"));
+        if !manifest.is_file() {
+            continue;
+        }
+        let text = fs::read_to_string(&manifest).expect("read manifest");
+        let toml: toml::Value = text.parse().expect("parse manifest TOML");
+
+        let module_id = toml["module"]["id"]
+            .as_str()
+            .expect("module.id")
+            .to_string();
+        let stage = toml["stage"]["id"].as_str().expect("stage.id").to_string();
+        let wit_world = toml["module"]["wit-world"]
+            .as_str()
+            .expect("module.wit-world")
+            .to_string();
+        let min_ir = parse_semver_from_toml(
+            toml["compatibility"]["min-ir-schema"]
+                .as_str()
+                .expect("compatibility.min-ir-schema"),
+        );
+        let max_ir = parse_semver_from_toml(
+            toml["compatibility"]["max-ir-schema"]
+                .as_str()
+                .expect("compatibility.max-ir-schema"),
+        );
+
+        modules.push(
+            slicer_host::manifest::LoadedModuleBuilder::new(
+                module_id.clone(),
+                semver(1, 0, 0),
+                stage,
+                wit_world,
+                PathBuf::from(format!("fixtures/{module_id}.wasm")),
+            )
+            .ir_writes(vec![String::from("SharedIR.placeholder")])
+            .min_host_version(semver(0, 1, 0))
+            .min_ir_schema(min_ir)
+            .max_ir_schema(max_ir)
+            .layer_parallel_safe(true)
+            .build(),
+        );
+    }
+
+    assert!(
+        modules.len() >= 19,
+        "expected at least 19 core module manifests, found {}",
+        modules.len()
+    );
+
+    let request = DagValidationRequest {
+        modules,
+        stage_dags: Vec::new(),
+        host_ir_schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+        claim_holders: Vec::new(),
+        access_audits: Vec::new(),
+    };
+
+    let report = validate_startup_dag(&request);
+    let ir_errors: Vec<_> = report
+        .errors
+        .iter()
+        .filter(|d| d.pass == DagValidationPass::IrVersionCompatibility)
+        .collect();
+    assert!(
+        ir_errors.is_empty(),
+        "expected zero IrVersionCompatibility errors against host_ir_schema_version = {:?}; got {} errors: {:#?}",
+        CURRENT_SLICE_IR_SCHEMA_VERSION,
+        ir_errors.len(),
+        ir_errors
+    );
 }
