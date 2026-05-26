@@ -231,6 +231,28 @@ pub trait PipelineInstrumentation: Send + Sync {
     /// "module A → module B (reason)" rows even for stages where no modules
     /// happened to fire on a given run.
     fn record_edges(&self, stage: &StageId, tier: TierKind, edges: &[SerialEdge]);
+
+    /// Called immediately after `on_module_end` for **host built-ins** to
+    /// report blackboard byte footprint deltas attributable to the call.
+    ///
+    /// `host_initial_bytes` is `Blackboard::estimated_size()` snapshotted
+    /// before the built-in ran; `host_peak_bytes` is the same snapshot
+    /// taken after the built-in's commit. The delta
+    /// (`host_peak_bytes - host_initial_bytes`) approximates the IR growth
+    /// caused by this stage.
+    ///
+    /// Distinct from `wasm_initial_bytes` / `wasm_peak_bytes`, which name
+    /// the guest's linear-memory footprint and are zero for host built-ins
+    /// by design. Default impl is no-op so existing implementors stay valid.
+    fn on_host_builtin_bytes(
+        &self,
+        _stage: &StageId,
+        _layer: Option<u32>,
+        _module: &ModuleId,
+        _host_initial_bytes: u64,
+        _host_peak_bytes: u64,
+    ) {
+    }
 }
 
 /// Zero-overhead default. All methods are empty; the compiler inlines the
@@ -255,6 +277,210 @@ impl PipelineInstrumentation for NoopInstrumentation {
     fn on_layer_start(&self, _layer: u32, _z_mm: f32) {}
     fn on_layer_end(&self, _layer: u32) {}
     fn record_edges(&self, _stage: &StageId, _tier: TierKind, _edges: &[SerialEdge]) {}
+}
+
+// ============================================================================
+// StageInstrumentationGuard
+// ============================================================================
+
+/// Panic-safe RAII wrapper around `on_stage_start` / `on_module_start` /
+/// `on_module_end` / `on_stage_end`. Replaces hand-rolled instrumentation
+/// boilerplate at each host built-in dispatch site.
+///
+/// Construction emits the two `start` callbacks; calling `finish` emits the
+/// two `end` callbacks plus `on_host_builtin_bytes` with the captured
+/// before/after blackboard sizes. If the guard is dropped without `finish`
+/// being called (e.g. a panic or early `?` propagation in the closure that
+/// owned it), `Drop` emits the `end` callbacks with `0/0` bytes so the
+/// slicer-report never sees a dangling start-without-end pair.
+pub struct StageInstrumentationGuard<'a> {
+    instrumentation: &'a dyn PipelineInstrumentation,
+    stage_id: StageId,
+    layer: Option<u32>,
+    module_id: ModuleId,
+    host_initial_bytes: u64,
+    finished: bool,
+}
+
+impl<'a> StageInstrumentationGuard<'a> {
+    /// Open the bracket: emit `on_stage_start` + `on_module_start`, and
+    /// snapshot the blackboard's byte footprint as the initial baseline.
+    pub fn start(
+        instrumentation: &'a dyn PipelineInstrumentation,
+        stage_id: impl Into<StageId>,
+        layer: Option<u32>,
+        module_id: impl Into<ModuleId>,
+        host_initial_bytes: u64,
+    ) -> Self {
+        let stage_id = stage_id.into();
+        let module_id = module_id.into();
+        instrumentation.on_stage_start(&stage_id, layer);
+        instrumentation.on_module_start(&stage_id, layer, &module_id);
+        Self {
+            instrumentation,
+            stage_id,
+            layer,
+            module_id,
+            host_initial_bytes,
+            finished: false,
+        }
+    }
+
+    /// Close the bracket on the success path: emit `on_module_end` (0/0
+    /// wasm bytes — host built-ins by contract), then
+    /// `on_host_builtin_bytes(initial, peak)`, then `on_stage_end`.
+    /// Consumes the guard so Drop becomes a no-op.
+    pub fn finish(mut self, host_peak_bytes: u64) {
+        self.finished = true;
+        self.instrumentation
+            .on_module_end(&self.stage_id, self.layer, &self.module_id, 0, 0);
+        self.instrumentation.on_host_builtin_bytes(
+            &self.stage_id,
+            self.layer,
+            &self.module_id,
+            self.host_initial_bytes,
+            host_peak_bytes,
+        );
+        self.instrumentation.on_stage_end(&self.stage_id, self.layer);
+    }
+}
+
+impl Drop for StageInstrumentationGuard<'_> {
+    fn drop(&mut self) {
+        if self.finished {
+            return;
+        }
+        // Panic or early-return path: ensure the report sees end events so
+        // dangling start-without-end pairs never reach the slicer-report.
+        // We do NOT emit on_host_builtin_bytes here — the peak is unknown
+        // on the failure path.
+        self.instrumentation
+            .on_module_end(&self.stage_id, self.layer, &self.module_id, 0, 0);
+        self.instrumentation.on_stage_end(&self.stage_id, self.layer);
+    }
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::*;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct RecordingInstrumentation {
+        events: Mutex<Vec<String>>,
+    }
+
+    impl PipelineInstrumentation for RecordingInstrumentation {
+        fn on_phase_start(&self, _phase: Phase) {}
+        fn on_phase_end(&self, _phase: Phase) {}
+        fn on_stage_start(&self, stage: &StageId, _layer: Option<u32>) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("stage_start:{stage}"));
+        }
+        fn on_stage_end(&self, stage: &StageId, _layer: Option<u32>) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("stage_end:{stage}"));
+        }
+        fn on_module_start(&self, _stage: &StageId, _layer: Option<u32>, module: &ModuleId) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("module_start:{module}"));
+        }
+        fn on_module_end(
+            &self,
+            _stage: &StageId,
+            _layer: Option<u32>,
+            module: &ModuleId,
+            _wasm_initial_bytes: u64,
+            _wasm_peak_bytes: u64,
+        ) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("module_end:{module}"));
+        }
+        fn on_layer_start(&self, _layer: u32, _z_mm: f32) {}
+        fn on_layer_end(&self, _layer: u32) {}
+        fn record_edges(&self, _stage: &StageId, _tier: TierKind, _edges: &[SerialEdge]) {}
+        fn on_host_builtin_bytes(
+            &self,
+            _stage: &StageId,
+            _layer: Option<u32>,
+            module: &ModuleId,
+            initial: u64,
+            peak: u64,
+        ) {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("bytes:{module}:{initial}:{peak}"));
+        }
+    }
+
+    #[test]
+    fn guard_finish_emits_full_event_sequence_with_bytes() {
+        let instr = RecordingInstrumentation::default();
+        let guard = StageInstrumentationGuard::start(
+            &instr,
+            "PrePass::MeshAnalysis",
+            None,
+            "host:mesh_analysis",
+            100,
+        );
+        guard.finish(250);
+
+        let events = instr.events.lock().unwrap().clone();
+        assert_eq!(
+            events,
+            vec![
+                "stage_start:PrePass::MeshAnalysis".to_string(),
+                "module_start:host:mesh_analysis".to_string(),
+                "module_end:host:mesh_analysis".to_string(),
+                "bytes:host:mesh_analysis:100:250".to_string(),
+                "stage_end:PrePass::MeshAnalysis".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn guard_drop_after_panic_still_emits_end_events_without_bytes() {
+        let instr = RecordingInstrumentation::default();
+
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            let _guard = StageInstrumentationGuard::start(
+                &instr,
+                "PrePass::Slice",
+                None,
+                "host:slice",
+                100,
+            );
+            panic!("simulated built-in failure");
+        }));
+
+        assert!(result.is_err(), "panic must propagate out of guard scope");
+
+        let events = instr.events.lock().unwrap().clone();
+        // The bytes event MUST NOT fire on the failure path (peak is unknown).
+        // The end events MUST fire so the report never sees a dangling
+        // start-without-end pair.
+        assert_eq!(
+            events,
+            vec![
+                "stage_start:PrePass::Slice".to_string(),
+                "module_start:host:slice".to_string(),
+                "module_end:host:slice".to_string(),
+                "stage_end:PrePass::Slice".to_string(),
+            ],
+            "panic-safety: expected start, module_end (0/0), stage_end \
+             — no bytes event on failure path"
+        );
+    }
 }
 
 #[cfg(test)]

@@ -8,9 +8,10 @@ use std::sync::Arc;
 
 use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_ir::{
-    InfillIR, LayerAnnotation, LayerCollectionIR, LayerPlanIR, MeshIR, MeshSegmentationIR,
-    PaintRegionIR, PerimeterIR, RegionMapIR, RetractMode, SeamPlanIR, SliceIR, SupportGeometryIR,
-    SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
+    ActiveRegion, ExPolygon, InfillIR, LayerAnnotation, LayerCollectionIR, LayerPlanIR, MeshIR,
+    MeshSegmentationIR, ObjectMesh, PaintRegionIR, PerimeterIR, Point2, Point3, Polygon, RegionKey,
+    RegionMapIR, RegionPlan, RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR,
+    SupportGeometryKey, SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
 /// A retract or unretract decision collected from `Layer::PathOptimization`.
@@ -201,6 +202,47 @@ impl Blackboard {
     #[must_use]
     pub fn mesh(&self) -> &Arc<MeshIR> {
         &self.mesh_ir
+    }
+
+    /// Rough heap-aware byte footprint estimate across every committed IR.
+    ///
+    /// Walks Vec-heavy slots (mesh vertices/indices, slice polygons, layer
+    /// plan layers, support entries) and adds their heap allocations to a
+    /// `std::mem::size_of` baseline for each Arc-wrapped slot. Returns 0 for
+    /// any uncommitted slot. The result is intentionally approximate — fine
+    /// enough for monotonic per-built-in byte-delta attribution in the
+    /// slicer-report, not a substitute for a true allocator-level measurement.
+    #[must_use]
+    pub fn estimated_size(&self) -> u64 {
+        let mut total: u64 = estimated_mesh_ir_bytes(&self.mesh_ir);
+        if let Some(arc) = self.surface_classification.as_ref() {
+            total = total.saturating_add(estimated_surface_classification_bytes(arc));
+        }
+        if let Some(arc) = self.mesh_segmentation.as_ref() {
+            total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
+        }
+        if let Some(arc) = self.layer_plan.as_ref() {
+            total = total.saturating_add(estimated_layer_plan_bytes(arc));
+        }
+        if let Some(arc) = self.seam_plan.as_ref() {
+            total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
+        }
+        if let Some(arc) = self.support_plan.as_ref() {
+            total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
+        }
+        if let Some(arc) = self.paint_regions.as_ref() {
+            total = total.saturating_add(std::mem::size_of_val(arc.as_ref()) as u64);
+        }
+        if let Some(arc) = self.region_map.as_ref() {
+            total = total.saturating_add(estimated_region_map_bytes(arc));
+        }
+        if let Some(arc) = self.slice_ir.as_ref() {
+            total = total.saturating_add(estimated_slice_ir_bytes(arc));
+        }
+        if let Some(arc) = self.support_geometry.as_ref() {
+            total = total.saturating_add(estimated_support_geometry_bytes(arc));
+        }
+        total
     }
 
     /// Commit `SurfaceClassificationIR` exactly once.
@@ -434,6 +476,94 @@ impl Blackboard {
 
         Ok(drained)
     }
+}
+
+// ============================================================================
+// estimated_size helpers
+//
+// Walks the heap allocations of each Arc-wrapped IR to produce a rough byte
+// footprint. Used by StageInstrumentationGuard to attribute per-built-in
+// blackboard deltas to the slicer-report. Intentionally approximate.
+// ============================================================================
+
+fn estimated_polygon_bytes(p: &Polygon) -> u64 {
+    std::mem::size_of::<Polygon>() as u64
+        + (p.points.len() * std::mem::size_of::<Point2>()) as u64
+}
+
+fn estimated_expolygon_bytes(p: &ExPolygon) -> u64 {
+    let mut total = std::mem::size_of::<ExPolygon>() as u64;
+    total += estimated_polygon_bytes(&p.contour);
+    for h in &p.holes {
+        total += estimated_polygon_bytes(h);
+    }
+    total
+}
+
+fn estimated_mesh_ir_bytes(mesh: &MeshIR) -> u64 {
+    let mut total = std::mem::size_of::<MeshIR>() as u64;
+    for obj in &mesh.objects {
+        total += std::mem::size_of::<ObjectMesh>() as u64;
+        total += (obj.mesh.vertices.len() * std::mem::size_of::<Point3>()) as u64;
+        total += (obj.mesh.indices.len() * std::mem::size_of::<u32>()) as u64;
+    }
+    total
+}
+
+fn estimated_surface_classification_bytes(ir: &SurfaceClassificationIR) -> u64 {
+    let mut total = std::mem::size_of::<SurfaceClassificationIR>() as u64;
+    for data in ir.per_object.values() {
+        total += data.facet_classes.len() as u64;
+        for region in &data.bridge_regions {
+            total += (region.facet_indices.len() * std::mem::size_of::<u32>()) as u64;
+        }
+    }
+    total
+}
+
+fn estimated_layer_plan_bytes(plan: &LayerPlanIR) -> u64 {
+    let mut total = std::mem::size_of::<LayerPlanIR>() as u64;
+    for gl in &plan.global_layers {
+        total += std::mem::size_of_val(gl) as u64;
+        total += (gl.active_regions.len() * std::mem::size_of::<ActiveRegion>()) as u64;
+    }
+    total
+}
+
+fn estimated_region_map_bytes(rm: &RegionMapIR) -> u64 {
+    let mut total = std::mem::size_of::<RegionMapIR>() as u64;
+    total += (rm.entries.len() * std::mem::size_of::<(RegionKey, RegionPlan)>()) as u64;
+    total
+}
+
+fn estimated_slice_ir_bytes(slices: &[SliceIR]) -> u64 {
+    let mut total = std::mem::size_of_val(slices) as u64;
+    for s in slices {
+        for r in &s.regions {
+            total += std::mem::size_of::<SlicedRegion>() as u64;
+            for p in r.polygons.iter().chain(r.infill_areas.iter()) {
+                total += estimated_expolygon_bytes(p);
+            }
+            for p in r.top_solid_fill.iter().chain(r.bottom_solid_fill.iter()) {
+                total += estimated_expolygon_bytes(p);
+            }
+            for p in &r.bridge_areas {
+                total += estimated_expolygon_bytes(p);
+            }
+        }
+    }
+    total
+}
+
+fn estimated_support_geometry_bytes(ir: &SupportGeometryIR) -> u64 {
+    let mut total = std::mem::size_of::<SupportGeometryIR>() as u64;
+    for polys in ir.entries.values() {
+        total += std::mem::size_of::<(SupportGeometryKey, Vec<ExPolygon>)>() as u64;
+        for p in polys {
+            total += estimated_expolygon_bytes(p);
+        }
+    }
+    total
 }
 
 /// Ephemeral per-layer intermediate IR ownership used during one layer worker run.

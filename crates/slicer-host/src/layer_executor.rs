@@ -464,7 +464,7 @@ fn execute_single_layer_inner(
         // If a WASM module is registered for this stage, it handles the annotation
         // and the host handler is skipped.
         if stage.stage_id == "Layer::PaintRegionAnnotation" && stage.modules.is_empty() {
-            let pa_module_id = "<host-built-in-paint-annotator>".to_string();
+            let pa_module_id = "host:paint_annotator".to_string();
             instrumentation.on_module_start(&stage.stage_id, Some(layer.index), &pa_module_id);
             run_paint_annotation(
                 blackboard,
@@ -687,7 +687,7 @@ fn run_paint_annotation(
         .map_err(|_| LayerExecutionError::FatalLayer {
             layer_index: layer.index,
             stage_id: "Layer::SlicePostProcess".to_string(),
-            module_id: "<host-built-in-paint-annotator>".to_string(),
+            module_id: "host:paint_annotator".to_string(),
             message: "slice arena slot unexpectedly occupied after take_slice".to_string(),
         })?;
     Ok(())

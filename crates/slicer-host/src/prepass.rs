@@ -13,7 +13,7 @@ use slicer_ir::{
 };
 
 use crate::config_resolution::resolve_per_paint_semantic_configs;
-use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
+use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation, StageInstrumentationGuard};
 use crate::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
 use crate::paint_segmentation::PaintSegmentationError;
 use crate::region_mapping::{commit_region_mapping_builtin, RegionMappingBuiltinError};
@@ -403,26 +403,24 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
     instrumentation: &(dyn PipelineInstrumentation + Sync),
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     if blackboard.surface_classification().is_none() {
-        let stage_id = "PrePass::MeshAnalysis".to_string();
-        let module_id = "<host-built-in>".to_string();
-        instrumentation.on_stage_start(&stage_id, None);
-        instrumentation.on_module_start(&stage_id, None, &module_id);
-        let ir = execute_mesh_analysis(blackboard.mesh().as_ref()).map_err(|source| {
-            instrumentation.on_stage_end(&stage_id, None);
-            PrepassExecutionError::MeshAnalysis { source }
-        })?;
+        let before = blackboard.estimated_size();
+        let guard = StageInstrumentationGuard::start(
+            instrumentation,
+            "PrePass::MeshAnalysis",
+            None,
+            "host:mesh_analysis",
+            before,
+        );
+        let ir = execute_mesh_analysis(blackboard.mesh().as_ref())
+            .map_err(|source| PrepassExecutionError::MeshAnalysis { source })?;
         blackboard
             .commit_surface_classification(std::sync::Arc::new(ir))
-            .map_err(|source| {
-                instrumentation.on_stage_end(&stage_id, None);
-                PrepassExecutionError::Blackboard {
-                    stage_id: "PrePass::MeshAnalysis".to_string(),
-                    module_id: "<host-built-in>".to_string(),
-                    source,
-                }
+            .map_err(|source| PrepassExecutionError::Blackboard {
+                stage_id: "PrePass::MeshAnalysis".to_string(),
+                module_id: "host:mesh_analysis".to_string(),
+                source,
             })?;
-        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
-        instrumentation.on_stage_end(&stage_id, None);
+        guard.finish(blackboard.estimated_size());
     }
     // PrePass::SupportGeometry moved to the post-RegionMapping / post-Slice
     // phase below, since it now depends on SliceIR (Commit 4 will consume real
@@ -484,16 +482,20 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
     //    (those requiring RegionMap) run in phase-2 after RegionMapping.
     let layer_plan_existed = blackboard.layer_plan().is_some();
     if layer_plan_existed && blackboard.region_map().is_none() {
-        let stage_id = "PrePass::RegionMapping".to_string();
-        let module_id = "<host-built-in>".to_string();
         let paint_semantic_configs = build_paint_semantic_configs(
             blackboard,
             default_resolved_config,
             raw_config_source,
             bounds,
         );
-        instrumentation.on_stage_start(&stage_id, None);
-        instrumentation.on_module_start(&stage_id, None, &module_id);
+        let before = blackboard.estimated_size();
+        let guard = StageInstrumentationGuard::start(
+            instrumentation,
+            "PrePass::RegionMapping",
+            None,
+            "host:region_mapping",
+            before,
+        );
         commit_region_mapping_builtin(
             plan,
             blackboard,
@@ -501,12 +503,8 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             default_resolved_config,
             &paint_semantic_configs,
         )
-        .map_err(|source| {
-            instrumentation.on_stage_end(&stage_id, None);
-            PrepassExecutionError::RegionMapping { source }
-        })?;
-        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
-        instrumentation.on_stage_end(&stage_id, None);
+        .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
+        guard.finish(blackboard.estimated_size());
     }
     // Phase-1: early stages that don't require RegionMap.
     let early_stages: Vec<_> = plan
@@ -531,16 +529,20 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
     // committed by phase-1 user-prepass stages (e.g. PrePass::PaintSegmentation)
     // is visible to the RegionMapping built-in (packet 51 — AC-4 ordering fix).
     if blackboard.layer_plan().is_some() && blackboard.region_map().is_none() {
-        let stage_id = "PrePass::RegionMapping".to_string();
-        let module_id = "<host-built-in>".to_string();
         let paint_semantic_configs = build_paint_semantic_configs(
             blackboard,
             default_resolved_config,
             raw_config_source,
             bounds,
         );
-        instrumentation.on_stage_start(&stage_id, None);
-        instrumentation.on_module_start(&stage_id, None, &module_id);
+        let before = blackboard.estimated_size();
+        let guard = StageInstrumentationGuard::start(
+            instrumentation,
+            "PrePass::RegionMapping",
+            None,
+            "host:region_mapping",
+            before,
+        );
         commit_region_mapping_builtin(
             plan,
             blackboard,
@@ -548,12 +550,8 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             default_resolved_config,
             &paint_semantic_configs,
         )
-        .map_err(|source| {
-            instrumentation.on_stage_end(&stage_id, None);
-            PrepassExecutionError::RegionMapping { source }
-        })?;
-        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
-        instrumentation.on_stage_end(&stage_id, None);
+        .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
+        guard.finish(blackboard.estimated_size());
     }
     // PrePass::Slice — host built-in. Runs once RegionMap is committed
     // (needs per-region slice_closing_radius / shell counts via RegionPlan).
@@ -561,34 +559,34 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         && blackboard.layer_plan().is_some()
         && blackboard.region_map().is_some()
     {
-        let stage_id = "PrePass::Slice".to_string();
-        let module_id = "host:slice".to_string();
-        instrumentation.on_stage_start(&stage_id, None);
-        instrumentation.on_module_start(&stage_id, None, &module_id);
-        crate::prepass_slice::commit_slice_builtin(blackboard).map_err(|source| {
-            instrumentation.on_stage_end(&stage_id, None);
-            PrepassExecutionError::Slice { source }
-        })?;
-        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
-        instrumentation.on_stage_end(&stage_id, None);
+        let before = blackboard.estimated_size();
+        let guard = StageInstrumentationGuard::start(
+            instrumentation,
+            "PrePass::Slice",
+            None,
+            "host:slice",
+            before,
+        );
+        crate::prepass_slice::commit_slice_builtin(blackboard)
+            .map_err(|source| PrepassExecutionError::Slice { source })?;
+        guard.finish(blackboard.estimated_size());
     }
     // PrePass::ShellClassification — host built-in. Refines the freshly
     // committed SliceIR with top_shell_index / bottom_shell_index and
     // polygon-precise top_solid_fill / bottom_solid_fill via the two-pass
     // OrcaSlicer algorithm.
     if blackboard.slice_ir().is_some() && blackboard.region_map().is_some() {
-        let stage_id = "PrePass::ShellClassification".to_string();
-        let module_id = "host:shell_classification".to_string();
-        instrumentation.on_stage_start(&stage_id, None);
-        instrumentation.on_module_start(&stage_id, None, &module_id);
-        crate::slice_postprocess_prepass::commit_shell_classification_builtin(blackboard).map_err(
-            |source| {
-                instrumentation.on_stage_end(&stage_id, None);
-                PrepassExecutionError::ShellClassification { source }
-            },
-        )?;
-        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
-        instrumentation.on_stage_end(&stage_id, None);
+        let before = blackboard.estimated_size();
+        let guard = StageInstrumentationGuard::start(
+            instrumentation,
+            "PrePass::ShellClassification",
+            None,
+            "host:shell_classification",
+            before,
+        );
+        crate::slice_postprocess_prepass::commit_shell_classification_builtin(blackboard)
+            .map_err(|source| PrepassExecutionError::ShellClassification { source })?;
+        guard.finish(blackboard.estimated_size());
     }
     // PrePass::SupportGeometry — host built-in. Moved from the pre-RegionMap
     // position so it can consume SliceIR (Commit 4 will replace the
@@ -598,17 +596,18 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         && blackboard.layer_plan().is_some()
         && blackboard.slice_ir().is_some()
     {
-        let stage_id = "PrePass::SupportGeometry".to_string();
-        let module_id = "host:support_geometry".to_string();
         use crate::support_geometry::commit_support_geometry_builtin;
-        instrumentation.on_stage_start(&stage_id, None);
-        instrumentation.on_module_start(&stage_id, None, &module_id);
-        commit_support_geometry_builtin(blackboard).map_err(|source| {
-            instrumentation.on_stage_end(&stage_id, None);
-            PrepassExecutionError::SupportGeometry { source }
-        })?;
-        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
-        instrumentation.on_stage_end(&stage_id, None);
+        let before = blackboard.estimated_size();
+        let guard = StageInstrumentationGuard::start(
+            instrumentation,
+            "PrePass::SupportGeometry",
+            None,
+            "host:support_geometry",
+            before,
+        );
+        commit_support_geometry_builtin(blackboard)
+            .map_err(|source| PrepassExecutionError::SupportGeometry { source })?;
+        guard.finish(blackboard.estimated_size());
     }
     // Phase-2: late stages that require RegionMap.
     let late_stages: Vec<_> = plan
@@ -633,10 +632,14 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         && blackboard.surface_classification().is_some()
         && blackboard.layer_plan().is_some()
     {
-        let stage_id = "PrePass::PaintSegmentation".to_string();
-        let module_id = "<host-built-in>".to_string();
-        instrumentation.on_stage_start(&stage_id, None);
-        instrumentation.on_module_start(&stage_id, None, &module_id);
+        let before = blackboard.estimated_size();
+        let guard = StageInstrumentationGuard::start(
+            instrumentation,
+            "PrePass::PaintSegmentation",
+            None,
+            "host:paint_segmentation",
+            before,
+        );
         let union_at_harvest = raw_config_source
             .get(&ConfigKey::from("union_paint_regions_at_harvest"))
             .map(|v| matches!(v, ConfigValue::Bool(true)))
@@ -648,23 +651,16 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             blackboard.layer_plan().cloned().unwrap(),
             union_at_harvest,
         )
-        .map_err(|source| {
-            instrumentation.on_stage_end(&stage_id, None);
-            PrepassExecutionError::PaintSegmentation { source }
-        })?;
+        .map_err(|source| PrepassExecutionError::PaintSegmentation { source })?;
         let rtree = build_paint_region_rtree_index(&paint_ir);
         blackboard
             .commit_paint_regions(paint_ir, rtree)
-            .map_err(|source| {
-                instrumentation.on_stage_end(&stage_id, None);
-                PrepassExecutionError::Blackboard {
-                    stage_id: "PrePass::PaintSegmentation".to_string(),
-                    module_id: "<host-built-in>".to_string(),
-                    source,
-                }
+            .map_err(|source| PrepassExecutionError::Blackboard {
+                stage_id: "PrePass::PaintSegmentation".to_string(),
+                module_id: "host:paint_segmentation".to_string(),
+                source,
             })?;
-        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
-        instrumentation.on_stage_end(&stage_id, None);
+        guard.finish(blackboard.estimated_size());
     }
     Ok(audits)
 }

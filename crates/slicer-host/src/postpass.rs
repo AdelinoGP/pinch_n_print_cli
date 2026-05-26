@@ -226,7 +226,7 @@ pub fn execute_postpass_with_instrumentation(
 
     // Step 1b: Emit initial GCodeIR from (reconciled) layers
     let emit_stage = "PostPass::GCodeEmit".to_string();
-    let emit_module = "<host-built-in>".to_string();
+    let emit_module = "host:gcode_emit".to_string();
     instrumentation.on_stage_start(&emit_stage, None);
     instrumentation.on_module_start(&emit_stage, None, &emit_module);
     let mut gcode_ir = emitter
@@ -295,7 +295,7 @@ pub fn execute_postpass_with_instrumentation(
     if text_postprocess_stages.is_empty() {
         // No TextPostProcess modules - serialize directly
         let ser_stage = "PostPass::GCodeSerialize".to_string();
-        let ser_module = "<host-built-in>".to_string();
+        let ser_module = "host:gcode_serialize".to_string();
         instrumentation.on_stage_start(&ser_stage, None);
         instrumentation.on_module_start(&ser_stage, None, &ser_module);
         let text = serializer.serialize_gcode(&gcode_ir).inspect_err(|_| {
@@ -308,7 +308,7 @@ pub fn execute_postpass_with_instrumentation(
 
     // Step 4: Serialize GCodeIR to text for TextPostProcess modules
     let ser_stage = "PostPass::GCodeSerialize".to_string();
-    let ser_module = "<host-built-in>".to_string();
+    let ser_module = "host:gcode_serialize".to_string();
     instrumentation.on_stage_start(&ser_stage, None);
     instrumentation.on_module_start(&ser_stage, None, &ser_module);
     let mut text = serializer.serialize_gcode(&gcode_ir).inspect_err(|_| {
@@ -349,7 +349,7 @@ pub fn execute_postpass_with_instrumentation(
                     // Log warning but continue - text remains unchanged from serialization
                     // Since we consumed `text` we need to re-serialize for the next module
                     let ser_stage = "PostPass::GCodeSerialize".to_string();
-                    let ser_module = "<host-built-in>".to_string();
+                    let ser_module = "host:gcode_serialize".to_string();
                     instrumentation.on_stage_start(&ser_stage, None);
                     instrumentation.on_module_start(&ser_stage, None, &ser_module);
                     text = serializer.serialize_gcode(&gcode_ir).inspect_err(|_| {
@@ -362,7 +362,7 @@ pub fn execute_postpass_with_instrumentation(
                     // Unexpected from TextPostProcess, but not fatal
                     // Re-serialize since we consumed text
                     let ser_stage = "PostPass::GCodeSerialize".to_string();
-                    let ser_module = "<host-built-in>".to_string();
+                    let ser_module = "host:gcode_serialize".to_string();
                     instrumentation.on_stage_start(&ser_stage, None);
                     instrumentation.on_module_start(&ser_stage, None, &ser_module);
                     text = serializer.serialize_gcode(&gcode_ir).inspect_err(|_| {
