@@ -35,7 +35,10 @@ fn default_config() -> ConfigView {
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(0.10)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
-        ("ironing_pattern", ConfigValue::String("rectilinear".to_string())),
+        (
+            "ironing_pattern",
+            ConfigValue::String("rectilinear".to_string()),
+        ),
     ])
 }
 
@@ -154,7 +157,10 @@ fn disabled_config_emits_no_ironing() {
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(0.10)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
-        ("ironing_pattern", ConfigValue::String("rectilinear".to_string())),
+        (
+            "ironing_pattern",
+            ConfigValue::String("rectilinear".to_string()),
+        ),
     ]);
     let module = TopSurfaceIroning::on_print_start(&cfg).unwrap();
     let region = region_with(Some(0), None, vec![square_polygon(10.0)]);
@@ -207,10 +213,13 @@ fn zero_flow_config_rejected_at_on_print_start() {
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(0.0)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
-        ("ironing_pattern", ConfigValue::String("rectilinear".to_string())),
+        (
+            "ironing_pattern",
+            ConfigValue::String("rectilinear".to_string()),
+        ),
     ]);
-    let err = TopSurfaceIroning::on_print_start(&cfg)
-        .expect_err("ironing_flow = 0.0 must be rejected");
+    let err =
+        TopSurfaceIroning::on_print_start(&cfg).expect_err("ironing_flow = 0.0 must be rejected");
     let msg = err.message.to_string();
     assert!(
         msg.contains("ironing_flow"),
@@ -225,7 +234,10 @@ fn unsupported_pattern_rejected_at_on_print_start() {
         ("ironing_speed", ConfigValue::Float(20.0)),
         ("ironing_flow", ConfigValue::Float(0.10)),
         ("ironing_spacing_mm", ConfigValue::Float(0.1)),
-        ("ironing_pattern", ConfigValue::String("concentric".to_string())),
+        (
+            "ironing_pattern",
+            ConfigValue::String("concentric".to_string()),
+        ),
     ]);
     let err = TopSurfaceIroning::on_print_start(&cfg)
         .expect_err("non-rectilinear pattern must be rejected");

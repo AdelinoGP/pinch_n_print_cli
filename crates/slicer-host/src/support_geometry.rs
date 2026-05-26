@@ -177,17 +177,15 @@ fn collect_polygons_at_z(
         return Vec::new();
     }
     let eps = 1e-6_f32;
-    let pos = layer_plan
-        .global_layers
-        .binary_search_by(|gl| {
-            if gl.z < z - eps {
-                std::cmp::Ordering::Less
-            } else if gl.z > z + eps {
-                std::cmp::Ordering::Greater
-            } else {
-                std::cmp::Ordering::Equal
-            }
-        });
+    let pos = layer_plan.global_layers.binary_search_by(|gl| {
+        if gl.z < z - eps {
+            std::cmp::Ordering::Less
+        } else if gl.z > z + eps {
+            std::cmp::Ordering::Greater
+        } else {
+            std::cmp::Ordering::Equal
+        }
+    });
     let idx = match pos {
         Ok(i) => i,
         Err(i) => {

@@ -90,8 +90,16 @@ fn staircase_mesh() -> MeshIR {
             make_cuboid("step-c", 3.0, 0.0, 0.9),
         ],
         build_volume: BoundingBox3 {
-            min: Point3 { x: -100.0, y: -100.0, z: 0.0 },
-            max: Point3 { x: 100.0, y: 100.0, z: 100.0 },
+            min: Point3 {
+                x: -100.0,
+                y: -100.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 100.0,
+                y: 100.0,
+                z: 100.0,
+            },
         },
         ..Default::default()
     }
@@ -265,7 +273,11 @@ fn staircase_topsurface_ironing_emits_for_exposed_layers() {
             );
         }
         total_paths += output.ironing_paths().len();
-        total_points += output.ironing_paths().iter().map(|p| p.points.len()).sum::<usize>();
+        total_points += output
+            .ironing_paths()
+            .iter()
+            .map(|p| p.points.len())
+            .sum::<usize>();
     }
 
     // We expect at least one ironing path emitted across the staircase, with
@@ -300,5 +312,8 @@ fn staircase_pipeline_is_deterministic_across_runs() {
 
     let a = run_once();
     let b = run_once();
-    assert_eq!(a, b, "prepass slice + shell classification must be deterministic");
+    assert_eq!(
+        a, b,
+        "prepass slice + shell classification must be deterministic"
+    );
 }

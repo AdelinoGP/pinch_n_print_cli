@@ -77,8 +77,16 @@ fn dummy_mesh(object_id: &str) -> MeshIR {
             ..Default::default()
         }],
         build_volume: BoundingBox3 {
-            min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
-            max: Point3 { x: 100.0, y: 100.0, z: 100.0 },
+            min: Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            max: Point3 {
+                x: 100.0,
+                y: 100.0,
+                z: 100.0,
+            },
         },
         ..Default::default()
     }
@@ -123,7 +131,10 @@ fn support_geometry_consumes_slice_ir_polygons_per_layer() {
     // SupportGeometry emits at every model layer. Both entries should now carry
     // the slice polygons rather than the previous empty-stub result.
     assert_eq!(
-        ir.entries.values().filter(|polys| !polys.is_empty()).count(),
+        ir.entries
+            .values()
+            .filter(|polys| !polys.is_empty())
+            .count(),
         2,
         "expected SliceIR-driven polygons for both support layer entries; got {:?}",
         ir.entries
@@ -159,7 +170,10 @@ fn support_geometry_collect_at_unaligned_z_returns_upper_bracket() {
         .entries
         .values()
         .any(|polys| !polys.is_empty() && polys.iter().any(|p| !p.contour.points.is_empty()));
-    assert!(any_non_empty, "expected at least one entry sourced from SliceIR");
+    assert!(
+        any_non_empty,
+        "expected at least one entry sourced from SliceIR"
+    );
 }
 
 #[test]
@@ -177,10 +191,11 @@ fn support_geometry_blocks_on_missing_slice_ir() {
     bb.commit_surface_classification(Arc::new(SurfaceClassificationIR::default()))
         .unwrap();
     bb.commit_layer_plan(Arc::new(plan)).unwrap();
-    bb.commit_region_map(Arc::new(RegionMapIR::default())).unwrap();
+    bb.commit_region_map(Arc::new(RegionMapIR::default()))
+        .unwrap();
 
-    let err = commit_support_geometry_builtin(&mut bb)
-        .expect_err("commit must fail without slice_ir");
+    let err =
+        commit_support_geometry_builtin(&mut bb).expect_err("commit must fail without slice_ir");
     assert!(
         format!("{err}").contains("SliceIR"),
         "error message must mention missing SliceIR, got '{err}'"
@@ -203,7 +218,8 @@ fn support_geometry_succeeds_with_empty_slice_ir() {
     bb.commit_surface_classification(Arc::new(SurfaceClassificationIR::default()))
         .unwrap();
     bb.commit_layer_plan(Arc::new(plan)).unwrap();
-    bb.commit_region_map(Arc::new(RegionMapIR::default())).unwrap();
+    bb.commit_region_map(Arc::new(RegionMapIR::default()))
+        .unwrap();
     bb.commit_slice_ir(Arc::new(Vec::<SliceIR>::new())).unwrap();
 
     commit_support_geometry_builtin(&mut bb).expect("commit must succeed");
