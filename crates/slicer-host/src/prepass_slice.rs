@@ -383,27 +383,49 @@ pub fn execute_layer_slice(
             })?;
 
         // Resolve per-region config from RegionMapIR (single lookup; reused for
-        // shell-layer counts and slice_closing_radius). Fall back to the
-        // ActiveRegion's `resolved_config` when no plan entry exists.
-        let resolved_plan = region_map.and_then(|rm| {
+        // shell-layer counts and slice_closing_radius). Two fallback cases are
+        // distinguished:
+        //   - region_map = None         => documented test path; silent fallback.
+        //   - region_map = Some, miss   => partial RegionMap; this is a scheduler
+        //                                  contract violation. Warn loudly +
+        //                                  debug_assert (panics in tests so we
+        //                                  surface the bug; logs in release).
+        let resolved_plan = if let Some(rm) = region_map {
             let key = RegionKey {
                 global_layer_index: layer.index,
                 object_id: active.object_id.clone(),
                 region_id: active.region_id,
             };
-            rm.entries.get(&key)
-        });
+            let entry = rm.entries.get(&key);
+            if entry.is_none() {
+                log::warn!(
+                    "PrePass::Slice: region_map present but missing entry for \
+                     (layer={}, object={}, region={}) — falling back to legacy \
+                     defaults; this indicates a partial RegionMap commit",
+                    layer.index,
+                    active.object_id,
+                    active.region_id,
+                );
+                debug_assert!(
+                    false,
+                    "PrePass::Slice: region_map present but lookup miss for \
+                     (layer={}, object={}, region={}); partial RegionMap \
+                     violates the scheduler contract",
+                    layer.index,
+                    active.object_id,
+                    active.region_id,
+                );
+            }
+            entry
+        } else {
+            None
+        };
         let (top_shell_layers, bottom_shell_layers, slice_closing_radius_mm) = match resolved_plan {
             Some(plan) => (
                 plan.config.top_shell_layers,
                 plan.config.bottom_shell_layers,
                 plan.config.slice_closing_radius,
             ),
-            // Fall back to legacy behavior (no closing radius) when called
-            // without a committed region map. The live PrePass::Slice path
-            // always has region_map present; direct-call tests that don't
-            // construct a RegionMapIR continue to observe raw `slice_mesh_ex`
-            // output.
             None => (3u32, 3u32, 0.0_f32),
         };
 

@@ -2107,7 +2107,7 @@ fn benchy_gcode_contains_ironing_evidence() {
     let config_path = tmp.path().join("ironing_enabled.json");
     std::fs::write(
         &config_path,
-        "{\n  \"ironing\": true,\n  \"ironing_flow\": 0.15,\n  \"ironing_speed\": 15.0,\n  \"ironing_spacing\": 0.2\n}\n",
+        "{\n  \"ironing_enabled\": true,\n  \"ironing_flow\": 0.15,\n  \"ironing_speed\": 15.0,\n  \"ironing_spacing_mm\": 0.2\n}\n",
     )
     .expect("write ironing config");
 
@@ -2171,7 +2171,7 @@ fn benchy_top_surface_precedes_ironing() {
     let config_path = tmp.path().join("ironing_enabled.json");
     std::fs::write(
         &config_path,
-        "{\n  \"ironing\": true,\n  \"ironing_flow\": 0.15,\n  \"ironing_speed\": 15.0,\n  \"ironing_spacing\": 0.2\n}\n",
+        "{\n  \"ironing_enabled\": true,\n  \"ironing_flow\": 0.15,\n  \"ironing_speed\": 15.0,\n  \"ironing_spacing_mm\": 0.2\n}\n",
     )
     .expect("write ironing config");
 
