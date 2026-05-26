@@ -58,6 +58,33 @@ fn square_polygon(side_mm: f32) -> ExPolygon {
     }
 }
 
+/// U-shaped polygon: 10×10 square with a 4×6 rectangular notch cut into the
+/// top edge. The notch spans x ∈ [-2, 2], y ∈ [-1, 5]. A scan-line ironing
+/// algorithm should produce two disjoint segments per row in the upper band
+/// y ∈ (-1, 5) — one in the left column [-5, -2], one in the right column
+/// [2, 5] — because the notch separates them.
+///
+/// The previous walk-in clip algorithm (find clipped_start then clipped_end
+/// from each side) cannot produce disjoint segments and would emit a single
+/// stroke crossing the notch.
+fn u_shape_polygon() -> ExPolygon {
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                Point2::from_mm(-5.0, -5.0),
+                Point2::from_mm(5.0, -5.0),
+                Point2::from_mm(5.0, 5.0),
+                Point2::from_mm(2.0, 5.0),
+                Point2::from_mm(2.0, -1.0),
+                Point2::from_mm(-2.0, -1.0),
+                Point2::from_mm(-2.0, 5.0),
+                Point2::from_mm(-5.0, 5.0),
+            ],
+        },
+        holes: vec![],
+    }
+}
+
 /// L-shaped polygon, used to verify clip-to-polygon behaviour: a 10×10 square
 /// with the upper-right 5×5 quadrant removed.
 fn l_shape_polygon() -> ExPolygon {
@@ -277,6 +304,65 @@ fn l_shape_clip_keeps_strokes_inside_concave_polygon() {
             );
         }
     }
+}
+
+#[test]
+fn u_shape_top_fill_produces_disjoint_segments_per_row() {
+    // Scan-line algorithm requirement: a non-convex polygon whose scan line
+    // intersects the contour in more than two points must emit one stroke per
+    // [x_{2k}, x_{2k+1}] interval — multiple disjoint strokes per row.
+    //
+    // The old walk-in clip algorithm (clip endpoints inward from x_start/x_end
+    // by stepping 0.05 mm and testing point_in_polygon) cannot produce disjoint
+    // segments — it always emits a single [clipped_start, clipped_end] stroke
+    // per row that crosses any internal notch. For benchy layer 59 this
+    // produced a catastrophic O(span/step · P) inner loop that trapped the
+    // WASM module before any ironing could be emitted.
+    let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
+    let region = region_with(Some(0), None, vec![u_shape_polygon()]);
+    let mut output = InfillOutputBuilder::new();
+
+    let start = std::time::Instant::now();
+    module
+        .run_infill(0, &[region], &mut output, &default_config())
+        .unwrap();
+    let elapsed = start.elapsed();
+    assert!(
+        elapsed.as_millis() < 500,
+        "U-shape ironing must complete in < 500ms (got {}ms) — \
+         scan-line algorithm required, not per-row walk-in clipping",
+        elapsed.as_millis()
+    );
+
+    let paths = output.ironing_paths();
+    assert!(!paths.is_empty(), "U-shape must produce ironing paths");
+
+    // Walk every (start, end) pair. In the upper notch band (y > -1):
+    //   1. No pair may have its midpoint inside the notch (|x| < 2 && y > -1).
+    //   2. We must observe at least one pair in the left column (midx < -2)
+    //      and one in the right column (midx > 2) — proving disjoint emission.
+    let mut saw_left_band = false;
+    let mut saw_right_band = false;
+    for path in paths {
+        for pair in path.points.chunks_exact(2) {
+            let midx = (pair[0].x + pair[1].x) / 2.0;
+            let midy = (pair[0].y + pair[1].y) / 2.0;
+            assert!(
+                !(midx.abs() < 2.0 && midy > -1.0),
+                "stroke midpoint ({midx:.2}, {midy:.2}) leaked into the U-shape notch"
+            );
+            if midy > -1.0 && midx < -2.0 {
+                saw_left_band = true;
+            }
+            if midy > -1.0 && midx > 2.0 {
+                saw_right_band = true;
+            }
+        }
+    }
+    assert!(
+        saw_left_band && saw_right_band,
+        "expected disjoint strokes in both upper columns; got left={saw_left_band} right={saw_right_band}"
+    );
 }
 
 #[test]

@@ -17,7 +17,7 @@
 
 use slicer_ir::{
     units_to_mm, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
-    Point3WithWidth,
+    Point3WithWidth, Polygon,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::error::ModuleError;
@@ -106,24 +106,54 @@ fn bbox_of_expoly(poly: &ExPolygon) -> Option<BBox2D> {
     Some(bb)
 }
 
-/// Tolerance (mm) used by stroke-endpoint containment checks. Equal to one
-/// slicer integer-coordinate unit — points within ±0.0001 mm of a polygon
-/// edge count as inside, preventing the f32 even-odd test's flip on
-/// stroke endpoints that coincide with the contour.
-const STROKE_CONTAIN_EPS_MM: f64 = 0.001;
-
-/// Containment predicate used during stroke clipping. Delegates to the
-/// shared `slicer_ir::point_in_polygon_winding` (f64 winding-number with
-/// edge tolerance) so behaviour stays consistent across modules.
-fn point_in_polygon_mm(poly: &ExPolygon, px: f32, py: f32) -> bool {
-    slicer_ir::point_in_polygon_winding(poly, px as f64, py as f64, STROKE_CONTAIN_EPS_MM)
+/// Push the x-coordinates (mm) where the horizontal scan line `y_mm` crosses
+/// the edges of `poly`. Uses the half-open `[y_lo, y_hi)` rule so vertices
+/// shared between two non-horizontal edges contribute exactly one crossing
+/// (the lower endpoint of the upper edge), yielding consistent even parity.
+/// Horizontal edges are skipped — adjacent non-horizontal edges already
+/// account for them.
+///
+/// Mirrors OrcaSlicer's even-odd scan-line classification used by
+/// `FillRectilinear::fill_surface_by_lines` (libslic3r/Fill/FillRectilinear.cpp).
+fn collect_x_crossings(poly: &Polygon, y_mm: f32, xs: &mut Vec<f32>) {
+    let pts = &poly.points;
+    let n = pts.len();
+    if n < 3 {
+        return;
+    }
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let yi = units_to_mm(pts[i].y);
+        let yj = units_to_mm(pts[j].y);
+        let (y_lo, y_hi) = if yi <= yj { (yi, yj) } else { (yj, yi) };
+        if (yj - yi).abs() < 1e-9 {
+            // Horizontal edge — skip.
+            continue;
+        }
+        if y_mm < y_lo || y_mm >= y_hi {
+            continue;
+        }
+        let xi = units_to_mm(pts[i].x);
+        let xj = units_to_mm(pts[j].x);
+        let x = xi + (xj - xi) * (y_mm - yi) / (yj - yi);
+        xs.push(x);
+    }
 }
 
-/// Generate a rectilinear (horizontal-zigzag, snake) ironing polyline over
-/// `bb` at z, returning a single connected `ExtrusionPath3D` whose vertices
-/// fall inside `poly`. Endpoints that lie outside the polygon contour are
-/// clipped — for a convex top-fill polygon this trims neatly to the
-/// polygon outline.
+/// Generate a rectilinear (horizontal-zigzag, snake) ironing path over the
+/// `poly` ExPolygon at z. For each scan row at spacing `spacing_mm`, the
+/// algorithm:
+///
+/// 1. Collects edge x-crossings on the row (contour + every hole).
+/// 2. Sorts ascending and pairs into `[x_{2k}, x_{2k+1}]` interior intervals.
+/// 3. Emits one stroke per interval, alternating row direction so the path
+///    stays a connected snake within each fill block.
+///
+/// Cost is O(P) per row (P = vertex count) instead of the old per-row
+/// O(span / 0.05 · P) walk-inward clipping — which trapped on benchy
+/// layer 59's top-fill polygon. For non-convex polygons (notches, holes)
+/// each row correctly emits multiple disjoint strokes that never traverse
+/// the gaps.
 fn generate_zigzag_strokes_for_polygon(
     poly: &ExPolygon,
     bb: &BBox2D,
@@ -138,10 +168,7 @@ fn generate_zigzag_strokes_for_polygon(
     }
 
     let span = bb.y_max - bb.y_min;
-    let n = ((span / spacing).floor() as usize).saturating_add(1);
-    if n == 0 {
-        return Vec::new();
-    }
+    let n_rows = ((span / spacing).floor() as usize).saturating_add(1);
 
     let mk = |x: f32, y: f32| Point3WithWidth {
         x,
@@ -152,43 +179,36 @@ fn generate_zigzag_strokes_for_polygon(
         overhang_quartile: None,
     };
 
-    let mut points: Vec<Point3WithWidth> = Vec::with_capacity(n * 2);
-    for i in 0..n {
+    let mut points: Vec<Point3WithWidth> = Vec::new();
+    let mut xs: Vec<f32> = Vec::new();
+    for i in 0..n_rows {
         let y = (bb.y_min + (i as f32) * spacing).min(bb.y_max);
-        let (mut x_start, mut x_end) = if i % 2 == 0 {
-            (bb.x_min, bb.x_max)
-        } else {
-            (bb.x_max, bb.x_min)
-        };
-        // Clip stroke endpoints to the polygon. Walk inward in 0.05mm steps
-        // until both endpoints lie inside; bail out if the row is fully
-        // outside the polygon.
-        let step = 0.05_f32;
-        let dir = (x_end - x_start).signum();
-        if dir == 0.0 {
+
+        xs.clear();
+        collect_x_crossings(&poly.contour, y, &mut xs);
+        for hole in &poly.holes {
+            collect_x_crossings(hole, y, &mut xs);
+        }
+        if xs.len() < 2 {
             continue;
         }
-        let mut clipped_start = x_start;
-        while !point_in_polygon_mm(poly, clipped_start, y) {
-            clipped_start += dir * step;
-            if (clipped_start - x_end).abs() <= step {
-                break;
+        xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        // Odd crossings indicate a vertex-grazing degeneracy; drop the last
+        // one rather than emit an unmatched start/end. Even-odd pairing then
+        // yields valid [x_{2k}, x_{2k+1}] interior intervals.
+        let pair_count = xs.len() / 2;
+        let reverse_row = i % 2 == 1;
+        for k in 0..pair_count {
+            let idx = if reverse_row { pair_count - 1 - k } else { k };
+            let a = xs[2 * idx];
+            let b = xs[2 * idx + 1];
+            if (b - a) <= 1e-4 {
+                continue;
             }
+            let (xa, xb) = if reverse_row { (b, a) } else { (a, b) };
+            points.push(mk(xa, y));
+            points.push(mk(xb, y));
         }
-        let mut clipped_end = x_end;
-        while !point_in_polygon_mm(poly, clipped_end, y) {
-            clipped_end -= dir * step;
-            if (clipped_start - clipped_end).abs() <= step {
-                break;
-            }
-        }
-        if (clipped_start - clipped_end).abs() <= step {
-            continue;
-        }
-        x_start = clipped_start;
-        x_end = clipped_end;
-        points.push(mk(x_start, y));
-        points.push(mk(x_end, y));
     }
 
     if points.len() < 2 {
