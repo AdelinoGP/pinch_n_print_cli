@@ -20,7 +20,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use slicer_ir::{ExPolygon, LayerPlanIR, MeshIR, RegionId, SupportGeometryIR, SupportGeometryKey};
+use slicer_ir::{
+    ExPolygon, LayerPlanIR, MeshIR, ObjectId, RegionId, SliceIR, SupportGeometryIR,
+    SupportGeometryKey,
+};
 
 use crate::Blackboard;
 
@@ -31,6 +34,8 @@ pub enum SupportGeometryBuiltinError {
     NoLayerPlan,
     /// `MeshIR` is not available.
     NoMesh,
+    /// `SliceIR` is not committed (PrePass::Slice must run first).
+    MissingSliceIR,
 }
 
 impl std::fmt::Display for SupportGeometryBuiltinError {
@@ -38,6 +43,10 @@ impl std::fmt::Display for SupportGeometryBuiltinError {
         match self {
             Self::NoLayerPlan => write!(f, "LayerPlanIR not committed"),
             Self::NoMesh => write!(f, "MeshIR not available"),
+            Self::MissingSliceIR => write!(
+                f,
+                "PrePass::Slice must commit SliceIR before PrePass::SupportGeometry"
+            ),
         }
     }
 }
@@ -57,6 +66,7 @@ const DEFAULT_SUPPORT_TOP_Z_DISTANCE_MM: f32 = 5.0;
 pub fn execute_support_geometry(
     layer_plan: &LayerPlanIR,
     mesh: &MeshIR,
+    slice_vec: &[SliceIR],
 ) -> Result<SupportGeometryIR, SupportGeometryBuiltinError> {
     let support_layer_height_mm = DEFAULT_SUPPORT_LAYER_HEIGHT_MM;
     let support_top_z_distance_mm = DEFAULT_SUPPORT_TOP_Z_DISTANCE_MM;
@@ -109,9 +119,10 @@ pub fn execute_support_geometry(
                     region_id: region.region_id,
                 };
 
-                // Collect polygons at Z from mesh (simplified: uses bounding box projection).
+                // Collect polygons at Z from the prepass-committed SliceIR.
                 let polygons = collect_polygons_at_z(
-                    mesh,
+                    slice_vec,
+                    layer_plan,
                     &region.object_id,
                     region.region_id,
                     global_layer.z,
@@ -127,7 +138,13 @@ pub fn execute_support_geometry(
     }
 
     // Add intermediate model-resolution layers within support_top_z_distance_mm of column tops.
-    add_intermediate_model_layers(&mut entries, layer_plan, mesh, support_top_z_distance_mm);
+    add_intermediate_model_layers(
+        &mut entries,
+        layer_plan,
+        mesh,
+        slice_vec,
+        support_top_z_distance_mm,
+    );
 
     Ok(SupportGeometryIR {
         support_layer_height_mm,
@@ -137,18 +154,68 @@ pub fn execute_support_geometry(
     })
 }
 
-/// Collect ExPolygons at a given Z from the mesh for a specific object/region.
+/// Collect ExPolygons at a given Z from the prepass-committed `SliceIR` Vec
+/// for a specific `(object_id, region_id)`.
 ///
-/// This is a stub that returns empty polygons. Full plane-triangle intersection
-/// is implemented in packet 31b.
+/// Lookup strategy:
+/// - Binary-search `layer_plan.global_layers` for the slot whose Z matches
+///   `z` within a 1e-6 mm tolerance.
+/// - On exact match: return that layer's polygons for the target region.
+/// - On a non-aligned Z (interpolated between two adjacent layers): return
+///   the **upper** bracketing layer's polygons. This is conservative for
+///   support pillars (catches the overhang above the gap) and matches
+///   `DEVIATION_LOG.md` entry for this behavior.
+/// - When `z` is above the print top: returns empty.
 fn collect_polygons_at_z(
-    _mesh: &MeshIR,
-    _object_id: &str,
-    _region_id: RegionId,
-    _z: f32,
+    slice_vec: &[SliceIR],
+    layer_plan: &LayerPlanIR,
+    object_id: &ObjectId,
+    region_id: RegionId,
+    z: f32,
 ) -> Vec<ExPolygon> {
-    // Full plane-triangle intersection implemented in 31b.
-    Vec::new()
+    if slice_vec.is_empty() || layer_plan.global_layers.is_empty() {
+        return Vec::new();
+    }
+    let eps = 1e-6_f32;
+    let pos = layer_plan
+        .global_layers
+        .binary_search_by(|gl| {
+            if gl.z < z - eps {
+                std::cmp::Ordering::Less
+            } else if gl.z > z + eps {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Equal
+            }
+        });
+    let idx = match pos {
+        Ok(i) => i,
+        Err(i) => {
+            // `i` is the upper bracket; clamp to end of print.
+            if i >= slice_vec.len() {
+                return Vec::new();
+            }
+            i
+        }
+    };
+    extract_region_polys(&slice_vec[idx], object_id, region_id)
+}
+
+/// Pull the polygons for a specific `(object_id, region_id)` out of a single
+/// committed `SliceIR`. Flattens across multiple regions matching the key
+/// (currently slice production emits at most one region per key, but this
+/// stays robust to future refinement).
+fn extract_region_polys(
+    slice: &SliceIR,
+    object_id: &ObjectId,
+    region_id: RegionId,
+) -> Vec<ExPolygon> {
+    slice
+        .regions
+        .iter()
+        .filter(|r| &r.object_id == object_id && r.region_id == region_id)
+        .flat_map(|r| r.polygons.clone())
+        .collect()
 }
 
 /// Add intermediate model-resolution layers within `distance_mm` of column tops.
@@ -159,6 +226,7 @@ fn add_intermediate_model_layers(
     entries: &mut HashMap<SupportGeometryKey, Vec<ExPolygon>>,
     layer_plan: &LayerPlanIR,
     _mesh: &MeshIR,
+    _slice_vec: &[SliceIR],
     distance_mm: f32,
 ) {
     // Find column tops: for each object, find the highest Z that has a region.
@@ -199,8 +267,11 @@ pub fn commit_support_geometry_builtin(
         .layer_plan()
         .ok_or(SupportGeometryBuiltinError::NoLayerPlan)?;
     let mesh = blackboard.mesh();
+    let slice_vec = blackboard
+        .slice_ir()
+        .ok_or(SupportGeometryBuiltinError::MissingSliceIR)?;
 
-    let ir = execute_support_geometry(layer_plan.as_ref(), mesh.as_ref())?;
+    let ir = execute_support_geometry(layer_plan.as_ref(), mesh.as_ref(), slice_vec.as_ref())?;
     blackboard
         .commit_support_geometry(Arc::new(ir))
         .map_err(|_| SupportGeometryBuiltinError::NoLayerPlan) // Dup commit is idempotent here
@@ -341,8 +412,9 @@ mod tests {
     fn support_geometry_emits_for_2_layer_fixture() {
         let layer_plan = make_2_layer_plan();
         let mesh = make_test_mesh();
+        let slice_vec: Vec<SliceIR> = Vec::new();
 
-        let result = execute_support_geometry(&layer_plan, &mesh);
+        let result = execute_support_geometry(&layer_plan, &mesh, &slice_vec);
         assert!(result.is_ok());
 
         let ir = result.unwrap();
