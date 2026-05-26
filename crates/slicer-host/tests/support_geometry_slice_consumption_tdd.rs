@@ -111,7 +111,6 @@ fn slice_with_polygon(layer_index: u32, z: f32, object_id: &str, poly: ExPolygon
 fn support_geometry_consumes_slice_ir_polygons_per_layer() {
     let object_id = "obj-supp";
     let layer_height = 0.2_f32;
-    let mesh = dummy_mesh(object_id);
     let plan = LayerPlanIR {
         global_layers: vec![
             make_layer(0, 0.2, object_id, layer_height),
@@ -125,17 +124,20 @@ fn support_geometry_consumes_slice_ir_polygons_per_layer() {
         slice_with_polygon(1, 0.4, object_id, unit_square(10.0)),
     ];
 
-    let ir = support_geometry::execute_support_geometry(&plan, &mesh, &slice_vec).unwrap();
+    let ir = support_geometry::execute_support_geometry(&plan, &slice_vec).unwrap();
 
     // With support_layer_height_mm = 0.0 (default = "use model layer height"),
-    // SupportGeometry emits at every model layer. Both entries should now carry
-    // the slice polygons rather than the previous empty-stub result.
+    // SupportGeometry emits at every model layer. Both *support* entries
+    // (non-sentinel global_support_layer_index) should now carry the slice
+    // polygons rather than the previous empty-stub result. Intermediate
+    // entries (sentinel u32::MAX) are covered by a separate test.
+    let support_non_empty = ir
+        .entries
+        .iter()
+        .filter(|(k, polys)| k.global_support_layer_index != u32::MAX && !polys.is_empty())
+        .count();
     assert_eq!(
-        ir.entries
-            .values()
-            .filter(|polys| !polys.is_empty())
-            .count(),
-        2,
+        support_non_empty, 2,
         "expected SliceIR-driven polygons for both support layer entries; got {:?}",
         ir.entries
     );
@@ -147,7 +149,6 @@ fn support_geometry_collect_at_unaligned_z_returns_upper_bracket() {
     // intermediate z=0.3 should pull from the upper-bracket layer (idx 1).
     let object_id = "obj-bracket";
     let layer_height = 0.2_f32;
-    let mesh = dummy_mesh(object_id);
     let plan = LayerPlanIR {
         global_layers: vec![
             make_layer(0, 0.2, object_id, layer_height),
@@ -163,7 +164,7 @@ fn support_geometry_collect_at_unaligned_z_returns_upper_bracket() {
         slice_with_polygon(1, 0.4, object_id, big.clone()),
     ];
 
-    let ir = support_geometry::execute_support_geometry(&plan, &mesh, &slice_vec).unwrap();
+    let ir = support_geometry::execute_support_geometry(&plan, &slice_vec).unwrap();
     // Find an entry whose polygons came from the bigger (upper-bracket) slice.
     // Any non-empty entry must contain at least one of the slice polygons.
     let any_non_empty = ir
@@ -225,4 +226,47 @@ fn support_geometry_succeeds_with_empty_slice_ir() {
     commit_support_geometry_builtin(&mut bb).expect("commit must succeed");
     let committed: &SupportGeometryIR = bb.support_geometry().expect("committed").as_ref();
     assert!(committed.entries.is_empty());
+}
+
+#[test]
+fn support_geometry_populates_intermediate_layer_entries_from_slice_ir() {
+    // The intermediate-layer entries (global_support_layer_index = u32::MAX)
+    // are added within `support_top_z_distance_mm` of column tops. Before A2
+    // these were registered with empty polygons. After A2 each intermediate
+    // entry must carry the polygons pulled from SliceIR at the layer's Z.
+    let object_id = "obj-intermediate";
+    let layer_height = 0.2_f32;
+    let plan = LayerPlanIR {
+        global_layers: vec![
+            make_layer(0, 0.2, object_id, layer_height),
+            make_layer(1, 0.4, object_id, layer_height),
+            make_layer(2, 0.6, object_id, layer_height),
+        ],
+        object_participation: HashMap::new(),
+        ..Default::default()
+    };
+    let slice_vec = vec![
+        slice_with_polygon(0, 0.2, object_id, unit_square(10.0)),
+        slice_with_polygon(1, 0.4, object_id, unit_square(10.0)),
+        slice_with_polygon(2, 0.6, object_id, unit_square(10.0)),
+    ];
+
+    let ir = support_geometry::execute_support_geometry(&plan, &slice_vec).unwrap();
+
+    // Every intermediate entry (the `u32::MAX` sentinel) must be non-empty.
+    let intermediate_entries: Vec<_> = ir
+        .entries
+        .iter()
+        .filter(|(k, _)| k.global_support_layer_index == u32::MAX)
+        .collect();
+    assert!(
+        !intermediate_entries.is_empty(),
+        "expected at least one intermediate-layer entry within distance of column top"
+    );
+    for (key, polys) in &intermediate_entries {
+        assert!(
+            !polys.is_empty(),
+            "intermediate entry {key:?} must carry SliceIR polygons; got empty Vec"
+        );
+    }
 }

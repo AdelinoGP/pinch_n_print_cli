@@ -8,11 +8,12 @@
 //! - Walk `LayerPlanIR.global_layers` accumulating `effective_layer_height`.
 //! - When accumulated >= `support_layer_height_mm`, emit a support layer
 //!   boundary at that layer's Z.
-//! - For each support layer boundary Z, intersect `MeshIR` triangles to
-//!   collect polygons at that Z.
+//! - For each support layer boundary Z, pull per-region polygons from the
+//!   prepass-committed `Vec<SliceIR>` via `collect_polygons_at_z`.
 //! - Union polygons per `(object_id, region_id)` to produce coarse outlines.
 //! - Intermediate model-resolution outline layers are added at every model
-//!   layer within `support_top_z_distance_mm` of column tops.
+//!   layer within `support_top_z_distance_mm` of column tops; each entry is
+//!   populated from `SliceIR` at the intermediate Z (not left empty).
 //!
 //! The accumulated algorithm handles variable heights and catch-up layers
 //! correctly: catch-up layers count their full `effective_layer_height`.
@@ -21,8 +22,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ExPolygon, LayerPlanIR, MeshIR, ObjectId, RegionId, SliceIR, SupportGeometryIR,
-    SupportGeometryKey,
+    ExPolygon, LayerPlanIR, ObjectId, RegionId, SliceIR, SupportGeometryIR, SupportGeometryKey,
 };
 
 use crate::Blackboard;
@@ -62,10 +62,10 @@ const DEFAULT_SUPPORT_TOP_Z_DISTANCE_MM: f32 = 5.0;
 /// Execute the built-in `PrePass::SupportGeometry` stage.
 ///
 /// Produces a `SupportGeometryIR` with coarse support layer boundaries
-/// and intermediate model-resolution outline layers.
+/// and intermediate model-resolution outline layers, both populated from
+/// the prepass-committed `Vec<SliceIR>`.
 pub fn execute_support_geometry(
     layer_plan: &LayerPlanIR,
-    mesh: &MeshIR,
     slice_vec: &[SliceIR],
 ) -> Result<SupportGeometryIR, SupportGeometryBuiltinError> {
     let support_layer_height_mm = DEFAULT_SUPPORT_LAYER_HEIGHT_MM;
@@ -141,7 +141,6 @@ pub fn execute_support_geometry(
     add_intermediate_model_layers(
         &mut entries,
         layer_plan,
-        mesh,
         slice_vec,
         support_top_z_distance_mm,
     );
@@ -219,12 +218,14 @@ fn extract_region_polys(
 /// Add intermediate model-resolution layers within `distance_mm` of column tops.
 ///
 /// These use `global_support_layer_index = u32::MAX` sentinel to mark them
-/// as model layers, not support layers.
+/// as model layers, not support layers. Each intermediate entry is populated
+/// with the polygons pulled from `slice_vec` at the intermediate Z for every
+/// region active on that layer (one entry per `(object, region, layer)` —
+/// not just `region_id = 0`).
 fn add_intermediate_model_layers(
     entries: &mut HashMap<SupportGeometryKey, Vec<ExPolygon>>,
     layer_plan: &LayerPlanIR,
-    _mesh: &MeshIR,
-    _slice_vec: &[SliceIR],
+    slice_vec: &[SliceIR],
     distance_mm: f32,
 ) {
     // Find column tops: for each object, find the highest Z that has a region.
@@ -238,20 +239,32 @@ fn add_intermediate_model_layers(
         }
     }
 
-    // For each layer within distance_mm of a column top, add intermediate outlines.
+    // For each layer within distance_mm of a column top, register one entry
+    // per (object, active region) populated from SliceIR at the layer's Z.
     let sentinel = u32::MAX;
     for layer in &layer_plan.global_layers {
         for (object_id, &top_z) in &column_tops {
-            if (layer.z - top_z).abs() <= distance_mm {
-                // Add intermediate model layer entry.
-                // In a full implementation, this would contain actual geometry.
+            if (layer.z - top_z).abs() > distance_mm {
+                continue;
+            }
+            for active in layer
+                .active_regions
+                .iter()
+                .filter(|r| &r.object_id == object_id)
+            {
+                let polygons = collect_polygons_at_z(
+                    slice_vec,
+                    layer_plan,
+                    object_id,
+                    active.region_id,
+                    layer.z,
+                );
                 let key = SupportGeometryKey {
                     global_support_layer_index: sentinel,
                     object_id: object_id.clone(),
-                    region_id: 0, // Will be refined in 31b
+                    region_id: active.region_id,
                 };
-                // The geometry will be computed in 31b via plane-triangle intersection.
-                entries.entry(key).or_default();
+                entries.entry(key).or_default().extend(polygons);
             }
         }
     }
@@ -264,12 +277,11 @@ pub fn commit_support_geometry_builtin(
     let layer_plan = blackboard
         .layer_plan()
         .ok_or(SupportGeometryBuiltinError::NoLayerPlan)?;
-    let mesh = blackboard.mesh();
     let slice_vec = blackboard
         .slice_ir()
         .ok_or(SupportGeometryBuiltinError::MissingSliceIR)?;
 
-    let ir = execute_support_geometry(layer_plan.as_ref(), mesh.as_ref(), slice_vec.as_ref())?;
+    let ir = execute_support_geometry(layer_plan.as_ref(), slice_vec.as_ref())?;
     blackboard
         .commit_support_geometry(Arc::new(ir))
         .map_err(|_| SupportGeometryBuiltinError::NoLayerPlan) // Dup commit is idempotent here
@@ -278,92 +290,7 @@ pub fn commit_support_geometry_builtin(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slicer_ir::{BoundingBox3, GlobalLayer, ObjectMesh, Point3};
-
-    fn make_test_mesh() -> MeshIR {
-        MeshIR {
-            objects: vec![ObjectMesh {
-                id: "test-object".to_string(),
-                mesh: slicer_ir::IndexedTriangleSet {
-                    vertices: vec![
-                        Point3 {
-                            x: 0.0,
-                            y: 0.0,
-                            z: 0.0,
-                        },
-                        Point3 {
-                            x: 10.0,
-                            y: 0.0,
-                            z: 0.0,
-                        },
-                        Point3 {
-                            x: 10.0,
-                            y: 10.0,
-                            z: 0.0,
-                        },
-                        Point3 {
-                            x: 0.0,
-                            y: 10.0,
-                            z: 0.0,
-                        },
-                        Point3 {
-                            x: 0.0,
-                            y: 0.0,
-                            z: 10.0,
-                        },
-                        Point3 {
-                            x: 10.0,
-                            y: 0.0,
-                            z: 10.0,
-                        },
-                        Point3 {
-                            x: 10.0,
-                            y: 10.0,
-                            z: 10.0,
-                        },
-                        Point3 {
-                            x: 0.0,
-                            y: 10.0,
-                            z: 10.0,
-                        },
-                    ],
-                    indices: vec![
-                        0, 1, 2, 0, 2, 3, // bottom
-                        4, 6, 5, 4, 7, 6, // top
-                        0, 4, 5, 0, 5, 1, // front
-                        2, 6, 7, 2, 7, 3, // back
-                        0, 3, 7, 0, 7, 4, // left
-                        1, 5, 6, 1, 6, 2, // right
-                    ],
-                },
-                transform: slicer_ir::Transform3d {
-                    matrix: [
-                        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0,
-                        1.0,
-                    ],
-                },
-                config: slicer_ir::ObjectConfig {
-                    data: HashMap::new(),
-                },
-                modifier_volumes: vec![],
-                paint_data: None,
-                world_z_extent: Some((0.0, 10.0)),
-            }],
-            build_volume: BoundingBox3 {
-                min: Point3 {
-                    x: 0.0,
-                    y: 0.0,
-                    z: 0.0,
-                },
-                max: Point3 {
-                    x: 200.0,
-                    y: 200.0,
-                    z: 250.0,
-                },
-            },
-            ..Default::default()
-        }
-    }
+    use slicer_ir::GlobalLayer;
 
     fn make_2_layer_plan() -> LayerPlanIR {
         LayerPlanIR {
@@ -409,10 +336,9 @@ mod tests {
     #[test]
     fn support_geometry_emits_for_2_layer_fixture() {
         let layer_plan = make_2_layer_plan();
-        let mesh = make_test_mesh();
         let slice_vec: Vec<SliceIR> = Vec::new();
 
-        let result = execute_support_geometry(&layer_plan, &mesh, &slice_vec);
+        let result = execute_support_geometry(&layer_plan, &slice_vec);
         assert!(result.is_ok());
 
         let ir = result.unwrap();
