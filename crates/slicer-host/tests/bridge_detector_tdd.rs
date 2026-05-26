@@ -3,8 +3,8 @@
 #![allow(dead_code)]
 
 use slicer_core::polygon_ops::{intersection, validate_polygon_simplicity};
-use slicer_host::prepass_slice::{assemble_bridge_areas, execute_prepass_slice_single_layer};
 use slicer_host::mesh_analysis::{execute_mesh_analysis_with, MeshAnalysisConfig};
+use slicer_host::prepass_slice::{assemble_bridge_areas, execute_prepass_slice_single_layer};
 use slicer_ir::{
     ActiveRegion, BoundingBox3, BridgeRegion, ExPolygon, FacetClass, GlobalLayer,
     IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3,

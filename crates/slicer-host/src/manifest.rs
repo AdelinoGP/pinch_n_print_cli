@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use slicer_ir::{ModuleId, SemVer, StageId};
 use toml::Value;
 
-
 /// Helper for serde skip_serializing_if on bool.
 fn is_false(b: &bool) -> bool {
     !*b

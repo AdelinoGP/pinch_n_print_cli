@@ -3120,9 +3120,11 @@ fn resolved_config_to_map(
 /// global_layer_index of `existing` win on conflict.
 fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
     for new_region in incoming.regions {
-        match existing.regions.iter_mut().find(|r| {
-            r.object_id == new_region.object_id && r.region_id == new_region.region_id
-        }) {
+        match existing
+            .regions
+            .iter_mut()
+            .find(|r| r.object_id == new_region.object_id && r.region_id == new_region.region_id)
+        {
             Some(target) => {
                 target.sparse_infill.extend(new_region.sparse_infill);
                 target.solid_infill.extend(new_region.solid_infill);

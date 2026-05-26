@@ -487,8 +487,7 @@ impl Blackboard {
 // ============================================================================
 
 fn estimated_polygon_bytes(p: &Polygon) -> u64 {
-    std::mem::size_of::<Polygon>() as u64
-        + (p.points.len() * std::mem::size_of::<Point2>()) as u64
+    std::mem::size_of::<Polygon>() as u64 + (p.points.len() * std::mem::size_of::<Point2>()) as u64
 }
 
 fn estimated_expolygon_bytes(p: &ExPolygon) -> u64 {

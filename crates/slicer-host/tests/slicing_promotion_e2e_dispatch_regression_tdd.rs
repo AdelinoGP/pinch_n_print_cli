@@ -62,23 +62,59 @@ fn write_staircase_stl(path: &std::path::Path) {
         // CCW triangles when viewed from outside.
         vec![
             // -Z (bottom)
-            stl_io::Triangle { normal: n_down, vertices: [p[0], p[2], p[1]] },
-            stl_io::Triangle { normal: n_down, vertices: [p[0], p[3], p[2]] },
+            stl_io::Triangle {
+                normal: n_down,
+                vertices: [p[0], p[2], p[1]],
+            },
+            stl_io::Triangle {
+                normal: n_down,
+                vertices: [p[0], p[3], p[2]],
+            },
             // +Z (top)
-            stl_io::Triangle { normal: n_up, vertices: [p[4], p[5], p[6]] },
-            stl_io::Triangle { normal: n_up, vertices: [p[4], p[6], p[7]] },
+            stl_io::Triangle {
+                normal: n_up,
+                vertices: [p[4], p[5], p[6]],
+            },
+            stl_io::Triangle {
+                normal: n_up,
+                vertices: [p[4], p[6], p[7]],
+            },
             // +X
-            stl_io::Triangle { normal: n_xp, vertices: [p[1], p[2], p[6]] },
-            stl_io::Triangle { normal: n_xp, vertices: [p[1], p[6], p[5]] },
+            stl_io::Triangle {
+                normal: n_xp,
+                vertices: [p[1], p[2], p[6]],
+            },
+            stl_io::Triangle {
+                normal: n_xp,
+                vertices: [p[1], p[6], p[5]],
+            },
             // -X
-            stl_io::Triangle { normal: n_xn, vertices: [p[0], p[4], p[7]] },
-            stl_io::Triangle { normal: n_xn, vertices: [p[0], p[7], p[3]] },
+            stl_io::Triangle {
+                normal: n_xn,
+                vertices: [p[0], p[4], p[7]],
+            },
+            stl_io::Triangle {
+                normal: n_xn,
+                vertices: [p[0], p[7], p[3]],
+            },
             // +Y
-            stl_io::Triangle { normal: n_yp, vertices: [p[3], p[7], p[6]] },
-            stl_io::Triangle { normal: n_yp, vertices: [p[3], p[6], p[2]] },
+            stl_io::Triangle {
+                normal: n_yp,
+                vertices: [p[3], p[7], p[6]],
+            },
+            stl_io::Triangle {
+                normal: n_yp,
+                vertices: [p[3], p[6], p[2]],
+            },
             // -Y
-            stl_io::Triangle { normal: n_yn, vertices: [p[0], p[1], p[5]] },
-            stl_io::Triangle { normal: n_yn, vertices: [p[0], p[5], p[4]] },
+            stl_io::Triangle {
+                normal: n_yn,
+                vertices: [p[0], p[1], p[5]],
+            },
+            stl_io::Triangle {
+                normal: n_yn,
+                vertices: [p[0], p[5], p[4]],
+            },
         ]
     }
 
@@ -166,7 +202,10 @@ fn staircase_gcode_contains_ironing_block() {
     assert!(outcome.output_written, "--output file must be written");
 
     let gcode = outcome.gcode.as_str();
-    let ironing_count = gcode.lines().filter(|l| l.trim() == ";TYPE:Ironing").count();
+    let ironing_count = gcode
+        .lines()
+        .filter(|l| l.trim() == ";TYPE:Ironing")
+        .count();
     assert!(
         ironing_count >= 1,
         "expected at least one ;TYPE:Ironing block in staircase G-code; got 0. \

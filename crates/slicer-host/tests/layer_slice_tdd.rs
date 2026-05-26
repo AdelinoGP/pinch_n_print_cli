@@ -247,10 +247,12 @@ fn per_layer_executor_produces_deterministic_slice_across_runs() {
         }
     }
 
-    let slice_a = execute_prepass_slice_single_layer(mesh.as_ref(), &plan1.global_layers[0], None, None)
-    .unwrap();
-    let slice_b = execute_prepass_slice_single_layer(mesh.as_ref(), &plan2.global_layers[0], None, None)
-    .unwrap();
+    let slice_a =
+        execute_prepass_slice_single_layer(mesh.as_ref(), &plan1.global_layers[0], None, None)
+            .unwrap();
+    let slice_b =
+        execute_prepass_slice_single_layer(mesh.as_ref(), &plan2.global_layers[0], None, None)
+            .unwrap();
     assert_eq!(slice_a, slice_b, "repeated slices must be byte-identical");
 
     let a = execute_per_layer(&plan1, &bb1, &Noop).unwrap();

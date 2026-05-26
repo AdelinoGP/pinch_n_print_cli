@@ -26,8 +26,8 @@ use slicer_host::{
     assemble_search_roots, build_config_schema_json, build_live_execution_plan,
     load_live_modules_for_plan, load_modules_from_roots, parse_cli_config_source,
     resolve_global_config, resolve_per_object_configs, validate_support_layer_heights,
-    write_with_parents, ConfigBoundsIndex,
-    DefaultGCodeEmitter, DefaultGCodeSerializer, HostCli, HostCommands, HostRunOptions,
+    write_with_parents, ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer, HostCli,
+    HostCommands, HostRunOptions,
 };
 
 /// No-op prepass runner for MVP (no WASM modules loaded yet).
@@ -273,15 +273,31 @@ fn main() {
                 ) -> slicer_host::manifest::LoadedModule {
                     LoadedModuleBuilder::new(
                         id,
-                        SemVer { major: 1, minor: 0, patch: 0 },
+                        SemVer {
+                            major: 1,
+                            minor: 0,
+                            patch: 0,
+                        },
                         stage,
                         "slicer:world-layer@1.0.0",
                         PathBuf::from(format!("__host_builtin__/{id}")),
                     )
                     .ir_writes(writes.iter().map(|s| s.to_string()).collect())
-                    .min_host_version(SemVer { major: 0, minor: 1, patch: 0 })
-                    .min_ir_schema(SemVer { major: 1, minor: 0, patch: 0 })
-                    .max_ir_schema(SemVer { major: 4, minor: 0, patch: 0 })
+                    .min_host_version(SemVer {
+                        major: 0,
+                        minor: 1,
+                        patch: 0,
+                    })
+                    .min_ir_schema(SemVer {
+                        major: 1,
+                        minor: 0,
+                        patch: 0,
+                    })
+                    .max_ir_schema(SemVer {
+                        major: 4,
+                        minor: 0,
+                        patch: 0,
+                    })
                     .layer_parallel_safe(true)
                     .build()
                 }
@@ -316,11 +332,7 @@ fn main() {
                         "PrePass::PaintSegmentation",
                         &["PaintRegionIR"],
                     ),
-                    host_builtin(
-                        "host:gcode_emit",
-                        "PostPass::GCodeEmit",
-                        &["GCodeIR"],
-                    ),
+                    host_builtin("host:gcode_emit", "PostPass::GCodeEmit", &["GCodeIR"]),
                 ];
                 dag_modules.extend(loaded.bindings.iter().map(|b| b.module.clone()));
 
@@ -358,7 +370,10 @@ fn main() {
                     .errors
                     .iter()
                     .filter(|d| {
-                        matches!(d.pass, slicer_host::DagValidationPass::IrVersionCompatibility)
+                        matches!(
+                            d.pass,
+                            slicer_host::DagValidationPass::IrVersionCompatibility
+                        )
                     })
                     .collect();
                 if !ir_errors.is_empty() {
@@ -380,8 +395,10 @@ fn main() {
                 // positives. Surface them as warnings until that
                 // modeling lands.
                 for diag in &report.errors {
-                    if matches!(diag.pass, slicer_host::DagValidationPass::IrVersionCompatibility)
-                    {
+                    if matches!(
+                        diag.pass,
+                        slicer_host::DagValidationPass::IrVersionCompatibility
+                    ) {
                         continue;
                     }
                     eprintln!(

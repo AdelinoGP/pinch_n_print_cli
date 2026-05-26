@@ -341,7 +341,8 @@ impl<'a> StageInstrumentationGuard<'a> {
             self.host_initial_bytes,
             host_peak_bytes,
         );
-        self.instrumentation.on_stage_end(&self.stage_id, self.layer);
+        self.instrumentation
+            .on_stage_end(&self.stage_id, self.layer);
     }
 }
 
@@ -356,7 +357,8 @@ impl Drop for StageInstrumentationGuard<'_> {
         // on the failure path.
         self.instrumentation
             .on_module_end(&self.stage_id, self.layer, &self.module_id, 0, 0);
-        self.instrumentation.on_stage_end(&self.stage_id, self.layer);
+        self.instrumentation
+            .on_stage_end(&self.stage_id, self.layer);
     }
 }
 
@@ -453,13 +455,8 @@ mod guard_tests {
         let instr = RecordingInstrumentation::default();
 
         let result = catch_unwind(AssertUnwindSafe(|| {
-            let _guard = StageInstrumentationGuard::start(
-                &instr,
-                "PrePass::Slice",
-                None,
-                "host:slice",
-                100,
-            );
+            let _guard =
+                StageInstrumentationGuard::start(&instr, "PrePass::Slice", None, "host:slice", 100);
             panic!("simulated built-in failure");
         }));
 

@@ -13,7 +13,9 @@ use slicer_ir::{
 };
 
 use crate::config_resolution::resolve_per_paint_semantic_configs;
-use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation, StageInstrumentationGuard};
+use crate::instrumentation::{
+    NoopInstrumentation, PipelineInstrumentation, StageInstrumentationGuard,
+};
 use crate::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
 use crate::paint_segmentation::PaintSegmentationError;
 use crate::region_mapping::{commit_region_mapping_builtin, RegionMappingBuiltinError};
