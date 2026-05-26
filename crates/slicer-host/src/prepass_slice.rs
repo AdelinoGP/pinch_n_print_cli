@@ -411,9 +411,7 @@ pub fn execute_layer_slice(
                     "PrePass::Slice: region_map present but lookup miss for \
                      (layer={}, object={}, region={}); partial RegionMap \
                      violates the scheduler contract",
-                    layer.index,
-                    active.object_id,
-                    active.region_id,
+                    layer.index, active.object_id, active.region_id,
                 );
             }
             entry

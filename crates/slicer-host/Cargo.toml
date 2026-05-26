@@ -71,5 +71,9 @@ harness = false
 name = "wasm_modules"
 harness = false
 
+[[bench]]
+name = "shell_classification"
+harness = false
+
 [lints]
 workspace = true

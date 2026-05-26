@@ -17,8 +17,9 @@ use slicer_host::{
     Blackboard, BlackboardError, BlackboardPrepassSlot, LayerSliceError, ShellClassificationError,
 };
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectMesh,
-    Point3, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SliceIR, Transform3d,
+    ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
+    ObjectMesh, Point2, Point3, Polygon, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig,
+    SliceIR, SlicedRegion, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
 
 // ============================================================================
@@ -296,6 +297,88 @@ fn shell_classification_top_and_bottom_layers_for_single_object_cuboid() {
         layer2.top_shell_index,
         Some(1),
         "layer 2 should be depth-1 below exposed top"
+    );
+}
+
+#[test]
+fn shell_classification_apply_opening_suppresses_sliver_in_top_solid_fill() {
+    // Sliver-suppression regression for A3.
+    //
+    // Construct a 2-layer SliceIR directly where layer 0 is a 10×10 mm square
+    // and layer 1 is a 10×9.95 mm rectangle (same XY origin, top edge shifted
+    // inward by 0.05 mm — half a tenth of a 0.4 mm extrusion line).
+    //
+    // The raw `difference(layer0_polys, layer1_polys)` yields a 10×0.05 mm
+    // sliver along the top edge: a sub-extrusion-width artifact that real
+    // prints cannot reproduce. apply_opening with r = 0.2 mm (half line_width)
+    // erodes by 0.2 mm — which obliterates a 0.05-wide feature — then dilates
+    // by 0.2 mm. The net effect: layer 0's `top_solid_fill` must be EMPTY,
+    // and `top_shell_index` must remain None.
+    let object_id = "sliver-cube";
+    let plan = make_plan(2, 0.2, object_id);
+    let region_map = make_region_map(&plan, 1, 1);
+    let mesh = cuboid_mesh(object_id, 0.6); // any mesh — direct slice commit
+    let mut bb = seeded_blackboard(mesh, plan, region_map);
+
+    fn square_at(min_x: f32, min_y: f32, max_x: f32, max_y: f32) -> ExPolygon {
+        ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(min_x, min_y),
+                    Point2::from_mm(max_x, min_y),
+                    Point2::from_mm(max_x, max_y),
+                    Point2::from_mm(min_x, max_y),
+                ],
+            },
+            holes: vec![],
+        }
+    }
+
+    let layer0_polys = vec![square_at(-5.0, -5.0, 5.0, 5.0)];
+    let layer1_polys = vec![square_at(-5.0, -5.0, 5.0, 4.95)];
+
+    let slice_vec: Vec<SliceIR> = vec![
+        SliceIR {
+            schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 0,
+            z: 0.2,
+            regions: vec![SlicedRegion {
+                object_id: object_id.to_string(),
+                region_id: 0,
+                polygons: layer0_polys.clone(),
+                infill_areas: layer0_polys,
+                ..Default::default()
+            }],
+        },
+        SliceIR {
+            schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: 1,
+            z: 0.4,
+            regions: vec![SlicedRegion {
+                object_id: object_id.to_string(),
+                region_id: 0,
+                polygons: layer1_polys.clone(),
+                infill_areas: layer1_polys,
+                ..Default::default()
+            }],
+        },
+    ];
+    bb.commit_slice_ir(Arc::new(slice_vec))
+        .expect("commit_slice_ir");
+
+    commit_shell_classification_builtin(&mut bb).expect("PrePass::ShellClassification");
+
+    let classified = bb.slice_ir().expect("classified slice_ir");
+    let layer0 = &classified[0].regions[0];
+    assert!(
+        layer0.top_solid_fill.is_empty(),
+        "anti-sliver opening must wipe the 0.05 mm top-edge sliver; \
+         got top_solid_fill = {:?}",
+        layer0.top_solid_fill
+    );
+    assert_eq!(
+        layer0.top_shell_index, None,
+        "top_shell_index must remain None when the diff is sliver-only"
     );
 }
 
