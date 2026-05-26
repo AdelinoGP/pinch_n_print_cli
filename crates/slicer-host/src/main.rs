@@ -242,6 +242,61 @@ fn main() {
                     msg = diag.message,
                 );
             }
+
+            // 13-pass startup DAG validation (docs/04_host_scheduler.md).
+            // Runs every documented gate (IR-version compatibility, claim
+            // conflicts, cycles, write conflicts, etc.) against the discovered
+            // module set and aborts before pipeline construction on any error.
+            {
+                use slicer_host::{
+                    build_intra_stage_dag, validate_startup_dag, DagValidationRequest, StageDag,
+                };
+                use slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION;
+
+                let dag_modules: Vec<_> =
+                    loaded.bindings.iter().map(|b| b.module.clone()).collect();
+                let mut stage_dags: Vec<StageDag> = Vec::with_capacity(loaded.sorted_stages.len());
+                for stage_entry in &loaded.sorted_stages {
+                    match build_intra_stage_dag(stage_entry.stage_id.clone(), &dag_modules) {
+                        Ok(nodes) => stage_dags.push(StageDag {
+                            stage: stage_entry.stage_id.clone(),
+                            nodes,
+                        }),
+                        Err(err) => {
+                            eprintln!(
+                                "error: intra-stage DAG construction failed for {}: {err:?}",
+                                stage_entry.stage_id,
+                            );
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                let request = DagValidationRequest {
+                    modules: dag_modules,
+                    stage_dags,
+                    host_ir_schema_version: CURRENT_SLICE_IR_SCHEMA_VERSION,
+                    claim_holders: Vec::new(),
+                    access_audits: Vec::new(),
+                };
+                let report = validate_startup_dag(&request);
+                for warning in &report.warnings {
+                    eprintln!(
+                        "warning: startup DAG ({:?}): {:?}",
+                        warning.pass, warning.detail
+                    );
+                }
+                if !report.is_valid() {
+                    eprintln!(
+                        "error: startup DAG validation failed with {} fatal diagnostic(s):",
+                        report.errors.len(),
+                    );
+                    for diag in &report.errors {
+                        eprintln!("  [{:?}] {:?}", diag.pass, diag.detail);
+                    }
+                    std::process::exit(1);
+                }
+            }
+
             let config_bounds =
                 ConfigBoundsIndex::from_modules(loaded.bindings.iter().map(|b| &b.module));
 
