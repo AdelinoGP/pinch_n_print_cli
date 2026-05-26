@@ -125,14 +125,15 @@ impl LayerModule for GyroidInfill {
 
             let z = region.z();
 
-            // Determine fill role based on surface classification.
-            // Priority: bridge > top > bottom > sparse.
+            // Determine fill role based on shell classification.
+            // Priority: bridge > bottom > top > sparse (OrcaSlicer parity per
+            // PrintObject.cpp:detect_surfaces_type — see DEVIATION_LOG.md).
             let role = if region.is_bridge() {
                 ExtrusionRole::BridgeInfill
-            } else if region.is_top_surface() {
-                ExtrusionRole::TopSolidInfill
-            } else if region.is_bottom_surface() {
+            } else if region.bottom_shell_index().is_some() {
                 ExtrusionRole::BottomSolidInfill
+            } else if region.top_shell_index().is_some() {
+                ExtrusionRole::TopSolidInfill
             } else {
                 ExtrusionRole::SparseInfill
             };

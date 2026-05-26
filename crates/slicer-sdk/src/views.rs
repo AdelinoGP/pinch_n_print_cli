@@ -30,12 +30,15 @@ pub struct SliceRegionView {
     /// so generators can apply the default eligibility rules from
     /// docs/01_system_architecture.md when no support paint override applies.
     needs_support: bool,
-    /// True when this region is classified as a top surface by SurfaceClassificationIR.
-    /// Indicates the region needs TopSolidInfill fill rather than sparse infill.
-    is_top_surface: bool,
-    /// True when this region is classified as a bottom surface by SurfaceClassificationIR.
-    /// Indicates the region needs BottomSolidInfill fill rather than sparse infill.
-    is_bottom_surface: bool,
+    /// Minimum depth (0 = exposed) within the top shell zone for this region.
+    /// `None` outside any top shell. Populated by `PrePass::ShellClassification`.
+    top_shell_index: Option<u8>,
+    /// Minimum depth within the bottom shell zone. `None` outside any bottom shell.
+    bottom_shell_index: Option<u8>,
+    /// Polygon-precise area to solid-fill from top shell projection.
+    top_solid_fill: Vec<ExPolygon>,
+    /// Polygon-precise area to solid-fill from bottom shell projection.
+    bottom_solid_fill: Vec<ExPolygon>,
     /// True when this region is classified as a bridge region by SurfaceClassificationIR.
     /// Indicates the region needs BridgeInfill fill and cannot rely on support below.
     is_bridge: bool,
@@ -65,8 +68,10 @@ impl Default for SliceRegionView {
             // the SurfaceClassificationIR wiring observe the prior
             // "all candidates eligible" behavior.
             needs_support: true,
-            is_top_surface: false,
-            is_bottom_surface: false,
+            top_shell_index: None,
+            bottom_shell_index: None,
+            top_solid_fill: Vec::new(),
+            bottom_solid_fill: Vec::new(),
             is_bridge: false,
             bridge_areas: Vec::new(),
             bridge_orientation_deg: 0.0,
@@ -139,24 +144,35 @@ impl SliceRegionView {
         self.needs_support = needs_support;
     }
 
-    /// Override the top-surface classification flag (host-only, for testing).
+    /// Override the top shell index (host-only, for testing).
     ///
-    /// Per docs/02_ir_schemas.md §SurfaceClassificationIR, the host populates
-    /// this from `ObjectSurfaceData.surface_groups` where `shell_count > 0`
-    /// indicates a top surface. Default constructors leave the flag `false`.
+    /// `Some(0)` = exposed top surface; `Some(n)` = `n` layers below an
+    /// exposed top within the shell zone; `None` = outside any top shell.
+    /// Populated by `PrePass::ShellClassification`.
     #[doc(hidden)]
-    pub fn set_is_top_surface(&mut self, is_top_surface: bool) {
-        self.is_top_surface = is_top_surface;
+    pub fn set_top_shell_index(&mut self, top_shell_index: Option<u8>) {
+        self.top_shell_index = top_shell_index;
     }
 
-    /// Override the bottom-surface classification flag (host-only, for testing).
+    /// Override the bottom shell index (host-only, for testing).
     ///
-    /// Per docs/02_ir_schemas.md §SurfaceClassificationIR, the host populates
-    /// this from `ObjectSurfaceData.surface_groups` where the group is adjacent
-    /// to the build plate. Default constructors leave the flag `false`.
+    /// `Some(0)` = exposed bottom surface; `Some(n)` = `n` layers above an
+    /// exposed bottom within the shell zone; `None` = outside any bottom shell.
     #[doc(hidden)]
-    pub fn set_is_bottom_surface(&mut self, is_bottom_surface: bool) {
-        self.is_bottom_surface = is_bottom_surface;
+    pub fn set_bottom_shell_index(&mut self, bottom_shell_index: Option<u8>) {
+        self.bottom_shell_index = bottom_shell_index;
+    }
+
+    /// Override the polygon-precise top solid fill area (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_top_solid_fill(&mut self, top_solid_fill: Vec<ExPolygon>) {
+        self.top_solid_fill = top_solid_fill;
+    }
+
+    /// Override the polygon-precise bottom solid fill area (host-only, for testing).
+    #[doc(hidden)]
+    pub fn set_bottom_solid_fill(&mut self, bottom_solid_fill: Vec<ExPolygon>) {
+        self.bottom_solid_fill = bottom_solid_fill;
     }
 
     /// Override the bridge classification flag (host-only, for testing).
@@ -190,20 +206,39 @@ impl SliceRegionView {
         self.needs_support
     }
 
-    /// Returns true if this region was classified as a top surface.
+    /// Returns the minimum top-shell depth for this region.
     ///
-    /// Used by the infill stage to determine whether to emit `TopSolidInfill`
-    /// paths instead of `SparseInfill`.
-    pub fn is_top_surface(&self) -> bool {
-        self.is_top_surface
+    /// `Some(0)` indicates an exposed top surface; `Some(n)` indicates `n`
+    /// layers below an exposed top within the configured top-shell zone;
+    /// `None` indicates the region is outside any top shell. Used by the
+    /// infill stage to determine whether to emit `TopSolidInfill`.
+    pub fn top_shell_index(&self) -> Option<u8> {
+        self.top_shell_index
     }
 
-    /// Returns true if this region was classified as a bottom surface.
+    /// Returns the minimum bottom-shell depth for this region.
     ///
-    /// Used by the infill stage to determine whether to emit `BottomSolidInfill`
-    /// paths instead of `SparseInfill`.
-    pub fn is_bottom_surface(&self) -> bool {
-        self.is_bottom_surface
+    /// `Some(0)` indicates an exposed bottom surface; `Some(n)` indicates `n`
+    /// layers above an exposed bottom within the configured bottom-shell zone;
+    /// `None` indicates the region is outside any bottom shell.
+    pub fn bottom_shell_index(&self) -> Option<u8> {
+        self.bottom_shell_index
+    }
+
+    /// Returns the polygon-precise top solid fill area for this region.
+    ///
+    /// Empty when `top_shell_index()` is `None`. The shape is the
+    /// shrinking-shadow projection from the exposed top down through the
+    /// shell zone, computed in `PrePass::ShellClassification`.
+    pub fn top_solid_fill(&self) -> &[ExPolygon] {
+        &self.top_solid_fill
+    }
+
+    /// Returns the polygon-precise bottom solid fill area for this region.
+    ///
+    /// Empty when `bottom_shell_index()` is `None`.
+    pub fn bottom_solid_fill(&self) -> &[ExPolygon] {
+        &self.bottom_solid_fill
     }
 
     /// Returns true if this region was classified as a bridge region.

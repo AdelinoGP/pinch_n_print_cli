@@ -49,12 +49,18 @@ fn make_test_region(is_top: bool, is_bottom: bool, is_bridge: bool) -> SliceRegi
     region.set_object_id("test_object".to_string());
     region.set_region_id(0);
     region.set_polygons(vec![]);
-    region.set_infill_areas(vec![square]);
+    region.set_infill_areas(vec![square.clone()]);
     region.set_effective_layer_height(0.2);
     region.set_z(1.0);
     region.set_has_nonplanar(false);
-    region.set_is_top_surface(is_top);
-    region.set_is_bottom_surface(is_bottom);
+    if is_top {
+        region.set_top_shell_index(Some(0));
+        region.set_top_solid_fill(vec![square.clone()]);
+    }
+    if is_bottom {
+        region.set_bottom_shell_index(Some(0));
+        region.set_bottom_solid_fill(vec![square]);
+    }
     region.set_is_bridge(is_bridge);
     region
 }
@@ -157,6 +163,42 @@ fn bridge_surface_region_emits_bridge_infill_role() {
     assert!(
         has_path_with_role(&all_paths, ExtrusionRole::BridgeInfill),
         "expected at least one path with role=BridgeInfill (not SparseInfill), got paths: {:?}",
+        all_paths
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 3b: bottom_wins_over_top_on_overlap (OrcaSlicer parity)
+// ---------------------------------------------------------------------------
+#[test]
+fn bottom_wins_over_top_on_overlap() {
+    // Single-layer region: both top_shell_index and bottom_shell_index = Some(0).
+    // Per OrcaSlicer's detect_surfaces_type convention, BottomSolidInfill wins on
+    // overlap (see DEVIATION_LOG.md). The pinch_n_print pre-refactor convention
+    // was top-wins; this test pins the new behavior.
+    let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
+    let region = make_test_region(true, true, false);
+    let mut output = InfillOutputBuilder::new();
+
+    module
+        .run_infill(0, &[region], &mut output, &ConfigView::new())
+        .unwrap();
+
+    let all_paths: Vec<_> = output
+        .sparse_paths()
+        .iter()
+        .chain(output.solid_paths().iter())
+        .cloned()
+        .collect();
+
+    assert!(
+        has_path_with_role(&all_paths, ExtrusionRole::BottomSolidInfill),
+        "expected BottomSolidInfill (bottom wins on overlap), got paths: {:?}",
+        all_paths
+    );
+    assert!(
+        !has_path_with_role(&all_paths, ExtrusionRole::TopSolidInfill),
+        "expected NO TopSolidInfill when both shell indices = Some(0); got paths: {:?}",
         all_paths
     );
 }

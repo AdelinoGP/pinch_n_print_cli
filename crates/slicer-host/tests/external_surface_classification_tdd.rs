@@ -534,12 +534,12 @@ fn execute_layer_slice_writes_top_flag_on_sliced_region() {
     assert_eq!(slice.regions.len(), 1, "expected exactly one sliced region");
     let region = &slice.regions[0];
     assert!(
-        region.is_top_surface,
-        "expected is_top_surface=true when TopSurface facet classification supplied"
+        region.top_shell_index == Some(0),
+        "expected top_shell_index=Some(0) when TopSurface facet classification supplied"
     );
     assert!(
-        !region.is_bottom_surface,
-        "expected is_bottom_surface=false"
+        region.bottom_shell_index.is_none(),
+        "expected bottom_shell_index=None"
     );
     assert!(!region.is_bridge, "expected is_bridge=false");
 }
@@ -590,12 +590,12 @@ fn execute_layer_slice_without_classification_keeps_flags_false() {
 
     for (i, region) in slice.regions.iter().enumerate() {
         assert!(
-            !region.is_top_surface,
-            "region {i}: expected is_top_surface=false when no classification supplied"
+            region.top_shell_index.is_none(),
+            "region {i}: expected top_shell_index=None when no classification supplied"
         );
         assert!(
-            !region.is_bottom_surface,
-            "region {i}: expected is_bottom_surface=false when no classification supplied"
+            region.bottom_shell_index.is_none(),
+            "region {i}: expected bottom_shell_index=None when no classification supplied"
         );
         assert!(
             !region.is_bridge,

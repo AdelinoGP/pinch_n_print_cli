@@ -173,6 +173,16 @@ pub enum PrepassExecutionError {
         /// Underlying paint segmentation failure.
         source: PaintSegmentationError,
     },
+    /// The host-built-in `PrePass::Slice` stage failed.
+    Slice {
+        /// Underlying slice failure.
+        source: crate::prepass_slice::LayerSliceError,
+    },
+    /// The host-built-in `PrePass::ShellClassification` stage failed.
+    ShellClassification {
+        /// Underlying shell-classification failure.
+        source: crate::slice_postprocess_prepass::ShellClassificationError,
+    },
 }
 
 impl fmt::Display for PrepassExecutionError {
@@ -208,6 +218,12 @@ impl fmt::Display for PrepassExecutionError {
             }
             Self::PaintSegmentation { source } => {
                 write!(f, "built-in PrePass::PaintSegmentation failed: {source}")
+            }
+            Self::Slice { source } => {
+                write!(f, "built-in PrePass::Slice failed: {source}")
+            }
+            Self::ShellClassification { source } => {
+                write!(f, "built-in PrePass::ShellClassification failed: {source}")
             }
         }
     }
@@ -408,22 +424,9 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
         instrumentation.on_stage_end(&stage_id, None);
     }
-    // Host-built-in PrePass::SupportGeometry runs before user prepass stages
-    // so that SupportGeometryIR is available as a prerequisite slot.
-    // Skip if already committed (idempotent per blackboard contract).
-    if blackboard.support_geometry().is_none() && blackboard.layer_plan().is_some() {
-        let stage_id = "PrePass::SupportGeometry".to_string();
-        let module_id = "<host-built-in>".to_string();
-        use crate::support_geometry::commit_support_geometry_builtin;
-        instrumentation.on_stage_start(&stage_id, None);
-        instrumentation.on_module_start(&stage_id, None, &module_id);
-        commit_support_geometry_builtin(blackboard).map_err(|source| {
-            instrumentation.on_stage_end(&stage_id, None);
-            PrepassExecutionError::SupportGeometry { source }
-        })?;
-        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
-        instrumentation.on_stage_end(&stage_id, None);
-    }
+    // PrePass::SupportGeometry moved to the post-RegionMapping / post-Slice
+    // phase below, since it now depends on SliceIR (Commit 4 will consume real
+    // slice polygons via collect_polygons_at_z; Commit 2 keeps the stub).
     /// Gather paint semantics from the blackboard and resolve per-semantic
     /// config overrides from the raw config source.  Called immediately
     /// before each `commit_region_mapping_builtin` invocation so that any
@@ -527,19 +530,6 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
     // NOTE: paint_semantic_configs is recomputed HERE so that PaintRegionIR
     // committed by phase-1 user-prepass stages (e.g. PrePass::PaintSegmentation)
     // is visible to the RegionMapping built-in (packet 51 — AC-4 ordering fix).
-    if blackboard.support_geometry().is_none() && blackboard.layer_plan().is_some() {
-        let stage_id = "PrePass::SupportGeometry".to_string();
-        let module_id = "<host-built-in>".to_string();
-        use crate::support_geometry::commit_support_geometry_builtin;
-        instrumentation.on_stage_start(&stage_id, None);
-        instrumentation.on_module_start(&stage_id, None, &module_id);
-        commit_support_geometry_builtin(blackboard).map_err(|source| {
-            instrumentation.on_stage_end(&stage_id, None);
-            PrepassExecutionError::SupportGeometry { source }
-        })?;
-        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
-        instrumentation.on_stage_end(&stage_id, None);
-    }
     if blackboard.layer_plan().is_some() && blackboard.region_map().is_none() {
         let stage_id = "PrePass::RegionMapping".to_string();
         let module_id = "<host-built-in>".to_string();
@@ -561,6 +551,61 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         .map_err(|source| {
             instrumentation.on_stage_end(&stage_id, None);
             PrepassExecutionError::RegionMapping { source }
+        })?;
+        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
+        instrumentation.on_stage_end(&stage_id, None);
+    }
+    // PrePass::Slice — host built-in. Runs once RegionMap is committed
+    // (needs per-region slice_closing_radius / shell counts via RegionPlan).
+    if blackboard.slice_ir().is_none()
+        && blackboard.layer_plan().is_some()
+        && blackboard.region_map().is_some()
+    {
+        let stage_id = "PrePass::Slice".to_string();
+        let module_id = "host:slice".to_string();
+        instrumentation.on_stage_start(&stage_id, None);
+        instrumentation.on_module_start(&stage_id, None, &module_id);
+        crate::prepass_slice::commit_slice_builtin(blackboard).map_err(|source| {
+            instrumentation.on_stage_end(&stage_id, None);
+            PrepassExecutionError::Slice { source }
+        })?;
+        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
+        instrumentation.on_stage_end(&stage_id, None);
+    }
+    // PrePass::ShellClassification — host built-in. Refines the freshly
+    // committed SliceIR with top_shell_index / bottom_shell_index and
+    // polygon-precise top_solid_fill / bottom_solid_fill via the two-pass
+    // OrcaSlicer algorithm.
+    if blackboard.slice_ir().is_some() && blackboard.region_map().is_some() {
+        let stage_id = "PrePass::ShellClassification".to_string();
+        let module_id = "host:shell_classification".to_string();
+        instrumentation.on_stage_start(&stage_id, None);
+        instrumentation.on_module_start(&stage_id, None, &module_id);
+        crate::slice_postprocess_prepass::commit_shell_classification_builtin(blackboard).map_err(
+            |source| {
+                instrumentation.on_stage_end(&stage_id, None);
+                PrepassExecutionError::ShellClassification { source }
+            },
+        )?;
+        instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
+        instrumentation.on_stage_end(&stage_id, None);
+    }
+    // PrePass::SupportGeometry — host built-in. Moved from the pre-RegionMap
+    // position so it can consume SliceIR (Commit 4 will replace the
+    // collect_polygons_at_z stub with real SliceIR reads). For Commit 2,
+    // SupportGeometry still uses the stub; the relocation is structural.
+    if blackboard.support_geometry().is_none()
+        && blackboard.layer_plan().is_some()
+        && blackboard.slice_ir().is_some()
+    {
+        let stage_id = "PrePass::SupportGeometry".to_string();
+        let module_id = "host:support_geometry".to_string();
+        use crate::support_geometry::commit_support_geometry_builtin;
+        instrumentation.on_stage_start(&stage_id, None);
+        instrumentation.on_module_start(&stage_id, None, &module_id);
+        commit_support_geometry_builtin(blackboard).map_err(|source| {
+            instrumentation.on_stage_end(&stage_id, None);
+            PrepassExecutionError::SupportGeometry { source }
         })?;
         instrumentation.on_module_end(&stage_id, None, &module_id, 0, 0);
         instrumentation.on_stage_end(&stage_id, None);
@@ -641,6 +686,7 @@ pub fn ensure_stage_prerequisites(
             BlackboardPrepassSlot::RegionMap => blackboard.region_map().is_some(),
             BlackboardPrepassSlot::SeamPlan => blackboard.seam_plan().is_some(),
             BlackboardPrepassSlot::SupportPlan => blackboard.support_plan().is_some(),
+            BlackboardPrepassSlot::SliceIR => blackboard.slice_ir().is_some(),
             BlackboardPrepassSlot::SupportGeometry => blackboard.support_geometry().is_some(),
         };
 
@@ -664,6 +710,7 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
             BlackboardPrepassSlot::SurfaceClassification,
             BlackboardPrepassSlot::LayerPlan,
             BlackboardPrepassSlot::RegionMap,
+            BlackboardPrepassSlot::SliceIR,
             BlackboardPrepassSlot::SupportGeometry,
         ],
         "PrePass::PaintSegmentation" => &[
@@ -671,6 +718,21 @@ fn required_slots(stage_id: &StageId) -> &'static [BlackboardPrepassSlot] {
             BlackboardPrepassSlot::LayerPlan,
         ],
         "PrePass::RegionMapping" => &[BlackboardPrepassSlot::LayerPlan],
+        // Host-only built-ins. `PrePass::Slice` does NOT self-list (it writes
+        // SliceIR; no user-module satisfaction path exists). `PrePass::ShellClassification`
+        // lists SliceIR among its reads.
+        "PrePass::Slice" => &[
+            BlackboardPrepassSlot::SurfaceClassification,
+            BlackboardPrepassSlot::LayerPlan,
+            BlackboardPrepassSlot::RegionMap,
+        ],
+        "PrePass::ShellClassification" => &[
+            BlackboardPrepassSlot::SurfaceClassification,
+            BlackboardPrepassSlot::LayerPlan,
+            BlackboardPrepassSlot::RegionMap,
+            BlackboardPrepassSlot::PaintRegions,
+            BlackboardPrepassSlot::SliceIR,
+        ],
         _ => &[],
     }
 }

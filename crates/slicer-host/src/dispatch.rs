@@ -51,7 +51,6 @@ pub fn export_name_for_stage(stage_id: &str) -> Option<&'static str> {
         "PrePass::SeamPlanning" => Some("run-seam-planning"),
         "PrePass::SupportGeometry" => Some("run-support-geometry"),
         "PrePass::PaintSegmentation" => Some("run-paint-segmentation"),
-        "Layer::Slice" => Some("run-slice"),
         "Layer::SlicePostProcess" => Some("run-slice-postprocess"),
         "Layer::Perimeters" => Some("run-perimeters"),
         "Layer::PerimetersPostProcess" => Some("run-wall-postprocess"),

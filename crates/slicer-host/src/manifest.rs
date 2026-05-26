@@ -1038,7 +1038,8 @@ fn known_stage_ids() -> &'static [&'static str] {
         "PrePass::PaintSegmentation",
         "PrePass::SupportGeometry",
         "PrePass::RegionMapping",
-        "Layer::Slice",
+        "PrePass::Slice",
+        "PrePass::ShellClassification",
         "Layer::PaintRegionAnnotation",
         "Layer::SlicePostProcess",
         "Layer::Perimeters",
@@ -1141,7 +1142,7 @@ mod tests {
                 minor: 0,
                 patch: 0,
             },
-            "Layer::Slice",
+            "Layer::SlicePostProcess",
             "slicer:world-layer@1.0.0",
             PathBuf::from("fixtures/test.wasm"),
         )
@@ -1149,7 +1150,7 @@ mod tests {
 
         assert_eq!(module.id, "com.test.module");
         assert_eq!(module.version.major, 1);
-        assert_eq!(module.stage, "Layer::Slice");
+        assert_eq!(module.stage, "Layer::SlicePostProcess");
         assert_eq!(module.wit_world, "slicer:world-layer@1.0.0");
         assert_eq!(module.wasm_path, PathBuf::from("fixtures/test.wasm"));
         assert!(module.ir_reads.is_empty());

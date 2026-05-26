@@ -138,10 +138,14 @@ pub struct SliceRegionData {
     pub boundary_paint: Vec<layer::slicer::world_layer::ir_handles::BoundaryPaintEntry>,
     /// True when this region is support-eligible (from SurfaceClassificationIR).
     pub needs_support: bool,
-    /// True when this region is classified as a top surface.
-    pub is_top_surface: bool,
-    /// True when this region is classified as a bottom surface.
-    pub is_bottom_surface: bool,
+    /// Minimum top-shell depth (0 = exposed) from PrePass::ShellClassification.
+    pub top_shell_index: Option<u8>,
+    /// Minimum bottom-shell depth (0 = exposed) from PrePass::ShellClassification.
+    pub bottom_shell_index: Option<u8>,
+    /// Polygon-precise top solid fill from shrinking-shadow projection.
+    pub top_solid_fill: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
+    /// Polygon-precise bottom solid fill from shrinking-shadow projection.
+    pub bottom_solid_fill: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
     /// True when this region is classified as a bridge region.
     pub is_bridge: bool,
     /// Per-layer expanded bridge polygons (empty if not a bridge region).
@@ -314,8 +318,10 @@ pub mod layer {
                     has-nonplanar: func() -> bool;
                     boundary-paint: func() -> list<boundary-paint-entry>;
                     needs-support: func() -> bool;
-                    is-top-surface: func() -> bool;
-                    is-bottom-surface: func() -> bool;
+                    top-shell-index: func() -> option<u8>;
+                    bottom-shell-index: func() -> option<u8>;
+                    top-solid-fill: func() -> list<ex-polygon>;
+                    bottom-solid-fill: func() -> list<ex-polygon>;
                     is-bridge: func() -> bool;
                     bridge-areas: func() -> list<ex-polygon>;
                     bridge-orientation-deg: func() -> f32;
@@ -2931,8 +2937,10 @@ pub fn sliced_region_to_data(
         has_nonplanar: region.nonplanar_surface.is_some(),
         boundary_paint,
         needs_support: true,
-        is_top_surface: region.is_top_surface,
-        is_bottom_surface: region.is_bottom_surface,
+        top_shell_index: region.top_shell_index,
+        bottom_shell_index: region.bottom_shell_index,
+        top_solid_fill: ir_to_wit_expolygons(&region.top_solid_fill),
+        bottom_solid_fill: ir_to_wit_expolygons(&region.bottom_solid_fill),
         is_bridge: region.is_bridge,
         bridge_areas: ir_to_wit_expolygons(&region.bridge_areas),
         bridge_orientation_deg: region.bridge_orientation_deg,
@@ -3010,8 +3018,10 @@ mod region_origin_tests {
                 has_nonplanar: false,
                 boundary_paint: Vec::new(),
                 needs_support: true,
-                is_top_surface: false,
-                is_bottom_surface: false,
+                top_shell_index: None,
+                bottom_shell_index: None,
+                top_solid_fill: Vec::new(),
+                bottom_solid_fill: Vec::new(),
                 is_bridge: false,
                 bridge_areas: Vec::new(),
                 bridge_orientation_deg: 0.0,
@@ -3354,13 +3364,33 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.needs_support)
     }
-    fn is_top_surface(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<bool> {
+    fn top_shell_index(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Option<u8>> {
         self.runtime_reads.push(String::from("SliceIR"));
-        Ok(self.table.get(&self_)?.is_top_surface)
+        Ok(self.table.get(&self_)?.top_shell_index)
     }
-    fn is_bottom_surface(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<bool> {
+    fn bottom_shell_index(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Option<u8>> {
         self.runtime_reads.push(String::from("SliceIR"));
-        Ok(self.table.get(&self_)?.is_bottom_surface)
+        Ok(self.table.get(&self_)?.bottom_shell_index)
+    }
+    fn top_solid_fill(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<layer::slicer::world_layer::geometry::ExPolygon>> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.top_solid_fill.clone())
+    }
+    fn bottom_solid_fill(
+        &mut self,
+        self_: Resource<SliceRegionData>,
+    ) -> wasmtime::Result<Vec<layer::slicer::world_layer::geometry::ExPolygon>> {
+        self.runtime_reads.push(String::from("SliceIR"));
+        Ok(self.table.get(&self_)?.bottom_solid_fill.clone())
     }
     fn is_bridge(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<bool> {
         self.runtime_reads.push(String::from("SliceIR"));

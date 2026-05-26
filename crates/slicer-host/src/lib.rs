@@ -15,7 +15,13 @@ pub mod instance_pool;
 pub mod instrumentation;
 pub mod layer_executor;
 pub mod layer_finalization;
-pub mod layer_slice;
+pub mod prepass_slice;
+/// Backwards-compatible alias for the renamed `prepass_slice` module. Tests
+/// and external code that imported `slicer_host::layer_slice::*` keep
+/// working; new code should reference `prepass_slice` directly.
+pub mod layer_slice {
+    pub use crate::prepass_slice::*;
+}
 pub mod manifest;
 pub mod mesh_analysis;
 pub mod mesh_segmentation;
@@ -33,6 +39,7 @@ pub mod python_bridge;
 pub mod region_mapping;
 pub mod report;
 pub mod slice_postprocess;
+pub mod slice_postprocess_prepass;
 pub mod support_geometry;
 pub mod topology;
 pub mod validation;
@@ -84,7 +91,6 @@ pub use layer_finalization::{
     execute_layer_finalization, FinalizationError, FinalizationOutput, FinalizationOutputBuilder,
     FinalizationStageRunner,
 };
-pub use layer_slice::{execute_layer_slice, LayerSliceError};
 pub use manifest::{
     build_config_schema_json, load_module_from_paths, load_modules_from_roots, ConfigFieldEntry,
     ConfigSchema, DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport,
@@ -105,6 +111,10 @@ pub use prepass::{
     MeshAnalysisAuxiliary, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
     SurfaceGroupRecord,
 };
+pub use prepass_slice::{
+    commit_slice_builtin, execute_layer_slice, execute_prepass_slice_all_layers,
+    execute_prepass_slice_single_layer, LayerSliceError,
+};
 pub use python_bridge::{
     PythonBinding, PythonBridge, PythonBridgeError, PythonBridgePhase, PythonPostpassRunner,
 };
@@ -117,6 +127,9 @@ pub use slice_postprocess::{
     paint_annotation_warnings_to_progress_events, SlicePostProcessPaintAnnotationError,
     SlicePostProcessPaintAnnotationRequest, SlicePostProcessPaintAnnotationResult,
     SlicePostProcessPaintAnnotationWarning, SlicePostProcessPaintAnnotationWarningReason,
+};
+pub use slice_postprocess_prepass::{
+    commit_shell_classification_builtin, ShellClassificationError,
 };
 pub use support_geometry::{
     commit_support_geometry_builtin, execute_support_geometry, SupportGeometryBuiltinError,

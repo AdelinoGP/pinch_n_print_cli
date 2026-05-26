@@ -137,12 +137,13 @@ impl LayerModule for RectilinearInfill {
                 }
 
                 // Emit standard fill (SparseInfill / TopSolidInfill / BottomSolidInfill)
-                // over non-bridge areas, respecting surface flags and held claims.
+                // over non-bridge areas. Bottom wins on overlap to match OrcaSlicer
+                // (PrintObject.cpp:detect_surfaces_type) — see DEVIATION_LOG.md.
                 if !non_bridge_parts.is_empty() {
-                    let role = if region.is_top_surface() {
-                        ExtrusionRole::TopSolidInfill
-                    } else if region.is_bottom_surface() {
+                    let role = if region.bottom_shell_index().is_some() {
                         ExtrusionRole::BottomSolidInfill
+                    } else if region.top_shell_index().is_some() {
+                        ExtrusionRole::TopSolidInfill
                     } else {
                         ExtrusionRole::SparseInfill
                     };

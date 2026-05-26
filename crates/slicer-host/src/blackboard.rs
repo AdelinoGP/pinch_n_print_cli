@@ -64,6 +64,7 @@ pub struct Blackboard {
     paint_regions: Option<Arc<PaintRegionIR>>,
     paint_region_rtree: Option<Arc<PaintRegionRTreeIndex>>,
     region_map: Option<Arc<RegionMapIR>>,
+    slice_ir: Option<Arc<Vec<SliceIR>>>,
     support_geometry: Option<Arc<SupportGeometryIR>>,
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
 }
@@ -151,6 +152,9 @@ pub enum BlackboardPrepassSlot {
     PaintRegions,
     /// Region map produced by `PrePass::RegionMapping`.
     RegionMap,
+    /// Per-global-layer `SliceIR` produced by `PrePass::Slice` and refined by
+    /// `PrePass::ShellClassification`.
+    SliceIR,
     /// Support geometry coarse outlines produced by `PrePass::SupportGeometry`.
     SupportGeometry,
 }
@@ -165,6 +169,7 @@ impl fmt::Display for BlackboardPrepassSlot {
             Self::SupportPlan => "support-plan",
             Self::PaintRegions => "paint-regions",
             Self::RegionMap => "region-map",
+            Self::SliceIR => "slice-ir",
             Self::SupportGeometry => "support-geometry",
         };
 
@@ -186,6 +191,7 @@ impl Blackboard {
             paint_regions: None,
             paint_region_rtree: None,
             region_map: None,
+            slice_ir: None,
             support_geometry: None,
             layer_outputs: Some((0..layer_count).map(|_| None).collect()),
         }
@@ -311,6 +317,48 @@ impl Blackboard {
     #[must_use]
     pub fn region_map(&self) -> Option<&Arc<RegionMapIR>> {
         self.region_map.as_ref()
+    }
+
+    /// Commit the per-global-layer `Vec<SliceIR>` exactly once.
+    ///
+    /// Called by `PrePass::Slice` host built-in. Subsequent calls return
+    /// `BlackboardError::DuplicatePrepassCommit` — use [`replace_slice_ir`] from
+    /// `PrePass::ShellClassification` to atomically swap in the shell-stamped
+    /// version.
+    ///
+    /// [`replace_slice_ir`]: Self::replace_slice_ir
+    pub fn commit_slice_ir(&mut self, ir: Arc<Vec<SliceIR>>) -> Result<(), BlackboardError> {
+        commit_prepass(&mut self.slice_ir, ir, BlackboardPrepassSlot::SliceIR)
+    }
+
+    /// Atomically replace the committed `Vec<SliceIR>`.
+    ///
+    /// Legal only when [`commit_slice_ir`] has run and Tier 2 has not yet
+    /// written any per-layer slot. Used by `PrePass::ShellClassification` to
+    /// install the version annotated with `top_shell_index` / `bottom_shell_index`
+    /// / `top_solid_fill` / `bottom_solid_fill`.
+    ///
+    /// [`commit_slice_ir`]: Self::commit_slice_ir
+    pub fn replace_slice_ir(&mut self, ir: Arc<Vec<SliceIR>>) -> Result<(), BlackboardError> {
+        if self.slice_ir.is_none() {
+            return Err(BlackboardError::MissingRequiredPrepass {
+                slot: BlackboardPrepassSlot::SliceIR,
+            });
+        }
+        debug_assert!(
+            self.layer_outputs
+                .as_ref()
+                .is_some_and(|v| v.iter().all(Option::is_none)),
+            "replace_slice_ir called after Tier 2 wrote a layer slot"
+        );
+        self.slice_ir = Some(ir);
+        Ok(())
+    }
+
+    /// Return the committed `Vec<SliceIR>`, if available.
+    #[must_use]
+    pub fn slice_ir(&self) -> Option<&Arc<Vec<SliceIR>>> {
+        self.slice_ir.as_ref()
     }
 
     /// Commit `SupportGeometryIR` exactly once.

@@ -1,15 +1,21 @@
-//! Host-built-in `Layer::Slice` stage (TASK-107).
+//! Host built-in `PrePass::Slice` (formerly `Layer::Slice`).
 //!
-//! Produces a `SliceIR` for a single global layer by calling
-//! `slicer_core::slice_mesh_ex` on each object mesh at the layer's Z. The
-//! `SliceIR` is staged in the per-layer arena before any user
-//! `Layer::Slice` / `Layer::SlicePostProcess` module runs.
+//! Produces a `Vec<SliceIR>` for the print by calling `slicer_core::slice_mesh_ex`
+//! on each object mesh at every global layer's Z and, when configured,
+//! applying the OrcaSlicer-style `slice_closing_radius` round-trip
+//! (`+r` then `-r` Clipper2 offsets) per-region.
+//!
+//! The committed Vec is the canonical pre-Tier-2 slice geometry that
+//! `PrePass::ShellClassification` then refines with `top_shell_index` /
+//! `bottom_shell_index` / `top_solid_fill` / `bottom_solid_fill` annotations.
 
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
 use slicer_core::polygon_ops::{intersection, offset, OffsetJoinType};
 use slicer_core::slice_mesh_ex;
+use slicer_core::triangle_mesh_slicer::apply_slice_closing_radius;
 use slicer_ir::{
     ExPolygon, GlobalLayer, LayerPlanIR, MeshIR, ObjectId, ObjectMesh, ObjectSurfaceData, Polygon,
     RegionKey, RegionMapIR, SliceIR, SlicedRegion, SurfaceClassificationIR, Transform3d,
@@ -17,7 +23,9 @@ use slicer_ir::{
 };
 use slicer_ir::{FacetClass, Point2, Point3};
 
-/// Structured failures for the host-built-in `Layer::Slice` stage.
+use crate::blackboard::{Blackboard, BlackboardError};
+
+/// Structured failures for the host built-in `PrePass::Slice` stage.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LayerSliceError {
     /// A layer referenced an `ObjectId` that is not present in `MeshIR`.
@@ -27,6 +35,13 @@ pub enum LayerSliceError {
         /// The missing object identifier.
         object_id: ObjectId,
     },
+    /// `commit_slice_builtin` could not commit the produced Vec — typically
+    /// because `PrePass::Slice` was committed twice for the same print.
+    Blackboard(BlackboardError),
+    /// `PrePass::Slice` was invoked before `PrePass::LayerPlanning` committed
+    /// `LayerPlanIR`. The all-layers wrapper has no global layers to iterate
+    /// without a committed plan.
+    MissingLayerPlan,
 }
 
 impl fmt::Display for LayerSliceError {
@@ -37,9 +52,20 @@ impl fmt::Display for LayerSliceError {
                 object_id,
             } => write!(
                 f,
-                "Layer::Slice at layer {layer_index} references unknown object '{object_id}'"
+                "PrePass::Slice at layer {layer_index} references unknown object '{object_id}'"
+            ),
+            Self::Blackboard(inner) => write!(f, "PrePass::Slice blackboard error: {inner}"),
+            Self::MissingLayerPlan => write!(
+                f,
+                "PrePass::Slice ran before PrePass::LayerPlanning committed LayerPlanIR"
             ),
         }
+    }
+}
+
+impl From<BlackboardError> for LayerSliceError {
+    fn from(value: BlackboardError) -> Self {
+        Self::Blackboard(value)
     }
 }
 
@@ -356,26 +382,41 @@ pub fn execute_layer_slice(
                 object_id: active.object_id.clone(),
             })?;
 
-        let mut sliced = slice_mesh_ex(&object.mesh, &[layer.z]);
-        let polygons = sliced.pop().unwrap_or_default();
+        // Resolve per-region config from RegionMapIR (single lookup; reused for
+        // shell-layer counts and slice_closing_radius). Fall back to the
+        // ActiveRegion's `resolved_config` when no plan entry exists.
+        let resolved_plan = region_map.and_then(|rm| {
+            let key = RegionKey {
+                global_layer_index: layer.index,
+                object_id: active.object_id.clone(),
+                region_id: active.region_id,
+            };
+            rm.entries.get(&key)
+        });
+        let (top_shell_layers, bottom_shell_layers, slice_closing_radius_mm) = match resolved_plan {
+            Some(plan) => (
+                plan.config.top_shell_layers,
+                plan.config.bottom_shell_layers,
+                plan.config.slice_closing_radius,
+            ),
+            // Fall back to legacy behavior (no closing radius) when called
+            // without a committed region map. The live PrePass::Slice path
+            // always has region_map present; direct-call tests that don't
+            // construct a RegionMapIR continue to observe raw `slice_mesh_ex`
+            // output.
+            None => (3u32, 3u32, 0.0_f32),
+        };
 
-        // Resolve per-region shell counts from RegionMapIR, or use defaults.
-        let (top_shell_layers, bottom_shell_layers) = {
-            let resolved = region_map.and_then(|rm| {
-                let key = RegionKey {
-                    global_layer_index: layer.index,
-                    object_id: active.object_id.clone(),
-                    region_id: active.region_id,
-                };
-                rm.entries.get(&key)
-            });
-            match resolved {
-                Some(plan) => (
-                    plan.config.top_shell_layers,
-                    plan.config.bottom_shell_layers,
-                ),
-                None => (3u32, 3u32),
-            }
+        // OrcaSlicer-style slice_closing_radius round-trip (`+r / -r` Clipper2),
+        // applied per region's polygons immediately after `slice_mesh_ex`. Closes
+        // a packet-60 wiring gap: the helper existed in slicer-core but was never
+        // invoked by the production slice path.
+        let mut sliced = slice_mesh_ex(&object.mesh, &[layer.z]);
+        let raw_polygons = sliced.pop().unwrap_or_default();
+        let polygons = if slice_closing_radius_mm > 0.0 {
+            apply_slice_closing_radius(raw_polygons, slice_closing_radius_mm)
+        } else {
+            raw_polygons
         };
 
         // Compute next/prev layer Z boundaries.
@@ -472,6 +513,14 @@ pub fn execute_layer_slice(
             (false, false, false)
         };
 
+        // Commit 1 bridge: translate legacy per-layer is_top/is_bottom bools to
+        // the new shell-index fields. Depth is unknown at this layer (the OLD
+        // algorithm has no cross-layer view); we emit Some(0) for the exposed
+        // case and rely on Commit 2's `PrePass::ShellClassification` to overwrite
+        // with proper depths and polygon-precise solid-fill geometry.
+        let top_shell_index = if is_top_surface { Some(0u8) } else { None };
+        let bottom_shell_index = if is_bottom_surface { Some(0u8) } else { None };
+
         let mut sliced_region = SlicedRegion {
             object_id: active.object_id.clone(),
             region_id: active.region_id,
@@ -480,8 +529,10 @@ pub fn execute_layer_slice(
             nonplanar_surface: None,
             effective_layer_height: active.effective_layer_height,
             boundary_paint: HashMap::new(),
-            is_top_surface,
-            is_bottom_surface,
+            top_shell_index,
+            bottom_shell_index,
+            top_solid_fill: Vec::new(),
+            bottom_solid_fill: Vec::new(),
             is_bridge,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -499,4 +550,56 @@ pub fn execute_layer_slice(
         z: layer.z,
         regions,
     })
+}
+
+// ============================================================================
+// PrePass::Slice host built-in (whole-print wrappers)
+// ============================================================================
+
+/// Whole-print wrapper: produces one `SliceIR` per `global_layer` in the
+/// committed layer plan, in plan order. Reads `MeshIR`, `LayerPlanIR`,
+/// `SurfaceClassificationIR`, and `RegionMapIR` (all immutable) from the
+/// blackboard. Used by [`commit_slice_builtin`].
+pub fn execute_prepass_slice_all_layers(
+    blackboard: &Blackboard,
+) -> Result<Vec<SliceIR>, LayerSliceError> {
+    let mesh = blackboard.mesh();
+    let layer_plan = blackboard
+        .layer_plan()
+        .ok_or(LayerSliceError::MissingLayerPlan)?;
+    let surface_class = blackboard.surface_classification().map(|a| a.as_ref());
+    let region_map = blackboard.region_map().map(|a| a.as_ref());
+
+    layer_plan
+        .global_layers
+        .iter()
+        .map(|gl| {
+            execute_layer_slice(
+                mesh.as_ref(),
+                gl,
+                surface_class,
+                None, // next_layer_z derived from layer_plan
+                None, // prev_layer_z derived from layer_plan
+                region_map,
+                Some(layer_plan.as_ref()),
+            )
+        })
+        .collect()
+}
+
+/// `execute_prepass_slice_single_layer` is the same per-layer entry point as
+/// [`execute_layer_slice`] — provided under the new name to make the
+/// post-Tier-2-removal call sites self-documenting. The original name remains
+/// the canonical export to keep the test surface narrow.
+pub use self::execute_layer_slice as execute_prepass_slice_single_layer;
+
+/// `PrePass::Slice` host built-in entry point. Computes the per-global-layer
+/// `Vec<SliceIR>` from blackboard reads and commits it via
+/// [`Blackboard::commit_slice_ir`]. A duplicate commit surfaces as
+/// `LayerSliceError::Blackboard(BlackboardError::DuplicatePrepassCommit)` —
+/// never silently swallowed.
+pub fn commit_slice_builtin(blackboard: &mut Blackboard) -> Result<(), LayerSliceError> {
+    let slices = execute_prepass_slice_all_layers(blackboard)?;
+    blackboard.commit_slice_ir(Arc::new(slices))?;
+    Ok(())
 }

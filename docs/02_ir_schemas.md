@@ -642,17 +642,23 @@ pub struct SlicedRegion {
     /// Inner value: the paint value at that point for this semantic, or None.
     /// Empty map if no paint data applies to this region at this layer.
     pub boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
-    /// True when this region lies on the topmost exposed surface of the object
-    /// at this layer (i.e. at least one mesh facet classed TopSurface has a
-    /// vertex inside the region polygon and the layer falls within the
-    /// top-surface Z window).  Written by `classify_region_surfaces` in
-    /// `crates/slicer-host/src/layer_slice.rs`.  Defaults `false` when
-    /// `SurfaceClassificationIR` is absent or the region is out of window.
-    pub is_top_surface: bool,
-    /// True when this region lies on the bottommost exposed surface of the
-    /// object at this layer (same vertex-in-polygon test against BottomSurface
-    /// facets and the bottom-surface Z window).  Defaults `false`.
-    pub is_bottom_surface: bool,
+    /// Minimum depth (in layers, 0 = exposed) of this region within the top
+    /// shell zone.  `None` outside any top shell.  Written by
+    /// `PrePass::ShellClassification` (host built-in, port of OrcaSlicer's
+    /// `discover_horizontal_shells`).  Saturates at `u8::MAX` (255) for
+    /// pathological shell configurations.  Bumped to `Option<u8>` in
+    /// `CURRENT_SLICE_IR_SCHEMA_VERSION = 3.0.0` (replaces the prior
+    /// `is_top_surface: bool`).
+    pub top_shell_index: Option<u8>,
+    /// Minimum depth of this region within the bottom shell zone (same shape
+    /// as `top_shell_index`).  `None` outside any bottom shell.
+    pub bottom_shell_index: Option<u8>,
+    /// Polygon-precise solid-fill area produced by the top shell's
+    /// shrinking-shadow projection.  Empty when `top_shell_index` is `None`.
+    pub top_solid_fill: Vec<ExPolygon>,
+    /// Polygon-precise solid-fill area produced by the bottom shell's
+    /// shrinking-shadow projection.  Empty when `bottom_shell_index` is `None`.
+    pub bottom_solid_fill: Vec<ExPolygon>,
     /// True when this region spans a bridge gap at this layer.  Defaults `false`.
     /// Populated by mesh analysis (packet 36 / 36-rev1).
     pub is_bridge: bool,

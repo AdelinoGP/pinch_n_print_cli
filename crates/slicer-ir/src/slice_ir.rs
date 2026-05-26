@@ -182,8 +182,8 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 /// Schema version for `SliceIR`. Single source of truth — production constructors
 /// must use this constant, not literal `SemVer { ... }` values.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 2,
-    minor: 1,
+    major: 3,
+    minor: 0,
     patch: 0,
 };
 
@@ -1181,12 +1181,18 @@ pub struct SlicedRegion {
     pub effective_layer_height: f32,
     /// Paint region membership for points on polygon contour boundaries
     pub boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
-    /// True if this region is an exposed top surface
+    /// Minimum depth (in layers, 0 = exposed) within the top shell zone. `None` outside any top shell.
     #[serde(default)]
-    pub is_top_surface: bool,
-    /// True if this region is an exposed bottom surface
+    pub top_shell_index: Option<u8>,
+    /// Minimum depth within the bottom shell zone. `None` outside any bottom shell.
     #[serde(default)]
-    pub is_bottom_surface: bool,
+    pub bottom_shell_index: Option<u8>,
+    /// Polygon-precise area to solid-fill from top shell projection.
+    #[serde(default)]
+    pub top_solid_fill: Vec<ExPolygon>,
+    /// Polygon-precise area to solid-fill from bottom shell projection.
+    #[serde(default)]
+    pub bottom_solid_fill: Vec<ExPolygon>,
     /// True if this region spans an unsupported gap (bridge)
     #[serde(default)]
     pub is_bridge: bool,

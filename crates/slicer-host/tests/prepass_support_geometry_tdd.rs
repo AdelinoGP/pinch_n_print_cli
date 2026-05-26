@@ -565,6 +565,10 @@ fn layer_plan_committed_plus_support_geometry_proceeds() {
     blackboard
         .commit_region_map(Arc::new(RegionMapIR::default()))
         .unwrap();
+    // SliceIR was added as a SupportGeometry prerequisite in the prepass
+    // promotion refactor (Commit 1). Direct execute_prepass tests that bypass
+    // the host built-ins must pre-commit an empty Vec to satisfy the check.
+    blackboard.commit_slice_ir(Arc::new(Vec::new())).unwrap();
     // PrePass::SupportGeometry built-in (committed via execute_prepass_with_builtins in the
     // real pipeline) produces SupportGeometryIR. For this direct execute_prepass test
     // we pre-commit it so the stage prerequisite check passes.

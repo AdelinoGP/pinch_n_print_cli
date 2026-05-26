@@ -2538,8 +2538,14 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     sdk_view.set_z(r.z());
                     sdk_view.set_has_nonplanar(r.has_nonplanar());
                     sdk_view.set_boundary_paint(boundary_paint);
-                    sdk_view.set_is_top_surface(r.is_top_surface());
-                    sdk_view.set_is_bottom_surface(r.is_bottom_surface());
+                    sdk_view.set_top_shell_index(r.top_shell_index());
+                    sdk_view.set_bottom_shell_index(r.bottom_shell_index());
+                    let top_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> =
+                        r.top_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect();
+                    let bot_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> =
+                        r.bottom_solid_fill().iter().map(__slicer_wit_expolygon_to_ir).collect();
+                    sdk_view.set_top_solid_fill(top_fill);
+                    sdk_view.set_bottom_solid_fill(bot_fill);
                     sdk_view.set_is_bridge(r.is_bridge());
                     out.push(sdk_view);
                 }

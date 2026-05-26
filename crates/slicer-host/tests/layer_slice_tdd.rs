@@ -13,6 +13,24 @@ use slicer_host::{
     execute_layer_slice, execute_per_layer, Blackboard, CompiledModule, ExecutionPlan, LayerArena,
     LayerExecutionError, LayerSliceError, LayerStageError, LayerStageOutput, LayerStageRunner,
 };
+use slicer_ir::SliceIR;
+
+/// Test helper: seeds `blackboard.slice_ir` with a `Vec<SliceIR>` built from the
+/// per-layer `execute_layer_slice` calls. After the prepass-promotion refactor
+/// the layer executor reads slice geometry from the blackboard rather than
+/// computing per-layer; tests that bypass the prepass executor must commit
+/// slice_ir manually before calling `execute_per_layer`.
+fn seed_slice_ir(blackboard: &mut Blackboard, plan: &ExecutionPlan) {
+    let mesh = blackboard.mesh().clone();
+    let slices: Vec<SliceIR> = plan
+        .global_layers
+        .iter()
+        .map(|gl| execute_layer_slice(mesh.as_ref(), gl, None, None, None, None, None).unwrap())
+        .collect();
+    blackboard
+        .commit_slice_ir(Arc::new(slices))
+        .expect("commit_slice_ir");
+}
 use slicer_ir::{
     ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh,
     Point3, ResolvedConfig, StageId, Transform3d,
@@ -136,6 +154,7 @@ fn layer_slice_builtin_rejects_unknown_object_with_structured_diagnostic() {
             assert_eq!(layer_index, 0);
             assert_eq!(object_id, "missing-object");
         }
+        other => panic!("expected UnknownObject, got {other:?}"),
     }
 }
 
@@ -181,7 +200,8 @@ fn per_layer_executor_stages_host_built_in_slice_on_real_path() {
     let mesh = Arc::new(tetra_mesh_ir("obj-a"));
     let layer = layer_at(0, 0.25, "obj-a");
     let plan = plan_with_one_layer(layer);
-    let blackboard = Blackboard::new(mesh, plan.global_layers.len());
+    let mut blackboard = Blackboard::new(mesh, plan.global_layers.len());
+    seed_slice_ir(&mut blackboard, &plan);
 
     // Runner will assert that the slice was staged before its stage runs.
     let runner = RecordingRunner {
@@ -207,8 +227,10 @@ fn per_layer_executor_produces_deterministic_slice_across_runs() {
 
     let plan1 = plan_with_one_layer(layer.clone());
     let plan2 = plan_with_one_layer(layer);
-    let bb1 = Blackboard::new(Arc::clone(&mesh), 1);
-    let bb2 = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut bb1 = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut bb2 = Blackboard::new(Arc::clone(&mesh), 1);
+    seed_slice_ir(&mut bb1, &plan1);
+    seed_slice_ir(&mut bb2, &plan2);
 
     struct Noop;
     impl LayerStageRunner for Noop {
@@ -366,11 +388,31 @@ fn layer_slice_builtin_is_deterministic_for_benchy_mesh() {
 
 #[test]
 fn per_layer_executor_surfaces_layer_slice_failure_structured() {
-    let mesh = Arc::new(tetra_mesh_ir("obj-a"));
+    // Post-refactor: slice failures surface during `PrePass::Slice`, not Tier 2.
+    // The equivalent check is that `execute_layer_slice` returns a structured
+    // `UnknownObject` diagnostic when the layer references a missing object,
+    // and that the per-layer executor reports the missing slice_ir as a
+    // FatalLayer when prepass hasn't run.
+    let mesh = tetra_mesh_ir("obj-a");
     let layer = layer_at(0, 0.1, "missing-object");
-    let plan = plan_with_one_layer(layer);
-    let bb = Blackboard::new(mesh, 1);
 
+    let err = execute_layer_slice(&mesh, &layer, None, None, None, None, None)
+        .expect_err("execute_layer_slice should fail on unknown object");
+    match err {
+        LayerSliceError::UnknownObject {
+            layer_index,
+            object_id,
+        } => {
+            assert_eq!(layer_index, 0);
+            assert_eq!(object_id, "missing-object");
+        }
+        other => panic!("expected UnknownObject, got {other:?}"),
+    }
+
+    // Tier-2 surfaces the missing prepass slice_ir as a FatalLayer.
+    let plan = plan_with_one_layer(layer);
+    let mesh_arc = Arc::new(mesh);
+    let bb = Blackboard::new(mesh_arc, 1);
     struct Noop;
     impl LayerStageRunner for Noop {
         fn run_stage(
@@ -384,17 +426,18 @@ fn per_layer_executor_surfaces_layer_slice_failure_structured() {
             Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
         }
     }
-
-    let err = execute_per_layer(&plan, &bb, &Noop).expect_err("should fail on unknown object");
+    let err =
+        execute_per_layer(&plan, &bb, &Noop).expect_err("should fail when slice_ir is missing");
     match err {
-        LayerExecutionError::LayerSlice {
+        LayerExecutionError::FatalLayer {
             layer_index,
-            source: LayerSliceError::UnknownObject { object_id, .. },
+            stage_id,
+            ..
         } => {
             assert_eq!(layer_index, 0);
-            assert_eq!(object_id, "missing-object");
+            assert_eq!(stage_id, "PrePass::Slice");
         }
-        other => panic!("expected LayerSlice error, got {other:?}"),
+        other => panic!("expected FatalLayer for missing slice_ir, got {other:?}"),
     }
 }
 

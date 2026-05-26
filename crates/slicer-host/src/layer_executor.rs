@@ -18,7 +18,7 @@ use slicer_ir::{
 };
 
 use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
-use crate::layer_slice::{execute_layer_slice, LayerSliceError};
+use crate::prepass_slice::LayerSliceError;
 use crate::progress_events::ProgressEvent;
 use crate::slice_postprocess::{
     execute_slice_postprocess_paint_annotation, paint_annotation_warnings_to_progress_events,
@@ -354,50 +354,32 @@ fn execute_single_layer_inner(
     // Create an isolated LayerArena for this layer
     let mut arena = LayerArena::new();
 
-    // Host-built-in Layer::Slice (docs/04 §Full Lifecycle): commit a
-    // `SliceIR` produced from the mesh before any user Layer::Slice /
-    // Layer::SlicePostProcess module runs. Skipped if a caller has already
-    // pre-seeded a slice (e.g. integration tests).
+    // Hydrate the per-layer arena's SliceIR slot from the prepass-committed
+    // `Vec<SliceIR>` on the blackboard. The slice geometry (plus shell
+    // classification from `PrePass::ShellClassification`) is produced once
+    // in PrePass; Tier 2 only reads. Skipped if a caller has already
+    // pre-seeded the arena (e.g. integration tests).
     if arena.slice().is_none() {
-        let stage_id = "Layer::Slice".to_string();
-        let module_id = "<host-built-in>".to_string();
-        let layer_idx = layer.index as usize;
-        let global_layers = &plan.global_layers;
-        let next_layer_z = global_layers.get(layer_idx + 1).map(|l| l.z);
-        let prev_layer_z = layer_idx
-            .checked_sub(1)
-            .and_then(|i| global_layers.get(i))
-            .map(|l| l.z);
-        let surface_class = blackboard.surface_classification().map(|arc| arc.as_ref());
-        instrumentation.on_stage_start(&stage_id, Some(layer.index));
-        instrumentation.on_module_start(&stage_id, Some(layer.index), &module_id);
-        let slice_ir = execute_layer_slice(
-            blackboard.mesh().as_ref(),
-            layer,
-            surface_class,
-            next_layer_z,
-            prev_layer_z,
-            blackboard.region_map().map(|arc| arc.as_ref()),
-            blackboard.layer_plan().map(|arc| arc.as_ref()),
-        )
-        .map_err(|source| {
-            instrumentation.on_stage_end(&stage_id, Some(layer.index));
-            LayerExecutionError::LayerSlice {
+        let slice_ir = blackboard
+            .slice_ir()
+            .and_then(|vec| vec.get(layer.index as usize).cloned())
+            .ok_or_else(|| LayerExecutionError::FatalLayer {
                 layer_index: layer.index,
-                source,
-            }
-        })?;
-        arena.set_slice(slice_ir).map_err(|_| {
-            instrumentation.on_stage_end(&stage_id, Some(layer.index));
-            LayerExecutionError::FatalLayer {
+                stage_id: "PrePass::Slice".to_string(),
+                module_id: "host:slice".to_string(),
+                message: format!(
+                    "blackboard slice_ir missing entry for layer index {}",
+                    layer.index
+                ),
+            })?;
+        arena
+            .set_slice(slice_ir)
+            .map_err(|_| LayerExecutionError::FatalLayer {
                 layer_index: layer.index,
-                stage_id: "Layer::Slice".to_string(),
-                module_id: "<host-built-in>".to_string(),
+                stage_id: "PrePass::Slice".to_string(),
+                module_id: "host:slice".to_string(),
                 message: "slice arena slot already occupied".to_string(),
-            }
-        })?;
-        instrumentation.on_module_end(&stage_id, Some(layer.index), &module_id, 0, 0);
-        instrumentation.on_stage_end(&stage_id, Some(layer.index));
+            })?;
     }
 
     // Execute stages sequentially in deterministic order.

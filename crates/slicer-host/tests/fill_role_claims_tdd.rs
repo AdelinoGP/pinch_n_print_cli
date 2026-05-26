@@ -403,8 +403,8 @@ fn default_rectilinear_holds_all_claims_emits_top() {
     assert_eq!(slice.regions.len(), 1, "expected exactly one region");
     let region = &slice.regions[0];
     assert!(
-        region.is_top_surface,
-        "rectilinear region with top surface must have is_top_surface=true in SliceIR"
+        region.top_shell_index == Some(0),
+        "rectilinear region with top surface must have top_shell_index=Some(0) in SliceIR"
     );
 
     // ── Resolver: rectilinear-infill is the default holder for all four
@@ -547,8 +547,10 @@ fn gyroid_holds_sparse_claim_only_emits_sparse() {
     assert_eq!(slice.regions.len(), 1);
     let region = &slice.regions[0];
     assert!(
-        !region.is_top_surface && !region.is_bottom_surface && !region.is_bridge,
-        "interior region must have all surface flags false in SliceIR"
+        region.top_shell_index.is_none()
+            && region.bottom_shell_index.is_none()
+            && !region.is_bridge,
+        "interior region must have all surface flags clear in SliceIR"
     );
 
     // ── Resolver under "gyroid is sparse holder" config: gyroid declares
@@ -685,8 +687,8 @@ fn gyroid_does_not_emit_for_unheld_top_claim() {
     assert_eq!(slice.regions.len(), 1);
     let region = &slice.regions[0];
     assert!(
-        region.is_top_surface,
-        "SliceIR region must have is_top_surface=true"
+        region.top_shell_index == Some(0),
+        "SliceIR region must have top_shell_index=Some(0)"
     );
 
     // ── Resolver: even though the surface IS top, gyroid declares only

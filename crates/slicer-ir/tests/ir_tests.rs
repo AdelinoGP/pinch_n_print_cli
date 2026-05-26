@@ -450,8 +450,48 @@ mod tests {
             nonplanar_surface: None,
             effective_layer_height: 0.2,
             boundary_paint: std::collections::HashMap::new(),
-            is_top_surface: false,
-            is_bottom_surface: false,
+            top_shell_index: None,
+            bottom_shell_index: None,
+            top_solid_fill: Vec::new(),
+            bottom_solid_fill: Vec::new(),
+            is_bridge: false,
+            bridge_areas: vec![],
+            bridge_orientation_deg: 0.0,
+        };
+
+        test_serde_roundtrip!(region);
+    }
+
+    /// Packet bridge: schema 3.0.0 introduces `top_shell_index` /
+    /// `bottom_shell_index` (Option<u8>) plus `top_solid_fill` /
+    /// `bottom_solid_fill` (Vec<ExPolygon>) replacing the prior
+    /// `is_top_surface` / `is_bottom_surface` bool fields. Round-trip the
+    /// populated form to lock in serde stability.
+    #[test]
+    fn test_sliced_region_shell_classification_roundtrip() {
+        let square = ExPolygon {
+            contour: Polygon {
+                points: vec![
+                    Point2::from_mm(0.0, 0.0),
+                    Point2::from_mm(1.0, 0.0),
+                    Point2::from_mm(1.0, 1.0),
+                    Point2::from_mm(0.0, 1.0),
+                ],
+            },
+            holes: vec![],
+        };
+        let region = SlicedRegion {
+            object_id: "obj-shell".to_string(),
+            region_id: 2,
+            polygons: vec![square.clone()],
+            infill_areas: vec![square.clone()],
+            nonplanar_surface: None,
+            effective_layer_height: 0.2,
+            boundary_paint: std::collections::HashMap::new(),
+            top_shell_index: Some(0),
+            bottom_shell_index: Some(2),
+            top_solid_fill: vec![square.clone()],
+            bottom_solid_fill: vec![square],
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -647,11 +687,11 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {
-            major: 2,
-            minor: 1,
+            major: 3,
+            minor: 0,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (2, 1, 0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (3, 0, 0)"
     );
 
     // (c)

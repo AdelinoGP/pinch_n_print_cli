@@ -521,8 +521,8 @@ fn missing_config_uses_default_three() {
     assert_eq!(slice.regions.len(), 1);
     let region = &slice.regions[0];
     assert!(
-        region.is_top_surface,
-        "expected is_top_surface=true with default (None) region_map"
+        region.top_shell_index == Some(0),
+        "expected top_shell_index=Some(0) with default (None) region_map"
     );
 }
 
@@ -560,7 +560,7 @@ fn execute_layer_slice_honors_region_map_top_shell_layers() {
         )
         .expect("slice ok");
         for region in &slice.regions {
-            if region.is_top_surface {
+            if region.top_shell_index == Some(0) {
                 top_flagged += 1;
             }
         }
@@ -599,7 +599,7 @@ fn none_region_map_uses_orca_defaults() {
         )
         .expect("slice ok");
         for region in &slice.regions {
-            if region.is_top_surface {
+            if region.top_shell_index == Some(0) {
                 top_flagged += 1;
             }
         }
