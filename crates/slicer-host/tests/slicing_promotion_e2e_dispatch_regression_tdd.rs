@@ -273,16 +273,6 @@ fn staircase_ironing_g1_lines_within_top_fill_extents() {
     );
 }
 
-/// Currently ignored: two runs against the same staircase + config produce
-/// G-code that drifts by ~1 ulp in extrusion (E) values across some moves
-/// (e.g. `E11.04000` vs `E11.03999`). The geometric XY trajectory matches
-/// byte-for-byte; only the E-accumulator differs. This indicates a
-/// floating-point ordering dependency somewhere in the
-/// extrusion-rate or distance-accumulator code path (not in the
-/// slicing-promotion refactor itself — the C3 `prepass_slice_and_shell_tdd`
-/// determinism test still passes against the prepass+ironing direct
-/// API). Tracking as a follow-up; surfaces here as a discovered defect.
-#[ignore]
 #[test]
 fn staircase_run_is_byte_deterministic_across_two_invocations() {
     let tmp_a = tempfile::tempdir().expect("tempdir a");
@@ -305,15 +295,21 @@ fn staircase_run_is_byte_deterministic_across_two_invocations() {
     let outcome_second = expect_outcome(&cached_second);
     assert!(outcome_second.success, "second run must succeed");
 
-    // Strip the runtime-variable header (date/host-version banner) before
-    // comparing. The header lives at the top, terminated by the first
-    // `M` command (M73, M82, M104, etc.) or the first ;TYPE: comment.
+    // Strip the runtime-variable header (date/host-version banner) at the
+    // top AND the trailing CONFIG_BLOCK section. The header is terminated
+    // by the first `M` command or ;TYPE: comment. The config block records
+    // path-derived object UUIDs that differ between runs from distinct
+    // tempdirs even when the slicer output is byte-identical.
     fn body(gcode: &str) -> &str {
-        let cutoff = gcode
+        let start = gcode
             .find(";TYPE:")
             .or_else(|| gcode.find("\nM"))
             .unwrap_or(0);
-        &gcode[cutoff..]
+        let end = gcode[start..]
+            .find("; CONFIG_BLOCK_START")
+            .map(|i| start + i)
+            .unwrap_or(gcode.len());
+        &gcode[start..end]
     }
 
     let a = body(outcome_first.gcode.as_str());
