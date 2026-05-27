@@ -472,13 +472,6 @@ pub struct LayerPlanOutputData;
 /// This struct is just a table-entry tag so the resource-handle lifecycle
 /// works; the actual data lives on the context.
 pub struct MeshSegmentationOutputData;
-/// Backing data for prepass `paint-segmentation-output` resource.
-///
-/// This struct is a table-entry tag so the resource-handle lifecycle
-/// works for test-guest linking. The host-native paint segmentation
-/// path (`execute_paint_segmentation`) does not use this resource;
-/// `push-paint-region` is a no-op stub.
-pub struct PaintSegmentationOutputData;
 /// Backing data for prepass `seam-planning-output` resource.
 ///
 /// Seam-plan entries emitted by `push-seam-plan` during a WIT prepass
@@ -586,8 +579,8 @@ pub mod prepass {
                 record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
 
                 // ── Prepass segmentation view records ────────────────────────
-                // Read-only views of mesh geometry and paint data for macro-authored
-                // PrePass::MeshSegmentation and PrePass::PaintSegmentation modules.
+                // Read-only views of mesh geometry for macro-authored
+                // PrePass::MeshSegmentation modules.
 
                 use geometry.{point3};
 
@@ -628,35 +621,6 @@ pub mod prepass {
                     triangles: list<tuple<u32, u32, u32>>,
                     /// All paint layers on this object.
                     paint-layers: list<paint-layer-view>,
-                }
-
-                variant paint-value-input {
-                    flag(bool), scalar(f32), tool-index(u32), custom(string)
-                }
-                record paint-region-entry {
-                    object-id: object-id,
-                    layer-index: layer-idx,
-                    semantic: string,
-                    polygons: list<ex-polygon>,
-                    value: paint-value-input,
-                }
-                resource paint-segmentation-output {
-                    push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
-                }
-
-                export run-paint-segmentation: func(
-                    objects: list<paint-segmentation-object-view>,
-                    output: paint-segmentation-output,
-                    config: config-view,
-                ) -> result<_, module-error>;
-
-                record paint-segmentation-object-view {
-                    object-id: object-id,
-                    vertices: list<point3>,
-                    triangles: list<tuple<u32, u32, u32>>,
-                    paint-layers: list<paint-layer-view>,
-                    transform-matrix: list<f64>,
-                    participating-layer-indices: list<u32>,
                 }
 
                 resource layer-plan-output {
@@ -1956,17 +1920,6 @@ impl HostExecutionContext {
         &mut self,
     ) -> wasmtime::Result<Resource<prepass::MeshSegmentationOutput>> {
         let rep = self.table.push(MeshSegmentationOutputData)?;
-        Ok(Resource::new_own(rep.rep()))
-    }
-
-    /// Push a paint-segmentation-output resource (prepass world). The
-    /// returned handle is what the host passes into
-    /// `run-paint-segmentation`; guest calls to `push-paint-region` go
-    /// through `HostPaintSegmentationOutput::push_paint_region` below.
-    pub fn push_paint_segmentation_output(
-        &mut self,
-    ) -> wasmtime::Result<Resource<prepass::PaintSegmentationOutput>> {
-        let rep = self.table.push(PaintSegmentationOutputData)?;
         Ok(Resource::new_own(rep.rep()))
     }
 
@@ -4398,21 +4351,6 @@ mod prepass_impls {
         }
         fn drop(&mut self, rep: Resource<pm::MeshSegmentationOutput>) -> wasmtime::Result<()> {
             let typed: Resource<MeshSegmentationOutputData> = Resource::new_own(rep.rep());
-            self.table.delete(typed)?;
-            Ok(())
-        }
-    }
-
-    impl pm::HostPaintSegmentationOutput for HostExecutionContext {
-        fn push_paint_region(
-            &mut self,
-            _handle: Resource<pm::PaintSegmentationOutput>,
-            _entry: pm::PaintRegionEntry,
-        ) -> wasmtime::Result<Result<(), String>> {
-            Ok(Ok(())) // no-op stub — paint segmentation is host-native now
-        }
-        fn drop(&mut self, rep: Resource<pm::PaintSegmentationOutput>) -> wasmtime::Result<()> {
-            let typed: Resource<PaintSegmentationOutputData> = Resource::new_own(rep.rep());
             self.table.delete(typed)?;
             Ok(())
         }

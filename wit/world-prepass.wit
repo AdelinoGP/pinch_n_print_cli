@@ -3,7 +3,7 @@ package slicer:world-prepass@1.0.0;
 world prepass-module {
     import slicer:host-api/host-services;
     import slicer:config/config-types.{config-view};
-    use slicer:ir-types/ir-handles.{object-id, region-id, mesh-object-view, paint-segmentation-object-view};
+    use slicer:ir-types/ir-handles.{object-id, region-id, mesh-object-view};
 
     record module-error { code: u32, message: string, fatal: bool }
 
@@ -54,34 +54,10 @@ world prepass-module {
         config: config-view,
     ) -> result<_, module-error>;
 
-    // PaintSegmentation stage
-    // For every layer Z and paint semantic, computes 2D polygon regions
-    // carrying that semantic's paint value.
-    use slicer:ir-types/ir-handles.{layer-idx, paint-value-input};
-    use slicer:types/geometry.{ex-polygon};
-
-    record paint-region-entry {
-        object-id: object-id,
-        layer-index: layer-idx,
-        semantic: string,
-        polygons: list<ex-polygon>,
-        value: paint-value-input,
-    }
-
-    resource paint-segmentation-output {
-        push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
-    }
-
-    export run-paint-segmentation: func(
-        objects: list<paint-segmentation-object-view>,
-        output: paint-segmentation-output,
-        config: config-view,
-    ) -> result<_, module-error>;
-
     // SeamPlanning stage
     // Computes optimal seam positions for each region using prepass geometry analysis.
     use slicer:ir-types/ir-handles.{layer-idx};
-    use slicer:types/geometry.{point3-with-width};
+    use slicer:types/geometry.{ex-polygon, point3-with-width};
 
     record seam-reason { tag: string }
     record scored-seam-candidate {
@@ -126,7 +102,7 @@ world prepass-module {
     record region-segmentation-view-entry { object-id: object-id, layer-index: layer-idx, region-ids: list<region-id> }
     record region-segmentation-view { entries: list<region-segmentation-view-entry> }
 
-    // SupportGeometry view — coarse outline prepass results consumed by run-support-geometry
+    // SupportGeometry view -- coarse outline prepass results consumed by run-support-geometry
     record support-geometry-view-entry {
       global-support-layer-index: layer-idx,
       object-id: object-id,

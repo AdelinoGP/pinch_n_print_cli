@@ -17,42 +17,6 @@ use slicer_ir::{
     PaintLayer, PaintSemantic, PaintValue, Point3, SurfaceClassificationIR, Transform3d,
 };
 
-// ── AC-1: source-level drain string grep ─────────────────────────────────────
-
-/// AC-1: The PaintSegmentation macro arm body in slicer-macros/src/lib.rs must
-/// contain the drain strings `sdk_output.regions()`, `_output.push_paint_region`,
-/// and `ModuleError { code: 10, fatal: true }`.
-#[test]
-fn macro_arm_drains_regions_to_wit() {
-    let src = include_str!("../../slicer-macros/src/lib.rs");
-
-    // Use a sentinel that uniquely identifies the arm body (not the WorldGlueKind match).
-    // The arm body initialises sdk_output with PaintSegmentationOutput::new().
-    let sentinel = "PaintSegmentationOutput::new()";
-    let arm_start = src.find(sentinel).expect(
-        "slicer-macros must contain PaintSegmentationOutput::new() in PaintSegmentation arm",
-    );
-
-    // Bound the arm: take the next 4000 chars as a proxy for the arm body.
-    let arm_body = &src[arm_start..arm_start + src[arm_start..].len().min(4000)];
-
-    assert!(
-        arm_body.contains("sdk_output.regions()"),
-        "PaintSegmentation arm must call sdk_output.regions() to drain; arm snippet:\n{}",
-        &arm_body[..arm_body.len().min(500)]
-    );
-    assert!(
-        arm_body.contains("_output.push_paint_region"),
-        "PaintSegmentation arm must call _output.push_paint_region; arm snippet:\n{}",
-        &arm_body[..arm_body.len().min(500)]
-    );
-    // The source uses multi-line struct literal, so check each field separately.
-    assert!(
-        arm_body.contains("code: 10") && arm_body.contains("fatal: true"),
-        "PaintSegmentation arm must surface ModuleError with code: 10 and fatal: true on push failure"
-    );
-}
-
 // ── Host fallback: empty mesh ────────────────────────────────────────────────
 
 /// `execute_paint_segmentation` with no objects produces empty `per_layer`.
@@ -530,45 +494,6 @@ fn host_fallback_unpainted_object_yields_empty_per_layer() {
     let ir =
         execute_paint_segmentation(mesh, sc, lp, true).expect("unpainted object must not error");
     assert!(ir.per_layer.is_empty());
-}
-
-// ── Negative-2: no early return bypasses drain ───────────────────────────────
-
-/// Negative-2: Within the PaintSegmentation arm body in slicer-macros/src/lib.rs,
-/// there must be zero occurrences of `return Ok(())` that appear BEFORE the
-/// `for` loop over `sdk_output.regions()`.
-///
-/// RED today: there is no drain loop yet, so any `return Ok(())` before it counts as a bypass.
-#[test]
-fn no_early_return_bypasses_drain() {
-    let src = include_str!("../../slicer-macros/src/lib.rs");
-
-    let sentinel = "PrePass::PaintSegmentation";
-    let arm_start = src
-        .find(sentinel)
-        .expect("must contain PrePass::PaintSegmentation arm sentinel");
-
-    // Extract a bounded arm body (4000 chars max).
-    let arm_end = arm_start + src[arm_start..].len().min(4000);
-    let arm_body = &src[arm_start..arm_end];
-
-    // Find position of the drain loop.
-    let loop_pos = arm_body.find("for");
-
-    // Count `return Ok(())` occurrences before the loop.
-    let early_returns: usize = if let Some(loop_at) = loop_pos {
-        let pre_loop = &arm_body[..loop_at];
-        pre_loop.matches("return Ok(())").count()
-    } else {
-        // No loop found yet — any return Ok(()) in arm is a potential bypass.
-        arm_body.matches("return Ok(())").count()
-    };
-
-    assert_eq!(
-        early_returns, 0,
-        "Neg-2 FAIL: found {early_returns} early `return Ok(())` before drain loop in \
-         PaintSegmentation arm — these would bypass the drain"
-    );
 }
 
 // ── Host fallback: MMU paint data produces non-empty per_layer ────────────────

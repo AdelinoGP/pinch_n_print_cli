@@ -223,7 +223,7 @@ interface ir-handles {
 
     // ── Prepass segmentation view records ─────────────────────────────────
     // Read-only views of mesh geometry and paint data for macro-authored
-    // PrePass::MeshSegmentation and PrePass::PaintSegmentation modules.
+    // PrePass::MeshSegmentation modules.
 
     /// A paint value with discriminator for flag, scalar, or tool-index.
     variant paint-value-view {
@@ -264,19 +264,4 @@ interface ir-handles {
         paint-layers: list<paint-layer-view>,
     }
 
-    /// Read-only view of an object for paint segmentation, including
-    /// transform and layer participation.
-    record paint-segmentation-object-view {
-        object-id: object-id,
-        /// Mesh vertices as point3 coordinates.
-        vertices: list<point3>,
-        /// Triangle indices (3 per triangle), indexing into vertices.
-        triangles: list<tuple<u32, u32, u32>>,
-        /// All paint layers on this object.
-        paint-layers: list<paint-layer-view>,
-        /// 4x4 column-major transform matrix (16 elements).
-        transform-matrix: list<f64>,
-        /// Global layer indices this object participates in.
-        participating-layer-indices: list<u32>,
-    }
 }

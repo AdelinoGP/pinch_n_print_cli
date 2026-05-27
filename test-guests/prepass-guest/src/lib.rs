@@ -75,25 +75,6 @@ wit_bindgen::generate!({
                 config: config-view,
             ) -> result<_, module-error>;
 
-            use geometry.{ex-polygon};
-
-            record paint-region-entry {
-                object-id: object-id,
-                layer-index: u32,
-                semantic: string,
-                polygons: list<ex-polygon>,
-                value: string,
-            }
-            resource paint-segmentation-output {
-                push-paint-region: func(entry: paint-region-entry) -> result<_, string>;
-            }
-
-            export run-paint-segmentation: func(
-                objects: list<paint-segmentation-object-view>,
-                output: paint-segmentation-output,
-                config: config-view,
-            ) -> result<_, module-error>;
-
             record region-layer-proposal {
                 object-id: object-id, region-id: region-id,
                 effective-layer-height: f32,
@@ -126,15 +107,6 @@ wit_bindgen::generate!({
                 vertices: list<point3>,
                 triangles: list<tuple<u32, u32, u32>>,
                 paint-layers: list<paint-layer-view>,
-            }
-
-            record paint-segmentation-object-view {
-                object-id: object-id,
-                vertices: list<point3>,
-                triangles: list<tuple<u32, u32, u32>>,
-                paint-layers: list<paint-layer-view>,
-                transform-matrix: list<f64>,
-                participating-layer-indices: list<u32>,
             }
 
             resource layer-plan-output {
@@ -173,6 +145,7 @@ wit_bindgen::generate!({
             ) -> result<_, module-error>;
 
             // SupportGeometry stage
+            use geometry.{ex-polygon};
             record support-plan-entry {
                 global-layer-index: s32,
                 object-id: object-id,
@@ -208,9 +181,6 @@ impl Guest for Component {
         Ok(())
     }
     fn run_mesh_segmentation(_objects: Vec<MeshObjectView>, _output: MeshSegmentationOutput, _config: ConfigView) -> Result<(), ModuleError> {
-        Ok(())
-    }
-    fn run_paint_segmentation(_objects: Vec<PaintSegmentationObjectView>, _output: PaintSegmentationOutput, _config: ConfigView) -> Result<(), ModuleError> {
         Ok(())
     }
     fn run_seam_planning(_objects: Vec<MeshObjectView>, _output: SeamPlanningOutput, _config: ConfigView) -> Result<(), ModuleError> {

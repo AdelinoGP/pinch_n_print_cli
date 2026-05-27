@@ -1938,32 +1938,6 @@ mod tests {
     }
 }
 
-/// Harvest `push-paint-region` entries collected by a prepass
-/// `run-paint-segmentation` invocation into a `PaintRegionIR`.
-///
-/// Reshapes each flat WIT `paint-region-entry` into the blackboard's
-/// structured form: entries are grouped by `(layer_index,
-/// paint_semantic)` and appended to
-/// `PaintRegionIR.per_layer[layer].semantic_regions[semantic]` in
-/// insertion order. `paint_order` is derived from that insertion index
-/// so every `SemanticRegion` carries a deterministic rank within its
-/// semantic bucket (docs/02 §Paint Region IR — `paint_order` stability).
-/// `PaintValue` is parsed from the WIT `value: string` field with the
-/// following conventions:
-///   - `"true"`/`"false"`                    → `PaintValue::Flag(bool)`
-///   - parseable as `u32` (e.g. `"0"`, `"3"`) → `PaintValue::ToolIndex(u32)`
-///   - anything else                          → `PaintValue::Named(String)`
-///
-/// Unknown semantic strings map to `PaintSemantic::Custom(name)` so
-/// guests can introduce new semantics without host-side changes.
-///
-/// # WIT PaintValueInput → IR PaintValue mapping
-///
-/// | WIT `paint-value-input` variant | IR `PaintValue` variant       |
-/// |----------------------------------|-------------------------------|
-/// | `flag(bool)`                     | `PaintValue::Flag(bool)`      |
-/// | `scalar(f32)`                    | `PaintValue::Scalar(f32)`     |
-/// | `tool-index(u32)`                | `PaintValue::ToolIndex(u32)`  |
 /// Harvest `mark-triangle-paint` tuples collected by a prepass
 /// `run-mesh-segmentation` invocation into a `MeshSegmentationIR`.
 ///

@@ -25,10 +25,6 @@ const GUESTS: &[(&str, &str)] = &[
     ),
     ("sdk-prepass-guest", "sdk-prepass-guest.component.wasm"),
     (
-        "sdk-prepass-paintseg-guest",
-        "sdk-prepass-paintseg-guest.component.wasm",
-    ),
-    (
         "sdk-prepass-meshseg-guest",
         "sdk-prepass-meshseg-guest.component.wasm",
     ),

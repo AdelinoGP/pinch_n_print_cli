@@ -283,7 +283,7 @@ fn prepass_world_macro_guest_is_deterministic() {
     }
 }
 
-// ── Prepass world (PaintSegmentation) ────────────────────────────────
+// ── Prepass world (MeshSegmentation) ─────────────────────────────────
 
 fn fixture_case_config(case: &str) -> ConfigView {
     let mut fields: HashMap<String, ConfigValue> = HashMap::new();
@@ -293,42 +293,6 @@ fn fixture_case_config(case: &str) -> ConfigView {
     );
     ConfigView::from_map(fields)
 }
-
-#[test]
-#[ignore = "Paint-segmentation was migrated to a host-native built-in in \
-            packet-64 (commit e6369eb) so the dispatcher's prepass match \
-            in dispatch.rs has no WASM arm for PrePass::PaintSegmentation. \
-            The SDK macro still emits correct typed glue for the world; \
-            this round-trip integration test cannot exercise it until a \
-            dispatch arm for WASM paint-seg modules is re-added."]
-fn prepass_paintseg_macro_guest_round_trips_typed_config_and_result() {
-    let engine = Arc::new(WasmEngine::new());
-    let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-prepass-paintseg-guest");
-
-    let module = make_module(
-        "com.test.sdk-prepass-paintseg",
-        "PrePass::PaintSegmentation",
-        "slicer:world-prepass@1.0.0",
-        component,
-        fixture_case_config("custom_payload"),
-    );
-    let bb = Blackboard::new(empty_mesh_ir(), 0);
-    let stage: StageId = "PrePass::PaintSegmentation".to_string();
-    let (out, _reads) = PrepassStageRunner::run_stage(&dispatcher, &stage, &module, &bb)
-        .expect("custom_payload path must succeed through macro-arm typed glue");
-    match out {
-        PrepassStageOutput::PaintRegions(ir, _) => {
-            assert!(
-                !ir.per_layer.is_empty(),
-                "macro-arm must drain push_paint_region into a non-empty PaintRegionIR"
-            );
-        }
-        other => panic!("expected PrepassStageOutput::PaintRegions, got {:?}", other),
-    }
-}
-
-// ── Prepass world (MeshSegmentation) ─────────────────────────────────
 
 #[test]
 fn prepass_meshseg_macro_guest_round_trips_typed_config_and_result() {

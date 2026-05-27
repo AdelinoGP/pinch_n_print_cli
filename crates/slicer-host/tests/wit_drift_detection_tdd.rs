@@ -452,23 +452,6 @@ fn prepass_world_uses_mesh_object_view() {
     );
 }
 
-/// Verifies that the canonical prepass world uses paint-segmentation-object-view
-/// (not raw object-id) for the run-paint-segmentation export.
-#[test]
-fn prepass_world_uses_paint_segmentation_object_view() {
-    let path = workspace_root().join("wit/world-prepass.wit");
-    let content = fs::read_to_string(&path).expect("read canonical world-prepass.wit");
-    let normalized = content.replace("\r\n", "\n");
-    assert!(
-        normalized.contains("run-paint-segmentation: func(\n        objects: list<paint-segmentation-object-view>"),
-        "canonical world-prepass.wit must use list<paint-segmentation-object-view> for run-paint-segmentation"
-    );
-    assert!(
-        !normalized.contains("run-paint-segmentation: func(\n        objects: list<object-id>"),
-        "canonical world-prepass.wit must not use stale list<object-id> for run-paint-segmentation"
-    );
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Seam-related layer-world members
 // ─────────────────────────────────────────────────────────────────────────────
