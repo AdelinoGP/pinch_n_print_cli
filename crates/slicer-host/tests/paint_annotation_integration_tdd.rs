@@ -182,6 +182,38 @@ fn material_only_on_other_layer() -> PaintRegionIR {
     ambiguous_triangle_paint_regions(7)
 }
 
+/// Build a single-layer `SliceIR` vec whose contour vertex at (4.95, 4.95)
+/// lies ~0.7 integer-units (~70 nm) beyond the paint triangle's hypotenuse
+/// `x + y = 9.8999` (in mm space). The paint annotator's `EPSILON_UNITS = 1`
+/// numerical-edge tolerance — an AABB query with ±1-unit eps around the
+/// point — catches this edge segment, and `point_in_paint_region` returns
+/// `Ok(None)` because the contour vertex is outside the triangle (4.95 +
+/// 4.95 = 9.9 > 9.8999). Annotator falls through to
+/// `NumericalEdgeAmbiguity`, emitting the fatal-false code-504 warning
+/// that the test pipelines expect to see on the sink.
+fn ambiguity_inducing_slice_ir(layer_index: u32, object_id: &str) -> Vec<slicer_ir::SliceIR> {
+    vec![slicer_ir::SliceIR {
+        schema_version: slicer_ir::SemVer {
+            major: 3,
+            minor: 0,
+            patch: 0,
+        },
+        global_layer_index: layer_index,
+        z: 0.1,
+        regions: vec![slicer_ir::SlicedRegion {
+            object_id: object_id.to_string(),
+            region_id: 0,
+            polygons: vec![polygon(vec![
+                (4.95, 4.95),
+                (10.0, 0.0),
+                (10.0, 10.0),
+                (0.0, 10.0),
+            ])],
+            ..Default::default()
+        }],
+    }]
+}
+
 /// Build an `Arc<PaintRegionRTreeIndex>` companion for a `PaintRegionIR`,
 /// computing per-region AABBs where `aabb` is `None`.
 fn build_paint_region_rtree_index(ir: &PaintRegionIR) -> Arc<PaintRegionRTreeIndex> {
@@ -278,6 +310,8 @@ fn paint_annotation_is_invoked_on_real_per_layer_path_and_warnings_reach_sink() 
     let layer = layer_at(0, 0.1, "obj-a");
     let plan = plan_empty(vec![layer]);
     let mut bb = Blackboard::new(Arc::clone(&mesh), plan.global_layers.len());
+    bb.commit_slice_ir(Arc::new(ambiguity_inducing_slice_ir(0, "obj-a")))
+        .expect("commit slice_ir");
     let ir = Arc::new(ambiguous_triangle_paint_regions(0));
     let rtree = build_paint_region_rtree_index(&ir);
     bb.commit_paint_regions(ir, rtree).unwrap();
@@ -310,6 +344,10 @@ fn paint_annotation_degraded_fallback_is_deterministic_across_repeated_runs() {
     let plan2 = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
     let mut bb1 = Blackboard::new(Arc::clone(&mesh), 1);
     let mut bb2 = Blackboard::new(Arc::clone(&mesh), 1);
+    bb1.commit_slice_ir(Arc::new(ambiguity_inducing_slice_ir(0, "obj-a")))
+        .expect("commit slice_ir bb1");
+    bb2.commit_slice_ir(Arc::new(ambiguity_inducing_slice_ir(0, "obj-a")))
+        .expect("commit slice_ir bb2");
     let ir1 = Arc::new(ambiguous_triangle_paint_regions(0));
     let rt1 = build_paint_region_rtree_index(&ir1);
     bb1.commit_paint_regions(ir1, rt1).unwrap();
@@ -480,6 +518,8 @@ fn runtime_sink_forwards_paint_warning_to_both_jsonl_emitter_and_slice_event_col
     let mesh = Arc::new(tetra_mesh_ir("obj-a"));
     let plan = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
     let mut bb = Blackboard::new(Arc::clone(&mesh), plan.global_layers.len());
+    bb.commit_slice_ir(Arc::new(ambiguity_inducing_slice_ir(0, "obj-a")))
+        .expect("commit slice_ir");
     let ir = Arc::new(ambiguous_triangle_paint_regions(0));
     let rtree = build_paint_region_rtree_index(&ir);
     bb.commit_paint_regions(ir, rtree).unwrap();
@@ -522,6 +562,8 @@ fn runtime_sink_jsonl_output_is_byte_identical_across_repeated_runs() {
     let run_once = || -> Vec<u8> {
         let plan = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
         let mut bb = Blackboard::new(Arc::clone(&mesh), 1);
+        bb.commit_slice_ir(Arc::new(ambiguity_inducing_slice_ir(0, "obj-a")))
+            .expect("commit slice_ir");
         let ir = Arc::new(ambiguous_triangle_paint_regions(0));
         let rtree = build_paint_region_rtree_index(&ir);
         bb.commit_paint_regions(ir, rtree).unwrap();

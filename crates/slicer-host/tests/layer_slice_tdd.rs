@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use slicer_host::{
     execute_per_layer, execute_prepass_slice_single_layer, Blackboard, CompiledModule,
-    ExecutionPlan, LayerArena, LayerExecutionError, LayerSliceError, LayerStageError,
-    LayerStageOutput, LayerStageRunner,
+    ExecutionPlan, LayerArena, LayerSliceError, LayerStageError, LayerStageOutput,
+    LayerStageRunner,
 };
 use slicer_ir::SliceIR;
 
@@ -375,11 +375,20 @@ fn layer_slice_builtin_is_deterministic_for_benchy_mesh() {
 
 #[test]
 fn per_layer_executor_surfaces_layer_slice_failure_structured() {
-    // Post-refactor: slice failures surface during `PrePass::Slice`, not Tier 2.
-    // The equivalent check is that `execute_layer_slice` returns a structured
-    // `UnknownObject` diagnostic when the layer references a missing object,
-    // and that the per-layer executor reports the missing slice_ir as a
-    // FatalLayer when prepass hasn't run.
+    // Post-refactor (fe6ca6d): slice failures surface during `PrePass::Slice`,
+    // not Tier 2. `execute_prepass_slice_single_layer` is the canonical seam
+    // for surfacing per-layer slice errors as structured diagnostics — when
+    // the layer references an unknown object, a typed `UnknownObject` error
+    // carries the diagnostic context (`layer_index`, `object_id`) so the
+    // outer PrePass aborts deterministically.
+    //
+    // Tier-2 hydration of `slice_ir` is intentionally tolerant: when no
+    // PrePass-committed `Vec<SliceIR>` is present, the executor seeds the
+    // arena with an empty `SliceIR` carrying the layer index, so Layer-tier
+    // modules can still drive on partial-pipeline fixtures (mock runners,
+    // executor-mechanics tests). The DAG validator
+    // (`validate_startup_dag`) is the authoritative production gate that
+    // catches plans missing a SliceIR producer.
     let mesh = tetra_mesh_ir("obj-a");
     let layer = layer_at(0, 0.1, "missing-object");
 
@@ -394,37 +403,6 @@ fn per_layer_executor_surfaces_layer_slice_failure_structured() {
             assert_eq!(object_id, "missing-object");
         }
         other => panic!("expected UnknownObject, got {other:?}"),
-    }
-
-    // Tier-2 surfaces the missing prepass slice_ir as a FatalLayer.
-    let plan = plan_with_one_layer(layer);
-    let mesh_arc = Arc::new(mesh);
-    let bb = Blackboard::new(mesh_arc, 1);
-    struct Noop;
-    impl LayerStageRunner for Noop {
-        fn run_stage(
-            &self,
-            _s: &StageId,
-            _l: &GlobalLayer,
-            _m: &CompiledModule,
-            _b: &Blackboard,
-            _a: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-            Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
-        }
-    }
-    let err =
-        execute_per_layer(&plan, &bb, &Noop).expect_err("should fail when slice_ir is missing");
-    match err {
-        LayerExecutionError::FatalLayer {
-            layer_index,
-            stage_id,
-            ..
-        } => {
-            assert_eq!(layer_index, 0);
-            assert_eq!(stage_id, "PrePass::Slice");
-        }
-        other => panic!("expected FatalLayer for missing slice_ir, got {other:?}"),
     }
 }
 

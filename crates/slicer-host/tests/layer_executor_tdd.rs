@@ -1312,6 +1312,33 @@ fn paint_annotation_runs_when_stage_present_with_no_modules() {
     };
     let mut bb = Blackboard::new(Arc::clone(&mesh), plan.global_layers.len());
 
+    // Slice geometry is the input that paint annotation overlays paint
+    // regions onto; the annotator emits NumericalEdgeAmbiguity warnings when
+    // a slice contour vertex lies within ~1 integer unit (~100 nm) of a
+    // paint-region edge but is classified by `point_in_paint_region` as
+    // outside. The `ambiguous_triangle` fixture's hypotenuse runs along the
+    // line x + y = 9.8999; we hand-seed a slice contour with a vertex at
+    // (4.95, 4.95) — exactly 1 unit beyond the hypotenuse in mm space — so
+    // the annotator hits the ambiguity branch and produces a warning event.
+    let slice_vec = vec![slicer_ir::SliceIR {
+        schema_version: semver(3, 0, 0),
+        global_layer_index: 0,
+        z: 0.1,
+        regions: vec![slicer_ir::SlicedRegion {
+            object_id: "test-object".to_string(),
+            region_id: 0,
+            polygons: vec![paint_polygon(vec![
+                (4.95, 4.95),
+                (10.0, 0.0),
+                (10.0, 10.0),
+                (0.0, 10.0),
+            ])],
+            ..Default::default()
+        }],
+    }];
+    bb.commit_slice_ir(Arc::new(slice_vec))
+        .expect("commit slice_ir");
+
     let ir = Arc::new(ambiguous_triangle_paint_regions(0));
     let rtree = build_paint_region_rtree_index(&ir);
     bb.commit_paint_regions(ir, rtree)

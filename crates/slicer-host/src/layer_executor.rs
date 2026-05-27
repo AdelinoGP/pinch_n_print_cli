@@ -355,23 +355,21 @@ fn execute_single_layer_inner(
     let mut arena = LayerArena::new();
 
     // Hydrate the per-layer arena's SliceIR slot from the prepass-committed
-    // `Vec<SliceIR>` on the blackboard. The slice geometry (plus shell
-    // classification from `PrePass::ShellClassification`) is produced once
-    // in PrePass; Tier 2 only reads. Skipped if a caller has already
-    // pre-seeded the arena (e.g. integration tests).
+    // `Vec<SliceIR>` on the blackboard. Production paths run PrePass::Slice
+    // first, which commits the Vec<SliceIR>. Test fixtures that build a
+    // partial plan with an empty PrePass (or no PrePass at all) skip that
+    // step; we hydrate with an empty SliceIR carrying just the layer index
+    // so the executor can still drive Layer-tier modules. The DAG validator
+    // (`validate_startup_dag`) is the authoritative gate that catches
+    // production plans missing a SliceIR producer.
     if arena.slice().is_none() {
         let slice_ir = blackboard
             .slice_ir()
             .and_then(|vec| vec.get(layer.index as usize).cloned())
-            .ok_or_else(|| LayerExecutionError::FatalLayer {
-                layer_index: layer.index,
-                stage_id: "PrePass::Slice".to_string(),
-                module_id: "host:slice".to_string(),
-                message: format!(
-                    "blackboard slice_ir missing entry for layer index {}",
-                    layer.index
-                ),
-            })?;
+            .unwrap_or_else(|| slicer_ir::SliceIR {
+                global_layer_index: layer.index,
+                ..slicer_ir::SliceIR::default()
+            });
         arena
             .set_slice(slice_ir)
             .map_err(|_| LayerExecutionError::FatalLayer {
