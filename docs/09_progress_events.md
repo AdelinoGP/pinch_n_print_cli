@@ -137,3 +137,38 @@ Fatal failure excerpt:
 1. `layer_start(42)`
 2. `module_error(status=fatal_error,fatal=true)`
 3. `slice_complete(status=fatal_error,degraded=false,fatal_error_count>0)`
+
+## Instrumented Stream (`--instrument-stderr`)
+
+Passing `--instrument-stderr` to `slicer-host run` bumps the schema version
+to `"1.1.0"` and additionally emits per-stage and per-module brackets on
+the same stderr JSONL stream. New event types (additive, backward-
+compatible with consumers that ignore unknown `event` values):
+
+| Event             | Required fields                                                                                 |
+|-------------------|-------------------------------------------------------------------------------------------------|
+| `stage_start`     | `schema_version,event,timestamp_ms,slice_id,phase,stage,status`                                 |
+| `stage_complete`  | `schema_version,event,timestamp_ms,slice_id,phase,stage,status,elapsed_ms`                      |
+| `module_start`    | `schema_version,event,timestamp_ms,slice_id,phase,stage,module_id,status`                       |
+| `module_complete` | `schema_version,event,timestamp_ms,slice_id,phase,stage,module_id,status,elapsed_ms,wasm_peak_kb` |
+
+`layer_index` is populated when the stage runs inside the per-layer tier
+and omitted otherwise (prepass / postpass stages).
+
+`wasm_peak_kb` is the ceiling of the WASM linear-memory highwater
+(`wasm_peak_bytes / 1024`) sampled by the runtime around the module
+dispatch. Host built-ins report `0`.
+
+Compatibility: events emitted without `--instrument-stderr` still report
+`"schema_version": "1.0.0"`. The flag is fully composable with `--report`
+so an agent can stream live timing to a file while also producing the
+HTML report (see `docs/specs/agent-cli-debugging.md` §4.2).
+
+Example excerpt (one prepass stage + one per-layer module):
+
+```jsonl
+{"schema_version":"1.1.0","event":"stage_start","timestamp_ms":1735843200125,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok"}
+{"schema_version":"1.1.0","event":"module_start","timestamp_ms":1735843200126,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host::mesh_analysis","status":"ok"}
+{"schema_version":"1.1.0","event":"module_complete","timestamp_ms":1735843200450,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","module_id":"host::mesh_analysis","status":"ok","elapsed_ms":324,"wasm_peak_kb":0}
+{"schema_version":"1.1.0","event":"stage_complete","timestamp_ms":1735843200451,"slice_id":"slice-1735843200000","phase":"prepass","stage":"PrePass::MeshAnalysis","status":"ok","elapsed_ms":326}
+```

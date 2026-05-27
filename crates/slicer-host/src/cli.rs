@@ -78,6 +78,11 @@ pub enum HostCommands {
         /// `--report`. Defaults to off to keep page size small.
         #[arg(long, requires = "report")]
         report_verbose: bool,
+        /// Emit per-stage / per-module timing events on the stderr JSONL
+        /// stream during the slice. Bumps the event-schema version to
+        /// `"1.1.0"` and is composable with `--report`.
+        #[arg(long = "instrument-stderr")]
+        instrument_stderr: bool,
     },
     /// Query the combined config schema from loaded modules.
     ConfigSchema {
@@ -86,6 +91,24 @@ pub enum HostCommands {
         module_dir: Vec<PathBuf>,
         /// Disable the platform default module search paths
         /// (`{config_dir}/modules/` and `{executable_dir}/modules/`).
+        #[arg(long = "no-default-module-paths")]
+        no_default_module_paths: bool,
+    },
+    /// Introspect the static module DAG produced by manifest TOML parsing
+    /// alone (no WASM compilation, no slicing). See
+    /// `docs/specs/agent-cli-debugging.md` §4.3.
+    Dag {
+        /// The dag introspection subcommand to run.
+        #[command(subcommand)]
+        cmd: DagSubcommand,
+    },
+    /// Validate the discovered module set and emit structured diagnostics.
+    /// Exits 0 on pass, 1 on errors, 2 on unreadable files.
+    Diagnose {
+        /// Directory to search for modules. May be repeated.
+        #[arg(long = "module-dir", value_name = "PATH")]
+        module_dir: Vec<PathBuf>,
+        /// Disable the platform default module search paths.
         #[arg(long = "no-default-module-paths")]
         no_default_module_paths: bool,
     },
@@ -163,6 +186,66 @@ pub enum HostCommands {
     },
 }
 
+/// Subcommands under `slicer-host dag` for DAG introspection.
+#[derive(Subcommand, Debug)]
+pub enum DagSubcommand {
+    /// List every discovered stage with its tier, module count, and claim count.
+    Stages {
+        /// Directory to search for modules. May be repeated.
+        #[arg(long = "module-dir", value_name = "PATH")]
+        module_dir: Vec<PathBuf>,
+        /// Disable the platform default module search paths.
+        #[arg(long = "no-default-module-paths")]
+        no_default_module_paths: bool,
+        /// Optional model file. When supplied, object ids extracted from the
+        /// 3MF sidecar are surfaced where relevant — the module set itself is
+        /// unchanged.
+        #[arg(long, value_name = "PATH")]
+        model: Option<PathBuf>,
+    },
+    /// Full detail for a single stage (canonical id, e.g. `Layer::Infill`).
+    Stage {
+        /// Canonical stage id (e.g. `PrePass::MeshAnalysis`).
+        id: String,
+        /// Directory to search for modules. May be repeated.
+        #[arg(long = "module-dir", value_name = "PATH")]
+        module_dir: Vec<PathBuf>,
+        /// Disable the platform default module search paths.
+        #[arg(long = "no-default-module-paths")]
+        no_default_module_paths: bool,
+        /// Optional model file (see `dag stages --model` for semantics).
+        #[arg(long, value_name = "PATH")]
+        model: Option<PathBuf>,
+    },
+    /// Upstream and downstream edges for a single module, across all stages.
+    Depends {
+        /// Reverse-domain module id (e.g. `com.example.cubic_infill`).
+        module_id: String,
+        /// Directory to search for modules. May be repeated.
+        #[arg(long = "module-dir", value_name = "PATH")]
+        module_dir: Vec<PathBuf>,
+        /// Disable the platform default module search paths.
+        #[arg(long = "no-default-module-paths")]
+        no_default_module_paths: bool,
+        /// Optional model file. When supplied, object ids extracted from the
+        /// 3MF sidecar are attached to the depends output.
+        #[arg(long, value_name = "PATH")]
+        model: Option<PathBuf>,
+    },
+    /// List every claim with its holders, requesters, and interchangeability.
+    Claims {
+        /// Directory to search for modules. May be repeated.
+        #[arg(long = "module-dir", value_name = "PATH")]
+        module_dir: Vec<PathBuf>,
+        /// Disable the platform default module search paths.
+        #[arg(long = "no-default-module-paths")]
+        no_default_module_paths: bool,
+        /// Optional model file (see `dag stages --model` for semantics).
+        #[arg(long, value_name = "PATH")]
+        model: Option<PathBuf>,
+    },
+}
+
 /// Validated runtime options derived from CLI arguments.
 #[derive(Debug, Clone)]
 pub struct HostRunOptions {
@@ -182,4 +265,7 @@ pub struct HostRunOptions {
     pub report: Option<PathBuf>,
     /// Verbose report mode (per-layer-per-module rows).
     pub report_verbose: bool,
+    /// When true, emit per-stage / per-module timing events on the stderr
+    /// JSONL stream during the slice (schema version `"1.1.0"`).
+    pub instrument_stderr: bool,
 }

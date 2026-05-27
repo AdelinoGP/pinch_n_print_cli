@@ -12,7 +12,11 @@ static ALLOC: AccountingAllocator<std::alloc::System> =
 use std::sync::{Arc, Mutex};
 
 use clap::Parser;
+use slicer_host::cli::DagSubcommand;
+use slicer_host::dag_cli::{run_dag_claims, run_dag_depends, run_dag_stage, run_dag_stages};
 use slicer_host::dispatch::WasmRuntimeDispatcher;
+use slicer_host::layer_executor::LayerProgressSink;
+use slicer_host::manifest::DiagnosticLevel;
 use slicer_host::model_loader::load_model;
 use slicer_host::pipeline::{
     run_pipeline_with_instrumentation, run_pipeline_with_raw_config, PipelineConfig,
@@ -26,8 +30,8 @@ use slicer_host::{
     assemble_search_roots, build_config_schema_json, build_live_execution_plan,
     load_live_modules_for_plan, load_modules_from_roots, parse_cli_config_source,
     resolve_global_config, resolve_per_object_configs, validate_support_layer_heights,
-    write_with_parents, ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer, HostCli,
-    HostCommands, HostRunOptions,
+    write_with_parents, CompositeInstrumentation, ConfigBoundsIndex, DefaultGCodeEmitter,
+    DefaultGCodeSerializer, HostCli, HostCommands, HostRunOptions, ProgressPipelineInstrumentation,
 };
 
 /// No-op prepass runner for MVP (no WASM modules loaded yet).
@@ -118,6 +122,163 @@ fn num_cpus_guess() -> usize {
         .unwrap_or(1)
 }
 
+/// Helper to extract per-object ids from a 3MF/STL model when `--model` is
+/// supplied to a `dag` subcommand. Failures fall back to `None` so manifest-
+/// only introspection still works against an unreadable model.
+fn object_ids_from_model(path: &std::path::Path) -> Option<Vec<String>> {
+    match slicer_host::model_loader::load_model(path) {
+        Ok(ir) => Some(ir.objects.iter().map(|o| o.id.clone()).collect()),
+        Err(e) => {
+            eprintln!("warning: failed to load --model {}: {e}", path.display());
+            None
+        }
+    }
+}
+
+fn load_dag_modules(
+    module_dir: &[std::path::PathBuf],
+    no_default_module_paths: bool,
+) -> Vec<slicer_host::manifest::LoadedModule> {
+    let search_roots = assemble_search_roots(module_dir, no_default_module_paths);
+    match load_modules_from_roots(&search_roots) {
+        Ok(r) => r.modules,
+        Err(e) => {
+            eprintln!("error loading modules: {e:?}");
+            std::process::exit(2);
+        }
+    }
+}
+
+fn print_json<T: serde::Serialize>(value: &T) {
+    match serde_json::to_string_pretty(value) {
+        Ok(json) => println!("{json}"),
+        Err(e) => {
+            eprintln!("error: failed to serialize output: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run_dag_command(cmd: DagSubcommand) {
+    match cmd {
+        DagSubcommand::Stages {
+            module_dir,
+            no_default_module_paths,
+            model: _,
+        } => {
+            let modules = load_dag_modules(&module_dir, no_default_module_paths);
+            print_json(&run_dag_stages(&modules));
+        }
+        DagSubcommand::Stage {
+            id,
+            module_dir,
+            no_default_module_paths,
+            model: _,
+        } => {
+            let modules = load_dag_modules(&module_dir, no_default_module_paths);
+            match run_dag_stage(&modules, &id) {
+                Some(out) => print_json(&out),
+                None => {
+                    eprintln!("error: no modules in stage {id:?}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        DagSubcommand::Depends {
+            module_id,
+            module_dir,
+            no_default_module_paths,
+            model,
+        } => {
+            let modules = load_dag_modules(&module_dir, no_default_module_paths);
+            let object_ids = model.as_deref().and_then(object_ids_from_model);
+            match run_dag_depends(&modules, &module_id, object_ids.as_deref()) {
+                Some(out) => print_json(&out),
+                None => {
+                    eprintln!("error: module {module_id:?} not found in any loaded manifest");
+                    std::process::exit(1);
+                }
+            }
+        }
+        DagSubcommand::Claims {
+            module_dir,
+            no_default_module_paths,
+            model: _,
+        } => {
+            let modules = load_dag_modules(&module_dir, no_default_module_paths);
+            print_json(&run_dag_claims(&modules));
+        }
+    }
+}
+
+/// `diagnose` subcommand: load manifests, surface every `LoadDiagnostic` as
+/// structured JSON. Returns the process exit code.
+fn run_diagnose(module_dir: &[std::path::PathBuf], no_default_module_paths: bool) -> i32 {
+    let search_roots = assemble_search_roots(module_dir, no_default_module_paths);
+    let report = match load_modules_from_roots(&search_roots) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("error loading modules: {e:?}");
+            return 2;
+        }
+    };
+
+    #[derive(serde::Serialize)]
+    struct DiagnoseOut<'a> {
+        pass: bool,
+        modules_loaded: usize,
+        stages: usize,
+        diagnostics: Vec<DiagnosticOut<'a>>,
+    }
+
+    #[derive(serde::Serialize)]
+    struct DiagnosticOut<'a> {
+        level: &'a str,
+        file: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        field: &'a Option<String>,
+        message: &'a str,
+    }
+
+    let mut stage_set: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
+    for m in &report.modules {
+        stage_set.insert(m.stage());
+    }
+
+    let diagnostics: Vec<DiagnosticOut> = report
+        .diagnostics
+        .iter()
+        .map(|d| DiagnosticOut {
+            level: match d.level {
+                DiagnosticLevel::Error => "error",
+                DiagnosticLevel::Warning => "warning",
+                DiagnosticLevel::Info => "info",
+            },
+            file: d.path.display().to_string(),
+            field: &d.field,
+            message: d.message.as_str(),
+        })
+        .collect();
+
+    let has_error = report
+        .diagnostics
+        .iter()
+        .any(|d| matches!(d.level, DiagnosticLevel::Error));
+
+    let out = DiagnoseOut {
+        pass: !has_error,
+        modules_loaded: report.modules.len(),
+        stages: stage_set.len(),
+        diagnostics,
+    };
+    print_json(&out);
+    if has_error {
+        1
+    } else {
+        0
+    }
+}
+
 fn main() {
     let cli = HostCli::parse();
     match cli.command {
@@ -130,6 +291,7 @@ fn main() {
             thumbnail,
             report,
             report_verbose,
+            instrument_stderr,
         } => {
             // Inline existence checks before constructing HostRunOptions.
             if !model.exists() {
@@ -152,6 +314,7 @@ fn main() {
                 thumbnail,
                 report,
                 report_verbose,
+                instrument_stderr,
             };
 
             // Load model
@@ -486,35 +649,76 @@ fn main() {
             let emitter: Arc<dyn ProgressEventEmitter> =
                 Arc::new(JsonLinesEmitter::new(std::io::stderr()));
             let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
-            let sink = RuntimeProgressSink::new(emitter, Arc::clone(&collector));
+            let sink_arc: Arc<RuntimeProgressSink> =
+                Arc::new(RuntimeProgressSink::new(emitter, Arc::clone(&collector)));
 
-            let result = if let Some(ref report_path) = opts.report {
-                if let Some(parent) = report_path.parent() {
-                    if let Err(e) = std::fs::create_dir_all(parent) {
-                        eprintln!(
-                            "warning: failed to create report parent directory {}: {e}",
-                            parent.display()
-                        );
+            // Stamp every event in this run with one slice_id so a consumer
+            // reading stderr JSONL can correlate per-stage / per-module
+            // timing back to one slice invocation.
+            let progress_pi = if opts.instrument_stderr {
+                let slice_id = format!(
+                    "slice-{}",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis())
+                        .unwrap_or(0)
+                );
+                let sink_dyn: Arc<dyn LayerProgressSink + Send + Sync> =
+                    Arc::clone(&sink_arc) as Arc<dyn LayerProgressSink + Send + Sync>;
+                Some(ProgressPipelineInstrumentation::new(sink_dyn, slice_id))
+            } else {
+                None
+            };
+
+            let result = match (opts.report.as_ref(), progress_pi.as_ref()) {
+                (Some(report_path), maybe_progress_pi) => {
+                    if let Some(parent) = report_path.parent() {
+                        if let Err(e) = std::fs::create_dir_all(parent) {
+                            eprintln!(
+                                "warning: failed to create report parent directory {}: {e}",
+                                parent.display()
+                            );
+                        }
                     }
+                    report_alloc::enable();
+                    let report_collector = Arc::new(Collector::new_with_verbose(
+                        opts.model_path.to_string_lossy().to_string(),
+                        opts.report_verbose,
+                    ));
+                    let r = if let Some(progress_pi) = maybe_progress_pi {
+                        let composite = CompositeInstrumentation::new(
+                            progress_pi as &dyn slicer_host::PipelineInstrumentation,
+                            report_collector.as_ref() as &dyn slicer_host::PipelineInstrumentation,
+                        );
+                        run_pipeline_with_instrumentation(
+                            config,
+                            &config_source,
+                            sink_arc.as_ref(),
+                            &composite,
+                        )
+                    } else {
+                        run_pipeline_with_instrumentation(
+                            config,
+                            &config_source,
+                            sink_arc.as_ref(),
+                            report_collector.as_ref(),
+                        )
+                    };
+                    report_alloc::disable();
+                    if let Err(e) = report_collector.finish_and_render_to(report_path) {
+                        eprintln!("warning: failed to write slicer report: {e}");
+                    }
+                    r
                 }
-                report_alloc::enable();
-                let collector = Arc::new(Collector::new_with_verbose(
-                    opts.model_path.to_string_lossy().to_string(),
-                    opts.report_verbose,
-                ));
-                let r = run_pipeline_with_instrumentation(
+                (None, Some(progress_pi)) => run_pipeline_with_instrumentation(
                     config,
                     &config_source,
-                    &sink,
-                    collector.as_ref(),
-                );
-                report_alloc::disable();
-                if let Err(e) = collector.finish_and_render_to(report_path) {
-                    eprintln!("warning: failed to write slicer report: {e}");
+                    sink_arc.as_ref(),
+                    progress_pi,
+                ),
+                (None, None) => {
+                    run_pipeline_with_raw_config(config, &config_source, sink_arc.as_ref())
                 }
-                r
-            } else {
-                run_pipeline_with_raw_config(config, &config_source, &sink)
             };
 
             match result {
@@ -549,6 +753,15 @@ fn main() {
             };
             let json = build_config_schema_json(&report.modules);
             println!("{}", json);
+        }
+        HostCommands::Dag { cmd } => {
+            run_dag_command(cmd);
+        }
+        HostCommands::Diagnose {
+            module_dir,
+            no_default_module_paths,
+        } => {
+            std::process::exit(run_diagnose(&module_dir, no_default_module_paths));
         }
         HostCommands::Repair {
             input,

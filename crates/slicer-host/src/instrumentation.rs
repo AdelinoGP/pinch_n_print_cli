@@ -9,6 +9,7 @@
 //! `EdgeReason`, `SerialEdge`) and a helper that derives in-stage serial-edge
 //! reasons from a stage's `LoadedModule` list without disturbing `dag.rs`.
 
+use serde::Serialize;
 use slicer_ir::{ModuleId, StageId};
 
 use crate::execution_plan::CompiledModule;
@@ -16,7 +17,7 @@ use crate::manifest::LoadedModule;
 
 /// Top-level execution phase. Layers are reported separately within
 /// `Phase::PerLayer`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Phase {
     /// Sequential pre-pass tier (MeshSegmentation, MeshAnalysis, …).
     PrePass,
@@ -43,7 +44,8 @@ pub enum TierKind {
 /// claim conflicts block plan validation entirely (they never appear in a
 /// runnable plan), and `layer_parallel_safe = false` constrains parallelism
 /// *across layers* rather than between modules in a stage.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EdgeReason {
     /// The `from` module writes an IR path that the `to` module reads.
     IrWriteRead {
@@ -55,7 +57,7 @@ pub enum EdgeReason {
 }
 
 /// One serial edge between two modules in the same stage.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SerialEdge {
     /// Upstream module — runs first.
     pub from: ModuleId,
@@ -359,6 +361,189 @@ impl Drop for StageInstrumentationGuard<'_> {
             .on_module_end(&self.stage_id, self.layer, &self.module_id, 0, 0);
         self.instrumentation
             .on_stage_end(&self.stage_id, self.layer);
+    }
+}
+
+// ============================================================================
+// CompositeInstrumentation
+// ============================================================================
+
+/// Fans every `PipelineInstrumentation` callback out to two delegates in order.
+///
+/// Used when `--instrument-stderr` and `--report` are both active on a single
+/// `slicer-host run` invocation, so the JSONL stream and the HTML report
+/// `Collector` both see every bracket without either consumer interfering with
+/// the other.
+pub struct CompositeInstrumentation<'a> {
+    a: &'a (dyn PipelineInstrumentation + 'a),
+    b: &'a (dyn PipelineInstrumentation + 'a),
+}
+
+impl<'a> CompositeInstrumentation<'a> {
+    /// Build a composite that fans calls to `a` first, then `b`.
+    pub fn new(
+        a: &'a (dyn PipelineInstrumentation + 'a),
+        b: &'a (dyn PipelineInstrumentation + 'a),
+    ) -> Self {
+        Self { a, b }
+    }
+}
+
+impl PipelineInstrumentation for CompositeInstrumentation<'_> {
+    fn on_phase_start(&self, phase: Phase) {
+        self.a.on_phase_start(phase);
+        self.b.on_phase_start(phase);
+    }
+    fn on_phase_end(&self, phase: Phase) {
+        self.a.on_phase_end(phase);
+        self.b.on_phase_end(phase);
+    }
+    fn on_stage_start(&self, stage: &StageId, layer: Option<u32>) {
+        self.a.on_stage_start(stage, layer);
+        self.b.on_stage_start(stage, layer);
+    }
+    fn on_stage_end(&self, stage: &StageId, layer: Option<u32>) {
+        self.a.on_stage_end(stage, layer);
+        self.b.on_stage_end(stage, layer);
+    }
+    fn on_module_start(&self, stage: &StageId, layer: Option<u32>, module: &ModuleId) {
+        self.a.on_module_start(stage, layer, module);
+        self.b.on_module_start(stage, layer, module);
+    }
+    fn on_module_end(
+        &self,
+        stage: &StageId,
+        layer: Option<u32>,
+        module: &ModuleId,
+        wasm_initial_bytes: u64,
+        wasm_peak_bytes: u64,
+    ) {
+        self.a
+            .on_module_end(stage, layer, module, wasm_initial_bytes, wasm_peak_bytes);
+        self.b
+            .on_module_end(stage, layer, module, wasm_initial_bytes, wasm_peak_bytes);
+    }
+    fn on_layer_start(&self, layer: u32, z_mm: f32) {
+        self.a.on_layer_start(layer, z_mm);
+        self.b.on_layer_start(layer, z_mm);
+    }
+    fn on_layer_end(&self, layer: u32) {
+        self.a.on_layer_end(layer);
+        self.b.on_layer_end(layer);
+    }
+    fn record_edges(&self, stage: &StageId, tier: TierKind, edges: &[SerialEdge]) {
+        self.a.record_edges(stage, tier, edges);
+        self.b.record_edges(stage, tier, edges);
+    }
+    fn on_host_builtin_bytes(
+        &self,
+        stage: &StageId,
+        layer: Option<u32>,
+        module: &ModuleId,
+        host_initial_bytes: u64,
+        host_peak_bytes: u64,
+    ) {
+        self.a
+            .on_host_builtin_bytes(stage, layer, module, host_initial_bytes, host_peak_bytes);
+        self.b
+            .on_host_builtin_bytes(stage, layer, module, host_initial_bytes, host_peak_bytes);
+    }
+}
+
+#[cfg(test)]
+mod composite_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct Counting {
+        calls: Mutex<Vec<&'static str>>,
+    }
+
+    impl PipelineInstrumentation for Counting {
+        fn on_phase_start(&self, _phase: Phase) {
+            self.calls.lock().unwrap().push("phase_start");
+        }
+        fn on_phase_end(&self, _phase: Phase) {
+            self.calls.lock().unwrap().push("phase_end");
+        }
+        fn on_stage_start(&self, _stage: &StageId, _layer: Option<u32>) {
+            self.calls.lock().unwrap().push("stage_start");
+        }
+        fn on_stage_end(&self, _stage: &StageId, _layer: Option<u32>) {
+            self.calls.lock().unwrap().push("stage_end");
+        }
+        fn on_module_start(&self, _stage: &StageId, _layer: Option<u32>, _module: &ModuleId) {
+            self.calls.lock().unwrap().push("module_start");
+        }
+        fn on_module_end(
+            &self,
+            _stage: &StageId,
+            _layer: Option<u32>,
+            _module: &ModuleId,
+            _wasm_initial_bytes: u64,
+            _wasm_peak_bytes: u64,
+        ) {
+            self.calls.lock().unwrap().push("module_end");
+        }
+        fn on_layer_start(&self, _layer: u32, _z_mm: f32) {
+            self.calls.lock().unwrap().push("layer_start");
+        }
+        fn on_layer_end(&self, _layer: u32) {
+            self.calls.lock().unwrap().push("layer_end");
+        }
+        fn record_edges(&self, _stage: &StageId, _tier: TierKind, _edges: &[SerialEdge]) {
+            self.calls.lock().unwrap().push("record_edges");
+        }
+        fn on_host_builtin_bytes(
+            &self,
+            _stage: &StageId,
+            _layer: Option<u32>,
+            _module: &ModuleId,
+            _host_initial_bytes: u64,
+            _host_peak_bytes: u64,
+        ) {
+            self.calls.lock().unwrap().push("host_builtin_bytes");
+        }
+    }
+
+    #[test]
+    fn composite_fans_every_callback_to_both_delegates() {
+        let a = Counting::default();
+        let b = Counting::default();
+        let composite = CompositeInstrumentation::new(&a, &b);
+        let stage: StageId = "Layer::Perimeters".to_string();
+        let module: ModuleId = "m".to_string();
+
+        composite.on_phase_start(Phase::PrePass);
+        composite.on_phase_end(Phase::PrePass);
+        composite.on_stage_start(&stage, Some(0));
+        composite.on_stage_end(&stage, Some(0));
+        composite.on_module_start(&stage, Some(0), &module);
+        composite.on_module_end(&stage, Some(0), &module, 1, 2);
+        composite.on_layer_start(0, 0.2);
+        composite.on_layer_end(0);
+        composite.record_edges(&stage, TierKind::PerLayer, &[]);
+        composite.on_host_builtin_bytes(&stage, None, &module, 0, 0);
+
+        let a_calls = a.calls.lock().unwrap().clone();
+        let b_calls = b.calls.lock().unwrap().clone();
+        assert_eq!(
+            a_calls,
+            vec![
+                "phase_start",
+                "phase_end",
+                "stage_start",
+                "stage_end",
+                "module_start",
+                "module_end",
+                "layer_start",
+                "layer_end",
+                "record_edges",
+                "host_builtin_bytes",
+            ]
+        );
+        assert_eq!(a_calls, b_calls, "both delegates must see every callback");
     }
 }
 

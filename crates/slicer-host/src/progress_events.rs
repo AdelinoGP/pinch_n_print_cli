@@ -20,8 +20,14 @@ use std::sync::{Arc, Mutex};
 
 use crate::layer_executor::LayerProgressSink;
 
-/// Schema version for progress events.
+/// Schema version for progress events (baseline, without `--instrument-stderr`).
 pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.0.0";
+
+/// Schema version emitted when `--instrument-stderr` is active and the
+/// additional `stage_*` / `module_*` events plus `wasm_peak_kb` field are in
+/// the stream. Additive on top of `1.0.0` — consumers that ignore unknown
+/// event types remain compatible.
+pub const PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED: &str = "1.1.0";
 
 /// Type of progress event emitted during slicing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +47,14 @@ pub enum ProgressEventType {
     ValidationError,
     /// Emitted when the entire slice operation completes.
     SliceComplete,
+    /// Emitted when a stage's module loop begins (instrumented stream only).
+    StageStart,
+    /// Emitted when a stage's module loop ends (instrumented stream only).
+    StageComplete,
+    /// Emitted immediately before a module dispatch (instrumented stream only).
+    ModuleStart,
+    /// Emitted immediately after a module dispatch returns (instrumented stream only).
+    ModuleComplete,
 }
 
 /// Phase of the slicing pipeline.
@@ -123,6 +137,11 @@ pub struct ProgressEvent {
     /// Count of non-fatal errors (for slice_complete).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub non_fatal_error_count: Option<u32>,
+    /// Peak WASM linear memory observed during a module dispatch, in KiB
+    /// (ceiling of `wasm_peak_bytes / 1024`). Populated only on
+    /// `module_complete` events emitted under `--instrument-stderr`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wasm_peak_kb: Option<u64>,
 }
 
 impl ProgressEvent {
@@ -145,6 +164,7 @@ impl ProgressEvent {
             error: None,
             fatal_error_count: None,
             non_fatal_error_count: None,
+            wasm_peak_kb: None,
         }
     }
 
@@ -173,6 +193,7 @@ impl ProgressEvent {
             error: None,
             fatal_error_count: None,
             non_fatal_error_count: None,
+            wasm_peak_kb: None,
         }
     }
 
@@ -200,6 +221,7 @@ impl ProgressEvent {
             error: None,
             fatal_error_count: None,
             non_fatal_error_count: None,
+            wasm_peak_kb: None,
         }
     }
 
@@ -230,6 +252,7 @@ impl ProgressEvent {
             error: None,
             fatal_error_count: None,
             non_fatal_error_count: None,
+            wasm_peak_kb: None,
         }
     }
 
@@ -267,6 +290,7 @@ impl ProgressEvent {
             error: Some(error),
             fatal_error_count: None,
             non_fatal_error_count: None,
+            wasm_peak_kb: None,
         }
     }
 
@@ -289,6 +313,7 @@ impl ProgressEvent {
             error: Some(error),
             fatal_error_count: None,
             non_fatal_error_count: None,
+            wasm_peak_kb: None,
         }
     }
 
@@ -319,6 +344,130 @@ impl ProgressEvent {
             error: None,
             fatal_error_count: Some(fatal_error_count),
             non_fatal_error_count: Some(non_fatal_error_count),
+            wasm_peak_kb: None,
+        }
+    }
+
+    /// Create a stage_start event (emitted only under `--instrument-stderr`).
+    ///
+    /// Required fields: schema_version, event, timestamp_ms, slice_id, phase, stage, status.
+    /// `layer_index` is populated for per-layer stages and absent for prepass/postpass stages.
+    pub fn stage_start(
+        slice_id: String,
+        phase: ProgressPhase,
+        stage: String,
+        layer_index: Option<u32>,
+        timestamp_ms: u64,
+    ) -> Self {
+        Self {
+            schema_version: PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED.to_string(),
+            event: ProgressEventType::StageStart,
+            timestamp_ms,
+            slice_id,
+            phase: Some(phase),
+            stage: Some(stage),
+            layer_index,
+            module_id: None,
+            status: ProgressStatus::Ok,
+            elapsed_ms: None,
+            degraded: None,
+            error: None,
+            fatal_error_count: None,
+            non_fatal_error_count: None,
+            wasm_peak_kb: None,
+        }
+    }
+
+    /// Create a stage_complete event (emitted only under `--instrument-stderr`).
+    ///
+    /// Required fields: schema_version, event, timestamp_ms, slice_id, phase, stage, status, elapsed_ms.
+    pub fn stage_complete(
+        slice_id: String,
+        phase: ProgressPhase,
+        stage: String,
+        layer_index: Option<u32>,
+        timestamp_ms: u64,
+        elapsed_ms: u64,
+    ) -> Self {
+        Self {
+            schema_version: PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED.to_string(),
+            event: ProgressEventType::StageComplete,
+            timestamp_ms,
+            slice_id,
+            phase: Some(phase),
+            stage: Some(stage),
+            layer_index,
+            module_id: None,
+            status: ProgressStatus::Ok,
+            elapsed_ms: Some(elapsed_ms),
+            degraded: None,
+            error: None,
+            fatal_error_count: None,
+            non_fatal_error_count: None,
+            wasm_peak_kb: None,
+        }
+    }
+
+    /// Create a module_start event (emitted only under `--instrument-stderr`).
+    ///
+    /// Required fields: schema_version, event, timestamp_ms, slice_id, phase, stage, module_id, status.
+    pub fn module_start(
+        slice_id: String,
+        phase: ProgressPhase,
+        stage: String,
+        module_id: String,
+        layer_index: Option<u32>,
+        timestamp_ms: u64,
+    ) -> Self {
+        Self {
+            schema_version: PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED.to_string(),
+            event: ProgressEventType::ModuleStart,
+            timestamp_ms,
+            slice_id,
+            phase: Some(phase),
+            stage: Some(stage),
+            layer_index,
+            module_id: Some(module_id),
+            status: ProgressStatus::Ok,
+            elapsed_ms: None,
+            degraded: None,
+            error: None,
+            fatal_error_count: None,
+            non_fatal_error_count: None,
+            wasm_peak_kb: None,
+        }
+    }
+
+    /// Create a module_complete event (emitted only under `--instrument-stderr`).
+    ///
+    /// Required fields: schema_version, event, timestamp_ms, slice_id, phase, stage, module_id, status, elapsed_ms, wasm_peak_kb.
+    /// `wasm_peak_kb` is the ceiling of `wasm_peak_bytes / 1024` and is `0` for host built-ins.
+    pub fn module_complete(
+        slice_id: String,
+        phase: ProgressPhase,
+        stage: String,
+        module_id: String,
+        layer_index: Option<u32>,
+        timestamp_ms: u64,
+        elapsed_ms: u64,
+        wasm_peak_kb: u64,
+    ) -> Self {
+        Self {
+            schema_version: PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED.to_string(),
+            event: ProgressEventType::ModuleComplete,
+            timestamp_ms,
+            slice_id,
+            phase: Some(phase),
+            stage: Some(stage),
+            layer_index,
+            module_id: Some(module_id),
+            status: ProgressStatus::Ok,
+            elapsed_ms: Some(elapsed_ms),
+            degraded: None,
+            error: None,
+            fatal_error_count: None,
+            non_fatal_error_count: None,
+            wasm_peak_kb: Some(wasm_peak_kb),
         }
     }
 }
@@ -487,5 +636,62 @@ mod tests {
     #[test]
     fn schema_version_is_1_0_0() {
         assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.0.0");
+    }
+
+    #[test]
+    fn instrumented_schema_version_is_1_1_0() {
+        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED, "1.1.0");
+    }
+
+    #[test]
+    fn module_complete_event_serializes_with_required_fields() {
+        let event = ProgressEvent::module_complete(
+            "slice-xyz".to_string(),
+            ProgressPhase::PerLayer,
+            "Layer::Perimeters".to_string(),
+            "com.example.perimeters".to_string(),
+            Some(7),
+            1_735_843_200_123,
+            4_947,
+            2_048,
+        );
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"schema_version\":\"1.1.0\""));
+        assert!(json.contains("\"event\":\"module_complete\""));
+        assert!(json.contains("\"stage\":\"Layer::Perimeters\""));
+        assert!(json.contains("\"module_id\":\"com.example.perimeters\""));
+        assert!(json.contains("\"layer_index\":7"));
+        assert!(json.contains("\"elapsed_ms\":4947"));
+        assert!(json.contains("\"wasm_peak_kb\":2048"));
+    }
+
+    #[test]
+    fn wasm_peak_kb_omitted_when_none_on_other_events() {
+        let event = ProgressEvent::layer_start(
+            "slice-xyz".to_string(),
+            ProgressPhase::PerLayer,
+            0,
+            1_735_843_200_000,
+        );
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(!json.contains("wasm_peak_kb"));
+    }
+
+    #[test]
+    fn stage_complete_event_serializes_elapsed_ms() {
+        let event = ProgressEvent::stage_complete(
+            "slice-xyz".to_string(),
+            ProgressPhase::Prepass,
+            "PrePass::MeshAnalysis".to_string(),
+            None,
+            1_735_843_200_451,
+            326,
+        );
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"event\":\"stage_complete\""));
+        assert!(json.contains("\"stage\":\"PrePass::MeshAnalysis\""));
+        assert!(json.contains("\"elapsed_ms\":326"));
+        // layer_index should be omitted for prepass stages.
+        assert!(!json.contains("layer_index"));
     }
 }

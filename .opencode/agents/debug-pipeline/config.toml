@@ -1,0 +1,24 @@
+# debug-pipeline subagent config (OpenCode).
+#
+# Use to delegate a "what's slow / what's wired / what's broken in the
+# slicer pipeline?" investigation. Read-only plus shell access; never edits
+# code.
+
+name = "debug-pipeline"
+description = """
+Investigate a slow or failing slice and introspect the static module DAG
+using `slicer-host run --instrument-stderr`, `slicer-host dag <subcommand>`,
+and `slicer-host diagnose`. Returns a short finding (one paragraph) plus
+the specific event lines or command output that prove it.
+"""
+
+# Read-only + shell. The subagent runs slicer-host CLI commands and inspects
+# their JSON / JSONL output; it never modifies source.
+tools = ["Bash", "Read", "Grep", "Glob"]
+
+# References for the subagent.
+[references]
+spec   = "docs/specs/agent-cli-debugging.md"
+events = "docs/09_progress_events.md"
+guide  = "docs/17_agent_debugging.md"
+skill  = ".agents/skills/debug-pipeline/SKILL.md"

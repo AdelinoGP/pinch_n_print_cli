@@ -120,3 +120,4 @@ Read these directly rather than relying on summaries — they are kept current a
 - `docs/12_architecture_gate_metrics.md` — objective thresholds for the gate.
 - `docs/13_slicer_helpers_crate.md` — polygon/geometry utilities in `slicer-helpers`.
 - `docs/14_deviation_audit_history.md` + `docs/DEVIATION_LOG.md` — registered deviations from architecture docs.
+- `docs/17_agent_debugging.md` — agent-facing guide for `slicer-host run --instrument-stderr`, `dag <subcommand>`, and `diagnose`. Paired skill: `.claude/skills/debug-pipeline/SKILL.md`; subagent: `.claude/agents/debug-pipeline.md`.

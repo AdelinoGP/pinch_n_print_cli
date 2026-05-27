@@ -38,6 +38,92 @@ pub struct ModuleNode {
     pub edges_to: Vec<EdgeTo>,
 }
 
+/// One cross-stage serial edge between two modules anywhere in the
+/// discovered module set.
+///
+/// Returned by [`build_global_dag`] so `dag depends` can show edges that
+/// cross stage boundaries (e.g. `Layer::Infill` → `PostPass::GCodeEmit` via
+/// an `InfillIR.regions[].paths` write/read overlap).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GlobalEdge {
+    /// Upstream module — runs first.
+    pub from: ModuleId,
+    /// Stage that `from` belongs to.
+    pub from_stage: StageId,
+    /// Downstream module — runs after `from`.
+    pub to: ModuleId,
+    /// Stage that `to` belongs to.
+    pub to_stage: StageId,
+    /// Why the scheduler placed `from` before `to`.
+    pub reason: EdgeReason,
+}
+
+/// Apply the same `IrWriteRead` + `ExplicitRequires` edge rules as
+/// [`build_intra_stage_dag`] across all loaded modules without a stage
+/// filter. Returns every edge with `(from_stage, to_stage)` populated so
+/// callers can identify stage-boundary crossings.
+///
+/// Sort order is deterministic: by `(from, to, reason_tag, writer_path)`,
+/// matching `compute_serial_edges_for_stage`.
+pub fn build_global_dag(modules: &[LoadedModule]) -> Vec<GlobalEdge> {
+    let mut edges: Vec<GlobalEdge> = Vec::new();
+    for writer in modules {
+        for reader in modules {
+            if writer.id == reader.id {
+                continue;
+            }
+            for written_path in &writer.ir_writes {
+                if reader.ir_reads.contains(written_path) {
+                    edges.push(GlobalEdge {
+                        from: writer.id.clone(),
+                        from_stage: writer.stage.clone(),
+                        to: reader.id.clone(),
+                        to_stage: reader.stage.clone(),
+                        reason: EdgeReason::IrWriteRead {
+                            writer_path: written_path.clone(),
+                        },
+                    });
+                }
+            }
+        }
+    }
+    for module in modules {
+        for required in &module.requires_modules {
+            if let Some(req) = modules.iter().find(|m| &m.id == required) {
+                edges.push(GlobalEdge {
+                    from: req.id.clone(),
+                    from_stage: req.stage.clone(),
+                    to: module.id.clone(),
+                    to_stage: module.stage.clone(),
+                    reason: EdgeReason::ExplicitRequires,
+                });
+            }
+        }
+    }
+    edges.sort_by(|a, b| {
+        let a_tag = match &a.reason {
+            EdgeReason::IrWriteRead { .. } => 0u8,
+            EdgeReason::ExplicitRequires => 1u8,
+        };
+        let b_tag = match &b.reason {
+            EdgeReason::IrWriteRead { .. } => 0u8,
+            EdgeReason::ExplicitRequires => 1u8,
+        };
+        a.from
+            .cmp(&b.from)
+            .then_with(|| a.to.cmp(&b.to))
+            .then_with(|| a_tag.cmp(&b_tag))
+            .then_with(|| match (&a.reason, &b.reason) {
+                (
+                    EdgeReason::IrWriteRead { writer_path: ap },
+                    EdgeReason::IrWriteRead { writer_path: bp },
+                ) => ap.cmp(bp),
+                _ => std::cmp::Ordering::Equal,
+            })
+    });
+    edges
+}
+
 /// Builds the dependency graph for one scheduler stage.
 pub fn build_intra_stage_dag(
     stage: StageId,

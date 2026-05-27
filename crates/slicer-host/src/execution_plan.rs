@@ -794,7 +794,7 @@ impl CompiledModuleBuilder {
 }
 
 /// Minimal immutable IR access-mask representation for runtime planning.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, serde::Serialize)]
 pub struct IrAccessMask {
     /// Declared manifest access paths.
     pub paths: Vec<String>,

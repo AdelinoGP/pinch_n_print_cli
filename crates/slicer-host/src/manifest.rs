@@ -136,6 +136,11 @@ impl LoadedModule {
         &self.config_schema
     }
 
+    /// Config keys this module declared in its manifest, sorted lexically.
+    pub fn config_keys(&self) -> Vec<String> {
+        self.config_schema.entries.keys().cloned().collect()
+    }
+
     /// Keys overridable per region.
     pub fn overridable_per_region(&self) -> &[String] {
         &self.overridable_per_region

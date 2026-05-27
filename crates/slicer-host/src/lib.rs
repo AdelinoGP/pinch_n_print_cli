@@ -8,6 +8,7 @@ pub mod blackboard;
 pub mod cli;
 pub mod config_resolution;
 pub mod dag;
+pub mod dag_cli;
 pub mod dispatch;
 pub mod execution_plan;
 pub mod gcode_emit;
@@ -29,6 +30,7 @@ pub mod postpass;
 pub mod prepass;
 pub mod prepass_slice;
 pub mod progress_events;
+pub mod progress_instrumentation;
 pub mod python_bridge;
 pub mod region_mapping;
 pub mod report;
@@ -50,7 +52,11 @@ pub use config_resolution::{
     resolve_per_paint_semantic_configs, validate_support_layer_heights, BoundsDeclaration,
     ConfigBoundsIndex, ConfigResolutionError, UnknownSemanticWarning,
 };
-pub use dag::{build_intra_stage_dag, EdgeTo, ModuleNode};
+pub use dag::{build_global_dag, build_intra_stage_dag, EdgeTo, GlobalEdge, ModuleNode};
+pub use dag_cli::{
+    run_dag_claims, run_dag_depends, run_dag_stage, run_dag_stages, ClaimOut, ClaimsOut,
+    DependsOut, GlobalEdgeOut, ModuleOut, StageEdgeOut, StageOut, StageSummary, StagesOut,
+};
 pub use dispatch::{
     apply_entity_order_proposal, commit_layer_outputs_for_test, export_name_for_stage,
     project_ordered_entities, DispatchError, DispatchPhase, OrderedEntityView,
@@ -73,8 +79,8 @@ pub use instance_pool::{
     WasmInstanceLease, WasmInstancePool,
 };
 pub use instrumentation::{
-    compute_serial_edges_for_stage, compute_serial_edges_from_compiled, EdgeReason,
-    NoopInstrumentation, Phase, PipelineInstrumentation, SerialEdge, TierKind,
+    compute_serial_edges_for_stage, compute_serial_edges_from_compiled, CompositeInstrumentation,
+    EdgeReason, NoopInstrumentation, Phase, PipelineInstrumentation, SerialEdge, TierKind,
 };
 pub use layer_executor::{
     execute_per_layer, execute_per_layer_with_events, execute_per_layer_with_instrumentation,
@@ -109,6 +115,7 @@ pub use prepass_slice::{
     commit_slice_builtin, execute_prepass_slice_all_layers, execute_prepass_slice_single_layer,
     LayerSliceError,
 };
+pub use progress_instrumentation::ProgressPipelineInstrumentation;
 pub use python_bridge::{
     PythonBinding, PythonBridge, PythonBridgeError, PythonBridgePhase, PythonPostpassRunner,
 };
