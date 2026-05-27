@@ -356,22 +356,30 @@ fn execute_single_layer_inner(
 
     // Hydrate the per-layer arena's SliceIR slot from the prepass-committed
     // `Vec<SliceIR>` on the blackboard. Production paths run PrePass::Slice
-    // first, which commits the Vec<SliceIR>. Test fixtures that build a
-    // partial plan with an empty PrePass (or no PrePass at all) skip that
-    // step; we hydrate with an empty SliceIR carrying just the layer index
-    // so the executor can still drive Layer-tier modules. The DAG validator
-    // (`validate_startup_dag`) is the authoritative gate that catches
-    // production plans missing a SliceIR producer.
+    // first (via `commit_slice_builtin`), which commits the Vec<SliceIR>.
+    // Test fixtures that bypass the prepass executor must call
+    // `common::seed::seed_slice_ir` before `execute_per_layer`; a missing
+    // commit surfaces as a hard `FatalLayer` error (spec §Commit 2).
     if arena.slice().is_none() {
-        let slice_ir = blackboard
+        let slice_vec = blackboard
             .slice_ir()
-            .and_then(|vec| vec.get(layer.index as usize).cloned())
-            .unwrap_or_else(|| slicer_ir::SliceIR {
-                global_layer_index: layer.index,
-                ..slicer_ir::SliceIR::default()
-            });
+            .ok_or_else(|| LayerExecutionError::FatalLayer {
+                layer_index: layer.index,
+                stage_id: "PrePass::Slice".to_string(),
+                module_id: "host:slice".to_string(),
+                message: "blackboard slice_ir empty when Tier 2 started".to_string(),
+            })?;
+        let slice = slice_vec
+            .get(layer.index as usize)
+            .cloned()
+            .ok_or_else(|| LayerExecutionError::FatalLayer {
+                layer_index: layer.index,
+                stage_id: "PrePass::Slice".to_string(),
+                module_id: "host:slice".to_string(),
+                message: format!("slice_ir Vec missing entry for layer index {}", layer.index),
+            })?;
         arena
-            .set_slice(slice_ir)
+            .set_slice(slice)
             .map_err(|_| LayerExecutionError::FatalLayer {
                 layer_index: layer.index,
                 stage_id: "PrePass::Slice".to_string(),
