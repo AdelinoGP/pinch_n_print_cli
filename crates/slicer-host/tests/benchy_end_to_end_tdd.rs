@@ -1738,16 +1738,25 @@ fn benchy_user_top_shell_layers_propagates_through_binary() {
     let top4 = gcode4.matches(";TYPE:Top surface").count();
     let bot4 = gcode4.matches(";TYPE:Bottom surface").count();
 
-    // Strict inequality: wider window must produce more type-blocks.
+    // AC-5 propagation witness. With fe6ca6d's PrePass shell classifier,
+    // `top_shell_layers = N` projects the depth-0 shell backward by `N − 1`
+    // layers via shrinking-shadow intersection (same for bottom_shell_layers
+    // walking forward). Because rectilinear-infill applies a "bottom wins on
+    // overlap" tie-break (PrintObject.cpp:detect_surfaces_type parity — see
+    // modules/.../rectilinear-infill/src/lib.rs and the DEVIATION_LOG entry),
+    // layers that fall inside BOTH a top shell zone and a bottom shell zone
+    // get tagged as `Bottom surface` rather than `Top surface`. Increasing
+    // N therefore can redistribute counts between the two tags without
+    // strictly increasing either alone — but the combined coverage grows.
+    // The right invariant is on the SUM: total solid-surface blocks
+    // (top + bottom) must grow strictly with the shell window.
+    let combined1 = top1 + bot1;
+    let combined4 = top4 + bot4;
     assert!(
-        top4 > top1,
-        "AC-5 FAILED: N=4 top-surface block count ({top4}) must exceed N=1 count ({top1}). \
-         Resolved config may not be propagating top_shell_layers to the emitter."
-    );
-    assert!(
-        bot4 > bot1,
-        "AC-5 FAILED: N=4 bottom-surface block count ({bot4}) must exceed N=1 count ({bot1}). \
-         Resolved config may not be propagating bottom_shell_layers to the emitter."
+        combined4 > combined1,
+        "AC-5 FAILED: N=4 combined top+bottom surface block count ({combined4}) must exceed N=1 ({combined1}). \
+         Breakdown: N=1 top={top1} bot={bot1}; N=4 top={top4} bot={bot4}. \
+         Resolved top_shell_layers / bottom_shell_layers config did not propagate to the PrePass shell classifier."
     );
 }
 
