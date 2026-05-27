@@ -1352,8 +1352,12 @@ fn paint_annotation_runs_when_stage_present_with_no_modules() {
 
     let events = sink.0.lock().unwrap().clone();
     assert!(
-        !events.is_empty(),
-        "paint annotation must run and produce progress events"
+        events.iter().any(|e| {
+            e.error.as_ref().map_or(false, |err| {
+                err.code == 504 && err.message.contains("numerical-edge-ambiguity")
+            })
+        }),
+        "expected NumericalEdgeAmbiguity (code 504), got {events:?}"
     );
 }
 

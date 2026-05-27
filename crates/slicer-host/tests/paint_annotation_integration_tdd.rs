@@ -8,6 +8,9 @@
 //! that missing paint-region data for a required semantic surfaces as a
 //! typed fatal `LayerExecutionError::PaintAnnotation`.
 
+mod common;
+use common::seed::seed_slice_ir;
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -323,10 +326,21 @@ fn paint_annotation_is_invoked_on_real_per_layer_path_and_warnings_reach_sink() 
 
     let events = sink.0.lock().unwrap().clone();
     assert!(
-        !events.is_empty(),
-        "paint annotator must produce at least one progress event on the real per-layer path"
+        events.iter().any(|e| {
+            e.error.as_ref().map_or(false, |err| {
+                err.code == 504 && err.message.contains("numerical-edge-ambiguity")
+            })
+        }),
+        "expected NumericalEdgeAmbiguity (code 504), got {events:?}"
     );
-    let event = &events[0];
+    let event = events
+        .iter()
+        .find(|e| {
+            e.error.as_ref().map_or(false, |err| {
+                err.code == 504 && err.message.contains("numerical-edge-ambiguity")
+            })
+        })
+        .expect("found numerical-edge-ambiguity event");
     let err = event
         .error
         .as_ref()
@@ -368,7 +382,14 @@ fn paint_annotation_degraded_fallback_is_deterministic_across_repeated_runs() {
         a, b,
         "paint-fallback events must be byte-identical across runs"
     );
-    assert!(!a.is_empty());
+    assert!(
+        a.iter().any(|e| {
+            e.error.as_ref().map_or(false, |err| {
+                err.code == 504 && err.message.contains("numerical-edge-ambiguity")
+            })
+        }),
+        "expected NumericalEdgeAmbiguity (code 504), got {a:?}"
+    );
 }
 
 #[test]
@@ -376,6 +397,7 @@ fn paint_annotation_missing_required_semantic_surfaces_typed_fatal_error() {
     let mesh = Arc::new(tetra_mesh_ir("obj-a"));
     let plan = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
     let mut bb = Blackboard::new(Arc::clone(&mesh), plan.global_layers.len());
+    seed_slice_ir(&mut bb, &plan);
     let ir = Arc::new(material_only_on_other_layer());
     let rtree = build_paint_region_rtree_index(&ir);
     bb.commit_paint_regions(ir, rtree).unwrap();
@@ -406,7 +428,8 @@ fn paint_annotation_missing_required_semantic_surfaces_typed_fatal_error() {
 fn paint_annotation_no_op_when_no_paint_regions_committed() {
     let mesh = Arc::new(tetra_mesh_ir("obj-a"));
     let plan = plan_empty(vec![layer_at(0, 0.1, "obj-a")]);
-    let bb = Blackboard::new(mesh, plan.global_layers.len());
+    let mut bb = Blackboard::new(mesh, plan.global_layers.len());
+    seed_slice_ir(&mut bb, &plan);
 
     let sink = VecSink(Mutex::new(Vec::new()));
     execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink).expect("ok");
@@ -553,6 +576,10 @@ fn runtime_sink_forwards_paint_warning_to_both_jsonl_emitter_and_slice_event_col
     assert!(lines
         .iter()
         .all(|l| l.contains("\"stage\":\"Layer::PaintRegionAnnotation\"")));
+    assert!(
+        lines.iter().all(|l| l.contains("numerical-edge-ambiguity")),
+        "all JSONL events must indicate NumericalEdgeAmbiguity reason"
+    );
 }
 
 #[test]
@@ -578,7 +605,11 @@ fn runtime_sink_jsonl_output_is_byte_identical_across_repeated_runs() {
     let a = run_once();
     let b = run_once();
     let c = run_once();
-    assert!(!a.is_empty());
+    let text_a = String::from_utf8(a.clone()).expect("valid UTF-8");
+    assert!(
+        text_a.contains("\"code\":504") && text_a.contains("numerical-edge-ambiguity"),
+        "JSONL output must contain NumericalEdgeAmbiguity (code 504): {text_a}"
+    );
     assert_eq!(a, b, "JSONL bytes must be deterministic across runs");
     assert_eq!(b, c);
 }
