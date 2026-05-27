@@ -463,6 +463,7 @@ fn progress_error_serde_round_trips_with_all_fields() {
         message: "paint fallback".to_string(),
         fatal: false,
         suggestion: Some("regen paint".to_string()),
+        reason: None,
     };
     let json = serde_json::to_string(&e).unwrap();
     let back: ProgressError = serde_json::from_str(&json).unwrap();

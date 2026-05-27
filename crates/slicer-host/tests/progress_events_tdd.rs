@@ -41,16 +41,18 @@ fn error_fixture(fatal: bool) -> ProgressError {
         message: "feature_flags length mismatch".to_string(),
         fatal,
         suggestion: Some("Verify wall-loop feature flag cardinality".to_string()),
+        reason: None,
     }
 }
 
 // ============================================================================
-// Test 1: Event schema version is "1.0.0"
+// Test 1: Event schema version is "1.1.0" (bumped from 1.0.0 — additive
+// `ProgressError.reason: Option<EventReason>` field).
 // ============================================================================
 
 #[test]
-fn event_schema_version_is_1_0_0() {
-    assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.0.0");
+fn event_schema_version_is_1_1_0() {
+    assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.1.0");
 }
 
 // ============================================================================
@@ -62,7 +64,7 @@ fn phase_start_event_has_required_fields() {
     let event = ProgressEvent::phase_start(slice_id(), ProgressPhase::Prepass, timestamp_ms());
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, status
-    assert_eq!(event.schema_version, "1.0.0");
+    assert_eq!(event.schema_version, "1.1.0");
     assert_eq!(event.event, ProgressEventType::PhaseStart);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -85,7 +87,7 @@ fn phase_complete_event_has_required_fields() {
     );
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, status, elapsed_ms
-    assert_eq!(event.schema_version, "1.0.0");
+    assert_eq!(event.schema_version, "1.1.0");
     assert_eq!(event.event, ProgressEventType::PhaseComplete);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -103,7 +105,7 @@ fn layer_start_event_has_required_fields() {
     let event = ProgressEvent::layer_start(slice_id(), ProgressPhase::PerLayer, 42, timestamp_ms());
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, layer_index, status
-    assert_eq!(event.schema_version, "1.0.0");
+    assert_eq!(event.schema_version, "1.1.0");
     assert_eq!(event.event, ProgressEventType::LayerStart);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -129,7 +131,7 @@ fn layer_complete_event_has_required_fields() {
     );
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, layer_index, status, elapsed_ms, degraded
-    assert_eq!(event.schema_version, "1.0.0");
+    assert_eq!(event.schema_version, "1.1.0");
     assert_eq!(event.event, ProgressEventType::LayerComplete);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -158,7 +160,7 @@ fn module_error_event_has_required_fields() {
     );
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, stage, layer_index, module_id, status, error
-    assert_eq!(event.schema_version, "1.0.0");
+    assert_eq!(event.schema_version, "1.1.0");
     assert_eq!(event.event, ProgressEventType::ModuleError);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -184,7 +186,7 @@ fn validation_error_event_has_required_fields() {
     let event = ProgressEvent::validation_error(slice_id(), timestamp_ms(), error.clone());
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, phase, status, error
-    assert_eq!(event.schema_version, "1.0.0");
+    assert_eq!(event.schema_version, "1.1.0");
     assert_eq!(event.event, ProgressEventType::ValidationError);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -210,7 +212,7 @@ fn slice_complete_event_has_required_fields() {
     );
 
     // Required fields: schema_version, event, timestamp_ms, slice_id, status, degraded, elapsed_ms, fatal_error_count, non_fatal_error_count
-    assert_eq!(event.schema_version, "1.0.0");
+    assert_eq!(event.schema_version, "1.1.0");
     assert_eq!(event.event, ProgressEventType::SliceComplete);
     assert_eq!(event.timestamp_ms, timestamp_ms());
     assert_eq!(event.slice_id, slice_id());
@@ -307,7 +309,7 @@ fn json_lines_emitter_serializes_to_valid_json() {
 
     // Check that required fields are present
     let json = parsed.unwrap();
-    assert_eq!(json["schema_version"], "1.0.0");
+    assert_eq!(json["schema_version"], "1.1.0");
     assert_eq!(json["event"], "phase_start");
     assert!(json["timestamp_ms"].is_number());
     assert_eq!(json["slice_id"], slice_id());

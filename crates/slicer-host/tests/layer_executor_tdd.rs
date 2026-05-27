@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use rstar::RTree;
 use slicer_core::paint_region::{PaintRegionRTreeEntry, PaintRegionRTreeIndex};
-use slicer_host::progress_events::ProgressEvent;
+use slicer_host::progress_events::{EventReason, ProgressEvent};
 use slicer_host::{
     build_execution_plan, build_wasm_instance_pool, execute_per_layer,
     execute_per_layer_with_events, Blackboard, CompiledModule, CompiledModuleBuilder,
@@ -1368,7 +1368,7 @@ fn paint_annotation_runs_when_stage_present_with_no_modules() {
     assert!(
         events.iter().any(|e| {
             e.error.as_ref().map_or(false, |err| {
-                err.code == 504 && err.message.contains("numerical-edge-ambiguity")
+                err.code == 504 && matches!(err.reason, Some(EventReason::NumericalEdgeAmbiguity))
             })
         }),
         "expected NumericalEdgeAmbiguity (code 504), got {events:?}"

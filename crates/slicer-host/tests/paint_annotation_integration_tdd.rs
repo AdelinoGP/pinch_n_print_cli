@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use rstar::RTree;
 use slicer_core::paint_region::{PaintRegionRTreeEntry, PaintRegionRTreeIndex};
-use slicer_host::progress_events::{ProgressEvent, ProgressPhase};
+use slicer_host::progress_events::{EventReason, ProgressEvent, ProgressPhase};
 use slicer_host::{
     execute_per_layer_with_events, execute_prepass_with_builtins, Blackboard, CompiledModule,
     ExecutionPlan, LayerArena, LayerExecutionError, LayerProgressSink, LayerStageError,
@@ -328,7 +328,7 @@ fn paint_annotation_is_invoked_on_real_per_layer_path_and_warnings_reach_sink() 
     assert!(
         events.iter().any(|e| {
             e.error.as_ref().map_or(false, |err| {
-                err.code == 504 && err.message.contains("numerical-edge-ambiguity")
+                err.code == 504 && matches!(err.reason, Some(EventReason::NumericalEdgeAmbiguity))
             })
         }),
         "expected NumericalEdgeAmbiguity (code 504), got {events:?}"
@@ -337,10 +337,10 @@ fn paint_annotation_is_invoked_on_real_per_layer_path_and_warnings_reach_sink() 
         .iter()
         .find(|e| {
             e.error.as_ref().map_or(false, |err| {
-                err.code == 504 && err.message.contains("numerical-edge-ambiguity")
+                err.code == 504 && matches!(err.reason, Some(EventReason::NumericalEdgeAmbiguity))
             })
         })
-        .expect("found numerical-edge-ambiguity event");
+        .expect("found NumericalEdgeAmbiguity (code 504) event");
     let err = event
         .error
         .as_ref()
@@ -385,7 +385,7 @@ fn paint_annotation_degraded_fallback_is_deterministic_across_repeated_runs() {
     assert!(
         a.iter().any(|e| {
             e.error.as_ref().map_or(false, |err| {
-                err.code == 504 && err.message.contains("numerical-edge-ambiguity")
+                err.code == 504 && matches!(err.reason, Some(EventReason::NumericalEdgeAmbiguity))
             })
         }),
         "expected NumericalEdgeAmbiguity (code 504), got {a:?}"
@@ -577,8 +577,10 @@ fn runtime_sink_forwards_paint_warning_to_both_jsonl_emitter_and_slice_event_col
         .iter()
         .all(|l| l.contains("\"stage\":\"Layer::PaintRegionAnnotation\"")));
     assert!(
-        lines.iter().all(|l| l.contains("numerical-edge-ambiguity")),
-        "all JSONL events must indicate NumericalEdgeAmbiguity reason"
+        lines
+            .iter()
+            .all(|l| l.contains("\"reason\":\"numerical-edge-ambiguity\"")),
+        "all JSONL events must carry reason=numerical-edge-ambiguity"
     );
 }
 
@@ -607,8 +609,9 @@ fn runtime_sink_jsonl_output_is_byte_identical_across_repeated_runs() {
     let c = run_once();
     let text_a = String::from_utf8(a.clone()).expect("valid UTF-8");
     assert!(
-        text_a.contains("\"code\":504") && text_a.contains("numerical-edge-ambiguity"),
-        "JSONL output must contain NumericalEdgeAmbiguity (code 504): {text_a}"
+        text_a.contains("\"code\":504")
+            && text_a.contains("\"reason\":\"numerical-edge-ambiguity\""),
+        "JSONL output must contain NumericalEdgeAmbiguity (code 504) with typed reason: {text_a}"
     );
     assert_eq!(a, b, "JSONL bytes must be deterministic across runs");
     assert_eq!(b, c);

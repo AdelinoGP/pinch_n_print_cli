@@ -21,13 +21,33 @@ use std::sync::{Arc, Mutex};
 use crate::layer_executor::LayerProgressSink;
 
 /// Schema version for progress events (baseline, without `--instrument-stderr`).
-pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.0.0";
+///
+/// 1.1.0 (additive): `ProgressError.reason: Option<EventReason>` added. The
+/// instrumented schema below shares this struct and therefore the same field;
+/// both schemas now sit at 1.1.0. Per `docs/09_progress_events.md` §Compatibility,
+/// additive fields are minor version bumps.
+pub const PROGRESS_EVENT_SCHEMA_VERSION: &str = "1.1.0";
 
 /// Schema version emitted when `--instrument-stderr` is active and the
 /// additional `stage_*` / `module_*` events plus `wasm_peak_kb` field are in
-/// the stream. Additive on top of `1.0.0` — consumers that ignore unknown
+/// the stream. Additive on top of the baseline — consumers that ignore unknown
 /// event types remain compatible.
 pub const PROGRESS_EVENT_SCHEMA_VERSION_INSTRUMENTED: &str = "1.1.0";
+
+/// Stable machine-readable reason families for `ProgressError`.
+///
+/// Additive: new variants are a minor JSONL schema bump per
+/// `docs/09_progress_events.md` §Compatibility. Serialized in kebab-case to
+/// align with the user-facing message labels (e.g., `"numerical-edge-ambiguity"`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EventReason {
+    /// Paint-annotation point classification remained numerically unresolved
+    /// after polygon edits. Stable code 504; see
+    /// `crates/slicer-host/src/slice_postprocess.rs` (per-stage reason type
+    /// `SlicePostProcessPaintAnnotationWarningReason`).
+    NumericalEdgeAmbiguity,
+}
 
 /// Type of progress event emitted during slicing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,12 +115,15 @@ pub struct ProgressError {
     /// Optional suggestion for resolving the error.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggestion: Option<String>,
+    /// Stable machine-readable reason family. Additive per JSONL schema 1.1.0.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<EventReason>,
 }
 
 /// A structured progress event emitted during slicing.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProgressEvent {
-    /// Schema version (always "1.0.0" for v1).
+    /// Schema version ("1.1.0" — additive `error.reason` field).
     pub schema_version: String,
     /// Type of event.
     pub event: ProgressEventType,
@@ -634,8 +657,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn schema_version_is_1_0_0() {
-        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.0.0");
+    fn schema_version_is_1_1_0() {
+        // 1.1.0 (additive bump): `ProgressError.reason` introduced. Per
+        // docs/09_progress_events.md §Compatibility, additive fields are a
+        // minor version bump.
+        assert_eq!(PROGRESS_EVENT_SCHEMA_VERSION, "1.1.0");
     }
 
     #[test]

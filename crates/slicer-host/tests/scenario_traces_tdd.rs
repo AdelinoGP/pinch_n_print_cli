@@ -307,6 +307,7 @@ fn make_module_error(slice: &str, code: u32, fatal: bool) -> ProgressEvent {
             message: "feature_flags cardinality mismatch".to_string(),
             fatal,
             suggestion: None,
+            reason: None,
         },
     )
 }

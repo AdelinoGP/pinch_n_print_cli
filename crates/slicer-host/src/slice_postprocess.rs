@@ -11,7 +11,7 @@ use slicer_core::paint_region::{
 };
 use slicer_ir::{ExPolygon, PaintRegionIR, PaintSemantic, PaintValue, SemanticRegion, SliceIR};
 
-use crate::progress_events::{ProgressError, ProgressEvent, ProgressPhase};
+use crate::progress_events::{EventReason, ProgressError, ProgressEvent, ProgressPhase};
 
 /// One per-layer paint annotation invocation.
 #[derive(Debug, Clone)]
@@ -173,6 +173,11 @@ pub fn paint_annotation_warning_to_progress_event(
             suggestion: Some(String::from(
                 "regenerate paint regions with denser sampling, or accept the deterministic default",
             )),
+            reason: Some(match warning.reason {
+                SlicePostProcessPaintAnnotationWarningReason::NumericalEdgeAmbiguity => {
+                    EventReason::NumericalEdgeAmbiguity
+                }
+            }),
         },
     )
 }
@@ -282,6 +287,11 @@ pub fn paint_annotation_warnings_to_progress_events(
                     suggestion: Some(String::from(
                         "regenerate paint regions with denser sampling, or accept the deterministic default",
                     )),
+                    reason: Some(match first.reason {
+                        SlicePostProcessPaintAnnotationWarningReason::NumericalEdgeAmbiguity => {
+                            EventReason::NumericalEdgeAmbiguity
+                        }
+                    }),
                 },
             )
         })

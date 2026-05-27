@@ -23,7 +23,7 @@ Buffering requirement:
 
 ```json
 {
-  "schema_version": "1.0.0",
+  "schema_version": "1.1.0",
   "event": "phase_start|phase_complete|layer_start|layer_complete|module_error|validation_error|slice_complete",
   "timestamp_ms": 1735843200123,
   "slice_id": "9f9075ad-2bd8-4e9a-a2f5-3b9055d2f239",
@@ -38,10 +38,14 @@ Buffering requirement:
     "code": 12014,
     "message": "feature_flags length mismatch",
     "fatal": true,
-    "suggestion": "Verify wall-loop feature flag cardinality"
+    "suggestion": "Verify wall-loop feature flag cardinality",
+    "reason": "numerical-edge-ambiguity"
   }
 }
 ```
+
+`error.reason` is optional and additive in schema 1.1.0 (kebab-case). Consumers
+parsing schema 1.0.0 must ignore unknown fields and keep working.
 
 Field semantics:
 
