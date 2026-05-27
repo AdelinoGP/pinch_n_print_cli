@@ -107,9 +107,9 @@ pub use postpass::{
     PostpassStageRunner,
 };
 pub use prepass::{
-    execute_prepass, execute_prepass_with_builtins, FacetAnnotationRecord, FacetClassRecord,
-    MeshAnalysisAuxiliary, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
-    SurfaceGroupRecord,
+    execute_prepass, execute_prepass_with_builtins, execute_prepass_with_builtins_configured,
+    FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassExecutionError,
+    PrepassStageOutput, PrepassStageRunner, SurfaceGroupRecord,
 };
 pub use prepass_slice::{
     commit_slice_builtin, execute_prepass_slice_all_layers, execute_prepass_slice_single_layer,

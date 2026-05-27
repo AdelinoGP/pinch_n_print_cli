@@ -370,7 +370,7 @@ pub fn execute_prepass_with_builtins(
 ///
 /// This is the authoritative implementation; the public wrapper above forwards
 /// to this with empty / default values for backwards compatibility.
-pub(crate) fn execute_prepass_with_builtins_configured(
+pub fn execute_prepass_with_builtins_configured(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
@@ -477,37 +477,12 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         }
     }
 
-    // RegionMapping needs LayerPlanIR to exist. Two cases:
-    // 1. LayerPlanIR exists before execute_prepass → run RegionMapping now (phase-1).
-    // 2. LayerPlanIR does NOT exist → run execute_prepass first so user
-    //    LayerPlanning commits it, then run RegionMapping (phase-2). Late stages
-    //    (those requiring RegionMap) run in phase-2 after RegionMapping.
-    let layer_plan_existed = blackboard.layer_plan().is_some();
-    if layer_plan_existed && blackboard.region_map().is_none() {
-        let paint_semantic_configs = build_paint_semantic_configs(
-            blackboard,
-            default_resolved_config,
-            raw_config_source,
-            bounds,
-        );
-        let before = blackboard.estimated_size();
-        let guard = StageInstrumentationGuard::start(
-            instrumentation,
-            "PrePass::RegionMapping",
-            None,
-            "host:region_mapping",
-            before,
-        );
-        commit_region_mapping_builtin(
-            plan,
-            blackboard,
-            resolved_configs,
-            default_resolved_config,
-            &paint_semantic_configs,
-        )
-        .map_err(|source| PrepassExecutionError::RegionMapping { source })?;
-        guard.finish(blackboard.estimated_size());
-    }
+    // Region-mapping runs after `PrePass::LayerPlanning` (user-or-none) and
+    // `PrePass::PaintSegmentation` (user-claimed or host built-in fallback),
+    // per canonical `STAGE_ORDER` in `docs/04_host_scheduler.md:111-119`.
+    // The host built-in fallbacks honor the guard-based fallback contract at
+    // `docs/04_host_scheduler.md:704`.
+    //
     // Phase-1: early stages that don't require RegionMap.
     let early_stages: Vec<_> = plan
         .prepass_stages
@@ -523,13 +498,46 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         audits =
             execute_prepass_with_instrumentation(&early_plan, blackboard, runner, instrumentation)?;
     }
-    // Phase-2 setup: if LayerPlanIR was committed during phase-1, run the
-    // support-geometry built-in (needs LayerPlan, no RegionMap required) and
-    // then RegionMapping (needs LayerPlan). Both are skipped gracefully when
-    // LayerPlan is still absent (e.g. empty module-dir run).
-    // NOTE: paint_semantic_configs is recomputed HERE so that PaintRegionIR
-    // committed by phase-1 user-prepass stages (e.g. PrePass::PaintSegmentation)
-    // is visible to the RegionMapping built-in (packet 51 — AC-4 ordering fix).
+    // Host built-in fallback for PrePass::PaintSegmentation: if no WASM module
+    // committed paint regions during phase-1, run the host built-in so that
+    // the subsequent RegionMapping sees paint semantics. Guard-based fallback
+    // contract per docs/04_host_scheduler.md:704.
+    if blackboard.paint_regions().is_none()
+        && blackboard.surface_classification().is_some()
+        && blackboard.layer_plan().is_some()
+    {
+        let before = blackboard.estimated_size();
+        let guard = StageInstrumentationGuard::start(
+            instrumentation,
+            "PrePass::PaintSegmentation",
+            None,
+            "host:paint_segmentation",
+            before,
+        );
+        let union_at_harvest = raw_config_source
+            .get(&ConfigKey::from("union_paint_regions_at_harvest"))
+            .map(|v| matches!(v, ConfigValue::Bool(true)))
+            .unwrap_or(true);
+        let paint_ir = crate::paint_segmentation::execute_paint_segmentation(
+            blackboard.mesh().clone(),
+            // SAFETY: guarded by .is_some() above
+            blackboard.surface_classification().cloned().unwrap(),
+            blackboard.layer_plan().cloned().unwrap(),
+            union_at_harvest,
+        )
+        .map_err(|source| PrepassExecutionError::PaintSegmentation { source })?;
+        let rtree = build_paint_region_rtree_index(&paint_ir);
+        blackboard
+            .commit_paint_regions(paint_ir, rtree)
+            .map_err(|source| PrepassExecutionError::Blackboard {
+                stage_id: "PrePass::PaintSegmentation".to_string(),
+                module_id: "host:paint_segmentation".to_string(),
+                source,
+            })?;
+        guard.finish(blackboard.estimated_size());
+    }
+    // Region-mapping: needs LayerPlan; reads any committed PaintRegionIR to
+    // resolve per-paint-semantic config overlays into RegionPlan.paint_overrides.
     if blackboard.layer_plan().is_some() && blackboard.region_map().is_none() {
         let paint_semantic_configs = build_paint_semantic_configs(
             blackboard,
@@ -625,44 +633,6 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         let late_audits =
             execute_prepass_with_instrumentation(&late_plan, blackboard, runner, instrumentation)?;
         audits.extend(late_audits);
-    }
-    // Host fallback for PrePass::PaintSegmentation: if no WASM module
-    // committed paint regions during the phase-1 or phase-2 module loops,
-    // run the host built-in implementation (when the required upstream
-    // IR is available).
-    if blackboard.paint_regions().is_none()
-        && blackboard.surface_classification().is_some()
-        && blackboard.layer_plan().is_some()
-    {
-        let before = blackboard.estimated_size();
-        let guard = StageInstrumentationGuard::start(
-            instrumentation,
-            "PrePass::PaintSegmentation",
-            None,
-            "host:paint_segmentation",
-            before,
-        );
-        let union_at_harvest = raw_config_source
-            .get(&ConfigKey::from("union_paint_regions_at_harvest"))
-            .map(|v| matches!(v, ConfigValue::Bool(true)))
-            .unwrap_or(true);
-        let paint_ir = crate::paint_segmentation::execute_paint_segmentation(
-            blackboard.mesh().clone(),
-            // SAFETY: guarded by .is_some() above
-            blackboard.surface_classification().cloned().unwrap(),
-            blackboard.layer_plan().cloned().unwrap(),
-            union_at_harvest,
-        )
-        .map_err(|source| PrepassExecutionError::PaintSegmentation { source })?;
-        let rtree = build_paint_region_rtree_index(&paint_ir);
-        blackboard
-            .commit_paint_regions(paint_ir, rtree)
-            .map_err(|source| PrepassExecutionError::Blackboard {
-                stage_id: "PrePass::PaintSegmentation".to_string(),
-                module_id: "host:paint_segmentation".to_string(),
-                source,
-            })?;
-        guard.finish(blackboard.estimated_size());
     }
     Ok(audits)
 }
