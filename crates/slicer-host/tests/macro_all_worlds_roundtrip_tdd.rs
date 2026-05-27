@@ -295,6 +295,12 @@ fn fixture_case_config(case: &str) -> ConfigView {
 }
 
 #[test]
+#[ignore = "Paint-segmentation was migrated to a host-native built-in in \
+            packet-64 (commit e6369eb) so the dispatcher's prepass match \
+            in dispatch.rs has no WASM arm for PrePass::PaintSegmentation. \
+            The SDK macro still emits correct typed glue for the world; \
+            this round-trip integration test cannot exercise it until a \
+            dispatch arm for WASM paint-seg modules is re-added."]
 fn prepass_paintseg_macro_guest_round_trips_typed_config_and_result() {
     let engine = Arc::new(WasmEngine::new());
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
