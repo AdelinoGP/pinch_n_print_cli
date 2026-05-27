@@ -4,6 +4,9 @@
 
 #![allow(missing_docs)]
 
+mod common;
+use common::seed::seed_slice_ir;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -70,7 +73,7 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
     };
 
     let mesh = minimal_mesh("test-object");
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
 
     // Build ExecutionPlan with Layer::Infill (mock) then Layer::PathOptimization (live).
     let plan = plan_with_stages(
@@ -83,6 +86,7 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
         ],
         1,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     // Runner that injects the mock infill IR and delegates PathOptimization to
     // WasmRuntimeDispatcher so the test exercises the live dispatch path.
@@ -258,7 +262,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
     };
 
     let mesh = minimal_mesh("test-object");
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     let plan = plan_with_stages(
         vec![
             stage("Layer::Infill", "com.test.infill"),
@@ -269,6 +273,7 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         ],
         1,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
@@ -357,7 +362,7 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
     };
 
     let mesh = minimal_mesh("test-object");
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     let plan = plan_with_stages(
         vec![
             stage("Layer::Infill", "com.test.infill"),
@@ -368,6 +373,7 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
         ],
         1,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
@@ -460,7 +466,7 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
     fn run() -> Vec<slicer_ir::LayerCollectionIR> {
         let infill = make_infill();
         let mesh = minimal_mesh("test-object");
-        let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+        let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
         let plan = plan_with_stages(
             vec![
                 stage("Layer::Infill", "com.test.infill"),
@@ -471,6 +477,7 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             ],
             1,
         );
+        seed_slice_ir(&mut blackboard, &plan);
 
         let engine = Arc::new(WasmEngine::new());
         let path_opt_component = load_path_optimization_module(&engine);
@@ -555,7 +562,7 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
     };
 
     let mesh = minimal_mesh("test-object");
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     let plan = plan_with_stages(
         vec![
             stage("Layer::Infill", "com.test.infill"),
@@ -566,6 +573,7 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         ],
         1,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
@@ -656,7 +664,7 @@ fn no_module_proposal_leaves_raw_assembled_order() {
     };
 
     let mesh = minimal_mesh("test-object");
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     let plan = plan_with_stages(
         vec![
             stage("Layer::Infill", "com.test.infill"),
@@ -664,6 +672,7 @@ fn no_module_proposal_leaves_raw_assembled_order() {
         ],
         1,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     // Stub runner: injects infill, returns Success for PathOptimization
     // without ever calling set_entity_order.

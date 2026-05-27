@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+pub mod seed;
 pub mod slicer_cache;
 
 use std::collections::HashMap;

@@ -26,8 +26,8 @@ use slicer_host::{
     PrepassStageOutput, PrepassStageRunner, SerialEdge, TierKind, WasmArtifactMetadata,
 };
 use slicer_ir::{
-    BoundingBox3, GCodeIR, GlobalLayer, LayerCollectionIR, MeshIR, Point3, PrintMetadata, SemVer,
-    StageId,
+    BoundingBox3, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR, MeshIR, Point3,
+    PrintMetadata, SemVer, StageId,
 };
 
 // ── helpers (mirrored from pipeline_tdd.rs — duplication across integration
@@ -268,10 +268,30 @@ fn run_with_noop_instrumentation_succeeds_and_collects_nothing() {
 ///   `stage_id == "Layer::Perimeters"`.
 #[test]
 fn run_with_collector_records_phase_and_layer_brackets() {
+    // Prepass runner that commits a 2-layer LayerPlan so the pipeline's
+    // Phase-2 builtins (RegionMapping + Slice) seed slice_ir automatically.
+    struct TwoLayerPrepass;
+    impl PrepassStageRunner for TwoLayerPrepass {
+        fn run_stage(
+            &self,
+            _stage_id: &StageId,
+            _module: &CompiledModule,
+            _blackboard: &Blackboard,
+        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+            Ok((
+                PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+                    global_layers: vec![make_global_layer(0, 0.2), make_global_layer(1, 0.4)],
+                    ..Default::default()
+                })),
+                Vec::new(),
+            ))
+        }
+    }
+
     let plan = ExecutionPlan {
         prepass_stages: vec![CompiledStage {
-            stage_id: "PrePass::MeshAnalysis".into(),
-            modules: vec![make_dummy_module("PrePass::MeshAnalysis", "mesh-analyzer")],
+            stage_id: "PrePass::LayerPlanning".into(),
+            modules: vec![make_dummy_module("PrePass::LayerPlanning", "layer-planner")],
         }],
         per_layer_stages: vec![CompiledStage {
             stage_id: "Layer::Perimeters".into(),
@@ -279,17 +299,20 @@ fn run_with_collector_records_phase_and_layer_brackets() {
         }],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![make_global_layer(0, 0.2), make_global_layer(1, 0.4)]),
+        global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
     };
 
     let collector = Arc::new(Collector::new("test-model.stl"));
 
+    let mut runners = noop_runners();
+    runners.prepass = Box::new(TwoLayerPrepass);
+
     let config = PipelineConfig {
         mesh_ir: empty_mesh_ir(),
         plan,
-        runners: noop_runners(),
+        runners,
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_host::ConfigBoundsIndex::empty()),
@@ -428,10 +451,29 @@ fn record_edges_fires_for_every_stage_at_plan_freeze() {
         IrAccessMask::default(),
     );
 
+    // Prepass runner that commits a 2-layer LayerPlan so slice_ir gets seeded.
+    struct TwoLayerPrepass2;
+    impl PrepassStageRunner for TwoLayerPrepass2 {
+        fn run_stage(
+            &self,
+            _stage_id: &StageId,
+            _module: &CompiledModule,
+            _blackboard: &Blackboard,
+        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+            Ok((
+                PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+                    global_layers: vec![make_global_layer(0, 0.2), make_global_layer(1, 0.4)],
+                    ..Default::default()
+                })),
+                Vec::new(),
+            ))
+        }
+    }
+
     let plan = ExecutionPlan {
         prepass_stages: vec![CompiledStage {
-            stage_id: "PrePass::MeshAnalysis".into(),
-            modules: vec![make_dummy_module("PrePass::MeshAnalysis", "mesh-analyzer")],
+            stage_id: "PrePass::LayerPlanning".into(),
+            modules: vec![make_dummy_module("PrePass::LayerPlanning", "layer-planner")],
         }],
         per_layer_stages: vec![CompiledStage {
             stage_id: "Layer::Perimeters".into(),
@@ -439,17 +481,20 @@ fn record_edges_fires_for_every_stage_at_plan_freeze() {
         }],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![make_global_layer(0, 0.2), make_global_layer(1, 0.4)]),
+        global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
     };
 
     let capture = EdgeCapture::new();
 
+    let mut runners = noop_runners();
+    runners.prepass = Box::new(TwoLayerPrepass2);
+
     let config = PipelineConfig {
         mesh_ir: empty_mesh_ir(),
         plan,
-        runners: noop_runners(),
+        runners,
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_host::ConfigBoundsIndex::empty()),

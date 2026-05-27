@@ -10,6 +10,9 @@
 
 #![allow(missing_docs, dead_code, unused_imports, unused_variables)]
 
+mod common;
+use common::seed::seed_slice_ir;
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -3712,7 +3715,8 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
     };
-    let blackboard = Blackboard::new(empty_mesh_ir(), 1);
+    let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
+    seed_slice_ir(&mut blackboard, &plan);
 
     // Seed the arena with PerimeterIR during the Layer::Perimeters stage
     // (before the PathOptimization pre-assembly runs).
@@ -3802,7 +3806,8 @@ fn path_optimization_empty_input_is_no_op() {
         region_plans: Arc::new(std::collections::HashMap::new()),
         module_region_index: HashMap::new(),
     };
-    let blackboard = Blackboard::new(empty_mesh_ir(), 1);
+    let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
+    seed_slice_ir(&mut blackboard, &plan);
     let layers = execute_per_layer(&plan, &blackboard, &dispatcher).expect("exec");
     assert!(layers[0].ordered_entities.is_empty());
     assert!(layers[0].tool_changes.is_empty());
@@ -3873,14 +3878,14 @@ fn path_optimization_deterministic_across_repeated_runs() {
 
     let mut results = Vec::new();
     for _ in 0..3 {
-        let blackboard = Blackboard::new(empty_mesh_ir(), 1);
+        let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
+        let plan = make_plan(Arc::clone(&component));
+        seed_slice_ir(&mut blackboard, &plan);
         let runner = SeedingRunner {
             inner: &dispatcher,
             perim: Mutex::new(Some(make_perimeter_ir(0, 3, 1, 0))),
         };
-        results.push(
-            execute_per_layer(&make_plan(Arc::clone(&component)), &blackboard, &runner).unwrap(),
-        );
+        results.push(execute_per_layer(&plan, &blackboard, &runner).unwrap());
     }
     assert_eq!(results[0], results[1]);
     assert_eq!(results[1], results[2]);
@@ -4270,7 +4275,8 @@ fn path_optimization_end_to_end_populates_z_hops() {
             inner: &dispatcher,
             perim: Mutex::new(Some(make_perimeter_ir(0, 2, 1, 0))),
         };
-        let blackboard = Blackboard::new(empty_mesh_ir(), 1);
+        let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
+        seed_slice_ir(&mut blackboard, &plan);
         runs.push(execute_per_layer(&plan, &blackboard, &runner).expect("exec"));
     }
     let layers = &runs[0];
@@ -4360,7 +4366,8 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
         inner: &dispatcher,
         perim: Mutex::new(Some(make_perimeter_ir(0, 1, 1, 0))),
     };
-    let blackboard = Blackboard::new(empty_mesh_ir(), 1);
+    let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
+    seed_slice_ir(&mut blackboard, &plan);
     let layers = execute_per_layer(&plan, &blackboard, &runner).expect("exec");
 
     let emitter = DefaultGCodeEmitter::new("test".into());

@@ -6,6 +6,9 @@
 
 #![allow(missing_docs)]
 
+mod common;
+use common::seed::seed_slice_ir;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -37,7 +40,7 @@ use slicer_ir::{
 fn layer_executor_processes_layers_in_parallel_with_deterministic_stage_ordering() {
     // Arrange: Create a plan with 4 layers and 2 stages with one module each
     let mesh = Arc::new(mesh_fixture());
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 4);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 4);
     let plan = execution_plan_fixture(
         vec![
             compiled_stage("Layer::Perimeters", &["com.example.perimeters"]),
@@ -45,6 +48,7 @@ fn layer_executor_processes_layers_in_parallel_with_deterministic_stage_ordering
         ],
         4,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let runner = ScriptedRunner::new()
         .with_stage_sequence(vec![
@@ -90,7 +94,7 @@ fn layer_executor_processes_layers_in_parallel_with_deterministic_stage_ordering
 fn layer_executor_runs_modules_in_topological_order_within_each_stage() {
     // Arrange: Create a plan with 2 layers and 1 stage with 3 modules in topo order
     let mesh = Arc::new(mesh_fixture());
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 2);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 2);
     let plan = execution_plan_fixture(
         vec![compiled_stage(
             "Layer::Perimeters",
@@ -102,6 +106,7 @@ fn layer_executor_runs_modules_in_topological_order_within_each_stage() {
         )],
         2,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let runner = ScriptedRunner::new()
         .with_stage_sequence(vec![
@@ -143,7 +148,7 @@ fn layer_executor_runs_modules_in_topological_order_within_each_stage() {
 fn layer_executor_provides_isolated_layer_arena_per_layer() {
     // Arrange: Create a plan with 3 layers; runner will record arena pointer addresses
     let mesh = Arc::new(mesh_fixture());
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 3);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 3);
     let plan = execution_plan_fixture(
         vec![compiled_stage(
             "Layer::Perimeters",
@@ -151,6 +156,7 @@ fn layer_executor_provides_isolated_layer_arena_per_layer() {
         )],
         3,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let runner = ArenaIsolationRunner::new();
 
@@ -185,7 +191,7 @@ fn layer_executor_provides_isolated_layer_arena_per_layer() {
 fn layer_executor_commits_layer_outputs_to_blackboard_slots() {
     // Arrange: Create a plan with 3 layers
     let mesh = Arc::new(mesh_fixture());
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 3);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 3);
     let plan = execution_plan_fixture(
         vec![compiled_stage(
             "Layer::Perimeters",
@@ -193,6 +199,7 @@ fn layer_executor_commits_layer_outputs_to_blackboard_slots() {
         )],
         3,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let runner = ScriptedRunner::new().with_default_success();
 
@@ -220,7 +227,7 @@ fn layer_executor_commits_layer_outputs_to_blackboard_slots() {
 fn layer_executor_propagates_fatal_module_error_and_aborts_layer() {
     // Arrange: Create a plan with 2 layers; second layer will fail fatally
     let mesh = Arc::new(mesh_fixture());
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 2);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 2);
     let plan = execution_plan_fixture(
         vec![
             compiled_stage("Layer::Perimeters", &["com.example.perimeters"]),
@@ -228,6 +235,7 @@ fn layer_executor_propagates_fatal_module_error_and_aborts_layer() {
         ],
         2,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let runner = ScriptedRunner::new()
         .with_fatal_error(
@@ -261,7 +269,7 @@ fn layer_executor_propagates_fatal_module_error_and_aborts_layer() {
 fn layer_executor_continues_on_non_fatal_module_error() {
     // Arrange: Create a plan with 2 layers; first module in each layer returns non-fatal error
     let mesh = Arc::new(mesh_fixture());
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 2);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 2);
     let plan = execution_plan_fixture(
         vec![
             compiled_stage("Layer::Perimeters", &["com.example.perimeters"]),
@@ -269,6 +277,7 @@ fn layer_executor_continues_on_non_fatal_module_error() {
         ],
         2,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let runner = ScriptedRunner::new()
         .with_non_fatal_error(0, "Layer::Perimeters", "com.example.perimeters")
@@ -304,7 +313,7 @@ fn layer_executor_continues_on_non_fatal_module_error() {
 fn layer_executor_drains_all_layer_outputs_after_parallel_completion() {
     // Arrange: Create a plan with 5 layers to verify ordering in final Vec
     let mesh = Arc::new(mesh_fixture());
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 5);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 5);
     let plan = execution_plan_fixture(
         vec![compiled_stage(
             "Layer::Perimeters",
@@ -312,6 +321,7 @@ fn layer_executor_drains_all_layer_outputs_after_parallel_completion() {
         )],
         5,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let runner = ScriptedRunner::new().with_default_success();
 
@@ -837,11 +847,12 @@ fn support_ir_simple() -> slicer_ir::SupportIR {
 #[test]
 fn ordered_entities_assembled_with_preserved_region_identity() {
     let mesh = Arc::new(mesh_fixture());
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     let plan = execution_plan_fixture(
         vec![compiled_stage("Layer::Perimeters", &["com.example.stage"])],
         1,
     );
+    seed_slice_ir(&mut blackboard, &plan);
     let runner = StagingRunner::new(
         Some(perim_ir_two_regions()),
         Some(infill_ir_two_regions()),
@@ -882,11 +893,12 @@ fn ordered_entities_assembled_with_preserved_region_identity() {
 #[test]
 fn ordered_entities_empty_when_arena_has_no_committed_content() {
     let mesh = Arc::new(mesh_fixture());
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     let plan = execution_plan_fixture(
         vec![compiled_stage("Layer::Perimeters", &["com.example.stage"])],
         1,
     );
+    seed_slice_ir(&mut blackboard, &plan);
     let runner = StagingRunner::new(None, None, None);
     let layers = execute_per_layer(&plan, &blackboard, &runner).expect("layer exec");
     assert_eq!(layers.len(), 1);
@@ -906,7 +918,8 @@ fn ordered_entities_assembly_is_deterministic_across_repeated_runs() {
 
     let mut results = Vec::new();
     for _ in 0..3 {
-        let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+        let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+        seed_slice_ir(&mut blackboard, &plan);
         let runner = StagingRunner::new(
             Some(perim_ir_two_regions()),
             Some(infill_ir_two_regions()),
@@ -1004,7 +1017,8 @@ fn catchup_metadata_remains_stable_across_all_per_layer_stages() {
     };
 
     let mesh = Arc::new(mesh_fixture());
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    seed_slice_ir(&mut blackboard, &plan);
 
     // RecordingRunner captures the active_regions surface at each stage call.
     let runner = CatchupMetadataRecordingRunner::new();
@@ -1608,6 +1622,7 @@ fn extruder_synthetic_t0_t1_emission() {
     blackboard
         .commit_region_map(Arc::new(region_map))
         .expect("commit region map");
+    seed_slice_ir(&mut blackboard, &plan);
 
     let runner = StagingRunner::new(
         Some(perim_ir_two_regions_for_objects("obj-A", 1, "obj-B", 2)),

@@ -16,12 +16,12 @@ use slicer_host::{
     load_modules_from_roots, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
     ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest, FinalizationError,
     FinalizationOutput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer, IrAccessMask,
-    LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner, PostpassError, PostpassOutput,
-    PostpassStageRunner, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
-    SortedStageModules, WasmArtifactMetadata,
+    LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner, LoadedModuleBuilder,
+    PostpassError, PostpassOutput, PostpassStageRunner, PrepassExecutionError, PrepassStageOutput,
+    PrepassStageRunner, SortedStageModules, WasmArtifactMetadata,
 };
 use slicer_ir::{
-    BoundingBox3, ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, MeshIR, Point3,
+    BoundingBox3, ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR, MeshIR, Point3,
     PrintMetadata, SemVer, StageId,
 };
 use tempfile::TempDir;
@@ -34,6 +34,31 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
         minor,
         patch,
     }
+}
+
+fn make_dummy_compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
+    let loaded = LoadedModuleBuilder::new(
+        module_id,
+        semver(1, 0, 0),
+        stage_id,
+        "slicer:world-prepass@1.0.0",
+        PathBuf::from(format!("fixtures/{module_id}.wasm")),
+    )
+    .min_host_version(semver(0, 1, 0))
+    .min_ir_schema(semver(1, 0, 0))
+    .max_ir_schema(semver(2, 0, 0))
+    .build();
+    let pool = Arc::new(
+        build_wasm_instance_pool(
+            &loaded,
+            1,
+            WasmArtifactMetadata {
+                uses_shared_memory: false,
+            },
+        )
+        .expect("fixture module should build a pool"),
+    );
+    CompiledModuleBuilder::new(module_id, pool).build()
 }
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
@@ -65,18 +90,6 @@ fn minimal_gcode_ir() -> GCodeIR {
             filament_used_mm: Vec::new(),
             layer_count: 0,
         },
-    }
-}
-
-struct NoopPrepassRunner;
-impl PrepassStageRunner for NoopPrepassRunner {
-    fn run_stage(
-        &self,
-        _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-        Ok((PrepassStageOutput::None, Vec::new()))
     }
 }
 
@@ -370,21 +383,47 @@ fn manifest_driven_pipeline_runs_to_completion() {
         .config_view(Arc::new(ConfigView::from_map(HashMap::new())))
         .build();
 
+    // Prepass runner that seeds slice_ir by emitting a 1-layer LayerPlan so
+    // Phase-2 builtins (RegionMapping + Slice) run before per-layer executes.
+    struct OneLayerPrepass;
+    impl PrepassStageRunner for OneLayerPrepass {
+        fn run_stage(
+            &self,
+            _stage_id: &StageId,
+            _module: &CompiledModule,
+            _blackboard: &Blackboard,
+        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+            Ok((
+                PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+                    global_layers: vec![GlobalLayer {
+                        index: 0,
+                        z: 0.2,
+                        active_regions: Vec::new(),
+                        has_nonplanar: false,
+                        is_sync_layer: false,
+                    }],
+                    ..Default::default()
+                })),
+                Vec::new(),
+            ))
+        }
+    }
+
     let plan = ExecutionPlan {
-        prepass_stages: Vec::new(),
+        prepass_stages: vec![CompiledStage {
+            stage_id: "PrePass::LayerPlanning".into(),
+            modules: vec![make_dummy_compiled_module(
+                "PrePass::LayerPlanning",
+                "layer-planner",
+            )],
+        }],
         per_layer_stages: vec![CompiledStage {
             stage_id: "Layer::Infill".into(),
             modules: vec![compiled_module],
         }],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
-        global_layers: Arc::new(vec![GlobalLayer {
-            index: 0,
-            z: 0.2,
-            active_regions: Vec::new(),
-            has_nonplanar: false,
-            is_sync_layer: false,
-        }]),
+        global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
     };
@@ -393,7 +432,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
         mesh_ir: empty_mesh_ir(),
         plan,
         runners: PipelineStageRunners {
-            prepass: Box::new(NoopPrepassRunner),
+            prepass: Box::new(OneLayerPrepass),
             layer: Box::new(NoopLayerRunner),
             finalization: Box::new(NoopFinalizationRunner),
             postpass: Box::new(NoopPostpassRunner),

@@ -4,6 +4,9 @@
 
 #![allow(missing_docs)]
 
+mod common;
+use common::seed::seed_slice_ir;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -104,7 +107,7 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
     ];
 
     let mesh = minimal_mesh("test-object");
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
 
     // Pre-stage the layer collection with the raw (interleaved) entity order.
     // The executor will find this pre-staged IR before Layer::PathOptimization
@@ -131,6 +134,7 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
         ],
         1,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
@@ -221,7 +225,7 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
     ];
 
     let mesh = minimal_mesh("test-object");
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
 
     let layer_collection = LayerCollectionIR {
         schema_version: semver(),
@@ -245,6 +249,7 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
         ],
         1,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);
@@ -307,7 +312,7 @@ fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
     ];
 
     let mesh = minimal_mesh("test-object");
-    let blackboard = Blackboard::new(Arc::clone(&mesh), 1);
+    let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
 
     let layer_collection = LayerCollectionIR {
         schema_version: semver(),
@@ -331,6 +336,7 @@ fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
         ],
         1,
     );
+    seed_slice_ir(&mut blackboard, &plan);
 
     let engine = Arc::new(WasmEngine::new());
     let path_opt_component = load_path_optimization_module(&engine);

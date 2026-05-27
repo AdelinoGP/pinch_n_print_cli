@@ -8,6 +8,9 @@
 
 #![allow(missing_docs)]
 
+mod common;
+use common::seed::seed_slice_ir;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
@@ -639,7 +642,8 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
         region_plans: Arc::new(HashMap::new()),
         module_region_index: HashMap::new(),
     };
-    let blackboard = Blackboard::new(empty_mesh_ir(), 1);
+    let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
+    seed_slice_ir(&mut blackboard, &plan);
     let runner = PerimeterSeedingRunner {
         inner: &dispatcher,
         perimeter: std::sync::Mutex::new(Some(seeded_perimeter)),
