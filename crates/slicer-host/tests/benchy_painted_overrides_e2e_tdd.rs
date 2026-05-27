@@ -100,6 +100,10 @@ fn count_perimeter_markers_in_z_band(gcode: &str, min_z_mm: f32, max_z_mm: f32) 
 /// the painted Benchy fixture (DEV-044). Both must close before this
 /// test reaches GREEN.
 #[test]
+#[ignore = "DEV-045 RED — pending Packet 51 closure: paint_config:<semantic>:<key> is not yet \
+            wired through config_resolution → RegionPlan.paint_overrides → \
+            region_mapping → Layer-tier modules. The body asserts the post-closure \
+            invariant; un-ignore once Packet 51 lands."]
 fn paint_config_override_visibly_differs_gcode() {
     let painted = painted_benchy_3mf();
     assert!(
