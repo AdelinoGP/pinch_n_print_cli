@@ -268,7 +268,9 @@ fn export_name_mapping_covers_all_documented_stages() {
         ("PrePass::MeshAnalysis", "run-mesh-analysis"),
         ("PrePass::LayerPlanning", "run-layer-planning"),
         ("PrePass::PaintSegmentation", "run-paint-segmentation"),
-        ("Layer::Slice", "run-slice"),
+        // `PrePass::Slice` is a host built-in (see slice_postprocess_prepass)
+        // and has no WASM export — slicing was promoted out of the Layer tier
+        // by commit fe6ca6d, so `Layer::Slice` / `run-slice` no longer exist.
         ("Layer::SlicePostProcess", "run-slice-postprocess"),
         ("Layer::Perimeters", "run-perimeters"),
         ("Layer::PerimetersPostProcess", "run-wall-postprocess"),
