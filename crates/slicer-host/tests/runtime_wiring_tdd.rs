@@ -310,9 +310,17 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
     assert_eq!(plan.prepass_stages.len(), 1);
     assert_eq!(plan.prepass_stages[0].stage_id, "PrePass::MeshAnalysis");
 
-    assert_eq!(plan.per_layer_stages.len(), 2);
-    assert_eq!(plan.per_layer_stages[0].stage_id, "Layer::Infill");
-    assert_eq!(plan.per_layer_stages[1].stage_id, "Layer::Support");
+    // `build_execution_plan` auto-injects an always-on
+    // `Layer::PaintRegionAnnotation` stage so the host annotator can run
+    // before downstream stages need `boundary_paint` (packet-64). Filter
+    // it out when validating the user-declared per-layer pipeline shape.
+    let user_stage_ids: Vec<&str> = plan
+        .per_layer_stages
+        .iter()
+        .map(|s| s.stage_id.as_str())
+        .filter(|s| *s != "Layer::PaintRegionAnnotation")
+        .collect();
+    assert_eq!(user_stage_ids, vec!["Layer::Infill", "Layer::Support"]);
 
     assert!(plan.layer_finalization_stage.is_some());
     assert_eq!(

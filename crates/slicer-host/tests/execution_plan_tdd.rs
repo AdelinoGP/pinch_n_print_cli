@@ -116,10 +116,17 @@ fn freezes_sorted_stage_buckets_runtime_bindings_and_shared_ir_ownership() {
         &["SurfaceClassificationIR.per_object"],
     );
 
-    assert_eq!(plan.per_layer_stages.len(), 1);
-    assert_eq!(plan.per_layer_stages[0].stage_id, "Layer::Perimeters");
+    // `build_execution_plan` auto-injects an empty `Layer::PaintRegionAnnotation`
+    // stage so the host annotator runs before downstream stages need
+    // boundary_paint (packet-64). Skip past it when locating the user-facing
+    // stage under test.
+    let perimeters_stage = plan
+        .per_layer_stages
+        .iter()
+        .find(|s| s.stage_id == "Layer::Perimeters")
+        .expect("plan must contain Layer::Perimeters");
     assert_module(
-        &plan.per_layer_stages[0].modules[0],
+        &perimeters_stage.modules[0],
         &layer_module,
         &["SliceIR.regions"],
         &["PerimeterIR.regions.walls"],
@@ -493,9 +500,19 @@ fn plan_construction_is_deterministic_across_repeated_calls() {
     let plan_b = build_execution_plan(&mk_request()).unwrap();
 
     assert_eq!(plan_a.per_layer_stages.len(), plan_b.per_layer_stages.len());
+    let infill_a = plan_a
+        .per_layer_stages
+        .iter()
+        .find(|s| s.stage_id == "Layer::Infill")
+        .expect("plan_a must contain Layer::Infill");
+    let infill_b = plan_b
+        .per_layer_stages
+        .iter()
+        .find(|s| s.stage_id == "Layer::Infill")
+        .expect("plan_b must contain Layer::Infill");
     assert_eq!(
-        plan_a.per_layer_stages[0].modules[0].module_id(),
-        plan_b.per_layer_stages[0].modules[0].module_id(),
+        infill_a.modules[0].module_id(),
+        infill_b.modules[0].module_id(),
     );
     assert_eq!(plan_a.global_layers.len(), plan_b.global_layers.len());
 }
@@ -772,10 +789,15 @@ fn resolve_active_regions_uses_precomputed_index() {
     };
 
     let plan = build_execution_plan(&request).expect("plan should build");
+    let perimeters_stage = plan
+        .per_layer_stages
+        .iter()
+        .find(|s| s.stage_id == "Layer::Perimeters")
+        .expect("plan must contain Layer::Perimeters");
 
     // mod.a on layer 0 → 2 regions
     let layer0 = &global_layers[0];
-    let result = plan.resolve_active_regions(layer0, &plan.per_layer_stages[0].modules[0]);
+    let result = plan.resolve_active_regions(layer0, &perimeters_stage.modules[0]);
     let region_keys: Vec<_> = result
         .iter()
         .map(|r| (r.object_id.clone(), r.region_id))
@@ -788,7 +810,7 @@ fn resolve_active_regions_uses_precomputed_index() {
 
     // mod.a on layer 1 → 1 region
     let layer1 = &global_layers[1];
-    let result = plan.resolve_active_regions(layer1, &plan.per_layer_stages[0].modules[0]);
+    let result = plan.resolve_active_regions(layer1, &perimeters_stage.modules[0]);
     let region_keys: Vec<_> = result
         .iter()
         .map(|r| (r.object_id.clone(), r.region_id))
@@ -834,9 +856,13 @@ fn resolve_active_regions_returns_empty_when_module_has_no_regions() {
     };
 
     let plan = build_execution_plan(&request).expect("plan should build");
+    let perimeters_stage = plan
+        .per_layer_stages
+        .iter()
+        .find(|s| s.stage_id == "Layer::Perimeters")
+        .expect("plan must contain Layer::Perimeters");
 
-    let result =
-        plan.resolve_active_regions(&global_layers[0], &plan.per_layer_stages[0].modules[0]);
+    let result = plan.resolve_active_regions(&global_layers[0], &perimeters_stage.modules[0]);
     assert!(
         result.is_empty(),
         "empty result for module with no regions must be an empty slice, not an error"

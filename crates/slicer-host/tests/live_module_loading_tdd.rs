@@ -244,7 +244,12 @@ fn live_plan_assigns_declared_read_filtered_config_view_to_every_module() {
     )
     .expect("plan must build on the live path");
 
-    let module = &plan.per_layer_stages[0].modules[0];
+    let infill_stage = plan
+        .per_layer_stages
+        .iter()
+        .find(|s| s.stage_id == "Layer::Infill")
+        .expect("plan must contain Layer::Infill");
+    let module = &infill_stage.modules[0];
     let mut keys = module.config_view().keys();
     keys.sort();
     assert_eq!(keys, vec!["density".to_string(), "pattern".to_string()]);
@@ -271,7 +276,12 @@ fn live_plan_end_to_end_with_cli_config_json_respects_declared_reads() {
     )
     .unwrap();
 
-    let module = &plan.per_layer_stages[0].modules[0];
+    let infill_stage = plan
+        .per_layer_stages
+        .iter()
+        .find(|s| s.stage_id == "Layer::Infill")
+        .expect("plan must contain Layer::Infill");
+    let module = &infill_stage.modules[0];
     assert!(module.config_view().contains_key("density"));
     assert!(!module.config_view().contains_key("extra"));
     assert_eq!(module.config_view().get_float("density"), Some(0.9));
