@@ -43,10 +43,21 @@ fn unit_square(side_mm: f32) -> ExPolygon {
 }
 
 fn make_active_region(object_id: &str, layer_height: f32) -> ActiveRegion {
+    make_active_region_with_support_lh(object_id, layer_height, 0.0)
+}
+
+fn make_active_region_with_support_lh(
+    object_id: &str,
+    layer_height: f32,
+    support_layer_height_mm: f32,
+) -> ActiveRegion {
     ActiveRegion {
         object_id: object_id.to_string(),
         region_id: 0,
-        resolved_config: ResolvedConfig::default(),
+        resolved_config: ResolvedConfig {
+            support_layer_height_mm,
+            ..ResolvedConfig::default()
+        },
         effective_layer_height: layer_height,
         nonplanar_shell: None,
         is_catchup_layer: false,
@@ -269,4 +280,77 @@ fn support_geometry_populates_intermediate_layer_entries_from_slice_ir() {
             "intermediate entry {key:?} must carry SliceIR polygons; got empty Vec"
         );
     }
+}
+
+// ── A2 regression: per-object support_layer_height_mm is honored ──────────────
+
+/// Integration regression for Block A2: `execute_support_geometry` must use
+/// `region.resolved_config.support_layer_height_mm` per-object rather than the
+/// old global `DEFAULT_SUPPORT_LAYER_HEIGHT_MM = 0.0`.
+///
+/// Fixture: 6 model layers (0.2 mm each), two objects:
+/// - obj-A: `support_layer_height_mm = 0.4` → support boundary every 2 model
+///   layers → support entries at global_support_layer_index 0, 1, 2 (3 entries).
+/// - obj-B: `support_layer_height_mm = 0.0` → every model layer → 6 entries.
+///
+/// Assertions:
+/// 1. obj-B has exactly 6 support entries (one per model layer).
+/// 2. obj-A has exactly 3 support entries (one per 2 model layers).
+#[test]
+fn per_object_support_layer_height_is_honored_by_execute_support_geometry() {
+    let obj_a = "obj-A";
+    let obj_b = "obj-B";
+
+    // 6 layers, 0.2mm each; obj-A uses 0.4mm support cadence, obj-B uses default 0.0.
+    let global_layers: Vec<GlobalLayer> = (0u32..6)
+        .map(|i| GlobalLayer {
+            index: i,
+            z: (i + 1) as f32 * 0.2,
+            active_regions: vec![
+                make_active_region_with_support_lh(obj_a, 0.2, 0.4),
+                make_active_region_with_support_lh(obj_b, 0.2, 0.0),
+            ],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        })
+        .collect();
+
+    let plan = LayerPlanIR {
+        global_layers: global_layers.clone(),
+        object_participation: HashMap::new(),
+        ..Default::default()
+    };
+
+    // Build slice_vec with one entry per layer for each object so polygons are
+    // available (not strictly needed for counting, but ensures the function path
+    // through collect_polygons_at_z is exercised).
+    let slice_vec: Vec<SliceIR> = (0u32..6)
+        .map(|i| slice_with_polygon(i, (i + 1) as f32 * 0.2, obj_a, unit_square(5.0)))
+        .collect();
+
+    let ir = support_geometry::execute_support_geometry(&plan, &slice_vec)
+        .expect("execute_support_geometry must succeed");
+
+    // Count non-sentinel entries per object.
+    let a_count = ir
+        .entries
+        .keys()
+        .filter(|k| k.global_support_layer_index != u32::MAX && k.object_id == obj_a)
+        .count();
+    let b_count = ir
+        .entries
+        .keys()
+        .filter(|k| k.global_support_layer_index != u32::MAX && k.object_id == obj_b)
+        .count();
+
+    assert_eq!(
+        a_count, 3,
+        "obj-A (support_layer_height_mm=0.4, 0.2mm model) must have 3 support entries; \
+         got {a_count}"
+    );
+    assert_eq!(
+        b_count, 6,
+        "obj-B (support_layer_height_mm=0.0) must have 6 support entries (one per layer); \
+         got {b_count}"
+    );
 }

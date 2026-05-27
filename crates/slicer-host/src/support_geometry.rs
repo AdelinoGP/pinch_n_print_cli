@@ -18,7 +18,7 @@
 //! The accumulated algorithm handles variable heights and catch-up layers
 //! correctly: catch-up layers count their full `effective_layer_height`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -53,69 +53,77 @@ impl std::fmt::Display for SupportGeometryBuiltinError {
 
 impl std::error::Error for SupportGeometryBuiltinError {}
 
-/// Default support layer height in mm (0.0 = use model layer height).
-const DEFAULT_SUPPORT_LAYER_HEIGHT_MM: f32 = 0.0;
-
 /// Default distance in mm from column tops to add intermediate model layers.
 const DEFAULT_SUPPORT_TOP_Z_DISTANCE_MM: f32 = 5.0;
+
+/// Precompute, for each object, the set of global layer indices at which a
+/// support layer boundary should be emitted.
+///
+/// The schedule is derived from `region.resolved_config.support_layer_height_mm`:
+/// - `0.0` means "use the object's effective layer height" → emit at every
+///   model layer (every global layer index where the object is active).
+/// - Any positive value accumulates `effective_layer_height` per region visit
+///   and emits whenever the running total reaches or exceeds the target.
+///
+/// Each object's accumulator resets after each emission, so coarser support
+/// layers are spaced correctly even when the model uses variable layer heights.
+pub(crate) fn build_emit_schedule(layer_plan: &LayerPlanIR) -> HashMap<String, BTreeSet<u32>> {
+    let mut acc: HashMap<String, f32> = HashMap::new();
+    let mut schedule: HashMap<String, BTreeSet<u32>> = HashMap::new();
+    for gl in &layer_plan.global_layers {
+        for region in &gl.active_regions {
+            let oid = &region.object_id;
+            let target = region.resolved_config.support_layer_height_mm;
+            let h = region.effective_layer_height;
+            let a = acc.entry(oid.clone()).or_insert(0.0);
+            *a += h;
+            if target == 0.0 || *a >= target {
+                schedule.entry(oid.clone()).or_default().insert(gl.index);
+                *a = 0.0;
+            }
+        }
+    }
+    schedule
+}
 
 /// Execute the built-in `PrePass::SupportGeometry` stage.
 ///
 /// Produces a `SupportGeometryIR` with coarse support layer boundaries
 /// and intermediate model-resolution outline layers, both populated from
 /// the prepass-committed `Vec<SliceIR>`.
+///
+/// Support layer emission is governed per-object by
+/// `region.resolved_config.support_layer_height_mm`:
+/// - `0.0` → emit at every model layer (use the object's effective layer height).
+/// - positive → accumulate `effective_layer_height` across regions; emit when
+///   the running total reaches or exceeds the target.
 pub fn execute_support_geometry(
     layer_plan: &LayerPlanIR,
     slice_vec: &[SliceIR],
 ) -> Result<SupportGeometryIR, SupportGeometryBuiltinError> {
-    let support_layer_height_mm = DEFAULT_SUPPORT_LAYER_HEIGHT_MM;
     let support_top_z_distance_mm = DEFAULT_SUPPORT_TOP_Z_DISTANCE_MM;
+
+    // Precompute per-object emit schedule from resolved_config.
+    let emit_schedule = build_emit_schedule(layer_plan);
 
     let mut entries: HashMap<SupportGeometryKey, Vec<ExPolygon>> = HashMap::new();
 
-    // Walk layers accumulating effective_layer_height to find support boundaries.
-    let mut accumulated_height = 0.0_f32;
-    let mut current_support_layer_index = 0_u32;
+    // Per-object support layer index counters (each object has its own sequence).
+    let mut support_layer_index: HashMap<String, u32> = HashMap::new();
 
     for global_layer in &layer_plan.global_layers {
-        let layer_height = if global_layer.active_regions.is_empty() {
-            0.0
-        } else {
-            // Use the first active region's effective layer height as a representative value.
-            // In a real implementation this would aggregate across all regions.
-            global_layer.active_regions[0].effective_layer_height
-        };
+        for region in &global_layer.active_regions {
+            let oid = &region.object_id;
 
-        // Add catch-up layer's full height to accumulator.
-        let is_catchup = global_layer
-            .active_regions
-            .first()
-            .map(|r| r.is_catchup_layer)
-            .unwrap_or(false);
-        let height_to_add = if is_catchup {
-            global_layer.active_regions[0].catchup_z_bottom
-        } else {
-            layer_height
-        };
+            let should_emit = emit_schedule
+                .get(oid)
+                .map_or(false, |s| s.contains(&global_layer.index));
 
-        accumulated_height += height_to_add;
-
-        // Emit support layer boundary when accumulated >= support_layer_height_mm.
-        // A support_layer_height_mm of 0.0 means "use model layer height", so we emit
-        // at every model layer boundary.
-        let should_emit = if support_layer_height_mm > 0.0 {
-            accumulated_height >= support_layer_height_mm
-        } else {
-            // 0.0 = use model layer height: emit at every model layer.
-            true
-        };
-
-        if should_emit {
-            // For each active region, collect geometry at this Z.
-            for region in &global_layer.active_regions {
+            if should_emit {
+                let idx = support_layer_index.entry(oid.clone()).or_insert(0);
                 let key = SupportGeometryKey {
-                    global_support_layer_index: current_support_layer_index,
-                    object_id: region.object_id.clone(),
+                    global_support_layer_index: *idx,
+                    object_id: oid.clone(),
                     region_id: region.region_id,
                 };
 
@@ -123,17 +131,14 @@ pub fn execute_support_geometry(
                 let polygons = collect_polygons_at_z(
                     slice_vec,
                     layer_plan,
-                    &region.object_id,
+                    oid,
                     region.region_id,
                     global_layer.z,
                 );
 
                 entries.entry(key).or_default().extend(polygons);
+                *idx += 1;
             }
-
-            // Reset accumulator after emitting, advance support layer index.
-            accumulated_height = 0.0;
-            current_support_layer_index += 1;
         }
     }
 
@@ -145,8 +150,10 @@ pub fn execute_support_geometry(
         support_top_z_distance_mm,
     );
 
+    // Use 0.0 as the stored support_layer_height_mm — per-object values are
+    // consumed at schedule-build time; no single sentinel value applies.
     Ok(SupportGeometryIR {
-        support_layer_height_mm,
+        support_layer_height_mm: 0.0,
         support_top_z_distance_mm,
         entries,
         ..Default::default()
@@ -290,40 +297,39 @@ pub fn commit_support_geometry_builtin(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slicer_ir::GlobalLayer;
+    use slicer_ir::{ActiveRegion, GlobalLayer, ResolvedConfig};
+
+    fn make_active_region(object_id: &str, layer_height: f32, support_lh: f32) -> ActiveRegion {
+        ActiveRegion {
+            object_id: object_id.to_string(),
+            region_id: 0,
+            resolved_config: ResolvedConfig {
+                support_layer_height_mm: support_lh,
+                ..ResolvedConfig::default()
+            },
+            effective_layer_height: layer_height,
+            nonplanar_shell: None,
+            is_catchup_layer: false,
+            catchup_z_bottom: 0.0,
+            tool_index: 0,
+        }
+    }
 
     fn make_2_layer_plan() -> LayerPlanIR {
+        // Two-layer plan with default support_layer_height_mm = 0.0.
         LayerPlanIR {
             global_layers: vec![
                 GlobalLayer {
                     index: 0,
                     z: 0.0,
-                    active_regions: vec![slicer_ir::ActiveRegion {
-                        object_id: "test-object".to_string(),
-                        region_id: 1,
-                        resolved_config: slicer_ir::ResolvedConfig::default(),
-                        effective_layer_height: 0.2,
-                        nonplanar_shell: None,
-                        is_catchup_layer: false,
-                        catchup_z_bottom: 0.0,
-                        tool_index: 0,
-                    }],
+                    active_regions: vec![make_active_region("test-object", 0.2, 0.0)],
                     has_nonplanar: false,
                     is_sync_layer: false,
                 },
                 GlobalLayer {
                     index: 1,
                     z: 0.2,
-                    active_regions: vec![slicer_ir::ActiveRegion {
-                        object_id: "test-object".to_string(),
-                        region_id: 1,
-                        resolved_config: slicer_ir::ResolvedConfig::default(),
-                        effective_layer_height: 0.2,
-                        nonplanar_shell: None,
-                        is_catchup_layer: false,
-                        catchup_z_bottom: 0.0,
-                        tool_index: 0,
-                    }],
+                    active_regions: vec![make_active_region("test-object", 0.2, 0.0)],
                     has_nonplanar: false,
                     is_sync_layer: false,
                 },
@@ -345,5 +351,59 @@ mod tests {
         // With support_layer_height_mm = 0.0 (default = use model layer height),
         // we emit at every model layer boundary: expect 2 support layer entries.
         assert!(!ir.entries.is_empty());
+    }
+
+    /// Build a 6-layer plan (layers 0-5, each 0.2 mm) with two objects:
+    /// - obj-A: `support_layer_height_mm = 0.4` → emit every 2 model layers
+    /// - obj-B: `support_layer_height_mm = 0.0` → emit at every model layer
+    fn make_two_object_plan() -> LayerPlanIR {
+        let mut global_layers = Vec::new();
+        for i in 0u32..6 {
+            global_layers.push(GlobalLayer {
+                index: i,
+                z: (i + 1) as f32 * 0.2,
+                active_regions: vec![
+                    make_active_region("obj-A", 0.2, 0.4),
+                    make_active_region("obj-B", 0.2, 0.0),
+                ],
+                has_nonplanar: false,
+                is_sync_layer: false,
+            });
+        }
+        LayerPlanIR {
+            global_layers,
+            object_participation: HashMap::new(),
+            ..Default::default()
+        }
+    }
+
+    /// Unit test for `build_emit_schedule` with two objects:
+    /// - obj-A (`support_layer_height_mm=0.4`, 0.2mm model layers): emits
+    ///   every second layer → global indices {1, 3, 5}.
+    /// - obj-B (`support_layer_height_mm=0.0`): emits at every model layer
+    ///   → global indices {0, 1, 2, 3, 4, 5}.
+    #[test]
+    fn build_emit_schedule_two_objects_per_object_semantics() {
+        let plan = make_two_object_plan();
+        let schedule = build_emit_schedule(&plan);
+
+        let a_sched = schedule.get("obj-A").cloned().unwrap_or_default();
+        let b_sched = schedule.get("obj-B").cloned().unwrap_or_default();
+
+        // obj-A accumulates 0.2 per layer; emits when >= 0.4 -> layers 1, 3, 5.
+        assert_eq!(
+            a_sched,
+            [1u32, 3, 5].iter().cloned().collect::<BTreeSet<u32>>(),
+            "obj-A (support_layer_height_mm=0.4, model 0.2mm) must emit at layers {{1,3,5}}; \
+             got {a_sched:?}"
+        );
+
+        // obj-B always emits (target=0.0) -> all six layers.
+        assert_eq!(
+            b_sched,
+            (0u32..6).collect::<BTreeSet<u32>>(),
+            "obj-B (support_layer_height_mm=0.0) must emit at every layer {{0..5}}; \
+             got {b_sched:?}"
+        );
     }
 }
