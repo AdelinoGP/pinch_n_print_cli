@@ -11,7 +11,19 @@ use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR, PrintMetadata};
 // ---------------------------------------------------------------------------
 
 fn make_gcode_ir(e_values: &[f32]) -> GCodeIR {
-    let mut commands = Vec::new();
+    make_gcode_ir_with_mode(e_values, false)
+}
+
+/// `absolute_e_mode = false` matches `DefaultGCodeSerializer::new()` (M83);
+/// `absolute_e_mode = true` matches `with_extrusion_mode(false)` (M82).
+fn make_gcode_ir_with_mode(e_values: &[f32], absolute_e_mode: bool) -> GCodeIR {
+    // The production emitter inserts `ExtrusionMode` at the head of the
+    // command list — see `DefaultGCodeEmitter::emit` — so the serializer
+    // only emits M82/M83 when it sees that command in the IR. Tests that
+    // hit the serializer directly must construct that header themselves.
+    let mut commands: Vec<GCodeCommand> = vec![GCodeCommand::ExtrusionMode {
+        absolute: absolute_e_mode,
+    }];
     for (i, &e) in e_values.iter().enumerate() {
         commands.push(GCodeCommand::Move {
             x: Some(i as f32 + 1.0),
@@ -105,7 +117,7 @@ fn default_is_relative_m83() {
 #[test]
 fn absolute_mode_when_flag_false() {
     let e_vals: Vec<f32> = vec![0.12345, 0.24690, 0.37035];
-    let ir = make_gcode_ir(&e_vals);
+    let ir = make_gcode_ir_with_mode(&e_vals, true);
     let serializer = DefaultGCodeSerializer::with_extrusion_mode(false);
     let output = serializer
         .serialize_gcode(&ir)
@@ -329,7 +341,10 @@ fn rejects_m82_in_relative_mode() {
 
 #[test]
 fn rejects_m83_or_deltas_in_absolute_mode() {
-    let ir = make_gcode_ir(&[0.1, 0.2, 0.35]);
+    // Pair the IR's ExtrusionMode with the serializer's mode to model how the
+    // emitter prepares input for the serializer: emitter writes
+    // `ExtrusionMode { absolute: !relative }` matching the serializer flag.
+    let ir = make_gcode_ir_with_mode(&[0.1, 0.2, 0.35], true);
     let serializer = DefaultGCodeSerializer::with_extrusion_mode(false);
     let output = serializer
         .serialize_gcode(&ir)

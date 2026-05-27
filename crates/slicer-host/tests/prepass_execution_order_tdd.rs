@@ -121,6 +121,20 @@ fn blackboard_with_prereqs(mesh: MeshIR) -> Blackboard {
     }))
     .expect("commit_region_map must succeed");
 
+    // PrePass::SupportGeometry declares `SliceIR` as a required input slot.
+    // Production `PrePass::Slice` commits the per-layer `Vec<SliceIR>`; here
+    // we pre-seed empty entries so the `MissingRequiredPrepass { slot: SliceIR }`
+    // check in `execute_prepass` is satisfied without running an actual slice
+    // built-in. The test fixture covers ordering semantics, not geometry.
+    let stub_slices: Vec<slicer_ir::SliceIR> = (0..num_layers)
+        .map(|i| slicer_ir::SliceIR {
+            global_layer_index: i,
+            ..slicer_ir::SliceIR::default()
+        })
+        .collect();
+    bb.commit_slice_ir(Arc::new(stub_slices))
+        .expect("commit_slice_ir must succeed");
+
     bb
 }
 

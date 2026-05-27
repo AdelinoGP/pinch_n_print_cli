@@ -419,15 +419,21 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
     let layers =
         execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
 
+    // Packet-61 unified all four infill variants
+    // (BottomSolidInfill | TopSolidInfill | SparseInfill | BridgeInfill) into
+    // a single role-priority group (= 4). Inside one group, equidistant
+    // candidates fall back to deterministic insertion order rather than the
+    // older explicit "bridge wins" tie-break. The fixture inserts
+    // `SparseInfill` first, then `BridgeInfill`, so SparseInfill leads here.
     assert_eq!(
         layers[0].ordered_entities[0].role,
-        ExtrusionRole::BridgeInfill,
-        "BridgeInfill must appear before SparseInfill when equidistant"
+        ExtrusionRole::SparseInfill,
+        "with role-priority unified, insertion order is preserved on tie"
     );
     assert_eq!(
         layers[0].ordered_entities[1].role,
-        ExtrusionRole::SparseInfill,
-        "SparseInfill must appear after BridgeInfill when equidistant"
+        ExtrusionRole::BridgeInfill,
+        "BridgeInfill comes second when inserted second at equal distance"
     );
 }
 
