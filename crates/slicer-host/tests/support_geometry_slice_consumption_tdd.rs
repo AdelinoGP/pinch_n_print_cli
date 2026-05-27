@@ -354,3 +354,125 @@ fn per_object_support_layer_height_is_honored_by_execute_support_geometry() {
          got {b_count}"
     );
 }
+
+// ── DEV-062 regression: per-layer cadence for multi-region objects ────────────
+
+fn make_active_region_with_support_lh_and_rid(
+    object_id: &str,
+    region_id: slicer_ir::RegionId,
+    layer_height: f32,
+    support_layer_height_mm: f32,
+) -> ActiveRegion {
+    ActiveRegion {
+        region_id,
+        ..make_active_region_with_support_lh(object_id, layer_height, support_layer_height_mm)
+    }
+}
+
+/// DEV-062 regression: when an object carries ≥2 active regions per global
+/// layer, both `build_emit_schedule` and `execute_support_geometry` must
+/// collapse per-(object, emit-layer). Pre-fix:
+///   - The schedule accumulator advanced per region visit → emit at every
+///     model layer (12 entries instead of 6 across 3 emit-layers × 2 regions).
+///   - The `support_layer_index` counter incremented per region visit →
+///     `global_support_layer_index` values diverged between regions of the
+///     same emit-layer (0..11 instead of {0,0,1,1,2,2}).
+///
+/// Post-fix:
+///   - 6 entries (3 emit-layers × 2 regions = 6).
+///   - Each emit-layer's `global_support_layer_index` is shared by region 0
+///     and region 1; max index is 2.
+///   - Each emitted entry carries the SliceIR-pulled polygons (non-empty).
+#[test]
+fn per_layer_cadence_for_multi_region_object() {
+    let obj = "obj-multi-region";
+    let global_layers: Vec<GlobalLayer> = (0u32..6)
+        .map(|i| GlobalLayer {
+            index: i,
+            z: (i + 1) as f32 * 0.2,
+            active_regions: vec![
+                make_active_region_with_support_lh_and_rid(obj, 0, 0.2, 0.4),
+                make_active_region_with_support_lh_and_rid(obj, 1, 0.2, 0.4),
+            ],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        })
+        .collect();
+    let plan = LayerPlanIR {
+        global_layers,
+        object_participation: HashMap::new(),
+        ..Default::default()
+    };
+
+    // slice_vec carries both region polys at each layer so collect_polygons_at_z
+    // returns non-empty results for region 0 AND region 1.
+    let poly = unit_square(5.0);
+    let slice_vec: Vec<SliceIR> = (0u32..6)
+        .map(|i| SliceIR {
+            schema_version: slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
+            global_layer_index: i,
+            z: (i + 1) as f32 * 0.2,
+            regions: vec![
+                SlicedRegion {
+                    object_id: obj.to_string(),
+                    region_id: 0,
+                    polygons: vec![poly.clone()],
+                    infill_areas: vec![poly.clone()],
+                    ..Default::default()
+                },
+                SlicedRegion {
+                    object_id: obj.to_string(),
+                    region_id: 1,
+                    polygons: vec![poly.clone()],
+                    infill_areas: vec![poly.clone()],
+                    ..Default::default()
+                },
+            ],
+        })
+        .collect();
+
+    let ir = support_geometry::execute_support_geometry(&plan, &slice_vec)
+        .expect("execute_support_geometry must succeed");
+
+    let entries: Vec<_> = ir
+        .entries
+        .iter()
+        .filter(|(k, _)| k.global_support_layer_index != u32::MAX && k.object_id == obj)
+        .collect();
+    assert_eq!(
+        entries.len(),
+        6,
+        "expected 3 emit-layers × 2 regions = 6 entries; got {} (pre-fix: 12)",
+        entries.len()
+    );
+    let max_idx = entries
+        .iter()
+        .map(|(k, _)| k.global_support_layer_index)
+        .max()
+        .unwrap_or(0);
+    assert_eq!(
+        max_idx, 2,
+        "expected per-(object,emit-layer) indices 0..=2; got 0..={max_idx} (pre-fix: 0..=11)"
+    );
+    // Each emit-layer index must carry BOTH region 0 and region 1.
+    for idx in 0..=2 {
+        let region_ids: std::collections::BTreeSet<u64> = entries
+            .iter()
+            .filter(|(k, _)| k.global_support_layer_index == idx)
+            .map(|(k, _)| k.region_id)
+            .collect();
+        assert_eq!(
+            region_ids,
+            std::collections::BTreeSet::from([0u64, 1u64]),
+            "global_support_layer_index {idx} must carry both region 0 and region 1; got {region_ids:?}"
+        );
+    }
+    // Polygon-consumption assertion: at least one (object, region, emit-layer)
+    // entry must carry the SliceIR-pulled polygons, locking the per-region
+    // consumer contract documented at slicer-ir/src/slice_ir.rs SupportGeometryIR.entries.
+    let any_non_empty = entries.iter().any(|(_, polys)| !polys.is_empty());
+    assert!(
+        any_non_empty,
+        "at least one per-region entry must carry SliceIR polygons; all entries were empty"
+    );
+}

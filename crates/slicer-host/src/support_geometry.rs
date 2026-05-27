@@ -67,18 +67,48 @@ const DEFAULT_SUPPORT_TOP_Z_DISTANCE_MM: f32 = 5.0;
 ///
 /// Each object's accumulator resets after each emission, so coarser support
 /// layers are spaced correctly even when the model uses variable layer heights.
+///
+/// **Multi-region collapse**: when an object has ≥2 active regions on the same
+/// global layer, the accumulator advances exactly once per `(object, layer)`
+/// using the first-encountered region's `support_layer_height_mm` /
+/// `effective_layer_height` (per the per-object invariant for
+/// `support_layer_height_mm` documented at
+/// `crates/slicer-ir/src/resolved_config.rs`). A `debug_assert!` enforces
+/// inter-region agreement on the same layer; per-region cadence is a future
+/// follow-up (see `handoff-per-region-support-layer-height.md`).
 pub(crate) fn build_emit_schedule(layer_plan: &LayerPlanIR) -> HashMap<String, BTreeSet<u32>> {
     let mut acc: HashMap<String, f32> = HashMap::new();
     let mut schedule: HashMap<String, BTreeSet<u32>> = HashMap::new();
     for gl in &layer_plan.global_layers {
+        // Collapse per-(object, layer): first-encountered region's target/height
+        // wins. The debug_assert below enforces inter-region agreement on
+        // support_layer_height_mm for the same object on the same layer.
+        let mut seen: HashMap<&str, (f32, f32)> = HashMap::new();
         for region in &gl.active_regions {
-            let oid = &region.object_id;
+            let oid = region.object_id.as_str();
             let target = region.resolved_config.support_layer_height_mm;
             let h = region.effective_layer_height;
-            let a = acc.entry(oid.clone()).or_insert(0.0);
+            match seen.get(oid) {
+                None => {
+                    seen.insert(oid, (target, h));
+                }
+                Some(&(existing_target, _existing_h)) => {
+                    debug_assert!(
+                        (existing_target - target).abs() < f32::EPSILON,
+                        "support_layer_height_mm disagreement among regions of \
+                         object '{}' on layer {}; per-object invariant violated — \
+                         see resolved_config.rs support_layer_height_mm doc",
+                        oid,
+                        gl.index
+                    );
+                }
+            }
+        }
+        for (oid, (target, h)) in seen {
+            let a = acc.entry(oid.to_string()).or_insert(0.0);
             *a += h;
             if target == 0.0 || *a >= target {
-                schedule.entry(oid.clone()).or_default().insert(gl.index);
+                schedule.entry(oid.to_string()).or_default().insert(gl.index);
                 *a = 0.0;
             }
         }
@@ -112,6 +142,11 @@ pub fn execute_support_geometry(
     let mut support_layer_index: HashMap<String, u32> = HashMap::new();
 
     for global_layer in &layer_plan.global_layers {
+        // Per-(object, emit-layer) idx assigned this layer. Ensures multi-region
+        // objects emit one shared global_support_layer_index per (object,
+        // emit-layer), matching the documented "Per-(layer, object, region)"
+        // entry-key semantics at slicer-ir/src/slice_ir.rs SupportGeometryIR.entries.
+        let mut layer_idx_for_object: HashMap<String, u32> = HashMap::new();
         for region in &global_layer.active_regions {
             let oid = &region.object_id;
 
@@ -120,9 +155,18 @@ pub fn execute_support_geometry(
                 .map_or(false, |s| s.contains(&global_layer.index));
 
             if should_emit {
-                let idx = support_layer_index.entry(oid.clone()).or_insert(0);
+                let assigned = match layer_idx_for_object.get(oid.as_str()) {
+                    Some(&idx) => idx,
+                    None => {
+                        let counter = support_layer_index.entry(oid.clone()).or_insert(0);
+                        let idx = *counter;
+                        *counter += 1;
+                        layer_idx_for_object.insert(oid.clone(), idx);
+                        idx
+                    }
+                };
                 let key = SupportGeometryKey {
-                    global_support_layer_index: *idx,
+                    global_support_layer_index: assigned,
                     object_id: oid.clone(),
                     region_id: region.region_id,
                 };
@@ -137,7 +181,6 @@ pub fn execute_support_geometry(
                 );
 
                 entries.entry(key).or_default().extend(polygons);
-                *idx += 1;
             }
         }
     }
