@@ -141,15 +141,7 @@ pub fn execute_support_geometry(
 
     let mut entries: HashMap<SupportGeometryKey, Vec<ExPolygon>> = HashMap::new();
 
-    // Per-object support layer index counters (each object has its own sequence).
-    let mut support_layer_index: HashMap<String, u32> = HashMap::new();
-
     for global_layer in &layer_plan.global_layers {
-        // Per-(object, emit-layer) idx assigned this layer. Ensures multi-region
-        // objects emit one shared global_support_layer_index per (object,
-        // emit-layer), matching the documented "Per-(layer, object, region)"
-        // entry-key semantics at slicer-ir/src/slice_ir.rs SupportGeometryIR.entries.
-        let mut layer_idx_for_object: HashMap<String, u32> = HashMap::new();
         for region in &global_layer.active_regions {
             let oid = &region.object_id;
 
@@ -158,23 +150,18 @@ pub fn execute_support_geometry(
                 .map_or(false, |s| s.contains(&global_layer.index));
 
             if should_emit {
-                let assigned = match layer_idx_for_object.get(oid.as_str()) {
-                    Some(&idx) => idx,
-                    None => {
-                        let counter = support_layer_index.entry(oid.clone()).or_insert(0);
-                        let idx = *counter;
-                        *counter += 1;
-                        layer_idx_for_object.insert(oid.clone(), idx);
-                        idx
-                    }
-                };
+                // global_support_layer_index is the MODEL layer index. The
+                // support-planner guest at modules/core-modules/support-planner/
+                // src/lib.rs:211 reads this field as an index into
+                // collision_cache: Vec<LayerCollisionCache> (sized by
+                // layer_plan.layers.len()). Anything other than the model layer
+                // index here misaligns the collision cache (DEV-NNN, Q5c).
                 let key = SupportGeometryKey {
-                    global_support_layer_index: assigned,
+                    global_support_layer_index: global_layer.index,
                     object_id: oid.clone(),
                     region_id: region.region_id,
                 };
 
-                // Collect polygons at Z from the prepass-committed SliceIR.
                 let polygons = collect_polygons_at_z(
                     slice_vec,
                     layer_plan,

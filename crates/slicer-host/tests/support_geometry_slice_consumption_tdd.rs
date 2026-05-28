@@ -376,12 +376,17 @@ fn make_active_region_with_support_lh_and_rid(
 ///     model layer (12 entries instead of 6 across 3 emit-layers × 2 regions).
 ///   - The `support_layer_index` counter incremented per region visit →
 ///     `global_support_layer_index` values diverged between regions of the
-///     same emit-layer (0..11 instead of {0,0,1,1,2,2}).
+///     same emit-layer.
+///
+/// Post-Q5c (DEV-NNN): `global_support_layer_index` is the model layer index
+/// directly (consumed as such by support-planner/src/lib.rs:211). With
+/// `support_layer_height_mm = 0.4` and 0.2mm model layers, the emit layers
+/// are model indices {1, 3, 5}. Two regions per emit-layer share that index.
 ///
 /// Post-fix:
 ///   - 6 entries (3 emit-layers × 2 regions = 6).
 ///   - Each emit-layer's `global_support_layer_index` is shared by region 0
-///     and region 1; max index is 2.
+///     and region 1; the indices set is exactly {1, 3, 5}.
 ///   - Each emitted entry carries the SliceIR-pulled polygons (non-empty).
 #[test]
 fn per_layer_cadence_for_multi_region_object() {
@@ -445,17 +450,17 @@ fn per_layer_cadence_for_multi_region_object() {
         "expected 3 emit-layers × 2 regions = 6 entries; got {} (pre-fix: 12)",
         entries.len()
     );
-    let max_idx = entries
+    let idx_set: std::collections::BTreeSet<u32> = entries
         .iter()
         .map(|(k, _)| k.global_support_layer_index)
-        .max()
-        .unwrap_or(0);
+        .collect();
     assert_eq!(
-        max_idx, 2,
-        "expected per-(object,emit-layer) indices 0..=2; got 0..={max_idx} (pre-fix: 0..=11)"
+        idx_set,
+        std::collections::BTreeSet::from([1u32, 3, 5]),
+        "expected model-layer indices {{1, 3, 5}} (post-Q5c); got {idx_set:?}"
     );
     // Each emit-layer index must carry BOTH region 0 and region 1.
-    for idx in 0..=2 {
+    for idx in [1u32, 3, 5] {
         let region_ids: std::collections::BTreeSet<u64> = entries
             .iter()
             .filter(|(k, _)| k.global_support_layer_index == idx)
@@ -474,5 +479,59 @@ fn per_layer_cadence_for_multi_region_object() {
     assert!(
         any_non_empty,
         "at least one per-region entry must carry SliceIR polygons; all entries were empty"
+    );
+}
+
+// ── Q5c regression: global_support_layer_index = model layer index ────────────
+
+/// `global_support_layer_index` must be the model layer index that the
+/// `support-planner` guest at `modules/core-modules/support-planner/src/lib.rs:211`
+/// uses to index into `collision_cache: Vec<LayerCollisionCache>` (sized by
+/// `layer_plan.layers.len()`). Before Q5c this field was a per-object sequential
+/// counter (0, 1, 2, ...) that did NOT equal the model layer index for any
+/// `support_layer_height_mm > 0` configuration. The guest then placed support
+/// collision polygons against the wrong model layers.
+///
+/// Fixture: 6 model layers (0.2 mm each), one object with
+/// `support_layer_height_mm = 0.4` → emits at model layers 1, 3, 5.
+/// Pre-fix the producer emits indices `[0, 1, 2]` (sequential counter).
+/// Post-fix the producer emits indices `[1, 3, 5]` (matching model layers).
+#[test]
+fn global_support_layer_index_equals_model_layer_index() {
+    let obj = "obj-supp";
+    let global_layers: Vec<GlobalLayer> = (0u32..6)
+        .map(|i| GlobalLayer {
+            index: i,
+            z: (i + 1) as f32 * 0.2,
+            active_regions: vec![make_active_region_with_support_lh(obj, 0.2, 0.4)],
+            has_nonplanar: false,
+            is_sync_layer: false,
+        })
+        .collect();
+    let plan = LayerPlanIR {
+        global_layers,
+        object_participation: HashMap::new(),
+        ..Default::default()
+    };
+    let poly = unit_square(5.0);
+    let slice_vec: Vec<SliceIR> = (0u32..6)
+        .map(|i| slice_with_polygon(i, (i + 1) as f32 * 0.2, obj, poly.clone()))
+        .collect();
+
+    let ir = support_geometry::execute_support_geometry(&plan, &slice_vec)
+        .expect("execute_support_geometry must succeed");
+
+    let mut indices: Vec<u32> = ir
+        .entries
+        .keys()
+        .filter(|k| k.global_support_layer_index != u32::MAX && k.object_id == obj)
+        .map(|k| k.global_support_layer_index)
+        .collect();
+    indices.sort();
+    assert_eq!(
+        indices,
+        vec![1, 3, 5],
+        "global_support_layer_index must equal model layer index (consumed as such by \
+         support-planner/src/lib.rs:211); got {indices:?} (pre-fix: [0, 1, 2])"
     );
 }

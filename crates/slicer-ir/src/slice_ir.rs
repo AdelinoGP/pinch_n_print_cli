@@ -953,7 +953,10 @@ impl Default for SupportPlanIR {
 /// Key uniquely identifying one support geometry entry.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SupportGeometryKey {
-    /// u32::MAX sentinel = intermediate model-resolution layer.
+    /// Model layer index that this support geometry entry applies to.
+    /// `u32::MAX` sentinel = intermediate model-resolution layer.
+    /// Consumers (e.g. `support-planner/src/lib.rs:211`) index
+    /// `Vec<LayerCollisionCache>` directly with this value.
     pub global_support_layer_index: u32,
     /// Object this entry belongs to.
     pub object_id: ObjectId,
