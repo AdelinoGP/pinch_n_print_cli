@@ -108,7 +108,10 @@ pub(crate) fn build_emit_schedule(layer_plan: &LayerPlanIR) -> HashMap<String, B
             let a = acc.entry(oid.to_string()).or_insert(0.0);
             *a += h;
             if target == 0.0 || *a >= target {
-                schedule.entry(oid.to_string()).or_default().insert(gl.index);
+                schedule
+                    .entry(oid.to_string())
+                    .or_default()
+                    .insert(gl.index);
                 *a = 0.0;
             }
         }
