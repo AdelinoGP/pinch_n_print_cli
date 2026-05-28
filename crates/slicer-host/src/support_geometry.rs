@@ -71,18 +71,20 @@ const DEFAULT_SUPPORT_TOP_Z_DISTANCE_MM: f32 = 5.0;
 /// **Multi-region collapse**: when an object has ≥2 active regions on the same
 /// global layer, the accumulator advances exactly once per `(object, layer)`
 /// using the first-encountered region's `support_layer_height_mm` /
-/// `effective_layer_height` (per the per-object invariant for
-/// `support_layer_height_mm` documented at
-/// `crates/slicer-ir/src/resolved_config.rs`). A `debug_assert!` enforces
-/// inter-region agreement on the same layer; per-region cadence is a future
-/// follow-up (see `handoff-per-region-support-layer-height.md`).
+/// `effective_layer_height`. `support_layer_height_mm` is a **per-object**
+/// config key (`crates/slicer-ir/src/resolved_config.rs §support_layer_height_mm`)
+/// and a `debug_assert!` here enforces inter-region agreement on the same layer.
+/// Per-region cadence was evaluated and explicitly scoped out (see DEV-064);
+/// the per-object invariant is the intended final contract, not a transitional
+/// placeholder.
 pub(crate) fn build_emit_schedule(layer_plan: &LayerPlanIR) -> HashMap<String, BTreeSet<u32>> {
     let mut acc: HashMap<String, f32> = HashMap::new();
     let mut schedule: HashMap<String, BTreeSet<u32>> = HashMap::new();
     for gl in &layer_plan.global_layers {
         // Collapse per-(object, layer): first-encountered region's target/height
-        // wins. The debug_assert below enforces inter-region agreement on
-        // support_layer_height_mm for the same object on the same layer.
+        // wins. `support_layer_height_mm` is a per-object config (DEV-064 scope-out
+        // of per-region cadence); the debug_assert below enforces inter-region
+        // agreement on the same object/layer to surface mis-stamped overlays.
         let mut seen: HashMap<&str, (f32, f32)> = HashMap::new();
         for region in &gl.active_regions {
             let oid = region.object_id.as_str();
