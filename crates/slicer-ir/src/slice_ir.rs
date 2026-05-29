@@ -682,7 +682,7 @@ impl ConfigView {
 
     /// Typed read: `f64` value with subnormal normalization
     /// (subnormals are coerced to `0.0`), matching the WIT boundary
-    /// behavior in `slicer-host::wit_host::normalize_subnormal_boundary`
+    /// behavior in `slicer-runtime::wit_host::normalize_subnormal_boundary`
     /// and the schema parser's `normalize_subnormal`.
     /// Returns `None` if missing/other type.
     #[must_use]

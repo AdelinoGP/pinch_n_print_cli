@@ -1721,6 +1721,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
+name = "pnp-cli"
+version = "0.1.0"
+dependencies = [
+ "assert_cmd",
+ "clap",
+ "predicates",
+ "serde",
+ "serde_json",
+ "slicer-ir",
+ "slicer-runtime",
+ "slicer-schema",
+ "stl_io",
+ "tempfile",
+ "toml 0.8.23",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2400,17 +2417,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
-name = "slicer-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "serde_json",
- "slicer-schema",
- "tempfile",
- "toml 0.8.23",
-]
-
-[[package]]
 name = "slicer-core"
 version = "0.1.0"
 dependencies = [
@@ -2437,7 +2443,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "slicer-host"
+name = "slicer-ir"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "serde",
+ "serde_json",
+ "static_assertions",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "slicer-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "slicer-ir",
+ "slicer-schema",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "slicer-runtime"
 version = "0.1.0"
 dependencies = [
  "assert_cmd",
@@ -2458,6 +2486,7 @@ dependencies = [
  "slicer-core",
  "slicer-helpers",
  "slicer-ir",
+ "slicer-schema",
  "slicer-sdk",
  "stl_io",
  "support-planner",
@@ -2470,28 +2499,6 @@ dependencies = [
  "wat",
  "wipe-tower",
  "zip",
-]
-
-[[package]]
-name = "slicer-ir"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "serde",
- "serde_json",
- "static_assertions",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "slicer-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "slicer-ir",
- "slicer-schema",
- "syn 2.0.117",
 ]
 
 [[package]]

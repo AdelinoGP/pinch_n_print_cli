@@ -158,6 +158,7 @@ Last updated: 2026-05-08
 - [x] TASK-207: Create parent directories for --output and --report paths
 - [x] TASK-208: Stamp config_delta.fields from per-object modifier_volumes into RegionPlan.config.extensions via overlay_resolved (subtype-filtered, global-per-object scope); add config-extensions-driven required_tool fallback in layer_executor.rs. (68_extruder-per-modifier-gcode)
 - [x] TASK-209: Integration tests covering extruder/fuzzy_skin stamping, T0/T1 GCode emission (partial-pipeline synthetic harness), subtype-only no-op, conflicting modifier priority, and AC-Filter regression guard. (68_extruder-per-modifier-gcode)
+- [x] TASK-213 — Merge slicer-host and slicer-cli into a single pnp_cli binary; rename slicer-host crate → slicer-runtime (library only); extract run_slice() library API; externalise host built-ins onto Producer trait reaching dag_cli; consolidate manifest validator constants into slicer-schema. **Closed 2026-05-28 via packet 69_pnp-cli-unification.**
 
 ### Workstream 4 — Progress events and Python bridge coverage
 

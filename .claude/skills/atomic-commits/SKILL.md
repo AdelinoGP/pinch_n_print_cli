@@ -82,7 +82,7 @@ Partition every changed file (tracked and untracked) into named groups. A group 
 - Spec / doc-only changes from code changes — docs are never mixed with implementation.
 - Test-only changes from production code when the tests are standalone additions to an existing feature.
 - Config (`.toml`) changes from Rust source when the config change is the entire commit (e.g. adding a new parameter key).
-- Changes in different pipeline tiers (slicer-ir vs. slicer-host vs. a WASM module) when they are independent — unless they share an IR type boundary that was introduced in this batch.
+- Changes in different pipeline tiers (slicer-ir vs. slicer-runtime vs. a WASM module) when they are independent — unless they share an IR type boundary that was introduced in this batch.
 - Untracked test files that exercise a specific feature should travel with that feature's implementation commit.
 
 **One group = one concern.** If a group description requires "and", split it unless the "and" describes a single indivisible contract (e.g. "add `LiveRetraction` to IR and wire it into dispatch").
@@ -96,7 +96,7 @@ Group: <short label>
 Files: <list of files>
 Rationale: <one sentence explaining why these belong together>
 Commit type: feat | fix | test | docs | refactor | chore
-Scope: <crate or module name, e.g. slicer-ir, slicer-host, path-optimization-default>
+Scope: <crate or module name, e.g. slicer-ir, slicer-runtime, pnp-cli, path-optimization-default>
 Message: <type(scope): imperative summary under 72 chars>
 Body: <optional: what changed and why, if the subject line is insufficient>
 ```
@@ -181,7 +181,7 @@ Follow the project's conventional-commit style observed in `git log`:
 
 - **Format:** `type(scope): imperative verb phrase`
 - **Types:** `feat`, `fix`, `test`, `docs`, `refactor`, `chore`
-- **Scope examples:** `slicer-ir`, `slicer-host`, `path-optimization-default`, `packets`, `blackboard`, `dispatch`
+- **Scope examples:** `slicer-ir`, `slicer-runtime`, `pnp-cli`, `path-optimization-default`, `packets`, `blackboard`, `dispatch`
 - **Subject line:** ≤72 characters, present tense, no trailing period
 - **Body:** optional; explain *what* and *why*, not *how*
 - **Never mention:** issue numbers, PR numbers, or the words "various" / "misc" / "cleanup" without specifics

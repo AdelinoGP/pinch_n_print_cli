@@ -232,7 +232,7 @@ impl WipeTower {
     /// 3. Prime entity (positive E equal to purge volume)
     ///
     /// The retract that physically must precede `T<n>` is synthesized
-    /// host-side in `crates/slicer-host/src/gcode_emit.rs` because
+    /// host-side in `crates/slicer-runtime/src/gcode_emit.rs` because
     /// `insert_entity_at` positions module entities AFTER the tool-change
     /// reference index, while a correct retract must come BEFORE it. The host
     /// emitter consults `resolved_config.retract_length` for the negative-E

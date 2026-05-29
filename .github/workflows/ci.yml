@@ -44,9 +44,9 @@ jobs:
       - name: Build
         run: cargo build --workspace
       - name: Test Core (narrow)
-        run: cargo test -p slicer-host --test core_module_ir_access_contract_tdd
+        run: cargo test -p slicer-runtime --test core_module_ir_access_contract_tdd
       - name: Test All Crates (not workspace)
-        run: cargo test -p slicer-host && cargo test -p slicer-cli && cargo test -p slicer-helpers
+        run: cargo test -p slicer-runtime && cargo test -p pnp-cli && cargo test -p slicer-helpers
 
   wasm:
     name: WASM Modules

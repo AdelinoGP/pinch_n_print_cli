@@ -1,13 +1,13 @@
 [workspace]
 members = [
-    "crates/slicer-host",
+    "crates/pnp-cli",
+    "crates/slicer-runtime",
     "crates/slicer-core",
     "crates/slicer-ir",
     "crates/slicer-macros",
     "crates/slicer-schema",
     "crates/slicer-sdk",
     "crates/slicer-test",
-    "cli/slicer-cli",
     "crates/slicer-helpers",
     "modules/core-modules/layer-planner-default",
     "modules/core-modules/classic-perimeters",
@@ -60,7 +60,7 @@ truck-modeling = "0.6"
 clap = "4.6.1"
 
 # Python bridge (embedded interpreter for TextPostProcess modules; see
-# crates/slicer-host/src/python_bridge.rs). `auto-initialize` causes pyo3 to
+# crates/slicer-runtime/src/python_bridge.rs). `auto-initialize` causes pyo3 to
 # call Py_Initialize on first `Python::with_gil`; `extension-module` is
 # intentionally NOT set because the host embeds the interpreter rather
 # than being loaded as a Python extension.

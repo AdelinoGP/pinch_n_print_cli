@@ -1,6 +1,6 @@
 ---
 name: debug-pipeline
-description: Investigate a slow or failing slice and introspect the static module DAG using `slicer-host run --instrument-stderr`, `slicer-host dag <subcommand>`, and `slicer-host diagnose`. Use when the user asks "which module is slow", "why does X depend on Y", "diagnose modules", "inspect the DAG", "investigate slice timing", "what wires X to Y", or describes a perf regression in the slicer pipeline.
+description: Investigate a slow or failing slice and introspect the static module DAG using `pnp_cli slice --instrument-stderr`, `pnp_cli dag <subcommand>`, and `pnp_cli module diagnose`. Use when the user asks "which module is slow", "why does X depend on Y", "diagnose modules", "inspect the DAG", "investigate slice timing", "what wires X to Y", or describes a perf regression in the slicer pipeline.
 type: anthropic-skill
 version: "1.0"
 metadata:
@@ -9,9 +9,9 @@ metadata:
 
 # Debug the slicer pipeline
 
-The slicer-host binary exposes two zero-WASM CLI surfaces and one
+The `pnp_cli` binary exposes two zero-WASM CLI surfaces and one
 instrumented run mode for live debugging. Pick the cheapest tool that
-answers the question — `dag` and `diagnose` never compile WASM, so they
+answers the question — `dag` and `module diagnose` never compile WASM, so they
 return in well under 100 ms even on large module sets.
 
 Spec: `docs/specs/agent-cli-debugging.md`.
@@ -22,15 +22,15 @@ Agent guide: `docs/17_agent_debugging.md`.
 
 ## Step 1 — Pick the right tool
 
-| Question                                  | Tool                                              |
-|-------------------------------------------|---------------------------------------------------|
-| "Which module is slow right now?"         | `run --instrument-stderr`, watch `module_complete`|
-| "Is WASM memory growing on layer N?"      | `run --instrument-stderr`, watch `wasm_peak_kb`   |
-| "Why does stage X serialize to stage Y?"  | `dag stage <id>`                                  |
-| "What depends on `<module>`?"             | `dag depends <module>`                            |
-| "Is this manifest tree valid?"            | `diagnose`                                        |
-| "What stages exist?"                      | `dag stages`                                      |
-| "Who holds claim X? Are they swappable?"  | `dag claims`                                      |
+| Question                                  | Tool                                                    |
+|-------------------------------------------|---------------------------------------------------------|
+| "Which module is slow right now?"         | `pnp_cli slice --instrument-stderr`, watch `module_complete`|
+| "Is WASM memory growing on layer N?"      | `pnp_cli slice --instrument-stderr`, watch `wasm_peak_kb`   |
+| "Why does stage X serialize to stage Y?"  | `pnp_cli dag stage <id>`                                |
+| "What depends on `<module>`?"             | `pnp_cli dag depends <module>`                          |
+| "Is this manifest tree valid?"            | `pnp_cli module diagnose`                               |
+| "What stages exist?"                      | `pnp_cli dag stages`                                    |
+| "Who holds claim X? Are they swappable?"  | `pnp_cli dag claims`                                    |
 
 Never run a full slice just to read the DAG — use the `dag` subcommands.
 
@@ -39,7 +39,7 @@ Never run a full slice just to read the DAG — use the `dag` subcommands.
 ## Step 2 — Live timing
 
 ```
-slicer-host run \
+pnp_cli slice \
     --model resources/benchy.stl \
     --module-dir modules/core-modules \
     --output /tmp/out.gcode \
@@ -64,8 +64,8 @@ grep '"event":"module_complete"' /tmp/events.jsonl \
 Then drill in:
 
 ```
-slicer-host dag depends "<that-module-id>" --module-dir modules/core-modules
-slicer-host dag stage "<its-stage>"          --module-dir modules/core-modules
+pnp_cli dag depends "<that-module-id>" --module-dir modules/core-modules
+pnp_cli dag stage "<its-stage>"          --module-dir modules/core-modules
 ```
 
 If the wiring looks fine, the cost is intrinsic to the module: investigate
@@ -77,7 +77,7 @@ the module owners.
 ## Step 4 — Validate the module tree
 
 ```
-slicer-host diagnose --module-dir modules/core-modules
+pnp_cli module diagnose --module-dir modules/core-modules
 ```
 
 Exit codes: `0` clean, `1` errors, `2` unreadable files. JSON shape:

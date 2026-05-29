@@ -9,9 +9,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 cargo build --workspace
 cargo clippy --workspace -- -D warnings              # required before committing
-cargo test -p slicer-host --test core_module_ir_access_contract_tdd   # narrow, targeted run (preferred)
+cargo test -p slicer-runtime --test core_module_ir_access_contract_tdd   # narrow, targeted run (preferred)
 ./modules/core-modules/build-core-modules.sh         # build WASM core modules (needs wasm32 target)
-cargo run --bin slicer-cli --release --slice --input model.stl --output model.gcode
+cargo run --bin pnp_cli --release -- slice --input model.stl --output model.gcode
 ```
 
 ### Benchmarks (slow; not in CI)
@@ -21,15 +21,15 @@ cargo run --bin slicer-cli --release --slice --input model.stl --output model.gc
 cargo bench -p slicer-core    --bench polygon_ops
 cargo bench -p slicer-helpers --bench mesh_ops
 # Host:
-cargo bench -p slicer-host    --bench pipeline       # instrumentation overhead
-cargo bench -p slicer-host    --bench per_stage      # plan-freeze serial-edge helpers
-cargo bench -p slicer-host    --bench wasm_modules   # v1 stub; needs ./modules/core-modules/build-core-modules.sh
+cargo bench -p slicer-runtime --bench pipeline       # instrumentation overhead
+cargo bench -p slicer-runtime --bench per_stage      # plan-freeze serial-edge helpers
+cargo bench -p slicer-runtime --bench wasm_modules   # v1 stub; needs ./modules/core-modules/build-core-modules.sh
 ```
 
 ### HTML slicer report (debugging)
 
 ```bash
-cargo run --bin slicer-host --release -- run \
+cargo run --bin pnp_cli --release -- slice \
     --model resources/benchy.stl \
     --module-dir modules/core-modules \
     --output /tmp/out.gcode \
@@ -37,6 +37,14 @@ cargo run --bin slicer-host --release -- run \
 ```
 
 See `docs/16_slicer_report.md` for format, allocator contract, and known v1 limitations.
+
+## Post-Merge Naming (Packet 69)
+
+post-merge naming reference for all agents and tools:
+
+- `slicer-host` library → `slicer-runtime` (crate name)
+- `slicer-cli` crate → deleted (verbs absorbed into `pnp_cli`)
+- `slicer` / `slicer-host` binaries → `pnp_cli`
 
 ## Test Discipline (agents must follow)
 
@@ -120,4 +128,4 @@ Read these directly rather than relying on summaries — they are kept current a
 - `docs/12_architecture_gate_metrics.md` — objective thresholds for the gate.
 - `docs/13_slicer_helpers_crate.md` — polygon/geometry utilities in `slicer-helpers`.
 - `docs/14_deviation_audit_history.md` + `docs/DEVIATION_LOG.md` — registered deviations from architecture docs.
-- `docs/17_agent_debugging.md` — agent-facing guide for `slicer-host run --instrument-stderr`, `dag <subcommand>`, and `diagnose`. Paired skill: `.claude/skills/debug-pipeline/SKILL.md`; subagent: `.claude/agents/debug-pipeline.md`.
+- `docs/17_agent_debugging.md` — agent-facing guide for `pnp_cli slice --instrument-stderr`, `pnp_cli dag <subcommand>`, and `pnp_cli module diagnose`. Paired skill: `.claude/skills/debug-pipeline/SKILL.md`; subagent: `.claude/agents/debug-pipeline.md`.

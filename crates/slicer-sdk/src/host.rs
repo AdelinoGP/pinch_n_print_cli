@@ -2,7 +2,7 @@
 //!
 //! These wrappers are the SDK-side entry points that mirror the WIT
 //! `host-services` interface (see `wit/host-api.wit` and
-//! `crates/slicer-host/src/wit_host.rs`). They are no longer silent
+//! `crates/slicer-runtime/src/wit_host.rs`). They are no longer silent
 //! placeholders — each wrapper either performs the same work the host
 //! does on the WASM boundary, or returns an explicit, observable signal
 //! when the underlying service is unavailable.

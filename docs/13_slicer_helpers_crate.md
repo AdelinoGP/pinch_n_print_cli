@@ -3,13 +3,12 @@
 > **Status (as of this writing).**
 > - The `repair`, `decimate`, and STEP import Rust APIs in this document are
 >   implemented and shipped in `crates/slicer-helpers/src/`.
-> - The CLI subcommands described below are exposed via the existing
->   **`slicer-host`** binary (not a separate `pnp` binary, despite earlier
->   drafts using that name). The live invocations are `slicer-host repair`,
->   `slicer-host decimate`, and `slicer-host import`. The `slice` operation
->   continues to be served by the pre-existing `slicer-host run` subcommand.
+> - The CLI subcommands described below are exposed via the **`pnp_cli`**
+>   binary (Packet 69). The live invocations are `pnp_cli mesh repair`,
+>   `pnp_cli mesh decimate`, and `pnp_cli mesh import`. The `slice` operation
+>   is served by the `pnp_cli slice` subcommand.
 > - On-disk **STL** input and output are wired through. **OBJ** and **3MF**
->   inputs are accepted via the existing `slicer-host` mesh loaders, but
+>   inputs are accepted via the existing `pnp_cli` mesh loaders, but
 >   OBJ/3MF *output* writers are not yet implemented — passing
 >   `--format obj` or `--format 3mf` (or `--output-format obj|3mf` to
 >   `import`) parses cleanly but fails at the write step with a clear
@@ -28,19 +27,19 @@ These operations are hosted here because they require native libraries or algori
 
 **In scope:**
 
-| Feature         | CLI subcommand          | Description                                                                       |
-|-----------------|-------------------------|-----------------------------------------------------------------------------------|
-| Mesh repair     | `slicer-host repair`    | Manifold fixing: degenerate removal, orientation normalization, open-edge closure |
-| Mesh decimation | `slicer-host decimate`  | QEM triangle-count reduction with configurable error budget                       |
-| STEP import     | `slicer-host import`    | STEP/STP → triangulated `MeshIR`, including unit normalization                    |
+| Feature         | CLI subcommand           | Description                                                                       |
+|-----------------|--------------------------|-----------------------------------------------------------------------------------|
+| Mesh repair     | `pnp_cli mesh repair`    | Manifold fixing: degenerate removal, orientation normalization, open-edge closure |
+| Mesh decimation | `pnp_cli mesh decimate`  | QEM triangle-count reduction with configurable error budget                       |
+| STEP import     | `pnp_cli mesh import`    | STEP/STP → triangulated `MeshIR`, including unit normalization                    |
 
 **Out of scope:**
 
 | Item                              | Reason                                                          |
 |-----------------------------------|-----------------------------------------------------------------|
-| STL / OBJ / 3MF import            | Handled by the host's existing format loaders in `slicer-host`  |
+| STL / OBJ / 3MF import            | Handled by the host's existing format loaders in `pnp_cli`      |
 | Per-layer geometry operations     | Pipeline module concerns using `slicer-core` and Clipper        |
-| WASM module execution             | Owned by `slicer-host` scheduler                                |
+| WASM module execution             | Owned by `slicer-runtime` scheduler                             |
 | Boolean modifier volume execution | Handled per-layer by `slicer-core` Clipper ops (pipeline stage) |
 | Any rendering or preview code     | Frontend (Unity) concern                                        |
 
@@ -84,7 +83,7 @@ crates/slicer-helpers/
 | `truck-stepio`  | Yes     | STEP parser (see §STEP Import)                                      |
 | `truck-meshing` | Yes     | BRep triangulation (see §STEP Import)                               |
 | `slicer-core`   | No      | Core is a peer crate; helpers must not create circular dependencies |
-| `slicer-host`   | No      | Host depends on helpers, not the reverse                            |
+| `slicer-runtime`| No      | Host depends on helpers, not the reverse                            |
 | `wasmtime`      | No      | No WASM runtime in this crate                                       |
 | Any GUI crate   | No      | Zero UI code                                                        |
 
@@ -183,10 +182,10 @@ pub enum RepairWarning {
 pub fn repair(mesh: MeshIR) -> Result<RepairResult, RepairError>
 ```
 
-### CLI Subcommand: `slicer-host repair`
+### CLI Subcommand: `pnp_cli mesh repair`
 
 ```
-slicer-host repair --input <path> --output <path> [--format <stl|obj|3mf>] [--stats]
+pnp_cli mesh repair --input <path> --output <path> [--format <stl|obj|3mf>] [--stats]
 
 Options:
   --input     Input mesh file (STL, OBJ, or 3MF)
@@ -298,10 +297,10 @@ pub fn drop_short_segments_mm(
 ) -> Vec<Point3WithWidth>;
 ```
 
-### CLI Subcommand: `slicer-host decimate`
+### CLI Subcommand: `pnp_cli mesh decimate`
 
 ```
-slicer-host decimate --input <path> --output <path>
+pnp_cli mesh decimate --input <path> --output <path>
                      (--target-count <n> | --target-ratio <0.0–1.0>)
                      [--max-error <f32>]
                      [--aggressive]
@@ -381,7 +380,7 @@ Vec<MeshIR>                   — one MeshIR per solid in the STEP file
 
 The triangulation tolerance passed to `truck-meshing` is fixed at **100 nm** (1 internal unit). This matches the coordinate system resolution and ensures no geometric detail finer than 1 internal unit is lost during tessellation.
 
-Finer tolerances produce more triangles without slicing benefit. Coarser tolerances may lose sharp edges on small features. The value is not user-configurable at the CLI level; use `slicer-host decimate` afterward to reduce triangle count if needed.
+Finer tolerances produce more triangles without slicing benefit. Coarser tolerances may lose sharp edges on small features. The value is not user-configurable at the CLI level; use `pnp_cli mesh decimate` afterward to reduce triangle count if needed.
 
 ### Output
 
@@ -436,10 +435,10 @@ pub fn import_step_with_options(
 ) -> Result<StepImportResult, StepImportError>
 ```
 
-### CLI Subcommand: `slicer-host import`
+### CLI Subcommand: `pnp_cli mesh import`
 
 ```
-slicer-host import --input <path.step|path.stp>
+pnp_cli mesh import --input <path.step|path.stp>
                    --output <path>
                    [--output-format <stl|obj|3mf>]
                    [--merge-components]
@@ -503,23 +502,21 @@ Warnings are **not** errors. Operations that produce warnings still return `Ok(r
 
 ## Integration with Host CLI
 
-The helpers are exposed via the existing `slicer-host` binary's clap
-subcommand surface. No new binary was introduced — `slicer-host` already
-hosts the STL/OBJ/3MF mesh loaders (`crates/slicer-host/src/model_loader.rs`)
-and the JSON-Lines emitter machinery (`crates/slicer-host/src/progress_events.rs`),
-so adding helper subcommands there avoided extracting either to a shared
-crate.
+The helpers are exposed via the `pnp_cli` binary's clap subcommand surface
+under the `mesh` verb. The `pnp_cli` binary hosts the STL/OBJ/3MF mesh
+loaders (`crates/slicer-runtime/src/model_loader.rs`) and the JSON-Lines
+emitter machinery (`crates/slicer-runtime/src/progress_events.rs`).
 
 ```
-slicer-host run           — full slicing pipeline (WASM modules, scheduler)
-slicer-host config-schema — query combined config schema from loaded modules
-slicer-host repair        — slicer_helpers::repair()
-slicer-host decimate      — slicer_helpers::decimate()
-slicer-host import        — slicer_helpers::import_step_with_options()
+pnp_cli slice             — full slicing pipeline (WASM modules, scheduler)
+pnp_cli module config-schema — query combined config schema from loaded modules
+pnp_cli mesh repair       — slicer_helpers::repair()
+pnp_cli mesh decimate     — slicer_helpers::decimate()
+pnp_cli mesh import       — slicer_helpers::import_step_with_options()
 ```
 
-The three new subcommands are implemented in
-`crates/slicer-host/src/helpers_cmd.rs`. They do not initialise the WASM
+The three mesh subcommands are implemented in
+`crates/slicer-runtime/src/helpers_cmd.rs`. They do not initialise the WASM
 runtime — they short-circuit before any module loading happens.
 
 When `--stats` is passed, each subcommand emits a sequence of line-delimited
@@ -530,7 +527,7 @@ distinct from the slice-pipeline `ProgressEvent` schema in
 other fields that do not apply to one-shot mesh operations). Event names
 are `start`, `warning` (zero or more), and `done`.
 
-Example output for `slicer-host repair --stats`:
+Example output for `pnp_cli mesh repair --stats`:
 
 ```jsonc
 {"event":"start","operation":"repair","input":"in.stl","output":"out.stl"}
@@ -597,7 +594,7 @@ These tasks extend the Phase B sequence in `./docs/07_implementation_status.md`.
 | TASK-056 | Write failing tests in `repair_tdd.rs`; implement `repair.rs` (all three phases); all tests pass                                                                                                                                                                     | D     | done   |
 | TASK-057 | Write failing tests in `decimate_tdd.rs`; implement `decimate.rs` via meshopt; all tests pass. Includes the post-decimation Phase 2 orientation pass and the `decimate_normalizes_winding_after_simplify` regression test.                                            | D     | done   |
 | TASK-058 | Create STEP test fixtures; write failing tests in `import_step_tdd.rs`; implement `import/step.rs` via truck; all tests pass. Includes `StepImportOptions { skip_repair }` + `import_step_with_options` for CLI `--no-repair`.                                        | D     | done   |
-| TASK-059 | Wire `slicer-host repair`, `slicer-host decimate`, `slicer-host import` subcommands (`crates/slicer-host/src/cli.rs` + `helpers_cmd.rs`); STL writer; JSONL `--stats` events; integration tests in `crates/slicer-host/tests/helpers_cli.rs`.                         | D     | done   |
+| TASK-059 | Wire `pnp_cli mesh repair`, `pnp_cli mesh decimate`, `pnp_cli mesh import` subcommands (`crates/slicer-runtime/src/helpers_cmd.rs`); STL writer; JSONL `--stats` events; integration tests in `crates/slicer-runtime/tests/helpers_cli.rs`.                           | D     | done   |
 | TASK-060 | Add OBJ and 3MF output writers; light up `--format obj` / `--format 3mf` / `--output-format obj|3mf` end-to-end. **See `docs/handoff_obj_3mf_writers.md` for the implementation handoff.**                                                                            | D     | open   |
 
 TASK-076 in Phase E ("File format loaders + admesh-based mesh repair integration") is superseded by TASK-056 for the repair component. TASK-076 retains responsibility for STL/OBJ/3MF host-side loaders only.

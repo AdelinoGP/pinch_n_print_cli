@@ -7,7 +7,7 @@
 - `modules/core-modules/*/src/**`, `modules/core-modules/*/Cargo.toml`, `modules/core-modules/*/wit-guest/**`
 - `test-guests/*/src/**`, `test-guests/*/Cargo.toml`
 
-**Skip** when the packet edits only host crates that are not in this list (e.g., `slicer-host` internal refactor with no IR/WIT/SDK change), or when the packet touches only docs/tests outside the WASM build path.
+**Skip** when the packet edits only host crates that are not in this list (e.g., `slicer-runtime` internal refactor with no IR/WIT/SDK change), or when the packet touches only docs/tests outside the WASM build path.
 
 **Where to include**: as a bullet in `design.md` §`Architecture Constraints` (NOT as its own section — it's one constraint among several). Add `<!-- snippet: wasm-staleness -->` on the line above the bullet.
 

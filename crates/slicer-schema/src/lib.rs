@@ -277,6 +277,78 @@ pub fn all_stage_ids() -> Vec<&'static str> {
     STAGES.iter().map(|s| s.stage_id).collect()
 }
 
+// ── Validator constants ────────────────────────────────────────────────────
+//
+// Single source of truth for the sets consumed by manifest validation
+// (`cmd_validate` in `slicer-cli` and future `pnp-cli`). Derived from the
+// canonical tables above where possible; maintained here to avoid drift.
+
+/// All valid pipeline stage ids a module manifest may declare.
+///
+/// Mirrors the `stage_id` column of [`STAGES`] in canonical order.
+/// See docs/04 STAGE_ORDER.
+pub const VALID_STAGES: &[&str] = &[
+    "PrePass::MeshSegmentation",
+    "PrePass::MeshAnalysis",
+    "PrePass::LayerPlanning",
+    "PrePass::PaintSegmentation",
+    "PrePass::SeamPlanning",
+    "PrePass::SupportGeometry",
+    "Layer::SlicePostProcess",
+    "Layer::Perimeters",
+    "Layer::PerimetersPostProcess",
+    "Layer::Infill",
+    "Layer::InfillPostProcess",
+    "Layer::Support",
+    "Layer::SupportPostProcess",
+    "Layer::PathOptimization",
+    "PostPass::LayerFinalization",
+    "PostPass::GCodePostProcess",
+    "PostPass::TextPostProcess",
+];
+
+/// All WIT world package strings supported by the current SDK.
+///
+/// Mirrors the world column of [`WORLD_LIFECYCLE_EXPORTS`].
+/// See docs/03 §host-boundary enforcement.
+pub const SUPPORTED_WIT_WORLDS: &[&str] = &[
+    "slicer:world-layer@1.0.0",
+    "slicer:world-prepass@1.0.0",
+    "slicer:world-finalization@1.0.0",
+    "slicer:world-postpass@1.0.0",
+];
+
+/// Valid config field type strings for `[config.schema.<key>].type`.
+///
+/// See docs/03 §deps/config-types.
+pub const VALID_CONFIG_TYPES: &[&str] = &[
+    "bool",
+    "int",
+    "float",
+    "string",
+    "enum",
+    "float-list",
+    "string-list",
+];
+
+/// Recognized claim names for `[claims].holds` and `[claims].requires`.
+///
+/// See docs/01 §claim system.
+pub const RECOGNIZED_CLAIMS: &[&str] = &[
+    "perimeter-generator",
+    "infill-generator",
+    "support-generator",
+    "seam-placer",
+    "layer-planner",
+    "mesh-analyzer",
+    "slice-postprocessor",
+    "gcode-postprocessor",
+    "text-postprocessor",
+];
+
+/// Recognized severity values for `[[config.cross-validate]]` rules.
+pub const VALID_SEVERITIES: &[&str] = &["error", "warning"];
+
 #[cfg(test)]
 mod tests {
     use super::*;

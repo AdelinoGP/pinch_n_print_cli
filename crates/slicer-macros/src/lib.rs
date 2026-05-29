@@ -2934,7 +2934,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
 }
 
 /// Inline WIT for the full layer-module world, mirroring
-/// `crates/slicer-host/src/wit_host.rs::layer::bindgen!` so the
+/// `crates/slicer-runtime/src/wit_host.rs::layer::bindgen!` so the
 /// macro-emitted guest binds against the same resource shapes the host
 /// dispatcher expects.
 const LAYER_WORLD_WIT: &str = r#"

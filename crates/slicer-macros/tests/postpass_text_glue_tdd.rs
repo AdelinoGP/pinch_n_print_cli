@@ -12,7 +12,7 @@
 //!
 //! End-to-end proof (a macro-authored guest round-tripping through
 //! `WasmRuntimeDispatcher`) lives in
-//! `crates/slicer-host/tests/macro_postpass_text_roundtrip_tdd.rs`.
+//! `crates/slicer-runtime/tests/macro_postpass_text_roundtrip_tdd.rs`.
 
 #![allow(missing_docs)]
 

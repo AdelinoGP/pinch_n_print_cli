@@ -1,6 +1,6 @@
 # Slicer Report (HTML)
 
-Opt-in debugging artifact emitted by `slicer-host` when `--report <PATH.html>`
+Opt-in debugging artifact emitted by `pnp_cli` when `--report <PATH.html>`
 is passed. Captures per-layer / per-stage / per-module timing, host-side
 memory accounting, and the DAG-derived explanation of which modules ran
 serially and why.
@@ -22,7 +22,7 @@ does not include the literal G-code text.
 ## CLI
 
 ```bash
-slicer-host run --model … --module-dir … --output … \
+pnp_cli slice --model … --module-dir … --output … \
     --report /tmp/slicer-report.html \
     [--report-verbose]      # per-layer-per-module rows; off by default
 ```
@@ -115,7 +115,7 @@ per-module for those tiers, including host built-ins.
 
 ## Global allocator contract
 
-`slicer-host` installs `AccountingAllocator<System>` as its
+`pnp_cli` (via `slicer-runtime`) installs `AccountingAllocator<System>` as its
 `#[global_allocator]`:
 
 ```rust
@@ -150,7 +150,7 @@ correctness; they bound the level of detail the report can surface.
 ## WASM linear-memory sampling
 
 Each per-call `wasmtime::Store` installs a `MemTracker` (in
-`crates/slicer-host/src/wit_host.rs`) as its `ResourceLimiter`. The
+`crates/slicer-runtime/src/wit_host.rs`) as its `ResourceLimiter`. The
 limiter records every `memory.grow` notification (including the initial
 instantiation grow) and surfaces two values per dispatch:
 
@@ -165,13 +165,13 @@ host built-ins leave the WASM columns blank without any extra wiring.
 
 ## Test coverage
 
-`crates/slicer-host/tests/slicer_report_html_tdd.rs` exercises the
+`crates/slicer-runtime/tests/slicer_report_html_tdd.rs` exercises the
 collector directly via the trait surface and asserts the HTML contains
 every expected section, stage id, and reason label. No real WASM, no
 mesh, no pipeline — fast, deterministic, runs in <1s.
 
 ## Benchmarks
 
-`crates/slicer-host/benches/pipeline.rs` measures the instrumentation
+`crates/slicer-runtime/benches/pipeline.rs` measures the instrumentation
 overhead (Noop vs Collector) so regressions in the report stack don't
 silently tax the no-report path.

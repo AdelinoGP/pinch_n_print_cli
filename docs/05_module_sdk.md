@@ -10,10 +10,8 @@ The relevant crates live directly under the workspace root:
 crates/
 ├── slicer-sdk/      # Core: re-exports WIT types, provides helpers, registers exports
 ├── slicer-test/     # Test harness: mock host, IR builders, assertion helpers
-└── slicer-macros/   # Proc-macros: #[slicer_module], #[module_test]
-cli/
-└── slicer-cli/      # Developer CLI binary (binary name: `slicer`).
-                     # Subcommands: new, build, test, validate, run.
+├── slicer-macros/   # Proc-macros: #[slicer_module], #[module_test]
+└── pnp-cli/         # Single binary `pnp_cli`: includes `module new|diagnose|config-schema` verbs.
 ```
 
 > **Source of truth.** This document is the authoring guide. For the exact
@@ -627,10 +625,10 @@ mod tests {
 
 ---
 
-## `slicer-cli` — Developer CLI
+## `pnp_cli` — Developer CLI
 
 ```
-slicer new <module-name> [--stage <stage>]
+pnp_cli module new <module-name> [--stage <stage>]
   Scaffold a new module with the correct directory structure,
   Cargo.toml, manifest template, and a passing test suite.
 
@@ -641,18 +639,18 @@ slicer new <module-name> [--stage <stage>]
               PostPass::GCodePostProcess | PostPass::TextPostProcess
               (default: Layer::Infill)
 
-slicer build [--release]
+pnp_cli module build [--release]
   Compile the current module to WASM.
   Runs `cargo build --target wasm32-unknown-unknown [--release]`
   followed by `wit-component` to produce the Component Model binary.
   Output: target/slicer/<module-name>.wasm
 
-slicer test [-- <cargo-test-args>]
+pnp_cli module test [-- <cargo-test-args>]
   Run the module's test suite via `cargo nextest run`.
   Tests run natively (not in WASM) against the mock host.
   Coverage report written to target/slicer/coverage/.
 
-slicer validate
+pnp_cli module validate
   Validate the module manifest without building.
   Checks:
     - TOML schema validity
@@ -662,20 +660,18 @@ slicer validate
     - Claim names are recognized
     - wit-world version is supported by the current SDK
 
-slicer run --model <file.stl> [--config <config.json>] [--output <file.gcode>]
-  Run the local module against a real model using a host instance.
-  Requires the host binary to be installed.
-  Useful for integration testing during development.
+pnp_cli slice --model <file.stl> [--config <config.json>] [--output <file.gcode>]
+  Slice a model using the loaded module set.
   Output: writes G-code to --output (default: stdout)
 
-slicer benchmark --model <file.stl> [--layers <N>]
+pnp_cli module benchmark --model <file.stl> [--layers <N>]
   Run the module against N layers and report:
     - median / p95 / p99 time per layer invocation
     - WASM boundary crossing overhead
     - Peak memory per layer
 ```
 
-### Scaffolded Directory Structure (`slicer new my-infill --stage Layer::Infill`)
+### Scaffolded Directory Structure (`pnp_cli module new my-infill --stage Layer::Infill`)
 
 ```
 my-infill/
@@ -694,13 +690,13 @@ my-infill/
 ## Module Development Workflow
 
 ```
-1. slicer new my-infill --stage Layer::Infill
+1. pnp_cli module new my-infill --stage Layer::Infill
    └─ Scaffolds directory, generates passing test stub
 
 2. Edit my-infill.toml
    └─ Add config schema fields, set claims, set compatibility
 
-3. slicer validate
+3. pnp_cli module validate
    └─ Catches manifest errors before writing any Rust
 
 4. Write failing tests first (TDD)
@@ -712,13 +708,13 @@ my-infill/
 6. Implement run_infill() in src/lib.rs
    └─ cargo test  (tests pass — green)
 
-7. slicer build --release
+7. pnp_cli module build --release
    └─ Compiles to target/slicer/my-infill.wasm
 
-8. slicer run --model test_model.stl
+8. pnp_cli slice --model test_model.stl
    └─ Verify G-code output visually in slicer frontend
 
-9. slicer benchmark --model test_model.stl --layers 50
+9. pnp_cli module benchmark --model test_model.stl --layers 50
    └─ Confirm performance within acceptable range
 ```
 

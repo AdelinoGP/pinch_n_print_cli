@@ -50,7 +50,7 @@ The primary failure mode of existing slicers (OrcaSlicer, PrusaSlicer) that this
 
 - Stable ABI across compiler versions, platforms, and languages
 - Modules can be written in Rust, C, C++, or any WASM-targeting language
-- Python post-processing scripts run via an embedded PyO3 interpreter inside the host (no subprocess); see `crates/slicer-host/src/python_bridge.rs`
+- Python post-processing scripts run via an embedded PyO3 interpreter inside the host (no subprocess); see `crates/slicer-runtime/src/python_bridge.rs`
 - Community modules ship as `.wasm` + `.toml` — no build toolchain required for users
 
 ### State Model: ECS-inside-Blackboard
@@ -113,7 +113,10 @@ Precedence rule for conflicts:
 ```
 modular-slicer/
 ├── crates/
-│   ├── slicer-host/          # Main binary + library: CLI, WASM runtime, scheduler
+│   ├── slicer-runtime/       # Library: WASM runtime, scheduler, run_slice() API (no binary)
+│   │                         #   Full path: crates/slicer-runtime
+│   ├── pnp-cli/              # Single binary `pnp_cli`: slice, module, mesh, dag verbs
+│   │                         #   Full path: crates/pnp-cli
 │   ├── slicer-core/          # Core algorithms (slicing, Clipper ops, geometry)
 │   ├── slicer-ir/            # IR type definitions (shared between host and SDK)
 │   ├── slicer-sdk/           # Module authoring SDK (imported by module crates)
@@ -121,9 +124,6 @@ modular-slicer/
 │   ├── slicer-macros/        # Proc-macros (#[slicer_module], #[module_test])
 │   ├── slicer-schema/        # Shared config/manifest schema types
 │   └── slicer-helpers/       # Pre-pipeline mesh ops (repair, decimate, STEP import)
-├── cli/
-│   └── slicer-cli/           # Module-author CLI (binary name: `slicer`)
-│                             # Subcommands: new, build, test, validate, run
 ├── modules/
 │   └── core-modules/         # Built-in modules (arachne walls, rectilinear infill, etc.)
 ├── wit/

@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: pnp-cli-unification
 task_ids:
   - TASK-213

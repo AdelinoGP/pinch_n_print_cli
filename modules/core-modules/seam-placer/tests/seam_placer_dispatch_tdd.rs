@@ -1,8 +1,8 @@
 //! SDK-level dispatch tests for the seam-placer module.
 //!
-//! Migrated from `crates/slicer-host/tests/live_seam_path_tdd.rs` as part
+//! Migrated from `crates/slicer-runtime/tests/live_seam_path_tdd.rs` as part
 //! of the packet-28 follow-up cleanup: SDK-level trait tests belong inside
-//! the module crate, not inside `slicer-host`. The host should only carry
+//! the module crate, not inside `slicer-runtime`. The host should only carry
 //! tests for host plumbing (commit paths, blackboard contracts, dispatch
 //! routing). These four tests exercise `SeamPlacer::run_wall_postprocess`
 //! directly through the Rust trait — the wasmtime live-dispatch shape is

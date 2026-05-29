@@ -1,0 +1,1851 @@
+//! GCode emission and serialization (TASK-034).
+//!
+//! This module provides the host-built-in implementations of `GCodeEmitter` and
+//! `GCodeSerializer` traits defined in `postpass.rs`. The emitter converts
+//! `LayerCollectionIR` to `GCodeIR`; the serializer converts `GCodeIR` to G-code text.
+//!
+//! Emit behavior (from docs/02_ir_schemas.md, docs/04_host_scheduler.md):
+//! - Walk `LayerCollectionIR` in Z-sorted order (already sorted by LayerFinalization)
+//! - Convert `PrintEntity.path` (ExtrusionPath3D) → `GCodeCommand::Move`
+//! - Insert `GCodeCommand::ToolChange` where `ToolChange` appears
+//! - Insert Z-hop travel moves where `ZHop` appears
+//! - Build `PrintMetadata` (estimated time, filament used, layer count, slicer version)
+//!
+//! Serialize behavior:
+//! - Convert `GCodeIR.commands` → text G-code string
+//! - Extrusion moves emit `G1 X... Y... Z... E... F...`; travel moves
+//!   (`ExtrusionRole::Custom("Travel")`) emit `G0 X... Y... Z... F...` with no `E`.
+//! - Handle all GCodeCommand variants (Move, Retract, Unretract, FanSpeed, Temperature,
+//!   ToolChange, Comment, Raw)
+//!
+//! OrcaSlicer references:
+//! - OrcaSlicerDocumented/src/libslic3r/GCodeWriter.cpp — G-code emission patterns
+//! - OrcaSlicerDocumented/tests/fff_print/test_gcodewriter.cpp — test patterns
+
+use std::collections::HashMap;
+use std::fmt::Write;
+use std::sync::OnceLock;
+
+use slicer_helpers::{drop_short_segments_mm, simplify_polyline_mm};
+use slicer_ir::{
+    ConfigValue, ExtrusionRole, GCodeCommand, GCodeIR, LayerAnnotationKind, LayerCollectionIR,
+    PrintMetadata, ResolvedConfig, SemVer,
+};
+
+use crate::dag::BuiltinProducer;
+use crate::{Blackboard, GCodeEmitter, GCodeSerializer, PostpassError};
+
+/// `BuiltinProducer` for the host-side `PostPass::GCodeEmit` step.
+pub static GCODE_EMIT_PRODUCER: BuiltinProducer = BuiltinProducer {
+    id: "host:gcode_emit",
+    stage: "PostPass::GCodeEmit",
+    ir_writes: &["GCodeIR"],
+    ir_reads: &[],
+    claims_holds: &["host:gcode_emit"],
+    claims_requires: &[],
+    requires_modules: &[],
+    min_ir_schema: SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    },
+    max_ir_schema: SemVer {
+        major: 4,
+        minor: 0,
+        patch: 0,
+    },
+    _cache_ir_writes: OnceLock::new(),
+    _cache_ir_reads: OnceLock::new(),
+    _cache_claims_holds: OnceLock::new(),
+    _cache_claims_requires: OnceLock::new(),
+    _cache_requires_modules: OnceLock::new(),
+};
+
+/// Feedrate configuration holding mm/s speed values.
+#[derive(Debug, Clone)]
+pub struct FeedrateConfig {
+    /// Speed for outer walls.
+    pub outer_wall_speed: f32,
+    /// Speed for inner walls.
+    pub inner_wall_speed: f32,
+    /// Speed for thin walls.
+    pub thin_wall_speed: f32,
+    /// Speed for top solid infill.
+    pub top_surface_speed: f32,
+    /// Speed for bottom solid infill.
+    pub bottom_surface_speed: f32,
+    /// Speed for sparse infill.
+    pub sparse_infill_speed: f32,
+    /// Speed for bridging.
+    pub bridge_speed: f32,
+    /// Speed for internal bridging.
+    pub internal_bridge_speed: f32,
+    /// Speed for support material.
+    pub support_speed: f32,
+    /// Speed for support interface.
+    pub support_interface_speed: f32,
+    /// Speed for gap infill.
+    pub gap_infill_speed: f32,
+    /// Speed for ironing.
+    pub ironing_speed: f32,
+    /// Speed for skirt/brim.
+    pub skirt_speed: f32,
+    /// Speed for wipe tower.
+    pub wipe_tower_speed: f32,
+    /// Speed for prime tower.
+    pub prime_tower_speed: f32,
+    /// Speed for non-printing travel moves.
+    pub travel_speed: f32,
+    /// Speed for Z-hop moves (if different from XY).
+    pub travel_speed_z: f32,
+    /// Base speed for initial layer.
+    pub initial_layer_speed: f32,
+    /// Infill speed for initial layer.
+    pub initial_layer_infill_speed: f32,
+    /// Travel speed for initial layer.
+    pub initial_layer_travel_speed: f32,
+    /// Speed for wipe moves.
+    pub wipe_speed: f32,
+    /// Speed for overhang 1/4.
+    pub overhang_1_4_speed: f32,
+    /// Speed for overhang 2/4.
+    pub overhang_2_4_speed: f32,
+    /// Speed for overhang 3/4.
+    pub overhang_3_4_speed: f32,
+    /// Speed for overhang 4/4.
+    pub overhang_4_4_speed: f32,
+    /// Speed for filament ironing override.
+    pub filament_ironing_speed: f32,
+}
+
+impl Default for FeedrateConfig {
+    fn default() -> Self {
+        Self {
+            outer_wall_speed: 60.0,
+            inner_wall_speed: 60.0,
+            thin_wall_speed: 30.0,
+            top_surface_speed: 100.0,
+            bottom_surface_speed: 100.0,
+            sparse_infill_speed: 100.0,
+            bridge_speed: 25.0,
+            internal_bridge_speed: 37.5,
+            support_speed: 80.0,
+            support_interface_speed: 80.0,
+            gap_infill_speed: 30.0,
+            ironing_speed: 20.0,
+            skirt_speed: 50.0,
+            wipe_tower_speed: 90.0,
+            prime_tower_speed: 90.0,
+            travel_speed: 120.0,
+            travel_speed_z: 0.0,
+            initial_layer_speed: 30.0,
+            initial_layer_infill_speed: 60.0,
+            initial_layer_travel_speed: 120.0,
+            wipe_speed: 96.0,
+            overhang_1_4_speed: 0.0,
+            overhang_2_4_speed: 0.0,
+            overhang_3_4_speed: 0.0,
+            overhang_4_4_speed: 0.0,
+            filament_ironing_speed: 0.0,
+        }
+    }
+}
+
+/// Default GCode emitter (host-built-in).
+///
+/// Converts `LayerCollectionIR` to `GCodeIR` by walking layers in Z-sorted order,
+/// converting print entities to move commands, and inserting tool changes and Z-hops.
+pub struct DefaultGCodeEmitter {
+    /// Slicer version string to include in metadata.
+    slicer_version: String,
+    /// Feedrate configuration.
+    feedrate_config: FeedrateConfig,
+    /// Decimal places for XYZ coordinate values in emitted GCode comments (default 3).
+    gcode_xy_decimals: u32,
+    /// Resolved slicer config for precision / simplification parameters.
+    resolved_config: ResolvedConfig,
+    /// `true` = relative-E mode (M83); `false` = absolute-E mode (M82).
+    /// Must match the `DefaultGCodeSerializer`'s extrusion-mode setting.
+    relative: bool,
+}
+
+impl DefaultGCodeEmitter {
+    /// Creates a new `DefaultGCodeEmitter` with the given slicer version.
+    ///
+    /// Defaults to relative-E mode (M83) to match `DefaultGCodeSerializer::new()`.
+    pub fn new(slicer_version: String) -> Self {
+        Self {
+            slicer_version,
+            feedrate_config: FeedrateConfig::default(),
+            gcode_xy_decimals: 3,
+            resolved_config: ResolvedConfig::default(),
+            relative: true,
+        }
+    }
+
+    /// Creates a new `DefaultGCodeEmitter` with explicit configuration.
+    pub fn new_with_config(slicer_version: String, feedrate_config: FeedrateConfig) -> Self {
+        Self {
+            slicer_version,
+            feedrate_config,
+            gcode_xy_decimals: 3,
+            resolved_config: ResolvedConfig::default(),
+            relative: true,
+        }
+    }
+
+    /// Sets the extrusion mode.
+    ///
+    /// - `relative = true`  → emits `M83` (relative-E); must match the serializer.
+    /// - `relative = false` → emits `M82` (absolute-E); must match the serializer.
+    pub fn with_extrusion_mode(mut self, relative: bool) -> Self {
+        self.relative = relative;
+        self
+    }
+
+    /// Sets the resolved slicer config (precision / simplification parameters).
+    pub fn with_resolved_config(mut self, cfg: ResolvedConfig) -> Self {
+        self.resolved_config = cfg;
+        self
+    }
+
+    /// Resolves the feedrate (in mm/min) for a given extrusion role, speed factor multiplier,
+    /// and optional overhang quartile.
+    pub fn resolve_feedrate(
+        &self,
+        role: &ExtrusionRole,
+        speed_factor: f32,
+        overhang_quartile: Option<u8>,
+    ) -> Option<f32> {
+        // Overhang speed dispatch for wall-family roles
+        if let Some(q) = overhang_quartile {
+            if matches!(
+                role,
+                ExtrusionRole::OuterWall | ExtrusionRole::InnerWall | ExtrusionRole::ThinWall
+            ) {
+                let speed = match q {
+                    1 => self.feedrate_config.overhang_1_4_speed,
+                    2 => self.feedrate_config.overhang_2_4_speed,
+                    3 => self.feedrate_config.overhang_3_4_speed,
+                    4 => self.feedrate_config.overhang_4_4_speed,
+                    _ => 0.0,
+                };
+                if speed > 0.0 {
+                    let clamped = speed_factor.clamp(0.05, 5.0);
+                    return Some(speed * 60.0 * clamped);
+                }
+            }
+        }
+
+        let base_speed = match role {
+            ExtrusionRole::OuterWall => self.feedrate_config.outer_wall_speed,
+            ExtrusionRole::InnerWall => self.feedrate_config.inner_wall_speed,
+            ExtrusionRole::ThinWall => self.feedrate_config.thin_wall_speed,
+            ExtrusionRole::TopSolidInfill => self.feedrate_config.top_surface_speed,
+            ExtrusionRole::BottomSolidInfill => self.feedrate_config.bottom_surface_speed,
+            ExtrusionRole::SparseInfill => self.feedrate_config.sparse_infill_speed,
+            ExtrusionRole::BridgeInfill => self.feedrate_config.bridge_speed,
+            ExtrusionRole::SupportMaterial => self.feedrate_config.support_speed,
+            ExtrusionRole::SupportInterface => self.feedrate_config.support_interface_speed,
+            ExtrusionRole::Skirt => self.feedrate_config.skirt_speed,
+            ExtrusionRole::WipeTower => self.feedrate_config.wipe_tower_speed,
+            ExtrusionRole::PrimeTower => self.feedrate_config.prime_tower_speed,
+            ExtrusionRole::Ironing => {
+                if self.feedrate_config.filament_ironing_speed > 0.0 {
+                    self.feedrate_config.filament_ironing_speed
+                } else {
+                    self.feedrate_config.ironing_speed
+                }
+            }
+            ExtrusionRole::Custom(s) => match s.as_str() {
+                "Travel" => self.feedrate_config.travel_speed,
+                "Wipe" => self.feedrate_config.wipe_speed,
+                "GapInfill" => self.feedrate_config.gap_infill_speed,
+                "InternalBridge" => self.feedrate_config.internal_bridge_speed,
+                _ => self.feedrate_config.outer_wall_speed,
+            },
+        };
+
+        let clamped_factor = speed_factor.clamp(0.05, 5.0);
+        let f_value = base_speed * 60.0 * clamped_factor;
+        let rounded = (f_value * 1000.0).round() / 1000.0;
+        Some(rounded)
+    }
+
+    /// Returns the slicer version string.
+    pub fn slicer_version(&self) -> &str {
+        &self.slicer_version
+    }
+}
+
+/// Returns true if two extrusion roles are functionally equal for ;TYPE: labeling.
+fn role_equals(a: &ExtrusionRole, b: &ExtrusionRole) -> bool {
+    match (a, b) {
+        (ExtrusionRole::OuterWall, ExtrusionRole::OuterWall) => true,
+        (ExtrusionRole::InnerWall, ExtrusionRole::InnerWall) => true,
+        (ExtrusionRole::ThinWall, ExtrusionRole::ThinWall) => true,
+        (ExtrusionRole::TopSolidInfill, ExtrusionRole::TopSolidInfill) => true,
+        (ExtrusionRole::BottomSolidInfill, ExtrusionRole::BottomSolidInfill) => true,
+        (ExtrusionRole::SparseInfill, ExtrusionRole::SparseInfill) => true,
+        (ExtrusionRole::BridgeInfill, ExtrusionRole::BridgeInfill) => true,
+        (ExtrusionRole::SupportMaterial, ExtrusionRole::SupportMaterial) => true,
+        (ExtrusionRole::SupportInterface, ExtrusionRole::SupportInterface) => true,
+        (ExtrusionRole::Skirt, ExtrusionRole::Skirt) => true,
+        (ExtrusionRole::WipeTower, ExtrusionRole::WipeTower) => true,
+        (ExtrusionRole::PrimeTower, ExtrusionRole::PrimeTower) => true,
+        (ExtrusionRole::Ironing, ExtrusionRole::Ironing) => true,
+        (ExtrusionRole::Custom(a_str), ExtrusionRole::Custom(b_str)) => a_str == b_str,
+        _ => false,
+    }
+}
+
+/// Returns the canonical OrcaSlicer ";TYPE:{label}" comment text for an extrusion role.
+fn orca_type_label(role: &ExtrusionRole) -> &'static str {
+    match role {
+        ExtrusionRole::OuterWall => ";TYPE:Outer wall",
+        ExtrusionRole::InnerWall => ";TYPE:Inner wall",
+        ExtrusionRole::ThinWall => ";TYPE:Inner wall",
+        ExtrusionRole::TopSolidInfill => ";TYPE:Top surface",
+        ExtrusionRole::BottomSolidInfill => ";TYPE:Bottom surface",
+        ExtrusionRole::SparseInfill => ";TYPE:Sparse infill",
+        ExtrusionRole::BridgeInfill => ";TYPE:Bridge infill",
+        ExtrusionRole::SupportMaterial => ";TYPE:Support",
+        ExtrusionRole::SupportInterface => ";TYPE:Support interface",
+        ExtrusionRole::Skirt => ";TYPE:Skirt/Brim",
+        ExtrusionRole::WipeTower => ";TYPE:Prime tower",
+        ExtrusionRole::PrimeTower => ";TYPE:Prime tower",
+        ExtrusionRole::Ironing => ";TYPE:Ironing",
+        ExtrusionRole::Custom(_) => ";TYPE:Custom",
+    }
+}
+
+/// Return the D-P simplification tolerance (mm) for a given extrusion role.
+///
+/// Exhaustive — adding an ExtrusionRole variant must force a compile error here so
+/// the new variant gets an explicit precision policy rather than silently inheriting one.
+pub fn tolerance_for_role(role: &ExtrusionRole, cfg: &ResolvedConfig) -> f32 {
+    match role {
+        // Perimeter / wall family and skirt/brim: tightest tolerance.
+        ExtrusionRole::OuterWall
+        | ExtrusionRole::InnerWall
+        | ExtrusionRole::ThinWall
+        | ExtrusionRole::Skirt => cfg.gcode_resolution,
+        // Infill family: relaxed tolerance.
+        ExtrusionRole::SparseInfill
+        | ExtrusionRole::TopSolidInfill
+        | ExtrusionRole::BottomSolidInfill
+        | ExtrusionRole::BridgeInfill
+        | ExtrusionRole::Ironing
+        | ExtrusionRole::WipeTower
+        | ExtrusionRole::PrimeTower => cfg.infill_resolution,
+        // Support family: support tolerance.
+        ExtrusionRole::SupportMaterial | ExtrusionRole::SupportInterface => cfg.support_resolution,
+        // Travel and other custom moves: no simplification.
+        ExtrusionRole::Custom(_) => 0.0,
+    }
+}
+
+impl GCodeEmitter for DefaultGCodeEmitter {
+    fn emit_gcode(
+        &self,
+        layer_irs: &[LayerCollectionIR],
+        _blackboard: &Blackboard,
+    ) -> Result<GCodeIR, PostpassError> {
+        // Clone for mutation (overhang classification + tool rotation).
+        let mut owned_layers: Vec<LayerCollectionIR> = layer_irs.to_vec();
+        // Apply cross-layer tool rotation before classification and emission.
+        // This rotates each layer's entity clusters so the first cluster's tool
+        // matches the previous layer's ending tool, avoiding redundant T<n>
+        // commands at every layer boundary. The WASM module always orders
+        // clusters in ascending tool order (H1: module state doesn't survive
+        // across calls), so the host performs the rotation post-dispatch.
+        apply_cross_layer_tool_rotation(&mut owned_layers);
+        crate::overhang_classifier::classify_layers(&mut owned_layers, &self.feedrate_config);
+        let layer_irs: &[LayerCollectionIR] = &owned_layers;
+
+        let layer_count = layer_irs.len() as u32;
+
+        // Push ExtrusionMode as index-0 so postpass modules (Step 4) can prepend
+        // machine_start_gcode BEFORE it via commands.insert(0, Raw(...)).
+        let mut commands = vec![GCodeCommand::ExtrusionMode {
+            absolute: !self.relative,
+        }];
+        // Track filament used per tool (tool index -> filament mm)
+        let mut filament_per_tool: HashMap<u32, f32> = HashMap::new();
+        // Current tool (default 0)
+        let mut current_tool: u32 = 0;
+        // Cumulative E position
+        let mut e_position: f32 = 0.0;
+
+        // Previous layer Z for computing ;HEIGHT: delta
+        let mut prev_layer_z: Option<f32> = None;
+        // Track the last non-zero height delta (for first-layer fallback)
+        let mut last_height_delta: f32 = 0.2;
+        // Previous role for ;TYPE: emission
+        let mut prev_role: Option<ExtrusionRole> = None;
+
+        // Walk layers in order (already Z-sorted by LayerFinalization)
+        for layer in layer_irs {
+            let layer_z = layer.z;
+
+            // Emit Orca layer-change headers BEFORE the first Move of this layer
+            // Insert ;LAYER_CHANGE, ;Z:{z}, ;HEIGHT:{h} before the first command
+            // Note: push bare text; serializer adds "; " prefix for regular comments.
+            // Orca header lines are output via Raw so they go through verbatim.
+            let height_delta = if let Some(prev_z) = prev_layer_z {
+                layer_z - prev_z
+            } else {
+                last_height_delta
+            };
+            if prev_layer_z.is_some() {
+                last_height_delta = height_delta;
+            }
+            prev_layer_z = Some(layer_z);
+
+            commands.push(GCodeCommand::Raw {
+                text: ";LAYER_CHANGE".to_string(),
+            });
+            commands.push(GCodeCommand::Raw {
+                text: format!(";Z:{}", format_xyz(layer_z, self.gcode_xy_decimals)),
+            });
+            commands.push(GCodeCommand::Raw {
+                text: format!(
+                    ";HEIGHT:{}",
+                    format_xyz(height_delta, self.gcode_xy_decimals)
+                ),
+            });
+
+            // Cross-layer tool reset: path-optimization-default only records
+            // intra-layer tool transitions, so layer N+1's first cluster
+            // inherits whatever tool layer N ended on. Without this reset,
+            // unpainted (T0) body extrusions are silently emitted under the
+            // last painted tool of the previous layer. By host convention,
+            // each ordered entity's `region_key.region_id` is its required
+            // tool index (see layer_executor::assemble_ordered_entities and
+            // path-optimization-default::tool_index_of). Emit a tool change
+            // before the first entity whenever it differs from `current_tool`.
+            if let Some(first_entity) = layer.ordered_entities.first() {
+                let required_tool = first_entity.region_key.region_id as u32;
+                if required_tool != current_tool {
+                    // Synthesize the pre-T<n> retract for layer-boundary tool
+                    // changes too (the entity-loop synth at the bottom of this
+                    // function only handles intra-layer tool changes recorded
+                    // in `layer.tool_changes`; the layer-boundary one here is
+                    // emitted via a separate path). See packet 58 / DEV-054
+                    // follow-up (i).
+                    if self.resolved_config.wipe_tower_enabled {
+                        commands.push(GCodeCommand::Retract {
+                            length: self.resolved_config.retract_length,
+                            speed: 2400.0,
+                            mode: slicer_ir::RetractMode::Gcode,
+                        });
+                    }
+                    commands.push(GCodeCommand::ToolChange {
+                        after_entity_index: u32::MAX,
+                        from: current_tool,
+                        to: required_tool,
+                    });
+                    current_tool = required_tool;
+                }
+            }
+
+            // Build lookup maps for tool_changes and z_hops by after_entity_index.
+            // Value is (tc_index_in_layer, &ToolChange) so the guard can report
+            // the 0-based tool_change_index for PostpassError::MissingToolchangePurge.
+            let tool_changes: HashMap<u32, (u32, &_)> = layer
+                .tool_changes
+                .iter()
+                .enumerate()
+                .map(|(i, tc)| (tc.after_entity_index, (i as u32, tc)))
+                .collect();
+            let z_hops: HashMap<u32, &_> = layer
+                .z_hops
+                .iter()
+                .map(|zh| (zh.after_entity_index, zh))
+                .collect();
+            // retracts: per entity index, collect all in order (Retract entries first, Unretract entries last)
+            let mut retracts_by_entity: std::collections::HashMap<
+                u32,
+                Vec<&slicer_ir::TravelRetract>,
+            > = std::collections::HashMap::new();
+            for r in &layer.retracts {
+                retracts_by_entity
+                    .entry(r.after_entity_index)
+                    .or_default()
+                    .push(r);
+            }
+            // travel_moves: per entity_id, collect all in order
+            let mut travel_moves_by_entity: std::collections::HashMap<
+                u64,
+                Vec<&slicer_ir::TravelMove>,
+            > = std::collections::HashMap::new();
+            for tm in &layer.travel_moves {
+                travel_moves_by_entity
+                    .entry(tm.entity_id)
+                    .or_default()
+                    .push(tm);
+            }
+
+            // Process each entity
+            for (entity_idx, entity) in layer.ordered_entities.iter().enumerate() {
+                let entity_idx = entity_idx as u32;
+                let points = &entity.path.points;
+                let role = &entity.path.role;
+
+                // Emit ;TYPE: comment when role changes from previous entity
+                let role_changed = prev_role
+                    .as_ref()
+                    .is_none_or(|prev| !role_equals(prev, role));
+                if role_changed {
+                    commands.push(GCodeCommand::Raw {
+                        text: orca_type_label(role).to_string(),
+                    });
+                }
+                prev_role = Some(role.clone());
+
+                // Apply per-role polyline simplification (D-P + min-segment).
+                // Extract XY mm-pairs for the helpers, then remap kept indices
+                // back onto the original Point3WithWidth slice so metadata is preserved.
+                let tol = tolerance_for_role(role, &self.resolved_config);
+                let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
+                let simplified_points: Vec<&slicer_ir::Point3WithWidth> = if points.len() >= 2 {
+                    let xy: Vec<(f32, f32)> = points.iter().map(|p| (p.x, p.y)).collect();
+                    let simplified_xy = if tol > 0.0 {
+                        simplify_polyline_mm(&xy, tol)
+                    } else {
+                        xy.clone()
+                    };
+                    let pruned_xy = if self.resolved_config.min_segment_length > 0.0 && !is_travel {
+                        drop_short_segments_mm(
+                            &simplified_xy,
+                            self.resolved_config.min_segment_length,
+                        )
+                    } else {
+                        simplified_xy
+                    };
+                    // Map kept (x,y) pairs back to original point indices.
+                    // Both slices are in emission order; match on coordinate identity.
+                    let mut kept = Vec::with_capacity(pruned_xy.len());
+                    let mut search_from = 0usize;
+                    for (kx, ky) in &pruned_xy {
+                        for i in search_from..points.len() {
+                            if (points[i].x - kx).abs() < f32::EPSILON
+                                && (points[i].y - ky).abs() < f32::EPSILON
+                            {
+                                kept.push(&points[i]);
+                                search_from = i + 1;
+                                break;
+                            }
+                        }
+                    }
+                    kept
+                } else {
+                    points.iter().collect()
+                };
+
+                // Emit Move commands for each point in the path
+                let mut prev_point: Option<&slicer_ir::Point3WithWidth> = None;
+                for point in simplified_points {
+                    // Calculate extrusion (E) based on travel distance and width
+                    let e_delta = if let Some(prev) = prev_point {
+                        // Calculate 3D distance
+                        let dx = point.x - prev.x;
+                        let dy = point.y - prev.y;
+                        let dz = point.z - prev.z;
+                        let distance = (dx * dx + dy * dy + dz * dz).sqrt();
+                        // E = distance * width * flow_factor (simplified)
+                        distance * point.width * point.flow_factor
+                    } else {
+                        0.0 // First point, no extrusion
+                    };
+
+                    e_position += e_delta;
+                    *filament_per_tool.entry(current_tool).or_insert(0.0) += e_delta;
+
+                    commands.push(GCodeCommand::Move {
+                        x: Some(point.x),
+                        y: Some(point.y),
+                        z: Some(point.z),
+                        // Emit E for any non-zero delta. Negative deltas (retracts) were
+                        // previously dropped, which made wipe-tower's `generate_purge_paths`
+                        // retract entity invisible in the live gcode stream.
+                        e: if e_delta != 0.0 {
+                            Some(e_position)
+                        } else {
+                            None
+                        },
+                        f: self.resolve_feedrate(
+                            role,
+                            entity.path.speed_factor,
+                            point.overhang_quartile,
+                        ),
+                        role: role.clone(),
+                    });
+
+                    prev_point = Some(point);
+                }
+
+                // Emit canonical retract/z-hop/travel/unretract sequence after this entity,
+                // BEFORE any ToolChange. OrcaSlicer ordering: retract → z-hop → travel →
+                // T<n> → (unretract handled by next-entity start or wipe-tower prime).
+                let entity_retracts = retracts_by_entity.get(&entity_idx);
+                let entity_travels = travel_moves_by_entity.get(&entity.entity_id);
+                let entity_z_hop = z_hops.get(&entity_idx);
+
+                // 1. Retracts (before tool change and travel)
+                if let Some(retracts) = entity_retracts {
+                    for r in retracts.iter().filter(|r| !r.is_unretract) {
+                        commands.push(GCodeCommand::Retract {
+                            length: r.length,
+                            speed: r.speed,
+                            mode: r.mode,
+                        });
+                    }
+                }
+                // 2. Z-hop up (before travel)
+                if let Some(zh) = entity_z_hop {
+                    let hop_z = layer_z + zh.hop_height;
+                    commands.push(GCodeCommand::Move {
+                        x: None,
+                        y: None,
+                        z: Some(hop_z),
+                        e: None,
+                        f: self.resolve_feedrate(
+                            &ExtrusionRole::Custom("Travel".to_string()),
+                            1.0,
+                            None,
+                        ),
+                        role: ExtrusionRole::Custom("Travel".to_string()),
+                    });
+                }
+                // 3. Travel moves (before tool change)
+                if let Some(travels) = entity_travels {
+                    for tm in travels.iter() {
+                        debug_assert!(
+                            tm.entity_id == entity.entity_id,
+                            "dangling travel anchor: entity_id={}",
+                            tm.entity_id
+                        );
+                        commands.push(GCodeCommand::Move {
+                            x: tm.x,
+                            y: tm.y,
+                            z: None,
+                            e: None,
+                            f: tm.f.or_else(|| {
+                                self.resolve_feedrate(
+                                    &ExtrusionRole::Custom("Travel".to_string()),
+                                    1.0,
+                                    None,
+                                )
+                            }),
+                            role: ExtrusionRole::Custom("Travel".to_string()),
+                        });
+                    }
+                }
+
+                // 4. Check for tool change after this entity (AFTER retract/travel)
+                if let Some((tc_index, tc)) = tool_changes.get(&entity_idx) {
+                    // Defensive guard: verify that at least one ExtrusionRole::WipeTower
+                    // entity follows each ToolChange in the layer. If not, the wipe-tower
+                    // module has not emitted purge geometry, and the bare ToolChange would
+                    // produce bad output (NC1).
+                    //
+                    // Guard is ONLY active when wipe_tower_enabled=true. Single-material
+                    // prints (wipe_tower_enabled=false, the default) skip the check entirely.
+                    if self.resolved_config.wipe_tower_enabled {
+                        // Heuristic: verify the wipe-tower module inserted at least one
+                        // ExtrusionRole::WipeTower entity in this layer. After cross-layer
+                        // tool rotation (apply_cross_layer_tool_rotation), tool_change
+                        // positions may shift relative to WipeTower insertions, so this
+                        // guard uses a layer-scoped check rather than the stricter
+                        // per-tool_change position check.
+                        let has_wipe_in_layer = layer
+                            .ordered_entities
+                            .iter()
+                            .any(|e| matches!(e.role, ExtrusionRole::WipeTower));
+
+                        if !has_wipe_in_layer {
+                            return Err(PostpassError::MissingToolchangePurge {
+                                layer_index: layer.global_layer_index,
+                                tool_change_index: *tc_index,
+                            });
+                        }
+
+                        // Synthesize the pre-T<n> retract. The wipe-tower module's
+                        // retract entity is inserted at `after_entity_index + 1` and
+                        // therefore serializes AFTER T<n> — but physical correctness
+                        // requires the retract BEFORE T<n> so the unloading filament
+                        // doesn't smear on travel. Until the SDK exposes a way to
+                        // push a TravelRetract from a finalization-stage module, the
+                        // host emitter owns this retract synthesis. Gated on
+                        // wipe_tower_enabled so single-material prints are untouched.
+                        // (See packet 58 / DEV-054 follow-up (i).)
+                        commands.push(GCodeCommand::Retract {
+                            length: self.resolved_config.retract_length,
+                            speed: 2400.0,
+                            mode: slicer_ir::RetractMode::Gcode,
+                        });
+                    }
+
+                    commands.push(GCodeCommand::ToolChange {
+                        after_entity_index: tc.after_entity_index,
+                        from: tc.from_tool,
+                        to: tc.to_tool,
+                    });
+                    current_tool = tc.to_tool;
+                }
+
+                // 5. Emit Comment/Raw annotations attached to this entity index,
+                // in the deterministic order they appear in `annotations`.
+                for ann in layer
+                    .annotations
+                    .iter()
+                    .filter(|a| a.after_entity_index == entity_idx)
+                {
+                    match &ann.kind {
+                        LayerAnnotationKind::Comment(text) => {
+                            commands.push(GCodeCommand::Comment { text: text.clone() });
+                        }
+                        LayerAnnotationKind::Raw(text) => {
+                            commands.push(GCodeCommand::Raw { text: text.clone() });
+                        }
+                    }
+                }
+
+                // 6. Z-hop down (after tool change)
+                if let Some(zh) = entity_z_hop {
+                    commands.push(GCodeCommand::Move {
+                        x: None,
+                        y: None,
+                        z: Some(layer_z),
+                        e: None,
+                        f: self.resolve_feedrate(
+                            &ExtrusionRole::Custom("Travel".to_string()),
+                            1.0,
+                            None,
+                        ),
+                        role: ExtrusionRole::Custom("Travel".to_string()),
+                    });
+                    let _ = zh;
+                }
+                // 7. Unretracts (after tool change, before next entity)
+                if let Some(retracts) = entity_retracts {
+                    for r in retracts.iter().filter(|r| r.is_unretract) {
+                        commands.push(GCodeCommand::Unretract {
+                            length: r.length,
+                            speed: r.speed,
+                            mode: r.mode,
+                        });
+                    }
+                }
+            }
+
+            // Trailing annotations whose anchor lies past the last entity
+            // (e.g. layer with no ordered_entities) are still emitted in
+            // declaration order so guest-emitted comments/raw lines are not
+            // silently dropped.
+            let entity_count = layer.ordered_entities.len() as u32;
+            for ann in layer
+                .annotations
+                .iter()
+                .filter(|a| a.after_entity_index >= entity_count)
+            {
+                match &ann.kind {
+                    LayerAnnotationKind::Comment(text) => {
+                        commands.push(GCodeCommand::Comment { text: text.clone() });
+                    }
+                    LayerAnnotationKind::Raw(text) => {
+                        commands.push(GCodeCommand::Raw { text: text.clone() });
+                    }
+                }
+            }
+        }
+
+        // Build filament_used_mm vector (indexed by tool)
+        let max_tool = filament_per_tool.keys().max().copied().unwrap_or(0);
+        let mut filament_used_mm = vec![0.0; (max_tool + 1) as usize];
+        for (tool, amount) in filament_per_tool {
+            filament_used_mm[tool as usize] = amount;
+        }
+        // Ensure at least one entry
+        if filament_used_mm.is_empty() {
+            filament_used_mm.push(0.0);
+        }
+
+        Ok(GCodeIR {
+            commands,
+            metadata: PrintMetadata {
+                estimated_print_time_s: 0, // Not calculated in this implementation
+                filament_used_mm,
+                layer_count,
+                slicer_version: self.slicer_version.clone(),
+            },
+            ..Default::default()
+        })
+    }
+
+    fn travel_feedrate_mm_per_min(&self) -> Option<f32> {
+        Some(self.feedrate_config.travel_speed * 60.0)
+    }
+}
+
+/// Default GCode serializer (host-built-in).
+///
+/// Converts `GCodeIR` to a G-code text string by serializing each command
+/// according to standard G-code formatting rules.
+///
+/// `relative` controls whether `M83` (relative-E) or `M82` (absolute-E) is
+/// emitted in the preamble, and how E values are rendered during serialization.
+pub struct DefaultGCodeSerializer {
+    /// `true` = relative-E mode (M83); `false` = absolute-E mode (M82).
+    relative: bool,
+    /// Filament diameter in mm (default 1.75 per schema).
+    filament_diameter_mm: f32,
+    /// Filament density in g/cm³ (default 1.24 per schema).
+    filament_density_g_cm3: f32,
+    /// Minimum max_z_height in mm used when no Z moves appear in the output
+    /// (default 256.0 per config schema — the schema's configured build height).
+    max_z_height_floor_mm: f32,
+    /// Extrusion width for outer wall in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.42).
+    outer_wall_line_width: f32,
+    /// Extrusion width for inner walls in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.45).
+    inner_wall_line_width: f32,
+    /// Extrusion width for sparse infill in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.45).
+    sparse_infill_line_width: f32,
+    /// Extrusion width for top surface in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.42).
+    top_surface_line_width: f32,
+    /// Extrusion width for support material in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.35).
+    support_line_width: f32,
+    /// Decimal places for XYZ coordinate values in serialized GCode (default 3).
+    gcode_xy_decimals: u32,
+}
+
+impl DefaultGCodeSerializer {
+    /// Creates a new `DefaultGCodeSerializer` in relative-E mode (default).
+    pub fn new() -> Self {
+        Self::with_extrusion_mode(true)
+    }
+
+    /// Creates a `DefaultGCodeSerializer` with an explicit extrusion mode.
+    ///
+    /// - `relative = true`  → emits `M83` in preamble; E values are deltas.
+    /// - `relative = false` → emits `M82` in preamble; E values are absolute.
+    pub fn with_extrusion_mode(relative: bool) -> Self {
+        Self {
+            relative,
+            filament_diameter_mm: 1.75,
+            filament_density_g_cm3: 1.24,
+            max_z_height_floor_mm: 256.0,
+            // OrcaSlicer 0.4 mm nozzle parity defaults (matches config_schema.rs registration).
+            outer_wall_line_width: 0.42,
+            inner_wall_line_width: 0.45,
+            sparse_infill_line_width: 0.45,
+            top_surface_line_width: 0.42,
+            support_line_width: 0.35,
+            gcode_xy_decimals: 3,
+        }
+    }
+
+    /// Sets filament diameter and density (overrides schema defaults).
+    pub fn with_filament_config(mut self, diameter_mm: f32, density_g_cm3: f32) -> Self {
+        self.filament_diameter_mm = diameter_mm;
+        self.filament_density_g_cm3 = density_g_cm3;
+        self
+    }
+}
+
+impl Default for DefaultGCodeSerializer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Produce the HEADER_BLOCK text (OrcaSlicer wire format, packet 55 Step 3).
+///
+/// Format (FACT from OrcaSlicerDocumented/src/libslic3r/GCode.cpp:2644-2704):
+/// ```text
+/// ; HEADER_BLOCK_START
+/// ; total layer number: <N>
+/// ; filament_diameter: <d>
+/// ; filament_density: <rho>
+/// ; max_z_height: <z>
+/// ; filament: <i0>,<i1>,...
+/// ; HEADER_BLOCK_END
+/// ```
+/// Tool indices are 1-based (OrcaSlicer uses `used_filaments[idx] + 1`).
+/// `max_z_mm` is the Z of the highest layer in millimeters.
+fn serialize_header_block(
+    layer_count: u32,
+    filament_diameter_mm: f32,
+    filament_density_g_cm3: f32,
+    max_z_mm: f32,
+    filament_used_mm: &[f32],
+) -> String {
+    let mut out = String::new();
+    writeln!(out, "; HEADER_BLOCK_START").unwrap();
+    writeln!(out, "; total layer number: {}", layer_count).unwrap();
+    // Format floats without unnecessary trailing zeros.
+    writeln!(out, "; filament_diameter: {}", filament_diameter_mm).unwrap();
+    writeln!(out, "; filament_density: {}", filament_density_g_cm3).unwrap();
+    // OrcaSlicer uses fixed precision 2 for max_z_height.
+    writeln!(out, "; max_z_height: {:.2}", max_z_mm).unwrap();
+    // Collect 1-based tool indices where filament was used (> 0.0), ascending.
+    let used_indices: Vec<String> = filament_used_mm
+        .iter()
+        .enumerate()
+        .filter(|(_, &mm)| mm > 0.0)
+        .map(|(i, _)| (i + 1).to_string())
+        .collect();
+    // If no filament was used (e.g. empty plan), emit tool 1 as a fallback
+    // so the field always has a non-empty value (AC-6 requires ≥ 1 digit).
+    let filament_value = if used_indices.is_empty() {
+        "1".to_string()
+    } else {
+        used_indices.join(",")
+    };
+    writeln!(out, "; filament: {}", filament_value).unwrap();
+    writeln!(out, "; HEADER_BLOCK_END").unwrap();
+    out
+}
+
+/// Produce the extrusion-width comment block (packet 55 Step 4 / AC-7).
+///
+/// Format (five lines, immediately after HEADER_BLOCK_END):
+/// ```text
+/// ; outer_wall_line_width = <value>
+/// ; inner_wall_line_width = <value>
+/// ; sparse_infill_line_width = <value>
+/// ; top_surface_line_width = <value>
+/// ; support_line_width = <value>
+/// ```
+/// Values are formatted with trailing-zero-stripped decimal notation (e.g. `0.42`, not `0.4200`).
+fn serialize_width_comments(
+    outer_wall: f32,
+    inner_wall: f32,
+    sparse_infill: f32,
+    top_surface: f32,
+    support: f32,
+) -> String {
+    let mut out = String::new();
+    // Strip trailing zeros while keeping at least one decimal digit.
+    // `format!("{}", v)` on f32 already does this for values like 0.42 and 0.45.
+    writeln!(out, "; outer_wall_line_width = {outer_wall}").unwrap();
+    writeln!(out, "; inner_wall_line_width = {inner_wall}").unwrap();
+    writeln!(out, "; sparse_infill_line_width = {sparse_infill}").unwrap();
+    writeln!(out, "; top_surface_line_width = {top_surface}").unwrap();
+    writeln!(out, "; support_line_width = {support}").unwrap();
+    out
+}
+
+/// Encode raw bytes to a Base64 string (RFC 4648 standard alphabet, no line breaks).
+///
+/// Hand-rolled to avoid requiring `base64` as a non-dev dependency.
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let combined = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((combined >> 18) & 63) as usize] as char);
+        out.push(TABLE[((combined >> 12) & 63) as usize] as char);
+        if chunk.len() > 1 {
+            out.push(TABLE[((combined >> 6) & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+        if chunk.len() > 2 {
+            out.push(TABLE[(combined & 63) as usize] as char);
+        } else {
+            out.push('=');
+        }
+    }
+    out
+}
+
+/// Produce the THUMBNAIL_BLOCK text (OrcaSlicer wire format, packet 55 Step 5).
+///
+/// Format (FACT from OrcaSlicerDocumented/src/libslic3r/GCode/Thumbnails.hpp:111-129):
+/// - Sentinel: `; THUMBNAIL_BLOCK_START`
+/// - Base64 lines: `; <chunk>` where each chunk is ≤ 76 characters (OrcaSlicer max_row_length)
+/// - Sentinel: `; THUMBNAIL_BLOCK_END`
+///
+/// No metadata header line is emitted so that the region between the sentinels
+/// contains only base64 data (required for the roundtrip test to decode cleanly).
+pub fn serialize_thumbnail_block(png_bytes: &[u8]) -> String {
+    const MAX_ROW_LENGTH: usize = 76;
+    let encoded = base64_encode(png_bytes);
+    let mut out = String::new();
+    writeln!(out, "; THUMBNAIL_BLOCK_START").unwrap();
+    let mut remaining = encoded.as_str();
+    while remaining.len() > MAX_ROW_LENGTH {
+        writeln!(out, "; {}", &remaining[..MAX_ROW_LENGTH]).unwrap();
+        remaining = &remaining[MAX_ROW_LENGTH..];
+    }
+    if !remaining.is_empty() {
+        writeln!(out, "; {}", remaining).unwrap();
+    }
+    writeln!(out, "; THUMBNAIL_BLOCK_END").unwrap();
+    out
+}
+
+/// Convert a `ResolvedConfig` to a flat `HashMap<String, ConfigValue>`.
+///
+/// Used to populate the CONFIG_BLOCK with the effective slicer settings.
+/// `Option`-typed fields that are `None` are omitted; all others are included.
+pub fn resolved_config_to_map(cfg: &ResolvedConfig) -> HashMap<String, ConfigValue> {
+    let mut m: HashMap<String, ConfigValue> = HashMap::new();
+    m.insert(
+        "layer_height".into(),
+        ConfigValue::Float(f64::from(cfg.layer_height)),
+    );
+    m.insert(
+        "line_width".into(),
+        ConfigValue::Float(f64::from(cfg.line_width)),
+    );
+    m.insert(
+        "first_layer_height".into(),
+        ConfigValue::Float(f64::from(cfg.first_layer_height)),
+    );
+    m.insert(
+        "first_layer_line_width".into(),
+        ConfigValue::Float(f64::from(cfg.first_layer_line_width)),
+    );
+    m.insert(
+        "wall_count".into(),
+        ConfigValue::Int(i64::from(cfg.wall_count)),
+    );
+    m.insert(
+        "outer_wall_speed".into(),
+        ConfigValue::Float(f64::from(cfg.outer_wall_speed)),
+    );
+    m.insert(
+        "inner_wall_speed".into(),
+        ConfigValue::Float(f64::from(cfg.inner_wall_speed)),
+    );
+    m.insert(
+        "wall_generator".into(),
+        ConfigValue::String(format!("{:?}", cfg.wall_generator)),
+    );
+    if let Some(v) = cfg.arachne_min_feature_size {
+        m.insert(
+            "arachne_min_feature_size".into(),
+            ConfigValue::Float(f64::from(v)),
+        );
+    }
+    m.insert(
+        "infill_type".into(),
+        ConfigValue::String(format!("{:?}", cfg.infill_type)),
+    );
+    m.insert(
+        "infill_density".into(),
+        ConfigValue::Float(f64::from(cfg.infill_density)),
+    );
+    m.insert(
+        "infill_angle".into(),
+        ConfigValue::Float(f64::from(cfg.infill_angle)),
+    );
+    m.insert(
+        "infill_speed".into(),
+        ConfigValue::Float(f64::from(cfg.infill_speed)),
+    );
+    m.insert(
+        "solid_infill_speed".into(),
+        ConfigValue::Float(f64::from(cfg.solid_infill_speed)),
+    );
+    m.insert(
+        "top_shell_layers".into(),
+        ConfigValue::Int(i64::from(cfg.top_shell_layers)),
+    );
+    m.insert(
+        "bottom_shell_layers".into(),
+        ConfigValue::Int(i64::from(cfg.bottom_shell_layers)),
+    );
+    m.insert(
+        "top_fill_holder".into(),
+        ConfigValue::String(cfg.top_fill_holder.clone()),
+    );
+    m.insert(
+        "bottom_fill_holder".into(),
+        ConfigValue::String(cfg.bottom_fill_holder.clone()),
+    );
+    m.insert(
+        "bridge_fill_holder".into(),
+        ConfigValue::String(cfg.bridge_fill_holder.clone()),
+    );
+    m.insert(
+        "sparse_fill_holder".into(),
+        ConfigValue::String(cfg.sparse_fill_holder.clone()),
+    );
+    m.insert(
+        "support_enabled".into(),
+        ConfigValue::Bool(cfg.support_enabled),
+    );
+    m.insert(
+        "support_type".into(),
+        ConfigValue::String(format!("{:?}", cfg.support_type)),
+    );
+    m.insert(
+        "support_overhang_angle".into(),
+        ConfigValue::Float(f64::from(cfg.support_overhang_angle)),
+    );
+    if let Some(v) = cfg.nonplanar_max_angle_deg {
+        m.insert(
+            "nonplanar_max_angle_deg".into(),
+            ConfigValue::Float(f64::from(v)),
+        );
+    }
+    if let Some(v) = cfg.nonplanar_shell_count {
+        m.insert(
+            "nonplanar_shell_count".into(),
+            ConfigValue::Int(i64::from(v)),
+        );
+    }
+    if let Some(v) = cfg.nonplanar_amplitude {
+        m.insert(
+            "nonplanar_amplitude".into(),
+            ConfigValue::Float(f64::from(v)),
+        );
+    }
+    if let Some(v) = cfg.smoothificator_target_height {
+        m.insert(
+            "smoothificator_target_height".into(),
+            ConfigValue::Float(f64::from(v)),
+        );
+    }
+    if let Some(v) = cfg.smoothificator_adaptive {
+        m.insert("smoothificator_adaptive".into(), ConfigValue::Bool(v));
+    }
+    // Merge extension keys (module-contributed, already in ConfigValue form)
+    for (k, v) in &cfg.extensions {
+        m.insert(k.clone(), v.clone());
+    }
+    m
+}
+
+/// Produce the CONFIG_BLOCK text (packet 55 Step 5 / AC-8, AC-9).
+///
+/// Format:
+/// ```text
+/// ; CONFIG_BLOCK_START
+/// ; key = value
+/// ...
+/// ; CONFIG_BLOCK_END
+/// ```
+/// Keys are sorted for determinism. Callers are responsible for stripping
+/// invocation-time keys (e.g. `thumbnail_path`) before passing the map.
+fn serialize_config_block(raw_config: &HashMap<String, ConfigValue>) -> String {
+    let mut out = String::new();
+    writeln!(out, "; CONFIG_BLOCK_START").unwrap();
+    // Sort keys for deterministic output.
+    let mut keys: Vec<&String> = raw_config.keys().collect();
+    keys.sort();
+    for key in keys {
+        if let Some(value) = raw_config.get(key) {
+            let value_str = match value {
+                ConfigValue::Bool(b) => b.to_string(),
+                ConfigValue::Int(i) => i.to_string(),
+                ConfigValue::Float(f) => {
+                    // Strip trailing zeros like "22.0" → "22" not wanted by test, keep "22.0"
+                    format!("{f}")
+                }
+                ConfigValue::String(s) => s.clone(),
+                ConfigValue::List(items) => {
+                    let parts: Vec<String> = items
+                        .iter()
+                        .map(|v| match v {
+                            ConfigValue::String(s) => s.clone(),
+                            _ => format!("{v:?}"),
+                        })
+                        .collect();
+                    parts.join(",")
+                }
+            };
+            writeln!(out, "; {key} = {value_str}").unwrap();
+        }
+    }
+    writeln!(out, "; CONFIG_BLOCK_END").unwrap();
+    out
+}
+
+/// A `GCodeSerializer` wrapper that injects `THUMBNAIL_BLOCK` and `CONFIG_BLOCK`
+/// from the raw config source, delegating core serialization to the inner serializer.
+///
+/// Used by `run_pipeline_with_raw_config` to inject thumbnail data and config
+/// view into the serialization step without changing the `GCodeSerializer` trait.
+pub struct ThumbnailAwareSerializer {
+    inner: Box<dyn crate::GCodeSerializer>,
+    thumbnail_bytes: Option<Vec<u8>>,
+    raw_config: HashMap<String, ConfigValue>,
+}
+
+impl ThumbnailAwareSerializer {
+    /// Create a new wrapper around `inner`, optionally attaching thumbnail bytes
+    /// and a raw config map for CONFIG_BLOCK emission.
+    pub fn new(
+        inner: Box<dyn crate::GCodeSerializer>,
+        thumbnail_bytes: Option<Vec<u8>>,
+        raw_config: HashMap<String, ConfigValue>,
+    ) -> Self {
+        Self {
+            inner,
+            thumbnail_bytes,
+            raw_config,
+        }
+    }
+}
+
+impl crate::GCodeSerializer for ThumbnailAwareSerializer {
+    fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, crate::PostpassError> {
+        let base = self.inner.serialize_gcode(gcode_ir)?;
+
+        // 1. Insert THUMBNAIL_BLOCK immediately after HEADER_BLOCK_END (if thumbnail present).
+        let base = if let Some(ref bytes) = self.thumbnail_bytes {
+            let sentinel = "; HEADER_BLOCK_END\n";
+            if let Some(pos) = base.find(sentinel) {
+                let insert_at = pos + sentinel.len();
+                let mut result = String::with_capacity(base.len() + bytes.len() * 2);
+                result.push_str(&base[..insert_at]);
+                result.push_str(&serialize_thumbnail_block(bytes));
+                result.push_str(&base[insert_at..]);
+                result
+            } else {
+                let mut result = serialize_thumbnail_block(bytes);
+                result.push_str(&base);
+                result
+            }
+        } else {
+            base
+        };
+
+        // 2. Append CONFIG_BLOCK at the end of the output.
+        let config_block = serialize_config_block(&self.raw_config);
+        let mut result = base;
+        result.push_str(&config_block);
+        Ok(result)
+    }
+}
+
+impl GCodeSerializer for DefaultGCodeSerializer {
+    fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
+        let mut output = String::new();
+
+        // Compute max Z height (mm) from the GCodeIR commands.
+        // Z fields in Move commands are already in mm (f32).
+        let computed_z: f32 = gcode_ir
+            .commands
+            .iter()
+            .filter_map(|cmd| {
+                if let GCodeCommand::Move { z, .. } = cmd {
+                    *z
+                } else {
+                    None
+                }
+            })
+            .fold(0.0_f32, f32::max);
+        // Use the config floor when no Z moves appear (e.g. empty-plan test runs).
+        // For real prints the scanned value is always larger than the floor.
+        let max_z_mm = if computed_z > 0.0 {
+            computed_z
+        } else {
+            self.max_z_height_floor_mm
+        };
+
+        // Emit HEADER_BLOCK as the first thing in the file (AC-3 through AC-6,
+        // OrcaSlicer parity: GCode.cpp:2644-2704).
+        output.push_str(&serialize_header_block(
+            gcode_ir.metadata.layer_count,
+            self.filament_diameter_mm,
+            self.filament_density_g_cm3,
+            max_z_mm,
+            &gcode_ir.metadata.filament_used_mm,
+        ));
+
+        // Emit extrusion-width comments immediately after HEADER_BLOCK_END (AC-7,
+        // packet 55 Step 4).
+        output.push_str(&serialize_width_comments(
+            self.outer_wall_line_width,
+            self.inner_wall_line_width,
+            self.sparse_infill_line_width,
+            self.top_surface_line_width,
+            self.support_line_width,
+        ));
+
+        // e_accumulator tracks the absolute E position seen so far (from GCodeIR,
+        // which always stores absolute E values).  Only used in relative mode to
+        // compute per-move deltas.
+        let mut e_accumulator: f64 = 0.0;
+
+        // ExtrusionMode is now at index 0 of gcode_ir.commands (pushed by the emitter).
+        // The per-command renderer handles it — no special-case prepend needed here.
+        for command in gcode_ir.commands.iter() {
+            match command {
+                GCodeCommand::Move {
+                    x,
+                    y,
+                    z,
+                    e,
+                    f,
+                    role,
+                    ..
+                } => {
+                    // Emit G0 for travel moves (Custom("Travel") role), G1 for extrusion moves.
+                    let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
+                    let cmd = if is_travel { "G0" } else { "G1" };
+                    write!(output, "{cmd}").unwrap();
+                    if let Some(x_val) = x {
+                        write!(output, " X{}", format_xyz(*x_val, self.gcode_xy_decimals)).unwrap();
+                    }
+                    if let Some(y_val) = y {
+                        write!(output, " Y{}", format_xyz(*y_val, self.gcode_xy_decimals)).unwrap();
+                    }
+                    if let Some(z_val) = z {
+                        write!(output, " Z{}", format_xyz(*z_val, self.gcode_xy_decimals)).unwrap();
+                    }
+                    if let Some(e_val) = e {
+                        if self.relative {
+                            let abs_e = *e_val as f64;
+                            let delta = abs_e - e_accumulator;
+                            write!(output, " E{:.5}", delta).unwrap();
+                            e_accumulator = abs_e;
+                        } else {
+                            write!(output, " E{:.5}", e_val).unwrap();
+                        }
+                    }
+                    if let Some(f_val) = f {
+                        write!(output, " F{}", format_coord(*f_val)).unwrap();
+                    }
+                    writeln!(output).unwrap();
+                }
+                GCodeCommand::Retract {
+                    length,
+                    speed,
+                    mode,
+                } => match mode {
+                    slicer_ir::RetractMode::Gcode => {
+                        // Retract is always a delta (negative E movement) regardless of mode,
+                        // because it represents a physical retraction amount.  In relative mode
+                        // the retract length IS the delta.  In absolute mode we subtract from
+                        // the accumulator and emit the new absolute position.
+                        if self.relative {
+                            writeln!(output, "G1 E-{:.5} F{}", length, format_coord(*speed))
+                                .unwrap();
+                            e_accumulator -= *length as f64;
+                        } else {
+                            writeln!(
+                                output,
+                                "G1 E-{} F{}",
+                                format_coord(*length),
+                                format_coord(*speed)
+                            )
+                            .unwrap();
+                        }
+                    }
+                    slicer_ir::RetractMode::Firmware => {
+                        writeln!(output, "G10").unwrap();
+                    }
+                },
+                GCodeCommand::Unretract {
+                    length,
+                    speed,
+                    mode,
+                } => match mode {
+                    slicer_ir::RetractMode::Gcode => {
+                        if self.relative {
+                            writeln!(output, "G1 E{:.5} F{}", length, format_coord(*speed))
+                                .unwrap();
+                            e_accumulator += *length as f64;
+                        } else {
+                            writeln!(
+                                output,
+                                "G1 E{} F{}",
+                                format_coord(*length),
+                                format_coord(*speed)
+                            )
+                            .unwrap();
+                        }
+                    }
+                    slicer_ir::RetractMode::Firmware => {
+                        writeln!(output, "G11").unwrap();
+                    }
+                },
+                // Raw commands: detect G92 E resets and sync the accumulator.
+                GCodeCommand::Raw { text } => {
+                    // Detect "G92 E0" (or "G92 E0.0" etc.) to reset accumulator.
+                    let trimmed = text.trim();
+                    if trimmed.starts_with("G92") {
+                        // Parse the E value from the G92 line (e.g. "G92 E0" → 0.0).
+                        if let Some(e_str) = trimmed
+                            .split_whitespace()
+                            .find(|tok| tok.starts_with('E') || tok.starts_with('e'))
+                        {
+                            if let Ok(val) = e_str[1..].parse::<f64>() {
+                                e_accumulator = val;
+                            }
+                        }
+                    }
+                    writeln!(output, "{}", text).unwrap();
+                }
+                GCodeCommand::FanSpeed { value } => {
+                    writeln!(output, "M106 S{}", value).unwrap();
+                }
+                GCodeCommand::Temperature {
+                    tool,
+                    celsius,
+                    wait,
+                } => {
+                    let cmd = if *wait { "M109" } else { "M104" };
+                    writeln!(output, "{} T{} S{}", cmd, tool, format_coord(*celsius)).unwrap();
+                }
+                GCodeCommand::ToolChange { to, .. } => {
+                    writeln!(output, "T{}", to).unwrap();
+                }
+                GCodeCommand::Comment { text } => {
+                    writeln!(output, "; {}", text).unwrap();
+                }
+                GCodeCommand::ExtrusionMode { absolute } => {
+                    if *absolute {
+                        writeln!(output, "M82").unwrap();
+                    } else {
+                        writeln!(output, "M83").unwrap();
+                    }
+                }
+            }
+        }
+
+        Ok(output)
+    }
+}
+
+/// Reconcile travel moves to route through finalization geometry (Skirt/Brim,
+/// WipeTower) without modifying `ordered_entities`.
+///
+/// This pass runs on each `LayerCollectionIR` *before* `emit_gcode` so that
+/// travel transitions correctly incorporate finalization geometry.
+///
+/// Invariants:
+/// - `ordered_entities` is never modified.
+/// - Only `travel_moves` is mutated (new entries appended).
+/// - If no Skirt or WipeTower entities exist, the layer is unchanged (no-op).
+pub fn reconcile_finalization_travel(
+    layer: &mut LayerCollectionIR,
+    travel_f_mm_per_min: Option<f32>,
+) {
+    use slicer_ir::TravelMove;
+
+    let entities = &layer.ordered_entities;
+
+    // Collect indices of finalization entities
+    let skirt_indices: Vec<usize> = entities
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.role == ExtrusionRole::Skirt)
+        .map(|(i, _)| i)
+        .collect();
+    let wipe_indices: Vec<usize> = entities
+        .iter()
+        .enumerate()
+        .filter(|(_, e)| e.role == ExtrusionRole::WipeTower)
+        .map(|(i, _)| i)
+        .collect();
+
+    if skirt_indices.is_empty() && wipe_indices.is_empty() {
+        return; // no-op
+    }
+
+    // Find the first model (non-finalization) entity index
+    let first_model = entities.iter().enumerate().find_map(|(i, e)| {
+        if e.role != ExtrusionRole::Skirt && e.role != ExtrusionRole::WipeTower {
+            Some(i)
+        } else {
+            None
+        }
+    });
+
+    // AC1: If skirt entities exist before model entities, add a travel move
+    // from the last skirt entity's endpoint to the first model entity's start.
+    if let (Some(&last_skirt_idx), Some(model_idx)) = (skirt_indices.last(), first_model) {
+        if last_skirt_idx < model_idx {
+            let skirt_entity = &entities[last_skirt_idx];
+            let model_entity = &entities[model_idx];
+            if let (Some(_skirt_end), Some(model_start)) = (
+                skirt_entity.path.points.last(),
+                model_entity.path.points.first(),
+            ) {
+                layer.travel_moves.push(TravelMove {
+                    entity_id: entities[last_skirt_idx].entity_id,
+                    x: Some(model_start.x),
+                    y: Some(model_start.y),
+                    z: None,
+                    f: travel_f_mm_per_min,
+                });
+            }
+        }
+    }
+
+    // AC2: If wipe tower entities exist, add travel moves that route to the
+    // wipe tower start from the preceding entity.
+    for &wipe_idx in &wipe_indices {
+        if wipe_idx > 0 {
+            let wipe_entity = &entities[wipe_idx];
+            if let Some(wipe_start) = wipe_entity.path.points.first() {
+                layer.travel_moves.push(TravelMove {
+                    entity_id: entities[wipe_idx - 1].entity_id,
+                    x: Some(wipe_start.x),
+                    y: Some(wipe_start.y),
+                    z: None,
+                    f: travel_f_mm_per_min,
+                });
+            }
+        }
+    }
+
+    // Keep travel_moves sorted by anchored entity position for deterministic emission.
+    let id_to_idx: std::collections::HashMap<u64, usize> = entities
+        .iter()
+        .enumerate()
+        .map(|(i, e)| (e.entity_id, i))
+        .collect();
+    layer
+        .travel_moves
+        .sort_by_key(|tm| id_to_idx.get(&tm.entity_id).copied().unwrap_or(usize::MAX));
+}
+
+/// Format a coordinate value, trimming unnecessary trailing zeros.
+/// Uses fixed 4-decimal precision (legacy behavior for F/E/temperature emit).
+pub fn format_coord(value: f32) -> String {
+    // Format with enough precision, then trim trailing zeros
+    let s = format!("{:.4}", value);
+    let s = s.trim_end_matches('0');
+    let s = s.trim_end_matches('.');
+    s.to_string()
+}
+
+/// Format an XYZ coordinate value with configurable decimal precision,
+/// trimming unnecessary trailing zeros.
+pub fn format_xyz(value: f32, decimals: u32) -> String {
+    let s = format!("{:.*}", decimals as usize, value);
+    let s = s.trim_end_matches('0');
+    let s = s.trim_end_matches('.');
+    s.to_string()
+}
+
+/// Apply cross-layer tool rotation to entity order.
+///
+/// The WASM path-optimization module always orders entity clusters in ascending
+/// tool order (it cannot carry cross-layer state — see DEV-054 follow-up (iii),
+/// H1). This function post-processes `LayerCollectionIR` entries in layer-index
+/// order to rotate each layer's clusters so the first cluster's tool matches the
+/// previous layer's ending tool. This avoids a redundant `T0` tool-change at the
+/// start of nearly every layer when the previous layer ended on a non-zero tool.
+///
+/// Recomputes `tool_changes` from the new entity order and remaps all
+/// index-anchored data (`z_hops`, `retracts`, `annotations`).
+fn apply_cross_layer_tool_rotation(layers: &mut [LayerCollectionIR]) {
+    if layers.is_empty() {
+        return;
+    }
+
+    let mut prev_ending_tool: Option<u32> = None;
+
+    for layer in layers.iter_mut() {
+        let entities = &mut layer.ordered_entities;
+        if entities.is_empty() {
+            continue;
+        }
+
+        let first_tool = entities[0].region_key.region_id as u32;
+
+        if let Some(prev_tool) = prev_ending_tool {
+            if prev_tool != first_tool {
+                if let Some(start) = entities
+                    .iter()
+                    .position(|e| e.region_key.region_id as u32 == prev_tool)
+                {
+                    let mut end = start;
+                    while end < entities.len()
+                        && entities[end].region_key.region_id as u32 == prev_tool
+                    {
+                        end += 1;
+                    }
+
+                    let n = entities.len();
+                    let cluster_size = end - start;
+                    let mut old_to_new: Vec<usize> = vec![0; n];
+
+                    for i in start..end {
+                        old_to_new[i] = i - start;
+                    }
+                    for i in 0..start {
+                        old_to_new[i] = i + cluster_size;
+                    }
+                    for i in end..n {
+                        old_to_new[i] = i;
+                    }
+
+                    let mut new_entities = Vec::with_capacity(n);
+                    new_entities.extend(entities.drain(start..end));
+                    new_entities.append(entities);
+                    *entities = new_entities;
+
+                    let mut new_tcs: Vec<slicer_ir::ToolChange> = Vec::new();
+                    for i in 0..entities.len().saturating_sub(1) {
+                        let tool_i = entities[i].region_key.region_id as u32;
+                        let tool_next = entities[i + 1].region_key.region_id as u32;
+                        if tool_i != tool_next {
+                            new_tcs.push(slicer_ir::ToolChange {
+                                after_entity_index: i as u32,
+                                from_tool: tool_i,
+                                to_tool: tool_next,
+                            });
+                        }
+                    }
+                    layer.tool_changes = new_tcs;
+
+                    for zh in &mut layer.z_hops {
+                        let old_idx = zh.after_entity_index as usize;
+                        if let Some(&new_idx) = old_to_new.get(old_idx) {
+                            zh.after_entity_index = new_idx as u32;
+                        }
+                    }
+                    for r in &mut layer.retracts {
+                        let old_idx = r.after_entity_index as usize;
+                        if let Some(&new_idx) = old_to_new.get(old_idx) {
+                            r.after_entity_index = new_idx as u32;
+                        }
+                    }
+                    for ann in &mut layer.annotations {
+                        let old_idx = ann.after_entity_index as usize;
+                        if let Some(&new_idx) = old_to_new.get(old_idx) {
+                            ann.after_entity_index = new_idx as u32;
+                        }
+                    }
+                }
+            }
+        }
+
+        prev_ending_tool = entities.last().map(|e| e.region_key.region_id as u32);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_gcode_emitter_stores_slicer_version() {
+        let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
+        assert_eq!(emitter.slicer_version(), "1.0.0-test");
+    }
+
+    #[test]
+    fn default_gcode_serializer_can_be_created() {
+        let _serializer = DefaultGCodeSerializer::new();
+        let _default_serializer = DefaultGCodeSerializer::default();
+    }
+
+    // ── apply_cross_layer_tool_rotation regression tests (packet 58 / DEV-054 (iii)) ──
+    //
+    // The function rotates each layer's first cluster to match the previous
+    // layer's ending tool, suppressing redundant T<n> emissions at layer
+    // boundaries. These tests cover the contract directly (the function is
+    // pure Rust; no WASM boundary).
+
+    fn tool_entity(entity_id: u64, layer: u32, tool: u32) -> slicer_ir::PrintEntity {
+        slicer_ir::PrintEntity {
+            entity_id,
+            path: slicer_ir::ExtrusionPath3D {
+                points: vec![slicer_ir::Point3WithWidth {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.2 * layer as f32,
+                    width: 0.4,
+                    flow_factor: 1.0,
+                    overhang_quartile: None,
+                }],
+                role: slicer_ir::ExtrusionRole::OuterWall,
+                speed_factor: 1.0,
+            },
+            role: slicer_ir::ExtrusionRole::OuterWall,
+            region_key: slicer_ir::RegionKey {
+                global_layer_index: layer,
+                object_id: "obj".to_string(),
+                region_id: tool as u64,
+            },
+            topo_order: 0,
+        }
+    }
+
+    fn layer_with_tools(layer_index: u32, tools: &[u32]) -> slicer_ir::LayerCollectionIR {
+        let entities: Vec<_> = tools
+            .iter()
+            .enumerate()
+            .map(|(i, &t)| tool_entity((i + 1) as u64, layer_index, t))
+            .collect();
+        let mut tcs = Vec::new();
+        for i in 0..entities.len().saturating_sub(1) {
+            let from = entities[i].region_key.region_id as u32;
+            let to = entities[i + 1].region_key.region_id as u32;
+            if from != to {
+                tcs.push(slicer_ir::ToolChange {
+                    after_entity_index: i as u32,
+                    from_tool: from,
+                    to_tool: to,
+                });
+            }
+        }
+        slicer_ir::LayerCollectionIR {
+            global_layer_index: layer_index,
+            z: 0.2 * (layer_index + 1) as f32,
+            ordered_entities: entities,
+            tool_changes: tcs,
+            ..Default::default()
+        }
+    }
+
+    /// Empty layer list and single-layer input must not panic or rotate.
+    #[test]
+    fn apply_cross_layer_tool_rotation_handles_empty_and_singleton() {
+        // Empty: no-op.
+        let mut empty: Vec<slicer_ir::LayerCollectionIR> = Vec::new();
+        apply_cross_layer_tool_rotation(&mut empty);
+        assert!(empty.is_empty());
+
+        // Singleton: nothing to rotate against; layer left intact.
+        let original = layer_with_tools(0, &[0, 0, 1, 1]);
+        let mut singleton = vec![original.clone()];
+        apply_cross_layer_tool_rotation(&mut singleton);
+        assert_eq!(
+            singleton[0]
+                .ordered_entities
+                .iter()
+                .map(|e| e.region_key.region_id)
+                .collect::<Vec<_>>(),
+            original
+                .ordered_entities
+                .iter()
+                .map(|e| e.region_key.region_id)
+                .collect::<Vec<_>>(),
+            "single layer must not be rotated"
+        );
+        assert_eq!(
+            singleton[0].tool_changes.len(),
+            original.tool_changes.len(),
+            "tool_changes must be preserved for singleton input"
+        );
+    }
+
+    /// Golden case: layer 0 ends on tool 2; layer 1 starts in ascending order
+    /// [0, 1, 2, 3]. The tool-2 cluster in layer 1 must rotate to the front,
+    /// producing [2, 0, 1, 3], and tool_changes for layer 1 must be recomputed
+    /// to reflect the new order (so the first transition is 2→0 at index 0,
+    /// not the redundant 0-leads layer-boundary emission).
+    #[test]
+    fn apply_cross_layer_tool_rotation_rotates_matching_cluster_to_front() {
+        // Layer 0 ends on tool 2.
+        let layer0 = layer_with_tools(0, &[0, 0, 1, 2, 2]);
+        // Layer 1 in ascending tool order — one entity per tool.
+        let layer1 = layer_with_tools(1, &[0, 1, 2, 3]);
+        let mut layers = vec![layer0, layer1];
+
+        apply_cross_layer_tool_rotation(&mut layers);
+
+        let new_tools: Vec<u64> = layers[1]
+            .ordered_entities
+            .iter()
+            .map(|e| e.region_key.region_id)
+            .collect();
+        assert_eq!(
+            new_tools,
+            vec![2u64, 0, 1, 3],
+            "layer 1's tool-2 cluster (single entity) must rotate to position 0"
+        );
+
+        // Recomputed tool_changes must reflect the new order: 2→0 at idx 0,
+        // 0→1 at idx 1, 1→3 at idx 2.
+        let new_tcs: Vec<(u32, u32, u32)> = layers[1]
+            .tool_changes
+            .iter()
+            .map(|tc| (tc.after_entity_index, tc.from_tool, tc.to_tool))
+            .collect();
+        assert_eq!(new_tcs, vec![(0, 2, 0), (1, 0, 1), (2, 1, 3)]);
+    }
+
+    /// When layer N's ending tool already matches layer N+1's leading tool,
+    /// no rotation occurs and the layer's data is identical to its input.
+    #[test]
+    fn apply_cross_layer_tool_rotation_noop_when_tool_already_matches() {
+        let layer0 = layer_with_tools(0, &[0, 1, 1]); // ends on 1
+        let layer1 = layer_with_tools(1, &[1, 2, 3]); // starts with 1
+        let original_layer1 = layer1.clone();
+        let mut layers = vec![layer0, layer1];
+
+        apply_cross_layer_tool_rotation(&mut layers);
+
+        let after: Vec<u64> = layers[1]
+            .ordered_entities
+            .iter()
+            .map(|e| e.region_key.region_id)
+            .collect();
+        let before: Vec<u64> = original_layer1
+            .ordered_entities
+            .iter()
+            .map(|e| e.region_key.region_id)
+            .collect();
+        assert_eq!(
+            after, before,
+            "matching boundary tool must not trigger rotation"
+        );
+        assert_eq!(layers[1].tool_changes, original_layer1.tool_changes);
+    }
+
+    /// Rotation must remap every positional anchor: z_hops, retracts, and
+    /// annotations. Layer 1: [0, 1, 2] with a ZHop after index 0 and a
+    /// TravelRetract after index 1; layer 0 ends on tool 2. After rotation
+    /// layer 1 becomes [2, 0, 1]; old_to_new[0]=1, old_to_new[1]=2,
+    /// old_to_new[2]=0; so the ZHop's anchor moves 0 → 1 and the retract's
+    /// anchor moves 1 → 2.
+    #[test]
+    fn apply_cross_layer_tool_rotation_remaps_zhops_retracts_annotations() {
+        let layer0 = layer_with_tools(0, &[2, 2]); // ends on tool 2
+        let mut layer1 = layer_with_tools(1, &[0, 1, 2]);
+        layer1.z_hops = vec![slicer_ir::ZHop {
+            after_entity_index: 0,
+            hop_height: 0.3,
+        }];
+        layer1.retracts = vec![slicer_ir::TravelRetract {
+            after_entity_index: 1,
+            length: 0.8,
+            speed: 1800.0,
+            ..Default::default()
+        }];
+        layer1.annotations = vec![slicer_ir::LayerAnnotation {
+            after_entity_index: 2,
+            kind: slicer_ir::LayerAnnotationKind::Comment("hello".to_string()),
+        }];
+
+        let mut layers = vec![layer0, layer1];
+        apply_cross_layer_tool_rotation(&mut layers);
+
+        let new_tools: Vec<u64> = layers[1]
+            .ordered_entities
+            .iter()
+            .map(|e| e.region_key.region_id)
+            .collect();
+        assert_eq!(new_tools, vec![2u64, 0, 1]);
+
+        assert_eq!(
+            layers[1].z_hops[0].after_entity_index, 1,
+            "ZHop anchor must remap from old 0 to new 1"
+        );
+        assert_eq!(
+            layers[1].retracts[0].after_entity_index, 2,
+            "TravelRetract anchor must remap from old 1 to new 2"
+        );
+        assert_eq!(
+            layers[1].annotations[0].after_entity_index, 0,
+            "Annotation anchor must remap from old 2 to new 0"
+        );
+    }
+}

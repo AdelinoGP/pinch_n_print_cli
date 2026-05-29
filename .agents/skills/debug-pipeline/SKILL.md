@@ -1,12 +1,12 @@
 ---
 name: debug-pipeline
-description: Investigate a slow or failing slice and introspect the static module DAG using `slicer-host run --instrument-stderr`, `slicer-host dag <subcommand>`, and `slicer-host diagnose`. Trigger phrases include "which module is slow", "why does X depend on Y", "diagnose modules", "inspect the DAG", and "investigate slice timing".
+description: Investigate a slow or failing slice and introspect the static module DAG using `pnp_cli slice --instrument-stderr`, `pnp_cli dag <subcommand>`, and `pnp_cli module diagnose`. Trigger phrases include "which module is slow", "why does X depend on Y", "diagnose modules", "inspect the DAG", and "investigate slice timing".
 ---
 
 # Debug the slicer pipeline
 
 Three zero-WASM CLI surfaces back this skill. Pick the cheapest tool that
-answers the question; `dag` and `diagnose` parse manifest TOMLs only and
+answers the question; `dag` and `module diagnose` parse manifest TOMLs only and
 respond in well under 100 ms.
 
 Reference docs: `docs/specs/agent-cli-debugging.md`,
@@ -14,20 +14,20 @@ Reference docs: `docs/specs/agent-cli-debugging.md`,
 
 ## Tool selector
 
-| Question                                  | Command                                             |
-|-------------------------------------------|-----------------------------------------------------|
-| "Which module is slow right now?"         | `run --instrument-stderr`, watch `module_complete`  |
-| "Is WASM memory growing on layer N?"      | `run --instrument-stderr`, watch `wasm_peak_kb`     |
-| "Why does stage X serialize to stage Y?"  | `dag stage <id>`                                    |
-| "What depends on `<module>`?"             | `dag depends <module>`                              |
-| "Is this manifest tree valid?"            | `diagnose`                                          |
-| "What stages exist?"                      | `dag stages`                                        |
-| "Who holds claim X? Are they swappable?"  | `dag claims`                                        |
+| Question                                  | Command                                                      |
+|-------------------------------------------|--------------------------------------------------------------|
+| "Which module is slow right now?"         | `pnp_cli slice --instrument-stderr`, watch `module_complete` |
+| "Is WASM memory growing on layer N?"      | `pnp_cli slice --instrument-stderr`, watch `wasm_peak_kb`    |
+| "Why does stage X serialize to stage Y?"  | `pnp_cli dag stage <id>`                                     |
+| "What depends on `<module>`?"             | `pnp_cli dag depends <module>`                               |
+| "Is this manifest tree valid?"            | `pnp_cli module diagnose`                                    |
+| "What stages exist?"                      | `pnp_cli dag stages`                                         |
+| "Who holds claim X? Are they swappable?"  | `pnp_cli dag claims`                                         |
 
 ## Live slice instrumentation
 
 ```
-slicer-host run \
+pnp_cli slice \
     --model resources/benchy.stl \
     --module-dir modules/core-modules \
     --output /tmp/out.gcode \
@@ -50,17 +50,17 @@ grep '"event":"module_complete"' /tmp/events.jsonl \
 All `dag` subcommands take `--module-dir <PATH>` (repeatable),
 `--no-default-module-paths`, and optionally `--model <PATH>`.
 
-- `slicer-host dag stages` — stages with tier, module count, claim count.
-- `slicer-host dag stage <id>` — full detail; flat reason strings
+- `pnp_cli dag stages` — stages with tier, module count, claim count.
+- `pnp_cli dag stage <id>` — full detail; flat reason strings
   (`"ir_write_read: <path>"` or `"explicit_requires"`).
-- `slicer-host dag depends <module-id>` — upstream + downstream global edges.
-- `slicer-host dag claims` — claims with holders, requesters,
+- `pnp_cli dag depends <module-id>` — upstream + downstream global edges.
+- `pnp_cli dag claims` — claims with holders, requesters,
   `interchangeable`.
 
 ## Diagnose
 
 ```
-slicer-host diagnose --module-dir modules/core-modules
+pnp_cli module diagnose --module-dir modules/core-modules
 ```
 
 Exit codes: `0` clean, `1` errors, `2` unreadable files.

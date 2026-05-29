@@ -11,7 +11,7 @@
 //!   with strict per-variant type checking.
 //!
 //! Adding a new field requires editing one line in the macro invocation. The
-//! host-side resolver in `slicer-host::config_resolution` is a thin loop over
+//! host-side resolver in `slicer-runtime::config_resolution` is a thin loop over
 //! `apply_cli_key`.
 
 use std::collections::HashMap;
@@ -494,7 +494,7 @@ declare_resolved_config! {
     /// effective layer height". Non-zero values must be at least the
     /// object's effective layer height (printers cannot extrude a layer
     /// thinner than the nominal model layer). Validated per-object in
-    /// `slicer_host::config_schema`.
+    /// `slicer_runtime::config_schema`.
     cli "support_layer_height_mm" support_layer_height_mm: f32 = 0.0 => extract_float;
 
     // Non-planar (module-contributed)

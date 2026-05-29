@@ -2,7 +2,7 @@
 //! `wit_bindgen`-backed export glue for every supported world — not a
 //! placeholder `-> i32 { 0 }` shim. Source-level guards sit alongside
 //! the end-to-end round-trip witnesses in
-//! `crates/slicer-host/tests/macro_all_worlds_roundtrip_tdd.rs`.
+//! `crates/slicer-runtime/tests/macro_all_worlds_roundtrip_tdd.rs`.
 
 #![allow(missing_docs)]
 

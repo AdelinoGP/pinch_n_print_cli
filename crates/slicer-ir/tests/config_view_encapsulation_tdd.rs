@@ -134,8 +134,8 @@ fn default_and_new_are_empty() {
 /// touches `.fields`. Any future `pub` field re-exposure on
 /// `ConfigView` would still compile here but would also silently
 /// weaken the contract; those regressions are blocked separately by
-/// a static source-level test in slicer-host (see
-/// `crates/slicer-host/tests/config_view_encapsulation_source_tdd.rs`).
+/// a static source-level test in slicer-runtime (see
+/// `crates/slicer-runtime/tests/config_view_encapsulation_source_tdd.rs`).
 #[test]
 fn construction_goes_through_named_factories_only() {
     // This function is a documentation witness — the absence of

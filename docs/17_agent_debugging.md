@@ -4,13 +4,13 @@ This page is a practical guide for LLM agents (and any caller in a stateless
 tool-call setting) that need to investigate a slow / failing slice or
 introspect the static module DAG without launching a full slice.
 
-The mechanisms are zero-dependency CLI extensions to `slicer-host`:
+The mechanisms are zero-dependency CLI extensions to `pnp_cli`:
 
-| Capability                            | Command                              | Notes                                                  |
-|---------------------------------------|--------------------------------------|--------------------------------------------------------|
-| Live per-stage / per-module timing    | `slicer-host run --instrument-stderr`| Bumps event schema to `"1.1.0"`; composable with `--report`. |
-| Stage / module / claim introspection  | `slicer-host dag <subcommand>`       | Manifest TOML only — no WASM compilation.              |
-| Manifest validation                   | `slicer-host diagnose`               | Structured JSON, exit codes 0 / 1 / 2.                 |
+| Capability                            | Command                             | Notes                                                  |
+|---------------------------------------|-------------------------------------|--------------------------------------------------------|
+| Live per-stage / per-module timing    | `pnp_cli slice --instrument-stderr` | Bumps event schema to `"1.1.0"`; composable with `--report`. |
+| Stage / module / claim introspection  | `pnp_cli dag <subcommand>`          | Manifest TOML only — no WASM compilation.              |
+| Manifest validation                   | `pnp_cli module diagnose`           | Structured JSON, exit codes 0 / 1 / 2.                 |
 
 Spec: `docs/specs/agent-cli-debugging.md`.
 Event contract: `docs/09_progress_events.md`.
@@ -18,7 +18,7 @@ Event contract: `docs/09_progress_events.md`.
 ## Live slice instrumentation
 
 ```
-slicer-host run \
+pnp_cli slice \
     --model resources/benchy.stl \
     --module-dir modules/core-modules \
     --output /tmp/out.gcode \
@@ -39,7 +39,7 @@ To produce both the live JSONL stream and the HTML report on one run,
 pass both flags:
 
 ```
-slicer-host run \
+pnp_cli slice \
     --model resources/benchy.stl --module-dir modules/core-modules \
     --output /tmp/out.gcode --instrument-stderr --report /tmp/report.html
 ```
@@ -56,7 +56,7 @@ respond in well under 100 ms regardless of module count.
 Every stage with its tier, module count, and distinct claim count.
 
 ```
-slicer-host dag stages --module-dir modules/core-modules --no-default-module-paths
+pnp_cli dag stages --module-dir modules/core-modules --no-default-module-paths
 ```
 
 ### `dag stage <id>`
@@ -66,12 +66,12 @@ Full detail for one stage — every module's claims, IR access masks,
 with flattened reasons (`"ir_write_read: <path>"` or `"explicit_requires"`).
 
 ```
-slicer-host dag stage "Layer::Infill" --module-dir modules/core-modules
+pnp_cli dag stage "Layer::Infill" --module-dir modules/core-modules
 ```
 
 Stage ids are the canonical scheduler ids (with `PrePass::`, `Layer::`,
 `PostPass::` prefixes — same as `STAGE_ORDER` in
-`crates/slicer-host/src/execution_plan.rs`).
+`crates/slicer-runtime/src/execution_plan.rs`).
 
 ### `dag depends <module-id>`
 
@@ -80,7 +80,7 @@ full module set so edges that cross stage boundaries are visible (each
 edge carries `from_stage` and `to_stage`).
 
 ```
-slicer-host dag depends "com.core.gyroid-infill" --module-dir modules/core-modules
+pnp_cli dag depends "com.core.gyroid-infill" --module-dir modules/core-modules
 ```
 
 `--model <PATH>` attaches the model's object ids to the output's
@@ -94,7 +94,7 @@ that is `true` when more than one module declares the same claim in
 holders make them interchangeable).
 
 ```
-slicer-host dag claims --module-dir modules/core-modules
+pnp_cli dag claims --module-dir modules/core-modules
 ```
 
 ## Diagnose
@@ -109,7 +109,7 @@ stdout. Exit codes:
   returned `LoadError`).
 
 ```
-slicer-host diagnose --module-dir modules/core-modules
+pnp_cli module diagnose --module-dir modules/core-modules
 ```
 
 ## Worked example — find a slow module
@@ -117,9 +117,9 @@ slicer-host diagnose --module-dir modules/core-modules
 1. Run with `--instrument-stderr` and redirect stderr to a file.
 2. `grep '"event":"module_complete"' /tmp/events.jsonl | jq -s 'group_by(.module_id) | map({m: .[0].module_id, total: (map(.elapsed_ms) | add)})'`
 3. Pick the module with the highest total `elapsed_ms`.
-4. `slicer-host dag depends <that-module-id> --module-dir modules/core-modules`
+4. `pnp_cli dag depends <that-module-id> --module-dir modules/core-modules`
    to see what feeds it and what it feeds.
-5. `slicer-host dag stage <its-stage> --module-dir modules/core-modules`
+5. `pnp_cli dag stage <its-stage> --module-dir modules/core-modules`
    to see config keys, IR access, and intra-stage edges.
 6. If the wiring looks fine, the cost is intrinsic to the module — file an
    issue against that module's owners, or investigate config that drives
