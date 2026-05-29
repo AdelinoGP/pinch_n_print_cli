@@ -17,7 +17,7 @@ slicer-core = { path = "../../../crates/slicer-core" }
 # glue. On native builds the emitted `wit_bindgen::generate!` call is
 # gated behind `#[cfg(target_arch = "wasm32")]` and never expanded.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wit-bindgen = "0.24"
+wit-bindgen.workspace = true
 
 [lints]
 workspace = true

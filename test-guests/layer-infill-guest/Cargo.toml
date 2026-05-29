@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-wit-bindgen = "0.24"
+wit-bindgen = "0.57.1"
 
 # Separate workspace — this crate compiles for wasm32-unknown-unknown
 [workspace]

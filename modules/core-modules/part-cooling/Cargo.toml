@@ -13,7 +13,7 @@ slicer-ir = { path = "../../../crates/slicer-ir" }
 [dev-dependencies]
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wit-bindgen = "0.24"
+wit-bindgen.workspace = true
 
 [lints]
 workspace = true

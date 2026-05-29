@@ -17,7 +17,7 @@ slicer-ir = { path = "../../../crates/slicer-ir" }
 # this crate for the `wasm32-unknown-unknown` target via the companion
 # `wit-guest/` subcrate.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wit-bindgen = "0.24"
+wit-bindgen.workspace = true
 
 [dev-dependencies]
 

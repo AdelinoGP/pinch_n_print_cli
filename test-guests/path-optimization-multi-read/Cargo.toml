@@ -8,7 +8,7 @@ crate-type = ["cdylib"]
 name = "path_optimization_multi_read_guest"
 
 [dependencies]
-wit-bindgen = "0.24"
+wit-bindgen = "0.57.1"
 slicer-sdk = { path = "../../crates/slicer-sdk" }
 slicer-ir  = { path = "../../crates/slicer-ir" }
 slicer-schema = { path = "../../crates/slicer-schema" }

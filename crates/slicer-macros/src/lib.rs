@@ -1002,6 +1002,9 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
 
             #preamble
 
+            // Unlike the prepass world, `wit_bindgen::generate!` does not
+            // emit a flat top-level alias for the finalization world's
+            // `point3-with-width`, so bring it into scope explicitly.
             use self::slicer::world_finalization::geometry::Point3WithWidth;
 
             struct __SlicerFinalizationComponent;
@@ -1434,15 +1437,11 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
 
     let preamble = emit_world_preamble("prepass-module", "world_prepass", wit_inline);
     let segmentation_helpers = quote! {
-        // Bring polygon / point2 sub-types into scope explicitly.
-        // wit-bindgen 0.24 only generates flat type aliases for world-level
-        // `use geometry.{...}` imports whose TypeInfo is marked owned/borrowed;
-        // because the alias TypeId is separate from the underlying geometry
-        // interface TypeId, `polygon` and `point2` may not be marked and thus
-        // not re-exported by `generate!`. The explicit `use` mirrors the
-        // finalization world pattern (see build_finalization_world_glue line ~998).
-        use self::slicer::world_prepass::geometry::Polygon;
-        use self::slicer::world_prepass::geometry::Point2;
+        // `polygon` / `point2` are brought into scope by the flat type
+        // aliases that `wit_bindgen::generate!` (>= 0.57) emits at the
+        // world top level for every world-level `use geometry.{...}`
+        // import. Re-`use`ing them here would now collide with those
+        // generated aliases (E0255 "defined multiple times").
 
         fn __slicer_paint_value_from_wit(
             value: PaintValueView,
