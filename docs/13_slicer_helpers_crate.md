@@ -5,15 +5,13 @@
 >   implemented and shipped in `crates/slicer-helpers/src/`.
 > - The CLI subcommands described below are exposed via the **`pnp_cli`**
 >   binary (Packet 69). The live invocations are `pnp_cli mesh repair`,
->   `pnp_cli mesh decimate`, and `pnp_cli mesh import`. The `slice` operation
->   is served by the `pnp_cli slice` subcommand.
-> - On-disk **STL** input and output are wired through. **OBJ** and **3MF**
->   inputs are accepted via the existing `pnp_cli` mesh loaders, but
->   OBJ/3MF *output* writers are not yet implemented — passing
->   `--format obj` or `--format 3mf` (or `--output-format obj|3mf` to
->   `import`) parses cleanly but fails at the write step with a clear
->   "writer not yet implemented" error. See
->   `docs/handoff_obj_3mf_writers.md` for the implementation handoff.
+>   `pnp_cli mesh decimate`, `pnp_cli mesh import`, and `pnp_cli mesh convert`.
+>   The `slice` operation is served by the `pnp_cli slice` subcommand.
+> - On-disk **STL**, **OBJ**, and **3MF** input and output are all wired
+>   through. OBJ and 3MF output writers (`write_obj`, `write_3mf`) are
+>   implemented in `crates/slicer-runtime/src/model_writer.rs` (Packet 71,
+>   TASK-060). The `--format obj`, `--format 3mf`, and `--output-format
+>   obj|3mf` flags are fully operational end-to-end.
 
 ## Purpose
 
@@ -27,11 +25,13 @@ These operations are hosted here because they require native libraries or algori
 
 **In scope:**
 
-| Feature         | CLI subcommand           | Description                                                                       |
-|-----------------|--------------------------|-----------------------------------------------------------------------------------|
-| Mesh repair     | `pnp_cli mesh repair`    | Manifold fixing: degenerate removal, orientation normalization, open-edge closure |
-| Mesh decimation | `pnp_cli mesh decimate`  | QEM triangle-count reduction with configurable error budget                       |
-| STEP import     | `pnp_cli mesh import`    | STEP/STP → triangulated `MeshIR`, including unit normalization                    |
+| Feature             | CLI subcommand           | Description                                                                       |
+|---------------------|--------------------------|-----------------------------------------------------------------------------------|
+| Mesh repair         | `pnp_cli mesh repair`    | Manifold fixing: degenerate removal, orientation normalization, open-edge closure |
+| Mesh decimation     | `pnp_cli mesh decimate`  | QEM triangle-count reduction with configurable error budget                       |
+| STEP import         | `pnp_cli mesh import`    | STEP/STP → triangulated `MeshIR`, including unit normalization                    |
+| OBJ / 3MF output   | (writer API)             | `write_obj` / `write_3mf` serializers in `crates/slicer-runtime/src/model_writer.rs` |
+| Mesh convert/split  | `pnp_cli mesh convert`   | Load STL/OBJ/3MF, split into connected components, write target format            |
 
 **Out of scope:**
 
@@ -41,7 +41,8 @@ These operations are hosted here because they require native libraries or algori
 | Per-layer geometry operations     | Pipeline module concerns using `slicer-core` and Clipper        |
 | WASM module execution             | Owned by `slicer-runtime` scheduler                             |
 | Boolean modifier volume execution | Handled per-layer by `slicer-core` Clipper ops (pipeline stage) |
-| Any rendering or preview code     | Frontend (Unity) concern                                        |
+| Any rendering or preview code     | Frontend (Bevy) concern                                        |
+| Paint / region metadata in 3MF    | GUI-authored; `write_3mf` emits geometry-only packages          |
 
 ---
 
@@ -451,8 +452,8 @@ Options:
                       solids and --merge-components is not set, output path is
                       used as a stem: <stem>_0.<ext>, <stem>_1.<ext>, etc.,
                       where <ext> is taken from the supplied --output extension.
-  --output-format     Output format (default: stl; obj/3mf accepted but writer
-                      not yet implemented — see status header)
+  --output-format     Output format (default: stl; obj and 3mf are fully
+                      operational — see §Mesh output writers)
   --merge-components  Merge all solids into a single MeshIR before output
   --no-repair         Skip the automatic repair pass (sets
                       StepImportOptions { skip_repair: true })
@@ -500,6 +501,98 @@ Warnings are **not** errors. Operations that produce warnings still return `Ok(r
 
 ---
 
+## Mesh output writers (OBJ / 3MF)
+
+Both writers live in `crates/slicer-runtime/src/model_writer.rs` and serialize `MeshIR` to geometry-only wire formats. They do not touch the WASM runtime or the slicing pipeline.
+
+### Public API
+
+```rust
+/// Write a MeshIR as a Wavefront OBJ file.
+pub fn write_obj(mesh: &MeshIR, w: &mut impl Write) -> Result<(), ModelWriterError>
+
+/// Write a MeshIR as an OrcaSlicer-shaped OPC 3MF package.
+pub fn write_3mf(mesh: &MeshIR, w: impl Write + Seek) -> Result<(), ModelWriterError>
+```
+
+### OBJ format
+
+`write_obj` emits a minimal Wavefront OBJ: one `v x y z` line per vertex (millimetres, shortest round-trip f32 representation) and one `f i j k` line per triangle (1-based). No material, texture, or normal lines are emitted.
+
+### 3MF format
+
+`write_3mf` produces an OrcaSlicer-shaped OPC package with the following fixed entry set:
+
+| OPC entry path                    | Content                                      |
+|-----------------------------------|----------------------------------------------|
+| `[Content_Types].xml`             | OPC content-type manifest                    |
+| `_rels/.rels`                     | Root relationship pointing at `3D/3dmodel.model` |
+| `3D/3dmodel.model`                | Core geometry, `<model unit="millimeter">` with namespace `http://schemas.microsoft.com/3dmanufacturing/core/2015/02` |
+| `Metadata/model_settings.config`  | Sidecar `<part subtype="normal_part">` skeleton (no paint or region data) |
+
+One `<object type="model">` element is emitted per `MeshIR` object, followed by a `<build><item>` entry using the identity transform `1 0 0 0 1 0 0 0 1 0 0 0`. Vertices are emitted in millimetres as-is — no unit conversion is applied, consistent with how `MeshIR` stores coordinates.
+
+**Round-trip guarantee.** Vertex coordinates are serialized using shortest-round-trip f32 formatting so that `load_3mf → write_3mf → load_3mf` produces bit-exact vertex values.
+
+**Paint and region data** (OrcaSlicer face-paint layers, support-enforcer volumes) are GUI-authored and are intentionally out of scope. The sidecar skeleton is included for OrcaSlicer compatibility but carries no annotations.
+
+**Splitting vs. serializing.** `write_3mf` is a pure 1:1 serializer: one `<object>` per `MeshIR` object, no topology analysis. Connected-component splitting happens upstream in the CLI (`pnp_cli mesh convert`), never inside the writer.
+
+---
+
+## `mesh convert` (split-to-objects)
+
+`pnp_cli mesh convert` loads an existing STL, OBJ, or 3MF file, optionally repairs it, splits it into connected components, and writes the result in the requested output format. It is the front-end for the `split_connected_components` function in `crates/slicer-helpers/src/split.rs`.
+
+### CLI reference
+
+```
+pnp_cli mesh convert --input <path>
+                     --output <path>
+                     [--output-format <stl|obj|3mf>]
+                     [--format <stl|obj|3mf>]       (alias for --output-format)
+                     [--merge-components]
+                     [--repair]
+                     [--stats]
+
+Options:
+  --input            Input mesh file (STL, OBJ, or 3MF)
+  --output           Output path; used as a stem when multiple components are
+                     written (<stem>_0.<ext>, <stem>_1.<ext>, …)
+  --output-format    Output format; default inferred from --output extension
+  --format           Alias for --output-format
+  --merge-components Write all components as a single output object instead of
+                     splitting into N files
+  --repair           Run the standard repair pass on each component before writing
+  --stats            Emit start / done events as line-delimited JSON on stderr
+```
+
+### Splitting behaviour
+
+Connected-component detection uses OrcaSlicer's `its_split` adjacency model: two triangles belong to the same component if they share an edge **and** their shared-edge windings are opposite (i.e. normal manifold adjacency). No area or volume threshold is applied — a single isolated triangle becomes its own component.
+
+Unless `--merge-components` is passed, each component is written to a separate file. With `--merge-components` all components are merged into one `MeshIR` before the write step.
+
+### `.step` / `.stp` inputs are rejected
+
+`mesh convert` does not accept STEP inputs. Passing a `.step` or `.stp` file exits with code `UNREADABLE` and a message directing the user to `pnp_cli mesh import`, which handles STEP tessellation.
+
+### Relationship to `mesh import`
+
+`pnp_cli mesh import --output-format 3mf` (without `--merge-components`) now combines all STEP solids from the source file into a **single** `.3mf` package containing N `<object>` entries — one per solid. STL and OBJ inputs routed through `mesh convert` keep the per-file `_i` split behaviour described above.
+
+Exit codes:
+
+| Code         | Meaning                                               |
+|--------------|-------------------------------------------------------|
+| 0            | All components written successfully                   |
+| 1            | Partial success; some components produced warnings    |
+| `UNREADABLE` | Input format not supported (e.g. `.step`/`.stp`)      |
+| 2            | Input file not found or unreadable                    |
+| 3            | Input contains no geometry                            |
+
+---
+
 ## Integration with Host CLI
 
 The helpers are exposed via the `pnp_cli` binary's clap subcommand surface
@@ -513,6 +606,7 @@ pnp_cli module config-schema — query combined config schema from loaded module
 pnp_cli mesh repair       — slicer_helpers::repair()
 pnp_cli mesh decimate     — slicer_helpers::decimate()
 pnp_cli mesh import       — slicer_helpers::import_step_with_options()
+pnp_cli mesh convert      — slicer_helpers::split_connected_components() + model_writer
 ```
 
 The three mesh subcommands are implemented in
@@ -595,6 +689,6 @@ These tasks extend the Phase B sequence in `./docs/07_implementation_status.md`.
 | TASK-057 | Write failing tests in `decimate_tdd.rs`; implement `decimate.rs` via meshopt; all tests pass. Includes the post-decimation Phase 2 orientation pass and the `decimate_normalizes_winding_after_simplify` regression test.                                            | D     | done   |
 | TASK-058 | Create STEP test fixtures; write failing tests in `import_step_tdd.rs`; implement `import/step.rs` via truck; all tests pass. Includes `StepImportOptions { skip_repair }` + `import_step_with_options` for CLI `--no-repair`.                                        | D     | done   |
 | TASK-059 | Wire `pnp_cli mesh repair`, `pnp_cli mesh decimate`, `pnp_cli mesh import` subcommands (`crates/slicer-runtime/src/helpers_cmd.rs`); STL writer; JSONL `--stats` events; integration tests in `crates/slicer-runtime/tests/helpers_cli.rs`.                           | D     | done   |
-| TASK-060 | Add OBJ and 3MF output writers; light up `--format obj` / `--format 3mf` / `--output-format obj|3mf` end-to-end. **See `docs/handoff_obj_3mf_writers.md` for the implementation handoff.**                                                                            | D     | open   |
+| TASK-060 | Add OBJ and 3MF output writers; light up `--format obj` / `--format 3mf` / `--output-format obj|3mf` end-to-end. TASK-060 (done): OBJ/3MF writers + `mesh convert` implemented in Packet 71.                                                                          | D     | done   |
 
 TASK-076 in Phase E ("File format loaders + admesh-based mesh repair integration") is superseded by TASK-056 for the repair component. TASK-076 retains responsibility for STL/OBJ/3MF host-side loaders only.

@@ -9,10 +9,11 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 use slicer_helpers::{
-    decimate, import_step_with_options, merge_step_meshes, repair, DecimateConfigBuilder,
-    DecimateError, RepairError, RepairWarning, StepImportError, StepImportOptions, StepWarning,
+    decimate, import_step_with_options, merge_step_meshes, repair, split_connected_components,
+    DecimateConfigBuilder, DecimateError, RepairError, RepairWarning, StepImportError,
+    StepImportOptions, StepWarning,
 };
-use slicer_ir::MeshIR;
+use slicer_ir::{BoundingBox3, MeshIR, ObjectConfig, ObjectMesh, Transform3d};
 
 use crate::model_loader::load_model;
 use crate::OutputFormat;
@@ -297,7 +298,25 @@ pub fn run_import(
     }
 
     let mesh_count = final_result.meshes.len();
-    if mesh_count == 1 {
+    // For 3MF output when not merging: combine all solids into one MeshIR
+    // (N objects in a single file) rather than splitting into _0.3mf/_1.3mf.
+    if output_format == OutputFormat::ThreeMf && !merge_components && mesh_count > 1 {
+        let mut all_objects = Vec::new();
+        for named in &final_result.meshes {
+            all_objects.extend(named.mesh.objects.clone());
+        }
+        let combined_bbox =
+            union_bounding_boxes(final_result.meshes.iter().map(|n| n.mesh.build_volume));
+        let combined = MeshIR {
+            objects: all_objects,
+            build_volume: combined_bbox,
+            ..Default::default()
+        };
+        if let Err(e) = write_mesh(&combined, output, output_format) {
+            eprintln!("error: failed to write combined 3MF: {e}");
+            return exit_codes::UNREADABLE;
+        }
+    } else if mesh_count == 1 {
         if let Err(e) = write_mesh(&final_result.meshes[0].mesh, output, output_format) {
             eprintln!("error: failed to write output mesh: {e}");
             return exit_codes::UNREADABLE;
@@ -336,7 +355,204 @@ pub fn run_import(
     }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/// Run the `convert` subcommand. Returns the process exit code.
+///
+/// Rejects `.step`/`.stp` input before attempting any load (AC-N1).
+/// Unless `--merge-components`, splits each object's mesh into connected
+/// components, producing one `ObjectMesh` per component.
+pub fn run_convert(
+    input: &Path,
+    output: &Path,
+    format: Option<OutputFormat>,
+    merge_components: bool,
+    do_repair: bool,
+) -> i32 {
+    // AC-N1: reject STEP/STP before touching the file.
+    let ext_lower = input
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    if matches!(ext_lower.as_deref(), Some("step") | Some("stp")) {
+        eprintln!(
+            "error: STEP/STP files are not supported by `mesh convert`. Use `mesh import` instead."
+        );
+        return exit_codes::UNREADABLE;
+    }
+
+    let resolved_format = match resolve_output_format(format, output, Some(input)) {
+        Ok(f) => f,
+        Err(msg) => {
+            eprintln!("error: {msg}");
+            return exit_codes::UNREADABLE;
+        }
+    };
+
+    let mut mesh = match load_model(input) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("error: failed to load input mesh: {e}");
+            return exit_codes::UNREADABLE;
+        }
+    };
+
+    let total_tris: usize = mesh.objects.iter().map(|o| o.mesh.indices.len() / 3).sum();
+    if total_tris == 0 {
+        eprintln!("error: input mesh has zero triangles");
+        return exit_codes::EMPTY_OR_TRIVIAL;
+    }
+
+    // Optional repair pass.
+    if do_repair {
+        mesh = match repair(mesh) {
+            Ok(r) => r.mesh,
+            Err(RepairError::EmptyMesh) => {
+                eprintln!("error: input mesh is empty after repair");
+                return exit_codes::EMPTY_OR_TRIVIAL;
+            }
+            Err(e) => {
+                eprintln!("error: repair failed: {e}");
+                return exit_codes::UNREADABLE;
+            }
+        };
+    }
+
+    // Split or keep components.
+    let stem = input
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("object");
+
+    let final_objects: Vec<ObjectMesh> = if merge_components {
+        mesh.objects
+    } else {
+        let mut out_objects: Vec<ObjectMesh> = Vec::new();
+        for obj in &mesh.objects {
+            let components = split_connected_components(&obj.mesh);
+            if components.len() == 1 {
+                out_objects.push(ObjectMesh {
+                    id: stem.to_string(),
+                    mesh: components.into_iter().next().unwrap(),
+                    transform: convert_identity_transform(),
+                    config: ObjectConfig {
+                        data: std::collections::HashMap::new(),
+                    },
+                    modifier_volumes: Vec::new(),
+                    paint_data: None,
+                    world_z_extent: obj.world_z_extent,
+                });
+            } else {
+                for (i, component) in components.into_iter().enumerate() {
+                    let world_z_extent = compute_z_extent_for_component(&component);
+                    out_objects.push(ObjectMesh {
+                        id: format!("{stem}_{i}"),
+                        mesh: component,
+                        transform: convert_identity_transform(),
+                        config: ObjectConfig {
+                            data: std::collections::HashMap::new(),
+                        },
+                        modifier_volumes: Vec::new(),
+                        paint_data: None,
+                        world_z_extent,
+                    });
+                }
+            }
+        }
+        out_objects
+    };
+
+    if final_objects.is_empty() {
+        eprintln!("error: no objects after processing");
+        return exit_codes::EMPTY_OR_TRIVIAL;
+    }
+
+    let build_volume = union_bounding_boxes(final_objects.iter().map(|o| {
+        let mut min = slicer_ir::Point3 {
+            x: f32::INFINITY,
+            y: f32::INFINITY,
+            z: f32::INFINITY,
+        };
+        let mut max = slicer_ir::Point3 {
+            x: f32::NEG_INFINITY,
+            y: f32::NEG_INFINITY,
+            z: f32::NEG_INFINITY,
+        };
+        for v in &o.mesh.vertices {
+            min.x = min.x.min(v.x);
+            min.y = min.y.min(v.y);
+            min.z = min.z.min(v.z);
+            max.x = max.x.max(v.x);
+            max.y = max.y.max(v.y);
+            max.z = max.z.max(v.z);
+        }
+        BoundingBox3 { min, max }
+    }));
+
+    let output_mesh = MeshIR {
+        objects: final_objects,
+        build_volume,
+        ..Default::default()
+    };
+
+    if let Err(e) = write_mesh(&output_mesh, output, resolved_format) {
+        eprintln!("error: failed to write output mesh: {e}");
+        return exit_codes::UNREADABLE;
+    }
+
+    exit_codes::SUCCESS
+}
+
+fn convert_identity_transform() -> Transform3d {
+    let mut matrix = [0.0f64; 16];
+    matrix[0] = 1.0;
+    matrix[5] = 1.0;
+    matrix[10] = 1.0;
+    matrix[15] = 1.0;
+    Transform3d { matrix }
+}
+
+fn compute_z_extent_for_component(mesh: &slicer_ir::IndexedTriangleSet) -> Option<(f32, f32)> {
+    let mut z_min = f32::INFINITY;
+    let mut z_max = f32::NEG_INFINITY;
+    for v in &mesh.vertices {
+        if v.z < z_min {
+            z_min = v.z;
+        }
+        if v.z > z_max {
+            z_max = v.z;
+        }
+    }
+    if z_max > z_min {
+        Some((z_min, z_max))
+    } else {
+        None
+    }
+}
+
+//â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/// Compute the union of multiple `BoundingBox3` values.
+/// Falls back to a zero bbox if the iterator is empty.
+fn union_bounding_boxes(bboxes: impl Iterator<Item = BoundingBox3>) -> BoundingBox3 {
+    let mut result: Option<BoundingBox3> = None;
+    for bb in bboxes {
+        result = Some(match result {
+            None => bb,
+            Some(acc) => BoundingBox3 {
+                min: slicer_ir::Point3 {
+                    x: acc.min.x.min(bb.min.x),
+                    y: acc.min.y.min(bb.min.y),
+                    z: acc.min.z.min(bb.min.z),
+                },
+                max: slicer_ir::Point3 {
+                    x: acc.max.x.max(bb.max.x),
+                    y: acc.max.y.max(bb.max.y),
+                    z: acc.max.z.max(bb.max.z),
+                },
+            },
+        });
+    }
+    result.unwrap_or_default()
+}
 
 fn emit_event(value: Value) {
     let stderr = io::stderr();
@@ -449,10 +665,15 @@ fn write_mesh(mesh: &MeshIR, path: &Path, format: OutputFormat) -> io::Result<()
             let mut w = BufWriter::new(file);
             write_stl_binary(mesh, &mut w)
         }
-        OutputFormat::Obj | OutputFormat::ThreeMf => Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "OBJ and 3MF output writers are not yet implemented; use --format stl",
-        )),
+        OutputFormat::Obj => {
+            let file = std::fs::File::create(path)?;
+            let mut w = BufWriter::new(file);
+            crate::model_writer::write_obj(mesh, &mut w)
+        }
+        OutputFormat::ThreeMf => {
+            let file = std::fs::File::create(path)?;
+            crate::model_writer::write_3mf(mesh, file)
+        }
     }
 }
 

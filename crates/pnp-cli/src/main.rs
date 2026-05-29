@@ -186,6 +186,24 @@ enum MeshCmd {
         #[arg(long)]
         stats: bool,
     },
+    /// Convert a mesh file between formats, optionally splitting or merging connected components.
+    Convert {
+        /// Input mesh file (STL, OBJ, or 3MF). STEP/STP not accepted — use `mesh import`.
+        #[arg(long)]
+        input: PathBuf,
+        /// Output mesh file path.
+        #[arg(long)]
+        output: PathBuf,
+        /// Output format (default: infer from extension).
+        #[arg(long, value_enum, alias = "format")]
+        output_format: Option<OutputFormat>,
+        /// Keep all connected components merged into one object per input object (no splitting).
+        #[arg(long)]
+        merge_components: bool,
+        /// Apply mesh repair before writing output.
+        #[arg(long)]
+        repair: bool,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -432,6 +450,21 @@ fn main() {
                     merge_components,
                     no_repair,
                     stats,
+                ));
+            }
+            MeshCmd::Convert {
+                input,
+                output,
+                output_format,
+                merge_components,
+                repair,
+            } => {
+                std::process::exit(slicer_runtime::helpers_cmd::run_convert(
+                    &input,
+                    &output,
+                    output_format,
+                    merge_components,
+                    repair,
                 ));
             }
         },

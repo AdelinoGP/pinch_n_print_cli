@@ -4,17 +4,15 @@ use clap::{ArgGroup, Parser, Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
 
 /// Output mesh formats accepted by the `repair`, `decimate`, and `import`
-/// subcommands. Only [`OutputFormat::Stl`] is wired through at present —
-/// `Obj` and `ThreeMf` parse cleanly but produce a runtime error at the
-/// write step until the corresponding writers land.
+/// subcommands.
 #[derive(ValueEnum, Copy, Clone, Debug, PartialEq, Eq)]
 #[value(rename_all = "lower")]
 pub enum OutputFormat {
     /// Binary STL.
     Stl,
-    /// Wavefront OBJ. Not yet implemented; will error at runtime.
+    /// Wavefront OBJ.
     Obj,
-    /// 3MF. Not yet implemented; will error at runtime.
+    /// 3MF (3D Manufacturing Format).
     #[value(name = "3mf")]
     ThreeMf,
 }

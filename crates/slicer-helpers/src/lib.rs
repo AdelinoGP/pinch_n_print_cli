@@ -11,6 +11,7 @@
 pub mod decimate;
 pub mod import;
 pub mod repair;
+pub mod split;
 
 // Re-export all public types for convenient access.
 pub use decimate::{DecimateConfig, DecimateConfigBuilder, DecimateError, DecimateResult};
@@ -24,6 +25,7 @@ pub use decimate::decimate;
 pub use decimate::{drop_short_segments_mm, simplify_polyline_mm};
 pub use import::step::{import_step, import_step_with_options, merge_step_meshes};
 pub use repair::repair;
+pub use split::split_connected_components;
 
 #[cfg(test)]
 mod tests {
