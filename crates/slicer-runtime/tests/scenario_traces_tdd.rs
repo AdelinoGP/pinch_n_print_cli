@@ -1,11 +1,11 @@
 //! Compatibility-matrix and scenario-trace coverage for the docs/10
-//! glossary scenarios and docs/11 / docs/12 acceptance-gate categories.
+//! scenario traces and docs/11 / docs/12 acceptance-gate categories.
 //!
 //! These tests are explicit executable specs for previously-implicit
 //! contracts; no production code is changed.
 //!
 //! Doc map:
-//! - docs/10_glossary_and_scenario_traces.md Â§Scenario Traces 1/2/3
+//! - docs/10_scenario_traces.md Â§Scenario Traces 1/2/3
 //! - docs/11_operational_governance_and_acceptance_gate.md Â§2 Compatibility
 //!   Policy + Â§3 Gate Rubric (Determinism / Recoverability / Compatibility)
 //! - docs/12_architecture_gate_metrics.md Â§Reference Fixture Set + Â§Resource
@@ -178,7 +178,7 @@ fn scenario_1_mixed_heights_indices_are_monotonic_and_sync_window_is_marked() {
         ),
     ];
 
-    // Invariant: monotonic, unique global_layer_index (docs/10 glossary "Global layer").
+    // Invariant: monotonic, unique global_layer_index (CONTEXT.md "Global layer").
     let indices: Vec<u32> = layers.iter().map(|l| l.index).collect();
     let mut sorted = indices.clone();
     sorted.sort();

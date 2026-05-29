@@ -7,7 +7,7 @@
 //! Authoritative docs:
 //! - docs/01_system_architecture.md §"Layer::Support"
 //! - docs/02_ir_schemas.md lines 412-418
-//! - docs/10_glossary_and_scenario_traces.md §"Support paint conflict"
+//! - docs/10_scenario_traces.md §"Scenario Trace 2" (blocker > enforcer precedence)
 //!
 //! OrcaSlicer ref:
 //! - OrcaSlicerDocumented/src/libslic3r/Support/TreeSupport.cpp:1100-1104 (enforcer/blocker slicing)

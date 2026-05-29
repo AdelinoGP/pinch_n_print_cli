@@ -24,7 +24,8 @@ docs/03_wit_and_manifest.md      — WIT worlds, host-boundary, module manifests
 docs/04_host_scheduler.md        — DAG validation, four-phase execution, error handling
 docs/05_module_sdk.md            — SDK helpers, #[slicer_module] macro, builder lifecycles
 docs/07_implementation_status.md — current phase, open tasks, deviation log
-docs/10_glossary_and_scenario_traces.md — terminology and normative scenario traces
+CONTEXT.md                       — project glossary (concept-level terms)
+docs/10_scenario_traces.md       — normative end-to-end scenario traces
 ```
 
 Record the active packet slug (from `docs/07_implementation_status.md`) and the relevant domain terms. You will use both when naming commits.

@@ -139,6 +139,6 @@ No gate decision may be marked `PASS` if `DEVIATION_LOG.md` contains open critic
 
 - Architecture Acceptance Gate result recorded in implementation status.
 - No unresolved critical deviations.
-- Scenario traces from `./docs/10_glossary_and_scenario_traces.md` validated against current implementation.
+- Scenario traces from `./docs/10_scenario_traces.md` validated against current implementation.
 - Compatibility matrix checks executed on representative module set.
 - Performance and memory targets re-verified on reference fixture set.

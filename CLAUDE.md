@@ -122,7 +122,8 @@ Read these directly rather than relying on summaries — they are kept current a
 - `docs/07_implementation_status.md` — current phase, task backlog, deviation log. **Source of truth for what's blocked / in progress.**
 - `docs/08_coordinate_system.md` — unit system, Z convention, OrcaSlicer porting hazards.
 - `docs/09_progress_events.md` — structured runtime event contract.
-- `docs/10_glossary_and_scenario_traces.md` — terminology and normative scenario traces.
+- `CONTEXT.md` — project glossary (concept-level vocabulary).
+- `docs/10_scenario_traces.md` — normative end-to-end scenario traces.
 - `docs/11_operational_governance_and_acceptance_gate.md` — Architecture Acceptance Gate criteria and release governance.
 - `docs/12_architecture_gate_metrics.md` — objective thresholds for the gate.
 - `docs/13_slicer_helpers_crate.md` — polygon/geometry utilities in `slicer-helpers`.

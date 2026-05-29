@@ -70,7 +70,7 @@ The primary failure mode of existing slicers (OrcaSlicer, PrusaSlicer) that this
 
 ## Terminology (Canonical)
 
-- Detailed glossary plus normative edge-case traces are defined in `./docs/10_glossary_and_scenario_traces.md`.
+- The project glossary is defined in `../CONTEXT.md`; normative edge-case traces are in `./docs/10_scenario_traces.md`.
 
 ## Normative Document Map (LLM/Reviewer Fast Index)
 
@@ -87,7 +87,8 @@ Use this table as the first-hop index when answering architecture or implementat
 | Current sequencing, progress, and gate status             | `./docs/07_implementation_status.md`                      |
 | Coordinate scaling and porting rules                      | `./docs/08_coordinate_system.md`                          |
 | Runtime event schema and ordering guarantees              | `./docs/09_progress_events.md`                            |
-| Canonical terms and scenario traces                       | `./docs/10_glossary_and_scenario_traces.md`               |
+| Canonical terms (glossary)                                | `../CONTEXT.md`                                            |
+| Scenario traces                                           | `./docs/10_scenario_traces.md`                            |
 | Governance and acceptance gate policy                     | `./docs/11_operational_governance_and_acceptance_gate.md` |
 | Numeric acceptance thresholds                             | `./docs/12_architecture_gate_metrics.md`                  |
 | slicer-helpers crate (repair, decimate, STEP import)      | `./docs/13_slicer_helpers_crate.md`                       |

@@ -57,9 +57,10 @@
 
 ## Pipeline Tiers
 
-Normative terminology and end-to-end edge-case traces are maintained in:
+Normative terminology is maintained in `../CONTEXT.md`; end-to-end edge-case
+traces are maintained in:
 
-- `./docs/10_glossary_and_scenario_traces.md`
+- `./docs/10_scenario_traces.md`
 
 ### Tier 1 — PrePass (Sequential, Whole-Model)
 
