@@ -2,13 +2,13 @@
 
 ## Controlling Code Paths
 
-- Primary code path: `xtask/src/main.rs` (new) hosts a thin CLI dispatcher (`build-guests`, `build-guests --check`, `build-guests --list`). `xtask/src/build_guests.rs` (new) hosts the discovery + build + freshness logic. Discovery uses `cargo_metadata::MetadataCommand::new().exec()` to enumerate workspace members; filtering identifies guest crates by manifest path prefix (`modules/core-modules/*/wit-guest/Cargo.toml` and `test-guests/*/Cargo.toml`). Per-guest build invokes `Command::new("cargo").args(["build", "--target", "wasm32-unknown-unknown", "--release", "-p", &name])`; component post-processing invokes `Command::new("wasm-tools").args(["component", "new", &core_path, "-o", &out_path])`. Freshness (`--check`) computes max-mtime over `(guest_src, guest_cargo_toml, wit/**, slicer-{macros,sdk,ir,schema}/{src,Cargo.toml})` and compares to component artifact mtime.
+- Primary code path: `xtask/src/main.rs` (new) hosts a hand-rolled CLI dispatcher (`build-guests`, `build-guests --check`, `build-guests --list`). `xtask/src/build_guests.rs` (new) hosts the discovery + build + freshness logic. Discovery is a validated filesystem walk over two tree-roots: `modules/core-modules/*/wit-guest/Cargo.toml` and `test-guests/*/Cargo.toml`. Each candidate manifest is parsed (via the `toml` crate) and validated against a per-tree predicate (see Locked Assumptions). Per-guest build runs `cargo build --target wasm32-unknown-unknown --release --quiet` either by `cd`-ing into the guest directory or by passing `--manifest-path` — each guest is its own isolated workspace, so its compiled `.wasm` lands at `<guest-dir>/target/wasm32-unknown-unknown/release/<lib_name>.wasm`. Component post-processing invokes `Command::new("wasm-tools").args(["component", "new", &core_path, "-o", &out_path])`. Freshness (`--check`) computes max-mtime over `(guest_src, guest_cargo_toml, wit/**, slicer-{macros,sdk,ir,schema}/{src,Cargo.toml})` and compares to the component artifact mtime.
 - Neighboring tests or fixtures: a small unit test in `xtask/src/build_guests.rs` (or a `tests/` directory) exercises the discovery filter against a synthesised `MetadataCommand` output OR against the live workspace metadata (the latter is simpler and survives any module list change). End-to-end verification is via the AC commands in `packet.spec.md` — the packet does not require a heavy test suite; the bash scripts didn't have one either.
 - OrcaSlicer comparison surface: none — this packet has no OrcaSlicer parity work.
 
 ## Architecture Constraints
 
-- The `xtask` crate must NOT depend on `slicer-runtime`. Driving reason: agentic hooks (Claude Code pre-tool-use hooks running `cargo xtask build-guests --check`) need cheap compile cost. Verify by `cargo tree -p xtask` not containing `slicer-runtime`, `wasmtime`, `pyo3`, `truck-stepio`, or `meshopt`.
+- The `xtask` crate must NOT depend on `slicer-runtime`. Driving reason: agentic hooks (Claude Code pre-tool-use hooks running `cargo xtask build-guests --check`) need cheap compile cost. Verify by `cargo tree -p xtask` not containing `slicer-runtime`, `wasmtime`, `pyo3`, `truck-stepio`, or `meshopt`. Discovery is filesystem-only (validated walk over `modules/core-modules/*/wit-guest/Cargo.toml` and `test-guests/*/Cargo.toml`); `cargo_metadata` is intentionally absent because guest Cargo.tomls declare `[workspace]` sentinels and are invisible to the parent workspace's metadata.
 - The freshness rule mirrors the bash scripts exactly: tracked source surfaces are `wit/**/*.wit` + the 4 shared crates (`slicer-macros`, `slicer-sdk`, `slicer-ir`, `slicer-schema`) + per-guest `src/` + per-guest `Cargo.toml`. `slicer-core` and `slicer-helpers` are intentionally NOT tracked (per bash-script comments — `slicer-core` is depended on by only ~6 of ~20 guests, global tracking causes spurious rebuilds; `slicer-helpers` is host-only).
 - The artifact-output convention is per-tree:
   - `modules/core-modules/<dir>/wit-guest/Cargo.toml` → component lands at `modules/core-modules/<dir>/<dir>.wasm` (the manifest loader's resolution path; matches existing bash output).
@@ -19,7 +19,7 @@
 
 ## Code Change Surface
 
-- Selected approach: new `xtask/` crate following the cargo-xtask convention. Discovery is `cargo_metadata`-driven (no hardcoded list). Per-guest build calls `cargo build` directly (preserving cargo's incremental cache). Component post-processing is a separate `wasm-tools` invocation per guest. `--check` mode reuses the discovery path and adds an mtime comparison.
+- Selected approach: new `xtask/` crate following the cargo-xtask convention. Discovery is a validated filesystem walk over two tree-roots (no hardcoded list, no `cargo_metadata` — guest `[workspace]` sentinels make metadata-driven discovery infeasible). Per-guest build calls `cargo build` directly with the guest's manifest path (preserving cargo's incremental cache inside the guest's own `target/`). Component post-processing is a separate `wasm-tools` invocation per guest. `--check` mode reuses the discovery path and adds an mtime comparison.
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
   - **New**: `xtask/Cargo.toml`, `xtask/src/main.rs`, `xtask/src/build_guests.rs`, `.cargo/config.toml` workspace root (adds `[alias] xtask = "run -p xtask --"` so `cargo xtask …` resolves).
   - **Changed**: `.github/workflows/ci.yml` (conditionally — see Step 5 in implementation plan), `CLAUDE.md` §"Guest WASM Staleness (MUST follow)", `docs/05_module_sdk.md` Developer CLI / build section.
@@ -32,7 +32,7 @@
 
 ## Files in Scope (read + edit)
 
-- `xtask/Cargo.toml` (new) — declare crate, deps on `cargo_metadata`, `serde`, `serde_json`, clap (or hand-rolled CLI), `walkdir` (or `ignore`).
+- `xtask/Cargo.toml` (new) — declare crate, deps on `walkdir` and `toml`. NO `cargo_metadata`, `serde`, `serde_json`, `clap`.
 - `xtask/src/main.rs` (new) — CLI dispatcher.
 - `xtask/src/build_guests.rs` (new) — discovery + build + freshness logic.
 - `Cargo.toml` (workspace root) — add `xtask` to `members`.
@@ -47,7 +47,7 @@
 
 - `modules/core-modules/build-core-modules.sh` (~220 lines) — load in full; reference for freshness rules, `wasm-tools` invocation, and component-output paths. The Rust xtask preserves the rules verbatim.
 - `test-guests/build-test-guests.sh` (~200 lines) — load in full; verify the artifact-output convention for test-guests (per `test-guests/<crate-name>.component.wasm`).
-- `Cargo.toml` (workspace root, ~110 lines post-Packet-1) — read `members` list to understand the workspace shape `cargo_metadata` returns.
+- `Cargo.toml` (workspace root, ~110 lines post-Packet-1) — read `members` list to understand the workspace shape (for background context only; the xtask does not invoke `cargo_metadata`).
 - `docs/05_module_sdk.md` — read §"Developer CLI" only (delegate SUMMARY) before editing.
 - `CLAUDE.md` — read §"Guest WASM Staleness" only (≤ 50 lines).
 - `cli/slicer-cli/src/cmd_build.rs:131-142` — this file is DELETED by Packet 1. Implementer reads it via `git show` against the pre-Packet-1 ref if uncertain about the `wasm-tools` invocation shape. (Better: read the still-extant `modules/core-modules/build-core-modules.sh:175` which has the same shape.)
@@ -80,8 +80,10 @@
 ## Locked Assumptions and Invariants
 
 - The two bash scripts share their freshness logic verbatim except for the per-tree guest list and artifact path. The Rust port preserves this — one freshness function, one build function, two call sites with different `(tree_root, artifact_convention)` tuples.
-- `cargo_metadata::Metadata::workspace_members` returns every crate the workspace `Cargo.toml`'s `members` list points to. A guest is in `members` (verified by inspecting current workspace Cargo.toml — every core-module guest's `wit-guest/` and every `test-guests/<crate>/` is listed). Therefore `cargo_metadata` discovery is exhaustive.
-- A guest crate's `Cargo.toml` always declares `[lib] crate-type = ["cdylib"]` (verified by inspection of `modules/core-modules/layer-planner-default/wit-guest/Cargo.toml` — sample; sample-of-one is sufficient because the existing bash script assumes it). The xtask's discovery filter uses this to distinguish guests from non-guest workspace members.
+- Discovery is a validated filesystem walk over two tree-roots. The validation predicate is:
+  - **Core-module wit-guest** at `modules/core-modules/<dir>/wit-guest/Cargo.toml`: `[lib].crate-type` contains `"cdylib"` AND a `[workspace]` sentinel is present AND `[dependencies]` declares a `{ path = ".." }` dep on the sibling parent module crate.
+  - **Test-guest** at `test-guests/<dir>/Cargo.toml`: `[lib].crate-type` contains `"cdylib"` AND a `[workspace]` sentinel is present AND `[dependencies]` declares `wit-bindgen` directly.
+  Candidates failing validation are skipped (logged to stderr) but do not fail the xtask run. This pair of predicates is the symmetric guest-vs-non-guest signal — guest crates are uniquely the ones isolated by a `[workspace]` sentinel and shaped for cdylib output.
 - The component-artifact output paths above are stable across the lifetime of this packet. Any change in artifact convention requires a coordinated change in `crates/slicer-runtime/src/manifest.rs` and is OUT OF SCOPE for this packet.
 
 ## Risks and Tradeoffs

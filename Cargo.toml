@@ -29,6 +29,7 @@ members = [
     "modules/core-modules/support-planner",
     "modules/core-modules/part-cooling",
     "modules/core-modules/machine-gcode-emit",
+    "xtask",
 ]
 resolver = "2"
 

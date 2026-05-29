@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 cargo build --workspace
 cargo clippy --workspace -- -D warnings              # required before committing
 cargo test -p slicer-runtime --test core_module_ir_access_contract_tdd   # narrow, targeted run (preferred)
-./modules/core-modules/build-core-modules.sh         # build WASM core modules (needs wasm32 target)
+cargo xtask build-guests                             # build all guest WASMs (core-modules + test-guests; needs wasm32 target)
 cargo run --bin pnp_cli --release -- slice --input model.stl --output model.gcode
 ```
 
@@ -23,7 +23,7 @@ cargo bench -p slicer-helpers --bench mesh_ops
 # Host:
 cargo bench -p slicer-runtime --bench pipeline       # instrumentation overhead
 cargo bench -p slicer-runtime --bench per_stage      # plan-freeze serial-edge helpers
-cargo bench -p slicer-runtime --bench wasm_modules   # v1 stub; needs ./modules/core-modules/build-core-modules.sh
+cargo bench -p slicer-runtime --bench wasm_modules   # v1 stub; needs cargo xtask build-guests
 ```
 
 ### HTML slicer report (debugging)
@@ -79,14 +79,13 @@ Module manifest TOML section headers (`[config.schema.apply_to_all]`) already us
 
 Guest `.wasm` artifacts under `modules/core-modules/*/` and `test-guests/*.component.wasm` are **not** rebuilt by `cargo build` or `cargo test`. Stale guests fail typed instantiation at runtime and surface as test failures that look unrelated to your edits but are not.
 
-**You MUST run both freshness checks before attributing any guest, component, host-integration, or module-dispatch test failure to your changes, to "flaky tests", to "a separate workstream", or to "unrelated infrastructure":**
+**You MUST run the freshness check before attributing any guest, component, host-integration, or module-dispatch test failure to your changes, to "flaky tests", to "a separate workstream", or to "unrelated infrastructure":**
 
 ```bash
-./modules/core-modules/build-core-modules.sh --check
-./test-guests/build-test-guests.sh --check
+cargo xtask build-guests --check
 ```
 
-If either reports `STALE:`, you MUST rebuild (drop the `--check` flag) and re-run the failing test before drawing any conclusion about the failure's cause.
+If it reports `STALE:`, you MUST rebuild (drop the `--check` flag) and re-run the failing test before drawing any conclusion about the failure's cause.
 
 **You MUST run `--check` (and rebuild if stale) after editing any of the following paths**, because the build scripts treat them as guest-WASM inputs:
 

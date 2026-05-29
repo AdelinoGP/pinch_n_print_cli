@@ -627,6 +627,25 @@ mod tests {
 
 ## `pnp_cli` — Developer CLI
 
+### Building a module (canonical two-step)
+
+The canonical path for compiling a module to a Component Model binary is:
+
+```bash
+cargo build --target wasm32-unknown-unknown --release
+wasm-tools component new \
+    target/wasm32-unknown-unknown/release/<name_underscored>.wasm \
+    -o target/slicer/<name_kebab>.wasm
+```
+
+`<name_underscored>` is the package name with hyphens replaced by underscores — the Rust `cdylib` artifact naming convention. `<name_kebab>` is the package name as declared in `Cargo.toml`.
+
+`pnp_cli` deliberately has no `build` verb — `cargo` is the canonical build tool. Wrapping it would duplicate flag surface and add failure modes without adding value.
+
+> **Workspace contributors** rebuilding the in-tree guest set (`modules/core-modules/**/wit-guest` and `test-guests/*`) should use `cargo xtask build-guests`. Freshness can be verified with `cargo xtask build-guests --check`. This is generative — adding a new guest crate matching the validated discovery predicate (cdylib + `[workspace]` sentinel + correct dep shape) is picked up automatically; no hardcoded module list to maintain.
+
+### Other verbs
+
 ```
 pnp_cli module new <module-name> [--stage <stage>]
   Scaffold a new module with the correct directory structure,
@@ -638,12 +657,6 @@ pnp_cli module new <module-name> [--stage <stage>]
               PrePass::MeshAnalysis | PrePass::LayerPlanning |
               PostPass::GCodePostProcess | PostPass::TextPostProcess
               (default: Layer::Infill)
-
-pnp_cli module build [--release]
-  Compile the current module to WASM.
-  Runs `cargo build --target wasm32-unknown-unknown [--release]`
-  followed by `wit-component` to produce the Component Model binary.
-  Output: target/slicer/<module-name>.wasm
 
 pnp_cli module test [-- <cargo-test-args>]
   Run the module's test suite via `cargo nextest run`.
@@ -708,7 +721,7 @@ my-infill/
 6. Implement run_infill() in src/lib.rs
    └─ cargo test  (tests pass — green)
 
-7. pnp_cli module build --release
+7. cargo build --target wasm32-unknown-unknown --release && wasm-tools component new target/wasm32-unknown-unknown/release/my_infill.wasm -o target/slicer/my-infill.wasm
    └─ Compiles to target/slicer/my-infill.wasm
 
 8. pnp_cli slice --model test_model.stl

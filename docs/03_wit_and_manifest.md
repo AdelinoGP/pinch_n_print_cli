@@ -1484,7 +1484,6 @@ artifact host tests load via `include_bytes!` / `std::fs::read`.
 
 ```
 test-guests/
-├── build-test-guests.sh                # build + freshness checker
 ├── layer-infill-guest/
 │   ├── Cargo.toml                      # standalone workspace, cdylib
 │   └── src/lib.rs
@@ -1527,12 +1526,11 @@ guests against the canonical `wit/`.
 
 ### Build & Freshness Contract (Normative)
 
-`test-guests/build-test-guests.sh` builds every guest with
-`cargo build --target wasm32-unknown-unknown --release` and runs
-`wasm-tools component new` to produce the `.component.wasm` artifact.
+Each guest is built with `cargo build --target wasm32-unknown-unknown --release`
+followed by `wasm-tools component new` to produce the `.component.wasm` artifact.
 
-- `./test-guests/build-test-guests.sh` — build any stale guests.
-- `./test-guests/build-test-guests.sh --check` — verify only; exit 1
+- `cargo xtask build-guests` — build any stale guests.
+- `cargo xtask build-guests --check` — verify only; exit 1
   if any source is newer than its artifact.
 
 Freshness is enforced from the host workspace by

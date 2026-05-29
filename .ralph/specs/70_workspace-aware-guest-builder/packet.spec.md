@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: workspace-aware-guest-builder
 task_ids:
   - TASK-214
@@ -11,11 +11,11 @@ context_cost_estimate: M
 
 ## Goal
 
-Replace `modules/core-modules/build-core-modules.sh` AND `test-guests/build-test-guests.sh` with a single `cargo xtask build-guests [--check]` command driven by `cargo metadata`. The xtask discovers guest crates from workspace metadata (no hardcoded module lists), tracks freshness via Cargo's own dependency graph + file mtimes, runs `wasm-tools component new` post-processing per a configurable artifact-path convention, and lands as a new `xtask/` crate with no dependency on `slicer-runtime` so agentic hooks can invoke it without compiling the full runtime closure. The `docs/05_module_sdk.md` module-author build-flow section is rewritten to document the `cargo build --target wasm32-unknown-unknown --release` + `wasm-tools component new` two-step plus a sidebar pointing workspace contributors at `cargo xtask build-guests`.
+Replace `modules/core-modules/build-core-modules.sh` AND `test-guests/build-test-guests.sh` with a single `cargo xtask build-guests [--check]` command using a validated filesystem walk for discovery. The xtask discovers guest crates via a walk over two tree-roots (no hardcoded module lists), tracks freshness via file mtimes, runs `wasm-tools component new` post-processing per a configurable artifact-path convention, and lands as a new `xtask/` crate with no dependency on `slicer-runtime` so agentic hooks can invoke it without compiling the full runtime closure. The `docs/05_module_sdk.md` module-author build-flow section is rewritten to document the `cargo build --target wasm32-unknown-unknown --release` + `wasm-tools component new` two-step plus a sidebar pointing workspace contributors at `cargo xtask build-guests`.
 
 ## Scope Boundaries
 
-This packet retires both guest-build bash scripts and replaces them with a `cargo metadata`-driven xtask. It also rewrites the module-author build flow in `docs/05_module_sdk.md` to match the post-merge reality where `pnp_cli build` does not exist. It does NOT change WASM module ABI, manifest TOML schema, the `wasm-tools component new` invocation shape, `manifest::is_placeholder_wasm`, or host-runtime code (that work landed in Packet 1 `pnp-cli-unification`).
+This packet retires both guest-build bash scripts and replaces them with a filesystem-walk-driven xtask. It also rewrites the module-author build flow in `docs/05_module_sdk.md` to match the post-merge reality where `pnp_cli build` does not exist. It does NOT change WASM module ABI, manifest TOML schema, the `wasm-tools component new` invocation shape, `manifest::is_placeholder_wasm`, or host-runtime code (that work landed in Packet 1 `pnp-cli-unification`).
 
 ## Prerequisites and Blockers
 
@@ -26,7 +26,7 @@ This packet retires both guest-build bash scripts and replaces them with a `carg
 ## Acceptance Criteria
 
 - **AC-1. Given** a clean workspace post-Packet-1, **when** the implementer runs `cargo xtask build-guests` from scratch, **then** every guest crate under `modules/core-modules/**/wit-guest/` AND every guest crate under `test-guests/*/` is built and its component-model `.wasm` artifact lands at the expected path (`modules/core-modules/<dir>/<dir>.wasm` for core-modules; `test-guests/<crate-name>.component.wasm` for test-guests, matching the existing bash output paths). | `cargo xtask build-guests && cargo xtask build-guests --check`
-- **AC-2. Given** workspace metadata as the source of guest enumeration, **when** the implementer queries the xtask's discovery output, **then** the count of core-module guests equals `find modules/core-modules -mindepth 2 -maxdepth 2 -type d -name wit-guest | wc -l` and the count of test-guests equals `find test-guests -mindepth 1 -maxdepth 1 -type d | wc -l`, with no hardcoded list embedded in xtask source. | `cargo xtask build-guests --list | wc -l > /tmp/xtask_count && find modules/core-modules -mindepth 2 -maxdepth 2 -type d -name wit-guest -o -path 'test-guests/*' -maxdepth 1 -type d | wc -l > /tmp/fs_count && diff /tmp/xtask_count /tmp/fs_count`
+- **AC-2. Given** a validated filesystem walk as the source of guest enumeration, **when** the implementer queries the xtask's discovery output, **then** the count of core-module guests equals `find modules/core-modules -mindepth 2 -maxdepth 2 -type d -name wit-guest | wc -l` and the count of test-guests equals `find test-guests -mindepth 1 -maxdepth 1 -type d | wc -l`, with no hardcoded list embedded in xtask source. The verification sums both tree-root counts. | `cargo xtask build-guests --list | wc -l > /tmp/xtask_count && { find modules/core-modules -mindepth 2 -maxdepth 2 -type d -name wit-guest -exec test -e {}/Cargo.toml \; -print | wc -l; find test-guests -mindepth 1 -maxdepth 1 -type d -exec test -e {}/Cargo.toml \; -print | wc -l; } | awk '{s+=$1} END {print s}' > /tmp/fs_count && diff /tmp/xtask_count /tmp/fs_count`
 - **AC-3. Given** a fresh build (`cargo xtask build-guests` just succeeded), **when** the implementer touches `wit/world-layer.wit` and then runs `cargo xtask build-guests --check`, **then** the command exits 1 and stdout contains at least one `STALE: ` line for each guest that depends on `world-layer.wit` (every core-module guest plus every test-guest). | `touch wit/world-layer.wit && ! cargo xtask build-guests --check && cargo xtask build-guests --check 2>&1 | grep -q '^STALE: '`
 - **AC-4. Given** a stale-state surfaced by AC-3, **when** the implementer runs `cargo xtask build-guests` (no flag) and then `cargo xtask build-guests --check`, **then** the second invocation exits 0 with no `STALE:` lines. | `cargo xtask build-guests && cargo xtask build-guests --check`
 - **AC-5. Given** the bash-script retirement, **when** the implementer checks the filesystem, **then** neither `modules/core-modules/build-core-modules.sh` nor `test-guests/build-test-guests.sh` exists. | `test ! -f modules/core-modules/build-core-modules.sh && test ! -f test-guests/build-test-guests.sh`
@@ -71,3 +71,9 @@ This packet was generated against the context_discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Changelog
+
+- 2026-05-29: Corrected discovery mechanism from `cargo_metadata` to a validated filesystem walk over the two tree-roots. Guest Cargo.tomls declare `[workspace]` sentinels and are invisible to the parent workspace's metadata, so `cargo_metadata` returns zero guests. Per-tree validation: core-module wit-guests require `crate-type=["cdylib"]` + a `[workspace]` sentinel + a parent path dep (`{ path = ".." }`); test-guests require `crate-type=["cdylib"]` + a `[workspace]` sentinel + a direct `wit-bindgen` dependency. The "no hardcoded MODULES list" invariant (AC-N1) is satisfied identically. Also fixed AC-2's verification command, which had a `find -o` precedence bug that prevented it from counting the `test-guests/` tree.
+- 2026-05-29: Tightened AC-2's `find` halves with `-exec test -e {}/Cargo.toml \; -print` so the verification agrees with the validated walk on stray directories (e.g. `test-guests/sdk-layer-plan-guest/`, which has only `Cargo.lock`+`target/` and no manifest).
+- 2026-05-29: Implementation detail — `lib_name` derivation reads `[lib].name` from the candidate manifest first and falls back to `package.name.replace('-', '_')` only when `[lib].name` is absent. This is Cargo's own rule for cdylib artifact names; one guest (`test-guests/path-optimization-multi-read`) declares an explicit `[lib].name = path_optimization_multi_read_guest` that differs from its `package.name = path-optimization-multi-read`, so the strict "always underscore the package name" rule would have looked for the wrong intermediate `.wasm`.

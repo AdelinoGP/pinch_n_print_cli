@@ -59,10 +59,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install wasm-tools
         run: cargo install wasm-tools
-      - name: Build core modules
-        run: bash modules/core-modules/build-core-modules.sh
+      - name: Build guest WASMs
+        run: cargo xtask build-guests
       - name: Check freshness
-        run: bash modules/core-modules/build-core-modules.sh --check
+        run: cargo xtask build-guests --check
 
   test-guests:
     name: Test Guests
@@ -75,5 +75,5 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install wasm-tools
         run: cargo install wasm-tools
-      - name: Build test guests
-        run: bash test-guests/build-test-guests.sh
+      - name: Build guest WASMs
+        run: cargo xtask build-guests

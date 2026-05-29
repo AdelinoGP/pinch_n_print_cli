@@ -450,8 +450,7 @@ cargo clippy --workspace -- -D warnings
 ### 8.4 Freshness check (WASM staleness)
 
 ```bash
-./modules/core-modules/build-core-modules.sh --check
-./test-guests/build-test-guests.sh --check
+cargo xtask build-guests --check
 ```
 
 ## 9. Backward compatibility

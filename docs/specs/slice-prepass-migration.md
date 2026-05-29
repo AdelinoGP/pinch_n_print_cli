@@ -265,7 +265,7 @@ Remove `"Layer::Slice"` (no longer exists).
 
 ### Guest WASM
 
-WIT changed → STALE for ALL guests. Run `./modules/core-modules/build-core-modules.sh` (full build, NOT `--check`) AND `./test-guests/build-test-guests.sh`. Inspect output for type errors from the WIT cascade.
+WIT changed → STALE for ALL guests. Run `cargo xtask build-guests` (full build, NOT `--check`). Inspect output for type errors from the WIT cascade.
 
 ### Verify
 
@@ -275,8 +275,7 @@ cargo clippy --workspace -- -D warnings
 cargo test -p slicer-ir -p slicer-sdk -p slicer-macros
 cargo test -p slicer-host --test core_module_ir_access_contract_tdd --test prepass_executor_tdd
 cargo test -p gyroid-infill -p rectilinear-infill
-./modules/core-modules/build-core-modules.sh --check
-./test-guests/build-test-guests.sh --check
+cargo xtask build-guests --check
 ```
 
 ---
@@ -602,7 +601,7 @@ New file `crates/slicer-host/tests/prepass_shell_classification_tdd.rs` (15 case
 cargo build --workspace
 cargo clippy --workspace -- -D warnings
 cargo test -p slicer-host --test prepass_slice_tdd --test prepass_shell_classification_tdd --test prepass_executor_tdd --test prepass_support_geometry_tdd
-./modules/core-modules/build-core-modules.sh --check
+cargo xtask build-guests --check
 ```
 
 (`prepass_support_geometry_tdd` runs unchanged here — SupportGeometry still uses the old stub. Commit 4 fixes it.)
@@ -767,13 +766,13 @@ No change. `pub use top_surface_ironing::TopSurfaceIroning;` works for any wit-w
 
 ### Guest WASM
 
-Module's stage and wit-world changed → full rebuild required: `./modules/core-modules/build-core-modules.sh` (not `--check`).
+Module's stage and wit-world changed → full rebuild required: `cargo xtask build-guests` (not `--check`).
 
 ### Verify
 
 ```
 cargo test -p top-surface-ironing
-./modules/core-modules/build-core-modules.sh --check
+cargo xtask build-guests --check
 cargo test -p slicer-host --test dag_validation_tdd  # confirms two Layer::Infill modules coexist
 ```
 
@@ -1021,9 +1020,9 @@ Each commit verifies independently. All commits must pass `cargo build --workspa
 
 | Commit | Gate |
 |---|---|
-| 1 | `cargo build --workspace && cargo clippy --workspace -- -D warnings && cargo test -p slicer-ir -p slicer-sdk -p slicer-macros && cargo test -p slicer-host --test core_module_ir_access_contract_tdd --test prepass_executor_tdd && cargo test -p gyroid-infill -p rectilinear-infill && ./modules/core-modules/build-core-modules.sh --check && ./test-guests/build-test-guests.sh --check` |
+| 1 | `cargo build --workspace && cargo clippy --workspace -- -D warnings && cargo test -p slicer-ir -p slicer-sdk -p slicer-macros && cargo test -p slicer-host --test core_module_ir_access_contract_tdd --test prepass_executor_tdd && cargo test -p gyroid-infill -p rectilinear-infill && cargo xtask build-guests --check` |
 | 2 | `cargo test -p slicer-host --test prepass_slice_tdd --test prepass_shell_classification_tdd --test prepass_executor_tdd` + clippy |
-| 3 | `cargo test -p top-surface-ironing && cargo test -p slicer-host --test dag_validation_tdd && ./modules/core-modules/build-core-modules.sh --check` |
+| 3 | `cargo test -p top-surface-ironing && cargo test -p slicer-host --test dag_validation_tdd && cargo xtask build-guests --check` |
 | 4 | `cargo test -p slicer-host --test support_layer_height_validation_tdd --test prepass_support_geometry_tdd --test blackboard_support_geometry_slot_tdd` + clippy |
 | 5 | `cargo test -p slicer-host --test slicing_promotion_e2e_regression_tdd` |
 
@@ -1031,7 +1030,7 @@ Each commit verifies independently. All commits must pass `cargo build --workspa
 Per `CLAUDE.md` Test Discipline — dispatched to sub-agent with FACT pass/fail:
 1. `cargo build --workspace`
 2. `cargo clippy --workspace -- -D warnings`
-3. `./modules/core-modules/build-core-modules.sh --check && ./test-guests/build-test-guests.sh --check`
+3. `cargo xtask build-guests --check`
 4. `cargo test --workspace`
 
 ---
