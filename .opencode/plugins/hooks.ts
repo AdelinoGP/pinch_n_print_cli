@@ -1,23 +1,29 @@
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Plugin, Hooks } from "@opencode-ai/plugin"
+import type { Event } from "@opencode-ai/sdk"
 
-export const ProjectHooks: Plugin = async ({ project, client, $, directory }) => {
+export const ProjectHooks: Plugin = async ({ client, $, directory }) => {
   let dirtyThisTurn = false
   let fixLoopGuard = false
 
+  function resetFixGuardAfterDelay() {
+    setTimeout(() => { fixLoopGuard = false }, 30_000)
+  }
+
   return {
-    "tool.execute.after": async (input: Record<string, unknown>) => {
+    "tool.execute.after": async (input, output) => {
       const tool = String(input?.tool ?? "")
       if (!/^(edit|write|multiedit|bash|task)$/i.test(tool)) return
 
       dirtyThisTurn = true
 
-      const filePath = String((input?.args as Record<string, unknown>)?.filePath ?? (input?.input as Record<string, unknown>)?.filePath ?? "")
+      const args = input?.args as Record<string, unknown> | undefined
+      const filePath = String(args?.filePath ?? "")
       if (filePath.endsWith(".rs")) {
         try { await $`rustfmt "${filePath}"`.quiet() } catch { /* noop */ }
       }
     },
 
-    event: async ({ event }: { event: { type: string; properties?: Record<string, unknown> } }) => {
+    event: async ({ event }: { event: Event }) => {
       if (event.type !== "session.idle") return
       if (!dirtyThisTurn) return
       dirtyThisTurn = false
@@ -27,7 +33,7 @@ export const ProjectHooks: Plugin = async ({ project, client, $, directory }) =>
       const issues: string[] = []
 
       try {
-        await $`cargo clippy --all-targets --message-format=short -- -D warnings`.cwd(directory)
+        await $`cargo clippy --all-targets --message-format=short -- -D warnings`.cwd(directory).quiet()
       } catch (err: unknown) {
         const stderr = String((err as { stderr?: { toString(): string } })?.stderr ?? err)
         const diags = stderr.split("\n").filter((line: string) =>
@@ -48,11 +54,12 @@ export const ProjectHooks: Plugin = async ({ project, client, $, directory }) =>
         }
       }
 
-      const sessionId = event.properties?.sessionID ?? event.properties?.id
-      if (issues.length > 0 && sessionId && !fixLoopGuard) {
+      const sessionID = (event as { properties?: { sessionID?: string } }).properties?.sessionID
+      if (issues.length > 0 && sessionID && !fixLoopGuard) {
         fixLoopGuard = true
+        resetFixGuardAfterDelay()
         await client.session.prompt({
-          path: { id: String(sessionId) },
+          path: { id: sessionID },
           body: {
             parts: [{
               type: "text",
@@ -62,5 +69,5 @@ export const ProjectHooks: Plugin = async ({ project, client, $, directory }) =>
         })
       }
     },
-  }
+  } satisfies Hooks
 }
