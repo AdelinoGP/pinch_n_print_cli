@@ -2509,7 +2509,14 @@ pub fn ir_simplify_polygon(points: Vec<slicer_ir::Point2>) -> Vec<slicer_ir::Poi
     pts
 }
 
-fn parse_canonical_region_id(raw: &str) -> Result<u64, String> {
+/// Parse a guest-supplied region-id string into its canonical `u64`.
+///
+/// The canonical host form is a decimal `u64` with no leading zeros; any other
+/// spelling is rejected as a fatal contract error. This is the single owner of
+/// the rule — `dispatch.rs`'s harvest cores call it rather than re-implementing
+/// it (packet 75, Phase 2 / TASK-217). Kept host-side (not in `slicer-ir`) so a
+/// host-only boundary validator does not force a guest rebuild.
+pub(crate) fn parse_canonical_region_id(raw: &str) -> Result<u64, String> {
     let parsed = raw.parse::<u64>().map_err(|_| {
         format!("expected canonical decimal u64 string with no leading zeros, got '{raw}'")
     })?;

@@ -1655,29 +1655,27 @@ fn push_perimeter_regions(
 /// - `z` must be finite and non-negative (enforced in `push_layer`).
 /// - `effective_layer_height` must be finite and positive (enforced in `push_layer`).
 /// - `GlobalLayer.index` must be `< 100_000` (docs/02 §Bounds).
-fn parse_canonical_region_id(raw: &str) -> Result<u64, String> {
-    let parsed = raw.parse::<u64>().map_err(|_| {
-        format!("expected canonical decimal u64 string with no leading zeros, got '{raw}'")
-    })?;
-
-    if parsed.to_string() != raw {
-        return Err(format!(
-            "expected canonical decimal u64 string with no leading zeros, got '{raw}'"
-        ));
-    }
-
-    Ok(parsed)
-}
-
+///
+/// Region-id canonicalization is delegated to the single owner,
+/// [`wit_host::parse_canonical_region_id`] (packet 75, Phase 2 / TASK-217).
 fn harvest_layer_plan_ir(
     _stage_id: &str,
     _module_id: &str,
     ctx: wit_host::HostExecutionContext,
 ) -> Result<slicer_ir::LayerPlanIR, String> {
+    harvest_layer_plan_ir_from(ctx.layer_plan_proposals)
+}
+
+/// Pure core of [`harvest_layer_plan_ir`]: `LayerProposal`s → `LayerPlanIR`.
+///
+/// Decoupled from `HostExecutionContext` so the transform — region-id
+/// canonicalization, object-participation tracking, layer-budget bounds — is
+/// unit-testable on plain proposal vectors without a WASM store.
+fn harvest_layer_plan_ir_from(
+    proposals: Vec<wit_host::prepass::LayerProposal>,
+) -> Result<slicer_ir::LayerPlanIR, String> {
     use slicer_ir::{ActiveRegion, GlobalLayer, LayerPlanIR, ObjectLayerRef, ResolvedConfig};
     use std::collections::HashMap;
-
-    let proposals = ctx.layer_plan_proposals;
 
     const MAX_LAYERS: u32 = 100_000;
 
@@ -1696,7 +1694,7 @@ fn harvest_layer_plan_ir(
 
         for region_prop in proposal.active_regions {
             let region_id =
-                parse_canonical_region_id(&region_prop.region_id).map_err(|reason| {
+                wit_host::parse_canonical_region_id(&region_prop.region_id).map_err(|reason| {
                     format!(
                         "layer-plan-output: region '{}'/'{}' has invalid region-id: {reason}",
                         region_prop.object_id, region_prop.region_id
@@ -1749,20 +1747,29 @@ fn harvest_layer_plan_ir(
 /// call into a host-side [`slicer_ir::SeamPlanIR`].
 ///
 /// Entries are keyed by `(global_layer_index, object_id, region_id)` and
-/// deduplicated — if two entries share the same key the second wins.
+/// deduplicated — if two entries share the same key the first wins (later
+/// duplicates are skipped).
 fn harvest_seam_plan_ir(
     _stage_id: &str,
     _module_id: &str,
     ctx: wit_host::HostExecutionContext,
 ) -> Result<slicer_ir::SeamPlanIR, String> {
+    harvest_seam_plan_ir_from(ctx.seam_plan_entries)
+}
+
+/// Pure core of [`harvest_seam_plan_ir`]: WIT `SeamPlanEntry`s → `SeamPlanIR`.
+/// Decoupled from `HostExecutionContext` for unit-testing without a WASM store.
+fn harvest_seam_plan_ir_from(
+    seam_plan_entries: Vec<wit_host::prepass::SeamPlanEntry>,
+) -> Result<slicer_ir::SeamPlanIR, String> {
     use slicer_ir::{RegionKey, ScoredSeamCandidate, SeamPlanEntry, SeamPlanIR, SeamPosition};
     use std::collections::HashMap;
 
     let mut seen: HashMap<RegionKey, ()> = HashMap::new();
-    let mut entries: Vec<SeamPlanEntry> = Vec::with_capacity(ctx.seam_plan_entries.len());
+    let mut entries: Vec<SeamPlanEntry> = Vec::with_capacity(seam_plan_entries.len());
 
-    for entry in ctx.seam_plan_entries.into_iter() {
-        let region_id = parse_canonical_region_id(&entry.region_id).map_err(|reason| {
+    for entry in seam_plan_entries.into_iter() {
+        let region_id = wit_host::parse_canonical_region_id(&entry.region_id).map_err(|reason| {
             format!(
                 "seam-planning-output: region '{}'/'{}' has invalid region-id: {reason}",
                 entry.object_id, entry.region_id
@@ -1844,14 +1851,22 @@ fn harvest_support_plan_ir(
     _module_id: &str,
     ctx: wit_host::HostExecutionContext,
 ) -> Result<slicer_ir::SupportPlanIR, String> {
+    harvest_support_plan_ir_from(ctx.support_plan_entries)
+}
+
+/// Pure core of [`harvest_support_plan_ir`]: WIT `SupportPlanEntry`s →
+/// `SupportPlanIR`. Decoupled from `HostExecutionContext` for unit-testing.
+fn harvest_support_plan_ir_from(
+    support_plan_entries: Vec<wit_host::prepass::SupportPlanEntry>,
+) -> Result<slicer_ir::SupportPlanIR, String> {
     use slicer_ir::{
         ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SupportPlanEntry, SupportPlanIR,
     };
 
-    let mut entries: Vec<SupportPlanEntry> = Vec::with_capacity(ctx.support_plan_entries.len());
+    let mut entries: Vec<SupportPlanEntry> = Vec::with_capacity(support_plan_entries.len());
 
-    for entry in ctx.support_plan_entries.into_iter() {
-        let region_id = parse_canonical_region_id(&entry.region_id).map_err(|reason| {
+    for entry in support_plan_entries.into_iter() {
+        let region_id = wit_host::parse_canonical_region_id(&entry.region_id).map_err(|reason| {
             format!(
                 "support-generation-output: region '{}'/'{}' has invalid region-id: {reason}",
                 entry.object_id, entry.region_id
@@ -1895,8 +1910,32 @@ fn harvest_support_plan_ir(
 
 #[cfg(test)]
 mod tests {
-    use super::harvest_layer_plan_ir;
+    use super::{
+        harvest_layer_plan_ir, harvest_layer_plan_ir_from, harvest_seam_plan_ir_from,
+        harvest_support_plan_ir_from,
+    };
     use crate::wit_host::{self, HostExecutionContextBuilder};
+
+    fn pt(x: f32, y: f32, z: f32) -> wit_host::prepass::Point3WithWidth {
+        wit_host::prepass::Point3WithWidth {
+            x,
+            y,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+        }
+    }
+
+    fn region(object_id: &str, region_id: &str) -> wit_host::prepass::RegionLayerProposal {
+        wit_host::prepass::RegionLayerProposal {
+            object_id: object_id.to_string(),
+            region_id: region_id.to_string(),
+            effective_layer_height: 0.2,
+            is_catchup: false,
+            catchup_z_bottom: 0.0,
+        }
+    }
 
     #[test]
     fn harvest_layer_plan_ir_rejects_noncanonical_region_id_strings() {
@@ -1930,6 +1969,91 @@ mod tests {
             "diagnostic must explain the rejected non-canonical region-id: {err}"
         );
     }
+
+    // ── Pure-core harvest tests (packet 75, Phase 2 / TASK-217) ────────────
+    // These exercise the harvest transforms directly on synthetic proposal
+    // vectors — no `HostExecutionContext`, no WASM store.
+
+    #[test]
+    fn harvest_layer_plan_ir_from_tracks_global_layers_and_object_participation() {
+        let ir = harvest_layer_plan_ir_from(vec![
+            wit_host::prepass::LayerProposal {
+                z: 0.2,
+                active_regions: vec![region("obj-1", "0")],
+            },
+            wit_host::prepass::LayerProposal {
+                z: 0.4,
+                active_regions: vec![region("obj-1", "0"), region("obj-2", "7")],
+            },
+        ])
+        .expect("canonical region-ids must harvest cleanly");
+
+        assert_eq!(ir.global_layers.len(), 2, "one GlobalLayer per proposal");
+        assert_eq!(ir.global_layers[1].active_regions[1].region_id, 7);
+        assert_eq!(
+            ir.object_participation["obj-1"].len(),
+            2,
+            "obj-1 participates in both global layers"
+        );
+        assert_eq!(
+            ir.object_participation["obj-2"].len(),
+            1,
+            "obj-2 participates only in the second layer"
+        );
+        assert_eq!(
+            ir.object_participation["obj-2"][0].global_layer_index, 1,
+            "obj-2's only layer ref points at global layer index 1"
+        );
+    }
+
+    #[test]
+    fn harvest_layer_plan_ir_from_rejects_noncanonical_region_id() {
+        let err = harvest_layer_plan_ir_from(vec![wit_host::prepass::LayerProposal {
+            z: 0.2,
+            active_regions: vec![region("obj-1", "01")],
+        }])
+        .expect_err("leading-zero region-id is non-canonical");
+        assert!(err.contains("region-id") && err.contains("01"), "{err}");
+    }
+
+    #[test]
+    fn harvest_seam_plan_ir_from_dedups_by_region_key_first_wins() {
+        let entry = |wall_index: u32| wit_host::prepass::SeamPlanEntry {
+            global_layer_index: 3,
+            object_id: "obj-1".to_string(),
+            region_id: "5".to_string(),
+            chosen_position: pt(1.0, 2.0, 0.6),
+            chosen_wall_index: wall_index,
+            scored_candidates: Vec::new(),
+        };
+        let ir = harvest_seam_plan_ir_from(vec![entry(0), entry(1)])
+            .expect("canonical region-id must harvest cleanly");
+        assert_eq!(
+            ir.entries.len(),
+            1,
+            "duplicate (layer, object, region) key collapses to one entry"
+        );
+        assert_eq!(
+            ir.entries[0].chosen_candidate.wall_index, 0,
+            "first entry wins for a duplicate key"
+        );
+    }
+
+    #[test]
+    fn harvest_support_plan_ir_from_preserves_entry_order() {
+        let entry = |region_id: &str| wit_host::prepass::SupportPlanEntry {
+            global_layer_index: 2,
+            object_id: "obj-1".to_string(),
+            region_id: region_id.to_string(),
+            branch_segments: vec![vec![pt(0.0, 0.0, 0.2), pt(1.0, 1.0, 0.2)]],
+        };
+        let ir = harvest_support_plan_ir_from(vec![entry("4"), entry("9")])
+            .expect("canonical region-ids must harvest cleanly");
+        assert_eq!(ir.entries.len(), 2, "no dedup — push order preserved");
+        assert_eq!(ir.entries[0].region_id, 4);
+        assert_eq!(ir.entries[1].region_id, 9);
+        assert_eq!(ir.entries[0].branch_segments[0].points.len(), 2);
+    }
 }
 
 /// Harvest `mark-triangle-paint` tuples collected by a prepass
@@ -1943,10 +2067,17 @@ mod tests {
 fn harvest_mesh_segmentation_ir(
     ctx: wit_host::HostExecutionContext,
 ) -> slicer_ir::MeshSegmentationIR {
+    harvest_mesh_segmentation_ir_from(ctx.mesh_segmentation_marks)
+}
+
+/// Pure core of [`harvest_mesh_segmentation_ir`]: paint-mark tuples →
+/// `MeshSegmentationIR`. Decoupled from `HostExecutionContext` for unit-testing.
+fn harvest_mesh_segmentation_ir_from(
+    mesh_segmentation_marks: Vec<(String, u32, String, String)>,
+) -> slicer_ir::MeshSegmentationIR {
     use slicer_ir::{FacetPaintMark, MeshSegmentationIR};
 
-    let marks: Vec<FacetPaintMark> = ctx
-        .mesh_segmentation_marks
+    let marks: Vec<FacetPaintMark> = mesh_segmentation_marks
         .into_iter()
         .map(|(object_id, facet_index, semantic, value)| FacetPaintMark {
             object_id,
@@ -2062,13 +2193,24 @@ impl PrepassStageRunner for WasmRuntimeDispatcher {
 fn harvest_mesh_analysis_auxiliary(
     ctx: wit_host::HostExecutionContext,
 ) -> crate::prepass::MeshAnalysisAuxiliary {
+    harvest_mesh_analysis_auxiliary_from(
+        ctx.mesh_analysis_annotations,
+        ctx.mesh_analysis_surface_groups,
+    )
+}
+
+/// Pure core of [`harvest_mesh_analysis_auxiliary`]: the two guest push-vectors →
+/// `MeshAnalysisAuxiliary`. Decoupled from `HostExecutionContext` for unit-testing.
+fn harvest_mesh_analysis_auxiliary_from(
+    mesh_analysis_annotations: Vec<(String, wit_host::prepass::FacetAnnotation)>,
+    mesh_analysis_surface_groups: Vec<(String, wit_host::prepass::SurfaceGroupProposal)>,
+) -> crate::prepass::MeshAnalysisAuxiliary {
     use crate::prepass::{
         FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, SurfaceGroupRecord,
     };
     use crate::wit_host::prepass as pm;
 
-    let facet_annotations = ctx
-        .mesh_analysis_annotations
+    let facet_annotations = mesh_analysis_annotations
         .into_iter()
         .map(|(obj, ann)| {
             let classification = match ann.classification {
@@ -2090,8 +2232,7 @@ fn harvest_mesh_analysis_auxiliary(
         })
         .collect();
 
-    let surface_groups = ctx
-        .mesh_analysis_surface_groups
+    let surface_groups = mesh_analysis_surface_groups
         .into_iter()
         .map(|(obj, grp)| {
             (

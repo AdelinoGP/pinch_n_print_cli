@@ -56,7 +56,7 @@ built-in in declared order. | `cargo test -p slicer-runtime --test integration r
 
 **AC-2.1 — Harvest cores are pure and testable without WASM (Phase 2).**
 Given the dispatch harvest logic, When inspected, Then each `harvest_*` delegates to a `harvest_*_from(<vec>)`
-pure core. | `grep -c "fn harvest_layer_plan_ir_from\|fn harvest_seam_plan_ir_from\|fn harvest_support_plan_ir_from" crates/slicer-runtime/src/dispatch.rs` → `3`
+pure core. | `grep -c "fn harvest_layer_plan_ir_from(\|fn harvest_seam_plan_ir_from(\|fn harvest_support_plan_ir_from(" crates/slicer-runtime/src/dispatch.rs` → `3`
 
 **AC-2.2 — `parse_canonical_region_id` has one definition (Phase 2).**
 Given the de-dup, When both files are searched, Then exactly one `fn parse_canonical_region_id` definition
