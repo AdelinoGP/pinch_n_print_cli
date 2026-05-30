@@ -39,6 +39,7 @@ use slicer_runtime::{
     LoadedModule, LoadedModuleBuilder, PrepassStageOutput, PrepassStageRunner, WasmEngine,
     WasmRuntimeDispatcher,
 };
+use witness::{SdkInfillWitness, SdkInfillWitnessPoint1};
 
 fn semver(major: u32, minor: u32, patch: u32) -> slicer_ir::SemVer {
     slicer_ir::SemVer {
@@ -88,8 +89,6 @@ fn make_loaded_module(id: &str, stage: &str, wit_world: &str) -> LoadedModule {
 
 fn guest_component_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
         .join("test-guests")
         .join(format!("{name}.component.wasm"))
 }
@@ -590,40 +589,39 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
         infill.regions.len()
     );
     let path0 = &infill.regions[0].sparse_infill[0];
-    let p0 = &path0.points[0];
-    // Matches the guest's encoding:
-    //   point[0].x = region_count = 3
-    //   point[0].y = total_polys  = 12
-    //   point[0].z = first region's z = 1.8
-    //   point[0].width = first region's effective_layer_height = 0.2
-    //   point[0].flow_factor = first region's infill_areas().len() = 1
-    assert_eq!(p0.x, 3.0, "deep-copy witnessed 3 regions (got x={})", p0.x);
+    // Decode via witness crate (field meanings defined in witness::SdkInfillWitness).
+    let w0 = SdkInfillWitness::decode(&path0.points);
+    let w1 = SdkInfillWitnessPoint1::decode(&path0.points);
     assert_eq!(
-        p0.y, 12.0,
-        "deep-copy witnessed 12 polygons (got y={})",
-        p0.y
+        w0.region_count, 3.0,
+        "deep-copy witnessed 3 regions (got region_count={})",
+        w0.region_count
+    );
+    assert_eq!(
+        w0.total_polys, 12.0,
+        "deep-copy witnessed 12 polygons (got total_polys={})",
+        w0.total_polys
     );
     assert!(
-        (p0.z - 1.8).abs() < 1e-4,
+        (w0.first_region_z - 1.8).abs() < 1e-4,
         "deep-copy witnessed z=1.8 from SliceRegionView::z(): {}",
-        p0.z
+        w0.first_region_z
     );
     assert!(
-        (p0.width - 0.2).abs() < 1e-4,
+        (w0.first_region_layer_height - 0.2).abs() < 1e-4,
         "deep-copy witnessed effective_layer_height=0.2: {}",
-        p0.width
+        w0.first_region_layer_height
     );
     assert!(
-        (p0.flow_factor - 1.0).abs() < 1e-4,
+        (w0.first_region_infill_areas_len - 1.0).abs() < 1e-4,
         "deep-copy witnessed first region's infill_areas().len()=1: {}",
-        p0.flow_factor
+        w0.first_region_infill_areas_len
     );
     // Second point encodes the forwarded layer_index.
-    let p1 = &path0.points[1];
     assert_eq!(
-        p1.x, 9.0,
-        "typed layer_index=9 forwarded to trait body: x={}",
-        p1.x
+        w1.layer_index, 9.0,
+        "typed layer_index=9 forwarded to trait body: layer_index={}",
+        w1.layer_index
     );
 }
 
@@ -658,8 +656,15 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
             .set_slice(slice_ir_with_regions(2, 0.4, 2, 5))
             .unwrap();
         LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module, &bb, &mut arena).unwrap();
-        let p = &arena.infill().unwrap().regions[0].sparse_infill[0].points[0];
-        snapshots.push((p.x, p.y, p.z, p.width, p.flow_factor));
+        let w =
+            SdkInfillWitness::decode(&arena.infill().unwrap().regions[0].sparse_infill[0].points);
+        snapshots.push((
+            w.region_count,
+            w.total_polys,
+            w.first_region_z,
+            w.first_region_layer_height,
+            w.first_region_infill_areas_len,
+        ));
     }
     assert!(
         snapshots.windows(2).all(|w| w[0] == w[1]),

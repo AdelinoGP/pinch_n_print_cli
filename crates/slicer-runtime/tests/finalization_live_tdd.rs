@@ -29,7 +29,7 @@ use slicer_runtime::{
 
 const SDK_FINALIZATION_GUEST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/sdk-finalization-guest.component.wasm"
+    "/test-guests/sdk-finalization-guest.component.wasm"
 );
 
 const WIPE_TOWER_WASM: &str = concat!(

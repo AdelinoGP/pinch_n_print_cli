@@ -26,6 +26,7 @@ pyo3 = { workspace = true }
 rstar = "0.12"
 
 [dev-dependencies]
+witness = { path = "test-guests/witness" }
 wat = "1.0"
 wit-parser = "0.247"
 tempfile = "3"

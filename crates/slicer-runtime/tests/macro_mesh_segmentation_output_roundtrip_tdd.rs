@@ -25,7 +25,7 @@ use slicer_runtime::{
 
 const SDK_PREPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/sdk-prepass-meshseg-guest.component.wasm"
+    "/test-guests/sdk-prepass-meshseg-guest.component.wasm"
 );
 
 // â”€â”€ Harness helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

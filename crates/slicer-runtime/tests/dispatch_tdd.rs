@@ -12,6 +12,7 @@
 
 mod common;
 use common::seed::seed_slice_ir;
+use witness::{RawInfillWitness, RawInfillWitnessPoint1, RawSupportWitness};
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -108,19 +109,19 @@ const WAT_EMPTY_COMPONENT: &str = r#"(component)"#;
 /// Path to the pre-built test guest component implementing the layer-module world.
 const GUEST_COMPONENT_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/layer-infill-guest.component.wasm"
+    "/test-guests/layer-infill-guest.component.wasm"
 );
 const PREPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/prepass-guest.component.wasm"
+    "/test-guests/prepass-guest.component.wasm"
 );
 const FINALIZATION_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/finalization-guest.component.wasm"
+    "/test-guests/finalization-guest.component.wasm"
 );
 const POSTPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/postpass-guest.component.wasm"
+    "/test-guests/postpass-guest.component.wasm"
 );
 
 // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1636,11 +1637,12 @@ fn real_config_visible_through_production_layer_dispatch() {
 
     let infill = arena.infill().expect("infill slot should be populated");
     let path = &infill.regions[0].sparse_infill[0];
-    // spacing=5.0 â†’ x = 5.0 * 10.0 = 50.0
+    // spacing=5.0 â†’ spacing_x10=50.0 (RawInfillWitnessPoint1)
+    let p1 = RawInfillWitnessPoint1::decode(&path.points);
     assert_eq!(
-        path.points[1].x, 50.0,
-        "guest should use config spacing=5.0 â†’ x=50.0, got {}",
-        path.points[1].x
+        p1.spacing_x10, 50.0,
+        "guest should use config spacing=5.0 â†’ spacing_x10=50.0, got {}",
+        p1.spacing_x10
     );
 }
 
@@ -1703,11 +1705,23 @@ fn different_configs_produce_different_output() {
     )
     .expect("dispatch B should succeed");
 
-    let x_a = arena_a.infill().unwrap().regions[0].sparse_infill[0].points[1].x;
-    let x_b = arena_b.infill().unwrap().regions[0].sparse_infill[0].points[1].x;
+    let x_a = RawInfillWitnessPoint1::decode(
+        &arena_a.infill().unwrap().regions[0].sparse_infill[0].points,
+    )
+    .spacing_x10;
+    let x_b = RawInfillWitnessPoint1::decode(
+        &arena_b.infill().unwrap().regions[0].sparse_infill[0].points,
+    )
+    .spacing_x10;
 
-    assert_eq!(x_a, 30.0, "config A spacing=3.0 â†’ x=30.0, got {x_a}");
-    assert_eq!(x_b, 70.0, "config B spacing=7.0 â†’ x=70.0, got {x_b}");
+    assert_eq!(
+        x_a, 30.0,
+        "config A spacing=3.0 â†’ spacing_x10=30.0, got {x_a}"
+    );
+    assert_eq!(
+        x_b, 70.0,
+        "config B spacing=7.0 â†’ spacing_x10=70.0, got {x_b}"
+    );
     assert_ne!(
         x_a, x_b,
         "different configs should produce different output"
@@ -1818,11 +1832,23 @@ fn config_isolation_across_sequential_calls() {
     )
     .unwrap();
 
-    let x1 = arena1.infill().unwrap().regions[0].sparse_infill[0].points[1].x;
-    let x2 = arena2.infill().unwrap().regions[0].sparse_infill[0].points[1].x;
+    let x1 = RawInfillWitnessPoint1::decode(
+        &arena1.infill().unwrap().regions[0].sparse_infill[0].points,
+    )
+    .spacing_x10;
+    let x2 = RawInfillWitnessPoint1::decode(
+        &arena2.infill().unwrap().regions[0].sparse_infill[0].points,
+    )
+    .spacing_x10;
 
-    assert_eq!(x1, 60.0, "first call spacing=6.0 â†’ x=60.0, got {x1}");
-    assert_eq!(x2, 20.0, "second call spacing=2.0 â†’ x=20.0, got {x2}");
+    assert_eq!(
+        x1, 60.0,
+        "first call spacing=6.0 â†’ spacing_x10=60.0, got {x1}"
+    );
+    assert_eq!(
+        x2, 20.0,
+        "second call spacing=2.0 â†’ spacing_x10=20.0, got {x2}"
+    );
 }
 
 // â”€â”€ H. Paint region wiring tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1941,13 +1967,21 @@ fn real_paint_region_data_visible_through_production_support_dispatch() {
     .unwrap();
 
     let support = arena.support().expect("support should be populated");
-    let p = &support.support_paths[0].points[0];
-    assert_eq!(p.x, 3.0, "enforcer count should be 3, got {}", p.x);
-    assert_eq!(p.y, 1.0, "blocker count should be 1, got {}", p.y);
+    let sw = RawSupportWitness::decode(&support.support_paths[0].points);
     assert_eq!(
-        p.flow_factor, 7.0,
+        sw.enforcer_count, 3.0,
+        "enforcer count should be 3, got {}",
+        sw.enforcer_count
+    );
+    assert_eq!(
+        sw.blocker_count, 1.0,
+        "blocker count should be 1, got {}",
+        sw.blocker_count
+    );
+    assert_eq!(
+        sw.paint_layer_index, 7.0,
         "paint layer index should match layer.index=7, got {}",
-        p.flow_factor
+        sw.paint_layer_index
     );
 }
 
@@ -1984,9 +2018,15 @@ fn no_paint_region_ir_produces_empty_paint_view() {
     .unwrap();
 
     let support = arena.support().expect("support output should still exist");
-    let p = &support.support_paths[0].points[0];
-    assert_eq!(p.x, 0.0, "no enforcers when PaintRegionIR absent");
-    assert_eq!(p.y, 0.0, "no blockers when PaintRegionIR absent");
+    let sw = RawSupportWitness::decode(&support.support_paths[0].points);
+    assert_eq!(
+        sw.enforcer_count, 0.0,
+        "no enforcers when PaintRegionIR absent"
+    );
+    assert_eq!(
+        sw.blocker_count, 0.0,
+        "no blockers when PaintRegionIR absent"
+    );
 }
 
 #[test]
@@ -2031,12 +2071,12 @@ fn paint_region_layer_mismatch_produces_empty_view() {
     .unwrap();
 
     let support = arena.support().expect("support output");
-    let p = &support.support_paths[0].points[0];
-    assert_eq!(p.x, 0.0, "no enforcers at mismatched layer");
+    let sw = RawSupportWitness::decode(&support.support_paths[0].points);
+    assert_eq!(sw.enforcer_count, 0.0, "no enforcers at mismatched layer");
     assert_eq!(
-        p.flow_factor, 10.0,
+        sw.paint_layer_index, 10.0,
         "paint layer index should be 10 (execution layer), got {}",
-        p.flow_factor
+        sw.paint_layer_index
     );
 }
 
@@ -2103,12 +2143,18 @@ fn paint_region_isolation_across_sequential_dispatches() {
     )
     .unwrap();
 
-    let p1 = &arena1.support().unwrap().support_paths[0].points[0];
-    let p2 = &arena2.support().unwrap().support_paths[0].points[0];
-    assert_eq!(p1.x, 3.0, "first dispatch: 3 enforcers");
-    assert_eq!(p1.y, 0.0, "first dispatch: 0 blockers");
-    assert_eq!(p2.x, 1.0, "second dispatch: 1 enforcer (no leak)");
-    assert_eq!(p2.y, 2.0, "second dispatch: 2 blockers (no leak)");
+    let sw1 = RawSupportWitness::decode(&arena1.support().unwrap().support_paths[0].points);
+    let sw2 = RawSupportWitness::decode(&arena2.support().unwrap().support_paths[0].points);
+    assert_eq!(sw1.enforcer_count, 3.0, "first dispatch: 3 enforcers");
+    assert_eq!(sw1.blocker_count, 0.0, "first dispatch: 0 blockers");
+    assert_eq!(
+        sw2.enforcer_count, 1.0,
+        "second dispatch: 1 enforcer (no leak)"
+    );
+    assert_eq!(
+        sw2.blocker_count, 2.0,
+        "second dispatch: 2 blockers (no leak)"
+    );
 }
 
 #[test]
@@ -2312,21 +2358,21 @@ fn real_slice_region_data_visible_through_production_infill_dispatch() {
     .unwrap();
 
     let infill = arena.infill().expect("infill should be populated");
-    let p0 = &infill.regions[0].sparse_infill[0].points[0];
+    let raw = RawInfillWitness::decode(&infill.regions[0].sparse_infill[0].points);
     assert_eq!(
-        p0.flow_factor, 2.0,
-        "guest should see 2 slice regions, got flow_factor={}",
-        p0.flow_factor
+        raw.region_count, 2.0,
+        "guest should see 2 slice regions, got region_count={}",
+        raw.region_count
     );
     assert_eq!(
-        p0.width, 6.0,
-        "guest should see 6 total polygons (2 regions Ã— 3), got width={}",
-        p0.width
+        raw.total_polys, 6.0,
+        "guest should see 6 total polygons (2 regions × 3), got total_polys={}",
+        raw.total_polys
     );
     assert_eq!(
-        p0.z, 0.6,
+        raw.first_region_z, 0.6,
         "guest should see z=0.6 from slice region, got {}",
-        p0.z
+        raw.first_region_z
     );
 }
 
@@ -2413,12 +2459,17 @@ fn slice_region_isolation_across_sequential_dispatches() {
     )
     .unwrap();
 
-    let p1 = &arena1.infill().unwrap().regions[0].sparse_infill[0].points[0];
-    let p2 = &arena2.infill().unwrap().regions[0].sparse_infill[0].points[0];
-    assert_eq!(p1.flow_factor, 3.0, "first dispatch: 3 regions");
-    assert_eq!(p1.width, 6.0, "first dispatch: 6 polys (3Ã—2)");
-    assert_eq!(p2.flow_factor, 1.0, "second dispatch: 1 region (no leak)");
-    assert_eq!(p2.width, 5.0, "second dispatch: 5 polys (no leak)");
+    let raw1 =
+        RawInfillWitness::decode(&arena1.infill().unwrap().regions[0].sparse_infill[0].points);
+    let raw2 =
+        RawInfillWitness::decode(&arena2.infill().unwrap().regions[0].sparse_infill[0].points);
+    assert_eq!(raw1.region_count, 3.0, "first dispatch: 3 regions");
+    assert_eq!(raw1.total_polys, 6.0, "first dispatch: 6 polys (3×2)");
+    assert_eq!(
+        raw2.region_count, 1.0,
+        "second dispatch: 1 region (no leak)"
+    );
+    assert_eq!(raw2.total_polys, 5.0, "second dispatch: 5 polys (no leak)");
 }
 
 #[test]
@@ -5858,7 +5909,7 @@ fn layer_planner_default_macro_path_is_deterministic() {
 
 const SDK_PREPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/sdk-prepass-guest.component.wasm"
+    "/test-guests/sdk-prepass-guest.component.wasm"
 );
 
 fn load_sdk_prepass_guest(engine: &WasmEngine) -> Option<Arc<slicer_runtime::WasmComponent>> {

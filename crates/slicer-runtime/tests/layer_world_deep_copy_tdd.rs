@@ -21,7 +21,7 @@ use slicer_runtime::{
 
 const LAYER_GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/sdk-layer-pathopt-guest.component.wasm"
+    "/test-guests/sdk-layer-pathopt-guest.component.wasm"
 );
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {

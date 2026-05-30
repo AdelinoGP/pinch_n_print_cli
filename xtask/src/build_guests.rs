@@ -172,7 +172,7 @@ pub fn discover_guests(ws_root: &Path) -> (Vec<GuestSpec>, Vec<String>) {
     }
 
     // --- Test-guests tree ---
-    let tg_root = ws_root.join("test-guests");
+    let tg_root = ws_root.join("crates/slicer-runtime/test-guests");
     if let Ok(entries) = fs::read_dir(&tg_root) {
         let mut dirs: Vec<PathBuf> = entries
             .filter_map(|e| e.ok())
@@ -239,7 +239,9 @@ pub fn discover_guests(ws_root: &Path) -> (Vec<GuestSpec>, Vec<String>) {
                 .to_string_lossy()
                 .to_string();
             let lib_name = lib_name(&tab, &crate_name);
-            let artifact_path = PathBuf::from(format!("test-guests/{dir_name}.component.wasm"));
+            let artifact_path = PathBuf::from(format!(
+                "crates/slicer-runtime/test-guests/{dir_name}.component.wasm"
+            ));
 
             guests.push(GuestSpec {
                 crate_name,
@@ -346,20 +348,23 @@ pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
     println!("building: {}", spec.crate_name);
 
     // Step A: cargo build
-    let out = Command::new("cargo")
-        .current_dir(&spec.guest_dir)
-        .args([
-            "build",
-            "--target",
-            "wasm32-unknown-unknown",
-            "--release",
-            "--quiet",
-        ])
-        .output()
-        .map_err(|e| BuildError::CargoFailed {
-            guest: spec.crate_name.clone(),
-            stderr_tail: format!("failed to spawn cargo: {e}"),
-        })?;
+    // For test-guests, use a single shared CARGO_TARGET_DIR to avoid per-guest target dirs.
+    let shared_target_dir = ws_root.join("crates/slicer-runtime/test-guests/target");
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(&spec.guest_dir).args([
+        "build",
+        "--target",
+        "wasm32-unknown-unknown",
+        "--release",
+        "--quiet",
+    ]);
+    if spec.tree == GuestTree::TestGuest {
+        cmd.env("CARGO_TARGET_DIR", &shared_target_dir);
+    }
+    let out = cmd.output().map_err(|e| BuildError::CargoFailed {
+        guest: spec.crate_name.clone(),
+        stderr_tail: format!("failed to spawn cargo: {e}"),
+    })?;
 
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
@@ -370,10 +375,12 @@ pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
     }
 
     // Step B: locate intermediate wasm
-    let intermediate = spec
-        .guest_dir
-        .join("target/wasm32-unknown-unknown/release")
-        .join(format!("{}.wasm", spec.lib_name));
+    let intermediate_base = if spec.tree == GuestTree::TestGuest {
+        shared_target_dir.join("wasm32-unknown-unknown/release")
+    } else {
+        spec.guest_dir.join("target/wasm32-unknown-unknown/release")
+    };
+    let intermediate = intermediate_base.join(format!("{}.wasm", spec.lib_name));
 
     if !intermediate.exists() {
         return Err(BuildError::MissingIntermediate {

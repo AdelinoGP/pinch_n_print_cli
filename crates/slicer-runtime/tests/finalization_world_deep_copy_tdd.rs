@@ -12,10 +12,11 @@ use slicer_runtime::{
     Blackboard, CompiledModule, CompiledModuleBuilder, FinalizationStageRunner, LoadedModule,
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
+use witness::{SdkFinalizationLayerWitness, SdkFinalizationLayerWitness1};
 
 const FINALIZATION_GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/sdk-finalization-guest.component.wasm"
+    "/test-guests/sdk-finalization-guest.component.wasm"
 );
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -187,30 +188,30 @@ fn finalization_world_deep_copy_preserves_entities_and_z_hops() {
     assert_eq!(layers[1].ordered_entities.len(), layer1_original_len + 1);
 
     let witness0 = witness_entity(&layers[0]);
-    let point0 = &witness0.path.points[0];
-    let point1 = &witness0.path.points[1];
-    assert_eq!(point0.x, 0.0);
-    assert!((point0.y - 0.2).abs() < 1e-6);
-    assert_eq!(point0.z, 1.0);
-    assert_eq!(point0.width, 1.0);
-    assert_eq!(point0.flow_factor, 1.0);
-    assert_eq!(point1.x, 4.0);
-    assert_eq!(point1.y, 2.0);
-    assert!((point1.z - 1.25).abs() < 1e-6);
-    assert_eq!(point1.width, 3.0);
-    assert!((point1.flow_factor - 0.45).abs() < 1e-6);
+    let w0 = SdkFinalizationLayerWitness::decode(&witness0.path.points);
+    let w01 = SdkFinalizationLayerWitness1::decode(&witness0.path.points);
+    assert_eq!(w0.layer_index, 0.0);
+    assert!((w0.layer_z - 0.2).abs() < 1e-6);
+    assert_eq!(w0.entity_count, 1.0);
+    assert_eq!(w0.tool_changes_len, 1.0);
+    assert_eq!(w0.z_hops_len, 1.0);
+    assert_eq!(w01.first_entity_topo, 4.0);
+    assert_eq!(w01.first_entity_point_count, 2.0);
+    assert!((w01.first_entity_speed_factor - 1.25).abs() < 1e-6);
+    assert_eq!(w01.first_zhop_after_entity, 3.0);
+    assert!((w01.first_zhop_height - 0.45).abs() < 1e-6);
 
     let witness1 = witness_entity(&layers[1]);
-    let empty_point0 = &witness1.path.points[0];
-    let empty_point1 = &witness1.path.points[1];
-    assert_eq!(empty_point0.x, 1.0);
-    assert!((empty_point0.y - 0.4).abs() < 1e-6);
-    assert_eq!(empty_point0.z, 0.0);
-    assert_eq!(empty_point0.width, 0.0);
-    assert_eq!(empty_point0.flow_factor, 0.0);
-    assert_eq!(empty_point1.x, -1.0);
-    assert_eq!(empty_point1.y, -1.0);
-    assert_eq!(empty_point1.z, -1.0);
-    assert_eq!(empty_point1.width, -1.0);
-    assert_eq!(empty_point1.flow_factor, -1.0);
+    let w1 = SdkFinalizationLayerWitness::decode(&witness1.path.points);
+    let w11 = SdkFinalizationLayerWitness1::decode(&witness1.path.points);
+    assert_eq!(w1.layer_index, 1.0);
+    assert!((w1.layer_z - 0.4).abs() < 1e-6);
+    assert_eq!(w1.entity_count, 0.0);
+    assert_eq!(w1.tool_changes_len, 0.0);
+    assert_eq!(w1.z_hops_len, 0.0);
+    assert_eq!(w11.first_entity_topo, -1.0);
+    assert_eq!(w11.first_entity_point_count, -1.0);
+    assert_eq!(w11.first_entity_speed_factor, -1.0);
+    assert_eq!(w11.first_zhop_after_entity, -1.0);
+    assert_eq!(w11.first_zhop_height, -1.0);
 }

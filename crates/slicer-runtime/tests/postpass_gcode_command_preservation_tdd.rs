@@ -16,7 +16,7 @@ use slicer_runtime::{
 
 const POSTPASS_GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/postpass-guest.component.wasm"
+    "/test-guests/postpass-guest.component.wasm"
 );
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {

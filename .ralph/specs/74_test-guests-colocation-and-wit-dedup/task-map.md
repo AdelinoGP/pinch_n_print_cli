@@ -7,7 +7,7 @@ Single backlog task, four implementation concerns, two predecessor packets. This
 | Step | Concern | Authoritative doc | Predecessor lineage |
 |------|---------|-------------------|---------------------|
 | 1 | Delete orphan `sdk-layer-plan-guest/` | — | — |
-| 2 | Relocate `test-guests/` → `crates/slicer-runtime/test-guests/`; repoint builder, 18 tests, gitignore, docs | `docs/05_module_sdk.md` (build flow) | packet 70 (`cargo xtask build-guests`, TASK-214) |
+| 2 | Relocate `test-guests/` → `crates/slicer-runtime/test-guests/`; remove old root dir; repoint builder, 18 test files (4 path-construction forms — only 13 are the literal `../../test-guests/`), gitignore, docs | `docs/05_module_sdk.md` (build flow) | packet 70 (`cargo xtask build-guests`, TASK-214) |
 | 3 | D1: single shared `CARGO_TARGET_DIR` (keep per-guest `[workspace]`) | `docs/05_module_sdk.md` | packet 70 (preserves its builder design) |
 | 4 | A: raw guests `inline:` → canonical `path:`; drop obsolete drift sub-test | `docs/03_wit_and_manifest.md` (single-source rule) | packet 72 (TASK-144/145 — closes its surviving exception) |
 | 5 | C: extract witness codec; migrate SDK guests + 5 host decoders | `docs/03_wit_and_manifest.md` (boundary types) | — |

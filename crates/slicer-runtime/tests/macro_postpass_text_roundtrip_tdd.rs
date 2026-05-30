@@ -54,7 +54,7 @@ fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
 
 const GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/sdk-postpass-text-guest.component.wasm"
+    "/test-guests/sdk-postpass-text-guest.component.wasm"
 );
 
 fn empty_mesh_ir() -> Arc<slicer_ir::MeshIR> {

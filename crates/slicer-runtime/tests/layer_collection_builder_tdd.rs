@@ -412,7 +412,7 @@ fn malformed_proposal_leaves_ordered_entities_unchanged() {
 
 const MULTI_READ_GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/path-optimization-multi-read.component.wasm"
+    "/test-guests/path-optimization-multi-read.component.wasm"
 );
 
 fn semver_v(major: u32, minor: u32, patch: u32) -> SemVer {

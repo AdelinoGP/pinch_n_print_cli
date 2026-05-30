@@ -210,8 +210,8 @@ permits `run_mesh_analysis`, `run_paint_segmentation`, `run_mesh_segmentation`,
 `run_layer_planning`, `run_seam_planning`, `run_support_geometry`), author one
 sibling crate per stage. Each sibling overrides only the one stage method it
 implements and relies on the trait's default `Ok(())` bodies for the rest. The
-test guests `test-guests/sdk-prepass-paintseg-guest/` and
-`test-guests/sdk-prepass-meshseg-guest/` are reference exemplars: each is a
+test guests `crates/slicer-runtime/test-guests/sdk-prepass-paintseg-guest/` and
+`crates/slicer-runtime/test-guests/sdk-prepass-meshseg-guest/` are reference exemplars: each is a
 standalone crate (empty `[workspace]` table; lists `slicer-sdk`, `slicer-ir`,
 `slicer-schema`, `wit-bindgen` as deps) with exactly one `#[slicer_module]
 impl PrepassModule for ...` block overriding `on_print_start` plus the one
@@ -642,7 +642,7 @@ wasm-tools component new \
 
 `pnp_cli` deliberately has no `build` verb — `cargo` is the canonical build tool. Wrapping it would duplicate flag surface and add failure modes without adding value.
 
-> **Workspace contributors** rebuilding the in-tree guest set (`modules/core-modules/**/wit-guest` and `test-guests/*`) should use `cargo xtask build-guests`. Freshness can be verified with `cargo xtask build-guests --check`. This is generative — adding a new guest crate matching the validated discovery predicate (cdylib + `[workspace]` sentinel + correct dep shape) is picked up automatically; no hardcoded module list to maintain.
+> **Workspace contributors** rebuilding the in-tree guest set (`modules/core-modules/**/wit-guest` and `crates/slicer-runtime/test-guests/*`) should use `cargo xtask build-guests`. Freshness can be verified with `cargo xtask build-guests --check`. This is generative — adding a new guest crate matching the validated discovery predicate (cdylib + `[workspace]` sentinel + correct dep shape) is picked up automatically; no hardcoded module list to maintain.
 
 ### Other verbs
 

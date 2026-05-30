@@ -35,10 +35,7 @@ const GUESTS: &[(&str, &str)] = &[
 ];
 
 fn test_guests_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("test-guests")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test-guests")
 }
 
 #[test]

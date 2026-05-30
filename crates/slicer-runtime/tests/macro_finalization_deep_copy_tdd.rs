@@ -30,6 +30,7 @@ use slicer_runtime::{
     Blackboard, CompiledModule, CompiledModuleBuilder, FinalizationStageRunner, LoadedModule,
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
+use witness::SdkFinalizationLayerWitness;
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -60,8 +61,6 @@ fn empty_mesh_ir() -> Arc<slicer_ir::MeshIR> {
 
 fn guest_component_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
         .join("test-guests")
         .join(format!("{name}.component.wasm"))
 }
@@ -197,21 +196,21 @@ fn finalization_deep_copy_in_and_drain_back_out_round_trip() {
         let witness = layers[i].ordered_entities.first().unwrap();
         assert_eq!(witness.region_key.object_id, "__task109_fin_witness__");
         assert_eq!(witness.region_key.region_id, 109);
-        let pt = &witness.path.points[0];
+        let fw = SdkFinalizationLayerWitness::decode(&witness.path.points);
         assert_eq!(
-            pt.x as u32, *exp_idx,
+            fw.layer_index as u32, *exp_idx,
             "deep-copy IN: layer_index for layer {i}"
         );
         assert!(
-            (pt.y - *exp_z).abs() < 1e-6,
+            (fw.layer_z - *exp_z).abs() < 1e-6,
             "deep-copy IN: z for layer {i}"
         );
         assert_eq!(
-            pt.z as u32, *exp_entity_count,
+            fw.entity_count as u32, *exp_entity_count,
             "deep-copy IN: entity_count for layer {i}"
         );
         assert_eq!(
-            pt.width as u32, *exp_tc_len,
+            fw.tool_changes_len as u32, *exp_tc_len,
             "deep-copy IN: tool_changes.len() for layer {i}"
         );
     }
@@ -277,12 +276,12 @@ fn finalization_deep_copy_round_trip_is_deterministic_across_repeated_runs() {
                     .iter()
                     .filter(|e| e.region_key.region_id == 109)
                     .map(|e| {
-                        let p = &e.path.points[0];
+                        let fw = SdkFinalizationLayerWitness::decode(&e.path.points);
                         (
-                            p.x as u32,
-                            p.y,
-                            p.z as u32,
-                            p.width as u32,
+                            fw.layer_index as u32,
+                            fw.layer_z,
+                            fw.entity_count as u32,
+                            fw.tool_changes_len as u32,
                             e.region_key.object_id.clone(),
                             e.region_key.region_id,
                         )

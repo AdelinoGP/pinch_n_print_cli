@@ -2528,6 +2528,7 @@ dependencies = [
  "wat",
  "wipe-tower",
  "wit-parser 0.247.0",
+ "witness",
  "zip",
 ]
 
@@ -3943,6 +3944,13 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser 0.247.0",
+]
+
+[[package]]
+name = "witness"
+version = "0.1.0"
+dependencies = [
+ "slicer-ir",
 ]
 
 [[package]]

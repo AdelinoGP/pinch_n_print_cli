@@ -14,10 +14,7 @@ fn main() {
         "postpass-guest",
     ];
 
-    let test_guests_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("test-guests");
+    let test_guests_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("test-guests");
 
     for guest in &guests {
         let src = test_guests_dir.join(guest).join("src").join("lib.rs");
@@ -39,7 +36,7 @@ fn main() {
         if !wasm.exists() {
             println!(
                 "cargo:warning=Test guest {guest}.component.wasm is missing. \
-                 Run: ./test-guests/build-test-guests.sh"
+                 Run: cargo xtask build-guests"
             );
             continue;
         }
@@ -56,7 +53,7 @@ fn main() {
             if src_t > wasm_t {
                 println!(
                     "cargo:warning=Test guest {guest}.component.wasm is stale \
-                     (source is newer). Run: ./test-guests/build-test-guests.sh"
+                     (source is newer). Run: cargo xtask build-guests"
                 );
             }
         }
@@ -64,7 +61,7 @@ fn main() {
             if toml_t > wasm_t {
                 println!(
                     "cargo:warning=Test guest {guest}.component.wasm is stale \
-                     (Cargo.toml is newer). Run: ./test-guests/build-test-guests.sh"
+                     (Cargo.toml is newer). Run: cargo xtask build-guests"
                 );
             }
         }

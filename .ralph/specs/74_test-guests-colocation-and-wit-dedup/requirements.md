@@ -21,7 +21,11 @@ This packet co-locates the fixtures with their consumer, collapses the build spr
 - `git mv test-guests/ crates/slicer-runtime/test-guests/` (12 guest crates). Remove the stray empty `sdk-layer-plan-guest/` directory (no `Cargo.toml`; already un-built).
 - SDK guest manifests: repoint path deps from `../../crates/slicer-{sdk,ir,schema}` to `../../../slicer-{sdk,ir,schema}` (one level deeper).
 - `xtask/src/build_guests.rs`: change `tg_root` (`:175`) to `crates/slicer-runtime/test-guests`; change the artifact-path prefix (`:242`) to `crates/slicer-runtime/test-guests/{dir}.component.wasm`; set a single shared `CARGO_TARGET_DIR` for guest `cargo build` invocations in `build_one` (D1) and update the intermediate-`.wasm` path it feeds to `wasm-tools component new`.
-- The 18 `slicer-runtime` test files referencing `../../test-guests/<g>.component.wasm`: repoint to `../test-guests/<g>.component.wasm`.
+- The 18 `slicer-runtime` test files referencing the old `test-guests/` location: repoint to the new location. **These split across four path-construction forms — a single find/replace of one literal will miss 5 of them:**
+  - **Form 1 — string-concat literal (13 files):** `concat!(env!("CARGO_MANIFEST_DIR"), "/../../test-guests/<g>.component.wasm")` → replace `/../../test-guests/` with `/test-guests/`. (`CARGO_MANIFEST_DIR` is `crates/slicer-runtime`; the new tree is directly under it, so **all** `..` segments are removed — a `/../test-guests/` replacement would resolve to the nonexistent `crates/test-guests/`. AC-N1's static guard does **not** catch this single-`..` mistake; only the runtime `fs::read` tests do.)
+  - **Form 2 — multiline chained `.join` (3 files: `guest_fixture_freshness_tdd.rs` `test_guests_dir()`, `macro_all_worlds_roundtrip_tdd.rs` `guest_component_path()`, `macro_finalization_deep_copy_tdd.rs`):** `…CARGO_MANIFEST_DIR … .join("..").join("..").join("test-guests")` → drop **one** `.join("..")` so it lands at `crates/slicer-runtime/test-guests`. These carry **no** `../../test-guests/` literal and escape a literal find/replace.
+  - **Form 3 — workspace-root-relative single join (1 file: `live_layer_support_tdd.rs:869`):** climbs to repo root via `.parent()` then `.join("test-guests/layer-infill-guest.component.wasm")`; repoint so the base resolves to `crates/slicer-runtime/` (e.g. one fewer `.parent()`, or `.join("crates/slicer-runtime/test-guests/…")`).
+  - **Form 4 — `format!` helper (1 file: `wit_drift_detection_tdd.rs:629` `test_guest_lib_rs_content`):** `workspace_root().join(format!("test-guests/{guest}/src/lib.rs"))`. This helper is deleted with the obsolete drift sub-test in Step 4 (its only caller is line 464); if it is instead retained, repoint it to `crates/slicer-runtime/test-guests/`.
 - `.gitignore`: replace `test-guests/*/target/` with the single shared guest target dir under the new location.
 - `CLAUDE.md` path references (Guest WASM Staleness, Post-Merge naming, WIT/Type Changes checklist) and the two `skills/**/wasm-staleness.md` snippet files.
 - **A (de-dup):** in the four raw guests, replace `inline: r#"…"#` with `path: "../../../slicer-schema/wit"` (+ the existing `world:`); reconcile any divergence toward canonical. Delete the obsolete `wit_drift_detection_tdd::handwritten_test_guests_use_payload_extrusion_role_variants` sub-test (and its `test_guest_lib_rs_content` helper if then unused); keep `macro_uses_canonical_dep_includes`.
@@ -54,6 +58,7 @@ The packet is accepted when AC-1..AC-7 and AC-N1..AC-N2 (defined in `packet.spec
 - **No inline WIT remains** in any of the four raw guests, and each binds canonical (AC-3); the inline-policing sub-test is deleted, not merely skipped (AC-4).
 - **Oracle intact** (AC-5): four raw guests still present — guards against silently performing rejected candidate B.
 - **Witness encoding centralized** (AC-6): field meanings defined once in `witness`; producer (SDK guests) and consumer (host tests) both reference it.
+- **All four path forms repointed** (AC-N1): the 18 referencing files use four distinct constructions (literal concat, multiline chained `.join`, workspace-root single join, `format!`). The regression guard is multiline-aware (`rg -U`) so it cannot false-green on the 5 files that escape a literal find/replace.
 
 ## Verification Commands
 
@@ -66,7 +71,7 @@ The packet is accepted when AC-1..AC-7 and AC-N1..AC-N2 (defined in `packet.spec
 | AC-5 | `ls crates/slicer-runtime/test-guests/{prepass,layer-infill,finalization,postpass}-guest/src/lib.rs 2>/dev/null \| wc -l` | FACT: integer == 4 |
 | AC-6 | `test -f crates/slicer-runtime/test-guests/witness/src/lib.rs && grep -lq "witness::" crates/slicer-runtime/tests/dispatch_tdd.rs; echo $?` then `cargo test -p slicer-runtime --test dispatch_tdd` | FACT: exit 0 + pass/fail |
 | AC-7 | `cargo test -p slicer-runtime --test macro_all_worlds_roundtrip_tdd --test finalization_live_tdd` | FACT: pass/fail |
-| AC-N1 | `grep -rl "\.\./\.\./test-guests/" crates/slicer-runtime/tests --include=*.rs \| wc -l` | FACT: integer == 0 |
+| AC-N1 | `rg -Ul -e '\.\./\.\./test-guests' -e '\.join\("\.\."\)\s*\.join\("\.\."\)\s*\.join\("test-guests"\)' -e 'join\("test-guests/' -e 'format!\("test-guests/' crates/slicer-runtime/tests \| wc -l` | FACT: integer == 0 (multiline 4-pattern guard covering all 4 forms; the old single-`grep` literal guard missed 5 files) |
 | AC-N2 | `cargo test -p slicer-runtime --test wit_boundary_tdd` | FACT: pass/fail |
 | Gate | `cargo clippy --workspace --all-targets -- -D warnings` | FACT: exit code |
 
@@ -79,5 +84,5 @@ No AC uses `cargo test --workspace`. The workspace-wide suite runs only at the a
 
 ## Context Discipline Notes (packet-specific)
 
-- The 18 consuming test files are large; do not open them to change paths — use a scoped find/replace (`../../test-guests/` → `../test-guests/`) and verify with AC-N1's grep.
-- `xtask/src/build_guests.rs` is the one file where build logic changes; read the `discover_guests` (lines ~88–259) and `build_one` (lines ~345–419) windows only.
+- The 18 consuming test files are large; avoid opening them wholesale. **But a single find/replace of `../../test-guests/` → `../test-guests/` is insufficient — it fixes only the 13 Form-1 files.** Handle the 5 non-literal files (Forms 2–4 above) by name with the `±40`-line window around their path-helper (`test_guests_dir`, `guest_component_path`, the `live_layer_support_tdd.rs:869` `.parent()` chain, and — if retained — the `wit_drift` `format!` helper). Verify completeness with AC-N1's **multiline (`rg -U`)** guard, not the old single-line literal grep, which is blind to Forms 2–4.
+- `xtask/src/build_guests.rs` is the one file where build logic changes; read the `discover_guests` (lines ~88–259) and `build_one` (lines ~345–413) windows only.

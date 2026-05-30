@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 74
 task_ids: [TASK-215]
 backlog_source: docs/07_implementation_status.md
@@ -40,8 +40,8 @@ Given the witness codec crate exists at `crates/slicer-runtime/test-guests/witne
 **AC-7 — Guest round-trip behavior unchanged.**
 Given the full relocate+D1+A+C change set, When the broad guest round-trip suites run, Then they pass unchanged. | `cargo test -p slicer-runtime --test macro_all_worlds_roundtrip_tdd --test finalization_live_tdd` → all pass (exit 0)
 
-**AC-N1 — No stale `../../test-guests/` path survives (regression guard).**
-Given every consuming test was repointed, When the test tree is searched, Then no `slicer-runtime` test references the pre-move `../../test-guests/` artifact path. | `grep -rl "\.\./\.\./test-guests/" crates/slicer-runtime/tests --include=*.rs | wc -l` → `0`
+**AC-N1 — No stale old-location `test-guests` reference survives, in any path-construction form (regression guard).**
+Given every consuming test was repointed, When the test tree is searched, Then no `slicer-runtime` test references the pre-move `test-guests/` location in **any** of its four construction forms: (1) the string-concat literal `/../../test-guests/`; (2) the multiline chained `.join("..").join("..").join("test-guests")`; (3) the workspace-root-relative `.join("test-guests/…")`; (4) the `format!("test-guests/…")` form. A naïve find/replace of the `../../test-guests/` literal alone covers only 13 of the 18 referencing files — the other 5 (`guest_fixture_freshness_tdd.rs`, `macro_all_worlds_roundtrip_tdd.rs`, `macro_finalization_deep_copy_tdd.rs`, `live_layer_support_tdd.rs`, and the `wit_drift_detection_tdd.rs` helper) use forms 2–4 and silently escape it, and the old single-form grep is blind to exactly those. Use the multiline (`rg -U`) guard below (four `-e` patterns, no regex `|` alternation so it pastes cleanly). | `rg -Ul -e '\.\./\.\./test-guests' -e '\.join\("\.\."\)\s*\.join\("\.\."\)\s*\.join\("test-guests"\)' -e 'join\("test-guests/' -e 'format!\("test-guests/' crates/slicer-runtime/tests | wc -l` → `0`
 
 **AC-N2 — Canonical-source guests still satisfy the host WIT boundary (silent-regression guard for A).**
 Given the raw guests now bind the canonical WIT instead of an inline copy, When the WIT boundary test runs, Then the host still instantiates and round-trips them. | `cargo test -p slicer-runtime --test wit_boundary_tdd` → all pass (exit 0)
@@ -63,9 +63,14 @@ Full per-AC matrix with delegation hints lives in `requirements.md`.
 
 ## Doc Impact Statement (Required)
 
-- `CLAUDE.md` — update every `test-guests/*` path reference (Guest WASM Staleness section, Post-Merge naming note, WIT/Type Changes checklist) to `crates/slicer-runtime/test-guests/*`; note the single shared guest `target/` location.
-- `docs/05_module_sdk.md` — update the guest build-flow paths if it cites `test-guests/`.
-- The two `skills/**/wasm-staleness.md` snippet files that cite `test-guests/*/src` — update paths.
+Each target lists one post-change verification grep (must return the stated result before closure).
+
+- `CLAUDE.md` — update every `test-guests/*` path reference (build-command comment `:13`, Guest WASM Staleness section `:82`/`:98`, Post-Merge naming note, WIT/Type Changes checklist) to `crates/slicer-runtime/test-guests/*`; note the single shared guest `target/` location.
+  - Verify: `grep -c 'crates/slicer-runtime/test-guests' CLAUDE.md` → ≥ 3, **and** `grep -cE '(^|[^/])test-guests/' CLAUDE.md` → `0` (no un-prefixed survivor outside the new path).
+- `docs/05_module_sdk.md` — update the guest build-flow / exemplar paths that cite `test-guests/` (`:213–214` `sdk-prepass-*-guest` exemplars, `:645` build-flow).
+  - Verify: `grep -cE '(^|[^/])test-guests/' docs/05_module_sdk.md` → `0` (every citation now carries the `crates/slicer-runtime/` prefix).
+- The two `wasm-staleness.md` snippet files that cite `test-guests/*/src` — `.claude/skills/spec-packet-generator/references/snippets/wasm-staleness.md` and `.agents/skills/spec-packet-generator/references/snippets/wasm-staleness.md` — update paths.
+  - Verify: `grep -lE '(^|[^/])test-guests/\*' .claude/skills/spec-packet-generator/references/snippets/wasm-staleness.md .agents/skills/spec-packet-generator/references/snippets/wasm-staleness.md | wc -l` → `0`.
 
 ## OrcaSlicer Reference Obligations
 
@@ -79,3 +84,10 @@ most expensive thing you do; a sub-agent that returns one fact is cheaper than
 opening one large file. Before opening any file, ask whether a delegated
 dispatch could return just the answer. Read by line-range, never whole large
 files. Stop reading at 60% of budget and finalize, hand off, or delegate.
+
+## Deviations
+
+- [requirements.md §In-Scope Form-1 / design.md §Form-1 / implementation-plan.md Step 2(d)] — Specified: replace `/../../test-guests/` with `/../test-guests/` | Implemented: replaced with `/test-guests/` (drop all `..`) | Reason: `CARGO_MANIFEST_DIR` is `crates/slicer-runtime` and the moved tree sits directly under it; `/../test-guests/` resolves to the nonexistent `crates/test-guests/`. The spec's instruction was mathematically wrong; the 3 packet docs were corrected in-place. AC-N1's static guard is blind to the single-`..` form, so only runtime `fs::read` tests caught it.
+- [design.md §Explicit Code Change Surface] — Specified: file list = xtask, 18 tests, .gitignore, CLAUDE.md, docs/05, snippets | Implemented: also repointed `crates/slicer-runtime/build.rs` (test-guest freshness build script) | Reason: build.rs joined `../../test-guests` and cited the deleted `build-test-guests.sh`; unlisted in the packet but a real old-location reference producing stale "missing guest" warnings and a `-D warnings` risk.
+- [Step 4 / design.md §Risks "Inline-vs-canonical divergence"] — Specified: bind canonical, reconcile guest toward canonical | Implemented: prepass-guest `run_support_geometry` changed from a diverged 4-param record-return (`-> SupportGeometryOutput { entries: vec![] }`) to canonical's 6-param result-return (`-> Result<(), ModuleError> { Ok(()) }`, no-op output) | Reason: the guest's inline WIT predated packet 73's run-support-geometry normalization; binding canonical adopts the normalized signature. Behaviorally equivalent (emits no support geometry); full suite green.
+- [Doc Impact Statement — CLAUDE.md] — Specified: update path references | Implemented: also added a "single shared guest target/" note | Reason: required to satisfy the stated `grep -c 'crates/slicer-runtime/test-guests' CLAUDE.md → ≥3` while documenting the D1 layout.

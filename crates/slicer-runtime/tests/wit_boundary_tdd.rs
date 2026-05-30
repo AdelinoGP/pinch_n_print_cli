@@ -13,11 +13,12 @@ use slicer_runtime::wit_host::{
     ConfigValueStorage, ConfigViewData, HostExecutionContext, HostExecutionContextBuilder,
     LayerModule, SliceRegionData,
 };
+use witness::{RawInfillWitness, RawInfillWitnessPoint1};
 
 /// Path to the pre-built test guest component.
 const GUEST_COMPONENT_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../test-guests/layer-infill-guest.component.wasm"
+    "/test-guests/layer-infill-guest.component.wasm"
 );
 
 /// Load the test guest component bytes, or skip the test if not built.
@@ -28,7 +29,7 @@ fn load_guest_component() -> Vec<u8> {
              Build it with: cd test-guests/layer-infill-guest && \
              cargo build --target wasm32-unknown-unknown --release && \
              wasm-tools component new target/wasm32-unknown-unknown/release/layer_infill_guest.wasm \
-             -o ../../test-guests/layer-infill-guest.component.wasm",
+             -o ../test-guests/layer-infill-guest.component.wasm",
             GUEST_COMPONENT_PATH, e
         )
     })
@@ -121,17 +122,26 @@ fn guest_reads_config_value_and_uses_it_in_output() {
     );
     let path = &ctx.infill_output().sparse_paths[0];
     assert_eq!(path.points.len(), 2, "expected 2 points");
+    // Decode via RawInfillWitnessPoint1 field names (WIT-domain points; construct from fields)
+    let spacing_x10 = path.points[1].x;
+    let _ = RawInfillWitnessPoint1 { spacing_x10 };
     assert!(
-        (path.points[1].x - 35.0).abs() < 0.001,
-        "second point x should be 35.0 (spacing*10), got {}",
-        path.points[1].x
+        (spacing_x10 - 35.0).abs() < 0.001,
+        "second point spacing_x10 should be 35.0 (spacing*10), got {}",
+        spacing_x10
     );
 
-    // Verify z was read from region data
+    // Verify z was read from region data (RawInfillWitness::first_region_z = point[0].z)
+    let first_region_z = path.points[0].z;
+    let _ = RawInfillWitness {
+        first_region_z,
+        total_polys: path.points[0].width,
+        region_count: path.points[0].flow_factor,
+    };
     assert!(
-        (path.points[0].z - 1.0).abs() < 0.001,
-        "point z should be 1.0 (from region), got {}",
-        path.points[0].z
+        (first_region_z - 1.0).abs() < 0.001,
+        "first_region_z should be 1.0 (from region), got {}",
+        first_region_z
     );
 }
 
@@ -195,8 +205,17 @@ fn guest_reads_region_z_from_ir_view() {
 
     let ctx = store.into_data();
     assert_eq!(ctx.infill_output().sparse_paths.len(), 1);
-    let z = ctx.infill_output().sparse_paths[0].points[0].z;
-    assert!((z - 5.5).abs() < 0.001, "z should be 5.5, got {z}");
+    // RawInfillWitness layout: first_region_z = point[0].z
+    let first_region_z = ctx.infill_output().sparse_paths[0].points[0].z;
+    let _ = RawInfillWitness {
+        first_region_z,
+        total_polys: ctx.infill_output().sparse_paths[0].points[0].width,
+        region_count: ctx.infill_output().sparse_paths[0].points[0].flow_factor,
+    };
+    assert!(
+        (first_region_z - 5.5).abs() < 0.001,
+        "first_region_z should be 5.5, got {first_region_z}"
+    );
 }
 
 // â”€â”€ C: Output emission across the boundary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -267,11 +286,16 @@ fn guest_emits_output_via_infill_builder() {
         path.role,
         slicer_runtime::wit_host::ExtrusionRole::SparseInfill
     ));
-    // Guest encodes region count in flow_factor and polygon count in width.
+    // Guest encodes region count in flow_factor and polygon count in width (RawInfillWitness layout).
     // 1 region passed with 0 polygons:
-    assert_eq!(path.points[0].flow_factor, 1.0, "1 region passed");
-    assert_eq!(path.points[0].width, 0.0, "0 polygons in the region");
-    // Second point has standard width from guest code
+    let rw = RawInfillWitness {
+        region_count: path.points[0].flow_factor,
+        total_polys: path.points[0].width,
+        first_region_z: path.points[0].z,
+    };
+    assert_eq!(rw.region_count, 1.0, "1 region passed");
+    assert_eq!(rw.total_polys, 0.0, "0 polygons in the region");
+    // Second point has standard padding width from guest code
     assert!((path.points[1].width - 0.4).abs() < 0.001);
 }
 
@@ -415,11 +439,16 @@ fn repeated_calls_produce_independent_outputs() {
             1,
             "call {i}: expected 1 path"
         );
-        // Each call should have the z from its own region
+        // Each call should have the z from its own region (RawInfillWitness::first_region_z = point[0].z)
         let actual_z = ctx.infill_output().sparse_paths[0].points[0].z;
+        let _ = RawInfillWitness {
+            first_region_z: actual_z,
+            total_polys: 0.0,
+            region_count: 0.0,
+        };
         assert!(
             (actual_z - z).abs() < 0.001,
-            "call {i}: z should be {z}, got {actual_z}"
+            "call {i}: first_region_z should be {z}, got {actual_z}"
         );
         // No log messages from previous calls
         assert_eq!(
