@@ -1,0 +1,45 @@
+package slicer:world-layer@1.0.0;
+
+interface host-services {
+    use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon};
+    type object-id = string;
+    enum log-level { trace, debug, info, warn, error }
+    log: func(level: log-level, message: string);
+    raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
+    surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
+    object-bounds:      func(object-id: object-id) -> bounding-box3;
+    enum clip-operation   { union, intersection, difference, xor }
+    enum offset-join-type { miter, round, square }
+    clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
+    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
+    simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
+    now-us: func() -> u64;
+}
+
+world layer-module {
+    import host-services;
+    import slicer:config/config-types;
+    import slicer:ir-handles/ir-handles;
+
+    use slicer:config/config-types.{config-view};
+    use slicer:ir-handles/ir-handles.{
+        slice-region-view, perimeter-region-view,
+        infill-output-builder, perimeter-output-builder,
+        slice-postprocess-builder, support-output-builder,
+        gcode-output-builder, layer-collection-builder,
+        region-key, layer-idx,
+        paint-region-layer-view,
+    };
+    use slicer:common/module-errors.{module-error};
+
+    export on-print-start: func(config: config-view) -> result<_, module-error>;
+    export on-print-end:   func() -> result<_, module-error>;
+    export run-slice-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: slice-postprocess-builder, config: config-view) -> result<_, module-error>;
+    export run-perimeters: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: perimeter-output-builder, config: config-view) -> result<_, module-error>;
+    export run-wall-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: perimeter-output-builder, config: config-view) -> result<_, module-error>;
+    export run-infill: func(layer-index: layer-idx, regions: list<slice-region-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>;
+    export run-infill-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>;
+    export run-support: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: support-output-builder, config: config-view) -> result<_, module-error>;
+    export run-support-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, output: support-output-builder, config: config-view) -> result<_, module-error>;
+    export run-path-optimization: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: gcode-output-builder, collection: layer-collection-builder, config: config-view) -> result<_, module-error>;
+}

@@ -476,50 +476,103 @@ fn resolve_world_glue(stage_id: &str, trait_ident: Option<&str>) -> Option<World
 /// produced by wit-bindgen for that world (e.g. `world_postpass`,
 /// `world_layer`). Caller supplies the inline WIT and the
 /// world-specific `impl Guest` body.
-fn emit_world_preamble(world_name: &str, world_namespace: &str, inline_wit: &str) -> TokenStream2 {
-    const TYPES_WIT: &str = include_str!("../../../wit/deps/types.wit");
-    const CONFIG_WIT: &str = include_str!("../../../wit/deps/config.wit");
-    const IR_TYPES_WIT: &str = include_str!("../../../wit/deps/ir-types.wit");
+fn emit_world_preamble(
+    world_name: &str,
+    _world_namespace: &str,
+    inline_wit: &str,
+    include_ir_handles: bool,
+) -> TokenStream2 {
+    // Canonical dep packages — single source of truth in slicer-schema/wit/.
+    // Option A (nested-package inline): the world file is the TOP-LEVEL statement
+    // header; dep packages are nested as `package slicer:X { <body> }` blocks.
+    // Cross-package `use` in the world file resolves over the whole group.
+    // wit-bindgen 0.57.1 UnresolvedPackageGroup::parse supports this form.
+    const TYPES_WIT: &str = include_str!("../../slicer-schema/wit/deps/types.wit");
+    const CONFIG_WIT: &str = include_str!("../../slicer-schema/wit/deps/config.wit");
+    const IR_TYPES_WIT: &str = include_str!("../../slicer-schema/wit/deps/ir-types.wit");
+    const COMMON_WIT: &str = include_str!("../../slicer-schema/wit/deps/common.wit");
 
-    fn strip_package_decl(dep_wit: &str) -> String {
-        let mut lines = dep_wit.lines();
-        let first = lines.next();
-        let body = match first {
-            Some(line) if line.trim_start().starts_with("package ") => {
-                lines.collect::<Vec<_>>().join("\n")
+    // Strip the statement-form `package <X>;` header from a dep WIT file,
+    // returning the body for brace-wrapping into a nested package block.
+    fn strip_package_decl(dep_wit: &str) -> &str {
+        for (i, c) in dep_wit.char_indices() {
+            if c == '\n' {
+                continue;
             }
-            Some(line) => {
-                let mut collected = vec![line.to_string()];
-                collected.extend(lines.map(str::to_string));
-                collected.join("\n")
+            let rest = &dep_wit[i..];
+            if rest.starts_with("package ") {
+                let line_end = rest.find('\n').map(|p| i + p + 1).unwrap_or(dep_wit.len());
+                return dep_wit[line_end..].trim_start();
             }
-            None => String::new(),
-        };
-        body.trim_start().to_string()
+            break;
+        }
+        dep_wit
     }
 
-    fn expand_inline_wit(inline_wit: &str) -> String {
-        let types_wit = strip_package_decl(TYPES_WIT);
-        let config_wit = strip_package_decl(CONFIG_WIT);
-        let ir_types_wit =
-            strip_package_decl(IR_TYPES_WIT).replace("slicer:types/geometry", "geometry");
-
-        inline_wit
-            .replace("include \"../../wit/deps/types.wit\";", &types_wit)
-            .replace("include \"../../wit/deps/config.wit\";", &config_wit)
-            .replace("include \"../../wit/deps/ir-types.wit\";", &ir_types_wit)
-            .replace("extrusion-path-3d", "extrusion-path3d")
+    // Extract package name (without version) for brace-wrapping: e.g.
+    // "package slicer:types;" → "slicer:types".
+    fn extract_dep_pkg_name(dep_wit: &str) -> &str {
+        for (i, c) in dep_wit.char_indices() {
+            if c == '\n' {
+                continue;
+            }
+            let rest = &dep_wit[i..];
+            if rest.starts_with("package ") {
+                let line_end = rest.find('\n').map(|p| p).unwrap_or(rest.len());
+                let decl = rest[..line_end].trim();
+                // decl is "package slicer:types;" → strip prefix/suffix
+                let inner = decl
+                    .trim_start_matches("package ")
+                    .trim_end_matches(';')
+                    .trim();
+                return inner;
+            }
+            break;
+        }
+        ""
     }
 
-    let expanded_inline_wit = expand_inline_wit(inline_wit);
-    let ns_path: syn::Path = syn::parse_str(&format!(
-        "self::slicer::{world_namespace}::config_types::ConfigValue"
-    ))
-    .expect("parse ConfigValue path");
+    // Build nested-package dep block: `package slicer:X { <body> }`
+    fn nest_dep(dep_wit: &str) -> String {
+        let name = extract_dep_pkg_name(dep_wit);
+        let body = strip_package_decl(dep_wit);
+        format!("package {name} {{\n{body}\n}}")
+    }
+
+    // Assemble nested-package inline blob (Option A):
+    // - World file is the top-level statement (begins with "package slicer:world-X@1.0.0;")
+    // - Dep packages are nested `package slicer:X { ... }` blocks (UNVERSIONED)
+    // - Cross-package `use slicer:...` in the world file resolve over the whole group
+    // - ir-handles dep only included for worlds that import slicer:ir-handles/ir-handles
+    let ir_block = if include_ir_handles {
+        format!("\n\n{}", nest_dep(IR_TYPES_WIT))
+    } else {
+        String::new()
+    };
+
+    let expanded_inline_wit = format!(
+        "{}\n\n{}\n\n{}{}\n\n{}",
+        inline_wit,
+        nest_dep(TYPES_WIT),
+        nest_dep(CONFIG_WIT),
+        ir_block,
+        nest_dep(COMMON_WIT),
+    );
+
+    // With Option A, ConfigValue lives in the slicer:config package, not the world package.
+    // Path: self::slicer::config::config_types::ConfigValue
+    let ns_path: syn::Path = syn::parse_str("self::slicer::config::config_types::ConfigValue")
+        .expect("parse ConfigValue path");
+
+    // With Option A (nested packages), wit-bindgen requires `with` entries for
+    // every imported external interface — even non-resource ones — otherwise it
+    // bails with `MissingWith`. Use `generate_all` to ask it to generate inline
+    // code for all referenced interfaces without needing to enumerate each one.
     quote! {
         ::wit_bindgen::generate!({
             inline: #expanded_inline_wit,
             world: #world_name,
+            generate_all,
         });
 
         // Bring the wit-bindgen-generated `ConfigValue` variant into
@@ -563,78 +616,9 @@ fn emit_world_preamble(world_name: &str, world_namespace: &str, inline_wit: &str
 /// world (`PostPass::TextPostProcess` + `PostPass::GCodePostProcess`).
 /// Only compiled on `wasm32`.
 fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
-    let wit_inline = r#"
-        package slicer:world-postpass@1.0.0;
+    let wit_inline = include_str!("../../slicer-schema/wit/deps/world-postpass/world-postpass.wit");
 
-        include "../../wit/deps/types.wit";
-        include "../../wit/deps/config.wit";
-
-        interface host-services {
-            use geometry.{point3, bounding-box3, ex-polygon, polygon};
-            type object-id = string;
-            enum log-level { trace, debug, info, warn, error }
-            log: func(level: log-level, message: string);
-            raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
-            surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
-            object-bounds:      func(object-id: object-id) -> bounding-box3;
-            enum clip-operation   { union, intersection, difference, xor }
-            enum offset-join-type { miter, round, square }
-            clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-            offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
-            simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
-            now-us: func() -> u64;
-        }
-
-        world postpass-module {
-            import host-services;
-            import config-types;
-            use config-types.{config-view};
-            use geometry.{extrusion-role};
-            record module-error { code: u32, message: string, fatal: bool }
-
-            variant retract-mode { gcode, firmware }
-            record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
-            record gcode-retract-cmd { length: f32, speed: f32, mode: retract-mode }
-            record gcode-fan-speed-cmd { value: u8 }
-            record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
-            record gcode-tool-change-cmd { after-entity-index: u32, from-tool: u32, to-tool: u32 }
-            resource gcode-output-builder {
-                push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
-                push-retract:     func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
-                push-unretract:   func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
-                push-fan-speed:   func(value: u8) -> result<_, string>;
-                push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-                push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
-                push-comment:     func(text: string) -> result<_, string>;
-                push-raw:         func(text: string) -> result<_, string>;
-                push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
-            }
-
-            variant gcode-command {
-                move(gcode-move-cmd),
-                retract(gcode-retract-cmd),
-                unretract(gcode-retract-cmd),
-                fan-speed(gcode-fan-speed-cmd),
-                temperature(gcode-temperature-cmd),
-                tool-change(gcode-tool-change-cmd),
-                comment(string),
-                raw(string),
-            }
-
-            export run-gcode-postprocess: func(
-                commands: list<gcode-command>,
-                output: gcode-output-builder,
-                config: config-view,
-            ) -> result<_, module-error>;
-
-            export run-text-postprocess: func(
-                gcode-text: string,
-                config: config-view,
-            ) -> result<string, module-error>;
-        }
-    "#;
-
-    let preamble = emit_world_preamble("postpass-module", "world_postpass", wit_inline);
+    let preamble = emit_world_preamble("postpass-module", "world_postpass", wit_inline, false);
 
     // Decide which stage method routes into the user's trait: the
     // detected stage for this impl. The other arm returns a benign
@@ -888,107 +872,15 @@ fn build_postpass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> Token
 /// follow-on polish; the SDK trait sees well-typed (possibly empty)
 /// SDK values and its `Result<(), ModuleError>` return round-trips.
 fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
-    let wit_inline = r#"
-        package slicer:world-finalization@1.0.0;
+    let wit_inline =
+        include_str!("../../slicer-schema/wit/deps/world-finalization/world-finalization.wit");
 
-        include "../../wit/deps/types.wit";
-        include "../../wit/deps/config.wit";
-
-        interface host-services {
-            use geometry.{point3, bounding-box3, ex-polygon, polygon};
-            type object-id = string;
-            enum log-level { trace, debug, info, warn, error }
-            log: func(level: log-level, message: string);
-            raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
-            surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
-            object-bounds:      func(object-id: object-id) -> bounding-box3;
-            enum clip-operation   { union, intersection, difference, xor }
-            enum offset-join-type { miter, round, square }
-            clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-            offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
-            simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
-            now-us: func() -> u64;
-        }
-
-        world finalization-module {
-            import host-services;
-            import config-types;
-            use config-types.{config-view};
-            use geometry.{extrusion-path-3d, extrusion-role};
-            type layer-idx = u32;
-            type object-id = string;
-            type region-id = string;
-            record module-error { code: u32, message: string, fatal: bool }
-            record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
-
-            record tool-change-view {
-                after-entity-index: u32,
-                from-tool: u32,
-                to-tool: u32,
-            }
-
-            record print-entity-view {
-                entity-id: u64,
-                path: extrusion-path-3d,
-                role: extrusion-role,
-                region-key: region-key,
-                topo-order: u32,
-            }
-
-            record z-hop-view {
-                after-entity-index: u32,
-                hop-height: f32,
-            }
-
-            resource layer-collection-view {
-                layer-index:  func() -> layer-idx;
-                z:            func() -> f32;
-                entity-count: func() -> u32;
-                ordered-entities: func() -> list<print-entity-view>;
-                tool-changes: func() -> list<tool-change-view>;
-                z-hops: func() -> list<z-hop-view>;
-            }
-
-            // Serializable mutation descriptor — substitutes for closures across the WIT boundary.
-            variant entity-mutation {
-                set-speed-factor(f32),
-                set-flow-factor(f32),
-            }
-
-            // Sort key selector — substitutes for key-function closures across the WIT boundary.
-            enum sort-key {
-                by-priority-and-entity-id,
-                by-entity-id,
-                by-object-id-then-priority,
-            }
-
-            // Minimal descriptor for an inserted synthetic layer.
-            record synthetic-layer-data {
-                z: f32,
-                paths: list<extrusion-path-3d>,
-            }
-
-            resource finalization-output-builder {
-                push-entity-to-layer: func(layer-index: layer-idx, path: extrusion-path-3d, region-key: region-key) -> result<_, string>;
-                push-entity-with-priority: func(layer-index: layer-idx, path: extrusion-path-3d, region-key: region-key, priority: u32) -> result<_, string>;
-                modify-entity: func(layer-index: u32, entity-id: u64, mutation: entity-mutation) -> result<_, string>;
-                sort-layer-by: func(layer-index: u32, key: sort-key) -> result<_, string>;
-                insert-synthetic-layer-after: func(idx: u32, layer-data: synthetic-layer-data) -> result<_, string>;
-                insert-synthetic-layer: func(z: f32, paths: list<extrusion-path-3d>) -> result<_, string>;
-                insert-entity-at: func(layer-index: layer-idx, position: u32, path: extrusion-path-3d, region-key: region-key) -> result<_, string>;
-                set-entity-order: func(layer-index: layer-idx, items: list<tuple<u32, bool>>) -> result<_, string>;
-                get-ordered-entities: func(layer-index: layer-idx) -> list<print-entity-view>;
-            }
-
-            export run-finalization: func(
-                layers: list<layer-collection-view>,
-                output: finalization-output-builder,
-                config: config-view,
-            ) -> result<_, module-error>;
-        }
-    "#;
-
-    let preamble = emit_world_preamble("finalization-module", "world_finalization", wit_inline);
+    let preamble = emit_world_preamble(
+        "finalization-module",
+        "world_finalization",
+        wit_inline,
+        false,
+    );
 
     quote! {
         #[cfg(target_arch = "wasm32")]
@@ -1005,7 +897,8 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
             // Unlike the prepass world, `wit_bindgen::generate!` does not
             // emit a flat top-level alias for the finalization world's
             // `point3-with-width`, so bring it into scope explicitly.
-            use self::slicer::world_finalization::geometry::Point3WithWidth;
+            // With Option A (nested-package), geometry lives in slicer:types.
+            use self::slicer::types::geometry::Point3WithWidth;
 
             struct __SlicerFinalizationComponent;
 
@@ -1282,160 +1175,9 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
 /// through the real prepass world here; its SDK output-builder bridge
 /// still retains the staged limitations documented in the per-stage arms below.
 fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
-    let wit_inline = r#"
-        package slicer:world-prepass@1.0.0;
+    let wit_inline = include_str!("../../slicer-schema/wit/deps/world-prepass/world-prepass.wit");
 
-        include "../../wit/deps/types.wit";
-        include "../../wit/deps/config.wit";
-
-        interface host-services {
-            use geometry.{point3, bounding-box3, ex-polygon, polygon};
-            type object-id = string;
-            enum log-level { trace, debug, info, warn, error }
-            log: func(level: log-level, message: string);
-            raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
-            surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
-            object-bounds:      func(object-id: object-id) -> bounding-box3;
-            enum clip-operation   { union, intersection, difference, xor }
-            enum offset-join-type { miter, round, square }
-            clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-            offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
-            simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
-            now-us: func() -> u64;
-        }
-
-        world prepass-module {
-            import host-services;
-            import config-types;
-            type object-id = string;
-            type region-id = string;
-            record module-error { code: u32, message: string, fatal: bool }
-
-            enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
-            record facet-annotation { facet-index: u32, slope-angle-deg: f32, classification: facet-class }
-            record surface-group-proposal { facet-indices: list<u32>, z-min: f32, z-max: f32, shell-count: u32 }
-
-            use config-types.{config-view};
-
-            resource mesh-analysis-output {
-                push-facet-annotation: func(obj: object-id, ann: facet-annotation) -> result<_, string>;
-                push-surface-group:    func(obj: object-id, grp: surface-group-proposal) -> result<_, string>;
-            }
-
-            export run-mesh-analysis: func(
-                objects: list<object-id>,
-                output: mesh-analysis-output,
-                config: config-view,
-            ) -> result<_, module-error>;
-
-            resource mesh-segmentation-output {
-                mark-triangle-paint: func(obj: object-id, facet-index: u32, semantic: string, value: string) -> result<_, string>;
-            }
-
-            export run-mesh-segmentation: func(
-                objects: list<mesh-object-view>,
-                output: mesh-segmentation-output,
-                config: config-view,
-            ) -> result<_, module-error>;
-
-            use geometry.{ex-polygon, polygon, point2};
-
-            record region-layer-proposal {
-                object-id: object-id, region-id: region-id,
-                effective-layer-height: f32,
-                is-catchup: bool, catchup-z-bottom: f32,
-            }
-            record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
-
-            use geometry.{point3};
-
-            variant paint-value-view {
-                flag(bool),
-                scalar(f32),
-                tool-index(u32),
-            }
-
-            record paint-stroke-view {
-                triangles: list<point3>,
-                semantic: string,
-                value: paint-value-view,
-            }
-
-            record paint-layer-view {
-                semantic: string,
-                facet-values: list<option<paint-value-view>>,
-                strokes: list<paint-stroke-view>,
-            }
-
-            record mesh-object-view {
-                object-id: object-id,
-                vertices: list<point3>,
-                triangles: list<tuple<u32, u32, u32>>,
-                paint-layers: list<paint-layer-view>,
-            }
-
-            resource layer-plan-output {
-                push-layer: func(proposal: layer-proposal) -> result<_, string>;
-            }
-
-            export run-layer-planning: func(
-                objects: list<object-id>,
-                output: layer-plan-output,
-                config: config-view,
-            ) -> result<_, module-error>;
-
-            // SeamPlanning stage
-            use geometry.{point3-with-width};
-
-            record seam-reason { tag: string }
-            record scored-seam-candidate {
-                position: point3-with-width,
-                score: f32,
-                reason: seam-reason,
-            }
-            record seam-plan-entry {
-                global-layer-index: u32,
-                object-id: object-id,
-                region-id: region-id,
-                chosen-position: point3-with-width,
-                chosen-wall-index: u32,
-                scored-candidates: list<scored-seam-candidate>,
-            }
-            resource seam-planning-output {
-                push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
-            }
-            export run-seam-planning: func(
-                objects: list<mesh-object-view>,
-                output: seam-planning-output,
-                config: config-view,
-            ) -> result<_, module-error>;
-
-            // SupportGeometry stage
-            record support-plan-entry {
-                global-layer-index: s32,
-                object-id: object-id,
-                region-id: region-id,
-                branch-segments: list<list<point3-with-width>>,
-            }
-            record layer-plan-view-entry { global-layer-index: u32, z: f32, effective-layer-height: f32 }
-            record layer-plan-view { layers: list<layer-plan-view-entry> }
-            record region-segmentation-view-entry { object-id: object-id, layer-index: u32, region-ids: list<region-id> }
-            record region-segmentation-view { entries: list<region-segmentation-view-entry> }
-            record support-geometry-view-entry { global-support-layer-index: u32, object-id: object-id, region-id: region-id, outlines: list<ex-polygon> }
-            record support-geometry-view { entries: list<support-geometry-view-entry> }
-            record support-geometry-output {
-                support-plan-entries: list<support-plan-entry>,
-            }
-            export run-support-geometry: func(
-                objects: list<mesh-object-view>,
-                layer-plan: layer-plan-view,
-                region-segmentation: region-segmentation-view,
-                support-geometry: support-geometry-view,
-            ) -> support-geometry-output;
-        }
-    "#;
-
-    let preamble = emit_world_preamble("prepass-module", "world_prepass", wit_inline);
+    let preamble = emit_world_preamble("prepass-module", "world_prepass", wit_inline, false);
     let segmentation_helpers = quote! {
         // `polygon` / `point2` are brought into scope by the flat type
         // aliases that `wit_bindgen::generate!` (>= 0.57) emits at the
@@ -1986,7 +1728,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
 /// `build_finalization_world_glue`.
 fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStream2 {
     let wit_inline = LAYER_WORLD_WIT;
-    let preamble = emit_world_preamble("layer-module", "world_layer", wit_inline);
+    let preamble = emit_world_preamble("layer-module", "world_layer", wit_inline, true);
 
     // Real deep-copy IN (from wit-bindgen resources to SDK views).
     let adapt_slice = quote! {
@@ -2210,13 +1952,13 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
             // the interface sub-modules and are not re-exported. Use aliased
             // names so the helpers below can spell them without clashing
             // with slicer-ir or slicer-sdk names.
-            use self::slicer::world_layer::geometry::{
+            use self::slicer::types::geometry::{
                 ExPolygon as WitExPolygon, ExtrusionPath3d as WitExtrusionPath3d,
                 ExtrusionRole as WitExtrusionRole, Point2 as WitPoint2,
                 Point3 as WitPoint3, Point3WithWidth as WitPoint3WithWidth,
                 Polygon as WitPolygon,
             };
-            use self::slicer::world_layer::ir_handles::{
+            use self::slicer::ir_handles::ir_handles::{
                 BoundaryPaintEntry as WitBoundaryPaintEntry,
                 BoundaryPaintPolygon as WitBoundaryPaintPolygon,
                 GcodeMoveCmd as WitGcodeMoveCmd,
@@ -2932,59 +2674,12 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
     }
 }
 
-/// Inline WIT for the full layer-module world, mirroring
-/// `crates/slicer-runtime/src/wit_host.rs::layer::bindgen!` so the
-/// macro-emitted guest binds against the same resource shapes the host
+/// Layer-module world WIT — sourced from the canonical slicer-schema tree.
+/// Mirrors `crates/slicer-runtime/src/wit_host.rs::layer::bindgen!` so
+/// the macro-emitted guest binds against the same resource shapes the host
 /// dispatcher expects.
-const LAYER_WORLD_WIT: &str = r#"
-    package slicer:world-layer@1.0.0;
-
-    include "../../wit/deps/types.wit";
-    include "../../wit/deps/config.wit";
-    include "../../wit/deps/ir-types.wit";
-
-    interface host-services {
-        use geometry.{point3, bounding-box3, ex-polygon, polygon};
-        type object-id = string;
-        enum log-level { trace, debug, info, warn, error }
-        log: func(level: log-level, message: string);
-        raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
-        surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
-        object-bounds:      func(object-id: object-id) -> bounding-box3;
-        enum clip-operation   { union, intersection, difference, xor }
-        enum offset-join-type { miter, round, square }
-        clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-        offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
-        simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
-        now-us: func() -> u64;
-    }
-
-    world layer-module {
-        import host-services;
-        import config-types;
-        import ir-handles;
-        record module-error { code: u32, message: string, fatal: bool }
-        use config-types.{config-view};
-        use ir-handles.{
-            slice-region-view, perimeter-region-view,
-            infill-output-builder, perimeter-output-builder,
-            slice-postprocess-builder, support-output-builder,
-            gcode-output-builder, layer-collection-builder,
-            region-key, layer-idx,
-            paint-region-layer-view,
-        };
-        export on-print-start: func(config: config-view) -> result<_, module-error>;
-        export on-print-end:   func() -> result<_, module-error>;
-        export run-slice-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: slice-postprocess-builder, config: config-view) -> result<_, module-error>;
-        export run-perimeters: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: perimeter-output-builder, config: config-view) -> result<_, module-error>;
-        export run-wall-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: perimeter-output-builder, config: config-view) -> result<_, module-error>;
-        export run-infill: func(layer-index: layer-idx, regions: list<slice-region-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>;
-        export run-infill-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>;
-        export run-support: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: support-output-builder, config: config-view) -> result<_, module-error>;
-        export run-support-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, output: support-output-builder, config: config-view) -> result<_, module-error>;
-        export run-path-optimization: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: gcode-output-builder, collection: layer-collection-builder, config: config-view) -> result<_, module-error>;
-    }
-"#;
+const LAYER_WORLD_WIT: &str =
+    include_str!("../../slicer-schema/wit/deps/world-layer/world-layer.wit");
 
 /// The `#[module_test]` attribute macro.
 ///

@@ -1,14 +1,16 @@
 # ModularSlicer — WIT Interfaces & Module Manifest Schema
 
-> **Source of truth.** The on-disk `wit/*.wit` files in this repo are the
-> authoritative WIT contract. The WIT code blocks reproduced in this document
-> are derived for reading convenience and have been observed to drift behind
-> the on-disk schema (e.g. new record fields, additional resource methods,
-> renamed enum variants). When the doc and `wit/` disagree, `wit/` wins; treat
-> the doc divergence as a bug to be filed against this document.
+> **Source of truth.** `crates/slicer-schema/wit/` is the **single canonical WIT contract**.
+> It is consumed directly by both the host (`wasmtime::component::bindgen!{ path: … }`) and the
+> guest proc-macro (`crates/slicer-macros` via `include_str!` + nested-package inline). The WIT
+> code blocks reproduced in this document are derived for reading convenience and may drift behind
+> the on-disk schema (e.g. new record fields, additional resource methods, renamed enum variants).
+> When the doc and `crates/slicer-schema/wit/` disagree, the on-disk files win; treat the doc
+> divergence as a bug to be filed against this document. The phantom top-level `wit/` directory
+> was deleted in packet 72; do not recreate it.
 >
 > Likewise, the TOML manifest schema in this document is the parsed surface
-> recognised by `crates/slicer-host/src/manifest.rs`. Sections or keys that
+> recognised by `crates/slicer-runtime/src/manifest.rs`. Sections or keys that
 > appear here but are not read by the parser are noted inline with a
 > `<!-- VERIFY: ... -->` tag.
 
@@ -16,18 +18,38 @@
 
 ## WIT File Organization
 
+The canonical source lives under `crates/slicer-schema/wit/` in an umbrella layout where
+`root.wit` is the anchor package and `deps/` holds all shared dep packages plus the four
+world packages (each in its own subdirectory so `wasmtime` can load them via `push_path`):
+
 ```
-wit/
-├── deps/
-│   ├── types.wit          # geometry primitives (Point2, Point3, ExPolygon, etc.)
-│   ├── config.wit         # ConfigView resource
-│   └── ir-types.wit       # IR view and builder resources
-├── host-api.wit           # services the host exposes to ALL modules
-├── world-layer.wit        # world for per-layer modules (most modules target this)
-├── world-prepass.wit      # world for PrePass modules
-├── world-finalization.wit # world for LayerFinalization modules
-└── world-postpass.wit     # world for PostPass modules
+crates/slicer-schema/wit/
+  root.wit                                   # package slicer:root@1.0.0 (anchor)
+  deps/
+    types.wit          # package slicer:types       — interface geometry
+    config.wit         # package slicer:config      — interface config-types
+    ir-types.wit       # package slicer:ir-handles  — interface ir-handles
+    common.wit         # package slicer:common      — interface module-errors
+    world-layer/world-layer.wit           # package slicer:world-layer@1.0.0
+    world-prepass/world-prepass.wit       # package slicer:world-prepass@1.0.0
+    world-postpass/world-postpass.wit     # package slicer:world-postpass@1.0.0
+    world-finalization/world-finalization.wit  # package slicer:world-finalization@1.0.0
 ```
+
+**Host** consumption (`crates/slicer-runtime/src/wit_host.rs`):
+```rust
+wasmtime::component::bindgen!{
+    path: "../slicer-schema/wit",
+    world: "slicer:world-layer/layer-module@1.0.0",
+    with: { "slicer:config/config-types.config-view" => crate::… }
+}
+```
+One call per world; no inline WIT.
+
+**Guest** consumption (`crates/slicer-macros/src/lib.rs`): the `#[slicer_module]` proc-macro
+reads dep files via `include_str!`, wraps each `package x;` in nested-package braces, concatenates
+with the world file, and passes the result to `wit_bindgen::generate!{ inline: … }`. Both sides
+parse the same bytes from `deps/*.wit` — identity agreement is structural, not by convention.
 
 Three rules govern all WIT design decisions:
 

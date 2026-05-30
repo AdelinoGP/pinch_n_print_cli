@@ -125,9 +125,9 @@ pub struct SliceRegionData {
     /// Region ID.
     pub region_id: String,
     /// Slice polygons (bindgen ExPolygon type).
-    pub polygons: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
+    pub polygons: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// Infill areas.
-    pub infill_areas: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
+    pub infill_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// Layer height at this Z.
     pub effective_layer_height: f32,
     /// Z height.
@@ -135,7 +135,7 @@ pub struct SliceRegionData {
     /// Whether this region has non-planar surfaces.
     pub has_nonplanar: bool,
     /// Boundary paint data.
-    pub boundary_paint: Vec<layer::slicer::world_layer::ir_handles::BoundaryPaintEntry>,
+    pub boundary_paint: Vec<layer::slicer::ir_handles::ir_handles::BoundaryPaintEntry>,
     /// True when this region is support-eligible (from SurfaceClassificationIR).
     pub needs_support: bool,
     /// Minimum top-shell depth (0 = exposed) from PrePass::ShellClassification.
@@ -143,13 +143,13 @@ pub struct SliceRegionData {
     /// Minimum bottom-shell depth (0 = exposed) from PrePass::ShellClassification.
     pub bottom_shell_index: Option<u8>,
     /// Polygon-precise top solid fill from shrinking-shadow projection.
-    pub top_solid_fill: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
+    pub top_solid_fill: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// Polygon-precise bottom solid fill from shrinking-shadow projection.
-    pub bottom_solid_fill: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
+    pub bottom_solid_fill: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// True when this region is classified as a bridge region.
     pub is_bridge: bool,
     /// Per-layer expanded bridge polygons (empty if not a bridge region).
-    pub bridge_areas: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
+    pub bridge_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// Best bridge direction across all valid bridge regions (degrees).
     pub bridge_orientation_deg: f32,
     /// Fill-role claim IDs held by the module that produced this region.
@@ -163,9 +163,9 @@ pub struct PerimeterRegionData {
     /// Region ID.
     pub region_id: String,
     /// Wall loops.
-    pub wall_loops: Vec<layer::slicer::world_layer::ir_handles::WallLoopView>,
+    pub wall_loops: Vec<layer::slicer::ir_handles::ir_handles::WallLoopView>,
     /// Infill areas after perimeter inset.
-    pub infill_areas: Vec<layer::slicer::world_layer::geometry::ExPolygon>,
+    pub infill_areas: Vec<layer::slicer::types::geometry::ExPolygon>,
     /// Resolved seam position (populated from PerimeterIR after seam-placer runs).
     pub resolved_seam: Option<(Point3, u32)>,
 }
@@ -223,15 +223,14 @@ pub struct PaintRegionLayerData {
     pub layer_index: u32,
     /// Regions by semantic key string.
     pub regions_by_semantic:
-        HashMap<String, Vec<layer::slicer::world_layer::ir_handles::SemanticRegion>>,
+        HashMap<String, Vec<layer::slicer::ir_handles::ir_handles::SemanticRegion>>,
     /// Custom regions by module ID.
-    pub custom_regions:
-        HashMap<String, Vec<layer::slicer::world_layer::ir_handles::SemanticRegion>>,
+    pub custom_regions: HashMap<String, Vec<layer::slicer::ir_handles::ir_handles::SemanticRegion>>,
     /// Pre-planned support-branch segments indexed by `(object_id, region_id)`,
     /// projected from `SupportPlanIR.entries` filtered to this layer index.
     /// Empty when no `SupportPlanIR` is committed on the blackboard.
     pub support_plan_segments:
-        HashMap<(String, String), Vec<Vec<layer::slicer::world_layer::geometry::Point3WithWidth>>>,
+        HashMap<(String, String), Vec<Vec<layer::slicer::types::geometry::Point3WithWidth>>>,
 }
 
 // ── Bindgen: Layer module world ─────────────────────────────────────────
@@ -239,217 +238,40 @@ pub struct PaintRegionLayerData {
 #[allow(missing_docs)]
 pub mod layer {
     wasmtime::component::bindgen!({
-        inline: r#"
-            package slicer:world-layer@1.0.0;
-
-            interface geometry {
-                record point2 { x: s64, y: s64 }
-                record point3 { x: f32, y: f32, z: f32 }
-                record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
-                record bounding-box2 { min: point2, max: point2 }
-                record bounding-box3 { min: point3, max: point3 }
-                record polygon       { points: list<point2> }
-                record ex-polygon    { contour: polygon, holes: list<polygon> }
-                record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32 }
-                variant extrusion-role {
-                    outer-wall, inner-wall, thin-wall,
-                    top-solid-infill, bottom-solid-infill, sparse-infill,
-                    support-material, support-interface,
-                    ironing, bridge-infill, wipe-tower, custom(string),
-                }
-                record semver { major: u32, minor: u32, patch: u32 }
-            }
-
-            interface config-types {
-                variant config-value {
-                    bool-val(bool), int-val(s64), float-val(f64),
-                    string-val(string), float-list(list<f64>), string-list(list<string>),
-                }
-                resource config-view {
-                    get:        func(key: string) -> option<config-value>;
-                    get-bool:   func(key: string) -> option<bool>;
-                    get-float:  func(key: string) -> option<f64>;
-                    get-int:    func(key: string) -> option<s64>;
-                    get-string: func(key: string) -> option<string>;
-                    keys:       func() -> list<string>;
-                }
-            }
-
-            interface host-services {
-                use geometry.{point3, bounding-box3, ex-polygon, polygon};
-                type object-id = string;
-                enum log-level { trace, debug, info, warn, error }
-                log: func(level: log-level, message: string);
-                raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
-                surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
-                object-bounds:      func(object-id: object-id) -> bounding-box3;
-                enum clip-operation   { union, intersection, difference, xor }
-                enum offset-join-type { miter, round, square }
-                clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-                offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
-                simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
-                now-us: func() -> u64;
-            }
-
-            interface ir-handles {
-                use geometry.{ex-polygon, extrusion-path3d, point3, point3-with-width, extrusion-role};
-                type object-id = string;
-                type region-id = string;
-                // Signed because raft entries committed by `PrePass::SupportGeometry`
-                // carry negative `global_layer_index`. Layer-module exports always
-                // pass non-negative values; host conversion sites use `as u32` /
-                // `as i32` at the boundary to round-trip into u32-keyed IR types.
-                type layer-idx = s32;
-                record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
-                record wall-feature-flag { tool-index: option<u32>, fuzzy-skin: bool, is-bridge: bool, is-thin-wall: bool, skip-ironing: bool, custom: list<tuple<string, paint-value>> }
-                record wall-loop-view { perimeter-index: u32, loop-type: wall-loop-type, path: extrusion-path3d, feature-flags: list<wall-feature-flag> }
-                enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell }
-                variant paint-semantic { material, fuzzy-skin, support-enforcer, support-blocker, custom(string) }
-                variant paint-value { flag(bool), scalar(f32), tool-index(u32) }
-                record boundary-paint-polygon { values: list<option<paint-value>> }
-                record boundary-paint-entry { semantic: paint-semantic, polygons: list<boundary-paint-polygon> }
-                resource slice-region-view {
-                    object-id: func() -> object-id;
-                    region-id: func() -> region-id;
-                    polygons: func() -> list<ex-polygon>;
-                    infill-areas: func() -> list<ex-polygon>;
-                    effective-layer-height: func() -> f32;
-                    z: func() -> f32;
-                    has-nonplanar: func() -> bool;
-                    boundary-paint: func() -> list<boundary-paint-entry>;
-                    needs-support: func() -> bool;
-                    top-shell-index: func() -> option<u8>;
-                    bottom-shell-index: func() -> option<u8>;
-                    top-solid-fill: func() -> list<ex-polygon>;
-                    bottom-solid-fill: func() -> list<ex-polygon>;
-                    is-bridge: func() -> bool;
-                    bridge-areas: func() -> list<ex-polygon>;
-                    bridge-orientation-deg: func() -> f32;
-                    held-claims: func() -> list<string>;
-                }
-                record seam-position { point: point3-with-width, wall-index: u32 }
-                resource perimeter-region-view {
-                    object-id: func() -> object-id;
-                    region-id: func() -> region-id;
-                    wall-loops: func() -> list<wall-loop-view>;
-                    infill-areas: func() -> list<ex-polygon>;
-                    resolved-seam: func() -> option<seam-position>;
-                }
-                resource infill-output-builder {
-                    push-sparse-path:  func(path: extrusion-path3d) -> result<_, string>;
-                    push-solid-path:   func(path: extrusion-path3d) -> result<_, string>;
-                    push-ironing-path: func(path: extrusion-path3d) -> result<_, string>;
-                }
-                resource perimeter-output-builder {
-                    push-wall-loop:          func(wall-loop: wall-loop-view) -> result<_, string>;
-                    push-reordered-wall-loop: func(pos: point3-with-width, wall-index: u32, rotated-wall-loop: wall-loop-view) -> result<_, string>;
-                    set-infill-areas:        func(areas: list<ex-polygon>) -> result<_, string>;
-                    push-seam-candidate:     func(pos: point3, score: f32) -> result<_, string>;
-                    push-resolved-seam:      func(pos: point3, wall-index: u32) -> result<_, string>;
-                }
-                resource slice-postprocess-builder {
-                    set-polygons: func(region: region-key, polys: list<ex-polygon>) -> result<_, string>;
-                    set-path-z:   func(region: region-key, path-idx: u32, vertex-idx: u32, z: f32) -> result<_, string>;
-                }
-                record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
-                variant retract-mode { gcode, firmware }
-                resource gcode-output-builder {
-                    push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
-                    push-retract:     func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
-                    push-unretract:   func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
-                    push-fan-speed:   func(value: u8) -> result<_, string>;
-                    push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-                    push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
-                    push-comment:     func(text: string) -> result<_, string>;
-                    push-raw:         func(text: string) -> result<_, string>;
-                    push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
-                }
-                record ordered-entity-view {
-                    original-index: u32,
-                    region-key: region-key,
-                    role: extrusion-role,
-                    start-point: point3-with-width,
-                    end-point: point3-with-width,
-                    point-count: u32,
-                }
-                resource layer-collection-builder {
-                    set-entity-order: func(items: list<tuple<u32, bool>>) -> result<_, string>;
-                    get-ordered-entities: func() -> list<ordered-entity-view>;
-                }
-                resource support-output-builder {
-                    push-support-path:   func(path: extrusion-path3d) -> result<_, string>;
-                    push-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
-                    push-raft-path:      func(path: extrusion-path3d) -> result<_, string>;
-                }
-                record semantic-region { object-id: object-id, polygons: list<ex-polygon>, value: paint-value }
-                resource paint-region-layer-view {
-                    get-regions: func(semantic: paint-semantic) -> list<semantic-region>;
-                    get-custom-regions: func(module-id: string) -> list<semantic-region>;
-                    layer-index: func() -> layer-idx;
-                    support-plan-segments: func(object-id: object-id, region-id: region-id)
-                        -> list<list<point3-with-width>>;
-                }
-            }
-
-            world layer-module {
-                import host-services;
-                import config-types;
-                import ir-handles;
-                record module-error { code: u32, message: string, fatal: bool }
-                use config-types.{config-view};
-                use ir-handles.{
-                    slice-region-view, perimeter-region-view,
-                    infill-output-builder, perimeter-output-builder,
-                    slice-postprocess-builder, support-output-builder,
-                    gcode-output-builder, layer-collection-builder,
-                    region-key, layer-idx,
-                    paint-region-layer-view,
-                };
-                export on-print-start: func(config: config-view) -> result<_, module-error>;
-                export on-print-end:   func() -> result<_, module-error>;
-                export run-slice-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: slice-postprocess-builder, config: config-view) -> result<_, module-error>;
-                export run-perimeters: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: perimeter-output-builder, config: config-view) -> result<_, module-error>;
-                export run-wall-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: perimeter-output-builder, config: config-view) -> result<_, module-error>;
-                export run-infill: func(layer-index: layer-idx, regions: list<slice-region-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>;
-                export run-infill-postprocess: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: infill-output-builder, config: config-view) -> result<_, module-error>;
-                export run-support: func(layer-index: layer-idx, regions: list<slice-region-view>, paint: paint-region-layer-view, output: support-output-builder, config: config-view) -> result<_, module-error>;
-                export run-support-postprocess: func(layer-index: layer-idx, regions: list<slice-region-view>, output: support-output-builder, config: config-view) -> result<_, module-error>;
-                export run-path-optimization: func(layer-index: layer-idx, regions: list<perimeter-region-view>, output: gcode-output-builder, collection: layer-collection-builder, config: config-view) -> result<_, module-error>;
-            }
-        "#,
-        world: "layer-module",
+        path: "../slicer-schema/wit",
+        world: "slicer:world-layer/layer-module@1.0.0",
         imports: {
             default: trappable,
         },
         with: {
-            "slicer:world-layer/config-types@1.0.0.config-view": super::ConfigViewData,
-            "slicer:world-layer/ir-handles@1.0.0.slice-region-view": super::SliceRegionData,
-            "slicer:world-layer/ir-handles@1.0.0.perimeter-region-view": super::PerimeterRegionData,
-            "slicer:world-layer/ir-handles@1.0.0.infill-output-builder": super::InfillOutputBuilderData,
-            "slicer:world-layer/ir-handles@1.0.0.perimeter-output-builder": super::PerimeterOutputBuilderData,
-            "slicer:world-layer/ir-handles@1.0.0.slice-postprocess-builder": super::SlicePostprocessBuilderData,
-            "slicer:world-layer/ir-handles@1.0.0.gcode-output-builder": super::GcodeOutputBuilderData,
-            "slicer:world-layer/ir-handles@1.0.0.layer-collection-builder": super::LayerCollectionBuilderData,
-            "slicer:world-layer/ir-handles@1.0.0.support-output-builder": super::SupportOutputBuilderData,
-            "slicer:world-layer/ir-handles@1.0.0.paint-region-layer-view": super::PaintRegionLayerData,
+            "slicer:config/config-types.config-view": super::ConfigViewData,
+            "slicer:ir-handles/ir-handles.slice-region-view": super::SliceRegionData,
+            "slicer:ir-handles/ir-handles.perimeter-region-view": super::PerimeterRegionData,
+            "slicer:ir-handles/ir-handles.infill-output-builder": super::InfillOutputBuilderData,
+            "slicer:ir-handles/ir-handles.perimeter-output-builder": super::PerimeterOutputBuilderData,
+            "slicer:ir-handles/ir-handles.slice-postprocess-builder": super::SlicePostprocessBuilderData,
+            "slicer:ir-handles/ir-handles.gcode-output-builder": super::GcodeOutputBuilderData,
+            "slicer:ir-handles/ir-handles.layer-collection-builder": super::LayerCollectionBuilderData,
+            "slicer:ir-handles/ir-handles.support-output-builder": super::SupportOutputBuilderData,
+            "slicer:ir-handles/ir-handles.paint-region-layer-view": super::PaintRegionLayerData,
         },
     });
 }
 
 // Re-export commonly used generated types for convenience.
-pub use layer::slicer::world_layer::config_types::ConfigValue;
-pub use layer::slicer::world_layer::geometry::{
-    BoundingBox3, ExPolygon, ExtrusionPath3d, ExtrusionRole, Point2, Point3, Point3WithWidth,
-    Polygon,
-};
+pub use layer::slicer::config::config_types::ConfigValue;
 /// Re-export of the layer-module WIT `retract-mode` variant. Used by host-side
 /// `gcode-output-builder` handlers and `dispatch.rs` converters to forward the
 /// `RetractMode` end-to-end across the guest→host boundary.
-pub use layer::slicer::world_layer::ir_handles::RetractMode as WitRetractMode;
-pub use layer::slicer::world_layer::ir_handles::{
+pub use layer::slicer::ir_handles::ir_handles::RetractMode as WitRetractMode;
+pub use layer::slicer::ir_handles::ir_handles::{
     BoundaryPaintEntry, BoundaryPaintPolygon, GcodeMoveCmd, HostPerimeterOutputBuilder,
     PaintSemantic, PaintValue, RegionKey, SeamPosition, SemanticRegion, WallFeatureFlag,
     WallLoopType, WallLoopView,
+};
+pub use layer::slicer::types::geometry::{
+    BoundingBox3, ExPolygon, ExtrusionPath3d, ExtrusionRole, Point2, Point3, Point3WithWidth,
+    Polygon,
 };
 pub use layer::LayerModule;
 pub use layer::ModuleError;
@@ -491,236 +313,13 @@ pub struct SupportGeometryOutputData;
 #[allow(missing_docs)]
 pub mod prepass {
     wasmtime::component::bindgen!({
-        inline: r#"
-            package slicer:world-prepass@1.0.0;
-
-            interface geometry {
-                record point3 { x: f32, y: f32, z: f32 }
-                record bounding-box3 { min: point3, max: point3 }
-                record point2 { x: s64, y: s64 }
-                record polygon { points: list<point2> }
-                record ex-polygon { contour: polygon, holes: list<polygon> }
-                record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
-            }
-
-            interface config-types {
-                variant config-value {
-                    bool-val(bool), int-val(s64), float-val(f64),
-                    string-val(string), float-list(list<f64>), string-list(list<string>),
-                }
-                resource config-view {
-                    get:        func(key: string) -> option<config-value>;
-                    get-bool:   func(key: string) -> option<bool>;
-                    get-float:  func(key: string) -> option<f64>;
-                    get-int:    func(key: string) -> option<s64>;
-                    get-string: func(key: string) -> option<string>;
-                    keys:       func() -> list<string>;
-                }
-            }
-
-            interface host-services {
-                use geometry.{point3, bounding-box3, ex-polygon, polygon};
-                type object-id = string;
-                enum log-level { trace, debug, info, warn, error }
-                log: func(level: log-level, message: string);
-                raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
-                surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
-                object-bounds:      func(object-id: object-id) -> bounding-box3;
-                enum clip-operation   { union, intersection, difference, xor }
-                enum offset-join-type { miter, round, square }
-                clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-                offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
-                simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
-                now-us: func() -> u64;
-            }
-
-            world prepass-module {
-                import host-services;
-                import config-types;
-                type object-id = string;
-                type region-id = string;
-                type layer-idx = s32;
-                record module-error { code: u32, message: string, fatal: bool }
-
-                enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
-                record facet-annotation { facet-index: u32, slope-angle-deg: f32, classification: facet-class }
-                record surface-group-proposal { facet-indices: list<u32>, z-min: f32, z-max: f32, shell-count: u32 }
-
-                use config-types.{config-view};
-
-                resource mesh-analysis-output {
-                    push-facet-annotation: func(obj: object-id, ann: facet-annotation) -> result<_, string>;
-                    push-surface-group:    func(obj: object-id, grp: surface-group-proposal) -> result<_, string>;
-                }
-
-                export run-mesh-analysis: func(
-                    objects: list<object-id>,
-                    output: mesh-analysis-output,
-                    config: config-view,
-                ) -> result<_, module-error>;
-
-                resource mesh-segmentation-output {
-                    mark-triangle-paint: func(obj: object-id, facet-index: u32, semantic: string, value: string) -> result<_, string>;
-                }
-
-                export run-mesh-segmentation: func(
-                    objects: list<mesh-object-view>,
-                    output: mesh-segmentation-output,
-                    config: config-view,
-                ) -> result<_, module-error>;
-
-                use geometry.{ex-polygon};
-
-                record region-layer-proposal {
-                    object-id: object-id, region-id: region-id,
-                    effective-layer-height: f32,
-                    is-catchup: bool, catchup-z-bottom: f32,
-                }
-                record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
-
-                // ── Prepass segmentation view records ────────────────────────
-                // Read-only views of mesh geometry for macro-authored
-                // PrePass::MeshSegmentation modules.
-
-                use geometry.{point3};
-
-                /// A paint value with discriminator for flag, scalar, or tool-index.
-                variant paint-value-view {
-                    flag(bool),
-                    scalar(f32),
-                    tool-index(u32),
-                }
-
-                /// A sub-facet paint stroke resolved into whole-triangle values.
-                record paint-stroke-view {
-                    /// Triangle vertices (3 point3 per triangle).
-                    triangles: list<point3>,
-                    /// Semantic identifier string.
-                    semantic: string,
-                    /// Paint value carried by this stroke.
-                    value: paint-value-view,
-                }
-
-                /// A paint layer on an object with per-facet values and strokes.
-                record paint-layer-view {
-                    /// Semantic identifier string.
-                    semantic: string,
-                    /// Per-facet paint values, parallel to mesh triangles.
-                    /// None = unpainted.
-                    facet-values: list<option<paint-value-view>>,
-                    /// Sub-facet strokes crossing triangle boundaries.
-                    strokes: list<paint-stroke-view>,
-                }
-
-                /// Read-only view of an object's mesh and paint data for segmentation.
-                record mesh-object-view {
-                    object-id: object-id,
-                    /// Mesh vertices as point3 coordinates.
-                    vertices: list<point3>,
-                    /// Triangle indices (3 per triangle), indexing into vertices.
-                    triangles: list<tuple<u32, u32, u32>>,
-                    /// All paint layers on this object.
-                    paint-layers: list<paint-layer-view>,
-                }
-
-                resource layer-plan-output {
-                    push-layer: func(proposal: layer-proposal) -> result<_, string>;
-                }
-
-                export run-layer-planning: func(
-                    objects: list<object-id>,
-                    output: layer-plan-output,
-                    config: config-view,
-                ) -> result<_, module-error>;
-
-                // SeamPlanning stage
-                use geometry.{point3-with-width};
-
-                record seam-reason { tag: string }
-                record scored-seam-candidate {
-                    position: point3-with-width,
-                    score: f32,
-                    reason: seam-reason,
-                }
-                record seam-plan-entry {
-                    global-layer-index: u32,
-                    object-id: object-id,
-                    region-id: region-id,
-                    chosen-position: point3-with-width,
-                    chosen-wall-index: u32,
-                    scored-candidates: list<scored-seam-candidate>,
-                }
-
-                resource seam-planning-output {
-                    push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
-                }
-
-                export run-seam-planning: func(
-                    objects: list<mesh-object-view>,
-                    output: seam-planning-output,
-                    config: config-view,
-                ) -> result<_, module-error>;
-
-                // SupportGeometry stage. global-layer-index is signed because
-                // raft prefix layers carry negative indices (-1, -2, ...).
-                // `type layer-idx = s32` (line above) already covers all signed
-                // uses in this world, including seam-plan-entry and view records.
-                record support-plan-entry {
-                    global-layer-index: s32,
-                    object-id: object-id,
-                    region-id: region-id,
-                    branch-segments: list<list<point3-with-width>>,
-                }
-
-                // ── Layer plan & region segmentation views ─────────────────
-                // Read-only views of the committed LayerPlanIR and RegionMapIR
-                // for support-geometry modules.
-
-                record layer-plan-view-entry {
-                    global-layer-index: u32,
-                    z: f32,
-                    effective-layer-height: f32,
-                }
-                record layer-plan-view {
-                    layers: list<layer-plan-view-entry>,
-                }
-                record region-segmentation-view-entry {
-                    object-id: object-id,
-                    layer-index: u32,
-                    region-ids: list<region-id>,
-                }
-                record region-segmentation-view {
-                    entries: list<region-segmentation-view-entry>,
-                }
-
-                record support-geometry-view-entry {
-                    global-support-layer-index: u32,
-                    object-id: object-id,
-                    region-id: region-id,
-                    outlines: list<ex-polygon>,
-                }
-                record support-geometry-view {
-                    entries: list<support-geometry-view-entry>,
-                }
-
-                record support-geometry-output {
-                    support-plan-entries: list<support-plan-entry>,
-                }
-
-                export run-support-geometry: func(
-                    objects: list<mesh-object-view>,
-                    layer-plan: layer-plan-view,
-                    region-segmentation: region-segmentation-view,
-                    support-geometry: support-geometry-view,
-                ) -> support-geometry-output;
-            }
-        "#,
-        world: "prepass-module",
+        path: "../slicer-schema/wit",
+        world: "slicer:world-prepass/prepass-module@1.0.0",
         imports: {
             default: trappable,
         },
         with: {
-            "slicer:world-prepass/config-types@1.0.0.config-view": super::ConfigViewData,
+            "slicer:config/config-types.config-view": super::ConfigViewData,
         },
     });
 }
@@ -888,168 +487,13 @@ pub struct FinalizationOutputBuilderData {
 #[allow(missing_docs)]
 pub mod finalization {
     wasmtime::component::bindgen!({
-        inline: r#"
-            package slicer:world-finalization@1.0.0;
-
-            interface geometry {
-                record point3 { x: f32, y: f32, z: f32 }
-                record bounding-box3 { min: point3, max: point3 }
-                record point2 { x: s64, y: s64 }
-                record point3-with-width { x: f32, y: f32, z: f32, width: f32, flow-factor: f32, overhang-quartile: option<u8> }
-                record polygon { points: list<point2> }
-                record ex-polygon { contour: polygon, holes: list<polygon> }
-                record extrusion-path3d { points: list<point3-with-width>, role: extrusion-role, speed-factor: f32 }
-                variant extrusion-role {
-                    outer-wall, inner-wall, thin-wall,
-                    top-solid-infill, bottom-solid-infill, sparse-infill,
-                    support-material, support-interface,
-                    ironing, bridge-infill, wipe-tower, custom(string),
-                }
-            }
-
-            interface config-types {
-                variant config-value {
-                    bool-val(bool), int-val(s64), float-val(f64),
-                    string-val(string), float-list(list<f64>), string-list(list<string>),
-                }
-                resource config-view {
-                    get:        func(key: string) -> option<config-value>;
-                    get-bool:   func(key: string) -> option<bool>;
-                    get-float:  func(key: string) -> option<f64>;
-                    get-int:    func(key: string) -> option<s64>;
-                    get-string: func(key: string) -> option<string>;
-                    keys:       func() -> list<string>;
-                }
-            }
-
-            interface host-services {
-                use geometry.{point3, bounding-box3, ex-polygon, polygon};
-                type object-id = string;
-                enum log-level { trace, debug, info, warn, error }
-                log: func(level: log-level, message: string);
-                raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
-                surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
-                object-bounds:      func(object-id: object-id) -> bounding-box3;
-                enum clip-operation   { union, intersection, difference, xor }
-                enum offset-join-type { miter, round, square }
-                clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-                offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
-                simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
-                now-us: func() -> u64;
-            }
-
-            world finalization-module {
-                import host-services;
-                import config-types;
-                use config-types.{config-view};
-                use geometry.{extrusion-path3d, extrusion-role};
-                type layer-idx = u32;
-                type object-id = string;
-                type region-id = string;
-                record module-error { code: u32, message: string, fatal: bool }
-                record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
-
-                record tool-change-view {
-                    after-entity-index: u32,
-                    from-tool: u32,
-                    to-tool: u32,
-                }
-
-                record print-entity-view {
-                    entity-id: u64,
-                    path: extrusion-path3d,
-                    role: extrusion-role,
-                    region-key: region-key,
-                    topo-order: u32,
-                }
-
-                record z-hop-view {
-                    after-entity-index: u32,
-                    hop-height: f32,
-                }
-
-                resource layer-collection-view {
-                    layer-index:  func() -> layer-idx;
-                    z:            func() -> f32;
-                    entity-count: func() -> u32;
-                    ordered-entities: func() -> list<print-entity-view>;
-                    tool-changes: func() -> list<tool-change-view>;
-                    z-hops: func() -> list<z-hop-view>;
-                }
-
-                variant entity-mutation {
-                    set-speed-factor(f32),
-                    set-flow-factor(f32),
-                }
-
-                enum sort-key {
-                    by-priority-and-entity-id,
-                    by-entity-id,
-                    by-object-id-then-priority,
-                }
-
-                record synthetic-layer-data {
-                    z: f32,
-                    paths: list<extrusion-path3d>,
-                }
-
-                resource finalization-output-builder {
-                    push-entity-to-layer: func(
-                        layer-index: layer-idx,
-                        path: extrusion-path3d,
-                        region-key: region-key,
-                    ) -> result<_, string>;
-                    push-entity-with-priority: func(
-                        layer-index: layer-idx,
-                        path: extrusion-path3d,
-                        region-key: region-key,
-                        priority: u32,
-                    ) -> result<_, string>;
-                    modify-entity: func(
-                        layer-index: u32,
-                        entity-id: u64,
-                        mutation: entity-mutation,
-                    ) -> result<_, string>;
-                    sort-layer-by: func(
-                        layer-index: u32,
-                        key: sort-key,
-                    ) -> result<_, string>;
-                    insert-synthetic-layer-after: func(
-                        idx: u32,
-                        layer-data: synthetic-layer-data,
-                    ) -> result<_, string>;
-                    insert-synthetic-layer: func(
-                        z: f32,
-                        paths: list<extrusion-path3d>,
-                    ) -> result<_, string>;
-                    insert-entity-at: func(
-                        layer-index: layer-idx,
-                        position: u32,
-                        path: extrusion-path3d,
-                        region-key: region-key,
-                    ) -> result<_, string>;
-                    set-entity-order: func(
-                        layer-index: layer-idx,
-                        items: list<tuple<u32, bool>>,
-                    ) -> result<_, string>;
-                    get-ordered-entities: func(
-                        layer-index: layer-idx,
-                    ) -> list<print-entity-view>;
-                }
-
-                export run-finalization: func(
-                    layers: list<layer-collection-view>,
-                    output: finalization-output-builder,
-                    config: config-view,
-                ) -> result<_, module-error>;
-            }
-        "#,
-        world: "finalization-module",
+        path: "../slicer-schema/wit",
+        world: "slicer:world-finalization/finalization-module@1.0.0",
         imports: {
             default: trappable,
         },
         with: {
-            "slicer:world-finalization/config-types@1.0.0.config-view": super::ConfigViewData,
+            "slicer:config/config-types.config-view": super::ConfigViewData,
         },
     });
 }
@@ -1064,108 +508,13 @@ pub struct PostpassGcodeOutputBuilderData;
 #[allow(missing_docs)]
 pub mod postpass {
     wasmtime::component::bindgen!({
-        inline: r#"
-            package slicer:world-postpass@1.0.0;
-
-            interface geometry {
-                record point3 { x: f32, y: f32, z: f32 }
-                record bounding-box3 { min: point3, max: point3 }
-                record point2 { x: s64, y: s64 }
-                record polygon { points: list<point2> }
-                record ex-polygon { contour: polygon, holes: list<polygon> }
-                variant extrusion-role {
-                    outer-wall, inner-wall, thin-wall,
-                    top-solid-infill, bottom-solid-infill, sparse-infill,
-                    support-material, support-interface,
-                    ironing, bridge-infill, wipe-tower, custom(string),
-                }
-            }
-
-            interface config-types {
-                variant config-value {
-                    bool-val(bool), int-val(s64), float-val(f64),
-                    string-val(string), float-list(list<f64>), string-list(list<string>),
-                }
-                resource config-view {
-                    get:        func(key: string) -> option<config-value>;
-                    get-bool:   func(key: string) -> option<bool>;
-                    get-float:  func(key: string) -> option<f64>;
-                    get-int:    func(key: string) -> option<s64>;
-                    get-string: func(key: string) -> option<string>;
-                    keys:       func() -> list<string>;
-                }
-            }
-
-            interface host-services {
-                use geometry.{point3, bounding-box3, ex-polygon, polygon};
-                type object-id = string;
-                enum log-level { trace, debug, info, warn, error }
-                log: func(level: log-level, message: string);
-                raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
-                surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
-                object-bounds:      func(object-id: object-id) -> bounding-box3;
-                enum clip-operation   { union, intersection, difference, xor }
-                enum offset-join-type { miter, round, square }
-                clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
-                offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
-                simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
-                now-us: func() -> u64;
-            }
-
-            world postpass-module {
-                import host-services;
-                import config-types;
-                use config-types.{config-view};
-                use geometry.{extrusion-role};
-                record module-error { code: u32, message: string, fatal: bool }
-
-                record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
-                variant retract-mode { gcode, firmware }
-                record gcode-retract-cmd { length: f32, speed: f32, mode: retract-mode }
-                record gcode-fan-speed-cmd { value: u8 }
-                record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
-                record gcode-tool-change-cmd { after-entity-index: u32, from-tool: u32, to-tool: u32 }
-                resource gcode-output-builder {
-                    push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
-                    push-retract:     func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
-                    push-unretract:   func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
-                    push-fan-speed:   func(value: u8) -> result<_, string>;
-                    push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
-                    push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
-                    push-comment:     func(text: string) -> result<_, string>;
-                    push-raw:         func(text: string) -> result<_, string>;
-                    push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
-                }
-
-                variant gcode-command {
-                    move(gcode-move-cmd),
-                    retract(gcode-retract-cmd),
-                    unretract(gcode-retract-cmd),
-                    fan-speed(gcode-fan-speed-cmd),
-                    temperature(gcode-temperature-cmd),
-                    tool-change(gcode-tool-change-cmd),
-                    comment(string),
-                    raw(string),
-                }
-
-                export run-gcode-postprocess: func(
-                    commands: list<gcode-command>,
-                    output: gcode-output-builder,
-                    config: config-view,
-                ) -> result<_, module-error>;
-
-                export run-text-postprocess: func(
-                    gcode-text: string,
-                    config: config-view,
-                ) -> result<string, module-error>;
-            }
-        "#,
-        world: "postpass-module",
+        path: "../slicer-schema/wit",
+        world: "slicer:world-postpass/postpass-module@1.0.0",
         imports: {
             default: trappable,
         },
         with: {
-            "slicer:world-postpass/config-types@1.0.0.config-view": super::ConfigViewData,
+            "slicer:config/config-types.config-view": super::ConfigViewData,
         },
     });
 }
@@ -2300,10 +1649,18 @@ fn object_bounds_mesh_query(
 
 // ── Host trait implementations ──────────────────────────────────────────
 
-use layer::slicer::world_layer::config_types as ct;
-use layer::slicer::world_layer::geometry as geo;
+use layer::slicer::config::config_types as ct;
+use layer::slicer::ir_handles::ir_handles as ir;
+use layer::slicer::types::geometry as geo;
 use layer::slicer::world_layer::host_services as hs;
-use layer::slicer::world_layer::ir_handles as ir;
+
+// `module-errors` only contains a record (no functions/resources),
+// so the generated Host trait is empty and requires a trivial impl.
+// Now sourced from canonical slicer:common/module-errors package.
+impl layer::slicer::common::module_errors::Host for HostExecutionContext {}
+impl prepass::slicer::common::module_errors::Host for HostExecutionContext {}
+impl finalization::slicer::common::module_errors::Host for HostExecutionContext {}
+impl postpass::slicer::common::module_errors::Host for HostExecutionContext {}
 
 impl geo::Host for HostExecutionContext {}
 
@@ -2505,7 +1862,7 @@ fn ir_to_wit_expolygons_prepass(eps: &[slicer_ir::ExPolygon]) -> Vec<prepass::Ex
 
 /// Convert slicer-ir ExPolygon to WIT ExPolygon for the prepass world.
 fn ir_to_wit_expolygon_prepass(ep: &slicer_ir::ExPolygon) -> prepass::ExPolygon {
-    use prepass::slicer::world_prepass::geometry as pgeo;
+    use prepass::slicer::types::geometry as pgeo;
     prepass::ExPolygon {
         contour: pgeo::Polygon {
             points: ep
@@ -2551,8 +1908,8 @@ fn ir_to_wit_paint_value(v: &slicer_ir::PaintValue) -> PaintValue {
 /// Convert slicer-ir SemanticRegion to WIT SemanticRegion.
 fn ir_to_wit_semantic_region(
     r: &slicer_ir::SemanticRegion,
-) -> layer::slicer::world_layer::ir_handles::SemanticRegion {
-    layer::slicer::world_layer::ir_handles::SemanticRegion {
+) -> layer::slicer::ir_handles::ir_handles::SemanticRegion {
+    layer::slicer::ir_handles::ir_handles::SemanticRegion {
         object_id: r.object_id.clone(),
         polygons: ir_to_wit_expolygons(&r.polygons),
         value: ir_to_wit_paint_value(&r.value),
@@ -2593,11 +1950,11 @@ pub fn paint_region_ir_to_layer_data(
 
     let mut regions_by_semantic: HashMap<
         String,
-        Vec<layer::slicer::world_layer::ir_handles::SemanticRegion>,
+        Vec<layer::slicer::ir_handles::ir_handles::SemanticRegion>,
     > = HashMap::new();
     let mut custom_regions: HashMap<
         String,
-        Vec<layer::slicer::world_layer::ir_handles::SemanticRegion>,
+        Vec<layer::slicer::ir_handles::ir_handles::SemanticRegion>,
     > = HashMap::new();
 
     for (semantic, regions) in &layer_map.semantic_regions {
@@ -3334,14 +2691,14 @@ impl ir::HostSliceRegionView for HostExecutionContext {
     fn top_solid_fill(
         &mut self,
         self_: Resource<SliceRegionData>,
-    ) -> wasmtime::Result<Vec<layer::slicer::world_layer::geometry::ExPolygon>> {
+    ) -> wasmtime::Result<Vec<layer::slicer::types::geometry::ExPolygon>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.top_solid_fill.clone())
     }
     fn bottom_solid_fill(
         &mut self,
         self_: Resource<SliceRegionData>,
-    ) -> wasmtime::Result<Vec<layer::slicer::world_layer::geometry::ExPolygon>> {
+    ) -> wasmtime::Result<Vec<layer::slicer::types::geometry::ExPolygon>> {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.bottom_solid_fill.clone())
     }
@@ -3427,7 +2784,7 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
     fn resolved_seam(
         &mut self,
         self_: Resource<PerimeterRegionData>,
-    ) -> wasmtime::Result<Option<layer::slicer::world_layer::ir_handles::SeamPosition>> {
+    ) -> wasmtime::Result<Option<layer::slicer::ir_handles::ir_handles::SeamPosition>> {
         self.touch_perimeter_region(&self_)?;
         self.runtime_reads
             .push(String::from("PerimeterIR.resolved-seam"));
@@ -3435,7 +2792,7 @@ impl ir::HostPerimeterRegionView for HostExecutionContext {
         match resolved {
             None => Ok(None),
             Some((pos, wall_index)) => {
-                Ok(Some(layer::slicer::world_layer::ir_handles::SeamPosition {
+                Ok(Some(layer::slicer::ir_handles::ir_handles::SeamPosition {
                     point: Point3WithWidth {
                         x: pos.x,
                         y: pos.y,
@@ -3926,7 +3283,7 @@ impl ir::HostPaintRegionLayerView for HostExecutionContext {
         self_: Resource<PaintRegionLayerData>,
         object_id: String,
         region_id: String,
-    ) -> wasmtime::Result<Vec<Vec<layer::slicer::world_layer::geometry::Point3WithWidth>>> {
+    ) -> wasmtime::Result<Vec<Vec<layer::slicer::types::geometry::Point3WithWidth>>> {
         self.runtime_reads.push(String::from("SupportPlanIR"));
         let data = self.table.get(&self_)?;
         Ok(data
@@ -3952,8 +3309,8 @@ impl ir::Host for HostExecutionContext {}
 
 mod prepass_impls {
     use super::*;
-    use prepass::slicer::world_prepass::config_types as pct;
-    use prepass::slicer::world_prepass::geometry as pgeo;
+    use prepass::slicer::config::config_types as pct;
+    use prepass::slicer::types::geometry as pgeo;
     use prepass::slicer::world_prepass::host_services as phs;
 
     impl pgeo::Host for HostExecutionContext {}
@@ -4364,8 +3721,8 @@ mod prepass_impls {
 mod finalization_impls {
     use super::finalization as fm;
     use super::*;
-    use finalization::slicer::world_finalization::config_types as fct;
-    use finalization::slicer::world_finalization::geometry as fgeo;
+    use finalization::slicer::config::config_types as fct;
+    use finalization::slicer::types::geometry as fgeo;
     use finalization::slicer::world_finalization::host_services as fhs;
 
     impl fgeo::Host for HostExecutionContext {}
@@ -5148,8 +4505,8 @@ mod finalization_impls {
 mod postpass_impls {
     use super::postpass as ppm;
     use super::*;
-    use postpass::slicer::world_postpass::config_types as ppct;
-    use postpass::slicer::world_postpass::geometry as ppgeo;
+    use postpass::slicer::config::config_types as ppct;
+    use postpass::slicer::types::geometry as ppgeo;
     use postpass::slicer::world_postpass::host_services as pphs;
 
     impl ppgeo::Host for HostExecutionContext {}

@@ -1,5 +1,5 @@
 ---
-status: active
+status: implemented
 packet: 72_wit-single-source-unification
 task_ids:
   - TASK-144
@@ -26,11 +26,12 @@ This packet relocates the WIT contract into the existing `slicer-schema` crate a
 
 ## Acceptance Criteria
 
-- **AC-1. Given** the repo tree, **when** checking for the contract, **then** top-level `wit/` is absent and `crates/slicer-schema/wit/` holds `world-{layer,prepass,postpass,finalization}.wit` plus `deps/{types,config,ir-types,common}.wit`. | `bash -c 'test ! -e wit && test -f crates/slicer-schema/wit/world-layer.wit && test -f crates/slicer-schema/wit/deps/common.wit; echo EXIT=$?'`
+- **AC-1. Given** the repo tree, **when** checking for the contract, **then** top-level `wit/` is absent and `crates/slicer-schema/wit/` holds world packages under `deps/world-X/` plus `deps/{types,config,ir-types,common}.wit`. | `bash -c 'test ! -e wit && test -f crates/slicer-schema/wit/deps/world-layer/world-layer.wit && test -f crates/slicer-schema/wit/deps/common.wit; echo EXIT=$?'`
 - **AC-2. Given** `crates/slicer-macros/src/lib.rs`, **when** grepping, **then** it carries no inline `package slicer:world-…` literal, no `extrusion-path-3d` rename, and its `include_str!` targets `slicer-schema/wit`. | `bash -c '! rg -q "package slicer:world-layer@1.0.0;" crates/slicer-macros/src/lib.rs && ! rg -q "extrusion-path-3d" crates/slicer-macros/src/lib.rs && rg -q "slicer-schema/wit" crates/slicer-macros/src/lib.rs; echo EXIT=$?'`
 - **AC-3. Given** `crates/slicer-runtime/src/wit_host.rs`, **when** grepping, **then** no `bindgen!` uses an `inline: r#` literal and at least one `path:` points at the canonical wit dir. | `bash -c '! rg -q "inline: r#" crates/slicer-runtime/src/wit_host.rs && rg -q "path:.*slicer-schema/wit" crates/slicer-runtime/src/wit_host.rs; echo EXIT=$?'`
 - **AC-4. Given** the canonical files, **when** grepping for the geometry path type, **then** the illegal label `extrusion-path-3d` never appears and the legal `extrusion-path3d` is defined. | `bash -c '! rg -q "extrusion-path-3d" crates/slicer-schema/wit && rg -q "extrusion-path3d" crates/slicer-schema/wit/deps/types.wit; echo EXIT=$?'`
 - **AC-5. Given** the canonical files, **when** locating `record module-error`, **then** it is declared in exactly one file, `deps/common.wit`. | `bash -c 'test "$(rg -l "record module-error" crates/slicer-schema/wit)" = "crates/slicer-schema/wit/deps/common.wit"; echo EXIT=$?'`
+  > **Portability note:** The canonical gate for "one `record module-error`" is the platform-independent `wit_single_source_tdd::shared_interface_defined_once`. The `rg -l` string-eq command above is a convenience check; it emits EXIT=1 on Windows purely due to ripgrep returning backslash path separators — a future Windows EXIT=1 here is NOT a real failure.
 - **AC-6. Given** the canonical files, **when** grepping, **then** the dead `gcode-output-interface` appears nowhere. | `bash -c '! rg -q "gcode-output-interface" crates/slicer-schema/wit; echo EXIT=$?'`
 - **AC-7. Given** freshly built guests, **when** the all-worlds roundtrip runs, **then** every world instantiates and round-trips unchanged (ABI preserved across the relocation). | `cargo test -p slicer-runtime --test macro_all_worlds_roundtrip_tdd`
 - **AC-8. Given** the relocated source, **when** the freshness check runs after a rebuild, **then** it reports no `STALE:` guests. | `cargo xtask build-guests --check`
@@ -38,7 +39,7 @@ This packet relocates the WIT contract into the existing `slicer-schema` crate a
 
 ## Negative Test Cases
 
-- **AC-N1. Given** a WIT fragment carrying the illegal label `extrusion-path-3d` (segment begins with a digit), **when** the conformance test feeds it to `wit_parser::Resolve`, **then** parsing is rejected — proving the canonical source is genuinely validated and the old phantom-drift class can no longer pass silently. | `cargo test -p slicer-runtime --test wit_single_source_tdd -- illegal_label_rejected`
+- **AC-N1. Given** a WIT fragment carrying a label whose FIRST segment begins with a digit (e.g. `3d-extrusion-path`), **when** the conformance test feeds it to `wit_parser::Resolve`, **then** parsing is rejected — proving the canonical source is genuinely parser-validated so malformed labels cannot pass silently. | `cargo test -p slicer-runtime --test wit_single_source_tdd -- illegal_label_rejected`
 
 ## Verification
 

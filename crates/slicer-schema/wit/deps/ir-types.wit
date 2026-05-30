@@ -1,0 +1,117 @@
+package slicer:ir-handles;
+
+interface ir-handles {
+    use slicer:types/geometry.{ex-polygon, extrusion-path3d, point3, point3-with-width, extrusion-role};
+
+    type object-id = string;
+    type region-id = string;
+    // Signed because raft entries committed by `PrePass::SupportGeometry`
+    // carry negative `global_layer_index`. Layer-module exports always
+    // pass non-negative values; host conversion sites use `as u32` /
+    // `as i32` at the boundary to round-trip into u32-keyed IR types.
+    type layer-idx = s32;
+
+    record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
+
+    record wall-feature-flag { tool-index: option<u32>, fuzzy-skin: bool, is-bridge: bool, is-thin-wall: bool, skip-ironing: bool, custom: list<tuple<string, paint-value>> }
+    record wall-loop-view { perimeter-index: u32, loop-type: wall-loop-type, path: extrusion-path3d, feature-flags: list<wall-feature-flag> }
+    enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell }
+    variant paint-semantic { material, fuzzy-skin, support-enforcer, support-blocker, custom(string) }
+    variant paint-value { flag(bool), scalar(f32), tool-index(u32) }
+    record boundary-paint-polygon { values: list<option<paint-value>> }
+    record boundary-paint-entry { semantic: paint-semantic, polygons: list<boundary-paint-polygon> }
+
+    resource slice-region-view {
+        object-id: func() -> object-id;
+        region-id: func() -> region-id;
+        polygons: func() -> list<ex-polygon>;
+        infill-areas: func() -> list<ex-polygon>;
+        effective-layer-height: func() -> f32;
+        z: func() -> f32;
+        has-nonplanar: func() -> bool;
+        boundary-paint: func() -> list<boundary-paint-entry>;
+        needs-support: func() -> bool;
+        top-shell-index: func() -> option<u8>;
+        bottom-shell-index: func() -> option<u8>;
+        top-solid-fill: func() -> list<ex-polygon>;
+        bottom-solid-fill: func() -> list<ex-polygon>;
+        is-bridge: func() -> bool;
+        bridge-areas: func() -> list<ex-polygon>;
+        bridge-orientation-deg: func() -> f32;
+        held-claims: func() -> list<string>;
+    }
+
+    record seam-position { point: point3-with-width, wall-index: u32 }
+
+    resource perimeter-region-view {
+        object-id: func() -> object-id;
+        region-id: func() -> region-id;
+        wall-loops: func() -> list<wall-loop-view>;
+        infill-areas: func() -> list<ex-polygon>;
+        resolved-seam: func() -> option<seam-position>;
+    }
+
+    resource infill-output-builder {
+        push-sparse-path:  func(path: extrusion-path3d) -> result<_, string>;
+        push-solid-path:   func(path: extrusion-path3d) -> result<_, string>;
+        push-ironing-path: func(path: extrusion-path3d) -> result<_, string>;
+    }
+
+    resource perimeter-output-builder {
+        push-wall-loop:          func(wall-loop: wall-loop-view) -> result<_, string>;
+        push-reordered-wall-loop: func(pos: point3-with-width, wall-index: u32, rotated-wall-loop: wall-loop-view) -> result<_, string>;
+        set-infill-areas:        func(areas: list<ex-polygon>) -> result<_, string>;
+        push-seam-candidate:     func(pos: point3, score: f32) -> result<_, string>;
+        push-resolved-seam:      func(pos: point3, wall-index: u32) -> result<_, string>;
+    }
+
+    resource slice-postprocess-builder {
+        set-polygons: func(region: region-key, polys: list<ex-polygon>) -> result<_, string>;
+        set-path-z:   func(region: region-key, path-idx: u32, vertex-idx: u32, z: f32) -> result<_, string>;
+    }
+
+    record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
+    variant retract-mode { gcode, firmware }
+
+    resource gcode-output-builder {
+        push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
+        push-retract:     func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
+        push-unretract:   func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
+        push-fan-speed:   func(value: u8) -> result<_, string>;
+        push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
+        push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
+        push-comment:     func(text: string) -> result<_, string>;
+        push-raw:         func(text: string) -> result<_, string>;
+        push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
+    }
+
+    record ordered-entity-view {
+        original-index: u32,
+        region-key: region-key,
+        role: extrusion-role,
+        start-point: point3-with-width,
+        end-point: point3-with-width,
+        point-count: u32,
+    }
+
+    resource layer-collection-builder {
+        set-entity-order: func(items: list<tuple<u32, bool>>) -> result<_, string>;
+        get-ordered-entities: func() -> list<ordered-entity-view>;
+    }
+
+    resource support-output-builder {
+        push-support-path:   func(path: extrusion-path3d) -> result<_, string>;
+        push-interface-path: func(path: extrusion-path3d, is-top-interface: bool) -> result<_, string>;
+        push-raft-path:      func(path: extrusion-path3d) -> result<_, string>;
+    }
+
+    record semantic-region { object-id: object-id, polygons: list<ex-polygon>, value: paint-value }
+
+    resource paint-region-layer-view {
+        get-regions: func(semantic: paint-semantic) -> list<semantic-region>;
+        get-custom-regions: func(module-id: string) -> list<semantic-region>;
+        layer-index: func() -> layer-idx;
+        support-plan-segments: func(object-id: object-id, region-id: region-id)
+            -> list<list<point3-with-width>>;
+    }
+}

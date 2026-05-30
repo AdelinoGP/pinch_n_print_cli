@@ -6,7 +6,7 @@
   - `TASK-144` — consolidate host, macro, and guest codegen onto one canonical shared WIT source.
   - `TASK-145` — normalize WIT package/version identifiers and restore missing members across the canonical surface.
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -40,18 +40,18 @@
 ## Acceptance Summary
 
 - Positive cases: `AC-1` (single source + phantom deleted), `AC-2` (guest sources canonical, hacks gone), `AC-3` (host on `path:`), `AC-4` (legal `extrusion-path3d`), `AC-5` (one `module-error`), `AC-6` (orphan gone), `AC-7` (ABI-preserving roundtrip), `AC-8` (guest freshness), `AC-9` (canonical wit resolves) — all in `packet.spec.md`. Refinement: AC-7 is the load-bearing proof that reconciliation preserved the component ABI; it must pass against guests rebuilt from the relocated source (run AC-8 first).
-- Negative cases: `AC-N1` (illegal label rejected by `wit_parser`).
+- Negative cases: `AC-N1` (a WIT fragment whose label's FIRST segment begins with a digit, e.g. `3d-extrusion-path`, is rejected by `wit_parser::Resolve`, proving the canonical source is genuinely parser-validated so malformed labels cannot pass silently).
 - Cross-packet impact: unblocks `73_support-geometry-normalization`.
 
 ## Verification Commands
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `bash -c 'test ! -e wit && test -f crates/slicer-schema/wit/world-layer.wit && test -f crates/slicer-schema/wit/deps/common.wit; echo EXIT=$?'` | AC-1 layout | FACT `EXIT=0` |
+| `bash -c 'test ! -e wit && test -f crates/slicer-schema/wit/deps/world-layer/world-layer.wit && test -f crates/slicer-schema/wit/deps/common.wit; echo EXIT=$?'` | AC-1 layout | FACT `EXIT=0` |
 | `bash -c '! rg -q "package slicer:world-layer@1.0.0;" crates/slicer-macros/src/lib.rs && ! rg -q "extrusion-path-3d" crates/slicer-macros/src/lib.rs && rg -q "slicer-schema/wit" crates/slicer-macros/src/lib.rs; echo EXIT=$?'` | AC-2 guest source | FACT `EXIT=0` |
 | `bash -c '! rg -q "inline: r#" crates/slicer-runtime/src/wit_host.rs && rg -q "path:.*slicer-schema/wit" crates/slicer-runtime/src/wit_host.rs; echo EXIT=$?'` | AC-3 host on path: | FACT `EXIT=0` |
 | `bash -c '! rg -q "extrusion-path-3d" crates/slicer-schema/wit && rg -q "extrusion-path3d" crates/slicer-schema/wit/deps/types.wit; echo EXIT=$?'` | AC-4 legal label | FACT `EXIT=0` |
-| `bash -c 'test "$(rg -l "record module-error" crates/slicer-schema/wit)" = "crates/slicer-schema/wit/deps/common.wit"; echo EXIT=$?'` | AC-5 one module-error | FACT `EXIT=0` |
+| `bash -c 'test "$(rg -l "record module-error" crates/slicer-schema/wit)" = "crates/slicer-schema/wit/deps/common.wit"; echo EXIT=$?'` | AC-5 one module-error | FACT `EXIT=0` — **portability note:** the canonical gate is `wit_single_source_tdd::shared_interface_defined_once`; the `rg -l` string-eq emits EXIT=1 on Windows due to backslash path separators — a Windows EXIT=1 here is NOT a real failure. |
 | `bash -c '! rg -q "gcode-output-interface" crates/slicer-schema/wit; echo EXIT=$?'` | AC-6 orphan gone | FACT `EXIT=0` |
 | `cargo test -p slicer-runtime --test macro_all_worlds_roundtrip_tdd` | AC-7 ABI preserved | FACT pass/fail; SNIPPETS ≤20 lines on fail |
 | `cargo xtask build-guests --check` | AC-8 guest freshness | FACT clean / `STALE:` list |

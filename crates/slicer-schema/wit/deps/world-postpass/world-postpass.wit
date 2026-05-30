@@ -1,0 +1,67 @@
+package slicer:world-postpass@1.0.0;
+
+interface host-services {
+    use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon};
+    type object-id = string;
+    enum log-level { trace, debug, info, warn, error }
+    log: func(level: log-level, message: string);
+    raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
+    surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
+    object-bounds:      func(object-id: object-id) -> bounding-box3;
+    enum clip-operation   { union, intersection, difference, xor }
+    enum offset-join-type { miter, round, square }
+    clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
+    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
+    simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
+    now-us: func() -> u64;
+}
+
+world postpass-module {
+    import host-services;
+    import slicer:config/config-types;
+
+    use slicer:config/config-types.{config-view};
+    use slicer:types/geometry.{extrusion-role};
+    use slicer:common/module-errors.{module-error};
+
+    record gcode-move-cmd { x: option<f32>, y: option<f32>, z: option<f32>, e: option<f32>, f: option<f32>, role: extrusion-role }
+    variant retract-mode { gcode, firmware }
+    record gcode-retract-cmd { length: f32, speed: f32, mode: retract-mode }
+    record gcode-fan-speed-cmd { value: u8 }
+    record gcode-temperature-cmd { tool: u32, celsius: f32, wait: bool }
+    record gcode-tool-change-cmd { after-entity-index: u32, from-tool: u32, to-tool: u32 }
+
+    resource gcode-output-builder {
+        push-move:        func(cmd: gcode-move-cmd) -> result<_, string>;
+        push-retract:     func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
+        push-unretract:   func(length: f32, speed: f32, mode: retract-mode) -> result<_, string>;
+        push-fan-speed:   func(value: u8) -> result<_, string>;
+        push-temperature: func(tool: u32, celsius: f32, wait: bool) -> result<_, string>;
+        push-tool-change: func(after-entity-index: u32, from-tool: u32, to-tool: u32) -> result<_, string>;
+        push-comment:     func(text: string) -> result<_, string>;
+        push-raw:         func(text: string) -> result<_, string>;
+        push-z-hop:       func(after-entity-index: u32, hop-height: f32) -> result<_, string>;
+    }
+
+    variant gcode-command {
+        move(gcode-move-cmd),
+        retract(gcode-retract-cmd),
+        unretract(gcode-retract-cmd),
+        fan-speed(gcode-fan-speed-cmd),
+        temperature(gcode-temperature-cmd),
+        tool-change(gcode-tool-change-cmd),
+        comment(string),
+        raw(string),
+    }
+
+    export run-gcode-postprocess: func(
+        commands: list<gcode-command>,
+        output: gcode-output-builder,
+        config: config-view,
+    ) -> result<_, module-error>;
+
+    export run-text-postprocess: func(
+        gcode-text: string,
+        config: config-view,
+    ) -> result<string, module-error>;
+}

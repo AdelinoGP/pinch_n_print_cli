@@ -1,0 +1,173 @@
+package slicer:world-prepass@1.0.0;
+
+interface host-services {
+    use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon};
+    type object-id = string;
+    enum log-level { trace, debug, info, warn, error }
+    log: func(level: log-level, message: string);
+    raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
+    surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
+    object-bounds:      func(object-id: object-id) -> bounding-box3;
+    enum clip-operation   { union, intersection, difference, xor }
+    enum offset-join-type { miter, round, square }
+    clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
+    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
+    simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
+    now-us: func() -> u64;
+}
+
+world prepass-module {
+    import host-services;
+    import slicer:config/config-types;
+
+    use slicer:config/config-types.{config-view};
+    use slicer:types/geometry.{ex-polygon, point3, point3-with-width};
+    use slicer:common/module-errors.{module-error};
+
+    type object-id = string;
+    type region-id = string;
+    type layer-idx = s32;
+
+    enum facet-class { normal, near-horizontal, overhang, bridge, top-surface, bottom-surface }
+    record facet-annotation { facet-index: u32, slope-angle-deg: f32, classification: facet-class }
+    record surface-group-proposal { facet-indices: list<u32>, z-min: f32, z-max: f32, shell-count: u32 }
+
+    resource mesh-analysis-output {
+        push-facet-annotation: func(obj: object-id, ann: facet-annotation) -> result<_, string>;
+        push-surface-group:    func(obj: object-id, grp: surface-group-proposal) -> result<_, string>;
+    }
+
+    export run-mesh-analysis: func(
+        objects: list<object-id>,
+        output: mesh-analysis-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+
+    resource mesh-segmentation-output {
+        mark-triangle-paint: func(obj: object-id, facet-index: u32, semantic: string, value: string) -> result<_, string>;
+    }
+
+    export run-mesh-segmentation: func(
+        objects: list<mesh-object-view>,
+        output: mesh-segmentation-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+
+    record region-layer-proposal {
+        object-id: object-id, region-id: region-id,
+        effective-layer-height: f32,
+        is-catchup: bool, catchup-z-bottom: f32,
+    }
+    record layer-proposal { z: f32, active-regions: list<region-layer-proposal> }
+
+    /// A paint value with discriminator for flag, scalar, or tool-index.
+    variant paint-value-view {
+        flag(bool),
+        scalar(f32),
+        tool-index(u32),
+    }
+
+    /// A sub-facet paint stroke resolved into whole-triangle values.
+    record paint-stroke-view {
+        triangles: list<point3>,
+        semantic: string,
+        value: paint-value-view,
+    }
+
+    /// A paint layer on an object with per-facet values and strokes.
+    record paint-layer-view {
+        semantic: string,
+        facet-values: list<option<paint-value-view>>,
+        strokes: list<paint-stroke-view>,
+    }
+
+    /// Read-only view of an object's mesh and paint data for segmentation.
+    record mesh-object-view {
+        object-id: object-id,
+        vertices: list<point3>,
+        triangles: list<tuple<u32, u32, u32>>,
+        paint-layers: list<paint-layer-view>,
+    }
+
+    resource layer-plan-output {
+        push-layer: func(proposal: layer-proposal) -> result<_, string>;
+    }
+
+    export run-layer-planning: func(
+        objects: list<object-id>,
+        output: layer-plan-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+
+    record seam-reason { tag: string }
+    record scored-seam-candidate {
+        position: point3-with-width,
+        score: f32,
+        reason: seam-reason,
+    }
+    record seam-plan-entry {
+        global-layer-index: u32,
+        object-id: object-id,
+        region-id: region-id,
+        chosen-position: point3-with-width,
+        chosen-wall-index: u32,
+        scored-candidates: list<scored-seam-candidate>,
+    }
+
+    resource seam-planning-output {
+        push-seam-plan: func(entry: seam-plan-entry) -> result<_, string>;
+    }
+
+    export run-seam-planning: func(
+        objects: list<mesh-object-view>,
+        output: seam-planning-output,
+        config: config-view,
+    ) -> result<_, module-error>;
+
+    // SupportGeometry stage. global-layer-index is signed because
+    // raft prefix layers carry negative indices (-1, -2, ...).
+    record support-plan-entry {
+        global-layer-index: s32,
+        object-id: object-id,
+        region-id: region-id,
+        branch-segments: list<list<point3-with-width>>,
+    }
+
+    record layer-plan-view-entry {
+        global-layer-index: u32,
+        z: f32,
+        effective-layer-height: f32,
+    }
+    record layer-plan-view {
+        layers: list<layer-plan-view-entry>,
+    }
+    record region-segmentation-view-entry {
+        object-id: object-id,
+        layer-index: u32,
+        region-ids: list<region-id>,
+    }
+    record region-segmentation-view {
+        entries: list<region-segmentation-view-entry>,
+    }
+
+    record support-geometry-view-entry {
+        global-support-layer-index: u32,
+        object-id: object-id,
+        region-id: region-id,
+        outlines: list<ex-polygon>,
+    }
+    record support-geometry-view {
+        entries: list<support-geometry-view-entry>,
+    }
+
+    record support-geometry-output {
+        support-plan-entries: list<support-plan-entry>,
+    }
+
+    export run-support-geometry: func(
+        objects: list<mesh-object-view>,
+        layer-plan: layer-plan-view,
+        region-segmentation: region-segmentation-view,
+        support-geometry: support-geometry-view,
+    ) -> support-geometry-output;
+}

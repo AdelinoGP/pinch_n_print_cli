@@ -89,7 +89,7 @@ If it reports `STALE:`, you MUST rebuild (drop the `--check` flag) and re-run th
 
 **You MUST run `--check` (and rebuild if stale) after editing any of the following paths**, because the build scripts treat them as guest-WASM inputs:
 
-- `wit/**/*.wit` — invalidates every guest's bindgen output
+- `crates/slicer-schema/wit/**/*.wit` — invalidates every guest's bindgen output (canonical single source; the old top-level `wit/` was deleted in packet 72)
 - `crates/slicer-macros/**`, `crates/slicer-sdk/**`, `crates/slicer-ir/**`, `crates/slicer-schema/**` — universal guest deps baked into every guest `.wasm`
 - `modules/core-modules/*/src/**` and `modules/core-modules/*/Cargo.toml` — the `#[slicer_module]` impl bodies
 - `modules/core-modules/*/wit-guest/**` — the per-module guest shim
@@ -103,7 +103,7 @@ When modifying WIT types or interface definitions:
 1. Search all `wit_host.rs`, `dispatch.rs`, and `wit_guest` modules for the affected type.
 2. Verify type identity matches across component boundaries (e.g., `list<object-id>` in one file and `list<MeshObjectView>` in another causes linking failures).
 3. Run `cargo build --tests` after WIT changes.
-4. Update both inline WIT and external package references consistently.
+4. Edit the canonical source at `crates/slicer-schema/wit/` — both host (`bindgen! path:`) and guest macro (`include_str!`) read these files directly. There is no inline copy to keep in sync.
 
 ## Ralph Agent Workflow
 

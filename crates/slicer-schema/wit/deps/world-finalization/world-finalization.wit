@@ -1,0 +1,126 @@
+package slicer:world-finalization@1.0.0;
+
+interface host-services {
+    use slicer:types/geometry.{point3, bounding-box3, ex-polygon, polygon};
+    type object-id = string;
+    enum log-level { trace, debug, info, warn, error }
+    log: func(level: log-level, message: string);
+    raycast-z-down:     func(object-id: object-id, x: f32, y: f32, start-z: f32) -> option<f32>;
+    surface-normal-at:  func(object-id: object-id, x: f32, y: f32, z: f32) -> option<point3>;
+    object-bounds:      func(object-id: object-id) -> bounding-box3;
+    enum clip-operation   { union, intersection, difference, xor }
+    enum offset-join-type { miter, round, square }
+    clip-polygons:    func(subject: list<ex-polygon>, clip: list<ex-polygon>, op: clip-operation) -> list<ex-polygon>;
+    offset-polygons:  func(polygons: list<ex-polygon>, delta-mm: f32, join: offset-join-type) -> list<ex-polygon>;
+    simplify-polygon: func(polygon: polygon, tolerance-mm: f32) -> polygon;
+    now-us: func() -> u64;
+}
+
+world finalization-module {
+    import host-services;
+    import slicer:config/config-types;
+
+    use slicer:config/config-types.{config-view};
+    use slicer:types/geometry.{extrusion-path3d, extrusion-role};
+    use slicer:common/module-errors.{module-error};
+
+    type layer-idx = u32;
+    type object-id = string;
+    type region-id = string;
+
+    record region-key { layer-index: layer-idx, object-id: object-id, region-id: region-id }
+
+    record tool-change-view {
+        after-entity-index: u32,
+        from-tool: u32,
+        to-tool: u32,
+    }
+
+    record print-entity-view {
+        entity-id: u64,
+        path: extrusion-path3d,
+        role: extrusion-role,
+        region-key: region-key,
+        topo-order: u32,
+    }
+
+    record z-hop-view {
+        after-entity-index: u32,
+        hop-height: f32,
+    }
+
+    resource layer-collection-view {
+        layer-index:  func() -> layer-idx;
+        z:            func() -> f32;
+        entity-count: func() -> u32;
+        ordered-entities: func() -> list<print-entity-view>;
+        tool-changes: func() -> list<tool-change-view>;
+        z-hops: func() -> list<z-hop-view>;
+    }
+
+    variant entity-mutation {
+        set-speed-factor(f32),
+        set-flow-factor(f32),
+    }
+
+    enum sort-key {
+        by-priority-and-entity-id,
+        by-entity-id,
+        by-object-id-then-priority,
+    }
+
+    record synthetic-layer-data {
+        z: f32,
+        paths: list<extrusion-path3d>,
+    }
+
+    resource finalization-output-builder {
+        push-entity-to-layer: func(
+            layer-index: layer-idx,
+            path: extrusion-path3d,
+            region-key: region-key,
+        ) -> result<_, string>;
+        push-entity-with-priority: func(
+            layer-index: layer-idx,
+            path: extrusion-path3d,
+            region-key: region-key,
+            priority: u32,
+        ) -> result<_, string>;
+        modify-entity: func(
+            layer-index: u32,
+            entity-id: u64,
+            mutation: entity-mutation,
+        ) -> result<_, string>;
+        sort-layer-by: func(
+            layer-index: u32,
+            key: sort-key,
+        ) -> result<_, string>;
+        insert-synthetic-layer-after: func(
+            idx: u32,
+            layer-data: synthetic-layer-data,
+        ) -> result<_, string>;
+        insert-synthetic-layer: func(
+            z: f32,
+            paths: list<extrusion-path3d>,
+        ) -> result<_, string>;
+        insert-entity-at: func(
+            layer-index: layer-idx,
+            position: u32,
+            path: extrusion-path3d,
+            region-key: region-key,
+        ) -> result<_, string>;
+        set-entity-order: func(
+            layer-index: layer-idx,
+            items: list<tuple<u32, bool>>,
+        ) -> result<_, string>;
+        get-ordered-entities: func(
+            layer-index: layer-idx,
+        ) -> list<print-entity-view>;
+    }
+
+    export run-finalization: func(
+        layers: list<layer-collection-view>,
+        output: finalization-output-builder,
+        config: config-view,
+    ) -> result<_, module-error>;
+}

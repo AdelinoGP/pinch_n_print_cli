@@ -88,3 +88,16 @@ Primary edit surface is 3 code files + the new wit dir; the new test and doc edi
 
 - `[FWD]` Option A vs B for the guest, and `path:` vs build.rs for the host, are resolved by the Step 0 spike. Either resolution keeps every AC intact — not activation-blocking.
 - `None [BLOCK].`
+
+## Deviations (recorded during implementation)
+
+1. **AC-1 world path updated** to `deps/world-layer/world-layer.wit` — worlds moved under `deps/` subdirectories so `wasmtime` `push_path`/`push_dir` (one-main-package-per-dir constraint) can load each world package independently; selected via fully-qualified `world:` names in `bindgen!`. Intent (canonical files at known paths, phantom gone) preserved; `wit_single_source_tdd` adds stricter anti-flat-copy checks to compensate.
+2. **Dep packages are UNVERSIONED** (`slicer:types`, not `slicer:types@1.0.0`) — required for `wit-parser` cross-package `use` resolution; world packages keep `@1.0.0` so `manifest.rs` allowlist is unaffected. Packet prose saying `@1.0.0` deps is superseded by this implementation outcome.
+3. **Host uses umbrella `path: "../slicer-schema/wit"` + qualified `world:` names + canonical `with:` keys** (`slicer:config/config-types.config-view`, `slicer:ir-handles/ir-handles.<resource>`), NOT a single flat `path:` pointing at one file — required by the one-main-package-per-dir constraint of `wasmtime` 43's `push_path`. Guest uses Option A nested-package inline. Both read the same `deps/*.wit` bytes → identity agreement is structural.
+4. **Original AC-3 grep was too weak** (a flat-copy subdir would still have passed); strengthened via `wit_single_source_tdd` conformance tests (`no_flat_copies`, `worlds_are_not_self_contained`, `shared_interface_defined_once`) which guard against the entire flat-copy drift class, not just the `inline: r#` pattern.
+5. **Host keeps four per-world generated `ModuleError` Rust types** (four separate `bindgen!` expansions) all originating from the single `slicer:common/module-errors.module-error`; each converts to `DispatchError`. AC-5 (one `record module-error` defined in `common.wit`) holds at the WIT level; the Rust-level multiplicity is a wasmtime codegen artifact, not a WIT duplication.
+6. **AC-1 originally under-enumerated canonical files** (omitted `root.wit` anchor and host-services inline interfaces); absorbed without behavioral impact — worlds resolve correctly, roundtrip and benchy tests green.
+
+## Lessons
+
+**Agreement ≠ single-source:** the interim flat copies passed `macro_all_worlds_roundtrip_tdd` 19/19 and AC-3's grep, yet violated single-source. Structural guards (`shared_interface_defined_once`, `no_flat_copies`, `host_bindgen_paths_target_shared_root`), not the functional roundtrip, are what protect the canonical-source invariant.

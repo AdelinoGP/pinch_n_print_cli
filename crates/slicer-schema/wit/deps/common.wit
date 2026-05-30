@@ -1,0 +1,5 @@
+package slicer:common;
+
+interface module-errors {
+    record module-error { code: u32, message: string, fatal: bool }
+}

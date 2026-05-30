@@ -120,8 +120,8 @@ fn own<T: 'static>(r: Resource<T>) -> Resource<T> {
 
 fn convert_postpass_role_to_wit(
     role: &slicer_ir::ExtrusionRole,
-) -> wit_host::postpass::slicer::world_postpass::geometry::ExtrusionRole {
-    use wit_host::postpass::slicer::world_postpass::geometry::ExtrusionRole as WitExtrusionRole;
+) -> wit_host::postpass::slicer::types::geometry::ExtrusionRole {
+    use wit_host::postpass::slicer::types::geometry::ExtrusionRole as WitExtrusionRole;
 
     match role {
         slicer_ir::ExtrusionRole::OuterWall => WitExtrusionRole::OuterWall,
@@ -1515,7 +1515,7 @@ fn build_paint_layer_data_with_plan(
                     .points
                     .iter()
                     .map(
-                        |p| wit_host::layer::slicer::world_layer::geometry::Point3WithWidth {
+                        |p| wit_host::layer::slicer::types::geometry::Point3WithWidth {
                             x: p.x,
                             y: p.y,
                             z: p.z,

@@ -475,16 +475,17 @@ pub fn max_opt<T: Ord>(a: Option<T>, b: Option<T>) -> Option<T> {
 }
 
 /// Compute the shared mtime once per `--check` invocation.
-/// Covers: `wit/**/*.wit` + 4 shared crates (slicer-macros, slicer-sdk, slicer-ir, slicer-schema).
+/// Covers: `crates/slicer-schema/wit/**/*.wit` + 4 shared crates (slicer-macros, slicer-sdk, slicer-ir, slicer-schema).
 pub fn compute_shared_mtime(ws_root: &Path) -> SystemTime {
     // --- wit/**/*.wit ---
-    let wit_mtime: Option<SystemTime> = walkdir::WalkDir::new(ws_root.join("wit"))
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("wit"))
-        .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()))
-        .max();
+    let wit_mtime: Option<SystemTime> =
+        walkdir::WalkDir::new(ws_root.join("crates").join("slicer-schema").join("wit"))
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("wit"))
+            .filter_map(|e| e.metadata().ok().and_then(|m| m.modified().ok()))
+            .max();
 
     // --- 4 shared crates ---
     let shared_crates = ["slicer-macros", "slicer-sdk", "slicer-ir", "slicer-schema"];
