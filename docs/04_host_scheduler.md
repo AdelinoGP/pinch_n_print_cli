@@ -5,15 +5,15 @@
 > source — they elide error variants, instrumentation hooks, and lifetimes
 > for clarity. For the authoritative implementation see:
 >
-> - `crates/slicer-host/src/execution_plan.rs` — `ExecutionPlan`,
+> - `crates/slicer-runtime/src/execution_plan.rs` — `ExecutionPlan`,
 >   `CompiledStage`, `CompiledModule`, `CompiledModuleBuilder`.
-> - `crates/slicer-host/src/prepass.rs` — `execute_prepass` family.
-> - `crates/slicer-host/src/layer_executor.rs` — `execute_per_layer` family.
-> - `crates/slicer-host/src/layer_finalization.rs` — `execute_layer_finalization`.
-> - `crates/slicer-host/src/postpass.rs` — `execute_postpass` family.
-> - `crates/slicer-host/src/topology.rs` — `topological_sort`.
-> - `crates/slicer-host/src/validation.rs` — DAG validation passes.
-> - `crates/slicer-host/src/manifest.rs` — manifest parser + `LoadedModule`.
+> - `crates/slicer-runtime/src/prepass.rs` — `execute_prepass` family.
+> - `crates/slicer-runtime/src/layer_executor.rs` — `execute_per_layer` family.
+> - `crates/slicer-runtime/src/layer_finalization.rs` — `execute_layer_finalization`.
+> - `crates/slicer-runtime/src/postpass.rs` — `execute_postpass` family.
+> - `crates/slicer-runtime/src/topology.rs` — `topological_sort`.
+> - `crates/slicer-runtime/src/validation.rs` — DAG validation passes.
+> - `crates/slicer-runtime/src/manifest.rs` — manifest parser + `LoadedModule`.
 
 The scheduler has four phases, all completing before a single layer is sliced. Phases 1–3 are pure data transformation — no WASM executes until Phase 4.
 
@@ -278,6 +278,11 @@ This dual-layer design prevents privilege escalation through custom bindings whi
 
 ### Claim Resolution with Runtime Disable Rules
 
+> This is the authoritative reference for runtime claim resolution. The claim
+> concept and the normative Allowed Claim Transition Matrix live in
+> `docs/01_system_architecture.md` § "Claim System"; the known-claim catalog and
+> manifest `[claims]` syntax live in `docs/03_wit_and_manifest.md`.
+
 Claims are evaluated only over modules that remain enabled after config filtering.
 
 ```rust
@@ -480,6 +485,11 @@ fn compute_reachability(
 ---
 
 ## RegionMapIR Compilation (PrePass::RegionMapping)
+
+> This section owns how `RegionMapIR` is **built and bounded**. The struct shape
+> and field semantics (`RegionPlan`, `RegionKey`, config-key namespaces, override
+> precedence) are defined in `docs/02_ir_schemas.md` IR 5; `docs/01_system_architecture.md`
+> describes why the stage exists.
 
 `PrePass::RegionMapping` is host-built-in and precomputes per-region execution context so Tier 2 has no config or claim resolution overhead.
 

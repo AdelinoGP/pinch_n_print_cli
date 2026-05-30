@@ -560,17 +560,26 @@ authoritative event schema, ordering guarantees, and transport details, see
 `./docs/09_progress_events.md`.** Event types are `phase_start`,
 `phase_complete`, `layer_start`, `layer_complete`, `module_error`,
 `validation_error`, and `slice_complete`. The runtime emitter is implemented in
-`crates/slicer-host/src/progress_events.rs`.
+`crates/slicer-runtime/src/progress_events.rs`.
 
 The frontend can also query the loaded modules' config schemas (one entry per
 module, per field — `{key, type, values, default, display, group}`). The CLI
-subcommand and JSON shape are implemented in `crates/slicer-host/src/main.rs`
+subcommand and JSON shape are implemented in `crates/pnp-cli/src/main.rs`
 (`ConfigSchema` subcommand) and documented in `./docs/03_wit_and_manifest.md`
 under "Manifest config schema query".
 
 ---
 
 ## Claim System
+
+> **Where each facet of the claim system lives.** This section owns the concept
+> and the normative **Allowed Claim Transition Matrix** (below). The manifest
+> `[claims]` declaration syntax and the full known-claim catalog (including the
+> four fill-role claims) live in `docs/03_wit_and_manifest.md` § "Known claim
+> IDs"; the fill-role claim-holder config keys are `ResolvedConfig` fields in
+> `docs/02_ir_schemas.md`; runtime claim resolution, the DAG validation passes,
+> and `effective_claim_holders()` are authoritative in
+> `docs/04_host_scheduler.md` § "Claim Resolution with Runtime Disable Rules".
 
 Claims are named exclusive resource slots. They prevent two modules from both trying to generate perimeters (or infill, or supports) for the same region simultaneously.
 
@@ -650,13 +659,13 @@ Validation rule:
 
 ## Module Search Path
 
-`slicer-host` assembles module search roots from CLI flags, an env var, and
+`pnp_cli` assembles module search roots from CLI flags, an env var, and
 two platform defaults, in the priority order listed below. Within each root
 the discovery contract is unchanged: `*.toml` manifests at the root level or
 one subdirectory deep, each requiring a same-stem `*.wasm` companion.
-Assembly lives in `crates/slicer-host/src/module_search_path.rs`
+Assembly lives in `crates/slicer-runtime/src/module_search_path.rs`
 (`assemble_search_roots`); per-root scanning and intra-root `module.id`
-deduplication live in `crates/slicer-host/src/manifest.rs`
+deduplication live in `crates/slicer-runtime/src/manifest.rs`
 (`load_modules_from_roots`).
 
 ### Priority tiers (highest first)

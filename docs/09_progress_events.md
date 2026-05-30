@@ -6,12 +6,12 @@ This document is authoritative for structured runtime events emitted by the host
 
 - Default transport: JSON Lines (`.jsonl`) on **stderr**. G-code is written to
   stdout, so the event stream is intentionally separated from G-code output to
-  avoid interleaving. See `crates/slicer-host/src/main.rs` and
-  `JsonLinesEmitter` in `crates/slicer-host/src/progress_events.rs`.
+  avoid interleaving. See `crates/pnp-cli/src/main.rs` and
+  `JsonLinesEmitter` in `crates/slicer-runtime/src/progress_events.rs`.
 - Every event is a single JSON object on one line.
 - <!-- VERIFY: an explicit `--log-events <path>` CLI flag is referenced in the
      `progress_events.rs` doc-comment but is not currently exposed by
-     `crates/slicer-host/src/cli.rs`. Until it ships, events stream only to
+     `crates/slicer-runtime/src/cli.rs`. Until it ships, events stream only to
      stderr. -->
 
 Buffering requirement:
@@ -144,7 +144,7 @@ Fatal failure excerpt:
 
 ## Instrumented Stream (`--instrument-stderr`)
 
-Passing `--instrument-stderr` to `slicer-host run` bumps the schema version
+Passing `--instrument-stderr` to `pnp_cli slice` bumps the schema version
 to `"1.1.0"` and additionally emits per-stage and per-module brackets on
 the same stderr JSONL stream. New event types (additive, backward-
 compatible with consumers that ignore unknown `event` values):

@@ -16,12 +16,25 @@ This applies to **every** `Point2`, `Polygon`, `ExPolygon`, and any other 2D int
 
 `f32` / `f64` fields (speeds, densities, layer heights) are always in **millimeters** unless the field name or doc comment says otherwise.
 
+## Conversion & Determinism (Normative)
+
+Canonical conversion rules:
+
+- mm → units: `units = round(mm * 10_000.0)` (round half away from zero).
+- units → mm: `mm = units / 10_000.0`.
+
+Determinism bounds:
+
+- One conversion round-trip (`units -> mm -> units`) must be identity.
+- One float round-trip (`mm -> units -> mm`) has bounded error `<= 0.00005 mm`.
+- Any pipeline step that accumulates more than `0.001 mm` absolute error in one axis across one layer is a contract violation.
+
 ## Z-Axis Convention (Normative)
 
 - `z` and all layer-height values are stored and exchanged as millimeter floats (`f32`/`f64`) in IR and WIT.
 - X/Y polygonal geometry uses scaled integers; Z does not.
 - Any module converting Z to scaled integer units for internal math must convert back to mm before writing IR.
-- `catchup_z_bottom` and `effective_layer_height` must remain finite, non-negative, and deterministic under the rounding policy in `02_ir_schemas.md`.
+- `catchup_z_bottom` and `effective_layer_height` must remain finite, non-negative, and deterministic under the rounding policy in § "Conversion & Determinism (Normative)" above.
 
 ## Transform Application — Query-Time, Not Load-Time (Normative — packet 10)
 
@@ -56,7 +69,7 @@ wire format. Internally, every speed field in IR (`ExtrusionPath3D.speed`,
 `ConfigView`'s `*_speed` keys, `TravelMove.speed`) is stored in **mm/s**.
 
 The conversion to mm/min happens inside `DefaultGCodeEmitter::resolve_feedrate`
-(see `crates/slicer-host/src/gcode_emit.rs`) — that function returns a
+(see `crates/slicer-runtime/src/gcode_emit.rs`) — that function returns a
 mm/min value ready for `F{:.0}` serialization. Modules must always work in
 mm/s; emitting mm/min internally is a contract violation that double-scales
 at the boundary.

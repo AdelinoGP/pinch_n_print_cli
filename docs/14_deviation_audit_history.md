@@ -44,12 +44,15 @@ Use this file for provenance, chronology, and legacy-reference lookup only.
 - `DEV-029` closed: blocker-summary drift was merged into the broader planning row `DEV-030`.
 - `DEV-025` closed (2026-05-08): all five SDK↔WIT prepass segmentation mismatches resolved. Mismatch 3 (PaintSegmentation output drain non-functional) closed-by-Packet-43 (`43-rev1_macro-prepass-segmentation-output-drain`) via TASK-130a / TASK-130b. Mismatches 4 + 5 closed by Packet 42 (TASK-130c). Mismatches 1 + 2 closed by TASK-128a / TASK-128b. Full TASK-130 cluster (TASK-128a, TASK-128b, TASK-130, TASK-130a, TASK-130b, TASK-130c) retired. See Chronology 2026-05-08 entry for Step 2.5 and Step 2.6 latent-bug details.
 
-### Remaining live architecture themes after audit normalization
+### Remaining live architecture themes
 
-- Contract enforcement: `DEV-002`, `DEV-003`, `DEV-004`, `DEV-005`, `DEV-008`
-- Runtime data boundaries and WIT compatibility: `DEV-006`, `DEV-013`, `DEV-014`, `DEV-015`, `DEV-016`, `DEV-025`, `DEV-026`, `DEV-027`
-- Feature parity and live-path behavior: `DEV-009`, `DEV-023`, `DEV-024`
-- Governance and planning closure: `DEV-010`, `DEV-020`, `DEV-030`
+This hand-maintained theme list drifted (it predated several closures — e.g. it
+listed `DEV-006`/`DEV-025`/`DEV-027` as remaining after they had closed) and has
+been retired to remove a second status surface. For the current open set, see the
+generated Open Deviation Map in `docs/07_implementation_status.md`, which
+`cargo xtask check-deviations` keeps in sync with the authoritative
+`docs/DEVIATION_LOG.md`. This file retains only the **Chronology** and crosswalk
+below, which it uniquely owns.
 
 ## Chronology
 

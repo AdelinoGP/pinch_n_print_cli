@@ -123,20 +123,45 @@ modular-slicer/
 │   ├── slicer-sdk/           # Module authoring SDK (imported by module crates)
 │   ├── slicer-test/          # Test harness for module unit tests
 │   ├── slicer-macros/        # Proc-macros (#[slicer_module], #[module_test])
-│   ├── slicer-schema/        # Shared config/manifest schema types
+│   ├── slicer-schema/        # Shared config/manifest schema types + canonical WIT contract
+│   │   └── wit/              #   The single canonical WIT source (deps/, root.wit, world-*)
 │   └── slicer-helpers/       # Pre-pipeline mesh ops (repair, decimate, STEP import)
 ├── modules/
 │   └── core-modules/         # Built-in modules (arachne walls, rectilinear infill, etc.)
-├── wit/
-│   ├── deps/                 # Shared WIT type definitions (types, config, ir-types)
-│   ├── host-api.wit          # Services the host exposes to all modules
-│   ├── world-layer.wit       # Per-layer module world
-│   ├── world-prepass.wit     # PrePass module world
-│   ├── world-finalization.wit # Finalization module world
-│   └── world-postpass.wit    # PostPass module world
+├── xtask/                    # Dev tooling: build-guests, gen-config-docs, check-deviations
 ├── resources/                # STL / 3MF / OBJ test fixtures
 └── docs/                     # This documentation set
 ```
+
+> The phantom top-level `wit/` directory was deleted in packet 72; the canonical
+> WIT contract now lives only under `crates/slicer-schema/wit/`. Do not recreate
+> the top-level directory.
+
+### Code Map (canonical crate ↔ path identity)
+
+This table is the single authoritative home for crate identity. When a doc cites
+a source file, the crate name and path resolve here — do not restate crate
+identity elsewhere. Renames change this table once, not every citing doc.
+
+| Crate / binary | Path | Role |
+|----------------|------|------|
+| `slicer-runtime` (lib) | `crates/slicer-runtime/` | WASM runtime, scheduler, dispatch, `run_slice()` API. Rust module path `slicer_runtime::`. |
+| `pnp_cli` (binary) | `crates/pnp-cli/` | The single CLI binary: `slice`, `module`, `mesh`, `dag` verbs. Entry point `crates/pnp-cli/src/main.rs`. |
+| `slicer-core` | `crates/slicer-core/` | Core algorithms (slicing, Clipper ops, geometry). |
+| `slicer-ir` | `crates/slicer-ir/` | IR type definitions shared between host and SDK. |
+| `slicer-sdk` | `crates/slicer-sdk/` | Module authoring SDK. |
+| `slicer-macros` | `crates/slicer-macros/` | Proc-macros (`#[slicer_module]`, `#[module_test]`). |
+| `slicer-schema` | `crates/slicer-schema/` | Config/manifest schema types **and** the canonical WIT under `crates/slicer-schema/wit/`. |
+| `slicer-helpers` | `crates/slicer-helpers/` | Pre-pipeline mesh ops (repair, decimate, STEP import). |
+| `slicer-test` | `crates/slicer-test/` | Test harness for module unit tests. |
+| `xtask` | `xtask/` | Dev tooling (`build-guests`, `gen-config-docs`, `check-deviations`). |
+
+> **Packet 69 rename (history):** the former `slicer-host` library crate was
+> renamed to `slicer-runtime`, and the former `slicer-cli` crate was deleted with
+> its verbs absorbed into the `pnp_cli` binary. The names `slicer-host` /
+> `slicer-cli` survive only in historical records (`docs/DEVIATION_LOG.md`,
+> `docs/14_deviation_audit_history.md`, `docs/specs/`) and must not appear as
+> live paths in the numbered reference docs.
 
 ---
 

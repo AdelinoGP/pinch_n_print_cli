@@ -19,18 +19,12 @@ Never construct `Point2` with raw integer literals. Use `Point2::from_mm(x, y)` 
 
 ## Coordinate Precision & Determinism (Normative)
 
-Canonical conversion rules:
+The canonical mm↔units conversion rules and determinism bounds are defined in
+`docs/08_coordinate_system.md` § "Conversion & Determinism (Normative)", the
+single source of truth for coordinate conventions. They are not restated here.
 
-- mm → units: `units = round(mm * 10_000.0)` (round half away from zero).
-- units → mm: `mm = units / 10_000.0`.
-
-Determinism bounds:
-
-- One conversion round-trip (`units -> mm -> units`) must be identity.
-- One float round-trip (`mm -> units -> mm`) has bounded error `<= 0.00005 mm`.
-- Any pipeline step that accumulates more than `0.001 mm` absolute error in one axis across one layer is a contract violation.
-
-Invalid numeric values:
+Invalid numeric values (apply to any config or IR numeric field, not just
+coordinates):
 
 - `NaN` and `±Inf` in any config or IR numeric field are fatal validation errors.
 - Denormal/subnormal values must be normalized to zero at parse time.
@@ -425,6 +419,15 @@ pub struct ResolvedConfig {
     pub top_shell_layers: u32,
     /// Multi-layer bottom-surface window. Default 3 (packet 35).
     pub bottom_shell_layers: u32,
+
+    // Fill-role claim holders (packet 37). Each names the module that holds the
+    // corresponding fill-role claim for this region; default "rectilinear-infill".
+    // These select claim holders — see docs/03 §"Known claim IDs" for the
+    // claim↔key mapping and docs/04 §"Claim Resolution" for how they resolve.
+    pub top_fill_holder: String,
+    pub bottom_fill_holder: String,
+    pub bridge_fill_holder: String,
+    pub sparse_fill_holder: String,
 
     // Support
     pub support_enabled: bool,

@@ -1,0 +1,69 @@
+# Host-registered config keys (NOT in any module manifest).
+#
+# These keys are consumed by host built-ins, so their authoritative default
+# lives in a Rust consumer struct rather than a module manifest. This file
+# mirrors those defaults in machine-readable form so that:
+#
+#   * `cargo xtask gen-config-docs` can render the host-key tables in
+#     docs/15_config_keys_reference.md from a single source (no hand-copied
+#     defaults — doc 15's hand-maintained speed table had drifted 15 of 26
+#     values away from the code), and
+#   * a slicer-runtime test (config_keys_host_lock_tdd.rs) asserts these values
+#     equal the live `FeedrateConfig::default()`, so this file cannot drift from
+#     the code it mirrors.
+#
+# When you change a default in the consumer struct, update it here and rerun
+# `cargo xtask gen-config-docs`; the lock test fails until they agree.
+
+# Per-role print speeds (packet 52, 57). mm/s.
+# Consumer: crates/slicer-runtime/src/gcode_emit.rs `FeedrateConfig::default()`.
+[speeds]
+outer_wall_speed           = { default = 60.0,  range = "> 0" }
+inner_wall_speed           = { default = 60.0,  range = "> 0" }
+thin_wall_speed            = { default = 30.0,  range = "> 0" }
+top_surface_speed          = { default = 100.0, range = "> 0" }
+bottom_surface_speed       = { default = 100.0, range = "> 0" }
+sparse_infill_speed        = { default = 100.0, range = "> 0" }
+bridge_speed               = { default = 25.0,  range = "> 0" }
+internal_bridge_speed      = { default = 37.5,  range = "> 0" }
+support_speed              = { default = 80.0,  range = "> 0" }
+support_interface_speed    = { default = 80.0,  range = "> 0" }
+gap_infill_speed           = { default = 30.0,  range = "> 0" }
+ironing_speed              = { default = 20.0,  range = "> 0" }
+skirt_speed                = { default = 50.0,  range = "> 0" }
+wipe_tower_speed           = { default = 90.0,  range = "> 0" }
+prime_tower_speed          = { default = 90.0,  range = "> 0" }
+travel_speed               = { default = 120.0, range = "> 0" }
+travel_speed_z             = { default = 0.0,   range = ">= 0", note = "0 = use travel_speed for Z" }
+initial_layer_speed        = { default = 30.0,  range = "> 0" }
+initial_layer_infill_speed = { default = 60.0,  range = "> 0" }
+initial_layer_travel_speed = { default = 120.0, range = "> 0" }
+wipe_speed                 = { default = 96.0,  range = "> 0" }
+filament_ironing_speed     = { default = 0.0,   range = ">= 0", note = "0 = use ironing_speed" }
+overhang_1_4_speed         = { default = 0.0,   range = ">= 0", note = "0 = no override (packet 57)" }
+overhang_2_4_speed         = { default = 0.0,   range = ">= 0", note = "0 = no override (packet 57)" }
+overhang_3_4_speed         = { default = 0.0,   range = ">= 0", note = "0 = no override (packet 57)" }
+overhang_4_4_speed         = { default = 0.0,   range = ">= 0", note = "0 = no override (packet 57)" }
+
+# Host-registered keys carried on ResolvedConfig (packet 35, 60).
+# Consumer: crates/slicer-ir/src/resolved_config.rs `ResolvedConfig::default()`.
+[resolved_config]
+top_shell_layers        = { default = 3,      range = "[1, 10]", note = "deviates from OrcaSlicer's 4" }
+bottom_shell_layers     = { default = 3,      range = "[1, 10]" }
+gcode_resolution        = { default = 0.0125, range = ">= 0", note = "D-P tolerance for walls / brim" }
+infill_resolution       = { default = 0.04,   range = ">= 0", note = "D-P tolerance for infill / bridge / top / bottom" }
+support_resolution      = { default = 0.0375, range = ">= 0", note = "D-P tolerance for support / interface" }
+min_segment_length      = { default = 0.05,   range = ">= 0", note = "short-segment dropper" }
+gcode_xy_decimals       = { default = 3,      range = "[1, 6]", note = "X / Y / Z token formatting" }
+slice_closing_radius    = { default = 0.049,  range = ">= 0", note = "per-layer Clipper2 close" }
+top_fill_holder         = { default = "rectilinear-infill", note = "holder of claim:top-fill (packet 37)" }
+bottom_fill_holder      = { default = "rectilinear-infill", note = "holder of claim:bottom-fill (packet 37)" }
+bridge_fill_holder      = { default = "rectilinear-infill", note = "holder of claim:bridge-fill (packet 37)" }
+sparse_fill_holder      = { default = "rectilinear-infill", note = "holder of claim:sparse-fill (packet 37)" }
+
+# Host config keys read directly from the CLI/JSON config source (not struct
+# fields). Each default is a named constant in code; the lock test ties the value
+# here to that constant via its `owner`.
+[host_runtime]
+use_relative_e_distances = { default = true, owner = "run.rs::DEFAULT_USE_RELATIVE_E_DISTANCES", note = "false selects M82; serializer issues G92 E0 on mode change (packet 54)" }
+thumbnail_path           = { default = "", owner = "pipeline.rs::DEFAULT_THUMBNAIL_PATH", note = "absent/empty = no THUMBNAIL_BLOCK; CLI --thumbnail overrides (packet 55)" }

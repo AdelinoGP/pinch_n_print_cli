@@ -93,11 +93,11 @@ runs where arrays are empty and counts are zero.
 
 ## Architecture
 
-- `slicer_host::instrumentation` (`src/instrumentation.rs`) — the
+- `slicer_runtime::instrumentation` (`src/instrumentation.rs`) — the
   `PipelineInstrumentation` trait, `Phase` / `TierKind` / `EdgeReason` /
   `SerialEdge` types, `NoopInstrumentation`, and the
   `compute_serial_edges_*` helpers.
-- `slicer_host::report` (`src/report/`) — the consumer side:
+- `slicer_runtime::report` (`src/report/`) — the consumer side:
   - `allocator.rs` — `AccountingAllocator<A: GlobalAlloc>` with a thread-local
     scope stack and a global `enable()` flag.
   - `model.rs` — `Report`, `LayerRecord`, `StageRecord`, `ModuleRecord`,

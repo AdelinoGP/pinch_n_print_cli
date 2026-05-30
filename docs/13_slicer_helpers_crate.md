@@ -13,6 +13,13 @@
 >   TASK-060). The `--format obj`, `--format 3mf`, and `--output-format
 >   obj|3mf` flags are fully operational end-to-end.
 
+> **Signatures are authoritative in rustdoc, not here.** Run
+> `cargo doc -p slicer-helpers --no-deps` (and `-p slicer-runtime` for the mesh
+> writers) for exact function and type signatures. This document owns what code
+> cannot express — invariants, ordering, error semantics, CLI surface, and the
+> coordinate contract — and links to the API rather than restating it, so a
+> renamed parameter or changed return type cannot silently drift the docs.
+
 ## Purpose
 
 `slicer-helpers` is a library crate providing **pre-pipeline mesh processing operations**. It runs before any WASM module is loaded and before the slicing pipeline starts. Its outputs are `MeshIR` values (or modified `MeshIR` values) consumed by the host's standard pipeline entry point.
@@ -176,12 +183,11 @@ pub enum RepairWarning {
 
 ### Public API
 
-```rust
-/// Repair a mesh in place. Returns a RepairResult.
-/// Input mesh may be non-manifold. Output mesh is manifold unless warnings
-/// indicate skipped loops.
-pub fn repair(mesh: MeshIR) -> Result<RepairResult, RepairError>
-```
+`slicer_helpers::repair` (see rustdoc for the exact signature) takes a possibly
+non-manifold `MeshIR` and returns a `RepairResult`. **Contract:** the output mesh
+is manifold *unless* `result.stats.warnings` contains a `LargeCapLoop` (a loop
+too large to fan-cap was skipped); the warning vector — not any per-component
+boolean — is the sole indicator of an incomplete repair.
 
 ### CLI Subcommand: `pnp_cli mesh repair`
 
@@ -265,38 +271,23 @@ pub struct DecimateResult {
 
 ### Public API
 
-```rust
-pub struct DecimateConfigBuilder { /* private */ }
+See rustdoc for exact signatures. The surface (re-exported from
+`slicer_helpers`):
 
-impl DecimateConfigBuilder {
-    pub fn new() -> Self;
-    pub fn target_count(self, n: usize) -> Self;
-    pub fn target_ratio(self, ratio: f32) -> Self;
-    pub fn max_error(self, e: f32) -> Self;
-    pub fn aggressive(self, b: bool) -> Self;
-    pub fn build(self) -> Result<DecimateConfig, DecimateError>;
-}
-
-pub fn decimate(mesh: MeshIR, config: DecimateConfig) -> Result<DecimateResult, DecimateError>
-
-/// Douglas-Peucker polyline simplification in millimetres (packet 60).
-/// `tolerance_mm = 0.0` short-circuits and returns the input unchanged
-/// (zero-cost legacy path). Used at per-role G-code emit for wall, infill,
-/// and support polyline simplification.
-pub fn simplify_polyline_mm(
-    points: &[Point3WithWidth],
-    tolerance_mm: f32,
-) -> Vec<Point3WithWidth>;
-
-/// Drop adjacent segments shorter than `min_segment_length_mm` (packet 60).
-/// Preserves endpoints unconditionally; collapses runs of short segments
-/// into single segments to the next viable vertex. `min_segment_length_mm
-/// = 0.0` is a no-op (zero-cost legacy path).
-pub fn drop_short_segments_mm(
-    points: &[Point3WithWidth],
-    min_segment_length_mm: f32,
-) -> Vec<Point3WithWidth>;
-```
+- `DecimateConfigBuilder` — the only way to construct a `DecimateConfig` (its
+  fields are private). **Contract:** `build()` validates the exactly-one-of
+  `target_count` / `target_ratio` rule and `max_error > 0.0`, returning
+  `DecimateError::InvalidConfig` on violation.
+- `decimate(mesh, config)` — runs QEM decimation and returns a `DecimateResult`.
+- `simplify_polyline_mm(pts, tolerance_mm)` — Douglas-Peucker polyline
+  simplification on `(f32, f32)` millimetre points (packet 60). **Contract:**
+  `tolerance_mm = 0.0` short-circuits and returns the input unchanged
+  (zero-cost legacy path). Used at per-role G-code emit for wall, infill, and
+  support polylines.
+- `drop_short_segments_mm(pts, min_len_mm)` — collapses runs of segments shorter
+  than `min_len_mm` into single segments to the next viable vertex (packet 60).
+  **Contract:** endpoints are preserved unconditionally; `min_len_mm = 0.0` is a
+  no-op (zero-cost legacy path).
 
 ### CLI Subcommand: `pnp_cli mesh decimate`
 
@@ -415,26 +406,16 @@ pub enum StepWarning {
 
 ### Public API
 
-```rust
-/// Import a STEP file with default options (repair pass enabled).
-/// Returns one MeshIR per solid found in the file.
-pub fn import_step(path: &Path) -> Result<StepImportResult, StepImportError>
+See rustdoc for exact signatures. The surface (re-exported from
+`slicer_helpers`):
 
-/// Options for [`import_step_with_options`].
-pub struct StepImportOptions {
-    /// When `true`, skip the automatic Phase 1+2 repair pass applied to each
-    /// tessellated component. Exposed so the CLI's `--no-repair` flag can
-    /// disable it.
-    pub skip_repair: bool,
-}
-
-/// Import a STEP file with custom options. `import_step(path)` is equivalent
-/// to `import_step_with_options(path, StepImportOptions::default())`.
-pub fn import_step_with_options(
-    path: &Path,
-    opts: StepImportOptions,
-) -> Result<StepImportResult, StepImportError>
-```
+- `import_step(path)` — import with default options (repair pass enabled);
+  returns one `MeshIR` per solid found in the file.
+- `import_step_with_options(path, opts)` — same, with a `StepImportOptions`.
+  **Contract:** `import_step(path)` is exactly
+  `import_step_with_options(path, StepImportOptions::default())`; the only option
+  today is `skip_repair` (backs the CLI `--no-repair` flag), which suppresses the
+  automatic Phase 1+2 repair pass applied to each tessellated component.
 
 ### CLI Subcommand: `pnp_cli mesh import`
 
@@ -507,13 +488,15 @@ Both writers live in `crates/slicer-runtime/src/model_writer.rs` and serialize `
 
 ### Public API
 
-```rust
-/// Write a MeshIR as a Wavefront OBJ file.
-pub fn write_obj(mesh: &MeshIR, w: &mut impl Write) -> Result<(), ModelWriterError>
+See rustdoc (`cargo doc -p slicer-runtime`) for exact signatures:
 
-/// Write a MeshIR as an OrcaSlicer-shaped OPC 3MF package.
-pub fn write_3mf(mesh: &MeshIR, w: impl Write + Seek) -> Result<(), ModelWriterError>
-```
+- `slicer_runtime::model_writer::write_obj(mesh, writer)` — serialize a `MeshIR`
+  as a Wavefront OBJ (`writer: &mut impl Write`).
+- `slicer_runtime::model_writer::write_3mf(mesh, writer)` — serialize a `MeshIR`
+  as an OrcaSlicer-shaped OPC 3MF package (`writer: impl Write + Seek`).
+
+Both return `std::io::Result<()>`. They do not touch the WASM runtime or the
+slicing pipeline.
 
 ### OBJ format
 
@@ -661,7 +644,7 @@ Tests must be written and confirmed failing before any implementation begins. Ea
 | Test                               | Input                                           | Expected                                           |
 |------------------------------------|-------------------------------------------------|----------------------------------------------------|
 | `import_step_single_solid`         | `tests/resources/cube.step` (mm units)          | 1 mesh, vertices scaled to internal units          |
-| `import_step_unit_metre`           | `tests/resources/cube_metres.step`              | Vertices × 10,000,000 vs mm equivalent             |
+| `import_step_unit_metre`           | `tests/resources/cube_metres.step`              | Metre file (× 1,000 to mm) yields the same ~10 mm extent as the mm cube |
 | `import_step_multi_solid`          | `tests/resources/assembly.step` (2 solids)      | `result.meshes.len() == 2`                         |
 | `import_step_merge_components`     | `tests/resources/assembly.step`, `merge = true` | 1 mesh, combined vertex count                      |
 | `import_step_repair_applied`       | `tests/resources/step_open_face.step`           | `StepWarning::RepairApplied` present               |

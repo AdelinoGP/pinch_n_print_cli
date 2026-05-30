@@ -198,36 +198,32 @@ Last updated: 2026-05-08
 
 ## Open Deviation Map
 
-Use `docs/14_deviation_audit_history.md` only for retired XML-era numbering and audit provenance. The list below is the current live map.
+`docs/DEVIATION_LOG.md` is the single source of truth for deviation status (a
+deviation is open unless its `Status` column begins with `Closed`). The list
+below is a **generated snapshot** of the open set — do not hand-edit it. Run
+`cargo xtask check-deviations` to regenerate; CI fails if it drifts from the log.
+For closed deviations and their closure detail, read the log directly.
 
-- ~~DEV-002~~ — **Closed.** All 17 core-module manifests now populate `[ir-access]` declarations; `core_module_ir_access_contract_tdd.rs` green (TASK-121).
-- ~~DEV-003~~ — **Closed.** `ModuleAccessAudit` records now populated from all live prepass/layer/postpass paths and plumbed into `DagValidationRequest.access_audits`; undeclared runtime accesses rejected at the WIT boundary (TASK-123–124).
-- ~~DEV-004~~ — **Closed.** Claim Transition Matrix now enforced for all non-transitionable claims; `claim_transition_matrix_tdd.rs` green (TASK-125).
-- ~~DEV-005~~ — **Closed.** Non-planar Z envelope `[layer.z, layer.z + effective_layer_height]` now enforced at output-commit boundaries (TASK-127).
-- ~~DEV-006~~ — **Closed.** Postpass GCode command bodies now cross the WIT boundary via real command lists; layer-world and finalization-world deep-copy boundary coverage also landed (TASK-129a/b/c).
-- ~~DEV-008~~ — **Closed.** All 17 core-module manifests now populate `[config.schema]` declarations (TASK-122).
-- DEV-009 — Benchy Phase H output is only partially correct on the live path, including missing OrcaSlicer-compatible GCode comment metadata for native preview visualization.
-- DEV-010 — Acceptance-gate evidence and governance closure are still open.
-- ~~DEV-013~~ — **Closed 2026-04-25.** Both `SkirtBrim` (packet 16) and `WipeTower` (packet 17) now implement `run_finalization()` on the live path.
-- ~~DEV-014~~ — **Closed 2026-04-24.** Macro, host, and test-guest codegen consolidated onto one canonical WIT source in `wit/`; package/version literals normalized; `validate_wit_world` enforces allowlist at startup (TASK-144–146, packet `25_wit-canonical-surface-lock`).
-- ~~DEV-015~~ — **Closed.** `raycast_z_down`, `surface_normal_at`, and `object_bounds` now backed by real mesh-query implementations; hit/miss semantics verified across all WIT worlds (TASK-147–148).
-- ~~DEV-016~~ — **Closed 2026-04-20.** `ExtrusionRole::Custom(String)`, `PaintSemantic::Custom(String)`, and `WallFeatureFlags.custom` now cross the WIT boundary losslessly (TASK-149–150).
-- DEV-020 — Phase G still overstates completion because dead `Noop*Runner` code remains.
-- DEV-023 — PathOptimization remains an MVP slot-filler rather than a real optimization stage.
-- DEV-024 — Python postpass support exists but is not on the live path.
-- ~~DEV-025~~ — **Closed 2026-05-08.** All five SDK↔WIT prepass segmentation mismatches resolved: mismatches 1+2 by TASK-128a/128b, mismatch 3 by packet `43-rev1_macro-prepass-segmentation-output-drain` (TASK-130a/130b), mismatches 4+5 by packet 42 (TASK-130c).
-- DEV-026 — Host semver, manifest-schema validation, and runtime budget evidence remain incomplete.
-- ~~DEV-027~~ — **Closed 2026-04-21.** `ObjectMesh.world_z_extent` added as first-class derived IR field; 7 integration fixture tests and transform error paths added (TASK-157–158, packet `10_transform-aware-world-z`).
-- DEV-030 — Planning and remediation docs still lag the real dependency graph.
-- DEV-040 — User-supplied config silently ignored in `RegionMapIR` builder; `ResolvedConfig::default()` unconditionally used; packets 36/37 and future tunable-behavior work blocked (TASK-166).
-- DEV-044 — Paint data has no user-reachable input surface on the live binary path: `load_3mf` parses geometry only and silently discards Bambu/Orca paint metadata; no CLI paint flag exists. PaintSegmentation contract is green (DEV-025 closed) but unfalsifiable end-to-end. Closure: Packet 50 (`paint-input-3mf-ingestion`).
-- DEV-045 — RegionMap is paint-blind: no `paint_config:<semantic>:<key>` namespace in `config_resolution.rs`; `RegionPlan` has no paint-semantic dimension; per-paint settings cannot differentiate GCode. Closure: Packet 51 (`paint-semantic-region-overrides`). Depends on DEV-044.
+<!-- BEGIN GENERATED: open-deviations (cargo xtask check-deviations) -->
+- **DEV-009** (Open) — The Phase H Benchy run is only partially correct on the live path: .gcode is produced, but top/bottom fill, supports, seam placement, retract/unretract behavio…
+- **DEV-010** (Open) — The implementation is past MVP, but the Architecture Acceptance Gate has not yet been evaluated and the remaining governance closure work is still open.
+- **DEV-011** (Partial — dispatch/linking fixed; remaining stage-surface gaps tracked in DEV-006, DEV-013, and DEV-025) — Typed WASM dispatch linking is implemented end to end: WasmRuntimeDispatcher instantiates typed component-model guests for all four runner families, wires impo…
+- **DEV-017** (Partial — z_hops + annotations resolved, entity reordering deferred) — Verified by AUDIT-11 (2026-04-16): Historical audit notes that had claimed LayerCollectionIR.z_hops and annotation passthrough were unwired are stale — these f…
+- **DEV-020** (Open — dead code remains, Phase G overstates completion) — Verified by AUDIT-14 (2026-04-16): Phase G still overstates completion: the live wiring does use WasmRuntimeDispatcher for all four stage runners, but main.rs:…
+- **DEV-023** (Open — module remains MVP slot-filler, host infrastructure ready for richer module) — Verified by AUDIT-17 (2026-04-16): The PathOptimization core module is still a minimal slot-filler; no material feature parity progress has been made.
+- **DEV-024** (Open — Python bridge implemented but not on the live path) — AUDIT-18 showed that most sub-claims in the old open-tasks entry were stale and already belong to other rows.
+- **DEV-026** (Open — host semver, manifest-schema validation, and runtime budget evidence remain incomplete) — Startup validation still misses several compatibility and governance checks beyond the WIT-source/version problem tracked in DEV-014.
+- **DEV-030** (Open — planning docs still lag the real dependency graph; use this row as the canonical remediation-plan tracker) — The planning and governance docs no longer present a single accurate closure plan.
+- **DEV-033** (Open — pre-existing TDD-red gates; not regressions from 31a-REV2; tracked under DEV-009) — Packet 31a-REV2 closure — pre-existing benchy TDD-red tests.
+- **DEV-039** (Open — packet-local fallback; future packets 36/37 inherit the same XY-containment guard) — Packet 35 — bounding-box fallback for empty slice polygons.
+- **DEV-049** (In Progress) — Cooling subset of DEV-009 (Benchy Phase H output partially correct) is now resolved via packet 53.
+<!-- END GENERATED: open-deviations -->
 
 ## Tests Added as Gap Locks
 
-- [x] `crates/slicer-host/tests/core_module_ir_access_contract_tdd.rs` — enumerates missing manifest IR contracts and guards the Stage I/O Contract.
-- [x] `crates/slicer-host/tests/claim_transition_matrix_tdd.rs` — guards the non-transitionable claim matrix and transitionable-claim sanity cases.
-- [x] `crates/slicer-host/tests/python_bridge_init_phase_tdd.rs` — closes the Python `Init` phase classification gap.
+- [x] `crates/slicer-runtime/tests/contract/core_module_ir_access_contract_tdd.rs` — enumerates missing manifest IR contracts and guards the Stage I/O Contract.
+- [x] `crates/slicer-runtime/tests/contract/claim_transition_matrix_tdd.rs` — guards the non-transitionable claim matrix and transitionable-claim sanity cases.
+- [x] `crates/slicer-runtime/tests/integration/python_bridge_init_phase_tdd.rs` — closes the Python `Init` phase classification gap.
 
 ## Architecture Acceptance Gate
 

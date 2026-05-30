@@ -480,7 +480,7 @@ world layer-module {
 
 Available to `Layer::PathOptimization` modules. Replaces the previous reserved-future placeholder.
 
-**Source of truth:** `wit/deps/ir-types.wit`. The resource and the
+**Source of truth:** `crates/slicer-schema/wit/deps/ir-types.wit`. The resource and the
 `ordered-entity-view` record are defined there.
 
 ```wit
@@ -568,7 +568,7 @@ world prepass-module {
         layer-index: layer-idx,
         semantic: string,
         polygons: list<ex-polygon>,
-        // `paint-value-input` is a typed variant — see `wit/deps/ir-types.wit`
+        // `paint-value-input` is a typed variant — see `crates/slicer-schema/wit/deps/ir-types.wit`
         // for its definition: `flag(bool) | scalar(f32) | tool-index(u32) | custom(string)`.
         value: paint-value-input,
     }
@@ -687,7 +687,7 @@ world postpass-module {
 
 ## `world-finalization.wit`
 
-**Source of truth:** `wit/world-finalization.wit`. The shape below summarises
+**Source of truth:** `crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit`. The shape below summarises
 the world; for exact field order, parameter names, and return types, read the
 on-disk file.
 
@@ -698,7 +698,7 @@ and uses `slicer:ir-types/ir-handles.{layer-idx, extrusion-path-3d, region-key}`
 plus `slicer:types/geometry.{extrusion-role}`.
 
 Resources, records, and enums (current at time of writing — confirm against
-`wit/world-finalization.wit`):
+`crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit`):
 
 - `layer-collection-view` — read-only view of one completed layer:
   `layer-index() -> layer-idx`, `z() -> f32`, `entity-count() -> u32`,
@@ -721,7 +721,7 @@ Resources, records, and enums (current at time of writing — confirm against
   - `insert-synthetic-layer(z, paths) -> result<_, string>` and
     `insert-synthetic-layer-after(idx, layer-data) -> result<_, string>`
 - `entity-mutation` (variant) — packet 41 enum-serialisable mutations.
-  Confirm the current variant set against `wit/world-finalization.wit`; at the
+  Confirm the current variant set against `crates/slicer-schema/wit/deps/world-finalization/world-finalization.wit`; at the
   time of writing it is a narrow set rather than the speculative six-variant
   enum some older drafts of this doc described.
 - `sort-key` (enum, not variant) — sort discriminators consumed by
@@ -752,7 +752,7 @@ Full annotated example for a TPMS infill module:
 
 ```toml
 # ── Identity ────────────────────────────────────────────────────────────────
-# The host parser (`crates/slicer-host/src/manifest.rs`) currently reads only
+# The host parser (`crates/slicer-runtime/src/manifest.rs`) currently reads only
 # `id`, `version`, and `wit-world` from this section. `display-name`,
 # `description`, `author`, `license`, and `homepage` are accepted in TOML but
 # not stored on the LoadedModule — they are informational metadata for
@@ -811,11 +811,14 @@ The four fill-role claims (`claim:top-fill` … `claim:sparse-fill`) were added 
 
 The configured holder per claim is selected by four `ResolvedConfig` keys —
 `top_fill_holder`, `bottom_fill_holder`, `bridge_fill_holder`,
-`sparse_fill_holder` — each defaulting to `"rectilinear-infill"`. Per-region
+`sparse_fill_holder` — each defaulting to `"rectilinear-infill"` (defined as
+`ResolvedConfig` fields in `docs/02_ir_schemas.md`; resolved per
+`docs/04_host_scheduler.md` § "Claim Resolution with Runtime Disable Rules").
+Per-region
 overrides flow through `RegionMapIR.entries[*].config` (reused from
 packet 35). At dispatch time the host computes the effective held set per
 region by intersecting each module's manifest `[claims].holds` with the
-configured holders (see `slicer_host::resolve_held_claims`).
+configured holders (see `slicer_runtime::resolve_held_claims`).
 
 The set is exposed across the WIT boundary via
 `slice-region-view.held-claims` and consumed by guest modules through
@@ -1495,7 +1498,7 @@ rule     = "min(layer_height, 0.35) == layer_height"
 ## Test Guest Fixtures (Informative)
 
 `test-guests/` holds minimal WASM components used as fixtures by host
-integration tests under `crates/slicer-host/tests/`. They exercise the
+integration tests under `crates/slicer-runtime/tests/`. They exercise the
 WIT boundary with real `wasm32-unknown-unknown` artifacts, complementing
 the in-process mock host shipped to module authors via `slicer-test`
 (see `docs/05_module_sdk.md` § `slicer-test` Crate). The two paths
@@ -1566,7 +1569,7 @@ followed by `wasm-tools component new` to produce the `.component.wasm` artifact
   if any source is newer than its artifact.
 
 Freshness is enforced from the host workspace by
-`crates/slicer-host/tests/guest_fixture_freshness_tdd.rs`, which fails
+`crates/slicer-runtime/tests/contract/guest_fixture_freshness_tdd.rs`, which fails
 when:
 
 - An expected `.component.wasm` is missing.

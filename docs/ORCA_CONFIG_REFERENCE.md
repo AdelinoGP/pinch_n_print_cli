@@ -2,6 +2,14 @@
 # OrcaSlicer Configuration Reference
 > Auto-generated from PrintConfig.cpp, Tab.cpp, PrintConfig.hpp
 > Generation date: 2026-05-19
+>
+> **This is an upstream snapshot, not a registry of ModularSlicer's values.** It
+> records OrcaSlicer's keys and defaults for porting reference. ModularSlicer's
+> own config keys and defaults live in `docs/15_config_keys_reference.md`; where
+> our default intentionally differs from upstream, the difference is listed in
+> that file's generated **Deviations from OrcaSlicer** table (produced by
+> `cargo xtask gen-config-docs`). Do not treat the `Default` column here as
+> ModularSlicer's value.
 
 ---
 
