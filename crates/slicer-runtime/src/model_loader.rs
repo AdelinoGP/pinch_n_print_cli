@@ -15,7 +15,7 @@ use crate::model_loader_sidecar::{parse_3mf_sidecar, ObjectSidecarInfo, PartSubt
 
 use slicer_ir::{
     BoundingBox3, ConfigDelta, ConfigValue, FacetPaintData, IndexedTriangleSet, MeshIR,
-    ModifierScope, ModifierVolume, ObjectConfig, ObjectMesh, PaintLayer, PaintSemantic,
+    ModifierScope, ModifierVolume, ObjectConfig, ObjectId, ObjectMesh, PaintLayer, PaintSemantic,
     PaintStroke, PaintValue, Point3, Transform3d,
 };
 
@@ -147,36 +147,32 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
     let file = std::fs::File::open(path)?;
     let mut reader = BufReader::new(file);
 
+    // Every format funnels its parsed mesh(es) through `assemble_object`, the
+    // single owner of `ObjectMesh` wrapping + world-Z-extent (packet 75, Phase 4).
     let objects: Vec<ObjectMesh> = match format {
         ModelFormat::Stl => {
             let its = load_stl(&mut reader)?;
-            let world_z_extent = compute_z_extent_from_mesh(&its);
-            vec![ObjectMesh {
-                id: path_object_id(path, 0),
-                mesh: its,
-                transform: identity_transform(),
-                config: ObjectConfig {
+            vec![assemble_object(
+                path_object_id(path, 0),
+                its,
+                ObjectConfig {
                     data: HashMap::new(),
                 },
-                modifier_volumes: Vec::new(),
-                paint_data: None,
-                world_z_extent,
-            }]
+                Vec::new(),
+                None,
+            )]
         }
         ModelFormat::Obj => {
             let its = load_obj(path)?;
-            let world_z_extent = compute_z_extent_from_mesh(&its);
-            vec![ObjectMesh {
-                id: path_object_id(path, 0),
-                mesh: its,
-                transform: identity_transform(),
-                config: ObjectConfig {
+            vec![assemble_object(
+                path_object_id(path, 0),
+                its,
+                ObjectConfig {
                     data: HashMap::new(),
                 },
-                modifier_volumes: Vec::new(),
-                paint_data: None,
-                world_z_extent,
-            }]
+                Vec::new(),
+                None,
+            )]
         }
         ModelFormat::ThreeMf => {
             let items = load_3mf(&mut reader)?;
@@ -184,18 +180,15 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
                 .into_iter()
                 .enumerate()
                 .map(|(idx, (its, paint_data, modifiers, object_config_data))| {
-                    let world_z_extent = compute_z_extent_from_mesh(&its);
-                    ObjectMesh {
-                        id: path_object_id(path, idx),
-                        mesh: its,
-                        transform: identity_transform(),
-                        config: ObjectConfig {
+                    assemble_object(
+                        path_object_id(path, idx),
+                        its,
+                        ObjectConfig {
                             data: object_config_data,
                         },
-                        modifier_volumes: modifiers,
+                        modifiers,
                         paint_data,
-                        world_z_extent,
-                    }
+                    )
                 })
                 .collect()
         }
@@ -212,6 +205,32 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
         build_volume,
         ..Default::default()
     })
+}
+
+/// Single owner of `ObjectMesh` assembly.
+///
+/// Wraps a parsed mesh into an `ObjectMesh` with an identity transform and a
+/// freshly computed world-Z extent. Every producer routes through here — both
+/// `load_model`'s per-format branches and the `mesh convert` command's
+/// split-to-objects re-assembly — so the wrap and the z-extent computation live
+/// in exactly one place (packet 75, Phase 4 / TASK-219).
+pub(crate) fn assemble_object(
+    id: ObjectId,
+    mesh: IndexedTriangleSet,
+    config: ObjectConfig,
+    modifier_volumes: Vec<ModifierVolume>,
+    paint_data: Option<FacetPaintData>,
+) -> ObjectMesh {
+    let world_z_extent = compute_z_extent_from_mesh(&mesh);
+    ObjectMesh {
+        id,
+        mesh,
+        transform: identity_transform(),
+        config,
+        modifier_volumes,
+        paint_data,
+        world_z_extent,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2163,6 +2182,82 @@ mod tests {
         assert_eq!(bb.max.x, 10.0);
         assert_eq!(bb.max.y, 0.0);
         assert_eq!(bb.max.z, 7.0);
+    }
+
+    // A single connected solid (tetrahedron): 4 vertices, 4 triangular faces all
+    // sharing edges, spanning z ∈ [0, 2].
+    fn tetrahedron() -> IndexedTriangleSet {
+        IndexedTriangleSet {
+            vertices: vec![
+                Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                Point3 { x: 1.0, y: 0.0, z: 0.0 },
+                Point3 { x: 0.0, y: 1.0, z: 0.0 },
+                Point3 { x: 0.0, y: 0.0, z: 2.0 },
+            ],
+            indices: vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3],
+        }
+    }
+
+    #[test]
+    fn assemble_object_computes_z_extent_and_sets_identity_transform() {
+        let mesh = tetrahedron();
+        let expected = compute_z_extent_from_mesh(&mesh);
+        let obj = assemble_object(
+            "obj".to_string(),
+            mesh.clone(),
+            ObjectConfig {
+                data: HashMap::new(),
+            },
+            Vec::new(),
+            None,
+        );
+        assert_eq!(obj.world_z_extent, expected);
+        assert_eq!(obj.world_z_extent, Some((0.0, 2.0)));
+        assert_eq!(obj.transform.matrix, identity_transform().matrix);
+        assert!(obj.modifier_volumes.is_empty() && obj.paint_data.is_none());
+    }
+
+    // Regression (packet 75, Phase 4 / AC-4.3): the `mesh convert` split path used
+    // to *reuse* the parent's `world_z_extent` for a single-component solid;
+    // routing through `assemble_object` *recomputes* it from the component mesh.
+    // Under the identity transform convert uses, the two must be equal — otherwise
+    // splitting a single solid would silently change its reported Z extent.
+    #[test]
+    fn single_component_split_preserves_world_z_extent() {
+        // A single triangle is reliably one connected component (split emits even
+        // single-face fragments as their own component), spanning z ∈ [0, 2].
+        let single = IndexedTriangleSet {
+            vertices: vec![
+                Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                Point3 { x: 1.0, y: 0.0, z: 0.0 },
+                Point3 { x: 0.0, y: 1.0, z: 2.0 },
+            ],
+            indices: vec![0, 1, 2],
+        };
+        let parent = assemble_object(
+            "parent".to_string(),
+            single,
+            ObjectConfig {
+                data: HashMap::new(),
+            },
+            Vec::new(),
+            None,
+        );
+        let components = slicer_helpers::split_connected_components(&parent.mesh);
+        assert_eq!(components.len(), 1, "a single triangle is one component");
+        let reassembled = assemble_object(
+            "parent".to_string(),
+            components.into_iter().next().unwrap(),
+            ObjectConfig {
+                data: HashMap::new(),
+            },
+            Vec::new(),
+            None,
+        );
+        assert_eq!(
+            reassembled.world_z_extent, parent.world_z_extent,
+            "recomputed extent must equal the reused parent extent for a single solid"
+        );
     }
 
     fn make_object(id: &str, vertices: Vec<Point3>, transform: Transform3d) -> ObjectMesh {

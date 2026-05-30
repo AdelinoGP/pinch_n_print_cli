@@ -24,8 +24,9 @@ already separates them.
 
 ### Split to objects
 Fanning a mesh's distinct solids out into separate addressable objects, so each
-can be transformed, configured, painted, or region-modified independently in the
-GUI. The inverse of merging components into one mesh.
+can be transformed, configured, painted, or region-modified independently. A
+user choice exposed in **both** the GUI and the CLI's convert/import path (which
+splits by default). The inverse of merging components into one mesh.
 
 ### Paint-ready 3MF
 A 3MF the backend CLI emits that carries **geometry only** (vertices +

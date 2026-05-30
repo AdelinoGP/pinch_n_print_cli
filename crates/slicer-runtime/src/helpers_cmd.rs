@@ -13,9 +13,9 @@ use slicer_helpers::{
     DecimateConfigBuilder, DecimateError, RepairError, RepairWarning, StepImportError,
     StepImportOptions, StepWarning,
 };
-use slicer_ir::{BoundingBox3, MeshIR, ObjectConfig, ObjectMesh, Transform3d};
+use slicer_ir::{BoundingBox3, MeshIR, ObjectConfig, ObjectMesh};
 
-use crate::model_loader::load_model;
+use crate::model_loader::{assemble_object, load_model};
 use crate::OutputFormat;
 
 mod exit_codes {
@@ -425,35 +425,35 @@ pub fn run_convert(
     let final_objects: Vec<ObjectMesh> = if merge_components {
         mesh.objects
     } else {
+        // Split-to-objects re-assembly routes through the same `assemble_object`
+        // seam as the loader (packet 75, Phase 4 / TASK-219). The single-component
+        // case previously *reused* the parent's `world_z_extent`; routing through
+        // the seam *recomputes* it from the (identical) component mesh — equivalent
+        // under the identity transform convert uses (locked by a regression test).
         let mut out_objects: Vec<ObjectMesh> = Vec::new();
         for obj in &mesh.objects {
             let components = split_connected_components(&obj.mesh);
             if components.len() == 1 {
-                out_objects.push(ObjectMesh {
-                    id: stem.to_string(),
-                    mesh: components.into_iter().next().unwrap(),
-                    transform: convert_identity_transform(),
-                    config: ObjectConfig {
+                out_objects.push(assemble_object(
+                    stem.to_string(),
+                    components.into_iter().next().unwrap(),
+                    ObjectConfig {
                         data: std::collections::HashMap::new(),
                     },
-                    modifier_volumes: Vec::new(),
-                    paint_data: None,
-                    world_z_extent: obj.world_z_extent,
-                });
+                    Vec::new(),
+                    None,
+                ));
             } else {
                 for (i, component) in components.into_iter().enumerate() {
-                    let world_z_extent = compute_z_extent_for_component(&component);
-                    out_objects.push(ObjectMesh {
-                        id: format!("{stem}_{i}"),
-                        mesh: component,
-                        transform: convert_identity_transform(),
-                        config: ObjectConfig {
+                    out_objects.push(assemble_object(
+                        format!("{stem}_{i}"),
+                        component,
+                        ObjectConfig {
                             data: std::collections::HashMap::new(),
                         },
-                        modifier_volumes: Vec::new(),
-                        paint_data: None,
-                        world_z_extent,
-                    });
+                        Vec::new(),
+                        None,
+                    ));
                 }
             }
         }
@@ -499,33 +499,6 @@ pub fn run_convert(
     }
 
     exit_codes::SUCCESS
-}
-
-fn convert_identity_transform() -> Transform3d {
-    let mut matrix = [0.0f64; 16];
-    matrix[0] = 1.0;
-    matrix[5] = 1.0;
-    matrix[10] = 1.0;
-    matrix[15] = 1.0;
-    Transform3d { matrix }
-}
-
-fn compute_z_extent_for_component(mesh: &slicer_ir::IndexedTriangleSet) -> Option<(f32, f32)> {
-    let mut z_min = f32::INFINITY;
-    let mut z_max = f32::NEG_INFINITY;
-    for v in &mesh.vertices {
-        if v.z < z_min {
-            z_min = v.z;
-        }
-        if v.z > z_max {
-            z_max = v.z;
-        }
-    }
-    if z_max > z_min {
-        Some((z_min, z_max))
-    } else {
-        None
-    }
 }
 
 //â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

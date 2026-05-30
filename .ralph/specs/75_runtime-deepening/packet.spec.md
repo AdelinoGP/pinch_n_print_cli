@@ -78,7 +78,7 @@ gone. | `grep -c "fn p_wit_to_ir\|fn f_wit_to_ir\|fn pp_wit_to_ir" crates/slicer
 
 **AC-4.1 — One assembly seam; z-extent duplicate gone (Phase 4).**
 Given the seam, When inspected, Then `assemble_object` exists, `compute_z_extent_for_component` is deleted, and a
-single identity-transform helper remains. | `grep -c "fn assemble_object" crates/slicer-runtime/src/model_loader.rs` → `1` (≥1); and `grep -rc "fn compute_z_extent_for_component" crates/slicer-runtime/src/helpers_cmd.rs` → `0`
+single identity-transform helper remains. | `grep -c "fn assemble_object(" crates/slicer-runtime/src/model_loader.rs` → `1`; and `grep -rc "fn compute_z_extent_for_component" crates/slicer-runtime/src/helpers_cmd.rs` → `0`; and `grep -c "fn convert_identity_transform" crates/slicer-runtime/src/helpers_cmd.rs` → `0`
 
 **AC-4.2 — Model + convert behaviour unchanged (Phase 4).** |
 `cargo test -p slicer-runtime --test integration model_loader_tdd model_writer_roundtrip_tdd threemf_transform_tdd threemf_sidecar_classification_tdd` and
