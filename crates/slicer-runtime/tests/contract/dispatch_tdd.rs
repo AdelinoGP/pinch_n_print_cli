@@ -10,8 +10,7 @@
 
 #![allow(missing_docs, dead_code, unused_imports, unused_variables)]
 
-mod common;
-use common::seed::seed_slice_ir;
+use crate::common::seed::seed_slice_ir;
 use witness::{RawInfillWitness, RawInfillWitnessPoint1, RawSupportWitness};
 
 use std::collections::HashMap;
@@ -5639,7 +5638,7 @@ fn path_optimization_markers_appear_in_benchy_gcode() {
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let out = tmp.path().join("benchy_path_opt.gcode");
-    let bin = common::slicer_cache::pnp_cli_bin();
+    let bin = crate::common::slicer_cache::pnp_cli_bin();
     let result = Command::new(bin)
         .args([
             "slice",

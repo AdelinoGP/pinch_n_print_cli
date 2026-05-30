@@ -4,7 +4,7 @@
 //! - All expected test guest components exist on disk
 //! - Guest source files are not newer than their .component.wasm
 //! - Components are valid WASM (compile with wasmtime)
-//! - The build script can regenerate components from source
+//! - The `cargo xtask build-guests` command can regenerate components from source
 
 use std::path::PathBuf;
 
@@ -123,19 +123,31 @@ fn guest_components_are_valid_wasm_components() {
 }
 
 #[test]
-fn build_script_exists_and_is_executable() {
-    let script = test_guests_dir().join("build-test-guests.sh");
-    assert!(script.exists(), "build-test-guests.sh not found");
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let perms = std::fs::metadata(&script).unwrap().permissions();
-        assert!(
-            perms.mode() & 0o111 != 0,
-            "build-test-guests.sh is not executable"
-        );
-    }
+fn xtask_build_guests_subcommand_is_wired() {
+    // Guests are regenerated via `cargo xtask build-guests` (the previous
+    // test-guests/build-test-guests.sh was removed when the test-guests were
+    // co-located under slicer-runtime, TASK-215). Verify that build mechanism
+    // still exists and exposes the `--check` freshness mode the docs reference.
+    let xtask_main = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("..")
+        .join("xtask")
+        .join("src")
+        .join("main.rs");
+    assert!(
+        xtask_main.exists(),
+        "xtask/src/main.rs not found at {}",
+        xtask_main.display()
+    );
+    let src = std::fs::read_to_string(&xtask_main).unwrap();
+    assert!(
+        src.contains("build-guests"),
+        "xtask does not wire the `build-guests` subcommand that rebuilds test guests"
+    );
+    assert!(
+        src.contains("--check"),
+        "xtask `build-guests` must expose `--check` for freshness verification"
+    );
 }
 
 #[test]

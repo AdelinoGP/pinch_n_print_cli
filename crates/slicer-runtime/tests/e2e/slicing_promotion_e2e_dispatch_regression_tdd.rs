@@ -2,7 +2,7 @@
 //!
 //! Whereas `slicing_promotion_e2e_regression_tdd.rs` exercises the
 //! built-in PrePass + the ironing `LayerModule` API directly, THIS test
-//! drives the actual `pnp_cli` binary via `common::slicer_cache::cached_run`
+//! drives the actual `pnp_cli` binary via `crate::common::slicer_cache::cached_run`
 //! and inspects the produced G-code. It pins down the host-dispatch +
 //! finalization + G-code emission integration of the relocated
 //! `top-surface-ironing` module.
@@ -18,12 +18,10 @@
 
 #![allow(missing_docs)]
 
-mod common;
-
 use std::fs::File;
 use std::path::PathBuf;
 
-use common::slicer_cache::{cached_run, expect_outcome, ModuleDirKind};
+use crate::common::slicer_cache::{cached_run, expect_outcome, ModuleDirKind};
 
 // ============================================================================
 // Staircase STL fixture

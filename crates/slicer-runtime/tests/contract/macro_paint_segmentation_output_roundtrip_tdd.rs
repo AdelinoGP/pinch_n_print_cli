@@ -213,7 +213,7 @@ fn host_fallback_missing_surface_errors() {
 /// RED today: the legacy comment is still present.
 #[test]
 fn legacy_comment_block_removed() {
-    let src = include_str!("../../slicer-macros/src/lib.rs");
+    let src = include_str!("../../../slicer-macros/src/lib.rs");
     assert!(
         !src.contains("Same disconnect as MeshSegmentation"),
         "AC-6 FAIL: legacy comment 'Same disconnect as MeshSegmentation' still present in \
@@ -233,7 +233,7 @@ fn legacy_comment_block_removed() {
 /// RED today: TASK-130 cluster not yet done.
 #[test]
 fn docs_07_marks_130_cluster_done() {
-    let src = include_str!("../../../docs/07_implementation_status.md");
+    let src = include_str!("../../../../docs/07_implementation_status.md");
 
     // Each TASK-130 row must be [x].
     for task in &["TASK-130", "TASK-130a", "TASK-130b"] {
@@ -274,7 +274,7 @@ fn docs_07_marks_130_cluster_done() {
 /// RED today: not yet updated.
 #[test]
 fn dev_025_fully_closed() {
-    let src = include_str!("../../../docs/DEVIATION_LOG.md");
+    let src = include_str!("../../../../docs/DEVIATION_LOG.md");
 
     // Find DEV-025 section.
     let dev025_start = src
@@ -300,7 +300,7 @@ fn dev_025_fully_closed() {
 /// RED today: not yet updated.
 #[test]
 fn dev_025_audit_history_complete() {
-    let src = include_str!("../../../docs/14_deviation_audit_history.md");
+    let src = include_str!("../../../../docs/14_deviation_audit_history.md");
 
     let dev025_start = src
         .find("DEV-025")

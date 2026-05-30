@@ -4,9 +4,7 @@
 
 #![allow(missing_docs)]
 
-mod common;
-
-use common::{
+use crate::common::{
     assert_perpendicular, assert_unit_length, ctx_with_mesh, identity_transform, mesh_fixture,
     sloped_triangle_object,
 };

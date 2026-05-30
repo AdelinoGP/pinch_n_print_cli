@@ -31,8 +31,6 @@
 
 #![allow(missing_docs)]
 
-mod common;
-
 use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
@@ -91,24 +89,24 @@ fn paint_config_override_visibly_differs_gcode() {
     )
     .expect("write override config");
 
-    let baseline_cached = common::slicer_cache::cached_run(
+    let baseline_cached = crate::common::slicer_cache::cached_run(
         &painted,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         Some(&baseline_cfg_path),
     );
-    let baseline_outcome = common::slicer_cache::expect_outcome(&baseline_cached);
+    let baseline_outcome = crate::common::slicer_cache::expect_outcome(&baseline_cached);
     assert!(
         baseline_outcome.success,
         "baseline slice must succeed; stderr:\n{}",
         baseline_outcome.stderr
     );
 
-    let override_cached = common::slicer_cache::cached_run(
+    let override_cached = crate::common::slicer_cache::cached_run(
         &painted,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         Some(&override_cfg_path),
     );
-    let override_outcome = common::slicer_cache::expect_outcome(&override_cached);
+    let override_outcome = crate::common::slicer_cache::expect_outcome(&override_cached);
     assert!(
         override_outcome.success,
         "override slice must succeed (paint_config namespace must parse cleanly); stderr:\n{}",

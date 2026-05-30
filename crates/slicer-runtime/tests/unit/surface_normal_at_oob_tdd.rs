@@ -4,9 +4,7 @@
 
 #![allow(missing_docs)]
 
-mod common;
-
-use common::{ctx_with_mesh, identity_transform, mesh_fixture, sloped_triangle_object};
+use crate::common::{ctx_with_mesh, identity_transform, mesh_fixture, sloped_triangle_object};
 use slicer_runtime::wit_host::{
     finalization::slicer::world_finalization::host_services as fhs,
     layer::slicer::world_layer::host_services as lhs,

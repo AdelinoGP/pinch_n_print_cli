@@ -8,8 +8,7 @@
 
 #![allow(missing_docs)]
 
-mod common;
-use common::seed::seed_slice_ir;
+use crate::common::seed::seed_slice_ir;
 
 use std::collections::HashMap;
 use std::path::PathBuf;

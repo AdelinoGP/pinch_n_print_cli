@@ -24,8 +24,6 @@
 
 #![allow(missing_docs)]
 
-mod common;
-
 use std::path::PathBuf;
 
 // ---------------------------------------------------------------------------
@@ -50,7 +48,9 @@ fn golden_path() -> PathBuf {
 }
 
 fn core_modules_dir() -> PathBuf {
-    common::slicer_cache::module_dir_path(&common::slicer_cache::ModuleDirKind::CoreModules)
+    crate::common::slicer_cache::module_dir_path(
+        &crate::common::slicer_cache::ModuleDirKind::CoreModules,
+    )
 }
 
 /// Default-precision config JSON: all 7 packet-60 keys at OrcaSlicer defaults.
@@ -100,8 +100,12 @@ fn run_with_config(config_json: &str) -> Vec<u8> {
     let out_path = tmp.path().join("out.gcode");
     let module_dir = core_modules_dir();
 
-    let proc_out =
-        common::slicer_cache::run_pnp_cli_uncached(&stl, &module_dir, &out_path, Some(&cfg_path));
+    let proc_out = crate::common::slicer_cache::run_pnp_cli_uncached(
+        &stl,
+        &module_dir,
+        &out_path,
+        Some(&cfg_path),
+    );
 
     assert!(
         proc_out.status.success(),

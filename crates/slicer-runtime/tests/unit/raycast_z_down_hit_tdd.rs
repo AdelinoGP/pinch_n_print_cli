@@ -4,9 +4,9 @@
 
 #![allow(missing_docs)]
 
-mod common;
-
-use common::{assert_close, ctx_with_mesh, flat_plate_object, identity_transform, mesh_fixture};
+use crate::common::{
+    assert_close, ctx_with_mesh, flat_plate_object, identity_transform, mesh_fixture,
+};
 use slicer_runtime::wit_host::{
     finalization::slicer::world_finalization::host_services as fhs,
     layer::slicer::world_layer::host_services as lhs,

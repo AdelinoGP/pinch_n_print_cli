@@ -8,8 +8,7 @@
 //! that missing paint-region data for a required semantic surfaces as a
 //! typed fatal `LayerExecutionError::PaintAnnotation`.
 
-mod common;
-use common::seed::seed_slice_ir;
+use crate::common::seed::seed_slice_ir;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};

@@ -42,8 +42,6 @@
 
 #![allow(missing_docs)]
 
-mod common;
-
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
@@ -83,12 +81,12 @@ fn benchy_e2e_real_pipeline_produces_gcode() {
     let model = fixture_stl();
     assert_path_exists(&model, "model STL");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
 
     assert!(
@@ -118,12 +116,12 @@ fn benchy_e2e_module_discovery_runs_on_live_path() {
     let model = fixture_stl();
     assert_path_exists(&model, "model STL");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
 
     if !outcome.success {
@@ -143,13 +141,14 @@ fn benchy_e2e_is_deterministic() {
     assert_path_exists(&model, "model STL");
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let modules =
-        common::slicer_cache::module_dir_path(&common::slicer_cache::ModuleDirKind::CoreModules);
+    let modules = crate::common::slicer_cache::module_dir_path(
+        &crate::common::slicer_cache::ModuleDirKind::CoreModules,
+    );
     let out_a = tmp.path().join("a.gcode");
     let out_b = tmp.path().join("b.gcode");
 
-    let ra = common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_a, None);
-    let rb = common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_b, None);
+    let ra = crate::common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_a, None);
+    let rb = crate::common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_b, None);
 
     assert!(
         ra.status.success(),
@@ -190,12 +189,12 @@ fn benchy_e2e_against_real_core_modules_is_diagnosable() {
     assert_path_exists(&model, "model STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
 
     // Regression guard: the canonical Benchy-path core modules must NOT
@@ -309,15 +308,16 @@ fn preview(gcode: &str, n: usize) -> String {
 ///     the evolved failure mode.
 // Shared cached run for the default Benchy invocation (CoreModules,
 // no config) that backs all `benchy_mvp_*` split tests below.
-fn mvp_default_outcome(
-) -> std::sync::Arc<Result<common::slicer_cache::RunOutcome, common::slicer_cache::RunError>> {
+fn mvp_default_outcome() -> std::sync::Arc<
+    Result<crate::common::slicer_cache::RunOutcome, crate::common::slicer_cache::RunError>,
+> {
     let model = fixture_stl();
     let modules = core_modules_dir();
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
-    common::slicer_cache::cached_run(
+    crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     )
 }
@@ -328,7 +328,7 @@ fn mvp_default_outcome(
 #[test]
 fn benchy_mvp_no_canonical_placeholder_regression() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
 
     for canonical in [
@@ -362,7 +362,7 @@ fn benchy_mvp_no_canonical_placeholder_regression() {
 #[test]
 fn benchy_mvp_run_succeeds_and_writes_output() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
     assert!(
         outcome.success,
@@ -381,7 +381,7 @@ fn benchy_mvp_run_succeeds_and_writes_output() {
 #[test]
 fn benchy_mvp_gcode_has_extrusion_moves() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
     let gcode = outcome.gcode.as_str();
 
@@ -420,7 +420,7 @@ fn benchy_mvp_gcode_has_extrusion_moves() {
 #[test]
 fn benchy_mvp_layer_z_is_monotonic_with_two_distinct_layers() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let gcode = outcome.gcode.as_str();
 
     let zs = extract_layer_z_sequence(gcode);
@@ -451,7 +451,7 @@ fn benchy_mvp_layer_z_is_monotonic_with_two_distinct_layers() {
 #[test]
 fn benchy_mvp_layer_count_in_bounds() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let gcode = outcome.gcode.as_str();
 
     let zs = extract_layer_z_sequence(gcode);
@@ -488,8 +488,8 @@ fn benchy_mvp_content_is_deterministic() {
     let out_a = tmp.path().join("mvp_a.gcode");
     let out_b = tmp.path().join("mvp_b.gcode");
 
-    let ra = common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_a, None);
-    let rb = common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_b, None);
+    let ra = crate::common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_a, None);
+    let rb = crate::common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_b, None);
 
     // Determinism holds whether the pipeline currently succeeds or
     // fails â€” both runs must reach the same conclusion byte-for-byte.
@@ -529,12 +529,12 @@ fn benchy_mvp_produces_full_height_layer_progression() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
     assert!(
         outcome.success,
@@ -578,12 +578,12 @@ fn benchy_with_support_enabled() {
     let config = repo_root().join("resources/test_config/benchy-tree-support.json");
     assert_path_exists(&config, "benchy-tree-support.json config");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+        crate::common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
         Some(&config),
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     let stderr = outcome.stderr.as_str();
     assert!(
@@ -610,12 +610,12 @@ fn benchy_support_marker_present() {
     let config = repo_root().join("resources/test_config/benchy-tree-support.json");
     assert_path_exists(&config, "benchy-tree-support.json config");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+        crate::common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
         Some(&config),
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     let stderr = outcome.stderr.as_str();
     assert!(
@@ -647,8 +647,8 @@ fn benchy_support_deterministic() {
     assert_path_exists(&model, "Benchy STL");
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let modules = common::slicer_cache::module_dir_path(
-        &common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+    let modules = crate::common::slicer_cache::module_dir_path(
+        &crate::common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
     );
     let config = repo_root().join("resources/test_config/benchy-tree-support.json");
     assert_path_exists(&config, "benchy-tree-support.json config");
@@ -656,8 +656,10 @@ fn benchy_support_deterministic() {
     let out_a = tmp.path().join("support_det_a.gcode");
     let out_b = tmp.path().join("support_det_b.gcode");
 
-    let ra = common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_a, Some(&config));
-    let rb = common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_b, Some(&config));
+    let ra =
+        crate::common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_a, Some(&config));
+    let rb =
+        crate::common::slicer_cache::run_pnp_cli_uncached(&model, &modules, &out_b, Some(&config));
 
     assert_eq!(
         ra.status.success(),
@@ -690,12 +692,12 @@ fn benchy_no_support_marker_when_disabled() {
     assert_path_exists(&modules, "core-modules directory");
 
     // Run WITHOUT any config â€” support_enabled defaults to false.
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     let stderr = outcome.stderr.as_str();
     // Even if the pipeline fails, we check that support markers are absent.
@@ -740,8 +742,8 @@ fn tree_support_active_holder() {
     // â”€â”€ Filtered dir: traditional-support is excluded; tree-support
     //    is the only `support-generator` holder, so the dedup never
     //    drops it. â”€â”€
-    let filtered = common::slicer_cache::module_dir_path(
-        &common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+    let filtered = crate::common::slicer_cache::module_dir_path(
+        &crate::common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
     );
     let loaded =
         load_live_modules_for_plan(&[filtered], 1).expect("filtered live module load must succeed");
@@ -851,12 +853,12 @@ fn benchy_prepass_seam_plan_matches_live_outer_wall_start() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     // The pipeline must succeed with real modules for this evidence to be meaningful.
     let stderr = outcome.stderr.as_str();
@@ -1044,12 +1046,12 @@ fn benchy_gcode_contains_support_feature_evidence() {
     let config = repo_root().join("resources/test_config/benchy-tree-support.json");
     assert_path_exists(&config, "benchy-tree-support.json config");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+        crate::common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
         Some(&config),
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     let stderr = outcome.stderr.as_str();
     assert!(
@@ -1124,12 +1126,12 @@ fn benchy_gcode_contains_top_and_bottom_surface_evidence() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     let stderr = outcome.stderr.as_str();
     assert!(
@@ -1169,7 +1171,7 @@ fn benchy_gcode_contains_top_and_bottom_surface_evidence() {
 #[test]
 fn benchy_default_emits_retract_commands() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
     assert!(
         outcome.success,
@@ -1193,7 +1195,7 @@ fn benchy_default_emits_retract_commands() {
 #[test]
 fn benchy_default_emits_unretract_commands() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     assert!(outcome.success, "pnp_cli must succeed");
     let gcode = outcome.gcode.as_str();
 
@@ -1219,7 +1221,7 @@ fn benchy_default_emits_unretract_commands() {
 #[test]
 fn benchy_default_retract_unretract_counts_are_equal() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     assert!(outcome.success, "pnp_cli must succeed");
     let gcode = outcome.gcode.as_str();
 
@@ -1248,7 +1250,7 @@ fn benchy_default_retract_unretract_counts_are_equal() {
 #[test]
 fn benchy_default_does_not_emit_firmware_retraction_opcodes() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     assert!(outcome.success, "pnp_cli must succeed");
     let gcode = outcome.gcode.as_str();
 
@@ -1297,12 +1299,12 @@ fn benchy_gcode_firmware_retraction_emits_balanced_g10_g11() {
     std::fs::write(&config_path, "{\n  \"retract_mode\": \"firmware\"\n}\n")
         .expect("write firmware-retract config");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         Some(&config_path),
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     let stderr = outcome.stderr.as_str();
     assert!(
@@ -1377,12 +1379,12 @@ fn benchy_live_path_contains_resolved_seam_evidence_before_emit() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     let stderr = outcome.stderr.as_str();
     assert!(
@@ -1488,12 +1490,12 @@ fn benchy_feature_evidence_failures_name_the_missing_family() {
     assert_path_exists(&config, "benchy-tree-support.json config");
 
     // Run a support-enabled slice and check failure message quality.
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
+        crate::common::slicer_cache::ModuleDirKind::TreeSupportFiltered,
         Some(&config),
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
 
     if !outcome.success {
@@ -1623,12 +1625,12 @@ fn benchy_multi_layer_top_bottom_evidence() {
     )
     .expect("write multi-layer shell config");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         Some(&config_path),
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     let stderr = outcome.stderr.as_str();
     assert!(
@@ -1691,12 +1693,12 @@ fn benchy_user_top_shell_layers_propagates_through_binary() {
         "{\n  \"top_shell_layers\": 1,\n  \"bottom_shell_layers\": 1\n}\n",
     )
     .expect("write n1 config");
-    let cached1 = common::slicer_cache::cached_run(
+    let cached1 = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         Some(&config1_path),
     );
-    let outcome1 = common::slicer_cache::expect_outcome(&cached1);
+    let outcome1 = crate::common::slicer_cache::expect_outcome(&cached1);
     let stderr1 = outcome1.stderr.as_str();
     assert!(
         outcome1.success,
@@ -1717,12 +1719,12 @@ fn benchy_user_top_shell_layers_propagates_through_binary() {
         "{\n  \"top_shell_layers\": 4,\n  \"bottom_shell_layers\": 4\n}\n",
     )
     .expect("write n4 config");
-    let cached4 = common::slicer_cache::cached_run(
+    let cached4 = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         Some(&config4_path),
     );
-    let outcome4 = common::slicer_cache::expect_outcome(&cached4);
+    let outcome4 = crate::common::slicer_cache::expect_outcome(&cached4);
     let stderr4 = outcome4.stderr.as_str();
     assert!(
         outcome4.success,
@@ -1777,12 +1779,12 @@ fn cli_rejects_top_shell_layers_string() {
     std::fs::write(&bad_config_path, "{\n  \"top_shell_layers\": \"four\"\n}\n")
         .expect("write bad config");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         Some(&bad_config_path),
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     let stderr = outcome.stderr.as_str();
 
     assert!(
@@ -1819,12 +1821,12 @@ fn benchy_gcode_contains_exact_bridge_infill_marker() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     let stderr = outcome.stderr.as_str();
     assert!(
@@ -1854,7 +1856,7 @@ fn benchy_gcode_contains_exact_bridge_infill_marker() {
 #[test]
 fn benchy_default_emits_top_surface_marker() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     assert!(outcome.success, "pnp_cli must succeed");
     let gcode = outcome.gcode.as_str();
     let has_top = gcode.lines().any(|l| l.trim() == ";TYPE:Top surface");
@@ -1869,7 +1871,7 @@ fn benchy_default_emits_top_surface_marker() {
 #[test]
 fn benchy_default_emits_bottom_surface_marker() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     assert!(outcome.success, "pnp_cli must succeed");
     let gcode = outcome.gcode.as_str();
     let has_bottom = gcode.lines().any(|l| l.trim() == ";TYPE:Bottom surface");
@@ -1884,7 +1886,7 @@ fn benchy_default_emits_bottom_surface_marker() {
 #[test]
 fn benchy_default_emits_bridge_infill_marker() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     assert!(outcome.success, "pnp_cli must succeed");
     let gcode = outcome.gcode.as_str();
     let has_bridge = gcode.lines().any(|l| l.trim() == ";TYPE:Bridge infill");
@@ -1899,7 +1901,7 @@ fn benchy_default_emits_bridge_infill_marker() {
 #[test]
 fn benchy_default_emits_sparse_infill_marker() {
     let cached = mvp_default_outcome();
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
     assert!(outcome.success, "pnp_cli must succeed");
     let gcode = outcome.gcode.as_str();
     let has_sparse = gcode.lines().any(|l| l.trim() == ";TYPE:Sparse infill");
@@ -1942,12 +1944,12 @@ fn benchy_gcode_contains_ironing_evidence() {
     )
     .expect("write ironing config");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         Some(&config_path),
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     let stderr = outcome.stderr.as_str();
     assert!(
@@ -2006,12 +2008,12 @@ fn benchy_top_surface_precedes_ironing() {
     )
     .expect("write ironing config");
 
-    let cached = common::slicer_cache::cached_run(
+    let cached = crate::common::slicer_cache::cached_run(
         &model,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         Some(&config_path),
     );
-    let outcome = common::slicer_cache::expect_outcome(&cached);
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
 
     let stderr = outcome.stderr.as_str();
     assert!(

@@ -30,8 +30,6 @@
 
 #![allow(missing_docs)]
 
-mod common;
-
 use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {
@@ -113,24 +111,24 @@ fn painted_benchy_3mf_reaches_paint_segmentation() {
         unpainted.display()
     );
 
-    let painted_cached = common::slicer_cache::cached_run(
+    let painted_cached = crate::common::slicer_cache::cached_run(
         &painted,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     );
-    let painted_outcome = common::slicer_cache::expect_outcome(&painted_cached);
+    let painted_outcome = crate::common::slicer_cache::expect_outcome(&painted_cached);
     assert!(
         painted_outcome.success,
         "pnp_cli must succeed on painted 3MF; exit_code={:?}\nstderr:\n{}",
         painted_outcome.exit_code, painted_outcome.stderr
     );
 
-    let unpainted_cached = common::slicer_cache::cached_run(
+    let unpainted_cached = crate::common::slicer_cache::cached_run(
         &unpainted,
-        common::slicer_cache::ModuleDirKind::CoreModules,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
         None,
     );
-    let unpainted_outcome = common::slicer_cache::expect_outcome(&unpainted_cached);
+    let unpainted_outcome = crate::common::slicer_cache::expect_outcome(&unpainted_cached);
     assert!(
         unpainted_outcome.success,
         "pnp_cli must succeed on unpainted STL; exit_code={:?}\nstderr:\n{}",
