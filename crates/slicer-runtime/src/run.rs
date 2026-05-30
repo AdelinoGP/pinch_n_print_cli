@@ -1,5 +1,10 @@
 //! Library entry point for one-shot slicing. Extracted from main.rs::HostCommands::Run.
 
+/// Default for the `use_relative_e_distances` host config key (M83 relative-E)
+/// when the user does not set it. Mirrored in `docs/config/host-keys.toml`
+/// (`[host_runtime]`) and locked by `gcode_emit::host_keys_doc_lock`.
+pub const DEFAULT_USE_RELATIVE_E_DISTANCES: bool = true;
+
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -329,7 +334,7 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
     let engine = Arc::clone(&loaded.engine);
     let relative = match config_source.get("use_relative_e_distances") {
         Some(ConfigValue::Bool(b)) => *b,
-        _ => true,
+        _ => DEFAULT_USE_RELATIVE_E_DISTANCES,
     };
 
     let pipeline_config = PipelineConfig {

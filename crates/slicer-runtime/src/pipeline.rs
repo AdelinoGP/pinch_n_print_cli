@@ -10,6 +10,13 @@ use std::sync::Arc;
 
 use slicer_ir::{ConfigKey, ConfigValue, LayerCollectionIR, MeshIR, ResolvedConfig};
 
+/// Default for the `thumbnail_path` host config key when the user does not set
+/// it. The empty string is the "no embedded thumbnail" sentinel (an absent or
+/// empty value yields no `THUMBNAIL_BLOCK`). Mirrored in
+/// `docs/config/host-keys.toml` (`[host_runtime]`) and locked by
+/// `gcode_emit::host_keys_doc_lock`.
+pub const DEFAULT_THUMBNAIL_PATH: &str = "";
+
 use crate::{
     compute_serial_edges_from_compiled, execute_layer_finalization, execute_per_layer_with_events,
     execute_per_layer_with_instrumentation, execute_postpass,
@@ -423,7 +430,7 @@ fn run_postpass_with_thumbnail(
     // Extract and validate thumbnail bytes from raw_config before serialization.
     // If thumbnail_path is non-empty, read the file and check PNG magic; fail fast on error.
     let thumbnail_bytes: Option<Vec<u8>> = match raw_config_source.get("thumbnail_path") {
-        Some(ConfigValue::String(path)) if !path.is_empty() => {
+        Some(ConfigValue::String(path)) if path != DEFAULT_THUMBNAIL_PATH => {
             let bytes = std::fs::read(path).map_err(|_| PostpassError::GCodeSerialization {
                 message: format!("thumbnail_path: file not found: {path}"),
             })?;

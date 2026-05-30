@@ -2,7 +2,11 @@
 //!
 //! This crate provides mesh repair, decimation, and STEP import functionality
 //! that runs before the WASM module pipeline. All operations input and output
-//! values in Pinch_n_Print's internal coordinate system (1 unit = 100 nm).
+//! `slicer_ir::Point3` vertices stored as `f32` **millimetres**. The
+//! "1 unit = 100 nm" integer-coordinate convention
+//! (`docs/08_coordinate_system.md`) applies to the per-layer Clipper /
+//! `slicer-core` pipeline, **not** to the `MeshIR` vertices handled here.
+//! See `docs/13_slicer_helpers_crate.md` § Coordinate System Contract.
 
 #![warn(missing_docs)]
 #![warn(unused_imports)]
