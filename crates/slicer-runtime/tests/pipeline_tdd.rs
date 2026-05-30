@@ -1259,7 +1259,7 @@ fn access_audits_live_path_read_performing() {
 // AC-6: fallback when stage not instrumented â†’ coarse fallback without panic
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-use layer::slicer::world_layer::geometry::ExtrusionPath3d as WitExtrusionPath3d;
+use layer::slicer::types::geometry::ExtrusionPath3d as WitExtrusionPath3d;
 use slicer_runtime::wit_host::{
     layer, HostExecutionContextBuilder, HostPerimeterOutputBuilder, Point3 as WitPoint3,
     Point3WithWidth, WallFeatureFlag, WallLoopView,
@@ -1268,7 +1268,7 @@ use slicer_runtime::wit_host::{
 fn make_wall_loop_view() -> WallLoopView {
     WallLoopView {
         perimeter_index: 0,
-        loop_type: layer::slicer::world_layer::ir_handles::WallLoopType::Outer,
+        loop_type: layer::slicer::ir_handles::ir_handles::WallLoopType::Outer,
         path: WitExtrusionPath3d {
             points: vec![
                 Point3WithWidth {
@@ -1288,7 +1288,7 @@ fn make_wall_loop_view() -> WallLoopView {
                     overhang_quartile: None,
                 },
             ],
-            role: layer::slicer::world_layer::geometry::ExtrusionRole::OuterWall,
+            role: layer::slicer::types::geometry::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
         feature_flags: vec![WallFeatureFlag {
@@ -1341,7 +1341,7 @@ fn push_reordered_wall_loop_records_runtime_write() {
     // Simulate guest calling push_reordered_wall_loop
     let reordered_wall = WallLoopView {
         perimeter_index: 0,
-        loop_type: layer::slicer::world_layer::ir_handles::WallLoopType::Outer,
+        loop_type: layer::slicer::ir_handles::ir_handles::WallLoopType::Outer,
         path: WitExtrusionPath3d {
             points: vec![
                 Point3WithWidth {
@@ -1361,7 +1361,7 @@ fn push_reordered_wall_loop_records_runtime_write() {
                     overhang_quartile: None,
                 },
             ],
-            role: layer::slicer::world_layer::geometry::ExtrusionRole::OuterWall,
+            role: layer::slicer::types::geometry::ExtrusionRole::OuterWall,
             speed_factor: 1.0,
         },
         feature_flags: vec![

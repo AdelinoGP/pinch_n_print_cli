@@ -5,7 +5,7 @@
 - Grouped task IDs:
   - `TASK-166` — resolve per-object/per-region config and thread it through so downstream stages consume config values. This packet continues that intent at the **WIT-export layer** for `run-support-geometry` (TASK-166's own work was at the `RegionMapIR`/`RegionPlan` layer).
 - Backlog source: `docs/07_implementation_status.md`
-- Packet status: `draft`
+- Packet status: `implemented`
 - Aggregate context cost: `M`
 
 ## Problem Statement
@@ -14,7 +14,7 @@
 
 ## In Scope
 
-- Normalize `run-support-geometry` in `crates/slicer-schema/wit/world-prepass.wit`: add `config: config-view`; convert `support-geometry-output` from a returned record to a `resource { push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string> }`; return `result<_, module-error>` (the shared `slicer:common` one from packet 72).
+- Normalize `run-support-geometry` in `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`: add `config: config-view`; convert `support-geometry-output` from a returned record to a `resource { push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string> }`; return `result<_, module-error>` (the shared `slicer:common` one from packet 72).
 - Rewrite the macro support arm: pass the real WIT `config-view`, drain the SDK `SupportGeometryOutput` builder into the WIT resource, propagate via `__slicer_error_out`; delete the empty-`ConfigView` injection, the `let _ = out;` swallow, and the `SupportGeometryOutput { … }` return shim (incl. the `fn run_support_geometry(...) -> SupportGeometryOutput` glue signature at ≈1962–1968).
 - Rework the host dispatch arm (`dispatch.rs` ≈975–1018): push a `support-geometry-output` resource + the `config_handle`; consume `result<_, ModuleError>`; reshape `harvest_support_plan_ir` (≈1848) to read the drained resource; remove `push_support_geometry_result` (`wit_host.rs` ≈1944).
 - Add `crates/slicer-runtime/tests/support_geometry_config_normalization_tdd.rs` with the three named tests behind AC-2, AC-N1, AC-N2.
@@ -44,7 +44,7 @@
 
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
-| `bash -c 'rg -U -q "run-support-geometry: func\([^)]*config: config-view[^)]*\) -> result<_, module-error>" crates/slicer-schema/wit/world-prepass.wit && rg -q "resource support-geometry-output" crates/slicer-schema/wit/world-prepass.wit; echo EXIT=$?'` | AC-1 WIT shape | FACT `EXIT=0` |
+| `bash -c 'rg -U -q "run-support-geometry: func\([^)]*config: config-view[^)]*\) -> result<_, module-error>" crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit && rg -q "resource support-geometry-output" crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit; echo EXIT=$?'` | AC-1 WIT shape | FACT `EXIT=0` |
 | `cargo test -p slicer-runtime --test support_geometry_config_normalization_tdd` | AC-2 + AC-N1 + AC-N2 | FACT pass/fail; SNIPPETS ≤20 lines on fail |
 | `bash -c '! rg -q "run-support-geometry has no config-view parameter" crates/slicer-macros/src/lib.rs && ! rg -q "Ignore error from run_support_geometry" crates/slicer-macros/src/lib.rs; echo EXIT=$?'` | AC-3 macro cleaned | FACT `EXIT=0` |
 | `bash -c '! rg -q "push_support_geometry_result" crates/slicer-runtime/src/wit_host.rs crates/slicer-runtime/src/dispatch.rs; echo EXIT=$?'` | AC-4 host record-stash gone | FACT `EXIT=0` |

@@ -12,11 +12,11 @@
 ### Step 1: Normalize the WIT export
 
 - Task IDs: `TASK-166`
-- Objective: in `crates/slicer-schema/wit/world-prepass.wit`, give `run-support-geometry` `config: config-view`, turn `support-geometry-output` into a `resource { push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string> }`, and return `result<_, module-error>` (shared `slicer:common`).
+- Objective: in `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`, give `run-support-geometry` `config: config-view`, turn `support-geometry-output` into a `resource { push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string> }`, and return `result<_, module-error>` (shared `slicer:common`).
 - Precondition: packet 72 `implemented`.
 - Postcondition: AC-1 passes; workspace still type-checks once Steps 2–3 land.
 - Files allowed to read: the sibling `seam-planning-output` / `layer-plan-output` resource defs in the same file.
-- Files allowed to edit (≤3): `crates/slicer-schema/wit/world-prepass.wit`.
+- Files allowed to edit (≤3): `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`.
 - Files explicitly out-of-bounds: `slicer-macros`/`wit_host.rs` in full.
 - Expected sub-agent dispatches:
   - `Summarize docs/02_ir_schemas.md SupportPlanIR + support-plan-entry field names; return FACT field list.`

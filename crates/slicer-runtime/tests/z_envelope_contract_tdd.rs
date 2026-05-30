@@ -22,7 +22,7 @@
 
 #![allow(missing_docs)]
 
-use slicer_runtime::wit_host::layer::slicer::world_layer::ir_handles::{
+use slicer_runtime::wit_host::layer::slicer::ir_handles::ir_handles::{
     HostInfillOutputBuilder, HostPerimeterOutputBuilder, HostSupportOutputBuilder,
 };
 use slicer_runtime::wit_host::{

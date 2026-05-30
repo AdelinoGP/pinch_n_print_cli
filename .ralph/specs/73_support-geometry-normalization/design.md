@@ -2,7 +2,7 @@
 
 ## Controlling Code Paths
 
-- WIT export: `crates/slicer-schema/wit/world-prepass.wit` — `run-support-geometry` (record-returning today) + the `support-geometry-output` / `support-plan-entry` records.
+- WIT export: `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit` — `run-support-geometry` (record-returning today) + the `support-geometry-output` / `support-plan-entry` records.
 - Guest glue: `crates/slicer-macros/src/lib.rs` `build_prepass_world_glue` support arm (≈1825–1907) and the generated `fn run_support_geometry(...) -> SupportGeometryOutput` impl signature (≈1962–1968). The empty-`ConfigView` injection (≈1831–1833) and `let _ = out;` swallow (≈1900–1903) are the defects.
 - Host dispatch: `crates/slicer-runtime/src/dispatch.rs` `PrePass::SupportGeometry` arm (≈975–1018) + `harvest_support_plan_ir` (≈1848). Today it calls `call_run_support_geometry(... no config ...)` and stashes the returned record via `store.data_mut().push_support_geometry_result(...)`.
 - Host record-stash: `crates/slicer-runtime/src/wit_host.rs` `push_support_geometry_result` (≈1944).
@@ -13,7 +13,7 @@
 
 <!-- snippet: wasm-staleness -->
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
-- Depends on packet 72: this edits `crates/slicer-schema/wit/world-prepass.wit` (created by 72) and reuses the shared `slicer:common` `module-error`. If 72 is not `implemented`, this packet cannot proceed.
+- Depends on packet 72: this edits `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit` (created by 72) and reuses the shared `slicer:common` `module-error`. If 72 is not `implemented`, this packet cannot proceed.
 - The new `support-geometry-output` resource must follow the sibling pattern (cf. `layer-plan-output { push-layer }`, `seam-planning-output { push-seam-plan }` in the same world) so the macro's existing resource-drain helpers apply with minimal new code.
 - Behavior change is intentional and ABI-affecting (the export signature changes): both compiled sides must move together; the all-worlds roundtrip + this packet's integration tests are the proof.
 
@@ -21,7 +21,7 @@
 
 - Selected approach: full sibling parity for `run-support-geometry` — `config-view` in, output resource out, `result<_, module-error>`. Delete the macro down-converter so the support arm becomes the same shape as the other prepass arms; route the host through a builder + config handle like the other prepass stages; harvest from the drained resource.
 - Exact surfaces expected to change:
-  - `crates/slicer-schema/wit/world-prepass.wit`: `run-support-geometry` signature + `support-geometry-output` record→resource.
+  - `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`: `run-support-geometry` signature + `support-geometry-output` record→resource.
   - `crates/slicer-macros/src/lib.rs`: support arm (≈1825–1907) + glue impl signature (≈1962–1968).
   - `crates/slicer-runtime/src/dispatch.rs`: support-geometry arm (≈975–1018) + `harvest_support_plan_ir` (≈1848).
   - `crates/slicer-runtime/src/wit_host.rs`: remove `push_support_geometry_result` (≈1944); add the `support-geometry-output` builder resource impl mirroring the other prepass output builders.
@@ -32,7 +32,7 @@
 
 Primary edit surface is the WIT export + two glue files + the new test; the host builder-impl is a small mirror of existing ones.
 
-- `crates/slicer-schema/wit/world-prepass.wit` — role: the contract; expected change: normalize `run-support-geometry`.
+- `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit` — role: the contract; expected change: normalize `run-support-geometry`.
 - `crates/slicer-macros/src/lib.rs` — role: guest glue; expected change: rewrite support arm, delete injection/swallow.
 - `crates/slicer-runtime/src/dispatch.rs` — role: host dispatch + harvest; expected change: pass config + builder, read drained resource.
 - `crates/slicer-runtime/src/wit_host.rs` — role: host builder resource; expected change: add output-builder impl, remove record-stash.

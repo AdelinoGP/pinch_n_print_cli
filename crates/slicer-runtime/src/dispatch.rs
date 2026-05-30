@@ -995,27 +995,21 @@ impl WasmRuntimeDispatcher {
                     .unwrap_or_else(|| wit_host::prepass::SupportGeometryView {
                         entries: Vec::new(),
                     });
-                // run-support-geometry returns support-geometry-output directly
-                // (no output resource, no config param; returns record not result).
-                // The returned support-plan-entries are stashed on the context
-                // by push_support_geometry_result so harvest_support_plan_ir
-                // can drain them after the call returns.
-                let sg_output = bindings
+                let output = store
+                    .data_mut()
+                    .push_support_geometry_output()
+                    .map_err(mk_ctx_err)?;
+                bindings
                     .call_run_support_geometry(
                         &mut store,
                         &mesh_object_views,
                         &layer_plan_view,
                         &region_segmentation_view,
                         &support_geometry_view,
+                        own(output),
+                        own(config_handle),
                     )
-                    .map_err(mk_call_err)?;
-                store
-                    .data_mut()
-                    .push_support_geometry_result(sg_output)
-                    .map_err(mk_ctx_err)?;
-                // Synthesise a success result matching the outer call_result type
-                // (other arms return Result<Result<(), ModuleError>, DispatchError>).
-                Ok::<Result<(), wit_host::prepass::ModuleError>, DispatchError>(Ok(()))
+                    .map_err(mk_call_err)
             }
             _ => Err(DispatchError {
                 module_id: module.module_id.clone(),

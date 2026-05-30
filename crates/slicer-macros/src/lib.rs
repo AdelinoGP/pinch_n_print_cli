@@ -1377,7 +1377,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             quote! { Ok(()) }, // layer_arm (unused)
             quote! { Ok(()) }, // mesh_seg_arm (unused)
             quote! { Ok(()) }, // seam_arm (unused)
-            quote! { SupportGeometryOutput { support_plan_entries: ::std::vec::Vec::new() } }, // support_arm (unused)
+            quote! { Ok(()) }, // support_arm (unused)
         ),
         "PrePass::LayerPlanning" => (
             quote! { Ok(()) }, // mesh_arm (unused)
@@ -1434,7 +1434,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             },
             quote! { Ok(()) }, // mesh_seg_arm (unused)
             quote! { Ok(()) }, // seam_arm (unused)
-            quote! { SupportGeometryOutput { support_plan_entries: ::std::vec::Vec::new() } }, // support_arm (unused)
+            quote! { Ok(()) }, // support_arm (unused)
         ),
         "PrePass::MeshSegmentation" => (
             quote! { Ok(()) },
@@ -1486,7 +1486,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 }
             },
             quote! { Ok(()) }, // seam_arm (unused)
-            quote! { SupportGeometryOutput { support_plan_entries: ::std::vec::Vec::new() } }, // support_arm (unused)
+            quote! { Ok(()) }, // support_arm (unused)
         ),
         "PrePass::SeamPlanning" => (
             // SeamPlanning: the seam planner reads MeshIR + SurfaceClassificationIR
@@ -1561,7 +1561,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     Err(e) => Err(__slicer_error_out(e)),
                 }
             },
-            quote! { SupportGeometryOutput { support_plan_entries: ::std::vec::Vec::new() } }, // support_arm (unused)
+            quote! { Ok(()) }, // support_arm (unused)
         ),
         "PrePass::SupportGeometry" => (
             quote! { Ok(()) }, // mesh_arm (unused)
@@ -1569,12 +1569,10 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             quote! { Ok(()) }, // mesh_seg_arm (unused)
             quote! { Ok(()) }, // seam_arm (unused)
             quote! {
-                // run-support-geometry has no config-view parameter in the WIT;
-                // use an empty ConfigView so on_print_start can initialise the module.
-                let ir_config = ::slicer_ir::ConfigView::new();
+                let ir_config = __slicer_adapt_config(&config);
                 let module = match <#self_ty as ::slicer_sdk::traits::PrepassModule>::on_print_start(&ir_config) {
                     Ok(m) => m,
-                    Err(_e) => return SupportGeometryOutput { support_plan_entries: ::std::vec::Vec::new() },
+                    Err(e) => return Err(__slicer_error_out(e)),
                 };
                 let sdk_objects: ::std::vec::Vec<::slicer_sdk::prepass_types::MeshObjectView> = _objects
                     .into_iter()
@@ -1606,44 +1604,45 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                 let out = <#self_ty as ::slicer_sdk::traits::PrepassModule>::run_support_geometry(
                     &module, &sdk_objects, &sdk_layer_plan, &sdk_region_segmentation, &sdk_support_geometry, &mut sdk_output, &ir_config,
                 );
-                let __slicer_support_plan_entries: ::std::vec::Vec<SupportPlanEntry> = sdk_output.entries()
-                    .iter()
-                    .map(|__slicer_entry| {
-                        // Construct the wit-bindgen Point3WithWidth inline.
-                        // `__slicer_point3_with_width_from_sdk` returns the SDK
-                        // (slicer_ir) flavour, which is a different type from
-                        // the wit-bindgen-generated record even though the
-                        // field shape is identical (5 f32 fields).
-                        let __slicer_wit_segments: ::std::vec::Vec<::std::vec::Vec<Point3WithWidth>> = __slicer_entry
-                            .branch_segments
-                            .iter()
-                            .map(|seg| {
-                                seg.iter()
-                                    .map(|pt| Point3WithWidth {
-                                        x: pt.x,
-                                        y: pt.y,
-                                        z: pt.z,
-                                        width: pt.width,
-                                        flow_factor: pt.flow_factor,
-                                        overhang_quartile: pt.overhang_quartile,
-                                    })
-                                    .collect()
-                            })
-                            .collect();
-                        SupportPlanEntry {
-                            global_layer_index: __slicer_entry.global_layer_index,
-                            object_id: __slicer_entry.object_id.clone(),
-                            region_id: __slicer_entry.region_id.clone(),
-                            branch_segments: __slicer_wit_segments,
-                        }
-                    })
-                    .collect();
-                // Ignore error from run_support_geometry; return whatever entries
-                // were accumulated (the SDK default impl returns Err but real
-                // implementations push entries before returning Ok).
-                let _ = out;
-                SupportGeometryOutput {
-                    support_plan_entries: __slicer_support_plan_entries,
+                for __slicer_entry in sdk_output.entries() {
+                    // Construct the wit-bindgen Point3WithWidth inline.
+                    // `__slicer_point3_with_width_from_sdk` returns the SDK
+                    // (slicer_ir) flavour, which is a different type from
+                    // the wit-bindgen-generated record even though the
+                    // field shape is identical (5 f32 fields).
+                    let __slicer_wit_segments: ::std::vec::Vec<::std::vec::Vec<Point3WithWidth>> = __slicer_entry
+                        .branch_segments
+                        .iter()
+                        .map(|seg| {
+                            seg.iter()
+                                .map(|pt| Point3WithWidth {
+                                    x: pt.x,
+                                    y: pt.y,
+                                    z: pt.z,
+                                    width: pt.width,
+                                    flow_factor: pt.flow_factor,
+                                    overhang_quartile: pt.overhang_quartile,
+                                })
+                                .collect()
+                        })
+                        .collect();
+                    let __slicer_wit_entry = SupportPlanEntry {
+                        global_layer_index: __slicer_entry.global_layer_index,
+                        object_id: __slicer_entry.object_id.clone(),
+                        region_id: __slicer_entry.region_id.clone(),
+                        branch_segments: __slicer_wit_segments,
+                    };
+                    if let Err(e) = _output.push_support_plan_entry(&__slicer_wit_entry) {
+                        return Err(ModuleError {
+                            code: 11,
+                            message: e,
+                            fatal: true,
+                        });
+                    }
+                }
+                match out {
+                    Ok(()) => Ok(()),
+                    Err(e) => Err(__slicer_error_out(e)),
                 }
             },
         ),
@@ -1652,7 +1651,7 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
             quote! { Ok(()) },
             quote! { Ok(()) },
             quote! { Ok(()) },
-            quote! { SupportGeometryOutput { support_plan_entries: ::std::vec::Vec::new() } },
+            quote! { Ok(()) },
         ),
     };
 
@@ -1705,7 +1704,9 @@ fn build_prepass_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenS
                     _layer_plan: LayerPlanView,
                     _region_segmentation: RegionSegmentationView,
                     _support_geometry: SupportGeometryView,
-                ) -> SupportGeometryOutput {
+                    _output: SupportGeometryOutput,
+                    config: ConfigView,
+                ) -> Result<(), ModuleError> {
                     #support_arm
                 }
             }

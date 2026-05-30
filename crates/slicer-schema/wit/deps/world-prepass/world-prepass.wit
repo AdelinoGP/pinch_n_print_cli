@@ -160,8 +160,8 @@ world prepass-module {
         entries: list<support-geometry-view-entry>,
     }
 
-    record support-geometry-output {
-        support-plan-entries: list<support-plan-entry>,
+    resource support-geometry-output {
+        push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string>;
     }
 
     export run-support-geometry: func(
@@ -169,5 +169,7 @@ world prepass-module {
         layer-plan: layer-plan-view,
         region-segmentation: region-segmentation-view,
         support-geometry: support-geometry-view,
-    ) -> support-geometry-output;
+        output: support-geometry-output,
+        config: config-view,
+    ) -> result<_, module-error>;
 }

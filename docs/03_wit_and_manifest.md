@@ -616,15 +616,25 @@ world prepass-module {
     // groups overhang/enforcer contacts via per-layer Prim MST, and emits
     // per-(layer, object, region) branch geometry consumed directly by
     // Layer::Support modules that declare SupportPlanIR as a read.
-    //
-    // **Source of truth:** `wit/world-prepass.wit`. The on-disk signature of
-    // `run-support-geometry` takes `(objects, layer-plan: layer-plan-view,
-    // region-segmentation: region-segmentation-view,
-    // support-geometry: support-geometry-view)` and returns
-    // `support-geometry-output` directly (not `result<_, module-error>`).
-    // `support-geometry-output` is a **record**, not a resource. The
-    // accompanying records `layer-plan-view`, `region-segmentation-view`,
-    // and `support-geometry-view` are defined in the on-disk WIT.
+
+    record support-plan-entry {
+        global-layer-index: layer-idx,
+        object-id: object-id,
+        region-id: region-id,
+        // branch geometry fields (positions, radii, etc.) defined in WIT source
+    }
+
+    resource support-geometry-output {
+        push-support-plan-entry: func(entry: support-plan-entry) -> result<_, string>;
+    }
+
+    export run-support-geometry: func(
+        objects: list<mesh-object-view>,
+        layer-plan: layer-plan-view,
+        region-segmentation: region-segmentation-view,
+        output: support-geometry-output,
+        config: config-view,
+    ) -> result<_, module-error>;
 }
 ```
 

@@ -21,7 +21,7 @@
 #![allow(missing_docs)]
 
 use slicer_runtime::dispatch::commit_layer_outputs_for_test;
-use slicer_runtime::wit_host::layer::slicer::world_layer::ir_handles::HostPerimeterOutputBuilder;
+use slicer_runtime::wit_host::layer::slicer::ir_handles::ir_handles::HostPerimeterOutputBuilder;
 use slicer_runtime::wit_host::{
     ExtrusionRole, HostExecutionContextBuilder, Point3, Point3WithWidth, WallFeatureFlag,
     WallLoopType, WallLoopView,

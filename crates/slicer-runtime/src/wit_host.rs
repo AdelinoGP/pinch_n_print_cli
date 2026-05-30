@@ -301,13 +301,11 @@ pub struct MeshSegmentationOutputData;
 /// This struct is just a table-entry tag so the resource-handle lifecycle
 /// works; the actual data lives on the context.
 pub struct SeamPlanningOutputData;
-/// Marker type kept for table-management symmetry.
+/// Table-entry tag for the `support-geometry-output` builder resource.
 ///
-/// The `SupportGeometry` prepass stage returns a `support-geometry-output`
-/// record directly (no resource handle); this stub is no longer needed.
-/// Retained as a zero-size placeholder so reference-count tracking in the
-/// surrounding table code continues to compile without churn.
-#[allow(dead_code)]
+/// The `SupportGeometry` prepass stage now passes a `support-geometry-output`
+/// resource handle to the guest (mirroring `SeamPlanningOutput`); guest calls
+/// to `push-support-plan-entry` append to `HostExecutionContext::support_plan_entries`.
 pub struct SupportGeometryOutputData;
 
 #[allow(missing_docs)]
@@ -1284,19 +1282,17 @@ impl HostExecutionContext {
         Ok(Resource::new_own(rep.rep()))
     }
 
-    /// Stage `support-geometry-output` returned by `run-support-geometry`.
+    /// Push a `support-geometry-output` builder resource.
     ///
-    /// Drains `output.support_plan_entries` into `self.support_plan_entries`
-    /// so the dispatcher can later commit them as `SupportPlanIR`.
-    /// The `run-support-geometry` export returns a plain record (not a
-    /// resource), so no resource-table entry is involved here.
-    pub fn push_support_geometry_result(
+    /// The returned handle is what the host passes into
+    /// `run-support-geometry`; guest calls to `push-support-plan-entry` go
+    /// through `HostSupportGeometryOutput::push_support_plan_entry` below,
+    /// which appends entries to `support_plan_entries`.
+    pub fn push_support_geometry_output(
         &mut self,
-        output: prepass::SupportGeometryOutput,
-    ) -> wasmtime::Result<()> {
-        self.support_plan_entries
-            .extend(output.support_plan_entries);
-        Ok(())
+    ) -> wasmtime::Result<Resource<prepass::SupportGeometryOutput>> {
+        let rep = self.table.push(SupportGeometryOutputData)?;
+        Ok(Resource::new_own(rep.rep()))
     }
 
     // ── Finalization world resource pushers ─────────────────────────
@@ -3672,9 +3668,31 @@ mod prepass_impls {
         }
     }
 
-    // The SupportGeometry stage now returns `support-geometry-output` as a plain
-    // record (no resource). Entries are staged via
-    // HostExecutionContext::push_support_geometry_result.
+    impl pm::HostSupportGeometryOutput for HostExecutionContext {
+        fn push_support_plan_entry(
+            &mut self,
+            _handle: Resource<pm::SupportGeometryOutput>,
+            entry: pm::SupportPlanEntry,
+        ) -> wasmtime::Result<Result<(), String>> {
+            if entry.object_id.is_empty() {
+                return Ok(Err(String::from(
+                    "support-geometry-output: object-id must be non-empty",
+                )));
+            }
+            if entry.region_id.is_empty() {
+                return Ok(Err(String::from(
+                    "support-geometry-output: region-id must be non-empty",
+                )));
+            }
+            self.support_plan_entries.push(entry);
+            Ok(Ok(()))
+        }
+        fn drop(&mut self, rep: Resource<pm::SupportGeometryOutput>) -> wasmtime::Result<()> {
+            let typed: Resource<SupportGeometryOutputData> = Resource::new_own(rep.rep());
+            self.table.delete(typed)?;
+            Ok(())
+        }
+    }
 
     impl pm::HostMeshSegmentationOutput for HostExecutionContext {
         fn mark_triangle_paint(

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 73_support-geometry-normalization
 task_ids:
   - TASK-166
@@ -15,7 +15,7 @@ Give the `run-support-geometry` WIT export the same shape as its sibling prepass
 
 ## Scope Boundaries
 
-This packet normalizes one WIT export and the host/macro glue that feeds it. The SDK trait (`PrepassModule::run_support_geometry`) and the `support-planner` module body are **already** in the normalized shape and do not change; the defect lives only at the WIT boundary, where the macro injects an empty `ConfigView` and discards the module's `Result`. Fixing it is a deliberate behavior change — support config takes effect and planner fatals surface — so re-baselining affected fixtures and adding a regression test are in scope. It depends on packet 72 (it edits the relocated `crates/slicer-schema/wit/world-prepass.wit`).
+This packet normalizes one WIT export and the host/macro glue that feeds it. The SDK trait (`PrepassModule::run_support_geometry`) and the `support-planner` module body are **already** in the normalized shape and do not change; the defect lives only at the WIT boundary, where the macro injects an empty `ConfigView` and discards the module's `Result`. Fixing it is a deliberate behavior change — support config takes effect and planner fatals surface — so re-baselining affected fixtures and adding a regression test are in scope. It depends on packet 72 (it edits the relocated `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`).
 
 ## Prerequisites and Blockers
 
@@ -25,7 +25,7 @@ This packet normalizes one WIT export and the host/macro glue that feeds it. The
 
 ## Acceptance Criteria
 
-- **AC-1. Given** `crates/slicer-schema/wit/world-prepass.wit`, **when** inspecting the `run-support-geometry` export, **then** it accepts a `config: config-view` parameter, writes through a `resource support-geometry-output` exposing `push-support-plan-entry`, and returns `result<_, module-error>` (no bare record return). | `bash -c 'rg -U -q "run-support-geometry: func\([^)]*config: config-view[^)]*\) -> result<_, module-error>" crates/slicer-schema/wit/world-prepass.wit && rg -q "resource support-geometry-output" crates/slicer-schema/wit/world-prepass.wit; echo EXIT=$?'`
+- **AC-1. Given** `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`, **when** inspecting the `run-support-geometry` export, **then** it accepts a `config: config-view` parameter, writes through a `resource support-geometry-output` exposing `push-support-plan-entry`, and returns `result<_, module-error>` (no bare record return). | `bash -c 'rg -U -q "run-support-geometry: func\([^)]*config: config-view[^)]*\) -> result<_, module-error>" crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit && rg -q "resource support-geometry-output" crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit; echo EXIT=$?'`
 - **AC-2. Given** a slice configured with `support_raft_layers = 2` and one supported region, **when** the support-geometry stage runs through the host→guest dispatch, **then** the committed `SupportPlanIR` contains raft entries with negative `global_layer_index` values `-1` and `-2` (config now reaches the guest). | `cargo test -p slicer-runtime --test support_geometry_config_normalization_tdd -- raft_layers_config_is_honored`
 - **AC-3. Given** `crates/slicer-macros/src/lib.rs`, **when** grepping the support-geometry glue, **then** the empty-`ConfigView` injection and the `let _ = out;` error-swallow are gone and the support arm propagates via `__slicer_error_out`. | `bash -c '! rg -q "run-support-geometry has no config-view parameter" crates/slicer-macros/src/lib.rs && ! rg -q "Ignore error from run_support_geometry" crates/slicer-macros/src/lib.rs; echo EXIT=$?'`
 - **AC-4. Given** `crates/slicer-runtime/src/wit_host.rs` and `dispatch.rs`, **when** grepping, **then** the record-stash `push_support_geometry_result` is removed and the dispatch arm passes a config handle to `call_run_support_geometry`. | `bash -c '! rg -q "push_support_geometry_result" crates/slicer-runtime/src/wit_host.rs crates/slicer-runtime/src/dispatch.rs; echo EXIT=$?'`
