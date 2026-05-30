@@ -317,7 +317,10 @@ pub mod prepass {
             default: trappable,
         },
         with: {
-            "slicer:config/config-types.config-view": super::ConfigViewData,
+            // Reuse the layer world's generated geometry + config types so the
+            // four worlds share one set of Rust types (packet 75, Phase 3 / ADR-0002).
+            "slicer:types/geometry": super::layer::slicer::types::geometry,
+            "slicer:config/config-types": super::layer::slicer::config::config_types,
         },
     });
 }
@@ -491,7 +494,9 @@ pub mod finalization {
             default: trappable,
         },
         with: {
-            "slicer:config/config-types.config-view": super::ConfigViewData,
+            // Reuse the layer world's geometry + config types (packet 75, Phase 3 / ADR-0002).
+            "slicer:types/geometry": super::layer::slicer::types::geometry,
+            "slicer:config/config-types": super::layer::slicer::config::config_types,
         },
     });
 }
@@ -512,7 +517,9 @@ pub mod postpass {
             default: trappable,
         },
         with: {
-            "slicer:config/config-types.config-view": super::ConfigViewData,
+            // Reuse the layer world's geometry + config types (packet 75, Phase 3 / ADR-0002).
+            "slicer:types/geometry": super::layer::slicer::types::geometry,
+            "slicer:config/config-types": super::layer::slicer::config::config_types,
         },
     });
 }
@@ -3312,73 +3319,13 @@ impl ir::Host for HostExecutionContext {}
 
 mod prepass_impls {
     use super::*;
-    use prepass::slicer::config::config_types as pct;
     use prepass::slicer::types::geometry as pgeo;
     use prepass::slicer::world_prepass::host_services as phs;
 
-    impl pgeo::Host for HostExecutionContext {}
-
-    fn p_wit_to_ir(ep: &pgeo::ExPolygon) -> slicer_ir::ExPolygon {
-        slicer_ir::ExPolygon {
-            contour: slicer_ir::Polygon {
-                points: ep
-                    .contour
-                    .points
-                    .iter()
-                    .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
-                    .collect(),
-            },
-            holes: ep
-                .holes
-                .iter()
-                .map(|h| slicer_ir::Polygon {
-                    points: h
-                        .points
-                        .iter()
-                        .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
-    fn p_ir_to_wit(ep: &slicer_ir::ExPolygon) -> pgeo::ExPolygon {
-        pgeo::ExPolygon {
-            contour: pgeo::Polygon {
-                points: ep
-                    .contour
-                    .points
-                    .iter()
-                    .map(|p| pgeo::Point2 { x: p.x, y: p.y })
-                    .collect(),
-            },
-            holes: ep
-                .holes
-                .iter()
-                .map(|h| pgeo::Polygon {
-                    points: h
-                        .points
-                        .iter()
-                        .map(|p| pgeo::Point2 { x: p.x, y: p.y })
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
-
-    fn ir_point3_to_prepass(point: slicer_ir::Point3) -> pgeo::Point3 {
-        pgeo::Point3 {
-            x: point.x,
-            y: point.y,
-            z: point.z,
-        }
-    }
-
-    fn ir_bounds_to_prepass(bounds: slicer_ir::BoundingBox3) -> pgeo::BoundingBox3 {
-        pgeo::BoundingBox3 {
-            min: ir_point3_to_prepass(bounds.min),
-            max: ir_point3_to_prepass(bounds.max),
-        }
-    }
+    // `pgeo` now aliases the layer world's geometry module (Phase 3 remap), so
+    // its `Host` impl and IR↔WIT converters are the layer world's — reused here
+    // (`wit_to_ir_expolygon`, `ir_to_wit_expolygon`, `ir_point3_to_layer`,
+    // `ir_bounds_to_layer`) via `use super::*` instead of regenerated copies.
 
     impl phs::Host for HostExecutionContext {
         fn log(&mut self, level: phs::LogLevel, message: String) -> wasmtime::Result<()> {
@@ -3408,13 +3355,13 @@ mod prepass_impls {
             y: f32,
             z: f32,
         ) -> wasmtime::Result<Option<pgeo::Point3>> {
-            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_prepass))
+            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_layer))
         }
         fn object_bounds(
             &mut self,
             object_id: phs::ObjectId,
         ) -> wasmtime::Result<pgeo::BoundingBox3> {
-            Ok(ir_bounds_to_prepass(object_bounds_mesh_query(
+            Ok(ir_bounds_to_layer(object_bounds_mesh_query(
                 self, &object_id,
             )?))
         }
@@ -3424,8 +3371,8 @@ mod prepass_impls {
             clip: Vec<pgeo::ExPolygon>,
             op: phs::ClipOperation,
         ) -> wasmtime::Result<Vec<pgeo::ExPolygon>> {
-            let s: Vec<_> = subject.iter().map(p_wit_to_ir).collect();
-            let c: Vec<_> = clip.iter().map(p_wit_to_ir).collect();
+            let s: Vec<_> = subject.iter().map(wit_to_ir_expolygon).collect();
+            let c: Vec<_> = clip.iter().map(wit_to_ir_expolygon).collect();
             let ir_op = match op {
                 phs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
                 phs::ClipOperation::Intersection => {
@@ -3438,7 +3385,7 @@ mod prepass_impls {
             };
             Ok(ir_clip_polygons(&s, &c, ir_op)
                 .iter()
-                .map(p_ir_to_wit)
+                .map(ir_to_wit_expolygon)
                 .collect())
         }
         fn offset_polygons(
@@ -3447,7 +3394,7 @@ mod prepass_impls {
             delta_mm: f32,
             join: phs::OffsetJoinType,
         ) -> wasmtime::Result<Vec<pgeo::ExPolygon>> {
-            let ir: Vec<_> = polygons.iter().map(p_wit_to_ir).collect();
+            let ir: Vec<_> = polygons.iter().map(wit_to_ir_expolygon).collect();
             let j = match join {
                 phs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter,
                 phs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
@@ -3455,7 +3402,7 @@ mod prepass_impls {
             };
             Ok(ir_offset_polygons(&ir, delta_mm, j)
                 .iter()
-                .map(p_ir_to_wit)
+                .map(ir_to_wit_expolygon)
                 .collect())
         }
         fn simplify_polygon(
@@ -3480,75 +3427,8 @@ mod prepass_impls {
         }
     }
 
-    impl pct::Host for HostExecutionContext {}
-    impl pct::HostConfigView for HostExecutionContext {
-        fn get(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<pct::ConfigValue>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).map(|v| match v {
-                ConfigValueStorage::Bool(b) => pct::ConfigValue::BoolVal(*b),
-                ConfigValueStorage::Int(i) => pct::ConfigValue::IntVal(*i),
-                ConfigValueStorage::Float(f) => pct::ConfigValue::FloatVal(*f),
-                ConfigValueStorage::Str(s) => pct::ConfigValue::StringVal(s.clone()),
-                ConfigValueStorage::FloatList(fl) => pct::ConfigValue::FloatList(fl.clone()),
-                ConfigValueStorage::StringList(sl) => pct::ConfigValue::StringList(sl.clone()),
-            }))
-        }
-        fn get_bool(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<bool>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Bool(b) => Some(*b),
-                _ => None,
-            }))
-        }
-        fn get_float(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<f64>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Float(f) => Some(normalize_subnormal_boundary(*f)),
-                _ => None,
-            }))
-        }
-        fn get_int(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<i64>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Int(i) => Some(*i),
-                _ => None,
-            }))
-        }
-        fn get_string(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<String>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Str(s) => Some(s.clone()),
-                _ => None,
-            }))
-        }
-        fn keys(&mut self, self_: Resource<ConfigViewData>) -> wasmtime::Result<Vec<String>> {
-            Ok(self.table.get(&self_)?.fields.keys().cloned().collect())
-        }
-        fn drop(&mut self, rep: Resource<ConfigViewData>) -> wasmtime::Result<()> {
-            self.table.delete(rep)?;
-            Ok(())
-        }
-    }
+    // `pct` config-types `Host`/`HostConfigView` impls are the layer
+    // world's (Phase 3 remap); reused via `use super::*`, not regenerated.
 
     // Prepass world resources
     use super::prepass as pm;
@@ -3750,73 +3630,12 @@ mod prepass_impls {
 mod finalization_impls {
     use super::finalization as fm;
     use super::*;
-    use finalization::slicer::config::config_types as fct;
     use finalization::slicer::types::geometry as fgeo;
     use finalization::slicer::world_finalization::host_services as fhs;
 
-    impl fgeo::Host for HostExecutionContext {}
-
-    fn f_wit_to_ir(ep: &fgeo::ExPolygon) -> slicer_ir::ExPolygon {
-        slicer_ir::ExPolygon {
-            contour: slicer_ir::Polygon {
-                points: ep
-                    .contour
-                    .points
-                    .iter()
-                    .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
-                    .collect(),
-            },
-            holes: ep
-                .holes
-                .iter()
-                .map(|h| slicer_ir::Polygon {
-                    points: h
-                        .points
-                        .iter()
-                        .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
-    fn f_ir_to_wit(ep: &slicer_ir::ExPolygon) -> fgeo::ExPolygon {
-        fgeo::ExPolygon {
-            contour: fgeo::Polygon {
-                points: ep
-                    .contour
-                    .points
-                    .iter()
-                    .map(|p| fgeo::Point2 { x: p.x, y: p.y })
-                    .collect(),
-            },
-            holes: ep
-                .holes
-                .iter()
-                .map(|h| fgeo::Polygon {
-                    points: h
-                        .points
-                        .iter()
-                        .map(|p| fgeo::Point2 { x: p.x, y: p.y })
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
-
-    fn ir_point3_to_finalization(point: slicer_ir::Point3) -> fgeo::Point3 {
-        fgeo::Point3 {
-            x: point.x,
-            y: point.y,
-            z: point.z,
-        }
-    }
-
-    fn ir_bounds_to_finalization(bounds: slicer_ir::BoundingBox3) -> fgeo::BoundingBox3 {
-        fgeo::BoundingBox3 {
-            min: ir_point3_to_finalization(bounds.min),
-            max: ir_point3_to_finalization(bounds.max),
-        }
-    }
+    // `fgeo` now aliases the layer world's geometry module (Phase 3 remap); its
+    // `Host` impl and IR↔WIT geometry converters are the layer world's — reused
+    // here via `use super::*` instead of regenerated copies.
 
     impl fhs::Host for HostExecutionContext {
         fn log(&mut self, level: fhs::LogLevel, message: String) -> wasmtime::Result<()> {
@@ -3847,13 +3666,13 @@ mod finalization_impls {
             z: f32,
         ) -> wasmtime::Result<Option<fgeo::Point3>> {
             Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?
-                .map(ir_point3_to_finalization))
+                .map(ir_point3_to_layer))
         }
         fn object_bounds(
             &mut self,
             object_id: fhs::ObjectId,
         ) -> wasmtime::Result<fgeo::BoundingBox3> {
-            Ok(ir_bounds_to_finalization(object_bounds_mesh_query(
+            Ok(ir_bounds_to_layer(object_bounds_mesh_query(
                 self, &object_id,
             )?))
         }
@@ -3863,8 +3682,8 @@ mod finalization_impls {
             clip: Vec<fgeo::ExPolygon>,
             op: fhs::ClipOperation,
         ) -> wasmtime::Result<Vec<fgeo::ExPolygon>> {
-            let s: Vec<_> = subject.iter().map(f_wit_to_ir).collect();
-            let c: Vec<_> = clip.iter().map(f_wit_to_ir).collect();
+            let s: Vec<_> = subject.iter().map(wit_to_ir_expolygon).collect();
+            let c: Vec<_> = clip.iter().map(wit_to_ir_expolygon).collect();
             let ir_op = match op {
                 fhs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
                 fhs::ClipOperation::Intersection => {
@@ -3877,7 +3696,7 @@ mod finalization_impls {
             };
             Ok(ir_clip_polygons(&s, &c, ir_op)
                 .iter()
-                .map(f_ir_to_wit)
+                .map(ir_to_wit_expolygon)
                 .collect())
         }
         fn offset_polygons(
@@ -3886,7 +3705,7 @@ mod finalization_impls {
             delta_mm: f32,
             join: fhs::OffsetJoinType,
         ) -> wasmtime::Result<Vec<fgeo::ExPolygon>> {
-            let ir: Vec<_> = polygons.iter().map(f_wit_to_ir).collect();
+            let ir: Vec<_> = polygons.iter().map(wit_to_ir_expolygon).collect();
             let j = match join {
                 fhs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter,
                 fhs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
@@ -3894,7 +3713,7 @@ mod finalization_impls {
             };
             Ok(ir_offset_polygons(&ir, delta_mm, j)
                 .iter()
-                .map(f_ir_to_wit)
+                .map(ir_to_wit_expolygon)
                 .collect())
         }
         fn simplify_polygon(
@@ -3919,75 +3738,8 @@ mod finalization_impls {
         }
     }
 
-    impl fct::Host for HostExecutionContext {}
-    impl fct::HostConfigView for HostExecutionContext {
-        fn get(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<fct::ConfigValue>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).map(|v| match v {
-                ConfigValueStorage::Bool(b) => fct::ConfigValue::BoolVal(*b),
-                ConfigValueStorage::Int(i) => fct::ConfigValue::IntVal(*i),
-                ConfigValueStorage::Float(f) => fct::ConfigValue::FloatVal(*f),
-                ConfigValueStorage::Str(s) => fct::ConfigValue::StringVal(s.clone()),
-                ConfigValueStorage::FloatList(fl) => fct::ConfigValue::FloatList(fl.clone()),
-                ConfigValueStorage::StringList(sl) => fct::ConfigValue::StringList(sl.clone()),
-            }))
-        }
-        fn get_bool(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<bool>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Bool(b) => Some(*b),
-                _ => None,
-            }))
-        }
-        fn get_float(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<f64>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Float(f) => Some(normalize_subnormal_boundary(*f)),
-                _ => None,
-            }))
-        }
-        fn get_int(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<i64>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Int(i) => Some(*i),
-                _ => None,
-            }))
-        }
-        fn get_string(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<String>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Str(s) => Some(s.clone()),
-                _ => None,
-            }))
-        }
-        fn keys(&mut self, self_: Resource<ConfigViewData>) -> wasmtime::Result<Vec<String>> {
-            Ok(self.table.get(&self_)?.fields.keys().cloned().collect())
-        }
-        fn drop(&mut self, rep: Resource<ConfigViewData>) -> wasmtime::Result<()> {
-            self.table.delete(rep)?;
-            Ok(())
-        }
-    }
+    // `fct` config-types `Host`/`HostConfigView` impls are the layer
+    // world's (Phase 3 remap); reused via `use super::*`, not regenerated.
 
     /// Convert a wit-bindgen finalization-world `ExtrusionPath3d` record
     /// into the documented `slicer_ir::ExtrusionPath3D`.
@@ -4534,73 +4286,12 @@ mod finalization_impls {
 mod postpass_impls {
     use super::postpass as ppm;
     use super::*;
-    use postpass::slicer::config::config_types as ppct;
     use postpass::slicer::types::geometry as ppgeo;
     use postpass::slicer::world_postpass::host_services as pphs;
 
-    impl ppgeo::Host for HostExecutionContext {}
-
-    fn pp_wit_to_ir(ep: &ppgeo::ExPolygon) -> slicer_ir::ExPolygon {
-        slicer_ir::ExPolygon {
-            contour: slicer_ir::Polygon {
-                points: ep
-                    .contour
-                    .points
-                    .iter()
-                    .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
-                    .collect(),
-            },
-            holes: ep
-                .holes
-                .iter()
-                .map(|h| slicer_ir::Polygon {
-                    points: h
-                        .points
-                        .iter()
-                        .map(|p| slicer_ir::Point2 { x: p.x, y: p.y })
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
-    fn pp_ir_to_wit(ep: &slicer_ir::ExPolygon) -> ppgeo::ExPolygon {
-        ppgeo::ExPolygon {
-            contour: ppgeo::Polygon {
-                points: ep
-                    .contour
-                    .points
-                    .iter()
-                    .map(|p| ppgeo::Point2 { x: p.x, y: p.y })
-                    .collect(),
-            },
-            holes: ep
-                .holes
-                .iter()
-                .map(|h| ppgeo::Polygon {
-                    points: h
-                        .points
-                        .iter()
-                        .map(|p| ppgeo::Point2 { x: p.x, y: p.y })
-                        .collect(),
-                })
-                .collect(),
-        }
-    }
-
-    fn ir_point3_to_postpass(point: slicer_ir::Point3) -> ppgeo::Point3 {
-        ppgeo::Point3 {
-            x: point.x,
-            y: point.y,
-            z: point.z,
-        }
-    }
-
-    fn ir_bounds_to_postpass(bounds: slicer_ir::BoundingBox3) -> ppgeo::BoundingBox3 {
-        ppgeo::BoundingBox3 {
-            min: ir_point3_to_postpass(bounds.min),
-            max: ir_point3_to_postpass(bounds.max),
-        }
-    }
+    // `ppgeo` now aliases the layer world's geometry module (Phase 3 remap); its
+    // `Host` impl and IR↔WIT converters are the layer world's — reused here via
+    // `use super::*` instead of regenerated copies.
 
     impl pphs::Host for HostExecutionContext {
         fn log(&mut self, level: pphs::LogLevel, message: String) -> wasmtime::Result<()> {
@@ -4630,13 +4321,13 @@ mod postpass_impls {
             y: f32,
             z: f32,
         ) -> wasmtime::Result<Option<ppgeo::Point3>> {
-            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_postpass))
+            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_layer))
         }
         fn object_bounds(
             &mut self,
             object_id: pphs::ObjectId,
         ) -> wasmtime::Result<ppgeo::BoundingBox3> {
-            Ok(ir_bounds_to_postpass(object_bounds_mesh_query(
+            Ok(ir_bounds_to_layer(object_bounds_mesh_query(
                 self, &object_id,
             )?))
         }
@@ -4646,8 +4337,8 @@ mod postpass_impls {
             clip: Vec<ppgeo::ExPolygon>,
             op: pphs::ClipOperation,
         ) -> wasmtime::Result<Vec<ppgeo::ExPolygon>> {
-            let s: Vec<_> = subject.iter().map(pp_wit_to_ir).collect();
-            let c: Vec<_> = clip.iter().map(pp_wit_to_ir).collect();
+            let s: Vec<_> = subject.iter().map(wit_to_ir_expolygon).collect();
+            let c: Vec<_> = clip.iter().map(wit_to_ir_expolygon).collect();
             let ir_op = match op {
                 pphs::ClipOperation::Union => slicer_core::polygon_ops::ClipOperation::Union,
                 pphs::ClipOperation::Intersection => {
@@ -4660,7 +4351,7 @@ mod postpass_impls {
             };
             Ok(ir_clip_polygons(&s, &c, ir_op)
                 .iter()
-                .map(pp_ir_to_wit)
+                .map(ir_to_wit_expolygon)
                 .collect())
         }
         fn offset_polygons(
@@ -4669,7 +4360,7 @@ mod postpass_impls {
             delta_mm: f32,
             join: pphs::OffsetJoinType,
         ) -> wasmtime::Result<Vec<ppgeo::ExPolygon>> {
-            let ir: Vec<_> = polygons.iter().map(pp_wit_to_ir).collect();
+            let ir: Vec<_> = polygons.iter().map(wit_to_ir_expolygon).collect();
             let j = match join {
                 pphs::OffsetJoinType::Miter => slicer_core::polygon_ops::OffsetJoinType::Miter,
                 pphs::OffsetJoinType::Round => slicer_core::polygon_ops::OffsetJoinType::Round,
@@ -4677,7 +4368,7 @@ mod postpass_impls {
             };
             Ok(ir_offset_polygons(&ir, delta_mm, j)
                 .iter()
-                .map(pp_ir_to_wit)
+                .map(ir_to_wit_expolygon)
                 .collect())
         }
         fn simplify_polygon(
@@ -4702,75 +4393,8 @@ mod postpass_impls {
         }
     }
 
-    impl ppct::Host for HostExecutionContext {}
-    impl ppct::HostConfigView for HostExecutionContext {
-        fn get(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<ppct::ConfigValue>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).map(|v| match v {
-                ConfigValueStorage::Bool(b) => ppct::ConfigValue::BoolVal(*b),
-                ConfigValueStorage::Int(i) => ppct::ConfigValue::IntVal(*i),
-                ConfigValueStorage::Float(f) => ppct::ConfigValue::FloatVal(*f),
-                ConfigValueStorage::Str(s) => ppct::ConfigValue::StringVal(s.clone()),
-                ConfigValueStorage::FloatList(fl) => ppct::ConfigValue::FloatList(fl.clone()),
-                ConfigValueStorage::StringList(sl) => ppct::ConfigValue::StringList(sl.clone()),
-            }))
-        }
-        fn get_bool(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<bool>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Bool(b) => Some(*b),
-                _ => None,
-            }))
-        }
-        fn get_float(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<f64>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Float(f) => Some(normalize_subnormal_boundary(*f)),
-                _ => None,
-            }))
-        }
-        fn get_int(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<i64>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Int(i) => Some(*i),
-                _ => None,
-            }))
-        }
-        fn get_string(
-            &mut self,
-            self_: Resource<ConfigViewData>,
-            key: String,
-        ) -> wasmtime::Result<Option<String>> {
-            let data = self.table.get(&self_)?;
-            Ok(data.fields.get(&key).and_then(|v| match v {
-                ConfigValueStorage::Str(s) => Some(s.clone()),
-                _ => None,
-            }))
-        }
-        fn keys(&mut self, self_: Resource<ConfigViewData>) -> wasmtime::Result<Vec<String>> {
-            Ok(self.table.get(&self_)?.fields.keys().cloned().collect())
-        }
-        fn drop(&mut self, rep: Resource<ConfigViewData>) -> wasmtime::Result<()> {
-            self.table.delete(rep)?;
-            Ok(())
-        }
-    }
+    // `ppct` config-types `Host`/`HostConfigView` impls are the layer
+    // world's (Phase 3 remap); reused via `use super::*`, not regenerated.
 
     impl ppm::HostGcodeOutputBuilder for HostExecutionContext {
         fn push_move(

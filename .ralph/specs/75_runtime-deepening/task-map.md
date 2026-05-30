@@ -27,4 +27,6 @@ visibility and deletes a copy in `dispatch.rs`; Phase 3 deletes converters elsew
 
 - All-prepass-ordering declarative graph (from Phase 1).
 - Layer-world-only region-view accessors / builder `push_*` repetition (from Phase 3).
+- Per-world extrusion-role / extrusion-path / retract-mode converters (`finalization_role_*`,
+  `finalization_path_*`, `convert_postpass_*`) — smaller dedup with asymmetric layer coverage (from Phase 3; see ADR-0002).
 - 3MF XML-parser decomposition — extracting `decode_paint_hex_strokes` from the parse loop (from Phase 4).
