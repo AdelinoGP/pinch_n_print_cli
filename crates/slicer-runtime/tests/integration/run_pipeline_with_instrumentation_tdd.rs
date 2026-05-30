@@ -558,3 +558,125 @@ fn record_edges_fires_for_every_stage_at_plan_freeze() {
         other => panic!("expected IrWriteRead reason, got {:?}", other),
     }
 }
+
+// ── Phase-1 (TASK-216) regression: built-in stage bracket emission ─────────
+
+/// Records every `on_stage_end` stage id in call order, so a refactor that
+/// drops or doubles a host-built-in's instrument bracket is caught.
+struct StageEndRecorder {
+    ends: Mutex<Vec<String>>,
+}
+
+impl StageEndRecorder {
+    fn new() -> Self {
+        Self {
+            ends: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl PipelineInstrumentation for StageEndRecorder {
+    fn on_phase_start(&self, _phase: slicer_runtime::Phase) {}
+    fn on_phase_end(&self, _phase: slicer_runtime::Phase) {}
+    fn on_stage_start(&self, _stage: &StageId, _layer: Option<u32>) {}
+    fn on_stage_end(&self, stage: &StageId, _layer: Option<u32>) {
+        self.ends.lock().unwrap().push(stage.as_str().to_string());
+    }
+    fn on_module_start(&self, _stage: &StageId, _layer: Option<u32>, _module: &slicer_ir::ModuleId) {}
+    fn on_module_end(
+        &self,
+        _stage: &StageId,
+        _layer: Option<u32>,
+        _module: &slicer_ir::ModuleId,
+        _wasm_initial_bytes: u64,
+        _wasm_peak_bytes: u64,
+    ) {
+    }
+    fn on_layer_start(&self, _layer: u32, _z_mm: f32) {}
+    fn on_layer_end(&self, _layer: u32) {}
+    fn record_edges(&self, _stage: &StageId, _tier: TierKind, _edges: &[SerialEdge]) {}
+}
+
+/// Each PrePass host built-in must emit exactly one `on_stage_end` bracket, and
+/// the built-ins must fire in the canonical order. Locks the bracket-per-built-in
+/// behaviour that the `run_builtin_stage` unification preserves (packet 75,
+/// Phase 1 / TASK-216): a dropped `guard.finish` or a doubled bracket changes
+/// this sequence.
+#[test]
+fn prepass_builtins_emit_one_stage_end_each_in_declared_order() {
+    struct TwoLayerPrepass;
+    impl PrepassStageRunner for TwoLayerPrepass {
+        fn run_stage(
+            &self,
+            _stage_id: &StageId,
+            _module: &CompiledModule,
+            _blackboard: &Blackboard,
+        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+            Ok((
+                PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+                    global_layers: vec![make_global_layer(0, 0.2), make_global_layer(1, 0.4)],
+                    ..Default::default()
+                })),
+                Vec::new(),
+            ))
+        }
+    }
+
+    let plan = ExecutionPlan {
+        prepass_stages: vec![CompiledStage {
+            stage_id: "PrePass::LayerPlanning".into(),
+            modules: vec![make_dummy_module("PrePass::LayerPlanning", "layer-planner")],
+        }],
+        per_layer_stages: Vec::new(),
+        layer_finalization_stage: None,
+        postpass_stages: Vec::new(),
+        global_layers: Arc::new(Vec::new()),
+        region_plans: Arc::new(HashMap::new()),
+        module_region_index: HashMap::new(),
+    };
+
+    let mut runners = noop_runners();
+    runners.prepass = Box::new(TwoLayerPrepass);
+
+    let config = PipelineConfig {
+        mesh_ir: empty_mesh_ir(),
+        plan,
+        runners,
+        resolved_configs: Arc::new(std::collections::BTreeMap::new()),
+        default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
+        bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+    };
+
+    let recorder = StageEndRecorder::new();
+    let result = run_pipeline_with_instrumentation(
+        config,
+        &empty_raw_config(),
+        &NoopLayerProgressSink,
+        &recorder,
+    );
+    assert!(result.is_ok(), "pipeline must succeed: {:?}", result.err());
+
+    // Canonical order of the six host built-ins.
+    const BUILTINS: [&str; 6] = [
+        "PrePass::MeshAnalysis",
+        "PrePass::PaintSegmentation",
+        "PrePass::RegionMapping",
+        "PrePass::Slice",
+        "PrePass::ShellClassification",
+        "PrePass::SupportGeometry",
+    ];
+
+    let ends = recorder.ends.lock().unwrap();
+    let builtin_ends: Vec<&str> = ends
+        .iter()
+        .map(String::as_str)
+        .filter(|s| BUILTINS.contains(s))
+        .collect();
+
+    assert_eq!(
+        builtin_ends.as_slice(),
+        BUILTINS.as_slice(),
+        "each host built-in must emit exactly one on_stage_end, in declared order; got {:?}",
+        builtin_ends
+    );
+}
