@@ -153,7 +153,7 @@ minimum/current pin for each component.
 | Parallelism   | rayon                                   | 1.80                 |
 | Geometry      | geo, nalgebra                           | 0.28, 0.32           |
 | Polygon ops   | clipper2-rust                           | 1.0.3                |
-| Serialization | serde + bincode                         | 1.0.228, 1.3.3       |
+| Serialization | serde + postcard                        | 1.0.228, 1.1.3       |
 | Config format | TOML (manifests), JSON (runtime config) | —                    |
 | Testing       | cargo test                              | —                    |
 | Python bridge | pyo3 (embedded interpreter)             | 0.28.3               |

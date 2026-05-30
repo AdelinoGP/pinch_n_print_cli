@@ -11,8 +11,8 @@ mod tests {
     // Helper macro to test serde round-trip
     macro_rules! test_serde_roundtrip {
         ($value:expr) => {
-            let serialized = bincode::serialize(&$value).unwrap();
-            let deserialized = bincode::deserialize(&serialized).unwrap();
+            let serialized = postcard::to_allocvec(&$value).unwrap();
+            let deserialized = postcard::from_bytes(&serialized).unwrap();
             assert_eq!($value, deserialized);
         };
     }

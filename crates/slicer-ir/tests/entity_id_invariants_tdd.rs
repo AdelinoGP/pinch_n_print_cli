@@ -8,7 +8,7 @@
 //!
 //! Acceptance criteria exercised:
 //!   - AC-1: unique entity IDs and resolvable travel anchors within a layer
-//!   - AC-4: entity_id round-trips through serde/bincode
+//!   - AC-4: entity_id round-trips through serde/postcard
 //!   - AC-5: LayerEntityIdGen is strictly monotonic
 //!   - Negative: LayerEntityIdGen is !Send + !Sync (static_assertions form)
 
@@ -134,7 +134,7 @@ fn unique_per_layer_and_resolvable() {
 
 #[test]
 fn entity_id_round_trips_through_serde() {
-    // Build a LayerCollectionIR, serialize via bincode, deserialize back.
+    // Build a LayerCollectionIR, serialize via postcard, deserialize back.
     // Assert entity_ids and TravelMove.entity_id round-trip exactly.
     let entity_a = make_entity(1, 0.0, 10.0, 0.0, 0.2);
     let entity_b = make_entity(2, 20.0, 30.0, 5.0, 0.2);
@@ -157,10 +157,10 @@ fn entity_id_round_trips_through_serde() {
 
     let original = make_layer(vec![entity_a, entity_b, entity_c], vec![travel1, travel2]);
 
-    // Serialize and deserialize via bincode
-    let bytes = bincode::serialize(&original).expect("bincode::serialize should succeed");
+    // Serialize and deserialize via postcard
+    let bytes = postcard::to_allocvec(&original).expect("postcard serialize should succeed");
     let roundtripped: LayerCollectionIR =
-        bincode::deserialize(&bytes).expect("bincode::deserialize should succeed");
+        postcard::from_bytes(&bytes).expect("postcard deserialize should succeed");
 
     // Verify entity_ids round-trip
     assert_eq!(
@@ -175,7 +175,7 @@ fn entity_id_round_trips_through_serde() {
     {
         assert_eq!(
             orig.entity_id, rt.entity_id,
-            "entity_id must round-trip through bincode serde"
+            "entity_id must round-trip through postcard serde"
         );
     }
 
@@ -192,7 +192,7 @@ fn entity_id_round_trips_through_serde() {
     {
         assert_eq!(
             orig.entity_id, rt.entity_id,
-            "TravelMove.entity_id must round-trip through bincode serde"
+            "TravelMove.entity_id must round-trip through postcard serde"
         );
     }
 }
