@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
-    branches: [main]
+    branches: [main, master]
 
 env:
   CARGO_TERM_COLOR: always
@@ -20,6 +20,28 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
+
+  docs-guard:
+    name: Docs staleness guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Numbered reference docs must not cite crate paths the project removed in
+      # Packet 69 (slicer-host -> slicer-runtime, slicer-cli deleted) or the
+      # top-level wit/ deleted in Packet 72. History/status docs are excluded:
+      # 07_*, 14_*, DEVIATION_LOG (legitimately describe the rename), and specs/.
+      - name: Ban stale crate/binary/WIT paths in reference docs
+        run: |
+          set -euo pipefail
+          files=$(ls docs/*.md | grep -Ev 'docs/(07_|14_|DEVIATION_LOG)')
+          # Dead paths: crates/slicer-host|cli/, slicer_host|cli::, bare `wit/<subdir>
+          pattern='crates/slicer-(host|cli)/|slicer_(host|cli)::|`wit/(deps|world-|host-api|root)'
+          if hits=$(grep -REn "$pattern" $files); then
+            echo "::error::Stale crate/WIT path(s) found in reference docs. Use crates/slicer-runtime, crates/pnp-cli, or crates/slicer-schema/wit/. See docs/00_project_overview.md Code Map."
+            echo "$hits"
+            exit 1
+          fi
+          echo "OK: no stale crate/WIT paths in numbered reference docs."
 
   clippy:
     name: Clippy
@@ -43,8 +65,12 @@ jobs:
         run: cargo check --workspace
       - name: Build
         run: cargo build --workspace
+      - name: Deviation status in sync (docs/07 vs DEVIATION_LOG)
+        run: cargo run -q -p xtask -- check-deviations --check
+      - name: Config docs in sync (docs/15 vs manifests + host-keys.toml)
+        run: cargo run -q -p xtask -- gen-config-docs --check
       - name: Test Core (narrow)
-        run: cargo test -p slicer-runtime --test core_module_ir_access_contract_tdd
+        run: cargo test -p slicer-runtime --test contract core_module_ir_access_contract_tdd
       - name: Test All Crates (not workspace)
         run: cargo test -p slicer-runtime && cargo test -p pnp-cli && cargo test -p slicer-helpers
 
