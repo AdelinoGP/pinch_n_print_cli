@@ -3,7 +3,7 @@
 ## Packet Metadata
 
 - Grouped task IDs:
-  - `TASK-166` — resolve per-object/per-region config and thread it through so downstream stages consume config values. This packet continues that intent at the **WIT-export layer** for `run-support-geometry` (TASK-166's own work was at the `RegionMapIR`/`RegionPlan` layer).
+  - `TASK-163c` — WIT-boundary config/error normalization for `run-support-geometry` (support-geometry / TASK-163 cluster). Distinct from `TASK-166`, which threaded config into `RegionMapIR`/`RegionPlan` at a different layer.
 - Backlog source: `docs/07_implementation_status.md`
 - Packet status: `implemented`
 - Aggregate context cost: `M`

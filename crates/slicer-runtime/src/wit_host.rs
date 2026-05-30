@@ -3674,6 +3674,10 @@ mod prepass_impls {
             _handle: Resource<pm::SupportGeometryOutput>,
             entry: pm::SupportPlanEntry,
         ) -> wasmtime::Result<Result<(), String>> {
+            // Validate before collecting: an empty object-id/region-id would
+            // corrupt the RegionKey construction in harvest_support_plan_ir.
+            // Matches the sibling seam-planning-output / mesh-analysis-output
+            // validators (the packet's "mirror seam-planning" instruction).
             if entry.object_id.is_empty() {
                 return Ok(Err(String::from(
                     "support-geometry-output: object-id must be non-empty",

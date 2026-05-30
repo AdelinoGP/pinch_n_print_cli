@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 cargo build --workspace
-cargo clippy --workspace -- -D warnings              # required before committing
+cargo clippy --workspace --all-targets -- -D warnings  # required before committing (--all-targets also compiles test/bench targets)
 cargo test -p slicer-runtime --test core_module_ir_access_contract_tdd   # narrow, targeted run (preferred)
 cargo xtask build-guests                             # build all guest WASMs (core-modules + test-guests; needs wasm32 target)
 cargo run --bin pnp_cli --release -- slice --input model.stl --output model.gcode
@@ -54,7 +54,9 @@ Default to the narrowest test that proves the change:
 - A single test:        `cargo test -p <crate> --test <file> -- <test_name> --nocapture`
 - One test file:        `cargo test -p <crate> --test <file>`
 - One crate:            `cargo test -p <crate>`
-- Type-check only:      `cargo check --workspace` (seconds, not minutes)
+- Type-check only:      `cargo check --workspace --all-targets` (seconds, not minutes)
+
+**Always use `--all-targets` for check/clippy gates.** Plain `cargo check/clippy --workspace` does **not** compile test or bench targets — a change that churns generated bindgen paths or a stage signature can leave test targets non-compiling while the gate stays green (this shipped silently once: packet 72 left three `slicer-runtime` test targets broken, caught only by accident in packet 73). The acceptance gate must build all targets.
 
 `cargo test --workspace` is permitted **only** when:
 1. The user explicitly asks for it, OR

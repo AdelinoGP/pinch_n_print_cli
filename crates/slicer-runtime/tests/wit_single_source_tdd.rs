@@ -262,10 +262,9 @@ fn host_bindgen_paths_target_shared_root() {
         if let Some(rest) = trimmed.strip_prefix("path:") {
             let rest = rest.trim();
             // Extract the quoted string value.
-            if rest.starts_with('"') {
-                if let Some(end) = rest[1..].find('"') {
-                    let value = &rest[1..1 + end];
-                    paths.push(value);
+            if let Some(inner) = rest.strip_prefix('"') {
+                if let Some(end) = inner.find('"') {
+                    paths.push(&inner[..end]);
                 }
             }
         }

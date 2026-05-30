@@ -2,7 +2,7 @@
 status: implemented
 packet: 73_support-geometry-normalization
 task_ids:
-  - TASK-166
+  - TASK-163c
 backlog_source: docs/07_implementation_status.md
 context_cost_estimate: M
 ---
@@ -70,3 +70,10 @@ This packet was generated against the context_discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Deviations
+
+- **[Step 1 / AC-1 path]** Specified edits to `crates/slicer-schema/wit/world-prepass.wit`; implemented at `crates/slicer-schema/wit/deps/world-prepass/world-prepass.wit`, with the stale path corrected across all 5 packet docs. Reason: packet 72's nested-package umbrella moved the file; the authored path predated 72's final structure.
+- **[Step 3 / push validation — audit concern investigated, RETAINED]** A spec-audit flagged the empty-`object_id`/`region_id` rejection in `push_support_plan_entry` as unrequested and potentially harmful (fatal `code: 11`). Verification against the named mirror target disproved that: `seam-planning-output` and `mesh-analysis-output` carry the identical validation, with the stated reason that an empty id *"would corrupt the RegionKey construction in the harvest helper"* — which `harvest_support_plan_ir` shares. Rejecting an empty id fails loud rather than silently mis-keying support geometry, so the validation is the correct, consistent prepass pattern and is **retained** (it correctly mirrors `seam-planning`, as the packet specified — not a deviation). The rejection branch lacks dedicated test coverage, a pre-existing gap shared by all prepass output builders; out of scope here.
+- **[Step 4 scope — packet-72 remediation]** Also edited `tests/{live_seam_path,pipeline,z_envelope_contract}_tdd.rs`. These are **packet-72 generated-path fallout** (`world_layer::geometry`→`types::geometry`, `world_layer::ir_handles`→`ir_handles::ir_handles`) that left those test targets uncompilable; `cargo check --workspace` without `--all-targets` hid it from packet 72's gate. Path-only, no logic change. Re-attributed to packet 72's Deviations; gate hardened to `--all-targets`.
+- **[task attribution]** Packet retargeted from `TASK-166` (RegionMapIR config) to `TASK-163c` (support-geometry cluster) — the WIT-boundary fix is topically support-geometry, not RegionMapIR. `task_ids`, `task-map.md`, and the `requirements.md` Problem Statement updated to match the `docs/07` entry.
