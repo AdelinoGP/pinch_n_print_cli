@@ -36,9 +36,24 @@ fn macro_emits_wit_bindgen_generate_for_postpass_text_world() {
         src.contains(r#""postpass-module""#),
         "macro's wit_bindgen invocation must target the `postpass-module` world"
     );
+    // Single-source WIT (packet 72/74): the macro no longer inlines the WIT as a
+    // literal — it `include_str!`s the canonical `world-postpass.wit` and feeds it
+    // to `wit_bindgen::generate!`. Verify (a) the macro includes that canonical
+    // WIT, and (b) the canonical WIT declares the documented export. Asserting the
+    // literal in the macro source would re-introduce the inline duplication packet
+    // 72 deleted.
     assert!(
-        src.contains("run-text-postprocess"),
-        "macro inline WIT must declare the documented `run-text-postprocess` export"
+        src.contains("world-postpass/world-postpass.wit"),
+        "macro must include_str! the canonical world-postpass WIT (single source, packet 72)"
+    );
+    let postpass_wit = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../slicer-schema/wit/deps/world-postpass/world-postpass.wit"),
+    )
+    .expect("read canonical world-postpass.wit");
+    assert!(
+        postpass_wit.contains("run-text-postprocess"),
+        "canonical world-postpass WIT must declare the documented `run-text-postprocess` export"
     );
 }
 
