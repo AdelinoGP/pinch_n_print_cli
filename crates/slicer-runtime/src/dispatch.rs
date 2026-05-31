@@ -1769,12 +1769,13 @@ fn harvest_seam_plan_ir_from(
     let mut entries: Vec<SeamPlanEntry> = Vec::with_capacity(seam_plan_entries.len());
 
     for entry in seam_plan_entries.into_iter() {
-        let region_id = wit_host::parse_canonical_region_id(&entry.region_id).map_err(|reason| {
-            format!(
-                "seam-planning-output: region '{}'/'{}' has invalid region-id: {reason}",
-                entry.object_id, entry.region_id
-            )
-        })?;
+        let region_id =
+            wit_host::parse_canonical_region_id(&entry.region_id).map_err(|reason| {
+                format!(
+                    "seam-planning-output: region '{}'/'{}' has invalid region-id: {reason}",
+                    entry.object_id, entry.region_id
+                )
+            })?;
 
         let region_key = RegionKey {
             global_layer_index: entry.global_layer_index,
@@ -1866,12 +1867,13 @@ fn harvest_support_plan_ir_from(
     let mut entries: Vec<SupportPlanEntry> = Vec::with_capacity(support_plan_entries.len());
 
     for entry in support_plan_entries.into_iter() {
-        let region_id = wit_host::parse_canonical_region_id(&entry.region_id).map_err(|reason| {
-            format!(
-                "support-generation-output: region '{}'/'{}' has invalid region-id: {reason}",
-                entry.object_id, entry.region_id
-            )
-        })?;
+        let region_id =
+            wit_host::parse_canonical_region_id(&entry.region_id).map_err(|reason| {
+                format!(
+                    "support-generation-output: region '{}'/'{}' has invalid region-id: {reason}",
+                    entry.object_id, entry.region_id
+                )
+            })?;
 
         let mut branch_segments: Vec<ExtrusionPath3D> =
             Vec::with_capacity(entry.branch_segments.len());
@@ -3113,106 +3115,7 @@ unsafe impl Sync for WasmRuntimeDispatcher {}
 fn resolved_config_to_map(
     cfg: &slicer_ir::ResolvedConfig,
 ) -> std::collections::HashMap<String, slicer_ir::ConfigValue> {
-    use slicer_ir::ConfigValue;
-    let mut m = std::collections::HashMap::new();
-    m.insert(
-        "layer_height".to_string(),
-        ConfigValue::Float(cfg.layer_height as f64),
-    );
-    m.insert(
-        "line_width".to_string(),
-        ConfigValue::Float(cfg.line_width as f64),
-    );
-    m.insert(
-        "first_layer_height".to_string(),
-        ConfigValue::Float(cfg.first_layer_height as f64),
-    );
-    m.insert(
-        "first_layer_line_width".to_string(),
-        ConfigValue::Float(cfg.first_layer_line_width as f64),
-    );
-    m.insert(
-        "wall_count".to_string(),
-        ConfigValue::Int(cfg.wall_count as i64),
-    );
-    m.insert(
-        "outer_wall_speed".to_string(),
-        ConfigValue::Float(cfg.outer_wall_speed as f64),
-    );
-    m.insert(
-        "inner_wall_speed".to_string(),
-        ConfigValue::Float(cfg.inner_wall_speed as f64),
-    );
-    if let Some(v) = cfg.arachne_min_feature_size {
-        m.insert(
-            "arachne_min_feature_size".to_string(),
-            ConfigValue::Float(v as f64),
-        );
-    }
-    m.insert(
-        "infill_density".to_string(),
-        ConfigValue::Float(cfg.infill_density as f64),
-    );
-    m.insert(
-        "infill_angle".to_string(),
-        ConfigValue::Float(cfg.infill_angle as f64),
-    );
-    m.insert(
-        "infill_speed".to_string(),
-        ConfigValue::Float(cfg.infill_speed as f64),
-    );
-    m.insert(
-        "solid_infill_speed".to_string(),
-        ConfigValue::Float(cfg.solid_infill_speed as f64),
-    );
-    m.insert(
-        "top_shell_layers".to_string(),
-        ConfigValue::Int(cfg.top_shell_layers as i64),
-    );
-    m.insert(
-        "bottom_shell_layers".to_string(),
-        ConfigValue::Int(cfg.bottom_shell_layers as i64),
-    );
-    m.insert(
-        "support_enabled".to_string(),
-        ConfigValue::Bool(cfg.support_enabled),
-    );
-    m.insert(
-        "support_overhang_angle".to_string(),
-        ConfigValue::Float(cfg.support_overhang_angle as f64),
-    );
-    if let Some(v) = cfg.nonplanar_max_angle_deg {
-        m.insert(
-            "nonplanar_max_angle_deg".to_string(),
-            ConfigValue::Float(v as f64),
-        );
-    }
-    if let Some(v) = cfg.nonplanar_shell_count {
-        m.insert(
-            "nonplanar_shell_count".to_string(),
-            ConfigValue::Int(v as i64),
-        );
-    }
-    if let Some(v) = cfg.nonplanar_amplitude {
-        m.insert(
-            "nonplanar_amplitude".to_string(),
-            ConfigValue::Float(v as f64),
-        );
-    }
-    if let Some(v) = cfg.smoothificator_target_height {
-        m.insert(
-            "smoothificator_target_height".to_string(),
-            ConfigValue::Float(v as f64),
-        );
-    }
-    if let Some(v) = cfg.smoothificator_adaptive {
-        m.insert("smoothificator_adaptive".to_string(), ConfigValue::Bool(v));
-    }
-    // Pass extension keys through unchanged.
-    for (k, v) in &cfg.extensions {
-        m.insert(k.clone(), v.clone());
-    }
-    m
+    cfg.to_config_map()
 }
 
 /// Merge `incoming`'s regions into `existing` in place.

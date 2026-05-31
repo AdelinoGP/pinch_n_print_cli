@@ -523,12 +523,13 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             )
             .map_err(|source| PrepassExecutionError::PaintSegmentation { source })?;
             let rtree = build_paint_region_rtree_index(&paint_ir);
-            bb.commit_paint_regions(paint_ir, rtree)
-                .map_err(|source| PrepassExecutionError::Blackboard {
+            bb.commit_paint_regions(paint_ir, rtree).map_err(|source| {
+                PrepassExecutionError::Blackboard {
                     stage_id: "PrePass::PaintSegmentation".to_string(),
                     module_id: "host:paint_segmentation".to_string(),
                     source,
-                })
+                }
+            })
         },
     )?;
     // Region-mapping: needs LayerPlan; reads any committed PaintRegionIR to
@@ -606,9 +607,7 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         "PrePass::SupportGeometry",
         "host:support_geometry",
         |bb| {
-            bb.support_geometry().is_none()
-                && bb.layer_plan().is_some()
-                && bb.slice_ir().is_some()
+            bb.support_geometry().is_none() && bb.layer_plan().is_some() && bb.slice_ir().is_some()
         },
         |bb| {
             crate::support_geometry::commit_support_geometry_builtin(bb)

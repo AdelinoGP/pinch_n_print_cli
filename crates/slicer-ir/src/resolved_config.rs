@@ -18,6 +18,149 @@ use std::collections::HashMap;
 
 use crate::slice_ir::{ConfigValue, InfillType, SupportType, WallGenerator};
 
+impl ResolvedConfig {
+    /// Flattens this config into a `HashMap<key, ConfigValue>` of effective
+    /// slicer settings.
+    ///
+    /// Single source of truth for two consumers that previously kept divergent
+    /// copies (gcode `CONFIG_BLOCK` emission and the per-region `ConfigView`
+    /// handed to layer-tier modules). `Option`-typed fields that are `None` are
+    /// omitted; enum fields are emitted as their `Debug` string; module-supplied
+    /// `extensions` keys are merged through unchanged. Consumers that must
+    /// restrict visibility (e.g. the per-module config view) filter this map to
+    /// their declared keys.
+    #[must_use]
+    pub fn to_config_map(&self) -> HashMap<String, ConfigValue> {
+        let mut m: HashMap<String, ConfigValue> = HashMap::new();
+        m.insert(
+            "layer_height".into(),
+            ConfigValue::Float(f64::from(self.layer_height)),
+        );
+        m.insert(
+            "line_width".into(),
+            ConfigValue::Float(f64::from(self.line_width)),
+        );
+        m.insert(
+            "first_layer_height".into(),
+            ConfigValue::Float(f64::from(self.first_layer_height)),
+        );
+        m.insert(
+            "first_layer_line_width".into(),
+            ConfigValue::Float(f64::from(self.first_layer_line_width)),
+        );
+        m.insert(
+            "wall_count".into(),
+            ConfigValue::Int(i64::from(self.wall_count)),
+        );
+        m.insert(
+            "outer_wall_speed".into(),
+            ConfigValue::Float(f64::from(self.outer_wall_speed)),
+        );
+        m.insert(
+            "inner_wall_speed".into(),
+            ConfigValue::Float(f64::from(self.inner_wall_speed)),
+        );
+        m.insert(
+            "wall_generator".into(),
+            ConfigValue::String(format!("{:?}", self.wall_generator)),
+        );
+        if let Some(v) = self.arachne_min_feature_size {
+            m.insert(
+                "arachne_min_feature_size".into(),
+                ConfigValue::Float(f64::from(v)),
+            );
+        }
+        m.insert(
+            "infill_type".into(),
+            ConfigValue::String(format!("{:?}", self.infill_type)),
+        );
+        m.insert(
+            "infill_density".into(),
+            ConfigValue::Float(f64::from(self.infill_density)),
+        );
+        m.insert(
+            "infill_angle".into(),
+            ConfigValue::Float(f64::from(self.infill_angle)),
+        );
+        m.insert(
+            "infill_speed".into(),
+            ConfigValue::Float(f64::from(self.infill_speed)),
+        );
+        m.insert(
+            "solid_infill_speed".into(),
+            ConfigValue::Float(f64::from(self.solid_infill_speed)),
+        );
+        m.insert(
+            "top_shell_layers".into(),
+            ConfigValue::Int(i64::from(self.top_shell_layers)),
+        );
+        m.insert(
+            "bottom_shell_layers".into(),
+            ConfigValue::Int(i64::from(self.bottom_shell_layers)),
+        );
+        m.insert(
+            "top_fill_holder".into(),
+            ConfigValue::String(self.top_fill_holder.clone()),
+        );
+        m.insert(
+            "bottom_fill_holder".into(),
+            ConfigValue::String(self.bottom_fill_holder.clone()),
+        );
+        m.insert(
+            "bridge_fill_holder".into(),
+            ConfigValue::String(self.bridge_fill_holder.clone()),
+        );
+        m.insert(
+            "sparse_fill_holder".into(),
+            ConfigValue::String(self.sparse_fill_holder.clone()),
+        );
+        m.insert(
+            "support_enabled".into(),
+            ConfigValue::Bool(self.support_enabled),
+        );
+        m.insert(
+            "support_type".into(),
+            ConfigValue::String(format!("{:?}", self.support_type)),
+        );
+        m.insert(
+            "support_overhang_angle".into(),
+            ConfigValue::Float(f64::from(self.support_overhang_angle)),
+        );
+        if let Some(v) = self.nonplanar_max_angle_deg {
+            m.insert(
+                "nonplanar_max_angle_deg".into(),
+                ConfigValue::Float(f64::from(v)),
+            );
+        }
+        if let Some(v) = self.nonplanar_shell_count {
+            m.insert(
+                "nonplanar_shell_count".into(),
+                ConfigValue::Int(i64::from(v)),
+            );
+        }
+        if let Some(v) = self.nonplanar_amplitude {
+            m.insert(
+                "nonplanar_amplitude".into(),
+                ConfigValue::Float(f64::from(v)),
+            );
+        }
+        if let Some(v) = self.smoothificator_target_height {
+            m.insert(
+                "smoothificator_target_height".into(),
+                ConfigValue::Float(f64::from(v)),
+            );
+        }
+        if let Some(v) = self.smoothificator_adaptive {
+            m.insert("smoothificator_adaptive".into(), ConfigValue::Bool(v));
+        }
+        // Merge extension keys (module-contributed, already in ConfigValue form).
+        for (k, v) in &self.extensions {
+            m.insert(k.clone(), v.clone());
+        }
+        m
+    }
+}
+
 // ── Error and extractor primitives ─────────────────────────────────────────
 
 /// Errors produced during config resolution.

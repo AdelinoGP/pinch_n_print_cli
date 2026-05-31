@@ -733,22 +733,7 @@ fn get_vertex<'a>(
 /// collapse the mesh; we treat it as identity for robustness against
 /// fixtures that leave `Transform3d::matrix` unset.
 fn apply_transform(t: &Transform3d, p: &Point3) -> Point3 {
-    // Column-major: column c, row r → matrix[c * 4 + r]
-    let m = &t.matrix;
-    if m.iter().all(|v| *v == 0.0) {
-        return *p;
-    }
-    let x = p.x as f64;
-    let y = p.y as f64;
-    let z = p.z as f64;
-    let tx = m[0] * x + m[4] * y + m[8] * z + m[12];
-    let ty = m[1] * x + m[5] * y + m[9] * z + m[13];
-    let tz = m[2] * x + m[6] * y + m[10] * z + m[14];
-    Point3 {
-        x: tx as f32,
-        y: ty as f32,
-        z: tz as f32,
-    }
+    slicer_core::transform_point3(&t.matrix, *p)
 }
 
 fn triangle_normal_area(a: Point3, b: Point3, c: Point3) -> ([f32; 3], f32) {

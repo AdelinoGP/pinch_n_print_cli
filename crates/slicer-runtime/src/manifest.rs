@@ -1029,30 +1029,7 @@ fn validate_wit_world(wit_world: &str, manifest_path: &Path) -> Result<(), LoadE
 }
 
 fn known_stage_ids() -> &'static [&'static str] {
-    &[
-        "PrePass::MeshSegmentation",
-        "PrePass::MeshAnalysis",
-        "PrePass::LayerPlanning",
-        "PrePass::SeamPlanning",
-        "PrePass::PaintSegmentation",
-        "PrePass::SupportGeometry",
-        "PrePass::RegionMapping",
-        "PrePass::Slice",
-        "PrePass::ShellClassification",
-        "Layer::PaintRegionAnnotation",
-        "Layer::SlicePostProcess",
-        "Layer::Perimeters",
-        "Layer::PerimetersPostProcess",
-        "Layer::Infill",
-        "Layer::InfillPostProcess",
-        "Layer::Support",
-        "Layer::SupportPostProcess",
-        "Layer::PathOptimization",
-        "PostPass::LayerFinalization",
-        "PostPass::GCodeEmit",
-        "PostPass::GCodePostProcess",
-        "PostPass::TextPostProcess",
-    ]
+    crate::stage_order::known_stage_ids()
 }
 
 /// Build the documented config-schema JSON response from loaded modules.

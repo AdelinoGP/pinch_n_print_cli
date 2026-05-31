@@ -178,6 +178,12 @@ pub fn run_pipeline_with_events(
     // Pass the resolved configs so the RegionMapping built-in can use them.
     // raw_config_source is empty here for backward compat (no paint overrides);
     // use run_pipeline_with_raw_config for production paint-override support.
+    //
+    // NOTE: this entry point deliberately does NOT wrap the serializer with the
+    // thumbnail/CONFIG_BLOCK path — it emits a bare gcode body (see
+    // `run_pipeline_with_raw_config` / `run_pipeline_core` for the production
+    // CONFIG_BLOCK path). That difference is why this function keeps its own
+    // body rather than forwarding to `run_pipeline_core`.
     let empty_raw: HashMap<ConfigKey, ConfigValue> = HashMap::new();
     let prepass_audits = execute_prepass_with_builtins_configured(
         &plan,
@@ -238,62 +244,13 @@ pub fn run_pipeline_with_raw_config(
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     sink: &(dyn LayerProgressSink + Sync),
 ) -> Result<PipelineOutput, PipelineError> {
-    let PipelineConfig {
-        mesh_ir,
-        mut plan,
-        mut runners,
-        resolved_configs,
-        default_resolved_config,
-        bounds,
-    } = config;
-
-    let mut blackboard = Blackboard::new(mesh_ir, 0);
-
-    let prepass_audits = execute_prepass_with_builtins_configured(
-        &plan,
-        &mut blackboard,
-        runners.prepass.as_ref(),
-        &resolved_configs,
-        &default_resolved_config,
-        raw_config_source,
-        &bounds,
-    )?;
-
-    if let Some(layer_plan) = blackboard.layer_plan() {
-        plan.global_layers = Arc::new(layer_plan.global_layers.clone());
-    }
-
-    let (mut layer_irs, layer_audits) =
-        execute_per_layer_with_events(&plan, &blackboard, runners.layer.as_ref(), sink)?;
-
-    execute_layer_finalization(
-        &plan,
-        &blackboard,
-        runners.finalization.as_ref(),
-        &mut layer_irs,
-    )?;
-
-    let (gcode_text, postpass_audits) = run_postpass_with_thumbnail(
-        &plan,
-        &blackboard,
-        &mut runners,
-        raw_config_source,
-        &default_resolved_config,
-        &layer_irs,
-        &NoopInstrumentation,
-    )?;
-
-    Ok(PipelineOutput {
-        gcode_text,
-        prepass_audits,
-        layer_audits,
-        postpass_audits,
-    })
+    run_pipeline_core(config, raw_config_source, sink, &NoopInstrumentation)
 }
 
 /// Execute the full slicing pipeline with bracket-shaped instrumentation
-/// surfaced through `instrumentation`. Identical semantics to
-/// [`run_pipeline_with_raw_config`] when `&NoopInstrumentation` is passed.
+/// surfaced through `instrumentation`. Behaviour-identical to
+/// [`run_pipeline_with_raw_config`] when `&NoopInstrumentation` is passed — both
+/// forward to [`run_pipeline_core`].
 ///
 /// The instrumentation receives:
 /// - `on_phase_start/end` for `Phase::PrePass`, `Phase::PerLayer`, `Phase::PostPass`
@@ -305,6 +262,23 @@ pub fn run_pipeline_with_raw_config(
 ///   built-ins). Per-layer additionally brackets `on_layer_start/end`
 ///   around each layer.
 pub fn run_pipeline_with_instrumentation(
+    config: PipelineConfig,
+    raw_config_source: &HashMap<ConfigKey, ConfigValue>,
+    sink: &(dyn LayerProgressSink + Sync),
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+) -> Result<PipelineOutput, PipelineError> {
+    run_pipeline_core(config, raw_config_source, sink, instrumentation)
+}
+
+/// Shared pipeline body for all four public entry points (packet 76, 1b).
+///
+/// Runs prepass → per-layer → finalization → postpass with phase brackets and
+/// thumbnail-aware serialization. The public `run_pipeline*` functions are thin
+/// forwarders supplying the raw config source and instrumentation; passing
+/// `&NoopInstrumentation` reproduces the non-instrumented behaviour exactly,
+/// because `execute_per_layer_with_instrumentation` / the postpass helper treat
+/// the noop brackets as zero-cost no-ops.
+fn run_pipeline_core(
     config: PipelineConfig,
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     sink: &(dyn LayerProgressSink + Sync),

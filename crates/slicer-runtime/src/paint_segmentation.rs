@@ -531,24 +531,7 @@ fn project_facet(
 }
 
 fn transform_point(point: Point3, matrix: &[f64; 16]) -> Point3 {
-    let x = f64::from(point.x);
-    let y = f64::from(point.y);
-    let z = f64::from(point.z);
-    let transformed_x = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
-    let transformed_y = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
-    let transformed_z = matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14];
-    let transformed_w = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
-
-    let w = if transformed_w == 0.0 {
-        1.0
-    } else {
-        transformed_w
-    };
-    Point3 {
-        x: (transformed_x / w) as f32,
-        y: (transformed_y / w) as f32,
-        z: (transformed_z / w) as f32,
-    }
+    slicer_core::transform_point3(matrix, point)
 }
 
 fn polygons_overlap(left: &ExPolygon, right: &ExPolygon) -> bool {

@@ -878,31 +878,7 @@ fn validate_transitive_dependencies(
 }
 
 fn stage_order_index() -> BTreeMap<&'static str, usize> {
-    [
-        "PrePass::MeshSegmentation",
-        "PrePass::MeshAnalysis",
-        "PrePass::LayerPlanning",
-        "PrePass::PaintSegmentation",
-        "PrePass::RegionMapping",
-        "PrePass::Slice",
-        "PrePass::ShellClassification",
-        "Layer::SlicePostProcess",
-        "Layer::Perimeters",
-        "Layer::PerimetersPostProcess",
-        "Layer::Infill",
-        "Layer::InfillPostProcess",
-        "Layer::Support",
-        "Layer::SupportPostProcess",
-        "Layer::PathOptimization",
-        "PostPass::LayerFinalization",
-        "PostPass::GCodeEmit",
-        "PostPass::GCodePostProcess",
-        "PostPass::TextPostProcess",
-    ]
-    .into_iter()
-    .enumerate()
-    .map(|(index, stage)| (stage, index))
-    .collect()
+    crate::stage_order::stage_order_index()
 }
 
 fn semver_lt(left: SemVer, right: SemVer) -> bool {

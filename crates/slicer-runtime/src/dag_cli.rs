@@ -138,16 +138,7 @@ pub struct ClaimOut {
 /// in `dag stages` / `dag stage` output without forcing a separate registry
 /// lookup.
 fn tier_of(stage: &str) -> &'static str {
-    if let Some(rest) = stage.strip_prefix("PrePass::") {
-        let _ = rest;
-        "prepass"
-    } else if stage.starts_with("Layer::") {
-        "per_layer"
-    } else if stage.starts_with("PostPass::") {
-        "postpass"
-    } else {
-        "unknown"
-    }
+    crate::stage_order::tier_of(stage)
 }
 
 fn flatten_reason(reason: &EdgeReason) -> String {

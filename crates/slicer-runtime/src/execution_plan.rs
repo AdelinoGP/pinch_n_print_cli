@@ -75,10 +75,9 @@ pub fn bind_module_config_view(
     // docs/02 §pre-filtered config).
     let mut effective: Vec<String> = Vec::new();
     for declared_key in module.config_schema.entries.keys() {
-        if let Some(prefix) = declared_key.strip_suffix(":*") {
-            let needle = format!("{prefix}:");
+        if declared_key.ends_with(":*") {
             for src_key in source.keys() {
-                if src_key.starts_with(&needle) {
+                if source_key_matches_declared(declared_key, src_key) {
                     effective.push(src_key.clone());
                 }
             }
@@ -90,6 +89,21 @@ pub fn bind_module_config_view(
         source,
         effective.iter().map(String::as_str),
     ))
+}
+
+/// Returns true when `candidate` is satisfied by `declared_key`, treating a
+/// trailing `:*` on `declared_key` as a `<prefix>:` wildcard; a static declared
+/// key requires an exact match. Shared by [`bind_module_config_view`] (wildcard
+/// expansion) and [`config_key_declared`] so the two stay in lockstep
+/// (docs/03 §host-boundary enforcement).
+fn source_key_matches_declared(declared_key: &str, candidate: &str) -> bool {
+    if let Some(prefix) = declared_key.strip_suffix(":*") {
+        candidate
+            .strip_prefix(prefix)
+            .is_some_and(|rest| rest.starts_with(':'))
+    } else {
+        declared_key == candidate
+    }
 }
 
 /// Runtime bindings for one loaded module, minus its `ConfigView`.
@@ -396,18 +410,9 @@ fn config_key_declared(
     declared: &std::collections::BTreeMap<String, crate::manifest::ConfigFieldEntry>,
     key: &str,
 ) -> bool {
-    if declared.contains_key(key) {
-        return true;
-    }
-    for declared_key in declared.keys() {
-        if let Some(prefix) = declared_key.strip_suffix(":*") {
-            let needle = format!("{prefix}:");
-            if key.starts_with(&needle) {
-                return true;
-            }
-        }
-    }
-    false
+    declared
+        .keys()
+        .any(|declared_key| source_key_matches_declared(declared_key, key))
 }
 
 /// Enforce claim uniqueness across modules in the same stage.

@@ -582,7 +582,13 @@ impl PipelineInstrumentation for StageEndRecorder {
     fn on_stage_end(&self, stage: &StageId, _layer: Option<u32>) {
         self.ends.lock().unwrap().push(stage.as_str().to_string());
     }
-    fn on_module_start(&self, _stage: &StageId, _layer: Option<u32>, _module: &slicer_ir::ModuleId) {}
+    fn on_module_start(
+        &self,
+        _stage: &StageId,
+        _layer: Option<u32>,
+        _module: &slicer_ir::ModuleId,
+    ) {
+    }
     fn on_module_end(
         &self,
         _stage: &StageId,

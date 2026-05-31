@@ -40,6 +40,7 @@ pub mod report;
 pub mod run;
 pub mod slice_postprocess;
 pub mod slice_postprocess_prepass;
+pub mod stage_order;
 pub mod support_geometry;
 pub mod topology;
 pub mod validation;

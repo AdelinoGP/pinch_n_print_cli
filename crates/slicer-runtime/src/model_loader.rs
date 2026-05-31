@@ -430,14 +430,7 @@ fn identity_3mf_transform() -> [f64; 16] {
 }
 
 fn apply_transform_to_vertex(v: &Point3, m: &[f64; 16]) -> Point3 {
-    let x = v.x as f64;
-    let y = v.y as f64;
-    let z = v.z as f64;
-    Point3 {
-        x: (m[0] * x + m[4] * y + m[8] * z + m[12]) as f32,
-        y: (m[1] * x + m[5] * y + m[9] * z + m[13]) as f32,
-        z: (m[2] * x + m[6] * y + m[10] * z + m[14]) as f32,
-    }
+    slicer_core::transform_point3(m, *v)
 }
 
 fn apply_transform_to_mesh(mesh: &mut IndexedTriangleSet, m: &[f64; 16]) {
@@ -2189,10 +2182,26 @@ mod tests {
     fn tetrahedron() -> IndexedTriangleSet {
         IndexedTriangleSet {
             vertices: vec![
-                Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                Point3 { x: 0.0, y: 1.0, z: 0.0 },
-                Point3 { x: 0.0, y: 0.0, z: 2.0 },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 2.0,
+                },
             ],
             indices: vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3],
         }
@@ -2228,9 +2237,21 @@ mod tests {
         // single-face fragments as their own component), spanning z ∈ [0, 2].
         let single = IndexedTriangleSet {
             vertices: vec![
-                Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                Point3 { x: 0.0, y: 1.0, z: 2.0 },
+                Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 2.0,
+                },
             ],
             indices: vec![0, 1, 2],
         };

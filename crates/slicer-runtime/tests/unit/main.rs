@@ -32,6 +32,7 @@ mod raycast_z_down_miss_tdd;
 mod raycast_z_down_transformed_object_tdd;
 mod region_mapping_resolved_config_tdd;
 mod rotated_object_world_extent_tdd;
+mod stage_canon_seam_support_tdd;
 mod support_layer_height_validation_tdd;
 mod surface_normal_at_oob_tdd;
 mod surface_normal_at_unit_length_tdd;

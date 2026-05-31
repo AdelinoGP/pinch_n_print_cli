@@ -376,6 +376,7 @@ pub fn execute_region_mapping_with_cap(
         paint_regions,
         paint_semantic_configs,
         objects,
+        None,
         cap,
     )
 }
@@ -386,6 +387,14 @@ fn execute_region_mapping_inner(
     paint_regions: Option<&PaintRegionIR>,
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
     objects: &[ObjectMesh],
+    // Host config authority for `RegionPlan.config` (packet 76, 1a). When
+    // `Some((per_object, default))`, each region's base config is taken from
+    // the host's per-object map (falling back to `default`) rather than the
+    // module-emitted `region.resolved_config`; modifier deltas and paint
+    // overlays are then stamped on top in a single pass. When `None`, the
+    // module-emitted `region.resolved_config` is used as the base (preserves
+    // the pre-commit `execute_region_mapping` test/e2e callers).
+    host_config: Option<(&BTreeMap<String, ResolvedConfig>, &ResolvedConfig)>,
     cap: usize,
 ) -> Result<RegionMapIR, RegionMappingError> {
     // --- Cap check with top-contributor diagnostics (docs/04 normative memory budget) ----
@@ -463,6 +472,18 @@ fn execute_region_mapping_inner(
                 stage_modules.insert(sid.clone(), invs.clone());
             }
 
+            // Select the per-region base config. With a host authority, the
+            // host's per-object map (or its default) wins over the
+            // module-emitted `region.resolved_config`; without one, the
+            // module-emitted config is the base.
+            let base_config = match host_config {
+                Some((per_object, default)) => per_object
+                    .get(&region.object_id)
+                    .cloned()
+                    .unwrap_or_else(|| default.clone()),
+                None => region.resolved_config.clone(),
+            };
+
             // Stamp modifier-volume config_delta keys into a working
             // config (Packet 68). Ordering: per-object base →
             // modifier_delta → paint_overrides. We compute the
@@ -472,15 +493,12 @@ fn execute_region_mapping_inner(
             let modifier_stamped_base =
                 if let Some(obj) = objects.iter().find(|o| o.id == region.object_id) {
                     if obj.modifier_volumes.is_empty() {
-                        region.resolved_config.clone()
+                        base_config
                     } else {
-                        stamp_modifier_config_deltas(
-                            region.resolved_config.clone(),
-                            &obj.modifier_volumes,
-                        )
+                        stamp_modifier_config_deltas(base_config, &obj.modifier_volumes)
                     }
                 } else {
-                    region.resolved_config.clone()
+                    base_config
                 };
 
             // Compute paint-semantic overlay (no-op when paint_regions is None).
@@ -553,56 +571,24 @@ pub fn commit_region_mapping_builtin(
     };
     // Clone the mesh Arc to satisfy the borrow checker — `blackboard` is
     // `&mut`, so we need an owned handle to its `objects` slice for the
-    // duration of the `execute_region_mapping_with_cap` call and the
-    // subsequent commit-layer re-stamping loop.
+    // duration of the inner builder call below.
     let mesh_arc = Arc::clone(blackboard.mesh());
     let paint_regions = blackboard.paint_regions().map(|arc| arc.as_ref());
-    let mut ir = execute_region_mapping_with_cap(
+    // The host is the stamping authority for `RegionPlan.config`: pass the
+    // per-object map + default into the inner builder so each region's base
+    // config, modifier deltas, and paint overlays are computed in one pass
+    // (packet 76, 1a — replaces the prior post-hoc re-stamp loop that threw
+    // away the inner builder's already-correct config).
+    let ir = execute_region_mapping_inner(
         layer_plan.as_ref(),
         plan,
         paint_regions,
         paint_semantic_configs,
         &mesh_arc.objects,
+        Some((resolved_configs, default_resolved_config)),
         DEFAULT_REGION_MAP_CAP,
     )
     .map_err(RegionMappingBuiltinError::Mapping)?;
-
-    // Stamp each RegionPlan.config from the per-object map, falling back to
-    // the caller-supplied default when the object has no dedicated entry.
-    // Modifier-volume config_delta keys (Packet 68) and paint overlays
-    // (Packet 51) are re-applied on top of the per-object base so neither
-    // is silently clobbered by this commit-layer overwrite.
-    for (key, region_plan) in ir.entries.iter_mut() {
-        let base_config = resolved_configs
-            .get(&key.object_id)
-            .cloned()
-            .unwrap_or_else(|| default_resolved_config.clone());
-        // Re-apply modifier config_delta stamping on top of the per-object
-        // base config (matches the order in execute_region_mapping_inner so
-        // commit-layer output is consistent with the pre-commit pass).
-        let modifier_stamped =
-            if let Some(obj) = mesh_arc.objects.iter().find(|o| o.id == key.object_id) {
-                if obj.modifier_volumes.is_empty() {
-                    base_config
-                } else {
-                    stamp_modifier_config_deltas(base_config, &obj.modifier_volumes)
-                }
-            } else {
-                base_config
-            };
-        if region_plan.paint_overrides.is_empty() {
-            region_plan.config = modifier_stamped;
-        } else {
-            // Re-apply each paint overlay on top of the modifier-stamped
-            // base config, in lex-ascending order (same order used in
-            // execute_region_mapping) so the result is deterministic.
-            let mut effective = modifier_stamped;
-            for sem_cfg in region_plan.paint_overrides.values() {
-                effective = overlay_resolved(effective, sem_cfg);
-            }
-            region_plan.config = effective;
-        }
-    }
 
     blackboard
         .commit_region_map(Arc::new(ir))

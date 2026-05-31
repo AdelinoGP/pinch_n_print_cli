@@ -10,7 +10,7 @@ pub mod paint_region;
 pub mod polygon_ops;
 pub mod triangle_mesh_slicer;
 
-use slicer_ir::{Point2, Point3WithWidth};
+use slicer_ir::{Point2, Point3, Point3WithWidth};
 
 pub use aabb_tree::{AabbTree, ClosestPointHit, RayHit};
 pub use paint_region::{
@@ -21,6 +21,98 @@ pub use polygon_ops::{
     clip_polygons, difference, intersection, offset, union, xor, ClipOperation, OffsetJoinType,
 };
 pub use triangle_mesh_slicer::slice_mesh_ex;
+
+/// Applies a 4×4 column-major transform `matrix` to point `p`.
+///
+/// Canonical replacement for the per-module copies that previously lived in the
+/// runtime (`mesh_analysis`, `paint_segmentation`, `model_loader`,
+/// `prepass_slice`). It carries both behaviours those copies needed:
+///
+/// - **Zero-matrix guard**: an all-zero `matrix` is treated as identity (`p` is
+///   returned unchanged), keeping fixtures that leave `Transform3d::matrix`
+///   unset robust rather than collapsing geometry to the origin.
+/// - **Perspective divide**: the homogeneous `w` component divides the result.
+///   For the affine object transforms used throughout the slicer `w == 1`, so
+///   the divide is a no-op; it is retained so the function is correct for any
+///   well-formed 4×4 transform.
+///
+/// Indexing is column-major: element at column `c`, row `r` is `matrix[c * 4 + r]`.
+pub fn transform_point3(matrix: &[f64; 16], p: Point3) -> Point3 {
+    if matrix.iter().all(|v| *v == 0.0) {
+        return p;
+    }
+    let x = f64::from(p.x);
+    let y = f64::from(p.y);
+    let z = f64::from(p.z);
+    let tx = matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12];
+    let ty = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
+    let tz = matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14];
+    let tw = matrix[3] * x + matrix[7] * y + matrix[11] * z + matrix[15];
+    let w = if tw == 0.0 { 1.0 } else { tw };
+    Point3 {
+        x: (tx / w) as f32,
+        y: (ty / w) as f32,
+        z: (tz / w) as f32,
+    }
+}
+
+#[cfg(test)]
+mod transform_point3_tests {
+    use super::*;
+
+    /// Column-major diagonal scale `s` with translation `t` (affine, `w == 1`).
+    fn affine(s: [f64; 3], t: [f64; 3]) -> [f64; 16] {
+        [
+            s[0], 0.0, 0.0, 0.0, //
+            0.0, s[1], 0.0, 0.0, //
+            0.0, 0.0, s[2], 0.0, //
+            t[0], t[1], t[2], 1.0,
+        ]
+    }
+
+    #[test]
+    fn affine_scale_translate_matches_hand_computation() {
+        let m = affine([2.0, 3.0, 4.0], [10.0, -5.0, 1.0]);
+        let out = transform_point3(
+            &m,
+            Point3 {
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+            },
+        );
+        assert_eq!(out.x, (2.0 * 1.0 + 10.0) as f32);
+        assert_eq!(out.y, (3.0 * 2.0 - 5.0) as f32);
+        assert_eq!(out.z, (4.0 * 3.0 + 1.0) as f32);
+    }
+
+    #[test]
+    fn zero_matrix_is_treated_as_identity() {
+        let p = Point3 {
+            x: 1.5,
+            y: -2.5,
+            z: 7.0,
+        };
+        let out = transform_point3(&[0.0; 16], p);
+        assert_eq!((out.x, out.y, out.z), (p.x, p.y, p.z));
+    }
+
+    #[test]
+    fn identity_transform_w_divide_is_noop() {
+        let mut m = [0.0; 16];
+        m[0] = 1.0;
+        m[5] = 1.0;
+        m[10] = 1.0;
+        m[15] = 1.0;
+        let p = Point3 {
+            x: 4.0,
+            y: 5.0,
+            z: 6.0,
+        };
+        let out = transform_point3(&m, p);
+        assert_eq!((out.x, out.y, out.z), (p.x, p.y, p.z));
+    }
+}
 
 /// Segments a straight 2D path into points whose consecutive spacing does not exceed `max_len_mm`.
 pub fn segment_path(start: Point2, end: Point2, max_len_mm: f32) -> Vec<Point2> {

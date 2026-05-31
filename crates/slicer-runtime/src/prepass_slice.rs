@@ -131,18 +131,7 @@ impl std::error::Error for LayerSliceError {}
 /// Apply a 4x4 column-major transform to a 3-D point.
 /// A zero matrix is treated as identity for robustness.
 fn transform_point(t: &Transform3d, p: &Point3) -> Point3 {
-    let m = &t.matrix;
-    if m.iter().all(|v| *v == 0.0) {
-        return *p;
-    }
-    let x = p.x as f64;
-    let y = p.y as f64;
-    let z = p.z as f64;
-    Point3 {
-        x: (m[0] * x + m[4] * y + m[8] * z + m[12]) as f32,
-        y: (m[1] * x + m[5] * y + m[9] * z + m[13]) as f32,
-        z: (m[2] * x + m[6] * y + m[10] * z + m[14]) as f32,
-    }
+    slicer_core::transform_point3(&t.matrix, *p)
 }
 
 /// Ray-casting point-in-polygon test (integer coordinate space).

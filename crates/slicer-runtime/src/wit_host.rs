@@ -3665,8 +3665,7 @@ mod finalization_impls {
             y: f32,
             z: f32,
         ) -> wasmtime::Result<Option<fgeo::Point3>> {
-            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?
-                .map(ir_point3_to_layer))
+            Ok(surface_normal_at_mesh_query(self, &object_id, x, y, z)?.map(ir_point3_to_layer))
         }
         fn object_bounds(
             &mut self,
