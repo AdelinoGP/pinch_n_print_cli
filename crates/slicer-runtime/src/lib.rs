@@ -34,7 +34,6 @@ pub mod prepass;
 pub mod prepass_slice;
 pub mod progress_events;
 pub mod progress_instrumentation;
-pub mod python_bridge;
 pub mod region_mapping;
 pub mod report;
 pub mod run;
@@ -150,9 +149,6 @@ pub use prepass_slice::{
     LayerSliceError,
 };
 pub use progress_instrumentation::ProgressPipelineInstrumentation;
-pub use python_bridge::{
-    PythonBinding, PythonBridge, PythonBridgeError, PythonBridgePhase, PythonPostpassRunner,
-};
 pub use region_mapping::{
     commit_region_mapping_builtin, execute_region_mapping, execute_region_mapping_with_cap,
     RegionMappingBuiltinError, RegionMappingError, TopContributor,

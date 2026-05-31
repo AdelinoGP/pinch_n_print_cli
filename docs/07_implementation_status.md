@@ -163,14 +163,11 @@ Last updated: 2026-05-08
 - [x] TASK-214 — Replace the two guest-build bash scripts (one per guest tree) with `cargo xtask build-guests` driven by a validated filesystem walk (no hardcoded MODULES list); rewrite `docs/05_module_sdk.md` build-flow section to document the `cargo build --target wasm32-unknown-unknown --release` + `wasm-tools component new` two-step plus a workspace-contributor sidebar; collapse `CLAUDE.md`'s guest-staleness block to a single `cargo xtask build-guests --check` invocation; update the stop-task hook in `.claude/settings.json` to match. **Closed 2026-05-29 via packet 70_workspace-aware-guest-builder.**
 - [x] TASK-060 — Paint-ready 3MF export surface (not previously in backlog; delivered by packet 71_paint-ready-3mf-export). Adds geometry-only `write_obj`/`write_3mf` writers in `slicer-runtime`; `split_connected_components` in `slicer-helpers` (OrcaSlicer `its_split` parity); `pnp_cli mesh convert` verb with split-to-objects (connected-component fan-out); and a `pnp_cli mesh import --output-format 3mf` combine-into-one-file path. All ACs green. **Closed 2026-05-29 via packet 71_paint-ready-3mf-export.**
 
-### Workstream 4 — Progress events and Python bridge coverage
+### Workstream 4 — Progress events coverage
 
 - [ ] TASK-136 Add end-to-end progress-event coverage proving paint-annotation failure codes 501-504 reach the JSONL emitter on the live pipeline path. Supports DEV-010 acceptance evidence and guards the live path after DEV-019 closure. **Note (2026-05-20 via packet 64):** The code 504 warning path is now exercised by the always-on host annotator (`Layer::PaintRegionAnnotation` stage), not only in E2E progress-event tests.
-- [~] TASK-137 Resolve the Python postpass live-path decision and closure evidence. Covers DEV-024. Exactly one of TASK-137b or TASK-137c should land after TASK-137a.
-- [ ] TASK-137a Decide whether Python postpass is a supported live-path backend or a test-only facility, and record the policy target in docs/05 and docs/07. Covers DEV-024.
-- [ ] TASK-137b If Python is intended to be live, add explicit runtime selection for `PythonPostpassRunner` and acceptance coverage through the production pipeline. Continues DEV-024.
-- [ ] TASK-137c If Python is intentionally non-live, remove stale live-path expectations from docs/05 and docs/07 and close DEV-024 on the documentation path. Alternate close path for DEV-024.
-- [x] TASK-138 Close the Python `Init` phase coverage gap. `crates/slicer-host/tests/python_bridge_init_phase_tdd.rs` is green.
+- [x] TASK-137 Python postpass live-path decision — **superseded 2026-05-31 by scrap of the Python bridge feature**. DEV-024 closed; pyo3 dep + python_bridge.rs + integration tests removed; TextPostProcess tier remains WASM-only via `run-text-postprocess` WIT export. TASK-137a/b/c retired.
+- [x] TASK-138 Close the Python `Init` phase coverage gap. `crates/slicer-host/tests/python_bridge_init_phase_tdd.rs` is green. **Note 2026-05-31:** test file removed alongside the Python bridge scrap (TASK-137); entry retained for historical traceability.
 
 ### Workstream 5 — Governance and closure drift
 
@@ -233,7 +230,7 @@ For closed deviations and their closure detail, read the log directly.
 
 - [x] `crates/slicer-runtime/tests/contract/core_module_ir_access_contract_tdd.rs` — enumerates missing manifest IR contracts and guards the Stage I/O Contract.
 - [x] `crates/slicer-runtime/tests/contract/claim_transition_matrix_tdd.rs` — guards the non-transitionable claim matrix and transitionable-claim sanity cases.
-- [x] `crates/slicer-runtime/tests/integration/python_bridge_init_phase_tdd.rs` — closes the Python `Init` phase classification gap.
+- [x] ~~`crates/slicer-runtime/tests/integration/python_bridge_init_phase_tdd.rs`~~ — closed the Python `Init` phase classification gap; **file removed 2026-05-31** as part of the Python bridge scrap (DEV-024 closure).
 
 ## Architecture Acceptance Gate
 

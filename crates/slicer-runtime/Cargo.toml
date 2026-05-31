@@ -22,7 +22,6 @@ zip = { version = "2", default-features = false, features = ["deflate"] }
 quick-xml = "0.39"
 uuid = { version = "1", features = ["v4", "v5"] }
 wasmtime = { workspace = true }
-pyo3 = { workspace = true }
 rstar = "0.12"
 
 [dev-dependencies]

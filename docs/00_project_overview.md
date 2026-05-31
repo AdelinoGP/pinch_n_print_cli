@@ -49,8 +49,7 @@ The primary failure mode of existing slicers (OrcaSlicer, PrusaSlicer) that this
 ### Module Format: WebAssembly (WASM) Component Model
 
 - Stable ABI across compiler versions, platforms, and languages
-- Modules can be written in Rust, C, C++, or any WASM-targeting language
-- Python post-processing scripts run via an embedded PyO3 interpreter inside the host (no subprocess); see `crates/slicer-runtime/src/python_bridge.rs`
+- Modules can be written in Rust, C, C++, or any WASM-targeting language (including Python via CPython→WASM toolchains)
 - Community modules ship as `.wasm` + `.toml` — no build toolchain required for users
 
 ### State Model: ECS-inside-Blackboard
@@ -181,7 +180,6 @@ minimum/current pin for each component.
 | Serialization | serde + postcard                        | 1.0.228, 1.1.3       |
 | Config format | TOML (manifests), JSON (runtime config) | —                    |
 | Testing       | cargo test                              | —                    |
-| Python bridge | pyo3 (embedded interpreter)             | 0.28.3               |
 | CLI framework | clap                                    | 4.6.1                |
 
 ---

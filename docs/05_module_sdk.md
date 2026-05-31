@@ -733,45 +733,6 @@ my-infill/
 
 ---
 
-## Python Bridge (TextPostProcess tier)
-
-For post-processing scripts that are genuinely easier to implement in Python (e.g. legacy G-code text mutation), the host provides a Python bridge. Python modules live in the same directory as their `.toml` manifest.
-
-```toml
-# my-python-postprocessor.toml
-[module]
-id        = "com.example.my-postprocessor"
-version   = "1.0.0"
-wit-world = "slicer:world-postpass@1.0.0"
-
-[stage]
-id = "PostPass::TextPostProcess"
-
-[python]
-script = "postprocess.py"     # path relative to manifest
-entry  = "process_gcode"      # function name in the script
-
-[config.schema]
-  [config.schema.amplitude]
-  type = "float"
-  default = 0.5
-  min = 0.0
-  max = 2.0
-  display = "Wave Amplitude (mm)"
-```
-
-```python
-# postprocess.py
-def process_gcode(gcode_text: str, config: dict) -> str:
-    amplitude = config.get("amplitude", 0.5)
-    # ... text mutation ...
-    return modified_text
-```
-
-The host invokes the Python interpreter (embedded via PyO3), calls `process_gcode(text, config_dict)`, and returns the result. The script runs in a restricted sandbox — no filesystem access, no network access, no subprocesses.
-
----
-
 ## Worked Example: Fuzzy Skin as a Native Module
 
 ```toml

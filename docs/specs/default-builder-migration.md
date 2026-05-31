@@ -539,7 +539,6 @@ completeness so the chunk plans can audit drift.
 | `crates/slicer-host/src/gcode_emit.rs:92` | `FeedrateConfig` | OrcaSlicer-aligned speeds. |
 | `crates/slicer-host/src/gcode_emit.rs:651` | `DefaultGCodeSerializer` | Delegates to `new()`; PLA filament 1.75 mm / 1.24 g/cm³. |
 | `crates/slicer-host/src/mesh_analysis.rs:36` | `MeshAnalysisConfig` | Project policy: bridge length 10.0, anchor 0.5, expansion 1.0, overhang 45.0°. |
-| `crates/slicer-host/src/python_bridge.rs:100` | `PythonBridge` | `interpreter: "python3"`, `timeout: None`. |
 | `crates/slicer-host/src/wasm_instance.rs:154` | `WasmEngine` | Delegates to `new()`. |
 | `crates/slicer-host/src/instance_pool.rs:` (WasmArtifactMetadata) | `WasmArtifactMetadata` | Existing derive. |
 | `crates/slicer-host/src/config_schema.rs:128` | `FullConfigSchema` | ~200-line hand-built schema with OrcaSlicer-aligned numeric defaults. **Flagged in §11**: consider refactoring readability in a follow-up chunk; out of scope here. |
@@ -866,7 +865,7 @@ context. No builder needed.
 `LayerExecutionError`, `FinalizationError`, `LayerSliceError`,
 `LoadError`, `LoadErrorKind`, `MeshAnalysisError`, `ModelLoadError`,
 `PipelineError`, `PostpassError`, `PrepassExecutionError`,
-`PythonBridgeError`, `ProgressError`, `SchedulerError`, `WasmLoadError`,
+`ProgressError`, `SchedulerError`, `WasmLoadError`,
 `WasmCallError`, `InstancePoolError`, `MeshSegmentationError`,
 `PaintSegmentationError`, `RegionMappingError`, `RegionMappingBuiltinError`,
 `SlicePostProcessPaintAnnotationError`, `SupportGeometryBuiltinError`,
@@ -998,8 +997,8 @@ at <2 sites or has no clear ergonomic win:
 `SurfaceGroupRecord`, `MeshAnalysisAuxiliary`,
 `DagValidationRequest`, `DagValidationDiagnostic`, `FillHolders`, `StageDag`,
 `ProgressEvent`, `TopContributor`, `EdgeTo`, `ModuleNode`,
-`DispatchPhase`, `TierKind`, `Phase`, `PythonBinding`, `PythonBridgePhase`,
-`JsonLinesEmitter`, `RuntimeProgressSink`, `PythonPostpassRunner`,
+`DispatchPhase`, `TierKind`, `Phase`,
+`JsonLinesEmitter`, `RuntimeProgressSink`,
 `LayerArenaSlot`, `BlackboardPrepassSlot`, `WasmInstance`, `WasmComponent`,
 `WasmInstanceLease`, `MemTracker`, `AccountingAllocator`, `MemStats`,
 `InfillOutputCollected`, `PerimeterOutputCollected`, `SupportOutputCollected`,

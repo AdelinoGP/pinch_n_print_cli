@@ -32,8 +32,6 @@ mod paint_annotation_integration_tdd;
 mod pipeline_tdd;
 mod prepass_paint_semantic_override_ordering_tdd;
 mod progress_events_tdd;
-mod python_bridge_init_phase_tdd;
-mod python_bridge_tdd;
 mod region_mapping_paint_semantic_tdd;
 mod region_mapping_tdd;
 mod run_pipeline_with_instrumentation_tdd;

@@ -17,8 +17,8 @@
 │  │                 │  │                                      │  │
 │  │  .wasm files    │  │  1. Ingest manifests                 │  │
 │  │  .toml manifests│  │  2. Build + validate DAG             │  │
-│  │  Python scripts │  │  3. Freeze ExecutionPlan             │  │
-│  │  Config schemas │  │  4. Execute (pre / parallel / post)  │  │
+│  │  Config schemas │  │  3. Freeze ExecutionPlan             │  │
+│  │                 │  │  4. Execute (pre / parallel / post)  │  │
 │  └─────────────────┘  └──────────────────────────────────────┘  │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐    │
@@ -707,7 +707,6 @@ Each loadable module directory must contain:
 
 - `<module-name>.wasm` — compiled WASM component
 - `<module-name>.toml` — manifest
-- (Optional) `<module-name>.py` — Python script (TextPostProcess tier only)
 
 Modules may live flat at the root or nested one level deep in
 subdirectories (the layout used by `modules/core-modules/`). The scanner
