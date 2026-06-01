@@ -140,6 +140,27 @@ Lossless one-line variant remaps; no field synthesis.
 
 **Gate.** `cargo build --workspace` green. After this step, `cargo tree -p slicer-wasm-host` (which doesn't exist yet on the wasm-host side, but the import surface inspection) should show `instance_pool.rs` has zero remaining runtime-internal dependencies.
 
+### Step 0.5e — Define `LayerStageCommitData` in `slicer-ir`
+
+**Rationale.** The 18/18 Category-B classification of `arena.*` accessors in dispatch.rs (pre-Step-4 survey) confirmed that all `LayerArena` interaction happens on the runtime side of the wasm-host trait boundary. The trait method on the wasm-host side returns an IR-typed deconstruction of the wasmtime call's `HostExecutionContext`, NOT the raw `HostExecutionContext` itself. That IR-typed return shape is `LayerStageCommitData`, defined here in `slicer-ir` for symmetry with `LayerStageInput<'_>` (input side).
+
+**Files allowed to read.** `crates/slicer-runtime/src/dispatch.rs` L2535..L2900 (the existing `commit_layer_outputs` body — the source-of-truth for which fields `LayerStageCommitData` must carry). Line-range only.
+
+**Files allowed to edit.**
+1. `crates/slicer-ir/src/stage_io.rs` — add `pub struct LayerStageCommitData { … }` with field-by-field IR-typed mirrors of the WIT-collected outputs `commit_layer_outputs` reads. Likely fields (subject to survey): `infill: Vec<InfillCommit>`, `support: Vec<SupportCommit>`, `perimeters: Vec<PerimeterCommit>`, `deferred_annotations: Vec<DeferredAnnotation>`, `deferred_tool_changes: Vec<DeferredToolChange>`, `deferred_z_hops: Vec<DeferredZHop>`, `deferred_retracts: Vec<DeferredRetract>`, `deferred_travel_moves: Vec<DeferredTravelMove>`, `entity_order_proposal: Option<EntityOrderProposal>`, `diagnostics: Vec<String>`. Exact field types come from inspecting `commit_layer_outputs`'s `ctx.*` accesses.
+
+**Falsifying check.** If any field of `LayerStageCommitData` would naturally hold a wasm-host-coupled type (e.g., a `wasmtime::Resource<…>`, a builder handle, an `Arc<WasmInstance>`), **STOP and surface** — that field belongs on the wasm-host side of the deconstruction (i.e., `HostExecutionContext` keeps it), and only its plain-IR projection enters `LayerStageCommitData`. Any sub-type that itself only exists inside `wit_host.rs` (e.g., a `*BuilderData` resource backing type) MUST be lowered into a plain IR type before crossing the boundary.
+
+**Expected sub-agent dispatch.** A single worker:
+1. Reads `dispatch.rs::commit_layer_outputs` body to enumerate every `ctx.*` field access and its resolved type.
+2. For each access, identifies the corresponding plain-IR equivalent (most should already be slicer-ir types since dispatch.rs already converts WIT resources into IR before commit).
+3. Authors `LayerStageCommitData` in `crates/slicer-ir/src/stage_io.rs`.
+4. Runs `cargo build -p slicer-ir`.
+
+**Gate.** `cargo build -p slicer-ir` green; `cargo build --workspace` green (the new IR struct is unused initially — Step 4b is its first consumer).
+
+---
+
 ### Combined Step 0.5 verification
 
 - `cargo build --workspace` green.
@@ -234,39 +255,82 @@ Lossless one-line variant remaps; no field synthesis.
 
 ---
 
-## Step 4 — Move the four files and the four trait defs; preserve `bindgen!` `with:` remap
+## Step 4 — Orchestration split (sub-steps 4a–e)
 
-**Objective.** The bulk move. After this step, AC-2, AC-3, AC-4 gate green (file presence/absence and bindgen-count checks). The workspace does NOT yet build — `slicer-runtime` still has stale `pub mod` declarations and old trait imports. Step 5 fixes those.
+**Reframe (from original "bulk move" plan).** The Category-B classification of `arena.*` accessors (pre-Step-4 survey, 18/18 B) revealed that Step 4 cannot be a pure file move of `dispatch.rs`. The existing `impl LayerStageRunner for WasmRuntimeDispatcher::run_stage` body (~111 LOC) intermixes the wasmtime call (Category A-equivalent: belongs in wasm-host) with pre-call IR marshalling and post-call `commit_layer_outputs` (Category B: belongs in runtime). Step 4 therefore splits orchestration along the WIT seam:
 
-**Precondition.** Step 3 complete.
+- **moves to slicer-wasm-host**: `wit_host.rs`, `wasm_instance.rs`, `instance_pool.rs`, the `call_*` infrastructure from `dispatch.rs`, the four bindgen `Host` trait impls, `HostExecutionContext` + builder, the four runner trait defs, `CompiledModuleLive`.
+- **stays in slicer-runtime**: the pre-call IR marshalling (reads `&LayerArena` to build `LayerStageInput<'_>`) and post-call `commit_layer_outputs` (consumes `LayerStageCommitData`, writes `&mut LayerArena`) — both relocate from `dispatch.rs::run_stage` body to `crates/slicer-runtime/src/layer_executor.rs` (and the equivalent per-stage executor files for prepass / finalization / postpass).
 
-**Postcondition.** All four files relocated. The four trait defs in `crates/slicer-wasm-host/src/traits.rs`. `pub struct CompiledModuleLive<'s>` in `crates/slicer-wasm-host/src/binding.rs`. `dispatch.rs::export_name_for_stage` deleted; its callers (per Step 1 dispatch #4) switched to `slicer_schema::export_for_stage_id`. The four `impl *StageRunner for WasmRuntimeDispatcher` blocks updated to take `&CompiledModuleLive<'_>`.
+**Cost.** P83 was budgeted M+; the orchestration split makes it effectively L. Accepted — splitting P83 mid-flight to defer this work would create a multi-month "P83-finishing" follow-up packet, which is worse than absorbing the cost now.
 
-**Files allowed to read.**
-- `crates/slicer-runtime/src/wit_host.rs` — line-range ONLY. Grep for `bindgen!`, `impl ... for HostExecutionContext`, `pub struct`. Move section-by-section, never loading > 200 lines at a time.
-- `crates/slicer-runtime/src/dispatch.rs` — line-range ONLY. Focus on L1–80 (imports + `export_name_for_stage`), L340–360 (`WasmRuntimeDispatcher` struct), and the four impl blocks per Step 1 dispatch.
-- `crates/slicer-runtime/src/wasm_instance.rs` (299 LOC — OK to load full).
-- `crates/slicer-runtime/src/instance_pool.rs` (182 LOC — OK to load full).
-- The four trait-source files (executor / prepass / postpass / layer_finalization) at the lines surfaced by Step 1 dispatch #1.
+**Precondition.** Steps 0–3 + Step 0.5 (a/b/c/d/e) all green. `LayerStageInput<'_>`, `PrepassStageInput<'_>`, `FinalizationStageInput<'_>`, `PostpassStageInput<'_>` (input borrow structs) and `LayerStageCommitData` (commit struct) defined in `slicer-wasm-host`/`slicer-ir` respectively (the wasm-host borrow structs land in 4a; `LayerStageCommitData` already lives in slicer-ir from 0.5e).
+
+**Falsifying checks (umbrella).**
+- **4b leak check:** any line in `slicer-wasm-host`'s `run_stage` impl that touches `LayerArena` is wrong (the runner trait must not see `LayerArena`).
+- **4d leak check:** any line in `layer_executor.rs`'s commit path that imports `slicer_wasm_host::HostExecutionContext` is wrong (commit consumes `LayerStageCommitData`, not the wasm-host-internal builder).
+
+### Step 4a — File moves: bindgen + wasmtime infrastructure to `slicer-wasm-host`
+
+**Objective.** Move the wasmtime infrastructure files (`wit_host.rs`, `wasm_instance.rs`, `instance_pool.rs`) and define the borrow-struct + trait scaffolding in slicer-wasm-host. dispatch.rs's `WasmRuntimeDispatcher` struct + the `call_*` infrastructure also moves; the dispatcher's `run_stage` impl body is updated to the new shape in 4b. After 4a, slicer-wasm-host builds with the moved content; slicer-runtime still has stale `pub mod` declarations that 4c resolves.
+
+**Files allowed to read.** Line-range only:
+- `crates/slicer-runtime/src/wit_host.rs` (5,259 LOC — section-by-section grep + ≤ 200-line reads).
+- `crates/slicer-runtime/src/dispatch.rs` (3,148 LOC — focus on imports, the `WasmRuntimeDispatcher` struct, the `call_*` helpers, and the four runner-trait impls; the impl BODIES become inputs to 4b/4c/4d).
+- `crates/slicer-runtime/src/wasm_instance.rs` (≤ 300 LOC OK to read full).
+- `crates/slicer-runtime/src/instance_pool.rs` (≤ 200 LOC OK to read full).
+- The four trait-source files for trait-def lifts (executor / prepass / postpass / layer_finalization) — just the trait declarations.
 
 **Files allowed to edit.**
-1. `crates/slicer-wasm-host/src/host.rs` — receive `wit_host.rs` content.
-2. `crates/slicer-wasm-host/src/dispatch.rs` — receive `dispatch.rs` content minus `export_name_for_stage`; impls updated to `&CompiledModuleLive<'_>`.
-3. `crates/slicer-wasm-host/src/instance.rs` — receive `wasm_instance.rs` content.
-4. `crates/slicer-wasm-host/src/pool.rs` — receive `instance_pool.rs` content.
-5. `crates/slicer-wasm-host/src/traits.rs` — declare the four runner traits (lifted from executor / prepass / postpass / layer_finalization).
-6. `crates/slicer-wasm-host/src/binding.rs` — declare `CompiledModuleLive<'s>`.
+1. `crates/slicer-wasm-host/src/host.rs` ← `wit_host.rs` content (verbatim; preserve the four `bindgen!` invocations with the `with:` remap pattern; `pub mod layer` MUST precede the other three).
+2. `crates/slicer-wasm-host/src/instance.rs` ← `wasm_instance.rs` content (verbatim).
+3. `crates/slicer-wasm-host/src/pool.rs` ← `instance_pool.rs` content (verbatim, with the Step-0.5d-narrowed `build_wasm_instance_pool` signature).
+4. `crates/slicer-wasm-host/src/dispatch.rs` ← the `WasmRuntimeDispatcher` struct + `call_*` helpers + the bindgen-Host trait impls + the wasmtime-call inner machinery. `export_name_for_stage` is DELETED here; callers will rewire to `slicer_schema::export_for_stage_id`. The four `impl *StageRunner for WasmRuntimeDispatcher` blocks are STUBBED with a `todo!("4b")` placeholder body (their full implementations land in 4b once the trait sigs + return-type deconstruction are wired).
+5. `crates/slicer-wasm-host/src/traits.rs` — declare the four runner traits with their new IR-typed signatures: each `run_stage` (or `run_gcode_postprocess` / `run_text_postprocess`) takes `&CompiledModuleLive<'_>` plus the matching `*StageInput<'_>` borrow struct, and returns `Result<…CommitData / LayerStageOutput, …Error>` per the user's resolution table.
+6. `crates/slicer-wasm-host/src/binding.rs` — define `CompiledModuleLive<'a>` (5 fields: `module_id: &'a ModuleId`, `instance_pool: Arc<WasmInstancePool>`, `wasm_component: Option<Arc<WasmComponent>>`, `claims: &'a [String]`, `config_view: Arc<ConfigView>`) plus the four `*StageInput<'a>` borrow structs (precise field lists from the Blackboard/LayerArena access survey).
 7. `crates/slicer-wasm-host/src/lib.rs` — public re-exports.
-8. Delete the four files in `crates/slicer-runtime/src/`.
+8. Delete the four files from `crates/slicer-runtime/src/`.
 
-**Expected sub-agent dispatches.**
-- Dispatch: `cargo build -p slicer-wasm-host`. Return FACT pass/fail.
+**Gate.** `cargo build -p slicer-wasm-host` green (with `todo!()` stubs in the runner impls — the crate compiles; runtime side doesn't yet). `grep -c 'wasmtime::component::bindgen!' crates/slicer-wasm-host/src/host.rs` = 4. `grep -c '"slicer:types/geometry": super::layer::slicer::types::geometry' crates/slicer-wasm-host/src/host.rs` = 3.
 
-**Context cost: M.**
+### Step 4b — Implement runner trait impls in wasm-host with `HostExecutionContext` → IR deconstruction
 
-**Narrow verification.** `cargo build -p slicer-wasm-host` green. `grep -rE 'wasmtime::component::bindgen!' crates/slicer-wasm-host/src/` returns 4. `grep -rE '"slicer:types/geometry": super::layer::slicer::types::geometry' crates/slicer-wasm-host/src/` returns 3.
+**Objective.** Replace the `todo!("4b")` stubs in each `impl *StageRunner for WasmRuntimeDispatcher` block with the wasmtime call + inline deconstruction of `HostExecutionContext` into the IR-typed return type (`LayerStageCommitData` for Layer; analogous narrow shapes for prepass / finalization / postpass, which may not need a CommitData struct if their return is simpler).
 
-**Falsifying check / exit condition.** Bindgen path resolution fails → confirm `pub mod layer` (or whichever module owns the layer bindgen) is declared FIRST in `lib.rs`.
+**Files allowed to edit.** `crates/slicer-wasm-host/src/dispatch.rs` (the four impl bodies), `crates/slicer-wasm-host/src/binding.rs` if helper deconstruction fns belong there.
+
+**Falsifying check (leak).** Any `arena.*`, `blackboard.*`, or `&LayerArena` / `&Blackboard` reference inside the moved impl bodies is a leak — those have to relocate to 4c/4d (runtime-side orchestration), not stay in wasm-host.
+
+**Gate.** `cargo build -p slicer-wasm-host` green (no more `todo!()`s).
+
+### Step 4c — Move pre-call IR marshal logic from dispatch.rs to layer_executor.rs
+
+**Objective.** The 4 B-pre sites (L438, L1574, L1603, L2434 in the original dispatch.rs) move to `crates/slicer-runtime/src/layer_executor.rs`. The layer executor now: (1) reads `&LayerArena` and `&Blackboard` slots, (2) constructs `LayerStageInput<'_>`, (3) invokes `runner.run_stage(stage_id, layer, &live_module, input) -> LayerStageCommitData`. Equivalent pre-call marshalling for prepass / finalization / postpass moves to their respective executor files.
+
+**Files allowed to edit.** `crates/slicer-runtime/src/{layer_executor,prepass,postpass,layer_finalization}.rs` — replace each file's existing `runner.run_stage(...)` call with the new pre-call marshal + invoke pattern. Each file's body otherwise stays unchanged.
+
+**Gate.** `cargo build --workspace` green (post-4a runtime stale-module errors should be resolved when 4c lands the new invocation pattern that imports the trait + structs from `slicer_wasm_host`).
+
+### Step 4d — Move `commit_layer_outputs` to layer_executor.rs; consume `LayerStageCommitData`
+
+**Objective.** The 14 B-post sites (L2343..L2833 in original dispatch.rs) move into `commit_layer_outputs` which itself relocates to `crates/slicer-runtime/src/layer_executor.rs`. The function signature changes from `(ctx: HostExecutionContext, …)` to `(commit: LayerStageCommitData, …)`. All `ctx.*` accesses become `commit.*` (IR-typed). Equivalent post-call commit logic for prepass / finalization / postpass moves to their respective executor files (likely smaller, since only Layer has the heavy commit surface).
+
+**Files allowed to edit.** `crates/slicer-runtime/src/{layer_executor,prepass,postpass,layer_finalization}.rs`.
+
+**Falsifying check (leak).** `! grep -E 'use slicer_wasm_host::HostExecutionContext' crates/slicer-runtime/src/` — runtime must NOT import wasm-host's `HostExecutionContext`. The runtime-side commit path consumes `slicer_ir::LayerStageCommitData` only.
+
+**Gate.** `cargo build --workspace` green. `cargo clippy --workspace --all-targets -- -D warnings` green.
+
+### Step 4e — Combined gate
+
+- `cargo build --workspace` green.
+- `cargo clippy --workspace --all-targets -- -D warnings` green.
+- `cargo test -p slicer-runtime --tests` builds (test rewiring per Step 6 may still be needed for runtime).
+- `grep -c 'wasmtime::component::bindgen!' crates/slicer-wasm-host/src/host.rs` = 4.
+- `! grep -rE 'use slicer_wasm_host::HostExecutionContext' crates/slicer-runtime/src/`.
+- `! grep -rE 'fn run.*HostExecutionContext|HostExecutionContext.*->|->.*HostExecutionContext' crates/slicer-wasm-host/src/` (AC-4 symmetric-boundary assertion).
+
+**Context cost (umbrella for 4a–e): L.** Highest of any single step in P83. Implementer monitors context budget — if 60% is hit during 4b–4d, surface and PARTIAL-handoff at the cleanest sub-step boundary (typically between 4b and 4c, since 4a/4b together produce a buildable wasm-host crate independent of runtime rewire).
 
 ---
 
@@ -399,18 +463,18 @@ Lossless one-line variant remaps; no field synthesis.
 | Step | Cost |
 |---|---|
 | 0 Verify P81/P82 + baselines | S |
-| 0.5 Prework: stage I/O → slicer-ir + LoadedModule survey | S |
+| 0.5 Prework: stage I/O three-group split + narrow runner error + instance_pool narrowing + `LayerStageCommitData` (5 sub-steps a–e) | S |
 | 1 Enumerate edit sites | S |
 | 2 Schema `export_for_stage_id` + test | S |
 | 3 New crate scaffold | S |
-| 4 Bulk move + bindgen relocation + trait lift + struct split | M |
+| 4 Orchestration split — 5 sub-steps (4a file moves; 4b runner impls w/ HEC → IR deconstruction; 4c pre-call marshal moves to runtime; 4d post-call commit moves to runtime; 4e combined gate) | **L** (largest single step in P83) |
 | 5 Runtime rewire + Cargo.toml swap | M |
 | 6 Test migration / rewiring | M |
 | 7 Guest rebuild + `--check` clean | S |
 | 8 Workspace test gate | M |
 | 9 g-code SHA + dep-tree check | S |
 
-Aggregate: **L overall but no single step is L.** Total step count: 11 (Step 0.5 prework added to resolve the AC-N3 vs trait-signature contradiction surfaced mid-implementation).
+Aggregate: **L overall; Step 4 is the single L step** after the orchestration-split reframe (the 18/18 Category-B classification of `arena.*` accessors forced run_stage's body to split across the wasm-host/runtime boundary along the WIT seam). Total step count: 11 atomic steps + 9 sub-steps (Step 0.5 a–e and Step 4 a–e).
 
 ## Packet Completion Gate
 
