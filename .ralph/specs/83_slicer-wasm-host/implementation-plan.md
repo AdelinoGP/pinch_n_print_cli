@@ -78,25 +78,55 @@
 
 **Gate.** `cargo build -p slicer-core` green. `cargo build --workspace` green.
 
-### Step 0.5c — `PrepassRunnerError` narrow split (P86 idiom)
+### Step 0.5c — `PrepassRunnerError` narrow split (P86 idiom) — preceded by `BlackboardError` move
 
-**Pattern.** Mirror P86's `GCodeEmitError → PostpassError`. Define a 2-variant `PrepassRunnerError` in `slicer-ir/src/stage_io.rs` and a `From<PrepassRunnerError> for PrepassExecutionError` impl in `slicer-runtime/src/prepass.rs`. The orchestrator's `?` at the call site handles the lift implicitly. `PrepassExecutionError` stays in `slicer-runtime/src/prepass.rs` intact with all 8 variants.
+**Pattern.** Mirror P86's `GCodeEmitError → PostpassError`. Define a 2-variant `PrepassRunnerError` in `slicer-ir/src/stage_io.rs` whose `Blackboard` variant carries a `BlackboardError` payload **losslessly** (same shape as the existing `PrepassExecutionError::Blackboard.source`). Lossless requires `BlackboardError` itself to be reachable from `slicer-ir`, so move it (same pattern as `LayerArenaError` in Step 0.5a — small, isolated). The `From<PrepassRunnerError> for PrepassExecutionError` impl then becomes a one-line variant remap with no field synthesis or information loss.
 
-**Files allowed to edit.**
-1. `crates/slicer-ir/src/stage_io.rs` — add:
-   ```rust
-   #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-   pub enum PrepassRunnerError {
-       #[error("fatal module error in {stage_id}/{module_id}: {message}")]
-       FatalModule { stage_id: StageId, module_id: ModuleId, message: String },
-       #[error("blackboard error in {stage_id}/{module_id}: {message}")]
-       Blackboard { stage_id: StageId, module_id: ModuleId, message: String },
-   }
-   ```
-   (Field payloads must NOT reference `BlackboardError` — they take `String` instead since `BlackboardError` stays in slicer-runtime.)
-2. `crates/slicer-runtime/src/prepass.rs` — add `impl From<PrepassRunnerError> for PrepassExecutionError { … }` that maps the 2 narrow variants onto the matching broad variants. Inside the `Blackboard` mapping, the broad variant's `source: BlackboardError` field gets a synthesized `BlackboardError::Other(String)` (or whatever the matching `String`-carrying variant is) from the narrow error's message — implementer must inspect `BlackboardError`'s variants and pick the right one. If no string-carrying variant exists in `BlackboardError`, surface and ask before fabricating one.
+**Sub-sequence (apply in order; each must build green before the next):**
 
-**Gate.** `cargo build -p slicer-runtime` green. (Verifies the `From` impl compiles against the real `PrepassExecutionError` shape.)
+#### 0.5c-i — Falsifying check on `BlackboardError`
+
+Run `rg 'use crate::|use slicer_runtime::' crates/slicer-runtime/src/blackboard.rs | grep -i BlackboardError` and read the variant definitions of `BlackboardError`. Confirm every variant's field types are one of: std (`String`, `Vec`, `usize`, …), slicer-ir-reachable (`ModuleId`, `StageId`, `BlackboardPrepassSlot` if that one is already in slicer-ir or moves cleanly), or primitives. If any variant carries a runtime-internal aggregate (e.g., `Arc<Blackboard>`, a runtime-defined struct), **STOP and surface** — handle the fourth-order chain by either moving the dependency down or splitting the variant.
+
+Likely shape per Step 0.5c-first-attempt survey: `DuplicatePrepassCommit { slot: BlackboardPrepassSlot }`, `MissingRequiredPrepass { slot }`, `DuplicateLayerCommit { layer_index: usize }`, `LayerSlotOutOfRange { layer_index, layer_count }`, `IncompleteLayerDrain { missing_indices: Vec<usize> }`, `LayerOutputsAlreadyDrained` (unit). The `slot: BlackboardPrepassSlot` payload is the only non-trivial sub-type — confirm it moves clean too (it's defined in `blackboard.rs:141` per Step 1 survey; verify it doesn't pull further chains).
+
+#### 0.5c-ii — Move `BlackboardError` (and `BlackboardPrepassSlot` if needed) to `slicer-ir`
+
+Co-locate with `LayerArenaError` in `crates/slicer-ir/src/stage_io.rs`. Add transitional `pub use slicer_ir::{BlackboardError, BlackboardPrepassSlot};` to `crates/slicer-runtime/src/lib.rs`. `blackboard.rs` deletes the moved type declarations and re-imports them via `use slicer_ir::{...};` — body otherwise untouched (same surgical-edit discipline as Step 0.5a's `LayerArenaError` carve-out).
+
+**Gate.** `cargo build -p slicer-ir` green; `cargo build --workspace` green.
+
+#### 0.5c-iii — Introduce `PrepassRunnerError` + `From` impl
+
+In `crates/slicer-ir/src/stage_io.rs`:
+```rust
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrepassRunnerError {
+    FatalModule { stage_id: StageId, module_id: ModuleId, message: String },
+    Blackboard  { stage_id: StageId, module_id: ModuleId, source: BlackboardError },
+}
+
+impl std::fmt::Display for PrepassRunnerError { /* hand-rolled like the other stage_io types */ }
+impl std::error::Error for PrepassRunnerError {}
+```
+
+In `crates/slicer-runtime/src/prepass.rs`:
+```rust
+impl From<slicer_ir::PrepassRunnerError> for PrepassExecutionError {
+    fn from(e: slicer_ir::PrepassRunnerError) -> Self {
+        match e {
+            slicer_ir::PrepassRunnerError::FatalModule { stage_id, module_id, message } =>
+                Self::FatalModule { stage_id, module_id, message },
+            slicer_ir::PrepassRunnerError::Blackboard { stage_id, module_id, source } =>
+                Self::Blackboard { stage_id, module_id, source },
+        }
+    }
+}
+```
+
+Lossless one-line variant remaps; no field synthesis.
+
+**Gate.** `cargo build -p slicer-runtime` green; `cargo build --workspace` green.
 
 ### Step 0.5d — Narrow `instance_pool.rs` signature
 
