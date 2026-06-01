@@ -66,7 +66,7 @@ The `docs/05_module_sdk.md` section heading (`slicer-test Crate` → `Test Suppo
 - `docs/05_module_sdk.md:445-624` — subject of the structural rewrite. > 600 line file; read only this range via offset loads.
 - `docs/00_project_overview.md:122-156` — subject of crate-inventory updates. ≈ 165 lines total; safe to read directly.
 - `CLAUDE.md` (project root) — scan-and-update for `slicer-test` mentions.
-- `crates/slicer-sdk/src/lib.rs` — module list (47 lines as of packet 77's end). Direct read.
+- `crates/slicer-sdk/src/lib.rs` — module list (≈ 49 lines as of packet 77's end; small file, direct read).
 - `crates/slicer-test/src/lib.rs` (≈ 13 lines) — confirm what is currently exported before moving.
 
 ## OrcaSlicer Reference Obligations
@@ -77,7 +77,7 @@ None. This packet does not borrow or check parity against any OrcaSlicer code. T
 
 Acceptance Criteria are defined in `packet.spec.md` and referenced by ID. Measurable refinements:
 
-- **AC-1 refinement**: the 28→27 member count assumes the workspace currently has exactly 28 members. Recon at packet generation time confirmed this; if a future packet adds members between generation and execution, the implementer must recount via `cargo metadata --no-deps` BEFORE running AC-1's verification and update the expected number in the closure log.
+- **AC-1 refinement**: the 30→29 member count is the corrected baseline (an earlier recon recorded 28; spec-review re-verified 30 current members on 2026-05-31). The verification command counts entries via `awk` + `grep` on `Cargo.toml`'s `members = [...]` block — no Python required. If a future packet adds or removes members between this refinement and execution, the implementer must recount and update the literal in AC-1's command in the same commit.
 - **AC-2 refinement**: `crates/slicer-sdk/src/test_support/mod.rs` already exists from packet 77 with the four hook functions. This packet's edit ADDS submodule declarations (`pub mod mock_host;` etc.) without removing the four hook functions. AC-2's verification implicitly relies on packet 77's prior outcome.
 - **AC-3 refinement**: `test_prelude.rs`'s first line is a whole-module gate (`#![cfg(any(test, feature = "test"))]`), NOT per-item gates inside an existing prelude — this is a deliberate ergonomic choice per the grilling decision (preludes whose contents depend on build config break IDE jump-to-definition).
 - **AC-6 refinement**: the test for scaffold shape (`cargo test -p pnp-cli --test module_new_tdd`) must include at least one assertion that the generated `[dependencies]` line has no `features` field, OR that production `cargo check --target wasm32-unknown-unknown` against a freshly scaffolded module succeeds. Either is acceptable; the latter is stronger.
@@ -88,19 +88,20 @@ Acceptance Criteria are defined in `packet.spec.md` and referenced by ID. Measur
 
 | AC | Command | Delegation hint |
 |---|---|---|
-| AC-1 | `test ! -d crates/slicer-test && ! grep -q '"crates/slicer-test"' Cargo.toml && cargo metadata --format-version=1 --no-deps` | Delegate cargo metadata; parse for `workspace_members.length == 27`. |
+| AC-1 | `bash -c 'test ! -d crates/slicer-test && ! grep -q "\"crates/slicer-test\"" Cargo.toml && [ "$(awk ... Cargo.toml | grep -cE "^[[:space:]]*\"[^\"]+\"")" = "29" ]'` | Bash-only: count via `awk` + `grep` of the `members = [...]` block (no Python). Expected count 29 (was 30). |
 | AC-2 | `for f in mod.rs mock_host.rs capture.rs fixtures.rs assert_paths.rs; do test -f crates/slicer-sdk/src/test_support/$f; done && grep -qE 'cfg.*pub mod test_support' crates/slicer-sdk/src/lib.rs` | Direct file checks. |
 | AC-3 | (full command in `packet.spec.md`) | Direct head+grep loops; expect both negative grep (prelude.rs doesn't carry test items) and positive grep (every required symbol present in test_prelude.rs). |
 | AC-4 | `rustup target list --installed \| grep -q wasm32 && cargo check --target wasm32-unknown-unknown -p arachne-perimeters -p rectilinear-infill && cargo tree --target wasm32-unknown-unknown -p arachne-perimeters` | Delegate cargo invocations; assert the `cargo tree` output contains `slicer-sdk` WITHOUT `feature="test"`. |
-| AC-5 | Manual implementer step — see `implementation-plan.md`. | Not CI-gated. |
+| AC-5 | `bash -c 'set -e; BAK=$(mktemp); cp .../lib.rs "$BAK"; trap ... EXIT; printf "...use ::MockHost as _gate_probe;" >> .../lib.rs; cargo check -p slicer-sdk 2>&1 \| grep -qE "E0433\|could not find .test_support."'` | Scripted probe with `mktemp` backup + `trap` restore. Dispatch as FACT pass/fail. Replaces the prior manual-only marker. |
 | AC-6 | `cargo test -p pnp-cli --test module_new_tdd && grep -qE 'slicer-sdk = .*features = \[.*"test".*\]' crates/pnp-cli/src/module_new.rs && ! grep -qE 'slicer-test' crates/pnp-cli/src/module_new.rs` | Delegate test run; grep direct. |
 | AC-7 | (compound command in `packet.spec.md`) | Delegate `cargo test`; the grep+awk multi-line-body check runs locally. |
 | AC-8 | (compound command in `packet.spec.md`) | Same pattern. |
 | AC-9 | `for m in arachne-perimeters rectilinear-infill; do grep -A5 '\[dev-dependencies\]' modules/core-modules/$m/Cargo.toml \| grep -qE 'slicer-sdk.*features = \[.*"test".*\]'; done` | Direct. |
 | AC-10 | `! grep -qE '^## slicer-test Crate' docs/05_module_sdk.md && grep -qE '^## Test Support' docs/05_module_sdk.md && ! grep -qE 'use slicer_test::' docs/05_module_sdk.md && grep -qE 'use slicer_sdk::test_prelude' docs/05_module_sdk.md` | Direct. |
 | AC-11 | `! grep -qE 'slicer-test' docs/00_project_overview.md` | Direct. |
-| AC-N1 | `cargo build --workspace --release && find target/release -name '*.rlib' -exec nm {} \; 2>/dev/null \| grep -E 'test_support'` | Delegate cargo build (this is heavy — split into FACT pass/fail); the `nm` grep is local. |
-| AC-N2 | Manual implementer step — see `implementation-plan.md`. | Not CI-gated. |
+| AC-12 | `bash -c '[ "$(grep -c slicer-test CLAUDE.md)" = "0" ]'` | Direct. |
+| AC-N1 | `bash -c 'cargo build --target wasm32-unknown-unknown --release -p arachne-perimeters && cargo build --target wasm32-unknown-unknown --release -p rectilinear-infill && ! grep -aE "test_support::(mock_host\|capture\|fixtures\|assert_paths)" target/wasm32-unknown-unknown/release/arachne_perimeters.wasm target/wasm32-unknown-unknown/release/rectilinear_infill.wasm'` | Replaces the prior `nm` approach (binutils not on Windows by default). `grep -a` scans the wasm artifact's embedded symbol strings. |
+| AC-N2 | `bash -c 'set -e; BAK=$(mktemp); cp .../Cargo.toml "$BAK"; trap ... EXIT; sed -i.tmp "s/, *features = \[\"test\"\]//g" .../Cargo.toml; cargo test -p arachne-perimeters 2>&1 \| grep -qE "MockHost\|ConfigViewBuilder\|test_prelude\|unresolved\|E0432\|E0433\|cannot find"'` | Scripted mutation with `mktemp` backup + `trap` restore. Replaces the prior manual-only marker. |
 | Closure: workspace check | `cargo check --workspace --all-targets` | Delegate. |
 | Closure: clippy | `cargo clippy --workspace --all-targets -- -D warnings` | Delegate. |
 | Closure: targeted test sweep | `cargo test -p slicer-sdk -p arachne-perimeters -p rectilinear-infill -p pnp-cli --test module_new_tdd` | Delegate; expect 4 package green. |

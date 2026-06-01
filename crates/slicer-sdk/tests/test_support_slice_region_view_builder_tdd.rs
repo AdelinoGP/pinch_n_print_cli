@@ -1,7 +1,7 @@
 //! TDD tests for SliceRegionViewBuilder producing SliceRegionView.
 
 use slicer_ir::mm_to_units;
-use slicer_test::fixtures::{square_polygon, SliceRegionViewBuilder};
+use slicer_sdk::test_support::fixtures::{square_polygon, SliceRegionViewBuilder};
 
 #[test]
 fn default_builder_produces_valid_view() {

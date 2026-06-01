@@ -11,7 +11,7 @@ use slicer_ir::{ExtrusionPath3D, Polygon};
 ///
 /// ```rust
 /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole};
-/// use slicer_test::assert_paths::assert_paths_planar;
+/// use slicer_sdk::test_support::assert_paths::assert_paths_planar;
 ///
 /// let paths = vec![ExtrusionPath3D {
 ///     points: Vec::new(),
@@ -46,7 +46,7 @@ pub fn assert_paths_planar(paths: &[ExtrusionPath3D], expected_z_mm: f32, tolera
 ///
 /// ```rust
 /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole, Point3WithWidth};
-/// use slicer_test::assert_paths::assert_max_segment_length;
+/// use slicer_sdk::test_support::assert_paths::assert_max_segment_length;
 ///
 /// let path = ExtrusionPath3D {
 ///     points: vec![
@@ -85,7 +85,7 @@ pub fn assert_max_segment_length(paths: &[ExtrusionPath3D], max_len_mm: f32) {
 ///
 /// ```rust
 /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole, Point3WithWidth};
-/// use slicer_test::assert_paths::assert_extrusion_width_range;
+/// use slicer_sdk::test_support::assert_paths::assert_extrusion_width_range;
 ///
 /// let path = ExtrusionPath3D {
 ///     points: vec![
@@ -123,7 +123,7 @@ pub fn assert_extrusion_width_range(paths: &[ExtrusionPath3D], min_width: f32, m
 ///
 /// ```rust
 /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth, Polygon};
-/// use slicer_test::assert_paths::assert_paths_inside_polygon;
+/// use slicer_sdk::test_support::assert_paths::assert_paths_inside_polygon;
 ///
 /// let polygon = Polygon {
 ///     points: vec![
@@ -245,7 +245,7 @@ fn point_on_segment(px: i64, py: i64, a: &slicer_ir::Point2, b: &slicer_ir::Poin
 ///
 /// ```rust
 /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole, Point3WithWidth};
-/// use slicer_test::assert_paths::assert_no_path_intersections;
+/// use slicer_sdk::test_support::assert_paths::assert_no_path_intersections;
 ///
 /// let path_a = ExtrusionPath3D {
 ///     points: vec![

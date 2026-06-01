@@ -7,7 +7,9 @@ use slicer_ir::{
     ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType, Point3, Point3WithWidth, Polygon,
     WallBoundaryType, WallLoop, WidthProfile,
 };
-use slicer_test::capture::{InfillOutputCapture, PerimeterOutputCapture, SupportOutputCapture};
+use slicer_sdk::test_support::capture::{
+    InfillOutputCapture, PerimeterOutputCapture, SupportOutputCapture,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers

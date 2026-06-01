@@ -11,123 +11,47 @@ use std::collections::HashMap;
 
 use arachne_perimeters::ArachnePerimeters;
 use slicer_ir::{
-    mm_to_units, ConfigValue, ConfigView, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon,
-    WallBoundaryType,
+    mm_to_units, ConfigView, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon, WallBoundaryType,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
+use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
 /// Create a square ExPolygon centered at origin with given side length in mm.
 fn make_square(side_mm: f32) -> ExPolygon {
-    let half = side_mm / 2.0;
-    ExPolygon {
-        contour: Polygon {
-            points: vec![
-                Point2 {
-                    x: mm_to_units(-half),
-                    y: mm_to_units(-half),
-                },
-                Point2 {
-                    x: mm_to_units(half),
-                    y: mm_to_units(-half),
-                },
-                Point2 {
-                    x: mm_to_units(half),
-                    y: mm_to_units(half),
-                },
-                Point2 {
-                    x: mm_to_units(-half),
-                    y: mm_to_units(half),
-                },
-            ],
-        },
-        holes: Vec::new(),
-    }
+    square_polygon(0.0, 0.0, side_mm)
 }
 
+#[rustfmt::skip]
 /// Create a narrow wedge/rectangle thinner than 2*line_width (0.8mm).
 /// This 0.6mm wide rectangle should result in fewer walls than wall_count.
 fn make_narrow_rect(width_mm: f32, height_mm: f32) -> ExPolygon {
-    let half_w = width_mm / 2.0;
-    let half_h = height_mm / 2.0;
-    ExPolygon {
-        contour: Polygon {
-            points: vec![
-                Point2 {
-                    x: mm_to_units(-half_w),
-                    y: mm_to_units(-half_h),
-                },
-                Point2 {
-                    x: mm_to_units(half_w),
-                    y: mm_to_units(-half_h),
-                },
-                Point2 {
-                    x: mm_to_units(half_w),
-                    y: mm_to_units(half_h),
-                },
-                Point2 {
-                    x: mm_to_units(-half_w),
-                    y: mm_to_units(half_h),
-                },
-            ],
-        },
-        holes: Vec::new(),
-    }
+    ExPolygon { contour: Polygon { points: vec![Point2 { x: mm_to_units(-width_mm / 2.0), y: mm_to_units(-height_mm / 2.0) }, Point2 { x: mm_to_units(width_mm / 2.0), y: mm_to_units(-height_mm / 2.0) }, Point2 { x: mm_to_units(width_mm / 2.0), y: mm_to_units(height_mm / 2.0) }, Point2 { x: mm_to_units(-width_mm / 2.0), y: mm_to_units(height_mm / 2.0) }] }, holes: Vec::new() }
 }
 
 /// Create a config with specified wall_count and line_width.
-fn make_config(wall_count: u32, line_width: f64) -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert(
-        "wall_count".to_string(),
-        ConfigValue::Int(wall_count as i64),
-    );
-    fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    ConfigView::from_map(fields)
+fn wall_config(wall_count: u32, line_width: f64) -> ConfigView {
+    ConfigViewBuilder::new()
+        .int("wall_count", wall_count as i64)
+        .float("line_width", line_width)
+        .build()
 }
 
+#[rustfmt::skip]
 /// Create a config with speed settings and optional min_feature_size.
-fn make_config_full(
-    wall_count: u32,
-    line_width: f64,
-    outer_speed: f64,
-    inner_speed: f64,
-) -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert(
-        "wall_count".to_string(),
-        ConfigValue::Int(wall_count as i64),
-    );
-    fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    fields.insert(
-        "outer_wall_speed".to_string(),
-        ConfigValue::Float(outer_speed),
-    );
-    fields.insert(
-        "inner_wall_speed".to_string(),
-        ConfigValue::Float(inner_speed),
-    );
-    ConfigView::from_map(fields)
+fn make_config_full(wall_count: u32, line_width: f64, outer_speed: f64, inner_speed: f64) -> ConfigView {
+    ConfigViewBuilder::new().int("wall_count", wall_count as i64).float("line_width", line_width).float("outer_wall_speed", outer_speed).float("inner_wall_speed", inner_speed).build()
 }
 
+#[rustfmt::skip]
 /// Create a SliceRegionView with a single polygon.
 fn make_region_from_poly(poly: ExPolygon, z: f32) -> SliceRegionView {
-    {
-        let mut tmp = SliceRegionView::default();
-        tmp.set_object_id("obj-1".to_string());
-        tmp.set_region_id(1);
-        tmp.set_polygons(vec![poly]);
-        tmp.set_infill_areas(Vec::new());
-        tmp.set_effective_layer_height(0.2);
-        tmp.set_z(z);
-        tmp.set_has_nonplanar(false);
-        tmp
-    }
+    SliceRegionViewBuilder::new().object_id("obj-1").region_id(1).add_polygon(poly).effective_layer_height(0.2).z(z).has_nonplanar(false).build()
 }
 
 /// Create a SliceRegionView with a single square polygon.
-fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
+fn square_slice_region(side_mm: f32, z: f32) -> SliceRegionView {
     make_region_from_poly(make_square(side_mm), z)
 }
 
@@ -168,9 +92,9 @@ fn on_print_start_custom() {
 
 #[test]
 fn single_square_region() {
-    let config = make_config(2, 0.4);
+    let config = wall_config(2, 0.4);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
-    let regions = vec![make_region(10.0, 1.0)];
+    let regions = vec![square_slice_region(10.0, 1.0)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -197,7 +121,7 @@ fn variable_width_profile() {
     // A narrow wedge-like region should produce walls with varying widths.
     // We use a narrow rectangle (0.6mm wide) which is between 1x and 2x line_width.
     // Arachne should adapt wall widths rather than use uniform width.
-    let config = make_config(2, 0.4);
+    let config = wall_config(2, 0.4);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
     let narrow = make_narrow_rect(0.6, 10.0);
     let regions = vec![make_region_from_poly(narrow, 1.0)];
@@ -231,7 +155,7 @@ fn variable_width_profile() {
 #[test]
 fn thin_region_fewer_walls() {
     // Region narrower than 2*line_width should produce fewer walls than wall_count.
-    let config = make_config(3, 0.4);
+    let config = wall_config(3, 0.4);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
     // 0.6mm wide: fits ~1 wall, definitely not 3
     let narrow = make_narrow_rect(0.6, 10.0);
@@ -253,9 +177,9 @@ fn thin_region_fewer_walls() {
 
 #[test]
 fn zero_walls_config() {
-    let config = make_config(0, 0.4);
+    let config = wall_config(0, 0.4);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
-    let regions = vec![make_region(10.0, 1.0)];
+    let regions = vec![square_slice_region(10.0, 1.0)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -277,7 +201,7 @@ fn zero_walls_config() {
 
 #[test]
 fn empty_regions_no_output() {
-    let config = make_config(2, 0.4);
+    let config = wall_config(2, 0.4);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
     let mut region = SliceRegionView::default();
     region.set_object_id("obj-1".to_string());
@@ -301,9 +225,9 @@ fn empty_regions_no_output() {
 
 #[test]
 fn outer_wall_role() {
-    let config = make_config(2, 0.4);
+    let config = wall_config(2, 0.4);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
-    let regions = vec![make_region(10.0, 1.0)];
+    let regions = vec![square_slice_region(10.0, 1.0)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -325,9 +249,9 @@ fn outer_wall_role() {
 
 #[test]
 fn inner_wall_role() {
-    let config = make_config(3, 0.4);
+    let config = wall_config(3, 0.4);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
-    let regions = vec![make_region(10.0, 1.0)];
+    let regions = vec![square_slice_region(10.0, 1.0)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -347,9 +271,9 @@ fn inner_wall_role() {
 
 #[test]
 fn infill_areas_set() {
-    let config = make_config(2, 0.4);
+    let config = wall_config(2, 0.4);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
-    let regions = vec![make_region(10.0, 1.0)];
+    let regions = vec![square_slice_region(10.0, 1.0)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
@@ -373,9 +297,9 @@ fn infill_areas_set() {
 
 #[test]
 fn seam_candidates_generated() {
-    let config = make_config(2, 0.4);
+    let config = wall_config(2, 0.4);
     let module = ArachnePerimeters::on_print_start(&config).unwrap();
-    let regions = vec![make_region(10.0, 1.0)];
+    let regions = vec![square_slice_region(10.0, 1.0)];
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 

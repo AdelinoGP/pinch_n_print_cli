@@ -10,55 +10,16 @@
 use slicer_ir::{ConfigView, ExtrusionRole, Point2, Polygon};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::prelude::LayerModule;
+use slicer_sdk::test_prelude::*;
 use slicer_sdk::views::SliceRegionView;
 
 use rectilinear_infill::RectilinearInfill;
 
-/// Create a minimal rectangular ExPolygon: 10mm x 10mm square from (0,0) to (10,10).
-/// Using mm_to_units ensures scan-line intersections occur.
-fn make_square_expolygon() -> slicer_ir::ExPolygon {
-    let u = slicer_ir::mm_to_units;
-    let contour = Polygon {
-        points: vec![
-            Point2 {
-                x: u(0.0),
-                y: u(0.0),
-            },
-            Point2 {
-                x: u(10.0),
-                y: u(0.0),
-            },
-            Point2 {
-                x: u(10.0),
-                y: u(10.0),
-            },
-            Point2 {
-                x: u(0.0),
-                y: u(10.0),
-            },
-        ],
-    };
-    slicer_ir::ExPolygon {
-        contour,
-        holes: vec![],
-    }
-}
-
+#[rustfmt::skip]
 /// Create a region with bridge areas and orientation set.
 fn make_bridge_region(bridge_orientation_deg: f32) -> SliceRegionView {
-    let square = make_square_expolygon();
-    let mut region = SliceRegionView::default();
-    region.set_object_id("test_object".to_string());
-    region.set_region_id(0);
-    region.set_polygons(vec![]);
-    region.set_infill_areas(vec![square.clone()]);
-    region.set_effective_layer_height(0.2);
-    region.set_z(1.0);
-    region.set_has_nonplanar(false);
-    region.set_is_bridge(true);
-    region.set_bridge_areas(vec![square.clone()]);
-    region.set_bridge_orientation_deg(bridge_orientation_deg);
-    region
+    let s = square_polygon(5.0, 5.0, 10.0); let mut r = SliceRegionViewBuilder::new().object_id("test_object").region_id(0).add_infill_area(s.clone()).effective_layer_height(0.2).z(1.0).has_nonplanar(false).build();
+    r.set_is_bridge(true); r.set_bridge_areas(vec![s]); r.set_bridge_orientation_deg(bridge_orientation_deg); r
 }
 
 /// Compute the direction angle (degrees, 0-360) of a path from its first two points.

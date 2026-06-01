@@ -13,7 +13,7 @@
 ### Step 1 — Preflight: verify packet 77 closed; baseline workspace member count
 
 - **Task IDs**: TASK-225
-- **Objective**: Confirm packet 77's `status: implemented` and capture the current workspace-member count (should be 28; will become 27 by AC-1).
+- **Objective**: Confirm packet 77's `status: implemented` and capture the current workspace-member count (should be 30; will become 29 by AC-1).
 - **Precondition**: This packet is `draft`; packet 77's `packet.spec.md` should exist with `status: implemented`.
 - **Postcondition**: A baseline count is recorded; if packet 77 is not closed, stop and surface the blocker.
 - **Files to read**: `.ralph/specs/77_test-support-wire-and-adapter/packet.spec.md` (frontmatter only).
@@ -21,7 +21,7 @@
 - **Expected dispatches**: dispatch 5 (workspace member count).
 - **Context cost**: S
 - **Narrow verification**: `grep -E '^status:' .ralph/specs/77_test-support-wire-and-adapter/packet.spec.md | grep -q implemented && cargo metadata --format-version=1 --no-deps`
-- **Exit condition**: packet 77 closed; baseline = 28 members.
+- **Exit condition**: packet 77 closed; baseline = 30 members.
 
 ### Step 2 — Move source files; update internal `use` paths
 
@@ -109,10 +109,10 @@
 - **Files to read**: none (`ls crates/slicer-test` only to confirm what's being deleted).
 - **Files to edit**:
   - Delete `crates/slicer-test/` entirely (via `rm -rf` or `git rm -r`)
-- **Expected dispatches**: dispatch 5 (recount workspace members → should now be 27).
+- **Expected dispatches**: dispatch 5 (recount workspace members → should now be 29).
 - **Context cost**: S
-- **Narrow verification**: `test ! -d crates/slicer-test && cargo metadata --format-version=1 --no-deps | python -c 'import sys,json; m=json.load(sys.stdin)["workspace_members"]; assert len(m) == 27, len(m)'`
-- **Exit condition**: directory gone; member count 27.
+- **Narrow verification**: `bash -c 'test ! -d crates/slicer-test && [ "$(awk "/^members[[:space:]]*=[[:space:]]*\[/,/^\]/" Cargo.toml | grep -cE "^[[:space:]]*\"[^\"]+\"")" = "29" ]'` (no Python; counts entries in the workspace `members = [...]` block).
+- **Exit condition**: directory gone; member count 29 (was 30 pre-fold).
 
 ### Step 8 — Verify the gate is real (AC-5 manual probe; AC-N1 production-build symbol scan)
 
@@ -166,7 +166,7 @@
 - **Files to read**: every `modules/core-modules/rectilinear-infill/tests/*.rs`; `modules/core-modules/rectilinear-infill/src/lib.rs` config-key strings.
 - **Files to edit**:
   - `modules/core-modules/rectilinear-infill/Cargo.toml` (+1 dev-dep line)
-  - `modules/core-modules/rectilinear-infill/tests/*.rs` (helper bodies rewritten)
+  - `modules/core-modules/rectilinear-infill/tests/*.rs` (helper bodies rewritten). **NOTE**: `make_square_expolygon` is defined in **two** files (`top_bottom_fill_tdd.rs` ≈ L18 and `bridge_infill_emission_tdd.rs` ≈ L19) — both bodies must be rewritten in lockstep. AC-8's grep deliberately catches both occurrences and asserts each body is ≤ 4 lines.
 - **Expected dispatches**: dispatch 4 (pre-migration field-name extraction).
 - **Context cost**: M
 - **Narrow verification**: `cargo test -p rectilinear-infill && grep -A5 '\[dev-dependencies\]' modules/core-modules/rectilinear-infill/Cargo.toml | grep -qE 'slicer-sdk.*features = \[.*"test".*\]'`

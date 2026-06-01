@@ -9,7 +9,7 @@ The relevant crates live directly under the workspace root:
 ```
 crates/
 ├── slicer-sdk/      # Core: re-exports WIT types, provides helpers, registers exports
-├── slicer-test/     # Test harness: mock host, IR builders, assertion helpers
+│                    # (test support lives inside slicer-sdk under the `test` feature)
 ├── slicer-macros/   # Proc-macros: #[slicer_module], #[module_test]
 └── pnp-cli/         # Single binary `pnp_cli`: includes `module new|diagnose|config-schema` verbs.
 ```
@@ -39,7 +39,7 @@ crate-type = ["cdylib"]   # required for WASM component output
 slicer-sdk = "1.0"
 
 [dev-dependencies]
-slicer-test = "1.0"
+slicer-sdk = { version = "1.0", features = ["test"] }
 
 [profile.release]
 opt-level = "s"    # optimize for size in WASM output
@@ -442,14 +442,39 @@ Each `PrintEntity` and `TravelMove` carries a `u64 entity_id` populated at const
 
 ---
 
-## `slicer-test` Crate
+## Test Support (slicer-sdk feature)
 
-Every module can be tested in complete isolation — no running host, no WASM runtime, no real mesh.
+Every module can be tested in complete isolation — no running host, no WASM runtime, no real mesh. Test-support APIs are part of `slicer-sdk` itself, gated behind a Cargo feature named `test`. The convention is to depend on the SDK twice — once for production code, and once as a dev-dependency with the `test` feature enabled:
+
+```toml
+[dependencies]
+slicer-sdk = { path = "../../crates/slicer-sdk", default-features = false }
+
+[dev-dependencies]
+slicer-sdk = { path = "../../crates/slicer-sdk", features = ["test"] }
+```
+
+Per ADR-0004 (quoted from its `## Decision` section):
+
+> Test-support APIs are owned by `slicer-sdk` and exposed as
+> `slicer_sdk::test_support` (this packet, 77) and — in packet 78 — re-exported
+> through a curated `slicer_sdk::test_prelude`. The module is gated behind a Cargo
+> feature named `test` (also auto-enabled under `cfg(test)`), so production guest
+> WASM builds pay no cost.
+>
+> The fold direction is deliberate: **test support lives inside slicer-sdk** so
+> that module authors get test-support APIs from the same crate they use to author
+> modules, the `#[slicer_module]` macro can emit a single fully-qualified path
+> (`::slicer_sdk::test_support::…`) that always resolves, and the documented public
+> surface becomes honest.
+
+The `test_prelude` is whole-module gated with `#![cfg(any(test, feature = "test"))]` and lives separately from the production `prelude`. The production `slicer_sdk::prelude::*` stays test-free and is what `use slicer_sdk::prelude::*;` brings into scope inside module source files; the test helpers below come in via `use slicer_sdk::test_prelude::*;` from test modules only.
 
 ### Mock Host
 
 ```rust
-use slicer_test::prelude::*;
+use slicer_sdk::prelude::*;
+use slicer_sdk::test_prelude::*;
 use slicer_sdk::host;
 
 #[module_test]
@@ -474,7 +499,7 @@ counter — e.g. `host.call_count("clip_polygons")`.
 ### IR Fixture Builders
 
 ```rust
-use slicer_test::fixtures::*;
+use slicer_sdk::test_prelude::*;
 
 // Build a SliceRegionView from scratch
 let region = SliceRegionViewBuilder::new()
@@ -499,23 +524,26 @@ let sq:   ExPolygon       = square_polygon(cx, cy, side);
 let path: ExtrusionPath3D = rect_path(cx, cy, side, width);
 ```
 
+The fixture builders are re-exported through `slicer_sdk::test_prelude`; the underlying definitions live at `slicer_sdk::test_support::fixtures` for callers that prefer fully-qualified paths.
+
 ### Config Fixture Builder
 
 ```rust
-use slicer_test::fixtures::ConfigViewBuilder;
+use slicer_sdk::test_prelude::*;   // re-exports ConfigViewBuilder
 
 let config = ConfigViewBuilder::new()
     .float("density",            0.20)
     .string("pattern",           "schwartz-d")
-    .int("multiline-count",      2)
-    .float("marching-cell-size", 0.40)
+    .int("multiline_count",      2)
+    .float("marching_cell_size", 0.40)
     .build();
 ```
 
 ### Output Capture
 
 ```rust
-use slicer_test::capture::*;
+use slicer_sdk::prelude::*;
+use slicer_sdk::test_prelude::*;
 
 let mut infill_output = InfillOutputCapture::new();
 let mut perim_output  = PerimeterOutputCapture::new();
@@ -533,7 +561,7 @@ assert!(sparse.iter().all(|p| p.role == ExtrusionRole::SparseInfill));
 ### Assertion Helpers
 
 ```rust
-use slicer_test::assert_paths::*;
+use slicer_sdk::test_prelude::*;
 
 // All Z values equal the expected layer Z (module is planar)
 assert_paths_planar(&sparse, 1.2, 1e-3);
@@ -550,6 +578,8 @@ assert_paths_inside_polygon(&sparse, &boundary_polygon);
 // No two paths intersect
 assert_no_path_intersections(&sparse);
 ```
+
+The assertion helpers, capture types, and other test seams are all owned by `slicer_sdk::test_support::*` and surface through `slicer_sdk::test_prelude::*`; nothing under those paths is reachable in a production guest WASM build, because the `test` feature is off by default and `cargo xtask build-guests` never enables it.
 
 ---
 
@@ -583,7 +613,7 @@ Wrapper around `#[test]` that automatically sets up the mock host, installs the 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slicer_test::prelude::*;
+    use slicer_sdk::test_prelude::*;
 
     #[module_test]
     fn test_schwartz_d_fills_square() {

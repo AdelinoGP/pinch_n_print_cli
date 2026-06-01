@@ -1,7 +1,7 @@
 //! TDD tests for ConfigViewBuilder — all five ConfigValue variants.
 
 use slicer_ir::ConfigValue;
-use slicer_test::fixtures::ConfigViewBuilder;
+use slicer_sdk::test_support::fixtures::ConfigViewBuilder;
 
 #[test]
 fn empty_builder_produces_empty_config() {

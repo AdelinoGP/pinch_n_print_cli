@@ -2,13 +2,13 @@
 //! (`slicer_sdk::host::raycast_z_down`) through the installed adapter, and a
 //! second `install` call replaces the first without an explicit uninstall.
 //!
-//! `slicer-test` does not depend on `slicer-macros`, so `#[module_test]` is
-//! not in scope here. To preserve the same test-isolation contract the macro
-//! provides, every test entry calls
+//! `slicer-sdk` test_support does not depend on `slicer-macros`, so
+//! `#[module_test]` is not in scope here. To preserve the same test-isolation
+//! contract the macro provides, every test entry calls
 //! `slicer_sdk::test_support::reset_global_state()` first — exactly as the
 //! macro emits at the start of every wrapped test body.
 
-use slicer_test::MockHost;
+use slicer_sdk::test_support::mock_host::MockHost;
 
 /// Reset per-thread SDK state (mesh source + log capture) at test entry.
 /// Mirrors the prelude `#[module_test]` emits.

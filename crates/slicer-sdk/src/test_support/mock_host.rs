@@ -28,7 +28,7 @@ use slicer_ir::{BoundingBox3, Point3};
 /// # Examples
 ///
 /// ```rust
-/// use slicer_test::MockHost;
+/// use slicer_sdk::test_support::mock_host::MockHost;
 ///
 /// let _host = MockHost::new().with_raycast_hit(Some(1.5));
 /// ```
@@ -48,7 +48,7 @@ impl MockHost {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::MockHost;
+    /// use slicer_sdk::test_support::mock_host::MockHost;
     ///
     /// let _host = MockHost::new();
     /// ```
@@ -62,7 +62,7 @@ impl MockHost {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::MockHost;
+    /// use slicer_sdk::test_support::mock_host::MockHost;
     ///
     /// let _host = MockHost::new().with_raycast_hit(Some(0.42));
     /// ```
@@ -78,7 +78,7 @@ impl MockHost {
     ///
     /// ```rust
     /// use slicer_ir::Point3;
-    /// use slicer_test::MockHost;
+    /// use slicer_sdk::test_support::mock_host::MockHost;
     ///
     /// let _host = MockHost::new().with_normal(Some(Point3 { x: 0.0, y: 0.0, z: 1.0 }));
     /// ```
@@ -94,7 +94,7 @@ impl MockHost {
     ///
     /// ```rust
     /// use slicer_ir::{BoundingBox3, Point3};
-    /// use slicer_test::MockHost;
+    /// use slicer_sdk::test_support::mock_host::MockHost;
     ///
     /// let bounds = BoundingBox3 {
     ///     min: Point3 { x: 0.0, y: 0.0, z: 0.0 },
@@ -118,13 +118,13 @@ impl MockHost {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::MockHost;
+    /// use slicer_sdk::test_support::mock_host::MockHost;
     ///
     /// MockHost::new().with_raycast_hit(Some(1.0)).install();
     /// MockHost::uninstall();
     /// ```
     pub fn install(self) {
-        slicer_sdk::host::test_support::install_mesh_source(self);
+        crate::host::test_support::install_mesh_source(self);
     }
 
     /// Uninstall any per-thread [`slicer_sdk::host::MeshSource`] previously
@@ -133,12 +133,12 @@ impl MockHost {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::MockHost;
+    /// use slicer_sdk::test_support::mock_host::MockHost;
     ///
     /// MockHost::uninstall();
     /// ```
     pub fn uninstall() {
-        slicer_sdk::host::test_support::clear_mesh_source();
+        crate::host::test_support::clear_mesh_source();
     }
 
     /// Record that a named host call occurred.
@@ -150,7 +150,7 @@ impl MockHost {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::MockHost;
+    /// use slicer_sdk::test_support::mock_host::MockHost;
     ///
     /// let mut host = MockHost::new();
     /// host.record_call("clip_polygons");
@@ -164,7 +164,7 @@ impl MockHost {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::MockHost;
+    /// use slicer_sdk::test_support::mock_host::MockHost;
     ///
     /// let mut host = MockHost::new();
     /// host.record_call("clip_polygons");
@@ -183,7 +183,7 @@ impl MockHost {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::MockHost;
+    /// use slicer_sdk::test_support::mock_host::MockHost;
     ///
     /// let mut host = MockHost::new();
     /// host.record_call("clip_polygons");
@@ -205,13 +205,13 @@ impl MockHost {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::MockHost;
+    /// use slicer_sdk::test_support::mock_host::MockHost;
     ///
     /// let host = MockHost::new();
     /// host.log_warn("density near limit");
     /// ```
     pub fn log_warn(&self, message: impl Into<String>) {
-        slicer_sdk::host::log_warn(&message.into());
+        crate::host::log_warn(&message.into());
     }
 
     /// Return `true` if any message currently in the SDK log-capture
@@ -227,19 +227,19 @@ impl MockHost {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::MockHost;
+    /// use slicer_sdk::test_support::mock_host::MockHost;
     ///
     /// // No capture installed → empty drain → false.
     /// assert!(!MockHost::log_contains("missing"));
     /// ```
     #[must_use]
     pub fn log_contains(needle: &str) -> bool {
-        let drained = slicer_sdk::host::test_support::take_log_messages();
+        let drained = crate::host::test_support::take_log_messages();
         drained.iter().any(|(_lvl, msg)| msg.contains(needle))
     }
 }
 
-impl slicer_sdk::host::MeshSource for MockHost {
+impl crate::host::MeshSource for MockHost {
     fn raycast_z_down(&self, _object_id: &str, _x: f32, _y: f32, _start_z: f32) -> Option<f32> {
         self.raycast_hit
     }

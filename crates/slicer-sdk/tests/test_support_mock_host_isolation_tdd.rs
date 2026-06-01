@@ -1,10 +1,10 @@
 //! AC-6 — proves `reset_global_state()` clears the per-thread mesh source so
 //! a subsequent test never observes a prior test's `MockHost::install`.
 //!
-//! `slicer-test` does not depend on `slicer-macros`, so we cannot use
-//! `#[module_test]` here. We emulate the contract instead: every test entry
-//! calls `slicer_sdk::test_support::reset_global_state()` — exactly what the
-//! macro emits — and asserts the post-reset behavior.
+//! `slicer-sdk` test_support does not depend on `slicer-macros`, so we cannot
+//! use `#[module_test]` here. We emulate the contract instead: every test
+//! entry calls `slicer_sdk::test_support::reset_global_state()` — exactly
+//! what the macro emits — and asserts the post-reset behavior.
 //!
 //! Rust's test order is not stable, so we do NOT rely on which test runs
 //! first. Instead each test is self-contained: the "dirty" test installs a
@@ -19,7 +19,7 @@
 //! a shared thread, the assertion test re-installs *and then resets* in the
 //! same body, asserting the reset cleared what *it* just installed.
 
-use slicer_test::MockHost;
+use slicer_sdk::test_support::mock_host::MockHost;
 
 fn reset() {
     slicer_sdk::test_support::reset_global_state();

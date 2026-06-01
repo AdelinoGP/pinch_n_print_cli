@@ -38,3 +38,8 @@ pub fn mock_host_teardown() {
     let _ = host::test_support::take_log_messages();
     host::test_support::clear_mesh_source();
 }
+
+pub mod assert_paths;
+pub mod capture;
+pub mod fixtures;
+pub mod mock_host;

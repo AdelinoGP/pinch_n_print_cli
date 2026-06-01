@@ -1,7 +1,7 @@
 //! TDD tests for assert_paths assertion helpers (TASK-049).
 
 use slicer_ir::{ExtrusionPath3D, ExtrusionRole, Point2, Point3WithWidth, Polygon};
-use slicer_test::assert_paths::*;
+use slicer_sdk::test_support::assert_paths::*;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 

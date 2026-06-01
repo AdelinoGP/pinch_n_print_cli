@@ -201,7 +201,7 @@ crate-type = ["cdylib"]
 slicer-sdk = {{ path = "../../crates/slicer-sdk" }}
 
 [dev-dependencies]
-slicer-test = {{ path = "../../crates/slicer-test" }}
+slicer-sdk = {{ path = "../../crates/slicer-sdk", features = ["test"] }}
 "#
     )
 }
@@ -542,7 +542,8 @@ mod tests {
         assert!(toml.contains(r#"name = "my_infill""#));
         assert!(toml.contains(r#"crate-type = ["cdylib"]"#));
         assert!(toml.contains("slicer-sdk"));
-        assert!(toml.contains("slicer-test"));
+        assert!(toml
+            .contains(r#"slicer-sdk = { path = "../../crates/slicer-sdk", features = ["test"] }"#));
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! TDD tests for PerimeterRegionViewBuilder producing PerimeterRegionView.
 
 use slicer_ir::{ExtrusionRole, LoopType, WallBoundaryType, WallLoop, WidthProfile};
-use slicer_test::fixtures::{rect_path, square_polygon, PerimeterRegionViewBuilder};
+use slicer_sdk::test_support::fixtures::{rect_path, square_polygon, PerimeterRegionViewBuilder};
 
 #[test]
 fn default_builder_produces_valid_view() {

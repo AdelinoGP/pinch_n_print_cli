@@ -2,11 +2,11 @@
 
 use std::collections::HashMap;
 
+use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
     mm_to_units, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType,
     Point3WithWidth, Polygon, SeamCandidate, WallBoundaryType, WallLoop, WidthProfile,
 };
-use slicer_sdk::views::{PerimeterRegionView, SliceRegionView};
 
 /// Builder for creating [`ConfigView`] fixtures.
 #[derive(Debug, Default)]
@@ -20,7 +20,7 @@ impl ConfigViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::ConfigViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::ConfigViewBuilder;
     ///
     /// let _builder = ConfigViewBuilder::new();
     /// ```
@@ -34,7 +34,7 @@ impl ConfigViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::ConfigViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::ConfigViewBuilder;
     ///
     /// let _config = ConfigViewBuilder::new().int("count", 2).build();
     /// ```
@@ -49,7 +49,7 @@ impl ConfigViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::ConfigViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::ConfigViewBuilder;
     ///
     /// let _config = ConfigViewBuilder::new().float("density", 0.2).build();
     /// ```
@@ -64,7 +64,7 @@ impl ConfigViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::ConfigViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::ConfigViewBuilder;
     ///
     /// let _config = ConfigViewBuilder::new().bool("enabled", true).build();
     /// ```
@@ -79,7 +79,7 @@ impl ConfigViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::ConfigViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::ConfigViewBuilder;
     ///
     /// let _config = ConfigViewBuilder::new().string("pattern", "grid").build();
     /// ```
@@ -96,7 +96,7 @@ impl ConfigViewBuilder {
     ///
     /// ```rust
     /// use slicer_ir::ConfigValue;
-    /// use slicer_test::fixtures::ConfigViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::ConfigViewBuilder;
     ///
     /// let _config = ConfigViewBuilder::new()
     ///     .list("speeds", vec![ConfigValue::Float(1.0), ConfigValue::Float(2.0)])
@@ -113,7 +113,7 @@ impl ConfigViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::ConfigViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::ConfigViewBuilder;
     ///
     /// let config = ConfigViewBuilder::new().int("count", 1).build();
     /// assert_eq!(config.len(), 1);
@@ -147,7 +147,7 @@ impl SliceRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::SliceRegionViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::SliceRegionViewBuilder;
     ///
     /// let _builder = SliceRegionViewBuilder::new();
     /// ```
@@ -170,7 +170,7 @@ impl SliceRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::SliceRegionViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::SliceRegionViewBuilder;
     ///
     /// let _builder = SliceRegionViewBuilder::new().object_id("obj-1");
     /// ```
@@ -185,7 +185,7 @@ impl SliceRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::SliceRegionViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::SliceRegionViewBuilder;
     ///
     /// let _builder = SliceRegionViewBuilder::new().region_id(5);
     /// ```
@@ -200,7 +200,7 @@ impl SliceRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::SliceRegionViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::SliceRegionViewBuilder;
     ///
     /// let view = SliceRegionViewBuilder::new().z(1.2).build();
     /// assert!((view.z() - 1.2).abs() < f32::EPSILON);
@@ -216,7 +216,7 @@ impl SliceRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::SliceRegionViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::SliceRegionViewBuilder;
     ///
     /// let _builder = SliceRegionViewBuilder::new().effective_layer_height(0.24);
     /// ```
@@ -231,7 +231,7 @@ impl SliceRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::SliceRegionViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::SliceRegionViewBuilder;
     ///
     /// let view = SliceRegionViewBuilder::new().has_nonplanar(true).build();
     /// assert!(view.has_nonplanar());
@@ -250,7 +250,7 @@ impl SliceRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::{square_polygon, SliceRegionViewBuilder};
+    /// use slicer_sdk::test_support::fixtures::{square_polygon, SliceRegionViewBuilder};
     ///
     /// let view = SliceRegionViewBuilder::new()
     ///     .add_polygon(square_polygon(0.0, 0.0, 10.0))
@@ -270,7 +270,7 @@ impl SliceRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::{square_polygon, SliceRegionViewBuilder};
+    /// use slicer_sdk::test_support::fixtures::{square_polygon, SliceRegionViewBuilder};
     ///
     /// let view = SliceRegionViewBuilder::new()
     ///     .add_polygon(square_polygon(0.0, 0.0, 20.0))
@@ -318,7 +318,7 @@ impl SliceRegionViewBuilder {
 /// # Examples
 ///
 /// ```rust
-/// use slicer_test::fixtures::square_polygon;
+/// use slicer_sdk::test_support::fixtures::square_polygon;
 ///
 /// let square = square_polygon(0.0, 0.0, 2.0);
 /// assert_eq!(square.contour.points.len(), 4);
@@ -353,7 +353,7 @@ pub fn square_polygon(cx_mm: f32, cy_mm: f32, side_mm: f32) -> ExPolygon {
 /// # Examples
 ///
 /// ```rust
-/// use slicer_test::fixtures::rect_path;
+/// use slicer_sdk::test_support::fixtures::rect_path;
 ///
 /// let path = rect_path(0.0, 0.0, 10.0, 0.4);
 /// assert_eq!(path.points.len(), 4);
@@ -407,7 +407,7 @@ impl PerimeterRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::PerimeterRegionViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::PerimeterRegionViewBuilder;
     ///
     /// let _builder = PerimeterRegionViewBuilder::new();
     /// ```
@@ -428,7 +428,7 @@ impl PerimeterRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::PerimeterRegionViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::PerimeterRegionViewBuilder;
     ///
     /// let _builder = PerimeterRegionViewBuilder::new().object_id("obj-1");
     /// ```
@@ -443,7 +443,7 @@ impl PerimeterRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::PerimeterRegionViewBuilder;
+    /// use slicer_sdk::test_support::fixtures::PerimeterRegionViewBuilder;
     ///
     /// let _builder = PerimeterRegionViewBuilder::new().region_id(5);
     /// ```
@@ -462,7 +462,7 @@ impl PerimeterRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::{rect_path, PerimeterRegionViewBuilder};
+    /// use slicer_sdk::test_support::fixtures::{rect_path, PerimeterRegionViewBuilder};
     ///
     /// let view = PerimeterRegionViewBuilder::new()
     ///     .add_outer_wall(rect_path(0.0, 0.0, 10.0, 0.4))
@@ -492,7 +492,7 @@ impl PerimeterRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::{rect_path, PerimeterRegionViewBuilder};
+    /// use slicer_sdk::test_support::fixtures::{rect_path, PerimeterRegionViewBuilder};
     ///
     /// let view = PerimeterRegionViewBuilder::new()
     ///     .add_inner_wall(rect_path(0.0, 0.0, 8.0, 0.4))
@@ -524,7 +524,7 @@ impl PerimeterRegionViewBuilder {
     ///
     /// ```rust
     /// use slicer_ir::{WallLoop, LoopType, WallBoundaryType, WidthProfile};
-    /// use slicer_test::fixtures::{rect_path, PerimeterRegionViewBuilder};
+    /// use slicer_sdk::test_support::fixtures::{rect_path, PerimeterRegionViewBuilder};
     ///
     /// let wl = WallLoop {
     ///     perimeter_index: 0,
@@ -547,7 +547,7 @@ impl PerimeterRegionViewBuilder {
     /// # Examples
     ///
     /// ```rust
-    /// use slicer_test::fixtures::{square_polygon, PerimeterRegionViewBuilder};
+    /// use slicer_sdk::test_support::fixtures::{square_polygon, PerimeterRegionViewBuilder};
     ///
     /// let view = PerimeterRegionViewBuilder::new()
     ///     .add_infill_area(square_polygon(0.0, 0.0, 10.0))

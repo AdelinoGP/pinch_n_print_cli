@@ -33,7 +33,10 @@ fn default_stage_cargo_toml_has_cdylib() {
     let cargo = fs::read_to_string(tmp.path().join("my-infill/Cargo.toml")).unwrap();
     assert!(cargo.contains(r#"crate-type = ["cdylib"]"#));
     assert!(cargo.contains("slicer-sdk"));
-    assert!(cargo.contains("slicer-test"));
+    assert!(
+        cargo.contains(r#"slicer-sdk = { path = "../../crates/slicer-sdk", features = ["test"] }"#)
+    );
+    assert!(!cargo.contains("slicer-test"));
 }
 
 #[test]

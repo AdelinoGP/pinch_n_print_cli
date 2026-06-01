@@ -6,9 +6,10 @@
 //! All four tests are intentionally FAILING (TDD approach) because the role
 //! logic is not yet implemented in the module.
 
-use slicer_ir::{ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon};
+use slicer_ir::{ConfigView, ExPolygon, ExtrusionRole};
 use slicer_sdk::builders::InfillOutputBuilder;
 use slicer_sdk::prelude::LayerModule;
+use slicer_sdk::test_prelude::*;
 use slicer_sdk::views::SliceRegionView;
 
 use rectilinear_infill::RectilinearInfill;
@@ -16,53 +17,14 @@ use rectilinear_infill::RectilinearInfill;
 /// Create a minimal rectangular ExPolygon: 10mm x 10mm square from (0,0) to (10,10).
 /// Using mm_to_units ensures scan-line intersections occur.
 fn make_square_expolygon() -> ExPolygon {
-    let u = slicer_ir::mm_to_units;
-    let contour = Polygon {
-        points: vec![
-            Point2 {
-                x: u(0.0),
-                y: u(0.0),
-            },
-            Point2 {
-                x: u(10.0),
-                y: u(0.0),
-            },
-            Point2 {
-                x: u(10.0),
-                y: u(10.0),
-            },
-            Point2 {
-                x: u(0.0),
-                y: u(10.0),
-            },
-        ],
-    };
-    ExPolygon {
-        contour,
-        holes: vec![],
-    }
+    square_polygon(5.0, 5.0, 10.0)
 }
 
+#[rustfmt::skip]
+#[allow(clippy::suspicious_else_formatting)]
 fn make_test_region(is_top: bool, is_bottom: bool, is_bridge: bool) -> SliceRegionView {
-    let square = make_square_expolygon();
-    let mut region = SliceRegionView::default();
-    region.set_object_id("test_object".to_string());
-    region.set_region_id(0);
-    region.set_polygons(vec![]);
-    region.set_infill_areas(vec![square.clone()]);
-    region.set_effective_layer_height(0.2);
-    region.set_z(1.0);
-    region.set_has_nonplanar(false);
-    if is_top {
-        region.set_top_shell_index(Some(0));
-        region.set_top_solid_fill(vec![square.clone()]);
-    }
-    if is_bottom {
-        region.set_bottom_shell_index(Some(0));
-        region.set_bottom_solid_fill(vec![square]);
-    }
-    region.set_is_bridge(is_bridge);
-    region
+    let s = square_polygon(5.0, 5.0, 10.0); let mut r = SliceRegionViewBuilder::new().object_id("test_object").region_id(0).add_infill_area(s.clone()).effective_layer_height(0.2).z(1.0).has_nonplanar(false).build();
+    if is_top { r.set_top_shell_index(Some(0)); r.set_top_solid_fill(vec![s.clone()]); }; if is_bottom { r.set_bottom_shell_index(Some(0)); r.set_bottom_solid_fill(vec![s]); }; r.set_is_bridge(is_bridge); r
 }
 
 /// Helper: returns true if any path in `paths` has the given role AND > 1 point.

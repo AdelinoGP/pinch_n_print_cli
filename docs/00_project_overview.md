@@ -119,8 +119,7 @@ modular-slicer/
 │   │                         #   Full path: crates/pnp-cli
 │   ├── slicer-core/          # Core algorithms (slicing, Clipper ops, geometry)
 │   ├── slicer-ir/            # IR type definitions (shared between host and SDK)
-│   ├── slicer-sdk/           # Module authoring SDK (imported by module crates)
-│   ├── slicer-test/          # Test harness for module unit tests
+│   ├── slicer-sdk/           # Module authoring SDK (imported by module crates; test harness under `test` feature)
 │   ├── slicer-macros/        # Proc-macros (#[slicer_module], #[module_test])
 │   ├── slicer-schema/        # Shared config/manifest schema types + canonical WIT contract
 │   │   └── wit/              #   The single canonical WIT source (deps/, root.wit, world-*)
@@ -148,11 +147,10 @@ identity elsewhere. Renames change this table once, not every citing doc.
 | `pnp_cli` (binary) | `crates/pnp-cli/` | The single CLI binary: `slice`, `module`, `mesh`, `dag` verbs. Entry point `crates/pnp-cli/src/main.rs`. |
 | `slicer-core` | `crates/slicer-core/` | Core algorithms (slicing, Clipper ops, geometry). |
 | `slicer-ir` | `crates/slicer-ir/` | IR type definitions shared between host and SDK. |
-| `slicer-sdk` | `crates/slicer-sdk/` | Module authoring SDK. |
+| `slicer-sdk` | `crates/slicer-sdk/` | Module authoring SDK; module test harness under the `test` feature. |
 | `slicer-macros` | `crates/slicer-macros/` | Proc-macros (`#[slicer_module]`, `#[module_test]`). |
 | `slicer-schema` | `crates/slicer-schema/` | Config/manifest schema types **and** the canonical WIT under `crates/slicer-schema/wit/`. |
 | `slicer-helpers` | `crates/slicer-helpers/` | Pre-pipeline mesh ops (repair, decimate, STEP import). |
-| `slicer-test` | `crates/slicer-test/` | Test harness for module unit tests. |
 | `xtask` | `xtask/` | Dev tooling (`build-guests`, `gen-config-docs`, `check-deviations`). |
 
 > **Packet 69 rename (history):** the former `slicer-host` library crate was

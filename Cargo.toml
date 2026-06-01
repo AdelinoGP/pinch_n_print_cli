@@ -7,7 +7,6 @@ members = [
     "crates/slicer-macros",
     "crates/slicer-schema",
     "crates/slicer-sdk",
-    "crates/slicer-test",
     "crates/slicer-helpers",
     "modules/core-modules/layer-planner-default",
     "modules/core-modules/classic-perimeters",

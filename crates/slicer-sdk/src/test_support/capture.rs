@@ -17,7 +17,7 @@ use slicer_ir::{ExPolygon, ExtrusionPath3D, Point3, WallLoop};
 ///
 /// ```rust
 /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole};
-/// use slicer_test::capture::InfillOutputCapture;
+/// use slicer_sdk::test_support::capture::InfillOutputCapture;
 ///
 /// let mut cap = InfillOutputCapture::new();
 /// cap.push_sparse_path(ExtrusionPath3D {
@@ -47,7 +47,7 @@ impl InfillOutputCapture {
     ///
     /// ```rust
     /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole};
-    /// use slicer_test::capture::InfillOutputCapture;
+    /// use slicer_sdk::test_support::capture::InfillOutputCapture;
     ///
     /// let mut cap = InfillOutputCapture::new();
     /// cap.push_sparse_path(ExtrusionPath3D {
@@ -67,7 +67,7 @@ impl InfillOutputCapture {
     ///
     /// ```rust
     /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole};
-    /// use slicer_test::capture::InfillOutputCapture;
+    /// use slicer_sdk::test_support::capture::InfillOutputCapture;
     ///
     /// let mut cap = InfillOutputCapture::new();
     /// cap.push_solid_path(ExtrusionPath3D {
@@ -87,7 +87,7 @@ impl InfillOutputCapture {
     ///
     /// ```rust
     /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole};
-    /// use slicer_test::capture::InfillOutputCapture;
+    /// use slicer_sdk::test_support::capture::InfillOutputCapture;
     ///
     /// let mut cap = InfillOutputCapture::new();
     /// cap.push_ironing_path(ExtrusionPath3D {
@@ -131,7 +131,7 @@ impl InfillOutputCapture {
 /// # Examples
 ///
 /// ```rust
-/// use slicer_test::capture::PerimeterOutputCapture;
+/// use slicer_sdk::test_support::capture::PerimeterOutputCapture;
 ///
 /// let cap = PerimeterOutputCapture::new();
 /// assert!(cap.wall_loops().is_empty());
@@ -156,7 +156,7 @@ impl PerimeterOutputCapture {
     ///
     /// ```rust
     /// use slicer_ir::*;
-    /// use slicer_test::capture::PerimeterOutputCapture;
+    /// use slicer_sdk::test_support::capture::PerimeterOutputCapture;
     ///
     /// let mut cap = PerimeterOutputCapture::new();
     /// cap.push_wall_loop(WallLoop {
@@ -179,7 +179,7 @@ impl PerimeterOutputCapture {
     ///
     /// ```rust
     /// use slicer_ir::{ExPolygon, Polygon};
-    /// use slicer_test::capture::PerimeterOutputCapture;
+    /// use slicer_sdk::test_support::capture::PerimeterOutputCapture;
     ///
     /// let mut cap = PerimeterOutputCapture::new();
     /// cap.set_infill_areas(vec![ExPolygon { contour: Polygon { points: vec![] }, holes: vec![] }]);
@@ -195,7 +195,7 @@ impl PerimeterOutputCapture {
     ///
     /// ```rust
     /// use slicer_ir::Point3;
-    /// use slicer_test::capture::PerimeterOutputCapture;
+    /// use slicer_sdk::test_support::capture::PerimeterOutputCapture;
     ///
     /// let mut cap = PerimeterOutputCapture::new();
     /// cap.push_seam_candidate(Point3 { x: 0.0, y: 0.0, z: 0.0 }, 0.5);
@@ -235,7 +235,7 @@ impl PerimeterOutputCapture {
 /// # Examples
 ///
 /// ```rust
-/// use slicer_test::capture::SupportOutputCapture;
+/// use slicer_sdk::test_support::capture::SupportOutputCapture;
 ///
 /// let cap = SupportOutputCapture::new();
 /// assert!(cap.support_paths().is_empty());
@@ -260,7 +260,7 @@ impl SupportOutputCapture {
     ///
     /// ```rust
     /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole};
-    /// use slicer_test::capture::SupportOutputCapture;
+    /// use slicer_sdk::test_support::capture::SupportOutputCapture;
     ///
     /// let mut cap = SupportOutputCapture::new();
     /// cap.push_support_path(ExtrusionPath3D {
@@ -280,7 +280,7 @@ impl SupportOutputCapture {
     ///
     /// ```rust
     /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole};
-    /// use slicer_test::capture::SupportOutputCapture;
+    /// use slicer_sdk::test_support::capture::SupportOutputCapture;
     ///
     /// let mut cap = SupportOutputCapture::new();
     /// cap.push_interface_path(ExtrusionPath3D {
@@ -301,7 +301,7 @@ impl SupportOutputCapture {
     ///
     /// ```rust
     /// use slicer_ir::{ExtrusionPath3D, ExtrusionRole};
-    /// use slicer_test::capture::SupportOutputCapture;
+    /// use slicer_sdk::test_support::capture::SupportOutputCapture;
     ///
     /// let mut cap = SupportOutputCapture::new();
     /// cap.push_raft_path(ExtrusionPath3D {
