@@ -14,8 +14,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{ConfigKey, ConfigValue, RegionKey, RegionPlan};
+use slicer_model_io::load_model;
 use slicer_runtime::dispatch::WasmRuntimeDispatcher;
-use slicer_runtime::model_loader::load_model;
 use slicer_runtime::pipeline::{
     run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners,
 };

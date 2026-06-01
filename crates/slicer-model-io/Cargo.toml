@@ -1,0 +1,18 @@
+[package]
+name = "slicer-model-io"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+version.workspace = true
+
+[dependencies]
+slicer-ir = { path = "../slicer-ir" }
+stl_io = "0.11"
+tobj = "4.0"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = "0.39"
+uuid = { version = "1", features = ["v4", "v5"] }
+log = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

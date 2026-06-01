@@ -13,7 +13,6 @@ pub mod diagnose;
 pub mod dispatch;
 pub mod execution_plan;
 pub mod gcode_emit;
-pub mod helpers_cmd;
 pub mod instance_pool;
 pub mod instrumentation;
 pub mod layer_executor;
@@ -21,9 +20,6 @@ pub mod layer_finalization;
 pub mod manifest;
 pub mod mesh_analysis;
 pub mod mesh_segmentation;
-pub mod model_loader;
-pub mod model_loader_sidecar;
-pub mod model_writer;
 pub mod module_search_path;
 pub mod negative_part_subtract;
 pub mod overhang_classifier;
@@ -132,7 +128,6 @@ pub use mesh_analysis::{execute_mesh_analysis, MeshAnalysisConfig, MeshAnalysisE
 pub use mesh_segmentation::{
     execute_mesh_segmentation, DegenerateStrokeReason, MeshSegmentationError,
 };
-pub use model_writer::{write_3mf, write_obj};
 pub use module_search_path::{assemble_search_roots, SLICER_MODULE_PATH_ENV};
 pub use paint_segmentation::{execute_paint_segmentation, PaintSegmentationError};
 pub use postpass::{

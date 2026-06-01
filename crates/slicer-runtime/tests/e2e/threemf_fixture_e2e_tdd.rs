@@ -21,7 +21,7 @@ use slicer_ir::{
     PaintValue, Point3, Polygon, RegionMapIR, ResolvedConfig, SemVer, SliceIR, SlicedRegion,
     SurfaceClassificationIR, Transform3d, CURRENT_SLICE_IR_SCHEMA_VERSION,
 };
-use slicer_runtime::model_loader::load_model;
+use slicer_model_io::load_model;
 use slicer_runtime::negative_part_subtract::apply_negative_part_subtract;
 use slicer_runtime::paint_segmentation::execute_paint_segmentation;
 use slicer_runtime::{

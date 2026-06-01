@@ -343,7 +343,7 @@ fn rotated_object_world_extent_is_degenerate() {
     );
 
     // CORE ASSERTION 1: object_world_z_extent is None for rotate_x(90deg)
-    let extent = slicer_runtime::model_loader::object_world_z_extent(&mesh.objects[0]);
+    let extent = slicer_model_io::loader::object_world_z_extent(&mesh.objects[0]);
     assert!(
         extent.is_none(),
         "rotate_x(90deg) vertical rod must have degenerate world Z extent (None), got {:?}",

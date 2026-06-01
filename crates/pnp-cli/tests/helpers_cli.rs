@@ -270,7 +270,7 @@ fn import_multi_solid_step_to_single_3mf_two_objects() {
     );
 
     // The single 3MF must contain exactly 2 objects (one per solid).
-    let mesh = slicer_runtime::model_loader::load_model(&output).expect("out.3mf must be loadable");
+    let mesh = slicer_model_io::load_model(&output).expect("out.3mf must be loadable");
     assert_eq!(
         mesh.objects.len(),
         2,
@@ -349,8 +349,8 @@ fn convert_split_vs_merge_object_count() {
         .assert()
         .success();
 
-    let split_mesh = slicer_runtime::model_loader::load_model(&output_split)
-        .expect("split.3mf must be loadable");
+    let split_mesh =
+        slicer_model_io::load_model(&output_split).expect("split.3mf must be loadable");
     assert_eq!(
         split_mesh.objects.len(),
         2,
@@ -370,8 +370,8 @@ fn convert_split_vs_merge_object_count() {
         .assert()
         .success();
 
-    let merge_mesh = slicer_runtime::model_loader::load_model(&output_merge)
-        .expect("merge.3mf must be loadable");
+    let merge_mesh =
+        slicer_model_io::load_model(&output_merge).expect("merge.3mf must be loadable");
     assert_eq!(
         merge_mesh.objects.len(),
         1,

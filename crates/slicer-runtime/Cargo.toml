@@ -16,16 +16,14 @@ serde_json = "1.0"
 clap = { workspace = true, features = ["derive"] }
 log = "0.4"
 directories = "6"
-stl_io = "0.11"
-tobj = "4.0"
-zip = { version = "2", default-features = false, features = ["deflate"] }
-quick-xml = "0.39"
-uuid = { version = "1", features = ["v4", "v5"] }
 wasmtime = { workspace = true }
 rstar = "0.12"
 
 [dev-dependencies]
+slicer-model-io = { path = "../slicer-model-io" }
 witness = { path = "test-guests/witness" }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+stl_io = "0.11"
 wat = "1.0"
 wit-parser = "0.247"
 tempfile = "3"

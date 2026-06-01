@@ -8,6 +8,8 @@
 
 use pnp_cli::module_new;
 
+mod helpers_cmd;
+
 use std::path::PathBuf;
 
 use clap::{ArgGroup, Parser, Subcommand};
@@ -291,7 +293,7 @@ fn dag_producers<'a>(loaded: &'a [LoadedModule]) -> Vec<&'a dyn Producer> {
 }
 
 fn object_ids_from_model(path: &std::path::Path) -> Option<Vec<String>> {
-    match slicer_runtime::model_loader::load_model(path) {
+    match slicer_model_io::load_model(path) {
         Ok(ir) => Some(ir.objects.iter().map(|o| o.id.clone()).collect()),
         Err(e) => {
             eprintln!("warning: failed to load --model {}: {e}", path.display());
@@ -340,8 +342,17 @@ fn main() {
                 }
             }
             let output_path = output.clone();
+            let model_label = model.to_string_lossy().into_owned();
+            let mesh = match slicer_model_io::load_model(&model) {
+                Ok(m) => std::sync::Arc::new(m),
+                Err(e) => {
+                    eprintln!("error: failed to load model {}: {e}", model.display());
+                    std::process::exit(1);
+                }
+            };
             let opts = SliceRunOptions {
-                model_path: model,
+                mesh,
+                model_label,
                 config_path: config,
                 output_path: output,
                 module_dirs: module_dir,
@@ -412,9 +423,7 @@ fn main() {
                 format,
                 stats,
             } => {
-                std::process::exit(slicer_runtime::helpers_cmd::run_repair(
-                    &input, &output, format, stats,
-                ));
+                std::process::exit(helpers_cmd::run_repair(&input, &output, format, stats));
             }
             MeshCmd::Decimate {
                 input,
@@ -425,7 +434,7 @@ fn main() {
                 aggressive,
                 stats,
             } => {
-                std::process::exit(slicer_runtime::helpers_cmd::run_decimate(
+                std::process::exit(helpers_cmd::run_decimate(
                     &input,
                     &output,
                     target_count,
@@ -443,7 +452,7 @@ fn main() {
                 no_repair,
                 stats,
             } => {
-                std::process::exit(slicer_runtime::helpers_cmd::run_import(
+                std::process::exit(helpers_cmd::run_import(
                     &input,
                     &output,
                     output_format,
@@ -459,7 +468,7 @@ fn main() {
                 merge_components,
                 repair,
             } => {
-                std::process::exit(slicer_runtime::helpers_cmd::run_convert(
+                std::process::exit(helpers_cmd::run_convert(
                     &input,
                     &output,
                     output_format,

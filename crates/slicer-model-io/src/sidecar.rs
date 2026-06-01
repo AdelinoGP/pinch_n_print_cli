@@ -55,7 +55,7 @@ pub fn parse_3mf_sidecar<R: Read + Seek>(
                 Ok(_) => buf,
                 Err(e) => {
                     log::warn!(
-                        target: "slicer_runtime::model_loader::sidecar",
+                        target: "slicer_model_io::sidecar",
                         "3MF sidecar read error: {e}; treating all parts as normal_part"
                     );
                     return HashMap::new();
@@ -205,7 +205,7 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
             Ok(Event::Eof) => break,
             Err(e) => {
                 log::warn!(
-                    target: "slicer_runtime::model_loader::sidecar",
+                    target: "slicer_model_io::sidecar",
                     "3MF sidecar XML parse error: {e}; treating all parts as normal_part"
                 );
                 return HashMap::new();
@@ -217,7 +217,7 @@ fn parse_sidecar_bytes(sidecar_bytes: &[u8]) -> HashMap<u32, ObjectSidecarInfo> 
 
     let total_parts: usize = result.values().map(|o| o.parts.len()).sum();
     log::trace!(
-        target: "slicer_runtime::model_loader::sidecar",
+        target: "slicer_model_io::sidecar",
         "parse_3mf_sidecar: {} object(s), {} part(s)",
         result.len(),
         total_parts
@@ -236,7 +236,7 @@ fn parse_part_subtype(raw: &[u8]) -> PartSubtype {
         other => {
             let s = String::from_utf8_lossy(other);
             log::warn!(
-                target: "slicer_runtime::model_loader::sidecar",
+                target: "slicer_model_io::sidecar",
                 "3MF sidecar unrecognized subtype '{}': downgrading to normal_part",
                 s
             );

@@ -15,10 +15,14 @@ path = "src/lib.rs"
 [dependencies]
 slicer-runtime = { path = "../slicer-runtime" }
 slicer-schema = { path = "../slicer-schema" }
+slicer-model-io = { path = "../slicer-model-io" }
+slicer-helpers = { path = "../slicer-helpers" }
+slicer-ir = { path = "../slicer-ir" }
 clap = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"
 toml = "0.8"
+stl_io = "0.11"
 
 [dev-dependencies]
 assert_cmd = "2"

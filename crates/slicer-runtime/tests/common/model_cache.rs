@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use slicer_ir::MeshIR;
-use slicer_runtime::model_loader::load_model;
+use slicer_model_io::load_model;
 
 type Cell = Arc<OnceLock<Arc<MeshIR>>>;
 static CACHE: OnceLock<Mutex<HashMap<PathBuf, Cell>>> = OnceLock::new();

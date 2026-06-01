@@ -18,7 +18,7 @@ This packet is hygiene + an opt-out seam. `helpers_cmd.rs` and `cli.rs` are CLI 
 
 ## Prerequisites and Blockers
 
-- **Requires packet 81 closed**. `helpers_cmd.rs` imports `slicer_model_io::{assemble_object, load_model}` (rewired in P81 step 3); the file move in this packet preserves those imports.
+- **Requires packet 81 Step 3 complete** (`slicer-model-io` carved out as a leaf crate and `crates/slicer-runtime/src/helpers_cmd.rs` rewired to `slicer_model_io::{assemble_object, load_model}`). P81 need not have flipped to `status: superseded` — the deepening batch (P81–P88) is allowed to overlap. The file move in this packet preserves the P81 imports unchanged. Step 0 verifies the prerequisite point via a single grep; if `helpers_cmd.rs` still references `slicer_runtime::model_loader::...`, P81 has not reached the prerequisite point and this packet must not start.
 - Closure requires `cargo xtask build-guests --check` clean. This packet edits no guest-feeding paths.
 
 ## Acceptance Criteria
@@ -29,7 +29,7 @@ This packet is hygiene + an opt-out seam. `helpers_cmd.rs` and `cli.rs` are CLI 
 **When** the working tree is inspected,
 **Then** `test ! -f crates/slicer-runtime/src/helpers_cmd.rs` is true; `crates/pnp-cli/src/helpers_cmd.rs` exists (or its content is split across files under `crates/pnp-cli/src/commands/`) and exposes `pub fn` entries for `run_repair`, `run_decimate`, `run_import`, `run_convert` (or whatever the pnp-cli subcommand dispatcher calls). The relocated file imports from `slicer_model_io::` and from `slicer_runtime::` only — NOT from `slicer_runtime::helpers_cmd::*` (which no longer exists).
 
-| `test ! -f crates/slicer-runtime/src/helpers_cmd.rs && find crates/pnp-cli/src -name '*.rs' | xargs grep -lE 'pub fn (run_repair\|run_decimate\|run_import\|run_convert)' | head -1 | grep -q . && ! find crates/pnp-cli/src -name '*.rs' | xargs grep -qE 'use slicer_runtime::helpers_cmd'`
+| `test ! -f crates/slicer-runtime/src/helpers_cmd.rs && find crates/pnp-cli/src -name '*.rs' | xargs grep -lE 'pub fn (run_repair|run_decimate|run_import|run_convert)' | head -1 | grep -q . && ! find crates/pnp-cli/src -name '*.rs' | xargs grep -qE 'use slicer_runtime::helpers_cmd'`
 
 ### AC-2 — `cli.rs` no longer exists under `slicer-runtime/src/`; its dead types are deleted, its live items are in `pnp-cli`
 
@@ -37,7 +37,7 @@ This packet is hygiene + an opt-out seam. `helpers_cmd.rs` and `cli.rs` are CLI 
 **When** the working tree is inspected,
 **Then** `test ! -f crates/slicer-runtime/src/cli.rs` is true. `HostCli` and `HostCommands` (the dead clap-Parser types) no longer appear anywhere in the workspace. `OutputFormat` (the value enum used by `mesh repair/decimate/import`) is defined inside `crates/pnp-cli/src/` and reachable from the pnp-cli subcommand bodies. `write_with_parents` is defined inside `crates/pnp-cli/src/` and used by the slice and report output writers.
 
-| `test ! -f crates/slicer-runtime/src/cli.rs && ! grep -rqE 'struct HostCli\b\|enum HostCommands\b' crates/ && find crates/pnp-cli/src -name '*.rs' | xargs grep -lE 'pub enum OutputFormat\b\|pub fn write_with_parents\b' | head -1 | grep -q .`
+| `test ! -f crates/slicer-runtime/src/cli.rs && ! grep -rqE 'struct HostCli\b|enum HostCommands\b' crates/ && find crates/pnp-cli/src -name '*.rs' | xargs grep -lE 'pub enum OutputFormat\b|pub fn write_with_parents\b' | head -1 | grep -q .`
 
 ### AC-3 — `slicer-runtime/src/lib.rs` no longer declares `pub mod cli;` or `pub mod helpers_cmd;`; their re-exports are gone
 
@@ -45,7 +45,7 @@ This packet is hygiene + an opt-out seam. `helpers_cmd.rs` and `cli.rs` are CLI 
 **When** `crates/slicer-runtime/src/lib.rs` is grepped,
 **Then** none of these lines exist: `pub mod cli;`, `pub mod helpers_cmd;`, `pub use cli::{...};`, `pub use helpers_cmd::...`. The `pub mod dag_cli;` declaration and its `pub use dag_cli::...` block ARE preserved (dag_cli stays in slicer-runtime through P82; it moves in P85). Other `pub mod` declarations in the file are unchanged.
 
-| `! grep -qE '^pub mod (cli\|helpers_cmd);' crates/slicer-runtime/src/lib.rs && ! grep -qE '^pub use cli::' crates/slicer-runtime/src/lib.rs && ! grep -qE '^pub use helpers_cmd::' crates/slicer-runtime/src/lib.rs && grep -qE '^pub mod dag_cli;' crates/slicer-runtime/src/lib.rs`
+| `! grep -qE '^pub mod (cli|helpers_cmd);' crates/slicer-runtime/src/lib.rs && ! grep -qE '^pub use cli::' crates/slicer-runtime/src/lib.rs && ! grep -qE '^pub use helpers_cmd::' crates/slicer-runtime/src/lib.rs && grep -qE '^pub mod dag_cli;' crates/slicer-runtime/src/lib.rs`
 
 ### AC-4 — `report/` is feature-gated behind `report` (default-enabled), and `lib.rs` + `run.rs` use `#[cfg(feature = "report")]` consistently
 
@@ -53,7 +53,7 @@ This packet is hygiene + an opt-out seam. `helpers_cmd.rs` and `cli.rs` are CLI 
 **When** `crates/slicer-runtime/Cargo.toml` and `crates/slicer-runtime/src/lib.rs` are inspected,
 **Then** `Cargo.toml` has a `[features]` section with `default = ["report"]` and `report = []`. `lib.rs` declares the report module as `#[cfg(feature = "report")] pub mod report;` and its `pub use report::...` re-exports are also gated. `run.rs`'s `report::Collector` / `report::allocator` usages are wrapped in `#[cfg(feature = "report")]` blocks; the `--report` argparse flag in pnp-cli's slice subcommand is similarly gated OR the absence-of-report branch handles "report flag passed but feature off" with a clear error.
 
-| `grep -qE '^default *= *\["report"\]' crates/slicer-runtime/Cargo.toml && grep -qE '^report *= *\[\]' crates/slicer-runtime/Cargo.toml && grep -qE '^#\[cfg\(feature = "report"\)\]$' crates/slicer-runtime/src/lib.rs && grep -qE '#\[cfg\(feature = "report"\)\]' crates/slicer-runtime/src/run.rs`
+| `grep -qE '^default *= *\["report"\]' crates/slicer-runtime/Cargo.toml && grep -qE '^report *= *\[\]' crates/slicer-runtime/Cargo.toml && grep -qE '#\[cfg\(feature = "report"\)\]' crates/slicer-runtime/src/lib.rs && grep -qE '#\[cfg\(feature = "report"\)\]' crates/slicer-runtime/src/run.rs`
 
 ### AC-5 — `cargo build --no-default-features -p slicer-runtime` succeeds (the feature gate compiles cleanly with `report` off)
 
@@ -74,10 +74,12 @@ This packet is hygiene + an opt-out seam. `helpers_cmd.rs` and `cli.rs` are CLI 
 ### AC-7 — `pnp_cli mesh repair/decimate/import/convert` subcommands still work end-to-end
 
 **Given** the move,
-**When** each subcommand runs against a fixture under `resources/` (or a `tests/` fixture),
-**Then** each completes successfully and produces the same output it did before the move. The implementation log records: per-subcommand exit code, output file size, output SHA. SHAs match the pre-packet baseline captured before the move.
+**When** each of the four subcommands runs against its canonical fixture (enumerated in `implementation-plan.md` Step 0),
+**Then** each completes with exit 0 and produces SHA-identical output to the pre-packet baseline captured in Step 0. The implementation log records, per subcommand: exit code, output file size, and SHA-256. All four SHAs match Step 0 baselines.
 
-| `cargo run --bin pnp_cli --release -- mesh convert --input resources/benchy.stl --output /tmp/benchy-p82.obj --format obj`
+The inline smoke check below exercises one subcommand (`mesh convert`) end-to-end; the full four-subcommand SHA-parity matrix is run as `implementation-plan.md` Step 5, which is a closure gate.
+
+| `cargo run --bin pnp_cli --release -- mesh convert --input resources/benchy.stl --output /tmp/benchy-p82.obj --output-format obj && test -s /tmp/benchy-p82.obj` (smoke — full parity matrix in Step 5)
 
 ### AC-8 — `pnp_cli slice --report <PATH>` still produces a valid HTML report on default features
 
@@ -103,15 +105,15 @@ This packet is hygiene + an opt-out seam. `helpers_cmd.rs` and `cli.rs` are CLI 
 **When** the workspace is grepped,
 **Then** the result is empty. This is the structural signal that the dead types are gone for good.
 
-| `! rg -uu "use slicer_runtime::\{?[^}]*\b(HostCli\|HostCommands)\b" crates/ 2>/dev/null`
+| `! rg -uu "\b(HostCli|HostCommands)\b" crates/ 2>/dev/null`
 
-### AC-N2 — `cargo build --no-default-features -p slicer-runtime` does NOT compile `report/`
+### AC-N2 — Under `--no-default-features`, the `slicer_runtime::report` module is unreachable from downstream code
 
 **Given** the feature gate,
-**When** the no-default-features build runs with `RUSTFLAGS='--cfg report_dump'` (or by inspecting the artifact),
-**Then** no symbol from `slicer_runtime::report` is reachable. A test binary trying to call `slicer_runtime::report::render_html(...)` under `--no-default-features` fails to compile. Documented in `implementation-plan.md` step "Verify the feature gate excludes report symbols".
+**When** a probe test file containing `use slicer_runtime::report::Collector;` is added to `crates/slicer-runtime/tests/` and `cargo build --no-default-features -p slicer-runtime --tests` runs,
+**Then** the build MUST fail with an `unresolved import \`slicer_runtime::report\`` error (or equivalent E0432). This proves the gate excludes the subtree from compilation entirely rather than merely hiding the re-export. The probe file is removed after the check; the experiment is git-stash-friendly.
 
-| `! cargo build --no-default-features -p slicer-runtime 2>&1 | grep -qE 'unresolved import.*slicer_runtime::report'` (success = build green with NO unresolved-import errors — the gate keeps the references out of compilation entirely)
+| Ceremony — see `implementation-plan.md` Step 7. Success = (a) `cargo build --no-default-features -p slicer-runtime --tests` exits non-zero with the probe file present AND its stderr contains `unresolved import` referencing `slicer_runtime::report`, AND (b) after probe removal, `cargo build --no-default-features -p slicer-runtime` is green again. (not CI)
 
 ## Verification (gate commands only)
 
@@ -132,7 +134,10 @@ Full per-AC matrix lives in `requirements.md`.
 
 ## Doc Impact Statement
 
-No doc files are edited by this packet. `docs/16_slicer_report.md` does NOT need a note about the feature gate because the gate is invisible to users on default builds (which is the only documented configuration). If the user ever adopts `--no-default-features` for binary distribution, a one-line note about the absent `--report` flag would land in that doc; that is out of scope.
+One doc edit. The new `report` Cargo feature is a user-observable build seam that future agents and operators may discover and need to reason about. Although the gate is invisible on default builds, an undocumented feature flag is the kind of thing that gets "discovered" through grep-spelunking and then mis-described in subsequent packets.
+
+- `docs/16_slicer_report.md` — add a one-line note in the introduction or a new "Build configuration" sub-section: "The report subsystem is feature-gated behind the default-enabled `report` Cargo feature on `slicer-runtime`. Build with `cargo build --no-default-features -p slicer-runtime` to omit it; the `--report` flag is then absent from `pnp_cli slice`."
+  - Verification grep: `grep -qE 'no-default-features.*slicer-runtime|report.*Cargo feature' docs/16_slicer_report.md`
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

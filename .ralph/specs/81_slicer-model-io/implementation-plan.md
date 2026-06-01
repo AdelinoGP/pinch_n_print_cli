@@ -94,6 +94,7 @@
 - `crates/slicer-runtime/src/model_loader_sidecar.rs` (253 LOC — OK to load in full).
 - `crates/slicer-runtime/src/model_writer.rs` (194 LOC — OK to load in full).
 - `crates/slicer-runtime/src/lib.rs`, `crates/slicer-runtime/src/run.rs`, `crates/slicer-runtime/src/helpers_cmd.rs`, `crates/slicer-runtime/Cargo.toml`.
+- `crates/slicer-runtime/src/cli.rs` lines 249–271 only (the `SliceRunOptions` struct — for the `model_path` → `mesh: Arc<MeshIR>` field swap).
 - `crates/pnp-cli/src/main.rs` (and any submodule the slice subcommand lives in), `crates/pnp-cli/Cargo.toml`.
 
 **Files allowed to edit.** All 14 files listed in `design.md` §"Code Change Surface". Three primary edit targets: the new `slicer-model-io` crate (counts as one), `slicer-runtime/src/lib.rs`, `slicer-runtime/src/run.rs`. The rest are mechanical follow-on (Cargo.toml deletions, import rewrites in `helpers_cmd.rs`, slice-subcommand insertion in pnp-cli).
@@ -107,7 +108,7 @@
 **Narrow verification.**
 1. `test ! -f crates/slicer-runtime/src/model_loader.rs && test ! -f crates/slicer-runtime/src/model_loader_sidecar.rs && test ! -f crates/slicer-runtime/src/model_writer.rs` → pass.
 2. `! grep -qE '^(stl_io|tobj|zip|quick-xml|uuid) *=' crates/slicer-runtime/Cargo.toml` → pass.
-3. `grep -E 'pub fn run_slice' crates/slicer-runtime/src/run.rs | head -1 | grep -qE '(MeshIR|Arc<MeshIR>)'` → pass.
+3. `! grep -qE '^[[:space:]]*pub model_path: PathBuf' crates/slicer-runtime/src/cli.rs && grep -qE '^[[:space:]]*pub mesh:[[:space:]]+Arc<MeshIR>' crates/slicer-runtime/src/cli.rs` → pass.
 4. `cargo build --workspace` → pass.
 
 **Falsifying check / exit condition.** Build error referencing a missing `pub(crate)` symbol → return to Step 1 and add it to the promotion list.
@@ -169,7 +170,7 @@
 
 **Precondition.** Step 5 green.
 
-**Postcondition.** A working-tree-only patch that adds `slicer-model-io` as a `slicer-runtime` dep and calls `load_mesh` from `run.rs` is demonstrated to compile (proving the seam is conventional today but enforceable by removing the dep). The patch is reverted before proceeding.
+**Postcondition.** `cargo tree -p slicer-runtime --depth 5 --edges normal | grep -qE '\bslicer-model-io\b'` returns non-zero exit (no match) — proving the seam by absence of the dep edge. This is the AC-N2 gate; no working-tree mutation needed.
 
 **Files allowed to read.** None.
 **Files allowed to edit.** None permanently. The ceremony is "git stash" friendly: change, observe, revert.
@@ -201,18 +202,20 @@ Aggregate: **M** (no L step). Total step count: 7.
 
 ## Packet Completion Gate
 
-All of the following must gate green before the packet moves from `draft` to `superseded` (i.e., closed). Per the deepening-batch policy (recorded in `docs/DEVIATION_LOG.md` at P81 close), the workspace-wide `cargo test --workspace` is NOT required at P81 close — it runs only at P83, P85, P88. P81 closes on the narrow gates below.
+All of the following must gate green before the packet moves from `draft` to `implemented` (i.e., closed). Per `CLAUDE.md` §"Test Discipline", `cargo test --workspace` is permitted only at the packet-close acceptance ceremony — it runs once here, after the narrow gates pass.
 
 1. `cargo build --workspace` — green.
 2. `cargo clippy --workspace --all-targets -- -D warnings` — green.
 3. `cargo test -p slicer-model-io -p slicer-runtime -p pnp-cli` — green; `slicer-runtime` count delta ≤ 0 (any reduction matches a test moved into `slicer-model-io`).
 4. `cargo xtask build-guests --check` — clean. (This packet edits no guest-feeding path; STALE here is unrelated and is a pre-existing drift to flag, not an introduced regression.)
-5. AC-6 post-packet SHA equals Step 0 baseline SHA.
-6. AC-N1 dep-tree check empty.
+5. AC-6 post-packet SHA equals Step 0 baseline SHA (`diff /tmp/p81-baseline.sha /tmp/p81-post.sha` → exit 0).
+6. AC-N1 dep-tree check empty (the five file-format crates absent from `cargo tree -p slicer-runtime`).
+7. AC-N2 dep-tree check empty (`slicer-model-io` absent from `cargo tree -p slicer-runtime`).
+8. `cargo test --workspace` — green, run once at closure (dispatched to a sub-agent with `FACT pass/fail` return per `CLAUDE.md`).
 
 ## Acceptance Ceremony
 
 - All 8 ACs (AC-1 .. AC-8) and 2 negative cases (AC-N1, AC-N2) gate green per the inline verification commands in `packet.spec.md`.
-- The implementation log records: pre-packet SHA, post-packet SHA, `slicer-runtime` test count pre/post, `slicer-model-io` test count, list of `pub(crate)` symbols promoted (from Step 1 dispatch #1), list of test files moved (from Step 1 dispatch #2).
-- `docs/DEVIATION_LOG.md` gains an entry recording the relaxed workspace-test policy for this batch (P81 only — the entry is written once, lands in P81, referenced by P82..P88).
-- `status: draft` → `status: superseded` once gate green AND the user confirms closure. (Per the spec-generator skill default — the packet does not flip itself to active.)
+- The implementation log records: pre-packet SHA, post-packet SHA, `slicer-runtime` test count pre/post, `slicer-model-io` test count, list of `pub(crate)` symbols promoted (from Step 1 dispatch #1), list of test files moved (from Step 1 dispatch #2), `cargo test --workspace` pass count.
+- `docs/07_implementation_status.md` is updated: TASK-233 entry added under "Architecture Deepening Phase I" with status `[x]` and closure date/packet reference.
+- `status: draft` → `status: implemented` once all gates green AND the user confirms closure.

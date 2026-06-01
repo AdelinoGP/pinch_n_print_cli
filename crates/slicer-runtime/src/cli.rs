@@ -2,6 +2,9 @@
 
 use clap::{ArgGroup, Parser, Subcommand, ValueEnum};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use slicer_ir::MeshIR;
 
 /// Output mesh formats accepted by the `repair`, `decimate`, and `import`
 /// subcommands.
@@ -249,8 +252,10 @@ pub enum DagSubcommand {
 /// Validated runtime options derived from CLI arguments.
 #[derive(Debug, Clone)]
 pub struct SliceRunOptions {
-    /// Path to the input 3D model.
-    pub model_path: PathBuf,
+    /// Pre-loaded mesh IR. Loaded by the caller (e.g., `pnp-cli`) before invoking `run_slice`.
+    pub mesh: Arc<MeshIR>,
+    /// Display label for the mesh source (file path, "<stdin>", etc.); used in the HTML report.
+    pub model_label: String,
     /// Optional path to a JSON configuration file.
     pub config_path: Option<PathBuf>,
     /// Optional path to the output G-code file.

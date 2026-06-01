@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{GCodeIR, GlobalLayer, LayerCollectionIR, PrintMetadata, SemVer, StageId};
-use slicer_runtime::model_loader::{load_model, ModelLoadError};
+use slicer_model_io::{load_model, ModelLoadError};
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_runtime::{
     Blackboard, CompiledModule, DefaultGCodeEmitter, DefaultGCodeSerializer, ExecutionPlan,

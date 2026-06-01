@@ -3,7 +3,7 @@
 #![allow(missing_docs)]
 
 use slicer_ir::MeshIR;
-use slicer_runtime::model_loader::load_model;
+use slicer_model_io::load_model;
 use std::path::PathBuf;
 
 fn repo_root() -> PathBuf {

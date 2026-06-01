@@ -23,7 +23,6 @@ use crate::execution_plan::{
 use crate::gcode_emit::{DefaultGCodeEmitter, DefaultGCodeSerializer};
 use crate::instrumentation::CompositeInstrumentation;
 use crate::layer_executor::LayerProgressSink;
-use crate::model_loader::load_model;
 use crate::module_search_path::assemble_search_roots;
 use crate::pipeline::{
     run_pipeline_with_instrumentation, run_pipeline_with_raw_config, PipelineConfig,
@@ -131,7 +130,7 @@ fn run_pipeline_fork(
             }
             report_alloc::enable();
             let report_collector = Arc::new(Collector::new_with_verbose(
-                opts.model_path.to_string_lossy().to_string(),
+                opts.model_label.clone(),
                 opts.report_verbose,
             ));
             let r = if let Some(progress_pi) = maybe_progress_pi {
@@ -176,10 +175,8 @@ fn run_pipeline_fork(
 pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
     let t0 = Instant::now();
 
-    // Load model.
-    let mesh_ir = load_model(&opts.model_path)
-        .map(Arc::new)
-        .map_err(|e| SliceRunError(format!("failed to load model: {e}")))?;
+    // Mesh is pre-loaded by the caller (see SliceRunOptions::mesh).
+    let mesh_ir = Arc::clone(&opts.mesh);
 
     // Parse user-facing JSON config (empty map when not supplied).
     let mut config_source = match opts.config_path.as_ref() {

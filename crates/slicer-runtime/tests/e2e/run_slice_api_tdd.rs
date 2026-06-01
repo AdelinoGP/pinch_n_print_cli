@@ -38,8 +38,11 @@ fn run_slice_against_benchy_returns_nonempty_gcode() {
         module_dir.display()
     );
 
+    let mesh =
+        std::sync::Arc::new(slicer_model_io::load_model(&model).expect("model load must succeed"));
     let opts = SliceRunOptions {
-        model_path: model,
+        mesh,
+        model_label: model.to_string_lossy().into_owned(),
         config_path: None,
         output_path: None,
         module_dirs: vec![module_dir],

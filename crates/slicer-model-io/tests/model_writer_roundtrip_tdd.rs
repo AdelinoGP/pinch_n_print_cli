@@ -8,7 +8,7 @@ use std::io::Cursor;
 use slicer_ir::slice_ir::{
     BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
 };
-use slicer_runtime::{model_loader::load_model, write_3mf, write_obj};
+use slicer_model_io::{load_model, write_3mf, write_obj};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers

@@ -12,7 +12,7 @@ A separate `slicer-model-io` crate gives format I/O the boundary module it deser
 
 ## Grouped Task IDs
 
-- **TASK-231** (new) — Extract model I/O into `slicer-model-io`. Recorded under "Architecture Deepening Phase I" in the next `docs/07_implementation_status.md` update; packet 81 establishes the topic.
+- **TASK-233** (new) — Extract model I/O into `slicer-model-io`. Recorded under "Architecture Deepening Phase I" in the next `docs/07_implementation_status.md` update; packet 81 establishes the topic. (TASK-231 was reassigned to "Audit docs/05_module_sdk.md §Geometry Helpers" before this packet activated; TASK-232 is claimed by packet 82. TASK-233 is the next free ID.)
 
 ## In Scope
 
@@ -22,9 +22,9 @@ A separate `slicer-model-io` crate gives format I/O the boundary module it deser
 - Promote any other `pub(crate)` items that have external callers today (specifically: items used by `crates/slicer-runtime/src/run.rs`, `crates/slicer-runtime/src/helpers_cmd.rs`, and `crates/slicer-runtime/tests/`).
 - Update `slicer-runtime/src/lib.rs` to drop `pub mod model_loader; pub mod model_loader_sidecar; pub mod model_writer;` and the `pub use model_writer::{write_3mf, write_obj};` re-export.
 - Delete `stl_io`, `tobj`, `zip`, `quick-xml`, and `uuid` from `crates/slicer-runtime/Cargo.toml`.
-- Reshape `crates/slicer-runtime/src/run.rs::run_slice` so its first parameter is a constructed `MeshIR` (or `Arc<MeshIR>`), not `&Path`. The file-loading step moves to `crates/pnp-cli/src/main.rs` (or the file from which `slice` is dispatched).
+- Reshape `crates/slicer-runtime/src/cli.rs::SliceRunOptions` (the struct passed to `run_slice`) so its `model_path: PathBuf` field is replaced by `mesh: Arc<MeshIR>`. `run_slice`'s arity is unchanged; only the field carrying the model input changes. The file-loading step moves to `crates/pnp-cli/src/main.rs` (or the file from which `slice` is dispatched), which calls `slicer_model_io::load_model(&args.model)` and wraps the result in `Arc::new(...)` before populating `SliceRunOptions`.
 - Add `slicer-model-io = { path = "../slicer-model-io" }` to `crates/pnp-cli/Cargo.toml`.
-- Update `crates/pnp-cli/src/main.rs` (or its slice subcommand) to call `slicer_model_io::load_mesh(&args.model)` before `slicer_runtime::run::run_slice`.
+- Update `crates/pnp-cli/src/main.rs` (or its slice subcommand) to call `slicer_model_io::load_model(&args.model)` before `slicer_runtime::run::run_slice`.
 - Update `crates/slicer-runtime/src/helpers_cmd.rs` to import from `slicer_model_io::` (it consumes `assemble_object` and `load_model`). Packet 82 then moves `helpers_cmd.rs` into `pnp-cli`; this packet just rewires the imports in place.
 - Migrate test files that exercise loader/writer behavior (those whose SUT is `load_model`, `assemble_object`, `parse_3mf_sidecar`, `write_3mf`, or `write_obj`) into `crates/slicer-model-io/tests/`. Tests whose SUT is a runtime symbol but which use `load_model` only as a fixture builder stay in `slicer-runtime/tests/` and update their imports to `slicer_model_io::load_model`.
 
@@ -59,19 +59,22 @@ Full matrix. Each command is delegation-friendly (exit-coded, parseable, or retu
 
 | ID | Command | Delegation hint |
 |---|---|---|
-| AC-1 | `test -f crates/slicer-model-io/Cargo.toml && grep -qE '^slicer-ir = \{ *path = "\.\./slicer-ir"' crates/slicer-model-io/Cargo.toml && ! grep -qE '^slicer-(runtime\|core\|helpers\|sdk\|schema\|wasm-host) *=' crates/slicer-model-io/Cargo.toml` | FACT pass/fail |
+| AC-1 | `test -f crates/slicer-model-io/Cargo.toml && grep -qE '^slicer-ir = \{ *path = "\.\./slicer-ir"' crates/slicer-model-io/Cargo.toml && ! grep -qE '^slicer-(runtime\|core\|helpers\|sdk\|schema\|wasm-host) *=' crates/slicer-model-io/Cargo.toml` (NOTE: table-cell `\|` renders as literal pipe; when copying the command into a shell, use unescaped `\|`/`|` per ERE) | FACT pass/fail |
 | AC-2 | `test ! -f crates/slicer-runtime/src/model_loader.rs && test ! -f crates/slicer-runtime/src/model_loader_sidecar.rs && test ! -f crates/slicer-runtime/src/model_writer.rs` | FACT pass/fail |
 | AC-3 | `! grep -qE '^(stl_io\|tobj\|zip\|quick-xml\|uuid) *=' crates/slicer-runtime/Cargo.toml` | FACT pass/fail |
 | AC-4 | `! grep -qE '^pub mod (model_loader\|model_loader_sidecar\|model_writer);' crates/slicer-runtime/src/lib.rs` | FACT pass/fail |
-| AC-5 | `grep -E 'pub fn run_slice' crates/slicer-runtime/src/run.rs \| head -1 \| grep -qE '(MeshIR\|Arc<MeshIR>)' && grep -qE '^slicer-model-io' crates/pnp-cli/Cargo.toml` | FACT pass/fail |
-| AC-6 | `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p81.gcode && sha256sum /tmp/benchy-p81.gcode` | SNIPPET (last line of stdout — the SHA — for log) |
+| AC-5 | `! grep -qE '^[[:space:]]*pub model_path: PathBuf' crates/slicer-runtime/src/cli.rs && grep -qE '^[[:space:]]*pub mesh:[[:space:]]+Arc<MeshIR>' crates/slicer-runtime/src/cli.rs && grep -qE '^slicer-model-io' crates/pnp-cli/Cargo.toml` | FACT pass/fail |
+| AC-6 | `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p81.gcode && sha256sum /tmp/benchy-p81.gcode \| cut -d' ' -f1 > /tmp/p81-post.sha && diff /tmp/p81-baseline.sha /tmp/p81-post.sha` | FACT pass/fail (diff exit 0) |
 | AC-7 | `cargo test -p slicer-model-io` | FACT pass/fail + count |
 | AC-8 | `cargo test -p slicer-runtime && cargo test -p pnp-cli` | FACT pass/fail + count |
-| AC-N1 | `cargo tree -p slicer-runtime --depth 5 --edges normal 2>&1 \| grep -E '\b(stl_io\|tobj\|zip\|quick-xml\|uuid)\b'` (success = empty output) | FACT empty/non-empty |
-| AC-N2 | Manual ceremony — see `implementation-plan.md`. | (not CI) |
+| AC-N1 | `! cargo tree -p slicer-runtime --depth 1 --edges normal 2>&1 \| grep -qE '\b(stl_io\|tobj\|zip\|quick-xml\|uuid)\b'` (direct-deps only; narrowed from depth 5 per P81 closure — see packet.spec.md Deviations) | FACT pass/fail |
+| AC-N2 | `! cargo tree -p slicer-runtime --depth 5 --edges normal 2>&1 \| grep -qE '\bslicer-model-io\b'` | FACT pass/fail |
 | gate-1 | `cargo build --workspace` | FACT pass/fail |
 | gate-2 | `cargo clippy --workspace --all-targets -- -D warnings` | FACT pass/fail |
 | gate-3 | `cargo xtask build-guests --check` | FACT clean/STALE |
+| gate-4 | `cargo test --workspace` (closure-only; see `implementation-plan.md` §Packet Completion Gate) | FACT pass/fail + count |
+
+> Pipe-escape note: This table's cells use Markdown's literal-pipe escape `\|` so the cell renders correctly. The **canonical, runnable form** of every AC command lives in `packet.spec.md` (as single-line callouts that do NOT live inside a table and therefore do NOT need the escape). Delegating agents MUST run the form from `packet.spec.md`, not the form from this table — copying `\|` into a shell makes the backslash a literal character and `grep -E` will treat `\|` as a literal pipe (NOT alternation), causing the command to silently misbehave (this was the H-2 defect in the pre-review packet).
 
 ## Step Completion Expectations
 

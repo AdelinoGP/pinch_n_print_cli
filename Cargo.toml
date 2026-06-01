@@ -8,6 +8,7 @@ members = [
     "crates/slicer-schema",
     "crates/slicer-sdk",
     "crates/slicer-helpers",
+    "crates/slicer-model-io",
     "modules/core-modules/layer-planner-default",
     "modules/core-modules/classic-perimeters",
     "modules/core-modules/rectilinear-infill",

@@ -20,7 +20,7 @@
 use std::collections::HashMap;
 
 use slicer_ir::{IndexedTriangleSet, ObjectConfig, ObjectMesh, Point3, Transform3d};
-use slicer_runtime::model_loader::{validate_world_z_floor, ModelLoadError};
+use slicer_model_io::loader::{validate_world_z_floor, ModelLoadError};
 
 // ---------------------------------------------------------------------------
 // Helpers

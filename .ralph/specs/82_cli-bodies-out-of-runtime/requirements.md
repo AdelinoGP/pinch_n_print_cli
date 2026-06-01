@@ -16,7 +16,13 @@ The fix is three structural moves: helpers_cmd into the binary, cli.rs deleted w
 
 ## In Scope
 
-- Move `crates/slicer-runtime/src/helpers_cmd.rs` (744 LOC) into `crates/pnp-cli/src/`. File name and submodule layout flexible (e.g., `crates/pnp-cli/src/commands/mod.rs` + `convert.rs` + `repair.rs` + `decimate.rs` + `import.rs`, OR a single `helpers_cmd.rs`). The four entry functions (`run_repair`, `run_decimate`, `run_import`, `run_convert`) must be reachable from the subcommand dispatcher.
+> **P81 closure update (deviation D-1).** `crates/slicer-runtime/src/helpers_cmd.rs` was **already moved to `crates/pnp-cli/src/helpers_cmd.rs`** by packet 81. P81 found that the originally-scoped in-place import rewrite (`use crate::model_loader::...` → `use slicer_model_io::...`) would have required `slicer-runtime` to declare `slicer-model-io` as a normal dep — which P81's AC-N2 forbids. The cleanest resolution was to pull the file move forward. The bullet immediately below is therefore **already DONE**; the P82 implementer should verify and skip it. P82's remaining scope is:
+>
+> 1. `cli.rs` deletion + rehoming of `OutputFormat` and `write_with_parents` to `pnp-cli`.
+> 2. `report/` feature-gating per the second In-Scope block.
+> 3. Cleanup of any leftover `slicer_runtime::helpers_cmd::*` references in tests (P81 rewired the live ones, but verify before closure).
+
+- ~~Move `crates/slicer-runtime/src/helpers_cmd.rs` (744 LOC) into `crates/pnp-cli/src/`.~~ **DONE by P81.** File is now at `crates/pnp-cli/src/helpers_cmd.rs` (single-file layout retained). The four entry functions (`run_repair`, `run_decimate`, `run_import`, `run_convert`) are reachable from the subcommand dispatcher. P82 may still relayout the file into per-command submodules if desired; that is now optional polish, not a structural requirement.
 - Delete `crates/slicer-runtime/src/cli.rs`. Move its still-used items into `crates/pnp-cli/src/`:
   - `OutputFormat` enum → `crates/pnp-cli/src/commands/mod.rs` (or wherever the helper commands live).
   - `write_with_parents` fn → `crates/pnp-cli/src/io.rs` (or alongside `OutputFormat`).
@@ -60,17 +66,17 @@ The acceptance contract is enumerated in `packet.spec.md` (AC-1..AC-9, AC-N1, AC
 
 | ID | Command | Delegation hint |
 |---|---|---|
-| AC-1 | `test ! -f crates/slicer-runtime/src/helpers_cmd.rs && find crates/pnp-cli/src -name '*.rs' \| xargs grep -lE 'pub fn (run_repair\|run_decimate\|run_import\|run_convert)' \| head -1 \| grep -q .` | FACT pass/fail |
-| AC-2 | `test ! -f crates/slicer-runtime/src/cli.rs && ! grep -rqE 'struct HostCli\b\|enum HostCommands\b' crates/` | FACT pass/fail |
-| AC-3 | `! grep -qE '^pub mod (cli\|helpers_cmd);' crates/slicer-runtime/src/lib.rs && grep -qE '^pub mod dag_cli;' crates/slicer-runtime/src/lib.rs` | FACT pass/fail |
-| AC-4 | `grep -qE '^default *= *\["report"\]' crates/slicer-runtime/Cargo.toml && grep -qE '^#\[cfg\(feature = "report"\)\]$' crates/slicer-runtime/src/lib.rs` | FACT pass/fail |
+| AC-1 | `test ! -f crates/slicer-runtime/src/helpers_cmd.rs && find crates/pnp-cli/src -name '*.rs' \| xargs grep -lE 'pub fn (run_repair\|run_decimate\|run_import\|run_convert)' \| head -1 \| grep -q .` (note: inside this markdown table the `\|` is escaping the cell delimiter — the literal shell command uses unescaped `|` inside the regex; see `packet.spec.md` AC-1 for the runnable form) | FACT pass/fail |
+| AC-2 | See `packet.spec.md` AC-2 — runnable form (markdown table cells cannot embed unescaped `|`). | FACT pass/fail |
+| AC-3 | See `packet.spec.md` AC-3 — runnable form. | FACT pass/fail |
+| AC-4 | See `packet.spec.md` AC-4 — runnable form. | FACT pass/fail |
 | AC-5 | `cargo build --no-default-features -p slicer-runtime` | FACT pass/fail |
 | AC-6 | `cargo build --workspace` | FACT pass/fail |
-| AC-7 | `cargo run --bin pnp_cli --release -- mesh convert --input resources/benchy.stl --output /tmp/benchy-p82.obj --format obj && sha256sum /tmp/benchy-p82.obj` | SNIPPET (last line — SHA) |
-| AC-8 | `cargo run --bin pnp_cli --release -- slice ... --report /tmp/p82-report.html && test -s /tmp/p82-report.html && head -5 /tmp/p82-report.html \| grep -qE '<!DOCTYPE html'` | FACT pass/fail |
-| AC-9 | `cargo test -p slicer-runtime && cargo test -p pnp-cli` | FACT pass/fail + counts |
-| AC-N1 | `rg -uu "use slicer_runtime::\{?[^}]*\b(HostCli\|HostCommands)\b" crates/` (success = empty) | FACT empty/non-empty |
-| AC-N2 | Manual ceremony — `implementation-plan.md`. | (not CI) |
+| AC-7 | See `packet.spec.md` AC-7 (smoke) + `implementation-plan.md` Step 5 (full four-subcommand SHA-parity matrix). | SNIPPETS (4 SHA lines) + FACT match/mismatch ×4 |
+| AC-8 | See `packet.spec.md` AC-8 — runnable form. | FACT pass/fail |
+| AC-9 | `cargo test -p slicer-runtime && cargo test -p pnp-cli` (counts compared to Step 0 baseline) | FACT pass/fail + counts delta |
+| AC-N1 | See `packet.spec.md` AC-N1 — runnable form. | FACT empty/non-empty |
+| AC-N2 | Ceremony — `implementation-plan.md` Step 7. | (not CI) |
 | gate-1 | `cargo build --workspace` | FACT pass/fail |
 | gate-2 | `cargo build --no-default-features -p slicer-runtime` | FACT pass/fail |
 | gate-3 | `cargo clippy --workspace --all-targets -- -D warnings` | FACT pass/fail |

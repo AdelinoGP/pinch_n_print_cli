@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 
 use slicer_ir::{IndexedTriangleSet, ObjectConfig, ObjectMesh, Point3, Transform3d};
-use slicer_runtime::model_loader::object_world_z_extent;
+use slicer_model_io::loader::object_world_z_extent;
 
 // ---------------------------------------------------------------------------
 // Helpers

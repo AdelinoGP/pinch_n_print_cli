@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use tempfile::NamedTempFile;
 
 use slicer_ir::{PaintSemantic, PaintValue};
-use slicer_runtime::model_loader::{detect_format, load_model, ModelFormat, ModelLoadError};
+use slicer_model_io::loader::{detect_format, load_model, ModelFormat, ModelLoadError};
 
 // ---------------------------------------------------------------------------
 // Helper: generate a minimal binary STL cube (12 triangles, 8 unique vertices)
@@ -645,7 +645,7 @@ fn load_3mf_benchy_4color_loads() {
     let objects = result.unwrap();
     // AC-2: Material layer present with at least one ToolIndex
     let has_material = objects.objects.iter().any(|obj| {
-        obj.paint_data.as_ref().map_or(false, |pd| {
+        obj.paint_data.as_ref().is_some_and(|pd| {
             pd.layers.iter().any(|l| {
                 matches!(l.semantic, PaintSemantic::Material)
                     && l.facet_values
@@ -660,7 +660,7 @@ fn load_3mf_benchy_4color_loads() {
     );
     // AC-3: SupportEnforcer layer present
     let has_support = objects.objects.iter().any(|obj| {
-        obj.paint_data.as_ref().map_or(false, |pd| {
+        obj.paint_data.as_ref().is_some_and(|pd| {
             pd.layers.iter().any(|l| {
                 matches!(l.semantic, PaintSemantic::SupportEnforcer)
                     && l.facet_values
@@ -683,7 +683,7 @@ fn load_3mf_benchy_4color_strokes_populated() {
     );
     let mesh_ir = load_model(&PathBuf::from(path)).expect("should load without error");
     let has_strokes = mesh_ir.objects.iter().any(|obj| {
-        obj.paint_data.as_ref().map_or(false, |pd| {
+        obj.paint_data.as_ref().is_some_and(|pd| {
             pd.layers
                 .iter()
                 .any(|l| matches!(l.semantic, PaintSemantic::Material) && !l.strokes.is_empty())

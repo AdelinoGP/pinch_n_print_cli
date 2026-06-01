@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use slicer_ir::{ConfigValue, RegionKey, RegionPlan};
-use slicer_runtime::model_loader::load_model;
+use slicer_model_io::load_model;
 use slicer_runtime::{
     build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
     ExecutionPlanError, STAGE_ORDER,

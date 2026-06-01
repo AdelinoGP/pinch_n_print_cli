@@ -290,7 +290,7 @@ fn layer_slice_builtin_produces_real_polygons_for_benchy_mesh() {
         return;
     }
 
-    let mesh = slicer_runtime::model_loader::load_model(&path).expect("load 3dbenchy STL");
+    let mesh = slicer_model_io::load_model(&path).expect("load 3dbenchy STL");
     assert_eq!(mesh.objects.len(), 1, "benchy STL must load as one object");
     let object_id = mesh.objects[0].id.clone();
 
@@ -347,7 +347,7 @@ fn layer_slice_builtin_is_deterministic_for_benchy_mesh() {
     if !path.exists() {
         return;
     }
-    let mesh = slicer_runtime::model_loader::load_model(&path).expect("load benchy");
+    let mesh = slicer_model_io::load_model(&path).expect("load benchy");
     let object_id = mesh.objects[0].id.clone();
     let layer = GlobalLayer {
         index: 7,

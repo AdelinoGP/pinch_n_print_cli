@@ -15,8 +15,8 @@ use slicer_helpers::{
 };
 use slicer_ir::{BoundingBox3, MeshIR, ObjectConfig, ObjectMesh};
 
-use crate::model_loader::{assemble_object, load_model};
-use crate::OutputFormat;
+use slicer_model_io::{assemble_object, load_model};
+use slicer_runtime::OutputFormat;
 
 mod exit_codes {
     pub const SUCCESS: i32 = 0;
@@ -641,11 +641,11 @@ fn write_mesh(mesh: &MeshIR, path: &Path, format: OutputFormat) -> io::Result<()
         OutputFormat::Obj => {
             let file = std::fs::File::create(path)?;
             let mut w = BufWriter::new(file);
-            crate::model_writer::write_obj(mesh, &mut w)
+            slicer_model_io::write_obj(mesh, &mut w)
         }
         OutputFormat::ThreeMf => {
             let file = std::fs::File::create(path)?;
-            crate::model_writer::write_3mf(mesh, file)
+            slicer_model_io::write_3mf(mesh, file)
         }
     }
 }

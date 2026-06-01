@@ -23,7 +23,7 @@
 use std::collections::HashMap;
 
 use slicer_ir::{IndexedTriangleSet, ObjectConfig, ObjectMesh, Point3, Transform3d};
-use slicer_runtime::model_loader::{validate_non_uniform_scale, ModelLoadError};
+use slicer_model_io::loader::{validate_non_uniform_scale, ModelLoadError};
 
 // ---------------------------------------------------------------------------
 // Helpers

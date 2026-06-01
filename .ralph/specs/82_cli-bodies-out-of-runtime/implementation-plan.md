@@ -5,30 +5,44 @@
 - Each step ends with a falsifying check that gates green before the next step starts.
 - Files allowed to read per step are bounded; large files (`helpers_cmd.rs` 744 LOC, `report/*` 1 597 LOC total) are NEVER loaded in full. Use grep + delegated SUMMARY.
 - The packet closure gate runs only after every step has gated green.
-- P81 MUST be closed before this packet starts. The dispatch in Step 0 verifies the predecessor state.
+- P81 Step 3 MUST be complete before this packet starts (the `slicer-model-io` crate exists and `slicer-runtime/src/helpers_cmd.rs` imports from `slicer_model_io::`). P81 need not be fully `superseded` — the deepening batch (P81–P88) is allowed to overlap. The dispatch in Step 0 verifies the prerequisite point.
 
 ---
 
-## Step 0 — Verify P81 closure and capture pre-packet baselines
+## Step 0 — Verify P81 Step 3 reached and capture pre-packet baselines
 
-**Objective.** Confirm P81 left a clean state: `slicer-model-io` exists, `slicer-runtime/src/helpers_cmd.rs` imports `slicer_model_io`, no `slicer-runtime::model_loader` paths remain. Capture four `mesh *` subcommand output SHAs as the AC-7 baseline.
+**Objective.** Confirm the P81 prerequisite point: `slicer-model-io` exists, `slicer-runtime/src/helpers_cmd.rs` imports `slicer_model_io`, no `slicer-runtime::model_loader` paths remain. Capture (a) four `mesh *` subcommand output SHAs as the AC-7 baseline and (b) pre-packet pass/fail counts for `cargo test -p slicer-runtime -p pnp-cli` as the AC-9 baseline.
 
-**Precondition.** P81 is `status: superseded`. Working tree clean.
+**Precondition.** P81 Step 3 complete (`slicer-model-io` crate present; `helpers_cmd.rs` rewired). P81 may be in any post-Step-3 state. Working tree clean.
 
-**Postcondition.** All four SHAs recorded in the implementation log: `mesh convert`, `mesh repair`, `mesh decimate`, `mesh import` against canonical fixtures.
+**Postcondition.** Implementation log records:
+- Pre-packet test counts: `slicer-runtime` (N₁ passed / M₁ failed) and `pnp-cli` (N₂ passed / M₂ failed).
+- Four canonical-fixture SHAs (one per `mesh *` subcommand) — fixtures and full commands below.
 
 **Files allowed to read.** None directly.
 **Files allowed to edit.** None.
 
+**Canonical fixtures and baseline commands (per subcommand).** Run each via dispatch; capture SHA-256 of the output and record alongside the command.
+
+| Subcommand | Baseline command (run via dispatch; capture `sha256sum` of output) |
+|---|---|
+| `mesh convert` | `cargo run --bin pnp_cli --release -- mesh convert --input resources/benchy.stl --output /tmp/p82-pre-convert.obj --output-format obj` |
+| `mesh repair` | `cargo run --bin pnp_cli --release -- mesh repair --input resources/benchy.stl --output /tmp/p82-pre-repair.stl --format stl` |
+| `mesh decimate` | `cargo run --bin pnp_cli --release -- mesh decimate --input resources/benchy.stl --output /tmp/p82-pre-decimate.stl --target-ratio 0.5 --max-error 0.01` |
+| `mesh import` | `cargo run --bin pnp_cli --release -- mesh import --input crates/slicer-helpers/tests/resources/cube.step --output /tmp/p82-pre-import.stl --output-format stl` |
+
+(`resources/benchy.stl` is the canonical mesh fixture used throughout the packet docs; `crates/slicer-helpers/tests/resources/cube.step` is the only in-tree STEP fixture suitable for `mesh import`. If a more representative STEP fixture exists at packet-activation time, the implementer may substitute it and record the substitution in the implementation log; the substitution is recorded against both baseline and post-packet runs to preserve parity.)
+
 **Expected sub-agent dispatches.**
-- Dispatch: confirm `test -f crates/slicer-model-io/Cargo.toml && grep -qE 'slicer_model_io::' crates/slicer-runtime/src/helpers_cmd.rs`. Return FACT pass/fail.
-- Dispatch: capture SHA for each: `cargo run --bin pnp_cli --release -- mesh convert --input resources/benchy.stl --output /tmp/p82-pre-convert.obj --format obj && sha256sum /tmp/p82-pre-convert.obj`. Repeat for `repair`, `decimate`, `import`. Return SNIPPETS (4 lines, one per subcommand).
+- Dispatch A: `test -f crates/slicer-model-io/Cargo.toml && grep -qE 'slicer_model_io::' crates/slicer-runtime/src/helpers_cmd.rs && ! grep -qE 'slicer_runtime::model_loader' crates/slicer-runtime/src/helpers_cmd.rs`. Return FACT pass/fail.
+- Dispatch B: per the table above, four `cargo run ... && sha256sum <output>` invocations. Return SNIPPETS (4 lines — one SHA per subcommand).
+- Dispatch C: `cargo test -p slicer-runtime` and `cargo test -p pnp-cli`. Return FACT pass/fail + the four counts (N₁, M₁, N₂, M₂).
 
 **Context cost: S.**
 
-**Narrow verification.** P81 verification returns pass; 4 SHA strings captured.
+**Narrow verification.** Dispatch A passes; 4 SHAs and 4 test counts captured in the log.
 
-**Falsifying check / exit condition.** Any of the four subcommands fails to run → P81 incomplete; abort this packet.
+**Falsifying check / exit condition.** Dispatch A fails → P81 Step 3 not reached; abort. Any of the four mesh subcommand runs fails → fixture or pre-existing bug; resolve before proceeding (do NOT capture a SHA from a failed run).
 
 ---
 
@@ -143,9 +157,9 @@ If Step 1 dispatch #1 returned `SliceRunOptions` consumers in `slicer-runtime::r
 
 **Context cost: M.**
 
-**Narrow verification.** Both test runs pass. Aggregator files no longer reference removed test modules.
+**Narrow verification.** Both test runs pass. Counts compared to the Step 0 baseline (N₁/M₁ for `slicer-runtime`, N₂/M₂ for `pnp-cli`): any test-count reduction MUST equal the number of deleted dead-type tests (recorded in the implementation log); any test-count growth MUST equal the number of integration tests migrated into `crates/pnp-cli/tests/`. A net delta that doesn't match the explicit migrate/delete log is a regression and gates this step red. Aggregator files no longer reference removed test modules.
 
-**Falsifying check / exit condition.** A test fails because of a stale import → fix the import (forwarding to `pnp-cli`'s parser types where applicable).
+**Falsifying check / exit condition.** A test fails because of a stale import → fix the import (forwarding to `pnp-cli`'s parser types where applicable). A net test-count delta that doesn't reconcile against the migrate/delete log → audit the diff before continuing.
 
 ---
 
@@ -172,47 +186,58 @@ If Step 1 dispatch #1 returned `SliceRunOptions` consumers in `slicer-runtime::r
 
 ---
 
-## Step 6 — Verify AC-8 report HTML still works on default features
+## Step 6 — Verify AC-8 report HTML still works on default features; land the DIS doc edit
 
-**Objective.** Confirm the report file is generated and structurally valid on the default build.
+**Objective.** (a) Confirm the report file is generated and structurally valid on the default build. (b) Land the one-line note in `docs/16_slicer_report.md` documenting the new `report` Cargo feature (per the Doc Impact Statement in `packet.spec.md`).
 
 **Precondition.** Step 3 green.
 
-**Postcondition.** `pnp_cli slice ... --report /tmp/p82-report.html` produces a non-empty HTML file containing the expected sentinel strings.
+**Postcondition.** `pnp_cli slice ... --report /tmp/p82-report.html` produces a non-empty HTML file containing the expected sentinel strings. `docs/16_slicer_report.md` contains a sentence describing the `report` Cargo feature and how to opt out via `--no-default-features`.
 
-**Files allowed to read.** `docs/16_slicer_report.md` if dispatch #8 didn't already cache its sentinel patterns.
-**Files allowed to edit.** None.
+**Files allowed to read.** `docs/16_slicer_report.md` (full file — typically < 200 LOC; load only if dispatch #8 didn't already cache its sentinel patterns and structure).
+**Files allowed to edit.** `docs/16_slicer_report.md` (single edit — one sentence, one paragraph, or one new short subsection).
 
-**Expected sub-agent dispatch.**
-- Dispatch: `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p82.gcode --report /tmp/p82-report.html && head -5 /tmp/p82-report.html`. Return SNIPPETS (5 lines).
+**Expected sub-agent dispatches.**
+- Dispatch (HTML check): `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p82.gcode --report /tmp/p82-report.html && head -5 /tmp/p82-report.html`. Return SNIPPETS (5 lines).
+- Dispatch (DIS grep): `grep -qE 'no-default-features.*slicer-runtime|report.*Cargo feature' docs/16_slicer_report.md`. Return FACT pass/fail (expected: pass after the edit lands).
 
 **Context cost: S.**
 
-**Narrow verification.** First line matches `<!DOCTYPE html`. File size > 1 KB.
+**Narrow verification.** First line of the report matches `<!DOCTYPE html`. File size > 1 KB. The DIS grep passes.
 
-**Falsifying check / exit condition.** Report flag silently ignored or file empty → the feature wiring in `pnp-cli` is wrong; the `--report` handler probably wasn't ungated for the default build.
+**Falsifying check / exit condition.** Report flag silently ignored or file empty → the feature wiring in `pnp-cli` is wrong; the `--report` handler probably wasn't ungated for the default build. DIS grep fails → the doc edit was forgotten or the sentence doesn't contain the keyword the grep checks for; rewrite to include the documented sentinel phrase.
 
 ---
 
 ## Step 7 — AC-N2 ceremony: confirm report symbols are excluded under `--no-default-features`
 
-**Objective.** Prove the feature gate is load-bearing.
+**Objective.** Prove the feature gate is load-bearing — i.e., the gate excludes `report::*` from compilation entirely, not merely hides the re-export.
 
-**Precondition.** Step 3 green.
+**Precondition.** Step 3 green (default and `--no-default-features` builds both green at Step 3 close).
 
-**Postcondition.** A working-tree-only experiment that adds a `slicer_runtime::report::Collector::new(...)` call under `--no-default-features` fails to compile with `unresolved import` or similar; the experiment is reverted.
+**Postcondition.** A working-tree-only probe test file under `crates/slicer-runtime/tests/` that does `use slicer_runtime::report::Collector;` is added; `cargo build --no-default-features -p slicer-runtime --tests` fails with `unresolved import \`slicer_runtime::report\`` (error E0432); the probe file is removed; `cargo build --no-default-features -p slicer-runtime` is green again with the probe gone.
 
 **Files allowed to read.** None.
-**Files allowed to edit.** None permanently (the experiment is git-stash-friendly).
+**Files allowed to edit.** Temporarily — `crates/slicer-runtime/tests/_p82_n2_probe.rs` (created and removed within this step; never committed). The leading underscore is a deliberate sentinel: if it ever appears in `git status` at packet close, the ceremony was not cleaned up.
 
-**Expected sub-agent dispatch.**
-- Dispatch: write a temp test file that imports `slicer_runtime::report::Collector`, run `cargo build --no-default-features -p slicer-runtime --tests`. Return FACT (expected: fail with "unresolved import").
+**Expected sub-agent dispatches.**
+- Dispatch (probe-on): write `crates/slicer-runtime/tests/_p82_n2_probe.rs` containing exactly:
+  ```rust
+  use slicer_runtime::report::Collector;
+  #[test]
+  fn _p82_n2_probe() { let _ = std::any::type_name::<Collector>(); }
+  ```
+  Then run `cargo build --no-default-features -p slicer-runtime --tests`. Return FACT (expected: fails with stderr containing `unresolved import` and `slicer_runtime::report`).
+- Dispatch (probe-off): delete `crates/slicer-runtime/tests/_p82_n2_probe.rs`. Run `cargo build --no-default-features -p slicer-runtime`. Return FACT pass/fail (expected: green).
 
 **Context cost: S.**
 
-**Narrow verification.** The build fails with the documented unresolved-import error; the temp file is removed.
+**Narrow verification.** Probe-on build fails with the documented unresolved-import error referencing `slicer_runtime::report`. Probe-off build is green. `git status` shows no `_p82_n2_probe.rs` artefact.
 
-**Falsifying check / exit condition.** The build succeeds → the gate isn't excluding `report::*` from compilation; investigate `lib.rs` for missing `#[cfg]`.
+**Falsifying check / exit condition.**
+- Probe-on build succeeds → the gate isn't excluding `report::*` from compilation; investigate `lib.rs` for a missing `#[cfg(feature = "report")]` on `pub mod report;` or its re-exports.
+- Probe-on build fails for a reason other than `unresolved import \`slicer_runtime::report\`` → unrelated breakage; resolve before drawing any conclusion about the gate.
+- Probe-off build fails → either the probe file wasn't fully removed or Step 3 left a half-gated state; revert to Step 3's exit gate and re-run.
 
 ---
 
@@ -238,11 +263,12 @@ Per the deepening-batch policy (deviation recorded in P81), the workspace-wide `
 1. `cargo build --workspace` — green.
 2. `cargo build --no-default-features -p slicer-runtime` — green.
 3. `cargo clippy --workspace --all-targets -- -D warnings` — green.
-4. `cargo test -p slicer-runtime -p pnp-cli` — green; counts delta net zero (any test count reduction matches deleted dead-type tests).
+4. `cargo test -p slicer-runtime -p pnp-cli` — green; counts reconciled against Step 0 baseline (N₁/M₁, N₂/M₂) — any delta MUST equal the documented migrate/delete log (Step 4).
 5. `cargo xtask build-guests --check` — clean.
-6. AC-7 four SHA matches against Step 0 baselines.
-7. AC-8 report HTML structural check passes.
-8. AC-N2 ceremony documented as performed.
+6. AC-7 four-subcommand SHA matches against Step 0 baselines (Step 5).
+7. AC-8 report HTML structural check passes (Step 6).
+8. DIS grep on `docs/16_slicer_report.md` passes (Step 6).
+9. AC-N2 ceremony documented as performed (Step 7); `_p82_n2_probe.rs` not present in working tree.
 
 ## Acceptance Ceremony
 

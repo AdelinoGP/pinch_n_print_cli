@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 
 use slicer_ir::{IndexedTriangleSet, MeshIR, ObjectMesh, Point3};
-use slicer_runtime::model_loader::{load_model, ModelLoadError};
+use slicer_model_io::{load_model, ModelLoadError};
 use std::io::Write;
 use zip::write::SimpleFileOptions;
 

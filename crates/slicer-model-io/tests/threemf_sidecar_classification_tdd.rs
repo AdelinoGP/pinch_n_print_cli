@@ -25,7 +25,7 @@ fn make_zip_without_sidecar() -> zip::ZipArchive<Cursor<Vec<u8>>> {
 
 #[test]
 fn parses_benchy_4color_sidecar() {
-    use slicer_runtime::model_loader_sidecar::{parse_3mf_sidecar, PartSubtype};
+    use slicer_model_io::sidecar::{parse_3mf_sidecar, PartSubtype};
     let path =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/benchy_4color.3mf");
     let file = std::fs::File::open(&path)
@@ -55,7 +55,7 @@ fn parses_benchy_4color_sidecar() {
 
 #[test]
 fn missing_sidecar_is_silent_default() {
-    use slicer_runtime::model_loader_sidecar::parse_3mf_sidecar;
+    use slicer_model_io::sidecar::parse_3mf_sidecar;
     let mut archive = make_zip_without_sidecar();
     let result = parse_3mf_sidecar(&mut archive);
     assert!(result.is_empty(), "missing sidecar should return empty map");
@@ -65,7 +65,7 @@ fn missing_sidecar_is_silent_default() {
 
 #[test]
 fn malformed_sidecar_falls_back_to_normal_part() {
-    use slicer_runtime::model_loader_sidecar::parse_3mf_sidecar;
+    use slicer_model_io::sidecar::parse_3mf_sidecar;
     // Invalid XML â€” mismatched closing tag causes a parse error in quick_xml.
     let bad_xml = r#"<?xml version="1.0"?><config><object id="1"><part id="1" subtype="normal_part"></wrong_tag></config>"#;
     let mut archive = make_zip_with_sidecar(bad_xml);
@@ -78,7 +78,7 @@ fn malformed_sidecar_falls_back_to_normal_part() {
 
 #[test]
 fn unknown_subtype_downgrades_to_normal_part() {
-    use slicer_runtime::model_loader_sidecar::{parse_3mf_sidecar, PartSubtype};
+    use slicer_model_io::sidecar::{parse_3mf_sidecar, PartSubtype};
     let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <config>
   <object id="1">
@@ -100,7 +100,7 @@ fn unknown_subtype_downgrades_to_normal_part() {
 
 #[test]
 fn object_and_part_id_mapping_matches_bambu_convention() {
-    use slicer_runtime::model_loader_sidecar::{parse_3mf_sidecar, PartSubtype};
+    use slicer_model_io::sidecar::{parse_3mf_sidecar, PartSubtype};
     let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <config>
   <object id="3">
@@ -119,7 +119,7 @@ fn object_and_part_id_mapping_matches_bambu_convention() {
 
 #[test]
 fn empty_object_in_sidecar_returns_empty_parts() {
-    use slicer_runtime::model_loader_sidecar::parse_3mf_sidecar;
+    use slicer_model_io::sidecar::parse_3mf_sidecar;
     let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <config>
   <object id="1">
@@ -142,8 +142,8 @@ fn load_3mf_invokes_sidecar_parser_before_archive_drop() {
     // The Rust borrow checker structurally guarantees parse_3mf_sidecar is called
     // before the ZipArchive is dropped in load_3mf (mutable borrow cannot outlive
     // the archive binding).
-    use slicer_runtime::model_loader::load_model;
-    use slicer_runtime::model_loader_sidecar::parse_3mf_sidecar;
+    use slicer_model_io::loader::load_model;
+    use slicer_model_io::sidecar::parse_3mf_sidecar;
     let path =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../resources/benchy_4color.3mf");
     if !path.exists() {
@@ -179,7 +179,7 @@ fn load_3mf_invokes_sidecar_parser_before_archive_drop() {
 // `enable_support=1` and `support_type=tree(auto)`.
 #[test]
 fn sidecar_parser_extracts_object_metadata() {
-    use slicer_runtime::model_loader_sidecar::parse_3mf_sidecar;
+    use slicer_model_io::sidecar::parse_3mf_sidecar;
     let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let fixtures = [
         ("cube_positive_n_negative.3mf", 4u32),

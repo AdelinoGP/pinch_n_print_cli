@@ -1757,7 +1757,9 @@ dependencies = [
  "predicates",
  "serde",
  "serde_json",
+ "slicer-helpers",
  "slicer-ir",
+ "slicer-model-io",
  "slicer-runtime",
  "slicer-schema",
  "stl_io",
@@ -2431,6 +2433,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "slicer-model-io"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "quick-xml 0.39.2",
+ "slicer-ir",
+ "stl_io",
+ "tempfile",
+ "tobj",
+ "uuid",
+ "zip",
+]
+
+[[package]]
 name = "slicer-runtime"
 version = "0.1.0"
 dependencies = [
@@ -2442,7 +2458,6 @@ dependencies = [
  "log",
  "part-cooling",
  "predicates",
- "quick-xml 0.39.2",
  "rayon",
  "rstar",
  "serde",
@@ -2451,15 +2466,14 @@ dependencies = [
  "slicer-core",
  "slicer-helpers",
  "slicer-ir",
+ "slicer-model-io",
  "slicer-schema",
  "slicer-sdk",
  "stl_io",
  "support-planner",
  "tempfile",
- "tobj",
  "toml 0.8.23",
  "top-surface-ironing",
- "uuid",
  "wasmtime",
  "wat",
  "wipe-tower",

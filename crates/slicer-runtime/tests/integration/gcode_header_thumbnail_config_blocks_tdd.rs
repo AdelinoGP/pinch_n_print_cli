@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use slicer_ir::{ConfigKey, ConfigValue, GCodeIR, GlobalLayer, LayerCollectionIR, SemVer, StageId};
-use slicer_runtime::model_loader::load_model;
+use slicer_model_io::load_model;
 use slicer_runtime::pipeline::{
     run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners,
 };

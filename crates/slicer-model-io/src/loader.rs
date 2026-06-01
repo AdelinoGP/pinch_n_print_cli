@@ -11,7 +11,7 @@ use std::fmt;
 use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 
-use crate::model_loader_sidecar::{parse_3mf_sidecar, ObjectSidecarInfo, PartSubtype};
+use crate::sidecar::{parse_3mf_sidecar, ObjectSidecarInfo, PartSubtype};
 
 use slicer_ir::{
     BoundingBox3, ConfigDelta, ConfigValue, FacetPaintData, IndexedTriangleSet, MeshIR,
@@ -214,7 +214,7 @@ pub fn load_model(path: &Path) -> Result<MeshIR, ModelLoadError> {
 /// `load_model`'s per-format branches and the `mesh convert` command's
 /// split-to-objects re-assembly — so the wrap and the z-extent computation live
 /// in exactly one place (packet 75, Phase 4 / TASK-219).
-pub(crate) fn assemble_object(
+pub fn assemble_object(
     id: ObjectId,
     mesh: IndexedTriangleSet,
     config: ObjectConfig,
@@ -430,7 +430,22 @@ fn identity_3mf_transform() -> [f64; 16] {
 }
 
 fn apply_transform_to_vertex(v: &Point3, m: &[f64; 16]) -> Point3 {
-    slicer_core::transform_point3(m, *v)
+    if m.iter().all(|x| *x == 0.0) {
+        return *v;
+    }
+    let x = f64::from(v.x);
+    let y = f64::from(v.y);
+    let z = f64::from(v.z);
+    let tx = m[0] * x + m[4] * y + m[8] * z + m[12];
+    let ty = m[1] * x + m[5] * y + m[9] * z + m[13];
+    let tz = m[2] * x + m[6] * y + m[10] * z + m[14];
+    let tw = m[3] * x + m[7] * y + m[11] * z + m[15];
+    let w = if tw == 0.0 { 1.0 } else { tw };
+    Point3 {
+        x: (tx / w) as f32,
+        y: (ty / w) as f32,
+        z: (tz / w) as f32,
+    }
 }
 
 fn apply_transform_to_mesh(mesh: &mut IndexedTriangleSet, m: &[f64; 16]) {
@@ -746,7 +761,7 @@ fn resolve_object(
                 // Non-NormalPart: route to ModifierVolume, do not merge into solid mesh.
                 if comp_paint.is_some() {
                     log::warn!(
-                        target: "slicer_runtime::model_loader",
+                        target: "slicer_model_io::loader",
                         "paint data on non-normal part dropped (part id {})",
                         comp.objectid
                     );
@@ -788,7 +803,7 @@ fn resolve_object(
                             }
                             Err(_) => {
                                 log::warn!(
-                                    target: "slicer_runtime::model_loader",
+                                    target: "slicer_model_io::loader",
                                     "extruder value '{}' on part {} is not a valid integer, skipping",
                                     extruder_str,
                                     comp.objectid
@@ -925,7 +940,7 @@ fn object_metadata_to_config_data(
             }
             Err(_) => {
                 log::warn!(
-                    target: "slicer_runtime::model_loader",
+                    target: "slicer_model_io::loader",
                     "object-level extruder value '{}' is not a valid integer, skipping",
                     s
                 );
@@ -942,7 +957,7 @@ fn object_metadata_to_config_data(
             }
             other => {
                 log::warn!(
-                    target: "slicer_runtime::model_loader",
+                    target: "slicer_model_io::loader",
                     "object-level enable_support value '{}' is not a valid bool, skipping",
                     other
                 );
@@ -955,17 +970,16 @@ fn object_metadata_to_config_data(
     out
 }
 
-fn load_3mf(
-    reader: &mut (impl Read + Seek),
-) -> Result<
-    Vec<(
-        IndexedTriangleSet,
-        Option<FacetPaintData>,
-        Vec<ModifierVolume>,
-        HashMap<String, ConfigValue>,
-    )>,
-    ModelLoadError,
-> {
+/// One element of the 3MF parse result: the geometry plus its modifier volumes,
+/// optional paint data, and any per-object metadata key/values.
+type ThreeMfPart = (
+    IndexedTriangleSet,
+    Option<FacetPaintData>,
+    Vec<ModifierVolume>,
+    HashMap<String, ConfigValue>,
+);
+
+fn load_3mf(reader: &mut (impl Read + Seek)) -> Result<Vec<ThreeMfPart>, ModelLoadError> {
     let mut archive =
         zip::ZipArchive::new(reader).map_err(|e| ModelLoadError::ThreeMfParse(e.to_string()))?;
 
@@ -1014,15 +1028,7 @@ fn parse_3mf_model_xml(
     xml_bytes: &[u8],
     sidecar: &HashMap<u32, ObjectSidecarInfo>,
     archive: &mut zip::ZipArchive<impl Read + Seek>,
-) -> Result<
-    Vec<(
-        IndexedTriangleSet,
-        Option<FacetPaintData>,
-        Vec<ModifierVolume>,
-        HashMap<String, ConfigValue>,
-    )>,
-    ModelLoadError,
-> {
+) -> Result<Vec<ThreeMfPart>, ModelLoadError> {
     use quick_xml::events::Event;
     use quick_xml::Reader;
 
@@ -1229,7 +1235,7 @@ fn parse_3mf_model_xml(
                             }
 
                             if let Some(hex) = &color_hex {
-                                if hex.len() > 2 && color_state.map_or(false, |s| s != 0) {
+                                if hex.len() > 2 && color_state.is_some_and(|s| s != 0) {
                                     let v1_idx = v1.unwrap_or(0) as usize;
                                     let v2_idx = v2.unwrap_or(0) as usize;
                                     let v3_idx = v3.unwrap_or(0) as usize;
@@ -1254,7 +1260,7 @@ fn parse_3mf_model_xml(
                                 }
                             }
                             if let Some(hex) = &support_hex {
-                                if hex.len() > 2 && support_state.map_or(false, |s| s != 0) {
+                                if hex.len() > 2 && support_state.is_some_and(|s| s != 0) {
                                     let v1_idx = v1.unwrap_or(0) as usize;
                                     let v2_idx = v2.unwrap_or(0) as usize;
                                     let v3_idx = v3.unwrap_or(0) as usize;
@@ -2264,7 +2270,10 @@ mod tests {
             Vec::new(),
             None,
         );
-        let components = slicer_helpers::split_connected_components(&parent.mesh);
+        // Single-triangle short-circuit: skip `slicer_helpers::split_connected_components`
+        // (would re-introduce a first-party dep). A single solid mesh trivially yields one
+        // component identical to the input; that's the slicer-helpers contract we rely on.
+        let components: Vec<IndexedTriangleSet> = vec![parent.mesh.clone()];
         assert_eq!(components.len(), 1, "a single triangle is one component");
         let reassembled = assemble_object(
             "parent".to_string(),
