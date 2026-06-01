@@ -5,7 +5,6 @@
 #![warn(unused_must_use)]
 
 pub mod blackboard;
-pub mod cli;
 pub mod config_resolution;
 pub mod dag;
 pub mod dag_cli;
@@ -31,6 +30,7 @@ pub mod prepass_slice;
 pub mod progress_events;
 pub mod progress_instrumentation;
 pub mod region_mapping;
+#[cfg(feature = "report")]
 pub mod report;
 pub mod run;
 pub mod slice_postprocess;
@@ -46,7 +46,6 @@ pub use blackboard::{
     Blackboard, BlackboardError, BlackboardPrepassSlot, DeferredRetract, DeferredTravelMove,
     LayerArena, LayerArenaError, LayerArenaSlot,
 };
-pub use cli::{write_with_parents, HostCli, HostCommands, OutputFormat, SliceRunOptions};
 pub use config_resolution::{
     paint_semantic_namespace_key, resolve_global_config, resolve_per_object_configs,
     resolve_per_paint_semantic_configs, validate_support_layer_heights, BoundsDeclaration,
@@ -148,7 +147,7 @@ pub use region_mapping::{
     commit_region_mapping_builtin, execute_region_mapping, execute_region_mapping_with_cap,
     RegionMappingBuiltinError, RegionMappingError, TopContributor,
 };
-pub use run::{run_slice, SliceOutcome, SliceRunError};
+pub use run::{run_slice, SliceOutcome, SliceRunError, SliceRunOptions};
 pub use slice_postprocess::{
     execute_slice_postprocess_paint_annotation, paint_annotation_warning_to_progress_event,
     paint_annotation_warnings_to_progress_events, SlicePostProcessPaintAnnotationError,

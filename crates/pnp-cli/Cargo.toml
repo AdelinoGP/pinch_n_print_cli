@@ -12,8 +12,12 @@ path = "src/main.rs"
 name = "pnp_cli"
 path = "src/lib.rs"
 
+[features]
+default = ["report"]
+report = ["slicer-runtime/report"]
+
 [dependencies]
-slicer-runtime = { path = "../slicer-runtime" }
+slicer-runtime = { path = "../slicer-runtime", default-features = false }
 slicer-schema = { path = "../slicer-schema" }
 slicer-model-io = { path = "../slicer-model-io" }
 slicer-helpers = { path = "../slicer-helpers" }

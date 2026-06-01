@@ -1,79 +1,16 @@
-//! TDD tests for the legacy `HostCli` parser, retained as a library surface in
-//! `slicer-runtime::cli`. The `pnp_cli` binary uses its own clap structure;
-//! these tests exercise the library-level parser shape directly.
+//! Tests for CLI-local I/O helpers.
+//!
+//! Packet 82 moved `write_with_parents` and `OutputFormat` out of
+//! `slicer-runtime::cli` (deleted) into `pnp_cli::io`. The legacy `HostCli` /
+//! `HostCommands` parser-shape tests covered dead code and were removed.
+//!
+//! The remaining tests pin:
+//!   * `write_with_parents` correctly creates missing parent directories.
+//!   * `write_with_parents` handles a bare filename (no parent component).
+//!   * The HTML report Collector also creates missing parent dirs.
 
-use clap::Parser;
-use slicer_runtime::cli::{write_with_parents, HostCli, HostCommands};
+use pnp_cli::io::write_with_parents;
 use std::path::PathBuf;
-
-#[test]
-fn run_requires_model() {
-    let result = HostCli::try_parse_from(["pnp_cli", "run"]);
-    assert!(result.is_err(), "run without --model should fail");
-    let result = HostCli::try_parse_from(["pnp_cli", "run", "--model", "model.stl"]);
-    assert!(result.is_ok(), "run with --model should succeed");
-}
-
-#[test]
-fn run_parses_all_flags() {
-    let cli = HostCli::try_parse_from([
-        "pnp_cli",
-        "run",
-        "--model",
-        "/tmp/model.stl",
-        "--config",
-        "/tmp/config.json",
-        "--output",
-        "/tmp/out.gcode",
-        "--module-dir",
-        "/modules",
-    ])
-    .expect("should parse all flags");
-
-    match cli.command {
-        HostCommands::Run {
-            model,
-            config,
-            output,
-            module_dir,
-            no_default_module_paths,
-            ..
-        } => {
-            assert_eq!(model, PathBuf::from("/tmp/model.stl"));
-            assert_eq!(config, Some(PathBuf::from("/tmp/config.json")));
-            assert_eq!(output, Some(PathBuf::from("/tmp/out.gcode")));
-            assert_eq!(module_dir, vec![PathBuf::from("/modules")]);
-            assert!(!no_default_module_paths);
-        }
-        _ => panic!("expected Run command"),
-    }
-}
-
-#[test]
-fn run_optional_config_and_output() {
-    let cli = HostCli::try_parse_from(["pnp_cli", "run", "--model", "/tmp/model.stl"])
-        .expect("should parse with only required flags");
-
-    match cli.command {
-        HostCommands::Run {
-            config,
-            output,
-            module_dir,
-            no_default_module_paths,
-            model: _,
-            ..
-        } => {
-            assert!(config.is_none(), "config should be None");
-            assert!(output.is_none(), "output should be None");
-            assert!(
-                module_dir.is_empty(),
-                "module_dir should be an empty Vec when --module-dir is absent"
-            );
-            assert!(!no_default_module_paths);
-        }
-        _ => panic!("expected Run command"),
-    }
-}
 
 #[test]
 fn report_path_creates_parent_dir() {
@@ -132,41 +69,4 @@ fn write_with_parents_handles_bare_filename() {
         result.err()
     );
     assert!(dir.path().join("bare.gcode").exists());
-}
-
-#[test]
-fn config_schema_default_dir() {
-    let cli = HostCli::try_parse_from(["pnp_cli", "config-schema"])
-        .expect("config-schema with no args should parse");
-
-    match cli.command {
-        HostCommands::ConfigSchema {
-            module_dir,
-            no_default_module_paths,
-        } => {
-            assert!(
-                module_dir.is_empty(),
-                "module_dir should be an empty Vec when --module-dir is absent"
-            );
-            assert!(!no_default_module_paths);
-        }
-        _ => panic!("expected ConfigSchema command"),
-    }
-}
-
-#[test]
-fn config_schema_custom_dir() {
-    let cli = HostCli::try_parse_from(["pnp_cli", "config-schema", "--module-dir", "/foo"])
-        .expect("config-schema with --module-dir should parse");
-
-    match cli.command {
-        HostCommands::ConfigSchema {
-            module_dir,
-            no_default_module_paths,
-        } => {
-            assert_eq!(module_dir, vec![PathBuf::from("/foo")]);
-            assert!(!no_default_module_paths);
-        }
-        _ => panic!("expected ConfigSchema command"),
-    }
 }

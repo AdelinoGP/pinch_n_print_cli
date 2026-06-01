@@ -16,7 +16,8 @@ use slicer_helpers::{
 use slicer_ir::{BoundingBox3, MeshIR, ObjectConfig, ObjectMesh};
 
 use slicer_model_io::{assemble_object, load_model};
-use slicer_runtime::OutputFormat;
+
+use pnp_cli::io::OutputFormat;
 
 mod exit_codes {
     pub const SUCCESS: i32 = 0;

@@ -6,6 +6,7 @@
 //! - `mesh`          — mesh ops (repair / decimate / import)
 //! - `dag`           — DAG introspection (stages / stage / depends / claims)
 
+use pnp_cli::io::{write_with_parents, OutputFormat};
 use pnp_cli::module_new;
 
 mod helpers_cmd;
@@ -16,8 +17,7 @@ use clap::{ArgGroup, Parser, Subcommand};
 use slicer_runtime::{
     assemble_search_roots, build_config_schema_json,
     dag_cli::{run_dag_claims, run_dag_depends, run_dag_stage, run_dag_stages},
-    load_modules_from_roots, runtime_builtins, write_with_parents, LoadedModule, OutputFormat,
-    Producer, SliceRunOptions,
+    load_modules_from_roots, runtime_builtins, LoadedModule, Producer, SliceRunOptions,
 };
 
 // ---------------------------------------------------------------------------
@@ -54,9 +54,11 @@ enum Cmd {
         #[arg(long)]
         thumbnail: Option<PathBuf>,
         /// Optional path for an HTML slicer report.
+        #[cfg(feature = "report")]
         #[arg(long, value_name = "PATH.html")]
         report: Option<PathBuf>,
         /// Verbose report mode (per-layer-per-module rows). Requires `--report`.
+        #[cfg(feature = "report")]
         #[arg(long, requires = "report")]
         report_verbose: bool,
         /// Emit per-stage/per-module timing events on stderr JSONL stream.
@@ -327,7 +329,9 @@ fn main() {
             module_dir,
             no_default_module_paths,
             thumbnail,
+            #[cfg(feature = "report")]
             report,
+            #[cfg(feature = "report")]
             report_verbose,
             instrument_stderr,
         } => {
@@ -350,6 +354,10 @@ fn main() {
                     std::process::exit(1);
                 }
             };
+            #[cfg(feature = "report")]
+            let (report_opt, report_verbose_opt) = (report, report_verbose);
+            #[cfg(not(feature = "report"))]
+            let (report_opt, report_verbose_opt): (Option<PathBuf>, bool) = (None, false);
             let opts = SliceRunOptions {
                 mesh,
                 model_label,
@@ -358,8 +366,8 @@ fn main() {
                 module_dirs: module_dir,
                 no_default_module_paths,
                 thumbnail,
-                report,
-                report_verbose,
+                report: report_opt,
+                report_verbose: report_verbose_opt,
                 instrument_stderr,
             };
             match slicer_runtime::run_slice(opts) {

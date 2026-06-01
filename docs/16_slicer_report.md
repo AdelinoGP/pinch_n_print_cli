@@ -5,6 +5,10 @@ is passed. Captures per-layer / per-stage / per-module timing, host-side
 memory accounting, and the DAG-derived explanation of which modules ran
 serially and why.
 
+## Build configuration
+
+The report subsystem is gated behind the default-enabled `report` Cargo feature on `slicer-runtime`. Build with `cargo build --no-default-features -p slicer-runtime` to omit it; the `--report` flag is then absent from `pnp_cli slice`.
+
 ## Related G-code artifacts
 
 The slicer report does not include the G-code preamble itself (header lines,

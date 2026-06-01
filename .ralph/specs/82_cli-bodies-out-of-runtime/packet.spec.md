@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 82
 task_ids: [TASK-232]
 requires: [81]
@@ -87,7 +87,7 @@ The inline smoke check below exercises one subcommand (`mesh convert`) end-to-en
 **When** `pnp_cli slice ... --report /tmp/p82-report.html` runs,
 **Then** the report file is created, is non-empty, contains the documented sentinel strings (e.g., the HTML doctype and the title bar containing the slicer banner — exact pattern in `docs/16_slicer_report.md`). The implementation log captures the file size and the first 5 lines.
 
-| `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p82.gcode --report /tmp/p82-report.html && test -s /tmp/p82-report.html && head -5 /tmp/p82-report.html | grep -qE '<!DOCTYPE html'`
+| `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p82.gcode --report /tmp/p82-report.html && test -s /tmp/p82-report.html && head -5 /tmp/p82-report.html | grep -qiE '<!doctype html'`
 
 ### AC-9 — `cargo test -p slicer-runtime -p pnp-cli` pass
 
@@ -150,3 +150,8 @@ This packet was generated against the context_discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Deviations
+
+- **D-1 (AC-7 SHA parity, partial)** — Specified: all 4 `pnp_cli mesh *` subcommand outputs produce SHA-identical bytes vs the Step 0 baseline. Implemented: 3 of 4 match exactly (convert, decimate, import). `mesh repair` produced a different SHA on every run (observed `616c97b7…` and `fdea6888…` across two consecutive post-packet runs; baseline `a128e80b…`). Reason: pre-existing non-determinism inside the repair pipeline (`slicer-helpers` / `slicer-model-io`), code untouched by P82. AC-7's byte-determinism assumption does not hold for `mesh repair`; filed for separate investigation against the repair pipeline owner.
+- **D-2 (AC-8 grep casing)** — Specified: `head -5 /tmp/p82-report.html | grep -qE '<!DOCTYPE html'` (case-sensitive uppercase). Implemented: rendered output is `<!doctype html>…` (lowercase HTML5 form, unchanged by P82). Verified via case-insensitive grep; file is 118 KB, valid HTML, contains the documented `<title>Slicer Report</title>` sentinel. AC-8 grep predicate amended inline (`-qE` → `-qiE`, pattern lowercased) to match the actual renderer output.

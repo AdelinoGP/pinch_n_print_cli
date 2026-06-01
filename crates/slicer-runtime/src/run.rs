@@ -5,12 +5,12 @@
 /// (`[host_runtime]`) and locked by `gcode_emit::host_keys_doc_lock`.
 pub const DEFAULT_USE_RELATIVE_E_DISTANCES: bool = true;
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use slicer_ir::ConfigValue;
+use slicer_ir::{ConfigValue, MeshIR};
 
-use crate::cli::SliceRunOptions;
 use crate::config_resolution::{
     resolve_global_config, resolve_per_object_configs, validate_support_layer_heights,
     ConfigBoundsIndex,
@@ -21,6 +21,7 @@ use crate::execution_plan::{
     build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
 };
 use crate::gcode_emit::{DefaultGCodeEmitter, DefaultGCodeSerializer};
+#[cfg(feature = "report")]
 use crate::instrumentation::CompositeInstrumentation;
 use crate::layer_executor::LayerProgressSink;
 use crate::module_search_path::assemble_search_roots;
@@ -32,8 +33,41 @@ use crate::progress_events::{
     JsonLinesEmitter, ProgressEventEmitter, RuntimeProgressSink, SliceEventCollector,
 };
 use crate::progress_instrumentation::ProgressPipelineInstrumentation;
+#[cfg(feature = "report")]
 use crate::report::{allocator as report_alloc, Collector};
 use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
+
+/// Validated runtime options derived from CLI arguments.
+///
+/// Hosted in `run` rather than a CLI module because the runtime library — not
+/// the CLI — defines and consumes this contract. The `pnp_cli` binary builds
+/// a `SliceRunOptions` value and hands it to [`run_slice`].
+#[derive(Debug, Clone)]
+pub struct SliceRunOptions {
+    /// Pre-loaded mesh IR. Loaded by the caller (e.g., `pnp-cli`) before invoking `run_slice`.
+    pub mesh: Arc<MeshIR>,
+    /// Display label for the mesh source (file path, "<stdin>", etc.); used in the HTML report.
+    pub model_label: String,
+    /// Optional path to a JSON configuration file.
+    pub config_path: Option<PathBuf>,
+    /// Optional path to the output G-code file.
+    pub output_path: Option<PathBuf>,
+    /// Directories to search for additional modules, in CLI order.
+    pub module_dirs: Vec<PathBuf>,
+    /// When true, suppress the platform default module search paths.
+    pub no_default_module_paths: bool,
+    /// Optional path to a PNG thumbnail image for the G-code header.
+    pub thumbnail: Option<PathBuf>,
+    /// Optional path for an HTML slicer report. When the `report` feature is
+    /// disabled, supplying a non-`None` value causes [`run_slice`] to return
+    /// an error explaining the build was compiled without report support.
+    pub report: Option<PathBuf>,
+    /// Verbose report mode (per-layer-per-module rows).
+    pub report_verbose: bool,
+    /// When true, emit per-stage / per-module timing events on the stderr
+    /// JSONL stream during the slice (schema version `"1.1.0"`).
+    pub instrument_stderr: bool,
+}
 
 /// Output produced by a successful `run_slice` call.
 #[derive(Debug, Clone)]
@@ -119,6 +153,7 @@ fn run_pipeline_fork(
     };
 
     let result = match (opts.report.as_ref(), progress_pi.as_ref()) {
+        #[cfg(feature = "report")]
         (Some(report_path), maybe_progress_pi) => {
             if let Some(parent) = report_path.parent() {
                 if let Err(e) = std::fs::create_dir_all(parent) {
@@ -158,6 +193,13 @@ fn run_pipeline_fork(
                 eprintln!("warning: failed to write slicer report: {e}");
             }
             r
+        }
+        #[cfg(not(feature = "report"))]
+        (Some(_), _) => {
+            return Err(SliceRunError(
+                "--report support not compiled (build with default features or --features report)"
+                    .to_string(),
+            ));
         }
         (None, Some(progress_pi)) => {
             run_pipeline_with_instrumentation(config, config_source, sink_arc.as_ref(), progress_pi)
