@@ -29,6 +29,9 @@ pub enum ModuleDirKind {
     /// `modules/core-modules` minus `traditional-support`, so
     /// `tree-support` becomes the active `support-generator` holder.
     TreeSupportFiltered,
+    /// `modules/core-modules` minus `part-cooling`, so the slice runs
+    /// without any fan / cooling module emitting M106.
+    PartCoolingFiltered,
 }
 
 /// Captured outcome of a `pnp_cli` invocation. `success == false` is a
@@ -75,6 +78,7 @@ type CacheMap = HashMap<RunKey, CacheCell>;
 static CACHE: OnceLock<Mutex<CacheMap>> = OnceLock::new();
 static EMPTY_MODULE_TMP: OnceLock<tempfile::TempDir> = OnceLock::new();
 static FILTERED_TREE_SUPPORT_TMP: OnceLock<tempfile::TempDir> = OnceLock::new();
+static FILTERED_PART_COOLING_TMP: OnceLock<tempfile::TempDir> = OnceLock::new();
 static OUTPUT_TMP: OnceLock<tempfile::TempDir> = OnceLock::new();
 
 /// Canonicalized repo root (parent of `crates/`).
@@ -158,6 +162,30 @@ fn tree_support_filtered_dir_path() -> PathBuf {
     td.path().join("tree-support-modules")
 }
 
+fn part_cooling_filtered_dir_path() -> PathBuf {
+    let td = FILTERED_PART_COOLING_TMP.get_or_init(|| {
+        let tmp = tempfile::tempdir().expect("create filtered-module-dir tempdir");
+        let src = core_modules_dir();
+        let dst = tmp.path().join("no-part-cooling-modules");
+        std::fs::create_dir_all(&dst).expect("mkdir no-part-cooling-modules");
+        for entry in std::fs::read_dir(&src).expect("read core-modules dir") {
+            let entry = entry.expect("read_dir entry");
+            let name = entry.file_name();
+            if name.to_string_lossy() == "part-cooling" {
+                continue;
+            }
+            let target = dst.join(&name);
+            if entry.file_type().expect("file_type").is_dir() {
+                recurse_copy(&entry.path(), &target).expect("recurse_copy dir");
+            } else {
+                std::fs::copy(&entry.path(), &target).expect("copy file");
+            }
+        }
+        tmp
+    });
+    td.path().join("no-part-cooling-modules")
+}
+
 fn recurse_copy(src: &Path, dst: &Path) -> std::io::Result<()> {
     if src.is_dir() {
         std::fs::create_dir_all(dst)?;
@@ -181,6 +209,7 @@ pub fn module_dir_path(kind: &ModuleDirKind) -> PathBuf {
         ModuleDirKind::CoreModules => core_modules_dir(),
         ModuleDirKind::Empty => empty_module_dir_path(),
         ModuleDirKind::TreeSupportFiltered => tree_support_filtered_dir_path(),
+        ModuleDirKind::PartCoolingFiltered => part_cooling_filtered_dir_path(),
     }
 }
 

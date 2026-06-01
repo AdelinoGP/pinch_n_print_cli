@@ -24,6 +24,8 @@ use slicer_runtime::{
     LoadedModuleBuilder, PrepassExecutionError, WasmEngine, WasmRuntimeDispatcher,
 };
 
+use crate::common::wasm_cache;
+
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -350,7 +352,7 @@ fn run_prepass(
     layer_plan: LayerPlanIR,
     region_map: RegionMapIR,
 ) -> Arc<SupportPlanIR> {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let module = compile_support_planner(&engine);
     let plan = execution_plan_with_support_geometry(module);
@@ -375,7 +377,7 @@ fn run_prepass_for_layer_plan_only(
     mesh: MeshIR,
     layer_plan: LayerPlanIR,
 ) -> Result<SupportPlanIR, PrepassExecutionError> {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let module = compile_support_planner(&engine);
     let plan = execution_plan_with_support_geometry(module);

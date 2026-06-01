@@ -14,7 +14,7 @@
 
 use std::path::PathBuf;
 
-use slicer_runtime::load_live_modules_for_plan;
+use crate::common::wasm_cache;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -34,8 +34,7 @@ fn layer_planner_default_loads_as_real_component() {
         "layer-planner-default.wasm missing; run modules/core-modules/build-core-modules.sh"
     );
 
-    let out =
-        load_live_modules_for_plan(&[core_modules.clone()], 1).expect("load_live_modules_for_plan");
+    let out = wasm_cache::cached_live_modules(&[core_modules.clone()], 1);
 
     let binding = out
         .bindings

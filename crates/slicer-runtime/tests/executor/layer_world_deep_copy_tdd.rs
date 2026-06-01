@@ -18,6 +18,8 @@ use slicer_runtime::{
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 
+use crate::common::wasm_cache;
+
 const LAYER_GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/test-guests/sdk-layer-pathopt-guest.component.wasm"
@@ -207,7 +209,7 @@ impl<'a> LayerStageRunner for SeedingRunner<'a> {
 
 #[test]
 fn layer_world_builder_commit_preserves_entities_tool_changes_and_z_hops() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_layer_guest(&engine);
 

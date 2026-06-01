@@ -35,6 +35,8 @@ use slicer_runtime::{
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 
+use crate::common::wasm_cache;
+
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
         major,
@@ -198,7 +200,7 @@ fn compile_seam_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
 
 #[test]
 fn seam_planner_default_live_dispatch_emits_seam_plan_entries() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let module = compile_seam_planner(&engine);
     let plan = ExecutionPlan {

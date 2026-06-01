@@ -15,31 +15,20 @@ use slicer_runtime::wit_host::{
 };
 use witness::{RawInfillWitness, RawInfillWitnessPoint1};
 
-/// Path to the pre-built test guest component.
-const GUEST_COMPONENT_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/layer-infill-guest.component.wasm"
-);
+use crate::common::wasm_cache;
 
-/// Load the test guest component bytes, or skip the test if not built.
-fn load_guest_component() -> Vec<u8> {
-    std::fs::read(GUEST_COMPONENT_PATH).unwrap_or_else(|e| {
-        panic!(
-            "Test guest component not found at {}: {}. \
-             Build it with: cd test-guests/layer-infill-guest && \
-             cargo build --target wasm32-unknown-unknown --release && \
-             wasm-tools component new target/wasm32-unknown-unknown/release/layer_infill_guest.wasm \
-             -o ../test-guests/layer-infill-guest.component.wasm",
-            GUEST_COMPONENT_PATH, e
-        )
-    })
+/// Process-shared wasmtime engine (with component model enabled) — a cheap
+/// `Arc` clone of the same engine the rest of the test binary uses.
+fn make_engine() -> wasmtime::Engine {
+    wasm_cache::shared_engine().wasmtime_engine().clone()
 }
 
-/// Create a wasmtime engine with component model enabled.
-fn make_engine() -> wasmtime::Engine {
-    let mut config = wasmtime::Config::new();
-    config.wasm_component_model(true);
-    wasmtime::Engine::new(&config).unwrap()
+/// Cached compiled guest component. `wasmtime::component::Component` is
+/// internally `Arc`-backed so the clone is cheap.
+fn cached_guest() -> wasmtime::component::Component {
+    wasm_cache::compiled_guest("layer-infill-guest")
+        .wasmtime_component()
+        .clone()
 }
 
 fn make_ctx(module_id: impl Into<String>, layer_z: f32) -> HostExecutionContext {
@@ -55,10 +44,8 @@ fn make_ctx(module_id: impl Into<String>, layer_z: f32) -> HostExecutionContext 
 /// and verify the output path has x = 3.5 * 10 = 35.0 for the second point.
 #[test]
 fn guest_reads_config_value_and_uses_it_in_output() {
-    let wasm_bytes = load_guest_component();
     let engine = make_engine();
-    let component =
-        wasmtime::component::Component::new(&engine, &wasm_bytes).expect("compile component");
+    let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
@@ -151,9 +138,8 @@ fn guest_reads_config_value_and_uses_it_in_output() {
 /// We provide z=5.5 and verify the output path has z=5.5.
 #[test]
 fn guest_reads_region_z_from_ir_view() {
-    let wasm_bytes = load_guest_component();
     let engine = make_engine();
-    let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
+    let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
@@ -224,9 +210,8 @@ fn guest_reads_region_z_from_ir_view() {
 /// Verify the host received the path with correct structure.
 #[test]
 fn guest_emits_output_via_infill_builder() {
-    let wasm_bytes = load_guest_component();
     let engine = make_engine();
-    let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
+    let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
@@ -304,9 +289,8 @@ fn guest_emits_output_via_infill_builder() {
 /// The guest calls host-services.log. Verify the host received the log message.
 #[test]
 fn guest_logs_via_host_services() {
-    let wasm_bytes = load_guest_component();
     let engine = make_engine();
-    let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
+    let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
@@ -379,9 +363,8 @@ fn guest_logs_via_host_services() {
 /// independent outputs â€” no cross-call data contamination.
 #[test]
 fn repeated_calls_produce_independent_outputs() {
-    let wasm_bytes = load_guest_component();
     let engine = make_engine();
-    let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
+    let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)
@@ -466,9 +449,8 @@ fn repeated_calls_produce_independent_outputs() {
 /// output (early-exit path in run_infill when regions is empty).
 #[test]
 fn empty_region_list_handled_gracefully() {
-    let wasm_bytes = load_guest_component();
     let engine = make_engine();
-    let component = wasmtime::component::Component::new(&engine, &wasm_bytes).unwrap();
+    let component = cached_guest();
 
     let mut linker = wasmtime::component::Linker::<HostExecutionContext>::new(&engine);
     LayerModule::add_to_linker::<_, wasmtime::component::HasSelf<_>>(&mut linker, |ctx| ctx)

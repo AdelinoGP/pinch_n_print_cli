@@ -17,16 +17,19 @@ use slicer_ir::{
 use slicer_runtime::dispatch::WasmRuntimeDispatcher;
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
-use slicer_runtime::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner, WasmEngine,
-};
+use slicer_runtime::{Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner};
+
+use crate::common::wasm_cache;
 
 // â”€â”€ Path to the sdk-prepass-guest component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const SDK_PREPASS_GUEST_PATH: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/sdk-prepass-meshseg-guest.component.wasm"
-);
+const SDK_PREPASS_GUEST_NAME: &str = "sdk-prepass-meshseg-guest";
+
+fn sdk_prepass_guest_path() -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("test-guests")
+        .join(format!("{SDK_PREPASS_GUEST_NAME}.component.wasm"))
+}
 
 // â”€â”€ Harness helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -138,16 +141,11 @@ fn make_compiled_module_with_config(
         .build()
 }
 
-fn load_sdk_prepass_guest(engine: &WasmEngine) -> Option<Arc<slicer_runtime::WasmComponent>> {
-    let path = std::path::Path::new(SDK_PREPASS_GUEST_PATH);
-    if !path.exists() {
+fn load_sdk_prepass_guest() -> Option<Arc<slicer_runtime::WasmComponent>> {
+    if !sdk_prepass_guest_path().exists() {
         return None;
     }
-    let bytes = std::fs::read(path).expect("read sdk-prepass-meshseg-guest.component.wasm");
-    match engine.compile_component(&bytes) {
-        Ok(c) => Some(Arc::new(c)),
-        Err(e) => panic!("failed to compile sdk-prepass-meshseg-guest: {e}"),
-    }
+    Some(wasm_cache::compiled_guest(SDK_PREPASS_GUEST_NAME))
 }
 
 // â”€â”€ AC-4: MeshSegmentation marks round-trip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -169,8 +167,8 @@ fn load_sdk_prepass_guest(engine: &WasmEngine) -> Option<Arc<slicer_runtime::Was
 fn mesh_segmentation_marks_round_trip() {
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
-    let component = match load_sdk_prepass_guest(&engine) {
+    let engine = wasm_cache::shared_engine();
+    let component = match load_sdk_prepass_guest() {
         Some(c) => c,
         None => {
             eprintln!("SKIP: sdk-prepass-meshseg-guest.component.wasm missing");

@@ -20,15 +20,16 @@
 #![allow(missing_docs)]
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{ConfigValue, ConfigView, StageId};
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
     Blackboard, CompiledModule, CompiledModuleBuilder, LoadedModule, LoadedModuleBuilder,
-    PostpassOutput, PostpassStageRunner, WasmEngine, WasmRuntimeDispatcher,
+    PostpassOutput, PostpassStageRunner, WasmRuntimeDispatcher,
 };
+
+use crate::common::wasm_cache;
 
 fn semver(major: u32, minor: u32, patch: u32) -> slicer_ir::SemVer {
     slicer_ir::SemVer {
@@ -52,11 +53,6 @@ fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
     .build()
 }
 
-const GUEST_COMPONENT: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/sdk-postpass-text-guest.component.wasm"
-);
-
 fn empty_mesh_ir() -> Arc<slicer_ir::MeshIR> {
     Arc::new(slicer_ir::MeshIR {
         schema_version: slicer_ir::SemVer {
@@ -78,22 +74,6 @@ fn empty_mesh_ir() -> Arc<slicer_ir::MeshIR> {
             },
         },
     })
-}
-
-fn load_guest(engine: &WasmEngine) -> Arc<slicer_runtime::WasmComponent> {
-    let path = PathBuf::from(GUEST_COMPONENT);
-    assert!(
-        path.exists(),
-        "guest component missing at {}: rebuild test-guests/sdk-postpass-text-guest \
-         via `cargo build --target wasm32-unknown-unknown --release` + `wasm-tools component new`",
-        path.display()
-    );
-    let bytes = std::fs::read(&path).expect("read guest .component.wasm");
-    Arc::new(
-        engine
-            .compile_component(&bytes)
-            .expect("compile guest component"),
-    )
 }
 
 fn make_module_with_config(
@@ -131,9 +111,9 @@ fn macro_authored_guest_round_trips_text_with_default_prefix() {
     // to its default prefix, proving the macro-emitted export actually
     // reached the trait method (placeholder shims would return nothing
     // useful here).
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine);
+    let component = wasm_cache::compiled_guest("sdk-postpass-text-guest");
 
     let module = make_module_with_config(
         "com.test.sdk-postpass-text-default",
@@ -158,9 +138,9 @@ fn macro_authored_guest_round_trips_typed_config_string_value() {
     // method through the wit-bindgen ConfigView resource, be adapted
     // back into `slicer_ir::ConfigView`, and be readable via the
     // typed `get_string` accessor in the guest's trait body.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine);
+    let component = wasm_cache::compiled_guest("sdk-postpass-text-guest");
 
     let mut fields: HashMap<String, ConfigValue> = HashMap::new();
     fields.insert(
@@ -188,9 +168,9 @@ fn macro_authored_guest_round_trips_typed_config_string_value() {
 fn macro_authored_guest_is_deterministic_across_repeated_dispatch_calls() {
     // Same module / same input text / same config must produce
     // byte-identical output on every dispatch invocation.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine);
+    let component = wasm_cache::compiled_guest("sdk-postpass-text-guest");
 
     let module = make_module_with_config(
         "com.test.sdk-postpass-text-det",

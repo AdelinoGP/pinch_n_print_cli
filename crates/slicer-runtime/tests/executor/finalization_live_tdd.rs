@@ -27,6 +27,8 @@ use slicer_runtime::{
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 
+use crate::common::wasm_cache;
+
 const SDK_FINALIZATION_GUEST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/test-guests/sdk-finalization-guest.component.wasm"
@@ -241,7 +243,7 @@ fn make_layer_with_tool_change(index: u32, z: f32) -> LayerCollectionIR {
 /// not the original model entity (OuterWall).
 #[test]
 fn live_finalization_dispatch_merges_skirt_brim_entity_pushes() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine);
     let module = make_module("com.test.finalization-prepend-witness", component);
@@ -304,7 +306,7 @@ fn live_finalization_dispatch_merges_skirt_brim_entity_pushes() {
 /// â€” not the legacy `process()` path â€” is the source of those entities.
 #[test]
 fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_wipe_tower(&engine);
 

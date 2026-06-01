@@ -56,16 +56,12 @@ const PREPASS_GUEST_PATH: &str = concat!(
     "/test-guests/prepass-guest.component.wasm"
 );
 
-fn load_prepass_guest(engine: &WasmEngine) -> Option<Arc<slicer_runtime::WasmComponent>> {
+fn load_prepass_guest(_engine: &WasmEngine) -> Option<Arc<slicer_runtime::WasmComponent>> {
     let path = std::path::Path::new(PREPASS_GUEST_PATH);
     if !path.exists() {
         return None;
     }
-    let bytes = std::fs::read(path).expect("prepass-guest.component.wasm must exist");
-    match engine.compile_component(&bytes) {
-        Ok(c) => Some(Arc::new(c)),
-        Err(e) => panic!("failed to compile prepass-guest: {e}"),
-    }
+    Some(crate::common::wasm_cache::compiled_component_at(path))
 }
 
 fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
@@ -350,7 +346,7 @@ fn mesh_object_view_is_deterministic() {
 #[test]
 fn mesh_seg_empty_geometry_produces_fatal_error() {
     // Use the real prepass-guest so the dispatch path hits actual WIT boundary code.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = crate::common::wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = match load_prepass_guest(&engine) {
         Some(c) => c,

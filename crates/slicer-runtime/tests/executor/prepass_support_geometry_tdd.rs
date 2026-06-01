@@ -40,6 +40,8 @@ use slicer_runtime::{
     PrepassStageOutput, PrepassStageRunner, WasmEngine, WasmRuntimeDispatcher,
 };
 
+use crate::common::wasm_cache;
+
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -354,7 +356,7 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
 }
 
 fn run_live_support_geometry(mesh: MeshIR) -> Arc<SupportPlanIR> {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let module = compile_support_planner(&engine);
     let plan = execution_plan_with_support_geometry(module);
@@ -750,7 +752,7 @@ fn host_builtin_runs_before_guest() {
         }
     }
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let saw = Arc::new(Mutex::new(None::<bool>));
 
     let spy = SpyRunner {

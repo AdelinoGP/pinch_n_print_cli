@@ -101,9 +101,11 @@ fn guest_components_are_not_stale() {
 
 #[test]
 fn guest_components_are_valid_wasm_components() {
-    use slicer_runtime::WasmEngine;
-
-    let engine = WasmEngine::new();
+    // Engine is shared (cheap) but `compile_component` stays raw — this test
+    // is the canonical compile-freshness check for every guest. Routing it
+    // through `wasm_cache::compiled_guest` would mean a cache hit no longer
+    // exercises a real compile, masking future regressions.
+    let engine = crate::common::wasm_cache::shared_engine();
     let dir = test_guests_dir();
 
     for (_guest_name, wasm_name) in GUESTS {

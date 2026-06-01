@@ -14,6 +14,8 @@ use slicer_runtime::{
 };
 use witness::{SdkFinalizationLayerWitness, SdkFinalizationLayerWitness1};
 
+use crate::common::wasm_cache;
+
 const FINALIZATION_GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/test-guests/sdk-finalization-guest.component.wasm"
@@ -154,7 +156,7 @@ fn make_layer(
 
 #[test]
 fn finalization_world_deep_copy_preserves_entities_and_z_hops() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine);
     let module = make_module("com.test.finalization-world-deep-copy", component);

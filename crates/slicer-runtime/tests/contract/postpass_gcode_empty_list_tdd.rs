@@ -11,13 +11,10 @@ use slicer_ir::{
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
     Blackboard, CompiledModule, CompiledModuleBuilder, LoadedModule, LoadedModuleBuilder,
-    PostpassOutput, PostpassStageRunner, WasmEngine, WasmRuntimeDispatcher,
+    PostpassOutput, PostpassStageRunner, WasmRuntimeDispatcher,
 };
 
-const POSTPASS_GUEST_COMPONENT: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/postpass-guest.component.wasm"
-);
+use crate::common::wasm_cache;
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -60,21 +57,6 @@ fn make_loaded_module(id: &str) -> LoadedModule {
     .build()
 }
 
-fn load_postpass_guest(engine: &WasmEngine) -> Arc<slicer_runtime::WasmComponent> {
-    let path = PathBuf::from(POSTPASS_GUEST_COMPONENT);
-    assert!(
-        path.exists(),
-        "postpass guest component missing at {}",
-        path.display()
-    );
-    let bytes = std::fs::read(&path).expect("read postpass guest component");
-    Arc::new(
-        engine
-            .compile_component(&bytes)
-            .expect("compile postpass guest component"),
-    )
-}
-
 fn make_module_with_config(
     module_id: &str,
     component: Arc<slicer_runtime::WasmComponent>,
@@ -112,9 +94,9 @@ fn make_gcode_ir(commands: Vec<GCodeCommand>) -> GCodeIR {
 
 #[test]
 fn postpass_gcode_empty_list_is_valid_and_does_not_mutate_output() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_postpass_guest(&engine);
+    let component = wasm_cache::compiled_guest("postpass-guest");
 
     let mut fields = HashMap::new();
     fields.insert(

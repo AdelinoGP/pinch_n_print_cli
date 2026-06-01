@@ -23,6 +23,8 @@ use std::collections::HashMap;
 use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_ir::ExtrusionRole as IrExtrusionRole;
 use slicer_runtime::dispatch::commit_layer_outputs_for_test;
+
+use crate::common::wasm_cache;
 use slicer_runtime::wit_host::{
     ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3WithWidth,
 };
@@ -510,7 +512,7 @@ fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
 /// AC-2: Tree-support live dispatch produces non-empty SupportIR.
 #[test]
 fn tree_support_live_dispatch_produces_non_empty_support_ir() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     let loaded = LoadedModuleBuilder::new(
@@ -614,7 +616,7 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
 /// AC-3: Traditional-support live dispatch produces non-empty SupportIR.
 #[test]
 fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     let loaded = LoadedModuleBuilder::new(
@@ -718,7 +720,7 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
 /// AC-4: Identical Layer::Support dispatches produce byte-identical SupportIR.
 #[test]
 fn support_deterministic_across_repeated_runs() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     let loaded = LoadedModuleBuilder::new(
@@ -871,7 +873,7 @@ fn support_enforcer_blocker_paint_precedence() {
         )
     });
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let component = Arc::new(
         engine
             .compile_component(&guest_bytes)
@@ -1071,6 +1073,7 @@ fn support_enforcer_blocker_paint_precedence() {
 mod planner_consuming_tier {
     use std::sync::Arc;
 
+    use crate::common::wasm_cache;
     use slicer_ir::{
         BoundingBox3, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
         GlobalLayer, MeshIR, Point2, Point3, Point3WithWidth, Polygon, SemVer, SlicedRegion,
@@ -1225,7 +1228,7 @@ mod planner_consuming_tier {
         manifest_reads: Vec<&str>,
         plan: Option<Arc<SupportPlanIR>>,
     ) -> slicer_ir::SupportIR {
-        let engine = Arc::new(WasmEngine::new());
+        let engine = wasm_cache::shared_engine();
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
         let loaded = loaded_support_module(manifest_id, wasm_path.clone(), manifest_reads);
         let module = compile_module(&engine, loaded, &wasm_path);
@@ -1519,7 +1522,7 @@ mod planner_consuming_tier {
         };
 
         // Dispatch tree-support with the multi-region plan.
-        let engine = Arc::new(WasmEngine::new());
+        let engine = wasm_cache::shared_engine();
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
         let wasm_path = tree_support_wasm();
         let loaded = loaded_support_module(

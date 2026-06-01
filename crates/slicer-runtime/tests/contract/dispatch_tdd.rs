@@ -11,6 +11,7 @@
 #![allow(missing_docs, dead_code, unused_imports, unused_variables)]
 
 use crate::common::seed::seed_slice_ir;
+use crate::common::wasm_cache;
 use witness::{RawInfillWitness, RawInfillWitnessPoint1, RawSupportWitness};
 
 use std::collections::HashMap;
@@ -147,23 +148,12 @@ fn minimal_gcode_ir() -> GCodeIR {
     }
 }
 
-fn compile_wat(engine: &WasmEngine, wat: &str) -> Arc<slicer_runtime::WasmComponent> {
-    let bytes = wat::parse_str(wat).expect("WAT parse should succeed");
-    Arc::new(
-        engine
-            .compile_component(&bytes)
-            .expect("WAT compilation should succeed"),
-    )
+fn compile_wat(_engine: &WasmEngine, wat: &str) -> Arc<slicer_runtime::WasmComponent> {
+    wasm_cache::compiled_wat(wat)
 }
 
-fn load_guest_component(engine: &WasmEngine, path: &str) -> Arc<slicer_runtime::WasmComponent> {
-    let bytes = std::fs::read(path)
-        .unwrap_or_else(|e| panic!("Test guest component not found at {path}: {e}"));
-    Arc::new(
-        engine
-            .compile_component(&bytes)
-            .expect("guest compilation should succeed"),
-    )
+fn load_guest_component(_engine: &WasmEngine, path: &str) -> Arc<slicer_runtime::WasmComponent> {
+    wasm_cache::compiled_component_at(std::path::Path::new(path))
 }
 
 fn load_test_guest(engine: &WasmEngine) -> Arc<slicer_runtime::WasmComponent> {
@@ -312,7 +302,7 @@ fn unknown_stage_returns_none() {
 
 #[test]
 fn prepass_runner_invokes_wasm_export() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_prepass_guest(&engine);
     let module = make_compiled_module_with("com.test.mesh", "PrePass::MeshAnalysis", component);
@@ -334,7 +324,7 @@ fn prepass_runner_invokes_wasm_export() {
 
 #[test]
 fn layer_runner_invokes_typed_wasm_export() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     // Use the real test guest that implements the full layer-module world.
     let component = load_test_guest(&engine);
@@ -368,7 +358,7 @@ fn layer_runner_invokes_typed_wasm_export() {
 
 #[test]
 fn finalization_runner_invokes_wasm_export() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_finalization_guest(&engine);
     let module =
@@ -394,7 +384,7 @@ fn finalization_runner_invokes_wasm_export() {
 
 #[test]
 fn postpass_gcode_runner_invokes_wasm_export() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_postpass_guest(&engine);
     let module =
@@ -419,7 +409,7 @@ fn postpass_gcode_runner_invokes_wasm_export() {
 
 #[test]
 fn postpass_text_runner_invokes_wasm_export() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_postpass_guest(&engine);
     let module =
@@ -446,7 +436,7 @@ fn postpass_text_runner_invokes_wasm_export() {
 fn typed_instantiation_failure_produces_structured_error() {
     // An empty component does not implement the layer-module world,
     // so typed instantiation must fail with a TypedInstantiation phase error.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let module = make_compiled_module(
         &engine,
@@ -495,7 +485,7 @@ fn missing_component_gracefully_skipped() {
     // be a fatal error â€” the pipeline should skip the module silently so that
     // placeholder modules do not block the run.  The load path emits a
     // structured diagnostic; dispatch-time skips gracefully.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let module = make_compiled_module_no_wasm("com.test.nowasm", "Layer::Infill");
 
@@ -536,7 +526,7 @@ fn missing_component_gracefully_skipped() {
 
 #[test]
 fn pool_slot_released_after_successful_typed_call() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
@@ -573,7 +563,7 @@ fn pool_slot_released_after_successful_typed_call() {
 
 #[test]
 fn pool_slot_released_after_failed_typed_call() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     // Empty component â€” will fail at typed instantiation
     let module = make_compiled_module(
@@ -614,7 +604,7 @@ fn typed_layer_dispatch_creates_fresh_context_per_call() {
     // Each call must create an independent HostExecutionContext.
     // The test guest logs on every call; if contexts leaked, we'd
     // see state accumulation. Here we just verify 3 calls all succeed.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
@@ -650,7 +640,7 @@ fn typed_layer_dispatch_creates_fresh_context_per_call() {
 
 #[test]
 fn full_pipeline_with_typed_layer_dispatch() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
 
     let component = load_test_guest(&engine);
     let layer_module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
@@ -709,7 +699,7 @@ fn full_pipeline_with_typed_layer_dispatch() {
 
 #[test]
 fn full_pipeline_multi_tier_with_typed_layer() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
 
     let mesh_module = make_compiled_module_with(
         "com.test.mesh",
@@ -798,7 +788,7 @@ fn full_pipeline_multi_tier_with_typed_layer() {
 fn guest_infill_output_committed_to_arena() {
     // The test guest pushes one sparse infill path in run_infill.
     // After dispatch, the arena must contain an InfillIR with that path.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
@@ -854,7 +844,7 @@ fn guest_infill_output_committed_to_arena() {
 fn empty_guest_output_does_not_populate_arena() {
     // When the guest produces no paths (empty but valid), the arena slot should remain empty.
     // The test guest's run_support_postprocess is a no-op stub.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
@@ -898,7 +888,7 @@ fn empty_guest_output_does_not_populate_arena() {
 fn output_commitment_deterministic_across_repeated_runs() {
     // Running the same dispatch 3 times with fresh arenas should produce
     // identical InfillIR each time.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
@@ -977,7 +967,7 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
     // Full pipeline test: manifest â†’ plan â†’ typed dispatch â†’ output committed.
     // We verify that the per-layer execution produces a LayerCollectionIR
     // from a pipeline that includes a real WASM infill module.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
 
     let component = load_test_guest(&engine);
     let layer_module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
@@ -1286,7 +1276,7 @@ fn perimeter_output_rejects_nan_seam_candidate() {
 #[test]
 fn empty_perimeter_output_does_not_populate_arena() {
     // The test guest's run_perimeters is a no-op, so perimeter slot stays empty.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with("com.test.perim", "Layer::Perimeters", component);
@@ -1423,7 +1413,7 @@ fn slice_postprocess_rejects_unknown_region_key() {
 #[test]
 fn empty_slice_postprocess_does_not_populate_arena() {
     // The test guest's run_slice_postprocess is a no-op, so slice slot stays empty.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module =
@@ -1536,7 +1526,7 @@ fn perimeter_conversion_deterministic_across_repeated_calls() {
 fn failed_commit_does_not_leak_into_next_call() {
     // Two sequential calls: first succeeds and populates infill,
     // second (for perimeters) with empty output should not see leaked infill.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -1598,7 +1588,7 @@ fn real_config_visible_through_production_layer_dispatch() {
     // The test guest reads `infill-spacing` from config and computes
     // path second-point x = spacing * 10.0.
     // With spacing=5.0 the point should be at x=50.0.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -1649,7 +1639,7 @@ fn real_config_visible_through_production_layer_dispatch() {
 fn different_configs_produce_different_output() {
     // Two dispatches with different infill-spacing values should produce
     // different path X extents.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -1729,7 +1719,7 @@ fn different_configs_produce_different_output() {
 
 #[test]
 fn repeated_identical_config_produces_deterministic_output() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -1778,7 +1768,7 @@ fn repeated_identical_config_produces_deterministic_output() {
 #[test]
 fn config_isolation_across_sequential_calls() {
     // Two calls with different configs should not leak values.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -1928,7 +1918,7 @@ fn real_paint_region_data_visible_through_production_support_dispatch() {
     // The test guest's run_support queries paint regions and encodes counts
     // into support output: x=enforcer_count, y=blocker_count,
     // flow_factor=layer_index.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module =
@@ -1989,7 +1979,7 @@ fn no_paint_region_ir_produces_empty_paint_view() {
     // When no PaintRegionIR is committed to the blackboard, the guest should see
     // zero enforcer/blocker regions. The support guest still produces a path
     // with x=0 (0 enforcers), y=0 (0 blockers).
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module =
@@ -2032,7 +2022,7 @@ fn no_paint_region_ir_produces_empty_paint_view() {
 fn paint_region_layer_mismatch_produces_empty_view() {
     // PaintRegionIR has data for layer 5, but we execute layer 10.
     // Guest should see empty paint regions.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module =
@@ -2082,7 +2072,7 @@ fn paint_region_layer_mismatch_produces_empty_view() {
 #[test]
 fn paint_region_isolation_across_sequential_dispatches() {
     // Two sequential dispatches with different paint data must not leak.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -2159,7 +2149,7 @@ fn paint_region_isolation_across_sequential_dispatches() {
 #[test]
 fn paint_region_deterministic_across_repeated_dispatches() {
     // Same paint data dispatched 3 times must produce identical results.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -2211,7 +2201,7 @@ fn paint_region_deterministic_across_repeated_dispatches() {
 fn non_paint_stage_not_affected_by_blackboard_paint_data() {
     // Layer::Infill does not receive paint data. Presence of paint on the
     // blackboard should not alter infill behavior.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -2326,7 +2316,7 @@ fn real_slice_region_data_visible_through_production_infill_dispatch() {
     //   point[0].flow_factor = region_count
     //   point[0].width = total polygon count
     //   point[0].z = z from first region
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module =
@@ -2379,7 +2369,7 @@ fn real_slice_region_data_visible_through_production_infill_dispatch() {
 fn empty_arena_produces_no_slice_regions() {
     // When the arena has no SliceIR, the guest has no valid layer Z source and
     // emits no infill output. The empty bypass must preserve that state.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module =
@@ -2415,7 +2405,7 @@ fn empty_arena_produces_no_slice_regions() {
 #[test]
 fn slice_region_isolation_across_sequential_dispatches() {
     // Two dispatches with different arena slice data must not leak.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -2474,7 +2464,7 @@ fn slice_region_isolation_across_sequential_dispatches() {
 #[test]
 fn slice_region_deterministic_across_repeated_dispatches() {
     // Same slice data 3 times must produce identical results.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -2517,7 +2507,7 @@ fn slice_and_paint_both_visible_in_same_support_dispatch() {
     // Support stage receives both slice-region and paint-region data.
     // The guest encodes paint counts (enforcers, blockers) in its output,
     // and we can verify both data sources are present.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module =
@@ -2567,7 +2557,7 @@ fn slice_and_paint_both_visible_in_same_support_dispatch() {
 fn infill_output_correct_when_slice_regions_present() {
     // Verify that the existing output commitment for infill is not
     // regressed when real slice region data is provided.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -2704,7 +2694,7 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
     //   point[0].x = region_count
     //   point[0].y = total wall_loops
     //   point[0].z = total infill polygons
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module =
@@ -2745,7 +2735,7 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
 #[test]
 fn real_perimeter_region_data_visible_through_wall_postprocess_dispatch() {
     // Guest encodes region_count as perimeter_index; wall count + infill count as x/y.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
@@ -2802,7 +2792,7 @@ fn path_optimization_receives_real_perimeter_regions() {
     // PathOptimization does not commit to an arena slot; it should still
     // consume perimeter-region data (this test proves no panic / error path
     // and is verified by the dispatch succeeding when perimeter IR is staged).
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module =
@@ -2839,7 +2829,7 @@ fn empty_perimeter_input_valid_for_infill_postprocess() {
     // When no PerimeterIR is staged, guest sees zero regions and emits no
     // output (per-region loop). The empty-bypass keeps the infill slot empty
     // â€” this is the documented empty case and must not fail.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
@@ -2877,7 +2867,7 @@ fn empty_perimeter_input_valid_for_infill_postprocess() {
 
 #[test]
 fn perimeter_region_isolation_across_sequential_dispatches() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
@@ -2937,7 +2927,7 @@ fn perimeter_region_isolation_across_sequential_dispatches() {
 
 #[test]
 fn perimeter_region_deterministic_across_repeated_dispatches() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
@@ -2978,7 +2968,7 @@ fn stage_without_perimeter_input_does_not_see_perimeter_state() {
     // Layer::Infill consumes slice regions, not perimeter regions. Even if
     // PerimeterIR is staged in the arena, the infill guest should not
     // observe it â€” with zero slice regions, the guest emits no geometry.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with("com.test.infill-no-perim", "Layer::Infill", component);
@@ -3059,7 +3049,7 @@ fn make_perimeter_ir_with_ids(
 
 #[test]
 fn perimeter_postprocess_commit_preserves_distinct_region_identities() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
@@ -3115,7 +3105,7 @@ fn perimeter_postprocess_commit_preserves_distinct_region_identities() {
 
 #[test]
 fn infill_postprocess_commit_preserves_distinct_region_identities() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
@@ -3160,7 +3150,7 @@ fn infill_postprocess_commit_preserves_distinct_region_identities() {
 
 #[test]
 fn perimeter_postprocess_identity_preservation_deterministic() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
@@ -3200,7 +3190,7 @@ fn perimeter_postprocess_identity_preservation_deterministic() {
 
 #[test]
 fn perimeter_postprocess_identity_isolation_across_dispatches() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
@@ -3276,7 +3266,7 @@ fn perimeter_postprocess_identity_isolation_across_dispatches() {
 fn support_postprocess_empty_bypass_when_no_slice_regions() {
     // With no slice regions staged in the arena, the guest iterates nothing
     // and emits no support output; empty-bypass leaves the support slot None.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module =
@@ -3368,7 +3358,7 @@ fn perimeter_postprocess_untagged_output_fails_with_diagnostic() {
 
 #[test]
 fn slice_postprocess_commit_preserves_distinct_region_identities() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
@@ -3433,7 +3423,7 @@ fn slice_postprocess_commit_preserves_distinct_region_identities() {
 
 #[test]
 fn support_postprocess_commit_preserves_distinct_region_identities() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module = make_compiled_module_with(
@@ -3486,7 +3476,7 @@ fn support_postprocess_commit_preserves_distinct_region_identities() {
 
 #[test]
 fn slice_postprocess_identity_preservation_deterministic() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
@@ -3523,7 +3513,7 @@ fn slice_postprocess_identity_preservation_deterministic() {
 
 #[test]
 fn support_postprocess_identity_isolation_across_dispatches() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let blackboard = Blackboard::new(empty_mesh_ir(), 1);
@@ -3626,7 +3616,7 @@ fn slice_postprocess_downstream_propagation_preserves_per_region_shape() {
     // by downstream stages like Perimeters / Support) therefore sees every
     // region with its original (object_id, region_id). This confirms the
     // committed per-region shape is what downstream consumers will observe.
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let spp = make_compiled_module_with(
@@ -3689,7 +3679,7 @@ fn slice_postprocess_downstream_propagation_preserves_per_region_shape() {
 fn path_optimization_commit_folds_tool_changes_into_deferred_queue() {
     // Guest pushes one tool-change per perimeter region via gcode-output-builder.
     // commit_layer_outputs should route them into arena.take_deferred_tool_changes().
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let module =
@@ -3727,7 +3717,7 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
     // guest emits tool-changes, final LayerCollectionIR has tool_changes.
     use slicer_runtime::execute_per_layer;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -3834,7 +3824,7 @@ fn path_optimization_empty_input_is_no_op() {
     // No arena state staged â€” assembly produces empty ordered_entities,
     // guest iterates zero regions, no tool_changes.
     use slicer_runtime::execute_per_layer;
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let plan = slicer_runtime::ExecutionPlan {
@@ -3869,7 +3859,7 @@ fn path_optimization_empty_input_is_no_op() {
 #[test]
 fn path_optimization_deterministic_across_repeated_runs() {
     use slicer_runtime::execute_per_layer;
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
 
@@ -4263,7 +4253,7 @@ fn path_optimization_end_to_end_populates_z_hops() {
     // commit path validates and folds into LayerCollectionIR.z_hops.
     use slicer_runtime::execute_per_layer;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let plan = slicer_runtime::ExecutionPlan {
@@ -4357,7 +4347,7 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
     use slicer_runtime::gcode_emit::DefaultGCodeEmitter;
     use slicer_runtime::postpass::GCodeEmitter;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
     let plan = slicer_runtime::ExecutionPlan {
@@ -4461,16 +4451,12 @@ const LAYER_PLANNER_DEFAULT_PATH: &str = concat!(
 /// Load the real `layer-planner-default.wasm` component using the same engine
 /// that the dispatcher will use.  Returns `None` and skips via `#[test]`
 /// if the file is missing (optional build artifact).
-fn load_layer_planner_default(engine: &WasmEngine) -> Option<Arc<slicer_runtime::WasmComponent>> {
+fn load_layer_planner_default(_engine: &WasmEngine) -> Option<Arc<slicer_runtime::WasmComponent>> {
     let path = std::path::Path::new(LAYER_PLANNER_DEFAULT_PATH);
     if !path.exists() {
         return None;
     }
-    let bytes = std::fs::read(path).expect("read layer-planner-default.wasm");
-    match engine.compile_component(&bytes) {
-        Ok(c) => Some(Arc::new(c)),
-        Err(_) => None,
-    }
+    Some(wasm_cache::compiled_component_at(path))
 }
 
 #[test]
@@ -4481,7 +4467,7 @@ fn layer_planning_dispatch_returns_layer_plan_variant() {
     // correct intermediate state.
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_prepass_guest(&engine);
     let module = make_compiled_module_with(
@@ -4544,7 +4530,7 @@ fn layer_plan_committed_to_blackboard_after_execute_prepass() {
     // read it via `blackboard.layer_plan()`.
     use slicer_runtime::{execute_prepass, PrepassStageOutput};
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_prepass_guest(&engine);
     let module = make_compiled_module_with(
@@ -4609,7 +4595,7 @@ fn layer_plan_harvest_deterministic_across_repeated_calls() {
     // harvest path has no non-deterministic state (timestamps, pointers, etc.).
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_prepass_guest(&engine);
 
@@ -4680,7 +4666,7 @@ fn layer_planning_module_error_propagates_as_fatal_prepass_error() {
     // test is skipped with a note.
     use slicer_runtime::PrepassExecutionError;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let component = match load_layer_planner_default(&engine) {
         Some(c) => c,
         None => {
@@ -4755,17 +4741,13 @@ const MESH_SEG_DEFAULT_PATH: &str = concat!(
 );
 
 fn load_mesh_segmentation_default(
-    engine: &WasmEngine,
+    _engine: &WasmEngine,
 ) -> Option<Arc<slicer_runtime::WasmComponent>> {
     let path = std::path::Path::new(MESH_SEG_DEFAULT_PATH);
     if !path.exists() {
         return None;
     }
-    let bytes = std::fs::read(path).expect("read mesh-segmentation.wasm");
-    match engine.compile_component(&bytes) {
-        Ok(c) => Some(Arc::new(c)),
-        Err(_) => None,
-    }
+    Some(wasm_cache::compiled_component_at(path))
 }
 
 /// Dispatch the real `mesh-segmentation.wasm` with an empty config: the
@@ -4775,7 +4757,7 @@ fn load_mesh_segmentation_default(
 fn mesh_segmentation_dispatch_returns_empty_ir_for_unpainted_mesh() {
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = match load_mesh_segmentation_default(&engine) {
         Some(c) => c,
@@ -4831,7 +4813,7 @@ fn mesh_segmentation_collects_config_driven_marks() {
     use slicer_ir::ConfigValue;
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = match load_mesh_segmentation_default(&engine) {
         Some(c) => c,
@@ -4928,7 +4910,7 @@ fn mesh_segmentation_dispatch_is_deterministic() {
     use slicer_ir::ConfigValue;
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = match load_mesh_segmentation_default(&engine) {
         Some(c) => c,
@@ -5056,7 +5038,7 @@ fn mesh_segmentation_output_rejects_invalid_marks() {
 fn mesh_segmentation_commits_through_execute_prepass() {
     use slicer_runtime::execute_prepass;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = match load_mesh_segmentation_default(&engine) {
         Some(c) => c,
@@ -5351,17 +5333,13 @@ const PATH_OPT_DEFAULT_PATH: &str = concat!(
 );
 
 fn load_path_optimization_default(
-    engine: &WasmEngine,
+    _engine: &WasmEngine,
 ) -> Option<Arc<slicer_runtime::WasmComponent>> {
     let path = std::path::Path::new(PATH_OPT_DEFAULT_PATH);
     if !path.exists() {
         return None;
     }
-    let bytes = std::fs::read(path).expect("read path-optimization-default.wasm");
-    match engine.compile_component(&bytes) {
-        Ok(c) => Some(Arc::new(c)),
-        Err(_) => None,
-    }
+    Some(wasm_cache::compiled_component_at(path))
 }
 
 /// End-to-end guard: the canonical `Layer::PathOptimization` module
@@ -5377,7 +5355,7 @@ fn load_path_optimization_default(
 fn path_optimization_dispatch_emits_per_layer_marker() {
     use slicer_runtime::{Blackboard, LayerArena, LayerStageOutput};
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = match load_path_optimization_default(&engine) {
         Some(c) => c,
@@ -5513,7 +5491,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
 fn path_optimization_dispatch_is_deterministic() {
     use slicer_runtime::{Blackboard, LayerArena};
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = match load_path_optimization_default(&engine) {
         Some(c) => c,
@@ -5567,7 +5545,7 @@ fn path_optimization_emit_layer_markers_false_suppresses_output() {
     use slicer_ir::ConfigValue;
     use slicer_runtime::{Blackboard, LayerArena};
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = match load_path_optimization_default(&engine) {
         Some(c) => c,
@@ -5615,67 +5593,9 @@ fn path_optimization_emit_layer_markers_false_suppresses_output() {
     );
 }
 
-/// End-to-end: the Benchy MVP run emits one `; path-optimization
-/// layer <n> regions=<r> entities=<e>` line per layer. The count must
-/// match the distinct-layer-Z count â€” every layer that reaches
-/// G-code MUST have seen Layer::PathOptimization on the real path.
-#[test]
-fn path_optimization_markers_appear_in_benchy_gcode() {
-    use std::path::PathBuf;
-    use std::process::Command;
-
-    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .canonicalize()
-        .expect("repo root");
-    let model = repo_root.join("resources/benchy.stl");
-    let modules = repo_root.join("modules/core-modules");
-    if !model.exists() {
-        eprintln!("SKIP: benchy fixture missing");
-        return;
-    }
-
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let out = tmp.path().join("benchy_path_opt.gcode");
-    let bin = crate::common::slicer_cache::pnp_cli_bin();
-    let result = Command::new(bin)
-        .args([
-            "slice",
-            "--model",
-            model.to_str().unwrap(),
-            "--module-dir",
-            modules.to_str().unwrap(),
-            "--output",
-            out.to_str().unwrap(),
-        ])
-        .output()
-        .expect("pnp_cli binary");
-    assert!(
-        result.status.success(),
-        "benchy run must succeed: {}",
-        String::from_utf8_lossy(&result.stderr)
-    );
-    let gcode = std::fs::read_to_string(&out).expect("read gcode");
-    let marker_count = gcode
-        .lines()
-        .filter(|l| l.starts_with("; path-optimization layer"))
-        .count();
-    assert!(
-        marker_count >= 100,
-        "expected at least 100 path-optimization markers in Benchy gcode, \
-         got {marker_count} (one should appear per layer; Benchy is ~240 layers)"
-    );
-    // Sanity: the first marker should be for layer 0.
-    let first = gcode
-        .lines()
-        .find(|l| l.starts_with("; path-optimization layer"))
-        .expect("at least one marker");
-    assert!(
-        first.starts_with("; path-optimization layer 0 "),
-        "first marker should be for layer 0, got: {first}"
-    );
-}
+// Note: `path_optimization_markers_appear_in_benchy_gcode` was moved to
+// `tests/e2e/benchy_end_to_end_tdd.rs` (it runs the real pnp_cli binary
+// end-to-end and was structurally an e2e test).
 
 fn make_object(id: &str) -> slicer_ir::ObjectMesh {
     slicer_ir::ObjectMesh {
@@ -5771,7 +5691,7 @@ fn layer_planner_config(
 fn layer_planner_default_macro_path_emits_real_proposals() {
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let component = match load_layer_planner_default(&engine) {
         Some(c) => c,
         None => {
@@ -5853,7 +5773,7 @@ fn layer_planner_default_macro_path_emits_real_proposals() {
 fn layer_planner_default_macro_path_is_deterministic() {
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let component = match load_layer_planner_default(&engine) {
         Some(c) => c,
         None => {
@@ -5911,16 +5831,12 @@ const SDK_PREPASS_GUEST_PATH: &str = concat!(
     "/test-guests/sdk-prepass-guest.component.wasm"
 );
 
-fn load_sdk_prepass_guest(engine: &WasmEngine) -> Option<Arc<slicer_runtime::WasmComponent>> {
+fn load_sdk_prepass_guest(_engine: &WasmEngine) -> Option<Arc<slicer_runtime::WasmComponent>> {
     let path = std::path::Path::new(SDK_PREPASS_GUEST_PATH);
     if !path.exists() {
         return None;
     }
-    let bytes = std::fs::read(path).expect("read sdk-prepass-guest.component.wasm");
-    match engine.compile_component(&bytes) {
-        Ok(c) => Some(Arc::new(c)),
-        Err(_) => None,
-    }
+    Some(wasm_cache::compiled_component_at(path))
 }
 
 fn mesh_analysis_emit_config(n: i64) -> ConfigView {
@@ -5938,7 +5854,7 @@ fn mesh_analysis_emit_config(n: i64) -> ConfigView {
 fn mesh_analysis_macro_path_forwards_objects_and_drains_output() {
     use slicer_runtime::{FacetClassRecord, PrepassStageOutput};
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let component = match load_sdk_prepass_guest(&engine) {
         Some(c) => c,
         None => {
@@ -6024,7 +5940,7 @@ fn mesh_analysis_macro_path_forwards_objects_and_drains_output() {
 fn mesh_analysis_macro_path_drain_is_deterministic() {
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let component = match load_sdk_prepass_guest(&engine) {
         Some(c) => c,
         None => {
@@ -6074,7 +5990,7 @@ fn mesh_analysis_macro_path_drain_is_deterministic() {
 fn mesh_analysis_macro_path_empty_drain_returns_none() {
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let component = match load_sdk_prepass_guest(&engine) {
         Some(c) => c,
         None => {
@@ -6235,7 +6151,7 @@ fn mesh_analysis_output_push_validates_and_rejects_malformed() {
 fn mesh_segmentation_macro_path_drain_preserves_push_order() {
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let component = match load_mesh_segmentation_default(&engine) {
         Some(c) => c,
         None => {
@@ -6451,7 +6367,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
 fn prepass_seam_planning_commits_seam_plan_ir() {
     use slicer_runtime::PrepassStageOutput;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let component = {
         const PATH: &str = concat!(
             env!("CARGO_MANIFEST_DIR"),
@@ -6462,12 +6378,7 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
             eprintln!("SKIP: seam-planner-default.wasm missing â€” rebuild core modules");
             return;
         }
-        let bytes = std::fs::read(path).expect("read seam-planner-default.wasm");
-        Arc::new(
-            engine
-                .compile_component(&bytes)
-                .expect("compile seam-planner-default"),
-        )
+        wasm_cache::compiled_component_at(path)
     };
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));

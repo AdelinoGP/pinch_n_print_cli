@@ -29,6 +29,8 @@ use slicer_runtime::{
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 
+use crate::common::wasm_cache;
+
 const MUTATION_GUEST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/test-guests/finalization-mutation-roundtrip-guest.component.wasm"
@@ -194,7 +196,7 @@ fn make_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollection
 /// drain-back wiring, and SDK trait method `modify_entity`.
 #[test]
 fn modify_entity_round_trips_through_wit() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine);
     let module = make_module("com.test.finalization-mutation-roundtrip", component);
@@ -226,7 +228,7 @@ fn modify_entity_round_trips_through_wit() {
 /// and "99", and the layer entities must be unmodified.
 #[test]
 fn modify_entity_unknown_id_round_trips_error() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine);
 

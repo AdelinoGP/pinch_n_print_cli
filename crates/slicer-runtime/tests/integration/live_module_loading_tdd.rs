@@ -348,10 +348,10 @@ fn live_plan_preserves_seeded_planner_object_height_keys_for_real_core_modules()
         ConfigValue::Float((z_max - z_min) as f64),
     );
 
-    let out = load_live_modules_for_plan(&[core_modules], 1).expect("load real core modules");
+    let out = crate::common::wasm_cache::cached_live_modules(&[core_modules], 1);
     let plan = build_live_execution_plan(
-        out.sorted_stages,
-        out.bindings,
+        out.sorted_stages.clone(),
+        out.bindings.clone(),
         &source,
         Arc::new(Vec::new()),
         Arc::new(HashMap::<RegionKey, RegionPlan>::new()),

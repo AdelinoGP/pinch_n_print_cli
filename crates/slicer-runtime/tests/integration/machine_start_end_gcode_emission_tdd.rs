@@ -20,10 +20,11 @@ use slicer_runtime::pipeline::{
     run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners,
 };
 use slicer_runtime::{
-    build_live_execution_plan, load_live_modules_for_plan, resolve_global_config,
-    resolve_per_object_configs, ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer,
-    NoopLayerProgressSink,
+    build_live_execution_plan, resolve_global_config, resolve_per_object_configs,
+    ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer, NoopLayerProgressSink,
 };
+
+use crate::common::wasm_cache;
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Paths
@@ -65,8 +66,9 @@ fn slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> String {
     );
 
     // 1. Load all core module manifests + compile .wasm components.
-    let loaded = load_live_modules_for_plan(&[module_dir], 1)
-        .expect("load_live_modules_for_plan must succeed");
+    //    Cached at the test-binary level so the 20 core modules are
+    //    compiled once, not per test.
+    let loaded = wasm_cache::cached_live_modules(&[module_dir], 1);
 
     // Confirm the module actually loaded as a real component (not a placeholder).
     let machine_binding = loaded
@@ -181,9 +183,11 @@ fn slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> String {
     .expect("resolve_per_object_configs must succeed");
 
     // 6. Build the execution plan using the binding_source (real defaults for module ConfigViews).
+    //    Bindings/sorted_stages are cloned from the cached Arc<LiveModuleLoadOutput>
+    //    (LiveModuleBinding is Clone; the inner instance_pool/wasm_component are Arc-backed).
     let plan = build_live_execution_plan(
-        loaded.sorted_stages,
-        loaded.bindings,
+        loaded.sorted_stages.clone(),
+        loaded.bindings.clone(),
         &binding_source,
         Arc::new(Vec::<slicer_ir::GlobalLayer>::new()),
         Arc::new(HashMap::<RegionKey, RegionPlan>::new()),

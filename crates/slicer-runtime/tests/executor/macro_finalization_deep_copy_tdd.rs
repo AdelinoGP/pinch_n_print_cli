@@ -32,6 +32,8 @@ use slicer_runtime::{
 };
 use witness::SdkFinalizationLayerWitness;
 
+use crate::common::wasm_cache;
+
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
         major,
@@ -158,7 +160,7 @@ fn layer_ir(
 
 #[test]
 fn finalization_deep_copy_in_and_drain_back_out_round_trip() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine, "sdk-finalization-guest");
 
@@ -218,7 +220,7 @@ fn finalization_deep_copy_in_and_drain_back_out_round_trip() {
 
 #[test]
 fn finalization_drain_back_creates_synthetic_layer_when_config_requests() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine, "sdk-finalization-guest");
 
@@ -255,7 +257,7 @@ fn finalization_drain_back_creates_synthetic_layer_when_config_requests() {
 
 #[test]
 fn finalization_deep_copy_round_trip_is_deterministic_across_repeated_runs() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine, "sdk-finalization-guest");
     let module = make_module(

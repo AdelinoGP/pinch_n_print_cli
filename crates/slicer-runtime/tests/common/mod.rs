@@ -2,6 +2,7 @@
 
 pub mod seed;
 pub mod slicer_cache;
+pub mod wasm_cache;
 
 use std::collections::HashMap;
 use std::sync::Arc;

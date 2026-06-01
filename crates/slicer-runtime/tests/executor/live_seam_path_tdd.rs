@@ -27,6 +27,8 @@ use slicer_runtime::wit_host::{
     WallLoopType, WallLoopView,
 };
 
+use crate::common::wasm_cache;
+
 /// Helper: make a 2-point horizontal wall loop at a given Z.
 fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) -> WallLoopView {
     WallLoopView {
@@ -285,12 +287,11 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     use slicer_runtime::instance_pool::build_wasm_instance_pool;
     use slicer_runtime::manifest::LoadedModuleBuilder;
     use slicer_runtime::{
-        Blackboard, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmEngine,
-        WasmRuntimeDispatcher,
+        Blackboard, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmRuntimeDispatcher,
     };
     use std::sync::Arc;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     // Load the real path-optimization-default.wasm module.
@@ -767,12 +768,11 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     use slicer_runtime::instance_pool::build_wasm_instance_pool;
     use slicer_runtime::manifest::LoadedModuleBuilder;
     use slicer_runtime::{
-        Blackboard, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmEngine,
-        WasmRuntimeDispatcher,
+        Blackboard, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmRuntimeDispatcher,
     };
     use std::sync::Arc;
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     // Load the real seam-placer.wasm module.

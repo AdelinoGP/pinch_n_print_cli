@@ -23,7 +23,6 @@
 #![allow(missing_docs)]
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{ConfigValue, ConfigView, GlobalLayer, StageId};
@@ -36,10 +35,12 @@ use slicer_runtime::wit_host::{
 };
 use slicer_runtime::{
     Blackboard, CompiledModule, CompiledModuleBuilder, FinalizationOutput, FinalizationStageRunner,
-    LoadedModule, LoadedModuleBuilder, PrepassStageOutput, PrepassStageRunner, WasmEngine,
+    LoadedModule, LoadedModuleBuilder, PrepassStageOutput, PrepassStageRunner,
     WasmRuntimeDispatcher,
 };
 use witness::{SdkInfillWitness, SdkInfillWitnessPoint1};
+
+use crate::common::wasm_cache;
 
 fn semver(major: u32, minor: u32, patch: u32) -> slicer_ir::SemVer {
     slicer_ir::SemVer {
@@ -87,22 +88,8 @@ fn make_loaded_module(id: &str, stage: &str, wit_world: &str) -> LoadedModule {
     .build()
 }
 
-fn guest_component_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("test-guests")
-        .join(format!("{name}.component.wasm"))
-}
-
-fn load_guest(engine: &WasmEngine, name: &str) -> Arc<slicer_runtime::WasmComponent> {
-    let path = guest_component_path(name);
-    assert!(
-        path.exists(),
-        "guest component {name} missing at {}: rebuild via \
-         test-guests/build-test-guests.sh",
-        path.display()
-    );
-    let bytes = std::fs::read(&path).expect("read .component.wasm");
-    Arc::new(engine.compile_component(&bytes).expect("compile component"))
+fn load_guest(name: &str) -> Arc<slicer_runtime::WasmComponent> {
+    wasm_cache::compiled_guest(name)
 }
 
 fn make_module(
@@ -139,9 +126,9 @@ fn intentional_error_config(code: i64) -> ConfigView {
 
 #[test]
 fn finalization_world_macro_guest_round_trips_typed_config_and_result() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-finalization-guest");
+    let component = load_guest("sdk-finalization-guest");
 
     let module = make_module(
         "com.test.sdk-finalization",
@@ -172,9 +159,9 @@ fn finalization_world_macro_guest_round_trips_typed_config_and_result() {
 
 #[test]
 fn finalization_world_macro_guest_succeeds_without_error_config() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-finalization-guest");
+    let component = load_guest("sdk-finalization-guest");
     let module = make_module(
         "com.test.sdk-finalization-ok",
         "PostPass::LayerFinalization",
@@ -192,9 +179,9 @@ fn finalization_world_macro_guest_succeeds_without_error_config() {
 
 #[test]
 fn finalization_world_macro_guest_is_deterministic() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-finalization-guest");
+    let component = load_guest("sdk-finalization-guest");
     let module = make_module(
         "com.test.sdk-finalization-det",
         "PostPass::LayerFinalization",
@@ -216,9 +203,9 @@ fn finalization_world_macro_guest_is_deterministic() {
 
 #[test]
 fn prepass_world_macro_guest_round_trips_typed_config_and_result() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-prepass-guest");
+    let component = load_guest("sdk-prepass-guest");
 
     let module = make_module(
         "com.test.sdk-prepass",
@@ -244,9 +231,9 @@ fn prepass_world_macro_guest_round_trips_typed_config_and_result() {
 
 #[test]
 fn prepass_world_macro_guest_succeeds_without_error_config() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-prepass-guest");
+    let component = load_guest("sdk-prepass-guest");
     let module = make_module(
         "com.test.sdk-prepass-ok",
         "PrePass::MeshAnalysis",
@@ -263,9 +250,9 @@ fn prepass_world_macro_guest_succeeds_without_error_config() {
 
 #[test]
 fn prepass_world_macro_guest_is_deterministic() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-prepass-guest");
+    let component = load_guest("sdk-prepass-guest");
     let module = make_module(
         "com.test.sdk-prepass-det",
         "PrePass::MeshAnalysis",
@@ -295,9 +282,9 @@ fn fixture_case_config(case: &str) -> ConfigView {
 
 #[test]
 fn prepass_meshseg_macro_guest_round_trips_typed_config_and_result() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-prepass-meshseg-guest");
+    let component = load_guest("sdk-prepass-meshseg-guest");
 
     let module = make_module(
         "com.test.sdk-prepass-meshseg",
@@ -344,9 +331,9 @@ fn one_layer_arena() -> (slicer_runtime::LayerArena, GlobalLayer) {
 #[test]
 fn layer_world_macro_guest_round_trips_typed_config_and_result() {
     use slicer_runtime::{LayerStageError, LayerStageRunner};
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-layer-infill-guest");
+    let component = load_guest("sdk-layer-infill-guest");
 
     let module = make_module(
         "com.test.sdk-layer-infill",
@@ -392,9 +379,9 @@ fn layer_world_macro_guest_round_trips_typed_config_and_result() {
 #[test]
 fn layer_world_macro_guest_succeeds_without_error_config() {
     use slicer_runtime::LayerStageRunner;
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-layer-infill-guest");
+    let component = load_guest("sdk-layer-infill-guest");
     let module = make_module(
         "com.test.sdk-layer-infill-ok",
         "Layer::Infill",
@@ -412,9 +399,9 @@ fn layer_world_macro_guest_succeeds_without_error_config() {
 #[test]
 fn layer_world_macro_guest_is_deterministic() {
     use slicer_runtime::LayerStageRunner;
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-layer-infill-guest");
+    let component = load_guest("sdk-layer-infill-guest");
     let module = make_module(
         "com.test.sdk-layer-infill-det",
         "Layer::Infill",
@@ -498,9 +485,9 @@ fn slice_ir_with_regions(
 #[test]
 fn layer_world_macro_guest_sees_real_slice_region_content() {
     use slicer_runtime::{LayerArena, LayerStageRunner};
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-layer-infill-guest");
+    let component = load_guest("sdk-layer-infill-guest");
 
     // Drive the intentional-error path so the guest's error message
     // carries the observed region + polygon counts straight back
@@ -548,9 +535,9 @@ fn layer_world_macro_guest_sees_real_slice_region_content() {
 #[test]
 fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
     use slicer_runtime::{LayerArena, LayerStageRunner};
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-layer-infill-guest");
+    let component = load_guest("sdk-layer-infill-guest");
 
     let module = make_module(
         "com.test.sdk-layer-infill-witness-out",
@@ -628,9 +615,9 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
 #[test]
 fn layer_world_macro_guest_deep_copy_is_deterministic() {
     use slicer_runtime::{LayerArena, LayerStageRunner};
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let component = load_guest(&engine, "sdk-layer-infill-guest");
+    let component = load_guest("sdk-layer-infill-guest");
 
     let module = make_module(
         "com.test.sdk-layer-infill-det-content",

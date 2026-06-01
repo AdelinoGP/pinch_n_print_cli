@@ -23,6 +23,8 @@ use slicer_runtime::{
     LoadedModuleBuilder, PrepassExecutionError, WasmEngine, WasmRuntimeDispatcher,
 };
 
+use crate::common::wasm_cache;
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -169,21 +171,11 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
 }
 
 fn compile_support_planner_with_config(
-    engine: &Arc<WasmEngine>,
+    _engine: &Arc<WasmEngine>,
     config: HashMap<String, ConfigValue>,
 ) -> CompiledModule {
     let wasm_path = support_planner_wasm();
-    let bytes = std::fs::read(&wasm_path).unwrap_or_else(|_| {
-        panic!(
-            "support-planner.wasm not found at {}. Build with: cargo xtask build-guests",
-            wasm_path.display()
-        )
-    });
-    let component = Arc::new(
-        engine
-            .compile_component(&bytes)
-            .expect("support-planner.wasm must compile"),
-    );
+    let component = wasm_cache::compiled_component_at(&wasm_path);
     let loaded = LoadedModuleBuilder::new(
         "com.core.support-planner",
         semver(0, 1, 0),
@@ -260,7 +252,7 @@ fn base_config(enabled: bool) -> HashMap<String, ConfigValue> {
 /// values (-1 and -2), proving the config key now reaches the guest.
 #[test]
 fn raft_layers_config_is_honored() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     let mut config = base_config(true);
@@ -303,7 +295,7 @@ fn raft_layers_config_is_honored() {
 /// planner always ran; now the config flows so the guest respects the flag.
 #[test]
 fn support_disabled_emits_no_plan() {
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     let config = base_config(false); // support_enabled = false
@@ -338,7 +330,7 @@ fn support_disabled_emits_no_plan() {
 fn planner_fatal_surfaces_as_dispatch_error() {
     use slicer_ir::{ObjectLayerRef, RegionMapIR};
 
-    let engine = Arc::new(WasmEngine::new());
+    let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     let config = base_config(true);

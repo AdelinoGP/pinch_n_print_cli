@@ -2101,3 +2101,86 @@ fn benchy_top_surface_precedes_ironing() {
         panic!("{}", msg);
     }
 }
+
+/// Default Benchy slice must carry one `; path-optimization layer N` marker
+/// per layer (Benchy is ~240 layers; assert ≥100 as a conservative floor) and
+/// the first marker must reference layer 0. Moved from
+/// `contract/dispatch_tdd.rs` — this is a real end-to-end pnp_cli slice, not
+/// a contract-level test.
+#[test]
+fn path_optimization_markers_appear_in_benchy_gcode() {
+    let model = fixture_stl();
+    if !model.exists() {
+        eprintln!("SKIP: benchy fixture missing");
+        return;
+    }
+
+    let cached = crate::common::slicer_cache::cached_run(
+        &model,
+        crate::common::slicer_cache::ModuleDirKind::CoreModules,
+        None,
+    );
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
+    assert!(
+        outcome.success,
+        "benchy run must succeed: {}",
+        outcome.stderr
+    );
+
+    let gcode = outcome.gcode.as_str();
+    let marker_count = gcode
+        .lines()
+        .filter(|l| l.starts_with("; path-optimization layer"))
+        .count();
+    assert!(
+        marker_count >= 100,
+        "expected at least 100 path-optimization markers in Benchy gcode, \
+         got {marker_count} (one should appear per layer; Benchy is ~240 layers)"
+    );
+    // Sanity: the first marker should be for layer 0.
+    let first = gcode
+        .lines()
+        .find(|l| l.starts_with("; path-optimization layer"))
+        .expect("at least one marker");
+    assert!(
+        first.starts_with("; path-optimization layer 0 "),
+        "first marker should be for layer 0, got: {first}"
+    );
+}
+
+/// Slicing Benchy without the `part-cooling` core module must succeed and
+/// emit zero `M106` (fan) lines. Moved from
+/// `integration/gcode_part_cooling_emission_tdd.rs` — this is a real
+/// end-to-end pnp_cli slice. Uses the cached `PartCoolingFiltered` module
+/// directory (see `common/slicer_cache.rs`) so future tests sharing this
+/// scenario share the compile cost.
+#[test]
+fn rejects_cooling_missing_when_required() {
+    let model = fixture_stl();
+    assert_path_exists(&model, "Benchy STL");
+
+    let cached = crate::common::slicer_cache::cached_run(
+        &model,
+        crate::common::slicer_cache::ModuleDirKind::PartCoolingFiltered,
+        None,
+    );
+    let outcome = crate::common::slicer_cache::expect_outcome(&cached);
+
+    assert!(
+        outcome.success,
+        "pnp_cli must succeed when part-cooling module is excluded. Stderr:\n{}",
+        outcome.stderr
+    );
+    assert!(outcome.output_written, "--output file must be written");
+
+    let m106_count = outcome
+        .gcode
+        .lines()
+        .filter(|l| l.trim().starts_with("M106"))
+        .count();
+    assert_eq!(
+        m106_count, 0,
+        "without part-cooling module, G-code must contain zero M106 lines. Found {} M106 line(s)",
+        m106_count
+    );
+}

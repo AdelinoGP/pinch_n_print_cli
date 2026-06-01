@@ -1,6 +1,16 @@
 //! TDD red tests for TASK-100: WasmInstance wrapper over wasmtime.
+//!
+//! Carve-out discipline: the four tests that exercise the raw
+//! `WasmEngine::new()` / `compile_component` API surface (`engine_creates_*`,
+//! `compile_invalid_bytes_returns_error`, `compile_empty_bytes_returns_error`,
+//! `compile_minimal_component_succeeds`) keep direct `WasmEngine::new()` so
+//! each behaves like a fresh client of the public API. The rest of the
+//! tests merely *use* an engine to drive instance behaviour and go through
+//! `wasm_cache::shared_engine()` + `compiled_wat(...)`.
 
 use slicer_runtime::wasm_instance::{HostState, WasmEngine, WasmLoadError};
+
+use crate::common::wasm_cache;
 
 /// WasmEngine::new() succeeds and produces a usable engine with component model enabled.
 #[test]
@@ -51,12 +61,8 @@ fn host_state_preserves_module_id() {
 /// Instantiation of a minimal component preserves module_id accessible via WasmInstance.
 #[test]
 fn instantiate_preserves_module_id() {
-    let engine = WasmEngine::new();
-    let wat = r#"(component)"#;
-    let wasm_bytes = wat::parse_str(wat).expect("WAT parse failed");
-    let component = engine
-        .compile_component(&wasm_bytes)
-        .expect("compile failed");
+    let engine = wasm_cache::shared_engine();
+    let component = wasm_cache::compiled_wat(r#"(component)"#);
     let state = HostState::new("instance-mod".to_string());
     let instance = component
         .instantiate(&engine, state)
@@ -68,13 +74,9 @@ fn instantiate_preserves_module_id() {
 /// hard-coded behind the default path.
 #[test]
 fn instantiate_with_explicit_linker_preserves_module_id() {
-    let engine = WasmEngine::new();
+    let engine = wasm_cache::shared_engine();
     let linker = engine.new_linker();
-    let wat = r#"(component)"#;
-    let wasm_bytes = wat::parse_str(wat).expect("WAT parse failed");
-    let component = engine
-        .compile_component(&wasm_bytes)
-        .expect("compile failed");
+    let component = wasm_cache::compiled_wat(r#"(component)"#);
     let state = HostState::new("linked-mod".to_string());
     let instance = component
         .instantiate_with_linker(&engine, state, &linker)
@@ -124,8 +126,9 @@ fn compile_empty_bytes_returns_error() {
 /// call_void_export invokes a real WASM function and returns Ok.
 #[test]
 fn call_void_export_invokes_real_function() {
-    let engine = WasmEngine::new();
-    let wat = r#"
+    let engine = wasm_cache::shared_engine();
+    let component = wasm_cache::compiled_wat(
+        r#"
         (component
             (core module $m
                 (func $f (export "run-infill"))
@@ -133,9 +136,8 @@ fn call_void_export_invokes_real_function() {
             (core instance $i (instantiate $m))
             (func (export "run-infill") (canon lift (core func $i "run-infill")))
         )
-    "#;
-    let bytes = wat::parse_str(wat).expect("WAT parse failed");
-    let component = engine.compile_component(&bytes).expect("compile failed");
+    "#,
+    );
     let state = HostState::new("call-test".to_string());
     let mut instance = component
         .instantiate(&engine, state)
@@ -152,10 +154,8 @@ fn call_void_export_invokes_real_function() {
 /// call_void_export on a missing export returns ExportNotFound.
 #[test]
 fn call_void_export_missing_export_returns_error() {
-    let engine = WasmEngine::new();
-    let wat = r#"(component)"#;
-    let bytes = wat::parse_str(wat).expect("WAT parse failed");
-    let component = engine.compile_component(&bytes).expect("compile failed");
+    let engine = wasm_cache::shared_engine();
+    let component = wasm_cache::compiled_wat(r#"(component)"#);
     let state = HostState::new("missing-export".to_string());
     let mut instance = component
         .instantiate(&engine, state)
@@ -176,11 +176,12 @@ fn call_void_export_missing_export_returns_error() {
     }
 }
 
-/// call_text_transform invokes a stringâ†’string WASM function.
+/// call_text_transform invokes a string→string WASM function.
 #[test]
 fn call_text_transform_invokes_real_function() {
-    let engine = WasmEngine::new();
-    let wat = r#"
+    let engine = wasm_cache::shared_engine();
+    let component = wasm_cache::compiled_wat(
+        r#"
         (component
             (core module $m
                 (memory (export "memory") 1)
@@ -200,9 +201,8 @@ fn call_text_transform_invokes_real_function() {
                 (canon lift (core func $i "run-text-postprocess") (memory $mem) (realloc (func $realloc)))
             )
         )
-    "#;
-    let bytes = wat::parse_str(wat).expect("WAT parse failed");
-    let component = engine.compile_component(&bytes).expect("compile failed");
+    "#,
+    );
     let state = HostState::new("text-test".to_string());
     let mut instance = component
         .instantiate(&engine, state)
