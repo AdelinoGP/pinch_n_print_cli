@@ -11,15 +11,15 @@ use std::sync::Arc;
 use slicer_core::slice_mesh_ex;
 use slicer_ir::{
     ActiveRegion, ConfigValue, ExPolygon, FacetClass, GlobalLayer, LayerPaintMap, LayerPlanIR,
-    MeshIR, ObjectLayerRef, ObjectSurfaceData, PaintRegionIR, PaintSemantic, PaintValue, Point2,
-    Polygon, ResolvedConfig, SemVer, SemanticRegion, SliceIR, SlicedRegion,
-    SurfaceClassificationIR,
+    ObjectLayerRef, ObjectSurfaceData, PaintRegionIR, PaintSemantic, PaintValue, Point2, Polygon,
+    ResolvedConfig, SemVer, SemanticRegion, SliceIR, SlicedRegion, SurfaceClassificationIR,
 };
-use slicer_runtime::model_loader::load_model;
 use slicer_runtime::{
     execute_paint_segmentation, execute_region_mapping, execute_slice_postprocess_paint_annotation,
     ExecutionPlan, SlicePostProcessPaintAnnotationRequest, SlicePostProcessPaintAnnotationResult,
 };
+
+use crate::common::model_cache::cached_load_model;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -110,7 +110,7 @@ fn fuzzy_paint_regions(layer_index: u32) -> PaintRegionIR {
 fn modifier_part_excluded_from_solid_mesh() {
     let path = benchy_4color_3mf();
     assert!(path.exists(), "fixture missing: {}", path.display());
-    let mesh_ir: MeshIR = load_model(&path).expect("load benchy_4color.3mf should succeed");
+    let mesh_ir = cached_load_model(&path);
 
     // The primary solid object must have exactly 225_240 triangles (Benchy hull
     // without the modifier cube merged in). Currently fails because the modifier
@@ -143,7 +143,7 @@ fn modifier_part_excluded_from_solid_mesh() {
 fn modifier_volume_carries_typed_metadata() {
     let path = benchy_4color_3mf();
     assert!(path.exists(), "fixture missing: {}", path.display());
-    let mesh_ir: MeshIR = load_model(&path).expect("load benchy_4color.3mf should succeed");
+    let mesh_ir = cached_load_model(&path);
 
     let solid_obj = &mesh_ir.objects[0];
 
@@ -181,7 +181,7 @@ fn modifier_volume_carries_typed_metadata() {
 fn modifier_world_aabb_matches_composition() {
     let path = benchy_4color_3mf();
     assert!(path.exists(), "fixture missing: {}", path.display());
-    let mesh_ir: MeshIR = load_model(&path).expect("load benchy_4color.3mf should succeed");
+    let mesh_ir = cached_load_model(&path);
 
     let solid_obj = &mesh_ir.objects[0];
 
@@ -227,7 +227,7 @@ fn modifier_projections_annotate_contour_points() {
     let path = benchy_4color_3mf();
     assert!(path.exists(), "fixture missing: {}", path.display());
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load benchy_4color.3mf");
+    let mesh_ir = cached_load_model(&path);
     let solid_obj = &mesh_ir.objects[0];
 
     assert!(!solid_obj.modifier_volumes.is_empty());
@@ -376,7 +376,7 @@ fn modifier_projection_z_band_restriction() {
     let path = benchy_4color_3mf();
     assert!(path.exists(), "fixture missing: {}", path.display());
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load benchy_4color.3mf");
+    let mesh_ir = cached_load_model(&path);
     let solid_obj = &mesh_ir.objects[0];
 
     assert_eq!(
@@ -494,7 +494,7 @@ fn empty_modifier_volume_stamps_no_regions() {
     let path = benchy_painted_3mf();
     assert!(path.exists(), "fixture missing: {}", path.display());
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load benchy_painted.3mf");
+    let mesh_ir = cached_load_model(&path);
 
     // Confirm: no modifier volumes on any object.
     let total_modifier_volumes: usize = mesh_ir
@@ -556,7 +556,7 @@ fn benchy_4color_full_pipeline_paint_diagnostic() {
     let path = benchy_4color_3mf();
     assert!(path.exists(), "fixture missing: {}", path.display());
 
-    let mesh = load_model(&path).expect("load benchy_4color.3mf should succeed");
+    let mesh = cached_load_model(&path);
     let object = &mesh.objects[0];
     let object_id = &object.id;
     let facet_count = object.mesh.indices.len() / 3;
@@ -623,7 +623,7 @@ fn benchy_4color_full_pipeline_paint_diagnostic() {
 
     // ---- Prepass execution: extract paint regions from 3MF strokes ----
     let paint_result =
-        execute_paint_segmentation(Arc::new(mesh.clone()), Arc::new(sc), Arc::clone(&lp), true)
+        execute_paint_segmentation(Arc::clone(&mesh), Arc::new(sc), Arc::clone(&lp), true)
             .expect("execute_paint_segmentation must succeed for benchy_4color");
 
     // CHECK 1: At least 4 distinct ToolIndex Material regions after prepass

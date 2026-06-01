@@ -1294,10 +1294,12 @@ fn benchy_gcode_firmware_retraction_emits_balanced_g10_g11() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let config_path = tmp.path().join("firmware_retract.json");
-    std::fs::write(&config_path, "{\n  \"retract_mode\": \"firmware\"\n}\n")
-        .expect("write firmware-retract config");
+    // Shared combined-feature config (also used by the multi-layer-shell,
+    // ironing, and propagation-N=4 tests). retract_mode=firmware is the
+    // load-bearing knob for this test; the other keys are inert here.
+    let config_path =
+        repo_root().join("resources/test_config/benchy_combined_feature_evidence.json");
+    assert_path_exists(&config_path, "benchy_combined_feature_evidence.json config");
 
     let cached = crate::common::slicer_cache::cached_run(
         &model,
@@ -1616,14 +1618,11 @@ fn benchy_multi_layer_top_bottom_evidence() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-    // Write a minimal JSON config that sets top/bottom shell layers to 4.
-    let config_path = tmp.path().join("multi_layer_shell.json");
-    std::fs::write(
-        &config_path,
-        "{\n  \"top_shell_layers\": 4,\n  \"bottom_shell_layers\": 4\n}\n",
-    )
-    .expect("write multi-layer shell config");
+    // Shared combined-feature config. top/bottom_shell_layers=4 is the
+    // load-bearing knob; the other keys are inert here.
+    let config_path =
+        repo_root().join("resources/test_config/benchy_combined_feature_evidence.json");
+    assert_path_exists(&config_path, "benchy_combined_feature_evidence.json config");
 
     let cached = crate::common::slicer_cache::cached_run(
         &model,
@@ -1713,12 +1712,15 @@ fn benchy_user_top_shell_layers_propagates_through_binary() {
     let bot1 = gcode1.matches(";TYPE:Bottom surface").count();
 
     // --- Run 2: N=4 ---
-    let config4_path = tmp.path().join("shell_n4.json");
-    std::fs::write(
+    // Shared combined-feature config (top/bottom_shell_layers=4). Reusing
+    // the shared file lets this slice cache-collide with the multi-layer-shell,
+    // firmware-retract, and ironing tests' single combined slice.
+    let config4_path =
+        repo_root().join("resources/test_config/benchy_combined_feature_evidence.json");
+    assert_path_exists(
         &config4_path,
-        "{\n  \"top_shell_layers\": 4,\n  \"bottom_shell_layers\": 4\n}\n",
-    )
-    .expect("write n4 config");
+        "benchy_combined_feature_evidence.json config",
+    );
     let cached4 = crate::common::slicer_cache::cached_run(
         &model,
         crate::common::slicer_cache::ModuleDirKind::CoreModules,
@@ -1934,15 +1936,10 @@ fn benchy_gcode_contains_ironing_evidence() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-
-    // Write a minimal JSON config that enables ironing with sensible defaults.
-    let config_path = tmp.path().join("ironing_enabled.json");
-    std::fs::write(
-        &config_path,
-        "{\n  \"ironing_enabled\": true,\n  \"ironing_flow\": 0.15,\n  \"ironing_speed\": 15.0,\n  \"ironing_spacing_mm\": 0.2\n}\n",
-    )
-    .expect("write ironing config");
+    // Shared combined-feature config (ironing knobs are load-bearing here).
+    let config_path =
+        repo_root().join("resources/test_config/benchy_combined_feature_evidence.json");
+    assert_path_exists(&config_path, "benchy_combined_feature_evidence.json config");
 
     let cached = crate::common::slicer_cache::cached_run(
         &model,
@@ -1998,15 +1995,10 @@ fn benchy_top_surface_precedes_ironing() {
     assert_path_exists(&model, "Benchy STL");
     assert_path_exists(&modules, "core-modules directory");
 
-    let tmp = tempfile::tempdir().expect("tempdir");
-
-    // Same config as benchy_gcode_contains_ironing_evidence.
-    let config_path = tmp.path().join("ironing_enabled.json");
-    std::fs::write(
-        &config_path,
-        "{\n  \"ironing_enabled\": true,\n  \"ironing_flow\": 0.15,\n  \"ironing_speed\": 15.0,\n  \"ironing_spacing_mm\": 0.2\n}\n",
-    )
-    .expect("write ironing config");
+    // Shared combined-feature config (ironing knobs are load-bearing here).
+    let config_path =
+        repo_root().join("resources/test_config/benchy_combined_feature_evidence.json");
+    assert_path_exists(&config_path, "benchy_combined_feature_evidence.json config");
 
     let cached = crate::common::slicer_cache::cached_run(
         &model,

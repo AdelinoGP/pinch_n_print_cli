@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 
+pub mod model_cache;
 pub mod seed;
 pub mod slicer_cache;
 pub mod wasm_cache;

@@ -1,0 +1,9 @@
+{
+  "top_shell_layers": 4,
+  "bottom_shell_layers": 4,
+  "ironing_enabled": true,
+  "ironing_flow": 0.15,
+  "ironing_speed": 15.0,
+  "ironing_spacing_mm": 0.2,
+  "retract_mode": "firmware"
+}

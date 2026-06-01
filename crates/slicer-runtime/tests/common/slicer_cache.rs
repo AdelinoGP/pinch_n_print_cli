@@ -96,28 +96,39 @@ pub fn repo_root() -> PathBuf {
 /// root. Tests must be run via `cargo test` (which builds binaries first) or
 /// after `cargo build --workspace`.
 pub fn pnp_cli_bin() -> PathBuf {
-    // When running under `cargo test`, the binary should already be built.
-    // We locate it by walking up to the workspace root's target/ dir.
     let exe_name = if cfg!(windows) {
         "pnp_cli.exe"
     } else {
         "pnp_cli"
     };
-    // Try debug first (cargo test default), then release.
-    let root = repo_root();
-    let debug = root.join("target").join("debug").join(exe_name);
-    if debug.exists() {
-        return debug;
+
+    // Prefer the binary whose profile matches our own test binary. Cargo lays
+    // out integration-test executables at `target/{debug,release}/deps/<bucket>-<hash>{.exe}`,
+    // so the test's profile dir is `current_exe().parent().parent()` and the
+    // sibling `pnp_cli{.exe}` is the right-profile binary.
+    if let Ok(test_exe) = std::env::current_exe() {
+        if let Some(profile_dir) = test_exe.parent().and_then(|p| p.parent()) {
+            let candidate = profile_dir.join(exe_name);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
     }
-    let release = root.join("target").join("release").join(exe_name);
-    if release.exists() {
-        return release;
+
+    // Fallback when profile inference failed (unusual): prefer release over
+    // debug — if both are present the user almost certainly wants the fast one.
+    let root = repo_root();
+    for profile in ["release", "debug"] {
+        let p = root.join("target").join(profile).join(exe_name);
+        if p.exists() {
+            return p;
+        }
     }
     panic!(
-        "pnp_cli binary not found at {} or {}. Run `cargo build --workspace` first.",
-        debug.display(),
-        release.display()
-    )
+        "pnp_cli binary not found under {}/target/{{debug,release}}/{exe_name}. \
+         Run `cargo build --workspace` (or `--release`) first.",
+        root.display(),
+    );
 }
 
 pub fn fixture_stl() -> PathBuf {

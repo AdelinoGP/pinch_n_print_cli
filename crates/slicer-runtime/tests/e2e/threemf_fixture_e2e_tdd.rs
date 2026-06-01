@@ -170,16 +170,19 @@ fn region_map_for_fixture(name: &str) -> Option<RegionMapIR> {
     if skip_if_missing(&path) {
         return None;
     }
-    let mesh_ir: MeshIR =
-        load_model(&path).unwrap_or_else(|e| panic!("load_model({name}) failed: {e:?}"));
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
     let sc = surface_classification_for_mesh(&mesh_ir);
     let lp = layer_plan_for_mesh(&mesh_ir, 15, 0.2);
     // Clone the objects slice before moving `mesh_ir` into an Arc; we need
     // it as `&[ObjectMesh]` for the Packet-68 modifier-volume stamping.
     let objects = mesh_ir.objects.clone();
-    let paint_result: Arc<PaintRegionIR> =
-        execute_paint_segmentation(Arc::new(mesh_ir), Arc::new(sc), Arc::new(lp.clone()), true)
-            .expect("execute_paint_segmentation must succeed");
+    let paint_result: Arc<PaintRegionIR> = execute_paint_segmentation(
+        Arc::clone(&mesh_ir),
+        Arc::new(sc),
+        Arc::new(lp.clone()),
+        true,
+    )
+    .expect("execute_paint_segmentation must succeed");
     let plan = empty_execution_plan();
     let empty_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
     let result = execute_region_mapping_with_cap(
@@ -205,7 +208,7 @@ fn negative_part_subtracts_via_full_pipeline() {
         return;
     }
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load cube_positive_n_negative.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
 
     let negative_mvs: Vec<&ModifierVolume> = mesh_ir
         .objects
@@ -300,7 +303,7 @@ fn negative_part_transform_baked_correctly() {
         return;
     }
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load cube_positive_n_negative.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
 
     let negative_mvs: Vec<&ModifierVolume> = mesh_ir
         .objects
@@ -393,7 +396,7 @@ fn modifier_volumes_populated_with_correct_metadata() {
         return;
     }
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load cube_positive_n_negative.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
 
     let neg_mvs: Vec<&ModifierVolume> = mesh_ir
         .objects
@@ -445,7 +448,7 @@ fn support_enforcer_emits_paint_regions_from_disk() {
         return;
     }
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load bridge_support_enforcers.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
 
     assert!(
         mesh_ir.objects.len() >= 2,
@@ -456,7 +459,7 @@ fn support_enforcer_emits_paint_regions_from_disk() {
     let lp = layer_plan_for_mesh(&mesh_ir, 15, 0.2);
 
     let paint_result: Arc<PaintRegionIR> =
-        execute_paint_segmentation(Arc::new(mesh_ir), Arc::new(sc), Arc::new(lp), true)
+        execute_paint_segmentation(Arc::clone(&mesh_ir), Arc::new(sc), Arc::new(lp), true)
             .expect("execute_paint_segmentation must succeed");
 
     let has_enforcer = paint_result.per_layer.values().any(|lm: &LayerPaintMap| {
@@ -482,7 +485,7 @@ fn support_blocker_emits_paint_regions_from_disk() {
         return;
     }
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load bridge_support_enforcers.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
 
     assert!(
         mesh_ir.objects.len() >= 2,
@@ -493,7 +496,7 @@ fn support_blocker_emits_paint_regions_from_disk() {
     let lp = layer_plan_for_mesh(&mesh_ir, 15, 0.2);
 
     let paint_result: Arc<PaintRegionIR> =
-        execute_paint_segmentation(Arc::new(mesh_ir), Arc::new(sc), Arc::new(lp), true)
+        execute_paint_segmentation(Arc::clone(&mesh_ir), Arc::new(sc), Arc::new(lp), true)
             .expect("execute_paint_segmentation must succeed");
 
     let has_blocker = paint_result.per_layer.values().any(|lm: &LayerPaintMap| {
@@ -519,7 +522,7 @@ fn modifier_part_benchy_regression() {
         return;
     }
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load benchy_4color.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
 
     assert!(
         !mesh_ir.objects.is_empty(),
@@ -547,7 +550,7 @@ fn modifier_part_benchy_regression() {
     let lp = layer_plan_for_mesh(&mesh_ir, 20, 0.2);
 
     let paint_result =
-        execute_paint_segmentation(Arc::new(mesh_ir), Arc::new(sc), Arc::new(lp), true);
+        execute_paint_segmentation(Arc::clone(&mesh_ir), Arc::new(sc), Arc::new(lp), true);
 
     assert!(
         paint_result.is_ok(),
@@ -566,7 +569,7 @@ fn model_without_negative_skips_subtract() {
         return;
     }
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load benchy_4color.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
 
     let has_negative = mesh_ir
         .objects
@@ -650,7 +653,7 @@ fn two_objects_produce_separate_modifier_volumes() {
         return;
     }
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load bridge_support_enforcers.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
 
     assert_eq!(
         mesh_ir.objects.len(),
@@ -700,7 +703,7 @@ fn duplicate_part_id_handled_gracefully() {
         return;
     }
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load bridge_support_enforcers.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
 
     // The fixture has part id=3 duplicated for each object (two support enforcer
     // instances on object 4, two blocker instances on object 5). The loader must
@@ -766,8 +769,7 @@ fn load_model_populates_object_config_data() {
         if skip_if_missing(&path) {
             continue;
         }
-        let mesh_ir: MeshIR =
-            load_model(&path).unwrap_or_else(|e| panic!("load_model({name}) failed: {e:?}"));
+        let mesh_ir = crate::common::model_cache::cached_load_model(&path);
         assert!(
             !mesh_ir.objects.is_empty(),
             "{name}: load_model must return at least one object"
@@ -789,7 +791,7 @@ fn load_model_populates_object_config_data() {
     if skip_if_missing(&bridge_path) {
         return;
     }
-    let bridge_mesh: MeshIR = load_model(&bridge_path).expect("load bridge");
+    let bridge_mesh = crate::common::model_cache::cached_load_model(&bridge_path);
     assert!(
         bridge_mesh.objects.len() >= 2,
         "bridge: expected at least 2 objects, found {}",
@@ -971,11 +973,11 @@ fn support_enforcer_paint_value_is_flag_not_tool_index() {
     if skip_if_missing(&path) {
         return;
     }
-    let mesh_ir: MeshIR = load_model(&path).expect("load bridge_support_enforcers.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
     let sc = surface_classification_for_mesh(&mesh_ir);
     let lp = layer_plan_for_mesh(&mesh_ir, 15, 0.2);
     let paint_result: Arc<PaintRegionIR> =
-        execute_paint_segmentation(Arc::new(mesh_ir), Arc::new(sc), Arc::new(lp), true)
+        execute_paint_segmentation(Arc::clone(&mesh_ir), Arc::new(sc), Arc::new(lp), true)
             .expect("execute_paint_segmentation must succeed");
 
     let mut saw_enforcer = false;
@@ -1166,7 +1168,7 @@ fn config_delta_extruder_stamped_into_extensions() {
     if skip_if_missing(&path) {
         return;
     }
-    let mesh_ir: MeshIR = load_model(&path).expect("load cube_positive_n_negative.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
 
     // Find a parent object that hosts a non-enforcer/non-blocker modifier
     // carrying extruder=Int(0). Per the fixture's structure (validated by the
@@ -1279,7 +1281,7 @@ fn negative_part_extruder_does_not_affect_subtract() {
         return;
     }
 
-    let mesh_ir: MeshIR = load_model(&path).expect("load cube_positive_n_negative.3mf");
+    let mesh_ir = crate::common::model_cache::cached_load_model(&path);
 
     let negative_mvs: Vec<&ModifierVolume> = mesh_ir
         .objects

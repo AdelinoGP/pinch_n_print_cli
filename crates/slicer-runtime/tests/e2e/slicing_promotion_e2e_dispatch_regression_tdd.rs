@@ -19,9 +19,43 @@
 #![allow(missing_docs)]
 
 use std::fs::File;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use crate::common::slicer_cache::{cached_run, expect_outcome, ModuleDirKind};
+
+/// Materialize the staircase STL + ironing config ONCE per test process and
+/// reuse the same two paths across the two single-slice tests below.
+/// `cached_run` keys on canonical model path + config-content hash, so sharing
+/// the path collapses three otherwise-distinct cache slots into one.
+///
+/// The determinism test below explicitly writes its own pair of tempdirs to
+/// force two distinct cache slots; it does NOT use this helper.
+static SHARED_STAIRCASE: OnceLock<(tempfile::TempDir, PathBuf, PathBuf)> = OnceLock::new();
+
+fn shared_staircase_paths() -> (&'static Path, &'static Path) {
+    let entry = SHARED_STAIRCASE.get_or_init(|| {
+        let dir = tempfile::tempdir().expect("staircase tempdir");
+        let stl = dir.path().join("staircase.stl");
+        let cfg = dir.path().join("staircase_ironing.json");
+        write_staircase_stl(&stl);
+        std::fs::write(
+            &cfg,
+            "{\n  \
+                \"ironing_enabled\": true,\n  \
+                \"ironing_spacing_mm\": 0.2,\n  \
+                \"ironing_speed\": 15.0,\n  \
+                \"ironing_flow\": 0.15,\n  \
+                \"top_shell_layers\": 2,\n  \
+                \"bottom_shell_layers\": 2,\n  \
+                \"layer_height\": 0.2\n\
+            }\n",
+        )
+        .expect("write shared staircase ironing config");
+        (dir, stl, cfg)
+    });
+    (entry.1.as_path(), entry.2.as_path())
+}
 
 // ============================================================================
 // Staircase STL fixture
@@ -185,11 +219,9 @@ fn parse_xy_g1_lines(gcode: &str) -> Vec<(f32, f32)> {
 
 #[test]
 fn staircase_gcode_contains_ironing_block() {
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let model = stl_path(&tmp);
-    let config = config_path(&tmp);
+    let (model, config) = shared_staircase_paths();
 
-    let cached = cached_run(&model, ModuleDirKind::CoreModules, Some(&config));
+    let cached = cached_run(model, ModuleDirKind::CoreModules, Some(config));
     let outcome = expect_outcome(&cached);
 
     assert!(
@@ -222,11 +254,9 @@ fn staircase_ironing_g1_lines_within_top_fill_extents() {
     // footprint) — that's the loosest correct bound. A stricter bound
     // would require knowing which layer/tier the ironing path belongs to,
     // which the parser doesn't currently extract.
-    let tmp = tempfile::tempdir().expect("tempdir");
-    let model = stl_path(&tmp);
-    let config = config_path(&tmp);
+    let (model, config) = shared_staircase_paths();
 
-    let cached = cached_run(&model, ModuleDirKind::CoreModules, Some(&config));
+    let cached = cached_run(model, ModuleDirKind::CoreModules, Some(config));
     let outcome = expect_outcome(&cached);
     assert!(outcome.success, "pnp_cli must succeed");
 
