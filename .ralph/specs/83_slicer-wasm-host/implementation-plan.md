@@ -34,35 +34,94 @@
 
 ---
 
-## Step 0.5 — Prework: relocate stage I/O types to `slicer-ir` + investigate `LoadedModule`
+## Step 0.5 — Prework: stage I/O three-group split + narrow runner error + instance_pool narrowing
 
-**Objective.** Resolve the AC-N3 vs trait-signature contradiction (see design.md "Borrow-struct pattern for trait inputs") by moving the eight stage I/O types out of `slicer-runtime` and into `slicer-ir` so the runner traits — which move to `slicer-wasm-host` in Step 4 — can compile inside `slicer-wasm-host` without a back-edge dep on `slicer-runtime`. Investigate `slicer-runtime::manifest::LoadedModule` to decide whether it moves whole-cloth or splits Static/Live.
+**Objective.** Resolve the AC-N3 vs trait-signature contradiction (see design.md "Borrow-struct pattern for trait inputs" and "Narrow runner errors") via four sub-steps. The post-survey reality is that the 8 stage I/O types do not all belong in the same crate: 7 are clean for `slicer-ir`, 1 (`PrepassStageOutput`) needs `slicer-core` because it carries a `PaintRegionRTreeIndex` payload, and `PrepassExecutionError` stays in `slicer-runtime` with a narrow runner-side error (`PrepassRunnerError`) introduced in `slicer-ir` per the P86 `GCodeEmitError → PostpassError` idiom. `LoadedModule` is left in place; `instance_pool.rs`'s helper is narrowed to take primitives instead of `&LoadedModule`.
 
-**Precondition.** Step 0 green. (In a session resuming from a partially-implemented packet, Steps 2/3 may already be done — that does not invalidate this step; it can still run before Step 4.)
+**Precondition.** Step 0 green. (Steps 2/3 may already be done in a resumed session; that does not invalidate this step; it must complete before Step 4.)
 
-**Postcondition.** All eight stage I/O types defined in `slicer-ir`. Transitional `pub use slicer_ir::{...}` re-exports added in `crates/slicer-runtime/src/lib.rs` so existing import sites compile unchanged. `cargo build --workspace` green. `LoadedModule` decision recorded in the implementation log: either (a) move-whole-to-wasm-host (deferred to Step 4), or (b) Static/Live split with `LoadedModuleStatic` + `LoadedModuleLive` and transitional `pub type LoadedModule = LoadedModuleStatic;` alias.
+**Postcondition.** Workspace builds green. The runner traits (still in `slicer-runtime` for now) can reference all return types via `slicer-ir` / `slicer-core` paths only — Step 4 then lifts the traits to `slicer-wasm-host` without a back-edge dep on `slicer-runtime`.
 
-**Files allowed to read.**
-- `crates/slicer-runtime/src/{layer_executor,prepass,postpass,layer_finalization}.rs` — grep-only, locate the 8 stage-I/O type defs.
-- `crates/slicer-runtime/src/manifest.rs` — full file (≤ 500 LOC OK; load to inspect `LoadedModule`).
-- `crates/slicer-ir/src/lib.rs` — find appropriate insertion module for the new types.
+### Step 0.5a — Group A → `slicer-ir`
 
-**Files allowed to edit (≤ 6).**
-1. `crates/slicer-ir/src/stage_io.rs` — CREATE (or distribute the 8 types across existing IR modules — implementer's call). The 8 types: `LayerStageOutput`, `LayerStageError`, `PrepassStageOutput`, `PrepassExecutionError`, `FinalizationOutput`, `FinalizationError`, `PostpassOutput`, `PostpassError`.
+**Types (7).** `LayerStageOutput`, `FinalizationOutput`, `FinalizationError`, `PostpassOutput`, `PostpassError`, `LayerStageError`, `LayerArenaError` (the last one carved from `blackboard.rs:597` — ~20 LOC, isolated; moves with `LayerStageError` because the latter carries it in its `ArenaCommit` variant).
+
+**Files allowed to read.** `crates/slicer-runtime/src/{layer_executor,prepass,postpass,layer_finalization,blackboard}.rs` — grep + ±40-line windows only. `crates/slicer-ir/src/lib.rs` (full file ≤ 200 LOC OK).
+
+**Files allowed to edit.**
+1. `crates/slicer-ir/src/stage_io.rs` — CREATE; receive the 7 types.
 2. `crates/slicer-ir/src/lib.rs` — `pub mod stage_io; pub use stage_io::*;`.
-3. `crates/slicer-runtime/src/{layer_executor,prepass,postpass,layer_finalization}.rs` — DELETE the local type defs; replace with `use slicer_ir::{...};`.
-4. `crates/slicer-runtime/src/lib.rs` — add `pub use slicer_ir::{LayerStageOutput, LayerStageError, ...};` transitional re-exports so external sites (tests, benches, downstream callers) compile unchanged.
+3. `crates/slicer-runtime/src/{layer_executor,layer_finalization,postpass}.rs` — DELETE the local type defs; replace with `use slicer_ir::{…};`.
+4. `crates/slicer-runtime/src/blackboard.rs` — DELETE `pub enum LayerArenaError` declaration; replace with `use slicer_ir::LayerArenaError;` at the top. **Body of blackboard.rs otherwise untouched.**
+5. `crates/slicer-runtime/src/lib.rs` — add transitional `pub use slicer_ir::{LayerStageOutput, LayerStageError, LayerArenaError, FinalizationOutput, FinalizationError, PostpassOutput, PostpassError};` re-exports.
 
-**Expected sub-agent dispatches.**
-- Dispatch: enumerate the 8 type defs in the four executor files; report file:line and full field/variant lists (SNIPPETS).
-- Dispatch: read `crates/slicer-runtime/src/manifest.rs::LoadedModule` definition; report fields, derived traits, and any direct wasmtime references (SNIPPET ≤ 60 lines).
-- Dispatch: execute the moves + re-exports. Return FACT pass/fail on `cargo build --workspace` and `cargo build -p slicer-ir`.
+**Falsifying check.** If `LayerArenaError`'s fields reference any other slicer-runtime-internal type beyond what's already classified clean, stop and surface — apply the P86 narrow-split pattern.
+
+**Gate.** `cargo build -p slicer-ir` green. `cargo build --workspace` green.
+
+### Step 0.5b — Group B → `slicer-core`
+
+**Types (5).** `PrepassStageOutput` and the 4-type `MeshAnalysisAuxiliary` cluster (`MeshAnalysisAuxiliary`, `FacetAnnotationRecord`, `FacetClassRecord`, `SurfaceGroupRecord` — currently in `crates/slicer-runtime/src/prepass.rs:64–112`).
+
+**Rationale.** `PrepassStageOutput`'s `PaintRegions` variant carries `PaintRegionRTreeIndex` which already lives in `slicer-core`. Putting `PrepassStageOutput` in `slicer-ir` would force `slicer-ir → slicer-core`, which contaminates IR with spatial-index machinery. `slicer-core` already deps on `slicer-ir`, so the move into `slicer-core` is the natural place. `slicer-wasm-host` then takes `slicer-core` as a path dep (`slicer-core` has no `wasmtime` — no upward back-edge).
+
+**Files allowed to read.** `crates/slicer-runtime/src/prepass.rs:1..115` only. `crates/slicer-core/src/lib.rs` (≤ 200 LOC OK).
+
+**Sanity check before moving.** Grep `crates/slicer-runtime/src/prepass.rs:64..115` for any `use crate::` or non-`slicer_ir`/`slicer_core`/`std` references — confirm the 4 MeshAnalysisAuxiliary types have no further chains. If any of them transitively pulls in a runtime-internal type, **stop and surface** (apply narrow-split treatment).
+
+**Files allowed to edit.**
+1. `crates/slicer-core/src/stage_io.rs` (or co-locate with `paint_region.rs` — implementer's call) — CREATE; receive the 5 types.
+2. `crates/slicer-core/src/lib.rs` — declare and re-export.
+3. `crates/slicer-runtime/src/prepass.rs` — DELETE the 5 type defs; replace with `use slicer_core::{…};`.
+4. `crates/slicer-runtime/src/lib.rs` — add `pub use slicer_core::{PrepassStageOutput, MeshAnalysisAuxiliary, FacetAnnotationRecord, FacetClassRecord, SurfaceGroupRecord};`.
+5. `crates/slicer-wasm-host/Cargo.toml` — add `slicer-core = { path = "../slicer-core" }`.
+
+**Gate.** `cargo build -p slicer-core` green. `cargo build --workspace` green.
+
+### Step 0.5c — `PrepassRunnerError` narrow split (P86 idiom)
+
+**Pattern.** Mirror P86's `GCodeEmitError → PostpassError`. Define a 2-variant `PrepassRunnerError` in `slicer-ir/src/stage_io.rs` and a `From<PrepassRunnerError> for PrepassExecutionError` impl in `slicer-runtime/src/prepass.rs`. The orchestrator's `?` at the call site handles the lift implicitly. `PrepassExecutionError` stays in `slicer-runtime/src/prepass.rs` intact with all 8 variants.
+
+**Files allowed to edit.**
+1. `crates/slicer-ir/src/stage_io.rs` — add:
+   ```rust
+   #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+   pub enum PrepassRunnerError {
+       #[error("fatal module error in {stage_id}/{module_id}: {message}")]
+       FatalModule { stage_id: StageId, module_id: ModuleId, message: String },
+       #[error("blackboard error in {stage_id}/{module_id}: {message}")]
+       Blackboard { stage_id: StageId, module_id: ModuleId, message: String },
+   }
+   ```
+   (Field payloads must NOT reference `BlackboardError` — they take `String` instead since `BlackboardError` stays in slicer-runtime.)
+2. `crates/slicer-runtime/src/prepass.rs` — add `impl From<PrepassRunnerError> for PrepassExecutionError { … }` that maps the 2 narrow variants onto the matching broad variants. Inside the `Blackboard` mapping, the broad variant's `source: BlackboardError` field gets a synthesized `BlackboardError::Other(String)` (or whatever the matching `String`-carrying variant is) from the narrow error's message — implementer must inspect `BlackboardError`'s variants and pick the right one. If no string-carrying variant exists in `BlackboardError`, surface and ask before fabricating one.
+
+**Gate.** `cargo build -p slicer-runtime` green. (Verifies the `From` impl compiles against the real `PrepassExecutionError` shape.)
+
+### Step 0.5d — Narrow `instance_pool.rs` signature
+
+**Refactor.** Replace `module: &LoadedModule` parameter in `instance_pool.rs`'s helper(s) with `wasm_path: &Path, placeholder_wasm: bool`. Callers in `slicer-runtime` extract the two fields from `LoadedModule` before invoking. `LoadedModule` stays in `slicer-runtime/src/manifest.rs` unchanged.
+
+**Files allowed to read.** `crates/slicer-runtime/src/instance_pool.rs` (full ≤ 200 LOC OK). Call sites surfaced by grep `build_wasm_instance_pool` (Step 1 dispatch #1 already listed `instrumentation.rs:774`, `path_ordering_tdd.rs:13`, `layer_collection_builder_tdd.rs:23`, `dag_validation_tdd.rs:274`, `finalization_*_tdd.rs:24` etc.).
+
+**Files allowed to edit.**
+1. `crates/slicer-runtime/src/instance_pool.rs` — narrow the helper signature(s). Delete `use crate::LoadedModule;`.
+2. All call sites — update to extract `wasm_path` + `placeholder_wasm` from `LoadedModule` before calling.
+
+**Gate.** `cargo build --workspace` green. After this step, `cargo tree -p slicer-wasm-host` (which doesn't exist yet on the wasm-host side, but the import surface inspection) should show `instance_pool.rs` has zero remaining runtime-internal dependencies.
+
+### Combined Step 0.5 verification
+
+- `cargo build --workspace` green.
+- `grep -rE 'pub (enum|struct) (LayerStageOutput|LayerStageError|LayerArenaError|FinalizationOutput|FinalizationError|PostpassOutput|PostpassError)' crates/slicer-ir/` returns 7 hits.
+- `grep -rE 'pub (enum|struct) (PrepassStageOutput|MeshAnalysisAuxiliary)' crates/slicer-core/` returns ≥ 2 hits (PrepassStageOutput + cluster types).
+- `grep -qE 'pub enum PrepassExecutionError' crates/slicer-runtime/src/prepass.rs` — still present (unchanged).
+- `grep -qE 'pub enum PrepassRunnerError' crates/slicer-ir/` — present.
+- `grep -qE 'impl From<PrepassRunnerError> for PrepassExecutionError' crates/slicer-runtime/src/prepass.rs` — present.
 
 **Context cost: S.**
 
-**Narrow verification.** `cargo build -p slicer-ir` green. `cargo build --workspace` green. `grep -rE 'pub (enum|struct) (LayerStageOutput|LayerStageError|PrepassStageOutput|PrepassExecutionError|FinalizationOutput|FinalizationError|PostpassOutput|PostpassError)' crates/slicer-ir/` returns 8 hits. `grep -rE 'pub (enum|struct) (LayerStageOutput|LayerStageError|PrepassStageOutput|PrepassExecutionError|FinalizationOutput|FinalizationError|PostpassOutput|PostpassError)' crates/slicer-runtime/src/` returns 0 hits.
-
-**Falsifying check / exit condition.** If any of the 8 types has a field whose type is `slicer-runtime`-internal (e.g., something that itself needs to move), surface the chain and stop — moving the field's type may or may not be in scope, and the planner must decide before proceeding. If the 8 types only reference `std`, `slicer-ir`-resident types, `slicer-sdk` types, or primitive Rust types, the move is clean.
+**Falsifying check / exit condition (umbrella).** If any sub-step surfaces a third-order chain (e.g., a `MeshAnalysisAuxiliary` type transitively references a runtime aggregate), stop and surface — handle via the same narrow-split + `From` impl pattern at the orchestrator boundary.
 
 ---
 
