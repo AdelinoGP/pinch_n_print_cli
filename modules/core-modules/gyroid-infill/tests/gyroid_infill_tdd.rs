@@ -2,46 +2,30 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::{ConfigValue, ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon};
+use slicer_ir::{ConfigView, ExtrusionRole};
 use slicer_sdk::builders::InfillOutputBuilder;
+use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::SliceRegionView;
 
 use gyroid_infill::GyroidInfill;
 
 fn make_config(density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert("infill_density".to_string(), ConfigValue::Float(density));
-    fields.insert("infill_angle".to_string(), ConfigValue::Float(angle));
-    fields.insert("infill_speed".to_string(), ConfigValue::Float(speed));
-    fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    ConfigView::from_map(fields)
+    ConfigViewBuilder::new()
+        .float("infill_density", density)
+        .float("infill_angle", angle)
+        .float("infill_speed", speed)
+        .float("line_width", line_width)
+        .build()
 }
 
 fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
-    let half = size_mm / 2.0;
-    let square = ExPolygon {
-        contour: Polygon {
-            points: vec![
-                Point2::from_mm(-half, -half),
-                Point2::from_mm(half, -half),
-                Point2::from_mm(half, half),
-                Point2::from_mm(-half, half),
-            ],
-        },
-        holes: vec![],
-    };
-    {
-        let mut tmp = SliceRegionView::default();
-        tmp.set_object_id("obj1".to_string());
-        tmp.set_region_id(1);
-        tmp.set_polygons(vec![square.clone()]);
-        tmp.set_infill_areas(vec![square]); // infill_areas
-        tmp.set_effective_layer_height(0.2);
-        tmp.set_z(z);
-        tmp.set_has_nonplanar(false);
-        tmp
-    }
+    SliceRegionViewBuilder::new()
+        .object_id("obj1")
+        .region_id(1)
+        .z(z)
+        .add_polygon(square_polygon(0.0, 0.0, size_mm))
+        .build()
 }
 
 /// Test 1: Default config values when no fields provided.

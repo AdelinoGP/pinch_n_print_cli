@@ -13,6 +13,7 @@ use std::collections::HashMap;
 
 use slicer_ir::{ConfigValue, ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon};
 use slicer_sdk::builders::InfillOutputBuilder;
+use slicer_sdk::test_prelude::square_polygon;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::SliceRegionView;
 use top_surface_ironing::TopSurfaceIroning;
@@ -40,22 +41,6 @@ fn default_config() -> ConfigView {
             ConfigValue::String("rectilinear".to_string()),
         ),
     ])
-}
-
-/// 10mm × 10mm axis-aligned square centred at (0, 0).
-fn square_polygon(side_mm: f32) -> ExPolygon {
-    let half = side_mm / 2.0;
-    ExPolygon {
-        contour: Polygon {
-            points: vec![
-                Point2::from_mm(-half, -half),
-                Point2::from_mm(half, -half),
-                Point2::from_mm(half, half),
-                Point2::from_mm(-half, half),
-            ],
-        },
-        holes: vec![],
-    }
 }
 
 /// U-shaped polygon: 10×10 square with a 4×6 rectangular notch cut into the
@@ -128,7 +113,7 @@ fn region_with(
 #[test]
 fn topmost_layer_with_top_solid_fill_emits_ironing_paths() {
     let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
-    let region = region_with(Some(0), None, vec![square_polygon(10.0)]);
+    let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let mut output = InfillOutputBuilder::new();
 
     module
@@ -164,7 +149,7 @@ fn interior_top_shell_layers_emit_no_ironing() {
     // top_shell_index = Some(1) means the region is 1 layer below the exposed
     // top — only Some(0) (the actual topmost exposed surface) gets ironed.
     let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
-    let region = region_with(Some(1), None, vec![square_polygon(10.0)]);
+    let region = region_with(Some(1), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let mut output = InfillOutputBuilder::new();
 
     module
@@ -190,7 +175,7 @@ fn disabled_config_emits_no_ironing() {
         ),
     ]);
     let module = TopSurfaceIroning::on_print_start(&cfg).unwrap();
-    let region = region_with(Some(0), None, vec![square_polygon(10.0)]);
+    let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let mut output = InfillOutputBuilder::new();
 
     module.run_infill(0, &[region], &mut output, &cfg).unwrap();
@@ -204,7 +189,7 @@ fn spacing_governs_stroke_count_lower_bound() {
     // 2 endpoints). Loose lower bound — clip-to-polygon trimming reduces the
     // exact count but the square is convex so every row should clip cleanly.
     let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
-    let region = region_with(Some(0), None, vec![square_polygon(10.0)]);
+    let region = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let mut output = InfillOutputBuilder::new();
 
     module
@@ -370,7 +355,7 @@ fn cross_region_isolation_does_not_emit_for_uncovered_regions() {
     // Two regions on the same layer; only region A has top_shell_index=Some(0).
     // Region B (top_shell_index=None) must not contribute any ironing path.
     let module = TopSurfaceIroning::on_print_start(&default_config()).unwrap();
-    let region_a = region_with(Some(0), None, vec![square_polygon(10.0)]);
+    let region_a = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     let region_b = region_with(None, None, vec![]);
     let mut output = InfillOutputBuilder::new();
 
@@ -382,7 +367,7 @@ fn cross_region_isolation_does_not_emit_for_uncovered_regions() {
     // match the single-region case (smoke check that B did not contribute).
     let total_points: usize = output.ironing_paths().iter().map(|p| p.points.len()).sum();
     let mut a_only_output = InfillOutputBuilder::new();
-    let region_a_only = region_with(Some(0), None, vec![square_polygon(10.0)]);
+    let region_a_only = region_with(Some(0), None, vec![square_polygon(0.0, 0.0, 10.0)]);
     module
         .run_infill(0, &[region_a_only], &mut a_only_output, &default_config())
         .unwrap();

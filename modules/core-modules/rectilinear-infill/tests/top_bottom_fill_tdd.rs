@@ -20,11 +20,21 @@ fn make_square_expolygon() -> ExPolygon {
     square_polygon(5.0, 5.0, 10.0)
 }
 
-#[rustfmt::skip]
-#[allow(clippy::suspicious_else_formatting)]
 fn make_test_region(is_top: bool, is_bottom: bool, is_bridge: bool) -> SliceRegionView {
-    let s = square_polygon(5.0, 5.0, 10.0); let mut r = SliceRegionViewBuilder::new().object_id("test_object").region_id(0).add_infill_area(s.clone()).effective_layer_height(0.2).z(1.0).has_nonplanar(false).build();
-    if is_top { r.set_top_shell_index(Some(0)); r.set_top_solid_fill(vec![s.clone()]); }; if is_bottom { r.set_bottom_shell_index(Some(0)); r.set_bottom_solid_fill(vec![s]); }; r.set_is_bridge(is_bridge); r
+    let s = square_polygon(5.0, 5.0, 10.0);
+    SliceRegionViewBuilder::new()
+        .object_id("test_object")
+        .region_id(0)
+        .add_infill_area(s.clone())
+        .effective_layer_height(0.2)
+        .z(1.0)
+        .has_nonplanar(false)
+        .top_shell_index(if is_top { Some(0) } else { None })
+        .top_solid_fill(if is_top { vec![s.clone()] } else { vec![] })
+        .bottom_shell_index(if is_bottom { Some(0) } else { None })
+        .bottom_solid_fill(if is_bottom { vec![s] } else { vec![] })
+        .is_bridge(is_bridge)
+        .build()
 }
 
 /// Helper: returns true if any path in `paths` has the given role AND > 1 point.
@@ -104,10 +114,18 @@ fn bottom_surface_region_emits_bottom_solid_infill() {
 #[test]
 fn bridge_surface_region_emits_bridge_infill_role() {
     let module = RectilinearInfill::on_print_start(&ConfigView::new()).unwrap();
-    let mut region = make_test_region(false, false, true);
     // rev1 contract: is_bridge requires non-empty bridge_areas to emit BridgeInfill.
-    region.set_bridge_areas(vec![make_square_expolygon()]);
-    region.set_bridge_orientation_deg(0.0);
+    let region = SliceRegionViewBuilder::new()
+        .object_id("test_object")
+        .region_id(0)
+        .add_infill_area(make_square_expolygon())
+        .effective_layer_height(0.2)
+        .z(1.0)
+        .has_nonplanar(false)
+        .is_bridge(true)
+        .bridge_areas(vec![make_square_expolygon()])
+        .bridge_orientation_deg(0.0)
+        .build();
     let mut output = InfillOutputBuilder::new();
 
     module

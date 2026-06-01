@@ -10,9 +10,7 @@
 use std::collections::HashMap;
 
 use arachne_perimeters::ArachnePerimeters;
-use slicer_ir::{
-    mm_to_units, ConfigView, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon, WallBoundaryType,
-};
+use slicer_ir::{ConfigView, ExPolygon, ExtrusionRole, LoopType, Polygon, WallBoundaryType};
 use slicer_sdk::builders::PerimeterOutputBuilder;
 use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
@@ -23,11 +21,10 @@ fn make_square(side_mm: f32) -> ExPolygon {
     square_polygon(0.0, 0.0, side_mm)
 }
 
-#[rustfmt::skip]
 /// Create a narrow wedge/rectangle thinner than 2*line_width (0.8mm).
 /// This 0.6mm wide rectangle should result in fewer walls than wall_count.
 fn make_narrow_rect(width_mm: f32, height_mm: f32) -> ExPolygon {
-    ExPolygon { contour: Polygon { points: vec![Point2 { x: mm_to_units(-width_mm / 2.0), y: mm_to_units(-height_mm / 2.0) }, Point2 { x: mm_to_units(width_mm / 2.0), y: mm_to_units(-height_mm / 2.0) }, Point2 { x: mm_to_units(width_mm / 2.0), y: mm_to_units(height_mm / 2.0) }, Point2 { x: mm_to_units(-width_mm / 2.0), y: mm_to_units(height_mm / 2.0) }] }, holes: Vec::new() }
+    rect_polygon(0.0, 0.0, width_mm, height_mm)
 }
 
 /// Create a config with specified wall_count and line_width.

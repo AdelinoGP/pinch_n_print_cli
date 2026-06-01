@@ -5,10 +5,11 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType, Point2,
-    Point3WithWidth, Polygon, WallBoundaryType, WallLoop, WidthProfile,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LoopType, Point3WithWidth,
+    WallBoundaryType, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::InfillOutputBuilder;
+use slicer_sdk::test_prelude::square_polygon;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 use support_surface_ironing::SupportSurfaceIroning;
@@ -29,24 +30,6 @@ fn config_with(entries: Vec<(&str, ConfigValue)>) -> ConfigView {
 /// Create an enabled config with optional overrides.
 fn enabled_config() -> ConfigView {
     config_with(vec![("ironing_enabled", ConfigValue::Bool(true))])
-}
-
-/// Create a 10mm square ExPolygon in scaled integer coordinates.
-fn square_10mm() -> ExPolygon {
-    ExPolygon {
-        contour: Polygon {
-            points: vec![
-                Point2 { x: 0, y: 0 },
-                Point2 { x: 100_000, y: 0 },
-                Point2 {
-                    x: 100_000,
-                    y: 100_000,
-                },
-                Point2 { x: 0, y: 100_000 },
-            ],
-        },
-        holes: vec![],
-    }
 }
 
 /// Create a WallLoop whose path points are at the given z height.
@@ -91,7 +74,7 @@ fn region_with_square_at_z(z: f32) -> PerimeterRegionView {
         tmp.set_object_id("obj-0".to_string());
         tmp.set_region_id(0);
         tmp.set_wall_loops(vec![wall_loop_at_z(z)]);
-        tmp.set_infill_areas(vec![square_10mm()]);
+        tmp.set_infill_areas(vec![square_polygon(5.0, 5.0, 10.0)]);
         tmp.set_seam_candidates(vec![]);
         tmp.set_resolved_seam(None);
         tmp

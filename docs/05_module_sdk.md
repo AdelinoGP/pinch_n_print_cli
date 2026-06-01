@@ -581,6 +581,18 @@ assert_no_path_intersections(&sparse);
 
 The assertion helpers, capture types, and other test seams are all owned by `slicer_sdk::test_support::*` and surface through `slicer_sdk::test_prelude::*`; nothing under those paths is reachable in a production guest WASM build, because the `test` feature is off by default and `cargo xtask build-guests` never enables it.
 
+### Extended fixture surfaces (packet 79)
+
+Packet 79 added a batch of additive fixture surfaces — all re-exported through `slicer_sdk::test_prelude` and routed through `slicer_sdk::test_support::fixtures` — covering shapes, tool-change events, seam metadata, layer-collection assembly, and top/bottom/bridge region setters:
+
+- `rect_polygon(cx, cy, w, h)` — freestanding fixture producing an axis-aligned rectangular `ExPolygon` (complements `square_polygon` when width != height).
+- `print_entity(...)` — freestanding fixture producing a `PrintEntity` for plan-IR / scheduler tests.
+- `tool_change(...)` — freestanding fixture producing a tool-change event, used together with `LayerCollectionFixtureBuilder` to assemble `LayerCollectionIR` inputs for skirt-brim and wipe-tower-style module tests that need multi-layer / multi-extruder context.
+- `seam_candidate(...)` — freestanding fixture producing a seam candidate record for seam-placement module tests.
+- `LayerCollectionFixtureBuilder` — struct that assembles `LayerCollectionIR` from per-layer pieces (and the `tool_change` fixture above), enabling skirt-brim / wipe-tower-style tests that exercise cross-layer behaviour without spinning up a real pipeline.
+- `PerimeterRegionViewBuilder::add_outer_wall_with_flags(...)` — method overload of `add_outer_wall` that lets tests stamp seam/overhang/bridge flag bits onto the outer-wall path being added.
+- `SliceRegionViewBuilder` gains seven new top/bottom/bridge setters — `top_shell_index`, `top_solid_fill`, `bottom_shell_index`, `bottom_solid_fill`, `is_bridge`, `bridge_areas`, and `bridge_orientation_deg` — covering the shell-classification and bridge-detection fields that top/bottom infill and bridging modules consume.
+
 ---
 
 ## `slicer-macros` Crate

@@ -6,10 +6,11 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LoopType, Point3WithWidth,
-    WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
+    ConfigView, ExtrusionPath3D, ExtrusionRole, LoopType, Point3WithWidth, WallBoundaryType,
+    WallFeatureFlags, WallLoop, WidthProfile,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
+use slicer_sdk::test_prelude::ConfigViewBuilder;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
@@ -147,14 +148,12 @@ fn region_with_walls(walls: Vec<WallLoop>) -> PerimeterRegionView {
 
 /// Helper: default config (no overrides).
 fn default_config() -> ConfigView {
-    ConfigView::from_map(HashMap::new())
+    ConfigViewBuilder::new().build()
 }
 
 /// Helper: config with apply-to-all = true.
 fn apply_to_all_config() -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert("apply_to_all".to_string(), ConfigValue::Bool(true));
-    ConfigView::from_map(fields)
+    ConfigViewBuilder::new().bool("apply_to_all", true).build()
 }
 
 // ============================================================================
@@ -325,11 +324,11 @@ fn on_print_start_defaults() {
 
 #[test]
 fn on_print_start_custom_config() {
-    let mut fields = HashMap::new();
-    fields.insert("thickness".to_string(), ConfigValue::Float(1.0));
-    fields.insert("point_distance".to_string(), ConfigValue::Float(0.5));
-    fields.insert("apply_to_all".to_string(), ConfigValue::Bool(true));
-    let config = ConfigView::from_map(fields);
+    let config = ConfigViewBuilder::new()
+        .float("thickness", 1.0)
+        .float("point_distance", 0.5)
+        .bool("apply_to_all", true)
+        .build();
     let module = FuzzySkinModule::on_print_start(&config);
     assert!(module.is_ok());
 }

@@ -18,47 +18,31 @@
 
 #![allow(missing_docs)]
 
-use slicer_ir::{
-    ExtrusionRole, LoopType, Point3WithWidth, SeamPosition, WallBoundaryType, WallLoop,
-    WidthProfile,
-};
+use slicer_ir::{ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SeamPosition, WallLoop};
 use slicer_sdk::prelude::LayerModule;
+use slicer_sdk::test_prelude::PerimeterRegionViewBuilder;
 use slicer_sdk::views::PerimeterRegionView;
 
 /// Helper: make a 2-point horizontal wall loop.
 fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32, width: f32) -> WallLoop {
-    let path = slicer_ir::ExtrusionPath3D {
-        points: vec![
-            Point3WithWidth {
-                x: x1,
-                y: y1,
-                z,
-                width,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-            },
-            Point3WithWidth {
-                x: x2,
-                y: y2,
-                z,
-                width,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-            },
-        ],
+    let p = |x, y| Point3WithWidth {
+        x,
+        y,
+        z,
+        width,
+        flow_factor: 1.0,
+        overhang_quartile: None,
+    };
+    let path = ExtrusionPath3D {
+        points: vec![p(x1, y1), p(x2, y2)],
         role: ExtrusionRole::OuterWall,
         speed_factor: 1.0,
     };
-    WallLoop {
-        perimeter_index: 0,
-        loop_type: LoopType::Outer,
-        path,
-        width_profile: WidthProfile {
-            widths: vec![width; 2],
-        },
-        feature_flags: vec![],
-        boundary_type: WallBoundaryType::Interior,
-    }
+    PerimeterRegionViewBuilder::new()
+        .add_outer_wall(path)
+        .build()
+        .wall_loops()[0]
+        .clone()
 }
 
 /// Test (AC-4): when PerimeterIR wall loops are already seam-first rotated,

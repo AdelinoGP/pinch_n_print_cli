@@ -2,47 +2,31 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::{ConfigValue, ConfigView, ExPolygon, ExtrusionRole, Point2, Polygon};
+use slicer_ir::{ConfigView, ExtrusionRole};
 use slicer_sdk::builders::SupportOutputBuilder;
+use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
 use tree_support::TreeSupport;
 
 fn make_config(enabled: bool, density: f64, angle: f64, speed: f64, line_width: f64) -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert("support_enabled".to_string(), ConfigValue::Bool(enabled));
-    fields.insert("support_density".to_string(), ConfigValue::Float(density));
-    fields.insert("support_angle".to_string(), ConfigValue::Float(angle));
-    fields.insert("support_speed".to_string(), ConfigValue::Float(speed));
-    fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    ConfigView::from_map(fields)
+    ConfigViewBuilder::new()
+        .bool("support_enabled", enabled)
+        .float("support_density", density)
+        .float("support_angle", angle)
+        .float("support_speed", speed)
+        .float("line_width", line_width)
+        .build()
 }
 
 fn make_square_region(size_mm: f32, z: f32) -> SliceRegionView {
-    let half = size_mm / 2.0;
-    let square = ExPolygon {
-        contour: Polygon {
-            points: vec![
-                Point2::from_mm(-half, -half),
-                Point2::from_mm(half, -half),
-                Point2::from_mm(half, half),
-                Point2::from_mm(-half, half),
-            ],
-        },
-        holes: vec![],
-    };
-    {
-        let mut tmp = SliceRegionView::default();
-        tmp.set_object_id("obj1".to_string());
-        tmp.set_region_id(1);
-        tmp.set_polygons(vec![square.clone()]);
-        tmp.set_infill_areas(vec![square]); // infill_areas
-        tmp.set_effective_layer_height(0.2);
-        tmp.set_z(z);
-        tmp.set_has_nonplanar(false);
-        tmp
-    }
+    SliceRegionViewBuilder::new()
+        .object_id("obj1")
+        .region_id(1)
+        .z(z)
+        .add_polygon(square_polygon(0.0, 0.0, size_mm))
+        .build()
 }
 
 /// Test 1: on_print_start with empty config uses defaults.

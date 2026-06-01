@@ -4,57 +4,44 @@ use std::collections::HashMap;
 
 use skirt_brim::SkirtBrim;
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
-    PrintEntity, RegionKey, SemVer,
+    ConfigValue, ConfigView, ExtrusionRole, LayerCollectionIR, Point3WithWidth, PrintEntity,
+    RegionKey,
 };
+use slicer_sdk::test_prelude::{print_entity, LayerCollectionFixtureBuilder};
 
 // ---- Helpers ----
 
-fn semver() -> SemVer {
-    SemVer {
-        major: 0,
-        minor: 1,
-        patch: 0,
-    }
-}
-
 fn make_entity_at(x: f32, y: f32, z: f32) -> PrintEntity {
-    PrintEntity {
-        entity_id: 1,
-        path: ExtrusionPath3D {
-            points: vec![Point3WithWidth {
-                x,
-                y,
-                z,
-                width: 0.4,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-            }],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
-        },
-        role: ExtrusionRole::OuterWall,
-        region_key: RegionKey {
+    print_entity(
+        1,
+        ExtrusionRole::OuterWall,
+        vec![Point3WithWidth {
+            x,
+            y,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+        }],
+        RegionKey {
             global_layer_index: 0,
             object_id: "obj1".to_string(),
             region_id: 1,
         },
-        topo_order: 0,
-    }
+        0,
+    )
 }
 
 fn make_layer_with_entities(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollectionIR {
-    LayerCollectionIR {
-        schema_version: semver(),
-        global_layer_index: index,
-        z,
-        ordered_entities: entities,
-        tool_changes: vec![],
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
-    }
+    entities
+        .into_iter()
+        .fold(
+            LayerCollectionFixtureBuilder::new()
+                .global_layer_index(index)
+                .z(z),
+            |b, e| b.add_entity(e),
+        )
+        .build()
 }
 
 fn empty_config() -> ConfigView {

@@ -9,48 +9,35 @@
 #![allow(missing_docs)]
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LoopType, Point3WithWidth,
-    RetractMode, WallBoundaryType, WallLoop, WidthProfile,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, Point3WithWidth, RetractMode, WallLoop,
 };
 use slicer_sdk::layer_collection_builder::LayerCollectionBuilder;
 use slicer_sdk::postpass_builders::GcodeOutputBuilder;
 use slicer_sdk::postpass_types::{GcodeCommand, GcodeOutputCommand};
+use slicer_sdk::test_prelude::PerimeterRegionViewBuilder;
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 use std::collections::HashMap;
 
 fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32) -> WallLoop {
-    WallLoop {
-        perimeter_index: 0,
-        loop_type: LoopType::Outer,
-        path: ExtrusionPath3D {
-            points: vec![
-                Point3WithWidth {
-                    x: x1,
-                    y: y1,
-                    z,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                },
-                Point3WithWidth {
-                    x: x2,
-                    y: y2,
-                    z,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                },
-            ],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
-        },
-        width_profile: WidthProfile {
-            widths: vec![0.4, 0.4],
-        },
-        feature_flags: vec![],
-        boundary_type: WallBoundaryType::Interior,
-    }
+    let p = |x, y| Point3WithWidth {
+        x,
+        y,
+        z,
+        width: 0.4,
+        flow_factor: 1.0,
+        overhang_quartile: None,
+    };
+    let path = ExtrusionPath3D {
+        points: vec![p(x1, y1), p(x2, y2)],
+        role: ExtrusionRole::OuterWall,
+        speed_factor: 1.0,
+    };
+    PerimeterRegionViewBuilder::new()
+        .add_outer_wall(path)
+        .build()
+        .wall_loops()[0]
+        .clone()
 }
 
 /// Build a config that exercises external inter-region travel and disables the

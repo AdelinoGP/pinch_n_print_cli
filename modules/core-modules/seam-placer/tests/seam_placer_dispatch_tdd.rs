@@ -11,10 +11,11 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LoopType, Point3WithWidth,
-    SeamCandidate, SeamReason, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SeamCandidate,
+    SeamReason, WallBoundaryType, WallFeatureFlags, WallLoop,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
+use slicer_sdk::test_prelude::{seam_candidate, PerimeterRegionViewBuilder};
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
@@ -47,16 +48,17 @@ fn ir_point(x: f32, y: f32, z: f32) -> Point3WithWidth {
 }
 
 fn ir_flags(count: usize) -> Vec<WallFeatureFlags> {
-    (0..count)
-        .map(|_| WallFeatureFlags {
+    vec![
+        WallFeatureFlags {
             tool_index: None,
             fuzzy_skin: false,
             is_bridge: false,
             is_thin_wall: false,
             skip_ironing: false,
-            custom: HashMap::new(),
-        })
-        .collect()
+            custom: HashMap::new()
+        };
+        count
+    ]
 }
 
 fn ir_wall(layer_z: f32, points: &[(f32, f32)]) -> WallLoop {
@@ -64,29 +66,21 @@ fn ir_wall(layer_z: f32, points: &[(f32, f32)]) -> WallLoop {
         .iter()
         .map(|(x, y)| ir_point(*x, *y, layer_z))
         .collect();
-    let point_count = path_points.len();
-    WallLoop {
-        perimeter_index: 0,
-        loop_type: LoopType::Outer,
-        path: ExtrusionPath3D {
-            points: path_points,
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
-        },
-        width_profile: WidthProfile {
-            widths: vec![0.4; point_count],
-        },
-        feature_flags: ir_flags(point_count),
-        boundary_type: WallBoundaryType::ExteriorSurface,
-    }
+    let flags = ir_flags(path_points.len());
+    let path = ExtrusionPath3D {
+        points: path_points,
+        role: ExtrusionRole::OuterWall,
+        speed_factor: 1.0,
+    };
+    PerimeterRegionViewBuilder::new()
+        .add_outer_wall_with_flags(path, flags, WallBoundaryType::ExteriorSurface)
+        .build()
+        .wall_loops()[0]
+        .clone()
 }
 
 fn ir_candidate(x: f32, y: f32, z: f32, score: f32, reason: SeamReason) -> SeamCandidate {
-    SeamCandidate {
-        position: ir_point(x, y, z),
-        score,
-        reason,
-    }
+    seam_candidate(ir_point(x, y, z), score, reason)
 }
 
 fn sdk_region(

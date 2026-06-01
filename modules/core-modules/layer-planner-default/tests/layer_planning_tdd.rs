@@ -5,46 +5,39 @@
 
 use layer_planner_default::DefaultLayerPlanner;
 use slicer_sdk::prelude::*;
-use std::collections::HashMap;
+use slicer_sdk::test_prelude::*;
 
 /// Helper: build a ConfigView with the given parameters.
-fn make_config(
-    layer_height: f64,
-    first_layer_height: f64,
-    objects: &[(&str, f64)], // (object_id, height_mm)
-) -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert("layer_height".to_string(), ConfigValue::Float(layer_height));
-    fields.insert(
-        "first_layer_height".to_string(),
-        ConfigValue::Float(first_layer_height),
-    );
-    for (id, height) in objects {
-        fields.insert(format!("object_height:{}", id), ConfigValue::Float(*height));
-    }
-    ConfigView::from_map(fields)
+fn make_config(layer_height: f64, first_layer_height: f64, objects: &[(&str, f64)]) -> ConfigView {
+    objects
+        .iter()
+        .fold(
+            ConfigViewBuilder::new()
+                .float("layer_height", layer_height)
+                .float("first_layer_height", first_layer_height),
+            |b, (id, h)| b.float(format!("object_height:{}", id), *h),
+        )
+        .build()
 }
 
 /// Helper: build config with per-object layer height overrides.
-fn make_config_with_per_object_lh(
+fn make_lh_config(
     default_layer_height: f64,
     first_layer_height: f64,
-    objects: &[(&str, f64, f64)], // (object_id, height_mm, layer_height_mm)
+    objects: &[(&str, f64, f64)],
 ) -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert(
-        "layer_height".to_string(),
-        ConfigValue::Float(default_layer_height),
-    );
-    fields.insert(
-        "first_layer_height".to_string(),
-        ConfigValue::Float(first_layer_height),
-    );
-    for (id, height, lh) in objects {
-        fields.insert(format!("object_height:{}", id), ConfigValue::Float(*height));
-        fields.insert(format!("layer_height:{}", id), ConfigValue::Float(*lh));
-    }
-    ConfigView::from_map(fields)
+    objects
+        .iter()
+        .fold(
+            ConfigViewBuilder::new()
+                .float("layer_height", default_layer_height)
+                .float("first_layer_height", first_layer_height),
+            |b, (id, h, lh)| {
+                b.float(format!("object_height:{}", id), *h)
+                    .float(format!("layer_height:{}", id), *lh)
+            },
+        )
+        .build()
 }
 
 // =============================================================================
@@ -211,8 +204,7 @@ fn test_multi_object_same_height() {
 fn test_multi_object_lcm_sync() {
     // Object A at 0.2mm, Object B at 0.3mm → LCM sync at 0.6mm multiples
     // Both objects 1.2mm tall to get clean layer counts
-    let config =
-        make_config_with_per_object_lh(0.2, 0.2, &[("obj-A", 1.2, 0.2), ("obj-B", 1.2, 0.3)]);
+    let config = make_lh_config(0.2, 0.2, &[("obj-A", 1.2, 0.2), ("obj-B", 1.2, 0.3)]);
     let module = DefaultLayerPlanner::on_print_start(&config).unwrap();
 
     let objects: Vec<ObjectId> = vec!["obj-A".to_string(), "obj-B".to_string()];
@@ -264,8 +256,7 @@ fn test_multi_object_lcm_sync() {
 #[test]
 fn test_catch_up_layer_fields() {
     // Object A at 0.2mm, Object B at 0.3mm — catch-up layers need correct fields
-    let config =
-        make_config_with_per_object_lh(0.2, 0.2, &[("obj-A", 1.2, 0.2), ("obj-B", 1.2, 0.3)]);
+    let config = make_lh_config(0.2, 0.2, &[("obj-A", 1.2, 0.2), ("obj-B", 1.2, 0.3)]);
     let module = DefaultLayerPlanner::on_print_start(&config).unwrap();
 
     let objects: Vec<ObjectId> = vec!["obj-A".to_string(), "obj-B".to_string()];

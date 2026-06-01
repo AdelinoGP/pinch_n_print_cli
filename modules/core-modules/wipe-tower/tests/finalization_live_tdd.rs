@@ -4,8 +4,9 @@ use std::collections::HashMap;
 
 use slicer_ir::{
     ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
-    PrintEntity, RegionKey, SemVer, ToolChange,
+    PrintEntity, RegionKey, ToolChange,
 };
+use slicer_sdk::test_prelude::{print_entity, tool_change, LayerCollectionFixtureBuilder};
 use slicer_sdk::traits::{
     FinalizationModule, FinalizationOutputBuilder, LayerCollectionView, MergeOp,
 };
@@ -72,51 +73,38 @@ fn wipe_tower_inserts_total(output: &FinalizationOutputBuilder) -> Vec<u32> {
 
 // ---- Helpers ----
 
-fn semver() -> SemVer {
-    SemVer {
-        major: 0,
-        minor: 1,
-        patch: 0,
-    }
-}
-
 fn dummy_entity(z: f32, index: u32) -> PrintEntity {
-    PrintEntity {
-        entity_id: 1,
-        path: ExtrusionPath3D {
-            points: vec![Point3WithWidth {
-                x: 10.0,
-                y: 10.0,
-                z,
-                width: 0.4,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-            }],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
-        },
-        role: ExtrusionRole::OuterWall,
-        region_key: RegionKey {
+    print_entity(
+        1,
+        ExtrusionRole::OuterWall,
+        vec![Point3WithWidth {
+            x: 10.0,
+            y: 10.0,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+        }],
+        RegionKey {
             global_layer_index: index,
             object_id: "obj1".to_string(),
             region_id: 1,
         },
-        topo_order: 0,
-    }
+        0,
+    )
 }
 
 fn make_layer(index: u32, z: f32, tool_changes: Vec<ToolChange>) -> LayerCollectionIR {
-    LayerCollectionIR {
-        schema_version: semver(),
-        global_layer_index: index,
-        z,
-        ordered_entities: vec![dummy_entity(z, index)],
-        tool_changes,
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
-    }
+    tool_changes
+        .into_iter()
+        .fold(
+            LayerCollectionFixtureBuilder::new()
+                .global_layer_index(index)
+                .z(z)
+                .add_entity(dummy_entity(z, index)),
+            |b, tc| b.add_tool_change(tc),
+        )
+        .build()
 }
 
 fn config_with(pairs: &[(&str, ConfigValue)]) -> ConfigView {
@@ -131,14 +119,6 @@ fn wipe_tower_from(pairs: &[(&str, ConfigValue)]) -> WipeTower {
     WipeTower::from_config(&config_with(pairs)).expect("config should be valid")
 }
 
-fn tc(after: u32, from: u32, to: u32) -> ToolChange {
-    ToolChange {
-        after_entity_index: after,
-        from_tool: from,
-        to_tool: to,
-    }
-}
-
 // ─── AC-1: run_finalization pushes wipe-tower entities for tool-change layers ─
 
 #[test]
@@ -151,7 +131,7 @@ fn run_finalization_pushes_wipe_tower_entities_for_tool_change_layers() {
         ("bed_shape", bed_shape_250()),
     ]);
 
-    let layer = make_layer(0, 0.2, vec![tc(0, 0, 1)]);
+    let layer = make_layer(0, 0.2, vec![tool_change(0, 0, 1)]);
     let views = vec![LayerCollectionView::new(layer)];
     let config = config_with(&[("bed_shape", bed_shape_250())]);
     let mut output = FinalizationOutputBuilder::new();
@@ -192,8 +172,8 @@ fn purge_volume_controls_finalization_push_count() {
         ("bed_shape", bed_shape_250()),
     ]);
 
-    let layer_small = make_layer(0, 0.2, vec![tc(0, 0, 1)]);
-    let layer_large = make_layer(0, 0.2, vec![tc(0, 0, 1)]);
+    let layer_small = make_layer(0, 0.2, vec![tool_change(0, 0, 1)]);
+    let layer_large = make_layer(0, 0.2, vec![tool_change(0, 0, 1)]);
 
     let views_small = vec![LayerCollectionView::new(layer_small)];
     let views_large = vec![LayerCollectionView::new(layer_large)];
@@ -230,7 +210,7 @@ fn run_finalization_targets_only_layers_with_tool_changes() {
 
     // layer 0: no tool changes; layer 1: one tool change
     let layer0 = make_layer(0, 0.2, vec![]);
-    let layer1 = make_layer(1, 0.4, vec![tc(0, 0, 1)]);
+    let layer1 = make_layer(1, 0.4, vec![tool_change(0, 0, 1)]);
     let views = vec![
         LayerCollectionView::new(layer0),
         LayerCollectionView::new(layer1),
@@ -263,7 +243,7 @@ fn disabled_or_no_tool_changes_emit_no_finalization_pushes() {
         ("wipe_tower_enabled", ConfigValue::Bool(false)),
         ("bed_shape", bed_shape_250()),
     ]);
-    let layer_with_tc = make_layer(0, 0.2, vec![tc(0, 0, 1)]);
+    let layer_with_tc = make_layer(0, 0.2, vec![tool_change(0, 0, 1)]);
     let views_a = vec![LayerCollectionView::new(layer_with_tc)];
     let mut out_a = FinalizationOutputBuilder::new();
     wt_disabled

@@ -4,8 +4,9 @@ use std::collections::HashMap;
 
 use crate::views::{PerimeterRegionView, SliceRegionView};
 use slicer_ir::{
-    mm_to_units, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole, LoopType,
-    Point3WithWidth, Polygon, SeamCandidate, WallBoundaryType, WallLoop, WidthProfile,
+    mm_to_units, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
+    LayerCollectionIR, LoopType, Point3WithWidth, Polygon, PrintEntity, RegionKey, SeamCandidate,
+    SeamReason, ToolChange, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
 };
 
 /// Builder for creating [`ConfigView`] fixtures.
@@ -139,6 +140,13 @@ pub struct SliceRegionViewBuilder {
     polygons: Vec<ExPolygon>,
     infill_areas: Vec<ExPolygon>,
     infill_areas_explicit: bool,
+    top_shell_index: Option<u8>,
+    top_solid_fill: Vec<ExPolygon>,
+    bottom_shell_index: Option<u8>,
+    bottom_solid_fill: Vec<ExPolygon>,
+    is_bridge: bool,
+    bridge_areas: Vec<ExPolygon>,
+    bridge_orientation_deg: f32,
 }
 
 impl SliceRegionViewBuilder {
@@ -162,6 +170,13 @@ impl SliceRegionViewBuilder {
             polygons: Vec::new(),
             infill_areas: Vec::new(),
             infill_areas_explicit: false,
+            top_shell_index: None,
+            top_solid_fill: Vec::new(),
+            bottom_shell_index: None,
+            bottom_solid_fill: Vec::new(),
+            is_bridge: false,
+            bridge_areas: Vec::new(),
+            bridge_orientation_deg: 0.0,
         }
     }
 
@@ -286,6 +301,63 @@ impl SliceRegionViewBuilder {
         self
     }
 
+    /// Set the top-shell index (`Some(0)` = exposed top; `None` = outside any
+    /// top shell). Mirrors [`SliceRegionView::set_top_shell_index`].
+    #[must_use]
+    pub fn top_shell_index(mut self, idx: Option<u8>) -> Self {
+        self.top_shell_index = idx;
+        self
+    }
+
+    /// Set the polygon-precise top solid-fill area for this region.
+    /// Mirrors [`SliceRegionView::set_top_solid_fill`].
+    #[must_use]
+    pub fn top_solid_fill(mut self, fills: Vec<ExPolygon>) -> Self {
+        self.top_solid_fill = fills;
+        self
+    }
+
+    /// Set the bottom-shell index (`Some(0)` = exposed bottom; `None` =
+    /// outside any bottom shell). Mirrors
+    /// [`SliceRegionView::set_bottom_shell_index`].
+    #[must_use]
+    pub fn bottom_shell_index(mut self, idx: Option<u8>) -> Self {
+        self.bottom_shell_index = idx;
+        self
+    }
+
+    /// Set the polygon-precise bottom solid-fill area for this region.
+    /// Mirrors [`SliceRegionView::set_bottom_solid_fill`].
+    #[must_use]
+    pub fn bottom_solid_fill(mut self, fills: Vec<ExPolygon>) -> Self {
+        self.bottom_solid_fill = fills;
+        self
+    }
+
+    /// Set the bridge classification flag for this region.
+    /// Mirrors [`SliceRegionView::set_is_bridge`].
+    #[must_use]
+    pub fn is_bridge(mut self, on: bool) -> Self {
+        self.is_bridge = on;
+        self
+    }
+
+    /// Set the per-layer expanded bridge polygons.
+    /// Mirrors [`SliceRegionView::set_bridge_areas`].
+    #[must_use]
+    pub fn bridge_areas(mut self, areas: Vec<ExPolygon>) -> Self {
+        self.bridge_areas = areas;
+        self
+    }
+
+    /// Set the best bridge direction across all valid bridge regions (degrees).
+    /// Mirrors [`SliceRegionView::set_bridge_orientation_deg`].
+    #[must_use]
+    pub fn bridge_orientation_deg(mut self, deg: f32) -> Self {
+        self.bridge_orientation_deg = deg;
+        self
+    }
+
     /// Build a [`SliceRegionView`].
     ///
     /// If no infill areas were explicitly added, polygons are cloned
@@ -306,6 +378,13 @@ impl SliceRegionViewBuilder {
             tmp.set_effective_layer_height(self.effective_layer_height);
             tmp.set_z(self.z);
             tmp.set_has_nonplanar(self.has_nonplanar);
+            tmp.set_top_shell_index(self.top_shell_index);
+            tmp.set_top_solid_fill(self.top_solid_fill);
+            tmp.set_bottom_shell_index(self.bottom_shell_index);
+            tmp.set_bottom_solid_fill(self.bottom_solid_fill);
+            tmp.set_is_bridge(self.is_bridge);
+            tmp.set_bridge_areas(self.bridge_areas);
+            tmp.set_bridge_orientation_deg(self.bridge_orientation_deg);
             tmp
         }
     }
@@ -330,6 +409,43 @@ pub fn square_polygon(cx_mm: f32, cy_mm: f32, side_mm: f32) -> ExPolygon {
     let y0 = mm_to_units(cy_mm - half);
     let x1 = mm_to_units(cx_mm + half);
     let y1 = mm_to_units(cy_mm + half);
+
+    ExPolygon {
+        contour: Polygon {
+            points: vec![
+                slicer_ir::Point2 { x: x0, y: y0 },
+                slicer_ir::Point2 { x: x1, y: y0 },
+                slicer_ir::Point2 { x: x1, y: y1 },
+                slicer_ir::Point2 { x: x0, y: y1 },
+            ],
+        },
+        holes: Vec::new(),
+    }
+}
+
+/// Build a centered axis-aligned rectangle in millimeters.
+///
+/// Mirrors [`square_polygon`] but accepts independent `width_mm` and
+/// `height_mm`. Corners are emitted CCW (signed area > 0) with `holes`
+/// empty. Uses [`mm_to_units`] for coordinate scaling.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_sdk::test_support::fixtures::rect_polygon;
+///
+/// let rect = rect_polygon(0.0, 0.0, 4.0, 6.0);
+/// assert_eq!(rect.contour.points.len(), 4);
+/// assert!(rect.holes.is_empty());
+/// ```
+#[must_use]
+pub fn rect_polygon(cx_mm: f32, cy_mm: f32, width_mm: f32, height_mm: f32) -> ExPolygon {
+    let half_w = width_mm / 2.0;
+    let half_h = height_mm / 2.0;
+    let x0 = mm_to_units(cx_mm - half_w);
+    let y0 = mm_to_units(cy_mm - half_h);
+    let x1 = mm_to_units(cx_mm + half_w);
+    let y1 = mm_to_units(cy_mm + half_h);
 
     ExPolygon {
         contour: Polygon {
@@ -578,5 +694,245 @@ impl PerimeterRegionViewBuilder {
         view.set_seam_candidates(self.seam_candidates);
         view.set_resolved_seam(None);
         view
+    }
+
+    /// Add an outer wall with explicit `feature_flags` and `boundary_type`.
+    ///
+    /// Mirrors [`add_outer_wall`](Self::add_outer_wall) but lets callers thread
+    /// per-vertex [`WallFeatureFlags`] and a non-default [`WallBoundaryType`]
+    /// (e.g., [`WallBoundaryType::ExteriorSurface`]) — required by the
+    /// seam-placer module's `wall_at_z` shape.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_ir::{WallBoundaryType, WallFeatureFlags};
+    /// use slicer_sdk::test_support::fixtures::{rect_path, PerimeterRegionViewBuilder};
+    ///
+    /// let path = rect_path(0.0, 0.0, 10.0, 0.4);
+    /// let flags = vec![WallFeatureFlags::default(); path.points.len()];
+    /// let view = PerimeterRegionViewBuilder::new()
+    ///     .add_outer_wall_with_flags(path, flags, WallBoundaryType::ExteriorSurface)
+    ///     .build();
+    /// assert_eq!(view.wall_loops().len(), 1);
+    /// ```
+    #[must_use]
+    pub fn add_outer_wall_with_flags(
+        mut self,
+        path: ExtrusionPath3D,
+        feature_flags: Vec<WallFeatureFlags>,
+        boundary_type: WallBoundaryType,
+    ) -> Self {
+        let width = path.points.first().map_or(0.4, |p| p.width);
+        let widths = vec![width; path.points.len()];
+        self.wall_loops.push(WallLoop {
+            perimeter_index: 0,
+            loop_type: LoopType::Outer,
+            path,
+            width_profile: WidthProfile { widths },
+            feature_flags,
+            boundary_type,
+        });
+        self
+    }
+}
+
+// ============================================================================
+// Freestanding IR fixture helpers
+// ============================================================================
+
+/// Build a [`PrintEntity`] from explicit identity, role, geometry, and ordering
+/// inputs.
+///
+/// Constructs the inner [`ExtrusionPath3D`] from `points` and `role` with
+/// `speed_factor = 1.0`. The returned `PrintEntity` carries the inputs verbatim
+/// (entity id, role, region key, topo order). Names are passed via named-struct
+/// construction to keep the signature stable as new IR fields land.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_ir::{ExtrusionRole, Point3WithWidth, RegionKey};
+/// use slicer_sdk::test_support::fixtures::print_entity;
+///
+/// let points = vec![Point3WithWidth {
+///     x: 0.0,
+///     y: 0.0,
+///     z: 0.2,
+///     width: 0.4,
+///     flow_factor: 1.0,
+///     overhang_quartile: None,
+/// }];
+/// let entity = print_entity(
+///     1,
+///     ExtrusionRole::OuterWall,
+///     points,
+///     RegionKey::default(),
+///     0,
+/// );
+/// assert_eq!(entity.entity_id, 1);
+/// assert_eq!(entity.topo_order, 0);
+/// ```
+#[must_use]
+pub fn print_entity(
+    entity_id: u64,
+    role: ExtrusionRole,
+    points: Vec<Point3WithWidth>,
+    region_key: RegionKey,
+    topo_order: u32,
+) -> PrintEntity {
+    PrintEntity {
+        entity_id,
+        path: ExtrusionPath3D {
+            points,
+            role: role.clone(),
+            speed_factor: 1.0,
+        },
+        role,
+        region_key,
+        topo_order,
+    }
+}
+
+/// Build a [`ToolChange`] anchored after the entity at `after_entity_index`
+/// targeting `tool_index`.
+///
+/// Uses named-struct construction so the helper survives additions of new
+/// optional `ToolChange` fields. Callers pass the previous tool (`from_tool`)
+/// and target tool (`to_tool`) explicitly — wipe-tower's multi-tool layer
+/// fixtures need non-zero `from_tool` (e.g. transitioning T1 → T0 on layer 1),
+/// which the original single-tool signature could not express.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_sdk::test_support::fixtures::tool_change;
+///
+/// let tc = tool_change(3, 0, 2);
+/// assert_eq!(tc.after_entity_index, 3);
+/// assert_eq!(tc.from_tool, 0);
+/// assert_eq!(tc.to_tool, 2);
+/// ```
+#[must_use]
+pub fn tool_change(
+    after_entity_index: u32,
+    from_tool: u32,
+    to_tool: u32,
+) -> ToolChange {
+    ToolChange {
+        after_entity_index,
+        from_tool,
+        to_tool,
+    }
+}
+
+/// Build a [`SeamCandidate`] with explicit `position`, `score`, and `reason`.
+///
+/// Uses named-struct construction so the helper survives additions of new
+/// optional `SeamCandidate` fields.
+///
+/// # Examples
+///
+/// ```rust
+/// use slicer_ir::{Point3WithWidth, SeamReason};
+/// use slicer_sdk::test_support::fixtures::seam_candidate;
+///
+/// let pos = Point3WithWidth {
+///     x: 1.0,
+///     y: 2.0,
+///     z: 0.2,
+///     width: 0.4,
+///     flow_factor: 1.0,
+///     overhang_quartile: None,
+/// };
+/// let sc = seam_candidate(pos, 0.5, SeamReason::Sharp);
+/// assert!((sc.score - 0.5).abs() < f32::EPSILON);
+/// ```
+#[must_use]
+pub fn seam_candidate(
+    position: Point3WithWidth,
+    score: f32,
+    reason: SeamReason,
+) -> SeamCandidate {
+    SeamCandidate {
+        position,
+        score,
+        reason,
+    }
+}
+
+/// Builder for assembling [`LayerCollectionIR`] fixtures with entities and
+/// tool changes.
+///
+/// Distinct from the production
+/// [`crate::layer_collection_builder::LayerCollectionBuilder`] (a WIT-resource
+/// proposal builder used at runtime); this is a test-only IR assembler that
+/// lets callers stage entities, tool changes, and basic header fields into a
+/// concrete [`LayerCollectionIR`].
+#[derive(Debug, Default)]
+pub struct LayerCollectionFixtureBuilder {
+    global_layer_index: u32,
+    z: f32,
+    entities: Vec<PrintEntity>,
+    tool_changes: Vec<ToolChange>,
+}
+
+impl LayerCollectionFixtureBuilder {
+    /// Create a new fixture builder with all fields defaulted.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use slicer_sdk::test_support::fixtures::LayerCollectionFixtureBuilder;
+    ///
+    /// let _builder = LayerCollectionFixtureBuilder::new();
+    /// ```
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the global layer index for the assembled IR.
+    #[must_use]
+    pub fn global_layer_index(mut self, idx: u32) -> Self {
+        self.global_layer_index = idx;
+        self
+    }
+
+    /// Set the Z height (millimeters) for the assembled IR.
+    #[must_use]
+    pub fn z(mut self, z: f32) -> Self {
+        self.z = z;
+        self
+    }
+
+    /// Append a [`PrintEntity`] to the layer's ordered entities.
+    #[must_use]
+    pub fn add_entity(mut self, e: PrintEntity) -> Self {
+        self.entities.push(e);
+        self
+    }
+
+    /// Append a [`ToolChange`] to the layer's tool changes.
+    #[must_use]
+    pub fn add_tool_change(mut self, tc: ToolChange) -> Self {
+        self.tool_changes.push(tc);
+        self
+    }
+
+    /// Build a [`LayerCollectionIR`].
+    ///
+    /// Threads the four staged fields onto the IR; remaining fields
+    /// (schema version, z hops, annotations, retracts, travel moves) come from
+    /// [`LayerCollectionIR::default`].
+    #[must_use]
+    pub fn build(self) -> LayerCollectionIR {
+        LayerCollectionIR {
+            global_layer_index: self.global_layer_index,
+            z: self.z,
+            ordered_entities: self.entities,
+            tool_changes: self.tool_changes,
+            ..Default::default()
+        }
     }
 }

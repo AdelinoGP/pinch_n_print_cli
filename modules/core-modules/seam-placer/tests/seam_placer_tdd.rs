@@ -6,10 +6,11 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LoopType, Point3WithWidth,
-    SeamCandidate, SeamReason, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, Point3WithWidth, SeamCandidate,
+    SeamReason, WallBoundaryType, WallFeatureFlags, WallLoop,
 };
 use slicer_sdk::builders::PerimeterOutputBuilder;
+use slicer_sdk::test_prelude::{seam_candidate, PerimeterRegionViewBuilder};
 use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 
@@ -17,8 +18,8 @@ use seam_placer::SeamPlacer;
 
 /// Helper: create a seam candidate at given position with score and reason.
 fn candidate(x: f32, y: f32, z: f32, score: f32, reason: SeamReason) -> SeamCandidate {
-    SeamCandidate {
-        position: Point3WithWidth {
+    seam_candidate(
+        Point3WithWidth {
             x,
             y,
             z,
@@ -28,118 +29,78 @@ fn candidate(x: f32, y: f32, z: f32, score: f32, reason: SeamReason) -> SeamCand
         },
         score,
         reason,
-    }
+    )
 }
 
 /// Helper: create a minimal wall loop at given z.
 fn wall_at_z(z: f32) -> WallLoop {
-    WallLoop {
-        perimeter_index: 0,
-        loop_type: LoopType::Outer,
-        path: ExtrusionPath3D {
-            points: vec![
-                Point3WithWidth {
-                    x: 0.0,
-                    y: 0.0,
-                    z,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                },
-                Point3WithWidth {
-                    x: 1.0,
-                    y: 0.0,
-                    z,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                },
-                Point3WithWidth {
-                    x: 2.0,
-                    y: 0.0,
-                    z,
-                    width: 0.4,
-                    flow_factor: 1.0,
-                    overhang_quartile: None,
-                },
-            ],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
-        },
-        width_profile: WidthProfile {
-            widths: vec![0.4, 0.4, 0.4],
-        },
-        feature_flags: vec![
-            WallFeatureFlags {
-                tool_index: None,
-                fuzzy_skin: false,
-                is_bridge: false,
-                is_thin_wall: false,
-                skip_ironing: false,
-                custom: HashMap::new(),
-            },
-            WallFeatureFlags {
-                tool_index: None,
-                fuzzy_skin: false,
-                is_bridge: false,
-                is_thin_wall: false,
-                skip_ironing: false,
-                custom: HashMap::new(),
-            },
-            WallFeatureFlags {
-                tool_index: None,
-                fuzzy_skin: false,
-                is_bridge: false,
-                is_thin_wall: false,
-                skip_ironing: false,
-                custom: HashMap::new(),
-            },
-        ],
-        boundary_type: WallBoundaryType::ExteriorSurface,
-    }
+    let p = |x| Point3WithWidth {
+        x,
+        y: 0.0,
+        z,
+        width: 0.4,
+        flow_factor: 1.0,
+        overhang_quartile: None,
+    };
+    let path = ExtrusionPath3D {
+        points: vec![p(0.0), p(1.0), p(2.0)],
+        role: ExtrusionRole::OuterWall,
+        speed_factor: 1.0,
+    };
+    let flags = vec![
+        WallFeatureFlags {
+            tool_index: None,
+            fuzzy_skin: false,
+            is_bridge: false,
+            is_thin_wall: false,
+            skip_ironing: false,
+            custom: HashMap::new()
+        };
+        3
+    ];
+    PerimeterRegionViewBuilder::new()
+        .add_outer_wall_with_flags(path, flags, WallBoundaryType::ExteriorSurface)
+        .build()
+        .wall_loops()[0]
+        .clone()
 }
 
 fn wall_from_candidates(candidates: &[SeamCandidate], z: f32) -> WallLoop {
     if candidates.is_empty() {
         return wall_at_z(z);
     }
-
     let points: Vec<_> = candidates
         .iter()
-        .map(|candidate| Point3WithWidth {
-            x: candidate.position.x,
-            y: candidate.position.y,
+        .map(|c| Point3WithWidth {
+            x: c.position.x,
+            y: c.position.y,
             z,
-            width: candidate.position.width,
-            flow_factor: candidate.position.flow_factor,
-            overhang_quartile: candidate.position.overhang_quartile,
+            width: c.position.width,
+            flow_factor: c.position.flow_factor,
+            overhang_quartile: c.position.overhang_quartile,
         })
         .collect();
-    let point_count = points.len();
-
-    WallLoop {
-        perimeter_index: 0,
-        loop_type: LoopType::Outer,
-        path: ExtrusionPath3D {
-            points,
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
-        },
-        width_profile: WidthProfile {
-            widths: vec![0.4; point_count],
-        },
-        feature_flags: (0..point_count)
-            .map(|_| WallFeatureFlags {
-                tool_index: None,
-                fuzzy_skin: false,
-                is_bridge: false,
-                is_thin_wall: false,
-                skip_ironing: false,
-                custom: HashMap::new(),
-            })
-            .collect(),
-        boundary_type: WallBoundaryType::ExteriorSurface,
-    }
+    let flags = vec![
+        WallFeatureFlags {
+            tool_index: None,
+            fuzzy_skin: false,
+            is_bridge: false,
+            is_thin_wall: false,
+            skip_ironing: false,
+            custom: HashMap::new()
+        };
+        points.len()
+    ];
+    let path = ExtrusionPath3D {
+        points,
+        role: ExtrusionRole::OuterWall,
+        speed_factor: 1.0,
+    };
+    PerimeterRegionViewBuilder::new()
+        .add_outer_wall_with_flags(path, flags, WallBoundaryType::ExteriorSurface)
+        .build()
+        .wall_loops()[0]
+        .clone()
 }
 
 /// Helper: create a PerimeterRegionView with given candidates and walls.

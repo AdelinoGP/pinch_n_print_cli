@@ -6,46 +6,29 @@
 
 use std::collections::HashMap;
 
-use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, PaintSemantic, PaintValue, Point2, Polygon,
-    WallBoundaryType,
-};
+use slicer_ir::{ConfigView, PaintSemantic, PaintValue, WallBoundaryType};
 use slicer_sdk::builders::PerimeterOutputBuilder;
+use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
 // Import the module under test
 use classic_perimeters::ClassicPerimeters;
 
-/// Helper: create a simple square polygon (CCW contour, no holes).
-fn square_polygon() -> ExPolygon {
-    ExPolygon {
-        contour: Polygon {
-            points: vec![
-                Point2::from_mm(0.0, 0.0),
-                Point2::from_mm(10.0, 0.0),
-                Point2::from_mm(10.0, 10.0),
-                Point2::from_mm(0.0, 10.0),
-            ],
-        },
-        holes: vec![],
-    }
-}
-
 /// Helper: default config with wall_count=1 for simpler test output.
 fn config_1_wall() -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert("wall_count".to_string(), ConfigValue::Int(1));
-    fields.insert("line_width".to_string(), ConfigValue::Float(0.4));
-    ConfigView::from_map(fields)
+    ConfigViewBuilder::new()
+        .int("wall_count", 1)
+        .float("line_width", 0.4)
+        .build()
 }
 
 /// Helper: default config with wall_count=2 for inner wall tests.
 fn config_2_walls() -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert("wall_count".to_string(), ConfigValue::Int(2));
-    fields.insert("line_width".to_string(), ConfigValue::Float(0.4));
-    ConfigView::from_map(fields)
+    ConfigViewBuilder::new()
+        .int("wall_count", 2)
+        .float("line_width", 0.4)
+        .build()
 }
 
 #[test]
@@ -60,7 +43,7 @@ fn unpainted_region_produces_default_flags() {
     let mut region = SliceRegionView::default();
     region.set_object_id("obj-1".to_string());
     region.set_region_id(0);
-    region.set_polygons(vec![square_polygon()]);
+    region.set_polygons(vec![square_polygon(5.0, 5.0, 10.0)]);
     region.set_infill_areas(vec![]);
     region.set_effective_layer_height(0.2);
     region.set_z(0.2);
@@ -93,7 +76,7 @@ fn material_paint_sets_tool_index_on_outer_wall() {
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
-    let poly = square_polygon();
+    let poly = square_polygon(5.0, 5.0, 10.0);
     let num_points = poly.contour.points.len();
 
     // All points painted with Material ToolIndex(2)
@@ -142,7 +125,7 @@ fn fuzzy_skin_paint_sets_flag_on_outer_wall() {
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
-    let poly = square_polygon();
+    let poly = square_polygon(5.0, 5.0, 10.0);
     let num_points = poly.contour.points.len();
 
     let fuzzy_paint = vec![vec![Some(PaintValue::Flag(true)); num_points]];
@@ -186,7 +169,7 @@ fn inner_walls_get_no_paint_propagation() {
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
-    let poly = square_polygon();
+    let poly = square_polygon(5.0, 5.0, 10.0);
     let num_points = poly.contour.points.len();
 
     let material_paint = vec![vec![Some(PaintValue::ToolIndex(3)); num_points]];
@@ -235,7 +218,7 @@ fn adjacent_material_change_sets_material_boundary() {
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
-    let poly = square_polygon();
+    let poly = square_polygon(5.0, 5.0, 10.0);
 
     // Points 0,1 have tool 1; points 2,3 have tool 2 -> material change between 1->2 and 3->0
     let material_paint = vec![vec![
@@ -284,7 +267,7 @@ fn mixed_painted_unpainted_preserves_none_as_default() {
     let paint = PaintRegionLayerView::new(0);
     let mut output = PerimeterOutputBuilder::new();
 
-    let poly = square_polygon();
+    let poly = square_polygon(5.0, 5.0, 10.0);
 
     // Points 0,2 painted, points 1,3 unpainted
     let material_paint = vec![vec![

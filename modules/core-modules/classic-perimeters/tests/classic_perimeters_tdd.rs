@@ -3,93 +3,49 @@
 //! Tests the ClassicPerimeters LayerModule implementation for the
 //! Layer::Perimeters stage per docs/01_system_architecture.md.
 
-use std::collections::HashMap;
-
 use classic_perimeters::ClassicPerimeters;
-use slicer_ir::{
-    mm_to_units, ConfigValue, ConfigView, ExPolygon, ExtrusionRole, LoopType, Point2, Polygon,
-    WallBoundaryType,
-};
+use slicer_ir::{ConfigView, ExPolygon, ExtrusionRole, LoopType, Polygon, WallBoundaryType};
 use slicer_sdk::builders::PerimeterOutputBuilder;
+use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
 /// Create a square ExPolygon centered at origin with given side length in mm.
 fn make_square(side_mm: f32) -> ExPolygon {
-    let half = side_mm / 2.0;
-    ExPolygon {
-        contour: Polygon {
-            points: vec![
-                Point2 {
-                    x: mm_to_units(-half),
-                    y: mm_to_units(-half),
-                },
-                Point2 {
-                    x: mm_to_units(half),
-                    y: mm_to_units(-half),
-                },
-                Point2 {
-                    x: mm_to_units(half),
-                    y: mm_to_units(half),
-                },
-                Point2 {
-                    x: mm_to_units(-half),
-                    y: mm_to_units(half),
-                },
-            ],
-        },
-        holes: Vec::new(),
-    }
+    square_polygon(0.0, 0.0, side_mm)
 }
 
 /// Create a config with specified wall_count and line_width.
 fn make_config(wall_count: u32, line_width: f64) -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert(
-        "wall_count".to_string(),
-        ConfigValue::Int(wall_count as i64),
-    );
-    fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    ConfigView::from_map(fields)
+    ConfigViewBuilder::new()
+        .int("wall_count", wall_count as i64)
+        .float("line_width", line_width)
+        .build()
 }
 
 /// Create a config with speed settings too.
-fn make_config_with_speeds(
+fn make_speed_config(
     wall_count: u32,
     line_width: f64,
     outer_speed: f64,
     inner_speed: f64,
 ) -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert(
-        "wall_count".to_string(),
-        ConfigValue::Int(wall_count as i64),
-    );
-    fields.insert("line_width".to_string(), ConfigValue::Float(line_width));
-    fields.insert(
-        "outer_wall_speed".to_string(),
-        ConfigValue::Float(outer_speed),
-    );
-    fields.insert(
-        "inner_wall_speed".to_string(),
-        ConfigValue::Float(inner_speed),
-    );
-    ConfigView::from_map(fields)
+    ConfigViewBuilder::new()
+        .int("wall_count", wall_count as i64)
+        .float("line_width", line_width)
+        .float("outer_wall_speed", outer_speed)
+        .float("inner_wall_speed", inner_speed)
+        .build()
 }
 
 /// Create a SliceRegionView with a single square polygon.
 fn make_region(side_mm: f32, z: f32) -> SliceRegionView {
-    {
-        let mut tmp = SliceRegionView::default();
-        tmp.set_object_id("obj-1".to_string());
-        tmp.set_region_id(1);
-        tmp.set_polygons(vec![make_square(side_mm)]);
-        tmp.set_infill_areas(Vec::new());
-        tmp.set_effective_layer_height(0.2);
-        tmp.set_z(z);
-        tmp.set_has_nonplanar(false);
-        tmp
-    }
+    SliceRegionViewBuilder::new()
+        .object_id("obj-1")
+        .region_id(1)
+        .z(z)
+        .add_polygon(make_square(side_mm))
+        .build()
 }
 
 #[test]
@@ -268,7 +224,7 @@ fn seam_candidates_generated() {
 
 #[test]
 fn speed_factor_from_config() {
-    let config = make_config_with_speeds(2, 0.4, 30.0, 60.0);
+    let config = make_speed_config(2, 0.4, 30.0, 60.0);
     let module = ClassicPerimeters::on_print_start(&config).unwrap();
     let regions = vec![make_region(10.0, 0.2)];
     let paint = PaintRegionLayerView::new(0);

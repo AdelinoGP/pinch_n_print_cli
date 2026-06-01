@@ -18,10 +18,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue,
-    Point2, Polygon, SemanticRegion,
+    ConfigView, ExPolygon, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue, SemanticRegion,
 };
 use slicer_sdk::builders::SupportOutputBuilder;
+use slicer_sdk::test_prelude::*;
 use slicer_sdk::traits::{LayerModule, PaintRegionLayerView};
 use slicer_sdk::views::SliceRegionView;
 
@@ -29,45 +29,28 @@ use tree_support::TreeSupport;
 
 /// Helper: create an enabled support config.
 fn enabled_config() -> ConfigView {
-    let mut fields = HashMap::new();
-    fields.insert("support_enabled".to_string(), ConfigValue::Bool(true));
-    fields.insert("support_density".to_string(), ConfigValue::Float(0.2));
-    fields.insert("support_angle".to_string(), ConfigValue::Float(0.0));
-    fields.insert("support_speed".to_string(), ConfigValue::Float(50.0));
-    fields.insert("line_width".to_string(), ConfigValue::Float(0.4));
-    ConfigView::from_map(fields)
+    ConfigViewBuilder::new()
+        .bool("support_enabled", true)
+        .float("support_density", 0.2)
+        .float("support_angle", 0.0)
+        .float("support_speed", 50.0)
+        .float("line_width", 0.4)
+        .build()
 }
 
 /// Helper: create a 10mm square ExPolygon centered at origin.
 fn square_expoly() -> ExPolygon {
-    let half = 5.0_f32;
-    ExPolygon {
-        contour: Polygon {
-            points: vec![
-                Point2::from_mm(-half, -half),
-                Point2::from_mm(half, -half),
-                Point2::from_mm(half, half),
-                Point2::from_mm(-half, half),
-            ],
-        },
-        holes: vec![],
-    }
+    square_polygon(0.0, 0.0, 10.0)
 }
 
 /// Helper: create a SliceRegionView with the standard square.
 fn square_region(z: f32) -> SliceRegionView {
-    let poly = square_expoly();
-    {
-        let mut tmp = SliceRegionView::default();
-        tmp.set_object_id("obj1".to_string());
-        tmp.set_region_id(1);
-        tmp.set_polygons(vec![poly.clone()]);
-        tmp.set_infill_areas(vec![poly]);
-        tmp.set_effective_layer_height(0.2);
-        tmp.set_z(z);
-        tmp.set_has_nonplanar(false);
-        tmp
-    }
+    SliceRegionViewBuilder::new()
+        .object_id("obj1")
+        .region_id(1)
+        .z(z)
+        .add_polygon(square_expoly())
+        .build()
 }
 
 /// Helper: build a PaintRegionIR with a single semantic covering the entire

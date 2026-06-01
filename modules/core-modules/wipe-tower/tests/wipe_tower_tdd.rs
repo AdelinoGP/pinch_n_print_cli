@@ -3,56 +3,44 @@
 use std::collections::HashMap;
 
 use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
-    PrintEntity, RegionKey, SemVer, ToolChange,
+    ConfigValue, ConfigView, ExtrusionRole, LayerCollectionIR, Point3WithWidth, PrintEntity,
+    RegionKey, ToolChange,
 };
+use slicer_sdk::test_prelude::{print_entity, tool_change, LayerCollectionFixtureBuilder};
 use wipe_tower::WipeTower;
 
-fn semver() -> SemVer {
-    SemVer {
-        major: 0,
-        minor: 1,
-        patch: 0,
-    }
-}
-
 fn dummy_entity(z: f32, index: u32) -> PrintEntity {
-    PrintEntity {
-        entity_id: 1,
-        path: ExtrusionPath3D {
-            points: vec![Point3WithWidth {
-                x: 10.0,
-                y: 10.0,
-                z,
-                width: 0.4,
-                flow_factor: 1.0,
-                overhang_quartile: None,
-            }],
-            role: ExtrusionRole::OuterWall,
-            speed_factor: 1.0,
-        },
-        role: ExtrusionRole::OuterWall,
-        region_key: RegionKey {
+    print_entity(
+        1,
+        ExtrusionRole::OuterWall,
+        vec![Point3WithWidth {
+            x: 10.0,
+            y: 10.0,
+            z,
+            width: 0.4,
+            flow_factor: 1.0,
+            overhang_quartile: None,
+        }],
+        RegionKey {
             global_layer_index: index,
             object_id: "obj1".to_string(),
             region_id: 1,
         },
-        topo_order: 0,
-    }
+        0,
+    )
 }
 
 fn make_layer(index: u32, z: f32, tool_changes: Vec<ToolChange>) -> LayerCollectionIR {
-    LayerCollectionIR {
-        schema_version: semver(),
-        global_layer_index: index,
-        z,
-        ordered_entities: vec![dummy_entity(z, index)],
-        tool_changes,
-        z_hops: vec![],
-        annotations: vec![],
-        retracts: vec![],
-        travel_moves: vec![],
-    }
+    tool_changes
+        .into_iter()
+        .fold(
+            LayerCollectionFixtureBuilder::new()
+                .global_layer_index(index)
+                .z(z)
+                .add_entity(dummy_entity(z, index)),
+            |b, tc| b.add_tool_change(tc),
+        )
+        .build()
 }
 
 fn empty_config() -> ConfigView {
@@ -82,14 +70,6 @@ fn custom_config(x: f32, y: f32, width: f32, purge_vol: f32, line_w: f32) -> Con
     ConfigView::from_map(fields)
 }
 
-fn tc(after: u32, from: u32, to: u32) -> ToolChange {
-    ToolChange {
-        after_entity_index: after,
-        from_tool: from,
-        to_tool: to,
-    }
-}
-
 // ---- Tests ----
 
 #[test]
@@ -117,7 +97,7 @@ fn from_config_custom() {
 #[test]
 fn disabled_no_changes() {
     let wt = WipeTower::from_config(&empty_config()).unwrap();
-    let mut layers = vec![make_layer(0, 0.2, vec![tc(0, 0, 1)])];
+    let mut layers = vec![make_layer(0, 0.2, vec![tool_change(0, 0, 1)])];
     let orig = layers.clone();
     wt.process(&mut layers).unwrap();
     assert_eq!(layers, orig);
@@ -135,7 +115,7 @@ fn no_tool_changes_no_output() {
 #[test]
 fn single_tool_change_inserts_paths() {
     let wt = WipeTower::from_config(&enabled_config()).unwrap();
-    let mut layers = vec![make_layer(0, 0.2, vec![tc(0, 0, 1)])];
+    let mut layers = vec![make_layer(0, 0.2, vec![tool_change(0, 0, 1)])];
     let entity_count_before = layers[0].ordered_entities.len();
     wt.process(&mut layers).unwrap();
     assert!(
@@ -147,7 +127,7 @@ fn single_tool_change_inserts_paths() {
 #[test]
 fn paths_have_wipe_tower_role() {
     let wt = WipeTower::from_config(&enabled_config()).unwrap();
-    let mut layers = vec![make_layer(0, 0.2, vec![tc(0, 0, 1)])];
+    let mut layers = vec![make_layer(0, 0.2, vec![tool_change(0, 0, 1)])];
     let entity_count_before = layers[0].ordered_entities.len();
     wt.process(&mut layers).unwrap();
 
@@ -161,7 +141,7 @@ fn paths_have_wipe_tower_role() {
 fn tower_at_configured_position() {
     let cfg = custom_config(100.0, 200.0, 60.0, 70.0, 0.4);
     let wt = WipeTower::from_config(&cfg).unwrap();
-    let mut layers = vec![make_layer(0, 0.2, vec![tc(0, 0, 1)])];
+    let mut layers = vec![make_layer(0, 0.2, vec![tool_change(0, 0, 1)])];
     let entity_count_before = layers[0].ordered_entities.len();
     wt.process(&mut layers).unwrap();
 
@@ -184,8 +164,8 @@ fn purge_volume_affects_paths() {
     let wt_small = WipeTower::from_config(&cfg_small).unwrap();
     let wt_large = WipeTower::from_config(&cfg_large).unwrap();
 
-    let mut layers_small = vec![make_layer(0, 0.2, vec![tc(0, 0, 1)])];
-    let mut layers_large = vec![make_layer(0, 0.2, vec![tc(0, 0, 1)])];
+    let mut layers_small = vec![make_layer(0, 0.2, vec![tool_change(0, 0, 1)])];
+    let mut layers_large = vec![make_layer(0, 0.2, vec![tool_change(0, 0, 1)])];
 
     wt_small.process(&mut layers_small).unwrap();
     wt_large.process(&mut layers_large).unwrap();
@@ -210,7 +190,7 @@ fn purge_volume_affects_paths() {
 #[test]
 fn multiple_tool_changes_per_layer() {
     let wt = WipeTower::from_config(&enabled_config()).unwrap();
-    let mut layers = vec![make_layer(0, 0.2, vec![tc(0, 0, 1), tc(0, 1, 2)])];
+    let mut layers = vec![make_layer(0, 0.2, vec![tool_change(0, 0, 1), tool_change(0, 1, 2)])];
     let entity_count_before = layers[0].ordered_entities.len();
     wt.process(&mut layers).unwrap();
 
@@ -231,8 +211,8 @@ fn multiple_tool_changes_per_layer() {
 fn multi_layer_tool_changes() {
     let wt = WipeTower::from_config(&enabled_config()).unwrap();
     let mut layers = vec![
-        make_layer(0, 0.2, vec![tc(0, 0, 1)]),
-        make_layer(1, 0.4, vec![tc(0, 1, 0)]),
+        make_layer(0, 0.2, vec![tool_change(0, 0, 1)]),
+        make_layer(1, 0.4, vec![tool_change(0, 1, 0)]),
     ];
     wt.process(&mut layers).unwrap();
 
