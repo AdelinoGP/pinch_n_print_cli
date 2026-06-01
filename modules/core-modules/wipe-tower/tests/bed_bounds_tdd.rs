@@ -9,69 +9,64 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
-
-use slicer_ir::{
-    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
-    PrintEntity, RegionKey, SemVer, ToolChange,
+use slicer_ir::{ConfigValue, ExtrusionRole, Point3WithWidth, RegionKey};
+use slicer_sdk::test_prelude::{
+    print_entity, tool_change, ConfigViewBuilder, LayerCollectionFixtureBuilder,
 };
 use slicer_sdk::traits::{FinalizationModule, FinalizationOutputBuilder, LayerCollectionView};
 use wipe_tower::WipeTower;
 
 /// Build a minimal ConfigView for the given key-value pairs.
-fn config_from_pairs(pairs: &[(&str, ConfigValue)]) -> ConfigView {
-    let mut map = HashMap::new();
+fn config_from_pairs(pairs: &[(&str, ConfigValue)]) -> slicer_ir::ConfigView {
+    let mut builder = ConfigViewBuilder::new();
     for (k, v) in pairs {
-        map.insert(k.to_string(), v.clone());
+        match v {
+            ConfigValue::Bool(b) => builder = builder.bool(*k, *b),
+            ConfigValue::Float(f) => builder = builder.float(*k, *f),
+            ConfigValue::Int(i) => builder = builder.int(*k, *i),
+            ConfigValue::String(s) => builder = builder.string(*k, s.clone()),
+            ConfigValue::List(l) => builder = builder.list(*k, l.clone()),
+        }
     }
-    ConfigView::from_map(map)
+    builder.build()
 }
 
 /// Build a minimal single-layer IR with one ToolChange after entity 0.
-fn layer_with_tool_change() -> LayerCollectionIR {
-    LayerCollectionIR {
-        schema_version: SemVer::default(),
-        global_layer_index: 0,
-        z: 0.2,
-        ordered_entities: vec![PrintEntity {
-            entity_id: 1,
-            path: ExtrusionPath3D {
-                points: vec![
-                    Point3WithWidth {
-                        x: 5.0,
-                        y: 5.0,
-                        z: 0.2,
-                        width: 0.4,
-                        flow_factor: 1.0,
-                        overhang_quartile: None,
-                    },
-                    Point3WithWidth {
-                        x: 6.0,
-                        y: 5.0,
-                        z: 0.2,
-                        width: 0.4,
-                        flow_factor: 1.0,
-                        overhang_quartile: None,
-                    },
-                ],
-                role: ExtrusionRole::OuterWall,
-                speed_factor: 1.0,
+fn layer_with_tool_change() -> slicer_ir::LayerCollectionIR {
+    let entity = print_entity(
+        1,
+        ExtrusionRole::OuterWall,
+        vec![
+            Point3WithWidth {
+                x: 5.0,
+                y: 5.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+                overhang_quartile: None,
             },
-            role: ExtrusionRole::OuterWall,
-            region_key: RegionKey {
-                global_layer_index: 0,
-                object_id: "cube".to_string(),
-                region_id: 0,
+            Point3WithWidth {
+                x: 6.0,
+                y: 5.0,
+                z: 0.2,
+                width: 0.4,
+                flow_factor: 1.0,
+                overhang_quartile: None,
             },
-            topo_order: 0,
-        }],
-        tool_changes: vec![ToolChange {
-            after_entity_index: 0,
-            from_tool: 0,
-            to_tool: 1,
-        }],
-        ..Default::default()
-    }
+        ],
+        RegionKey {
+            global_layer_index: 0,
+            object_id: "cube".to_string(),
+            region_id: 0,
+        },
+        0,
+    );
+    LayerCollectionFixtureBuilder::new()
+        .global_layer_index(0)
+        .z(0.2)
+        .add_entity(entity)
+        .add_tool_change(tool_change(0, 0, 1))
+        .build()
 }
 
 /// AC6 — tower geometry within config-supplied bed polygon (bed-containment half).
@@ -131,7 +126,7 @@ fn tower_geometry_within_config_bed_only() {
         .expect("apply_to must succeed for valid insertions");
 
     // Collect all WipeTower entities from the modified layer.
-    let wipe_entities: Vec<&PrintEntity> = layers[0]
+    let wipe_entities: Vec<&slicer_ir::PrintEntity> = layers[0]
         .ordered_entities
         .iter()
         .filter(|e| matches!(e.role, ExtrusionRole::WipeTower))

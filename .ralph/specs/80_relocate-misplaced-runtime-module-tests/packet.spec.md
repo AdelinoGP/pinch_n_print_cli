@@ -1,9 +1,10 @@
 ---
-status: draft
+status: implemented
 packet: 80
 task_ids: [TASK-229, TASK-230]
 requires: [79]
 backlog_source: docs/07_implementation_status.md
+closed: 2026-06-01
 ---
 
 # Packet 80 — Relocate Misplaced Module Tests; Annotate Legitimately-Runtime Module-Referencing Tests
@@ -69,7 +70,7 @@ Two relocations + three annotations. The relocation targets were identified by r
 **When** each file's first 25 lines are inspected,
 **Then** each contains a comment matching the pattern `// NOT RELOCATABLE — SUT is <runtime symbol>, module <name> is fixture input` (or equivalent — the literal substring `NOT RELOCATABLE` and the named runtime symbol must appear; one-line variants are acceptable). Specifically: `slicing_promotion_e2e_regression_tdd` names `commit_shell_classification_builtin` or `commit_slice_builtin` or `Blackboard`; `gcode_part_cooling_emission_tdd` and `gcode_skirt_brim_emission_tdd` each name `DefaultGCodeEmitter` or `DefaultGCodeSerializer` or `Blackboard`.
 
-| `for f in slicing_promotion_e2e_regression_tdd gcode_part_cooling_emission_tdd gcode_skirt_brim_emission_tdd; do head -25 crates/slicer-runtime/tests/executor/$f.rs crates/slicer-runtime/tests/integration/$f.rs 2>/dev/null | grep -qE 'NOT RELOCATABLE' || exit 1; done; head -25 crates/slicer-runtime/tests/executor/slicing_promotion_e2e_regression_tdd.rs | grep -qE 'commit_(shell_classification|slice)_builtin|Blackboard' && head -25 crates/slicer-runtime/tests/integration/gcode_part_cooling_emission_tdd.rs | grep -qE 'DefaultGCodeEmitter|DefaultGCodeSerializer|Blackboard' && head -25 crates/slicer-runtime/tests/integration/gcode_skirt_brim_emission_tdd.rs | grep -qE 'DefaultGCodeEmitter|DefaultGCodeSerializer|Blackboard'`
+| `head -25 crates/slicer-runtime/tests/executor/slicing_promotion_e2e_regression_tdd.rs | grep -q 'NOT RELOCATABLE' && head -25 crates/slicer-runtime/tests/executor/slicing_promotion_e2e_regression_tdd.rs | grep -qE 'commit_(shell_classification\|slice)_builtin\|Blackboard' && head -25 crates/slicer-runtime/tests/integration/gcode_part_cooling_emission_tdd.rs | grep -q 'NOT RELOCATABLE' && head -25 crates/slicer-runtime/tests/integration/gcode_part_cooling_emission_tdd.rs | grep -qE 'DefaultGCodeEmitter\|DefaultGCodeSerializer\|Blackboard' && head -25 crates/slicer-runtime/tests/integration/gcode_skirt_brim_emission_tdd.rs | grep -q 'NOT RELOCATABLE' && head -25 crates/slicer-runtime/tests/integration/gcode_skirt_brim_emission_tdd.rs | grep -qE 'DefaultGCodeEmitter\|DefaultGCodeSerializer\|Blackboard'`
 
 ### AC-7 — `cargo test -p slicer-runtime` still passes — the moved tests are gone but nothing else regresses
 
@@ -89,14 +90,6 @@ Two relocations + three annotations. The relocation targets were identified by r
 
 | `! rg "use (wipe_tower|support_planner)::" crates/slicer-runtime/tests/ 2>/dev/null`
 
-### AC-N2 — The relocated support-planner test would NOT compile without packet 77's `#[module_test]` wiring
-
-**Given** the support-planner test uses `#[module_test]`,
-**When** the implementer temporarily reverts `slicer_sdk::test_support::reset_global_state` to a stub (in a working-tree-only experiment), the relocated test compiles AND runs but its assertion-based check on `take_log_messages()` returns the prior test's leftover logs instead of empty,
-**Then** the implementer reverts the experiment; the actual relocated test relies on `reset_global_state`'s implementation from packet 77 step 2 to drain log capture between tests. This is documented in `implementation-plan.md` step "Verify packet 77 hook is load-bearing".
-
-| (Manual implementer ceremony documented in `implementation-plan.md`. Not CI-gated.)
-
 ## Verification (gate commands only)
 
 1. `cargo check --workspace --all-targets`
@@ -115,6 +108,38 @@ Full per-AC matrix lives in `requirements.md`.
 ## Doc Impact Statement
 
 No doc files are edited by this packet. The relocation is purely structural; the test files themselves move, the aggregator loses two lines, three runtime tests get header comments. No section in `docs/05_module_sdk.md` describes the runtime/test layout that's being adjusted. The user has flagged that `GCodeEmitter` may move to its own crate in a future packet; that future packet would relocate the two remaining `gcode_*_emission` runtime tests, but P80 documents the current state without pre-empting.
+
+## Deviations (recorded at closure)
+
+Recorded during the swarm implementation 2026-06-01. Closure gate verdict: SHIP. Targeted test sweep `wipe-tower + support-planner + slicer-runtime`: 1160 passed, 0 failed across 15 binaries; `cargo test -p slicer-runtime` regression delta exactly −7 (matches the 7 test functions that moved out). End of the 77–80 four-packet test-support refactor.
+
+### D-1 — AC-N2 deleted
+
+The originally-drafted AC-N2 ("manually verify the `#[module_test]` `reset_global_state` hook is load-bearing by checking that test-2 sees no leftover log entries from test-1") was removed from `packet.spec.md`, `requirements.md`, `implementation-plan.md` (former Step 9 manual probe), and `task-map.md` during closure. Rust's per-thread test isolation makes the probe tautological: each `#[test]` body runs on its own thread, so the second test's "leftover logs" check sees an empty buffer regardless of whether `reset_global_state` ran. The same lesson was recorded as packet 77's deviation 2; AC-N2 here repeated the mistake. The hook's load-bearing behavior is instead asserted indirectly by AC-2's `! grep install_log_capture` check plus the relocated test's PASS — if the hook didn't install the sink, the test's final `take_log_messages()` assertion would observe an empty buffer and fail. Future agents reading the packet should not recreate AC-N2; the indirect signal is sufficient and the direct probe is unfaslifiable under Rust's test runtime.
+
+### D-2 — AC-6 verification command rewritten
+
+The originally-drafted AC-6 verification was a shell loop of the form `for f in <three names>; do head -25 .../executor/$f.rs .../integration/$f.rs 2>/dev/null | grep -qE 'NOT RELOCATABLE' || exit 1; done`. This is a real packet-authoring defect: when neither candidate path exists (e.g., a future relocation moves one of these files), `head -25 nonexistent 2>/dev/null` emits an empty stream to `grep`, `grep -q` exits 1 on the empty input, but the `|| exit 1` chain still treats that as the loop's intended failure mode rather than a missing-file failure — and the broader compound was vulnerable to silently passing on a typo. Closure replaced it with the explicit per-file compound now in `packet.spec.md` (three `head -25 <exact path>` invocations chained with `&&`), which fails loud if any path is absent. AC-6 as shipped exercises the real invariant on the real files.
+
+### D-3 — Step 1 preflight measurement method changed
+
+Originally-drafted Step 1 captured pre-baseline test counts by running `cargo test -p wipe-tower`, `cargo test -p support-planner`, and `cargo test -p slicer-runtime` and parsing `tail -5` of each — three heavy cargo invocations at preflight, dominated by the ~1027-test `slicer-runtime` sweep. Closure changed the measurement to a deterministic sub-second grep: `rg -c '^#\[(tokio::)?test\]' <path> | awk -F: '{s+=$2} END{print s+0}'`. Counts the `#[test]` / `#[tokio::test]` attributes at start-of-line per file and sums. The closure-gate runs at Step 5 (slicer-runtime regression) and Step 9 (targeted sweep) produce the real cargo-side counts; paying for three heavy preflight runs adds no signal beyond the grep. Counts captured by the grep method (wipe-tower=15, support-planner=0, slicer-runtime=1034) matched the post-relocation cargo-side counts exactly after subtracting the −7 moved tests.
+
+### D-4 — `support-planner` Cargo.toml `[dev-dependencies]` correction
+
+Original `design.md` / `requirements.md` described adding a `[dev-dependencies]` section to `modules/core-modules/support-planner/Cargo.toml` as if creating the section. Recon at relocation time found the section was already present pre-packet-80 — just empty (zero entries). The implementation correctly populated the existing empty section with the first entry (`slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }`) rather than re-adding a duplicate section header. Recon-driven correction; benign.
+
+### D-5 — AC-1 filename locked to `bed_bounds_tdd.rs`
+
+`requirements.md` §Acceptance Summary originally noted "AC-1 refinement: the relocated filename is `bed_bounds_tdd.rs`" but also hedged earlier with "either form acceptable" wording (with or without the `_tdd` suffix). Closure locked the filename to `bed_bounds_tdd.rs` to match `orca_parity_tdd.rs`'s `<scope>_tdd.rs` convention across both relocations. Reasonable tightening; both relocations now follow the same naming pattern, which `pnp_cli module new` scaffold-generated tests already use.
+
+### D-6 — `wipe_tower_tdd.rs:193` rustfmt reflow
+
+`modules/core-modules/wipe-tower/tests/wipe_tower_tdd.rs` line 193 was reflowed from a one-line `vec![tool_change(0, 0, 1), tool_change(0, 1, 2)]` to a four-line wrap by rustfmt during closure. This is left-over fallout from packet 79's D-6: that packet widened `tool_change` from a 2-arg to a 3-arg signature, which pushed the call past rustfmt's 100-column comfort threshold for this specific call site (other 2-tool-change sites under shorter contexts stayed single-line). Packet 79's closure rustfmt should have caught it but didn't (likely an unstaged-formatter edge case). Cosmetic; no behavior change; bundled into this packet's closure commit rather than leaving the working tree dirty.
+
+### D-7 — AC-6 placement variance for `gcode_part_cooling_emission_tdd.rs` and `gcode_skirt_brim_emission_tdd.rs`
+
+`design.md` §Controlling Code Paths described the `NOT RELOCATABLE` comment as placed "deliberately between the existing module doc-comment and the `#![allow(missing_docs)]` attribute." Both `gcode_*_emission_tdd.rs` files had pre-existing inverted header order — `#![allow(missing_docs)]` at line 1 above the doc-comment — so the comment was placed after the doc-comment instead (at lines 5–6 of each), which is the best available logical slot given the inverted structure. AC-6's grep verification passes; the comment is visible in the top 25 lines of both files; the functional intent (future agents grepping for `NOT RELOCATABLE` find the SUT-vs-fixture rationale) is met. Benign; only the third file (`slicing_promotion_e2e_regression_tdd.rs`) had the design-canonical header order and received the comment in the design-specified slot.
 
 <!-- snippet: context-discipline -->
 ## Context Discipline Note

@@ -25,7 +25,7 @@ This packet is the smallest of the 77–80 sequence by design — packets 77/78/
 
 - **Two relocations**:
   - `crates/slicer-runtime/tests/executor/wipe_tower_bed_bounds.rs` → `modules/core-modules/wipe-tower/tests/bed_bounds_tdd.rs`. During relocation: replace the hand-rolled `config_from_pairs` + `layer_with_tool_change` helpers with `ConfigViewBuilder` + the packet-79 `LayerCollectionFixtureBuilder` + `tool_change(...)`. Preserve every original assertion. Add `slicer-sdk = { ..., features = ["test"] }` to `modules/core-modules/wipe-tower/Cargo.toml` `[dev-dependencies]` if not already present from packet 79.
-  - `crates/slicer-runtime/tests/executor/prepass_support_generation_orca_parity_tdd.rs` → `modules/core-modules/support-planner/tests/orca_parity_tdd.rs`. During relocation: switch the `#[test]` + manual `log_test_support::install_log_capture()` pattern to `#[module_test]` (the macro's `mock_host_setup` hook from packet 77 handles install/drain automatically). Use `slicer_sdk::test_prelude::*` for builder imports. Add `slicer-sdk = { ..., features = ["test"] }` to `modules/core-modules/support-planner/Cargo.toml` `[dev-dependencies]` — this is the first test the crate has had, so the section may need to be created.
+  - `crates/slicer-runtime/tests/executor/prepass_support_generation_orca_parity_tdd.rs` → `modules/core-modules/support-planner/tests/orca_parity_tdd.rs`. During relocation: switch the `#[test]` + manual `log_test_support::install_log_capture()` pattern to `#[module_test]` (the macro's `mock_host_setup` hook from packet 77 handles install/drain automatically). Use `slicer_sdk::test_prelude::*` for builder imports. Add `slicer-sdk = { ..., features = ["test"] }` as the first entry under `[dev-dependencies]` in `modules/core-modules/support-planner/Cargo.toml` — recon confirms the section already exists but is currently empty (this is the crate's first test).
 - **Two aggregator updates**:
   - Remove `mod wipe_tower_bed_bounds;` from `crates/slicer-runtime/tests/executor/main.rs:42` (per recon-confirmed line).
   - Remove `mod prepass_support_generation_orca_parity_tdd;` from `crates/slicer-runtime/tests/executor/main.rs:36` (per recon-confirmed line).
@@ -64,7 +64,7 @@ None. This packet does not borrow or check parity against any OrcaSlicer code. (
 
 ACs are defined in `packet.spec.md` and referenced by ID. Measurable refinements:
 
-- **AC-1 refinement**: the relocated `bed_bounds_tdd.rs` filename drops the `_bed_bounds` redundancy because the file is now inside `wipe-tower/tests/` (the `_bed_bounds_` part of the name was carrying that disambiguation). The new name is `bed_bounds_tdd.rs` per the destination convention. If the implementer prefers `bed_bounds.rs` (matching the original's lack of `_tdd` suffix), that's acceptable — the AC tolerates either; only the file's presence at SOME path under `wipe-tower/tests/` matters.
+- **AC-1 refinement**: the relocated filename is `bed_bounds_tdd.rs` (drops the `wipe_tower_` redundancy now that the file lives inside `wipe-tower/tests/`; keeps the `_tdd` suffix consistent with the support-planner relocation's `orca_parity_tdd.rs`). Filename is locked — both destinations follow the `<scope>_tdd.rs` convention.
 - **AC-2 refinement**: the destination filename `orca_parity_tdd.rs` drops the `prepass_support_generation_` prefix because the file is now inside `support-planner/tests/`. The OrcaSlicer-parity scope of the test is what the name should preserve.
 - **AC-3 refinement**: the exact line numbers in `executor/main.rs` (36 and 42 per recon) may shift if intervening packets edit `main.rs`. The AC is line-number-agnostic; it asserts the absence of the two `mod` declarations regardless of position.
 - **AC-5 refinement**: `support-planner` had zero tests pre-packet-80. This relocation is the FIRST test the crate has. The implementation log records this as a meaningful milestone — `support-planner` was the only core-module with no tests yet still had src-level reach into `host::log` (per packet 77's grilling). The relocation closes that gap.
@@ -78,7 +78,6 @@ ACs are defined in `packet.spec.md` and referenced by ID. Measurable refinements
   #![allow(missing_docs)]
   ```
 - **AC-7 refinement**: `cargo test -p slicer-runtime` is one of the heavier per-crate test runs in the workspace (bundles 5 buckets). The implementation log captures the pre-relocation count and the post-relocation count; the difference equals the count of tests that moved out (typically 5-10 test functions across the two moved files).
-- **AC-N2 refinement**: the manual ceremony probes whether `reset_global_state` from packet 77 is genuinely doing the work the `#[module_test]` macro requires. The implementer temporarily replaces `reset_global_state`'s body with `// no-op for probe` (in a working-tree-only edit, never committed), runs the relocated support-planner test twice — first with a `#[module_test]` that installs a log message, then a second `#[module_test]` that asserts no leftover logs. With the probe in place, the second test sees the first's log; with the probe reverted, the second test sees an empty buffer. This documents that packet 77's hook is load-bearing for the relocated test.
 
 ## Verification Commands
 
@@ -92,7 +91,6 @@ ACs are defined in `packet.spec.md` and referenced by ID. Measurable refinements
 | AC-6 | (compound, see `packet.spec.md`) | Direct head + grep loop. |
 | AC-7 | `cargo test -p slicer-runtime` | Delegate; expect FACT total count vs pre-baseline. |
 | AC-N1 | `! rg "use (wipe_tower|support_planner)::" crates/slicer-runtime/tests/` | Direct. |
-| AC-N2 | Manual implementer ceremony — documented in `implementation-plan.md` step "Verify packet 77 hook is load-bearing". | Not CI-gated. |
 | Closure: workspace check | `cargo check --workspace --all-targets` | Delegate. |
 | Closure: clippy | `cargo clippy --workspace --all-targets -- -D warnings` | Delegate. |
 | Closure: targeted test sweep | `cargo test -p wipe-tower -p support-planner -p slicer-runtime` | Delegate; three packages; the slicer-runtime invocation is the heaviest. |

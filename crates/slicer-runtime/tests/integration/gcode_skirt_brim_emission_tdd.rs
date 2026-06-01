@@ -6,6 +6,9 @@
 //! blocks before model entities, that the loop count and disabled-path are
 //! exercised, and that brim paths also appear before outer-wall entities.
 
+// NOT RELOCATABLE — SUT is DefaultGCodeEmitter / DefaultGCodeSerializer / Blackboard; module skirt-brim is fixture input.
+// If any of those runtime symbols moves out of slicer-runtime in a future packet, this comment becomes stale and the test should be re-evaluated for relocation to the module's crate.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 

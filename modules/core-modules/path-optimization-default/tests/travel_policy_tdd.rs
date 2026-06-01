@@ -16,25 +16,10 @@ use slicer_sdk::traits::LayerModule;
 use slicer_sdk::views::PerimeterRegionView;
 use std::collections::HashMap;
 
+#[rustfmt::skip]
 fn make_wall_loop(x1: f32, y1: f32, x2: f32, y2: f32, z: f32) -> WallLoop {
-    let p = |x, y| Point3WithWidth {
-        x,
-        y,
-        z,
-        width: 0.4,
-        flow_factor: 1.0,
-        overhang_quartile: None,
-    };
-    let path = ExtrusionPath3D {
-        points: vec![p(x1, y1), p(x2, y2)],
-        role: ExtrusionRole::OuterWall,
-        speed_factor: 1.0,
-    };
-    PerimeterRegionViewBuilder::new()
-        .add_outer_wall(path)
-        .build()
-        .wall_loops()[0]
-        .clone()
+    let p = |x, y| Point3WithWidth { x, y, z, width: 0.4, flow_factor: 1.0, overhang_quartile: None };
+    PerimeterRegionViewBuilder::new().add_outer_wall(ExtrusionPath3D { points: vec![p(x1, y1), p(x2, y2)], role: ExtrusionRole::OuterWall, speed_factor: 1.0 }).build().wall_loops()[0].clone()
 }
 
 fn config_with_retract(retract_length: f64) -> ConfigView {

@@ -27,6 +27,7 @@ use slicer_ir::{
     SemVer, SupportPlanEntry,
 };
 use slicer_sdk::host::{test_support as log_test_support, LogLevel};
+use slicer_sdk::module_test;
 use slicer_sdk::prepass_builders::SupportGeometryOutput;
 use slicer_sdk::prepass_types::{
     LayerPlanView, LayerPlanViewEntry, MeshObjectView, RegionSegmentationView,
@@ -322,7 +323,13 @@ fn benchy_orca_parity_within_tolerance() {
 
     // ── 2. Resolve golden paths ──────────────────────────────────────────────
     let manifest_dir = PathBuf::from(std::env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest_dir.parent().unwrap().parent().unwrap();
+    let repo_root = manifest_dir
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
     let golden_dir = repo_root.join("resources/golden");
     let branch_count_path = golden_dir.join("benchy_tree_support_orca_branch_count.txt");
     let endpoints_path = golden_dir.join("benchy_tree_support_orca_endpoints.txt");
@@ -358,8 +365,7 @@ fn benchy_orca_parity_within_tolerance() {
     if !branch_count_path.exists() || !endpoints_path.exists() {
         panic!(
             "AC-6: golden files missing. Regenerate with SUPPORT_PLANNER_REGEN_GOLDEN=1 \
-             cargo test -p slicer-runtime --test prepass_support_generation_orca_parity_tdd \
-             benchy_orca_parity_within_tolerance"
+             cargo test -p support-planner -- benchy_orca_parity_within_tolerance"
         );
     }
     let count_raw = std::fs::read_to_string(&branch_count_path)
@@ -456,12 +462,10 @@ fn directed_hausdorff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
 /// destination is occupied by the model), the node is dropped and a
 /// `support-planner.node-clamped-out` warn-level diagnostic is emitted via
 /// `host-services.log`.
-#[test]
+#[module_test]
 fn node_dropped_when_avoidance_rejects_all_moves() {
-    log_test_support::install_log_capture();
-    // Drain any pre-existing entries so we observe only this test's emissions.
-    let _ = log_test_support::take_log_messages();
-    log_test_support::install_log_capture();
+    // Note: #[module_test] already drains and reinstalls log capture via
+    // reset_global_state() + mock_host_setup(). No explicit install needed here.
 
     let config = make_planner_config(&[
         ("support_enabled", ConfigValue::Bool(true)),

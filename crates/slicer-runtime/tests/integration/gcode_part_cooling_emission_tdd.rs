@@ -2,6 +2,9 @@
 
 //! TDD tests for packet 53 (TASK-154): part-cooling fan G-code emission config keys.
 
+// NOT RELOCATABLE — SUT is DefaultGCodeEmitter / DefaultGCodeSerializer / Blackboard; module part-cooling is fixture input.
+// If any of those runtime symbols moves out of slicer-runtime in a future packet, this comment becomes stale and the test should be re-evaluated for relocation to the module's crate.
+
 use std::collections::HashMap;
 use std::sync::Arc;
 

@@ -13,6 +13,9 @@
 //! self-gates on `top_shell_index == Some(0)` and produces non-empty
 //! `ironing_paths` with `ExtrusionRole::Ironing`.
 
+// NOT RELOCATABLE — SUT is commit_shell_classification_builtin / commit_slice_builtin / Blackboard; module top-surface-ironing is fixture input.
+// If any of those runtime symbols moves out of slicer-runtime in a future packet, this comment becomes stale and the test should be re-evaluated for relocation to the module's crate.
+
 #![allow(missing_docs)]
 
 use std::collections::HashMap;

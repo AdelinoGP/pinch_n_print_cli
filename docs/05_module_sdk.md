@@ -395,25 +395,26 @@ Recommended budgeting:
 
 ### Geometry Helpers
 
-The SDK provides zero-cost geometry utilities built on top of the WIT types:
+Geometry utilities for module authors live in the `slicer-core` crate (add `slicer-core = { path = "..." }` to `[dependencies]` — already declared by `arachne-perimeters`, `classic-perimeters`, `rectilinear-infill`, `traditional-support`, and `tree-support`).
 
 ```rust
-use slicer_sdk::geometry::{segment_path, distribute_points, path_length};
+use slicer_core::{segment_path, distribute_points, path_length, seg_len_3d, flow_correction};
+use slicer_ir::Point2;
 
-// Segment a straight line into chunks of at most `max_len` mm
-let segments: Vec<(f32, f32)> = segment_path(x1, y1, x2, y2, max_len);
+// Subdivide a 2D segment so no piece exceeds `max_len_mm`; endpoints are preserved.
+let segments: Vec<Point2> = segment_path(start, end, max_len_mm);
 
-// Distribute N evenly-spaced points along a polyline
-let pts: Vec<Point3WithWidth> = distribute_points(&path.points, n);
+// Distribute exactly `count` evenly-spaced points along a polyline (endpoints kept).
+let pts: Vec<Point3WithWidth> = distribute_points(&path.points, count);
 
-// Total arc length of a 3D path in mm
+// Total arc length of a 3D path in mm.
 let len: f32 = path_length(&path.points);
 
-// Compute 3D segment length with Z deviation
-let len_3d: f32 = slicer_sdk::geometry::seg_len_3d(dx, dy, dz);
+// Euclidean length of a 3D segment given its component deltas.
+let len_3d: f32 = seg_len_3d(dx, dy, dz);
 
-// Extrusion volume correction for non-planar segment
-let flow: f32 = slicer_sdk::geometry::flow_correction(dx, dy, dz);
+// Extrusion volume correction factor for a segment with Z deviation.
+let flow: f32 = flow_correction(dx, dy, dz);
 ```
 
 ### `ModuleError` Builder

@@ -9,18 +9,18 @@
 
 ## Steps
 
-### Step 1 — Preflight: verify packet 79 closed; capture pre-baseline test counts
+### Step 1 — Preflight: verify packet 79 closed; capture pre-baseline test-function counts
 
 - **Task IDs**: TASK-229
-- **Objective**: Confirm packet 79's `status: implemented`; capture pre-packet-80 counts for `cargo test -p wipe-tower`, `cargo test -p support-planner`, `cargo test -p slicer-runtime`.
+- **Objective**: Confirm packet 79's `status: implemented`; capture pre-packet-80 test-function counts (via grep) for wipe-tower, support-planner, slicer-runtime. Grep counting is deterministic, sub-second, and avoids three heavy cargo runs (cargo test then runs at steps 2/3 narrowly and steps 5/9 broadly — no need for a fourth full sweep here).
 - **Precondition**: Packet 79's `packet.spec.md` exists with `status: implemented`.
-- **Postcondition**: Three test counts recorded.
+- **Postcondition**: Three test-function counts recorded in the implementation log.
 - **Files to read**: `.ralph/specs/79_core-modules-test-migration-and-builder-extension/packet.spec.md` frontmatter.
 - **Files to edit**: none.
-- **Expected dispatches**: dispatch 4 (pre-baseline counts).
-- **Context cost**: M (three test sweeps).
-- **Narrow verification**: `grep -E '^status:' .ralph/specs/79_core-modules-test-migration-and-builder-extension/packet.spec.md | grep -q implemented && cargo test -p wipe-tower 2>&1 | tail -5 && cargo test -p support-planner 2>&1 | tail -5 && cargo test -p slicer-runtime 2>&1 | tail -5`
-- **Exit condition**: P79 closed; baseline counts noted (support-planner should be 0 tests).
+- **Expected dispatches**: dispatch 4 (pre-baseline counts via grep).
+- **Context cost**: S
+- **Narrow verification**: `grep -E '^status:' .ralph/specs/79_core-modules-test-migration-and-builder-extension/packet.spec.md | grep -q implemented && echo "wipe-tower: $(rg -c '^#\[(tokio::)?test\]' modules/core-modules/wipe-tower/tests/ 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')" && echo "support-planner: $(rg -c '^#\[(tokio::)?test\]' modules/core-modules/support-planner/tests/ 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')" && echo "slicer-runtime: $(rg -c '^#\[(tokio::)?test\]' crates/slicer-runtime/tests/ 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')"`
+- **Exit condition**: P79 closed; three counts noted (support-planner should be 0 pre-packet-80).
 
 ### Step 2 — Relocate `wipe_tower_bed_bounds.rs` (write destination first)
 
@@ -42,11 +42,11 @@
 - **Task IDs**: TASK-229
 - **Objective**: AC-2 + AC-5 satisfied. The relocated file exists at the new path, compiles, and `cargo test -p support-planner` passes. The `#[test]` + manual `install_log_capture` pair is replaced with `#[module_test]`.
 - **Precondition**: Step 2 complete.
-- **Postcondition**: Destination file exists; tests pass; source file still exists (will be deleted in step 4); `support-planner/Cargo.toml` gains its first `[dev-dependencies]` section.
+- **Postcondition**: Destination file exists; tests pass; source file still exists (will be deleted in step 4); `support-planner/Cargo.toml`'s existing empty `[dev-dependencies]` section gains its first entry.
 - **Files to read**: `crates/slicer-runtime/tests/executor/prepass_support_generation_orca_parity_tdd.rs` (full read, ≈ 550 lines — direct read OK). `modules/core-modules/support-planner/Cargo.toml` (pre-state).
 - **Files to edit**:
   - `modules/core-modules/support-planner/tests/orca_parity_tdd.rs` (new — verbatim contents with `#[test]` → `#[module_test]` switch and `install_log_capture` removal per design.md §Controlling Code Paths)
-  - `modules/core-modules/support-planner/Cargo.toml` (add `[dev-dependencies]` section with `slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }`)
+  - `modules/core-modules/support-planner/Cargo.toml` (populate the existing empty `[dev-dependencies]` section with `slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }`)
 - **Expected dispatches**: dispatch 2 (assertion snapshot), dispatch 3 (imports + helpers).
 - **Context cost**: M
 - **Narrow verification**: `cargo test -p support-planner`
@@ -65,8 +65,8 @@
   - `crates/slicer-runtime/tests/executor/main.rs` (remove 2 `mod` lines)
 - **Expected dispatches**: none.
 - **Context cost**: S
-- **Narrow verification**: `! test -f crates/slicer-runtime/tests/executor/wipe_tower_bed_bounds.rs && ! test -f crates/slicer-runtime/tests/executor/prepass_support_generation_orca_parity_tdd.rs && ! grep -qE '^mod (wipe_tower_bed_bounds|prepass_support_generation_orca_parity_tdd);' crates/slicer-runtime/tests/executor/main.rs && cargo check -p slicer-runtime --tests`
-- **Exit condition**: all checks pass; `slicer-runtime` still compiles.
+- **Narrow verification**: `! test -f crates/slicer-runtime/tests/executor/wipe_tower_bed_bounds.rs && ! test -f crates/slicer-runtime/tests/executor/prepass_support_generation_orca_parity_tdd.rs && ! grep -qE '^mod (wipe_tower_bed_bounds|prepass_support_generation_orca_parity_tdd);' crates/slicer-runtime/tests/executor/main.rs && ! rg "use (wipe_tower|support_planner)::" crates/slicer-runtime/tests/ 2>/dev/null && cargo check -p slicer-runtime --tests`
+- **Exit condition**: all checks pass (including AC-N1's structural-signal rg); `slicer-runtime` still compiles.
 
 ### Step 5 — Verify slicer-runtime regression: no broken tests after the moves
 
@@ -120,25 +120,11 @@
 - **Narrow verification**: `head -25 crates/slicer-runtime/tests/integration/gcode_skirt_brim_emission_tdd.rs | grep -qE 'NOT RELOCATABLE' && head -25 crates/slicer-runtime/tests/integration/gcode_skirt_brim_emission_tdd.rs | grep -qE 'DefaultGCodeEmitter|Blackboard'`
 - **Exit condition**: grep checks pass.
 
-### Step 9 — Verify packet 77 hook is load-bearing for the support-planner test (AC-N2 manual probe)
-
-- **Task IDs**: TASK-230
-- **Objective**: AC-N2 satisfied. Confirms the `#[module_test]` switch in step 3 actually relies on packet 77's `reset_global_state`.
-- **Precondition**: Step 8 complete.
-- **Postcondition**: AC-N2's documented experiment is recorded in the implementation log (no permanent file changes).
-- **Files to read**: `crates/slicer-sdk/src/test_support/mod.rs` (the post-packet-77 `reset_global_state` function — confirm it does `host::test_support::clear_mesh_source()` + `take_log_messages()`).
-- **Files to edit** (temporary, then revert):
-  - `crates/slicer-sdk/src/test_support/mod.rs` — temporarily change `reset_global_state` body to `// no-op for probe`; run a probe test that confirms the log buffer leaks between consecutive `#[module_test]`s; restore the body; re-run to confirm leakage stops.
-- **Expected dispatches**: none.
-- **Context cost**: S
-- **Narrow verification**: After restoration, `cargo test -p support-planner` is green again; the experiment notes are captured.
-- **Exit condition**: restoration confirmed green.
-
-### Step 10 — Final closure: workspace check + clippy + targeted test sweep + guest staleness
+### Step 9 — Final closure: workspace check + clippy + targeted test sweep + guest staleness
 
 - **Task IDs**: TASK-230
 - **Objective**: All closure gates green.
-- **Precondition**: Steps 1-9 complete.
+- **Precondition**: Steps 1-8 complete.
 - **Postcondition**: Packet ready for ceremony.
 - **Files to read / edit**: none.
 - **Expected dispatches**: dispatch 5 (wipe-tower test), dispatch 6 (support-planner test), dispatch 7 (slicer-runtime test), dispatch 8 (guest staleness).
@@ -154,22 +140,21 @@
 
 | Step | Cost | Cumulative |
 |---|---|---|
-| 1 | M | M |
-| 2 | M | M+M = L⁻ |
-| 3 | M | L |
-| 4 | S | L |
+| 1 | S | S |
+| 2 | M | M |
+| 3 | M | L⁻ |
+| 4 | S | L⁻ |
 | 5 | M | L |
 | 6 | S | L |
 | 7 | S | L |
 | 8 | S | L |
-| 9 | S | L |
-| 10 | M | L |
+| 9 | M | L |
 
-**Aggregate**: M-L. No single step is L. The packet is small (10 steps; most S); the L aggregate reflects three M-cost test sweeps (steps 1, 5, 10) rather than oversized individual steps. Single-context completion is feasible without handoff.
+**Aggregate**: M-L. No single step is L. The packet is small (9 steps; most S); the L aggregate reflects two M-cost test sweeps (steps 5, 9) rather than oversized individual steps. Step 1's pre-baseline uses grep counting (S), not test runs. Single-context completion is feasible without handoff.
 
 ## Packet Completion Gate
 
-The four closure gates from Step 10. Run in order; halt at first failure.
+The four closure gates from Step 9. Run in order; halt at first failure.
 
 ## Acceptance Ceremony
 

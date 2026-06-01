@@ -37,7 +37,7 @@ The packet has three small surfaces: two file relocations + one aggregator edit 
 `Cargo.toml` updates:
 
 - `modules/core-modules/wipe-tower/Cargo.toml` — adds `slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }` if not already present from packet 79. (Packet 79 migrates wipe-tower's existing in-module tests, so this dev-dep is already there.)
-- `modules/core-modules/support-planner/Cargo.toml` — adds `[dev-dependencies]` section with the `slicer-sdk = { ..., features = ["test"] }` line. This is the first dev-dep the crate has.
+- `modules/core-modules/support-planner/Cargo.toml` — populates the existing empty `[dev-dependencies]` section with its first entry: `slicer-sdk = { ..., features = ["test"] }`. (Recon: section is present but empty pre-packet-80.)
 
 ## Architecture Constraints
 
@@ -79,7 +79,7 @@ Edit-allowed:
 - `crates/slicer-runtime/tests/executor/prepass_support_generation_orca_parity_tdd.rs` — full read for the same reason. ≈ 550 lines per recon; safely under the 600-line cap.
 - `crates/slicer-runtime/tests/executor/main.rs` — recon-confirmed lines 36 and 42 carry the two `mod` declarations.
 - `modules/core-modules/wipe-tower/Cargo.toml` — confirm post-packet-79 state.
-- `modules/core-modules/support-planner/Cargo.toml` — pre-packet-80 state (no `[dev-dependencies]` section; this packet adds it).
+- `modules/core-modules/support-planner/Cargo.toml` — pre-packet-80 state (`[dev-dependencies]` section exists but is empty; this packet adds its first entry).
 - `crates/slicer-sdk/src/test_prelude.rs` (post-packet-78) — confirm import paths.
 
 ## Out-of-Bounds Files
@@ -98,7 +98,7 @@ Edit-allowed:
 1. **Pre-relocation assertion snapshot (wipe_tower_bed_bounds)** — `Question: list every assert! / assert_eq! / assert_ne! / panic! line in crates/slicer-runtime/tests/executor/wipe_tower_bed_bounds.rs. Scope: that file. Return: LOCATIONS (line:full-line, ≤ 30 entries).`
 2. **Pre-relocation assertion snapshot (prepass_support_generation)** — same for the second file.
 3. **Pre-relocation imports + helper bodies (both files)** — `Question: for each of the 2 files, list (a) the verbatim use statements, (b) the verbatim bodies of fn config_from_pairs / fn layer_with_tool_change / any other make_* helpers. Scope: the 2 files. Return: SNIPPETS (≤ 2 snippets per file, ≤ 30 lines each).`
-4. **Test count baseline (pre)** — `Question: how many test functions exist in (a) crates/slicer-runtime/tests/executor/wipe_tower_bed_bounds.rs, (b) crates/slicer-runtime/tests/executor/prepass_support_generation_orca_parity_tdd.rs, (c) crates/slicer-runtime currently overall? Scope: those paths. Return: FACT (≤ 3 lines).`
+4. **Test count baseline (pre)** — `Question: how many test functions exist in (a) crates/slicer-runtime/tests/executor/wipe_tower_bed_bounds.rs, (b) crates/slicer-runtime/tests/executor/prepass_support_generation_orca_parity_tdd.rs, (c) crates/slicer-runtime/tests/ overall, (d) modules/core-modules/wipe-tower/tests/, (e) modules/core-modules/support-planner/tests/? Counting method: rg -c '^#\[(tokio::)?test\]' <path> | awk -F: '{s+=$2} END{print s+0}' (count #[test] / #[tokio::test] attributes at start-of-line; do NOT run cargo test). Scope: those paths. Return: FACT (≤ 5 lines).`
 5. **Wipe-tower regression test** — `Question: does cargo test -p wipe-tower --test bed_bounds_tdd pass after the relocation? Scope: workspace. Return: FACT: pass count / first failure.`
 6. **Support-planner regression test** — `Question: does cargo test -p support-planner pass after the relocation? Scope: workspace. Return: FACT: pass count.`
 7. **Slicer-runtime regression** — `Question: does cargo test -p slicer-runtime pass after the moves + aggregator update? Scope: workspace. Return: FACT: total count + delta vs pre-baseline.`

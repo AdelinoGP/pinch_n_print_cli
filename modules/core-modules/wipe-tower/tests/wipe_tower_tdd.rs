@@ -190,7 +190,11 @@ fn purge_volume_affects_paths() {
 #[test]
 fn multiple_tool_changes_per_layer() {
     let wt = WipeTower::from_config(&enabled_config()).unwrap();
-    let mut layers = vec![make_layer(0, 0.2, vec![tool_change(0, 0, 1), tool_change(0, 1, 2)])];
+    let mut layers = vec![make_layer(
+        0,
+        0.2,
+        vec![tool_change(0, 0, 1), tool_change(0, 1, 2)],
+    )];
     let entity_count_before = layers[0].ordered_entities.len();
     wt.process(&mut layers).unwrap();
 

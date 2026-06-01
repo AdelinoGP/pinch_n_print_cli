@@ -7,14 +7,14 @@ This packet spans **2 task IDs** in `docs/07_implementation_status.md`. Both are
 | Task ID | Covered by step(s) | One-line scope |
 |---|---|---|
 | TASK-229 | Steps 1, 2, 3, 4, 5 | Relocate `wipe_tower_bed_bounds.rs` → `wipe-tower/tests/bed_bounds_tdd.rs` (rewrite helpers via packet 79 builders); relocate `prepass_support_generation_orca_parity_tdd.rs` → `support-planner/tests/orca_parity_tdd.rs` (switch `#[test]` → `#[module_test]`, drop manual `install_log_capture`); delete source files; remove `mod` declarations from `executor/main.rs`. |
-| TASK-230 | Steps 6, 7, 8, 9, 10 | Add `NOT RELOCATABLE` comments to three legitimately-runtime tests (`slicing_promotion_e2e_regression_tdd`, `gcode_part_cooling_emission_tdd`, `gcode_skirt_brim_emission_tdd`) naming their runtime SUTs; verify packet 77 hook is load-bearing for the relocated support-planner test (AC-N2 manual probe); run final closure ceremony. |
+| TASK-230 | Steps 6, 7, 8, 9 | Add `NOT RELOCATABLE` comments to three legitimately-runtime tests (`slicing_promotion_e2e_regression_tdd`, `gcode_part_cooling_emission_tdd`, `gcode_skirt_brim_emission_tdd`) naming their runtime SUTs; run final closure ceremony. |
 
 ## Authoritative docs per task
 
 | Task ID | Docs |
 |---|---|
 | TASK-229 | `crates/slicer-runtime/tests/executor/{wipe_tower_bed_bounds, prepass_support_generation_orca_parity_tdd}.rs` (source files; full read for verbatim copy + assertion snapshot). `crates/slicer-runtime/tests/executor/main.rs` (aggregator; recon-confirmed lines 36 and 42). `crates/slicer-sdk/src/test_prelude.rs` (post-packet-78; for import paths). `docs/02_ir_schemas.md` IR-12 LayerCollectionIR + ToolChange (only the field surfaces needed for the wipe-tower helper rewrite). |
-| TASK-230 | The three runtime tests that stay (`slicing_promotion_e2e_regression_tdd.rs`, `gcode_part_cooling_emission_tdd.rs`, `gcode_skirt_brim_emission_tdd.rs`) — read their first ~30 lines to confirm structure before adding annotations. `crates/slicer-sdk/src/test_support/mod.rs` (post-packet-77; for the AC-N2 probe of `reset_global_state`). |
+| TASK-230 | The three runtime tests that stay (`slicing_promotion_e2e_regression_tdd.rs`, `gcode_part_cooling_emission_tdd.rs`, `gcode_skirt_brim_emission_tdd.rs`) — read their first ~30 lines to confirm structure before adding annotations. |
 
 ## OrcaSlicer references
 
@@ -34,7 +34,7 @@ TASK-229 and TASK-230 are added to `docs/07_implementation_status.md` with statu
 
 ## End-state of the 77-80 sequence
 
-This packet completes the four-packet architectural refactor described in the original plan (`C:\Users\agpen\.claude\plans\hidden-discovering-lollipop.md`). At packet 80's closure:
+This packet completes the four-packet architectural refactor (packets 77–80) for the slicer-test → slicer-sdk consolidation. At packet 80's closure:
 
 - One canonical module-testing surface lives at `slicer_sdk::test_support`, behind feature `test`, exposed via `slicer_sdk::test_prelude`.
 - `#[module_test]` expands to fully-qualified paths; all four hooks (`reset_global_state`, `install_panic_handler`, `mock_host_setup`, `mock_host_teardown`) do real work.
