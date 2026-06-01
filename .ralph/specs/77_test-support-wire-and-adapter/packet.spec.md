@@ -1,7 +1,8 @@
 ---
-status: draft
+status: implemented
 packet: 77
 task_ids: [TASK-223, TASK-224]
+closed: 2026-05-31
 backlog_source: docs/07_implementation_status.md
 ---
 
@@ -152,3 +153,14 @@ This packet was generated against the context_discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Implementation Notes
+
+Recorded at closure (2026-05-31). Two erratta against the spec text, neither changing the contract:
+
+- **AC-6 restructure.** The spec's two-`#[module_test]` structure (first test installs and exits dirty; second test asserts `None`) was found tautological during implementation. Rust's test runner pools threads, and `MESH_SOURCE` is a per-thread `RefCell` thread-local; a dirty exit on thread A is invisible to thread B regardless of which test runs first and regardless of whether `reset_global_state` fires. The second test would observe `None` even if `reset_global_state` were a no-op. `mock_host_isolation_tdd.rs` was therefore restructured: a single test installs a `MockHost`, calls `slicer_sdk::test_support::reset_global_state()` inside its own body, then asserts the post-reset `raycast_z_down` returns `None`. This strictly strengthens the verification — it now exercises `reset_global_state`'s `clear_mesh_source()` call directly rather than relying on cross-test thread-local leakage that cannot occur. The contract being locked ("at every `#[module_test]` entry, the mesh source is cleared regardless of prior state") is preserved; the assertion is sharper.
+- **AC-N1 error code.** The probe captured `error[E0432]: unresolved import` rather than the spec text's `error[E0433]: failed to resolve`. Both prove the same thing (the gate is real — `test_support` is not reachable from non-feature code). The AC text itself admits "or equivalent — module not found".
+
+One scope expansion not in the Step-4 EDIT list:
+
+- `crates/slicer-test/tests/smoke.rs` had to be updated in Step 4 because an existing smoke test called the deleted pre-Step-4 `MockHost` API (`enable_logging`, two-arg `log_contains(LogLevel, &str)`, `mock_host::LogLevel` re-export). Without the update, `cargo check -p slicer-test --tests` (Step 4's gating verify) could not pass. Patch was minimal: install the log capture sink and switch to the new single-arg associated-fn `MockHost::log_contains(needle)`.

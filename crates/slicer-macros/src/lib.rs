@@ -2719,13 +2719,13 @@ fn generate_module_test_impl(input: &ItemFn) -> TokenStream2 {
                 struct __SlicerTestGuard;
                 impl Drop for __SlicerTestGuard {
                     fn drop(&mut self) {
-                        __slicer_test_mock_host_teardown();
+                        ::slicer_sdk::test_support::mock_host_teardown();
                     }
                 }
 
-                __slicer_test_reset_global_state();
-                __slicer_test_install_panic_handler();
-                __slicer_test_mock_host_setup();
+                ::slicer_sdk::test_support::reset_global_state();
+                ::slicer_sdk::test_support::install_panic_handler();
+                ::slicer_sdk::test_support::mock_host_setup();
 
                 let _guard = __SlicerTestGuard;
 
@@ -2740,13 +2740,13 @@ fn generate_module_test_impl(input: &ItemFn) -> TokenStream2 {
                 struct __SlicerTestGuard;
                 impl Drop for __SlicerTestGuard {
                     fn drop(&mut self) {
-                        __slicer_test_mock_host_teardown();
+                        ::slicer_sdk::test_support::mock_host_teardown();
                     }
                 }
 
-                __slicer_test_reset_global_state();
-                __slicer_test_install_panic_handler();
-                __slicer_test_mock_host_setup();
+                ::slicer_sdk::test_support::reset_global_state();
+                ::slicer_sdk::test_support::install_panic_handler();
+                ::slicer_sdk::test_support::mock_host_setup();
 
                 let _guard = __SlicerTestGuard;
 

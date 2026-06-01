@@ -8,5 +8,6 @@ pub mod assert_paths;
 pub mod capture;
 pub mod fixtures;
 pub mod mock_host;
+pub mod prelude;
 
 pub use mock_host::MockHost;

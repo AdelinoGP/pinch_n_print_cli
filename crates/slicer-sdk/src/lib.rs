@@ -27,6 +27,8 @@ pub mod postpass_types;
 pub mod prelude;
 pub mod prepass_builders;
 pub mod prepass_types;
+#[cfg(any(test, feature = "test"))]
+pub mod test_support;
 pub mod traits;
 pub mod views;
 

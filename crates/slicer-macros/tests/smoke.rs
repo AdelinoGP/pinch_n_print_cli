@@ -6,26 +6,9 @@
 
 use slicer_macros::{module_test, slicer_module};
 
-// ============================================================================
-// Mock host setup/teardown functions for #[module_test] macro
-// These are stubs that the macro-generated code calls
-// ============================================================================
-
-/// Mock host setup function (stub for smoke tests)
-#[doc(hidden)]
-pub fn __slicer_test_mock_host_setup() {}
-
-/// Mock host teardown function (stub for smoke tests)
-#[doc(hidden)]
-pub fn __slicer_test_mock_host_teardown() {}
-
-/// Panic handler installation function (stub for smoke tests)
-#[doc(hidden)]
-pub fn __slicer_test_install_panic_handler() {}
-
-/// Global state reset function (stub for smoke tests)
-#[doc(hidden)]
-pub fn __slicer_test_reset_global_state() {}
+// The `#[module_test]` macro now expands to fully-qualified calls into
+// `::slicer_sdk::test_support::*`, so smoke tests pull in `slicer-sdk`
+// with the `test` feature via dev-dependencies — no local stubs needed.
 
 /// Mock LayerModule trait for smoke tests.
 pub trait LayerModule: Sized {

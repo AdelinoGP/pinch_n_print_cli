@@ -11,5 +11,8 @@ slicer-core = { path = "../slicer-core" }
 slicer-macros = { path = "../slicer-macros" }
 slicer-schema = { path = "../slicer-schema" }
 
+[features]
+test = []
+
 [lints]
 workspace = true

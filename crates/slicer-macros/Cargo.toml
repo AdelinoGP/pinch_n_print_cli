@@ -15,6 +15,7 @@ slicer-schema = { path = "../slicer-schema" }
 [dev-dependencies]
 slicer-ir = { path = "../slicer-ir" }
 slicer-schema = { path = "../slicer-schema" }
+slicer-sdk = { path = "../slicer-sdk", features = ["test"] }
 
 [lints]
 workspace = true

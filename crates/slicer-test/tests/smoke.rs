@@ -4,7 +4,6 @@ use slicer_ir::{mm_to_units, ConfigValue, ExtrusionPath3D, ExtrusionRole, Point3
 use slicer_test::assert_paths::assert_paths_planar;
 use slicer_test::capture::InfillOutputCapture;
 use slicer_test::fixtures::{square_polygon, ConfigViewBuilder, SliceRegionViewBuilder};
-use slicer_test::mock_host::LogLevel;
 use slicer_test::MockHost;
 
 fn sample_path(z: f32) -> ExtrusionPath3D {
@@ -34,15 +33,19 @@ fn sample_path(z: f32) -> ExtrusionPath3D {
 
 #[test]
 fn mock_host_tracks_calls_and_logs() {
+    // Install a log capture sink so the host wrapper's output is
+    // observable through `MockHost::log_contains`.
+    slicer_sdk::host::test_support::install_log_capture();
+
     let mut host = MockHost::new();
     host.record_call("clip_polygons");
     host.record_call("clip_polygons");
-    host.enable_logging();
     host.log_warn("density near limit");
 
     assert_eq!(host.call_count("clip_polygons"), 2);
     host.assert_call_count("clip_polygons", 2);
-    assert!(host.log_contains(LogLevel::Warn, "density"));
+    // NOTE: `log_contains` drains the capture buffer.
+    assert!(MockHost::log_contains("density"));
 }
 
 #[test]

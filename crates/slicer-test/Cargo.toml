@@ -6,7 +6,7 @@ authors = ["ModularSlicer Team"]
 
 [dependencies]
 slicer-ir = { path = "../slicer-ir" }
-slicer-sdk = { path = "../slicer-sdk" }
+slicer-sdk = { path = "../slicer-sdk", features = ["test"] }
 
 [lints]
 workspace = true

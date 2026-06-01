@@ -2426,6 +2426,7 @@ dependencies = [
  "quote",
  "slicer-ir",
  "slicer-schema",
+ "slicer-sdk",
  "syn 2.0.117",
 ]
 

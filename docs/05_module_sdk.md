@@ -449,24 +449,27 @@ Every module can be tested in complete isolation — no running host, no WASM ru
 ### Mock Host
 
 ```rust
-use slicer_test::MockHost;
+use slicer_test::prelude::*;
+use slicer_sdk::host;
 
-let mut host = MockHost::new();
+#[module_test]
+fn my_test() {
+    MockHost::new()
+        .with_raycast_hit(Some(4.8))
+        .with_object_bounds(/* slicer_ir::BoundingBox3 { ... } */)
+        .install();
 
-// Pre-program raycast responses
-host.set_raycast_z_down("obj-1", 10.0, 20.0, 5.0, Some(4.8));
-host.set_raycast_z_down("obj-1", 10.0, 20.0, 5.0, None);  // no surface
-
-// Pre-program surface normals
-host.set_surface_normal("obj-1", 0.0, 0.0, 1.0, Some(Point3 { x: 0.0, y: 0.0, z: 1.0 }));
-
-// Capture log output for assertions
-host.with_logging();
-assert!(host.log_contains(LogLevel::Warn, "density near limit"));
-
-// Verify polygon ops were called
-assert_eq!(host.clip_polygons_call_count(), 3);
+    // ... module-under-test code that calls host::raycast_z_down ...
+    let z = host::raycast_z_down("obj-1", 0.0, 0.0, 5.0);
+    assert_eq!(z, Some(4.8));
+}
 ```
+
+The installed `MockHost` automatically routes through `slicer_sdk::host::log_warn`
+once a capture sink is in place; check captured warnings with the static
+`MockHost::log_contains("density near limit")`. For independent
+"did this branch run?" assertions, use the `record_call` / `call_count`
+counter — e.g. `host.call_count("clip_polygons")`.
 
 ### IR Fixture Builders
 
@@ -476,7 +479,7 @@ use slicer_test::fixtures::*;
 // Build a SliceRegionView from scratch
 let region = SliceRegionViewBuilder::new()
     .object_id("test-obj")
-    .region_id("42")
+    .region_id(42)
     .z(1.2)
     .effective_layer_height(0.2)
     .add_polygon(square_polygon(0.0, 0.0, 20.0))   // 20mm square
@@ -486,15 +489,14 @@ let region = SliceRegionViewBuilder::new()
 // Build a PerimeterRegionView
 let perim_region = PerimeterRegionViewBuilder::new()
     .object_id("test-obj")
-    .region_id("42")
+    .region_id(42)
     .add_outer_wall(rect_path(0.0, 0.0, 20.0, 0.4))
     .add_inner_wall(rect_path(0.4, 0.4, 19.2, 0.4))
     .build();
 
-// Common polygon shapes
-let sq:   ExPolygon = square_polygon(cx, cy, side);
-let rect: ExPolygon = rect_polygon(x, y, w, h);
-let circ: ExPolygon = circle_polygon(cx, cy, r, segments);
+// Common shapes
+let sq:   ExPolygon       = square_polygon(cx, cy, side);
+let path: ExtrusionPath3D = rect_path(cx, cy, side, width);
 ```
 
 ### Config Fixture Builder
@@ -526,12 +528,6 @@ module.run_infill(0, &[region], &mut infill_output, &config).unwrap();
 let sparse = infill_output.sparse_paths();
 assert!(!sparse.is_empty(), "expected infill paths to be generated");
 assert!(sparse.iter().all(|p| p.role == ExtrusionRole::SparseInfill));
-
-// Assert total path length is within expected range
-let total_len: f32 = sparse.iter()
-    .map(|p| path_length(&p.points))
-    .sum();
-assert!(total_len > 50.0, "total path length too short: {}", total_len);
 ```
 
 ### Assertion Helpers
