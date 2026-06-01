@@ -34,6 +34,38 @@
 
 ---
 
+## Step 0.5 — Prework: relocate stage I/O types to `slicer-ir` + investigate `LoadedModule`
+
+**Objective.** Resolve the AC-N3 vs trait-signature contradiction (see design.md "Borrow-struct pattern for trait inputs") by moving the eight stage I/O types out of `slicer-runtime` and into `slicer-ir` so the runner traits — which move to `slicer-wasm-host` in Step 4 — can compile inside `slicer-wasm-host` without a back-edge dep on `slicer-runtime`. Investigate `slicer-runtime::manifest::LoadedModule` to decide whether it moves whole-cloth or splits Static/Live.
+
+**Precondition.** Step 0 green. (In a session resuming from a partially-implemented packet, Steps 2/3 may already be done — that does not invalidate this step; it can still run before Step 4.)
+
+**Postcondition.** All eight stage I/O types defined in `slicer-ir`. Transitional `pub use slicer_ir::{...}` re-exports added in `crates/slicer-runtime/src/lib.rs` so existing import sites compile unchanged. `cargo build --workspace` green. `LoadedModule` decision recorded in the implementation log: either (a) move-whole-to-wasm-host (deferred to Step 4), or (b) Static/Live split with `LoadedModuleStatic` + `LoadedModuleLive` and transitional `pub type LoadedModule = LoadedModuleStatic;` alias.
+
+**Files allowed to read.**
+- `crates/slicer-runtime/src/{layer_executor,prepass,postpass,layer_finalization}.rs` — grep-only, locate the 8 stage-I/O type defs.
+- `crates/slicer-runtime/src/manifest.rs` — full file (≤ 500 LOC OK; load to inspect `LoadedModule`).
+- `crates/slicer-ir/src/lib.rs` — find appropriate insertion module for the new types.
+
+**Files allowed to edit (≤ 6).**
+1. `crates/slicer-ir/src/stage_io.rs` — CREATE (or distribute the 8 types across existing IR modules — implementer's call). The 8 types: `LayerStageOutput`, `LayerStageError`, `PrepassStageOutput`, `PrepassExecutionError`, `FinalizationOutput`, `FinalizationError`, `PostpassOutput`, `PostpassError`.
+2. `crates/slicer-ir/src/lib.rs` — `pub mod stage_io; pub use stage_io::*;`.
+3. `crates/slicer-runtime/src/{layer_executor,prepass,postpass,layer_finalization}.rs` — DELETE the local type defs; replace with `use slicer_ir::{...};`.
+4. `crates/slicer-runtime/src/lib.rs` — add `pub use slicer_ir::{LayerStageOutput, LayerStageError, ...};` transitional re-exports so external sites (tests, benches, downstream callers) compile unchanged.
+
+**Expected sub-agent dispatches.**
+- Dispatch: enumerate the 8 type defs in the four executor files; report file:line and full field/variant lists (SNIPPETS).
+- Dispatch: read `crates/slicer-runtime/src/manifest.rs::LoadedModule` definition; report fields, derived traits, and any direct wasmtime references (SNIPPET ≤ 60 lines).
+- Dispatch: execute the moves + re-exports. Return FACT pass/fail on `cargo build --workspace` and `cargo build -p slicer-ir`.
+
+**Context cost: S.**
+
+**Narrow verification.** `cargo build -p slicer-ir` green. `cargo build --workspace` green. `grep -rE 'pub (enum|struct) (LayerStageOutput|LayerStageError|PrepassStageOutput|PrepassExecutionError|FinalizationOutput|FinalizationError|PostpassOutput|PostpassError)' crates/slicer-ir/` returns 8 hits. `grep -rE 'pub (enum|struct) (LayerStageOutput|LayerStageError|PrepassStageOutput|PrepassExecutionError|FinalizationOutput|FinalizationError|PostpassOutput|PostpassError)' crates/slicer-runtime/src/` returns 0 hits.
+
+**Falsifying check / exit condition.** If any of the 8 types has a field whose type is `slicer-runtime`-internal (e.g., something that itself needs to move), surface the chain and stop — moving the field's type may or may not be in scope, and the planner must decide before proceeding. If the 8 types only reference `std`, `slicer-ir`-resident types, `slicer-sdk` types, or primitive Rust types, the move is clean.
+
+---
+
 ## Step 1 — Locate trait defs, callers, and side imports
 
 **Objective.** Build the precise lists of edit sites the packet will touch.
@@ -278,6 +310,7 @@
 | Step | Cost |
 |---|---|
 | 0 Verify P81/P82 + baselines | S |
+| 0.5 Prework: stage I/O → slicer-ir + LoadedModule survey | S |
 | 1 Enumerate edit sites | S |
 | 2 Schema `export_for_stage_id` + test | S |
 | 3 New crate scaffold | S |
@@ -288,7 +321,7 @@
 | 8 Workspace test gate | M |
 | 9 g-code SHA + dep-tree check | S |
 
-Aggregate: **L overall but no single step is L.** Total step count: 10.
+Aggregate: **L overall but no single step is L.** Total step count: 11 (Step 0.5 prework added to resolve the AC-N3 vs trait-signature contradiction surfaced mid-implementation).
 
 ## Packet Completion Gate
 

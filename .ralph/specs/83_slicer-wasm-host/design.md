@@ -28,6 +28,7 @@ OrcaSlicer comparison surface: none.
 - **ADR-0003 preserved**: guest-side WIT conversions remain per-world inside `#[slicer_module]` (untouched by this packet).
 - **No new ADR conflicts**: this packet's two ADR follow-ups (ADR-0004, ADR-0005) are recorded at close; no existing ADR is contradicted.
 - `slicer-runtime` MUST NOT regain a direct `wasmtime` dep after this packet. The build will compile without it; if any source file imports `use wasmtime::...` after the move, the move missed a site.
+- **Borrow-struct pattern for trait inputs.** Runner trait signatures use `*StageInput<'_>` borrow structs defined in `slicer-wasm-host`, **not** raw `&Blackboard` / `&mut LayerArena`. This is the same pattern P87 uses for `RegionMappingPlanProjection<'a>` and is **NOT a new abstraction** — it is the established mechanism in this batch for decoupling a consumer crate from runtime-owned aggregate types. The four borrow structs (`LayerStageInput<'a>`, `PrepassStageInput<'a>`, `FinalizationInput<'a>`, `PostpassInput<'a>`) carry only the field-level borrows the dispatcher actually reads/writes; `Blackboard` and `LayerArena` themselves stay in `slicer-runtime` (unchanged). The orchestrator constructs the input struct at the call site in each executor file. Stage I/O types (`*StageOutput`, `*Error`) relocate to `slicer-ir` in Step 0.5 prework so the trait signatures compile from inside `slicer-wasm-host` with no back-edge dep on `slicer-runtime` (AC-N3).
 
 <!-- snippet: wasm-staleness -->
 - Guest WASM is **not** rebuilt by `cargo build` or `cargo test`. After editing any path in this packet's change surface that feeds the guest build (see `CLAUDE.md` §"Guest WASM Staleness"), the implementer MUST run `cargo xtask build-guests --check` and, if `STALE:` is reported, rebuild without `--check` before re-running the failing test. Stale-guest failures look unrelated to the change but are caused by it.
@@ -97,7 +98,8 @@ Primary edit target ≤ 3 files: the new `slicer-wasm-host` crate (counted as on
 - `crates/slicer-test/**`, `crates/slicer-sdk/**` — concurrent work (packet 78). Do not touch.
 - `crates/slicer-runtime/test-guests/**` — guest fixtures; their sources are unchanged. Their `.wasm` artifacts WILL rebuild as a side-effect of the schema edit.
 - `crates/slicer-runtime/src/{model_loader,helpers_cmd,cli}.rs` — already removed by P81/P82.
-- `crates/slicer-runtime/src/{blackboard,layer_executor,prepass,postpass,layer_finalization}.rs` — edited only at the trait-import line. Bodies untouched.
+- `crates/slicer-runtime/src/blackboard.rs` — trait-import line only. Bodies untouched.
+- `crates/slicer-runtime/src/{layer_executor,prepass,postpass,layer_finalization}.rs` — trait-import line **and** one call-site borrow-struct constructor (each file constructs the matching `*StageInput<'_>` at the existing dispatch call site). No body restructure beyond that.
 - `modules/core-modules/**` — guest module sources unchanged. Their `.wasm` artifacts rebuild as a side-effect.
 
 ## Expected Sub-Agent Dispatches

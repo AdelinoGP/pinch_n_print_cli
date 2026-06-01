@@ -50,13 +50,13 @@ Largest packet in the deepening batch — ~8 900 LOC of WIT marshalling, dispatc
 
 | `[ $(grep -rE 'wasmtime::component::bindgen!' crates/slicer-wasm-host/src/ | wc -l) -eq 4 ] && [ $(grep -rE '"slicer:types/geometry": super::layer::slicer::types::geometry' crates/slicer-wasm-host/src/ | wc -l) -eq 3 ]`
 
-### AC-4 — The four runner trait definitions are in `slicer-wasm-host`; `slicer-runtime`'s executors import from there
+### AC-4 — Runner trait definitions are in `slicer-wasm-host` with the borrow-struct input pattern
 
-**Given** the move,
+**Given** the move and the borrow-struct refactor (see design.md "Borrow-struct pattern for trait inputs"),
 **When** `crates/slicer-wasm-host/src/` is grepped,
-**Then** `pub trait LayerStageRunner`, `pub trait PrepassStageRunner`, `pub trait FinalizationStageRunner`, `pub trait PostpassStageRunner` each appear exactly once in `slicer-wasm-host/src/`. They no longer appear in `crates/slicer-runtime/src/`. The executor files `crates/slicer-runtime/src/layer_executor.rs`, `crates/slicer-runtime/src/prepass.rs`, `crates/slicer-runtime/src/postpass.rs`, `crates/slicer-runtime/src/layer_finalization.rs` import them via `use slicer_wasm_host::{LayerStageRunner, PrepassStageRunner, FinalizationStageRunner, PostpassStageRunner};` (split across files as appropriate).
+**Then** `pub trait LayerStageRunner`, `pub trait PrepassStageRunner`, `pub trait FinalizationStageRunner`, `pub trait PostpassStageRunner` each appear exactly once in `slicer-wasm-host/src/`. They no longer appear in `crates/slicer-runtime/src/`. Trait signatures use `*StageInput<'_>` borrow structs (also defined in `slicer-wasm-host`) for orchestrator-side context, `&CompiledModuleLive` for module access, and stage I/O types (`LayerStageOutput`, `LayerStageError`, `PrepassStageOutput`, `PrepassExecutionError`, `FinalizationOutput`, `FinalizationError`, `PostpassOutput`, `PostpassError`) imported from `slicer-ir` (relocated as P83 prework — see implementation-plan Step 0.5). `WasmEngine` lives in `slicer-wasm-host` (moves with `wasm_instance.rs` in Step 4). **No trait signature references `&Blackboard` or `&mut LayerArena` directly.** The executor files `crates/slicer-runtime/src/{layer_executor,prepass,postpass,layer_finalization}.rs` import the traits via `use slicer_wasm_host::{...StageRunner};` and construct the matching `*StageInput<'_>` at each call site.
 
-| `[ $(grep -rE '^pub trait (Layer\|Prepass\|Finalization\|Postpass)StageRunner' crates/slicer-wasm-host/src/ | wc -l) -eq 4 ] && [ $(grep -rE '^pub trait (Layer\|Prepass\|Finalization\|Postpass)StageRunner' crates/slicer-runtime/src/ | wc -l) -eq 0 ] && grep -qE 'use slicer_wasm_host::.*StageRunner' crates/slicer-runtime/src/layer_executor.rs`
+| `[ $(grep -rE '^pub trait (Layer\|Prepass\|Finalization\|Postpass)StageRunner' crates/slicer-wasm-host/src/ | wc -l) -eq 4 ] && [ $(grep -rE '^pub trait (Layer\|Prepass\|Finalization\|Postpass)StageRunner' crates/slicer-runtime/src/ | wc -l) -eq 0 ] && grep -qE 'use slicer_wasm_host::.*StageRunner' crates/slicer-runtime/src/layer_executor.rs && ! grep -rE 'fn run.*Blackboard|fn run.*LayerArena' crates/slicer-wasm-host/src/`
 
 ### AC-5 — `slicer-runtime/src/lib.rs` no longer declares the four moved `pub mod`s; re-exports come via `slicer-wasm-host` if exposed at all
 
