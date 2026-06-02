@@ -28,10 +28,10 @@ use slicer_ir::{
 use slicer_runtime::{
     build_execution_plan, build_wasm_instance_pool, execute_prepass_with_builtins,
     execute_region_mapping, execute_region_mapping_with_cap, Blackboard, CompiledModule,
-    CompiledModuleBuilder, CompiledStage, ConfigSchema, ExecutionModuleBinding, ExecutionPlan,
-    ExecutionPlanRequest, LoadedModuleBuilder, PrepassExecutionError, PrepassStageOutput,
-    PrepassStageRunner, RegionMappingBuiltinError, RegionMappingError, SortedStageModules,
-    WasmArtifactMetadata,
+    CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ConfigSchema, ExecutionModuleBinding,
+    ExecutionPlan, ExecutionPlanRequest, LoadedModuleBuilder, PrepassExecutionError,
+    PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
+    RegionMappingBuiltinError, RegionMappingError, SortedStageModules, WasmArtifactMetadata,
 };
 
 // ----------------------------------------------------------------------
@@ -45,14 +45,11 @@ impl PrepassStageRunner for CommitLayerPlanRunner {
     fn run_stage(
         &self,
         stage_id: &slicer_ir::StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+        _module: &CompiledModuleLive<'_>,
+        _input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
         assert_eq!(stage_id, "PrePass::LayerPlanning");
-        Ok((
-            PrepassStageOutput::LayerPlan(Arc::clone(&self.layer_plan)),
-            Vec::new(),
-        ))
+        Ok(PrepassStageOutput::LayerPlan(Arc::clone(&self.layer_plan)))
     }
 }
 
@@ -79,7 +76,9 @@ fn region_mapping_builtin_runs_after_user_layer_planning_and_is_visible_to_downs
     let walls_loaded = loaded_module("Layer::Perimeters", "com.example.walls", amp_cfg(0.7));
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &walls_loaded,
+            walls_loaded.id(),
+            walls_loaded.stage(),
+            walls_loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -333,10 +332,10 @@ impl PrepassStageRunner for NoopRunner {
     fn run_stage(
         &self,
         _stage_id: &slicer_ir::StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-        Ok((PrepassStageOutput::None, Vec::new()))
+        _module: &CompiledModuleLive<'_>,
+        _input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+        Ok(PrepassStageOutput::None)
     }
 }
 
@@ -604,7 +603,9 @@ fn compiled_module(stage: &str, module_id: &str, config: ConfigView) -> Compiled
     .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,

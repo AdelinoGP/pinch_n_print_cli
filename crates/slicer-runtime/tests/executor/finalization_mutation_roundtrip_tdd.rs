@@ -108,7 +108,9 @@ fn make_module_with_config(
     let loaded = make_loaded_module(id);
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,

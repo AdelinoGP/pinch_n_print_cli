@@ -4,8 +4,6 @@ use std::sync::{Arc, Condvar, Mutex};
 
 use slicer_ir::{ModuleId, StageId};
 
-use crate::LoadedModule;
-
 /// Effective scheduling mode for a module's WASM instance pool.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InstancePoolMode {
@@ -86,21 +84,22 @@ impl Drop for WasmInstanceLease {
 
 /// Builds the effective WASM instance pool for one loaded module.
 pub fn build_wasm_instance_pool(
-    module: &LoadedModule,
+    module_id: &str,
+    stage: &str,
+    layer_parallel_safe: bool,
     host_parallelism: usize,
     artifact: WasmArtifactMetadata,
 ) -> Result<WasmInstancePool, InstancePoolError> {
-    let stage = module.stage.as_str();
     let is_finalization = stage == "PostPass::LayerFinalization";
 
-    if module.layer_parallel_safe && artifact.uses_shared_memory {
+    if layer_parallel_safe && artifact.uses_shared_memory {
         return Err(InstancePoolError::SharedMemoryRejected {
-            module_id: module.id.clone(),
-            stage: module.stage.clone(),
+            module_id: module_id.to_string(),
+            stage: stage.to_string(),
         });
     }
 
-    let (mode, size) = if !is_finalization && module.layer_parallel_safe {
+    let (mode, size) = if !is_finalization && layer_parallel_safe {
         (InstancePoolMode::Parallel, host_parallelism.max(1))
     } else {
         (InstancePoolMode::Serialized, 1)

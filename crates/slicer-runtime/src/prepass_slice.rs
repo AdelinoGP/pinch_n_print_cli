@@ -23,7 +23,9 @@ use slicer_ir::{
 };
 use slicer_ir::{Point2, Point3};
 
-use crate::blackboard::{Blackboard, BlackboardError};
+use slicer_ir::BlackboardError;
+
+use crate::blackboard::Blackboard;
 use crate::dag::BuiltinProducer;
 
 /// `BuiltinProducer` for the host-side `PrePass::Slice` step.

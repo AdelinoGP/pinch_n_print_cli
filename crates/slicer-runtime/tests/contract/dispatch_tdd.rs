@@ -18,22 +18,25 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use slicer_core::paint_region::PaintRegionRTreeIndex;
+use slicer_ir::LayerStageCommitData;
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExPolygon, FacetPaintData, GCodeIR, GlobalLayer,
     LayerCollectionIR, LayerPaintMap, LayerPlanIR, MeshIR, ObjectMesh, PaintLayer, PaintRegionIR,
     PaintSemantic, PaintValue, Point2, Point3, Polygon, PrintMetadata, SemVer, SemanticRegion,
     SliceIR, SlicedRegion, StageId, SurfaceClassificationIR,
 };
-use slicer_runtime::dispatch::{export_name_for_stage, DispatchPhase, WasmRuntimeDispatcher};
-use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
+use slicer_runtime::dispatch::{DispatchPhase, WasmRuntimeDispatcher};
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_runtime::postpass::{GCodeEmitter, GCodeSerializer};
+use slicer_runtime::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
-    execute_paint_segmentation, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
-    ExecutionPlan, FinalizationStageRunner, LayerArena, LayerStageError, LayerStageOutput,
-    LayerStageRunner, PaintSegmentationError, PostpassStageRunner, PrepassStageRunner, WasmEngine,
+    execute_paint_segmentation, Blackboard, CompiledModule, CompiledModuleBuilder,
+    CompiledModuleLive, CompiledStage, ExecutionPlan, FinalizationStageRunner, LayerArena,
+    LayerStageError, LayerStageInput, LayerStageRunner, PaintSegmentationError,
+    PostpassStageRunner, PrepassStageRunner, WasmEngine,
 };
+use slicer_schema::export_for_stage_id;
 
 // â”€â”€ WAT Fixtures (for non-layer stages on the legacy path) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -205,7 +208,9 @@ fn make_compiled_module_with_config(
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -223,7 +228,9 @@ fn make_compiled_module_no_wasm(id: &str, stage: &str) -> CompiledModule {
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -281,7 +288,7 @@ fn export_name_mapping_covers_all_documented_stages() {
     ];
 
     for (stage_id, expected_export) in &stages {
-        let result = export_name_for_stage(stage_id);
+        let result = export_for_stage_id(stage_id);
         assert_eq!(
             result,
             Some(*expected_export),
@@ -294,8 +301,8 @@ fn export_name_mapping_covers_all_documented_stages() {
 
 #[test]
 fn unknown_stage_returns_none() {
-    assert_eq!(export_name_for_stage("Layer::Nonexistent"), None);
-    assert_eq!(export_name_for_stage(""), None);
+    assert_eq!(export_for_stage_id("Layer::Nonexistent"), None);
+    assert_eq!(export_for_stage_id(""), None);
 }
 
 // â”€â”€ B. Success-path per-runner tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -3772,17 +3779,18 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
             &self,
             stage_id: &StageId,
             layer: &GlobalLayer,
-            module: &CompiledModule,
-            blackboard: &Blackboard,
-            arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-            if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
+            module: &CompiledModuleLive<'_>,
+            input: LayerStageInput<'_>,
+        ) -> Result<LayerStageCommitData, LayerStageError> {
+            if stage_id == "Layer::Perimeters" {
                 if let Some(p) = self.perim.lock().unwrap().take() {
-                    arena.set_perimeter(p).unwrap();
-                    return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
+                    return Ok(LayerStageCommitData {
+                        perimeter_output: Some(p),
+                        ..Default::default()
+                    });
                 }
             }
-            LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
+            LayerStageRunner::run_stage(self.inner, stage_id, layer, module, input)
         }
     }
     let runner = SeedingRunner {
@@ -3872,17 +3880,18 @@ fn path_optimization_deterministic_across_repeated_runs() {
             &self,
             stage_id: &StageId,
             layer: &GlobalLayer,
-            module: &CompiledModule,
-            blackboard: &Blackboard,
-            arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-            if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
+            module: &CompiledModuleLive<'_>,
+            input: LayerStageInput<'_>,
+        ) -> Result<LayerStageCommitData, LayerStageError> {
+            if stage_id == "Layer::Perimeters" {
                 if let Some(p) = self.perim.lock().unwrap().take() {
-                    arena.set_perimeter(p).unwrap();
-                    return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
+                    return Ok(LayerStageCommitData {
+                        perimeter_output: Some(p),
+                        ..Default::default()
+                    });
                 }
             }
-            LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
+            LayerStageRunner::run_stage(self.inner, stage_id, layer, module, input)
         }
     }
 
@@ -4298,17 +4307,18 @@ fn path_optimization_end_to_end_populates_z_hops() {
             &self,
             stage_id: &StageId,
             layer: &GlobalLayer,
-            module: &CompiledModule,
-            blackboard: &Blackboard,
-            arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-            if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
+            module: &CompiledModuleLive<'_>,
+            input: LayerStageInput<'_>,
+        ) -> Result<LayerStageCommitData, LayerStageError> {
+            if stage_id == "Layer::Perimeters" {
                 if let Some(p) = self.perim.lock().unwrap().take() {
-                    arena.set_perimeter(p).unwrap();
-                    return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
+                    return Ok(LayerStageCommitData {
+                        perimeter_output: Some(p),
+                        ..Default::default()
+                    });
                 }
             }
-            LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
+            LayerStageRunner::run_stage(self.inner, stage_id, layer, module, input)
         }
     }
 
@@ -4392,17 +4402,18 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
             &self,
             stage_id: &StageId,
             layer: &GlobalLayer,
-            module: &CompiledModule,
-            blackboard: &Blackboard,
-            arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-            if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
+            module: &CompiledModuleLive<'_>,
+            input: LayerStageInput<'_>,
+        ) -> Result<LayerStageCommitData, LayerStageError> {
+            if stage_id == "Layer::Perimeters" {
                 if let Some(p) = self.perim.lock().unwrap().take() {
-                    arena.set_perimeter(p).unwrap();
-                    return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
+                    return Ok(LayerStageCommitData {
+                        perimeter_output: Some(p),
+                        ..Default::default()
+                    });
                 }
             }
-            LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
+            LayerStageRunner::run_stage(self.inner, stage_id, layer, module, input)
         }
     }
     let runner = SeedingRunner {
@@ -6387,7 +6398,9 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
     let loaded = make_loaded_module("com.test.seam-planner", "PrePass::SeamPlanning");
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,

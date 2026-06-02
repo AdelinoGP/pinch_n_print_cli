@@ -22,7 +22,7 @@ use std::collections::HashMap;
 
 use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_ir::ExtrusionRole as IrExtrusionRole;
-use slicer_runtime::dispatch::commit_layer_outputs_for_test;
+use slicer_runtime::commit_layer_outputs_for_test;
 
 use crate::common::wasm_cache;
 use slicer_runtime::wit_host::{
@@ -444,7 +444,9 @@ fn compile_support_module(
     );
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             slicer_runtime::instance_pool::WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -879,39 +881,42 @@ fn support_enforcer_blocker_paint_precedence() {
             .compile_component(&guest_bytes)
             .expect("guest component must compile"),
     );
+    let support_module = LoadedModuleBuilder::new(
+        "com.test.support",
+        SemVer {
+            major: 1,
+            minor: 0,
+            patch: 0,
+        },
+        "Layer::Support",
+        "slicer:world-layer@1.0.0",
+        guest_path,
+    )
+    .ir_reads(vec!["SliceIR".to_string(), "PaintRegionIR".to_string()])
+    .ir_writes(vec!["SupportIR".to_string()])
+    .claims(vec!["support-generator".to_string()])
+    .min_host_version(SemVer {
+        major: 0,
+        minor: 1,
+        patch: 0,
+    })
+    .min_ir_schema(SemVer {
+        major: 1,
+        minor: 0,
+        patch: 0,
+    })
+    .max_ir_schema(SemVer {
+        major: 2,
+        minor: 0,
+        patch: 0,
+    })
+    .layer_parallel_safe(true)
+    .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &LoadedModuleBuilder::new(
-                "com.test.support",
-                SemVer {
-                    major: 1,
-                    minor: 0,
-                    patch: 0,
-                },
-                "Layer::Support",
-                "slicer:world-layer@1.0.0",
-                guest_path,
-            )
-            .ir_reads(vec!["SliceIR".to_string(), "PaintRegionIR".to_string()])
-            .ir_writes(vec!["SupportIR".to_string()])
-            .claims(vec!["support-generator".to_string()])
-            .min_host_version(SemVer {
-                major: 0,
-                minor: 1,
-                patch: 0,
-            })
-            .min_ir_schema(SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            })
-            .max_ir_schema(SemVer {
-                major: 2,
-                minor: 0,
-                patch: 0,
-            })
-            .layer_parallel_safe(true)
-            .build(),
+            support_module.id(),
+            support_module.stage(),
+            support_module.layer_parallel_safe(),
             1,
             slicer_runtime::instance_pool::WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -1146,7 +1151,9 @@ mod planner_consuming_tier {
         );
         let pool = Arc::new(
             build_wasm_instance_pool(
-                &loaded,
+                loaded.id(),
+                loaded.stage(),
+                loaded.layer_parallel_safe(),
                 1,
                 WasmArtifactMetadata {
                     uses_shared_memory: false,

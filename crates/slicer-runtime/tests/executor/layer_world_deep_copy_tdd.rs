@@ -6,16 +6,17 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use slicer_ir::LayerStageCommitData;
 use slicer_ir::{
     BoundingBox3, ExPolygon, GlobalLayer, LoopType, MeshIR, PerimeterIR, PerimeterRegion, Point2,
     Point3, Point3WithWidth, Polygon, SemVer, StageId, WallBoundaryType, WallFeatureFlags,
     WallLoop, WidthProfile,
 };
-use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
-    execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
-    ExecutionPlan, LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner, LoadedModule,
-    LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
+    build_wasm_instance_pool, execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder,
+    CompiledModuleLive, CompiledStage, ExecutionPlan, LayerStageError, LayerStageInput,
+    LayerStageRunner, LoadedModule, LoadedModuleBuilder, WasmArtifactMetadata, WasmEngine,
+    WasmRuntimeDispatcher,
 };
 
 use crate::common::wasm_cache;
@@ -89,7 +90,9 @@ fn make_module(
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -190,20 +193,21 @@ impl<'a> LayerStageRunner for SeedingRunner<'a> {
         &self,
         stage_id: &StageId,
         layer: &GlobalLayer,
-        module: &CompiledModule,
-        blackboard: &Blackboard,
-        arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
+        module: &CompiledModuleLive<'_>,
+        input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
+        if stage_id == "Layer::Perimeters" {
             if let Some(perimeter) = self.perimeter.lock().expect("lock seed perimeter").take() {
-                arena
-                    .set_perimeter(perimeter)
-                    .expect("seed perimeter into arena");
-                return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
+                // Return the perimeter directly via LayerStageCommitData; the executor
+                // will commit it to the arena after run_stage returns.
+                return Ok(LayerStageCommitData {
+                    perimeter_output: Some(perimeter),
+                    ..Default::default()
+                });
             }
         }
 
-        LayerStageRunner::run_stage(self.inner, stage_id, layer, module, blackboard, arena)
+        LayerStageRunner::run_stage(self.inner, stage_id, layer, module, input)
     }
 }
 

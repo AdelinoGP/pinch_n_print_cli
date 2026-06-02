@@ -10,6 +10,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use slicer_ir::LayerStageCommitData;
 use slicer_ir::{
     BoundingBox3, ConfigView, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR, MeshIR, Point3,
     PrintMetadata, SemVer, StageId,
@@ -17,11 +18,12 @@ use slicer_ir::{
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_runtime::{
     build_config_schema_json, build_execution_plan, build_wasm_instance_pool,
-    load_modules_from_roots, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
-    ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest, FinalizationError,
-    FinalizationOutput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer, IrAccessMask,
-    LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner, LoadedModuleBuilder,
-    PostpassError, PostpassOutput, PostpassStageRunner, PrepassExecutionError, PrepassStageOutput,
+    load_modules_from_roots, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
+    CompiledStage, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest, FinalizationError,
+    FinalizationOutput, FinalizationStageInput, FinalizationStageRunner, GCodeEmitter,
+    GCodeSerializer, IrAccessMask, LayerStageError, LayerStageInput, LayerStageRunner,
+    LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageInput, PostpassStageRunner,
+    PrepassExecutionError, PrepassRunnerError, PrepassStageInput, PrepassStageOutput,
     PrepassStageRunner, SortedStageModules, WasmArtifactMetadata,
 };
 use tempfile::TempDir;
@@ -50,7 +52,9 @@ fn make_dummy_compiled_module(stage_id: &str, module_id: &str) -> CompiledModule
     .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -99,11 +103,10 @@ impl LayerStageRunner for NoopLayerRunner {
         &self,
         _stage_id: &StageId,
         _layer: &GlobalLayer,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+        _module: &CompiledModuleLive<'_>,
+        _input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
+        Ok(LayerStageCommitData::default())
     }
 }
 
@@ -112,8 +115,8 @@ impl FinalizationStageRunner for NoopFinalizationRunner {
     fn run_stage(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
+        _module: &CompiledModuleLive<'_>,
+        _input: FinalizationStageInput<'_>,
         _layers: &mut Vec<LayerCollectionIR>,
     ) -> Result<FinalizationOutput, FinalizationError> {
         Ok(FinalizationOutput::Success)
@@ -125,17 +128,17 @@ impl PostpassStageRunner for NoopPostpassRunner {
     fn run_gcode_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _gcode_ir: &mut GCodeIR,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        _commands: &mut Vec<slicer_ir::GCodeCommand>,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::GCodeSuccess)
     }
     fn run_text_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::TextSuccess { text })
@@ -294,7 +297,9 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
             let parallelism = if m.layer_parallel_safe() { 4 } else { 1 };
             let pool = Arc::new(
                 build_wasm_instance_pool(
-                    m,
+                    m.id(),
+                    m.stage(),
+                    m.layer_parallel_safe(),
                     parallelism,
                     WasmArtifactMetadata {
                         uses_shared_memory: false,
@@ -365,7 +370,9 @@ fn manifest_driven_pipeline_runs_to_completion() {
     let m = &report.modules[0];
     let pool = Arc::new(
         build_wasm_instance_pool(
-            m,
+            m.id(),
+            m.stage(),
+            m.layer_parallel_safe(),
             4,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -390,22 +397,19 @@ fn manifest_driven_pipeline_runs_to_completion() {
         fn run_stage(
             &self,
             _stage_id: &StageId,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
-        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-            Ok((
-                PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
-                    global_layers: vec![GlobalLayer {
-                        index: 0,
-                        z: 0.2,
-                        active_regions: Vec::new(),
-                        has_nonplanar: false,
-                        is_sync_layer: false,
-                    }],
-                    ..Default::default()
-                })),
-                Vec::new(),
-            ))
+            _module: &CompiledModuleLive<'_>,
+            _input: PrepassStageInput<'_>,
+        ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+            Ok(PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+                global_layers: vec![GlobalLayer {
+                    index: 0,
+                    z: 0.2,
+                    active_regions: Vec::new(),
+                    has_nonplanar: false,
+                    is_sync_layer: false,
+                }],
+                ..Default::default()
+            })))
         }
     }
 
@@ -631,7 +635,9 @@ fn core_modules_build_a_multi_tier_execution_plan() {
         .map(|m| {
             let pool = Arc::new(
                 build_wasm_instance_pool(
-                    m,
+                    m.id(),
+                    m.stage(),
+                    m.layer_parallel_safe(),
                     if m.layer_parallel_safe() { 4 } else { 1 },
                     WasmArtifactMetadata {
                         uses_shared_memory: false,

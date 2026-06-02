@@ -212,7 +212,9 @@ fn bound_module(
 
     let instance_pool = Arc::new(
         build_wasm_instance_pool(
-            &module,
+            module.id(),
+            module.stage(),
+            module.layer_parallel_safe(),
             host_parallelism,
             WasmArtifactMetadata {
                 uses_shared_memory: false,

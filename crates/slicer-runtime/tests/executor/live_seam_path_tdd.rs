@@ -20,7 +20,7 @@
 
 #![allow(missing_docs)]
 
-use slicer_runtime::dispatch::commit_layer_outputs_for_test;
+use slicer_runtime::commit_layer_outputs_for_test;
 use slicer_runtime::wit_host::layer::slicer::ir_handles::ir_handles::HostPerimeterOutputBuilder;
 use slicer_runtime::wit_host::{
     ExtrusionRole, HostExecutionContextBuilder, Point3, Point3WithWidth, WallFeatureFlag,
@@ -346,7 +346,9 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             slicer_runtime::instance_pool::WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -831,7 +833,9 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             slicer_runtime::instance_pool::WasmArtifactMetadata {
                 uses_shared_memory: false,

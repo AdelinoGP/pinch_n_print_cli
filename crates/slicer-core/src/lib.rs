@@ -8,6 +8,7 @@ pub mod aabb_lines_2d;
 pub mod aabb_tree;
 pub mod paint_region;
 pub mod polygon_ops;
+pub mod stage_io;
 pub mod triangle_mesh_slicer;
 
 use slicer_ir::{Point2, Point3, Point3WithWidth};
@@ -19,6 +20,10 @@ pub use paint_region::{
 };
 pub use polygon_ops::{
     clip_polygons, difference, intersection, offset, union, xor, ClipOperation, OffsetJoinType,
+};
+pub use stage_io::{
+    FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassStageOutput,
+    SurfaceGroupRecord,
 };
 pub use triangle_mesh_slicer::slice_mesh_ex;
 

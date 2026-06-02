@@ -27,8 +27,9 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_postpass, Blackboard, CompiledModule, CompiledModuleBuilder,
-    CompiledStage, ExecutionModuleBinding, ExecutionPlan, GCodeEmitter, GCodeSerializer,
-    LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageRunner, WasmArtifactMetadata,
+    CompiledModuleLive, CompiledStage, ExecutionModuleBinding, ExecutionPlan, GCodeEmitter,
+    GCodeSerializer, LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageInput,
+    PostpassStageRunner, WasmArtifactMetadata,
 };
 
 // ============================================================================
@@ -659,7 +660,9 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded_module = loaded_module(module_id, stage_id);
     let instance_pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded_module,
+            loaded_module.id(),
+            loaded_module.stage(),
+            loaded_module.layer_parallel_safe(),
             1, // PostPass modules always use pool size 1
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -886,28 +889,26 @@ impl PostpassStageRunner for OrderTrackingRunner {
     fn run_gcode_postprocess(
         &self,
         _stage_id: &StageId,
-        module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _gcode_ir: &mut GCodeIR,
+        module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        _commands: &mut Vec<GCodeCommand>,
     ) -> Result<PostpassOutput, PostpassError> {
-        self.calls.borrow_mut().push((
-            module.module_id().to_string(),
-            "GCodePostProcess".to_string(),
-        ));
+        self.calls
+            .borrow_mut()
+            .push((module.module_id.to_string(), "GCodePostProcess".to_string()));
         Ok(PostpassOutput::GCodeSuccess)
     }
 
     fn run_text_postprocess(
         &self,
         _stage_id: &StageId,
-        module: &CompiledModule,
-        _blackboard: &Blackboard,
+        module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
-        self.calls.borrow_mut().push((
-            module.module_id().to_string(),
-            "TextPostProcess".to_string(),
-        ));
+        self.calls
+            .borrow_mut()
+            .push((module.module_id.to_string(), "TextPostProcess".to_string()));
         Ok(PostpassOutput::TextSuccess { text })
     }
 }
@@ -938,11 +939,11 @@ impl PostpassStageRunner for ImmutabilityVerifyingRunner {
     fn run_gcode_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _gcode_ir: &mut GCodeIR,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        _commands: &mut Vec<GCodeCommand>,
     ) -> Result<PostpassOutput, PostpassError> {
-        // The fact that we receive &mut GCodeIR but NOT &mut layers proves
+        // The fact that we receive &mut Vec<GCodeCommand> but NOT &mut layers proves
         // layer_irs is immutable in the postpass stage (compile-time guarantee)
         *self.verified.borrow_mut() = true;
         Ok(PostpassOutput::GCodeSuccess)
@@ -951,8 +952,8 @@ impl PostpassStageRunner for ImmutabilityVerifyingRunner {
     fn run_text_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
         *self.verified.borrow_mut() = true;
@@ -980,9 +981,9 @@ impl PostpassStageRunner for FinalTextRunner {
     fn run_gcode_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _gcode_ir: &mut GCodeIR,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        _commands: &mut Vec<GCodeCommand>,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::GCodeSuccess)
     }
@@ -990,8 +991,8 @@ impl PostpassStageRunner for FinalTextRunner {
     fn run_text_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         _text: String,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::TextSuccess {
@@ -1038,18 +1039,18 @@ impl PostpassStageRunner for FatalErrorRunner {
     fn run_gcode_postprocess(
         &self,
         stage_id: &StageId,
-        module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _gcode_ir: &mut GCodeIR,
+        module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        _commands: &mut Vec<GCodeCommand>,
     ) -> Result<PostpassOutput, PostpassError> {
         self.called_modules
             .borrow_mut()
-            .push(module.module_id().to_string());
+            .push(module.module_id.to_string());
 
-        if self.gcode_fatal_module.as_deref() == Some(module.module_id()) {
+        if self.gcode_fatal_module.as_deref() == Some(module.module_id.as_str()) {
             return Err(PostpassError::FatalModule {
                 stage_id: stage_id.clone(),
-                module_id: module.module_id().to_string(),
+                module_id: module.module_id.to_string(),
                 message: "fatal error".to_string(),
             });
         }
@@ -1059,18 +1060,18 @@ impl PostpassStageRunner for FatalErrorRunner {
     fn run_text_postprocess(
         &self,
         stage_id: &StageId,
-        module: &CompiledModule,
-        _blackboard: &Blackboard,
+        module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
         self.called_modules
             .borrow_mut()
-            .push(module.module_id().to_string());
+            .push(module.module_id.to_string());
 
-        if self.text_fatal_module.as_deref() == Some(module.module_id()) {
+        if self.text_fatal_module.as_deref() == Some(module.module_id.as_str()) {
             return Err(PostpassError::FatalModule {
                 stage_id: stage_id.clone(),
-                module_id: module.module_id().to_string(),
+                module_id: module.module_id.to_string(),
                 message: "fatal error".to_string(),
             });
         }
@@ -1119,15 +1120,15 @@ impl PostpassStageRunner for NonFatalErrorRunner {
     fn run_gcode_postprocess(
         &self,
         _stage_id: &StageId,
-        module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _gcode_ir: &mut GCodeIR,
+        module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        _commands: &mut Vec<GCodeCommand>,
     ) -> Result<PostpassOutput, PostpassError> {
         self.called_modules
             .borrow_mut()
-            .push(module.module_id().to_string());
+            .push(module.module_id.to_string());
 
-        if self.nonfatal_gcode_module.as_deref() == Some(module.module_id()) {
+        if self.nonfatal_gcode_module.as_deref() == Some(module.module_id.as_str()) {
             return Ok(PostpassOutput::NonFatalError {
                 message: "non-fatal error".to_string(),
             });
@@ -1138,15 +1139,15 @@ impl PostpassStageRunner for NonFatalErrorRunner {
     fn run_text_postprocess(
         &self,
         _stage_id: &StageId,
-        module: &CompiledModule,
-        _blackboard: &Blackboard,
+        module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
         self.called_modules
             .borrow_mut()
-            .push(module.module_id().to_string());
+            .push(module.module_id.to_string());
 
-        if self.nonfatal_text_module.as_deref() == Some(module.module_id()) {
+        if self.nonfatal_text_module.as_deref() == Some(module.module_id.as_str()) {
             return Ok(PostpassOutput::NonFatalError {
                 message: "non-fatal error".to_string(),
             });

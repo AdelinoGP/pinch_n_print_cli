@@ -277,6 +277,18 @@ pub fn all_stage_ids() -> Vec<&'static str> {
     STAGES.iter().map(|s| s.stage_id).collect()
 }
 
+/// Look up the WIT export name for a stage id from the single source of truth in [`STAGES`].
+///
+/// Returns `None` for unknown stage ids. Dispatcher impls MUST use this lookup; they MUST NOT
+/// hardcode their own stage-id → wit-export table (see ADR-0005, planned at P83 close).
+#[must_use]
+pub fn export_for_stage_id(stage_id: &str) -> Option<&'static str> {
+    STAGES
+        .iter()
+        .find(|s| s.stage_id == stage_id)
+        .map(|s| s.wit_export)
+}
+
 // ── Validator constants ────────────────────────────────────────────────────
 //
 // Single source of truth for the sets consumed by manifest validation

@@ -11,14 +11,14 @@ use slicer_ir::{
 };
 
 use crate::dag::build_intra_stage_dag;
-use crate::instance_pool::{
-    build_wasm_instance_pool, InstancePoolError, WasmArtifactMetadata, WasmInstancePool,
-};
 use crate::manifest::DiagnosticLevel;
 use crate::manifest::{load_modules_from_roots, LoadDiagnostic, LoadError, LoadedModule};
 use crate::topology::topological_sort;
 use crate::validation::SchedulerError;
-use crate::wasm_instance::{WasmComponent, WasmEngine};
+use slicer_wasm_host::{
+    build_wasm_instance_pool, CompiledModuleLive, InstancePoolError, WasmArtifactMetadata,
+    WasmComponent, WasmEngine, WasmInstancePool,
+};
 
 /// Canonical scheduler stage ordering for the live host path
 /// (docs/04 §Fixed Stage Order). Modules discovered by
@@ -381,11 +381,16 @@ pub fn load_live_modules_for_plan(
     let mut diagnostics = report.diagnostics;
     let mut bindings = Vec::with_capacity(report.modules.len());
     for module in report.modules {
-        let pool =
-            build_wasm_instance_pool(&module, host_parallelism, WasmArtifactMetadata::default())
-                .map_err(|e| -> Box<LiveModuleLoadError> {
-                    Box::new(LiveModuleLoadError::InstancePool(e))
-                })?;
+        let pool = build_wasm_instance_pool(
+            &module.id,
+            &module.stage,
+            module.layer_parallel_safe,
+            host_parallelism,
+            WasmArtifactMetadata::default(),
+        )
+        .map_err(|e| -> Box<LiveModuleLoadError> {
+            Box::new(LiveModuleLoadError::InstancePool(e))
+        })?;
         let wasm_component = compile_module_component(engine.as_ref(), &module, &mut diagnostics);
         bindings.push(LiveModuleBinding {
             module,
@@ -653,7 +658,7 @@ pub struct CompiledStage {
 /// outside the crate go through the `pub fn` accessor methods declared
 /// below.
 #[derive(Debug, Clone)]
-pub struct CompiledModule {
+pub struct CompiledModuleStatic {
     /// Reverse-domain module identifier.
     pub(crate) module_id: ModuleId,
     /// Bound instance pool selected during startup planning.
@@ -678,15 +683,14 @@ pub struct CompiledModule {
     pub(crate) requires_modules: Vec<ModuleId>,
 }
 
-impl CompiledModule {
+/// Transitional alias: external callers that reference `CompiledModule` keep
+/// compiling through P83. P85 deletes this alias.
+pub type CompiledModule = CompiledModuleStatic;
+
+impl CompiledModuleStatic {
     /// Reverse-domain module identifier.
     pub fn module_id(&self) -> &str {
         &self.module_id
-    }
-
-    /// Bound instance pool selected during startup planning.
-    pub fn instance_pool(&self) -> &Arc<WasmInstancePool> {
-        &self.instance_pool
     }
 
     /// Frozen IR read access mask derived from the manifest.
@@ -709,14 +713,23 @@ impl CompiledModule {
         &self.claims
     }
 
-    /// Compiled WASM component for runtime instantiation.
-    pub fn wasm_component(&self) -> Option<&Arc<WasmComponent>> {
-        self.wasm_component.as_ref()
-    }
-
     /// Module IDs this module explicitly depends on.
     pub fn requires_modules(&self) -> &[ModuleId] {
         &self.requires_modules
+    }
+
+    /// Construct a short-lived `CompiledModuleLive<'_>` borrow from this static module.
+    ///
+    /// Convenience for test call sites and executor helpers that need to pass the new
+    /// slicer-wasm-host trait boundary from a `CompiledModuleStatic` reference.
+    pub fn as_live(&self) -> CompiledModuleLive<'_> {
+        CompiledModuleLive::new(
+            &self.module_id,
+            Arc::clone(&self.instance_pool),
+            self.wasm_component.clone(),
+            &self.claims,
+            Arc::clone(&self.config_view),
+        )
     }
 }
 
@@ -788,9 +801,9 @@ impl CompiledModuleBuilder {
         self
     }
 
-    /// Finalize into a [`CompiledModule`].
-    pub fn build(self) -> CompiledModule {
-        CompiledModule {
+    /// Finalize into a [`CompiledModuleStatic`].
+    pub fn build(self) -> CompiledModuleStatic {
+        CompiledModuleStatic {
             module_id: self.module_id,
             instance_pool: self.instance_pool,
             ir_read_mask: self.ir_read_mask,

@@ -27,8 +27,9 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_execution_plan, execute_prepass_with_builtins_configured, Blackboard, CompiledModule,
-    ConfigBoundsIndex, ExecutionPlanRequest, PrepassExecutionError, PrepassStageOutput,
-    PrepassStageRunner, SortedStageModules,
+    CompiledModuleLive, ConfigBoundsIndex, ExecutionPlanRequest, PrepassExecutionError,
+    PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
+    SortedStageModules,
 };
 
 fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -173,10 +174,10 @@ impl PrepassStageRunner for NoopRunner {
     fn run_stage(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-        Ok((PrepassStageOutput::None, Vec::new()))
+        _module: &CompiledModuleLive<'_>,
+        _input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+        Ok(PrepassStageOutput::None)
     }
 }
 

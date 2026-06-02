@@ -11,11 +11,17 @@ pub mod entity_id;
 pub mod polygon_predicate;
 pub mod resolved_config;
 pub mod slice_ir;
+pub mod stage_io;
 pub mod validation;
 
 pub use entity_id::LayerEntityIdGen;
 pub use polygon_predicate::{point_in_contour_winding, point_in_polygon_winding};
 pub use resolved_config::{ConfigResolutionError, ResolvedConfig};
+pub use stage_io::{
+    BlackboardError, BlackboardPrepassSlot, FinalizationError, FinalizationOutput, LayerArenaError,
+    LayerArenaSlot, LayerStageCommitData, LayerStageError, LayerStageOutput, PostpassError,
+    PostpassOutput, PrepassRunnerError,
+};
 pub use validation::validate_travel_anchors;
 
 pub use slice_ir::{

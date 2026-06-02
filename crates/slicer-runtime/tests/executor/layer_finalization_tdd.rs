@@ -11,8 +11,9 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_layer_finalization, Blackboard, CompiledModule,
-    CompiledModuleBuilder, CompiledStage, ExecutionModuleBinding, ExecutionPlan, FinalizationError,
-    FinalizationOutput, FinalizationStageRunner, LoadedModuleBuilder, WasmArtifactMetadata,
+    CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ExecutionModuleBinding,
+    ExecutionPlan, FinalizationError, FinalizationOutput, FinalizationStageInput,
+    FinalizationStageRunner, LoadedModuleBuilder, WasmArtifactMetadata,
 };
 
 #[test]
@@ -91,8 +92,8 @@ fn finalization_executor_rejects_non_monotonic_layers() {
         fn run_stage(
             &self,
             _stage_id: &StageId,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
+            _module: &CompiledModuleLive<'_>,
+            _input: FinalizationStageInput<'_>,
             layers: &mut Vec<LayerCollectionIR>,
         ) -> Result<FinalizationOutput, FinalizationError> {
             layers.swap(0, 1);
@@ -127,8 +128,8 @@ fn finalization_executor_rejects_duplicate_layer_indices() {
         fn run_stage(
             &self,
             _stage_id: &StageId,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
+            _module: &CompiledModuleLive<'_>,
+            _input: FinalizationStageInput<'_>,
             layers: &mut Vec<LayerCollectionIR>,
         ) -> Result<FinalizationOutput, FinalizationError> {
             layers.push(layer_collection_fixture(0, 0.2));
@@ -242,12 +243,12 @@ impl FinalizationStageRunner for ScriptedRunner {
     fn run_stage(
         &self,
         _stage_id: &StageId,
-        module: &CompiledModule,
-        _blackboard: &Blackboard,
+        module: &CompiledModuleLive<'_>,
+        _input: FinalizationStageInput<'_>,
         _layers: &mut Vec<LayerCollectionIR>,
     ) -> Result<FinalizationOutput, FinalizationError> {
         assert_eq!(
-            module.instance_pool().size(),
+            module.instance_pool.size(),
             1,
             "Pool size must be 1 for finalization modules"
         );
@@ -255,13 +256,13 @@ impl FinalizationStageRunner for ScriptedRunner {
         let mut observed = self.observed.borrow_mut();
         let next_index = observed.len();
         if let Some(expected_module_id) = self.expected_order.get(next_index) {
-            assert_eq!(module.module_id(), expected_module_id.as_str());
+            assert_eq!(module.module_id.as_str(), expected_module_id.as_str());
         }
-        observed.push(module.module_id().to_string());
+        observed.push(module.module_id.to_string());
         drop(observed);
 
         self.scripted
-            .get(module.module_id())
+            .get(module.module_id.as_str())
             .cloned()
             .expect("runner fixture should define every module outcome")
     }
@@ -293,7 +294,9 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded_module = loaded_module(module_id, stage_id);
     let instance_pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded_module,
+            loaded_module.id(),
+            loaded_module.stage(),
+            loaded_module.layer_parallel_safe(),
             8, // Request 8, but pool mode should force 1 for finalization
             WasmArtifactMetadata {
                 uses_shared_memory: false,

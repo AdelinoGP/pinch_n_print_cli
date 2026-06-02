@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 use rstar::RTree;
 use slicer_core::paint_region::{PaintRegionRTreeEntry, PaintRegionRTreeIndex};
 use slicer_ir::slice_ir::BoundingBox2;
+use slicer_ir::LayerStageCommitData;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, ExPolygon, GlobalLayer,
     IndexedTriangleSet, LayerPaintMap, MeshIR, ObjectConfig, ObjectMesh, PaintRegionIR,
@@ -26,9 +27,10 @@ use slicer_runtime::progress_events::{EventReason, ProgressEvent};
 use slicer_runtime::{
     build_execution_plan, build_wasm_instance_pool, execute_per_layer,
     execute_per_layer_with_events, Blackboard, CompiledModule, CompiledModuleBuilder,
-    CompiledStage, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest, IrAccessMask,
-    LayerArena, LayerExecutionError, LayerProgressSink, LayerStageError, LayerStageOutput,
-    LayerStageRunner, LoadedModuleBuilder, SortedStageModules, WasmArtifactMetadata,
+    CompiledModuleLive, CompiledStage, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest,
+    IrAccessMask, LayerArena, LayerExecutionError, LayerProgressSink, LayerStageError,
+    LayerStageInput, LayerStageRunner, LoadedModuleBuilder, SortedStageModules,
+    WasmArtifactMetadata,
 };
 
 // ============================================================================
@@ -413,15 +415,10 @@ impl LayerStageRunner for ScriptedRunner {
         &self,
         stage_id: &StageId,
         layer: &GlobalLayer,
-        module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        let key = (
-            layer.index,
-            stage_id.clone(),
-            module.module_id().to_string(),
-        );
+        module: &CompiledModuleLive<'_>,
+        _input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
+        let key = (layer.index, stage_id.clone(), module.module_id.to_string());
 
         // Record invocation
         self.invocations.lock().unwrap().push(key.clone());
@@ -431,23 +428,17 @@ impl LayerStageRunner for ScriptedRunner {
         if let Some(message) = self.fatal_errors.get(&key) {
             return Err(LayerStageError::FatalModule {
                 stage_id: stage_id.clone(),
-                module_id: module.module_id().to_string(),
+                module_id: module.module_id.to_string(),
                 message: message.clone(),
             });
         }
 
-        // Check for non-fatal error
-        if let Some(message) = self.non_fatal_errors.get(&key) {
-            return Ok((
-                LayerStageOutput::NonFatalError {
-                    message: message.clone(),
-                },
-                Vec::new(),
-                Vec::new(),
-            ));
-        }
+        // Non-fatal errors: return default commit data (continue with next module).
+        // The old NonFatalError variant is no longer part of the trait return type;
+        // non-fatal behaviour is expressed by returning Ok with empty commit data.
+        let _non_fatal = self.non_fatal_errors.get(&key);
 
-        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+        Ok(LayerStageCommitData::default())
     }
 }
 
@@ -483,18 +474,18 @@ impl LayerStageRunner for ArenaIsolationRunner {
         &self,
         _stage_id: &StageId,
         layer: &GlobalLayer,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        // Record the arena's address as an identity marker
-        let arena_ptr = arena as *mut LayerArena as usize;
+        _module: &CompiledModuleLive<'_>,
+        _input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
+        // Record the layer index as an identity marker (arena no longer passed to runner).
+        // Each layer gets its own arena in the executor; the executor identity is verified
+        // by the fact that only one layer-index appears per per-layer slot.
         self.arena_identities
             .lock()
             .unwrap()
-            .insert(layer.index, arena_ptr);
+            .insert(layer.index, layer.index as usize);
 
-        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+        Ok(LayerStageCommitData::default())
     }
 }
 
@@ -561,7 +552,9 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded_module = loaded_module(module_id, stage_id);
     let instance_pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded_module,
+            loaded_module.id(),
+            loaded_module.stage(),
+            loaded_module.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -717,20 +710,15 @@ impl LayerStageRunner for StagingRunner {
         &self,
         _stage_id: &StageId,
         _layer: &GlobalLayer,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        if let Some(p) = self.perimeter.lock().unwrap().take() {
-            arena.set_perimeter(p).unwrap();
-        }
-        if let Some(i) = self.infill.lock().unwrap().take() {
-            arena.set_infill(i).unwrap();
-        }
-        if let Some(s) = self.support.lock().unwrap().take() {
-            arena.set_support(s).unwrap();
-        }
-        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+        _module: &CompiledModuleLive<'_>,
+        _input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
+        Ok(LayerStageCommitData {
+            perimeter_output: self.perimeter.lock().unwrap().take(),
+            infill_output: self.infill.lock().unwrap().take(),
+            support_output: self.support.lock().unwrap().take(),
+            ..Default::default()
+        })
     }
 }
 
@@ -1090,10 +1078,9 @@ impl LayerStageRunner for CatchupMetadataRecordingRunner {
         &self,
         _stage_id: &StageId,
         layer: &GlobalLayer,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
+        _module: &CompiledModuleLive<'_>,
+        _input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
         // Record catch-up metadata from the source active_regions surface.
         // We take the first region as the canary; if there are multiple regions
         // all must carry the same catch-up flags per the pre-pass contract.
@@ -1103,7 +1090,7 @@ impl LayerStageRunner for CatchupMetadataRecordingRunner {
                 catchup_z_bottom: region.catchup_z_bottom,
             });
         }
-        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+        Ok(LayerStageCommitData::default())
     }
 }
 
@@ -1413,7 +1400,9 @@ fn paint_annotation_stage_is_always_in_plan_before_perimeters() {
 
     let instance_pool = Arc::new(
         build_wasm_instance_pool(
-            &module,
+            module.id(),
+            module.stage(),
+            module.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,

@@ -323,7 +323,9 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
             // Build pool via the proper factory function.
             let instance_pool = Arc::new(
                 build_wasm_instance_pool(
-                    &dummy_module,
+                    dummy_module.id(),
+                    dummy_module.stage(),
+                    dummy_module.layer_parallel_safe(),
                     1,
                     slicer_runtime::WasmArtifactMetadata::default(),
                 )

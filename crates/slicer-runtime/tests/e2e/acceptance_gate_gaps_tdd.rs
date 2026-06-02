@@ -156,7 +156,14 @@ fn declared_access_produces_no_undeclared_access_diagnostic() {
 fn parallel_safe_module_returns_distinct_slot_indices_across_threads() {
     let m = loaded_module("com.test.parallel", "Layer::Support", &[], &["A"]);
     let pool = Arc::new(
-        build_wasm_instance_pool(&m, 4, artifact_meta(false)).expect("parallel pool should build"),
+        build_wasm_instance_pool(
+            m.id(),
+            m.stage(),
+            m.layer_parallel_safe(),
+            4,
+            artifact_meta(false),
+        )
+        .expect("parallel pool should build"),
     );
     assert_eq!(pool.mode(), InstancePoolMode::Parallel);
 
@@ -207,8 +214,14 @@ fn serialized_pool_only_ever_returns_slot_zero_under_repeated_acquisition() {
     .max_ir_schema(semver(2, 0, 0))
     .layer_parallel_safe(false)
     .build();
-    let pool = build_wasm_instance_pool(&m, 8, artifact_meta(false))
-        .expect("serialized pool should build");
+    let pool = build_wasm_instance_pool(
+        m.id(),
+        m.stage(),
+        m.layer_parallel_safe(),
+        8,
+        artifact_meta(false),
+    )
+    .expect("serialized pool should build");
     assert_eq!(pool.mode(), InstancePoolMode::Serialized);
     for _ in 0..16 {
         let lease = pool.acquire();

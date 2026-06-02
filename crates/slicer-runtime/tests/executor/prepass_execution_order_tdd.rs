@@ -8,15 +8,17 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use slicer_ir::PrepassRunnerError;
 use slicer_ir::{
     BoundingBox3, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectLayerRef, ObjectMesh,
     Point3, RegionKey, RegionMapIR, RegionPlan, SemVer, SupportGeometryIR, SupportPlanIR,
     SurfaceClassificationIR, Transform3d,
 };
 use slicer_runtime::{
-    build_wasm_instance_pool, instance_pool::WasmArtifactMetadata, Blackboard,
-    BlackboardPrepassSlot, CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan,
-    LoadedModuleBuilder, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
+    build_wasm_instance_pool, Blackboard, BlackboardPrepassSlot, CompiledModule,
+    CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ExecutionPlan, LoadedModuleBuilder,
+    PrepassExecutionError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
+    WasmArtifactMetadata,
 };
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -153,7 +155,9 @@ fn compiled_stub_module(stage_id: &str, module_id: &str) -> CompiledModule {
     .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -172,13 +176,12 @@ impl PrepassStageRunner for TreeSupportStubRunner {
     fn run_stage(
         &self,
         _stage_id: &slicer_ir::StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-        Ok((
-            PrepassStageOutput::SupportPlan(Arc::new(SupportPlanIR::default())),
-            vec![],
-        ))
+        _module: &CompiledModuleLive<'_>,
+        _input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+        Ok(PrepassStageOutput::SupportPlan(Arc::new(
+            SupportPlanIR::default(),
+        )))
     }
 }
 

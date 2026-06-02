@@ -22,8 +22,9 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass, Blackboard, CompiledModule, CompiledModuleBuilder,
-    CompiledStage, ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LoadedModuleBuilder,
-    PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
+    CompiledModuleLive, CompiledStage, ExecutionModuleBinding, ExecutionPlan, IrAccessMask,
+    LoadedModuleBuilder, PrepassRunnerError, PrepassStageInput, PrepassStageOutput,
+    PrepassStageRunner, WasmArtifactMetadata,
 };
 
 /// Vertical rod mesh: two vertices at local Z=0 and Z=10, one triangle.
@@ -126,7 +127,9 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded = loaded_module(module_id, stage_id);
     let instance_pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -197,7 +200,7 @@ fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
 
 struct ScriptedRunner {
     expected_mesh_ptr: usize,
-    scripted: HashMap<String, Result<PrepassStageOutput, slicer_runtime::PrepassExecutionError>>,
+    scripted: HashMap<String, Result<PrepassStageOutput, PrepassRunnerError>>,
     observed: std::cell::RefCell<Vec<String>>,
     expected_order: Vec<String>,
 }
@@ -207,7 +210,7 @@ impl ScriptedRunner {
         expected_order: &[&str],
         scripted: Vec<(
             String,
-            Result<PrepassStageOutput, slicer_runtime::PrepassExecutionError>,
+            Result<PrepassStageOutput, PrepassRunnerError>,
         )>,
         expected_mesh_ptr: usize,
     ) -> Self {
@@ -231,10 +234,10 @@ impl PrepassStageRunner for ScriptedRunner {
     fn run_stage(
         &self,
         _stage_id: &String,
-        module: &CompiledModule,
-        blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), slicer_runtime::PrepassExecutionError> {
-        let observed_mesh_ptr = Arc::as_ptr(blackboard.mesh()) as usize;
+        module: &CompiledModuleLive<'_>,
+        input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+        let observed_mesh_ptr = Arc::as_ptr(&input.mesh) as usize;
         if self.expected_mesh_ptr != 0 {
             assert_eq!(
                 observed_mesh_ptr, self.expected_mesh_ptr,
@@ -245,16 +248,15 @@ impl PrepassStageRunner for ScriptedRunner {
         let mut observed = self.observed.borrow_mut();
         let next_index = observed.len();
         if let Some(expected_module_id) = self.expected_order.get(next_index) {
-            assert_eq!(module.module_id(), expected_module_id.as_str());
+            assert_eq!(module.module_id.as_str(), expected_module_id.as_str());
         }
-        observed.push(module.module_id().to_string());
+        observed.push(module.module_id.to_string());
         drop(observed);
 
         self.scripted
-            .get(module.module_id())
+            .get(module.module_id.as_str())
             .cloned()
             .expect("runner fixture should define every module outcome")
-            .map(|output| (output, Vec::new()))
     }
 }
 

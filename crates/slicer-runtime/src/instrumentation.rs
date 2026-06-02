@@ -771,12 +771,14 @@ mod tests {
         requires_modules: &[&str],
     ) -> CompiledModule {
         use crate::execution_plan::IrAccessMask;
-        use crate::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
+        use slicer_wasm_host::pool::{build_wasm_instance_pool, WasmArtifactMetadata};
         use std::sync::Arc;
         let loaded = module(id, ir_reads, ir_writes, requires_modules);
         let pool = Arc::new(
             build_wasm_instance_pool(
-                &loaded,
+                &loaded.id,
+                &loaded.stage,
+                loaded.layer_parallel_safe,
                 1,
                 WasmArtifactMetadata {
                     uses_shared_memory: false,

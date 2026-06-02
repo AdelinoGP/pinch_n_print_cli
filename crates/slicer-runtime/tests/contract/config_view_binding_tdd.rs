@@ -246,7 +246,9 @@ use slicer_runtime::{
 fn plan_request_for(module: &LoadedModule, config_view: Arc<ConfigView>) -> ExecutionPlanRequest {
     let pool = Arc::new(
         build_wasm_instance_pool(
-            module,
+            module.id(),
+            module.stage(),
+            module.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -371,7 +373,9 @@ use slicer_runtime::{build_live_execution_plan, LiveModuleBinding};
 fn live_binding(module: &LoadedModule) -> LiveModuleBinding {
     let pool = Arc::new(
         build_wasm_instance_pool(
-            module,
+            module.id(),
+            module.stage(),
+            module.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,

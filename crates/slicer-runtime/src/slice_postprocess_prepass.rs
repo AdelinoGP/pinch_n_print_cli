@@ -39,7 +39,9 @@ use std::sync::Arc;
 use slicer_core::polygon_ops::{difference, intersection, offset, union, OffsetJoinType};
 use slicer_ir::{ExPolygon, ObjectId, RegionId, RegionKey, RegionMapIR, SliceIR};
 
-use crate::blackboard::{Blackboard, BlackboardError};
+use slicer_ir::BlackboardError;
+
+use crate::blackboard::Blackboard;
 
 /// Structured failures for `PrePass::ShellClassification`.
 #[derive(Debug, Clone, PartialEq, Eq)]

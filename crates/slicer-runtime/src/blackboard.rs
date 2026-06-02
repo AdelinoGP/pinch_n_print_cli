@@ -3,14 +3,14 @@
 //! This module defines the TASK-026 public API surface and minimal runtime
 //! behavior for blackboard and layer-arena ownership.
 
-use std::fmt;
 use std::sync::Arc;
 
 use slicer_core::paint_region::PaintRegionRTreeIndex;
 use slicer_ir::{
-    ActiveRegion, ExPolygon, InfillIR, LayerAnnotation, LayerCollectionIR, LayerPlanIR, MeshIR,
-    MeshSegmentationIR, ObjectMesh, PaintRegionIR, PerimeterIR, Point2, Point3, Polygon, RegionKey,
-    RegionMapIR, RegionPlan, RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR,
+    ActiveRegion, BlackboardError, BlackboardPrepassSlot, ExPolygon, InfillIR, LayerAnnotation,
+    LayerArenaError, LayerArenaSlot, LayerCollectionIR, LayerPlanIR, MeshIR, MeshSegmentationIR,
+    ObjectMesh, PaintRegionIR, PerimeterIR, Point2, Point3, Polygon, RegionKey, RegionMapIR,
+    RegionPlan, RetractMode, SeamPlanIR, SliceIR, SlicedRegion, SupportGeometryIR,
     SupportGeometryKey, SupportIR, SupportPlanIR, SurfaceClassificationIR, ToolChange, ZHop,
 };
 
@@ -68,114 +68,6 @@ pub struct Blackboard {
     slice_ir: Option<Arc<Vec<SliceIR>>>,
     support_geometry: Option<Arc<SupportGeometryIR>>,
     layer_outputs: Option<Vec<Option<LayerCollectionIR>>>,
-}
-
-/// Structured blackboard contract failures.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BlackboardError {
-    /// A prepass output was committed more than once.
-    DuplicatePrepassCommit {
-        /// The duplicated prepass slot.
-        slot: BlackboardPrepassSlot,
-    },
-    /// A requested prepass output has not been committed yet.
-    MissingRequiredPrepass {
-        /// The missing prepass slot.
-        slot: BlackboardPrepassSlot,
-    },
-    /// A per-layer output was committed more than once.
-    DuplicateLayerCommit {
-        /// The duplicated layer slot index.
-        layer_index: usize,
-    },
-    /// A per-layer output index was outside the configured slot range.
-    LayerSlotOutOfRange {
-        /// The out-of-range layer index.
-        layer_index: usize,
-        /// The configured slot count.
-        layer_count: usize,
-    },
-    /// Draining was attempted before every layer slot was populated.
-    IncompleteLayerDrain {
-        /// Slot indexes that are still empty.
-        missing_indices: Vec<usize>,
-    },
-    /// Layer outputs were already drained once.
-    LayerOutputsAlreadyDrained,
-}
-
-impl fmt::Display for BlackboardError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::DuplicatePrepassCommit { slot } => {
-                write!(f, "prepass output already committed for {slot}")
-            }
-            Self::MissingRequiredPrepass { slot } => {
-                write!(f, "required prepass output missing for {slot}")
-            }
-            Self::DuplicateLayerCommit { layer_index } => {
-                write!(f, "layer output already committed for slot {layer_index}")
-            }
-            Self::LayerSlotOutOfRange {
-                layer_index,
-                layer_count,
-            } => write!(
-                f,
-                "layer output slot {layer_index} is out of range for {layer_count} slots"
-            ),
-            Self::IncompleteLayerDrain { missing_indices } => write!(
-                f,
-                "cannot drain layer outputs while slots are missing: {missing_indices:?}"
-            ),
-            Self::LayerOutputsAlreadyDrained => {
-                write!(f, "layer outputs have already been drained")
-            }
-        }
-    }
-}
-
-impl std::error::Error for BlackboardError {}
-
-/// Named prepass storage locations inside the blackboard.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BlackboardPrepassSlot {
-    /// Surface classification produced by `PrePass::MeshAnalysis`.
-    SurfaceClassification,
-    /// Mesh segmentation marks produced by `PrePass::MeshSegmentation`.
-    MeshSegmentation,
-    /// Layer plan produced by `PrePass::LayerPlanning`.
-    LayerPlan,
-    /// Seam plan produced by `PrePass::SeamPlanning`.
-    SeamPlan,
-    /// Support plan produced by `PrePass::SupportGeometry`.
-    SupportPlan,
-    /// Paint regions produced by `PrePass::PaintSegmentation`.
-    PaintRegions,
-    /// Region map produced by `PrePass::RegionMapping`.
-    RegionMap,
-    /// Per-global-layer `SliceIR` produced by `PrePass::Slice` and refined by
-    /// `PrePass::ShellClassification`.
-    SliceIR,
-    /// Support geometry coarse outlines produced by `PrePass::SupportGeometry`.
-    SupportGeometry,
-}
-
-impl fmt::Display for BlackboardPrepassSlot {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name = match self {
-            Self::SurfaceClassification => "surface-classification",
-            Self::MeshSegmentation => "mesh-segmentation",
-            Self::LayerPlan => "layer-plan",
-            Self::SeamPlan => "seam-plan",
-            Self::SupportPlan => "support-plan",
-            Self::PaintRegions => "paint-regions",
-            Self::RegionMap => "region-map",
-            Self::SliceIR => "slice-ir",
-            Self::SupportGeometry => "support-geometry",
-        };
-
-        f.write_str(name)
-    }
 }
 
 impl Blackboard {
@@ -590,54 +482,6 @@ pub struct LayerArena {
     deferred_retracts: Vec<DeferredRetract>,
     /// Travel move destinations from `Layer::PathOptimization`.
     deferred_travel_moves: Vec<DeferredTravelMove>,
-}
-
-/// Structured layer-arena contract failures.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LayerArenaError {
-    /// A staged IR was inserted into an occupied arena slot.
-    SlotAlreadyOccupied {
-        /// The occupied arena slot.
-        slot: LayerArenaSlot,
-    },
-}
-
-impl fmt::Display for LayerArenaError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::SlotAlreadyOccupied { slot } => {
-                write!(f, "layer arena slot already occupied: {slot}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for LayerArenaError {}
-
-/// Named intermediate slots in the per-layer arena.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LayerArenaSlot {
-    /// Temporary `SliceIR` output.
-    Slice,
-    /// Temporary `PerimeterIR` output.
-    Perimeter,
-    /// Temporary `InfillIR` output.
-    Infill,
-    /// Temporary `SupportIR` output.
-    Support,
-}
-
-impl fmt::Display for LayerArenaSlot {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let name = match self {
-            Self::Slice => "slice",
-            Self::Perimeter => "perimeter",
-            Self::Infill => "infill",
-            Self::Support => "support",
-        };
-
-        f.write_str(name)
-    }
 }
 
 impl LayerArena {

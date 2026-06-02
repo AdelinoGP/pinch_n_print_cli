@@ -11,134 +11,20 @@
 //!
 //! Reference: docs/04_host_scheduler.md lines 778-810
 
-use std::fmt;
-
-use slicer_ir::{GCodeIR, LayerCollectionIR, ModuleId, StageId};
+use slicer_ir::{GCodeIR, LayerCollectionIR, PostpassError, PostpassOutput};
+use slicer_wasm_host::{CompiledModuleLive, PostpassStageInput, PostpassStageRunner};
 
 use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
-use crate::{Blackboard, CompiledModule, ExecutionPlan, ModuleAccessAudit};
+use crate::{Blackboard, ExecutionPlan, ModuleAccessAudit};
 
-/// Output produced by a single postpass module invocation.
-#[derive(Debug, Clone, PartialEq)]
-pub enum PostpassOutput {
-    /// GCodePostProcess module completed successfully.
-    GCodeSuccess,
-    /// TextPostProcess module completed successfully, returning the final text.
-    TextSuccess {
-        /// The final G-code text produced by the module.
-        text: String,
-    },
-    /// Module encountered a non-fatal error, continue with next module.
-    NonFatalError {
-        /// Stable human-readable detail.
-        message: String,
-    },
-}
-
-/// Fatal error from a postpass module or executor.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PostpassError {
-    /// Fatal error from a module, abort postpass.
-    FatalModule {
-        /// Stage being executed.
-        stage_id: StageId,
-        /// Module that failed.
-        module_id: ModuleId,
-        /// Stable human-readable detail.
-        message: String,
-    },
-    /// GCode emit failed.
-    GCodeEmit {
-        /// Stable human-readable detail.
-        message: String,
-    },
-    /// GCode serialization failed.
-    GCodeSerialization {
-        /// Stable human-readable detail.
-        message: String,
-    },
-    /// A ToolChange was emitted without surrounding retract/prime entities while
-    /// `wipe_tower_enabled` is true.
-    MissingToolchangePurge {
-        /// Layer index (global) where the bare ToolChange was detected.
-        layer_index: u32,
-        /// Index of the ToolChange within `layer.tool_changes` (0-based).
-        tool_change_index: u32,
-    },
-}
-
-impl fmt::Display for PostpassError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::FatalModule {
-                stage_id,
-                module_id,
-                message,
-            } => write!(
-                f,
-                "fatal postpass module failure in {stage_id} for {module_id}: {message}"
-            ),
-            Self::GCodeEmit { message } => write!(f, "gcode emit failed: {message}"),
-            Self::GCodeSerialization { message } => {
-                write!(f, "gcode serialization failed: {message}")
-            }
-            Self::MissingToolchangePurge {
-                layer_index,
-                tool_change_index,
-            } => write!(
-                f,
-                "missing toolchange purge: layer {layer_index} tool_change[{tool_change_index}] \
-                 has no ExtrusionRole::WipeTower entity after the tool change; \
-                 ensure wipe-tower module runs before gcode emit"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for PostpassError {}
-
-/// Callback surface used by tests and future runtime bindings.
-///
-/// The runner is responsible for executing a single postpass module.
-/// For GCodePostProcess stages, the runner mutates the provided GCodeIR.
-/// For TextPostProcess stages, the runner receives the serialized text.
-pub trait PostpassStageRunner {
-    /// Execute one compiled GCodePostProcess module.
-    ///
-    /// The module may mutate `gcode_ir` in place.
-    fn run_gcode_postprocess(
-        &self,
-        stage_id: &StageId,
-        module: &CompiledModule,
-        blackboard: &Blackboard,
-        gcode_ir: &mut GCodeIR,
-    ) -> Result<PostpassOutput, PostpassError>;
-
-    /// Execute one compiled TextPostProcess module.
-    ///
-    /// The module receives the serialized G-code text and returns the modified text.
-    fn run_text_postprocess(
-        &self,
-        stage_id: &StageId,
-        module: &CompiledModule,
-        blackboard: &Blackboard,
-        text: String,
-    ) -> Result<PostpassOutput, PostpassError>;
-
-    /// Returns accumulated runtime reads from postpass module executions.
-    ///
-    /// After each postpass module call (via `run_gcode_postprocess` or
-    /// `run_text_postprocess`), the runner should collect `runtime_reads`
-    /// from the dispatch context and make them available via this method.
-    ///
-    /// Returns a `Vec<Vec<String>>` where each inner vector contains the
-    /// IR field paths read by one postpass module call, in call order.
-    /// The default implementation returns an empty vector (for runners that
-    /// don't collect reads, such as noop runners used in testing).
-    fn take_runtime_reads(&mut self) -> Vec<Vec<String>> {
-        Vec::new()
-    }
-}
+// PostpassStageRunner trait is now defined in slicer-wasm-host::traits and re-exported
+// from slicer_runtime via the transitional re-exports block in lib.rs (P83 Step 4c+4d).
+// Signature changes:
+//   run_gcode_postprocess: module: &CompiledModule → &CompiledModuleLive<'_>,
+//                          blackboard: &Blackboard removed,
+//                          gcode_ir: &mut GCodeIR → commands: &mut Vec<GCodeCommand>
+//   run_text_postprocess:  module: &CompiledModule → &CompiledModuleLive<'_>,
+//                          blackboard: &Blackboard removed (mesh projected into PostpassStageInput)
 
 /// Trait for GCode emission (host-built-in, will be implemented in TASK-034).
 pub trait GCodeEmitter {
@@ -244,11 +130,23 @@ pub fn execute_postpass_with_instrumentation(
             instrumentation.on_stage_start(&stage.stage_id, None);
             for module in &stage.modules {
                 instrumentation.on_module_start(&stage.stage_id, None, &module.module_id);
+                // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
+                let live_module = CompiledModuleLive::new(
+                    &module.module_id,
+                    std::sync::Arc::clone(&module.instance_pool),
+                    module.wasm_component.clone(),
+                    &module.claims,
+                    std::sync::Arc::clone(&module.config_view),
+                );
+                let input = PostpassStageInput {
+                    mesh: std::sync::Arc::clone(blackboard.mesh()),
+                    _phantom: std::marker::PhantomData,
+                };
                 let res = runner.run_gcode_postprocess(
                     &stage.stage_id,
-                    module,
-                    blackboard,
-                    &mut gcode_ir,
+                    &live_module,
+                    input,
+                    &mut gcode_ir.commands,
                 );
                 instrumentation.on_module_end(&stage.stage_id, None, &module.module_id, 0, 0);
                 let result = match res {
@@ -261,10 +159,7 @@ pub fn execute_postpass_with_instrumentation(
                 match result {
                     PostpassOutput::GCodeSuccess => {
                         // Record runtime audit for GCodePostProcess modules.
-                        // Extract runtime reads collected during this dispatch call.
-                        // The GCodeIR is a single host-owned output, not a guest-writable
-                        // field path. GCodePostProcess modules are audited as writes
-                        // to the GCodeIR field.
+                        // runtime_reads are drained via take_runtime_reads().
                         let runtime_reads = runner.take_runtime_reads();
                         let reads = runtime_reads.into_iter().flatten().collect();
                         audits.push(ModuleAccessAudit {
@@ -322,7 +217,18 @@ pub fn execute_postpass_with_instrumentation(
         instrumentation.on_stage_start(&stage.stage_id, None);
         for module in &stage.modules {
             instrumentation.on_module_start(&stage.stage_id, None, &module.module_id);
-            let res = runner.run_text_postprocess(&stage.stage_id, module, blackboard, text);
+            let live_module = CompiledModuleLive::new(
+                &module.module_id,
+                std::sync::Arc::clone(&module.instance_pool),
+                module.wasm_component.clone(),
+                &module.claims,
+                std::sync::Arc::clone(&module.config_view),
+            );
+            let input = PostpassStageInput {
+                mesh: std::sync::Arc::clone(blackboard.mesh()),
+                _phantom: std::marker::PhantomData,
+            };
+            let res = runner.run_text_postprocess(&stage.stage_id, &live_module, input, text);
             instrumentation.on_module_end(&stage.stage_id, None, &module.module_id, 0, 0);
             let result = match res {
                 Ok(r) => r,

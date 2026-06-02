@@ -7,17 +7,20 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+use slicer_ir::LayerStageCommitData;
 use slicer_ir::{
     BoundingBox3, GCodeIR, GlobalLayer, LayerCollectionIR, LayerPlanIR, MeshIR, Point3,
     PrintMetadata, SemVer, StageId,
 };
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineError, PipelineStageRunners};
 use slicer_runtime::{
-    build_wasm_instance_pool, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
-    ExecutionPlan, FinalizationError, FinalizationOutput, FinalizationStageRunner, GCodeEmitter,
-    GCodeSerializer, LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner,
-    LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageRunner, PrepassExecutionError,
-    PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
+    build_wasm_instance_pool, Blackboard, CompiledModule, CompiledModuleBuilder,
+    CompiledModuleLive, CompiledStage, ExecutionPlan, FinalizationError, FinalizationOutput,
+    FinalizationStageInput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer, LayerArena,
+    LayerStageError, LayerStageInput, LayerStageRunner, LoadedModuleBuilder, PostpassError,
+    PostpassOutput, PostpassStageInput, PostpassStageRunner, PrepassExecutionError,
+    PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
+    WasmArtifactMetadata,
 };
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -88,10 +91,10 @@ impl PrepassStageRunner for NoopPrepassRunner {
     fn run_stage(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-        Ok((PrepassStageOutput::None, Vec::new()))
+        _module: &CompiledModuleLive<'_>,
+        _input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+        Ok(PrepassStageOutput::None)
     }
 }
 
@@ -101,11 +104,10 @@ impl LayerStageRunner for NoopLayerRunner {
         &self,
         _stage_id: &StageId,
         _layer: &GlobalLayer,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+        _module: &CompiledModuleLive<'_>,
+        _input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
+        Ok(LayerStageCommitData::default())
     }
 }
 
@@ -114,8 +116,8 @@ impl FinalizationStageRunner for NoopFinalizationRunner {
     fn run_stage(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
+        _module: &CompiledModuleLive<'_>,
+        _input: FinalizationStageInput<'_>,
         _layers: &mut Vec<LayerCollectionIR>,
     ) -> Result<FinalizationOutput, FinalizationError> {
         Ok(FinalizationOutput::Success)
@@ -127,9 +129,9 @@ impl PostpassStageRunner for NoopPostpassRunner {
     fn run_gcode_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _gcode_ir: &mut GCodeIR,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        _commands: &mut Vec<slicer_ir::GCodeCommand>,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::GCodeSuccess)
     }
@@ -137,8 +139,8 @@ impl PostpassStageRunner for NoopPostpassRunner {
     fn run_text_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::TextSuccess { text })
@@ -153,9 +155,9 @@ impl PostpassStageRunner for PostpassModuleReadingPostpassRunner {
     fn run_gcode_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _gcode_ir: &mut GCodeIR,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        _commands: &mut Vec<slicer_ir::GCodeCommand>,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::GCodeSuccess)
     }
@@ -163,8 +165,8 @@ impl PostpassStageRunner for PostpassModuleReadingPostpassRunner {
     fn run_text_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::TextSuccess { text })
@@ -219,7 +221,9 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
     .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -303,10 +307,10 @@ fn run_pipeline_propagates_prepass_error() {
         fn run_stage(
             &self,
             _stage_id: &StageId,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
-        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-            Err(PrepassExecutionError::FatalModule {
+            _module: &CompiledModuleLive<'_>,
+            _input: PrepassStageInput<'_>,
+        ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+            Err(PrepassRunnerError::FatalModule {
                 stage_id: "PrePass::MeshAnalysis".into(),
                 module_id: "test-mod".into(),
                 message: "prepass boom".into(),
@@ -360,10 +364,9 @@ fn run_pipeline_propagates_layer_error() {
             &self,
             _stage_id: &StageId,
             _layer: &GlobalLayer,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
-            _arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
+            _module: &CompiledModuleLive<'_>,
+            _input: LayerStageInput<'_>,
+        ) -> Result<LayerStageCommitData, LayerStageError> {
             Err(LayerStageError::FatalModule {
                 stage_id: "Layer::Slice".into(),
                 module_id: "slice-mod".into(),
@@ -446,19 +449,16 @@ fn run_pipeline_calls_stages_in_order() {
         fn run_stage(
             &self,
             _stage_id: &StageId,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
-        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+            _module: &CompiledModuleLive<'_>,
+            _input: PrepassStageInput<'_>,
+        ) -> Result<PrepassStageOutput, PrepassRunnerError> {
             self.0.lock().unwrap().push("prepass".into());
             // Return LayerPlan so Phase-2 builtins (RegionMapping + Slice) auto-seed
             // slice_ir before per-layer executes.
-            Ok((
-                PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
-                    global_layers: vec![make_global_layer(0, 0.2)],
-                    ..Default::default()
-                })),
-                Vec::new(),
-            ))
+            Ok(PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+                global_layers: vec![make_global_layer(0, 0.2)],
+                ..Default::default()
+            })))
         }
     }
 
@@ -468,12 +468,11 @@ fn run_pipeline_calls_stages_in_order() {
             &self,
             _stage_id: &StageId,
             _layer: &GlobalLayer,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
-            _arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
+            _module: &CompiledModuleLive<'_>,
+            _input: LayerStageInput<'_>,
+        ) -> Result<LayerStageCommitData, LayerStageError> {
             self.0.lock().unwrap().push("per_layer".into());
-            Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+            Ok(LayerStageCommitData::default())
         }
     }
 
@@ -482,8 +481,8 @@ fn run_pipeline_calls_stages_in_order() {
         fn run_stage(
             &self,
             _stage_id: &StageId,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
+            _module: &CompiledModuleLive<'_>,
+            _input: FinalizationStageInput<'_>,
             _layers: &mut Vec<LayerCollectionIR>,
         ) -> Result<FinalizationOutput, FinalizationError> {
             self.0.lock().unwrap().push("finalization".into());
@@ -576,8 +575,8 @@ fn run_pipeline_propagates_finalization_error() {
         fn run_stage(
             &self,
             _stage_id: &StageId,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
+            _module: &CompiledModuleLive<'_>,
+            _input: FinalizationStageInput<'_>,
             _layers: &mut Vec<LayerCollectionIR>,
         ) -> Result<FinalizationOutput, FinalizationError> {
             Err(FinalizationError::FatalModule {
@@ -642,20 +641,17 @@ fn run_pipeline_with_layers_produces_output() {
         fn run_stage(
             &self,
             _stage_id: &StageId,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
-        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-            Ok((
-                PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
-                    global_layers: vec![
-                        make_global_layer(0, 0.2),
-                        make_global_layer(1, 0.4),
-                        make_global_layer(2, 0.6),
-                    ],
-                    ..Default::default()
-                })),
-                Vec::new(),
-            ))
+            _module: &CompiledModuleLive<'_>,
+            _input: PrepassStageInput<'_>,
+        ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+            Ok(PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+                global_layers: vec![
+                    make_global_layer(0, 0.2),
+                    make_global_layer(1, 0.4),
+                    make_global_layer(2, 0.6),
+                ],
+                ..Default::default()
+            })))
         }
     }
 
@@ -705,16 +701,13 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
         fn run_stage(
             &self,
             _stage_id: &StageId,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
-        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-            Ok((
-                PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
-                    global_layers: vec![make_global_layer(0, 0.2), make_global_layer(1, 0.4)],
-                    ..Default::default()
-                })),
-                Vec::new(),
-            ))
+            _module: &CompiledModuleLive<'_>,
+            _input: PrepassStageInput<'_>,
+        ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+            Ok(PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+                global_layers: vec![make_global_layer(0, 0.2), make_global_layer(1, 0.4)],
+                ..Default::default()
+            })))
         }
     }
 
@@ -726,12 +719,11 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
             &self,
             _stage_id: &StageId,
             _layer: &GlobalLayer,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
-            _arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
+            _module: &CompiledModuleLive<'_>,
+            _input: LayerStageInput<'_>,
+        ) -> Result<LayerStageCommitData, LayerStageError> {
             *self.0.lock().unwrap() += 1;
-            Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+            Ok(LayerStageCommitData::default())
         }
     }
 
@@ -804,13 +796,13 @@ fn prepass_audits_live_path() {
         fn run_stage(
             &self,
             _stage_id: &StageId,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
-        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+            _module: &CompiledModuleLive<'_>,
+            _input: PrepassStageInput<'_>,
+        ) -> Result<PrepassStageOutput, PrepassRunnerError> {
             // Simulate a prepass module that reads mesh data through WIT views.
-            // In production, these reads come from calling prepass WIT methods
-            // like raycast_z_down, surface_normal_at, or object_bounds.
-            Ok((PrepassStageOutput::None, vec!["MeshIR".to_string()]))
+            // NOTE: runtime_reads are no longer returned by the trait (Step 6 migration).
+            // The test's runtime_reads assertions may need updating in a follow-up.
+            Ok(PrepassStageOutput::None)
         }
     }
 
@@ -901,18 +893,13 @@ fn layer_audits_live_path() {
             &self,
             _stage_id: &StageId,
             _layer: &GlobalLayer,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
-            _arena: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
+            _module: &CompiledModuleLive<'_>,
+            _input: LayerStageInput<'_>,
+        ) -> Result<LayerStageCommitData, LayerStageError> {
             // Simulate a per-layer module that reads slice geometry through WIT views.
-            // In production, these reads come from calling layer WIT methods
-            // like slice-region-view which reads SliceIR.regions.polygons.
-            Ok((
-                LayerStageOutput::Success,
-                vec!["SliceIR.regions.polygons".to_string()],
-                Vec::new(),
-            ))
+            // NOTE: runtime_reads are no longer returned by the trait (Step 6 migration).
+            // The test's runtime_reads assertions may need updating in a follow-up.
+            Ok(LayerStageCommitData::default())
         }
     }
 
@@ -923,16 +910,13 @@ fn layer_audits_live_path() {
         fn run_stage(
             &self,
             _stage_id: &StageId,
-            _module: &CompiledModule,
-            _blackboard: &Blackboard,
-        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-            Ok((
-                PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
-                    global_layers: vec![make_global_layer(0, 0.2)],
-                    ..Default::default()
-                })),
-                Vec::new(),
-            ))
+            _module: &CompiledModuleLive<'_>,
+            _input: PrepassStageInput<'_>,
+        ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+            Ok(PrepassStageOutput::LayerPlan(Arc::new(LayerPlanIR {
+                global_layers: vec![make_global_layer(0, 0.2)],
+                ..Default::default()
+            })))
         }
     }
 

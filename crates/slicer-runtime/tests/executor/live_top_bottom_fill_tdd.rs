@@ -21,7 +21,7 @@
 #![allow(missing_docs)]
 
 use slicer_ir::ExtrusionRole as IrExtrusionRole;
-use slicer_runtime::dispatch::commit_layer_outputs_for_test;
+use slicer_runtime::commit_layer_outputs_for_test;
 use slicer_runtime::wit_host::{
     ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3WithWidth,
 };

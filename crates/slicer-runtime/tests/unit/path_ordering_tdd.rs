@@ -12,9 +12,10 @@ use std::sync::Arc;
 
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::LoadedModuleBuilder;
+use slicer_ir::LayerStageCommitData;
 use slicer_runtime::{
-    execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
-    ExecutionModuleBinding, ExecutionPlan, LayerArena, LayerStageError, LayerStageOutput,
+    execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
+    CompiledStage, ExecutionModuleBinding, ExecutionPlan, LayerStageError, LayerStageInput,
     LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmRuntimeDispatcher,
 };
 
@@ -119,7 +120,9 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
     .build();
     let path_opt_pool = Arc::new(
         build_wasm_instance_pool(
-            &path_opt_loaded,
+            path_opt_loaded.id(),
+            path_opt_loaded.stage(),
+            path_opt_loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -208,21 +211,21 @@ impl LayerStageRunner for LiveDispatcherWithInfill {
         &self,
         stage_id: &StageId,
         layer: &GlobalLayer,
-        _module: &CompiledModule,
-        blackboard: &Blackboard,
-        arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
+        _module: &CompiledModuleLive<'_>,
+        input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
         if stage_id == "Layer::Infill" {
-            arena
-                .set_infill(self.infill.clone())
-                .expect("infill slot must be free");
-            return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
+            return Ok(LayerStageCommitData {
+                infill_output: Some(self.infill.clone()),
+                ..Default::default()
+            });
         }
         // Delegate PathOptimization to the live WASM dispatcher.
         // Pass self.path_opt_module (which has the real wasm_component) instead of
         // the stage module (which has wasm_component: None due to compiled_module()).
+        let live = self.path_opt_module.as_live();
         self.dispatcher
-            .run_stage(stage_id, layer, &self.path_opt_module, blackboard, arena)
+            .run_stage(stage_id, layer, &live, input)
     }
 }
 
@@ -303,7 +306,9 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
     .build();
     let path_opt_pool = Arc::new(
         build_wasm_instance_pool(
-            &path_opt_loaded,
+            path_opt_loaded.id(),
+            path_opt_loaded.stage(),
+            path_opt_loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -403,7 +408,9 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
     .build();
     let path_opt_pool = Arc::new(
         build_wasm_instance_pool(
-            &path_opt_loaded,
+            path_opt_loaded.id(),
+            path_opt_loaded.stage(),
+            path_opt_loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -507,7 +514,9 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
         .build();
         let path_opt_pool = Arc::new(
             build_wasm_instance_pool(
-                &path_opt_loaded,
+                path_opt_loaded.id(),
+                path_opt_loaded.stage(),
+                path_opt_loaded.layer_parallel_safe(),
                 1,
                 WasmArtifactMetadata {
                     uses_shared_memory: false,
@@ -603,7 +612,9 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
     .build();
     let path_opt_pool = Arc::new(
         build_wasm_instance_pool(
-            &path_opt_loaded,
+            path_opt_loaded.id(),
+            path_opt_loaded.stage(),
+            path_opt_loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -703,17 +714,17 @@ impl LayerStageRunner for NoProposalStubRunner {
         &self,
         stage_id: &StageId,
         _layer: &GlobalLayer,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        if stage_id == "Layer::Infill" {
-            arena
-                .set_infill(self.infill.clone())
-                .expect("infill slot must be free");
+        _module: &CompiledModuleLive<'_>,
+        _input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
+        if stage_id == “Layer::Infill” {
+            return Ok(LayerStageCommitData {
+                infill_output: Some(self.infill.clone()),
+                ..Default::default()
+            });
         }
         // No proposal â€” no set_entity_order call, no layer_collection_proposal.
-        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+        Ok(LayerStageCommitData::default())
     }
 }
 
@@ -856,7 +867,9 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,

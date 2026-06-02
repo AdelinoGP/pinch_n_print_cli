@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_core::paint_region::PaintRegionRTreeIndex;
+use slicer_ir::PrepassRunnerError;
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExPolygon, GlobalLayer, LayerPaintMap, LayerPlanIR,
     MeshIR, ModuleInvocation, ObjectLayerRef, ObjectMesh, ObjectSurfaceData, PaintRegionIR,
@@ -14,9 +15,10 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass, Blackboard, BlackboardError, BlackboardPrepassSlot,
-    CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionModuleBinding, ExecutionPlan,
-    IrAccessMask, LoadedModuleBuilder, PrepassExecutionError, PrepassStageOutput,
-    PrepassStageRunner, WasmArtifactMetadata,
+    CompiledModule, CompiledModuleBuilder, CompiledModuleLive, CompiledStage,
+    ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LoadedModuleBuilder,
+    PrepassExecutionError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
+    WasmArtifactMetadata,
 };
 
 #[test]
@@ -178,7 +180,7 @@ fn prepass_executor_aborts_on_fatal_module_failure_without_running_later_stages(
         vec![
             (
                 String::from("com.example.mesh-analysis"),
-                Err(PrepassExecutionError::FatalModule {
+                Err(PrepassRunnerError::FatalModule {
                     stage_id: String::from("PrePass::MeshAnalysis"),
                     module_id: String::from("com.example.mesh-analysis"),
                     message: String::from("fatal contract failure"),
@@ -213,7 +215,7 @@ fn prepass_executor_aborts_on_fatal_module_failure_without_running_later_stages(
 #[derive(Debug)]
 struct ScriptedRunner {
     expected_mesh_ptr: usize,
-    scripted: HashMap<String, Result<PrepassStageOutput, PrepassExecutionError>>,
+    scripted: HashMap<String, Result<PrepassStageOutput, PrepassRunnerError>>,
     observed: RefCell<Vec<String>>,
     expected_order: Vec<String>,
 }
@@ -221,7 +223,7 @@ struct ScriptedRunner {
 impl ScriptedRunner {
     fn new(
         expected_order: &[&str],
-        scripted: Vec<(String, Result<PrepassStageOutput, PrepassExecutionError>)>,
+        scripted: Vec<(String, Result<PrepassStageOutput, PrepassRunnerError>)>,
         expected_mesh_ptr: usize,
     ) -> Self {
         Self {
@@ -243,11 +245,11 @@ impl ScriptedRunner {
 impl PrepassStageRunner for ScriptedRunner {
     fn run_stage(
         &self,
-        _stage_id: &String,
-        module: &CompiledModule,
-        blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-        let observed_mesh_ptr = Arc::as_ptr(blackboard.mesh()) as usize;
+        _stage_id: &slicer_ir::StageId,
+        module: &CompiledModuleLive<'_>,
+        input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+        let observed_mesh_ptr = Arc::as_ptr(&input.mesh) as usize;
         if self.expected_mesh_ptr != 0 {
             assert_eq!(observed_mesh_ptr, self.expected_mesh_ptr);
         }
@@ -255,16 +257,15 @@ impl PrepassStageRunner for ScriptedRunner {
         let mut observed = self.observed.borrow_mut();
         let next_index = observed.len();
         if let Some(expected_module_id) = self.expected_order.get(next_index) {
-            assert_eq!(module.module_id(), expected_module_id.as_str());
+            assert_eq!(module.module_id.as_str(), expected_module_id.as_str());
         }
-        observed.push(module.module_id().to_string());
+        observed.push(module.module_id.to_string());
         drop(observed);
 
         self.scripted
-            .get(module.module_id())
+            .get(module.module_id.as_str())
             .cloned()
             .expect("runner fixture should define every module outcome")
-            .map(|output| (output, Vec::new()))
     }
 }
 
@@ -300,7 +301,9 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded_module = loaded_module(module_id, stage_id);
     let instance_pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded_module,
+            loaded_module.id(),
+            loaded_module.stage(),
+            loaded_module.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,

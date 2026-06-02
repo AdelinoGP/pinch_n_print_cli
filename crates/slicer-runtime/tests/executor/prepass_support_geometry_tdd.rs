@@ -27,6 +27,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use slicer_ir::PrepassRunnerError;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigValue, ConfigView, GlobalLayer, IndexedTriangleSet,
     LayerPlanIR, MeshIR, ObjectMesh, Point3, RegionKey, RegionMapIR, RegionPlan, SemVer,
@@ -34,10 +35,11 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_wasm_instance_pool, dedup_same_claim_modules_for_test, execute_prepass,
-    execute_prepass_with_builtins, instance_pool::WasmArtifactMetadata, Blackboard,
-    BlackboardPrepassSlot, CompiledModule, CompiledModuleBuilder, CompiledStage, DiagnosticLevel,
-    ExecutionPlan, LoadDiagnostic, LoadedModule, LoadedModuleBuilder, PrepassExecutionError,
-    PrepassStageOutput, PrepassStageRunner, WasmEngine, WasmRuntimeDispatcher,
+    execute_prepass_with_builtins, Blackboard, BlackboardPrepassSlot, CompiledModule,
+    CompiledModuleBuilder, CompiledModuleLive, CompiledStage, DiagnosticLevel, ExecutionPlan,
+    LoadDiagnostic, LoadedModule, LoadedModuleBuilder, PrepassExecutionError, PrepassStageInput,
+    PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata, WasmEngine,
+    WasmRuntimeDispatcher,
 };
 
 use crate::common::wasm_cache;
@@ -229,7 +231,9 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
     let loaded = loaded_support_planner_module("com.core.support-planner", wasm_path);
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -666,7 +670,9 @@ fn compiled_native_module(stage_id: &str, module_id: &str) -> CompiledModule {
     .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -684,9 +690,9 @@ impl PrepassStageRunner for NullRunner {
     fn run_stage(
         &self,
         _stage_id: &slicer_ir::StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+        _module: &CompiledModuleLive<'_>,
+        _input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
         panic!(
             "prerequisite check must reject stage before any module runs; \
              run_stage should never be called"
@@ -700,13 +706,12 @@ impl PrepassStageRunner for EmptyPlanRunner {
     fn run_stage(
         &self,
         _stage_id: &slicer_ir::StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-        Ok((
-            PrepassStageOutput::SupportPlan(Arc::new(SupportPlanIR::default())),
-            Vec::new(),
-        ))
+        _module: &CompiledModuleLive<'_>,
+        _input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+        Ok(PrepassStageOutput::SupportPlan(Arc::new(
+            SupportPlanIR::default(),
+        )))
     }
 }
 
@@ -738,17 +743,20 @@ fn host_builtin_runs_before_guest() {
         fn run_stage(
             &self,
             stage_id: &slicer_ir::StageId,
-            module: &CompiledModule,
-            blackboard: &Blackboard,
-        ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+            module: &CompiledModuleLive<'_>,
+            input: PrepassStageInput<'_>,
+        ) -> Result<PrepassStageOutput, PrepassRunnerError> {
             if stage_id == "PrePass::SupportGeometry" {
-                // Record whether SupportGeometryIR is already on the blackboard.
-                let present = blackboard.support_geometry().is_some();
+                // Record whether SupportGeometryIR is already available via input.
+                // The executor projects blackboard.support_geometry() into input.support_geometry
+                // before calling run_stage, so a non-None value means it was committed
+                // by the host built-in before the guest was invoked.
+                let present = input.support_geometry.is_some();
                 *self.saw_support_geometry_before_guest.lock().unwrap() = Some(present);
             }
             // Delegate to the real WasmRuntimeDispatcher.
             let real = WasmRuntimeDispatcher::new(Arc::clone(&self.engine));
-            real.run_stage(stage_id, module, blackboard)
+            real.run_stage(stage_id, module, input)
         }
     }
 

@@ -13,6 +13,7 @@ slicer-ir = { path = "../slicer-ir" }
 slicer-core = { path = "../slicer-core" }
 slicer-sdk = { path = "../slicer-sdk" }
 slicer-helpers = { path = "../slicer-helpers" }
+slicer-wasm-host = { path = "../slicer-wasm-host" }
 toml = "0.8"
 rayon = "1.10"
 serde = { workspace = true, features = ["derive"] }
@@ -20,10 +21,10 @@ serde_json = "1.0"
 clap = { workspace = true, features = ["derive"] }
 log = "0.4"
 directories = "6"
-wasmtime = { workspace = true }
 rstar = "0.12"
 
 [dev-dependencies]
+wasmtime = { workspace = true }
 slicer-model-io = { path = "../slicer-model-io" }
 witness = { path = "test-guests/witness" }
 zip = { version = "2", default-features = false, features = ["deflate"] }

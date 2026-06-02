@@ -24,8 +24,9 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     execute_prepass_with_builtins, Blackboard, CompiledModule, CompiledModuleBuilder,
-    CompiledStage, ExecutionModuleBinding, ExecutionPlan, IrAccessMask, LoadedModuleBuilder,
-    PrepassExecutionError, PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
+    CompiledModuleLive, CompiledStage, ExecutionModuleBinding, ExecutionPlan, IrAccessMask,
+    LoadedModuleBuilder, PrepassExecutionError, PrepassRunnerError, PrepassStageInput,
+    PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
 };
 
 // ============================================================================
@@ -598,7 +599,7 @@ fn build_three_object_lcm_layer_plan() -> LayerPlanIR {
 
 struct ScriptedLayerPlanningRunner {
     expected_mesh_ptr: usize,
-    scripted: HashMap<String, Result<PrepassStageOutput, PrepassExecutionError>>,
+    scripted: HashMap<String, Result<PrepassStageOutput, PrepassRunnerError>>,
     observed: RefCell<Vec<String>>,
     expected_order: Vec<String>,
 }
@@ -627,10 +628,10 @@ impl PrepassStageRunner for ScriptedLayerPlanningRunner {
     fn run_stage(
         &self,
         _stage_id: &String,
-        module: &CompiledModule,
-        blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-        let observed_mesh_ptr = Arc::as_ptr(blackboard.mesh()) as usize;
+        module: &CompiledModuleLive<'_>,
+        input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+        let observed_mesh_ptr = Arc::as_ptr(&input.mesh) as usize;
         if self.expected_mesh_ptr != 0 {
             assert_eq!(
                 observed_mesh_ptr, self.expected_mesh_ptr,
@@ -641,16 +642,15 @@ impl PrepassStageRunner for ScriptedLayerPlanningRunner {
         let mut observed = self.observed.borrow_mut();
         let next_index = observed.len();
         if let Some(expected_module_id) = self.expected_order.get(next_index) {
-            assert_eq!(module.module_id(), expected_module_id.as_str());
+            assert_eq!(module.module_id.as_str(), expected_module_id.as_str());
         }
-        observed.push(module.module_id().to_string());
+        observed.push(module.module_id.to_string());
         drop(observed);
 
         self.scripted
-            .get(module.module_id())
+            .get(module.module_id.as_str())
             .cloned()
             .expect("ScriptedLayerPlanningRunner must define outcome for every module")
-            .map(|output| (output, Vec::new()))
     }
 }
 
@@ -677,7 +677,9 @@ fn compiled_layer_planning_module() -> CompiledModule {
     let loaded = loaded_layer_planning_module();
     let instance_pool = Arc::new(
         slicer_runtime::build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,

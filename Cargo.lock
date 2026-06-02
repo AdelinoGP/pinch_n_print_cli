@@ -2469,6 +2469,7 @@ dependencies = [
  "slicer-model-io",
  "slicer-schema",
  "slicer-sdk",
+ "slicer-wasm-host",
  "stl_io",
  "support-planner",
  "tempfile",
@@ -2495,6 +2496,18 @@ dependencies = [
  "slicer-ir",
  "slicer-macros",
  "slicer-schema",
+]
+
+[[package]]
+name = "slicer-wasm-host"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "slicer-core",
+ "slicer-ir",
+ "slicer-schema",
+ "slicer-sdk",
+ "wasmtime",
 ]
 
 [[package]]

@@ -23,8 +23,9 @@ use slicer_ir::{
     Transform3d,
 };
 use slicer_runtime::{
-    execute_mesh_analysis, execute_prepass_with_builtins, Blackboard, ExecutionPlan,
-    MeshAnalysisError, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
+    execute_mesh_analysis, execute_prepass_with_builtins, Blackboard, CompiledModuleLive,
+    ExecutionPlan, MeshAnalysisError, PrepassExecutionError, PrepassRunnerError,
+    PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
 };
 
 // A runner that must never be called â€” the built-in runs before any user
@@ -34,12 +35,12 @@ impl PrepassStageRunner for UnreachableRunner {
     fn run_stage(
         &self,
         stage_id: &slicer_ir::StageId,
-        module: &slicer_runtime::CompiledModule,
-        _blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
+        module: &CompiledModuleLive<'_>,
+        _input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
         panic!(
-            "prepass runner should not be invoked for this test (stage={stage_id}, module={})",
-            module.module_id()
+            “prepass runner should not be invoked for this test (stage={stage_id}, module={})”,
+            module.module_id
         );
     }
 }

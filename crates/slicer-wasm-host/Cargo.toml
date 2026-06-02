@@ -1,0 +1,17 @@
+[package]
+name = "slicer-wasm-host"
+version = "0.1.0"
+edition = "2021"
+authors = ["ModularSlicer Team"]
+description = "WIT/wasmtime marshalling and dispatch for ModularSlicer's WASM module host"
+
+[dependencies]
+wasmtime = { workspace = true }
+log = "0.4"
+slicer-core = { path = "../slicer-core" }
+slicer-ir = { path = "../slicer-ir" }
+slicer-schema = { path = "../slicer-schema" }
+slicer-sdk = { path = "../slicer-sdk" }
+
+[lints]
+workspace = true

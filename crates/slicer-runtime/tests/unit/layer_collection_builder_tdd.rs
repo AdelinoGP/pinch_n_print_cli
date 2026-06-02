@@ -20,11 +20,13 @@ use slicer_ir::{
     LoopType, MeshIR, PerimeterIR, PerimeterRegion, Point2, Point3, Point3WithWidth, Polygon,
     PrintEntity, RegionKey, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
 };
+use slicer_ir::LayerStageCommitData;
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
     apply_entity_order_proposal, execute_per_layer, project_ordered_entities, Blackboard,
-    CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan, LayerArena, LoadedModule,
-    LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher, HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS,
+    CompiledModule, CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ExecutionPlan,
+    LayerArena, LayerStageInput, LoadedModule, LoadedModuleBuilder, WasmEngine,
+    WasmRuntimeDispatcher, HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS,
 };
 
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -463,7 +465,9 @@ fn make_module(
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -558,27 +562,19 @@ impl<'a> slicer_runtime::LayerStageRunner for PerimeterSeedingRunner<'a> {
         &self,
         stage_id: &slicer_ir::StageId,
         layer: &GlobalLayer,
-        module: &CompiledModule,
-        blackboard: &Blackboard,
-        arena: &mut LayerArena,
-    ) -> Result<
-        (slicer_runtime::LayerStageOutput, Vec<String>, Vec<String>),
-        slicer_runtime::LayerStageError,
-    > {
-        if stage_id == "Layer::Perimeters" && arena.perimeter().is_none() {
+        module: &CompiledModuleLive<'_>,
+        input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, slicer_runtime::LayerStageError> {
+        if stage_id == "Layer::Perimeters" {
             if let Some(perimeter) = self.perimeter.lock().expect("lock seed perimeter").take() {
-                arena
-                    .set_perimeter(perimeter)
-                    .expect("seed perimeter into arena");
-                return Ok((
-                    slicer_runtime::LayerStageOutput::Success,
-                    Vec::new(),
-                    Vec::new(),
-                ));
+                return Ok(LayerStageCommitData {
+                    perimeter_output: Some(perimeter),
+                    ..Default::default()
+                });
             }
         }
         slicer_runtime::LayerStageRunner::run_stage(
-            self.inner, stage_id, layer, module, blackboard, arena,
+            self.inner, stage_id, layer, module, input,
         )
     }
 }

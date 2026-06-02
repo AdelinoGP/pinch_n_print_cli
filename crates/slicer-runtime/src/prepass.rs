@@ -6,10 +6,12 @@ use std::sync::Arc;
 
 use rstar::RTree;
 use slicer_core::paint_region::{PaintRegionRTreeEntry, PaintRegionRTreeIndex};
+pub use slicer_core::{
+    FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassStageOutput,
+    SurfaceGroupRecord,
+};
 use slicer_ir::{
-    ConfigKey, ConfigValue, LayerPlanIR, MeshSegmentationIR, ModuleId, PaintRegionIR,
-    PaintSemantic, RegionMapIR, ResolvedConfig, SeamPlanIR, StageId, SupportGeometryIR,
-    SupportPlanIR, SurfaceClassificationIR,
+    ConfigKey, ConfigValue, ModuleId, PaintRegionIR, PaintSemantic, ResolvedConfig, StageId,
 };
 
 use crate::config_resolution::resolve_per_paint_semantic_configs;
@@ -21,111 +23,13 @@ use crate::paint_segmentation::PaintSegmentationError;
 use crate::region_mapping::{commit_region_mapping_builtin, RegionMappingBuiltinError};
 use crate::support_geometry::SupportGeometryBuiltinError;
 use crate::validation::ModuleAccessAudit;
-use crate::{Blackboard, BlackboardError, BlackboardPrepassSlot, CompiledModule, ExecutionPlan};
+use crate::{Blackboard, BlackboardError, BlackboardPrepassSlot, ExecutionPlan};
+use slicer_wasm_host::{CompiledModuleLive, PrepassStageInput, PrepassStageRunner};
 
-/// One committed output produced by a prepass stage invocation.
-#[derive(Debug, Clone)]
-pub enum PrepassStageOutput {
-    /// Stage produced no blackboard commit.
-    None,
-    /// Stage produced `SurfaceClassificationIR`.
-    SurfaceClassification(Arc<SurfaceClassificationIR>),
-    /// Stage produced `MeshSegmentationIR`.
-    MeshSegmentation(Arc<MeshSegmentationIR>),
-    /// Stage produced `LayerPlanIR`.
-    LayerPlan(Arc<LayerPlanIR>),
-    /// Stage produced `SeamPlanIR`.
-    SeamPlan(Arc<SeamPlanIR>),
-    /// Stage produced `SupportPlanIR`.
-    SupportPlan(Arc<SupportPlanIR>),
-    /// Stage produced `PaintRegionIR` and companion `PaintRegionRTreeIndex`.
-    PaintRegions(Arc<PaintRegionIR>, Arc<PaintRegionRTreeIndex>),
-    /// Stage produced `RegionMapIR`.
-    RegionMap(Arc<RegionMapIR>),
-    /// Stage produced `SupportGeometryIR`.
-    SupportGeometry(Arc<SupportGeometryIR>),
-    /// Guest-emitted mesh-analysis pushes collected via the
-    /// `mesh-analysis-output` WIT resource. This variant carries the raw
-    /// `(object_id, FacetAnnotation)` / `(object_id, SurfaceGroupProposal)`
-    /// pairs the macro-path drain forwarded from the SDK builder; it does
-    /// **not** commit to the blackboard because
-    /// `SurfaceClassificationIR` is still owned by the host built-in
-    /// (`mesh_analysis::execute_mesh_analysis`). The variant exists to
-    /// let the prepass dispatcher surface the drained output so tests and
-    /// future consumers can observe what reached the host.
-    MeshAnalysisAuxiliary(Arc<MeshAnalysisAuxiliary>),
-}
-
-/// Raw mesh-analysis output drained from a guest's
-/// `mesh-analysis-output` WIT resource. Insertion order is preserved
-/// exactly as the guest pushed, so downstream consumers can rely on
-/// deterministic sequencing.
-#[derive(Debug, Clone, PartialEq)]
-pub struct MeshAnalysisAuxiliary {
-    /// Per-object facet annotations in push order.
-    pub facet_annotations: Vec<(String, FacetAnnotationRecord)>,
-    /// Per-object surface-group proposals in push order.
-    pub surface_groups: Vec<(String, SurfaceGroupRecord)>,
-}
-
-/// Host-side mirror of the WIT `facet-annotation` record, decoupled
-/// from the wit-bindgen-generated types so the `PrepassStageOutput`
-/// enum does not depend on the generated module.
-#[derive(Debug, Clone, PartialEq)]
-pub struct FacetAnnotationRecord {
-    /// Triangle index in the object's mesh.
-    pub facet_index: u32,
-    /// Slope angle of the facet normal in degrees.
-    pub slope_angle_deg: f32,
-    /// Classification label.
-    pub classification: FacetClassRecord,
-}
-
-/// Host-side mirror of the WIT `facet-class` enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FacetClassRecord {
-    /// No special classification.
-    Normal,
-    /// Nearly-horizontal surface (top/bottom candidate).
-    NearHorizontal,
-    /// Facet that overhangs printed material below.
-    Overhang,
-    /// Bridge-suitable facet (horizontal span).
-    Bridge,
-    /// Top-facing surface.
-    TopSurface,
-    /// Bottom-facing surface.
-    BottomSurface,
-}
-
-/// Host-side mirror of the WIT `surface-group-proposal` record.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SurfaceGroupRecord {
-    /// Facet indices belonging to the group.
-    pub facet_indices: Vec<u32>,
-    /// Minimum Z coordinate of the group in world space (mm).
-    pub z_min: f32,
-    /// Maximum Z coordinate of the group in world space (mm).
-    pub z_max: f32,
-    /// Number of shells (perimeter loops) to emit around the group.
-    pub shell_count: u32,
-}
-
-/// Callback surface used by tests and future runtime bindings.
-pub trait PrepassStageRunner {
-    /// Execute one compiled prepass module against the current blackboard state.
-    ///
-    /// Returns both the stage output and the runtime IR read paths collected
-    /// by the WIT view methods during this call. The returned `runtime_reads`
-    /// is used to populate `ModuleAccessAudit.runtime_reads` for audit
-    /// construction in `execute_prepass`.
-    fn run_stage(
-        &self,
-        stage_id: &StageId,
-        module: &CompiledModule,
-        blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError>;
-}
+// PrepassStageRunner trait is now defined in slicer-wasm-host::traits and re-exported
+// from slicer_runtime via the transitional re-exports block in lib.rs (P83 Step 4c+4d).
+// The trait signature changed to take CompiledModuleLive<'_> + PrepassStageInput<'_>
+// and return PrepassStageOutput (not a tuple with runtime_reads).
 
 /// Structured prepass executor failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -233,6 +137,31 @@ impl fmt::Display for PrepassExecutionError {
 
 impl std::error::Error for PrepassExecutionError {}
 
+impl From<slicer_ir::PrepassRunnerError> for PrepassExecutionError {
+    fn from(e: slicer_ir::PrepassRunnerError) -> Self {
+        match e {
+            slicer_ir::PrepassRunnerError::FatalModule {
+                stage_id,
+                module_id,
+                message,
+            } => Self::FatalModule {
+                stage_id,
+                module_id,
+                message,
+            },
+            slicer_ir::PrepassRunnerError::Blackboard {
+                stage_id,
+                module_id,
+                source,
+            } => Self::Blackboard {
+                stage_id,
+                module_id,
+                source,
+            },
+        }
+    }
+}
+
 /// Executes the sequential Tier 1 prepass pipeline.
 ///
 /// Returns collected runtime access audits for all user modules that executed.
@@ -263,15 +192,34 @@ pub fn execute_prepass_with_instrumentation(
         instrumentation.on_stage_start(&stage.stage_id, None);
         for module in &stage.modules {
             instrumentation.on_module_start(&stage.stage_id, None, &module.module_id);
-            let run_result = runner.run_stage(&stage.stage_id, module, blackboard);
+            // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
+            let live_module = CompiledModuleLive::new(
+                &module.module_id,
+                std::sync::Arc::clone(&module.instance_pool),
+                module.wasm_component.clone(),
+                &module.claims,
+                std::sync::Arc::clone(&module.config_view),
+            );
+            let input = PrepassStageInput {
+                mesh: std::sync::Arc::clone(blackboard.mesh()),
+                layer_plan: blackboard.layer_plan().cloned(),
+                region_map: blackboard.region_map().cloned(),
+                support_geometry: blackboard.support_geometry().cloned(),
+                _phantom: std::marker::PhantomData,
+            };
+            let run_result = runner.run_stage(&stage.stage_id, &live_module, input);
             instrumentation.on_module_end(&stage.stage_id, None, &module.module_id, 0, 0);
-            let (output, runtime_reads) = match run_result {
-                Ok(t) => t,
+            // Map PrepassRunnerError → PrepassExecutionError via the From impl.
+            let output = match run_result {
+                Ok(o) => o,
                 Err(e) => {
                     instrumentation.on_stage_end(&stage.stage_id, None);
-                    return Err(e);
+                    return Err(PrepassExecutionError::from(e));
                 }
             };
+            // runtime_reads no longer returned by the new trait (Step 6 will add
+            // a separate runtime-reads channel for instrumented runners if needed).
+            let runtime_reads: Vec<String> = Vec::new();
 
             // Determine IR path before committing (output is moved into commit).
             let ir_path = ir_path_for_prepass_output(&output);

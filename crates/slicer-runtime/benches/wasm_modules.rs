@@ -21,7 +21,8 @@ use std::path::PathBuf;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 
 use slicer_runtime::manifest::load_module_from_paths;
-use slicer_runtime::{export_name_for_stage, WasmEngine};
+use slicer_runtime::WasmEngine;
+use slicer_schema::export_for_stage_id;
 
 /// Discovered (module_id, manifest_path, wasm_path) tuple.
 struct DiscoveredModule {
@@ -103,7 +104,7 @@ fn bench_export_name_for_stage(c: &mut Criterion) {
     c.bench_function("wasm_modules/export_name_for_stage", |b| {
         b.iter(|| {
             for s in stages {
-                let _ = export_name_for_stage(black_box(s));
+                let _ = export_for_stage_id(black_box(s));
             }
         })
     });

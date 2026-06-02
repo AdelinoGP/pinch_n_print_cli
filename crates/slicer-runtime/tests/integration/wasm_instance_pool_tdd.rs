@@ -20,8 +20,14 @@ fn parallel_safe_modules_use_requested_host_parallelism_as_pool_size() {
         "slicer:world-layer@1.0.0",
     );
 
-    let pool = build_wasm_instance_pool(&module, 6, artifact(false))
-        .expect("parallel-safe layer modules should build a pool");
+    let pool = build_wasm_instance_pool(
+        module.id(),
+        module.stage(),
+        module.layer_parallel_safe(),
+        6,
+        artifact(false),
+    )
+    .expect("parallel-safe layer modules should build a pool");
 
     assert_eq!(pool.mode(), InstancePoolMode::Parallel);
     assert_eq!(pool.size(), 6);
@@ -36,8 +42,14 @@ fn non_parallel_safe_modules_are_forced_to_a_single_serialized_slot() {
         "slicer:world-layer@1.0.0",
     );
 
-    let pool = build_wasm_instance_pool(&module, 8, artifact(false))
-        .expect("non-parallel-safe modules should still produce a serialized pool");
+    let pool = build_wasm_instance_pool(
+        module.id(),
+        module.stage(),
+        module.layer_parallel_safe(),
+        8,
+        artifact(false),
+    )
+    .expect("non-parallel-safe modules should still produce a serialized pool");
 
     assert_eq!(pool.mode(), InstancePoolMode::Serialized);
     assert_eq!(pool.size(), 1);
@@ -52,8 +64,14 @@ fn finalization_stage_is_always_serialized_even_when_manifest_claims_parallel_sa
         "slicer:world-finalization@1.0.0",
     );
 
-    let pool = build_wasm_instance_pool(&module, 16, artifact(false))
-        .expect("finalization modules should still build a serialized pool");
+    let pool = build_wasm_instance_pool(
+        module.id(),
+        module.stage(),
+        module.layer_parallel_safe(),
+        16,
+        artifact(false),
+    )
+    .expect("finalization modules should still build a serialized pool");
 
     assert_eq!(pool.mode(), InstancePoolMode::Serialized);
     assert_eq!(pool.size(), 1);
@@ -68,8 +86,14 @@ fn shared_memory_artifacts_are_rejected_when_parallel_safety_is_declared() {
         "slicer:world-layer@1.0.0",
     );
 
-    let error = build_wasm_instance_pool(&module, 4, artifact(true))
-        .expect_err("shared-memory artifacts must be rejected for parallel-safe modules");
+    let error = build_wasm_instance_pool(
+        module.id(),
+        module.stage(),
+        module.layer_parallel_safe(),
+        4,
+        artifact(true),
+    )
+    .expect_err("shared-memory artifacts must be rejected for parallel-safe modules");
 
     assert_eq!(
         error,
@@ -89,8 +113,14 @@ fn parallel_pools_hand_out_distinct_slots_until_exhausted_then_reuse_released_sl
         "slicer:world-layer@1.0.0",
     );
 
-    let pool = build_wasm_instance_pool(&module, 2, artifact(false))
-        .expect("parallel-safe modules should build a pool");
+    let pool = build_wasm_instance_pool(
+        module.id(),
+        module.stage(),
+        module.layer_parallel_safe(),
+        2,
+        artifact(false),
+    )
+    .expect("parallel-safe modules should build a pool");
     let lease_a = pool.acquire();
     let lease_b = pool.acquire();
 
@@ -112,8 +142,14 @@ fn serialized_pools_only_ever_hand_out_slot_zero() {
         "slicer:world-layer@1.0.0",
     );
 
-    let pool = build_wasm_instance_pool(&module, 8, artifact(false))
-        .expect("serialized modules should still build a pool");
+    let pool = build_wasm_instance_pool(
+        module.id(),
+        module.stage(),
+        module.layer_parallel_safe(),
+        8,
+        artifact(false),
+    )
+    .expect("serialized modules should still build a pool");
     let first = pool.acquire();
 
     assert_eq!(first.slot_index(), 0);
@@ -134,8 +170,14 @@ fn serialized_pools_block_other_leasers_until_release() {
     );
 
     let pool = Arc::new(
-        build_wasm_instance_pool(&module, 8, artifact(false))
-            .expect("serialized modules should still build a pool"),
+        build_wasm_instance_pool(
+            module.id(),
+            module.stage(),
+            module.layer_parallel_safe(),
+            8,
+            artifact(false),
+        )
+        .expect("serialized modules should still build a pool"),
     );
     let first = pool.acquire();
     let (tx, rx) = mpsc::channel();

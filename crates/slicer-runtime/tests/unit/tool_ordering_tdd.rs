@@ -12,9 +12,10 @@ use std::sync::Arc;
 
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
+use slicer_ir::LayerStageCommitData;
 use slicer_runtime::{
-    execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage,
-    ExecutionModuleBinding, ExecutionPlan, LayerArena, LayerStageError, LayerStageOutput,
+    execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
+    CompiledStage, ExecutionModuleBinding, ExecutionPlan, LayerStageError, LayerStageInput,
     LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmRuntimeDispatcher,
 };
 
@@ -141,7 +142,9 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
     let path_opt_loaded = path_optimization_loaded_module();
     let path_opt_pool = Arc::new(
         build_wasm_instance_pool(
-            &path_opt_loaded,
+            path_opt_loaded.id(),
+            path_opt_loaded.stage(),
+            path_opt_loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -256,7 +259,9 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
     let path_opt_loaded = path_optimization_loaded_module();
     let path_opt_pool = Arc::new(
         build_wasm_instance_pool(
-            &path_opt_loaded,
+            path_opt_loaded.id(),
+            path_opt_loaded.stage(),
+            path_opt_loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -343,7 +348,9 @@ fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
     let path_opt_loaded = path_optimization_loaded_module();
     let path_opt_pool = Arc::new(
         build_wasm_instance_pool(
-            &path_opt_loaded,
+            path_opt_loaded.id(),
+            path_opt_loaded.stage(),
+            path_opt_loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,
@@ -418,21 +425,22 @@ impl LayerStageRunner for LiveDispatcherWithLayerCollection {
         &self,
         stage_id: &StageId,
         layer: &GlobalLayer,
-        _module: &CompiledModule,
-        blackboard: &Blackboard,
-        arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        if stage_id == "Layer::Infill" {
-            // No-op stub for Infill stage â€” layer_collection is pre-staged.
-            return Ok((LayerStageOutput::Success, Vec::new(), Vec::new()));
+        _module: &CompiledModuleLive<'_>,
+        input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
+        if stage_id == “Layer::Infill” {
+            // Inject the pre-staged layer_collection so the executor commits it to the
+            // arena before Layer::PathOptimization runs (bypasses auto-assembly fallback).
+            return Ok(LayerStageCommitData {
+                layer_collection_output: Some(self.layer_collection.clone()),
+                ..Default::default()
+            });
         }
-        // Pre-stage the layer collection so the executor's assemble_ordered_entities
-        // fallback finds it before PathOptimization runs.
-        arena.set_layer_collection(self.layer_collection.clone());
-
         // Delegate PathOptimization to the live WASM dispatcher.
+        // input.layer_collection is already populated from the arena (committed above).
+        let live = self.path_opt_module.as_live();
         self.dispatcher
-            .run_stage(stage_id, layer, &self.path_opt_module, blackboard, arena)
+            .run_stage(stage_id, layer, &live, input)
     }
 }
 
@@ -601,7 +609,9 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     .build();
     let pool = Arc::new(
         build_wasm_instance_pool(
-            &loaded,
+            loaded.id(),
+            loaded.stage(),
+            loaded.layer_parallel_safe(),
             1,
             WasmArtifactMetadata {
                 uses_shared_memory: false,

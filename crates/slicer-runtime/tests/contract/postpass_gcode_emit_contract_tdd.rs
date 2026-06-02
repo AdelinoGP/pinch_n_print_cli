@@ -111,17 +111,17 @@ fn layer_with_entity(
 // NoOpRunner â€” a passthrough runner that does nothing to GCodeIR or text
 // ============================================================================
 
-use slicer_ir::StageId;
-use slicer_runtime::{Blackboard, CompiledModule, PostpassOutput, PostpassStageRunner};
+use slicer_ir::{GCodeCommand, StageId};
+use slicer_runtime::{CompiledModuleLive, PostpassOutput, PostpassStageInput, PostpassStageRunner};
 
 struct NoOpRunner;
 impl PostpassStageRunner for NoOpRunner {
     fn run_gcode_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _gcode_ir: &mut GCodeIR,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        _commands: &mut Vec<GCodeCommand>,
     ) -> Result<PostpassOutput, slicer_runtime::PostpassError> {
         Ok(PostpassOutput::GCodeSuccess)
     }
@@ -129,8 +129,8 @@ impl PostpassStageRunner for NoOpRunner {
     fn run_text_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<PostpassOutput, slicer_runtime::PostpassError> {
         Ok(PostpassOutput::TextSuccess { text })

@@ -9,10 +9,11 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use slicer_ir::LayerStageCommitData;
 use slicer_ir::SliceIR;
 use slicer_runtime::{
     execute_per_layer, execute_prepass_slice_single_layer, Blackboard, CompiledModule,
-    ExecutionPlan, LayerArena, LayerSliceError, LayerStageError, LayerStageOutput,
+    CompiledModuleLive, ExecutionPlan, LayerSliceError, LayerStageError, LayerStageInput,
     LayerStageRunner,
 };
 
@@ -168,19 +169,19 @@ impl LayerStageRunner for RecordingRunner {
         &self,
         _stage_id: &StageId,
         layer: &GlobalLayer,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        let slice = arena
-            .slice()
-            .expect("host-built-in Layer::Slice must have staged SliceIR");
-        let region_count = slice.regions.len();
+        _module: &CompiledModuleLive<'_>,
+        input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
+        let region_count = input
+            .slice
+            .expect("host-built-in Layer::Slice must have staged SliceIR")
+            .regions
+            .len();
         self.seen_slice
             .lock()
             .unwrap()
             .push((layer.index, region_count));
-        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+        Ok(LayerStageCommitData::default())
     }
 }
 
@@ -239,11 +240,10 @@ fn per_layer_executor_produces_deterministic_slice_across_runs() {
             &self,
             _s: &StageId,
             _l: &GlobalLayer,
-            _m: &CompiledModule,
-            _b: &Blackboard,
-            _a: &mut LayerArena,
-        ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-            Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+            _m: &CompiledModuleLive<'_>,
+            _input: LayerStageInput<'_>,
+        ) -> Result<LayerStageCommitData, LayerStageError> {
+            Ok(LayerStageCommitData::default())
         }
     }
 
