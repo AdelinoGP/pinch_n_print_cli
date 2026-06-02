@@ -29,7 +29,7 @@ use slicer_runtime::{
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 
-use crate::common::wasm_cache;
+use crate::common::{finalization_input, wasm_cache};
 
 const MUTATION_GUEST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -209,7 +209,7 @@ fn modify_entity_round_trips_through_wit() {
     let mut layers = vec![make_layer(0, 0.2, vec![entity_with_id(1, 0, 0.2, 1.0)])];
 
     dispatcher
-        .run_stage(&stage, &module, &blackboard, &mut layers)
+        .run_stage(&stage, &module.as_live(), finalization_input(&blackboard), &mut layers)
         .expect("finalization dispatch must succeed");
 
     // AC-5: The guest mutated entity_id=1 to speed_factor=0.5.
@@ -250,7 +250,7 @@ fn modify_entity_unknown_id_round_trips_error() {
     let mut layers = vec![make_layer(0, 0.2, vec![entity_with_id(1, 0, 0.2, 1.0)])];
 
     // Host's apply_to() must surface a FatalModule error containing "entity_id" and "99".
-    let run_result = dispatcher.run_stage(&stage, &module, &blackboard, &mut layers);
+    let run_result = dispatcher.run_stage(&stage, &module.as_live(), finalization_input(&blackboard), &mut layers);
 
     match run_result {
         Err(e) => {

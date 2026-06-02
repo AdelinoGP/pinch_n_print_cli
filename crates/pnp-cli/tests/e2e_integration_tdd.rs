@@ -7,14 +7,18 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use slicer_ir::{GCodeIR, GlobalLayer, LayerCollectionIR, PrintMetadata, SemVer, StageId};
+use slicer_ir::{
+    GCodeCommand, GCodeIR, GlobalLayer, LayerCollectionIR, LayerStageCommitData, LayerStageError,
+    PrintMetadata, SemVer, StageId,
+};
 use slicer_model_io::{load_model, ModelLoadError};
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_runtime::{
-    Blackboard, CompiledModule, DefaultGCodeEmitter, DefaultGCodeSerializer, ExecutionPlan,
-    FinalizationError, FinalizationOutput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
-    LayerArena, LayerStageError, LayerStageOutput, LayerStageRunner, PostpassError, PostpassOutput,
-    PostpassStageRunner, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
+    Blackboard, CompiledModuleLive, DefaultGCodeEmitter, DefaultGCodeSerializer, ExecutionPlan,
+    FinalizationError, FinalizationOutput, FinalizationStageInput, FinalizationStageRunner,
+    GCodeEmitter, GCodeSerializer, LayerStageInput, LayerStageRunner, PostpassError,
+    PostpassOutput, PostpassStageInput, PostpassStageRunner, PrepassRunnerError,
+    PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
 };
 
 // ---------------------------------------------------------------------------
@@ -75,10 +79,10 @@ impl PrepassStageRunner for NoopPrepassRunner {
     fn run_stage(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-        Ok((PrepassStageOutput::None, Vec::new()))
+        _module: &CompiledModuleLive<'_>,
+        _input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+        Ok(PrepassStageOutput::None)
     }
 }
 
@@ -88,11 +92,10 @@ impl LayerStageRunner for NoopLayerRunner {
         &self,
         _stage_id: &StageId,
         _layer: &GlobalLayer,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _arena: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+        _module: &CompiledModuleLive<'_>,
+        _input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
+        Ok(LayerStageCommitData::default())
     }
 }
 
@@ -101,8 +104,8 @@ impl FinalizationStageRunner for NoopFinalizationRunner {
     fn run_stage(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
+        _module: &CompiledModuleLive<'_>,
+        _input: FinalizationStageInput<'_>,
         _layers: &mut Vec<LayerCollectionIR>,
     ) -> Result<FinalizationOutput, FinalizationError> {
         Ok(FinalizationOutput::Success)
@@ -114,9 +117,9 @@ impl PostpassStageRunner for NoopPostpassRunner {
     fn run_gcode_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        _gcode_ir: &mut GCodeIR,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        _commands: &mut Vec<GCodeCommand>,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::GCodeSuccess)
     }
@@ -124,8 +127,8 @@ impl PostpassStageRunner for NoopPostpassRunner {
     fn run_text_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::TextSuccess { text })

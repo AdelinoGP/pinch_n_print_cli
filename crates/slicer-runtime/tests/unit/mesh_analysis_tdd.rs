@@ -12,7 +12,7 @@
 //! - repeated invocations on the same mesh are byte-identical.
 //!
 //! Reference: docs/01_system_architecture.md Â§"PrePass::MeshAnalysis",
-//! docs/02_ir_schemas.md Â§"IR 2 â€” SurfaceClassificationIR",
+//! docs/02_ir_schemas.md Â§"IR 2 â€" SurfaceClassificationIR",
 //! docs/04_host_scheduler.md Â§"Full Lifecycle" (prepass).
 
 use std::collections::HashMap;
@@ -28,7 +28,7 @@ use slicer_runtime::{
     PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
 };
 
-// A runner that must never be called â€” the built-in runs before any user
+// A runner that must never be called â€" the built-in runs before any user
 // prepass module, and our plans here contain no user modules.
 struct UnreachableRunner;
 impl PrepassStageRunner for UnreachableRunner {
@@ -39,14 +39,14 @@ impl PrepassStageRunner for UnreachableRunner {
         _input: PrepassStageInput<'_>,
     ) -> Result<PrepassStageOutput, PrepassRunnerError> {
         panic!(
-            “prepass runner should not be invoked for this test (stage={stage_id}, module={})”,
+            "prepass runner should not be invoked for this test (stage={stage_id}, module={})",
             module.module_id
         );
     }
 }
 
 // ----------------------------------------------------------------------
-// Test 1 â€” built-in runs on the real prepass path
+// Test 1 â€" built-in runs on the real prepass path
 // ----------------------------------------------------------------------
 
 #[test]
@@ -71,7 +71,7 @@ fn mesh_analysis_builtin_runs_on_real_prepass_path_and_commits_surface_classific
 }
 
 // ----------------------------------------------------------------------
-// Test 2 â€” expected analysis outputs for known facet normals
+// Test 2 â€" expected analysis outputs for known facet normals
 // ----------------------------------------------------------------------
 
 #[test]
@@ -87,11 +87,11 @@ fn mesh_analysis_classifies_known_facets_and_emits_overhang_region() {
             id: "probe".to_string(),
             mesh: IndexedTriangleSet {
                 vertices: vec![
-                    // t0 (top, CCW viewed from +Z) â€” normal = +Z
+                    // t0 (top, CCW viewed from +Z) â€" normal = +Z
                     p3(0.0, 0.0, 1.0),
                     p3(1.0, 0.0, 1.0),
                     p3(0.0, 1.0, 1.0),
-                    // t1 (bottom, CCW viewed from -Z) â€” normal = -Z
+                    // t1 (bottom, CCW viewed from -Z) â€" normal = -Z
                     p3(0.0, 0.0, 0.0),
                     p3(0.0, 1.0, 0.0),
                     p3(1.0, 0.0, 0.0),
@@ -102,7 +102,7 @@ fn mesh_analysis_classifies_known_facets_and_emits_overhang_region() {
                     p3(0.0, 0.0, 0.0),
                     p3(0.0, 1.0, 0.0),
                     p3(1.0, 0.0, -0.75),
-                    // t3 (side wall, CCW viewed from +X) â€” normal = +X
+                    // t3 (side wall, CCW viewed from +X) â€" normal = +X
                     p3(0.0, 0.0, 0.0),
                     p3(0.0, 0.0, 1.0),
                     p3(0.0, 1.0, 0.0),
@@ -159,13 +159,13 @@ fn mesh_analysis_classifies_known_facets_and_emits_overhang_region() {
 }
 
 // ----------------------------------------------------------------------
-// Test 3 â€” invalid indices fail cleanly with structured diagnostics
+// Test 3 â€" invalid indices fail cleanly with structured diagnostics
 // ----------------------------------------------------------------------
 
 #[test]
 fn mesh_analysis_rejects_index_buffer_not_multiple_of_three() {
     let mut mesh = triangle_mesh("bad");
-    mesh.objects[0].mesh.indices.push(0); // 4 indices â€” not a triangle list
+    mesh.objects[0].mesh.indices.push(0); // 4 indices â€" not a triangle list
 
     let err = execute_mesh_analysis(&mesh).expect_err("must fail");
     assert!(matches!(
@@ -205,7 +205,7 @@ fn mesh_analysis_builtin_surfaces_invalid_mesh_as_prepass_error() {
 }
 
 // ----------------------------------------------------------------------
-// Test 4 â€” determinism
+// Test 4 â€" determinism
 // ----------------------------------------------------------------------
 
 #[test]
@@ -271,7 +271,7 @@ fn build_volume() -> BoundingBox3 {
     }
 }
 
-/// A tiny mesh with a single up-facing triangle â€” enough to drive the
+/// A tiny mesh with a single up-facing triangle â€" enough to drive the
 /// built-in without inventing a full solid.
 fn triangle_mesh(id: &str) -> MeshIR {
     MeshIR {

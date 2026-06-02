@@ -13,12 +13,13 @@
 #![allow(missing_docs)]
 
 use slicer_ir::{LayerCollectionIR, RetractMode};
-use slicer_runtime::commit_layer_outputs_for_test;
 use slicer_runtime::wit_host::{
     ExtrusionRole, GcodeCommandCollected, GcodeMoveCmd, HostExecutionContext,
     HostExecutionContextBuilder,
 };
 use slicer_runtime::LayerArena;
+
+use crate::common::commit_hec_for_test;
 
 /// Helper: make a fresh `HostExecutionContext` for PathOptimization tests.
 fn make_ctx(module_id: &str) -> HostExecutionContext {
@@ -119,7 +120,7 @@ fn retracting_travel_populates_matching_z_hop_and_retract_pair() {
 
     let mut arena = LayerArena::new();
 
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::PathOptimization",
         "com.test.path-opt-retract",
         0,
@@ -197,7 +198,7 @@ fn no_retract_policy_emits_no_orphan_retracts_or_z_hops() {
 
     let mut arena = LayerArena::new();
 
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::PathOptimization",
         "com.test.path-opt-no-retract",
         0,
@@ -267,7 +268,7 @@ fn travel_policy_is_deterministic_across_repeated_runs() {
     };
 
     let mut arena1 = LayerArena::new();
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::PathOptimization",
         "com.test.path-opt-determ",
         0,
@@ -279,7 +280,7 @@ fn travel_policy_is_deterministic_across_repeated_runs() {
     let layer_collection1 = flush_to_layer_collection(&mut arena1);
 
     let mut arena2 = LayerArena::new();
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::PathOptimization",
         "com.test.path-opt-determ",
         0,
@@ -380,7 +381,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
         ..Default::default()
     });
 
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::PathOptimization",
         "com.test.path-opt-anchor",
         0,

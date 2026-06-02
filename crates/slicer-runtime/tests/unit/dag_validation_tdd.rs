@@ -270,6 +270,7 @@ fn write_conflict_orderable_is_true_when_read_establishes_dag_edge() {
 /// WIT view calls" per the design while working within test constraints.
 #[test]
 fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
+    use crate::common::postpass_input;
     use slicer_runtime::dispatch::WasmRuntimeDispatcher;
     use slicer_runtime::instance_pool::build_wasm_instance_pool;
     use slicer_runtime::PostpassStageRunner;
@@ -349,9 +350,9 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
             let mut gcode_ir = gcode_ir;
             let _ = dispatcher.run_gcode_postprocess(
                 &stage.to_string(),
-                &compiled,
-                &blackboard,
-                &mut gcode_ir,
+                &compiled.as_live(),
+                postpass_input(&blackboard),
+                &mut gcode_ir.commands,
             );
             // Exercise take_runtime_reads to drain accumulated reads.
             runtime_reads = dispatcher

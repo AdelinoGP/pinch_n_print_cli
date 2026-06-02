@@ -16,9 +16,9 @@ use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineError, Pipe
 use slicer_runtime::{
     build_wasm_instance_pool, Blackboard, CompiledModule, CompiledModuleBuilder,
     CompiledModuleLive, CompiledStage, ExecutionPlan, FinalizationError, FinalizationOutput,
-    FinalizationStageInput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer, LayerArena,
+    FinalizationStageInput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
     LayerStageError, LayerStageInput, LayerStageRunner, LoadedModuleBuilder, PostpassError,
-    PostpassOutput, PostpassStageInput, PostpassStageRunner, PrepassExecutionError,
+    PostpassOutput, PostpassStageInput, PostpassStageRunner,
     PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
     WasmArtifactMetadata,
 };

@@ -26,8 +26,8 @@ use slicer_ir::{
     SemVer, StageId, SurfaceClassificationIR, Transform3d,
 };
 use slicer_runtime::{
-    build_execution_plan, execute_prepass_with_builtins_configured, Blackboard, CompiledModule,
-    CompiledModuleLive, ConfigBoundsIndex, ExecutionPlanRequest, PrepassExecutionError,
+    build_execution_plan, execute_prepass_with_builtins_configured, Blackboard,
+    CompiledModuleLive, ConfigBoundsIndex, ExecutionPlanRequest,
     PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
     SortedStageModules,
 };

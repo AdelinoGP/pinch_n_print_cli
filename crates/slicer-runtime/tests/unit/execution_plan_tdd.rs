@@ -170,7 +170,7 @@ fn assert_module(
     assert_eq!(compiled.ir_read_mask().paths, strings(expected_reads));
     assert_eq!(compiled.ir_write_mask().paths, strings(expected_writes));
     assert!(Arc::ptr_eq(
-        compiled.instance_pool(),
+        &compiled.as_live().instance_pool,
         &expected.instance_pool
     ));
     assert!(Arc::ptr_eq(compiled.config_view(), &expected.config_view));

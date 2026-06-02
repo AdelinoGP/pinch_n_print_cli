@@ -1,7 +1,9 @@
-/// TDD test for AC-6 / AC-N2 (Packet 83, Step 2).
-///
-/// Asserts that `export_for_stage_id` is total over `STAGES` (every known
-/// stage id maps to its `wit_export`) and correctly rejects unknown ids.
+//! TDD test for AC-6 / AC-N2 (Packet 83, Step 2).
+//!
+//! Asserts that `export_for_stage_id` is total over `STAGES` (every known
+//! stage id maps to its `wit_export`) and correctly rejects unknown ids.
+
+#![allow(missing_docs)]
 
 #[test]
 fn export_for_stage_id_is_total_over_stages_and_rejects_unknown() {

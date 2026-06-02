@@ -19,9 +19,9 @@ use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetada
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::{Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner};
 
-use crate::common::wasm_cache;
+use crate::common::{prepass_input, wasm_cache};
 
-// â”€â”€ Path to the sdk-prepass-guest component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Path to the sdk-prepass-guest component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 const SDK_PREPASS_GUEST_NAME: &str = "sdk-prepass-meshseg-guest";
 
@@ -31,7 +31,7 @@ fn sdk_prepass_guest_path() -> std::path::PathBuf {
         .join(format!("{SDK_PREPASS_GUEST_NAME}.component.wasm"))
 }
 
-// â”€â”€ Harness helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Harness helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -150,7 +150,7 @@ fn load_sdk_prepass_guest() -> Option<Arc<slicer_runtime::WasmComponent>> {
     Some(wasm_cache::compiled_guest(SDK_PREPASS_GUEST_NAME))
 }
 
-// â”€â”€ AC-4: MeshSegmentation marks round-trip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ AC-4: MeshSegmentation marks round-trip â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 /// AC-8: Dispatch MeshSegmentation with fixture_case="marks_basic".
 /// The guest (sdk-prepass-meshseg-guest) emits:
@@ -199,18 +199,18 @@ fn mesh_segmentation_marks_round_trip() {
     let result = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::MeshSegmentation".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        prepass_input(&blackboard),
     );
 
     let ir = match result {
-        Ok((PrepassStageOutput::MeshSegmentation(ir), _)) => ir,
-        Ok((PrepassStageOutput::None, _)) => {
+        Ok(PrepassStageOutput::MeshSegmentation(ir)) => ir,
+        Ok(PrepassStageOutput::None) => {
             panic!(
-                "AC-8 FAIL: got None â€” sdk-prepass-meshseg-guest did not emit marks_basic fixture"
+                "AC-8 FAIL: got None -- sdk-prepass-meshseg-guest did not emit marks_basic fixture"
             );
         }
-        Ok((other, _)) => panic!(
+        Ok(other) => panic!(
             "AC-8 FAIL: unexpected variant {:?}",
             std::mem::discriminant(&other)
         ),

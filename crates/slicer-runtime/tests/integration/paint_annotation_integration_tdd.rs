@@ -17,15 +17,17 @@ use rstar::RTree;
 use slicer_core::paint_region::{PaintRegionRTreeEntry, PaintRegionRTreeIndex};
 use slicer_ir::slice_ir::BoundingBox2;
 use slicer_ir::{
-    ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, LayerPaintMap, MeshIR,
-    ObjectConfig, ObjectMesh, PaintRegionIR, PaintSemantic, PaintValue, Point2, Point3, Polygon,
-    ResolvedConfig, SemanticRegion, StageId, Transform3d,
+    ActiveRegion, BoundingBox3, ExPolygon, GCodeCommand, GlobalLayer, IndexedTriangleSet,
+    LayerPaintMap, LayerStageCommitData, MeshIR, ObjectConfig, ObjectMesh, PaintRegionIR,
+    PaintSemantic, PaintValue, Point2, Point3, Polygon, ResolvedConfig, SemanticRegion, StageId,
+    Transform3d,
 };
 use slicer_runtime::progress_events::{EventReason, ProgressEvent, ProgressPhase};
 use slicer_runtime::{
-    execute_per_layer_with_events, execute_prepass_with_builtins, Blackboard, CompiledModule,
-    ExecutionPlan, LayerArena, LayerExecutionError, LayerProgressSink, LayerStageError,
-    LayerStageOutput, LayerStageRunner, SlicePostProcessPaintAnnotationError,
+    execute_per_layer_with_events, execute_prepass_with_builtins, Blackboard,
+    CompiledModuleLive, ExecutionPlan, FinalizationStageInput, LayerExecutionError,
+    LayerProgressSink, LayerStageError, LayerStageInput, LayerStageRunner,
+    PostpassStageInput, PrepassStageInput, SlicePostProcessPaintAnnotationError,
 };
 
 fn unit_tetra() -> IndexedTriangleSet {
@@ -298,11 +300,10 @@ impl LayerStageRunner for NoopRunner {
         &self,
         _s: &StageId,
         _l: &GlobalLayer,
-        _m: &CompiledModule,
-        _b: &Blackboard,
-        _a: &mut LayerArena,
-    ) -> Result<(LayerStageOutput, Vec<String>, Vec<String>), LayerStageError> {
-        Ok((LayerStageOutput::Success, Vec::new(), Vec::new()))
+        _m: &CompiledModuleLive<'_>,
+        _input: LayerStageInput<'_>,
+    ) -> Result<LayerStageCommitData, LayerStageError> {
+        Ok(LayerStageCommitData::default())
     }
 }
 
@@ -443,9 +444,9 @@ use slicer_runtime::progress_events::{
     JsonLinesEmitter, ProgressEventEmitter, RuntimeProgressSink, SliceEventCollector,
 };
 use slicer_runtime::{
-    CompiledModule as CompiledModuleAlias, FinalizationError, FinalizationOutput,
+    FinalizationError, FinalizationOutput,
     FinalizationStageRunner, GCodeEmitter, GCodeSerializer, PostpassError, PostpassOutput,
-    PostpassStageRunner, PrepassExecutionError, PrepassStageOutput, PrepassStageRunner,
+    PostpassStageRunner, PrepassRunnerError, PrepassStageOutput, PrepassStageRunner,
 };
 
 struct NoopPrepassRunner;
@@ -453,10 +454,10 @@ impl PrepassStageRunner for NoopPrepassRunner {
     fn run_stage(
         &self,
         _s: &StageId,
-        _m: &CompiledModuleAlias,
-        _b: &Blackboard,
-    ) -> Result<(PrepassStageOutput, Vec<String>), PrepassExecutionError> {
-        Ok((PrepassStageOutput::None, Vec::new()))
+        _m: &CompiledModuleLive<'_>,
+        _input: PrepassStageInput<'_>,
+    ) -> Result<PrepassStageOutput, PrepassRunnerError> {
+        Ok(PrepassStageOutput::None)
     }
 }
 struct NoopFinalizationRunner;
@@ -464,8 +465,8 @@ impl FinalizationStageRunner for NoopFinalizationRunner {
     fn run_stage(
         &self,
         _s: &StageId,
-        _m: &CompiledModuleAlias,
-        _b: &Blackboard,
+        _m: &CompiledModuleLive<'_>,
+        _input: FinalizationStageInput<'_>,
         _l: &mut Vec<LayerCollectionIR>,
     ) -> Result<FinalizationOutput, FinalizationError> {
         Ok(FinalizationOutput::Success)
@@ -476,17 +477,17 @@ impl PostpassStageRunner for NoopPostpassRunner {
     fn run_gcode_postprocess(
         &self,
         _s: &StageId,
-        _m: &CompiledModuleAlias,
-        _b: &Blackboard,
-        _g: &mut GCodeIR,
+        _m: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        _commands: &mut Vec<GCodeCommand>,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::GCodeSuccess)
     }
     fn run_text_postprocess(
         &self,
         _s: &StageId,
-        _m: &CompiledModuleAlias,
-        _b: &Blackboard,
+        _m: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::TextSuccess { text })

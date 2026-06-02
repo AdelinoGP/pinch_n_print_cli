@@ -15,19 +15,19 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use slicer_ir::LayerStageCommitData;
-use slicer_ir::{ConfigKey, ConfigValue, GCodeIR, GlobalLayer, LayerCollectionIR, SemVer, StageId};
+use slicer_ir::{ConfigKey, ConfigValue, GlobalLayer, LayerCollectionIR, SemVer, StageId};
 use slicer_model_io::load_model;
 use slicer_runtime::pipeline::{
     run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners,
 };
 use slicer_runtime::{
-    Blackboard, CompiledModuleLive, DefaultGCodeEmitter, DefaultGCodeSerializer, FinalizationError,
+    CompiledModuleLive, DefaultGCodeEmitter, DefaultGCodeSerializer, FinalizationError,
     FinalizationOutput, FinalizationStageInput, FinalizationStageRunner, LayerStageError,
     LayerStageInput, LayerStageRunner, NoopLayerProgressSink, PostpassError, PostpassOutput,
-    PostpassStageInput, PostpassStageRunner, PrepassExecutionError, PrepassRunnerError,
+    PostpassStageInput, PostpassStageRunner, PrepassRunnerError,
     PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
 };
-use slicer_runtime::{CompiledModule, ExecutionPlan};
+use slicer_runtime::ExecutionPlan;
 
 use base64::Engine as _;
 

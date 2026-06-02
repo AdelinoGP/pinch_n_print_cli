@@ -214,23 +214,27 @@ fn shared_interface_defined_once() {
 // Anti-regression: host uses path: not inline:
 // ---------------------------------------------------------------------------
 
-/// `crates/slicer-runtime/src/wit_host.rs` must contain no `inline: r#`
+/// `crates/slicer-wasm-host/src/host.rs` must contain no `inline: r#`
 /// block (the host reads the canonical WIT via `path:`).
 #[test]
 fn host_has_no_inline_bindgen() {
-    let wit_host = runtime_src_dir().join("wit_host.rs");
+    let wit_host = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("slicer-wasm-host")
+        .join("src")
+        .join("host.rs");
     assert!(
         wit_host.exists(),
-        "wit_host.rs not found: {}",
+        "host.rs not found: {}",
         wit_host.display()
     );
 
     let content = std::fs::read_to_string(&wit_host)
-        .unwrap_or_else(|e| panic!("cannot read wit_host.rs: {e}"));
+        .unwrap_or_else(|e| panic!("cannot read host.rs: {e}"));
 
     assert!(
         !content.contains("inline: r#"),
-        "wit_host.rs still contains `inline: r#` — host must use `path:` bindgen"
+        "host.rs still contains `inline: r#` — host must use `path:` bindgen"
     );
 }
 
@@ -244,15 +248,19 @@ fn host_has_no_inline_bindgen() {
 // Agreement (roundtrip) != single-source: flat copies passed roundtrip 19/19.
 #[test]
 fn host_bindgen_paths_target_shared_root() {
-    let wit_host = runtime_src_dir().join("wit_host.rs");
+    let wit_host = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("slicer-wasm-host")
+        .join("src")
+        .join("host.rs");
     assert!(
         wit_host.exists(),
-        "wit_host.rs not found: {}",
+        "host.rs not found: {}",
         wit_host.display()
     );
 
     let content = std::fs::read_to_string(&wit_host)
-        .unwrap_or_else(|e| panic!("cannot read wit_host.rs: {e}"));
+        .unwrap_or_else(|e| panic!("cannot read host.rs: {e}"));
 
     // Extract every path: "..." string literal inside bindgen! invocations.
     // We look for   path: "../slicer-schema/wit"  (with optional surrounding whitespace).
@@ -273,7 +281,7 @@ fn host_bindgen_paths_target_shared_root() {
     assert_eq!(
         paths.len(),
         4,
-        "Expected exactly 4 `path:` literals in wit_host.rs bindgen! invocations (one per world), \
+        "Expected exactly 4 `path:` literals in host.rs bindgen! invocations (one per world), \
          found {}: {paths:?}",
         paths.len()
     );
@@ -281,12 +289,12 @@ fn host_bindgen_paths_target_shared_root() {
     for path in &paths {
         assert_eq!(
             *path, "../slicer-schema/wit",
-            "Every `path:` in wit_host.rs must equal exactly \"../slicer-schema/wit\" \
+            "Every `path:` in host.rs must equal exactly \"../slicer-schema/wit\" \
              (the shared canonical root), but found: \"{path}\""
         );
         assert!(
             !path.contains("/world-"),
-            "A `path:` in wit_host.rs contains a per-world subdir segment (`/world-`), \
+            "A `path:` in host.rs contains a per-world subdir segment (`/world-`), \
              indicating a flat-copy path instead of the shared root: \"{path}\""
         );
     }

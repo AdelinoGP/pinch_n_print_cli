@@ -20,13 +20,13 @@
 
 #![allow(missing_docs)]
 
-use slicer_runtime::commit_layer_outputs_for_test;
 use slicer_runtime::wit_host::layer::slicer::ir_handles::ir_handles::HostPerimeterOutputBuilder;
 use slicer_runtime::wit_host::{
     ExtrusionRole, HostExecutionContextBuilder, Point3, Point3WithWidth, WallFeatureFlag,
     WallLoopType, WallLoopView,
 };
 
+use crate::common::{commit_hec_for_test, layer_input};
 use crate::common::wasm_cache;
 
 /// Helper: make a 2-point horizontal wall loop at a given Z.
@@ -118,7 +118,7 @@ fn wall_postprocess_commits_resolved_seam_to_perimeter_ir() {
         .expect("guest push_resolved_seam call must succeed");
 
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::PerimetersPostProcess",
         module_id,
         layer_index,
@@ -168,7 +168,7 @@ fn empty_perimeter_output_for_wallpostprocess_skips_commit() {
     // All three collections empty â€” perimeter disabled or no eligible regions.
 
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::PerimetersPostProcess",
         module_id,
         layer_index,
@@ -233,7 +233,7 @@ fn resolved_seam_is_applied_only_to_origin_region() {
     .expect("guest push_resolved_seam call must succeed");
 
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::PerimetersPostProcess",
         module_id,
         layer_index,
@@ -495,10 +495,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         &dispatcher,
         &"Layer::PathOptimization".to_string(),
         &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
+        &module.as_live(),        layer_input(&blackboard, &arena),    )
     .expect("PathOptimization dispatch must succeed");
 
     // Take deferred annotations and verify none of them is a Raw G1 move.
@@ -1029,10 +1026,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         &dispatcher,
         &"Layer::PerimetersPostProcess".to_string(),
         &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
+        &module.as_live(),        layer_input(&blackboard, &arena),    )
     .expect("PerimetersPostProcess dispatch must succeed");
 
     eprintln!(

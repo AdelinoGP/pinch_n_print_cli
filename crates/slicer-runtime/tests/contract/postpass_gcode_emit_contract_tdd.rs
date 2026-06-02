@@ -12,7 +12,7 @@
 //! - [x] Full postpass pipeline preserves Orca comment/order contract byte-for-byte
 //! - [x] Deterministic across repeated executions
 
-use slicer_ir::{BoundingBox3, ExtrusionRole, GCodeIR, MeshIR, Point3, SemVer};
+use slicer_ir::{BoundingBox3, ExtrusionRole, MeshIR, Point3, SemVer};
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -112,7 +112,7 @@ fn layer_with_entity(
 // ============================================================================
 
 use slicer_ir::{GCodeCommand, StageId};
-use slicer_runtime::{CompiledModuleLive, PostpassOutput, PostpassStageInput, PostpassStageRunner};
+use slicer_runtime::{Blackboard, CompiledModuleLive, PostpassOutput, PostpassStageInput, PostpassStageRunner};
 
 struct NoOpRunner;
 impl PostpassStageRunner for NoOpRunner {

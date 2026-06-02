@@ -21,15 +21,15 @@
 use std::collections::HashMap;
 
 use slicer_core::paint_region::PaintRegionRTreeIndex;
-use slicer_ir::ExtrusionRole as IrExtrusionRole;
+use slicer_ir::{
+    ExtrusionPath3D, ExtrusionRole as IrExtrusionRole, LayerStageCommitData, Point3WithWidth,
+    SemVer, SupportIR,
+};
 use slicer_runtime::commit_layer_outputs_for_test;
 
 use crate::common::wasm_cache;
-use slicer_runtime::wit_host::{
-    ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3WithWidth,
-};
 
-/// Helper: make a 2-point horizontal support path in mm units.
+/// Helper: make a 2-point horizontal support path in mm units (IR type).
 fn make_support_path(
     layer_z: f32,
     x1: f32,
@@ -37,8 +37,8 @@ fn make_support_path(
     x2: f32,
     y2: f32,
     width: f32,
-) -> ExtrusionPath3d {
-    ExtrusionPath3d {
+) -> ExtrusionPath3D {
+    ExtrusionPath3D {
         points: vec![
             Point3WithWidth {
                 x: x1,
@@ -57,8 +57,32 @@ fn make_support_path(
                 overhang_quartile: None,
             },
         ],
-        role: ExtrusionRole::SupportMaterial,
+        role: IrExtrusionRole::SupportMaterial,
         speed_factor: 1.0,
+    }
+}
+
+/// Helper: make a `LayerStageCommitData` with support paths.
+fn support_commit(paths: Vec<ExtrusionPath3D>) -> LayerStageCommitData {
+    let support_ir = if paths.is_empty() {
+        None
+    } else {
+        Some(SupportIR {
+            schema_version: SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            global_layer_index: 0,
+            support_paths: paths,
+            interface_paths: vec![],
+            raft_paths: vec![],
+            ironing_paths: vec![],
+        })
+    };
+    LayerStageCommitData {
+        support_output: support_ir,
+        ..Default::default()
     }
 }
 
@@ -75,29 +99,18 @@ fn tree_support_dispatch_commits_support_material_paths() {
     let layer_index = 0u32;
 
     // Simulate tree-support module output: 3 branch paths.
-    let mut ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
-
-    // Tree-support emits 3 support_material paths.
-    ctx.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 2.0, 10.0, 2.0, 0.4));
-    ctx.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 4.0, 10.0, 4.0, 0.4));
-    // Origins are None â†’ synthetic region path.
-    ctx.support_output_mut().support_path_origins.push(None);
-    ctx.support_output_mut().support_path_origins.push(None);
-    ctx.support_output_mut().support_path_origins.push(None);
+    let commit = support_commit(vec![
+        make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4),
+        make_support_path(0.2, 0.0, 2.0, 10.0, 2.0, 0.4),
+        make_support_path(0.2, 0.0, 4.0, 10.0, 4.0, 0.4),
+    ]);
 
     let mut arena = slicer_runtime::LayerArena::new();
     commit_layer_outputs_for_test(
         "Layer::Support",
         module_id,
         layer_index,
-        &ctx,
+        commit,
         &mut arena,
         None,
     )
@@ -135,31 +148,20 @@ fn traditional_support_dispatch_commits_support_material_paths() {
     let module_id = "com.test.traditional-support";
     let layer_index = 0u32;
 
-    let mut ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
-
     // Traditional-support emits 4 parallel scan lines.
-    ctx.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 2.0, 10.0, 2.0, 0.4));
-    ctx.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 4.0, 10.0, 4.0, 0.4));
-    ctx.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 6.0, 10.0, 6.0, 0.4));
-    for _ in 0..4 {
-        ctx.support_output_mut().support_path_origins.push(None);
-    }
+    let commit = support_commit(vec![
+        make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4),
+        make_support_path(0.2, 0.0, 2.0, 10.0, 2.0, 0.4),
+        make_support_path(0.2, 0.0, 4.0, 10.0, 4.0, 0.4),
+        make_support_path(0.2, 0.0, 6.0, 10.0, 6.0, 0.4),
+    ]);
 
     let mut arena = slicer_runtime::LayerArena::new();
     commit_layer_outputs_for_test(
         "Layer::Support",
         module_id,
         layer_index,
-        &ctx,
+        commit,
         &mut arena,
         None,
     )
@@ -196,21 +198,18 @@ fn enforcer_forces_live_support_commit_even_when_needs_support_is_false() {
     let module_id = "com.test.enforcer-override";
     let layer_index = 0u32;
 
-    let mut ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
-
     // Simulate enforcer override: module was called with needs_support=false
     // but SupportEnforcer paint forced it to emit paths anyway.
-    ctx.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx.support_output_mut().support_path_origins.push(None);
+    let commit = support_commit(vec![
+        make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4),
+    ]);
 
     let mut arena = slicer_runtime::LayerArena::new();
     commit_layer_outputs_for_test(
         "Layer::Support",
         module_id,
         layer_index,
-        &ctx,
+        commit,
         &mut arena,
         None,
     )
@@ -233,16 +232,15 @@ fn disabled_or_ineligible_support_stage_commits_empty_support_ir() {
     let module_id = "com.test.disabled-support";
     let layer_index = 0u32;
 
-    let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
-    // All three path collections are empty â€” support disabled or no eligible regions.
-    // No paths pushed, all origin vectors empty.
+    // All path collections are empty — support disabled or no eligible regions.
+    let commit = support_commit(vec![]);
 
     let mut arena = slicer_runtime::LayerArena::new();
     commit_layer_outputs_for_test(
         "Layer::Support",
         module_id,
         layer_index,
-        &ctx,
+        commit,
         &mut arena,
         None,
     )
@@ -263,47 +261,30 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
     let module_id = "com.test.deterministic-support";
     let layer_index = 0u32;
 
-    // First run
-    let mut ctx1 = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
-    ctx1.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx1.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 3.0, 10.0, 3.0, 0.4));
-    for _ in 0..2 {
-        ctx1.support_output_mut().support_path_origins.push(None);
-    }
+    // First run - identical to second run
+    let make_two_paths = || support_commit(vec![
+        make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4),
+        make_support_path(0.2, 0.0, 3.0, 10.0, 3.0, 0.4),
+    ]);
 
     let mut arena1 = slicer_runtime::LayerArena::new();
     commit_layer_outputs_for_test(
         "Layer::Support",
         module_id,
         layer_index,
-        &ctx1,
+        make_two_paths(),
         &mut arena1,
         None,
     )
     .expect("first commit must succeed");
 
-    // Second run â€” identical input
-    let mut ctx2 = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
-    ctx2.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4));
-    ctx2.support_output_mut()
-        .support_paths
-        .push(make_support_path(0.2, 0.0, 3.0, 10.0, 3.0, 0.4));
-    for _ in 0..2 {
-        ctx2.support_output_mut().support_path_origins.push(None);
-    }
-
+    // Second run — identical input
     let mut arena2 = slicer_runtime::LayerArena::new();
     commit_layer_outputs_for_test(
         "Layer::Support",
         module_id,
         layer_index,
-        &ctx2,
+        make_two_paths(),
         &mut arena2,
         None,
     )
@@ -361,17 +342,15 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
     let module_id = "com.test.blocker-commit";
     let layer_index = 0u32;
 
-    let ctx = HostExecutionContextBuilder::new(module_id.to_string(), 0.2, 0.2).build();
-    // Module with SupportBlocker would emit zero paths â€” simulate that at commit level.
-    // All path vectors remain empty; this is the correct host behavior when
-    // the support module honored the blocker.
+    // Module with SupportBlocker would emit zero paths — simulate at commit level.
+    let commit = support_commit(vec![]);
 
     let mut arena = slicer_runtime::LayerArena::new();
     commit_layer_outputs_for_test(
         "Layer::Support",
         module_id,
         layer_index,
-        &ctx,
+        commit,
         &mut arena,
         None,
     )
@@ -393,8 +372,9 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
 
 use slicer_ir::{
     BoundingBox3, ExPolygon, GlobalLayer, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue,
-    Point2, Polygon, SemVer, SemanticRegion, SliceIR, SlicedRegion,
+    Point2, Polygon, SemanticRegion, SliceIR, SlicedRegion,
 };
+use crate::common::layer_input;
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::{
@@ -589,10 +569,7 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
         &dispatcher,
         &"Layer::Support".to_string(),
         &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
+        &module.as_live(),        layer_input(&blackboard, &arena),    )
     .expect("tree-support Layer::Support dispatch must succeed");
 
     let support_ir = arena
@@ -693,10 +670,7 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
         &dispatcher,
         &"Layer::Support".to_string(),
         &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
+        &module.as_live(),        layer_input(&blackboard, &arena),    )
     .expect("traditional-support Layer::Support dispatch must succeed");
 
     let support_ir = arena
@@ -790,21 +764,29 @@ fn support_deterministic_across_repeated_runs() {
         is_sync_layer: false,
     };
 
-    let run_dispatch = |module: &CompiledModule, _blackboard: &Blackboard, layer: &GlobalLayer| {
+    let run_dispatch = |module: &CompiledModule, bb: &Blackboard, layer: &GlobalLayer| {
         let mut arena = LayerArena::new();
         // Layer::Support requires a staged SliceIR (pushed via push_slice_regions).
         arena
             .set_slice(make_slice_ir(layer.index, layer.z, 1))
             .unwrap();
-        LayerStageRunner::run_stage(
+        let commit_data = LayerStageRunner::run_stage(
             &dispatcher,
             &"Layer::Support".to_string(),
             layer,
-            module,
-            _blackboard,
-            &mut arena,
+            &module.as_live(),
+            layer_input(bb, &arena),
         )
         .expect("support dispatch must succeed");
+        commit_layer_outputs_for_test(
+            "Layer::Support",
+            module.module_id(),
+            layer.index,
+            commit_data,
+            &mut arena,
+            None,
+        )
+        .expect("commit must succeed");
         arena
             .support()
             .expect("SupportIR must be present")
@@ -1030,10 +1012,7 @@ fn support_enforcer_blocker_paint_precedence() {
         &dispatcher,
         &"Layer::Support".to_string(),
         &layer,
-        &module,
-        &blackboard,
-        &mut arena,
-    )
+        &module.as_live(),        layer_input(&blackboard, &arena),    )
     .expect("support dispatch with enforcer+blocker must succeed");
 
     // The test-guest encodes enforcer_count (x) and blocker_count (y) from the
@@ -1078,7 +1057,7 @@ fn support_enforcer_blocker_paint_precedence() {
 mod planner_consuming_tier {
     use std::sync::Arc;
 
-    use crate::common::wasm_cache;
+    use crate::common::{layer_input, wasm_cache};
     use slicer_ir::{
         BoundingBox3, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
         GlobalLayer, MeshIR, Point2, Point3, Point3WithWidth, Polygon, SemVer, SlicedRegion,
@@ -1260,10 +1239,7 @@ mod planner_consuming_tier {
             &dispatcher,
             &"Layer::Support".to_string(),
             &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
+            &module.as_live(),            layer_input(&blackboard, &arena),        )
         .expect("Layer::Support dispatch must succeed");
 
         arena.take_support().expect("SupportIR must be committed")
@@ -1560,10 +1536,7 @@ mod planner_consuming_tier {
             &dispatcher,
             &"Layer::Support".to_string(),
             &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
+            &module.as_live(),            layer_input(&blackboard, &arena),        )
         .expect("Layer::Support dispatch must succeed");
 
         let support_ir = arena.take_support().expect("SupportIR must be committed");

@@ -510,4 +510,23 @@ pub struct LayerStageCommitData {
     ///
     /// Production WASM runners leave this `None`.
     pub layer_collection_output: Option<crate::LayerCollectionIR>,
+
+    /// Entity-order proposal from a `Layer::PathOptimization` guest's `set-entity-order` call.
+    ///
+    /// Each entry is `(entity_index: u32, reverse: bool)`. `None` means the guest did not
+    /// call `set-entity-order`. When `Some`, `layer_executor.rs` applies this via
+    /// `apply_entity_order_proposal` BEFORE committing the PathOptimization GCode outputs.
+    ///
+    /// Corresponds to `HostExecutionContext::layer_collection_proposal` in slicer-wasm-host.
+    pub entity_order_proposal: Option<Vec<(u32, bool)>>,
+
+    /// Whether this commit data carries a post-commit seam injection for `Layer::Perimeters`.
+    ///
+    /// When `true`, `layer_executor.rs` must inject seam from the `SeamPlanIR` into the
+    /// committed `PerimeterIR` in the arena. This mirrors the post-`commit_layer_outputs`
+    /// seam injection in the original `dispatch.rs` `LayerStageRunner::run_stage` body.
+    ///
+    /// Always `false` for stages other than `Layer::Perimeters`. WASM runner sets this
+    /// to `true` whenever a perimeter was committed for the `Layer::Perimeters` stage.
+    pub needs_seam_injection: bool,
 }

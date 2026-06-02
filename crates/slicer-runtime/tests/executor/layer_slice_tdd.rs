@@ -12,7 +12,7 @@ use std::sync::Arc;
 use slicer_ir::LayerStageCommitData;
 use slicer_ir::SliceIR;
 use slicer_runtime::{
-    execute_per_layer, execute_prepass_slice_single_layer, Blackboard, CompiledModule,
+    execute_per_layer, execute_prepass_slice_single_layer, Blackboard,
     CompiledModuleLive, ExecutionPlan, LayerSliceError, LayerStageError, LayerStageInput,
     LayerStageRunner,
 };

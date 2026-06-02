@@ -21,10 +21,11 @@
 #![allow(missing_docs)]
 
 use slicer_ir::ExtrusionRole as IrExtrusionRole;
-use slicer_runtime::commit_layer_outputs_for_test;
 use slicer_runtime::wit_host::{
     ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3WithWidth,
 };
+
+use crate::common::commit_hec_for_test;
 
 /// Helper: make a 2-point horizontal path at (z=layer_z) in mm units.
 fn make_path(
@@ -83,7 +84,7 @@ fn commit_layer_outputs_preserves_top_solid_infill_role() {
 
     // Commit into an empty arena.
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::Infill",
         module_id,
         layer_index,
@@ -144,7 +145,7 @@ fn commit_layer_outputs_preserves_bottom_solid_infill_role() {
     ctx.infill_output_mut().solid_path_origins.push(None);
 
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::Infill",
         module_id,
         layer_index,
@@ -220,7 +221,7 @@ fn commit_layer_outputs_preserves_mixed_infill_roles() {
     ctx.infill_output_mut().solid_path_origins.push(None);
 
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::Infill",
         module_id,
         layer_index,
@@ -275,7 +276,7 @@ fn commit_layer_outputs_infill_postprocess_replaces_correctly() {
     ctx1.infill_output_mut().sparse_path_origins.push(None);
 
     let mut arena = slicer_runtime::LayerArena::new();
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::Infill",
         module_id,
         layer_index,
@@ -305,7 +306,7 @@ fn commit_layer_outputs_infill_postprocess_replaces_correctly() {
     ));
     ctx2.infill_output_mut().solid_path_origins.push(None);
 
-    commit_layer_outputs_for_test(
+    commit_hec_for_test(
         "Layer::InfillPostProcess",
         module_id,
         layer_index,

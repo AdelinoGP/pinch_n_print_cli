@@ -14,7 +14,7 @@ use slicer_runtime::{
 };
 use witness::{SdkFinalizationLayerWitness, SdkFinalizationLayerWitness1};
 
-use crate::common::wasm_cache;
+use crate::common::{finalization_input, wasm_cache};
 
 const FINALIZATION_GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -185,7 +185,7 @@ fn finalization_world_deep_copy_preserves_entities_and_z_hops() {
         make_layer(1, 0.4, Vec::new(), Vec::new(), Vec::new()),
     ];
 
-    FinalizationStageRunner::run_stage(&dispatcher, &stage, &module, &blackboard, &mut layers)
+    FinalizationStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), finalization_input(&blackboard), &mut layers)
         .expect("finalization deep-copy run must succeed");
 
     assert_eq!(layers[0].ordered_entities.len(), layer0_original_len + 1);

@@ -29,7 +29,7 @@ use slicer_ir::{
     Point3WithWidth, ResolvedConfig, SemVer, StageId, Transform3d,
 };
 
-// â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Fixtures â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 fn semver() -> SemVer {
     SemVer::default()
@@ -46,7 +46,7 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
     }
 }
 
-// â”€â”€ AC-1: same-object nearest-neighbor ordering â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ AC-1: same-object nearest-neighbor ordering â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 /// AC-1: Given three same-object entities at (0,0), (30,0), (10,0), the
 /// live WASM dispatch for Layer::PathOptimization produces the sequence
@@ -59,7 +59,7 @@ fn pt(x: f32, y: f32) -> Point3WithWidth {
 /// verifies the end-to-end ordered result.
 #[test]
 fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
-    // Raw infill order: (30,0), (10,0), (0,0) â€” expected NN order: (0,0),(10,0),(30,0).
+    // Raw infill order: (30,0), (10,0), (0,0) â€" expected NN order: (0,0),(10,0),(30,0).
     let infill = InfillIR {
         schema_version: semver(),
         global_layer_index: 0,
@@ -229,7 +229,7 @@ impl LayerStageRunner for LiveDispatcherWithInfill {
     }
 }
 
-// â”€â”€ AC-2: cross-tool ordering â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ AC-2: cross-tool ordering â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 /// AC-2: Given a mixed-tool layer (tool = region_id) whose raw order is
 /// [A1(0,0), A2(0,100), B1(1,0), B2(1,1)], the live WASM dispatch groups by
@@ -238,7 +238,7 @@ impl LayerStageRunner for LiveDispatcherWithInfill {
 /// Within-cluster NN still applies (A1 before A2, B1 before B2).
 #[test]
 fn cross_object_ordering_resequences_entities_by_travel_cost() {
-    // A1(0,0) A2(0,100) B1(1,0) B2(1,1) â€” raw order is all A then all B.
+    // A1(0,0) A2(0,100) B1(1,0) B2(1,1) â€" raw order is all A then all B.
     // Tool grouping: cluster 0 [A1, A2], cluster 1 [B1, B2].
     // Within cluster 0 (NN from 0,0): A1â†’A2 (both in same cluster).
     // Within cluster 1 (NN from 0,0): B1â†’B2 (B1 nearest to 0,0, B2 nearest to B1).
@@ -342,14 +342,14 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
     );
 }
 
-// â”€â”€ AC-3: bridge-sensitive priority â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ AC-3: bridge-sensitive priority â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 /// AC-3: When a BridgeInfill and a SparseInfill entity are equidistant (within
 /// 0.001 mm) from the current position, BridgeInfill appears first in the live
 /// WASM dispatch result.
 #[test]
 fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
-    // Both at exactly (5.0, 0.0) â€” equidistant from start (0,0). Bridge wins.
+    // Both at exactly (5.0, 0.0) â€" equidistant from start (0,0). Bridge wins.
     let infill = InfillIR {
         schema_version: semver(),
         global_layer_index: 0,
@@ -449,7 +449,7 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
     );
 }
 
-// â”€â”€ AC-4: determinism across repeated runs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ AC-4: determinism across repeated runs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 /// AC-4: Running the live dispatch path twice on identical input produces a
 /// byte-identical ordered entity sequence.
@@ -550,13 +550,13 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
     );
 }
 
-// â”€â”€ AC-NEG: single / already-optimal sequence unchanged â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ AC-NEG: single / already-optimal sequence unchanged â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 /// Negative: An already-optimal sequence (0.0, 10.0, 30.0) is returned
-/// unchanged through live WASM dispatch â€” no reordering needed.
+/// unchanged through live WASM dispatch â€" no reordering needed.
 #[test]
 fn single_or_already_optimal_sequence_is_left_unchanged() {
-    // Already-optimal: (0,0),(10,0),(30,0) â€” NN order from origin is this order.
+    // Already-optimal: (0,0),(10,0),(30,0) â€" NN order from origin is this order.
     let infill = InfillIR {
         schema_version: semver(),
         global_layer_index: 0,
@@ -647,7 +647,7 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
     );
 }
 
-// â”€â”€ AC-6: no module proposal leaves raw assembled order â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ AC-6: no module proposal leaves raw assembled order â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 /// AC-6 (Step 5): When the path-optimization module returns Success without
 /// emitting a `set-entity-order` proposal, the host must NOT apply its own
@@ -659,7 +659,7 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
 /// emits an explicit proposal.
 #[test]
 fn no_module_proposal_leaves_raw_assembled_order() {
-    // Raw start-x: [30.0, 0.0, 10.0] â€” no NN reordering should occur
+    // Raw start-x: [30.0, 0.0, 10.0] â€" no NN reordering should occur
     // if the module emits no proposal.
     let infill = InfillIR {
         schema_version: semver(),
@@ -717,18 +717,18 @@ impl LayerStageRunner for NoProposalStubRunner {
         _module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
     ) -> Result<LayerStageCommitData, LayerStageError> {
-        if stage_id == “Layer::Infill” {
+        if stage_id == "Layer::Infill" {
             return Ok(LayerStageCommitData {
                 infill_output: Some(self.infill.clone()),
                 ..Default::default()
             });
         }
-        // No proposal â€” no set_entity_order call, no layer_collection_proposal.
+        // No proposal â€" no set_entity_order call, no layer_collection_proposal.
         Ok(LayerStageCommitData::default())
     }
 }
 
-// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 fn path_at(x: f32, y: f32) -> ExtrusionPath3D {
     ExtrusionPath3D {

@@ -25,7 +25,7 @@ use slicer_ir::{
 use slicer_runtime::{
     execute_prepass_with_builtins, Blackboard, CompiledModule, CompiledModuleBuilder,
     CompiledModuleLive, CompiledStage, ExecutionModuleBinding, ExecutionPlan, IrAccessMask,
-    LoadedModuleBuilder, PrepassExecutionError, PrepassRunnerError, PrepassStageInput,
+    LoadedModuleBuilder, PrepassRunnerError, PrepassStageInput,
     PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
 };
 

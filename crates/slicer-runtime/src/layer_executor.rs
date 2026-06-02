@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use slicer_core::slice_mesh_ex;
 use slicer_ir::{
     ConfigValue, ExPolygon, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen,
-    LayerStageCommitData, LayerStageOutput, ModuleId, PaintRegionIR, PaintSemantic, PerimeterIR,
-    PrintEntity, RegionKey, RegionMapIR, StageId, SupportIR, WallFeatureFlags,
+    LayerStageCommitData, ModuleId, PaintRegionIR, PaintSemantic, PerimeterIR, PrintEntity,
+    RegionKey, RegionMapIR, StageId, SupportIR, WallFeatureFlags,
 };
 use slicer_wasm_host::{CompiledModuleLive, LayerStageInput, LayerStageRunner};
 
@@ -381,6 +381,28 @@ fn execute_single_layer_inner(
                 }
             };
 
+            // Extract cross-boundary flags before commit consumes the struct.
+            let entity_order_proposal = commit.entity_order_proposal.clone();
+            let needs_seam_injection = commit.needs_seam_injection;
+
+            // Layer::PathOptimization may have emitted a `set-entity-order` proposal
+            // via `layer-collection-builder`. Apply it against the staged
+            // `LayerCollectionIR.ordered_entities` BEFORE commit_layer_outputs runs,
+            // matching the original dispatch.rs::run_stage ordering.
+            if stage.stage_id == "Layer::PathOptimization" {
+                if let Some(ref proposal) = entity_order_proposal {
+                    if let Err(message) = apply_entity_order_proposal(&mut arena, proposal) {
+                        instrumentation.on_stage_end(&stage.stage_id, Some(layer.index));
+                        return Err(LayerExecutionError::FatalLayer {
+                            layer_index: layer.index,
+                            stage_id: stage.stage_id.clone(),
+                            module_id: module.module_id.clone(),
+                            message,
+                        });
+                    }
+                }
+            }
+
             // Commit the IR-typed output data to the arena.
             if let Err(e) = commit_layer_outputs(
                 &stage.stage_id,
@@ -399,11 +421,34 @@ fn execute_single_layer_inner(
                 });
             }
 
-            // Apply any entity-order proposal from PathOptimization.
-            // (Legacy: PathOptimization used to call apply_entity_order_proposal
-            // via the old HEC; with LayerStageCommitData the ordering is already
-            // baked into ordered_entities at dispatch time, so this is now a no-op
-            // placeholder for forward-compat in case the proposal surface returns.)
+            // For Layer::Perimeters: inject seam from SeamPlanIR into arena.perimeter()
+            // so PerimetersPostProcess can merge it into the guest output.
+            // The seam was sent to the WASM store via PerimeterRegionData but is NOT
+            // baked into the PerimeterIR the guest emits, so we inject it here
+            // post-commit. Mirrors the post-commit seam injection in the original
+            // dispatch.rs::LayerStageRunner::run_stage body.
+            if needs_seam_injection {
+                if let Some(seam_ir) = seam_plan_ir_for_commit {
+                    if let Some(mut perimeter) = arena.take_perimeter() {
+                        for region in &mut perimeter.regions {
+                            if region.resolved_seam.is_none() {
+                                if let Some(entry) = seam_ir.entries.iter().find(|e| {
+                                    e.region_key.global_layer_index == layer.index
+                                        && e.region_key.object_id == region.object_id
+                                        && e.region_key.region_id == region.region_id
+                                }) {
+                                    region.resolved_seam =
+                                        Some(slicer_ir::SeamPosition {
+                                            point: entry.chosen_candidate.point,
+                                            wall_index: entry.chosen_candidate.wall_index,
+                                        });
+                                }
+                            }
+                        }
+                        let _ = arena.set_perimeter(perimeter);
+                    }
+                }
+            }
 
             // Record audit using fallback ir_path_for_layer_stage.
             // runtime_reads are no longer returned by the new trait (Step 6 will
@@ -1137,7 +1182,7 @@ fn commit_layer_outputs(
             for tc in commit.tool_changes {
                 arena.push_deferred_tool_change(tc);
             }
-            for zh in commit.z_hops {
+            for mut zh in commit.z_hops {
                 // Validate hop_height before accepting (matches old per-command validation).
                 if !zh.hop_height.is_finite() || zh.hop_height <= 0.0 {
                     return Err(slicer_ir::LayerStageError::FatalModule {
@@ -1150,23 +1195,34 @@ fn commit_layer_outputs(
                         ),
                     });
                 }
+                // Override placeholder anchor (0 from deconstruct) with real anchor,
+                // matching original dispatch.rs behavior where z_hops were created
+                // with `after_entity_index: anchor`.
+                zh.after_entity_index = anchor;
                 arena.push_deferred_z_hop(zh);
             }
-            for ann in commit.annotations {
+            for mut ann in commit.annotations {
+                // Override the placeholder anchor (0) set by deconstruct_layer_ctx
+                // with the real entity-count-based anchor, matching the original
+                // dispatch.rs::commit_layer_outputs behavior.
+                ann.after_entity_index = anchor;
                 arena.push_deferred_annotation(ann);
             }
             for r in commit.retracts {
                 arena.push_deferred_retract(crate::blackboard::DeferredRetract {
-                    after_entity_index: r.after_entity_index,
+                    // Override placeholder anchor to match original behavior.
+                    after_entity_index: anchor,
                     length: r.length,
                     speed: r.speed,
                     is_unretract: r.is_unretract,
                     mode: r.mode,
                 });
             }
-            for (after_idx, x, y, z, f) in commit.deferred_travel_moves {
+            for (_after_idx, x, y, z, f) in commit.deferred_travel_moves {
                 arena.push_deferred_travel_move(crate::blackboard::DeferredTravelMove {
-                    after_entity_index: anchor.min(after_idx),
+                    // Placeholder anchor (0) from deconstruct is overridden here with
+                    // the real entity-count-based anchor, matching original dispatch.rs behavior.
+                    after_entity_index: anchor,
                     x,
                     y,
                     z,
@@ -1210,7 +1266,7 @@ fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use slicer_ir::LayerStageOutput;
 
     #[test]
     fn test_layer_stage_output_equality() {

@@ -562,9 +562,9 @@ fn macro_lib_rs_content() -> String {
     fs::read_to_string(&path).expect("read macro lib.rs for WIT include verification")
 }
 
-/// Returns the content of `crates/slicer-runtime/src/wit_host.rs`.
+/// Returns the content of `crates/slicer-wasm-host/src/host.rs`.
 /// Uses `std::fs::read_to_string` at test runtime.
 fn host_wit_host_rs_content() -> String {
-    let path = workspace_root().join("crates/slicer-runtime/src/wit_host.rs");
-    fs::read_to_string(&path).expect("read host wit_host.rs for inline WIT verification")
+    let path = workspace_root().join("crates/slicer-wasm-host/src/host.rs");
+    fs::read_to_string(&path).expect("read host host.rs for inline WIT verification")
 }

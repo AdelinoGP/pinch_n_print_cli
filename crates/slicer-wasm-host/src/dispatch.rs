@@ -1436,14 +1436,6 @@ fn push_perimeter_regions(
         None => return Ok(Vec::new()),
     };
 
-    if let Some(seam_ir) = seam_plan_ir {
-        eprintln!(
-            "seam_plan_ir has {} entries, looking for layer={}",
-            seam_ir.entries.len(),
-            layer_index
-        );
-    }
-
     let mut handles = Vec::with_capacity(perimeter_ir.regions.len());
     for region in &perimeter_ir.regions {
         let mut data = host::perimeter_region_to_data(region);
@@ -2316,6 +2308,13 @@ fn deconstruct_layer_ctx(
             let ir = host::convert_perimeter_output(perimeter, layer_index)
                 .map_err(|r| mk_fatal("perimeter", r))?;
             data.perimeter_output = Some(ir);
+            // Signal the runtime to perform post-commit seam injection from SeamPlanIR
+            // for the Layer::Perimeters stage. The original dispatch.rs run_stage body
+            // did this after commit_layer_outputs; the symmetric boundary requires the
+            // flag to cross the wasm-host/runtime split.
+            if stage_id == "Layer::Perimeters" {
+                data.needs_seam_injection = true;
+            }
         }
         "Layer::SlicePostProcess" => {
             let sp = &ctx.slice_postprocess_output;
@@ -2471,6 +2470,11 @@ fn deconstruct_layer_ctx(
                     }
                 }
             }
+            // Extract the entity-order proposal (set via guest's set-entity-order WIT call).
+            // The original dispatch.rs::run_stage called apply_entity_order_proposal(arena, &proposal)
+            // BEFORE commit_layer_outputs. With the symmetric boundary, we carry the proposal
+            // across and let layer_executor.rs apply it before committing PathOptimization outputs.
+            data.entity_order_proposal = ctx.layer_collection_proposal().cloned();
         }
         _ => {}
     }

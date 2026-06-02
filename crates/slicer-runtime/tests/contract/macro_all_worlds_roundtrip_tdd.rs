@@ -41,6 +41,7 @@ use slicer_runtime::{
 use witness::{SdkInfillWitness, SdkInfillWitnessPoint1};
 
 use crate::common::wasm_cache;
+use crate::common::{finalization_input, layer_input, prepass_input};
 
 fn semver(major: u32, minor: u32, patch: u32) -> slicer_ir::SemVer {
     slicer_ir::SemVer {
@@ -144,7 +145,7 @@ fn finalization_world_macro_guest_round_trips_typed_config_and_result() {
     let stage: StageId = "PostPass::LayerFinalization".to_string();
 
     let err =
-        FinalizationStageRunner::run_stage(&dispatcher, &stage, &module, &bb, &mut Vec::new())
+        FinalizationStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), finalization_input(&bb), &mut Vec::new())
             .expect_err("guest must surface typed ModuleError driven by config");
     // The typed error code set in config must reach the trait body and
     // marshal back through the component boundary.
@@ -174,7 +175,7 @@ fn finalization_world_macro_guest_succeeds_without_error_config() {
     let bb = Blackboard::new(empty_mesh_ir(), 0);
     let stage: StageId = "PostPass::LayerFinalization".to_string();
     let out =
-        FinalizationStageRunner::run_stage(&dispatcher, &stage, &module, &bb, &mut Vec::new())
+        FinalizationStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), finalization_input(&bb), &mut Vec::new())
             .expect("empty config path must succeed through real typed glue");
     assert!(matches!(out, FinalizationOutput::Success));
 }
@@ -195,7 +196,7 @@ fn finalization_world_macro_guest_is_deterministic() {
     let stage: StageId = "PostPass::LayerFinalization".to_string();
     for _ in 0..3 {
         let out =
-            FinalizationStageRunner::run_stage(&dispatcher, &stage, &module, &bb, &mut Vec::new())
+            FinalizationStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), finalization_input(&bb), &mut Vec::new())
                 .expect("deterministic success across repeated calls");
         assert!(matches!(out, FinalizationOutput::Success));
     }
@@ -218,7 +219,7 @@ fn prepass_world_macro_guest_round_trips_typed_config_and_result() {
     );
     let bb = Blackboard::new(empty_mesh_ir(), 0);
     let stage: StageId = "PrePass::MeshAnalysis".to_string();
-    let err = PrepassStageRunner::run_stage(&dispatcher, &stage, &module, &bb)
+    let err = PrepassStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), prepass_input(&bb))
         .expect_err("guest must surface typed ModuleError driven by config");
     let msg = format!("{err}");
     assert!(
@@ -245,9 +246,9 @@ fn prepass_world_macro_guest_succeeds_without_error_config() {
     );
     let bb = Blackboard::new(empty_mesh_ir(), 0);
     let stage: StageId = "PrePass::MeshAnalysis".to_string();
-    let out = PrepassStageRunner::run_stage(&dispatcher, &stage, &module, &bb)
+    let out = PrepassStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), prepass_input(&bb))
         .expect("empty config path must succeed through real typed glue");
-    assert!(matches!(out.0, PrepassStageOutput::None));
+    assert!(matches!(out, PrepassStageOutput::None));
 }
 
 #[test]
@@ -265,9 +266,9 @@ fn prepass_world_macro_guest_is_deterministic() {
     let bb = Blackboard::new(empty_mesh_ir(), 0);
     let stage: StageId = "PrePass::MeshAnalysis".to_string();
     for _ in 0..3 {
-        let out = PrepassStageRunner::run_stage(&dispatcher, &stage, &module, &bb)
+        let out = PrepassStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), prepass_input(&bb))
             .expect("deterministic success across repeated calls");
-        assert!(matches!(out.0, PrepassStageOutput::None));
+        assert!(matches!(out, PrepassStageOutput::None));
     }
 }
 
@@ -297,7 +298,7 @@ fn prepass_meshseg_macro_guest_round_trips_typed_config_and_result() {
     );
     let bb = Blackboard::new(empty_mesh_ir(), 0);
     let stage: StageId = "PrePass::MeshSegmentation".to_string();
-    let (out, _reads) = PrepassStageRunner::run_stage(&dispatcher, &stage, &module, &bb)
+    let out = PrepassStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), prepass_input(&bb))
         .expect("marks_basic path must succeed through macro-arm typed glue");
     match out {
         PrepassStageOutput::MeshSegmentation(ir) => {
@@ -345,10 +346,10 @@ fn layer_world_macro_guest_round_trips_typed_config_and_result() {
         intentional_error_config(0xD5),
     );
     let bb = Blackboard::new(empty_mesh_ir(), 1);
-    let (mut arena, layer) = one_layer_arena();
+    let (arena, layer) = one_layer_arena();
     let stage: StageId = "Layer::Infill".to_string();
 
-    let err = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module, &bb, &mut arena)
+    let err = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module.as_live(), layer_input(&bb, &arena))
         .expect_err("guest must surface typed ModuleError driven by config");
     match err {
         LayerStageError::FatalModule {
@@ -392,9 +393,9 @@ fn layer_world_macro_guest_succeeds_without_error_config() {
         ConfigView::new(),
     );
     let bb = Blackboard::new(empty_mesh_ir(), 1);
-    let (mut arena, layer) = one_layer_arena();
+    let (arena, layer) = one_layer_arena();
     let stage: StageId = "Layer::Infill".to_string();
-    let _out = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module, &bb, &mut arena)
+    let _out = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module.as_live(), layer_input(&bb, &arena))
         .expect("empty config path must succeed through real typed glue");
 }
 
@@ -414,8 +415,8 @@ fn layer_world_macro_guest_is_deterministic() {
     let bb = Blackboard::new(empty_mesh_ir(), 1);
     let stage: StageId = "Layer::Infill".to_string();
     for _ in 0..3 {
-        let (mut arena, layer) = one_layer_arena();
-        LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module, &bb, &mut arena)
+        let (arena, layer) = one_layer_arena();
+        LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module.as_live(), layer_input(&bb, &arena))
             .expect("deterministic success across repeated calls");
     }
 }
@@ -516,7 +517,7 @@ fn layer_world_macro_guest_sees_real_slice_region_content() {
     arena.set_slice(slice).expect("commit slice ir");
 
     let stage: StageId = "Layer::Infill".to_string();
-    let err = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module, &bb, &mut arena)
+    let err = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module.as_live(), layer_input(&bb, &arena))
         .expect_err("intentional error must surface");
     let msg = format!("{err}");
 
@@ -563,8 +564,10 @@ fn layer_world_macro_guest_drain_back_reaches_arena_infill() {
     arena.set_slice(slice).expect("commit slice ir");
 
     let stage: StageId = "Layer::Infill".to_string();
-    LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module, &bb, &mut arena)
+    let __commit = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module.as_live(), layer_input(&bb, &arena))
         .expect("success path must succeed");
+    slicer_runtime::commit_layer_outputs_for_test(&stage, "com.test.sdk-layer-infill-witness-out", 9, __commit, &mut arena, None)
+        .expect("commit must succeed");
 
     // Drain-back proof: the SDK-side `push_sparse_path` the guest issued
     // must have been replayed through the wit-bindgen infill-output-builder
@@ -644,7 +647,8 @@ fn layer_world_macro_guest_deep_copy_is_deterministic() {
         arena
             .set_slice(slice_ir_with_regions(2, 0.4, 2, 5))
             .unwrap();
-        LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module, &bb, &mut arena).unwrap();
+        let __commit = LayerStageRunner::run_stage(&dispatcher, &stage, &layer, &module.as_live(), layer_input(&bb, &arena)).unwrap();
+        slicer_runtime::commit_layer_outputs_for_test(&stage, "com.test.sdk-layer-infill-det-content", 2, __commit, &mut arena, None).expect("commit");
         let w =
             SdkInfillWitness::decode(&arena.infill().unwrap().regions[0].sparse_infill[0].points);
         snapshots.push((

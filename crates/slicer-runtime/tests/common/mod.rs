@@ -6,12 +6,17 @@ pub mod slicer_cache;
 pub mod wasm_cache;
 
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use slicer_ir::{
     BoundingBox3, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, Point3, SemVer, Transform3d,
 };
 use slicer_runtime::wit_host::{HostExecutionContext, HostExecutionContextBuilder};
+use slicer_runtime::{
+    Blackboard, FinalizationStageInput, LayerArena, LayerStageInput, PostpassStageInput,
+    PrepassStageInput,
+};
 
 pub fn ctx_with_mesh(module_id: &str, mesh: Arc<MeshIR>) -> HostExecutionContext {
     HostExecutionContextBuilder::new(module_id.to_string(), 0.0, 0.0)
@@ -124,4 +129,199 @@ pub fn assert_perpendicular(x: f32, y: f32, z: f32, edge1: [f32; 3], edge2: [f32
     let dot2 = x * edge2[0] + y * edge2[1] + z * edge2[2];
     assert_close(dot1, 0.0, &format!("{label} dot edge1"));
     assert_close(dot2, 0.0, &format!("{label} dot edge2"));
+}
+
+// ── commit_hec_for_test ───────────────────────────────────────────────────────
+// Thin test helper that converts a legacy `HostExecutionContext` (built in tests
+// via `HostExecutionContextBuilder`) into the new `LayerStageCommitData` IR
+// struct, then delegates to `slicer_runtime::commit_layer_outputs_for_test`.
+// Only the stage families exercised by the executor tests are handled; all other
+// stage_ids produce an empty `LayerStageCommitData::default()`.
+
+#[allow(dead_code)]
+pub fn commit_hec_for_test(
+    stage_id: &str,
+    module_id: &str,
+    layer_index: u32,
+    ctx: &slicer_runtime::wit_host::HostExecutionContext,
+    arena: &mut slicer_runtime::LayerArena,
+    seam_plan_ir: Option<&slicer_ir::SeamPlanIR>,
+) -> Result<(), slicer_ir::LayerStageError> {
+    use slicer_ir::LayerStageCommitData;
+    use slicer_runtime::wit_host::{
+        GcodeCommandCollected,
+        convert_infill_output, convert_perimeter_output, convert_support_output,
+    };
+
+    let mk_fatal = |what: &str, reason: String| slicer_ir::LayerStageError::FatalModule {
+        stage_id: stage_id.to_string(),
+        module_id: module_id.to_string(),
+        message: format!("invalid {what} output: {reason}"),
+    };
+
+    let mut data = LayerStageCommitData::default();
+
+    match stage_id {
+        "Layer::Infill" | "Layer::InfillPostProcess" => {
+            let infill = ctx.infill_output();
+            if !infill.sparse_paths.is_empty()
+                || !infill.solid_paths.is_empty()
+                || !infill.ironing_paths.is_empty()
+            {
+                data.infill_output = Some(
+                    convert_infill_output(infill, layer_index)
+                        .map_err(|r| mk_fatal("infill", r))?,
+                );
+            }
+        }
+        "Layer::Support" | "Layer::SupportPostProcess" => {
+            let support = ctx.support_output();
+            if !support.support_paths.is_empty()
+                || !support.interface_paths.is_empty()
+                || !support.raft_paths.is_empty()
+            {
+                data.support_output = Some(
+                    convert_support_output(support, layer_index)
+                        .map_err(|r| mk_fatal("support", r))?,
+                );
+            }
+        }
+        "Layer::Perimeters" | "Layer::PerimetersPostProcess" => {
+            let perimeter = ctx.perimeter_output();
+            let has_any = !perimeter.wall_loops.is_empty()
+                || !perimeter.rotated_wall_loops.is_empty()
+                || !perimeter.infill_areas.is_empty()
+                || !perimeter.seam_candidates.is_empty();
+            if has_any {
+                data.perimeter_output = Some(
+                    convert_perimeter_output(perimeter, layer_index)
+                        .map_err(|r| mk_fatal("perimeter", r))?,
+                );
+            }
+        }
+        "Layer::PathOptimization" => {
+            let anchor = 0u32;
+            for (i, cmd) in ctx.gcode_output().commands.iter().enumerate() {
+                match cmd {
+                    GcodeCommandCollected::ToolChange { after_entity_index, from_tool, to_tool } => {
+                        data.tool_changes.push(slicer_ir::ToolChange {
+                            after_entity_index: *after_entity_index,
+                            from_tool: *from_tool,
+                            to_tool: *to_tool,
+                        });
+                    }
+                    GcodeCommandCollected::Comment(text) => {
+                        data.annotations.push(slicer_ir::LayerAnnotation {
+                            after_entity_index: anchor,
+                            kind: slicer_ir::LayerAnnotationKind::Comment(text.clone()),
+                        });
+                    }
+                    GcodeCommandCollected::Raw(text) => {
+                        data.annotations.push(slicer_ir::LayerAnnotation {
+                            after_entity_index: anchor,
+                            kind: slicer_ir::LayerAnnotationKind::Raw(text.clone()),
+                        });
+                    }
+                    GcodeCommandCollected::Move(cmd) => {
+                        data.deferred_travel_moves.push((anchor, cmd.x, cmd.y, cmd.z, cmd.f));
+                    }
+                    GcodeCommandCollected::ZHop { hop_height, .. } => {
+                        if !hop_height.is_finite() || *hop_height <= 0.0 {
+                            return Err(slicer_ir::LayerStageError::FatalModule {
+                                stage_id: stage_id.to_string(),
+                                module_id: module_id.to_string(),
+                                message: format!(
+                                    "Layer::PathOptimization push-z-hop call {i} rejected: \
+                                     hop-height={hop_height} not finite and strictly positive"
+                                ),
+                            });
+                        }
+                        data.z_hops.push(slicer_ir::ZHop {
+                            after_entity_index: anchor,
+                            hop_height: *hop_height,
+                        });
+                    }
+                    GcodeCommandCollected::Retract { length, speed, mode } => {
+                        data.retracts.push(slicer_ir::TravelRetract {
+                            after_entity_index: anchor,
+                            length: *length,
+                            speed: *speed,
+                            is_unretract: false,
+                            mode: *mode,
+                        });
+                    }
+                    GcodeCommandCollected::Unretract { length, speed, mode } => {
+                        data.retracts.push(slicer_ir::TravelRetract {
+                            after_entity_index: anchor,
+                            length: *length,
+                            speed: *speed,
+                            is_unretract: true,
+                            mode: *mode,
+                        });
+                    }
+                    other => {
+                        return Err(slicer_ir::LayerStageError::FatalModule {
+                            stage_id: stage_id.to_string(),
+                            module_id: module_id.to_string(),
+                            message: format!(
+                                "Layer::PathOptimization unsupported GCode command at {i}: \
+                                 {:?}", std::mem::discriminant(other)
+                            ),
+                        });
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+
+    slicer_runtime::commit_layer_outputs_for_test(
+        stage_id,
+        module_id,
+        layer_index,
+        data,
+        arena,
+        seam_plan_ir,
+    )
+}
+
+// ── Stage input helpers ───────────────────────────────────────────────────────
+// Construct *StageInput borrow structs from the legacy Blackboard/LayerArena
+// so existing test call sites can use the new trait boundary with minimal churn.
+
+pub fn layer_input<'a>(blackboard: &Blackboard, arena: &'a LayerArena) -> LayerStageInput<'a> {
+    LayerStageInput {
+        mesh: blackboard.mesh().clone(),
+        paint_regions: blackboard.paint_regions().cloned(),
+        seam_plan: blackboard.seam_plan().cloned(),
+        support_plan: blackboard.support_plan().cloned(),
+        region_map: blackboard.region_map().cloned(),
+        slice: arena.slice(),
+        perimeter: arena.perimeter(),
+        layer_collection: arena.layer_collection(),
+    }
+}
+
+pub fn prepass_input(blackboard: &Blackboard) -> PrepassStageInput<'_> {
+    PrepassStageInput {
+        mesh: blackboard.mesh().clone(),
+        layer_plan: blackboard.layer_plan().cloned(),
+        region_map: blackboard.region_map().cloned(),
+        support_geometry: blackboard.support_geometry().cloned(),
+        _phantom: PhantomData,
+    }
+}
+
+pub fn finalization_input(blackboard: &Blackboard) -> FinalizationStageInput<'_> {
+    FinalizationStageInput {
+        mesh: blackboard.mesh().clone(),
+        _phantom: PhantomData,
+    }
+}
+
+pub fn postpass_input(blackboard: &Blackboard) -> PostpassStageInput<'_> {
+    PostpassStageInput {
+        mesh: blackboard.mesh().clone(),
+        _phantom: PhantomData,
+    }
 }

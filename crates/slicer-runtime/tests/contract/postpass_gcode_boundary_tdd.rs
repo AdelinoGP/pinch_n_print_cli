@@ -14,7 +14,7 @@ use slicer_runtime::{
     PostpassOutput, PostpassStageRunner, WasmRuntimeDispatcher,
 };
 
-use crate::common::wasm_cache;
+use crate::common::{postpass_input, wasm_cache};
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -185,9 +185,9 @@ fn postpass_gcode_boundary_carries_all_payload_variants_into_guest() {
 
     let result = dispatcher.run_gcode_postprocess(
         &StageId::from("PostPass::GCodePostProcess"),
-        &module,
-        &blackboard,
-        &mut gcode_ir,
+        &module.as_live(),
+        postpass_input(&blackboard),
+        &mut gcode_ir.commands,
     );
 
     assert!(matches!(result, Ok(PostpassOutput::GCodeSuccess)));

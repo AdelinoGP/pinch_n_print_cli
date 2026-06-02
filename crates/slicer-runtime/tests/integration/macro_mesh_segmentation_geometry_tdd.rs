@@ -25,6 +25,7 @@ use slicer_runtime::{
     wit_host::{object_mesh_to_wit_mesh_object_view, prepass},
     Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner, WasmEngine,
 };
+use crate::common::prepass_input;
 use std::sync::Arc;
 
 /// Helper to construct a SemVer.
@@ -408,8 +409,8 @@ fn mesh_seg_empty_geometry_produces_fatal_error() {
         let result = PrepassStageRunner::run_stage(
             &dispatcher,
             &"PrePass::MeshSegmentation".to_string(),
-            &module,
-            &blackboard,
+            &module.as_live(),
+            prepass_input(&blackboard),
         );
         assert!(
             result.is_ok() || format!("{:?}", result).contains("FatalModule"),
@@ -432,8 +433,8 @@ fn mesh_seg_empty_geometry_produces_fatal_error() {
         let result = PrepassStageRunner::run_stage(
             &dispatcher,
             &"PrePass::MeshSegmentation".to_string(),
-            &module,
-            &blackboard,
+            &module.as_live(),
+            prepass_input(&blackboard),
         );
         assert!(
             result.is_ok() || format!("{:?}", result).contains("FatalModule"),

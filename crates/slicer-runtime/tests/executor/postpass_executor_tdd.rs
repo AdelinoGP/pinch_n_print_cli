@@ -1230,12 +1230,12 @@ impl PostpassStageRunner for MutatingRunner {
     fn run_gcode_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
-        gcode_ir: &mut GCodeIR,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
+        commands: &mut Vec<GCodeCommand>,
     ) -> Result<PostpassOutput, PostpassError> {
         // Add a marker command to prove mutation occurred
-        gcode_ir.commands.push(GCodeCommand::Comment {
+        commands.push(GCodeCommand::Comment {
             text: "MUTATED_BY_MODULE".to_string(),
         });
         Ok(PostpassOutput::GCodeSuccess)
@@ -1244,8 +1244,8 @@ impl PostpassStageRunner for MutatingRunner {
     fn run_text_postprocess(
         &self,
         _stage_id: &StageId,
-        _module: &CompiledModule,
-        _blackboard: &Blackboard,
+        _module: &CompiledModuleLive<'_>,
+        _input: PostpassStageInput<'_>,
         text: String,
     ) -> Result<PostpassOutput, PostpassError> {
         Ok(PostpassOutput::TextSuccess { text })
