@@ -61,7 +61,7 @@ fn slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> String {
     let module_dir = core_modules_dir();
     assert!(
         module_dir.exists(),
-        "core-modules dir missing at {}; run build-core-modules.sh",
+        "core-modules dir missing at {}; run `cargo xtask build-guests`",
         module_dir.display()
     );
 
@@ -79,7 +79,7 @@ fn slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> String {
     assert!(
         machine_binding.wasm_component.is_some(),
         "machine-gcode-emit.wasm must compile as a component (not a placeholder); \
-         run modules/core-modules/build-core-modules.sh"
+         run `cargo xtask build-guests`"
     );
 
     // 2. Build the config bounds index from all loaded modules.

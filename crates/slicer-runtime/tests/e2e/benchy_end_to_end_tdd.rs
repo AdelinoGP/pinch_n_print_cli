@@ -214,7 +214,7 @@ fn benchy_e2e_against_real_core_modules_is_diagnosable() {
             !regressed,
             "regression: canonical Benchy-path module '{canonical}' has \
              reverted to a placeholder .wasm binary. Rebuild via \
-             modules/core-modules/build-core-modules.sh. Stderr:\n{stderr}"
+             `cargo xtask build-guests`. Stderr:\n{stderr}"
         );
     }
 
@@ -343,7 +343,7 @@ fn benchy_mvp_no_canonical_placeholder_regression() {
             !regressed,
             "MVP blocker #1 regression: canonical Benchy-path module \
              '{canonical}' has reverted to a placeholder .wasm binary. \
-             Rebuild via modules/core-modules/build-core-modules.sh. \
+             Rebuild via `cargo xtask build-guests`. \
              Stderr tail:\n{}",
             stderr
                 .lines()
@@ -956,7 +956,7 @@ fn canonical_core_module_artifacts_are_real_components() {
     assert!(
         failures.is_empty(),
         "Blocker #1 regression: core-module artifacts are not real components:\n  {}\n\
-         Rebuild via modules/core-modules/build-core-modules.sh.",
+         Rebuild via `cargo xtask build-guests`.",
         failures.join("\n  "),
     );
 }
@@ -992,7 +992,7 @@ fn mesh_segmentation_is_a_real_routed_component() {
     assert!(
         meta.len() >= 10_000,
         "mesh-segmentation.wasm is {} bytes; a real wit-bindgen component is \
-         ~30 KB+. Rebuild via modules/core-modules/build-core-modules.sh.",
+         ~30 KB+. Rebuild via `cargo xtask build-guests`.",
         meta.len(),
     );
     let bytes = std::fs::read(&path).expect("read mesh-segmentation.wasm");

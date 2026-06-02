@@ -304,7 +304,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     let bytes = std::fs::read(&wasm_path).unwrap_or_else(|_| {
         panic!(
             "path-optimization-default.wasm not found at {}. \
-             Build it with: ./modules/core-modules/build-core-modules.sh",
+             Build it with: `cargo xtask build-guests`",
             wasm_path.display()
         )
     });
@@ -784,7 +784,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     let bytes = std::fs::read(&wasm_path).unwrap_or_else(|_| {
         panic!(
             "seam-placer.wasm not found at {}. \
-             Build it with: ./modules/core-modules/build-core-modules.sh",
+             Build it with: `cargo xtask build-guests`",
             wasm_path.display()
         )
     });

@@ -799,10 +799,10 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
     let report = load_modules_from_roots(&[core_modules_root]).unwrap();
 
     // Modules with a real component-model .wasm produced by
-    // `modules/core-modules/build-core-modules.sh`. They must not be
+    // `cargo xtask build-guests`. They must not be
     // flagged as placeholders; every other core module still is.
     // Modules with a real component-model .wasm produced by
-    // `modules/core-modules/build-core-modules.sh`. They must not be
+    // `cargo xtask build-guests`. They must not be
     // flagged as placeholders; every other core module still is.
     // `paint-segmentation` and `paint-region-annotator` .wasm still
     // exist on disk (deletion is Step 7), so they remain non-placeholder
@@ -864,7 +864,7 @@ fn core_module_placeholder_warnings_include_module_ids() {
 
     // One placeholder warning per core module whose companion .wasm is
     // still an 8-byte stub. Modules built by
-    // `modules/core-modules/build-core-modules.sh` do not produce a
+    // `cargo xtask build-guests` do not produce a
     // placeholder warning. The count is derived dynamically.
     let total_modules = report.modules.len();
     let real_count = report

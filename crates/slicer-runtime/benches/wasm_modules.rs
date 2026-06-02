@@ -10,7 +10,7 @@
 //! comparable cost is captured implicitly by the `pipeline` bench's
 //! end-to-end driver.
 //!
-//! **Requires** `./modules/core-modules/build-core-modules.sh` to have been
+//! **Requires** `cargo xtask build-guests` to have been
 //! run; bench panics loudly with the rebuild hint if a component is missing
 //! or matches the documented 8-byte placeholder.
 
@@ -44,7 +44,7 @@ fn discover_core_modules() -> Vec<DiscoveredModule> {
     assert!(
         root.is_dir(),
         "expected core-modules directory at {root:?}; \
-         run ./modules/core-modules/build-core-modules.sh"
+         run `cargo xtask build-guests`"
     );
 
     let mut out = Vec::new();
@@ -66,13 +66,13 @@ fn discover_core_modules() -> Vec<DiscoveredModule> {
         assert!(
             wasm_path.is_file(),
             "missing WASM artifact at {wasm_path:?}; \
-             run ./modules/core-modules/build-core-modules.sh"
+             run `cargo xtask build-guests`"
         );
         let bytes = std::fs::read(&wasm_path).expect("read wasm");
         assert!(
             bytes.len() > 8,
             "{wasm_path:?} looks like the placeholder stub; \
-             run ./modules/core-modules/build-core-modules.sh"
+             run `cargo xtask build-guests`"
         );
         out.push(DiscoveredModule {
             id: leaf.to_string(),

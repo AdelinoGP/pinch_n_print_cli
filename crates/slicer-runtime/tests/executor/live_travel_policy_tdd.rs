@@ -8,7 +8,7 @@
 //! These tests exercise the HOST DISPATCH commit path via
 //! `commit_layer_outputs_for_test`, not the WASM boundary. The WASM-level
 //! coverage (building path-optimization-default.wasm with travel policy) is
-//! handled by the rebuild gate in `build-core-modules.sh`.
+//! handled by the rebuild gate in `cargo xtask build-guests`.
 
 #![allow(missing_docs)]
 

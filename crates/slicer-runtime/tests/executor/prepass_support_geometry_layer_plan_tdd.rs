@@ -281,7 +281,7 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
     let bytes = std::fs::read(&wasm_path).unwrap_or_else(|_| {
         panic!(
             "support-planner.wasm not found at {}. Build with: \
-             ./modules/core-modules/build-core-modules.sh",
+             `cargo xtask build-guests`",
             wasm_path.display()
         )
     });

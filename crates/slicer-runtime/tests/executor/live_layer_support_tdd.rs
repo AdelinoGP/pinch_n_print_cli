@@ -413,7 +413,7 @@ fn compile_support_module(
     let bytes = std::fs::read(wasm_path).unwrap_or_else(|_| {
         panic!(
             "support module not found at {}. Build with: \
-             ./modules/core-modules/build-core-modules.sh",
+             `cargo xtask build-guests`",
             wasm_path.display()
         )
     });

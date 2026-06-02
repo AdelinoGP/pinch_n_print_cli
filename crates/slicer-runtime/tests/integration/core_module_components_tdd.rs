@@ -8,7 +8,7 @@
 //! i.e. the companion `.wasm` is NOT a placeholder and NOT a raw core
 //! module (the host only accepts component-model binaries).
 //!
-//! If this test fails, run: `modules/core-modules/build-core-modules.sh`.
+//! If this test fails, run: `cargo xtask build-guests`.
 
 #![allow(missing_docs)]
 
@@ -31,7 +31,7 @@ fn layer_planner_default_loads_as_real_component() {
         core_modules
             .join("layer-planner-default/layer-planner-default.wasm")
             .exists(),
-        "layer-planner-default.wasm missing; run modules/core-modules/build-core-modules.sh"
+        "layer-planner-default.wasm missing; run `cargo xtask build-guests`"
     );
 
     let out = wasm_cache::cached_live_modules(&[core_modules.clone()], 1);
