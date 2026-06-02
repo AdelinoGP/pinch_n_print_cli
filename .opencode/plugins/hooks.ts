@@ -45,8 +45,7 @@ export const ProjectHooks: Plugin = async ({ client, $, directory }) => {
       }
 
       try {
-        await $`bash ./modules/core-modules/build-core-modules.sh --check`.cwd(directory).quiet()
-        await $`bash ./test-guests/build-test-guests.sh --check`.cwd(directory).quiet()
+        await $`cargo xtask build-guests --check`.cwd(directory).quiet()
       } catch (err: unknown) {
         const stderr = String((err as { stderr?: { toString(): string } })?.stderr ?? err)
         if (stderr.trim()) {
