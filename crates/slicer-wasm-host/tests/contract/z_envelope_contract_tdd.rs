@@ -22,10 +22,10 @@
 
 #![allow(missing_docs)]
 
-use slicer_runtime::wit_host::layer::slicer::ir_handles::ir_handles::{
+use slicer_wasm_host::host::layer::slicer::ir_handles::ir_handles::{
     HostInfillOutputBuilder, HostPerimeterOutputBuilder, HostSupportOutputBuilder,
 };
-use slicer_runtime::wit_host::{
+use slicer_wasm_host::host::{
     ExtrusionPath3d, ExtrusionRole, HostExecutionContextBuilder, Point3, Point3WithWidth,
     WallLoopType, WallLoopView,
 };

@@ -103,7 +103,13 @@ pub fn compiled_component_at(path: &Path) -> Arc<WasmComponent> {
 /// Convenience: resolve `<CARGO_MANIFEST_DIR>/test-guests/<name>.component.wasm`
 /// and delegate to [`compiled_component_at`].
 pub fn compiled_guest(name: &str) -> Arc<WasmComponent> {
+    // Test-guests moved to `slicer-wasm-host/test-guests/` in P83.1 — runtime tests
+    // that still need a compiled guest resolve via the sibling path. AC-N3 forbids
+    // a runtime[dev] back-edge on wasm-host's tests crate, but a bare relative
+    // filesystem path is fine; the wasm artefact is read as bytes.
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("slicer-wasm-host")
         .join("test-guests")
         .join(format!("{name}.component.wasm"));
     compiled_component_at(&path)

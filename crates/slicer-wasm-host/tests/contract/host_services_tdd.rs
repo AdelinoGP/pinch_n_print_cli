@@ -4,7 +4,7 @@
 //! non-placeholder results via real Clipper2 dispatch, that unsupported mesh
 //! operations fail diagnostically, and that timing is monotonic.
 
-use slicer_runtime::wit_host::{
+use slicer_wasm_host::host::{
     ir_clip_polygons, ir_offset_polygons, ir_simplify_polygon, HostExecutionContextBuilder,
 };
 
@@ -199,7 +199,7 @@ fn simplify_handles_degenerate_input() {
 
 #[test]
 fn object_bounds_fails_with_diagnostic_when_mesh_not_wired() {
-    use slicer_runtime::wit_host::layer::slicer::world_layer::host_services as hs;
+    use slicer_wasm_host::host::layer::slicer::world_layer::host_services as hs;
 
     let mut ctx = HostExecutionContextBuilder::new("test-mod", 0.0, 0.0).build();
 
@@ -218,7 +218,7 @@ fn object_bounds_fails_with_diagnostic_when_mesh_not_wired() {
 
 #[test]
 fn raycast_returns_none_when_mesh_not_wired() {
-    use slicer_runtime::wit_host::layer::slicer::world_layer::host_services as hs;
+    use slicer_wasm_host::host::layer::slicer::world_layer::host_services as hs;
 
     let mut ctx = HostExecutionContextBuilder::new("test-mod", 0.0, 0.0).build();
 
@@ -235,7 +235,7 @@ fn raycast_returns_none_when_mesh_not_wired() {
 
 #[test]
 fn now_us_is_monotonic_within_call() {
-    use slicer_runtime::wit_host::layer::slicer::world_layer::host_services as hs;
+    use slicer_wasm_host::host::layer::slicer::world_layer::host_services as hs;
 
     let mut ctx = HostExecutionContextBuilder::new("test-mod", 0.0, 0.0).build();
 

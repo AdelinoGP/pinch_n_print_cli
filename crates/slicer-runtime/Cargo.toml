@@ -26,7 +26,7 @@ rstar = "0.12"
 [dev-dependencies]
 wasmtime = { workspace = true }
 slicer-model-io = { path = "../slicer-model-io" }
-witness = { path = "test-guests/witness" }
+witness = { path = "../slicer-wasm-host/test-guests/witness" }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 stl_io = "0.11"
 wat = "1.0"

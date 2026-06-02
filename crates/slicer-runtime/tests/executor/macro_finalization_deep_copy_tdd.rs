@@ -63,6 +63,8 @@ fn empty_mesh_ir() -> Arc<slicer_ir::MeshIR> {
 
 fn guest_component_path(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("slicer-wasm-host")
         .join("test-guests")
         .join(format!("{name}.component.wasm"))
 }

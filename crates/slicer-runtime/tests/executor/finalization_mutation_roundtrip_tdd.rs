@@ -33,7 +33,7 @@ use crate::common::{finalization_input, wasm_cache};
 
 const MUTATION_GUEST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/finalization-mutation-roundtrip-guest.component.wasm"
+    "/../slicer-wasm-host/test-guests/finalization-mutation-roundtrip-guest.component.wasm"
 );
 
 // â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

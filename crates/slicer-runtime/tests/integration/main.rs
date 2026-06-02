@@ -38,4 +38,3 @@ mod support_geometry_config_normalization_tdd;
 mod threemf_paint_drop_on_modifier_tdd;
 mod threemf_transform_tdd;
 mod wasm_instance_pool_tdd;
-mod wasm_instance_tdd;

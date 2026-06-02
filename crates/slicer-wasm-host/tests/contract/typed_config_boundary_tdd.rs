@@ -10,7 +10,7 @@
 
 #![allow(missing_docs)]
 
-use slicer_runtime::wit_host::{config_value_to_storage, normalize_subnormal_boundary};
+use slicer_wasm_host::host::{config_value_to_storage, normalize_subnormal_boundary};
 
 #[test]
 fn boundary_normalizes_subnormal_to_zero() {
@@ -40,7 +40,7 @@ fn boundary_preserves_nan_and_infinity() {
 #[test]
 fn config_value_to_storage_round_trips_basic_types() {
     use slicer_ir::ConfigValue;
-    use slicer_runtime::wit_host::ConfigValueStorage;
+    use slicer_wasm_host::host::ConfigValueStorage;
 
     assert!(matches!(
         config_value_to_storage(&ConfigValue::Bool(true)),
@@ -63,7 +63,7 @@ fn config_value_to_storage_round_trips_basic_types() {
 #[test]
 fn config_value_to_storage_homogeneous_float_list_collapses() {
     use slicer_ir::ConfigValue;
-    use slicer_runtime::wit_host::ConfigValueStorage;
+    use slicer_wasm_host::host::ConfigValueStorage;
 
     let v = ConfigValue::List(vec![ConfigValue::Float(1.0), ConfigValue::Float(2.0)]);
     match config_value_to_storage(&v) {

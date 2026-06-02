@@ -172,7 +172,7 @@ pub fn discover_guests(ws_root: &Path) -> (Vec<GuestSpec>, Vec<String>) {
     }
 
     // --- Test-guests tree ---
-    let tg_root = ws_root.join("crates/slicer-runtime/test-guests");
+    let tg_root = ws_root.join("crates/slicer-wasm-host/test-guests");
     if let Ok(entries) = fs::read_dir(&tg_root) {
         let mut dirs: Vec<PathBuf> = entries
             .filter_map(|e| e.ok())
@@ -240,7 +240,7 @@ pub fn discover_guests(ws_root: &Path) -> (Vec<GuestSpec>, Vec<String>) {
                 .to_string();
             let lib_name = lib_name(&tab, &crate_name);
             let artifact_path = PathBuf::from(format!(
-                "crates/slicer-runtime/test-guests/{dir_name}.component.wasm"
+                "crates/slicer-wasm-host/test-guests/{dir_name}.component.wasm"
             ));
 
             guests.push(GuestSpec {
@@ -349,7 +349,7 @@ pub fn build_one(spec: &GuestSpec, ws_root: &Path) -> Result<(), BuildError> {
 
     // Step A: cargo build
     // For test-guests, use a single shared CARGO_TARGET_DIR to avoid per-guest target dirs.
-    let shared_target_dir = ws_root.join("crates/slicer-runtime/test-guests/target");
+    let shared_target_dir = ws_root.join("crates/slicer-wasm-host/test-guests/target");
     let mut cmd = Command::new("cargo");
     cmd.current_dir(&spec.guest_dir).args([
         "build",

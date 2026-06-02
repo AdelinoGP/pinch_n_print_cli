@@ -5,7 +5,7 @@
 #![allow(missing_docs)]
 
 use crate::common::{ctx_with_mesh, identity_transform, mesh_fixture, sloped_triangle_object};
-use slicer_runtime::wit_host::{
+use slicer_wasm_host::host::{
     finalization::slicer::world_finalization::host_services as fhs,
     layer::slicer::world_layer::host_services as lhs,
     postpass::slicer::world_postpass::host_services as pphs,

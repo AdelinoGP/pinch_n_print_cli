@@ -54,7 +54,7 @@ fn identity_transform() -> Transform3d {
 /// Path to the pre-built prepass-guest component.
 const PREPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/prepass-guest.component.wasm"
+    "/../slicer-wasm-host/test-guests/prepass-guest.component.wasm"
 );
 
 fn load_prepass_guest(_engine: &WasmEngine) -> Option<Arc<slicer_runtime::WasmComponent>> {

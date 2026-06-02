@@ -13,5 +13,24 @@ slicer-ir = { path = "../slicer-ir" }
 slicer-schema = { path = "../slicer-schema" }
 slicer-sdk = { path = "../slicer-sdk" }
 
+[dev-dependencies]
+witness = { path = "test-guests/witness" }
+wat = "1.0"
+wit-parser = "0.247"
+tempfile = "3"
+toml = "0.8"
+
+[[test]]
+name = "contract"
+path = "tests/contract/main.rs"
+
+[[test]]
+name = "integration"
+path = "tests/integration/main.rs"
+
+[[test]]
+name = "unit"
+path = "tests/unit/main.rs"
+
 [lints]
 workspace = true

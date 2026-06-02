@@ -8,7 +8,7 @@
 //! tests merely *use* an engine to drive instance behaviour and go through
 //! `wasm_cache::shared_engine()` + `compiled_wat(...)`.
 
-use slicer_runtime::wasm_instance::{HostState, WasmEngine, WasmLoadError};
+use slicer_wasm_host::instance::{HostState, WasmEngine, WasmLoadError};
 
 use crate::common::wasm_cache;
 
@@ -164,7 +164,7 @@ fn call_void_export_missing_export_returns_error() {
     let result = instance.call_void_export("run-nonexistent");
     assert!(result.is_err());
     match result.unwrap_err() {
-        slicer_runtime::WasmCallError::ExportNotFound {
+        slicer_wasm_host::WasmCallError::ExportNotFound {
             module_id,
             export_name,
             ..

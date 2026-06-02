@@ -31,7 +31,7 @@ use crate::common::{finalization_input, wasm_cache};
 
 const SDK_FINALIZATION_GUEST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/sdk-finalization-guest.component.wasm"
+    "/../slicer-wasm-host/test-guests/sdk-finalization-guest.component.wasm"
 );
 
 const WIPE_TOWER_WASM: &str = concat!(

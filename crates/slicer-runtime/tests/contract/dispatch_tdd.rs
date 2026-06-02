@@ -115,19 +115,19 @@ const WAT_EMPTY_COMPONENT: &str = r#"(component)"#;
 /// Path to the pre-built test guest component implementing the layer-module world.
 const GUEST_COMPONENT_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/layer-infill-guest.component.wasm"
+    "/../slicer-wasm-host/test-guests/layer-infill-guest.component.wasm"
 );
 const PREPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/prepass-guest.component.wasm"
+    "/../slicer-wasm-host/test-guests/prepass-guest.component.wasm"
 );
 const FINALIZATION_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/finalization-guest.component.wasm"
+    "/../slicer-wasm-host/test-guests/finalization-guest.component.wasm"
 );
 const POSTPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/postpass-guest.component.wasm"
+    "/../slicer-wasm-host/test-guests/postpass-guest.component.wasm"
 );
 
 // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -5805,7 +5805,7 @@ fn layer_planner_default_macro_path_is_deterministic() {
 
 const SDK_PREPASS_GUEST_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/sdk-prepass-guest.component.wasm"
+    "/../slicer-wasm-host/test-guests/sdk-prepass-guest.component.wasm"
 );
 
 fn load_sdk_prepass_guest(_engine: &WasmEngine) -> Option<Arc<slicer_runtime::WasmComponent>> {

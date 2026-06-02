@@ -35,7 +35,11 @@ const GUESTS: &[(&str, &str)] = &[
 ];
 
 fn test_guests_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test-guests")
+    // Test-guests moved to slicer-wasm-host in P83.1.
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("slicer-wasm-host")
+        .join("test-guests")
 }
 
 #[test]

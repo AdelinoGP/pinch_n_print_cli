@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use slicer_runtime::wit_host::{
+use slicer_wasm_host::host::{
     ConfigValueStorage, ConfigViewData, HostExecutionContext, HostExecutionContextBuilder,
     LayerModule, SliceRegionData,
 };
@@ -269,7 +269,7 @@ fn guest_emits_output_via_infill_builder() {
     // Role must be sparse-infill
     assert!(matches!(
         path.role,
-        slicer_runtime::wit_host::ExtrusionRole::SparseInfill
+        slicer_wasm_host::host::ExtrusionRole::SparseInfill
     ));
     // Guest encodes region count in flow_factor and polygon count in width (RawInfillWitness layout).
     // 1 region passed with 0 polygons:

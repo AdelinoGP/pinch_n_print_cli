@@ -854,6 +854,8 @@ fn support_enforcer_blocker_paint_precedence() {
     // paint queries â€” it encodes enforcer/blocker counts into support output.
     use std::path::PathBuf;
     let guest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("slicer-wasm-host")
         .join("test-guests")
         .join("layer-infill-guest.component.wasm");
     let guest_bytes = std::fs::read(&guest_path).unwrap_or_else(|_| {

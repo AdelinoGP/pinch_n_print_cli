@@ -18,7 +18,7 @@ use crate::common::{finalization_input, wasm_cache};
 
 const FINALIZATION_GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/test-guests/sdk-finalization-guest.component.wasm"
+    "/../slicer-wasm-host/test-guests/sdk-finalization-guest.component.wasm"
 );
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {

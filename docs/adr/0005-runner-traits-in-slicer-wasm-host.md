@@ -132,3 +132,11 @@ precede the other three modules so the `super::layer::…` paths resolve.
   `wasmtime`.
 - `! grep -rE 'use slicer_wasm_host::HostExecutionContext' crates/slicer-runtime/src/{layer_executor,prepass,postpass,layer_finalization}.rs`
   matches (no wasm-host-internal types in executor commit paths).
+
+## Test placement (added P83.1)
+
+Tests of the runner-trait contract and dispatcher protocol live in
+`slicer-wasm-host/tests/`; tests of orchestrator-using-dispatcher composition
+(those needing `Blackboard` or `LayerArena`) stay in `slicer-runtime/tests/`.
+Test guests live with the host they exercise, under
+`slicer-wasm-host/test-guests/`.

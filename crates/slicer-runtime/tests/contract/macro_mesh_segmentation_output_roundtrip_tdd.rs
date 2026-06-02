@@ -27,6 +27,8 @@ const SDK_PREPASS_GUEST_NAME: &str = "sdk-prepass-meshseg-guest";
 
 fn sdk_prepass_guest_path() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("slicer-wasm-host")
         .join("test-guests")
         .join(format!("{SDK_PREPASS_GUEST_NAME}.component.wasm"))
 }

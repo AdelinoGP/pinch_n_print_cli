@@ -9,16 +9,16 @@
 
 #![allow(missing_docs)]
 
-use slicer_runtime::wit_host::prepass::{
+use slicer_wasm_host::host::prepass::{
     FacetAnnotation, FacetClass, LayerProposal, RegionLayerProposal, ScoredSeamCandidate,
     SeamPlanEntry, SeamReason, SupportPlanEntry, SurfaceGroupProposal,
 };
-use slicer_runtime::wit_host::{prepass, HostExecutionContextBuilder};
+use slicer_wasm_host::host::{prepass, HostExecutionContextBuilder};
 
 // Point3WithWidth is used for SeamPlanEntry.chosen_position — it lives in the
 // prepass world's geometry module, which is generated separately from the layer
 // world's re-export.  Import via the prepass alias to avoid ambiguity.
-use slicer_runtime::wit_host::prepass::slicer::types::geometry::Point3WithWidth as PrepassPoint3WithWidth;
+use slicer_wasm_host::host::prepass::slicer::types::geometry::Point3WithWidth as PrepassPoint3WithWidth;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
