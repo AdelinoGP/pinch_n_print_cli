@@ -449,16 +449,14 @@ fn execute_single_layer_inner(
                 }
             }
 
-            // Record audit using fallback ir_path_for_layer_stage.
-            // runtime_reads are no longer returned by the new trait (Step 6 will
-            // add a separate runtime-reads channel if needed for instrumented runners).
             let writes = ir_path_for_layer_stage(&stage.stage_id)
                 .map(|p| vec![p])
                 .unwrap_or_default();
-            if !writes.is_empty() {
+            let runtime_reads = runner.last_runtime_reads();
+            if !writes.is_empty() || !runtime_reads.is_empty() {
                 audits.push(ModuleAccessAudit {
                     module_id: module.module_id.clone(),
-                    runtime_reads: Vec::new(),
+                    runtime_reads,
                     runtime_writes: writes,
                 });
             }
@@ -1045,9 +1043,6 @@ fn commit_layer_outputs(
                 .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
         }
         "Layer::Perimeters" | "Layer::PerimetersPostProcess" => {
-            let Some(ir) = commit.perimeter_output else {
-                return Ok(());
-            };
             if stage_id == "Layer::PerimetersPostProcess" {
                 let mut original = arena.take_perimeter();
                 if let (Some(seam_ir), Some(ref mut orig_perim)) = (seam_plan_ir, &mut original) {
@@ -1063,26 +1058,37 @@ fn commit_layer_outputs(
                         }
                     }
                 }
-                if let Some(orig_perim) = original {
-                    let mut ir_owned = ir;
-                    for (idx, region) in ir_owned.regions.iter_mut().enumerate() {
-                        if region.resolved_seam.is_none() {
-                            if let Some(orig_region) = orig_perim.regions.get(idx) {
-                                if let Some(rs) = &orig_region.resolved_seam {
-                                    region.resolved_seam = Some(rs.clone());
+                match (commit.perimeter_output, original) {
+                    (Some(mut ir_owned), Some(orig_perim)) => {
+                        for (idx, region) in ir_owned.regions.iter_mut().enumerate() {
+                            if region.resolved_seam.is_none() {
+                                if let Some(orig_region) = orig_perim.regions.get(idx) {
+                                    if let Some(rs) = &orig_region.resolved_seam {
+                                        region.resolved_seam = Some(rs.clone());
+                                    }
                                 }
                             }
                         }
+                        arena
+                            .set_perimeter(ir_owned)
+                            .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
                     }
-                    arena
-                        .set_perimeter(ir_owned)
-                        .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
-                } else {
-                    arena
-                        .set_perimeter(ir)
-                        .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+                    (Some(ir_owned), None) => {
+                        arena
+                            .set_perimeter(ir_owned)
+                            .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+                    }
+                    (None, Some(orig_perim)) => {
+                        arena
+                            .set_perimeter(orig_perim)
+                            .map_err(|e| slicer_ir::LayerStageError::ArenaCommit { source: e })?;
+                    }
+                    (None, None) => {}
                 }
             } else {
+                let Some(ir) = commit.perimeter_output else {
+                    return Ok(());
+                };
                 let _ = arena.take_perimeter();
                 arena
                     .set_perimeter(ir)

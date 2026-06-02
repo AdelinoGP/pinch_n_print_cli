@@ -707,17 +707,25 @@ impl StagingRunner {
 impl LayerStageRunner for StagingRunner {
     fn run_stage(
         &self,
-        _stage_id: &StageId,
+        stage_id: &StageId,
         _layer: &GlobalLayer,
         _module: &CompiledModuleLive<'_>,
         _input: LayerStageInput<'_>,
     ) -> Result<LayerStageCommitData, LayerStageError> {
-        Ok(LayerStageCommitData {
-            perimeter_output: self.perimeter.lock().unwrap().take(),
-            infill_output: self.infill.lock().unwrap().take(),
-            support_output: self.support.lock().unwrap().take(),
-            ..Default::default()
-        })
+        let mut data = LayerStageCommitData::default();
+        match stage_id.as_str() {
+            "Layer::Perimeters" | "Layer::PerimetersPostProcess" => {
+                data.perimeter_output = self.perimeter.lock().unwrap().take();
+            }
+            "Layer::Infill" | "Layer::InfillPostProcess" => {
+                data.infill_output = self.infill.lock().unwrap().take();
+            }
+            "Layer::Support" | "Layer::SupportPostProcess" => {
+                data.support_output = self.support.lock().unwrap().take();
+            }
+            _ => {}
+        }
+        Ok(data)
     }
 }
 
@@ -835,7 +843,11 @@ fn ordered_entities_assembled_with_preserved_region_identity() {
     let mesh = Arc::new(mesh_fixture());
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     let plan = execution_plan_fixture(
-        vec![compiled_stage("Layer::Perimeters", &["com.example.stage"])],
+        vec![
+            compiled_stage("Layer::Perimeters", &["com.example.stage"]),
+            compiled_stage("Layer::Infill", &["com.example.stage"]),
+            compiled_stage("Layer::Support", &["com.example.stage"]),
+        ],
         1,
     );
     seed_slice_ir(&mut blackboard, &plan);
@@ -898,7 +910,11 @@ fn ordered_entities_empty_when_arena_has_no_committed_content() {
 fn ordered_entities_assembly_is_deterministic_across_repeated_runs() {
     let mesh = Arc::new(mesh_fixture());
     let plan = execution_plan_fixture(
-        vec![compiled_stage("Layer::Perimeters", &["com.example.stage"])],
+        vec![
+            compiled_stage("Layer::Perimeters", &["com.example.stage"]),
+            compiled_stage("Layer::Infill", &["com.example.stage"]),
+            compiled_stage("Layer::Support", &["com.example.stage"]),
+        ],
         1,
     );
 

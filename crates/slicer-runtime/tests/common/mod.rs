@@ -357,12 +357,13 @@ pub fn run_layer_and_commit(
     let input = layer_input(blackboard, arena);
     let commit_data =
         LayerStageRunner::run_stage(dispatcher, &stage_id.to_string(), layer, &live, input)?;
+    let seam_plan_arc = blackboard.seam_plan().cloned();
     slicer_runtime::commit_layer_outputs_for_test(
         stage_id,
         module.module_id(),
         layer.index,
         commit_data,
         arena,
-        None,
+        seam_plan_arc.as_deref(),
     )
 }

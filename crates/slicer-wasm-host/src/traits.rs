@@ -35,6 +35,13 @@ pub trait LayerStageRunner {
     fn last_wasm_mem_sample(&self) -> (u64, u64) {
         (0, 0)
     }
+
+    /// Returns the runtime-read field paths captured during the most recent
+    /// `run_stage` call. Used by the executor to populate `ModuleAccessAudit.runtime_reads`.
+    /// Default returns an empty `Vec` for runners that do not instrument reads.
+    fn last_runtime_reads(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// Runner for prepass-stage dispatch (mesh analysis, support geometry, seam planning, etc.).
@@ -46,6 +53,13 @@ pub trait PrepassStageRunner {
         module: &CompiledModuleLive<'_>,
         input: PrepassStageInput<'_>,
     ) -> Result<PrepassStageOutput, PrepassRunnerError>;
+
+    /// Returns the runtime-read field paths captured during the most recent
+    /// `run_stage` call. Used by the executor to populate `ModuleAccessAudit.runtime_reads`.
+    /// Default returns an empty `Vec` for runners that do not instrument reads.
+    fn last_runtime_reads(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// Runner for postpass-stage dispatch (G-code and text postprocessing).

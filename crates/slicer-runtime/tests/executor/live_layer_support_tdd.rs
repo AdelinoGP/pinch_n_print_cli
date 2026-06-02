@@ -565,12 +565,13 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
     arena
         .set_slice(make_slice_ir(layer_index, layer_z, 1))
         .unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Support".to_string(),
+        "Layer::Support",
         &layer,
-        &module.as_live(),
-        layer_input(&blackboard, &arena),
+        &module,
+        &blackboard,
+        &mut arena,
     )
     .expect("tree-support Layer::Support dispatch must succeed");
 
@@ -668,12 +669,13 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
     arena
         .set_slice(make_slice_ir(layer_index, layer_z, 1))
         .unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Support".to_string(),
+        "Layer::Support",
         &layer,
-        &module.as_live(),
-        layer_input(&blackboard, &arena),
+        &module,
+        &blackboard,
+        &mut arena,
     )
     .expect("traditional-support Layer::Support dispatch must succeed");
 
@@ -1012,12 +1014,13 @@ fn support_enforcer_blocker_paint_precedence() {
 
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 1)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Support".to_string(),
+        "Layer::Support",
         &layer,
-        &module.as_live(),
-        layer_input(&blackboard, &arena),
+        &module,
+        &blackboard,
+        &mut arena,
     )
     .expect("support dispatch with enforcer+blocker must succeed");
 
@@ -1063,7 +1066,7 @@ fn support_enforcer_blocker_paint_precedence() {
 mod planner_consuming_tier {
     use std::sync::Arc;
 
-    use crate::common::{layer_input, wasm_cache};
+    use crate::common::wasm_cache;
     use slicer_ir::{
         BoundingBox3, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
         GlobalLayer, MeshIR, Point2, Point3, Point3WithWidth, Polygon, SemVer, SlicedRegion,
@@ -1071,8 +1074,8 @@ mod planner_consuming_tier {
     };
     use slicer_runtime::{
         build_wasm_instance_pool, instance_pool::WasmArtifactMetadata, Blackboard, CompiledModule,
-        CompiledModuleBuilder, LayerArena, LayerStageRunner, LoadedModule, LoadedModuleBuilder,
-        WasmEngine, WasmRuntimeDispatcher,
+        CompiledModuleBuilder, LayerArena, LoadedModule, LoadedModuleBuilder, WasmEngine,
+        WasmRuntimeDispatcher,
     };
 
     fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
@@ -1241,12 +1244,13 @@ mod planner_consuming_tier {
         arena
             .set_slice(make_slice_ir(layer_index, layer_z))
             .unwrap();
-        LayerStageRunner::run_stage(
+        crate::common::run_layer_and_commit(
             &dispatcher,
-            &"Layer::Support".to_string(),
+            "Layer::Support",
             &layer,
-            &module.as_live(),
-            layer_input(&blackboard, &arena),
+            &module,
+            &blackboard,
+            &mut arena,
         )
         .expect("Layer::Support dispatch must succeed");
 
@@ -1540,12 +1544,13 @@ mod planner_consuming_tier {
 
         let mut arena = LayerArena::new();
         arena.set_slice(slice_ir).unwrap();
-        LayerStageRunner::run_stage(
+        crate::common::run_layer_and_commit(
             &dispatcher,
-            &"Layer::Support".to_string(),
+            "Layer::Support",
             &layer,
-            &module.as_live(),
-            layer_input(&blackboard, &arena),
+            &module,
+            &blackboard,
+            &mut arena,
         )
         .expect("Layer::Support dispatch must succeed");
 

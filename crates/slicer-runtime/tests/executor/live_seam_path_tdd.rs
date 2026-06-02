@@ -768,9 +768,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     };
     use slicer_runtime::instance_pool::build_wasm_instance_pool;
     use slicer_runtime::manifest::LoadedModuleBuilder;
-    use slicer_runtime::{
-        Blackboard, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmRuntimeDispatcher,
-    };
+    use slicer_runtime::{Blackboard, CompiledModuleBuilder, LayerArena, WasmRuntimeDispatcher};
     use std::sync::Arc;
 
     let engine = wasm_cache::shared_engine();
@@ -1024,12 +1022,13 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     if let Some(sp) = blackboard.seam_plan() {
         eprintln!("DEBUG: blackboard seam_plan entries: {}", sp.entries.len());
     }
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::PerimetersPostProcess".to_string(),
+        "Layer::PerimetersPostProcess",
         &layer,
-        &module.as_live(),
-        layer_input(&blackboard, &arena),
+        &module,
+        &blackboard,
+        &mut arena,
     )
     .expect("PerimetersPostProcess dispatch must succeed");
 

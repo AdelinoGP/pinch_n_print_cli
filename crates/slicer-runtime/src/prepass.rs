@@ -217,9 +217,7 @@ pub fn execute_prepass_with_instrumentation(
                     return Err(PrepassExecutionError::from(e));
                 }
             };
-            // runtime_reads no longer returned by the new trait (Step 6 will add
-            // a separate runtime-reads channel for instrumented runners if needed).
-            let runtime_reads: Vec<String> = Vec::new();
+            let runtime_reads: Vec<String> = runner.last_runtime_reads();
 
             // Determine IR path before committing (output is moved into commit).
             let ir_path = ir_path_for_prepass_output(&output);

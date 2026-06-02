@@ -798,10 +798,10 @@ fn prepass_audits_live_path() {
             _module: &CompiledModuleLive<'_>,
             _input: PrepassStageInput<'_>,
         ) -> Result<PrepassStageOutput, PrepassRunnerError> {
-            // Simulate a prepass module that reads mesh data through WIT views.
-            // NOTE: runtime_reads are no longer returned by the trait (Step 6 migration).
-            // The test's runtime_reads assertions may need updating in a follow-up.
             Ok(PrepassStageOutput::None)
+        }
+        fn last_runtime_reads(&self) -> Vec<String> {
+            vec!["MeshIR".to_string()]
         }
     }
 
@@ -895,10 +895,10 @@ fn layer_audits_live_path() {
             _module: &CompiledModuleLive<'_>,
             _input: LayerStageInput<'_>,
         ) -> Result<LayerStageCommitData, LayerStageError> {
-            // Simulate a per-layer module that reads slice geometry through WIT views.
-            // NOTE: runtime_reads are no longer returned by the trait (Step 6 migration).
-            // The test's runtime_reads assertions may need updating in a follow-up.
             Ok(LayerStageCommitData::default())
+        }
+        fn last_runtime_reads(&self) -> Vec<String> {
+            vec!["SliceIR.regions.polygons".to_string()]
         }
     }
 
