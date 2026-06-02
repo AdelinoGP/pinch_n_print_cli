@@ -6,6 +6,9 @@
 
 pub mod aabb_lines_2d;
 pub mod aabb_tree;
+/// Pure algorithm modules migrated from the runtime.
+#[cfg(feature = "host-algos")]
+pub mod algos;
 pub mod paint_region;
 pub mod polygon_ops;
 pub mod stage_io;

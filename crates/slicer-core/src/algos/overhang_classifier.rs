@@ -1,32 +1,14 @@
-//! Overhang-quartile classifier (TASK-57).
+//! Overhang-quartile classifier.
 //!
 //! [`classify_layers`] walks a slice of [`LayerCollectionIR`] in order and
 //! annotates every wall-family point in layer `i` with an overhang quartile
 //! (Q1–Q4) derived from its signed distance to the previous layer's wall
 //! geometry.
-//!
-//! ## Quartile convention
-//!
-//! | Quartile | signed-distance condition             | Meaning            |
-//! |----------|---------------------------------------|--------------------|
-//! | Q4       | `sd >  0.0`                           | fully supported    |
-//! | Q3       | `sd >  -0.25 * w`                     | mild overhang      |
-//! | Q2       | `sd >  -0.50 * w`                     | moderate overhang  |
-//! | Q1       | `sd <= -0.50 * w`                     | severe overhang    |
-//!
-//! where `sd` is the signed distance (positive = inside prev-layer polygon)
-//! and `w` is the local extrusion width of the point.
-//!
-//! Strict `>` at every inner threshold mirrors OrcaSlicer's
-//! `calculate_speed` band walk in
-//! `OrcaSlicerDocumented/src/libslic3r/GCode/ExtrusionProcessor.hpp` (~:524):
-//! a point exactly on a band boundary is assigned to the more conservative
-//! (lower-q / slower) band.
 
-use slicer_core::aabb_lines_2d::LinesDistancer2D;
+use crate::aabb_lines_2d::LinesDistancer2D;
 use slicer_ir::{ExtrusionRole, LayerCollectionIR};
 
-use crate::gcode_emit::FeedrateConfig;
+use slicer_ir::FeedrateConfig;
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -35,14 +17,11 @@ use crate::gcode_emit::FeedrateConfig;
 /// Classifies overhang quartiles for every wall-family point across `layers`.
 ///
 /// **Short-circuit**: when all four overhang speeds in `feedrate_config` are
-/// exactly `0.0`, returns immediately without touching any point.  This
-/// preserves byte-identical G-code output for printers that don't configure
-/// overhang speed (AC-2 baseline).
+/// exactly `0.0`, returns immediately without touching any point.
 ///
 /// Layer 0 is never classified (no previous layer exists).  Non-wall roles
 /// (`SparseInfill`, bridging, …) are left with `overhang_quartile = None`.
 pub fn classify_layers(layers: &mut [LayerCollectionIR], feedrate_config: &FeedrateConfig) {
-    // AC-2: short-circuit when all overhang speeds are disabled.
     if feedrate_config.overhang_1_4_speed == 0.0
         && feedrate_config.overhang_2_4_speed == 0.0
         && feedrate_config.overhang_3_4_speed == 0.0
@@ -52,8 +31,6 @@ pub fn classify_layers(layers: &mut [LayerCollectionIR], feedrate_config: &Feedr
     }
 
     for i in 1..layers.len() {
-        // Build prev-layer geometry from `layers[i-1]`.
-        // We need separate borrows for [i-1] and [i], so we split the slice.
         let (prev_half, cur_half) = layers.split_at_mut(i);
         let prev_layer = &prev_half[i - 1];
         let cur_layer = &mut cur_half[0];
@@ -61,7 +38,6 @@ pub fn classify_layers(layers: &mut [LayerCollectionIR], feedrate_config: &Feedr
         let (segments, polygons) = build_prev_geometry(prev_layer);
 
         if segments.is_empty() {
-            // No wall geometry in the previous layer — nothing to compare against.
             continue;
         }
 
@@ -85,11 +61,6 @@ fn is_wall_role(role: &ExtrusionRole) -> bool {
 }
 
 /// Builds the segment list and polygon list from a layer's wall-family paths.
-///
-/// `segments` — consecutive point pairs from every wall path (used by the
-///              AABB distancer).
-/// `polygons` — each wall path treated as a closed polygon (last point
-///              reconnects to first) for the winding-number inside test.
 fn build_prev_geometry(
     layer: &LayerCollectionIR,
 ) -> (Vec<([f32; 2], [f32; 2])>, Vec<Vec<[f32; 2]>>) {
@@ -106,15 +77,11 @@ fn build_prev_geometry(
             continue;
         }
 
-        // Build polygon (closed: last → first appended implicitly by winding
-        // algorithm which uses `poly[(i+1) % n]`).
         let poly: Vec<[f32; 2]> = pts.iter().map(|p| [p.x, p.y]).collect();
 
-        // Build segments from consecutive pairs.
         for w in pts.windows(2) {
             segments.push(([w[0].x, w[0].y], [w[1].x, w[1].y]));
         }
-        // Close the loop: last → first.
         let last = pts.last().unwrap();
         let first = &pts[0];
         segments.push(([last.x, last.y], [first.x, first.y]));
@@ -232,7 +199,6 @@ mod tests {
         l
     }
 
-    // Square wall in the XY plane: (0,0)→(10,0)→(10,10)→(0,10)→back.
     fn square_wall_layer(idx: u32) -> LayerCollectionIR {
         let pts = vec![
             make_point(0.0, 0.0),
@@ -243,9 +209,6 @@ mod tests {
         layer_with_entity(idx, ExtrusionRole::OuterWall, pts)
     }
 
-    // -----------------------------------------------------------------
-    // Test 1: short-circuit when all overhang speeds are 0.0
-    // -----------------------------------------------------------------
     #[test]
     fn short_circuit_on_zero_config() {
         let mut layers = vec![
@@ -272,9 +235,6 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
-    // Test 2: single-layer input — layer 0 never touched
-    // -----------------------------------------------------------------
     #[test]
     fn first_layer_all_none() {
         let mut layers = vec![layer_with_entity(
@@ -290,9 +250,6 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
-    // Test 3: role scope guard — non-wall paths stay None
-    // -----------------------------------------------------------------
     #[test]
     fn role_scope_guard() {
         let mut layers = vec![
@@ -314,9 +271,6 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
-    // Test 4: fully inside prev-layer polygon → Q4
-    // -----------------------------------------------------------------
     #[test]
     fn quartile_boundary_inside() {
         let mut layers = vec![
@@ -324,7 +278,6 @@ mod tests {
             layer_with_entity(
                 1,
                 ExtrusionRole::OuterWall,
-                // Point at (5, 5) is well inside the 0–10 square.
                 vec![make_point(5.0, 5.0), make_point(5.0, 6.0)],
             ),
         ];
@@ -341,9 +294,6 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------
-    // Test 5: point well outside prev-layer polygon → Q1
-    // -----------------------------------------------------------------
     #[test]
     fn quartile_boundary_q1() {
         let mut layers = vec![
@@ -351,9 +301,6 @@ mod tests {
             layer_with_entity(
                 1,
                 ExtrusionRole::OuterWall,
-                // Point at (50, 50) is far outside the 0–10 square.
-                // width = 0.4, so -0.5*w = -0.2.
-                // Distance from (50,50) to square ≈ 56.6 mm >> 0.2 mm.
                 vec![make_point(50.0, 50.0), make_point(51.0, 51.0)],
             ),
         ];

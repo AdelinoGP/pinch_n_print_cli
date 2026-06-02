@@ -5,6 +5,8 @@
 #![warn(unused_must_use)]
 
 pub mod blackboard;
+/// Builtin pipeline step producers.
+pub mod builtins;
 pub mod config_resolution;
 pub mod dag;
 pub mod dag_cli;
@@ -15,16 +17,11 @@ pub mod instrumentation;
 pub mod layer_executor;
 pub mod layer_finalization;
 pub mod manifest;
-pub mod mesh_analysis;
-pub mod mesh_segmentation;
 pub mod module_search_path;
 pub mod negative_part_subtract;
-pub mod overhang_classifier;
-pub mod paint_segmentation;
 pub mod pipeline;
 pub mod postpass;
 pub mod prepass;
-pub mod prepass_slice;
 pub mod progress_events;
 pub mod progress_instrumentation;
 pub mod region_mapping;
@@ -34,7 +31,6 @@ pub mod run;
 pub mod slice_postprocess;
 pub mod slice_postprocess_prepass;
 pub mod stage_order;
-pub mod support_geometry;
 pub mod topology;
 pub mod validation;
 
@@ -60,12 +56,12 @@ pub use slicer_ir::{
 /// always present regardless of which WASM modules are loaded. They are used
 /// by the DAG validator, `dag_cli`, and the startup validation request.
 pub fn runtime_builtins() -> Vec<&'static dyn Producer> {
+    use crate::builtins::mesh_analysis_producer::{MESH_ANALYSIS_PRODUCER, MESH_PRODUCER};
+    use crate::builtins::paint_segmentation_producer::PAINT_SEGMENTATION_PRODUCER;
+    use crate::builtins::prepass_slice_producer::{SHELL_CLASSIFICATION_PRODUCER, SLICE_PRODUCER};
+    use crate::builtins::support_geometry_producer::SUPPORT_GEOMETRY_PRODUCER;
     use crate::gcode_emit::GCODE_EMIT_PRODUCER;
-    use crate::mesh_analysis::{MESH_ANALYSIS_PRODUCER, MESH_PRODUCER};
-    use crate::paint_segmentation::PAINT_SEGMENTATION_PRODUCER;
-    use crate::prepass_slice::{SHELL_CLASSIFICATION_PRODUCER, SLICE_PRODUCER};
     use crate::region_mapping::REGION_MAPPING_PRODUCER;
-    use crate::support_geometry::SUPPORT_GEOMETRY_PRODUCER;
 
     vec![
         &MESH_PRODUCER as &dyn Producer,
@@ -102,6 +98,10 @@ pub use slicer_wasm_host::pool as instance_pool;
 // HostExecutionContext and HostExecutionContextBuilder are internal to slicer-wasm-host
 // (not part of the public API surface); they are NOT re-exported here.
 
+pub use builtins::prepass_slice_producer::{
+    commit_slice_builtin, execute_prepass_slice_all_layers,
+};
+pub use builtins::support_geometry_producer::commit_support_geometry_builtin;
 pub use dag_cli::{
     run_dag_claims, run_dag_depends, run_dag_stage, run_dag_stages, ClaimOut, ClaimsOut,
     DependsOut, GlobalEdgeOut, ModuleOut, StageEdgeOut, StageOut, StageSummary, StagesOut,
@@ -136,20 +136,11 @@ pub use manifest::{
     ConfigSchema, DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport,
     LoadedModule, LoadedModuleBuilder,
 };
-pub use mesh_analysis::{execute_mesh_analysis, MeshAnalysisConfig, MeshAnalysisError};
-pub use mesh_segmentation::{
-    execute_mesh_segmentation, DegenerateStrokeReason, MeshSegmentationError,
-};
 pub use module_search_path::{assemble_search_roots, SLICER_MODULE_PATH_ENV};
-pub use paint_segmentation::{execute_paint_segmentation, PaintSegmentationError};
 pub use postpass::{execute_postpass, GCodeEmitter, GCodeSerializer};
 pub use prepass::{
     execute_prepass, execute_prepass_with_builtins, execute_prepass_with_builtins_configured,
     PrepassExecutionError,
-};
-pub use prepass_slice::{
-    commit_slice_builtin, execute_prepass_slice_all_layers, execute_prepass_slice_single_layer,
-    LayerSliceError,
 };
 pub use progress_instrumentation::ProgressPipelineInstrumentation;
 pub use region_mapping::{
@@ -170,10 +161,19 @@ pub use slicer_core::{
     FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassStageOutput,
     SurfaceGroupRecord,
 };
-pub use slicer_wasm_host::{DispatchError, DispatchPhase, WasmRuntimeDispatcher};
-pub use support_geometry::{
-    commit_support_geometry_builtin, execute_support_geometry, SupportGeometryBuiltinError,
+// Re-exports from slicer_core::algos for backward compatibility.
+pub use slicer_core::algos::mesh_analysis::{
+    execute_mesh_analysis, execute_mesh_analysis_with, MeshAnalysisConfig, MeshAnalysisError,
 };
+pub use slicer_core::algos::mesh_segmentation::{
+    execute_mesh_segmentation, DegenerateStrokeReason, MeshSegmentationError,
+};
+pub use slicer_core::algos::overhang_classifier::classify_layers;
+pub use slicer_core::algos::paint_segmentation::{
+    execute_paint_segmentation, PaintSegmentationError,
+};
+pub use slicer_core::algos::prepass_slice::{execute_prepass_slice_single_layer, LayerSliceError};
+pub use slicer_wasm_host::{DispatchError, DispatchPhase, WasmRuntimeDispatcher};
 pub use topology::topological_sort;
 pub use validation::{
     resolve_held_claims, validate_startup_dag, AccessKind, ClaimHolder, ConflictScope,

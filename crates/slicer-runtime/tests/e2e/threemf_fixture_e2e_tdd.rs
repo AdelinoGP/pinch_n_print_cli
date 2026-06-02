@@ -13,6 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
 use slicer_core::slice_mesh_ex;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, FacetClass, GlobalLayer,
@@ -23,7 +24,6 @@ use slicer_ir::{
 };
 use slicer_model_io::load_model;
 use slicer_runtime::negative_part_subtract::apply_negative_part_subtract;
-use slicer_runtime::paint_segmentation::execute_paint_segmentation;
 use slicer_runtime::{
     build_execution_plan, execute_region_mapping_with_cap, ExecutionPlan, ExecutionPlanRequest,
 };

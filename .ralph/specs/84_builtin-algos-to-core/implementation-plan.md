@@ -5,7 +5,7 @@
 - Each step ends with a falsifying check that gates green before the next step starts.
 - Files allowed to read per step are bounded. The six moved files total ~3 360 LOC; NEVER loaded in full. Section-by-section grep + ±50-line reads only.
 - The packet closure gate runs on narrow per-crate tests, NOT `cargo test --workspace` (per the deepening-batch policy; checkpoint packets are P83/P85/P88).
-- P83 MUST be closed before this packet starts (Step 0 verifies).
+- P83 MUST be closed (status `implemented`) before this packet starts (Step 0 verifies).
 - The `slicer-ir` and `slicer-core` edits trigger guest WASM staleness; Step 8 rebuilds guests and re-verifies `--check` clean before Step 9 runs the SHA parity check.
 
 ---
@@ -14,17 +14,18 @@
 
 **Objective.** Confirm `slicer-wasm-host` is in place, ADR-0004/0005 are committed, and capture the g-code SHA carried forward from P83.
 
-**Precondition.** P83 is `superseded`. Working tree clean.
+**Precondition.** P83 is `implemented`. Working tree clean.
 
-**Postcondition.** Baselines in the log: g-code SHA, `slicer-runtime` test count, `slicer-core` test count, `slicer-ir` test count.
+**Postcondition.** Baselines in the log: g-code SHA, `slicer-runtime` test count, `slicer-core` test count, `slicer-ir` test count, **pre-P84 `runtime_builtins()` producer count** (the integer that AC-3 compares against).
 
 **Files allowed to read.** None directly.
 **Files allowed to edit.** None.
 
 **Expected sub-agent dispatches.**
-- Dispatch: confirm `test -f crates/slicer-wasm-host/Cargo.toml && test ! -f crates/slicer-runtime/src/wit_host.rs && test -f docs/adr/0004-runner-traits-in-slicer-wasm-host.md`. Return FACT pass/fail.
+- Dispatch: confirm `test -f crates/slicer-wasm-host/Cargo.toml && test ! -f crates/slicer-runtime/src/wit_host.rs && test -f docs/adr/0005-runner-traits-in-slicer-wasm-host.md && test -f docs/adr/0006-export-for-stage-id-sole-lookup.md`. Return FACT pass/fail.
 - Dispatch: g-code SHA. `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/p84-baseline.gcode && sha256sum /tmp/p84-baseline.gcode`. Return FACT `<hex>`.
 - Dispatch: pre-packet test counts. `cargo test -p slicer-core -p slicer-ir -p slicer-runtime 2>&1 | tail -10`. Return SNIPPET.
+- Dispatch: pre-P84 producer count baseline. `grep -cE '&[A-Z_]+_PRODUCER as &dyn Producer' crates/slicer-runtime/src/lib.rs`. Return FACT `<integer>` — substitute this integer into AC-3's `<PRE_P84_PRODUCER_COUNT>` placeholder before running the AC.
 
 **Context cost: S.**
 
@@ -142,17 +143,19 @@ For each file, the split is:
 
 ## Step 5 — Rewire `slicer-runtime/src/lib.rs` + `gcode_emit.rs` import; update `runtime_builtins()`
 
-**Objective.** `slicer-runtime` compiles against the new module structure.
+**Objective.** `slicer-runtime` compiles against the new module structure under `--all-targets` (which compiles test binaries).
 
 **Precondition.** Step 4 complete.
 
 **Postcondition.** `cargo build --workspace` green. `cargo clippy --workspace --all-targets -- -D warnings` green.
 
+**Test-import stability rule.** `--all-targets` compiles every test binary, including `crates/slicer-runtime/tests/**` files that today `use slicer_runtime::execute_*` or `use slicer_runtime::<algo>::*`. Step 6 will later relocate the algorithm-side tests to `slicer-core/tests/`, but during Step 5 those tests must still compile. **The plan retains `slicer-runtime` re-exports during this step:** add `pub use slicer_core::algos::{execute_mesh_analysis_with, execute_paint_segmentation, execute_prepass_slice_single_layer, execute_prepass_slice_all_layers, execute_support_geometry, execute_mesh_segmentation, classify_layers};` (and matching error-type re-exports if surfaced by Step 1 dispatch #3) in `slicer-runtime/src/lib.rs`. Test files compile unchanged at their current paths. A final sub-step inside Step 6 deletes any re-export that has no remaining external consumer (per CLAUDE.md §"Avoid backwards-compatibility hacks"); re-exports that some external file still uses remain in place and the consumer is rewired in a follow-up packet only if the user opts in.
+
 **Files allowed to read.** `crates/slicer-runtime/src/lib.rs`, `crates/slicer-runtime/src/gcode_emit.rs`.
 **Files allowed to edit.**
-1. `crates/slicer-runtime/src/lib.rs` — delete the 6 `pub mod <algo>;` declarations; delete or update the corresponding `pub use ...;` re-export lines; update `runtime_builtins()` to reference the new `builtins::*_producer::*_PRODUCER` paths.
+1. `crates/slicer-runtime/src/lib.rs` — delete the 6 `pub mod <algo>;` declarations; **retain** (or add, if previously inline) the `pub use slicer_core::algos::{...};` block per the stability rule above; update `runtime_builtins()` to reference the new `builtins::*_producer::*_PRODUCER` paths.
 2. `crates/slicer-runtime/src/gcode_emit.rs` — `use crate::overhang_classifier::classify_layers;` → `use slicer_core::classify_layers;` (or whatever the chosen `algos::` path is). FeedrateConfig import was rewired in Step 2.
-3. Any non-moving runtime file surfaced by Step 1 dispatch #3 — update its `use crate::<algo>::*` paths to the new locations.
+3. Any non-moving runtime `src/` file surfaced by Step 1 dispatch #3 — update its `use crate::<algo>::*` paths to the new locations. **Do not edit test files in this step** — they continue to import via the runtime re-export during Step 5.
 
 **Expected sub-agent dispatches.**
 - Dispatch: `cargo build --workspace`. Return FACT pass/fail.
@@ -160,7 +163,7 @@ For each file, the split is:
 
 **Context cost: M.**
 
-**Narrow verification.** Both green. `runtime_builtins()` returns the same count of producers (>= 7 entries per AC-3).
+**Narrow verification.** Both green. `runtime_builtins()` returns the same count of `&_PRODUCER as &dyn Producer` entries as the Step 0 pre-P84 baseline (the integer captured for AC-3).
 
 **Falsifying check / exit condition.** Build fails → likely a missed `use crate::<algo>::*` in a non-moving file; consult Step 1 dispatch #3.
 
@@ -168,18 +171,19 @@ For each file, the split is:
 
 ## Step 6 — Migrate / create per-algorithm tests in `slicer-core/tests/`
 
-**Objective.** Six per-algorithm unit tests pass in `slicer-core`.
+**Objective.** Six per-algorithm unit tests pass in `slicer-core`; obsolete `slicer-runtime` re-exports are cleaned up.
 
 **Precondition.** Step 5 complete.
 
-**Postcondition.** `cargo test -p slicer-core` green. At least six test files exist under `crates/slicer-core/tests/`. No test imports `slicer_runtime::Blackboard` or `slicer_runtime::*Producer`.
+**Postcondition.** `cargo test -p slicer-core` green. At least six test files exist under `crates/slicer-core/tests/`. No test imports `slicer_runtime::Blackboard` or `slicer_runtime::*Producer`. After test relocation, any `pub use slicer_core::algos::{...}` re-export in `crates/slicer-runtime/src/lib.rs` that no remaining file in the workspace imports is deleted (per CLAUDE.md §"no backwards-compatibility hacks"); re-exports still consumed by external callers stay and are flagged in the implementation log as residual.
 
 **Files allowed to read.** Test files surfaced in Step 1 dispatch #2.
 **Files allowed to edit.**
-1. `crates/slicer-core/tests/algo_mesh_analysis_tdd.rs` — CREATE or MOVE from `slicer-runtime/tests/`.
+1. `crates/slicer-core/tests/algo_mesh_analysis_tdd.rs` — CREATE or MOVE from `slicer-runtime/tests/`. Use `slicer_core::*` imports directly (NOT via the runtime re-export).
 2. Five more analogous test files (paint_segmentation, prepass_slice, support_geometry, mesh_segmentation, overhang_classifier).
 3. `crates/slicer-runtime/tests/integration/main.rs` and `executor/main.rs` aggregators — drop `mod <test>;` declarations for any moved tests.
-4. Non-moved tests that previously used `slicer_runtime::execute_*` paths — rewire to `slicer_core::*`.
+4. Non-moved tests under `crates/slicer-runtime/tests/` that previously used `slicer_runtime::execute_*` paths — rewire to `slicer_core::*` directly so the re-export becomes dead.
+5. `crates/slicer-runtime/src/lib.rs` — at the end of this step, after running `cargo build --workspace --all-targets`, prune any `pub use slicer_core::algos::{...}` entry that has zero consumers across the workspace. A grep over `crates/*/src/` and `crates/*/tests/` confirms zero hits before deletion.
 
 For `overhang_classifier`: the new test exercises `classify_layers(&mut layers, &FeedrateConfig::default())` against a small two-layer fixture (one wall layer, one overhanging wall layer with non-zero overhang speeds) and asserts that the second layer's wall points carry expected `overhang_quartile` annotations.
 
@@ -218,9 +222,37 @@ For `overhang_classifier`: the new test exercises `classify_layers(&mut layers, 
 
 ---
 
+## Step 7.5 — Feature-gate `slicer-core::algos` to keep `log`/`rayon` out of guest builds
+
+**Objective.** Prevent the host-only algorithm deps (`log`, `rayon`) from propagating into every guest `.wasm` via the `slicer-sdk → slicer-core` edge. After the bulk move, `slicer-core` gained `rayon` (used in `algos/paint_segmentation.rs`) and `log` (used in `algos/prepass_slice.rs`). Because `slicer-sdk` depends on `slicer-core` for `polygon_ops` and `slicer-sdk` is a universal guest dep per CLAUDE.md §"Guest WASM Staleness", these host-side deps would otherwise contaminate every guest's build graph. `slicer-sdk` uses only `slicer_core::polygon_ops` — no `algos/*` symbol — so the entire `algos/` module can sit behind a feature.
+
+**Precondition.** Step 7 green.
+
+**Postcondition.** `slicer-core/Cargo.toml` exposes a `host-algos` feature; `algos/` and its re-exports are `#[cfg(feature = "host-algos")]`-gated; `slicer-runtime` enables the feature; `slicer-sdk` does NOT. `cargo build --workspace` and `cargo clippy --workspace --all-targets -- -D warnings` stay green.
+
+**Files allowed to read.** `crates/slicer-core/Cargo.toml`, `crates/slicer-core/src/lib.rs`, `crates/slicer-runtime/Cargo.toml`, `crates/slicer-sdk/Cargo.toml`.
+**Files allowed to edit.**
+1. `crates/slicer-core/Cargo.toml` — add `[features]` block with `default = []` and `host-algos = ["dep:rayon", "dep:log"]`; convert `log` and `rayon` `[dependencies]` entries to `optional = true`.
+2. `crates/slicer-core/src/lib.rs` — wrap `pub mod algos;` and the `pub use algos::*` re-exports added in Step 5 with `#[cfg(feature = "host-algos")]`.
+3. `crates/slicer-runtime/Cargo.toml` — change `slicer-core = { path = "../slicer-core" }` to `slicer-core = { path = "../slicer-core", features = ["host-algos"] }`.
+4. `crates/slicer-sdk/Cargo.toml` — **no edit**. Default features remain off; `polygon_ops` access is unaffected.
+
+**Expected sub-agent dispatches.**
+- Dispatch: `cargo build --workspace`. Return FACT pass/fail.
+- Dispatch: `cargo build -p slicer-sdk --target wasm32-unknown-unknown 2>&1 | grep -cE '^   Compiling (log|rayon|rayon-core)' || true`. Expected return: `0` (none of `log`/`rayon`/`rayon-core` are compiled for the wasm32 target on slicer-sdk's behalf). Return FACT integer.
+- Dispatch: `cargo clippy --workspace --all-targets -- -D warnings`. Return FACT pass/fail.
+
+**Context cost: S.**
+
+**Narrow verification.** All three dispatches positive. The middle dispatch is the structural check: zero log/rayon compilations against `slicer-sdk → wasm32` means the feature gate severed the propagation.
+
+**Falsifying check / exit condition.** If `cargo build --workspace` fails referencing a missing `algos::` symbol, a non-test consumer (likely in `slicer-runtime/src/` itself, or in `pnp-cli`) imports `slicer_core::algos::*` without the runtime's feature flag transitively reaching it. Audit the failing import and rewire through `slicer_runtime`'s re-export (which carries the feature) rather than direct `slicer_core::algos::*`.
+
+---
+
 ## Step 8 — Rebuild guests and confirm `--check` clean
 
-**Objective.** The slicer-ir + slicer-core edits invalidated guests; rebuild.
+**Objective.** The `slicer-ir` `FeedrateConfig` move invalidates guest bindgen output; rebuild and re-verify. Step 7.5 may also reduce guest `.wasm` sizes (rayon's link path is no longer present), which is an informative byproduct, not a verification target. (`slicer-core` is NOT in the guest-WASM-staleness invalidation list per CLAUDE.md §"Guest WASM Staleness" — only `slicer-ir`/`slicer-schema`/`slicer-macros`/`slicer-sdk` and the WIT/manifest paths are. The Step 2 prework alone forces this rebuild.)
 
 **Precondition.** Step 7 green.
 
@@ -275,10 +307,11 @@ For `overhang_classifier`: the new test exercises `classify_layers(&mut layers, 
 | 5 Rewire lib.rs + runtime_builtins() | M |
 | 6 Migrate / create slicer-core tests | M |
 | 7 Per-crate test gates | M |
+| 7.5 Feature-gate `algos/` (sever guest contamination) | S |
 | 8 Guest rebuild + `--check` clean | S |
 | 9 g-code SHA parity | S |
 
-Aggregate: **M.** No L step. Total step count: 10.
+Aggregate: **M.** No L step. Total step count: 11.
 
 ## Packet Completion Gate
 
@@ -295,5 +328,5 @@ Per the deepening-batch policy, workspace tests do NOT run at P84 close.
 
 - All 9 ACs (AC-1 .. AC-9) and 3 negative cases (AC-N1, AC-N2, AC-N3) gate green per the inline verification commands in `packet.spec.md`.
 - Implementation log records: Step 0 baseline SHA, Step 9 post-packet SHA, pre/post test counts per crate, list of moved tests (LOC delta per crate), confirmation that `FeedrateConfig` field set is unchanged.
-- `status: draft` → `status: superseded` after gate green AND user confirms closure.
+- `status: draft` → `status: implemented` after gate green AND user confirms closure. (`superseded` is reserved for packets replaced by a later spec; the terminal state for a closed-and-shipped packet is `implemented`.)
 - No new ADR for P84 — the wrapper-keeps-commit pattern is already recorded in ADR-0001.

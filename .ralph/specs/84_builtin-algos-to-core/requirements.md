@@ -80,18 +80,19 @@ The acceptance contract is enumerated in `packet.spec.md` (AC-1..AC-9, AC-N1..AC
 
 | ID | Command | Delegation hint |
 |---|---|---|
-| AC-1 | `[ $(rg --files-with-matches 'pub struct FeedrateConfig' crates/ \| wc -l) -eq 1 ] && rg -l 'pub struct FeedrateConfig' crates/ \| grep -qE '^crates/slicer-ir/'` | FACT pass/fail |
+| AC-1 | `[ $(rg --files-with-matches 'pub struct FeedrateConfig' crates/ \| wc -l) -eq 1 ] && rg -l 'pub struct FeedrateConfig' crates/ \| grep -qE '^crates/slicer-ir/' && ! rg -e 'pub use[^;]*FeedrateConfig' crates/slicer-runtime/src/` | FACT pass/fail |
 | AC-2 | `for f in mesh_analysis paint_segmentation prepass_slice support_geometry mesh_segmentation overhang_classifier; do test ! -f crates/slicer-runtime/src/$f.rs \|\| exit 1; done` | FACT pass/fail |
-| AC-3 | `[ $(grep -cE '&[A-Z_]+_PRODUCER as &dyn Producer' crates/slicer-runtime/src/lib.rs) -ge 7 ]` | FACT pass/fail |
+| AC-3 | `[ $(grep -cE '&[A-Z_]+_PRODUCER as &dyn Producer' crates/slicer-runtime/src/lib.rs) -eq 8 ] && for s in MESH_PRODUCER MESH_ANALYSIS_PRODUCER PAINT_SEGMENTATION_PRODUCER SLICE_PRODUCER SHELL_CLASSIFICATION_PRODUCER SUPPORT_GEOMETRY_PRODUCER; do grep -qE "&$s as &dyn Producer" crates/slicer-runtime/src/lib.rs || exit 1; done` | FACT pass/fail |
 | AC-4 | `! grep -qE 'use crate::overhang_classifier' crates/slicer-runtime/src/gcode_emit.rs && grep -qE 'use slicer_core::.*classify_layers' crates/slicer-runtime/src/gcode_emit.rs` | FACT pass/fail |
-| AC-5 | `! grep -qE '^slicer-(runtime\|wasm-host\|helpers\|schema\|sdk\|gcode\|model-io) *=' crates/slicer-core/Cargo.toml` | FACT pass/fail |
-| AC-6 | `! grep -qE '^pub mod (mesh_analysis\|paint_segmentation\|prepass_slice\|support_geometry\|mesh_segmentation\|overhang_classifier);' crates/slicer-runtime/src/lib.rs` | FACT pass/fail |
-| AC-7 | `cargo test -p slicer-core` | FACT pass/fail + count |
+| AC-5 | `! grep -qE '^slicer-(runtime|wasm-host|helpers|schema|sdk|gcode|model-io) *=' crates/slicer-core/Cargo.toml` | FACT pass/fail |
+| AC-6 | `! grep -qE '^pub mod (mesh_analysis|paint_segmentation|prepass_slice|support_geometry|mesh_segmentation|overhang_classifier)\b' crates/slicer-runtime/src/lib.rs` (word boundary catches both `;` and `{` forms — no shim wrappers permitted) | FACT pass/fail |
+| AC-7 | `cargo test -p slicer-core --features host-algos` | FACT pass/fail + count |
 | AC-8 | `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p84.gcode && sha256sum /tmp/benchy-p84.gcode` | SNIPPET (SHA) |
-| AC-9 | `cargo test -p slicer-core -p slicer-ir -p slicer-runtime -p pnp-cli` | FACT pass/fail + counts |
-| AC-N1 | `rg -e '\b(Blackboard\|BuiltinProducer\|ProgressEvent\|ExecutionPlan)\b' crates/slicer-core/src/` (success = empty) | FACT empty/non-empty |
+| AC-9 | `cargo test --features slicer-core/host-algos -p slicer-core -p slicer-ir -p slicer-runtime -p pnp-cli` | FACT pass/fail + counts |
+| AC-N1 | `! rg -e 'use [^;]*\b(Blackboard|BuiltinProducer|ProgressEvent|ExecutionPlan)\b' crates/slicer-core/src/ && ! rg -e ': *&(mut )?(Blackboard|BuiltinProducer|ProgressEvent|ExecutionPlan)\b' crates/slicer-core/src/` | FACT pass/fail |
 | AC-N2 | `test -f crates/slicer-runtime/src/region_mapping.rs` | FACT pass/fail |
 | AC-N3 | `! grep -qE '^slicer-runtime *=' crates/slicer-core/Cargo.toml` | FACT pass/fail |
+| AC-N4 | `[ $(cargo build -p slicer-sdk --target wasm32-unknown-unknown 2>&1 | grep -cE '^   Compiling (log|rayon|rayon-core) ') -eq 0 ]` | FACT pass/fail |
 | gate-1 | `cargo build --workspace` | FACT pass/fail |
 | gate-2 | `cargo clippy --workspace --all-targets -- -D warnings` | FACT pass/fail |
 | gate-3 | `cargo xtask build-guests` (rebuild) then `cargo xtask build-guests --check` | FACT pass/fail |

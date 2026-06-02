@@ -4,9 +4,15 @@ version = "0.1.0"
 edition = "2021"
 authors = ["ModularSlicer Team"]
 
+[features]
+default = []
+host-algos = ["dep:rayon", "dep:log"]
+
 [dependencies]
 clipper2-rust = { workspace = true }
+log = { version = "0.4", optional = true }
 rstar = "0.12"
+rayon = { version = "1.10", optional = true }
 slicer-ir = { path = "../slicer-ir" }
 
 [dev-dependencies]
@@ -15,6 +21,30 @@ criterion = { workspace = true }
 [[bench]]
 name = "polygon_ops"
 harness = false
+
+[[test]]
+name = "algo_mesh_analysis_tdd"
+required-features = ["host-algos"]
+
+[[test]]
+name = "algo_mesh_segmentation_tdd"
+required-features = ["host-algos"]
+
+[[test]]
+name = "algo_overhang_classifier_tdd"
+required-features = ["host-algos"]
+
+[[test]]
+name = "algo_paint_segmentation_tdd"
+required-features = ["host-algos"]
+
+[[test]]
+name = "algo_prepass_slice_tdd"
+required-features = ["host-algos"]
+
+[[test]]
+name = "algo_support_geometry_tdd"
+required-features = ["host-algos"]
 
 [lints]
 workspace = true

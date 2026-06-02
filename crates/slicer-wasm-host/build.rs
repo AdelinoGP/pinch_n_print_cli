@@ -1,9 +1,10 @@
-//! Build script for slicer-runtime: checks test guest component freshness.
-///
-/// If any test guest source (src/lib.rs or Cargo.toml) is newer than the
-/// corresponding .component.wasm, emits a cargo:warning so the developer
-/// knows to rebuild. Also sets cargo:rerun-if-changed on all guest sources
-/// so that cargo re-checks when they change.
+//! Build script for slicer-wasm-host: checks test guest component freshness.
+//!
+//! If any test guest source (src/lib.rs or Cargo.toml) is newer than the
+//! corresponding .component.wasm, emits a cargo:warning so the developer
+//! knows to rebuild. Also sets cargo:rerun-if-changed on all guest sources
+//! so that cargo re-checks when they change.
+
 use std::path::Path;
 
 fn main() {
@@ -32,7 +33,7 @@ fn main() {
             println!("cargo:rerun-if-changed={}", wasm.display());
         }
 
-        // Check freshness.
+        // Check existence: warn if the component artifact is missing.
         if !wasm.exists() {
             println!(
                 "cargo:warning=Test guest {guest}.component.wasm is missing. \
@@ -45,6 +46,7 @@ fn main() {
             continue;
         }
 
+        // Check freshness: warn if any guest source is newer than the artifact.
         let src_mtime = std::fs::metadata(&src).and_then(|m| m.modified()).ok();
         let toml_mtime = std::fs::metadata(&toml).and_then(|m| m.modified()).ok();
         let wasm_mtime = std::fs::metadata(&wasm).and_then(|m| m.modified()).ok();

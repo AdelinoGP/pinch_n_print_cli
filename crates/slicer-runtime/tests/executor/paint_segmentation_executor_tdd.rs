@@ -3,13 +3,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use slicer_core::algos::paint_segmentation::{group_and_union_paint_regions, PaintFacetEntry};
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ExPolygon, FacetClass, FacetPaintData, GlobalLayer,
     IndexedTriangleSet, LayerPlanIR, MeshIR, ObjectConfig, ObjectLayerRef, ObjectMesh,
     ObjectSurfaceData, PaintLayer, PaintRegionIR, PaintSemantic, PaintValue, Point2, Point3,
     Polygon, ResolvedConfig, SemVer, SurfaceClassificationIR, Transform3d,
 };
-use slicer_runtime::paint_segmentation::{group_and_union_paint_regions, PaintFacetEntry};
 use slicer_runtime::{execute_paint_segmentation, PaintSegmentationError};
 
 #[test]

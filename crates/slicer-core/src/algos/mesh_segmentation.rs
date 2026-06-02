@@ -1,4 +1,6 @@
-//! Mesh segmentation execution contract.
+//! Mesh segmentation algorithms.
+//!
+//! Normalize sub-facet paint strokes into whole-triangle assignments.
 
 use std::sync::Arc;
 

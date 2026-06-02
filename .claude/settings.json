@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [[ \"$CLAUDE_TOOL_INPUT_FILE_PATH\" == *.rs ]]; then rustfmt \"$CLAUDE_TOOL_INPUT_FILE_PATH\" 2>/dev/null || true; fi"
+            "command": "rustfmt \"$CLAUDE_TOOL_INPUT_FILE_PATH\""
           }
         ]
       },
@@ -31,7 +31,7 @@
             "type": "command",
             "timeout": 1800,
             "statusMessage": "EnterWorktree: building guest wasms (full cold compile)...",
-            "command": "bash -c 'set -e; INPUT=$(cat); WT=$(echo \"$INPUT\" | jq -r \".tool_response.path // .tool_response.cwd // empty\"); if [ -z \"$WT\" ]; then PATH_IN=$(echo \"$INPUT\" | jq -r \".tool_input.path // empty\"); NAME=$(echo \"$INPUT\" | jq -r \".tool_input.name // empty\"); CWD=$(echo \"$INPUT\" | jq -r \".cwd // empty\"); if [ -n \"$PATH_IN\" ]; then WT=\"$PATH_IN\"; elif [ -n \"$CWD\" ]; then WT=\"$CWD\"; elif [ -n \"$NAME\" ]; then WT=\"$CLAUDE_PROJECT_DIR/.claude/worktrees/$NAME\"; fi; fi; if [ -z \"$WT\" ] || [ ! -d \"$WT\" ]; then echo \"EnterWorktree hook: could not locate worktree\" >&2; exit 1; fi; cd \"$WT\" && rustup target add wasm32-unknown-unknown 1>&2 && cargo xtask build-guests 1>&2'"
+            "command": "cargo xtask build-guests"
           }
         ]
       }
@@ -47,17 +47,6 @@
         ]
       }
     ],
-    "TaskCompleted": [
-        {
-          "matcher": "",
-          "hooks": [
-            {
-              "type": "command",
-              "timeout": 30,
-              "command": "bash -c 'cd \"$CLAUDE_PROJECT_DIR\" && cargo xtask build-guests --check 1>&2 || exit 2'"
-            }
-          ]
-        }
-      ]
+    "TaskCompleted": []
   }
 }

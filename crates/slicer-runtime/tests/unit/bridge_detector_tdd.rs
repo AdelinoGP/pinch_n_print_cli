@@ -2,14 +2,16 @@
 
 #![allow(dead_code)]
 
+use slicer_core::algos::mesh_analysis::{execute_mesh_analysis_with, MeshAnalysisConfig};
+use slicer_core::algos::prepass_slice::{
+    assemble_bridge_areas, execute_prepass_slice_single_layer,
+};
 use slicer_core::polygon_ops::{intersection, validate_polygon_simplicity};
 use slicer_ir::{
     ActiveRegion, BoundingBox3, BridgeRegion, ExPolygon, FacetClass, GlobalLayer,
     IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, ObjectSurfaceData, Point2, Point3,
     Polygon, RegionId, SlicedRegion, SurfaceClassificationIR, Transform3d,
 };
-use slicer_runtime::mesh_analysis::{execute_mesh_analysis_with, MeshAnalysisConfig};
-use slicer_runtime::prepass_slice::{assemble_bridge_areas, execute_prepass_slice_single_layer};
 use std::collections::HashMap;
 
 // ---------------------------------------------------------------------------

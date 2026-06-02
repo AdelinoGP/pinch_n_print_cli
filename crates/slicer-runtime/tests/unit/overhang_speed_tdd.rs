@@ -94,7 +94,7 @@ fn collect_f_tokens(gcode_ir: &GCodeIR) -> Vec<f32> {
 /// must emit `F600` (10 mm/s Ã— 60 = 600 mm/min).
 #[test]
 fn cantilever_emits_overhang_speed() {
-    let config = slicer_runtime::gcode_emit::FeedrateConfig {
+    let config = slicer_ir::FeedrateConfig {
         outer_wall_speed: 60.0,
         overhang_1_4_speed: 10.0,
         overhang_2_4_speed: 0.0,
@@ -247,9 +247,9 @@ fn cantilever_emits_overhang_speed() {
 /// speed), and `classify_layers` must not write `Some(_)` onto any point.
 #[test]
 fn zero_config_byte_identical_baseline() {
-    use slicer_runtime::overhang_classifier::classify_layers;
+    use slicer_core::algos::overhang_classifier::classify_layers;
 
-    let zero_config = slicer_runtime::gcode_emit::FeedrateConfig {
+    let zero_config = slicer_ir::FeedrateConfig {
         outer_wall_speed: 60.0,
         overhang_1_4_speed: 0.0,
         overhang_2_4_speed: 0.0,
@@ -374,7 +374,7 @@ fn zero_config_byte_identical_baseline() {
     // Sanity: prove the equality test is non-degenerate by showing an active
     // config produces a DIFFERENT G-code on the same scene. Without this,
     // baseline equality would be vacuously true.
-    let active_config = slicer_runtime::gcode_emit::FeedrateConfig {
+    let active_config = slicer_ir::FeedrateConfig {
         outer_wall_speed: 60.0,
         overhang_1_4_speed: 10.0,
         ..Default::default()
@@ -415,7 +415,7 @@ fn zero_config_byte_identical_baseline() {
 /// role-base F-token, not the overhang speed.
 #[test]
 fn non_wall_roles_ignore_overhang_quartile() {
-    let config = slicer_runtime::gcode_emit::FeedrateConfig {
+    let config = slicer_ir::FeedrateConfig {
         sparse_infill_speed: 100.0,
         bridge_speed: 25.0,
         support_speed: 80.0,
@@ -495,7 +495,7 @@ fn non_wall_roles_ignore_overhang_quartile() {
 /// because the first layer has no layer below it to compare against.
 #[test]
 fn first_layer_quartile_is_none() {
-    use slicer_runtime::gcode_emit::FeedrateConfig;
+    use slicer_ir::FeedrateConfig;
 
     let config = FeedrateConfig {
         overhang_1_4_speed: 10.0,
@@ -529,7 +529,7 @@ fn first_layer_quartile_is_none() {
     ));
 
     let mut layers = vec![layer];
-    slicer_runtime::overhang_classifier::classify_layers(&mut layers, &config);
+    slicer_core::algos::overhang_classifier::classify_layers(&mut layers, &config);
 
     for entity in &layers[0].ordered_entities {
         for pt in &entity.path.points {
@@ -550,7 +550,7 @@ fn first_layer_quartile_is_none() {
 /// respectively.
 #[test]
 fn quartile_to_key_mapping() {
-    let config = slicer_runtime::gcode_emit::FeedrateConfig {
+    let config = slicer_ir::FeedrateConfig {
         outer_wall_speed: 60.0,
         overhang_1_4_speed: 10.0,
         overhang_2_4_speed: 20.0,
@@ -612,7 +612,7 @@ fn quartile_to_key_mapping() {
 /// `debug_assert!((1..=4).contains(&q))` guards the same invariant.
 #[test]
 fn quartile_zero_is_reserved() {
-    use slicer_runtime::gcode_emit::FeedrateConfig;
+    use slicer_ir::FeedrateConfig;
 
     let config = FeedrateConfig {
         overhang_1_4_speed: 10.0,
@@ -675,7 +675,7 @@ fn quartile_zero_is_reserved() {
     ));
 
     let mut layers = vec![layer0, layer1];
-    slicer_runtime::overhang_classifier::classify_layers(&mut layers, &config);
+    slicer_core::algos::overhang_classifier::classify_layers(&mut layers, &config);
 
     // Exhaustive enumeration: classifier output must be exactly None or one
     // of Some(1)..=Some(4). Any other value (Some(0), Some(5), â€¦) is a

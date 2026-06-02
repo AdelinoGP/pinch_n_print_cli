@@ -8,6 +8,8 @@
 #![warn(unused_must_use)]
 
 pub mod entity_id;
+/// Feedrate computation and configuration.
+pub mod feedrate;
 pub mod polygon_predicate;
 pub mod resolved_config;
 pub mod slice_ir;
@@ -15,6 +17,7 @@ pub mod stage_io;
 pub mod validation;
 
 pub use entity_id::LayerEntityIdGen;
+pub use feedrate::FeedrateConfig;
 pub use polygon_predicate::{point_in_contour_winding, point_in_polygon_winding};
 pub use resolved_config::{ConfigResolutionError, ResolvedConfig};
 pub use stage_io::{

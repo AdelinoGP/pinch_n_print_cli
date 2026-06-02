@@ -1,43 +1,17 @@
-//! Paint segmentation execution contract.
+//! Paint segmentation algorithms.
+//!
+//! Converts segmented whole-triangle paint assignments into immutable per-layer paint regions.
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
+use crate::{slice_mesh_ex, union};
 use rayon::prelude::*;
-use slicer_core::{slice_mesh_ex, union};
 use slicer_ir::slice_ir::BoundingBox2;
 use slicer_ir::{
     ConfigValue, ExPolygon, LayerPaintMap, LayerPlanIR, MeshIR, PaintRegionIR, PaintSemantic,
-    PaintValue, Point2, Point3, Polygon, SemVer, SemanticRegion, SurfaceClassificationIR,
-};
-
-use crate::dag::BuiltinProducer;
-
-/// `BuiltinProducer` for the host-side `PrePass::PaintSegmentation` step.
-pub static PAINT_SEGMENTATION_PRODUCER: BuiltinProducer = BuiltinProducer {
-    id: "host:paint_segmentation",
-    stage: "PrePass::PaintSegmentation",
-    ir_writes: &["PaintRegionIR"],
-    ir_reads: &[],
-    claims_holds: &[],
-    claims_requires: &[],
-    requires_modules: &[],
-    min_ir_schema: SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    },
-    max_ir_schema: SemVer {
-        major: 4,
-        minor: 0,
-        patch: 0,
-    },
-    _cache_ir_writes: OnceLock::new(),
-    _cache_ir_reads: OnceLock::new(),
-    _cache_claims_holds: OnceLock::new(),
-    _cache_claims_requires: OnceLock::new(),
-    _cache_requires_modules: OnceLock::new(),
+    PaintValue, Point2, Point3, Polygon, SemanticRegion, SurfaceClassificationIR,
 };
 
 /// Structured paint-segmentation contract failures.
@@ -111,7 +85,6 @@ impl std::fmt::Display for PaintSegmentationError {
 impl std::error::Error for PaintSegmentationError {}
 
 /// A single facet-paint entry collected during execution or WIT harvesting.
-/// These are the raw input to [`group_and_union_paint_regions`].
 #[derive(Debug, Clone)]
 pub struct PaintFacetEntry {
     /// Global layer index this entry belongs to.
@@ -174,7 +147,6 @@ pub fn group_and_union_paint_regions(
 
     let mut per_layer: HashMap<u32, LayerPaintMap> = HashMap::new();
 
-    // Process groups in parallel — each group's union can be expensive.
     let group_vec: Vec<_> = groups.into_iter().collect();
     let results: Vec<(u32, PaintSemantic, SemanticRegion)> = group_vec
         .into_par_iter()
@@ -194,7 +166,7 @@ pub fn group_and_union_paint_regions(
                 let paint_order = group_entries.iter().map(|(po, _)| *po).min().unwrap_or(0);
 
                 let unioned = if union_paint_regions_at_harvest && all_polygons.len() > 1 {
-                    slicer_core::union(&all_polygons, &[])
+                    crate::union(&all_polygons, &[])
                 } else {
                     all_polygons
                 };
@@ -298,8 +270,6 @@ pub fn execute_paint_segmentation(
         })
         .collect::<HashMap<_, _>>();
 
-    // Aggregate facet entries by (layer_index, object_id, semantic, value, paint_order)
-    // so we don't create O(facets × layers) individual entries.
     let mut entry_accumulator: HashMap<
         (u32, String, PaintSemantic, HashablePaintValue, u64),
         PaintFacetEntry,
@@ -347,9 +317,6 @@ pub fn execute_paint_segmentation(
                 let polygon = projected_facets[facet_index].clone();
 
                 for object_layer in participating_layers {
-                    // Conflict detection: check accumulator for same
-                    // (layer, object_id, semantic, paint_order) with a
-                    // different value whose polygons overlap this facet.
                     if matches!(layer.semantic, PaintSemantic::Custom(_)) {
                         let conflict_value = HashablePaintValue::from(value);
                         for ((l, oid, sem, hv, po), existing) in entry_accumulator.iter() {
@@ -397,16 +364,12 @@ pub fn execute_paint_segmentation(
         }
     }
 
-    // Group, union, and compute AABBs via shared function
     let entries: Vec<PaintFacetEntry> = entry_accumulator.into_values().collect();
     let facet_ir = group_and_union_paint_regions(entries, union_paint_regions_at_harvest);
     for (layer_index, layer_map) in facet_ir.per_layer {
         per_layer.insert(layer_index, layer_map);
     }
 
-    // Emit synthetic PaintRegionIR entries for support_enforcer and support_blocker
-    // modifier volumes (Packet 56c). Projects each qualifying modifier mesh at every
-    // global layer Z and inserts SemanticRegion entries via polygon union.
     let layer_zs: Vec<f32> = layer_plan_ir.global_layers.iter().map(|l| l.z).collect();
     for object in &mesh_ir.objects {
         for mv in &object.modifier_volumes {
@@ -420,7 +383,7 @@ pub fn execute_paint_segmentation(
                 _ => continue,
             };
             if mv.mesh.vertices.is_empty() {
-                continue; // degenerate mesh — emit nothing
+                continue;
             }
             let projections = slice_mesh_ex(&mv.mesh, &layer_zs);
             for (layer, polys) in layer_plan_ir.global_layers.iter().zip(projections) {
@@ -446,7 +409,6 @@ pub fn execute_paint_segmentation(
                         aabb: None,
                     });
                 } else {
-                    // Union new polygons into the existing region for this object.
                     let existing = entry.first_mut().unwrap();
                     existing.polygons = union(&existing.polygons, &polys);
                 }
@@ -531,7 +493,7 @@ fn project_facet(
 }
 
 fn transform_point(point: Point3, matrix: &[f64; 16]) -> Point3 {
-    slicer_core::transform_point3(matrix, point)
+    crate::transform_point3(matrix, point)
 }
 
 fn polygons_overlap(left: &ExPolygon, right: &ExPolygon) -> bool {

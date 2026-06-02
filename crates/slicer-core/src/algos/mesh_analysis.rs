@@ -1,93 +1,27 @@
-//! Host-built-in `PrePass::MeshAnalysis` stage (TASK-105).
+//! Mesh analysis algorithms.
 //!
-//! Produces a [`SurfaceClassificationIR`] from the blackboard-owned
-//! [`MeshIR`] by classifying each triangle's normal and grouping the
-//! results per object. The classifier is intentionally small and
-//! deterministic — bridge detection, surface grouping by connectivity,
-//! and printability heuristics are out of scope for this step; those
-//! belong to later MeshAnalysis-tier modules that consume this IR.
-//!
-//! Reference: docs/01_system_architecture.md §"PrePass::MeshAnalysis",
-//! docs/02_ir_schemas.md §"IR 2 — SurfaceClassificationIR",
-//! docs/04_host_scheduler.md §"Full Lifecycle" (prepass).
+//! Produces a [`SurfaceClassificationIR`] from a [`MeshIR`] by classifying
+//! each triangle's normal and grouping the results per object.
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::sync::OnceLock;
 
 use slicer_ir::{
     BridgeRegion, ExPolygon, FacetClass, IndexedTriangleSet, MeshIR, ObjectId, ObjectSurfaceData,
-    OverhangRegion, Point2, Point3, Polygon, SemVer, SurfaceClassificationIR, SurfaceGroup,
-    Transform3d, CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
-};
-
-use crate::dag::BuiltinProducer;
-
-/// `BuiltinProducer` for the host-side mesh-commit pseudo-module (`host:mesh`).
-///
-/// The `MeshIR` commit happens before any WASM module runs; this producer
-/// entry makes the commit visible to the DAG validator and `dag claims`.
-pub static MESH_PRODUCER: BuiltinProducer = BuiltinProducer {
-    id: "host:mesh",
-    stage: "PrePass::MeshAnalysis",
-    ir_writes: &["MeshIR"],
-    ir_reads: &[],
-    claims_holds: &[],
-    claims_requires: &[],
-    requires_modules: &[],
-    min_ir_schema: SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    },
-    max_ir_schema: SemVer {
-        major: 4,
-        minor: 0,
-        patch: 0,
-    },
-    _cache_ir_writes: OnceLock::new(),
-    _cache_ir_reads: OnceLock::new(),
-    _cache_claims_holds: OnceLock::new(),
-    _cache_claims_requires: OnceLock::new(),
-    _cache_requires_modules: OnceLock::new(),
-};
-
-/// `BuiltinProducer` for the host-side `PrePass::MeshAnalysis` step.
-pub static MESH_ANALYSIS_PRODUCER: BuiltinProducer = BuiltinProducer {
-    id: "host:mesh_analysis",
-    stage: "PrePass::MeshAnalysis",
-    ir_writes: &["SurfaceClassificationIR"],
-    ir_reads: &[],
-    claims_holds: &[],
-    claims_requires: &[],
-    requires_modules: &[],
-    min_ir_schema: SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    },
-    max_ir_schema: SemVer {
-        major: 4,
-        minor: 0,
-        patch: 0,
-    },
-    _cache_ir_writes: OnceLock::new(),
-    _cache_ir_reads: OnceLock::new(),
-    _cache_claims_holds: OnceLock::new(),
-    _cache_claims_requires: OnceLock::new(),
-    _cache_requires_modules: OnceLock::new(),
+    OverhangRegion, Point2, Point3, Polygon, SurfaceClassificationIR, SurfaceGroup, Transform3d,
+    CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION,
 };
 
 /// Configuration for mesh bridge analysis.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MeshAnalysisConfig {
-    /// Project policy: bridges shorter than this are too short to need explicit bridging treatment. Reference 12-rev1 architectural divergence — Orca has no fixed default for this.
+    /// Project policy: bridges shorter than this are too short to need explicit bridging treatment.
     pub min_bridge_length_mm: f32,
-    /// Project policy: anchor runs narrower than this cannot reliably support a bridge. Reference 12-rev1 architectural divergence.
+    /// Project policy: anchor runs narrower than this cannot reliably support a bridge.
     pub anchor_width_mm: f32,
     /// Aligns with Orca's BRIDGE_INFILL_MARGIN.
     pub expansion_margin_mm: f32,
-    /// Facet-normal angle (from horizontal) above which a downward-facing facet is classified as Overhang. Project policy.
+    /// Facet-normal angle (from horizontal) above which a downward-facing facet is classified as Overhang.
     pub overhang_threshold_deg: f32,
 }
 
@@ -104,13 +38,10 @@ impl Default for MeshAnalysisConfig {
 
 /// Default overhang threshold: a facet whose downward tilt is at or below
 /// this angle (i.e. facing nearly straight down) is reported as an
-/// overhang requiring support. Matches the common 45° default seen in
-/// existing slicers.
+/// overhang requiring support.
 pub const DEFAULT_OVERHANG_THRESHOLD_DEG: f32 = 45.0;
 
-/// Cosine-epsilon used to pick out top/bottom surfaces. A facet whose
-/// normal z-component is within this distance of ±1.0 is considered
-/// axis-aligned (i.e. a TopSurface or BottomSurface facet).
+/// Cosine-epsilon used to pick out top/bottom surfaces.
 const TOP_BOTTOM_COSINE_EPSILON: f32 = 0.017_452_406; // cos(89°)→sin(1°) tolerance
 
 /// Structured mesh-analysis failure.
@@ -208,10 +139,6 @@ fn classify_object(
     let mut overhang_facets: Vec<u32> = Vec::new();
     let mut overhang_max_angle: f32 = 0.0;
 
-    // Surface-group bookkeeping: for this built-in we emit one group per
-    // object that spans every facet, with aggregate z/area statistics.
-    // Later MeshAnalysis modules may re-segment by connectivity — that is
-    // their job; ours is only to produce a valid baseline IR.
     let mut z_min = f32::INFINITY;
     let mut z_max = f32::NEG_INFINITY;
     let mut total_area: f32 = 0.0;
@@ -284,7 +211,6 @@ fn classify_object(
         }]
     };
 
-    // Compute bridge regions via half-edge adjacency analysis.
     let bridge_regions =
         compute_bridge_metrics(mesh, transform, &facet_classes, &facet_normals, config);
 
@@ -472,9 +398,6 @@ struct AnchorRun {
 }
 
 /// Group the anchor edges of a cluster into contiguous runs.
-///
-/// Each anchor edge is a directed edge from a bridge facet. We chain them
-/// head-to-tail through shared vertices to form polyline runs.
 fn build_anchor_runs(
     anchor_edges: &[DirectedEdge],
     mesh: &IndexedTriangleSet,
@@ -484,7 +407,6 @@ fn build_anchor_runs(
         return Vec::new();
     }
 
-    // Build adjacency: dst vertex → list of edge indices whose src == dst.
     let mut next_map: HashMap<u32, Vec<usize>> = HashMap::new();
     for (i, e) in anchor_edges.iter().enumerate() {
         next_map.entry(e.src).or_default().push(i);
@@ -499,7 +421,6 @@ fn build_anchor_runs(
         }
         used[start] = true;
 
-        // Walk forward chaining dst → next src.
         let mut chain: Vec<usize> = vec![start];
         let mut current_dst = anchor_edges[start].dst;
         loop {
@@ -520,7 +441,6 @@ fn build_anchor_runs(
             }
         }
 
-        // Convert chain to world-space points.
         let mut pts: Vec<(f32, f32)> = Vec::with_capacity(chain.len() + 1);
         {
             let first_edge = &anchor_edges[chain[0]];
@@ -549,7 +469,6 @@ fn build_anchor_runs(
 
 /// Bridge direction = filament travel direction = perpendicular to the longest anchor-edge run,
 /// normalized to [0, 180).
-// 12-rev1 architectural divergence: see docs/04_host_scheduler.md PrePass + Per-Layer Execution sections.
 fn compute_bridge_direction_deg(runs: &[AnchorRun]) -> f32 {
     let longest = match runs.iter().max_by(|a, b| {
         a.length_mm
@@ -571,7 +490,6 @@ fn compute_bridge_direction_deg(runs: &[AnchorRun]) -> f32 {
         return 0.0;
     }
     let wall_angle_deg = dy.atan2(dx).to_degrees();
-    // Bridge direction is perpendicular to the anchor wall; normalize to [0, 180).
     (wall_angle_deg + 90.0).rem_euclid(180.0)
 }
 
@@ -606,7 +524,7 @@ fn compute_xy_footprint(
     transform: &Transform3d,
     facet_indices: &[u32],
 ) -> Vec<ExPolygon> {
-    use slicer_core::polygon_ops::union;
+    use crate::polygon_ops::union;
 
     let mut accum: Vec<ExPolygon> = Vec::new();
 
@@ -644,7 +562,6 @@ fn compute_bridge_length_mm(
     facet_indices: &[u32],
     bridge_direction_deg: f32,
 ) -> f32 {
-    // The bridged gap is spanned perpendicular to the filament direction.
     let dir_rad = (bridge_direction_deg + 90.0).to_radians();
     let dir_x = dir_rad.cos();
     let dir_y = dir_rad.sin();
@@ -733,7 +650,7 @@ fn get_vertex<'a>(
 /// collapse the mesh; we treat it as identity for robustness against
 /// fixtures that leave `Transform3d::matrix` unset.
 fn apply_transform(t: &Transform3d, p: &Point3) -> Point3 {
-    slicer_core::transform_point3(&t.matrix, *p)
+    crate::transform_point3(&t.matrix, *p)
 }
 
 fn triangle_normal_area(a: Point3, b: Point3, c: Point3) -> ([f32; 3], f32) {
@@ -757,7 +674,6 @@ fn triangle_normal_area(a: Point3, b: Point3, c: Point3) -> ([f32; 3], f32) {
 fn classify_facet(normal: [f32; 3], overhang_threshold_deg: f32) -> FacetClass {
     let nz = normal[2];
 
-    // Degenerate normal — classify as Normal for safety.
     if !nz.is_finite() || (normal[0] == 0.0 && normal[1] == 0.0 && normal[2] == 0.0) {
         return FacetClass::Normal;
     }
@@ -769,15 +685,7 @@ fn classify_facet(normal: [f32; 3], overhang_threshold_deg: f32) -> FacetClass {
         return FacetClass::BottomSurface;
     }
 
-    // Overhang: facet faces downward beyond the threshold. We measure the
-    // tilt *from horizontal* of the downward-facing side so that a facet
-    // pointing straight down is reported as angle_deg = 0 and a facet
-    // pointing at the horizon is angle_deg = 90°. The facet is an overhang
-    // when its downward tilt is within `overhang_threshold_deg` of the
-    // horizontal plane (i.e. nearly horizontal but facing down).
     if nz < 0.0 {
-        // Angle of the normal from straight down (-Z axis), in degrees:
-        // 0° = normal points straight down, 90° = normal is horizontal.
         let angle_from_down_deg = (-nz).clamp(0.0, 1.0).acos().to_degrees();
         if angle_from_down_deg <= overhang_threshold_deg {
             return FacetClass::Overhang {

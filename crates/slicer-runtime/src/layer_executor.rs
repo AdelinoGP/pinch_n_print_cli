@@ -20,13 +20,13 @@ use slicer_ir::{
 use slicer_wasm_host::{CompiledModuleLive, LayerStageInput, LayerStageRunner};
 
 use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
-use crate::prepass_slice::LayerSliceError;
 use crate::progress_events::ProgressEvent;
 use crate::slice_postprocess::{
     execute_slice_postprocess_paint_annotation, paint_annotation_warnings_to_progress_events,
     SlicePostProcessPaintAnnotationError, SlicePostProcessPaintAnnotationRequest,
 };
 use crate::{Blackboard, BlackboardError, ExecutionPlan, LayerArena, ModuleAccessAudit};
+use slicer_core::algos::prepass_slice::LayerSliceError;
 
 /// Sink for per-layer progress events (e.g. host-built-in paint-annotation
 /// fallback warnings). Must be `Sync` because the per-layer executor fans out

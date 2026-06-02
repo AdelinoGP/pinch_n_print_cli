@@ -11,12 +11,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use slicer_core::algos::support_geometry;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ExPolygon, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
     ObjectMesh, Point2, Point3, Polygon, RegionMapIR, ResolvedConfig, SliceIR, SlicedRegion,
     SupportGeometryIR, SurfaceClassificationIR, Transform3d,
 };
-use slicer_runtime::{commit_support_geometry_builtin, support_geometry, Blackboard};
+use slicer_runtime::{commit_support_geometry_builtin, Blackboard};
 
 fn identity() -> Transform3d {
     let mut m = [0.0_f64; 16];

@@ -400,7 +400,7 @@ fn support_enforcer_emits_paint_region() {
     let mesh_ir = mesh_ir_with_modifier("obj-1", enforcer_mv);
     let layer_plan = layer_plan_with_z_values("obj-1", &[(0, 0.5), (1, 5.0)]);
 
-    let paint_ir = slicer_runtime::paint_segmentation::execute_paint_segmentation(
+    let paint_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
         Arc::clone(&mesh_ir),
         empty_surface_ir(),
         Arc::clone(&layer_plan),
@@ -449,7 +449,7 @@ fn support_blocker_emits_paint_region() {
     let mesh_ir = mesh_ir_with_modifier("obj-1", blocker_mv);
     let layer_plan = layer_plan_with_z_values("obj-1", &[(0, 0.5)]);
 
-    let paint_ir = slicer_runtime::paint_segmentation::execute_paint_segmentation(
+    let paint_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
         Arc::clone(&mesh_ir),
         empty_surface_ir(),
         Arc::clone(&layer_plan),
@@ -485,7 +485,7 @@ fn empty_support_enforcer_emits_nothing() {
     let mesh_ir = mesh_ir_with_modifier("obj-1", mv);
     let layer_plan = layer_plan_with_z_values("obj-1", &[(0, 0.5)]);
 
-    let paint_ir = slicer_runtime::paint_segmentation::execute_paint_segmentation(
+    let paint_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
         Arc::clone(&mesh_ir),
         empty_surface_ir(),
         Arc::clone(&layer_plan),
@@ -513,7 +513,7 @@ fn support_enforcer_flows_through_paint_overrides() {
     let mesh_ir = mesh_ir_with_modifier("obj-abc", enforcer_mv);
     let layer_plan = layer_plan_with_z_values("obj-abc", &[(0, 1.0), (1, 2.0)]);
 
-    let paint_ir = slicer_runtime::paint_segmentation::execute_paint_segmentation(
+    let paint_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
         Arc::clone(&mesh_ir),
         empty_surface_ir(),
         Arc::clone(&layer_plan),
@@ -667,7 +667,7 @@ fn empty_support_blocker_emits_nothing() {
     let mesh_ir = mesh_ir_with_modifier("obj-1", mv);
     let layer_plan = layer_plan_with_z_values("obj-1", &[(0, 0.5), (1, 1.0)]);
 
-    let paint_ir = slicer_runtime::paint_segmentation::execute_paint_segmentation(
+    let paint_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
         Arc::clone(&mesh_ir),
         empty_surface_ir(),
         Arc::clone(&layer_plan),

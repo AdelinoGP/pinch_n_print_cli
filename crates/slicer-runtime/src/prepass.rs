@@ -18,12 +18,12 @@ use crate::config_resolution::resolve_per_paint_semantic_configs;
 use crate::instrumentation::{
     NoopInstrumentation, PipelineInstrumentation, StageInstrumentationGuard,
 };
-use crate::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
-use crate::paint_segmentation::PaintSegmentationError;
 use crate::region_mapping::{commit_region_mapping_builtin, RegionMappingBuiltinError};
-use crate::support_geometry::SupportGeometryBuiltinError;
 use crate::validation::ModuleAccessAudit;
 use crate::{Blackboard, BlackboardError, BlackboardPrepassSlot, ExecutionPlan};
+use slicer_core::algos::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
+use slicer_core::algos::paint_segmentation::PaintSegmentationError;
+use slicer_core::algos::support_geometry::SupportGeometryBuiltinError;
 use slicer_wasm_host::{CompiledModuleLive, PrepassStageInput, PrepassStageRunner};
 
 // PrepassStageRunner trait is now defined in slicer-wasm-host::traits and re-exported
@@ -82,7 +82,7 @@ pub enum PrepassExecutionError {
     /// The host-built-in `PrePass::Slice` stage failed.
     Slice {
         /// Underlying slice failure.
-        source: crate::prepass_slice::LayerSliceError,
+        source: slicer_core::algos::prepass_slice::LayerSliceError,
     },
     /// The host-built-in `PrePass::ShellClassification` stage failed.
     ShellClassification {
@@ -460,7 +460,7 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
                 .get(&ConfigKey::from("union_paint_regions_at_harvest"))
                 .map(|v| matches!(v, ConfigValue::Bool(true)))
                 .unwrap_or(true);
-            let paint_ir = crate::paint_segmentation::execute_paint_segmentation(
+            let paint_ir = slicer_core::algos::paint_segmentation::execute_paint_segmentation(
                 bb.mesh().clone(),
                 // SAFETY: guarded by .is_some() above
                 bb.surface_classification().cloned().unwrap(),
@@ -524,7 +524,7 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
         "host:slice",
         |bb| bb.slice_ir().is_none() && bb.layer_plan().is_some() && bb.region_map().is_some(),
         |bb| {
-            crate::prepass_slice::commit_slice_builtin(bb)
+            crate::builtins::prepass_slice_producer::commit_slice_builtin(bb)
                 .map_err(|source| PrepassExecutionError::Slice { source })
         },
     )?;
@@ -556,7 +556,7 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             bb.support_geometry().is_none() && bb.layer_plan().is_some() && bb.slice_ir().is_some()
         },
         |bb| {
-            crate::support_geometry::commit_support_geometry_builtin(bb)
+            crate::builtins::support_geometry_producer::commit_support_geometry_builtin(bb)
                 .map_err(|source| PrepassExecutionError::SupportGeometry { source })
         },
     )?;

@@ -2389,6 +2389,8 @@ version = "0.1.0"
 dependencies = [
  "clipper2-rust",
  "criterion",
+ "log",
+ "rayon",
  "rstar",
  "slicer-ir",
 ]

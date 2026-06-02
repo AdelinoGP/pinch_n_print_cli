@@ -31,7 +31,7 @@ OrcaSlicer comparison surface: none NEW — existing parity assertions inside th
 
 - ADR-0001 preserved: built-in commits stay in-stage. The `commit_*_builtin` body lives in `slicer-runtime/src/builtins/`; only the algorithm body crosses to `slicer-core`.
 - ADR-0002 / ADR-0003 untouched: no WIT, no bindgen, no guest-side WIT conversion.
-- ADR-0004 / ADR-0005 (from P83) preserved: runner traits and stage-export lookup unchanged.
+- ADR-0005 / ADR-0006 (from P83) preserved: runner traits and stage-export lookup unchanged. (On-disk filenames are `docs/adr/0005-runner-traits-in-slicer-wasm-host.md` and `docs/adr/0006-export-for-stage-id-sole-lookup.md`; ADR-0004 was claimed by Packet 77.)
 - `slicer-core` MUST NOT depend on `slicer-runtime`, `slicer-wasm-host`, `slicer-helpers`, `slicer-sdk`, `slicer-schema`, `slicer-gcode`, or `slicer-model-io`. Path deps in `slicer-core/Cargo.toml` are limited to `slicer-ir` plus crates.io external deps the algorithms need.
 - `slicer-ir` MUST NOT depend on anything new. `FeedrateConfig` is plain Rust data plus a `Default` impl — no traits beyond the standard `Debug, Clone, PartialEq` it already has.
 

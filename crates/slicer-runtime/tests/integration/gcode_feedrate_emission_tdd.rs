@@ -85,7 +85,7 @@ fn per_role_speed_resolves_to_f_token() {
         });
     }
 
-    let config = slicer_runtime::gcode_emit::FeedrateConfig {
+    let config = slicer_ir::FeedrateConfig {
         outer_wall_speed: 30.0,
         inner_wall_speed: 60.0,
         sparse_infill_speed: 120.0,
@@ -496,7 +496,7 @@ fn rejects_stale_f_window() {
 
 #[test]
 fn filament_ironing_overrides_global_ironing() {
-    let config = slicer_runtime::gcode_emit::FeedrateConfig {
+    let config = slicer_ir::FeedrateConfig {
         ironing_speed: 20.0,
         filament_ironing_speed: 40.0,
         ..Default::default()
@@ -511,7 +511,7 @@ fn filament_ironing_overrides_global_ironing() {
 
 #[test]
 fn wipe_speed_resolves_correctly() {
-    let config = slicer_runtime::gcode_emit::FeedrateConfig {
+    let config = slicer_ir::FeedrateConfig {
         wipe_speed: 96.0,
         ..Default::default()
     };

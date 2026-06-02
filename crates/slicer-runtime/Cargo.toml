@@ -10,7 +10,7 @@ report = []
 
 [dependencies]
 slicer-ir = { path = "../slicer-ir" }
-slicer-core = { path = "../slicer-core" }
+slicer-core = { path = "../slicer-core", features = ["host-algos"] }
 slicer-sdk = { path = "../slicer-sdk" }
 slicer-helpers = { path = "../slicer-helpers" }
 slicer-wasm-host = { path = "../slicer-wasm-host" }
