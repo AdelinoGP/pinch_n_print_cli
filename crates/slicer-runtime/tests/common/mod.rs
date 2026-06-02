@@ -325,3 +325,35 @@ pub fn postpass_input(blackboard: &Blackboard) -> PostpassStageInput<'_> {
         _phantom: PhantomData,
     }
 }
+
+/// Convenience: dispatch a Layer stage AND commit the resulting LayerStageCommitData
+/// to the arena in one call — bridges the orchestration split so tests that previously
+/// expected `run_stage` to mutate `arena` continue to work via this single helper.
+#[allow(dead_code)]
+pub fn run_layer_and_commit(
+    dispatcher: &slicer_wasm_host::WasmRuntimeDispatcher,
+    stage_id: &str,
+    layer: &slicer_ir::GlobalLayer,
+    module: &slicer_runtime::CompiledModule,
+    blackboard: &Blackboard,
+    arena: &mut slicer_runtime::LayerArena,
+) -> Result<(), slicer_ir::LayerStageError> {
+    use slicer_wasm_host::LayerStageRunner;
+    let live = module.as_live();
+    let input = layer_input(blackboard, arena);
+    let commit_data = LayerStageRunner::run_stage(
+        dispatcher,
+        &stage_id.to_string(),
+        layer,
+        &live,
+        input,
+    )?;
+    slicer_runtime::commit_layer_outputs_for_test(
+        stage_id,
+        module.module_id(),
+        layer.index,
+        commit_data,
+        arena,
+        None,
+    )
+}

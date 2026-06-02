@@ -867,20 +867,16 @@ fn benchy_prepass_seam_plan_matches_live_outer_wall_start() {
         "pnp_cli must succeed on full Benchy run for seam evidence. Stderr:\n{stderr}"
     );
 
-    // Evidence point 1: a SeamPlanIR lookup was attempted during PerimetersPostProcess.
-    // The production dispatch path in push_perimeter_regions emits this DEBUG line
-    // when it looks up a SeamPlanIR entry by (layer, obj, region).
-    // The fact that this line appears at all proves the seam_plan_ir infrastructure
-    // is wired and consulted during the live dispatch path. The count may be 0
-    // (module didn't produce entries for this geometry) or >0 (entries found).
-    let has_seam_plan_lookup =
-        stderr.contains("seam_plan_ir has ") && (stderr.contains("entries, looking for layer="));
-    assert!(
-        has_seam_plan_lookup,
-        "stderr must contain 'seam_plan_ir has ... entries, looking for layer=' â€” proves \
-         SeamPlanIR lookup was consulted during Layer::PerimetersPostProcess dispatch. \
-         Stderr:\n{stderr}"
-    );
+    // Evidence point 1: pipeline succeeded with real modules (asserted above).
+    //
+    // Earlier this test also grepped stderr for a debug-eprintln from
+    // push_perimeter_regions ("seam_plan_ir has ... entries"). That eprintln was
+    // a development-time leftover and was removed when P83 sealed the wasm-host
+    // dispatch path (Step 9 SHA-diagnostic cleanup). Byte-identical g-code SHA
+    // parity (AC-9: SHA `89a329ad...`) is now the canonical evidence that seam
+    // plan data flows through PerimetersPostProcess correctly; the absence of
+    // SHA divergence covers the same invariant this assertion was checking via
+    // a stderr proxy.
 }
 
 // ---------------------------------------------------------------------------

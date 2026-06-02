@@ -12,13 +12,14 @@
 
 use crate::common::seed::seed_slice_ir;
 use crate::common::wasm_cache;
+use crate::common::{finalization_input, layer_input, postpass_input, prepass_input, run_layer_and_commit};
 use witness::{RawInfillWitness, RawInfillWitnessPoint1, RawSupportWitness};
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use slicer_core::paint_region::PaintRegionRTreeIndex;
-use slicer_ir::LayerStageCommitData;
+use slicer_ir::{LayerStageCommitData, PrepassRunnerError};
 use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, ExPolygon, FacetPaintData, GCodeIR, GlobalLayer,
     LayerCollectionIR, LayerPaintMap, LayerPlanIR, MeshIR, ObjectMesh, PaintLayer, PaintRegionIR,
@@ -318,8 +319,8 @@ fn prepass_runner_invokes_wasm_export() {
     let result = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::MeshAnalysis".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        prepass_input(&blackboard),
     );
 
     assert!(
@@ -347,20 +348,15 @@ fn layer_runner_invokes_typed_wasm_export() {
     };
     let mut arena = LayerArena::new();
 
-    let result = LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module,
         &blackboard,
         &mut arena,
-    );
-
-    assert!(
-        result.is_ok(),
-        "typed layer dispatch should succeed: {:?}",
-        result.err()
-    );
+    )
+    .expect("Layer::Infill dispatch+commit should succeed");
 }
 
 #[test]
@@ -377,8 +373,8 @@ fn finalization_runner_invokes_wasm_export() {
     let result = FinalizationStageRunner::run_stage(
         &dispatcher,
         &"PostPass::LayerFinalization".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        finalization_input(&blackboard),
         &mut layers,
     );
 
@@ -402,9 +398,9 @@ fn postpass_gcode_runner_invokes_wasm_export() {
 
     let result = dispatcher.run_gcode_postprocess(
         &"PostPass::GCodePostProcess".to_string(),
-        &module,
-        &blackboard,
-        &mut gcode_ir,
+        &module.as_live(),
+        postpass_input(&blackboard),
+        &mut gcode_ir.commands,
     );
 
     assert!(
@@ -425,8 +421,8 @@ fn postpass_text_runner_invokes_wasm_export() {
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let result = dispatcher.run_text_postprocess(
         &"PostPass::TextPostProcess".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        postpass_input(&blackboard),
         "; some gcode".to_string(),
     );
 
@@ -460,15 +456,14 @@ fn typed_instantiation_failure_produces_structured_error() {
         has_nonplanar: false,
         is_sync_layer: false,
     };
-    let mut arena = LayerArena::new();
+    let arena = LayerArena::new();
 
     let result = LayerStageRunner::run_stage(
         &dispatcher,
         &"Layer::Infill".to_string(),
         &layer,
-        &module,
-        &blackboard,
-        &mut arena,
+        &module.as_live(),
+        layer_input(&blackboard, &arena),
     );
 
     assert!(
@@ -506,9 +501,9 @@ fn missing_component_gracefully_skipped() {
     };
     let mut arena = LayerArena::new();
 
-    let result = LayerStageRunner::run_stage(
+    let result = crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module,
         &blackboard,
@@ -551,20 +546,15 @@ fn pool_slot_released_after_successful_typed_call() {
 
     for i in 0..3 {
         let mut arena = LayerArena::new();
-        let result = LayerStageRunner::run_stage(
-            &dispatcher,
-            &"Layer::Infill".to_string(),
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        );
-        assert!(
-            result.is_ok(),
-            "call #{} should succeed (pool reuse): {:?}",
-            i,
-            result.err()
-        );
+        crate::common::run_layer_and_commit(
+        &dispatcher,
+        "Layer::Infill",
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .expect("Layer::Infill dispatch+commit should succeed");
     }
 }
 
@@ -591,14 +581,13 @@ fn pool_slot_released_after_failed_typed_call() {
 
     // Call should fail but not deadlock â€” pool slot must be released
     for i in 0..3 {
-        let mut arena = LayerArena::new();
+        let arena = LayerArena::new();
         let result = LayerStageRunner::run_stage(
             &dispatcher,
             &"Layer::Infill".to_string(),
             &layer,
-            &module,
-            &blackboard,
-            &mut arena,
+            &module.as_live(),
+            layer_input(&blackboard, &arena),
         );
         assert!(result.is_err(), "call #{} should fail", i);
     }
@@ -627,19 +616,15 @@ fn typed_layer_dispatch_creates_fresh_context_per_call() {
 
     for i in 0..3 {
         let mut arena = LayerArena::new();
-        let result = LayerStageRunner::run_stage(
-            &dispatcher,
-            &"Layer::Infill".to_string(),
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        );
-        assert!(
-            result.is_ok(),
-            "typed call #{i} should succeed with fresh context: {:?}",
-            result.err()
-        );
+        crate::common::run_layer_and_commit(
+        &dispatcher,
+        "Layer::Infill",
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .expect("Layer::Infill dispatch+commit should succeed");
     }
 }
 
@@ -811,19 +796,15 @@ fn guest_infill_output_committed_to_arena() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(7, 1.4, 1, 1)).unwrap();
 
-    let result = LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module,
         &blackboard,
         &mut arena,
-    );
-    assert!(
-        result.is_ok(),
-        "dispatch should succeed: {:?}",
-        result.err()
-    );
+    )
+    .expect("Layer::Infill dispatch+commit should succeed");
 
     // Verify the infill slot is populated
     let infill = arena
@@ -870,19 +851,15 @@ fn empty_guest_output_does_not_populate_arena() {
     };
     let mut arena = LayerArena::new();
 
-    let result = LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::SupportPostProcess".to_string(),
+        "Layer::SupportPostProcess",
         &layer,
         &module,
         &blackboard,
         &mut arena,
-    );
-    assert!(
-        result.is_ok(),
-        "dispatch should succeed: {:?}",
-        result.err()
-    );
+    )
+    .expect("Layer::SupportPostProcess dispatch+commit should succeed");
 
     // Support slot should remain empty because guest produced no output
     assert!(
@@ -913,15 +890,15 @@ fn output_commitment_deterministic_across_repeated_runs() {
     for _ in 0..3 {
         let mut arena = LayerArena::new();
         arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-        LayerStageRunner::run_stage(
-            &dispatcher,
-            &"Layer::Infill".to_string(),
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
-        .unwrap();
+        crate::common::run_layer_and_commit(
+        &dispatcher,
+        "Layer::Infill",
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
         let infill = arena.take_infill().expect("infill should be committed");
         results.push(infill);
     }
@@ -1298,19 +1275,15 @@ fn empty_perimeter_output_does_not_populate_arena() {
     };
     let mut arena = LayerArena::new();
 
-    let result = LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Perimeters".to_string(),
+        "Layer::Perimeters",
         &layer,
         &module,
         &blackboard,
         &mut arena,
-    );
-    assert!(
-        result.is_ok(),
-        "empty perimeter dispatch should succeed: {:?}",
-        result.err()
-    );
+    )
+    .expect("Layer::Perimeters dispatch+commit should succeed");
     assert!(
         arena.perimeter().is_none(),
         "perimeter slot should be empty for no-op"
@@ -1436,19 +1409,15 @@ fn empty_slice_postprocess_does_not_populate_arena() {
     };
     let mut arena = LayerArena::new();
 
-    let result = LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::SlicePostProcess".to_string(),
+        "Layer::SlicePostProcess",
         &layer,
         &module,
         &blackboard,
         &mut arena,
-    );
-    assert!(
-        result.is_ok(),
-        "empty slicepp dispatch should succeed: {:?}",
-        result.err()
-    );
+    )
+    .expect("Layer::SlicePostProcess dispatch+commit should succeed");
     assert!(
         arena.slice().is_none(),
         "slice slot should be empty for no-op"
@@ -1551,9 +1520,9 @@ fn failed_commit_does_not_leak_into_next_call() {
         make_compiled_module_with("com.test.infill", "Layer::Infill", Arc::clone(&component));
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    let r1 = LayerStageRunner::run_stage(
+    let r1 = crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &infill_module,
         &blackboard,
@@ -1568,9 +1537,9 @@ fn failed_commit_does_not_leak_into_next_call() {
         "Layer::Perimeters",
         Arc::clone(&component),
     );
-    let r2 = LayerStageRunner::run_stage(
+    let r2 = crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Perimeters".to_string(),
+        "Layer::Perimeters",
         &layer,
         &perim_module,
         &blackboard,
@@ -1617,19 +1586,15 @@ fn real_config_visible_through_production_layer_dispatch() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
 
-    let result = LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module,
         &blackboard,
         &mut arena,
-    );
-    assert!(
-        result.is_ok(),
-        "dispatch with config should succeed: {:?}",
-        result.err()
-    );
+    )
+    .expect("Layer::Infill dispatch+commit should succeed");
 
     let infill = arena.infill().expect("infill slot should be populated");
     let path = &infill.regions[0].sparse_infill[0];
@@ -1670,15 +1635,15 @@ fn different_configs_produce_different_output() {
     );
     let mut arena_a = LayerArena::new();
     arena_a.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &mod_a,
         &blackboard,
         &mut arena_a,
     )
-    .expect("dispatch A should succeed");
+    .unwrap();
 
     // Config B: spacing=7.0 â†’ x=70.0
     let config_b =
@@ -1691,15 +1656,15 @@ fn different_configs_produce_different_output() {
     );
     let mut arena_b = LayerArena::new();
     arena_b.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &mod_b,
         &blackboard,
         &mut arena_b,
     )
-    .expect("dispatch B should succeed");
+    .unwrap();
 
     let x_a = RawInfillWitnessPoint1::decode(
         &arena_a.infill().unwrap().regions[0].sparse_infill[0].points,
@@ -1755,15 +1720,15 @@ fn repeated_identical_config_produces_deterministic_output() {
         let module = mk_module();
         let mut arena = LayerArena::new();
         arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-        LayerStageRunner::run_stage(
-            &dispatcher,
-            &"Layer::Infill".to_string(),
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
-        .unwrap();
+        crate::common::run_layer_and_commit(
+        &dispatcher,
+        "Layer::Infill",
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
         let infill = arena.take_infill().expect("should have infill");
         results.push(infill);
     }
@@ -1798,9 +1763,9 @@ fn config_isolation_across_sequential_calls() {
     );
     let mut arena1 = LayerArena::new();
     arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &mod1,
         &blackboard,
@@ -1818,9 +1783,9 @@ fn config_isolation_across_sequential_calls() {
     );
     let mut arena2 = LayerArena::new();
     arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &mod2,
         &blackboard,
@@ -1952,9 +1917,9 @@ fn real_paint_region_data_visible_through_production_support_dispatch() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(7, 1.4, 1, 1)).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Support".to_string(),
+        "Layer::Support",
         &layer,
         &module,
         &blackboard,
@@ -2003,9 +1968,9 @@ fn no_paint_region_ir_produces_empty_paint_view() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Support".to_string(),
+        "Layer::Support",
         &layer,
         &module,
         &blackboard,
@@ -2056,9 +2021,9 @@ fn paint_region_layer_mismatch_produces_empty_view() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(10, 2.0, 1, 1)).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Support".to_string(),
+        "Layer::Support",
         &layer,
         &module,
         &blackboard,
@@ -2103,9 +2068,9 @@ fn paint_region_isolation_across_sequential_dispatches() {
     };
     let mut arena1 = LayerArena::new();
     arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Support".to_string(),
+        "Layer::Support",
         &layer,
         &module1,
         &bb1,
@@ -2129,9 +2094,9 @@ fn paint_region_isolation_across_sequential_dispatches() {
     );
     let mut arena2 = LayerArena::new();
     arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Support".to_string(),
+        "Layer::Support",
         &layer,
         &module2,
         &bb2,
@@ -2187,15 +2152,15 @@ fn paint_region_deterministic_across_repeated_dispatches() {
         );
         let mut arena = LayerArena::new();
         arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-        LayerStageRunner::run_stage(
-            &dispatcher,
-            &"Layer::Support".to_string(),
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
-        .unwrap();
+        crate::common::run_layer_and_commit(
+        &dispatcher,
+        "Layer::Support",
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
         let s = arena.take_support().unwrap();
         results.push(s);
     }
@@ -2225,9 +2190,9 @@ fn non_paint_stage_not_affected_by_blackboard_paint_data() {
     };
     let mut arena1 = LayerArena::new();
     arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module1,
         &bb_no_paint,
@@ -2249,9 +2214,9 @@ fn non_paint_stage_not_affected_by_blackboard_paint_data() {
         make_compiled_module_with("com.test.infill2", "Layer::Infill", Arc::clone(&component));
     let mut arena2 = LayerArena::new();
     arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module2,
         &bb_with_paint,
@@ -2343,9 +2308,9 @@ fn real_slice_region_data_visible_through_production_infill_dispatch() {
     let slice_ir = make_slice_ir(3, 0.6, 2, 3);
     arena.set_slice(slice_ir).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module,
         &blackboard,
@@ -2393,9 +2358,9 @@ fn empty_arena_produces_no_slice_regions() {
     let mut arena = LayerArena::new();
     // No slice_ir set.
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module,
         &blackboard,
@@ -2430,9 +2395,9 @@ fn slice_region_isolation_across_sequential_dispatches() {
         make_compiled_module_with("com.test.infill1", "Layer::Infill", Arc::clone(&component));
     let mut arena1 = LayerArena::new();
     arena1.set_slice(make_slice_ir(0, 0.2, 3, 2)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module1,
         &blackboard,
@@ -2445,9 +2410,9 @@ fn slice_region_isolation_across_sequential_dispatches() {
         make_compiled_module_with("com.test.infill2", "Layer::Infill", Arc::clone(&component));
     let mut arena2 = LayerArena::new();
     arena2.set_slice(make_slice_ir(0, 0.2, 1, 5)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module2,
         &blackboard,
@@ -2493,15 +2458,15 @@ fn slice_region_deterministic_across_repeated_dispatches() {
         );
         let mut arena = LayerArena::new();
         arena.set_slice(make_slice_ir(0, 0.2, 2, 4)).unwrap();
-        LayerStageRunner::run_stage(
-            &dispatcher,
-            &"Layer::Infill".to_string(),
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
-        .unwrap();
+        crate::common::run_layer_and_commit(
+        &dispatcher,
+        "Layer::Infill",
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
         results.push(arena.take_infill().unwrap());
     }
 
@@ -2543,9 +2508,9 @@ fn slice_and_paint_both_visible_in_same_support_dispatch() {
     // the dispatch must still wire it without error).
     arena.set_slice(make_slice_ir(0, 0.2, 2, 3)).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Support".to_string(),
+        "Layer::Support",
         &layer,
         &module,
         &blackboard,
@@ -2588,9 +2553,9 @@ fn infill_output_correct_when_slice_regions_present() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(5, 1.0, 1, 2)).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module,
         &blackboard,
@@ -2718,9 +2683,9 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(2, 3, 2, 4)).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::InfillPostProcess".to_string(),
+        "Layer::InfillPostProcess",
         &layer,
         &module,
         &blackboard,
@@ -2762,9 +2727,9 @@ fn real_perimeter_region_data_visible_through_wall_postprocess_dispatch() {
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(1, 2, 3, 1)).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::PerimetersPostProcess".to_string(),
+        "Layer::PerimetersPostProcess",
         &layer,
         &module,
         &blackboard,
@@ -2816,9 +2781,9 @@ fn path_optimization_receives_real_perimeter_regions() {
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(0, 4, 2, 0)).unwrap();
 
-    let r = LayerStageRunner::run_stage(
+    let r = crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::PathOptimization".to_string(),
+        "Layer::PathOptimization",
         &layer,
         &module,
         &blackboard,
@@ -2856,9 +2821,9 @@ fn empty_perimeter_input_valid_for_infill_postprocess() {
     let mut arena = LayerArena::new();
     // Do not stage any perimeter IR.
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::InfillPostProcess".to_string(),
+        "Layer::InfillPostProcess",
         &layer,
         &module,
         &blackboard,
@@ -2893,9 +2858,9 @@ fn perimeter_region_isolation_across_sequential_dispatches() {
     );
     let mut a1 = LayerArena::new();
     a1.set_perimeter(make_perimeter_ir(0, 5, 1, 2)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::InfillPostProcess".to_string(),
+        "Layer::InfillPostProcess",
         &layer,
         &m1,
         &blackboard,
@@ -2910,9 +2875,9 @@ fn perimeter_region_isolation_across_sequential_dispatches() {
     );
     let mut a2 = LayerArena::new();
     a2.set_perimeter(make_perimeter_ir(0, 1, 7, 3)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::InfillPostProcess".to_string(),
+        "Layer::InfillPostProcess",
         &layer,
         &m2,
         &blackboard,
@@ -2955,15 +2920,15 @@ fn perimeter_region_deterministic_across_repeated_dispatches() {
         );
         let mut arena = LayerArena::new();
         arena.set_perimeter(make_perimeter_ir(0, 2, 3, 4)).unwrap();
-        LayerStageRunner::run_stage(
-            &dispatcher,
-            &"Layer::InfillPostProcess".to_string(),
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
-        .unwrap();
+        crate::common::run_layer_and_commit(
+        &dispatcher,
+        "Layer::InfillPostProcess",
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
         results.push(arena.take_infill().unwrap());
     }
     assert_eq!(results[0], results[1]);
@@ -2992,9 +2957,9 @@ fn stage_without_perimeter_input_does_not_see_perimeter_state() {
     // Stage perimeter data only; no slice data.
     arena.set_perimeter(make_perimeter_ir(0, 4, 2, 5)).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::Infill".to_string(),
+        "Layer::Infill",
         &layer,
         &module,
         &blackboard,
@@ -3078,9 +3043,9 @@ fn perimeter_postprocess_commit_preserves_distinct_region_identities() {
         .set_perimeter(make_perimeter_ir_with_ids(0, &ids, 2, 1))
         .unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::PerimetersPostProcess".to_string(),
+        "Layer::PerimetersPostProcess",
         &layer,
         &module,
         &blackboard,
@@ -3134,9 +3099,9 @@ fn infill_postprocess_commit_preserves_distinct_region_identities() {
         .set_perimeter(make_perimeter_ir_with_ids(0, &ids, 1, 1))
         .unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::InfillPostProcess".to_string(),
+        "Layer::InfillPostProcess",
         &layer,
         &module,
         &blackboard,
@@ -3180,15 +3145,15 @@ fn perimeter_postprocess_identity_preservation_deterministic() {
         arena
             .set_perimeter(make_perimeter_ir_with_ids(0, &ids, 2, 0))
             .unwrap();
-        LayerStageRunner::run_stage(
-            &dispatcher,
-            &"Layer::PerimetersPostProcess".to_string(),
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
-        .unwrap();
+        crate::common::run_layer_and_commit(
+        &dispatcher,
+        "Layer::PerimetersPostProcess",
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
         results.push(arena.take_perimeter().unwrap());
     }
     assert_eq!(results[0], results[1]);
@@ -3222,9 +3187,9 @@ fn perimeter_postprocess_identity_isolation_across_dispatches() {
         0,
     ))
     .unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::PerimetersPostProcess".to_string(),
+        "Layer::PerimetersPostProcess",
         &layer,
         &m1,
         &blackboard,
@@ -3240,9 +3205,9 @@ fn perimeter_postprocess_identity_isolation_across_dispatches() {
     let mut a2 = LayerArena::new();
     a2.set_perimeter(make_perimeter_ir_with_ids(0, &[("alt", 999)], 1, 0))
         .unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::PerimetersPostProcess".to_string(),
+        "Layer::PerimetersPostProcess",
         &layer,
         &m2,
         &blackboard,
@@ -3287,9 +3252,9 @@ fn support_postprocess_empty_bypass_when_no_slice_regions() {
         is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::SupportPostProcess".to_string(),
+        "Layer::SupportPostProcess",
         &layer,
         &module,
         &blackboard,
@@ -3385,9 +3350,9 @@ fn slice_postprocess_commit_preserves_distinct_region_identities() {
     // Three distinct slice regions (object_id varies via make_slice_ir: obj-0..obj-2)
     arena.set_slice(make_slice_ir(0, 0.2, 3, 1)).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::SlicePostProcess".to_string(),
+        "Layer::SlicePostProcess",
         &layer,
         &module,
         &blackboard,
@@ -3452,9 +3417,9 @@ fn support_postprocess_commit_preserves_distinct_region_identities() {
     // structured diagnostics on untagged output.
     arena.set_slice(make_slice_ir(0, 0.2, 2, 1)).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::SupportPostProcess".to_string(),
+        "Layer::SupportPostProcess",
         &layer,
         &module,
         &blackboard,
@@ -3503,15 +3468,15 @@ fn slice_postprocess_identity_preservation_deterministic() {
         );
         let mut arena = LayerArena::new();
         arena.set_slice(make_slice_ir(0, 0.2, 4, 1)).unwrap();
-        LayerStageRunner::run_stage(
-            &dispatcher,
-            &"Layer::SlicePostProcess".to_string(),
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
-        .unwrap();
+        crate::common::run_layer_and_commit(
+        &dispatcher,
+        "Layer::SlicePostProcess",
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
         results.push(arena.take_slice().unwrap());
     }
     assert_eq!(results[0], results[1]);
@@ -3539,9 +3504,9 @@ fn support_postprocess_identity_isolation_across_dispatches() {
     );
     let mut a1 = LayerArena::new();
     a1.set_slice(make_slice_ir(0, 0.2, 3, 2)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::SupportPostProcess".to_string(),
+        "Layer::SupportPostProcess",
         &layer,
         &m1,
         &blackboard,
@@ -3556,9 +3521,9 @@ fn support_postprocess_identity_isolation_across_dispatches() {
     );
     let mut a2 = LayerArena::new();
     a2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::SupportPostProcess".to_string(),
+        "Layer::SupportPostProcess",
         &layer,
         &m2,
         &blackboard,
@@ -3642,9 +3607,9 @@ fn slice_postprocess_downstream_propagation_preserves_per_region_shape() {
 
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 3, 1)).unwrap();
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::SlicePostProcess".to_string(),
+        "Layer::SlicePostProcess",
         &layer,
         &spp,
         &blackboard,
@@ -3660,9 +3625,9 @@ fn slice_postprocess_downstream_propagation_preserves_per_region_shape() {
         "Layer::SupportPostProcess",
         Arc::clone(&component),
     );
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::SupportPostProcess".to_string(),
+        "Layer::SupportPostProcess",
         &layer,
         &sup,
         &blackboard,
@@ -3702,9 +3667,9 @@ fn path_optimization_commit_folds_tool_changes_into_deferred_queue() {
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(0, 3, 1, 0)).unwrap();
 
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::PathOptimization".to_string(),
+        "Layer::PathOptimization",
         &layer,
         &module,
         &blackboard,
@@ -3958,7 +3923,7 @@ fn path_optimization_rejects_move_override_without_layer_collection_mapping() {
         .commands
         .push(GcodeCommandCollected::FanSpeed(128));
     let mut arena = LayerArena::new();
-    let err = slicer_runtime::commit_layer_outputs_for_test(
+    let err = crate::common::commit_hec_for_test(
         "Layer::PathOptimization",
         "com.test.pathopt-bad",
         0,
@@ -3999,7 +3964,7 @@ fn path_optimization_commit_routes_comment_and_raw_to_deferred_annotations() {
         .push(GcodeCommandCollected::Raw("M117 hi".into()));
 
     let mut arena = LayerArena::new();
-    slicer_runtime::commit_layer_outputs_for_test(
+    crate::common::commit_hec_for_test(
         "Layer::PathOptimization",
         "com.test.pathopt-ann",
         0,
@@ -4049,14 +4014,14 @@ fn path_optimization_commit_is_deterministic_across_repeats() {
     for _ in 0..3 {
         let mut arena = LayerArena::new();
         let ctx = mk_ctx();
-        slicer_runtime::commit_layer_outputs_for_test(
-            "Layer::PathOptimization",
-            "com.test.pathopt-det2",
-            0,
-            &ctx,
-            &mut arena,
-            None,
-        )
+        crate::common::commit_hec_for_test(
+        "Layer::PathOptimization",
+        "com.test.pathopt-det2",
+        0,
+        &ctx,
+        &mut arena,
+        None,
+    )
         .unwrap();
         snapshots.push((
             arena.take_deferred_tool_changes(),
@@ -4093,7 +4058,7 @@ fn path_optimization_commit_routes_z_hops_to_deferred_queue() {
         });
 
     let mut arena = LayerArena::new();
-    slicer_runtime::commit_layer_outputs_for_test(
+    crate::common::commit_hec_for_test(
         "Layer::PathOptimization",
         "com.test.pathopt-zhop",
         0,
@@ -4186,7 +4151,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
         ..Default::default()
     });
 
-    slicer_runtime::commit_layer_outputs_for_test(
+    crate::common::commit_hec_for_test(
         "Layer::PathOptimization",
         "com.test.pathopt-zhop-norm",
         0,
@@ -4240,14 +4205,14 @@ fn path_optimization_z_hop_rejects_invalid_hop_height() {
                 hop_height: bad,
             });
         let mut arena = LayerArena::new();
-        let err = slicer_runtime::commit_layer_outputs_for_test(
-            "Layer::PathOptimization",
-            "com.test.pathopt-zhop-bad",
-            0,
-            &ctx,
-            &mut arena,
-            None,
-        )
+        let err = crate::common::commit_hec_for_test(
+        "Layer::PathOptimization",
+        "com.test.pathopt-zhop-bad",
+        0,
+        &ctx,
+        &mut arena,
+        None,
+    )
         .expect_err("bad hop_height must fail");
         assert!(
             err.to_string().contains("hop-height"),
@@ -4491,8 +4456,8 @@ fn layer_planning_dispatch_returns_layer_plan_variant() {
     let result = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::LayerPlanning".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        prepass_input(&blackboard),
     );
 
     assert!(
@@ -4502,7 +4467,7 @@ fn layer_planning_dispatch_returns_layer_plan_variant() {
     );
 
     // Must return LayerPlan(...) variant, not None.
-    match result.unwrap().0 {
+    match result.unwrap() {
         PrepassStageOutput::LayerPlan(ir) => {
             // The prepass-guest returns no proposals, so the plan has zero
             // global layers.  This is valid until a real planning module
@@ -4623,13 +4588,13 @@ fn layer_plan_harvest_deterministic_across_repeated_calls() {
     let run_once = || {
         let module = make_module();
         match PrepassStageRunner::run_stage(
-            &dispatcher,
-            &"PrePass::LayerPlanning".to_string(),
-            &module,
-            &blackboard,
-        ) {
-            Ok((PrepassStageOutput::LayerPlan(ir), _)) => ir,
-            Ok((other, _)) => panic!(
+        &dispatcher,
+        &"PrePass::LayerPlanning".to_string(),
+        &module.as_live(),
+        prepass_input(&blackboard),
+    ) {
+            Ok(PrepassStageOutput::LayerPlan(ir)) => ir,
+            Ok(other) => panic!(
                 "expected LayerPlan variant, got discriminant {:?}",
                 std::mem::discriminant(&other)
             ),
@@ -4665,7 +4630,7 @@ fn layer_plan_harvest_deterministic_across_repeated_calls() {
 fn layer_planning_module_error_propagates_as_fatal_prepass_error() {
     // When a `PrePass::LayerPlanning` module returns a module-level error the
     // dispatcher must NOT silently swallow it â€” it must surface as
-    // `PrepassExecutionError::FatalModule`.
+    // `PrepassRunnerError::FatalModule`.
     //
     // The real `layer-planner-default.wasm` is used with a config view that
     // contains `layer_height = -1.0`.  The module validates this on entry and
@@ -4708,8 +4673,8 @@ fn layer_planning_module_error_propagates_as_fatal_prepass_error() {
     let result = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::LayerPlanning".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        prepass_input(&blackboard),
     );
 
     // The module must propagate as Err, not be silently swallowed as Ok(None).
@@ -4719,7 +4684,7 @@ fn layer_planning_module_error_propagates_as_fatal_prepass_error() {
     );
 
     match result.unwrap_err() {
-        PrepassExecutionError::FatalModule {
+        PrepassRunnerError::FatalModule {
             stage_id,
             module_id,
             message,
@@ -4787,12 +4752,12 @@ fn mesh_segmentation_dispatch_returns_empty_ir_for_unpainted_mesh() {
     let result = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::MeshSegmentation".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        prepass_input(&blackboard),
     )
     .expect("mesh-segmentation dispatch must succeed");
 
-    match result.0 {
+    match result {
         PrepassStageOutput::MeshSegmentation(ir) => {
             assert_eq!(
                 ir.schema_version,
@@ -4877,12 +4842,12 @@ fn mesh_segmentation_collects_config_driven_marks() {
     let result = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::MeshSegmentation".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        prepass_input(&blackboard),
     )
     .expect("mesh-segmentation dispatch must succeed");
 
-    let ir = match result.0 {
+    let ir = match result {
         PrepassStageOutput::MeshSegmentation(ir) => ir,
         other => panic!(
             "expected MeshSegmentation variant, got {:?}",
@@ -4963,13 +4928,13 @@ fn mesh_segmentation_dispatch_is_deterministic() {
             cfg.clone(),
         );
         let result = PrepassStageRunner::run_stage(
-            &dispatcher,
-            &"PrePass::MeshSegmentation".to_string(),
-            &module,
-            &blackboard,
-        )
+        &dispatcher,
+        &"PrePass::MeshSegmentation".to_string(),
+        &module.as_live(),
+        prepass_input(&blackboard),
+    )
         .expect("dispatch succeeds");
-        match result.0 {
+        match result {
             PrepassStageOutput::MeshSegmentation(ir) => ir.marks.clone(),
             _ => panic!("wrong variant"),
         }
@@ -5457,18 +5422,17 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
         is_sync_layer: false,
     };
 
-    let result = LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::PathOptimization".to_string(),
+        "Layer::PathOptimization",
         &layer,
         &module,
         &blackboard,
         &mut arena,
     )
-    .expect("path-optimization dispatch must succeed");
-    assert_eq!(result.0, LayerStageOutput::Success);
+    .unwrap();
 
-    // Dispatch already ran commit_layer_outputs internally; the comment
+    // Dispatch already ran commit_layer_outputs; the comment
     // is now in the arena as a deferred annotation. Verify it.
     let annotations = arena.take_deferred_annotations();
     assert_eq!(
@@ -5527,15 +5491,15 @@ fn path_optimization_dispatch_is_deterministic() {
             Arc::clone(&component),
         );
         let mut arena = LayerArena::new();
-        LayerStageRunner::run_stage(
-            &dispatcher,
-            &"Layer::PathOptimization".to_string(),
-            &layer,
-            &module,
-            &blackboard,
-            &mut arena,
-        )
-        .expect("dispatch succeeds");
+        crate::common::run_layer_and_commit(
+        &dispatcher,
+        "Layer::PathOptimization",
+        &layer,
+        &module,
+        &blackboard,
+        &mut arena,
+    )
+    .unwrap();
         arena.take_deferred_annotations()
     };
     let a = run_once();
@@ -5586,15 +5550,15 @@ fn path_optimization_emit_layer_markers_false_suppresses_output() {
         has_nonplanar: false,
         is_sync_layer: false,
     };
-    LayerStageRunner::run_stage(
+    crate::common::run_layer_and_commit(
         &dispatcher,
-        &"Layer::PathOptimization".to_string(),
+        "Layer::PathOptimization",
         &layer,
         &module,
         &blackboard,
         &mut arena,
     )
-    .expect("dispatch succeeds");
+    .unwrap();
 
     let annotations = arena.take_deferred_annotations();
     assert!(
@@ -5723,13 +5687,13 @@ fn layer_planner_default_macro_path_emits_real_proposals() {
     let result = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::LayerPlanning".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        prepass_input(&blackboard),
     );
 
     let ir = match result {
-        Ok((PrepassStageOutput::LayerPlan(ir), _)) => ir,
-        Ok((other, _)) => panic!(
+        Ok(PrepassStageOutput::LayerPlan(ir)) => ir,
+        Ok(other) => panic!(
             "expected PrepassStageOutput::LayerPlan, got {:?}",
             std::mem::discriminant(&other)
         ),
@@ -5804,13 +5768,13 @@ fn layer_planner_default_macro_path_is_deterministic() {
         );
         let blackboard = blackboard_with_objects(&["obj-1"]);
         match PrepassStageRunner::run_stage(
-            &dispatcher,
-            &"PrePass::LayerPlanning".to_string(),
-            &module,
-            &blackboard,
-        ) {
-            Ok((PrepassStageOutput::LayerPlan(ir), _)) => ir,
-            Ok((other, _)) => panic!(
+        &dispatcher,
+        &"PrePass::LayerPlanning".to_string(),
+        &module.as_live(),
+        prepass_input(&blackboard),
+    ) {
+            Ok(PrepassStageOutput::LayerPlan(ir)) => ir,
+            Ok(other) => panic!(
                 "expected LayerPlan, got {:?}",
                 std::mem::discriminant(&other)
             ),
@@ -5888,13 +5852,13 @@ fn mesh_analysis_macro_path_forwards_objects_and_drains_output() {
     let result = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::MeshAnalysis".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        prepass_input(&blackboard),
     );
 
     let aux = match result {
-        Ok((PrepassStageOutput::MeshAnalysisAuxiliary(a), _)) => a,
-        Ok((other, _)) => panic!(
+        Ok(PrepassStageOutput::MeshAnalysisAuxiliary(a)) => a,
+        Ok(other) => panic!(
             "expected PrepassStageOutput::MeshAnalysisAuxiliary, got {:?}",
             std::mem::discriminant(&other)
         ),
@@ -5973,13 +5937,13 @@ fn mesh_analysis_macro_path_drain_is_deterministic() {
         );
         let blackboard = blackboard_with_objects(&["obj-1", "obj-2"]);
         match PrepassStageRunner::run_stage(
-            &dispatcher,
-            &"PrePass::MeshAnalysis".to_string(),
-            &module,
-            &blackboard,
-        ) {
-            Ok((PrepassStageOutput::MeshAnalysisAuxiliary(a), _)) => a,
-            Ok((other, _)) => panic!(
+        &dispatcher,
+        &"PrePass::MeshAnalysis".to_string(),
+        &module.as_live(),
+        prepass_input(&blackboard),
+    ) {
+            Ok(PrepassStageOutput::MeshAnalysisAuxiliary(a)) => a,
+            Ok(other) => panic!(
                 "expected MeshAnalysisAuxiliary, got {:?}",
                 std::mem::discriminant(&other)
             ),
@@ -6023,11 +5987,11 @@ fn mesh_analysis_macro_path_empty_drain_returns_none() {
     let out = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::MeshAnalysis".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        prepass_input(&blackboard),
     )
     .expect("empty-config path must succeed");
-    assert!(matches!(out.0, PrepassStageOutput::None));
+    assert!(matches!(out, PrepassStageOutput::None));
 }
 
 /// Host-side validation: a malformed push (empty object-id,
@@ -6206,12 +6170,12 @@ fn mesh_segmentation_macro_path_drain_preserves_push_order() {
     let out = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::MeshSegmentation".to_string(),
-        &module,
-        &blackboard,
+        &module.as_live(),
+        prepass_input(&blackboard),
     )
     .expect("mesh-segmentation dispatch must succeed");
 
-    let ir = match out.0 {
+    let ir = match out {
         PrepassStageOutput::MeshSegmentation(ir) => ir,
         other => panic!(
             "expected MeshSegmentation variant, got {:?}",
@@ -6430,12 +6394,12 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
     let result = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::SeamPlanning".to_string(),
-        &compiled,
-        &blackboard,
+        &compiled.as_live(),
+        prepass_input(&blackboard),
     );
 
     match result {
-        Ok((PrepassStageOutput::SeamPlan(ir), _)) => {
+        Ok(PrepassStageOutput::SeamPlan(ir)) => {
             assert_eq!(
                 ir.schema_version,
                 SemVer {
@@ -6475,7 +6439,7 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
                 ir.entries.len()
             );
         }
-        Ok((other, _)) => panic!(
+        Ok(other) => panic!(
             "expected PrepassStageOutput::SeamPlan, got {:?}",
             std::mem::discriminant(&other)
         ),

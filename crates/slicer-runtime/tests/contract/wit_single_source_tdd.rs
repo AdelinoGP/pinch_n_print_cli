@@ -20,6 +20,7 @@ fn schema_wit_dir() -> PathBuf {
         .join("wit")
 }
 
+#[allow(dead_code)]
 fn runtime_src_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src")
 }
