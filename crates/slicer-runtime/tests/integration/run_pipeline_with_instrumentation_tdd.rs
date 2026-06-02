@@ -22,14 +22,13 @@ use slicer_runtime::pipeline::{
 };
 use slicer_runtime::report::Collector;
 use slicer_runtime::{
-    build_wasm_instance_pool, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
-    CompiledStage, EdgeReason, ExecutionPlan, FinalizationError, FinalizationOutput,
-    FinalizationStageInput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
-    IrAccessMask, LayerStageError, LayerStageInput,
-    LayerStageRunner, LoadedModuleBuilder, NoopInstrumentation, NoopLayerProgressSink,
-    PipelineInstrumentation, PostpassError, PostpassStageInput, PostpassStageRunner,
-    PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
-    SerialEdge, TierKind, WasmArtifactMetadata,
+    build_wasm_instance_pool, Blackboard, CompiledModule, CompiledModuleBuilder,
+    CompiledModuleLive, CompiledStage, EdgeReason, ExecutionPlan, FinalizationError,
+    FinalizationOutput, FinalizationStageInput, FinalizationStageRunner, GCodeEmitter,
+    GCodeSerializer, IrAccessMask, LayerStageError, LayerStageInput, LayerStageRunner,
+    LoadedModuleBuilder, NoopInstrumentation, NoopLayerProgressSink, PipelineInstrumentation,
+    PostpassError, PostpassStageInput, PostpassStageRunner, PrepassRunnerError, PrepassStageInput,
+    PrepassStageOutput, PrepassStageRunner, SerialEdge, TierKind, WasmArtifactMetadata,
 };
 
 // â”€â”€ helpers (mirrored from pipeline_tdd.rs â€” duplication across integration

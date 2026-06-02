@@ -10,9 +10,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use slicer_ir::LayerStageCommitData;
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::LoadedModuleBuilder;
-use slicer_ir::LayerStageCommitData;
 use slicer_runtime::{
     execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
     CompiledStage, ExecutionModuleBinding, ExecutionPlan, LayerStageError, LayerStageInput,
@@ -224,8 +224,7 @@ impl LayerStageRunner for LiveDispatcherWithInfill {
         // Pass self.path_opt_module (which has the real wasm_component) instead of
         // the stage module (which has wasm_component: None due to compiled_module()).
         let live = self.path_opt_module.as_live();
-        self.dispatcher
-            .run_stage(stage_id, layer, &live, input)
+        self.dispatcher.run_stage(stage_id, layer, &live, input)
     }
 }
 

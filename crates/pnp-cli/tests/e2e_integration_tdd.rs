@@ -17,8 +17,8 @@ use slicer_runtime::{
     Blackboard, CompiledModuleLive, DefaultGCodeEmitter, DefaultGCodeSerializer, ExecutionPlan,
     FinalizationError, FinalizationOutput, FinalizationStageInput, FinalizationStageRunner,
     GCodeEmitter, GCodeSerializer, LayerStageInput, LayerStageRunner, PostpassError,
-    PostpassOutput, PostpassStageInput, PostpassStageRunner, PrepassRunnerError,
-    PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
+    PostpassOutput, PostpassStageInput, PostpassStageRunner, PrepassRunnerError, PrepassStageInput,
+    PrepassStageOutput, PrepassStageRunner,
 };
 
 // ---------------------------------------------------------------------------

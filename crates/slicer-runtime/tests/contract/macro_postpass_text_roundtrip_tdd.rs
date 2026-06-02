@@ -127,7 +127,12 @@ fn macro_authored_guest_round_trips_text_with_default_prefix() {
     let stage: StageId = "PostPass::TextPostProcess".to_string();
     let out = text_of(
         dispatcher
-            .run_text_postprocess(&stage, &module.as_live(), postpass_input(&bb),"G1 X0 Y0\n".to_string())
+            .run_text_postprocess(
+                &stage,
+                &module.as_live(),
+                postpass_input(&bb),
+                "G1 X0 Y0\n".to_string(),
+            )
             .expect("macro-emitted glue must round-trip text successfully"),
     );
 
@@ -159,7 +164,12 @@ fn macro_authored_guest_round_trips_typed_config_string_value() {
     let stage: StageId = "PostPass::TextPostProcess".to_string();
     let out = text_of(
         dispatcher
-            .run_text_postprocess(&stage, &module.as_live(), postpass_input(&bb),"M104 S200\n".to_string())
+            .run_text_postprocess(
+                &stage,
+                &module.as_live(),
+                postpass_input(&bb),
+                "M104 S200\n".to_string(),
+            )
             .expect("macro-emitted glue + typed string config must round-trip"),
     );
 
@@ -184,17 +194,32 @@ fn macro_authored_guest_is_deterministic_across_repeated_dispatch_calls() {
 
     let a = text_of(
         dispatcher
-            .run_text_postprocess(&stage, &module.as_live(), postpass_input(&bb),"; A\n".to_string())
+            .run_text_postprocess(
+                &stage,
+                &module.as_live(),
+                postpass_input(&bb),
+                "; A\n".to_string(),
+            )
             .unwrap(),
     );
     let b = text_of(
         dispatcher
-            .run_text_postprocess(&stage, &module.as_live(), postpass_input(&bb),"; A\n".to_string())
+            .run_text_postprocess(
+                &stage,
+                &module.as_live(),
+                postpass_input(&bb),
+                "; A\n".to_string(),
+            )
             .unwrap(),
     );
     let c = text_of(
         dispatcher
-            .run_text_postprocess(&stage, &module.as_live(), postpass_input(&bb),"; A\n".to_string())
+            .run_text_postprocess(
+                &stage,
+                &module.as_live(),
+                postpass_input(&bb),
+                "; A\n".to_string(),
+            )
             .unwrap(),
     );
     assert_eq!(a, b);

@@ -271,7 +271,12 @@ fn live_finalization_dispatch_merges_skirt_brim_entity_pushes() {
     // Run finalization dispatch. The sdk-finalization-guest emits one
     // witness entity to layer 0 via push_entity_to_layer.
     dispatcher
-        .run_stage(&stage, &module.as_live(), finalization_input(&blackboard), &mut layers)
+        .run_stage(
+            &stage,
+            &module.as_live(),
+            finalization_input(&blackboard),
+            &mut layers,
+        )
         .expect("finalization dispatch must succeed");
 
     // The batch-prepend fix places the witness entity FIRST.
@@ -342,7 +347,12 @@ fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
     );
 
     dispatcher
-        .run_stage(&stage, &module.as_live(), finalization_input(&blackboard), &mut layers)
+        .run_stage(
+            &stage,
+            &module.as_live(),
+            finalization_input(&blackboard),
+            &mut layers,
+        )
         .expect("finalization dispatch must succeed");
 
     let has_wipe_tower = layers[0]

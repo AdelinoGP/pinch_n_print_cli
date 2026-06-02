@@ -18,9 +18,8 @@ use slicer_runtime::{
     CompiledModuleLive, CompiledStage, ExecutionPlan, FinalizationError, FinalizationOutput,
     FinalizationStageInput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
     LayerStageError, LayerStageInput, LayerStageRunner, LoadedModuleBuilder, PostpassError,
-    PostpassOutput, PostpassStageInput, PostpassStageRunner,
-    PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
-    WasmArtifactMetadata,
+    PostpassOutput, PostpassStageInput, PostpassStageRunner, PrepassRunnerError, PrepassStageInput,
+    PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
 };
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {

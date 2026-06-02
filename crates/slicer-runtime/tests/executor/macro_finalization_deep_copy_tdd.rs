@@ -184,8 +184,14 @@ fn finalization_deep_copy_in_and_drain_back_out_round_trip() {
     ];
     let original_lengths: Vec<usize> = layers.iter().map(|l| l.ordered_entities.len()).collect();
 
-    FinalizationStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), finalization_input(&bb), &mut layers)
-        .expect("finalization must succeed");
+    FinalizationStageRunner::run_stage(
+        &dispatcher,
+        &stage,
+        &module.as_live(),
+        finalization_input(&bb),
+        &mut layers,
+    )
+    .expect("finalization must succeed");
 
     // Every layer must have gained exactly one synthetic entity with
     // the witness coordinates carrying the deep-copied metadata.
@@ -237,8 +243,14 @@ fn finalization_drain_back_creates_synthetic_layer_when_config_requests() {
     let stage = "PostPass::LayerFinalization".to_string();
 
     let mut layers: Vec<LayerCollectionIR> = Vec::new();
-    FinalizationStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), finalization_input(&bb), &mut layers)
-        .expect("finalization must succeed");
+    FinalizationStageRunner::run_stage(
+        &dispatcher,
+        &stage,
+        &module.as_live(),
+        finalization_input(&bb),
+        &mut layers,
+    )
+    .expect("finalization must succeed");
 
     assert_eq!(
         layers.len(),
@@ -272,7 +284,14 @@ fn finalization_deep_copy_round_trip_is_deterministic_across_repeated_runs() {
 
     let run_once = || -> Vec<(u32, f32, u32, u32, String, u64)> {
         let mut layers = vec![layer_ir(0, 0.2, 2, &[]), layer_ir(1, 0.4, 5, &[(2, 0, 1)])];
-        FinalizationStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), finalization_input(&bb), &mut layers).unwrap();
+        FinalizationStageRunner::run_stage(
+            &dispatcher,
+            &stage,
+            &module.as_live(),
+            finalization_input(&bb),
+            &mut layers,
+        )
+        .unwrap();
         layers
             .iter()
             .flat_map(|l| {

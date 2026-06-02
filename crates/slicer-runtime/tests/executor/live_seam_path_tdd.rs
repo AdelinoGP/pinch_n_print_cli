@@ -26,8 +26,8 @@ use slicer_runtime::wit_host::{
     WallLoopType, WallLoopView,
 };
 
-use crate::common::{commit_hec_for_test, layer_input};
 use crate::common::wasm_cache;
+use crate::common::{commit_hec_for_test, layer_input};
 
 /// Helper: make a 2-point horizontal wall loop at a given Z.
 fn make_wall_loop(layer_z: f32, x1: f32, y1: f32, x2: f32, y2: f32, width: f32) -> WallLoopView {
@@ -495,7 +495,9 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         &dispatcher,
         &"Layer::PathOptimization".to_string(),
         &layer,
-        &module.as_live(),        layer_input(&blackboard, &arena),    )
+        &module.as_live(),
+        layer_input(&blackboard, &arena),
+    )
     .expect("PathOptimization dispatch must succeed");
 
     // Take deferred annotations and verify none of them is a Raw G1 move.
@@ -1026,7 +1028,9 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         &dispatcher,
         &"Layer::PerimetersPostProcess".to_string(),
         &layer,
-        &module.as_live(),        layer_input(&blackboard, &arena),    )
+        &module.as_live(),
+        layer_input(&blackboard, &arena),
+    )
     .expect("PerimetersPostProcess dispatch must succeed");
 
     eprintln!(

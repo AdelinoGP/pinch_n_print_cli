@@ -26,10 +26,9 @@ use slicer_ir::{
     SemVer, StageId, SurfaceClassificationIR, Transform3d,
 };
 use slicer_runtime::{
-    build_execution_plan, execute_prepass_with_builtins_configured, Blackboard,
-    CompiledModuleLive, ConfigBoundsIndex, ExecutionPlanRequest,
-    PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
-    SortedStageModules,
+    build_execution_plan, execute_prepass_with_builtins_configured, Blackboard, CompiledModuleLive,
+    ConfigBoundsIndex, ExecutionPlanRequest, PrepassRunnerError, PrepassStageInput,
+    PrepassStageOutput, PrepassStageRunner, SortedStageModules,
 };
 
 fn sv(major: u32, minor: u32, patch: u32) -> SemVer {

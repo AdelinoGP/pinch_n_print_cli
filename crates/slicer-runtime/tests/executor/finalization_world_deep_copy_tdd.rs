@@ -185,8 +185,14 @@ fn finalization_world_deep_copy_preserves_entities_and_z_hops() {
         make_layer(1, 0.4, Vec::new(), Vec::new(), Vec::new()),
     ];
 
-    FinalizationStageRunner::run_stage(&dispatcher, &stage, &module.as_live(), finalization_input(&blackboard), &mut layers)
-        .expect("finalization deep-copy run must succeed");
+    FinalizationStageRunner::run_stage(
+        &dispatcher,
+        &stage,
+        &module.as_live(),
+        finalization_input(&blackboard),
+        &mut layers,
+    )
+    .expect("finalization deep-copy run must succeed");
 
     assert_eq!(layers[0].ordered_entities.len(), layer0_original_len + 1);
     assert_eq!(layers[1].ordered_entities.len(), layer1_original_len + 1);

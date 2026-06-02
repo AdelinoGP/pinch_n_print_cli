@@ -24,8 +24,8 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     execute_mesh_analysis, execute_prepass_with_builtins, Blackboard, CompiledModuleLive,
-    ExecutionPlan, MeshAnalysisError, PrepassExecutionError, PrepassRunnerError,
-    PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
+    ExecutionPlan, MeshAnalysisError, PrepassExecutionError, PrepassRunnerError, PrepassStageInput,
+    PrepassStageOutput, PrepassStageRunner,
 };
 
 // A runner that must never be called â€" the built-in runs before any user

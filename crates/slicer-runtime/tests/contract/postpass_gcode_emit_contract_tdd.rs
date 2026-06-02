@@ -112,7 +112,9 @@ fn layer_with_entity(
 // ============================================================================
 
 use slicer_ir::{GCodeCommand, StageId};
-use slicer_runtime::{Blackboard, CompiledModuleLive, PostpassOutput, PostpassStageInput, PostpassStageRunner};
+use slicer_runtime::{
+    Blackboard, CompiledModuleLive, PostpassOutput, PostpassStageInput, PostpassStageRunner,
+};
 
 struct NoOpRunner;
 impl PostpassStageRunner for NoOpRunner {

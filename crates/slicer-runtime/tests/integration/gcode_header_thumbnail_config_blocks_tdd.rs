@@ -20,14 +20,14 @@ use slicer_model_io::load_model;
 use slicer_runtime::pipeline::{
     run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners,
 };
+use slicer_runtime::ExecutionPlan;
 use slicer_runtime::{
     CompiledModuleLive, DefaultGCodeEmitter, DefaultGCodeSerializer, FinalizationError,
     FinalizationOutput, FinalizationStageInput, FinalizationStageRunner, LayerStageError,
     LayerStageInput, LayerStageRunner, NoopLayerProgressSink, PostpassError, PostpassOutput,
-    PostpassStageInput, PostpassStageRunner, PrepassRunnerError,
-    PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
+    PostpassStageInput, PostpassStageRunner, PrepassRunnerError, PrepassStageInput,
+    PrepassStageOutput, PrepassStageRunner,
 };
-use slicer_runtime::ExecutionPlan;
 
 use base64::Engine as _;
 

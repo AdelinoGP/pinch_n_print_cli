@@ -149,8 +149,8 @@ pub fn commit_hec_for_test(
 ) -> Result<(), slicer_ir::LayerStageError> {
     use slicer_ir::LayerStageCommitData;
     use slicer_runtime::wit_host::{
-        GcodeCommandCollected,
         convert_infill_output, convert_perimeter_output, convert_support_output,
+        GcodeCommandCollected,
     };
 
     let mk_fatal = |what: &str, reason: String| slicer_ir::LayerStageError::FatalModule {
@@ -203,7 +203,11 @@ pub fn commit_hec_for_test(
             let anchor = 0u32;
             for (i, cmd) in ctx.gcode_output().commands.iter().enumerate() {
                 match cmd {
-                    GcodeCommandCollected::ToolChange { after_entity_index, from_tool, to_tool } => {
+                    GcodeCommandCollected::ToolChange {
+                        after_entity_index,
+                        from_tool,
+                        to_tool,
+                    } => {
                         data.tool_changes.push(slicer_ir::ToolChange {
                             after_entity_index: *after_entity_index,
                             from_tool: *from_tool,
@@ -223,7 +227,8 @@ pub fn commit_hec_for_test(
                         });
                     }
                     GcodeCommandCollected::Move(cmd) => {
-                        data.deferred_travel_moves.push((anchor, cmd.x, cmd.y, cmd.z, cmd.f));
+                        data.deferred_travel_moves
+                            .push((anchor, cmd.x, cmd.y, cmd.z, cmd.f));
                     }
                     GcodeCommandCollected::ZHop { hop_height, .. } => {
                         if !hop_height.is_finite() || *hop_height <= 0.0 {
@@ -241,7 +246,11 @@ pub fn commit_hec_for_test(
                             hop_height: *hop_height,
                         });
                     }
-                    GcodeCommandCollected::Retract { length, speed, mode } => {
+                    GcodeCommandCollected::Retract {
+                        length,
+                        speed,
+                        mode,
+                    } => {
                         data.retracts.push(slicer_ir::TravelRetract {
                             after_entity_index: anchor,
                             length: *length,
@@ -250,7 +259,11 @@ pub fn commit_hec_for_test(
                             mode: *mode,
                         });
                     }
-                    GcodeCommandCollected::Unretract { length, speed, mode } => {
+                    GcodeCommandCollected::Unretract {
+                        length,
+                        speed,
+                        mode,
+                    } => {
                         data.retracts.push(slicer_ir::TravelRetract {
                             after_entity_index: anchor,
                             length: *length,
@@ -265,7 +278,8 @@ pub fn commit_hec_for_test(
                             module_id: module_id.to_string(),
                             message: format!(
                                 "Layer::PathOptimization unsupported GCode command at {i}: \
-                                 {:?}", std::mem::discriminant(other)
+                                 {:?}",
+                                std::mem::discriminant(other)
                             ),
                         });
                     }
@@ -341,13 +355,8 @@ pub fn run_layer_and_commit(
     use slicer_wasm_host::LayerStageRunner;
     let live = module.as_live();
     let input = layer_input(blackboard, arena);
-    let commit_data = LayerStageRunner::run_stage(
-        dispatcher,
-        &stage_id.to_string(),
-        layer,
-        &live,
-        input,
-    )?;
+    let commit_data =
+        LayerStageRunner::run_stage(dispatcher, &stage_id.to_string(), layer, &live, input)?;
     slicer_runtime::commit_layer_outputs_for_test(
         stage_id,
         module.module_id(),

@@ -15,12 +15,12 @@ use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use slicer_ir::LayerStageCommitData;
 use slicer_ir::{
     BoundingBox3, ExPolygon, ExtrusionPath3D, ExtrusionRole, GlobalLayer, LayerCollectionIR,
     LoopType, MeshIR, PerimeterIR, PerimeterRegion, Point2, Point3, Point3WithWidth, Polygon,
     PrintEntity, RegionKey, SemVer, WallBoundaryType, WallFeatureFlags, WallLoop, WidthProfile,
 };
-use slicer_ir::LayerStageCommitData;
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
     apply_entity_order_proposal, execute_per_layer, project_ordered_entities, Blackboard,
@@ -573,9 +573,7 @@ impl<'a> slicer_runtime::LayerStageRunner for PerimeterSeedingRunner<'a> {
                 });
             }
         }
-        slicer_runtime::LayerStageRunner::run_stage(
-            self.inner, stage_id, layer, module, input,
-        )
+        slicer_runtime::LayerStageRunner::run_stage(self.inner, stage_id, layer, module, input)
     }
 }
 

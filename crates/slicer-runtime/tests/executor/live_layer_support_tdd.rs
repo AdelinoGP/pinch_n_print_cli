@@ -200,9 +200,7 @@ fn enforcer_forces_live_support_commit_even_when_needs_support_is_false() {
 
     // Simulate enforcer override: module was called with needs_support=false
     // but SupportEnforcer paint forced it to emit paths anyway.
-    let commit = support_commit(vec![
-        make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4),
-    ]);
+    let commit = support_commit(vec![make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4)]);
 
     let mut arena = slicer_runtime::LayerArena::new();
     commit_layer_outputs_for_test(
@@ -262,10 +260,12 @@ fn live_support_dispatch_is_deterministic_across_repeated_runs() {
     let layer_index = 0u32;
 
     // First run - identical to second run
-    let make_two_paths = || support_commit(vec![
-        make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4),
-        make_support_path(0.2, 0.0, 3.0, 10.0, 3.0, 0.4),
-    ]);
+    let make_two_paths = || {
+        support_commit(vec![
+            make_support_path(0.2, 0.0, 0.0, 10.0, 0.0, 0.4),
+            make_support_path(0.2, 0.0, 3.0, 10.0, 3.0, 0.4),
+        ])
+    };
 
     let mut arena1 = slicer_runtime::LayerArena::new();
     commit_layer_outputs_for_test(
@@ -370,11 +370,11 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
 //  WasmRuntimeDispatcher::dispatch_layer_call, asserts real SupportIR output)
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
+use crate::common::layer_input;
 use slicer_ir::{
     BoundingBox3, ExPolygon, GlobalLayer, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue,
     Point2, Polygon, SemanticRegion, SliceIR, SlicedRegion,
 };
-use crate::common::layer_input;
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::{
@@ -569,7 +569,9 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
         &dispatcher,
         &"Layer::Support".to_string(),
         &layer,
-        &module.as_live(),        layer_input(&blackboard, &arena),    )
+        &module.as_live(),
+        layer_input(&blackboard, &arena),
+    )
     .expect("tree-support Layer::Support dispatch must succeed");
 
     let support_ir = arena
@@ -670,7 +672,9 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
         &dispatcher,
         &"Layer::Support".to_string(),
         &layer,
-        &module.as_live(),        layer_input(&blackboard, &arena),    )
+        &module.as_live(),
+        layer_input(&blackboard, &arena),
+    )
     .expect("traditional-support Layer::Support dispatch must succeed");
 
     let support_ir = arena
@@ -1012,7 +1016,9 @@ fn support_enforcer_blocker_paint_precedence() {
         &dispatcher,
         &"Layer::Support".to_string(),
         &layer,
-        &module.as_live(),        layer_input(&blackboard, &arena),    )
+        &module.as_live(),
+        layer_input(&blackboard, &arena),
+    )
     .expect("support dispatch with enforcer+blocker must succeed");
 
     // The test-guest encodes enforcer_count (x) and blocker_count (y) from the
@@ -1239,7 +1245,9 @@ mod planner_consuming_tier {
             &dispatcher,
             &"Layer::Support".to_string(),
             &layer,
-            &module.as_live(),            layer_input(&blackboard, &arena),        )
+            &module.as_live(),
+            layer_input(&blackboard, &arena),
+        )
         .expect("Layer::Support dispatch must succeed");
 
         arena.take_support().expect("SupportIR must be committed")
@@ -1536,7 +1544,9 @@ mod planner_consuming_tier {
             &dispatcher,
             &"Layer::Support".to_string(),
             &layer,
-            &module.as_live(),            layer_input(&blackboard, &arena),        )
+            &module.as_live(),
+            layer_input(&blackboard, &arena),
+        )
         .expect("Layer::Support dispatch must succeed");
 
         let support_ir = arena.take_support().expect("SupportIR must be committed");

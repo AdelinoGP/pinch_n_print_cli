@@ -437,11 +437,10 @@ fn execute_single_layer_inner(
                                         && e.region_key.object_id == region.object_id
                                         && e.region_key.region_id == region.region_id
                                 }) {
-                                    region.resolved_seam =
-                                        Some(slicer_ir::SeamPosition {
-                                            point: entry.chosen_candidate.point,
-                                            wall_index: entry.chosen_candidate.wall_index,
-                                        });
+                                    region.resolved_seam = Some(slicer_ir::SeamPosition {
+                                        point: entry.chosen_candidate.point,
+                                        wall_index: entry.chosen_candidate.wall_index,
+                                    });
                                 }
                             }
                         }

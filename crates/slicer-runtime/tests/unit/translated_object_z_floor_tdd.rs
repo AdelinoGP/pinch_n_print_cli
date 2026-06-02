@@ -204,10 +204,7 @@ struct ScriptedRunner {
 impl ScriptedRunner {
     fn new(
         expected_order: &[&str],
-        scripted: Vec<(
-            String,
-            Result<PrepassStageOutput, PrepassRunnerError>,
-        )>,
+        scripted: Vec<(String, Result<PrepassStageOutput, PrepassRunnerError>)>,
         expected_mesh_ptr: usize,
     ) -> Self {
         Self {

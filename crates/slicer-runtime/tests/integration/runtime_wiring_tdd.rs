@@ -23,8 +23,8 @@ use slicer_runtime::{
     FinalizationOutput, FinalizationStageInput, FinalizationStageRunner, GCodeEmitter,
     GCodeSerializer, IrAccessMask, LayerStageError, LayerStageInput, LayerStageRunner,
     LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageInput, PostpassStageRunner,
-    PrepassRunnerError, PrepassStageInput, PrepassStageOutput,
-    PrepassStageRunner, SortedStageModules, WasmArtifactMetadata,
+    PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
+    SortedStageModules, WasmArtifactMetadata,
 };
 use tempfile::TempDir;
 

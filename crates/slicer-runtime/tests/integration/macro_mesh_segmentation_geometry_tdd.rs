@@ -14,6 +14,7 @@
 
 #![allow(missing_docs)]
 
+use crate::common::prepass_input;
 use slicer_ir::{
     BoundingBox3, FacetPaintData, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, PaintLayer,
     PaintSemantic, PaintValue, Point3, SemVer, Transform3d,
@@ -25,7 +26,6 @@ use slicer_runtime::{
     wit_host::{object_mesh_to_wit_mesh_object_view, prepass},
     Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner, WasmEngine,
 };
-use crate::common::prepass_input;
 use std::sync::Arc;
 
 /// Helper to construct a SemVer.

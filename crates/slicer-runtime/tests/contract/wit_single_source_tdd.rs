@@ -230,8 +230,8 @@ fn host_has_no_inline_bindgen() {
         wit_host.display()
     );
 
-    let content = std::fs::read_to_string(&wit_host)
-        .unwrap_or_else(|e| panic!("cannot read host.rs: {e}"));
+    let content =
+        std::fs::read_to_string(&wit_host).unwrap_or_else(|e| panic!("cannot read host.rs: {e}"));
 
     assert!(
         !content.contains("inline: r#"),
@@ -260,8 +260,8 @@ fn host_bindgen_paths_target_shared_root() {
         wit_host.display()
     );
 
-    let content = std::fs::read_to_string(&wit_host)
-        .unwrap_or_else(|e| panic!("cannot read host.rs: {e}"));
+    let content =
+        std::fs::read_to_string(&wit_host).unwrap_or_else(|e| panic!("cannot read host.rs: {e}"));
 
     // Extract every path: "..." string literal inside bindgen! invocations.
     // We look for   path: "../slicer-schema/wit"  (with optional surrounding whitespace).

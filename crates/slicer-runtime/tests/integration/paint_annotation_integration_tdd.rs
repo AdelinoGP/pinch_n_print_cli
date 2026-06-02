@@ -24,10 +24,10 @@ use slicer_ir::{
 };
 use slicer_runtime::progress_events::{EventReason, ProgressEvent, ProgressPhase};
 use slicer_runtime::{
-    execute_per_layer_with_events, execute_prepass_with_builtins, Blackboard,
-    CompiledModuleLive, ExecutionPlan, FinalizationStageInput, LayerExecutionError,
-    LayerProgressSink, LayerStageError, LayerStageInput, LayerStageRunner,
-    PostpassStageInput, PrepassStageInput, SlicePostProcessPaintAnnotationError,
+    execute_per_layer_with_events, execute_prepass_with_builtins, Blackboard, CompiledModuleLive,
+    ExecutionPlan, FinalizationStageInput, LayerExecutionError, LayerProgressSink, LayerStageError,
+    LayerStageInput, LayerStageRunner, PostpassStageInput, PrepassStageInput,
+    SlicePostProcessPaintAnnotationError,
 };
 
 fn unit_tetra() -> IndexedTriangleSet {
@@ -444,9 +444,9 @@ use slicer_runtime::progress_events::{
     JsonLinesEmitter, ProgressEventEmitter, RuntimeProgressSink, SliceEventCollector,
 };
 use slicer_runtime::{
-    FinalizationError, FinalizationOutput,
-    FinalizationStageRunner, GCodeEmitter, GCodeSerializer, PostpassError, PostpassOutput,
-    PostpassStageRunner, PrepassRunnerError, PrepassStageOutput, PrepassStageRunner,
+    FinalizationError, FinalizationOutput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
+    PostpassError, PostpassOutput, PostpassStageRunner, PrepassRunnerError, PrepassStageOutput,
+    PrepassStageRunner,
 };
 
 struct NoopPrepassRunner;

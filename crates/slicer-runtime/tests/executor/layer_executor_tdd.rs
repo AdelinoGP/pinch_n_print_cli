@@ -28,9 +28,8 @@ use slicer_runtime::{
     build_execution_plan, build_wasm_instance_pool, execute_per_layer,
     execute_per_layer_with_events, Blackboard, CompiledModule, CompiledModuleBuilder,
     CompiledModuleLive, CompiledStage, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest,
-    IrAccessMask, LayerExecutionError, LayerProgressSink, LayerStageError,
-    LayerStageInput, LayerStageRunner, LoadedModuleBuilder, SortedStageModules,
-    WasmArtifactMetadata,
+    IrAccessMask, LayerExecutionError, LayerProgressSink, LayerStageError, LayerStageInput,
+    LayerStageRunner, LoadedModuleBuilder, SortedStageModules, WasmArtifactMetadata,
 };
 
 // ============================================================================
