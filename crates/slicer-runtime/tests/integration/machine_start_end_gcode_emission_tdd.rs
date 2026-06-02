@@ -15,7 +15,6 @@ use std::sync::Arc;
 
 use slicer_ir::{ConfigKey, ConfigValue, RegionKey, RegionPlan};
 use slicer_model_io::load_model;
-use slicer_runtime::dispatch::WasmRuntimeDispatcher;
 use slicer_runtime::pipeline::{
     run_pipeline_with_raw_config, PipelineConfig, PipelineStageRunners,
 };
@@ -23,6 +22,7 @@ use slicer_runtime::{
     build_live_execution_plan, resolve_global_config, resolve_per_object_configs,
     ConfigBoundsIndex, DefaultGCodeEmitter, DefaultGCodeSerializer, NoopLayerProgressSink,
 };
+use slicer_wasm_host::WasmRuntimeDispatcher;
 
 use crate::common::wasm_cache;
 

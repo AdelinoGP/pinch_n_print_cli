@@ -14,10 +14,10 @@ use slicer_ir::{
     BoundingBox3, ConfigValue, ConfigView, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh,
     Point3, SemVer, Transform3d,
 };
-use slicer_runtime::dispatch::WasmRuntimeDispatcher;
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::{Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner};
+use slicer_wasm_host::WasmRuntimeDispatcher;
 
 use crate::common::{prepass_input, wasm_cache};
 

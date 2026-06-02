@@ -130,7 +130,7 @@ Lossless one-line variant remaps; no field synthesis.
 
 ### Step 0.5d — Narrow `instance_pool.rs` signature
 
-**Refactor.** Replace `module: &LoadedModule` parameter in `instance_pool.rs`'s helper(s) with `wasm_path: &Path, placeholder_wasm: bool`. Callers in `slicer-runtime` extract the two fields from `LoadedModule` before invoking. `LoadedModule` stays in `slicer-runtime/src/manifest.rs` unchanged.
+**Refactor.** Replace `module: &LoadedModule` parameter in `instance_pool.rs`'s helper(s) with the actual fields the helper body uses: `module_id: &str, stage: &str, layer_parallel_safe: bool, host_parallelism: usize, artifact: WasmArtifactMetadata`. (Mid-flight pivot from the originally-planned `wasm_path: &Path, placeholder_wasm: bool` shape — the pre-Step survey had been wrong about which `LoadedModule` fields the body actually consumes; on-disk truth is `crates/slicer-wasm-host/src/pool.rs:86`.) Callers in `slicer-runtime` extract the fields from `LoadedModule` before invoking. `LoadedModule` stays in `slicer-runtime/src/manifest.rs` unchanged.
 
 **Files allowed to read.** `crates/slicer-runtime/src/instance_pool.rs` (full ≤ 200 LOC OK). Call sites surfaced by grep `build_wasm_instance_pool` (Step 1 dispatch #1 already listed `instrumentation.rs:774`, `path_ordering_tdd.rs:13`, `layer_collection_builder_tdd.rs:23`, `dag_validation_tdd.rs:274`, `finalization_*_tdd.rs:24` etc.).
 
@@ -493,4 +493,4 @@ This is a checkpoint packet — workspace tests run at close per the deepening-b
 - All 11 ACs (AC-1 .. AC-11) and 3 negative cases (AC-N1, AC-N2, AC-N3) gate green per the inline verification commands in `packet.spec.md`.
 - ADR-0004 (`docs/adr/0004-runner-traits-in-slicer-wasm-host.md`) and ADR-0005 (`docs/adr/0005-export-for-stage-id-sole-lookup.md`) written and committed.
 - Implementation log records: Step 0 baseline SHA, Step 9 post-packet SHA, pre/post workspace test counts, guest-rebuild duration, list of files moved (count and total LOC), list of `pub trait *StageRunner` declarations lifted (4 expected), list of `export_name_for_stage` call sites collapsed (per Step 1 dispatch #4).
-- `status: draft` → `status: superseded` once gate green AND ADRs in place AND user confirms closure.
+- `status: draft` → `status: implemented` once gate green AND ADRs in place AND user confirms closure. (`superseded` is reserved for packets later replaced by another spec; `implemented` is the terminal state for a closed packet.)

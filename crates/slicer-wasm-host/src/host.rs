@@ -1,7 +1,7 @@
 //! WIT/component-model host-side bindings and execution context.
 //!
 //! This module provides:
-//! - `wasmtime::component::bindgen!`-generated types and traits for the layer world
+//! - WIT-bindgen-generated types and traits for the layer world
 //! - `HostExecutionContext` — per-call execution state carrying config, IR views,
 //!   output collectors, and a `ResourceTable` for host resource handle management
 //! - Trait implementations bridging the generated WIT interface to real host data

@@ -9,7 +9,6 @@ pub mod config_resolution;
 pub mod dag;
 pub mod dag_cli;
 pub mod diagnose;
-pub mod dispatch;
 pub mod execution_plan;
 pub mod gcode_emit;
 pub mod instrumentation;
@@ -107,7 +106,6 @@ pub use dag_cli::{
     run_dag_claims, run_dag_depends, run_dag_stage, run_dag_stages, ClaimOut, ClaimsOut,
     DependsOut, GlobalEdgeOut, ModuleOut, StageEdgeOut, StageOut, StageSummary, StagesOut,
 };
-pub use dispatch::{DispatchError, DispatchPhase, WasmRuntimeDispatcher};
 pub use execution_plan::{
     bind_module_config_view, build_execution_plan, build_live_execution_plan,
     dedup_same_claim_modules_for_test, load_live_modules_for_plan, parse_cli_config_source,
@@ -172,6 +170,7 @@ pub use slicer_core::{
     FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassStageOutput,
     SurfaceGroupRecord,
 };
+pub use slicer_wasm_host::{DispatchError, DispatchPhase, WasmRuntimeDispatcher};
 pub use support_geometry::{
     commit_support_geometry_builtin, execute_support_geometry, SupportGeometryBuiltinError,
 };

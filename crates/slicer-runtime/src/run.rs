@@ -16,7 +16,6 @@ use crate::config_resolution::{
     ConfigBoundsIndex,
 };
 use crate::dag::Producer;
-use crate::dispatch::WasmRuntimeDispatcher;
 use crate::execution_plan::{
     build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
 };
@@ -36,6 +35,7 @@ use crate::progress_instrumentation::ProgressPipelineInstrumentation;
 #[cfg(feature = "report")]
 use crate::report::{allocator as report_alloc, Collector};
 use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
+use slicer_wasm_host::WasmRuntimeDispatcher;
 
 /// Validated runtime options derived from CLI arguments.
 ///

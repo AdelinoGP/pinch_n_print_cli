@@ -271,9 +271,9 @@ fn write_conflict_orderable_is_true_when_read_establishes_dag_edge() {
 #[test]
 fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
     use crate::common::postpass_input;
-    use slicer_runtime::dispatch::WasmRuntimeDispatcher;
     use slicer_runtime::instance_pool::build_wasm_instance_pool;
     use slicer_runtime::PostpassStageRunner;
+    use slicer_wasm_host::WasmRuntimeDispatcher;
     use std::sync::Arc;
 
     /// Collects runtime reads/writes by calling `WasmRuntimeDispatcher` dispatch

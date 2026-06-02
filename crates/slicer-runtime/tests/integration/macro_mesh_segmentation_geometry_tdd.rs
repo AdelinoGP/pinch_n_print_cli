@@ -19,13 +19,13 @@ use slicer_ir::{
     BoundingBox3, FacetPaintData, IndexedTriangleSet, MeshIR, ObjectConfig, ObjectMesh, PaintLayer,
     PaintSemantic, PaintValue, Point3, SemVer, Transform3d,
 };
-use slicer_runtime::dispatch::WasmRuntimeDispatcher;
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::{
     wit_host::{object_mesh_to_wit_mesh_object_view, prepass},
     Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner, WasmEngine,
 };
+use slicer_wasm_host::WasmRuntimeDispatcher;
 use std::sync::Arc;
 
 /// Helper to construct a SemVer.

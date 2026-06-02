@@ -166,8 +166,8 @@ Full per-AC matrix lives in `requirements.md`.
 
 Two doc follow-ups planned at P83 close, both as new ADRs in `docs/adr/`:
 
-- **ADR-0004 — Runner trait defs live with the dispatcher impl in `slicer-wasm-host`.** Records the choice that `slicer-runtime → slicer-wasm-host → wasmtime` is the dep direction; a future architecture reviewer is reminded that runner traits do not belong in the planning crate or the SDK.
-- **ADR-0005 — `slicer-schema::export_for_stage_id` is the single source of truth for stage→export name lookup; dispatcher impls do not hardcode their own copy.** Recorded so the duplicated table in `dispatch::export_name_for_stage` does not re-grow.
+- **ADR-0005 — Runner trait defs live with the dispatcher impl in `slicer-wasm-host`.** Records the choice that `slicer-runtime → slicer-wasm-host → wasmtime` is the dep direction; a future architecture reviewer is reminded that runner traits do not belong in the planning crate or the SDK.
+- **ADR-0006 — `slicer-schema::export_for_stage_id` is the single source of truth for stage→export name lookup; dispatcher impls do not hardcode their own copy.** Recorded so the duplicated table in `dispatch::export_name_for_stage` does not re-grow.
 
 `docs/03_wit_and_manifest.md` may grow a one-line crate-map mention of `slicer-wasm-host`. Deferred to the deepening-batch doc-sweep packet.
 
@@ -182,3 +182,9 @@ This packet was generated against the context_discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Deviations
+
+- [AC-1 inline check] — Specified: `! grep -qE '^wasmtime *=' crates/slicer-runtime/Cargo.toml` | Implemented: `wasmtime = { workspace = true }` retained as `[dev-dependencies]` entry at `crates/slicer-runtime/Cargo.toml:27`; absent from `[dependencies]`. Inline grep is unsectioned and falsely fails despite the production graph being wasmtime-free. AC-1 prose ("no longer declares wasmtime in its `[dependencies]` block") and AC-8 depth-1 normal-edges check both pass. | Reason: test targets still construct `wasmtime::Engine`/`wasmtime::component::Component` directly via `wasm_cache`; retagging test consumers to obtain those types via `slicer_wasm_host` re-exports is a follow-up packet, not P83 scope.
+- [AC-4 inline check] — Specified: `! grep -rE '...|HostExecutionContext.*->|->.*HostExecutionContext' crates/slicer-wasm-host/src/` | Implemented: 4 internal-helper hits in wasm-host (`dispatch.rs::dispatch_*_call` return types, `harvest_mesh_segmentation_ir` param, `host.rs::HostExecutionContextBuilder::build` return). | Reason: AC-4 intent — that trait signatures never reference `HostExecutionContext` — is directly verified in `crates/slicer-wasm-host/src/traits.rs:1-88`; no trait method references HEC. The inline grep is over-broad and also matches internal helpers within the wasm-host crate, which are not on the wasm-host↔runtime boundary the AC is policing.
+- [AC-11 workspace test gate] — Specified: `cargo test --workspace` green at packet close | Implemented: 118 passed, 1 failed (`benchy_end_to_end_tdd::rejects_cooling_missing_when_required` panics with `Os { code: 112, kind: StorageFull }` at `crates/slicer-runtime/tests/common/slicer_cache.rs:190` during `recurse_copy`). | Reason: test environment ran out of disk space during the cached-slicer-run copy step; same environmental failure noted in prior closure ceremony, user-acknowledged as test-infra (not a code regression). Clears on rerun with disk headroom. SHA parity (AC-9: `89a329ad3a4c1b7febca839edfca8b6302e562d8d2a390ee144252fd54e65a2b`) re-verified green at closure.

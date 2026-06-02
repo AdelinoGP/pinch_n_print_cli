@@ -28,7 +28,6 @@ use slicer_ir::{
     SliceIR, SlicedRegion, StageId, SurfaceClassificationIR,
 };
 use slicer_ir::{LayerStageCommitData, PrepassRunnerError};
-use slicer_runtime::dispatch::{DispatchPhase, WasmRuntimeDispatcher};
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_runtime::postpass::{GCodeEmitter, GCodeSerializer};
@@ -40,6 +39,7 @@ use slicer_runtime::{
     PostpassStageRunner, PrepassStageRunner, WasmEngine,
 };
 use slicer_schema::export_for_stage_id;
+use slicer_wasm_host::{DispatchPhase, WasmRuntimeDispatcher};
 
 // â”€â”€ WAT Fixtures (for non-layer stages on the legacy path) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
