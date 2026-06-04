@@ -11,14 +11,14 @@
 //!   2. equal to object layer height accepted
 //!   3. coarser than object layer height accepted
 //!   4. finer than object layer height rejected with SupportLayerHeightTooFine
-//!   5. multi-object with mixed layer heights â€” fails on first offender
+//!   5. multi-object with mixed layer heights — fails on first offender
 
 #![allow(missing_docs)]
 
 use std::collections::BTreeMap;
 
 use slicer_ir::ResolvedConfig;
-use slicer_runtime::{validate_support_layer_heights, ConfigResolutionError};
+use slicer_scheduler::{validate_support_layer_heights, ConfigResolutionError};
 
 fn cfg(layer_height: f32, support_layer_height_mm: f32) -> ResolvedConfig {
     ResolvedConfig {

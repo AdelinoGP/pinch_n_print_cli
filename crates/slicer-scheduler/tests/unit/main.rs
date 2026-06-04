@@ -8,4 +8,5 @@
 mod dag_construction_tdd;
 mod execution_plan_tdd;
 mod stage_canon_seam_support_tdd;
+mod support_layer_height_validation_tdd;
 mod topological_sort_tdd;

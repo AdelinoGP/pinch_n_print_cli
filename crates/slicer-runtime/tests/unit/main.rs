@@ -21,7 +21,6 @@ mod paint_region_annotator_host_tdd;
 mod path_ordering_tdd;
 mod region_mapping_resolved_config_tdd;
 mod rotated_object_world_extent_tdd;
-mod support_layer_height_validation_tdd;
 mod tool_ordering_tdd;
 mod transformed_model_world_z_tdd;
 mod translated_object_z_floor_tdd;
