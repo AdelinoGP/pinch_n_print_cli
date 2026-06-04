@@ -9,11 +9,11 @@
 
 #![allow(missing_docs)]
 
+use slicer_gcode::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, ObjectId, Point3WithWidth, PrintEntity,
     RegionKey, ResolvedConfig, RetractMode, SemVer, ToolChange, TravelRetract,
 };
-use slicer_runtime::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -77,7 +77,7 @@ fn make_wipe_entity(id: u64, purge_len_mm: f32, tool: u32) -> PrintEntity {
 }
 
 /// Emit + serialize a single-layer GCode and return the output string.
-fn emit_and_serialize(layer: LayerCollectionIR) -> Result<String, slicer_runtime::GCodeEmitError> {
+fn emit_and_serialize(layer: LayerCollectionIR) -> Result<String, slicer_gcode::GCodeEmitError> {
     let emitter = DefaultGCodeEmitter::new("test".to_string());
     let ir = emitter.emit_gcode(&[layer])?;
     let serializer = DefaultGCodeSerializer::new();

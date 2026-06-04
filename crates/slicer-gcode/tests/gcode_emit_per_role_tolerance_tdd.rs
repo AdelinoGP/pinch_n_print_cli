@@ -13,11 +13,11 @@
 //! collapses to 2 points under any positive tolerance when the wobble (0.005 mm)
 //! is below all three role tolerances. Travel retains all 12 points.
 
+use slicer_gcode::{tolerance_for_role, DefaultGCodeEmitter, GCodeEmitter};
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, GCodeCommand, LayerCollectionIR, ObjectId, Point3WithWidth,
     PrintEntity, RegionKey, ResolvedConfig,
 };
-use slicer_runtime::{tolerance_for_role, DefaultGCodeEmitter, GCodeEmitter};
 
 // ============================================================================
 // Fixtures

@@ -8,14 +8,12 @@
 #[path = "../common/mod.rs"]
 mod common;
 
-mod finalization_aware_travel_tdd;
 mod finalization_builder_insert;
 mod finalization_builder_permute;
 mod finalization_builder_readback;
 mod finalization_live_tdd;
 mod finalization_mutation_roundtrip_tdd;
 mod finalization_world_deep_copy_tdd;
-mod gcode_toolchange_wrapping;
 mod layer_executor_tdd;
 mod layer_finalization_tdd;
 mod layer_slice_tdd;

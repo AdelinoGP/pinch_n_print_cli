@@ -5,8 +5,8 @@
 //! Covers AC-1 through AC-5 + the negative criterion AC-N1. AC-6 lives in
 //! `crates/slicer-ir/tests/point3_overhang_quartile_roundtrip.rs`.
 
+use slicer_gcode::{DefaultGCodeEmitter, GCodeEmitter};
 use slicer_ir::*;
-use slicer_runtime::{DefaultGCodeEmitter, GCodeEmitter};
 
 // â”€â”€â”€ shared fixture helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

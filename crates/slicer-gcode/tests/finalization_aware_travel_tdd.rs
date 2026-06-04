@@ -11,11 +11,11 @@
 //! - AC2: Wipe tower geometry included in travel reconciliation
 //! - AC3: No finalization geometry is a reconciliation no-op
 
+use slicer_gcode::reconcile_finalization_travel;
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, ObjectId, Point3WithWidth, PrintEntity,
     RegionKey, SemVer, ToolChange, TravelRetract,
 };
-use slicer_runtime::reconcile_finalization_travel;
 
 // ============================================================================
 // Test fixtures

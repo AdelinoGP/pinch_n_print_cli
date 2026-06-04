@@ -22,11 +22,11 @@
 //! Reference: docs/02_ir_schemas.md (IR 11 - GCodeIR), docs/04_host_scheduler.md (lines 778-810)
 //! OrcaSlicer reference: OrcaSlicerDocumented/src/libslic3r/GCodeWriter.cpp, GCodeProcessor.hpp
 
+use slicer_gcode::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, LayerCollectionIR, ObjectId,
     Point3WithWidth, PrintEntity, PrintMetadata, RegionKey, RetractMode, ToolChange, ZHop,
 };
-use slicer_runtime::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 
 // ============================================================================
 // Test fixtures

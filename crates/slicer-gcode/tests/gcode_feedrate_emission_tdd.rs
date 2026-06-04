@@ -2,8 +2,8 @@
 
 //! TDD tests for packet 52 (TASK-153): per-role feedrate emission on the live G-code path.
 
+use slicer_gcode::{DefaultGCodeEmitter, GCodeEmitter};
 use slicer_ir::*;
-use slicer_runtime::{DefaultGCodeEmitter, GCodeEmitter};
 
 #[test]
 fn per_role_speed_resolves_to_f_token() {

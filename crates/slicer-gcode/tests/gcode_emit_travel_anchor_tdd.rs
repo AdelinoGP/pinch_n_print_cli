@@ -13,11 +13,11 @@
 //!   - AC-4: Reordering ordered_entities does not break travel resolution â€” the anchor is
 //!     entity_id-based, not positional.
 
+use slicer_gcode::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, ObjectId, Point3WithWidth, PrintEntity,
     RegionKey, SemVer, TravelMove,
 };
-use slicer_runtime::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 
 // ============================================================================
 // Helper fixtures (same style as gcode_emit_tdd.rs)

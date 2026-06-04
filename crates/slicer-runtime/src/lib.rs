@@ -168,19 +168,15 @@ pub use slicer_core::{
     FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassStageOutput,
     SurfaceGroupRecord,
 };
-// kept: consumed by crates/slicer-runtime/tests/executor/finalization_aware_travel_tdd.rs
-pub use slicer_gcode::reconcile_finalization_travel;
-// kept: consumed by crates/slicer-runtime/tests/unit/gcode_emit_per_role_tolerance_tdd.rs
-pub use slicer_gcode::tolerance_for_role;
-// kept: DefaultGCodeEmitter — consumed by tests (dispatch_tdd, gcode_emit_tdd, gcode_feedrate_emission_tdd, gcode_emit_per_role_tolerance_tdd, overhang_speed_tdd, postpass_gcode_emit_contract_tdd, pnp-cli/tests/e2e_integration_tdd)
+// kept: DefaultGCodeEmitter — consumed by tests (dispatch_tdd, postpass_gcode_emit_contract_tdd, pnp-cli/tests/e2e_integration_tdd)
 pub use slicer_gcode::DefaultGCodeEmitter;
-// kept: DefaultGCodeSerializer — consumed by tests (gcode_emit_tdd, postpass_gcode_emit_contract_tdd, gcode_relative_extrusion_tdd, pnp-cli/tests/e2e_integration_tdd)
+// kept: DefaultGCodeSerializer — consumed by tests (postpass_gcode_emit_contract_tdd, gcode_skirt_brim_emission_tdd, pnp-cli/tests/e2e_integration_tdd)
 pub use slicer_gcode::DefaultGCodeSerializer;
-// kept: GCodeEmitError — consumed by tests (gcode_toolchange_wrapping, dispatch_tdd, postpass_executor_tdd, pipeline_tdd, runtime_wiring_tdd, run_pipeline_with_instrumentation_tdd, paint_annotation_integration_tdd, pnp-cli/tests/e2e_integration_tdd)
+// kept: GCodeEmitError — consumed by tests (dispatch_tdd, postpass_executor_tdd, pipeline_tdd, runtime_wiring_tdd, run_pipeline_with_instrumentation_tdd, paint_annotation_integration_tdd, pnp-cli/tests/e2e_integration_tdd)
 pub use slicer_gcode::GCodeEmitError;
-// kept: GCodeEmitter — consumed by tests (dispatch_tdd, gcode_emit_tdd, gcode_feedrate_emission_tdd, gcode_emit_per_role_tolerance_tdd, overhang_speed_tdd, postpass_gcode_emit_contract_tdd, postpass_executor_tdd, pipeline_tdd, runtime_wiring_tdd, run_pipeline_with_instrumentation_tdd, paint_annotation_integration_tdd, pnp-cli/tests/e2e_integration_tdd)
+// kept: GCodeEmitter — consumed by tests (dispatch_tdd, postpass_gcode_emit_contract_tdd, postpass_executor_tdd, pipeline_tdd, runtime_wiring_tdd, run_pipeline_with_instrumentation_tdd, paint_annotation_integration_tdd, gcode_skirt_brim_emission_tdd, pnp-cli/tests/e2e_integration_tdd)
 pub use slicer_gcode::GCodeEmitter;
-// kept: GCodeSerializer — consumed by tests (dispatch_tdd, gcode_emit_tdd, postpass_gcode_emit_contract_tdd, gcode_relative_extrusion_tdd, postpass_executor_tdd, pipeline_tdd, runtime_wiring_tdd, run_pipeline_with_instrumentation_tdd, paint_annotation_integration_tdd, pnp-cli/tests/e2e_integration_tdd)
+// kept: GCodeSerializer — consumed by tests (dispatch_tdd, postpass_gcode_emit_contract_tdd, postpass_executor_tdd, pipeline_tdd, runtime_wiring_tdd, run_pipeline_with_instrumentation_tdd, paint_annotation_integration_tdd, gcode_skirt_brim_emission_tdd, pnp-cli/tests/e2e_integration_tdd)
 pub use slicer_gcode::GCodeSerializer;
 // Re-exports from slicer_core::algos for backward compatibility.
 pub use slicer_core::algos::mesh_analysis::{

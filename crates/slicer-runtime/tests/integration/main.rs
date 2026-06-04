@@ -10,12 +10,8 @@ mod common;
 
 mod core_module_components_tdd;
 mod core_module_macro_adoption_tdd;
-mod gcode_emit_tdd;
-mod gcode_emit_travel_anchor_tdd;
-mod gcode_feedrate_emission_tdd;
 mod gcode_header_thumbnail_config_blocks_tdd;
 mod gcode_part_cooling_emission_tdd;
-mod gcode_relative_extrusion_tdd;
 mod gcode_skirt_brim_emission_tdd;
 mod live_module_loading_tdd;
 mod machine_start_end_gcode_emission_tdd;

@@ -1,7 +1,7 @@
 //! TDD tests for Track B: use_relative_e_distances config key and G-code relative extrusion.
 
+use slicer_gcode::{DefaultGCodeSerializer, GCodeSerializer};
 use slicer_ir::{ExtrusionRole, GCodeCommand, GCodeIR, PrintMetadata};
-use slicer_runtime::{DefaultGCodeSerializer, GCodeSerializer};
 
 // ---------------------------------------------------------------------------
 // Helper: build a minimal GCodeIR with a sequence of extrusion moves.
