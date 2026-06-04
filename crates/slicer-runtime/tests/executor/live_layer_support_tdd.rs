@@ -378,8 +378,8 @@ use slicer_ir::{
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive, LayerArena,
-    LayerStageRunner, WasmEngine, WasmInstancePool, WasmRuntimeDispatcher,
+    Blackboard, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmEngine,
+    WasmRuntimeDispatcher,
 };
 use std::sync::Arc;
 
@@ -1083,7 +1083,7 @@ mod planner_consuming_tier {
         SupportPlanEntry, SupportPlanIR,
     };
     use slicer_runtime::{
-        build_wasm_instance_pool, instance_pool::WasmArtifactMetadata, Blackboard, CompiledModule,
+        build_wasm_instance_pool, instance_pool::WasmArtifactMetadata, Blackboard,
         CompiledModuleBuilder, LayerArena, LoadedModule, LoadedModuleBuilder, WasmEngine,
         WasmRuntimeDispatcher,
     };

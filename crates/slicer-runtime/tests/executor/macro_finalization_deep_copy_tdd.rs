@@ -27,8 +27,8 @@ use slicer_ir::{
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, FinalizationStageRunner, LoadedModule,
-    LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
+    Blackboard, CompiledModuleBuilder, FinalizationStageRunner, LoadedModule, LoadedModuleBuilder,
+    WasmEngine, WasmRuntimeDispatcher,
 };
 use witness::SdkFinalizationLayerWitness;
 

@@ -31,7 +31,7 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_prepass_with_builtins, instance_pool::WasmArtifactMetadata,
-    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledStage, ExecutionPlan, LoadedModule,
+    Blackboard, CompiledModuleBuilder, CompiledStage, ExecutionPlan, LoadedModule,
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 

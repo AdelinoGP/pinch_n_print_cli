@@ -24,9 +24,9 @@ use slicer_ir::{
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
     apply_entity_order_proposal, execute_per_layer, project_ordered_entities, Blackboard,
-    CompiledModule, CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ExecutionPlan,
-    LayerArena, LayerStageInput, LoadedModule, LoadedModuleBuilder, WasmEngine,
-    WasmRuntimeDispatcher, HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS,
+    CompiledModuleBuilder, CompiledModuleLive, CompiledStage, ExecutionPlan, LayerArena,
+    LayerStageInput, LoadedModule, LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
+    HOST_GET_ORDERED_ENTITIES_TOTAL_CALLS,
 };
 
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
