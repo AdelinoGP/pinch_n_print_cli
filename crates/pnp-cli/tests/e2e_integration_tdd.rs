@@ -14,11 +14,11 @@ use slicer_ir::{
 use slicer_model_io::{load_model, ModelLoadError};
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_runtime::{
-    Blackboard, CompiledModuleLive, DefaultGCodeEmitter, DefaultGCodeSerializer, ExecutionPlan,
+    CompiledModuleLive, DefaultGCodeEmitter, DefaultGCodeSerializer, ExecutionPlan,
     FinalizationError, FinalizationOutput, FinalizationStageInput, FinalizationStageRunner,
-    GCodeEmitter, GCodeSerializer, LayerStageInput, LayerStageRunner, PostpassError,
-    PostpassOutput, PostpassStageInput, PostpassStageRunner, PrepassRunnerError, PrepassStageInput,
-    PrepassStageOutput, PrepassStageRunner,
+    GCodeEmitError, GCodeEmitter, GCodeSerializer, LayerStageInput, LayerStageRunner,
+    PostpassError, PostpassOutput, PostpassStageInput, PostpassStageRunner, PrepassRunnerError,
+    PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
 };
 
 // ---------------------------------------------------------------------------
@@ -137,18 +137,14 @@ impl PostpassStageRunner for NoopPostpassRunner {
 
 struct MinimalEmitter;
 impl GCodeEmitter for MinimalEmitter {
-    fn emit_gcode(
-        &self,
-        _layer_irs: &[LayerCollectionIR],
-        _blackboard: &Blackboard,
-    ) -> Result<GCodeIR, PostpassError> {
+    fn emit_gcode(&self, _layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
         Ok(minimal_gcode_ir())
     }
 }
 
 struct MinimalSerializer;
 impl GCodeSerializer for MinimalSerializer {
-    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
+    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
         Ok(String::new())
     }
 }
@@ -276,11 +272,7 @@ fn e2e_with_layers() {
 
     struct LayerCountEmitter;
     impl GCodeEmitter for LayerCountEmitter {
-        fn emit_gcode(
-            &self,
-            layer_irs: &[LayerCollectionIR],
-            _blackboard: &Blackboard,
-        ) -> Result<GCodeIR, PostpassError> {
+        fn emit_gcode(&self, layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
             let mut ir = minimal_gcode_ir();
             ir.metadata.layer_count = layer_irs.len() as u32;
             Ok(ir)

@@ -2397,6 +2397,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "slicer-gcode"
+version = "0.1.0"
+dependencies = [
+ "slicer-core",
+ "slicer-helpers",
+ "slicer-ir",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "slicer-helpers"
 version = "0.1.0"
 dependencies = [
@@ -2467,6 +2477,7 @@ dependencies = [
  "serde_json",
  "skirt-brim",
  "slicer-core",
+ "slicer-gcode",
  "slicer-helpers",
  "slicer-ir",
  "slicer-model-io",

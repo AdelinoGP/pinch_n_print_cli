@@ -3,7 +3,7 @@
 //! TDD tests for packet 60 Step 6: `format_xyz` sibling function with configurable decimal
 //! precision. AC-5 acceptance criteria.
 
-use slicer_runtime::gcode_emit::{format_coord, format_xyz};
+use slicer_gcode::{format_coord, format_xyz};
 
 #[test]
 fn format_coord_decimals() {

@@ -6,16 +6,14 @@
 // If any of those runtime symbols moves out of slicer-runtime in a future packet, this comment becomes stale and the test should be re-evaluated for relocation to the module's crate.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use part_cooling::PartCooling;
 use slicer_ir::{
-    BoundingBox3, ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, IndexedTriangleSet,
-    LayerCollectionIR, MeshIR, ObjectConfig, ObjectMesh, Point3, Point3WithWidth, PrintEntity,
-    RegionKey, SemVer, Transform3d,
+    ConfigValue, ConfigView, ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, Point3WithWidth,
+    PrintEntity, RegionKey, SemVer,
 };
 use slicer_runtime::{
-    load_module_from_paths, Blackboard, DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter,
+    load_module_from_paths, DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter,
     GCodeSerializer,
 };
 use slicer_sdk::traits::FinalizationModule;
@@ -30,70 +28,6 @@ fn semver_fixture() -> SemVer {
         minor: 0,
         patch: 0,
     }
-}
-
-fn identity_transform() -> Transform3d {
-    Transform3d {
-        matrix: [
-            1.0, 0.0, 0.0, 0.0, // column 0
-            0.0, 1.0, 0.0, 0.0, // column 1
-            0.0, 0.0, 1.0, 0.0, // column 2
-            0.0, 0.0, 0.0, 1.0, // column 3
-        ],
-    }
-}
-
-fn mesh_fixture() -> MeshIR {
-    MeshIR {
-        schema_version: semver_fixture(),
-        objects: vec![ObjectMesh {
-            id: "test-object".to_string(),
-            mesh: IndexedTriangleSet {
-                vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 10.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 5.0,
-                        y: 10.0,
-                        z: 0.0,
-                    },
-                ],
-                indices: vec![0, 1, 2],
-            },
-            transform: identity_transform(),
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        }],
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 220.0,
-                y: 220.0,
-                z: 250.0,
-            },
-        },
-    }
-}
-
-fn blackboard_fixture() -> Blackboard {
-    let mesh = Arc::new(mesh_fixture());
-    Blackboard::new(mesh, 0)
 }
 
 fn point3_with_width(x: f32, y: f32, z: f32) -> Point3WithWidth {
@@ -164,10 +98,9 @@ fn run_cooling_and_serialize(config: &ConfigView, layers: &mut Vec<LayerCollecti
         .expect("run_finalization must succeed");
     output.apply_to(layers).expect("apply_to must succeed");
 
-    let blackboard = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
     let gcode_ir = emitter
-        .emit_gcode(layers.as_slice(), &blackboard)
+        .emit_gcode(layers.as_slice())
         .expect("emit_gcode must succeed");
     let serializer = DefaultGCodeSerializer::new();
     serializer

@@ -1,8 +1,8 @@
-//! GCode emission and serialization (TASK-034).
+//! G-code emission: `LayerCollectionIR` → `GCodeIR`.
 //!
-//! This module provides the host-built-in implementations of `GCodeEmitter` and
-//! `GCodeSerializer` traits defined in `postpass.rs`. The emitter converts
-//! `LayerCollectionIR` to `GCodeIR`; the serializer converts `GCodeIR` to G-code text.
+//! This module hosts the [`GCodeEmitter`] trait and the canonical
+//! [`DefaultGCodeEmitter`] implementation extracted from
+//! `crates/slicer-runtime/src/gcode_emit.rs` (packet 86).
 //!
 //! Emit behavior (from docs/02_ir_schemas.md, docs/04_host_scheduler.md):
 //! - Walk `LayerCollectionIR` in Z-sorted order (already sorted by LayerFinalization)
@@ -11,56 +11,38 @@
 //! - Insert Z-hop travel moves where `ZHop` appears
 //! - Build `PrintMetadata` (estimated time, filament used, layer count, slicer version)
 //!
-//! Serialize behavior:
-//! - Convert `GCodeIR.commands` → text G-code string
-//! - Extrusion moves emit `G1 X... Y... Z... E... F...`; travel moves
-//!   (`ExtrusionRole::Custom("Travel")`) emit `G0 X... Y... Z... F...` with no `E`.
-//! - Handle all GCodeCommand variants (Move, Retract, Unretract, FanSpeed, Temperature,
-//!   ToolChange, Comment, Raw)
-//!
 //! OrcaSlicer references:
 //! - OrcaSlicerDocumented/src/libslic3r/GCodeWriter.cpp — G-code emission patterns
 //! - OrcaSlicerDocumented/tests/fff_print/test_gcodewriter.cpp — test patterns
 
 use std::collections::HashMap;
-use std::fmt::Write;
-use std::sync::OnceLock;
 
 use slicer_helpers::{drop_short_segments_mm, simplify_polyline_mm};
 use slicer_ir::FeedrateConfig;
 use slicer_ir::{
-    ConfigValue, ExtrusionRole, GCodeCommand, GCodeIR, LayerAnnotationKind, LayerCollectionIR,
-    PrintMetadata, ResolvedConfig, SemVer,
+    ExtrusionRole, GCodeCommand, GCodeIR, LayerAnnotationKind, LayerCollectionIR, PrintMetadata,
+    ResolvedConfig, TravelMove,
 };
 
-use crate::dag::BuiltinProducer;
-use crate::{Blackboard, GCodeEmitter, GCodeSerializer, PostpassError};
+use crate::error::GCodeEmitError;
+use crate::serialize::{format_xyz, tolerance_for_role};
 
-/// `BuiltinProducer` for the host-side `PostPass::GCodeEmit` step.
-pub static GCODE_EMIT_PRODUCER: BuiltinProducer = BuiltinProducer {
-    id: "host:gcode_emit",
-    stage: "PostPass::GCodeEmit",
-    ir_writes: &["GCodeIR"],
-    ir_reads: &[],
-    claims_holds: &["host:gcode_emit"],
-    claims_requires: &[],
-    requires_modules: &[],
-    min_ir_schema: SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    },
-    max_ir_schema: SemVer {
-        major: 4,
-        minor: 0,
-        patch: 0,
-    },
-    _cache_ir_writes: OnceLock::new(),
-    _cache_ir_reads: OnceLock::new(),
-    _cache_claims_holds: OnceLock::new(),
-    _cache_claims_requires: OnceLock::new(),
-    _cache_requires_modules: OnceLock::new(),
-};
+/// Trait for GCode emission (host-built-in).
+///
+/// Implementations consume a `&[LayerCollectionIR]` and produce a `GCodeIR`.
+/// The blackboard is intentionally *not* part of this trait: the empirical
+/// audit performed in packet 86 / Step 1 confirmed the default implementation
+/// never reads from it.
+pub trait GCodeEmitter {
+    /// Emit GCode IR from layer collections.
+    fn emit_gcode(&self, layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError>;
+
+    /// Resolved travel feedrate in mm/min for finalization-aware travel inserts.
+    /// `None` means the caller should fall back to whatever resolution path it owns.
+    fn travel_feedrate_mm_per_min(&self) -> Option<f32> {
+        None
+    }
+}
 
 /// Default GCode emitter (host-built-in).
 ///
@@ -230,38 +212,8 @@ fn orca_type_label(role: &ExtrusionRole) -> &'static str {
     }
 }
 
-/// Return the D-P simplification tolerance (mm) for a given extrusion role.
-///
-/// Exhaustive — adding an ExtrusionRole variant must force a compile error here so
-/// the new variant gets an explicit precision policy rather than silently inheriting one.
-pub fn tolerance_for_role(role: &ExtrusionRole, cfg: &ResolvedConfig) -> f32 {
-    match role {
-        // Perimeter / wall family and skirt/brim: tightest tolerance.
-        ExtrusionRole::OuterWall
-        | ExtrusionRole::InnerWall
-        | ExtrusionRole::ThinWall
-        | ExtrusionRole::Skirt => cfg.gcode_resolution,
-        // Infill family: relaxed tolerance.
-        ExtrusionRole::SparseInfill
-        | ExtrusionRole::TopSolidInfill
-        | ExtrusionRole::BottomSolidInfill
-        | ExtrusionRole::BridgeInfill
-        | ExtrusionRole::Ironing
-        | ExtrusionRole::WipeTower
-        | ExtrusionRole::PrimeTower => cfg.infill_resolution,
-        // Support family: support tolerance.
-        ExtrusionRole::SupportMaterial | ExtrusionRole::SupportInterface => cfg.support_resolution,
-        // Travel and other custom moves: no simplification.
-        ExtrusionRole::Custom(_) => 0.0,
-    }
-}
-
 impl GCodeEmitter for DefaultGCodeEmitter {
-    fn emit_gcode(
-        &self,
-        layer_irs: &[LayerCollectionIR],
-        _blackboard: &Blackboard,
-    ) -> Result<GCodeIR, PostpassError> {
+    fn emit_gcode(&self, layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
         // Clone for mutation (overhang classification + tool rotation).
         let mut owned_layers: Vec<LayerCollectionIR> = layer_irs.to_vec();
         // Apply cross-layer tool rotation before classification and emission.
@@ -365,7 +317,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
 
             // Build lookup maps for tool_changes and z_hops by after_entity_index.
             // Value is (tc_index_in_layer, &ToolChange) so the guard can report
-            // the 0-based tool_change_index for PostpassError::MissingToolchangePurge.
+            // the 0-based tool_change_index for GCodeEmitError::MissingToolchangePurge.
             let tool_changes: HashMap<u32, (u32, &_)> = layer
                 .tool_changes
                 .iter()
@@ -579,7 +531,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                             .any(|e| matches!(e.role, ExtrusionRole::WipeTower));
 
                         if !has_wipe_in_layer {
-                            return Err(PostpassError::MissingToolchangePurge {
+                            return Err(GCodeEmitError::MissingToolchangePurge {
                                 layer_index: layer.global_layer_index,
                                 tool_change_index: *tc_index,
                             });
@@ -703,509 +655,6 @@ impl GCodeEmitter for DefaultGCodeEmitter {
     }
 }
 
-/// Default GCode serializer (host-built-in).
-///
-/// Converts `GCodeIR` to a G-code text string by serializing each command
-/// according to standard G-code formatting rules.
-///
-/// `relative` controls whether `M83` (relative-E) or `M82` (absolute-E) is
-/// emitted in the preamble, and how E values are rendered during serialization.
-pub struct DefaultGCodeSerializer {
-    /// `true` = relative-E mode (M83); `false` = absolute-E mode (M82).
-    relative: bool,
-    /// Filament diameter in mm (default 1.75 per schema).
-    filament_diameter_mm: f32,
-    /// Filament density in g/cm³ (default 1.24 per schema).
-    filament_density_g_cm3: f32,
-    /// Minimum max_z_height in mm used when no Z moves appear in the output
-    /// (default 256.0 per config schema — the schema's configured build height).
-    max_z_height_floor_mm: f32,
-    /// Extrusion width for outer wall in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.42).
-    outer_wall_line_width: f32,
-    /// Extrusion width for inner walls in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.45).
-    inner_wall_line_width: f32,
-    /// Extrusion width for sparse infill in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.45).
-    sparse_infill_line_width: f32,
-    /// Extrusion width for top surface in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.42).
-    top_surface_line_width: f32,
-    /// Extrusion width for support material in mm (OrcaSlicer 0.4 mm nozzle parity default: 0.35).
-    support_line_width: f32,
-    /// Decimal places for XYZ coordinate values in serialized GCode (default 3).
-    gcode_xy_decimals: u32,
-}
-
-impl DefaultGCodeSerializer {
-    /// Creates a new `DefaultGCodeSerializer` in relative-E mode (default).
-    pub fn new() -> Self {
-        Self::with_extrusion_mode(true)
-    }
-
-    /// Creates a `DefaultGCodeSerializer` with an explicit extrusion mode.
-    ///
-    /// - `relative = true`  → emits `M83` in preamble; E values are deltas.
-    /// - `relative = false` → emits `M82` in preamble; E values are absolute.
-    pub fn with_extrusion_mode(relative: bool) -> Self {
-        Self {
-            relative,
-            filament_diameter_mm: 1.75,
-            filament_density_g_cm3: 1.24,
-            max_z_height_floor_mm: 256.0,
-            // OrcaSlicer 0.4 mm nozzle parity defaults (matches config_schema.rs registration).
-            outer_wall_line_width: 0.42,
-            inner_wall_line_width: 0.45,
-            sparse_infill_line_width: 0.45,
-            top_surface_line_width: 0.42,
-            support_line_width: 0.35,
-            gcode_xy_decimals: 3,
-        }
-    }
-
-    /// Sets filament diameter and density (overrides schema defaults).
-    pub fn with_filament_config(mut self, diameter_mm: f32, density_g_cm3: f32) -> Self {
-        self.filament_diameter_mm = diameter_mm;
-        self.filament_density_g_cm3 = density_g_cm3;
-        self
-    }
-}
-
-impl Default for DefaultGCodeSerializer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-/// Produce the HEADER_BLOCK text (OrcaSlicer wire format, packet 55 Step 3).
-///
-/// Format (FACT from OrcaSlicerDocumented/src/libslic3r/GCode.cpp:2644-2704):
-/// ```text
-/// ; HEADER_BLOCK_START
-/// ; total layer number: <N>
-/// ; filament_diameter: <d>
-/// ; filament_density: <rho>
-/// ; max_z_height: <z>
-/// ; filament: <i0>,<i1>,...
-/// ; HEADER_BLOCK_END
-/// ```
-/// Tool indices are 1-based (OrcaSlicer uses `used_filaments[idx] + 1`).
-/// `max_z_mm` is the Z of the highest layer in millimeters.
-fn serialize_header_block(
-    layer_count: u32,
-    filament_diameter_mm: f32,
-    filament_density_g_cm3: f32,
-    max_z_mm: f32,
-    filament_used_mm: &[f32],
-) -> String {
-    let mut out = String::new();
-    writeln!(out, "; HEADER_BLOCK_START").unwrap();
-    writeln!(out, "; total layer number: {}", layer_count).unwrap();
-    // Format floats without unnecessary trailing zeros.
-    writeln!(out, "; filament_diameter: {}", filament_diameter_mm).unwrap();
-    writeln!(out, "; filament_density: {}", filament_density_g_cm3).unwrap();
-    // OrcaSlicer uses fixed precision 2 for max_z_height.
-    writeln!(out, "; max_z_height: {:.2}", max_z_mm).unwrap();
-    // Collect 1-based tool indices where filament was used (> 0.0), ascending.
-    let used_indices: Vec<String> = filament_used_mm
-        .iter()
-        .enumerate()
-        .filter(|(_, &mm)| mm > 0.0)
-        .map(|(i, _)| (i + 1).to_string())
-        .collect();
-    // If no filament was used (e.g. empty plan), emit tool 1 as a fallback
-    // so the field always has a non-empty value (AC-6 requires ≥ 1 digit).
-    let filament_value = if used_indices.is_empty() {
-        "1".to_string()
-    } else {
-        used_indices.join(",")
-    };
-    writeln!(out, "; filament: {}", filament_value).unwrap();
-    writeln!(out, "; HEADER_BLOCK_END").unwrap();
-    out
-}
-
-/// Produce the extrusion-width comment block (packet 55 Step 4 / AC-7).
-///
-/// Format (five lines, immediately after HEADER_BLOCK_END):
-/// ```text
-/// ; outer_wall_line_width = <value>
-/// ; inner_wall_line_width = <value>
-/// ; sparse_infill_line_width = <value>
-/// ; top_surface_line_width = <value>
-/// ; support_line_width = <value>
-/// ```
-/// Values are formatted with trailing-zero-stripped decimal notation (e.g. `0.42`, not `0.4200`).
-fn serialize_width_comments(
-    outer_wall: f32,
-    inner_wall: f32,
-    sparse_infill: f32,
-    top_surface: f32,
-    support: f32,
-) -> String {
-    let mut out = String::new();
-    // Strip trailing zeros while keeping at least one decimal digit.
-    // `format!("{}", v)` on f32 already does this for values like 0.42 and 0.45.
-    writeln!(out, "; outer_wall_line_width = {outer_wall}").unwrap();
-    writeln!(out, "; inner_wall_line_width = {inner_wall}").unwrap();
-    writeln!(out, "; sparse_infill_line_width = {sparse_infill}").unwrap();
-    writeln!(out, "; top_surface_line_width = {top_surface}").unwrap();
-    writeln!(out, "; support_line_width = {support}").unwrap();
-    out
-}
-
-/// Encode raw bytes to a Base64 string (RFC 4648 standard alphabet, no line breaks).
-///
-/// Hand-rolled to avoid requiring `base64` as a non-dev dependency.
-fn base64_encode(data: &[u8]) -> String {
-    const TABLE: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
-    for chunk in data.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
-        let combined = (b0 << 16) | (b1 << 8) | b2;
-        out.push(TABLE[((combined >> 18) & 63) as usize] as char);
-        out.push(TABLE[((combined >> 12) & 63) as usize] as char);
-        if chunk.len() > 1 {
-            out.push(TABLE[((combined >> 6) & 63) as usize] as char);
-        } else {
-            out.push('=');
-        }
-        if chunk.len() > 2 {
-            out.push(TABLE[(combined & 63) as usize] as char);
-        } else {
-            out.push('=');
-        }
-    }
-    out
-}
-
-/// Produce the THUMBNAIL_BLOCK text (OrcaSlicer wire format, packet 55 Step 5).
-///
-/// Format (FACT from OrcaSlicerDocumented/src/libslic3r/GCode/Thumbnails.hpp:111-129):
-/// - Sentinel: `; THUMBNAIL_BLOCK_START`
-/// - Base64 lines: `; <chunk>` where each chunk is ≤ 76 characters (OrcaSlicer max_row_length)
-/// - Sentinel: `; THUMBNAIL_BLOCK_END`
-///
-/// No metadata header line is emitted so that the region between the sentinels
-/// contains only base64 data (required for the roundtrip test to decode cleanly).
-pub fn serialize_thumbnail_block(png_bytes: &[u8]) -> String {
-    const MAX_ROW_LENGTH: usize = 76;
-    let encoded = base64_encode(png_bytes);
-    let mut out = String::new();
-    writeln!(out, "; THUMBNAIL_BLOCK_START").unwrap();
-    let mut remaining = encoded.as_str();
-    while remaining.len() > MAX_ROW_LENGTH {
-        writeln!(out, "; {}", &remaining[..MAX_ROW_LENGTH]).unwrap();
-        remaining = &remaining[MAX_ROW_LENGTH..];
-    }
-    if !remaining.is_empty() {
-        writeln!(out, "; {}", remaining).unwrap();
-    }
-    writeln!(out, "; THUMBNAIL_BLOCK_END").unwrap();
-    out
-}
-
-/// Convert a `ResolvedConfig` to a flat `HashMap<String, ConfigValue>`.
-///
-/// Used to populate the CONFIG_BLOCK with the effective slicer settings.
-/// `Option`-typed fields that are `None` are omitted; all others are included.
-pub fn resolved_config_to_map(cfg: &ResolvedConfig) -> HashMap<String, ConfigValue> {
-    cfg.to_config_map()
-}
-
-/// Produce the CONFIG_BLOCK text (packet 55 Step 5 / AC-8, AC-9).
-///
-/// Format:
-/// ```text
-/// ; CONFIG_BLOCK_START
-/// ; key = value
-/// ...
-/// ; CONFIG_BLOCK_END
-/// ```
-/// Keys are sorted for determinism. Callers are responsible for stripping
-/// invocation-time keys (e.g. `thumbnail_path`) before passing the map.
-fn serialize_config_block(raw_config: &HashMap<String, ConfigValue>) -> String {
-    let mut out = String::new();
-    writeln!(out, "; CONFIG_BLOCK_START").unwrap();
-    // Sort keys for deterministic output.
-    let mut keys: Vec<&String> = raw_config.keys().collect();
-    keys.sort();
-    for key in keys {
-        if let Some(value) = raw_config.get(key) {
-            let value_str = match value {
-                ConfigValue::Bool(b) => b.to_string(),
-                ConfigValue::Int(i) => i.to_string(),
-                ConfigValue::Float(f) => {
-                    // Strip trailing zeros like "22.0" → "22" not wanted by test, keep "22.0"
-                    format!("{f}")
-                }
-                ConfigValue::String(s) => s.clone(),
-                ConfigValue::List(items) => {
-                    let parts: Vec<String> = items
-                        .iter()
-                        .map(|v| match v {
-                            ConfigValue::String(s) => s.clone(),
-                            _ => format!("{v:?}"),
-                        })
-                        .collect();
-                    parts.join(",")
-                }
-            };
-            writeln!(out, "; {key} = {value_str}").unwrap();
-        }
-    }
-    writeln!(out, "; CONFIG_BLOCK_END").unwrap();
-    out
-}
-
-/// A `GCodeSerializer` wrapper that injects `THUMBNAIL_BLOCK` and `CONFIG_BLOCK`
-/// from the raw config source, delegating core serialization to the inner serializer.
-///
-/// Used by `run_pipeline_with_raw_config` to inject thumbnail data and config
-/// view into the serialization step without changing the `GCodeSerializer` trait.
-pub struct ThumbnailAwareSerializer {
-    inner: Box<dyn crate::GCodeSerializer>,
-    thumbnail_bytes: Option<Vec<u8>>,
-    raw_config: HashMap<String, ConfigValue>,
-}
-
-impl ThumbnailAwareSerializer {
-    /// Create a new wrapper around `inner`, optionally attaching thumbnail bytes
-    /// and a raw config map for CONFIG_BLOCK emission.
-    pub fn new(
-        inner: Box<dyn crate::GCodeSerializer>,
-        thumbnail_bytes: Option<Vec<u8>>,
-        raw_config: HashMap<String, ConfigValue>,
-    ) -> Self {
-        Self {
-            inner,
-            thumbnail_bytes,
-            raw_config,
-        }
-    }
-}
-
-impl crate::GCodeSerializer for ThumbnailAwareSerializer {
-    fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, crate::PostpassError> {
-        let base = self.inner.serialize_gcode(gcode_ir)?;
-
-        // 1. Insert THUMBNAIL_BLOCK immediately after HEADER_BLOCK_END (if thumbnail present).
-        let base = if let Some(ref bytes) = self.thumbnail_bytes {
-            let sentinel = "; HEADER_BLOCK_END\n";
-            if let Some(pos) = base.find(sentinel) {
-                let insert_at = pos + sentinel.len();
-                let mut result = String::with_capacity(base.len() + bytes.len() * 2);
-                result.push_str(&base[..insert_at]);
-                result.push_str(&serialize_thumbnail_block(bytes));
-                result.push_str(&base[insert_at..]);
-                result
-            } else {
-                let mut result = serialize_thumbnail_block(bytes);
-                result.push_str(&base);
-                result
-            }
-        } else {
-            base
-        };
-
-        // 2. Append CONFIG_BLOCK at the end of the output.
-        let config_block = serialize_config_block(&self.raw_config);
-        let mut result = base;
-        result.push_str(&config_block);
-        Ok(result)
-    }
-}
-
-impl GCodeSerializer for DefaultGCodeSerializer {
-    fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
-        let mut output = String::new();
-
-        // Compute max Z height (mm) from the GCodeIR commands.
-        // Z fields in Move commands are already in mm (f32).
-        let computed_z: f32 = gcode_ir
-            .commands
-            .iter()
-            .filter_map(|cmd| {
-                if let GCodeCommand::Move { z, .. } = cmd {
-                    *z
-                } else {
-                    None
-                }
-            })
-            .fold(0.0_f32, f32::max);
-        // Use the config floor when no Z moves appear (e.g. empty-plan test runs).
-        // For real prints the scanned value is always larger than the floor.
-        let max_z_mm = if computed_z > 0.0 {
-            computed_z
-        } else {
-            self.max_z_height_floor_mm
-        };
-
-        // Emit HEADER_BLOCK as the first thing in the file (AC-3 through AC-6,
-        // OrcaSlicer parity: GCode.cpp:2644-2704).
-        output.push_str(&serialize_header_block(
-            gcode_ir.metadata.layer_count,
-            self.filament_diameter_mm,
-            self.filament_density_g_cm3,
-            max_z_mm,
-            &gcode_ir.metadata.filament_used_mm,
-        ));
-
-        // Emit extrusion-width comments immediately after HEADER_BLOCK_END (AC-7,
-        // packet 55 Step 4).
-        output.push_str(&serialize_width_comments(
-            self.outer_wall_line_width,
-            self.inner_wall_line_width,
-            self.sparse_infill_line_width,
-            self.top_surface_line_width,
-            self.support_line_width,
-        ));
-
-        // e_accumulator tracks the absolute E position seen so far (from GCodeIR,
-        // which always stores absolute E values).  Only used in relative mode to
-        // compute per-move deltas.
-        let mut e_accumulator: f64 = 0.0;
-
-        // ExtrusionMode is now at index 0 of gcode_ir.commands (pushed by the emitter).
-        // The per-command renderer handles it — no special-case prepend needed here.
-        for command in gcode_ir.commands.iter() {
-            match command {
-                GCodeCommand::Move {
-                    x,
-                    y,
-                    z,
-                    e,
-                    f,
-                    role,
-                    ..
-                } => {
-                    // Emit G0 for travel moves (Custom("Travel") role), G1 for extrusion moves.
-                    let is_travel = matches!(role, ExtrusionRole::Custom(s) if s == "Travel");
-                    let cmd = if is_travel { "G0" } else { "G1" };
-                    write!(output, "{cmd}").unwrap();
-                    if let Some(x_val) = x {
-                        write!(output, " X{}", format_xyz(*x_val, self.gcode_xy_decimals)).unwrap();
-                    }
-                    if let Some(y_val) = y {
-                        write!(output, " Y{}", format_xyz(*y_val, self.gcode_xy_decimals)).unwrap();
-                    }
-                    if let Some(z_val) = z {
-                        write!(output, " Z{}", format_xyz(*z_val, self.gcode_xy_decimals)).unwrap();
-                    }
-                    if let Some(e_val) = e {
-                        if self.relative {
-                            let abs_e = *e_val as f64;
-                            let delta = abs_e - e_accumulator;
-                            write!(output, " E{:.5}", delta).unwrap();
-                            e_accumulator = abs_e;
-                        } else {
-                            write!(output, " E{:.5}", e_val).unwrap();
-                        }
-                    }
-                    if let Some(f_val) = f {
-                        write!(output, " F{}", format_coord(*f_val)).unwrap();
-                    }
-                    writeln!(output).unwrap();
-                }
-                GCodeCommand::Retract {
-                    length,
-                    speed,
-                    mode,
-                } => match mode {
-                    slicer_ir::RetractMode::Gcode => {
-                        // Retract is always a delta (negative E movement) regardless of mode,
-                        // because it represents a physical retraction amount.  In relative mode
-                        // the retract length IS the delta.  In absolute mode we subtract from
-                        // the accumulator and emit the new absolute position.
-                        if self.relative {
-                            writeln!(output, "G1 E-{:.5} F{}", length, format_coord(*speed))
-                                .unwrap();
-                            e_accumulator -= *length as f64;
-                        } else {
-                            writeln!(
-                                output,
-                                "G1 E-{} F{}",
-                                format_coord(*length),
-                                format_coord(*speed)
-                            )
-                            .unwrap();
-                        }
-                    }
-                    slicer_ir::RetractMode::Firmware => {
-                        writeln!(output, "G10").unwrap();
-                    }
-                },
-                GCodeCommand::Unretract {
-                    length,
-                    speed,
-                    mode,
-                } => match mode {
-                    slicer_ir::RetractMode::Gcode => {
-                        if self.relative {
-                            writeln!(output, "G1 E{:.5} F{}", length, format_coord(*speed))
-                                .unwrap();
-                            e_accumulator += *length as f64;
-                        } else {
-                            writeln!(
-                                output,
-                                "G1 E{} F{}",
-                                format_coord(*length),
-                                format_coord(*speed)
-                            )
-                            .unwrap();
-                        }
-                    }
-                    slicer_ir::RetractMode::Firmware => {
-                        writeln!(output, "G11").unwrap();
-                    }
-                },
-                // Raw commands: detect G92 E resets and sync the accumulator.
-                GCodeCommand::Raw { text } => {
-                    // Detect "G92 E0" (or "G92 E0.0" etc.) to reset accumulator.
-                    let trimmed = text.trim();
-                    if trimmed.starts_with("G92") {
-                        // Parse the E value from the G92 line (e.g. "G92 E0" → 0.0).
-                        if let Some(e_str) = trimmed
-                            .split_whitespace()
-                            .find(|tok| tok.starts_with('E') || tok.starts_with('e'))
-                        {
-                            if let Ok(val) = e_str[1..].parse::<f64>() {
-                                e_accumulator = val;
-                            }
-                        }
-                    }
-                    writeln!(output, "{}", text).unwrap();
-                }
-                GCodeCommand::FanSpeed { value } => {
-                    writeln!(output, "M106 S{}", value).unwrap();
-                }
-                GCodeCommand::Temperature {
-                    tool,
-                    celsius,
-                    wait,
-                } => {
-                    let cmd = if *wait { "M109" } else { "M104" };
-                    writeln!(output, "{} T{} S{}", cmd, tool, format_coord(*celsius)).unwrap();
-                }
-                GCodeCommand::ToolChange { to, .. } => {
-                    writeln!(output, "T{}", to).unwrap();
-                }
-                GCodeCommand::Comment { text } => {
-                    writeln!(output, "; {}", text).unwrap();
-                }
-                GCodeCommand::ExtrusionMode { absolute } => {
-                    if *absolute {
-                        writeln!(output, "M82").unwrap();
-                    } else {
-                        writeln!(output, "M83").unwrap();
-                    }
-                }
-            }
-        }
-
-        Ok(output)
-    }
-}
-
 /// Reconcile travel moves to route through finalization geometry (Skirt/Brim,
 /// WipeTower) without modifying `ordered_entities`.
 ///
@@ -1220,8 +669,6 @@ pub fn reconcile_finalization_travel(
     layer: &mut LayerCollectionIR,
     travel_f_mm_per_min: Option<f32>,
 ) {
-    use slicer_ir::TravelMove;
-
     let entities = &layer.ordered_entities;
 
     // Collect indices of finalization entities
@@ -1298,25 +745,6 @@ pub fn reconcile_finalization_travel(
     layer
         .travel_moves
         .sort_by_key(|tm| id_to_idx.get(&tm.entity_id).copied().unwrap_or(usize::MAX));
-}
-
-/// Format a coordinate value, trimming unnecessary trailing zeros.
-/// Uses fixed 4-decimal precision (legacy behavior for F/E/temperature emit).
-pub fn format_coord(value: f32) -> String {
-    // Format with enough precision, then trim trailing zeros
-    let s = format!("{:.4}", value);
-    let s = s.trim_end_matches('0');
-    let s = s.trim_end_matches('.');
-    s.to_string()
-}
-
-/// Format an XYZ coordinate value with configurable decimal precision,
-/// trimming unnecessary trailing zeros.
-pub fn format_xyz(value: f32, decimals: u32) -> String {
-    let s = format!("{:.*}", decimals as usize, value);
-    let s = s.trim_end_matches('0');
-    let s = s.trim_end_matches('.');
-    s.to_string()
 }
 
 /// Apply cross-layer tool rotation to entity order.
@@ -1425,12 +853,6 @@ mod tests {
     fn default_gcode_emitter_stores_slicer_version() {
         let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
         assert_eq!(emitter.slicer_version(), "1.0.0-test");
-    }
-
-    #[test]
-    fn default_gcode_serializer_can_be_created() {
-        let _serializer = DefaultGCodeSerializer::new();
-        let _default_serializer = DefaultGCodeSerializer::default();
     }
 
     // ── apply_cross_layer_tool_rotation regression tests (packet 58 / DEV-054 (iii)) ──
@@ -1635,194 +1057,5 @@ mod tests {
             layers[1].annotations[0].after_entity_index, 0,
             "Annotation anchor must remap from old 2 to new 0"
         );
-    }
-}
-
-/// Locks `docs/config/host-keys.toml` to the live code defaults it mirrors, so
-/// the generated host-key tables in `docs/15_config_keys_reference.md`
-/// (`cargo xtask gen-config-docs`) cannot drift from `FeedrateConfig::default()`
-/// / `ResolvedConfig::default()`. doc 15 previously hand-listed these and had
-/// drifted ~half its host defaults away from the code.
-#[cfg(test)]
-mod host_keys_doc_lock {
-    use super::FeedrateConfig;
-    use slicer_ir::ResolvedConfig;
-    use std::path::{Path, PathBuf};
-
-    fn host_keys_path() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/config/host-keys.toml")
-    }
-
-    fn host_keys() -> toml::Value {
-        let text = std::fs::read_to_string(host_keys_path())
-            .expect("docs/config/host-keys.toml must exist");
-        toml::from_str(&text).expect("host-keys.toml must parse")
-    }
-
-    fn doc_num(spec: &toml::Value) -> f64 {
-        let d = &spec["default"];
-        d.as_float()
-            .or_else(|| d.as_integer().map(|i| i as f64))
-            .expect("numeric default")
-    }
-
-    fn resolved_num(c: &ResolvedConfig, key: &str) -> Option<f64> {
-        Some(match key {
-            "top_shell_layers" => c.top_shell_layers as f64,
-            "bottom_shell_layers" => c.bottom_shell_layers as f64,
-            "gcode_xy_decimals" => c.gcode_xy_decimals as f64,
-            "gcode_resolution" => c.gcode_resolution as f64,
-            "infill_resolution" => c.infill_resolution as f64,
-            "support_resolution" => c.support_resolution as f64,
-            "min_segment_length" => c.min_segment_length as f64,
-            "slice_closing_radius" => c.slice_closing_radius as f64,
-            _ => return None,
-        })
-    }
-
-    fn resolved_str<'a>(c: &'a ResolvedConfig, key: &str) -> Option<&'a str> {
-        Some(match key {
-            "top_fill_holder" => c.top_fill_holder.as_str(),
-            "bottom_fill_holder" => c.bottom_fill_holder.as_str(),
-            "bridge_fill_holder" => c.bridge_fill_holder.as_str(),
-            "sparse_fill_holder" => c.sparse_fill_holder.as_str(),
-            _ => return None,
-        })
-    }
-
-    #[test]
-    fn speeds_match_feedrate_default() {
-        // Exhaustive destructuring makes this bidirectional at compile time:
-        // adding a field to `FeedrateConfig` fails to compile here until it is
-        // listed below and in host-keys.toml `[speeds]`.
-        let FeedrateConfig {
-            outer_wall_speed,
-            inner_wall_speed,
-            thin_wall_speed,
-            top_surface_speed,
-            bottom_surface_speed,
-            sparse_infill_speed,
-            bridge_speed,
-            internal_bridge_speed,
-            support_speed,
-            support_interface_speed,
-            gap_infill_speed,
-            ironing_speed,
-            skirt_speed,
-            wipe_tower_speed,
-            prime_tower_speed,
-            travel_speed,
-            travel_speed_z,
-            initial_layer_speed,
-            initial_layer_infill_speed,
-            initial_layer_travel_speed,
-            wipe_speed,
-            filament_ironing_speed,
-            overhang_1_4_speed,
-            overhang_2_4_speed,
-            overhang_3_4_speed,
-            overhang_4_4_speed,
-        } = FeedrateConfig::default();
-        let fields: [(&str, f64); 26] = [
-            ("outer_wall_speed", outer_wall_speed as f64),
-            ("inner_wall_speed", inner_wall_speed as f64),
-            ("thin_wall_speed", thin_wall_speed as f64),
-            ("top_surface_speed", top_surface_speed as f64),
-            ("bottom_surface_speed", bottom_surface_speed as f64),
-            ("sparse_infill_speed", sparse_infill_speed as f64),
-            ("bridge_speed", bridge_speed as f64),
-            ("internal_bridge_speed", internal_bridge_speed as f64),
-            ("support_speed", support_speed as f64),
-            ("support_interface_speed", support_interface_speed as f64),
-            ("gap_infill_speed", gap_infill_speed as f64),
-            ("ironing_speed", ironing_speed as f64),
-            ("skirt_speed", skirt_speed as f64),
-            ("wipe_tower_speed", wipe_tower_speed as f64),
-            ("prime_tower_speed", prime_tower_speed as f64),
-            ("travel_speed", travel_speed as f64),
-            ("travel_speed_z", travel_speed_z as f64),
-            ("initial_layer_speed", initial_layer_speed as f64),
-            (
-                "initial_layer_infill_speed",
-                initial_layer_infill_speed as f64,
-            ),
-            (
-                "initial_layer_travel_speed",
-                initial_layer_travel_speed as f64,
-            ),
-            ("wipe_speed", wipe_speed as f64),
-            ("filament_ironing_speed", filament_ironing_speed as f64),
-            ("overhang_1_4_speed", overhang_1_4_speed as f64),
-            ("overhang_2_4_speed", overhang_2_4_speed as f64),
-            ("overhang_3_4_speed", overhang_3_4_speed as f64),
-            ("overhang_4_4_speed", overhang_4_4_speed as f64),
-        ];
-
-        let v = host_keys();
-        let speeds = v["speeds"].as_table().expect("[speeds] table");
-
-        // code -> toml: every struct field is present and matches.
-        for (name, code) in fields {
-            let spec = speeds
-                .get(name)
-                .unwrap_or_else(|| panic!("[speeds.{name}] missing from host-keys.toml"));
-            let doc = doc_num(spec);
-            assert!(
-                (doc - code).abs() < 1e-6,
-                "[speeds.{name}]: host-keys.toml={doc} != FeedrateConfig::default()={code}"
-            );
-        }
-
-        // toml -> code: no extra speed keys that no struct field backs.
-        let names: std::collections::HashSet<&str> = fields.iter().map(|(n, _)| *n).collect();
-        for key in speeds.keys() {
-            assert!(
-                names.contains(key.as_str()),
-                "[speeds.{key}] has no matching FeedrateConfig field"
-            );
-        }
-    }
-
-    #[test]
-    fn host_runtime_keys_match_constants() {
-        let v = host_keys();
-        let t = v["host_runtime"].as_table().expect("[host_runtime] table");
-        assert_eq!(
-            t["use_relative_e_distances"]["default"].as_bool().unwrap(),
-            crate::run::DEFAULT_USE_RELATIVE_E_DISTANCES,
-            "host-keys.toml use_relative_e_distances != run::DEFAULT_USE_RELATIVE_E_DISTANCES"
-        );
-        assert_eq!(
-            t["thumbnail_path"]["default"].as_str().unwrap(),
-            crate::pipeline::DEFAULT_THUMBNAIL_PATH,
-            "host-keys.toml thumbnail_path != pipeline::DEFAULT_THUMBNAIL_PATH"
-        );
-    }
-
-    #[test]
-    fn resolved_config_keys_match_default() {
-        let v = host_keys();
-        let rc = ResolvedConfig::default();
-        let table = v["resolved_config"].as_table().expect("[resolved_config]");
-        for (key, spec) in table {
-            if let Some(expected) = spec["default"].as_str() {
-                let code = resolved_str(&rc, key).unwrap_or_else(|| {
-                    panic!("[resolved_config.{key}] has no matching ResolvedConfig string field")
-                });
-                assert_eq!(
-                    expected, code,
-                    "[resolved_config.{key}]: host-keys.toml={expected:?} != default={code:?}"
-                );
-            } else {
-                let doc = doc_num(spec);
-                let code = resolved_num(&rc, key).unwrap_or_else(|| {
-                    panic!("[resolved_config.{key}] has no matching ResolvedConfig numeric field")
-                });
-                assert!(
-                    (doc - code).abs() < 1e-6,
-                    "[resolved_config.{key}]: host-keys.toml={doc} != default={code}"
-                );
-            }
-        }
     }
 }

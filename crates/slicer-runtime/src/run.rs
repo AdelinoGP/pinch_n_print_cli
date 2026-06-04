@@ -17,7 +17,6 @@ use crate::config_resolution::{
 };
 use crate::dag::Producer;
 use crate::execution_plan::parse_cli_config_source;
-use crate::gcode_emit::{DefaultGCodeEmitter, DefaultGCodeSerializer};
 #[cfg(feature = "report")]
 use crate::instrumentation::CompositeInstrumentation;
 use crate::layer_executor::LayerProgressSink;
@@ -33,6 +32,7 @@ use crate::progress_instrumentation::ProgressPipelineInstrumentation;
 #[cfg(feature = "report")]
 use crate::report::{allocator as report_alloc, Collector};
 use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
+use slicer_gcode::{DefaultGCodeEmitter, DefaultGCodeSerializer};
 use slicer_wasm_host::WasmRuntimeDispatcher;
 use slicer_wasm_host::{build_live_execution_plan, load_live_modules_for_plan};
 

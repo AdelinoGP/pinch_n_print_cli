@@ -9,81 +9,13 @@
 
 #![allow(missing_docs)]
 
-use std::sync::Arc;
-
 use slicer_ir::{
-    BoundingBox3, ExtrusionPath3D, ExtrusionRole, IndexedTriangleSet, LayerCollectionIR, MeshIR,
-    ObjectConfig, ObjectId, ObjectMesh, Point3, Point3WithWidth, PrintEntity, RegionKey,
-    ResolvedConfig, RetractMode, SemVer, ToolChange, Transform3d, TravelRetract,
+    ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, ObjectId, Point3WithWidth, PrintEntity,
+    RegionKey, ResolvedConfig, RetractMode, SemVer, ToolChange, TravelRetract,
 };
-use slicer_runtime::{
-    Blackboard, DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer,
-};
+use slicer_runtime::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-fn identity_transform() -> Transform3d {
-    Transform3d {
-        matrix: [
-            1.0, 0.0, 0.0, 0.0, // col 0
-            0.0, 1.0, 0.0, 0.0, // col 1
-            0.0, 0.0, 1.0, 0.0, // col 2
-            0.0, 0.0, 0.0, 1.0, // col 3
-        ],
-    }
-}
-
-fn mesh_fixture() -> Arc<MeshIR> {
-    Arc::new(MeshIR {
-        objects: vec![ObjectMesh {
-            id: ObjectId::from("cube"),
-            mesh: IndexedTriangleSet {
-                vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 10.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 0.0,
-                        y: 10.0,
-                        z: 0.0,
-                    },
-                ],
-                indices: vec![0, 1, 2],
-            },
-            transform: identity_transform(),
-            config: ObjectConfig {
-                data: std::collections::HashMap::new(),
-            },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        }],
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 250.0,
-                y: 250.0,
-                z: 250.0,
-            },
-        },
-        ..Default::default()
-    })
-}
-
-fn blackboard() -> Blackboard {
-    Blackboard::new(mesh_fixture(), 0)
-}
 
 fn pt(x: f32, y: f32, z: f32) -> Point3WithWidth {
     Point3WithWidth {
@@ -145,10 +77,9 @@ fn make_wipe_entity(id: u64, purge_len_mm: f32, tool: u32) -> PrintEntity {
 }
 
 /// Emit + serialize a single-layer GCode and return the output string.
-fn emit_and_serialize(layer: LayerCollectionIR) -> Result<String, slicer_runtime::PostpassError> {
-    let bb = blackboard();
+fn emit_and_serialize(layer: LayerCollectionIR) -> Result<String, slicer_runtime::GCodeEmitError> {
     let emitter = DefaultGCodeEmitter::new("test".to_string());
-    let ir = emitter.emit_gcode(&[layer], &bb)?;
+    let ir = emitter.emit_gcode(&[layer])?;
     let serializer = DefaultGCodeSerializer::new();
     serializer.serialize_gcode(&ir)
 }
@@ -424,7 +355,6 @@ fn bare_toolchange_rejected() {
         travel_moves: vec![],
     };
 
-    let bb = blackboard();
     // Emitter must be configured with wipe_tower_enabled=true so the guard runs.
     // The guard is intentionally disabled for single-material (wipe_tower_enabled=false)
     // to avoid breaking pre-existing single-material emit tests.
@@ -433,7 +363,7 @@ fn bare_toolchange_rejected() {
         ..ResolvedConfig::default()
     };
     let emitter = DefaultGCodeEmitter::new("test".to_string()).with_resolved_config(cfg);
-    let result = emitter.emit_gcode(&[layer], &bb);
+    let result = emitter.emit_gcode(&[layer]);
 
     match result {
         Err(err) => {

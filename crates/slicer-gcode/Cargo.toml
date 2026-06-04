@@ -1,0 +1,14 @@
+[package]
+name = "slicer-gcode"
+version = "0.1.0"
+edition = "2021"
+authors = ["ModularSlicer Team"]
+
+[dependencies]
+slicer-ir = { path = "../slicer-ir" }
+slicer-core = { path = "../slicer-core", features = ["host-algos"] }
+slicer-helpers = { path = "../slicer-helpers" }
+thiserror = "1.0"
+
+[lints]
+workspace = true

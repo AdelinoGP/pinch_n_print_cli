@@ -447,9 +447,9 @@ use slicer_runtime::progress_events::{
     JsonLinesEmitter, ProgressEventEmitter, RuntimeProgressSink, SliceEventCollector,
 };
 use slicer_runtime::{
-    FinalizationError, FinalizationOutput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
-    PostpassError, PostpassOutput, PostpassStageRunner, PrepassRunnerError, PrepassStageOutput,
-    PrepassStageRunner,
+    FinalizationError, FinalizationOutput, FinalizationStageRunner, GCodeEmitError, GCodeEmitter,
+    GCodeSerializer, PostpassError, PostpassOutput, PostpassStageRunner, PrepassRunnerError,
+    PrepassStageOutput, PrepassStageRunner,
 };
 
 struct NoopPrepassRunner;
@@ -498,11 +498,7 @@ impl PostpassStageRunner for NoopPostpassRunner {
 }
 struct MinimalEmitter;
 impl GCodeEmitter for MinimalEmitter {
-    fn emit_gcode(
-        &self,
-        _l: &[LayerCollectionIR],
-        _b: &Blackboard,
-    ) -> Result<GCodeIR, PostpassError> {
+    fn emit_gcode(&self, _l: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
         Ok(GCodeIR {
             metadata: PrintMetadata {
                 slicer_version: "test".into(),
@@ -514,7 +510,7 @@ impl GCodeEmitter for MinimalEmitter {
 }
 struct MinimalSerializer;
 impl GCodeSerializer for MinimalSerializer {
-    fn serialize_gcode(&self, _g: &GCodeIR) -> Result<String, PostpassError> {
+    fn serialize_gcode(&self, _g: &GCodeIR) -> Result<String, GCodeEmitError> {
         Ok(String::new())
     }
 }

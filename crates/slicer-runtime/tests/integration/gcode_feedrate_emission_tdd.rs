@@ -3,28 +3,7 @@
 //! TDD tests for packet 52 (TASK-153): per-role feedrate emission on the live G-code path.
 
 use slicer_ir::*;
-use slicer_runtime::{Blackboard, DefaultGCodeEmitter, GCodeEmitter};
-use std::sync::Arc;
-
-fn dummy_blackboard() -> Blackboard {
-    let mesh_ir = MeshIR {
-        objects: vec![],
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-        },
-        ..Default::default()
-    };
-    Blackboard::new(Arc::new(mesh_ir), 1)
-}
+use slicer_runtime::{DefaultGCodeEmitter, GCodeEmitter};
 
 #[test]
 fn per_role_speed_resolves_to_f_token() {
@@ -92,8 +71,7 @@ fn per_role_speed_resolves_to_f_token() {
         ..Default::default()
     };
     let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
-    let blackboard = dummy_blackboard();
-    let gcode_ir = emitter.emit_gcode(&[layer], &blackboard).unwrap();
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
 
     let mut firsts: Vec<f32> = Vec::new();
     for cmd in &gcode_ir.commands {
@@ -181,8 +159,7 @@ fn speed_factor_modulates_role_speed() {
     });
 
     let emitter = DefaultGCodeEmitter::new("1.0".to_string());
-    let blackboard = dummy_blackboard();
-    let gcode_ir = emitter.emit_gcode(&[layer], &blackboard).unwrap();
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
 
     let mut found_f = false;
     for cmd in &gcode_ir.commands {
@@ -239,8 +216,7 @@ fn module_supplied_f_wins() {
     });
 
     let emitter = DefaultGCodeEmitter::new("1.0".to_string());
-    let blackboard = dummy_blackboard();
-    let gcode_ir = emitter.emit_gcode(&[layer], &blackboard).unwrap();
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
 
     let mut found_f = false;
     for cmd in &gcode_ir.commands {
@@ -340,8 +316,7 @@ fn distinct_feedrates_present() {
     });
 
     let emitter = DefaultGCodeEmitter::new("1.0".to_string());
-    let blackboard = dummy_blackboard();
-    let gcode_ir = emitter.emit_gcode(&[layer], &blackboard).unwrap();
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
 
     let mut feedrates = std::collections::HashSet::new();
     let mut has_high_speed = false;
@@ -411,8 +386,7 @@ fn f_token_within_200_lines() {
     });
 
     let emitter = DefaultGCodeEmitter::new("1.0".to_string());
-    let blackboard = dummy_blackboard();
-    let gcode_ir = emitter.emit_gcode(&[layer], &blackboard).unwrap();
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
 
     let mut move_count = 0;
     for cmd in &gcode_ir.commands {

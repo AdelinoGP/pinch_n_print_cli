@@ -8,7 +8,6 @@ pub mod blackboard;
 /// Builtin pipeline step producers.
 pub mod builtins;
 pub mod diagnose;
-pub mod gcode_emit;
 pub mod instrumentation;
 pub mod layer_executor;
 pub mod layer_finalization;
@@ -62,11 +61,11 @@ pub use slicer_ir::{
 /// always present regardless of which WASM modules are loaded. They are used
 /// by the DAG validator, `dag_cli`, and the startup validation request.
 pub fn runtime_builtins() -> Vec<&'static dyn Producer> {
+    use crate::builtins::gcode_emit_producer::GCODE_EMIT_PRODUCER;
     use crate::builtins::mesh_analysis_producer::{MESH_ANALYSIS_PRODUCER, MESH_PRODUCER};
     use crate::builtins::paint_segmentation_producer::PAINT_SEGMENTATION_PRODUCER;
     use crate::builtins::prepass_slice_producer::{SHELL_CLASSIFICATION_PRODUCER, SLICE_PRODUCER};
     use crate::builtins::support_geometry_producer::SUPPORT_GEOMETRY_PRODUCER;
-    use crate::gcode_emit::GCODE_EMIT_PRODUCER;
     use crate::region_mapping::REGION_MAPPING_PRODUCER;
 
     vec![
@@ -126,10 +125,6 @@ pub use slicer_wasm_host::{
 };
 // CompiledModule alias (transitional compat: was deleted by Step 3.5, use CompiledModuleStatic directly).
 pub use execution_plan::CompiledModuleStatic as CompiledModule;
-pub use gcode_emit::{
-    serialize_thumbnail_block, tolerance_for_role, DefaultGCodeEmitter, DefaultGCodeSerializer,
-    ThumbnailAwareSerializer,
-};
 pub use instrumentation::{
     compute_serial_edges_for_stage, compute_serial_edges_from_compiled, CompositeInstrumentation,
     EdgeReason, NoopInstrumentation, Phase, PipelineInstrumentation, SerialEdge, TierKind,
@@ -149,7 +144,7 @@ pub use manifest::{
     LoadedModule, LoadedModuleBuilder,
 };
 pub use module_search_path::{assemble_search_roots, SLICER_MODULE_PATH_ENV};
-pub use postpass::{execute_postpass, GCodeEmitter, GCodeSerializer};
+pub use postpass::execute_postpass;
 pub use prepass::{
     execute_prepass, execute_prepass_with_builtins, execute_prepass_with_builtins_configured,
     PrepassExecutionError,
@@ -173,6 +168,20 @@ pub use slicer_core::{
     FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassStageOutput,
     SurfaceGroupRecord,
 };
+// kept: consumed by crates/slicer-runtime/tests/executor/finalization_aware_travel_tdd.rs
+pub use slicer_gcode::reconcile_finalization_travel;
+// kept: consumed by crates/slicer-runtime/tests/unit/gcode_emit_per_role_tolerance_tdd.rs
+pub use slicer_gcode::tolerance_for_role;
+// kept: DefaultGCodeEmitter — consumed by tests (dispatch_tdd, gcode_emit_tdd, gcode_feedrate_emission_tdd, gcode_emit_per_role_tolerance_tdd, overhang_speed_tdd, postpass_gcode_emit_contract_tdd, pnp-cli/tests/e2e_integration_tdd)
+pub use slicer_gcode::DefaultGCodeEmitter;
+// kept: DefaultGCodeSerializer — consumed by tests (gcode_emit_tdd, postpass_gcode_emit_contract_tdd, gcode_relative_extrusion_tdd, pnp-cli/tests/e2e_integration_tdd)
+pub use slicer_gcode::DefaultGCodeSerializer;
+// kept: GCodeEmitError — consumed by tests (gcode_toolchange_wrapping, dispatch_tdd, postpass_executor_tdd, pipeline_tdd, runtime_wiring_tdd, run_pipeline_with_instrumentation_tdd, paint_annotation_integration_tdd, pnp-cli/tests/e2e_integration_tdd)
+pub use slicer_gcode::GCodeEmitError;
+// kept: GCodeEmitter — consumed by tests (dispatch_tdd, gcode_emit_tdd, gcode_feedrate_emission_tdd, gcode_emit_per_role_tolerance_tdd, overhang_speed_tdd, postpass_gcode_emit_contract_tdd, postpass_executor_tdd, pipeline_tdd, runtime_wiring_tdd, run_pipeline_with_instrumentation_tdd, paint_annotation_integration_tdd, pnp-cli/tests/e2e_integration_tdd)
+pub use slicer_gcode::GCodeEmitter;
+// kept: GCodeSerializer — consumed by tests (dispatch_tdd, gcode_emit_tdd, postpass_gcode_emit_contract_tdd, gcode_relative_extrusion_tdd, postpass_executor_tdd, pipeline_tdd, runtime_wiring_tdd, run_pipeline_with_instrumentation_tdd, paint_annotation_integration_tdd, pnp-cli/tests/e2e_integration_tdd)
+pub use slicer_gcode::GCodeSerializer;
 // Re-exports from slicer_core::algos for backward compatibility.
 pub use slicer_core::algos::mesh_analysis::{
     execute_mesh_analysis, execute_mesh_analysis_with, MeshAnalysisConfig, MeshAnalysisError,

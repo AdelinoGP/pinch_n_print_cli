@@ -22,19 +22,19 @@ The fix mirrors P84's algorithm split: kernel + trait defs move to `slicer-gcode
   - `Cargo.toml` declaring `slicer-ir`, `slicer-core`, `slicer-helpers` as path deps. External deps preserved from `gcode_emit.rs` usage (e.g., `base64` for thumbnail; whatever `gcode_emit` imports today). NO `wasmtime`, NO `slicer-wasm-host`, NO `slicer-runtime`, NO `slicer-scheduler`, NO `slicer-schema`, NO `slicer-sdk`.
   - `src/lib.rs` with `pub mod emit; pub mod serialize; pub mod thumbnail;` (or a single `pub mod gcode_emit;` if a flat layout is preferred). Plus public re-exports for the documented surface: `DefaultGCodeEmitter`, `DefaultGCodeSerializer`, `ThumbnailAwareSerializer`, `tolerance_for_role`, `serialize_thumbnail_block`, `GCodeEmitter` (trait), `GCodeSerializer` (trait).
 - Move `crates/slicer-runtime/src/gcode_emit.rs` (1 914 LOC) verbatim minus the `GCODE_EMIT_PRODUCER` static + `BuiltinProducer` impl. The pure types and free functions go to `slicer-gcode/src/`.
-- Move `GCodeEmitter` and `GCodeSerializer` trait definitions from `crates/slicer-runtime/src/postpass.rs` (lines ~144–163) into `crates/slicer-gcode/src/lib.rs` (or its `serialize.rs` submodule). Their signatures preserved exactly:
+- Move `GCodeEmitter` and `GCodeSerializer` trait definitions from `crates/slicer-runtime/src/postpass.rs` (lines ~144–163) into `crates/slicer-gcode/src/lib.rs` (or its `serialize.rs` submodule). Their signatures preserved with one mechanical change (see Trait sig caveat below):
   ```rust
   pub trait GCodeEmitter {
-      fn emit_gcode(&self, layer_irs: &[LayerCollectionIR], blackboard: &Blackboard)
-          -> Result<GCodeIR, PostpassError>;
+      fn emit_gcode(&self, layer_irs: &[LayerCollectionIR])
+          -> Result<GCodeIR, GCodeEmitError>;
       fn travel_feedrate_mm_per_min(&self) -> Option<f32> { None }
   }
   pub trait GCodeSerializer {
-      fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, PostpassError>;
+      fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError>;
   }
   ```
-  **Trait sig caveat**: `GCodeEmitter::emit_gcode` takes `&Blackboard` and returns `PostpassError`. After the move, the trait sig stays the same. `Blackboard` and `PostpassError` are `slicer-runtime` types — so `slicer-gcode` would need them in scope. Resolution: change the trait's parameter from `&Blackboard` to a `&dyn EmitContext` (or similar minimal trait that `Blackboard` impls), AND change the error type from `PostpassError` to a new `GCodeError` (or accept `PostpassError` via a tracked imports rewrite — design.md picks the lightest option). The shape is preserved; only the type names cross crates.
-- Create `crates/slicer-runtime/src/builtins/gcode_emit_producer.rs` (~30–60 LOC) holding `pub static GCODE_EMIT_PRODUCER: BuiltinProducer = ...` and its body: construct a `DefaultGCodeEmitter`, call `emit_gcode(layers, blackboard)`, commit the result to `Blackboard` (per ADR-0001).
+  **Trait sig caveat**: `GCodeEmitter::emit_gcode` today takes `&Blackboard` and returns `PostpassError`. After the move, both would create a back-edge if `slicer-gcode` imported them. Resolution: drop the `&Blackboard` parameter entirely (P86 Step 1 dispatch #1 finding: the parameter is `_blackboard` — declared unused — and `gcode_emit.rs` calls zero `Blackboard` methods) and replace `PostpassError` with a new `GCodeEmitError` enum local to `slicer-gcode`. The runtime wraps `GCodeEmitError → PostpassError` at the wrapper site via a `From` impl. See design.md for rationale and the four rejected alternatives.
+- Create `crates/slicer-runtime/src/builtins/gcode_emit_producer.rs` (~30–60 LOC) holding `pub static GCODE_EMIT_PRODUCER: BuiltinProducer = ...` and its body: construct a `DefaultGCodeEmitter`, call `emit_gcode(layers)`, map the returned `GCodeEmitError → PostpassError`, commit the result to `Blackboard` (per ADR-0001).
 - Update `crates/slicer-runtime/src/builtins/mod.rs` to declare `pub mod gcode_emit_producer;` and re-export `GCODE_EMIT_PRODUCER`.
 - Update `crates/slicer-runtime/src/postpass.rs`:
   - Delete the `pub trait GCodeEmitter` and `pub trait GCodeSerializer` definitions.
@@ -70,7 +70,7 @@ The fix mirrors P84's algorithm split: kernel + trait defs move to `slicer-gcode
 
 The acceptance contract is enumerated in `packet.spec.md` (AC-1..AC-9, AC-N1..AC-N3). Measurable refinements:
 
-- **AC-3 — Trait sig preservation**: the `GCodeEmitter` and `GCodeSerializer` trait method signatures are byte-for-byte identical to their P85-closure forms (modulo crate-path imports). The implementation log records both before/after sigs.
+- **AC-3 — Trait sig changes**: the `GCodeEmitter::emit_gcode` sig drops the `&Blackboard` parameter (empirical finding: it was `_blackboard`, unused) and switches `PostpassError → GCodeEmitError`; the `GCodeSerializer::serialize_gcode` sig switches `PostpassError → GCodeEmitError`. The shape (method names, layer slice param, GCodeIR return) is preserved. The implementation log records both before/after sigs.
 - **AC-7 — Byte-identical g-code**: SHA carries from P85 closure (which equals P84/P83/P81). Any divergence is a regression.
 - **AC-8 — Golden test**: at minimum one test constructs a small `GCodeIR` (one wall path, one infill path, one travel move, optionally a thumbnail) and asserts the serialized string contains `;TYPE:WALL_OUTER`, `;LAYER:0`, the documented thumbnail sentinels when applicable. The test imports zero `slicer_runtime::*` types — proves the seam.
 
@@ -78,25 +78,27 @@ The acceptance contract is enumerated in `packet.spec.md` (AC-1..AC-9, AC-N1..AC
 
 | ID | Command | Delegation hint |
 |---|---|---|
-| AC-1 | `test -f crates/slicer-gcode/Cargo.toml && grep -qE '^slicer-ir' crates/slicer-gcode/Cargo.toml && ! grep -qE '^(wasmtime\|slicer-wasm-host\|slicer-runtime\|slicer-scheduler) *=' crates/slicer-gcode/Cargo.toml` | FACT pass/fail |
+| AC-1 | `test -f crates/slicer-gcode/Cargo.toml && grep -qE '^slicer-ir' crates/slicer-gcode/Cargo.toml && ! grep -qE '^(wasmtime|slicer-wasm-host|slicer-runtime|slicer-scheduler) *=' crates/slicer-gcode/Cargo.toml` | FACT pass/fail |
 | AC-2 | `test ! -f crates/slicer-runtime/src/gcode_emit.rs && find crates/slicer-gcode/src -name '*.rs' \| xargs grep -lE 'pub struct DefaultGCodeEmitter' \| head -1 \| grep -q .` | FACT pass/fail |
-| AC-3 | `rg -l 'pub trait GCodeEmitter' crates/ \| grep -qE '^crates/slicer-gcode/' && grep -qE 'use slicer_gcode::.*GCodeEmitter' crates/slicer-runtime/src/postpass.rs` | FACT pass/fail |
-| AC-4 | `grep -qE 'pub static GCODE_EMIT_PRODUCER' crates/slicer-runtime/src/builtins/gcode_emit_producer.rs && [ $(wc -l < crates/slicer-runtime/src/builtins/gcode_emit_producer.rs) -le 80 ]` | FACT pass/fail |
+| AC-3 | `rg -l 'pub trait GCodeEmitter' crates/ \| tr '\\\\' '/' \| grep -qE '^crates/slicer-gcode/' && grep -qE 'use slicer_gcode::.*GCodeEmitter' crates/slicer-runtime/src/postpass.rs` (tr normalizes Windows backslash path separators) | FACT pass/fail |
+| AC-4 | `test -f crates/slicer-runtime/src/builtins/gcode_emit_producer.rs && grep -qE 'pub static GCODE_EMIT_PRODUCER' crates/slicer-runtime/src/builtins/gcode_emit_producer.rs && [ $(wc -l < crates/slicer-runtime/src/builtins/gcode_emit_producer.rs) -le 80 ]` (metadata-only `BuiltinProducer` shape — no emit body expected in the wrapper; emit call lives in `run.rs`/`postpass.rs`) | FACT pass/fail |
 | AC-5 | `! grep -qE '^pub mod gcode_emit;' crates/slicer-runtime/src/lib.rs && grep -qE 'GCODE_EMIT_PRODUCER' crates/slicer-runtime/src/lib.rs` | FACT pass/fail |
-| AC-6 | `grep -rqE 'use slicer_core::.*classify_layers' crates/slicer-gcode/src/ && ! rg -q 'crate::overhang_classifier' crates/slicer-gcode/src/ crates/slicer-runtime/src/` | FACT pass/fail |
+| AC-6 | `rg -q 'slicer_core::[^;()]*classify_layers' crates/slicer-gcode/src/ && ! rg -q 'crate::overhang_classifier' crates/slicer-gcode/src/ crates/slicer-runtime/src/` (accepts `use slicer_core::...classify_layers;` OR inline-qualified `slicer_core::...classify_layers(...)` call) | FACT pass/fail |
 | AC-7 | `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p86.gcode && sha256sum /tmp/benchy-p86.gcode` | SNIPPET (SHA) |
-| AC-8 | `cargo test -p slicer-gcode` | FACT pass/fail + count |
-| AC-9 | `cargo test -p slicer-gcode -p slicer-runtime -p pnp-cli` | FACT pass/fail + counts |
-| AC-N1 | `! grep -qE '^slicer-(runtime\|wasm-host) *=' crates/slicer-gcode/Cargo.toml` | FACT pass/fail |
+| AC-8 | `cargo test -p slicer-gcode` (slicer-gcode has no host-algos/sdk-test gated targets; flag not needed) | FACT pass/fail + count |
+| AC-9 | `cargo test --features slicer-core/host-algos --features slicer-sdk/test -p slicer-gcode -p slicer-runtime -p pnp-cli` (flags mandatory per P85 closure — bare form masks regressions) | FACT pass/fail + counts |
+| AC-N1 | `! grep -qE '^slicer-(runtime|wasm-host) *=' crates/slicer-gcode/Cargo.toml` | FACT pass/fail |
 | AC-N2 | `! cargo tree -p slicer-gcode 2>&1 \| grep -qE '\bwasmtime\b'` | FACT pass/fail |
-| AC-N3 | `! rg -e '\b(Blackboard\|BuiltinProducer\|ExecutionPlan\|ProgressEvent)\b' crates/slicer-gcode/src/` | FACT empty/non-empty |
+| AC-N3 | `! rg -e 'use [^;]*\b(Blackboard|BuiltinProducer|ExecutionPlan|ProgressEvent)\b' crates/slicer-gcode/src/ && ! rg -e ': *&(mut )?(Blackboard|BuiltinProducer|ExecutionPlan|ProgressEvent)\b' crates/slicer-gcode/src/` | FACT pass/fail |
+| AC-N4 | `for line in $(grep -nE '^pub use slicer_gcode::' crates/slicer-runtime/src/lib.rs \| cut -d: -f1); do prev=$((line-1)); next=$((line+1)); (sed -n "${prev}p" crates/slicer-runtime/src/lib.rs \| grep -qE '^// kept:') \|\| (sed -n "${next}p" crates/slicer-runtime/src/lib.rs \| grep -qE '^// kept:') \|\| exit 1; done` (accepts `// kept:` annotation ABOVE or BELOW each surviving `pub use slicer_gcode::` line) | FACT pass/fail |
+| AC-N5 | `[ -d crates/slicer-gcode/tests ] && [ $(cargo test -p slicer-gcode 2>&1 \| grep -oE 'test result: ok\. [0-9]+ passed' \| awk '{sum += $4} END {print sum+0}') -ge 1 ] && ! rg -e 'use slicer_(wasm_host\|runtime\|scheduler)::' crates/slicer-gcode/tests/` | FACT pass/fail + count |
 | gate-1 | `cargo build --workspace` | FACT pass/fail |
 | gate-2 | `cargo clippy --workspace --all-targets -- -D warnings` | FACT pass/fail |
 | gate-3 | `cargo xtask build-guests --check` | FACT pass/fail |
 
 ## Step Completion Expectations
 
-- The `GCodeEmitter` trait sig rewrite (`&Blackboard` → `&dyn EmitContext` OR `&Blackboard` via re-export — design.md's chosen option) MUST land together with the `gcode_emit.rs` move; otherwise `postpass.rs` cannot compile against either signature.
+- The `GCodeEmitter` trait sig rewrite (drop `&Blackboard` parameter + replace `PostpassError → GCodeEmitError` — see design.md Selected Approach) MUST land together with the `gcode_emit.rs` move; otherwise `postpass.rs` cannot compile against either signature.
 - `slicer-runtime/src/builtins/gcode_emit_producer.rs` MUST be created BEFORE `slicer-runtime/src/lib.rs` drops `pub mod gcode_emit;` and updates `runtime_builtins()`; the producer reference must always resolve.
 - Guest rebuild is NOT required (no guest-feeding path is edited); `cargo xtask build-guests --check` should stay clean. STALE means investigate.
 

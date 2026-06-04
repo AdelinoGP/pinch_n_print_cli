@@ -15,6 +15,7 @@ mod builtin_producers_tdd;
 mod dag_validation_tdd;
 mod gcode_emit_format_tdd;
 mod gcode_emit_per_role_tolerance_tdd;
+mod host_keys_doc_lock_tdd;
 mod layer_collection_builder_tdd;
 mod mesh_analysis_tdd;
 mod multi_object_transform_world_z_tdd;

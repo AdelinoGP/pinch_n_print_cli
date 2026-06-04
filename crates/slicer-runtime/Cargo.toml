@@ -15,6 +15,7 @@ slicer-sdk = { path = "../slicer-sdk" }
 slicer-helpers = { path = "../slicer-helpers" }
 slicer-scheduler = { path = "../slicer-scheduler" }
 slicer-wasm-host = { path = "../slicer-wasm-host" }
+slicer-gcode = { path = "../slicer-gcode" }
 toml = "0.8"
 rayon = "1.10"
 serde = { workspace = true, features = ["derive"] }

@@ -13,17 +13,11 @@
 //!   - AC-4: Reordering ordered_entities does not break travel resolution â€” the anchor is
 //!     entity_id-based, not positional.
 
-use std::collections::HashMap;
-use std::sync::Arc;
-
 use slicer_ir::{
-    BoundingBox3, ExtrusionPath3D, ExtrusionRole, IndexedTriangleSet, LayerCollectionIR, MeshIR,
-    ObjectConfig, ObjectId, ObjectMesh, Point3, Point3WithWidth, PrintEntity, RegionKey, SemVer,
-    Transform3d, TravelMove,
+    ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, ObjectId, Point3WithWidth, PrintEntity,
+    RegionKey, SemVer, TravelMove,
 };
-use slicer_runtime::{
-    Blackboard, DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer,
-};
+use slicer_runtime::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 
 // ============================================================================
 // Helper fixtures (same style as gcode_emit_tdd.rs)
@@ -35,63 +29,6 @@ fn semver() -> SemVer {
         minor: 0,
         patch: 0,
     }
-}
-
-fn identity_transform() -> Transform3d {
-    Transform3d {
-        matrix: [
-            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-        ],
-    }
-}
-
-fn blackboard_fixture() -> Blackboard {
-    let mesh = Arc::new(MeshIR {
-        schema_version: semver(),
-        objects: vec![ObjectMesh {
-            id: ObjectId::from("test-object"),
-            mesh: IndexedTriangleSet {
-                vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 10.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 5.0,
-                        y: 10.0,
-                        z: 0.0,
-                    },
-                ],
-                indices: vec![0, 1, 2],
-            },
-            transform: identity_transform(),
-            config: ObjectConfig {
-                data: HashMap::new(),
-            },
-            modifier_volumes: vec![],
-            paint_data: None,
-            world_z_extent: None,
-        }],
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 220.0,
-                y: 220.0,
-                z: 250.0,
-            },
-        },
-    });
-    Blackboard::new(mesh, 0)
 }
 
 fn region_key() -> RegionKey {
@@ -180,12 +117,11 @@ fn travel_emitted_at_entity_id_endpoints() {
 
     let layer = make_layer(vec![entity_a, entity_b], vec![travel]);
 
-    let bb = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("test".to_string());
     let serializer = DefaultGCodeSerializer::new();
 
     let gcode_ir = emitter
-        .emit_gcode(&[layer], &bb)
+        .emit_gcode(&[layer])
         .expect("emit_gcode must succeed");
     let text = serializer
         .serialize_gcode(&gcode_ir)
@@ -278,12 +214,11 @@ fn travel_survives_entity_reorder() {
         "third entity after rotate must be B (entity_id=2)"
     );
 
-    let bb = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("test".to_string());
     let serializer = DefaultGCodeSerializer::new();
 
     let gcode_ir = emitter
-        .emit_gcode(&[layer], &bb)
+        .emit_gcode(&[layer])
         .expect("emit_gcode must succeed");
     let text = serializer
         .serialize_gcode(&gcode_ir)

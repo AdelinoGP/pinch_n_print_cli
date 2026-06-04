@@ -14,7 +14,31 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use slicer_ir::{GCodeIR, LayerCollectionIR, ModuleId, PostpassError, PostpassOutput};
+use slicer_gcode::{GCodeEmitError, GCodeEmitter, GCodeSerializer};
+use slicer_ir::{LayerCollectionIR, ModuleId, PostpassError, PostpassOutput};
+
+/// Translate a `slicer_gcode::GCodeEmitError` into the matching
+/// `slicer_ir::PostpassError` variant.
+///
+/// Defined here (rather than as a `From` impl) because of Rust's orphan rule:
+/// `PostpassError` lives in `slicer-ir` and `GCodeEmitError` lives in
+/// `slicer-gcode`; neither type is owned by `slicer-runtime`. The conversion
+/// is the runtime-side seam between the two crates, so it lives next to the
+/// only call sites (`emit_gcode` / `serialize_gcode` inside
+/// `execute_postpass_with_instrumentation`).
+fn gcode_emit_error_to_postpass(e: GCodeEmitError) -> PostpassError {
+    match e {
+        GCodeEmitError::MissingToolchangePurge {
+            layer_index,
+            tool_change_index,
+        } => PostpassError::MissingToolchangePurge {
+            layer_index,
+            tool_change_index,
+        },
+        GCodeEmitError::Emit(message) => PostpassError::GCodeEmit { message },
+        GCodeEmitError::Serialization(message) => PostpassError::GCodeSerialization { message },
+    }
+}
 use slicer_wasm_host::{
     CompiledModuleLive, PostpassStageInput, PostpassStageRunner, WasmComponent, WasmInstancePool,
 };
@@ -30,28 +54,10 @@ use crate::{Blackboard, ExecutionPlan, ModuleAccessAudit};
 //                          gcode_ir: &mut GCodeIR → commands: &mut Vec<GCodeCommand>
 //   run_text_postprocess:  module: &CompiledModule → &CompiledModuleLive<'_>,
 //                          blackboard: &Blackboard removed (mesh projected into PostpassStageInput)
-
-/// Trait for GCode emission (host-built-in, will be implemented in TASK-034).
-pub trait GCodeEmitter {
-    /// Emit GCode IR from layer collections.
-    fn emit_gcode(
-        &self,
-        layer_irs: &[LayerCollectionIR],
-        blackboard: &Blackboard,
-    ) -> Result<GCodeIR, PostpassError>;
-
-    /// Resolved travel feedrate in mm/min for finalization-aware travel inserts.
-    /// `None` means the caller should fall back to whatever resolution path it owns.
-    fn travel_feedrate_mm_per_min(&self) -> Option<f32> {
-        None
-    }
-}
-
-/// Trait for GCode serialization (host-built-in).
-pub trait GCodeSerializer {
-    /// Serialize GCodeIR to text.
-    fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, PostpassError>;
-}
+//
+// `GCodeEmitter` and `GCodeSerializer` traits live in `slicer-gcode` as of
+// packet 86 Step 3; they are re-imported above so the postpass executor
+// continues to accept `&dyn GCodeEmitter` / `&dyn GCodeSerializer` callers.
 
 /// Executes the PostPass pipeline.
 ///
@@ -115,7 +121,7 @@ pub fn execute_postpass_with_instrumentation(
     let mut reconciled_layers: Vec<LayerCollectionIR> = layer_irs.to_vec();
     let travel_f = emitter.travel_feedrate_mm_per_min();
     for layer in &mut reconciled_layers {
-        crate::gcode_emit::reconcile_finalization_travel(layer, travel_f);
+        slicer_gcode::reconcile_finalization_travel(layer, travel_f);
     }
 
     // Step 1b: Emit initial GCodeIR from (reconciled) layers
@@ -124,7 +130,8 @@ pub fn execute_postpass_with_instrumentation(
     instrumentation.on_stage_start(&emit_stage, None);
     instrumentation.on_module_start(&emit_stage, None, &emit_module);
     let mut gcode_ir = emitter
-        .emit_gcode(&reconciled_layers, blackboard)
+        .emit_gcode(&reconciled_layers)
+        .map_err(gcode_emit_error_to_postpass)
         .inspect_err(|_| {
             instrumentation.on_stage_end(&emit_stage, None);
         })?;
@@ -205,9 +212,12 @@ pub fn execute_postpass_with_instrumentation(
         let ser_module = "host:gcode_serialize".to_string();
         instrumentation.on_stage_start(&ser_stage, None);
         instrumentation.on_module_start(&ser_stage, None, &ser_module);
-        let text = serializer.serialize_gcode(&gcode_ir).inspect_err(|_| {
-            instrumentation.on_stage_end(&ser_stage, None);
-        })?;
+        let text = serializer
+            .serialize_gcode(&gcode_ir)
+            .map_err(gcode_emit_error_to_postpass)
+            .inspect_err(|_| {
+                instrumentation.on_stage_end(&ser_stage, None);
+            })?;
         instrumentation.on_module_end(&ser_stage, None, &ser_module, 0, 0);
         instrumentation.on_stage_end(&ser_stage, None);
         return Ok((text, audits));
@@ -218,9 +228,12 @@ pub fn execute_postpass_with_instrumentation(
     let ser_module = "host:gcode_serialize".to_string();
     instrumentation.on_stage_start(&ser_stage, None);
     instrumentation.on_module_start(&ser_stage, None, &ser_module);
-    let mut text = serializer.serialize_gcode(&gcode_ir).inspect_err(|_| {
-        instrumentation.on_stage_end(&ser_stage, None);
-    })?;
+    let mut text = serializer
+        .serialize_gcode(&gcode_ir)
+        .map_err(gcode_emit_error_to_postpass)
+        .inspect_err(|_| {
+            instrumentation.on_stage_end(&ser_stage, None);
+        })?;
     instrumentation.on_module_end(&ser_stage, None, &ser_module, 0, 0);
     instrumentation.on_stage_end(&ser_stage, None);
 
@@ -274,9 +287,12 @@ pub fn execute_postpass_with_instrumentation(
                     let ser_module = "host:gcode_serialize".to_string();
                     instrumentation.on_stage_start(&ser_stage, None);
                     instrumentation.on_module_start(&ser_stage, None, &ser_module);
-                    text = serializer.serialize_gcode(&gcode_ir).inspect_err(|_| {
-                        instrumentation.on_stage_end(&ser_stage, None);
-                    })?;
+                    text = serializer
+                        .serialize_gcode(&gcode_ir)
+                        .map_err(gcode_emit_error_to_postpass)
+                        .inspect_err(|_| {
+                            instrumentation.on_stage_end(&ser_stage, None);
+                        })?;
                     instrumentation.on_module_end(&ser_stage, None, &ser_module, 0, 0);
                     instrumentation.on_stage_end(&ser_stage, None);
                 }
@@ -287,9 +303,12 @@ pub fn execute_postpass_with_instrumentation(
                     let ser_module = "host:gcode_serialize".to_string();
                     instrumentation.on_stage_start(&ser_stage, None);
                     instrumentation.on_module_start(&ser_stage, None, &ser_module);
-                    text = serializer.serialize_gcode(&gcode_ir).inspect_err(|_| {
-                        instrumentation.on_stage_end(&ser_stage, None);
-                    })?;
+                    text = serializer
+                        .serialize_gcode(&gcode_ir)
+                        .map_err(gcode_emit_error_to_postpass)
+                        .inspect_err(|_| {
+                            instrumentation.on_stage_end(&ser_stage, None);
+                        })?;
                     instrumentation.on_module_end(&ser_stage, None, &ser_module, 0, 0);
                     instrumentation.on_stage_end(&ser_stage, None);
                 }

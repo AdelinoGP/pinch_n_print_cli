@@ -27,9 +27,9 @@ use slicer_ir::{
 };
 use slicer_runtime::{
     build_wasm_instance_pool, execute_postpass, Blackboard, CompiledModule, CompiledModuleBuilder,
-    CompiledModuleLive, CompiledStage, ExecutionModuleBinding, ExecutionPlan, GCodeEmitter,
-    GCodeSerializer, LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageInput,
-    PostpassStageRunner, WasmArtifactMetadata,
+    CompiledModuleLive, CompiledStage, ExecutionModuleBinding, ExecutionPlan, GCodeEmitError,
+    GCodeEmitter, GCodeSerializer, LoadedModuleBuilder, PostpassError, PostpassOutput,
+    PostpassStageInput, PostpassStageRunner, WasmArtifactMetadata,
 };
 
 // ============================================================================
@@ -796,11 +796,7 @@ impl StubEmitter {
 }
 
 impl GCodeEmitter for StubEmitter {
-    fn emit_gcode(
-        &self,
-        _layer_irs: &[LayerCollectionIR],
-        _blackboard: &Blackboard,
-    ) -> Result<GCodeIR, PostpassError> {
+    fn emit_gcode(&self, _layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
         Ok(gcode_ir_fixture())
     }
 }
@@ -814,7 +810,7 @@ impl StubSerializer {
 }
 
 impl GCodeSerializer for StubSerializer {
-    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
+    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
         Ok("stub output".to_string())
     }
 }
@@ -840,11 +836,7 @@ impl CallTrackingEmitter {
 }
 
 impl GCodeEmitter for CallTrackingEmitter {
-    fn emit_gcode(
-        &self,
-        _layer_irs: &[LayerCollectionIR],
-        _blackboard: &Blackboard,
-    ) -> Result<GCodeIR, PostpassError> {
+    fn emit_gcode(&self, _layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
         *self.called.borrow_mut() = true;
         Ok(gcode_ir_fixture())
     }
@@ -869,7 +861,7 @@ impl CallTrackingSerializer {
 }
 
 impl GCodeSerializer for CallTrackingSerializer {
-    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
+    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
         *self.called.borrow_mut() = true;
         Ok(self.output.clone())
     }
@@ -1189,14 +1181,8 @@ impl FailingEmitter {
 }
 
 impl GCodeEmitter for FailingEmitter {
-    fn emit_gcode(
-        &self,
-        _layer_irs: &[LayerCollectionIR],
-        _blackboard: &Blackboard,
-    ) -> Result<GCodeIR, PostpassError> {
-        Err(PostpassError::GCodeEmit {
-            message: self.message.clone(),
-        })
+    fn emit_gcode(&self, _layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
+        Err(GCodeEmitError::Emit(self.message.clone()))
     }
 }
 
@@ -1217,10 +1203,8 @@ impl FailingSerializer {
 }
 
 impl GCodeSerializer for FailingSerializer {
-    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
-        Err(PostpassError::GCodeSerialization {
-            message: self.message.clone(),
-        })
+    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
+        Err(GCodeEmitError::Serialization(self.message.clone()))
     }
 }
 
@@ -1283,7 +1267,7 @@ impl MutationVerifyingSerializer {
 }
 
 impl GCodeSerializer for MutationVerifyingSerializer {
-    fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
+    fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
         // Check if our marker command was added
         let has_mutation = gcode_ir.commands.iter().any(
             |cmd| matches!(cmd, GCodeCommand::Comment { text } if text == "MUTATED_BY_MODULE"),

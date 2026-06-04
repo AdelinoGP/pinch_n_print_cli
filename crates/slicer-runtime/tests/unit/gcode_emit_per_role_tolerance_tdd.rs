@@ -13,73 +13,15 @@
 //! collapses to 2 points under any positive tolerance when the wobble (0.005 mm)
 //! is below all three role tolerances. Travel retains all 12 points.
 
-use std::sync::Arc;
-
 use slicer_ir::{
-    BoundingBox3, ExtrusionPath3D, ExtrusionRole, GCodeCommand, IndexedTriangleSet,
-    LayerCollectionIR, MeshIR, ObjectId, ObjectMesh, Point3, Point3WithWidth, PrintEntity,
-    RegionKey, ResolvedConfig, Transform3d,
+    ExtrusionPath3D, ExtrusionRole, GCodeCommand, LayerCollectionIR, ObjectId, Point3WithWidth,
+    PrintEntity, RegionKey, ResolvedConfig,
 };
-use slicer_runtime::{tolerance_for_role, Blackboard, DefaultGCodeEmitter, GCodeEmitter};
+use slicer_runtime::{tolerance_for_role, DefaultGCodeEmitter, GCodeEmitter};
 
 // ============================================================================
 // Fixtures
 // ============================================================================
-
-fn identity_transform() -> Transform3d {
-    Transform3d {
-        matrix: [
-            1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-        ],
-    }
-}
-
-fn mesh_fixture() -> MeshIR {
-    MeshIR {
-        objects: vec![ObjectMesh {
-            id: ObjectId::from("test"),
-            mesh: IndexedTriangleSet {
-                vertices: vec![
-                    Point3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 1.0,
-                        y: 0.0,
-                        z: 0.0,
-                    },
-                    Point3 {
-                        x: 0.5,
-                        y: 1.0,
-                        z: 0.0,
-                    },
-                ],
-                indices: vec![0, 1, 2],
-            },
-            transform: identity_transform(),
-            ..Default::default()
-        }],
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 220.0,
-                y: 220.0,
-                z: 250.0,
-            },
-        },
-        ..Default::default()
-    }
-}
-
-fn blackboard_fixture() -> Blackboard {
-    Blackboard::new(Arc::new(mesh_fixture()), 0)
-}
 
 fn region_key() -> RegionKey {
     RegionKey {
@@ -212,9 +154,8 @@ fn per_role_tolerance_dispatch() {
     );
 
     let emitter = DefaultGCodeEmitter::new("test".to_string()).with_resolved_config(cfg);
-    let blackboard = blackboard_fixture();
     let gcode_ir = emitter
-        .emit_gcode(&[layer], &blackboard)
+        .emit_gcode(&[layer])
         .expect("emit_gcode must succeed");
 
     // Precomputed table:

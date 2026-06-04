@@ -14,7 +14,7 @@
 
 **Objective.** Confirm prereq: `FeedrateConfig` lives in `slicer-ir`, `classify_layers` lives in `slicer-core`. Capture the current g-code SHA (carried forward from P85 closure if P85 is also done, otherwise from P84).
 
-**Precondition.** P84 is `superseded`. Working tree clean.
+**Precondition.** P84 is `implemented` (and P85 is `implemented` — both checked since the corrected workspace test baseline at P85 close is 2067, not 1273). Working tree clean.
 
 **Postcondition.** Two log entries: P84-state verification, baseline SHA.
 
@@ -59,20 +59,20 @@
 
 ---
 
-## Step 2 — Scaffold `slicer-gcode` crate + `EmitContext` trait + `GCodeEmitError` enum
+## Step 2 — Scaffold `slicer-gcode` crate + `GCodeEmitError` enum
 
-**Objective.** New crate compiles standalone with empty trait impls.
+**Objective.** New crate compiles standalone with module skeleton and the error enum.
 
-**Precondition.** Step 1 lists in hand.
+**Precondition.** Step 1 lists in hand. (Step 1 dispatch #1 confirmed zero `Blackboard` methods called by `emit_gcode`; no `EmitContext` trait needed — see design.md Selected Approach.)
 
-**Postcondition.** `cargo build -p slicer-gcode` green against an empty `lib.rs` plus the new `context.rs` containing `EmitContext` and `GCodeEmitError`.
+**Postcondition.** `cargo build -p slicer-gcode` green against an empty `lib.rs` plus the new `error.rs` containing `GCodeEmitError`.
 
 **Files allowed to read.** Workspace `Cargo.toml`.
 **Files allowed to edit.**
 1. Workspace `Cargo.toml` — add `"crates/slicer-gcode"` to `members`.
 2. `crates/slicer-gcode/Cargo.toml` — CREATE per design.md.
-3. `crates/slicer-gcode/src/lib.rs` — CREATE with module declarations (`pub mod emit; pub mod serialize; pub mod thumbnail; pub mod context;`).
-4. `crates/slicer-gcode/src/context.rs` — CREATE with the `pub trait EmitContext { ... }` (methods enumerated by Step 1 dispatch #1) and `pub enum GCodeEmitError { ... }` (variants mirroring the failure modes in `gcode_emit.rs`).
+3. `crates/slicer-gcode/src/lib.rs` — CREATE with module declarations (`pub mod emit; pub mod serialize; pub mod thumbnail; pub mod error;`).
+4. `crates/slicer-gcode/src/error.rs` — CREATE with `pub enum GCodeEmitError { ... }` (variants mirroring the failure modes in `gcode_emit.rs`).
 5. The other three submodule files (`emit.rs`, `serialize.rs`, `thumbnail.rs`) — CREATE as empty placeholders.
 
 **Expected sub-agent dispatch.**
@@ -88,7 +88,7 @@
 
 ## Step 3 — Move `gcode_emit.rs` content into `slicer-gcode/src/`; relocate the two trait defs
 
-**Objective.** All pure-serialization code lives in `slicer-gcode/src/{emit,serialize,thumbnail}.rs`. The `GCodeEmitter` and `GCodeSerializer` trait defs land in `slicer-gcode/src/lib.rs` (or wherever `serialize.rs` declares them). The `&Blackboard` parameter on `emit_gcode` is rewritten to `&dyn EmitContext`; the `PostpassError` return becomes `GCodeEmitError`.
+**Objective.** All pure-serialization code lives in `slicer-gcode/src/{emit,serialize,thumbnail}.rs`. The `GCodeEmitter` and `GCodeSerializer` trait defs land in `slicer-gcode/src/lib.rs` (or wherever `serialize.rs` declares them). The `&Blackboard` parameter on `emit_gcode` is **dropped** (empirical finding from Step 1: parameter is `_blackboard`, unused; zero `Blackboard` methods called by the impl); the `PostpassError` return becomes `GCodeEmitError`.
 
 **Precondition.** Step 2 complete.
 
@@ -96,14 +96,14 @@
 
 **Files allowed to read.** `crates/slicer-runtime/src/gcode_emit.rs` (line ranges only — never full file); `crates/slicer-runtime/src/postpass.rs` L130–180.
 **Files allowed to edit.**
-1. `crates/slicer-gcode/src/emit.rs` — fill with `DefaultGCodeEmitter` + the `GCodeEmitter` trait def. Replace `&Blackboard` with `&dyn EmitContext` in `emit_gcode`'s sig. Replace `PostpassError` returns with `GCodeEmitError`.
+1. `crates/slicer-gcode/src/emit.rs` — fill with `DefaultGCodeEmitter` + the `GCodeEmitter` trait def. **Drop** the `&Blackboard` parameter from `emit_gcode`'s sig. Replace `PostpassError` returns with `GCodeEmitError`.
 2. `crates/slicer-gcode/src/serialize.rs` — fill with `DefaultGCodeSerializer`, `ThumbnailAwareSerializer`, `tolerance_for_role`, `GCodeSerializer` trait def. Same error-type rewrite.
 3. `crates/slicer-gcode/src/thumbnail.rs` — fill with `serialize_thumbnail_block`.
 4. `crates/slicer-gcode/src/lib.rs` — re-export the public surface.
 5. Delete `crates/slicer-runtime/src/gcode_emit.rs`.
 6. `crates/slicer-runtime/src/postpass.rs` — delete the two trait defs (L144–163); add `use slicer_gcode::{GCodeEmitter, GCodeSerializer};`.
 
-**Inside `emit_gcode`'s body**: every call to `blackboard.X(...)` becomes `ctx.X(...)` where `X` is a method on `EmitContext`. The call to `classify_layers(&mut layers, &feedrate_config)` is now `slicer_core::classify_layers(&mut layers, &feedrate_config)` (per AC-6). The `FeedrateConfig` import becomes `use slicer_ir::FeedrateConfig;`.
+**Inside `emit_gcode`'s body**: there are zero `blackboard.X(...)` calls to rewrite (Step 1 dispatch #1 confirmed this). The call to `classify_layers(&mut layers, &feedrate_config)` is now `slicer_core::classify_layers(&mut layers, &feedrate_config)` (per AC-6). The `FeedrateConfig` import becomes `use slicer_ir::FeedrateConfig;`. The `PostpassError` return type becomes `GCodeEmitError`; the `crate::{Blackboard, PostpassError}` import is dropped entirely.
 
 **Expected sub-agent dispatch.**
 - Dispatch: `cargo build -p slicer-gcode`. Return FACT pass/fail.
@@ -112,7 +112,7 @@
 
 **Narrow verification.** `slicer-gcode` builds. `rg -l 'pub trait GCodeEmitter' crates/` → exactly `crates/slicer-gcode/`.
 
-**Falsifying check / exit condition.** Build fails on missing `EmitContext` method → return to Step 2's `context.rs` and add the missing method per dispatch #1.
+**Falsifying check / exit condition.** Build fails on a missing `GCodeEmitError` variant → return to Step 2's `error.rs` and add the variant.
 
 ---
 
@@ -136,7 +136,7 @@ pub static GCODE_EMIT_PRODUCER: BuiltinProducer = BuiltinProducer { /* same stag
 impl BuiltinProducer {
     pub fn run_gcode_emit(bb: &mut Blackboard, /* args */) -> Result<(), PostpassError> {
         let emitter = DefaultGCodeEmitter::new(/* read config from bb */);
-        let gcode_ir = emitter.emit_gcode(&bb.layers(), bb as &dyn EmitContext)
+        let gcode_ir = emitter.emit_gcode(&bb.layers())
             .map_err(PostpassError::from)?;
         bb.replace_gcode_ir(gcode_ir);
         Ok(())
@@ -155,20 +155,21 @@ impl BuiltinProducer {
 
 ---
 
-## Step 5 — Rewire `slicer-runtime/src/lib.rs`, Cargo.toml, postpass.rs, `runtime_builtins()`, and `Blackboard`'s `EmitContext` impl
+## Step 5 — Rewire `slicer-runtime/src/lib.rs`, Cargo.toml, postpass.rs, and `runtime_builtins()`
 
 **Objective.** Workspace builds; ADR-0001 preserved.
 
 **Precondition.** Step 4 complete.
 
-**Postcondition.** `cargo build --workspace` green; `cargo clippy --workspace --all-targets -- -D warnings` green.
+**Postcondition.** `cargo build --workspace` green; `cargo clippy --workspace --all-targets -- -D warnings` green (the `--all-targets` flag compiles test binaries; transitional re-exports keep them building during this step).
 
-**Files allowed to read.** `crates/slicer-runtime/src/lib.rs`, `crates/slicer-runtime/Cargo.toml`, `crates/slicer-runtime/src/blackboard.rs`, `crates/slicer-runtime/src/postpass.rs`.
+**Test-import stability rule (carried forward from P85 Step 5).** `--all-targets` compiles every test under `crates/slicer-runtime/tests/`. Some tests today reference `slicer_runtime::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer, tolerance_for_role, serialize_thumbnail_block}`. Until Step 6 relocates or rewires them, the runtime must continue to re-export the moved symbols. Add `pub use slicer_gcode::{...};` at the top of `lib.rs` for every symbol surfaced by Step 1 dispatch #3 — flat re-exports only, NEVER brace-form `pub mod gcode_emit { pub use slicer_gcode::*; }` shim modules (forbidden by AC-5's word-boundary check). Step 6 then prunes the dead re-exports per the closure-cleanup rule.
+
+**Files allowed to read.** `crates/slicer-runtime/src/lib.rs`, `crates/slicer-runtime/Cargo.toml`, `crates/slicer-runtime/src/postpass.rs`.
 **Files allowed to edit.**
 1. `crates/slicer-runtime/src/lib.rs` — drop `pub mod gcode_emit;`. Rewrite or drop `pub use postpass::{GCodeEmitter, GCodeSerializer};` (rewrite to `pub use slicer_gcode::{GCodeEmitter, GCodeSerializer};` for transitional source compat). Rewrite the `gcode_emit::*` re-exports analogously. Update `runtime_builtins()` to reference `builtins::gcode_emit_producer::GCODE_EMIT_PRODUCER`.
 2. `crates/slicer-runtime/Cargo.toml` — add `slicer-gcode = { path = "../slicer-gcode" }`.
-3. `crates/slicer-runtime/src/blackboard.rs` — add `impl slicer_gcode::EmitContext for Blackboard { ... }` covering the trait's method set. Each impl method delegates to an existing `Blackboard` method.
-4. `crates/slicer-runtime/src/postpass.rs` — already edited in Step 3; verify clean state.
+3. `crates/slicer-runtime/src/postpass.rs` — already edited in Step 3; verify clean state. Add a `From<GCodeEmitError> for PostpassError` impl so the wrapper can convert errors.
 
 **Expected sub-agent dispatches.**
 - Dispatch: `cargo build --workspace`. Return FACT pass/fail + first failing crate.
@@ -178,27 +179,28 @@ impl BuiltinProducer {
 
 **Narrow verification.** Both green.
 
-**Falsifying check / exit condition.** Build fails → most likely an `EmitContext` method missing from `Blackboard` impl; check dispatch #1's list and add.
+**Falsifying check / exit condition.** Build fails → most likely a missing `From<GCodeEmitError> for PostpassError` variant; check the variant set in `slicer-gcode/src/error.rs` and ensure the `From` impl covers all.
 
 ---
 
 ## Step 6 — Migrate or rewire tests per dispatch #3
 
-**Objective.** Per-crate test gates green.
+**Objective.** Per-crate test gates green AND every transitional `pub use slicer_gcode::...` re-export added in Step 5 is either deleted (dead) or annotated with `// kept:` documenting the surviving consumer. P86 closes shim-free, same shape as P84 and P85.
 
 **Precondition.** Step 5 complete.
 
-**Postcondition.** `cargo test -p slicer-gcode -p slicer-runtime -p pnp-cli` green.
+**Postcondition.** `cargo test --features slicer-core/host-algos --features slicer-sdk/test -p slicer-gcode -p slicer-runtime -p pnp-cli` green. AC-5 grep produces zero hits in `slicer-runtime/src/lib.rs` (including brace-form shims). AC-N4 holds (every surviving `pub use slicer_gcode::` has a `// kept:` comment).
 
-**Files allowed to read.** Test files from Step 1 dispatch #3.
+**Files allowed to read.** Test files from Step 1 dispatch #3. Output of `cargo build --workspace 2>&1 | grep -E '^error\[E04(32|33)\]'` after each pruning round to find live consumers.
 **Files allowed to edit.**
-1. Move test files whose SUT is serialization (`DefaultGCodeSerializer`, `format_*`, `tolerance_for_role`, `serialize_thumbnail_block`) → `crates/slicer-gcode/tests/`. Imports rewrite to `slicer_gcode::*`.
-2. Tests whose SUT is `GCODE_EMIT_PRODUCER` end-to-end → stay; imports rewrite from `slicer_runtime::DefaultGCodeEmitter` to `slicer_gcode::DefaultGCodeEmitter` (or via the transitional re-export in lib.rs).
+1. Move test files whose SUT is serialization (`DefaultGCodeSerializer`, `format_*`, `tolerance_for_role`, `serialize_thumbnail_block`) → `crates/slicer-gcode/tests/`. Imports rewrite to `slicer_gcode::*` directly (NOT via the runtime re-export).
+2. Tests whose SUT is `GCODE_EMIT_PRODUCER` end-to-end → stay; imports rewrite from `slicer_runtime::DefaultGCodeEmitter` to `slicer_gcode::DefaultGCodeEmitter` directly (so the runtime re-export becomes dead).
 3. `crates/slicer-runtime/tests/{integration,executor}/main.rs` aggregators — drop `mod` declarations for moved tests.
+4. **Prune dead re-exports.** After test relocations + rewrites, re-run `cargo build --workspace --all-targets`. For each `pub use slicer_gcode::X;` line in `slicer-runtime/src/lib.rs`, run `rg 'slicer_runtime::X\b' crates/ docs/`. Zero hits → delete the re-export. Hits → keep with a one-line `// kept: consumed by <file>` comment so AC-N4 passes and the next packet can revisit. Same closure-cleanup pattern as P84/P85.
 
 **Expected sub-agent dispatches.**
 - Dispatch: `cargo test -p slicer-gcode`. Return FACT pass/fail + count.
-- Dispatch: `cargo test -p slicer-runtime`. Return FACT pass/fail + count + delta.
+- Dispatch: `cargo test --features slicer-core/host-algos --features slicer-sdk/test -p slicer-runtime`. Return FACT pass/fail + count + delta. (Flags mandatory per P85 closure.)
 - Dispatch: `cargo test -p pnp-cli`. Return FACT pass/fail + count.
 
 **Context cost: M.**
@@ -278,7 +280,7 @@ The test:
 
 **Narrow verification.** SHAs match.
 
-**Falsifying check / exit condition.** SHA divergence → bisect; the most likely culprit is the `EmitContext` impl on `Blackboard` returning slightly different data than the pre-move `&Blackboard` access would have.
+**Falsifying check / exit condition.** SHA divergence → bisect; the most likely culprit is the `classify_layers` re-import from `slicer-core` (P84) producing different output than the pre-move `crate::overhang_classifier` did, or the `FeedrateConfig` re-import from `slicer-ir` (P84) with slightly different defaults. The dropped `_blackboard` parameter changes nothing observable because it was already unused.
 
 ---
 
@@ -288,10 +290,10 @@ The test:
 |---|---|
 | 0 P84 verify + baseline | S |
 | 1 Enumerate trait surface, test consumers, OrcaSlicer refs | S |
-| 2 Scaffold slicer-gcode + EmitContext + GCodeEmitError | S |
-| 3 Move gcode_emit.rs + traits; rewire emit_gcode sig | M |
+| 2 Scaffold slicer-gcode + GCodeEmitError | S |
+| 3 Move gcode_emit.rs + traits; drop blackboard param + rewrite error type | M |
 | 4 Create wrapper in slicer-runtime/src/builtins/ | S |
-| 5 Runtime rewire + Blackboard impl EmitContext | M |
+| 5 Runtime rewire + From&lt;GCodeEmitError&gt; for PostpassError | M |
 | 6 Test migration / rewires | M |
 | 7 Golden test | S |
 | 8 Guest --check clean | S |
@@ -306,7 +308,7 @@ Narrow-only gates per the deepening-batch policy.
 1. `cargo build --workspace` — green.
 2. `cargo clippy --workspace --all-targets -- -D warnings` — green.
 3. `cargo xtask build-guests --check` — clean.
-4. `cargo test -p slicer-gcode -p slicer-runtime -p pnp-cli` — green; counts as expected.
+4. `cargo test --features slicer-core/host-algos --features slicer-sdk/test -p slicer-gcode -p slicer-runtime -p pnp-cli` — green; counts as expected.
 5. AC-7 post-packet SHA = Step 0 baseline.
 
 ## Acceptance Ceremony
@@ -314,4 +316,4 @@ Narrow-only gates per the deepening-batch policy.
 - All 9 ACs (AC-1 .. AC-9) and 3 negative cases (AC-N1, AC-N2, AC-N3) gate green per the inline verification commands in `packet.spec.md`.
 - No ADR follow-up.
 - Implementation log records: Step 0 baseline SHA, Step 9 post-packet SHA, `EmitContext` trait surface (final method list), list of moved tests, list of transitional re-exports added to `slicer-runtime/src/lib.rs`.
-- `status: draft` → `status: superseded` after gate green AND user confirms closure.
+- `status: draft` → `status: implemented` after gate green AND user confirms closure. (`superseded` is reserved for packets replaced by a later spec.)

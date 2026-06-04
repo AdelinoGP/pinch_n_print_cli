@@ -31,7 +31,6 @@ use slicer_ir::{
 use slicer_ir::{LayerStageCommitData, PrepassRunnerError};
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
-use slicer_runtime::postpass::{GCodeEmitter, GCodeSerializer};
 use slicer_runtime::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
     execute_paint_segmentation, Blackboard, CompiledModule, CompiledModuleBuilder,
@@ -39,6 +38,7 @@ use slicer_runtime::{
     LayerStageError, LayerStageInput, LayerStageRunner, PaintSegmentationError,
     PostpassStageRunner, PrepassStageRunner, WasmEngine,
 };
+use slicer_runtime::{GCodeEmitter, GCodeSerializer};
 use slicer_schema::export_for_stage_id;
 use slicer_wasm_host::{DispatchPhase, WasmRuntimeDispatcher};
 
@@ -259,8 +259,7 @@ impl GCodeEmitter for MinimalEmitter {
     fn emit_gcode(
         &self,
         _layer_irs: &[LayerCollectionIR],
-        _blackboard: &Blackboard,
-    ) -> Result<GCodeIR, slicer_runtime::PostpassError> {
+    ) -> Result<GCodeIR, slicer_runtime::GCodeEmitError> {
         Ok(minimal_gcode_ir())
     }
 }
@@ -270,7 +269,7 @@ impl GCodeSerializer for MinimalSerializer {
     fn serialize_gcode(
         &self,
         _gcode_ir: &GCodeIR,
-    ) -> Result<String, slicer_runtime::PostpassError> {
+    ) -> Result<String, slicer_runtime::GCodeEmitError> {
         Ok(String::from("; test gcode"))
     }
 }
@@ -4372,8 +4371,8 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
     // Final downstream emission: DefaultGCodeEmitter consumes committed z_hops
     // and renders the lift+return travel pair after the anchor entity.
     use slicer_runtime::execute_per_layer;
-    use slicer_runtime::gcode_emit::DefaultGCodeEmitter;
-    use slicer_runtime::postpass::GCodeEmitter;
+    use slicer_runtime::DefaultGCodeEmitter;
+    use slicer_runtime::GCodeEmitter;
 
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
@@ -4450,7 +4449,7 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
     let layers = execute_per_layer(&plan, &blackboard, &runner, &wasm_handles).expect("exec");
 
     let emitter = DefaultGCodeEmitter::new("test".into());
-    let gcode = emitter.emit_gcode(&layers, &blackboard).expect("emit");
+    let gcode = emitter.emit_gcode(&layers).expect("emit");
     // Look for at least one Move with the lifted Z = 0.2 + 0.5 = 0.7.
     let mut hop_lifts = 0;
     for c in &gcode.commands {

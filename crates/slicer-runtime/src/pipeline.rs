@@ -18,15 +18,16 @@ use slicer_wasm_host::{WasmComponent, WasmInstancePool};
 /// `gcode_emit::host_keys_doc_lock`.
 pub const DEFAULT_THUMBNAIL_PATH: &str = "";
 
+use slicer_gcode::{resolved_config_to_map, ThumbnailAwareSerializer};
+
 use crate::{
     compute_serial_edges_from_compiled, execute_layer_finalization, execute_per_layer_with_events,
     execute_per_layer_with_instrumentation, execute_postpass,
-    gcode_emit::{resolved_config_to_map, ThumbnailAwareSerializer},
-    prepass::execute_prepass_with_builtins_configured,
-    Blackboard, ConfigBoundsIndex, ExecutionPlan, FinalizationError, FinalizationStageRunner,
-    GCodeEmitter, GCodeSerializer, LayerExecutionError, LayerProgressSink, LayerStageRunner,
-    ModuleAccessAudit, NoopInstrumentation, NoopLayerProgressSink, Phase, PipelineInstrumentation,
-    PostpassError, PostpassStageRunner, PrepassExecutionError, PrepassStageRunner, TierKind,
+    prepass::execute_prepass_with_builtins_configured, Blackboard, ConfigBoundsIndex,
+    ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
+    LayerExecutionError, LayerProgressSink, LayerStageRunner, ModuleAccessAudit,
+    NoopInstrumentation, NoopLayerProgressSink, Phase, PipelineInstrumentation, PostpassError,
+    PostpassStageRunner, PrepassExecutionError, PrepassStageRunner, TierKind,
 };
 
 /// Injectable stage runners for the pipeline.
@@ -455,7 +456,7 @@ fn run_postpass_with_thumbnail(
     // Wrap the serializer with thumbnail support when bytes are present.
     let inner_serializer = std::mem::replace(
         &mut runners.serializer,
-        Box::new(crate::gcode_emit::DefaultGCodeSerializer::new()),
+        Box::new(slicer_gcode::DefaultGCodeSerializer::new()),
     );
     runners.serializer = Box::new(ThumbnailAwareSerializer::new(
         inner_serializer,

@@ -22,12 +22,12 @@ use slicer_runtime::pipeline::{
 };
 use slicer_runtime::report::Collector;
 use slicer_runtime::{
-    build_wasm_instance_pool, Blackboard, CompiledModule, CompiledModuleBuilder,
-    CompiledModuleLive, CompiledStage, EdgeReason, ExecutionPlan, FinalizationError,
-    FinalizationOutput, FinalizationStageInput, FinalizationStageRunner, GCodeEmitter,
-    GCodeSerializer, IrAccessMask, LayerStageError, LayerStageInput, LayerStageRunner,
-    LoadedModuleBuilder, NoopInstrumentation, NoopLayerProgressSink, PipelineInstrumentation,
-    PostpassError, PostpassStageInput, PostpassStageRunner, PrepassRunnerError, PrepassStageInput,
+    build_wasm_instance_pool, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
+    CompiledStage, EdgeReason, ExecutionPlan, FinalizationError, FinalizationOutput,
+    FinalizationStageInput, FinalizationStageRunner, GCodeEmitError, GCodeEmitter, GCodeSerializer,
+    IrAccessMask, LayerStageError, LayerStageInput, LayerStageRunner, LoadedModuleBuilder,
+    NoopInstrumentation, NoopLayerProgressSink, PipelineInstrumentation, PostpassError,
+    PostpassStageInput, PostpassStageRunner, PrepassRunnerError, PrepassStageInput,
     PrepassStageOutput, PrepassStageRunner, SerialEdge, TierKind, WasmArtifactMetadata,
 };
 
@@ -191,18 +191,14 @@ impl PostpassStageRunner for NoopPostpassRunner {
 
 struct MinimalEmitter;
 impl GCodeEmitter for MinimalEmitter {
-    fn emit_gcode(
-        &self,
-        _layer_irs: &[LayerCollectionIR],
-        _blackboard: &Blackboard,
-    ) -> Result<GCodeIR, PostpassError> {
+    fn emit_gcode(&self, _layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
         Ok(minimal_gcode_ir())
     }
 }
 
 struct MinimalSerializer;
 impl GCodeSerializer for MinimalSerializer {
-    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
+    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
         Ok(String::new())
     }
 }

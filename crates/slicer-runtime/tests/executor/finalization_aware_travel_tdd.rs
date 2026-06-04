@@ -15,7 +15,7 @@ use slicer_ir::{
     ExtrusionPath3D, ExtrusionRole, LayerCollectionIR, ObjectId, Point3WithWidth, PrintEntity,
     RegionKey, SemVer, ToolChange, TravelRetract,
 };
-use slicer_runtime::gcode_emit::reconcile_finalization_travel;
+use slicer_runtime::reconcile_finalization_travel;
 
 // ============================================================================
 // Test fixtures

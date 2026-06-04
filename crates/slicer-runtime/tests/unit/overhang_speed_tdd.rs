@@ -6,30 +6,9 @@
 //! `crates/slicer-ir/tests/point3_overhang_quartile_roundtrip.rs`.
 
 use slicer_ir::*;
-use slicer_runtime::{Blackboard, DefaultGCodeEmitter, GCodeEmitter};
-use std::sync::Arc;
+use slicer_runtime::{DefaultGCodeEmitter, GCodeEmitter};
 
 // â”€â”€â”€ shared fixture helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-fn dummy_blackboard() -> Blackboard {
-    let mesh_ir = MeshIR {
-        objects: vec![],
-        build_volume: BoundingBox3 {
-            min: Point3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            },
-            max: Point3 {
-                x: 250.0,
-                y: 210.0,
-                z: 256.0,
-            },
-        },
-        ..Default::default()
-    };
-    Blackboard::new(Arc::new(mesh_ir), 1)
-}
 
 fn make_layer(global_layer_index: u32, z: f32) -> LayerCollectionIR {
     LayerCollectionIR {
@@ -103,7 +82,6 @@ fn cantilever_emits_overhang_speed() {
         ..Default::default()
     };
     let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
-    let blackboard = dummy_blackboard();
 
     // Layer 0: 20Ã—20mm square outer wall, no overhang.
     let mut layer0 = make_layer(0, 0.2);
@@ -216,7 +194,7 @@ fn cantilever_emits_overhang_speed() {
         ExtrusionRole::OuterWall,
     ));
 
-    let gcode_ir = emitter.emit_gcode(&[layer0, layer1], &blackboard).unwrap();
+    let gcode_ir = emitter.emit_gcode(&[layer0, layer1]).unwrap();
 
     // Find the F-token emitted for a move that has overhang_quartile = Some(1).
     // After implementation, that move must use F600 (10 mm/s Ã— 60).
@@ -258,7 +236,6 @@ fn zero_config_byte_identical_baseline() {
         ..Default::default()
     };
     let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), zero_config.clone());
-    let blackboard = dummy_blackboard();
 
     // Two-layer cantilever scene, same shape as AC-1. Caller picks the seed
     // value placed on the cantilever points; classify_layers must short-circuit
@@ -334,7 +311,7 @@ fn zero_config_byte_identical_baseline() {
     // â€” every byte of the emitter output is now pinned to this snapshot for
     // the remainder of the test.
     let scene_baseline = build_scene(None);
-    let gcode_baseline = emitter.emit_gcode(&scene_baseline, &blackboard).unwrap();
+    let gcode_baseline = emitter.emit_gcode(&scene_baseline).unwrap();
     let baseline_str = format!("{:?}", gcode_baseline.commands);
 
     // â”€â”€ Half 1 of AC-2: byte-identical G-code under zero config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -346,7 +323,7 @@ fn zero_config_byte_identical_baseline() {
     //     and falls through to outer-wall base speed.
     // â‡’ emitter output must be byte-identical to the all-None baseline.
     let scene_seeded = build_scene(Some(2));
-    let gcode_seeded = emitter.emit_gcode(&scene_seeded, &blackboard).unwrap();
+    let gcode_seeded = emitter.emit_gcode(&scene_seeded).unwrap();
     let seeded_str = format!("{:?}", gcode_seeded.commands);
 
     assert_eq!(
@@ -381,9 +358,7 @@ fn zero_config_byte_identical_baseline() {
     };
     let active_emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), active_config);
     let scene_active = build_scene(None);
-    let gcode_active = active_emitter
-        .emit_gcode(&scene_active, &blackboard)
-        .unwrap();
+    let gcode_active = active_emitter.emit_gcode(&scene_active).unwrap();
     let active_str = format!("{:?}", gcode_active.commands);
     assert_ne!(
         active_str, baseline_str,
@@ -427,7 +402,6 @@ fn non_wall_roles_ignore_overhang_quartile() {
         ..Default::default()
     };
     let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
-    let blackboard = dummy_blackboard();
 
     let role_cases: &[(ExtrusionRole, f32)] = &[
         (ExtrusionRole::SparseInfill, 100.0 * 60.0),
@@ -462,7 +436,7 @@ fn non_wall_roles_ignore_overhang_quartile() {
             role.clone(),
         ));
 
-        let gcode_ir = emitter.emit_gcode(&[layer], &blackboard).unwrap();
+        let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
         let f_tokens = collect_f_tokens(&gcode_ir);
 
         assert!(
@@ -559,7 +533,6 @@ fn quartile_to_key_mapping() {
         ..Default::default()
     };
     let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
-    let blackboard = dummy_blackboard();
 
     // Expected: quartile 1â†’F600, 2â†’F1200, 3â†’F1800, 4â†’F2400
     let expected: &[(u8, f32)] = &[(1, 600.0), (2, 1200.0), (3, 1800.0), (4, 2400.0)];
@@ -590,7 +563,7 @@ fn quartile_to_key_mapping() {
             ExtrusionRole::OuterWall,
         ));
 
-        let gcode_ir = emitter.emit_gcode(&[layer], &blackboard).unwrap();
+        let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
         let f_tokens = collect_f_tokens(&gcode_ir);
 
         assert!(

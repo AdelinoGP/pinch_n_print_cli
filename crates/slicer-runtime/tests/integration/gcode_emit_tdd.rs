@@ -22,70 +22,15 @@
 //! Reference: docs/02_ir_schemas.md (IR 11 - GCodeIR), docs/04_host_scheduler.md (lines 778-810)
 //! OrcaSlicer reference: OrcaSlicerDocumented/src/libslic3r/GCodeWriter.cpp, GCodeProcessor.hpp
 
-use std::sync::Arc;
-
 use slicer_ir::{
-    BoundingBox3, ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, IndexedTriangleSet,
-    LayerCollectionIR, MeshIR, ObjectId, ObjectMesh, Point3, Point3WithWidth, PrintEntity,
-    PrintMetadata, RegionKey, RetractMode, ToolChange, Transform3d, ZHop,
+    ExtrusionPath3D, ExtrusionRole, GCodeCommand, GCodeIR, LayerCollectionIR, ObjectId,
+    Point3WithWidth, PrintEntity, PrintMetadata, RegionKey, RetractMode, ToolChange, ZHop,
 };
-use slicer_runtime::{
-    Blackboard, DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer,
-};
+use slicer_runtime::{DefaultGCodeEmitter, DefaultGCodeSerializer, GCodeEmitter, GCodeSerializer};
 
 // ============================================================================
 // Test fixtures
 // ============================================================================
-
-fn identity_transform() -> Transform3d {
-    Transform3d {
-        matrix: [
-            1.0, 0.0, 0.0, 0.0, // column 0
-            0.0, 1.0, 0.0, 0.0, // column 1
-            0.0, 0.0, 1.0, 0.0, // column 2
-            0.0, 0.0, 0.0, 1.0, // column 3
-        ],
-    }
-}
-
-fn mesh_fixture() -> MeshIR {
-    MeshIR {
-        objects: vec![ObjectMesh {
-            id: ObjectId::from("test-object"),
-            mesh: IndexedTriangleSet {
-                vertices: vec![
-                    Point3::default(),
-                    Point3 {
-                        x: 10.0,
-                        ..Default::default()
-                    },
-                    Point3 {
-                        x: 5.0,
-                        y: 10.0,
-                        ..Default::default()
-                    },
-                ],
-                indices: vec![0, 1, 2],
-            },
-            transform: identity_transform(),
-            ..Default::default()
-        }],
-        build_volume: BoundingBox3 {
-            min: Point3::default(),
-            max: Point3 {
-                x: 220.0,
-                y: 220.0,
-                z: 250.0,
-            },
-        },
-        ..Default::default()
-    }
-}
-
-fn blackboard_fixture() -> Blackboard {
-    let mesh = Arc::new(mesh_fixture());
-    Blackboard::new(mesh, 0)
-}
 
 fn point3_with_width(x: f32, y: f32, z: f32) -> Point3WithWidth {
     Point3WithWidth {
@@ -160,11 +105,10 @@ fn gcode_ir_fixture(commands: Vec<GCodeCommand>) -> GCodeIR {
 
 #[test]
 fn emit_empty_layers_produces_minimal_gcode_ir() {
-    let blackboard = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
     let layer_irs: &[LayerCollectionIR] = &[];
 
-    let result = emitter.emit_gcode(layer_irs, &blackboard);
+    let result = emitter.emit_gcode(layer_irs);
 
     assert!(
         result.is_ok(),
@@ -200,7 +144,6 @@ fn emit_empty_layers_produces_minimal_gcode_ir() {
 
 #[test]
 fn emit_single_layer_single_entity_produces_move_commands() {
-    let blackboard = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
 
     // Create a 3-point path
@@ -213,7 +156,7 @@ fn emit_single_layer_single_entity_produces_move_commands() {
     let layer = layer_with_entity(0, 0.2, entity);
     let layer_irs = &[layer];
 
-    let result = emitter.emit_gcode(layer_irs, &blackboard);
+    let result = emitter.emit_gcode(layer_irs);
 
     assert!(
         result.is_ok(),
@@ -270,7 +213,6 @@ fn emit_single_layer_single_entity_produces_move_commands() {
 
 #[test]
 fn emit_multiple_layers_preserves_z_order() {
-    let blackboard = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
 
     // Two layers at different Z heights
@@ -286,7 +228,7 @@ fn emit_multiple_layers_preserves_z_order() {
     let layer2 = layer_with_entity(1, 0.4, entity2);
     let layer_irs = &[layer1, layer2];
 
-    let result = emitter.emit_gcode(layer_irs, &blackboard);
+    let result = emitter.emit_gcode(layer_irs);
 
     assert!(
         result.is_ok(),
@@ -325,7 +267,6 @@ fn emit_multiple_layers_preserves_z_order() {
 
 #[test]
 fn emit_tool_change_at_correct_position() {
-    let blackboard = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
 
     // Layer with 3 entities and a tool change after entity 1
@@ -351,7 +292,7 @@ fn emit_tool_change_at_correct_position() {
 
     let layer_irs = &[layer];
 
-    let result = emitter.emit_gcode(layer_irs, &blackboard);
+    let result = emitter.emit_gcode(layer_irs);
 
     assert!(
         result.is_ok(),
@@ -390,7 +331,6 @@ fn emit_tool_change_at_correct_position() {
 
 #[test]
 fn emit_zhop_generates_travel_sequence() {
-    let blackboard = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
 
     // Layer with 2 entities and a Z hop after entity 0
@@ -411,7 +351,7 @@ fn emit_zhop_generates_travel_sequence() {
 
     let layer_irs = &[layer];
 
-    let result = emitter.emit_gcode(layer_irs, &blackboard);
+    let result = emitter.emit_gcode(layer_irs);
 
     assert!(
         result.is_ok(),
@@ -451,7 +391,6 @@ fn emit_zhop_generates_travel_sequence() {
 
 #[test]
 fn emit_metadata_accumulates_layer_count() {
-    let blackboard = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
 
     // 3 layers
@@ -461,7 +400,7 @@ fn emit_metadata_accumulates_layer_count() {
         layer_collection_fixture(2, 0.6),
     ];
 
-    let result = emitter.emit_gcode(layer_irs, &blackboard);
+    let result = emitter.emit_gcode(layer_irs);
 
     assert!(
         result.is_ok(),
@@ -479,7 +418,6 @@ fn emit_metadata_accumulates_layer_count() {
 
 #[test]
 fn emit_metadata_accumulates_filament_used_mm() {
-    let blackboard = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
 
     // Create entities with known extrusion amounts
@@ -492,7 +430,7 @@ fn emit_metadata_accumulates_filament_used_mm() {
     let layer = layer_with_entity(0, 0.2, entity);
     let layer_irs = &[layer];
 
-    let result = emitter.emit_gcode(layer_irs, &blackboard);
+    let result = emitter.emit_gcode(layer_irs);
 
     assert!(
         result.is_ok(),
@@ -789,8 +727,7 @@ fn emit_inserts_comment_and_raw_annotations_after_anchor_entity() {
     ];
 
     let emitter = DefaultGCodeEmitter::new("test".into());
-    let bb = blackboard_fixture();
-    let ir = emitter.emit_gcode(&[layer], &bb).unwrap();
+    let ir = emitter.emit_gcode(&[layer]).unwrap();
 
     // Find the indices of Comment and Raw â€” they must come AFTER all Move
     // commands for entity 0 (declaration order preserved).
@@ -841,8 +778,7 @@ fn emit_preserves_tool_change_path_with_annotations_present() {
     }];
 
     let emitter = DefaultGCodeEmitter::new("test".into());
-    let bb = blackboard_fixture();
-    let ir = emitter.emit_gcode(&[layer], &bb).unwrap();
+    let ir = emitter.emit_gcode(&[layer]).unwrap();
 
     let tc_idx = ir
         .commands
@@ -885,9 +821,8 @@ fn emit_is_deterministic_with_annotations() {
         layer
     };
     let emitter = DefaultGCodeEmitter::new("test".into());
-    let bb = blackboard_fixture();
-    let r1 = emitter.emit_gcode(&[mk()], &bb).unwrap();
-    let r2 = emitter.emit_gcode(&[mk()], &bb).unwrap();
+    let r1 = emitter.emit_gcode(&[mk()]).unwrap();
+    let r2 = emitter.emit_gcode(&[mk()]).unwrap();
     assert_eq!(r1.commands.len(), r2.commands.len());
     assert_eq!(r1, r2);
 }
@@ -901,8 +836,7 @@ fn emit_emits_trailing_annotations_on_empty_layer() {
         kind: LayerAnnotationKind::Comment("only".into()),
     }];
     let emitter = DefaultGCodeEmitter::new("test".into());
-    let bb = blackboard_fixture();
-    let ir = emitter.emit_gcode(&[layer], &bb).unwrap();
+    let ir = emitter.emit_gcode(&[layer]).unwrap();
     assert!(ir
         .commands
         .iter()
@@ -931,7 +865,6 @@ fn emits_orca_layer_headers_before_first_extrusion() {
     // emit text, then the first layer block begins with exactly ;LAYER_CHANGE,
     // ;Z:1.4, and ;HEIGHT:0.2 in that order before the first emitted G1 line for layer 7.
 
-    let bb = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
     let serializer = DefaultGCodeSerializer::new();
 
@@ -949,7 +882,7 @@ fn emits_orca_layer_headers_before_first_extrusion() {
     let layer8 = layer_with_entity(8, 1.6, entity8);
 
     let layer_irs = &[layer7, layer8];
-    let gcode_ir = emitter.emit_gcode(layer_irs, &bb).unwrap();
+    let gcode_ir = emitter.emit_gcode(layer_irs).unwrap();
     let text = serializer.serialize_gcode(&gcode_ir).unwrap();
 
     let lines: Vec<&str> = text.lines().collect();
@@ -996,7 +929,6 @@ fn emits_orca_type_comments_at_role_boundaries() {
     // comments with exact labels at the first command of each contiguous role block
     // and never duplicates a label inside the same block.
 
-    let bb = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
     let serializer = DefaultGCodeSerializer::new();
 
@@ -1062,7 +994,7 @@ fn emits_orca_type_comments_at_role_boundaries() {
         entity_wipe,
     ];
 
-    let gcode_ir = emitter.emit_gcode(&[layer], &bb).unwrap();
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
     let text = serializer.serialize_gcode(&gcode_ir).unwrap();
 
     // Each role must emit exactly one ;TYPE: label (no duplicates within a contiguous block)
@@ -1124,7 +1056,6 @@ fn preserves_seam_started_wall_loop_order_in_output() {
     // the first extruding move for that loop is emitted at X20 Y10 Z0.2 and the
     // emit path does not prepend a travel-only move that changes the loop start point.
 
-    let bb = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
     let serializer = DefaultGCodeSerializer::new();
 
@@ -1140,7 +1071,7 @@ fn preserves_seam_started_wall_loop_order_in_output() {
     let entity = print_entity_fixture(points, ExtrusionRole::OuterWall);
     let layer = layer_with_entity(0, seam_z, entity);
 
-    let gcode_ir = emitter.emit_gcode(&[layer], &bb).unwrap();
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
     let text = serializer.serialize_gcode(&gcode_ir).unwrap();
 
     let lines: Vec<&str> = text.lines().collect();
@@ -1285,7 +1216,6 @@ fn omits_absent_role_labels_and_retraction_lines() {
     // no ;TYPE:Support interface, no ;TYPE:Skirt/Brim, no ;TYPE:Prime tower,
     // and no retract line matching G1 E-.
 
-    let bb = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
     let serializer = DefaultGCodeSerializer::new();
 
@@ -1309,7 +1239,7 @@ fn omits_absent_role_labels_and_retraction_lines() {
     layer.ordered_entities = vec![entity_outer, entity_sparse];
     // No tool_changes, no z_hops â€” those are the only source of retract/unretract
 
-    let gcode_ir = emitter.emit_gcode(&[layer], &bb).unwrap();
+    let gcode_ir = emitter.emit_gcode(&[layer]).unwrap();
     let text = serializer.serialize_gcode(&gcode_ir).unwrap();
 
     // Absent roles must not appear
@@ -1469,11 +1399,8 @@ fn layer_boundary_emits_t0_when_returning_to_default_tool() {
         ..Default::default()
     };
 
-    let blackboard = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
-    let result = emitter
-        .emit_gcode(&[layer0, layer1], &blackboard)
-        .expect("emit_gcode");
+    let result = emitter.emit_gcode(&[layer0, layer1]).expect("emit_gcode");
 
     let tool_changes: Vec<(u32, u32)> = result
         .commands
@@ -1520,11 +1447,8 @@ fn layer_boundary_no_redundant_tool_change_when_tool_unchanged() {
         ..Default::default()
     };
 
-    let blackboard = blackboard_fixture();
     let emitter = DefaultGCodeEmitter::new("1.0.0-test".to_string());
-    let result = emitter
-        .emit_gcode(&[layer0, layer1], &blackboard)
-        .expect("emit_gcode");
+    let result = emitter.emit_gcode(&[layer0, layer1]).expect("emit_gcode");
 
     let tool_changes: Vec<(u32, u32)> = result
         .commands

@@ -18,13 +18,13 @@ use slicer_ir::{
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineStageRunners};
 use slicer_runtime::{
     build_config_schema_json, build_execution_plan, build_wasm_instance_pool,
-    load_modules_from_roots, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
+    load_modules_from_roots, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
     CompiledStage, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanRequest, FinalizationError,
-    FinalizationOutput, FinalizationStageInput, FinalizationStageRunner, GCodeEmitter,
-    GCodeSerializer, IrAccessMask, LayerStageError, LayerStageInput, LayerStageRunner,
-    LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageInput, PostpassStageRunner,
-    PrepassRunnerError, PrepassStageInput, PrepassStageOutput, PrepassStageRunner,
-    SortedStageModules, WasmArtifactMetadata,
+    FinalizationOutput, FinalizationStageInput, FinalizationStageRunner, GCodeEmitError,
+    GCodeEmitter, GCodeSerializer, IrAccessMask, LayerStageError, LayerStageInput,
+    LayerStageRunner, LoadedModuleBuilder, PostpassError, PostpassOutput, PostpassStageInput,
+    PostpassStageRunner, PrepassRunnerError, PrepassStageInput, PrepassStageOutput,
+    PrepassStageRunner, SortedStageModules, WasmArtifactMetadata,
 };
 use tempfile::TempDir;
 
@@ -147,18 +147,14 @@ impl PostpassStageRunner for NoopPostpassRunner {
 
 struct MinimalEmitter;
 impl GCodeEmitter for MinimalEmitter {
-    fn emit_gcode(
-        &self,
-        _layer_irs: &[LayerCollectionIR],
-        _blackboard: &Blackboard,
-    ) -> Result<GCodeIR, PostpassError> {
+    fn emit_gcode(&self, _layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
         Ok(minimal_gcode_ir())
     }
 }
 
 struct MinimalSerializer;
 impl GCodeSerializer for MinimalSerializer {
-    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
+    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
         Ok(String::new())
     }
 }

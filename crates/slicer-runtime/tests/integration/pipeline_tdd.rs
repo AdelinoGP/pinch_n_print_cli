@@ -14,11 +14,11 @@ use slicer_ir::{
 };
 use slicer_runtime::pipeline::{run_pipeline, PipelineConfig, PipelineError, PipelineStageRunners};
 use slicer_runtime::{
-    build_wasm_instance_pool, Blackboard, CompiledModule, CompiledModuleBuilder,
-    CompiledModuleLive, CompiledStage, ExecutionPlan, FinalizationError, FinalizationOutput,
-    FinalizationStageInput, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
-    LayerStageError, LayerStageInput, LayerStageRunner, LoadedModuleBuilder, PostpassError,
-    PostpassOutput, PostpassStageInput, PostpassStageRunner, PrepassRunnerError, PrepassStageInput,
+    build_wasm_instance_pool, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
+    CompiledStage, ExecutionPlan, FinalizationError, FinalizationOutput, FinalizationStageInput,
+    FinalizationStageRunner, GCodeEmitError, GCodeEmitter, GCodeSerializer, LayerStageError,
+    LayerStageInput, LayerStageRunner, LoadedModuleBuilder, PostpassError, PostpassOutput,
+    PostpassStageInput, PostpassStageRunner, PrepassRunnerError, PrepassStageInput,
     PrepassStageOutput, PrepassStageRunner, WasmArtifactMetadata,
 };
 
@@ -179,18 +179,14 @@ impl PostpassStageRunner for PostpassModuleReadingPostpassRunner {
 
 struct MinimalEmitter;
 impl GCodeEmitter for MinimalEmitter {
-    fn emit_gcode(
-        &self,
-        _layer_irs: &[LayerCollectionIR],
-        _blackboard: &Blackboard,
-    ) -> Result<GCodeIR, PostpassError> {
+    fn emit_gcode(&self, _layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
         Ok(minimal_gcode_ir())
     }
 }
 
 struct MinimalSerializer;
 impl GCodeSerializer for MinimalSerializer {
-    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
+    fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
         Ok(String::new())
     }
 }
@@ -261,7 +257,7 @@ fn run_pipeline_empty_modules() {
 fn run_pipeline_returns_gcode_string() {
     struct MarkerSerializer;
     impl GCodeSerializer for MarkerSerializer {
-        fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
+        fn serialize_gcode(&self, _gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
             Ok("G28 ; home\nG1 X10 Y10\n".into())
         }
     }
@@ -407,14 +403,8 @@ fn run_pipeline_propagates_layer_error() {
 fn run_pipeline_propagates_postpass_error() {
     struct FailingEmitter;
     impl GCodeEmitter for FailingEmitter {
-        fn emit_gcode(
-            &self,
-            _layer_irs: &[LayerCollectionIR],
-            _blackboard: &Blackboard,
-        ) -> Result<GCodeIR, PostpassError> {
-            Err(PostpassError::GCodeEmit {
-                message: "emit boom".into(),
-            })
+        fn emit_gcode(&self, _layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
+            Err(GCodeEmitError::Emit("emit boom".into()))
         }
     }
 
@@ -496,11 +486,7 @@ fn run_pipeline_calls_stages_in_order() {
 
     struct OrderTrackingEmitter(Arc<Mutex<Vec<String>>>);
     impl GCodeEmitter for OrderTrackingEmitter {
-        fn emit_gcode(
-            &self,
-            _layer_irs: &[LayerCollectionIR],
-            _blackboard: &Blackboard,
-        ) -> Result<GCodeIR, PostpassError> {
+        fn emit_gcode(&self, _layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
             self.0.lock().unwrap().push("postpass".into());
             Ok(minimal_gcode_ir())
         }
@@ -622,18 +608,14 @@ fn run_pipeline_propagates_finalization_error() {
 fn run_pipeline_with_layers_produces_output() {
     struct CountingSerializer;
     impl GCodeSerializer for CountingSerializer {
-        fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, PostpassError> {
+        fn serialize_gcode(&self, gcode_ir: &GCodeIR) -> Result<String, GCodeEmitError> {
             Ok(format!("layers:{}", gcode_ir.metadata.layer_count))
         }
     }
 
     struct LayerCountEmitter;
     impl GCodeEmitter for LayerCountEmitter {
-        fn emit_gcode(
-            &self,
-            layer_irs: &[LayerCollectionIR],
-            _blackboard: &Blackboard,
-        ) -> Result<GCodeIR, PostpassError> {
+        fn emit_gcode(&self, layer_irs: &[LayerCollectionIR]) -> Result<GCodeIR, GCodeEmitError> {
             let mut ir = minimal_gcode_ir();
             ir.metadata.layer_count = layer_irs.len() as u32;
             Ok(ir)
