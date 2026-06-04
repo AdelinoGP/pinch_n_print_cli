@@ -74,7 +74,7 @@ fn region_mapping_builtin_runs_after_user_layer_planning_and_is_visible_to_downs
     // Build the LoadedModule + pool + binding via the same pattern used
     // by the rest of the test suite (not struct-literal ExecutionPlan).
     let walls_loaded = loaded_module("Layer::Perimeters", "com.example.walls", amp_cfg(0.7));
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             walls_loaded.id(),
             walls_loaded.stage(),
@@ -88,9 +88,7 @@ fn region_mapping_builtin_runs_after_user_layer_planning_and_is_visible_to_downs
     );
     let walls_binding = ExecutionModuleBinding {
         module: walls_loaded,
-        instance_pool: pool,
         config_view: Arc::new(amp_cfg(0.7)),
-        wasm_component: None,
     };
 
     let request = ExecutionPlanRequest {
@@ -108,6 +106,7 @@ fn region_mapping_builtin_runs_after_user_layer_planning_and_is_visible_to_downs
         &plan,
         &mut blackboard,
         &CommitLayerPlanRunner { layer_plan },
+        &Default::default(),
     )
     .expect("prepass with builtins should succeed");
 
@@ -347,7 +346,8 @@ fn region_mapping_builtin_is_skipped_when_no_layer_plan_committed() {
     let mut blackboard = Blackboard::new(mesh, 0);
     let plan = empty_execution_plan();
 
-    execute_prepass_with_builtins(&plan, &mut blackboard, &NoopRunner).expect("ok");
+    execute_prepass_with_builtins(&plan, &mut blackboard, &NoopRunner, &Default::default())
+        .expect("ok");
 
     assert!(
         blackboard.region_map().is_none(),
@@ -383,7 +383,8 @@ fn region_mapping_builtin_commit_failure_surfaces_via_prepass_error() {
         .unwrap();
 
     let plan = empty_execution_plan();
-    execute_prepass_with_builtins(&plan, &mut blackboard, &NoopRunner).expect("ok (idempotent)");
+    execute_prepass_with_builtins(&plan, &mut blackboard, &NoopRunner, &Default::default())
+        .expect("ok (idempotent)");
 
     assert!(Arc::ptr_eq(blackboard.region_map().unwrap(), &preexisting));
 }
@@ -601,7 +602,7 @@ fn compiled_module(stage: &str, module_id: &str, config: ConfigView) -> Compiled
     .min_ir_schema(sv(1, 0, 0))
     .max_ir_schema(sv(2, 0, 0))
     .build();
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -613,7 +614,7 @@ fn compiled_module(stage: &str, module_id: &str, config: ConfigView) -> Compiled
         )
         .unwrap(),
     );
-    CompiledModuleBuilder::new(module_id, pool)
+    CompiledModuleBuilder::new(module_id)
         .config_view(Arc::new(config))
         .build()
 }

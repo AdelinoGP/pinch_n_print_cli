@@ -128,15 +128,17 @@ The 26 files in the table above plus the conditional test files surfaced by disp
 
 ## Locked Assumptions and Invariants
 
-- ADR-0001 / 0002 / 0003 / 0004 / 0005 preserved.
-- New invariant codified in ADR-0006 (at packet close): `slicer-scheduler` is wasmtime-free; `CompiledModuleLive` lives in `slicer-wasm-host` and borrows `CompiledModuleStatic` from scheduler. Future architecture reviews must not re-merge these.
+- ADR-0001 / 0002 / 0003 preserved; ADR-0005 / ADR-0006 (from P83) preserved.
+- New invariant codified in ADR-0007 (at packet close): `slicer-scheduler` is wasmtime-free; `CompiledModuleLive` lives in `slicer-wasm-host` and **owns the wasmtime payload** (`Arc<WasmInstancePool>`, `Option<Arc<WasmComponent>>`). Pairing with `CompiledModuleStatic` is by external key (`HashMap<ModuleId, CompiledModuleLive>` threaded through the executor structures), NOT by lifetime-borrowed reference — chosen during Step 3.5 to avoid lifetime-parameter cascade through every executor method signature in `slicer-runtime`. Future architecture reviews must not re-merge Static and Live, and must not re-introduce the borrow shape without an explicit superseding ADR.
 - Byte-identical g-code: AC-9 SHA = P84 closure SHA.
 - Byte-identical `pnp_cli dag` output: AC-10 SHAs = Step 0 baselines.
 - `cargo xtask build-guests --check` stays clean throughout (no guest-feeding path is edited).
 
 ## Risks and Tradeoffs
 
-- **Risk: a moved file references something the runtime still needs internally.** E.g., `dag.rs` references `crate::instrumentation::EdgeReason`; after move, that becomes a same-crate import in `slicer-scheduler`. But if `crate::execution_plan` or `dag.rs` indirectly references `Blackboard` or `WasmComponent` (a runtime/wasm-host type), the scheduler build breaks. Mitigation: dispatch #1 surfaces SDK imports; an early `cargo build -p slicer-scheduler` against the post-move tree catches any surprise.
+- **Confirmed pre-packet contradiction (resolved by expanded scope, not deferred): P83 left `Arc<WasmInstancePool>` and `Option<Arc<WasmComponent>>` as fields on `CompiledModuleStatic`, `CompiledModuleBuilder`, and `ExecutionModuleBinding`.** P85 was originally framed as "move a clean Static struct"; the real codebase state required completing the field migration first. The expanded scope (Step 3.5 below) does the field strip + Live-cluster relocation to wasm-host as part of this packet. The original mitigation ("the build will surface it") DID surface it; we expanded scope rather than defer to a follow-up. P83's deliverable is recorded as architecturally-complete-at-the-type-level but field-incomplete; P85 closes the gap.
+- **Risk: a callsite rewire is missed**, causing a runtime test failure in the workspace gate. The mechanical pattern is `compiled_module.instance_pool()` → `live_binding.instance_pool()` at every site in `slicer-runtime/src/{layer_executor,pipeline,prepass,postpass,layer_finalization}.rs`. Mitigation: post-Step-3.5 `cargo build --workspace --all-targets` surfaces every missed site as an E0599 (method not found on Static) — the error message names the file and line. Workspace test gate (Step 8) is the integration verification.
+- **Risk: a moved file references something the runtime still needs internally** outside of the wasmtime cluster. E.g., `dag.rs` references `crate::instrumentation::EdgeReason`; after move, that becomes a same-crate import in `slicer-scheduler`. Mitigation: dispatch #1 surfaces SDK imports; an early `cargo build -p slicer-scheduler` against the post-move tree catches any surprise.
 - **Risk: the test re-exports in `slicer-runtime/src/lib.rs` are incomplete**, breaking tests that grep `slicer_runtime::X`. Mitigation: dispatch #3 enumerates external `pub use slicer_runtime::*` references; the transitional re-export list covers them.
 - **Risk: `cargo test --workspace` flakes** (a known issue in large suites). Mitigation: dispatch #9 captures the tail output, so a flaky test can be re-run individually without re-doing the whole gate.
 - **Tradeoff: the transitional `pub use slicer_scheduler::*` re-exports in `slicer-runtime/src/lib.rs`** keep test compatibility but inflate the runtime crate's apparent surface. They are explicitly transitional; a follow-up packet (P89 or similar in the doc-sweep phase) deletes them.
@@ -153,4 +155,4 @@ The 26 files in the table above plus the conditional test files surfaced by disp
 
 One ADR follow-up planned at packet close:
 
-- **ADR-0006** — `CompiledModule` Static/Live split rationale (full version). Records why two types instead of one, why scheduler MUST NOT depend on wasm-host, what future architecture reviewers should not re-litigate.
+- **ADR-0007** — `CompiledModule` Static/Live split rationale (full version). Records: (a) why two types instead of one; (b) why scheduler MUST NOT depend on wasm-host (cycle-free dep graph + wasmtime-free planning crate); (c) the **HashMap-keyed pairing strategy** chosen over the originally-imagined `&'s CompiledModuleStatic` borrow shape, with the cascade-avoidance + per-tick reconstruction rationale; (d) the runtime invariant that Live is constructed at the same site where both the Static and the loaded engine artifacts are in scope. Numbered 0007 because ADR-0004 was claimed by Packet 77, ADR-0005 by P83 runner traits, ADR-0006 by P83 export_for_stage_id.

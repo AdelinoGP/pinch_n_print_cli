@@ -8,12 +8,8 @@
 #[path = "../common/mod.rs"]
 mod common;
 
-mod config_bounds_enforcement_tdd;
-mod config_resolution_paint_semantic_tdd;
-mod config_resolution_tdd;
 mod core_module_components_tdd;
 mod core_module_macro_adoption_tdd;
-mod dag_cli_integration;
 mod gcode_emit_tdd;
 mod gcode_emit_travel_anchor_tdd;
 mod gcode_feedrate_emission_tdd;
@@ -24,8 +20,6 @@ mod gcode_skirt_brim_emission_tdd;
 mod live_module_loading_tdd;
 mod machine_start_end_gcode_emission_tdd;
 mod macro_mesh_segmentation_geometry_tdd;
-mod manifest_ingestion_tdd;
-mod manifest_unknown_stage_tdd;
 mod paint_annotation_integration_tdd;
 mod pipeline_tdd;
 mod prepass_paint_semantic_override_ordering_tdd;

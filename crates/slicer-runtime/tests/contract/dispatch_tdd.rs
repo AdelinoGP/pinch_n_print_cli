@@ -14,6 +14,7 @@ use crate::common::seed::seed_slice_ir;
 use crate::common::wasm_cache;
 use crate::common::{
     finalization_input, layer_input, postpass_input, prepass_input, run_layer_and_commit,
+    TestModuleBundle,
 };
 use witness::{RawInfillWitness, RawInfillWitnessPoint1, RawSupportWitness};
 
@@ -190,7 +191,7 @@ fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
     .build()
 }
 
-fn make_compiled_module(engine: &WasmEngine, id: &str, stage: &str, wat: &str) -> CompiledModule {
+fn make_compiled_module(engine: &WasmEngine, id: &str, stage: &str, wat: &str) -> TestModuleBundle {
     make_compiled_module_with(id, stage, compile_wat(engine, wat))
 }
 
@@ -198,7 +199,7 @@ fn make_compiled_module_with(
     id: &str,
     stage: &str,
     component: Arc<slicer_runtime::WasmComponent>,
-) -> CompiledModule {
+) -> TestModuleBundle {
     make_compiled_module_with_config(id, stage, component, ConfigView::from_map(HashMap::new()))
 }
 
@@ -207,7 +208,7 @@ fn make_compiled_module_with_config(
     stage: &str,
     component: Arc<slicer_runtime::WasmComponent>,
     config: ConfigView,
-) -> CompiledModule {
+) -> TestModuleBundle {
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -221,13 +222,17 @@ fn make_compiled_module_with_config(
         )
         .unwrap(),
     );
-    CompiledModuleBuilder::new(id, pool)
+    let module = CompiledModuleBuilder::new(id)
         .config_view(Arc::new(config))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
-fn make_compiled_module_no_wasm(id: &str, stage: &str) -> CompiledModule {
+fn make_compiled_module_no_wasm(id: &str, stage: &str) -> TestModuleBundle {
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -241,7 +246,12 @@ fn make_compiled_module_no_wasm(id: &str, stage: &str) -> CompiledModule {
         )
         .unwrap(),
     );
-    CompiledModuleBuilder::new(id, pool).build()
+    let module = CompiledModuleBuilder::new(id).build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: None,
+    }
 }
 
 struct MinimalEmitter;
@@ -350,7 +360,7 @@ fn layer_runner_invokes_typed_wasm_export() {
     };
     let mut arena = LayerArena::new();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -503,7 +513,7 @@ fn missing_component_gracefully_skipped() {
     };
     let mut arena = LayerArena::new();
 
-    let result = crate::common::run_layer_and_commit(
+    let result = crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -548,7 +558,7 @@ fn pool_slot_released_after_successful_typed_call() {
 
     for i in 0..3 {
         let mut arena = LayerArena::new();
-        crate::common::run_layer_and_commit(
+        crate::common::run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::Infill",
             &layer,
@@ -618,7 +628,7 @@ fn typed_layer_dispatch_creates_fresh_context_per_call() {
 
     for i in 0..3 {
         let mut arena = LayerArena::new();
-        crate::common::run_layer_and_commit(
+        crate::common::run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::Infill",
             &layer,
@@ -638,12 +648,15 @@ fn full_pipeline_with_typed_layer_dispatch() {
 
     let component = load_test_guest(&engine);
     let layer_module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
+    let (layer_module, mut wasm_handles) = layer_module.into_module_and_handles();
 
     let lp_module = make_compiled_module_with(
         "com.test.layerplan",
         "PrePass::LayerPlanning",
         load_prepass_guest(&engine),
     );
+    let (lp_module, lp_handles) = lp_module.into_module_and_handles();
+    wasm_handles.extend(lp_handles);
 
     let plan = ExecutionPlan {
         prepass_stages: vec![CompiledStage {
@@ -681,6 +694,7 @@ fn full_pipeline_with_typed_layer_dispatch() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles,
     };
 
     let result = run_pipeline(config);
@@ -700,23 +714,32 @@ fn full_pipeline_multi_tier_with_typed_layer() {
         "PrePass::MeshAnalysis",
         load_prepass_guest(&engine),
     );
+    let (mesh_module, mut wasm_handles) = mesh_module.into_module_and_handles();
     let lp_module = make_compiled_module_with(
         "com.test.layerplan",
         "PrePass::LayerPlanning",
         load_prepass_guest(&engine),
     );
+    let (lp_module, lp_handles) = lp_module.into_module_and_handles();
+    wasm_handles.extend(lp_handles);
     let layer_module =
         make_compiled_module_with("com.test.infill", "Layer::Infill", load_test_guest(&engine));
+    let (layer_module, layer_handles) = layer_module.into_module_and_handles();
+    wasm_handles.extend(layer_handles);
     let fin_module = make_compiled_module_with(
         "com.test.wipe",
         "PostPass::LayerFinalization",
         load_finalization_guest(&engine),
     );
+    let (fin_module, fin_handles) = fin_module.into_module_and_handles();
+    wasm_handles.extend(fin_handles);
     let gcode_module = make_compiled_module_with(
         "com.test.gpost",
         "PostPass::GCodePostProcess",
         load_postpass_guest(&engine),
     );
+    let (gcode_module, gcode_handles) = gcode_module.into_module_and_handles();
+    wasm_handles.extend(gcode_handles);
 
     let plan = ExecutionPlan {
         prepass_stages: vec![
@@ -766,6 +789,7 @@ fn full_pipeline_multi_tier_with_typed_layer() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles,
     };
 
     let result = run_pipeline(config);
@@ -798,7 +822,7 @@ fn guest_infill_output_committed_to_arena() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(7, 1.4, 1, 1)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -853,7 +877,7 @@ fn empty_guest_output_does_not_populate_arena() {
     };
     let mut arena = LayerArena::new();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::SupportPostProcess",
         &layer,
@@ -892,7 +916,7 @@ fn output_commitment_deterministic_across_repeated_runs() {
     for _ in 0..3 {
         let mut arena = LayerArena::new();
         arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-        crate::common::run_layer_and_commit(
+        crate::common::run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::Infill",
             &layer,
@@ -957,12 +981,15 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
 
     let component = load_test_guest(&engine);
     let layer_module = make_compiled_module_with("com.test.infill", "Layer::Infill", component);
+    let (layer_module, mut wasm_handles) = layer_module.into_module_and_handles();
 
     let lp_module = make_compiled_module_with(
         "com.test.layerplan",
         "PrePass::LayerPlanning",
         load_prepass_guest(&engine),
     );
+    let (lp_module, lp_handles) = lp_module.into_module_and_handles();
+    wasm_handles.extend(lp_handles);
 
     let plan = ExecutionPlan {
         prepass_stages: vec![CompiledStage {
@@ -1009,6 +1036,7 @@ fn end_to_end_pipeline_commits_guest_output_to_arena() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles,
     };
 
     let result = run_pipeline(config);
@@ -1277,7 +1305,7 @@ fn empty_perimeter_output_does_not_populate_arena() {
     };
     let mut arena = LayerArena::new();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Perimeters",
         &layer,
@@ -1411,7 +1439,7 @@ fn empty_slice_postprocess_does_not_populate_arena() {
     };
     let mut arena = LayerArena::new();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::SlicePostProcess",
         &layer,
@@ -1522,7 +1550,7 @@ fn failed_commit_does_not_leak_into_next_call() {
         make_compiled_module_with("com.test.infill", "Layer::Infill", Arc::clone(&component));
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    let r1 = crate::common::run_layer_and_commit(
+    let r1 = crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -1539,7 +1567,7 @@ fn failed_commit_does_not_leak_into_next_call() {
         "Layer::Perimeters",
         Arc::clone(&component),
     );
-    let r2 = crate::common::run_layer_and_commit(
+    let r2 = crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Perimeters",
         &layer,
@@ -1588,7 +1616,7 @@ fn real_config_visible_through_production_layer_dispatch() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -1637,7 +1665,7 @@ fn different_configs_produce_different_output() {
     );
     let mut arena_a = LayerArena::new();
     arena_a.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -1658,7 +1686,7 @@ fn different_configs_produce_different_output() {
     );
     let mut arena_b = LayerArena::new();
     arena_b.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -1722,7 +1750,7 @@ fn repeated_identical_config_produces_deterministic_output() {
         let module = mk_module();
         let mut arena = LayerArena::new();
         arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-        crate::common::run_layer_and_commit(
+        crate::common::run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::Infill",
             &layer,
@@ -1765,7 +1793,7 @@ fn config_isolation_across_sequential_calls() {
     );
     let mut arena1 = LayerArena::new();
     arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -1785,7 +1813,7 @@ fn config_isolation_across_sequential_calls() {
     );
     let mut arena2 = LayerArena::new();
     arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -1919,7 +1947,7 @@ fn real_paint_region_data_visible_through_production_support_dispatch() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(7, 1.4, 1, 1)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Support",
         &layer,
@@ -1970,7 +1998,7 @@ fn no_paint_region_ir_produces_empty_paint_view() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Support",
         &layer,
@@ -2023,7 +2051,7 @@ fn paint_region_layer_mismatch_produces_empty_view() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(10, 2.0, 1, 1)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Support",
         &layer,
@@ -2070,7 +2098,7 @@ fn paint_region_isolation_across_sequential_dispatches() {
     };
     let mut arena1 = LayerArena::new();
     arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Support",
         &layer,
@@ -2096,7 +2124,7 @@ fn paint_region_isolation_across_sequential_dispatches() {
     );
     let mut arena2 = LayerArena::new();
     arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Support",
         &layer,
@@ -2154,7 +2182,7 @@ fn paint_region_deterministic_across_repeated_dispatches() {
         );
         let mut arena = LayerArena::new();
         arena.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-        crate::common::run_layer_and_commit(
+        crate::common::run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::Support",
             &layer,
@@ -2192,7 +2220,7 @@ fn non_paint_stage_not_affected_by_blackboard_paint_data() {
     };
     let mut arena1 = LayerArena::new();
     arena1.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -2216,7 +2244,7 @@ fn non_paint_stage_not_affected_by_blackboard_paint_data() {
         make_compiled_module_with("com.test.infill2", "Layer::Infill", Arc::clone(&component));
     let mut arena2 = LayerArena::new();
     arena2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -2310,7 +2338,7 @@ fn real_slice_region_data_visible_through_production_infill_dispatch() {
     let slice_ir = make_slice_ir(3, 0.6, 2, 3);
     arena.set_slice(slice_ir).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -2360,7 +2388,7 @@ fn empty_arena_produces_no_slice_regions() {
     let mut arena = LayerArena::new();
     // No slice_ir set.
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -2397,7 +2425,7 @@ fn slice_region_isolation_across_sequential_dispatches() {
         make_compiled_module_with("com.test.infill1", "Layer::Infill", Arc::clone(&component));
     let mut arena1 = LayerArena::new();
     arena1.set_slice(make_slice_ir(0, 0.2, 3, 2)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -2412,7 +2440,7 @@ fn slice_region_isolation_across_sequential_dispatches() {
         make_compiled_module_with("com.test.infill2", "Layer::Infill", Arc::clone(&component));
     let mut arena2 = LayerArena::new();
     arena2.set_slice(make_slice_ir(0, 0.2, 1, 5)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -2460,7 +2488,7 @@ fn slice_region_deterministic_across_repeated_dispatches() {
         );
         let mut arena = LayerArena::new();
         arena.set_slice(make_slice_ir(0, 0.2, 2, 4)).unwrap();
-        crate::common::run_layer_and_commit(
+        crate::common::run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::Infill",
             &layer,
@@ -2510,7 +2538,7 @@ fn slice_and_paint_both_visible_in_same_support_dispatch() {
     // the dispatch must still wire it without error).
     arena.set_slice(make_slice_ir(0, 0.2, 2, 3)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Support",
         &layer,
@@ -2555,7 +2583,7 @@ fn infill_output_correct_when_slice_regions_present() {
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(5, 1.0, 1, 2)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -2685,7 +2713,7 @@ fn real_perimeter_region_data_visible_through_infill_postprocess_dispatch() {
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(2, 3, 2, 4)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::InfillPostProcess",
         &layer,
@@ -2729,7 +2757,7 @@ fn real_perimeter_region_data_visible_through_wall_postprocess_dispatch() {
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(1, 2, 3, 1)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::PerimetersPostProcess",
         &layer,
@@ -2783,7 +2811,7 @@ fn path_optimization_receives_real_perimeter_regions() {
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(0, 4, 2, 0)).unwrap();
 
-    let r = crate::common::run_layer_and_commit(
+    let r = crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::PathOptimization",
         &layer,
@@ -2823,7 +2851,7 @@ fn empty_perimeter_input_valid_for_infill_postprocess() {
     let mut arena = LayerArena::new();
     // Do not stage any perimeter IR.
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::InfillPostProcess",
         &layer,
@@ -2860,7 +2888,7 @@ fn perimeter_region_isolation_across_sequential_dispatches() {
     );
     let mut a1 = LayerArena::new();
     a1.set_perimeter(make_perimeter_ir(0, 5, 1, 2)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::InfillPostProcess",
         &layer,
@@ -2877,7 +2905,7 @@ fn perimeter_region_isolation_across_sequential_dispatches() {
     );
     let mut a2 = LayerArena::new();
     a2.set_perimeter(make_perimeter_ir(0, 1, 7, 3)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::InfillPostProcess",
         &layer,
@@ -2922,7 +2950,7 @@ fn perimeter_region_deterministic_across_repeated_dispatches() {
         );
         let mut arena = LayerArena::new();
         arena.set_perimeter(make_perimeter_ir(0, 2, 3, 4)).unwrap();
-        crate::common::run_layer_and_commit(
+        crate::common::run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::InfillPostProcess",
             &layer,
@@ -2959,7 +2987,7 @@ fn stage_without_perimeter_input_does_not_see_perimeter_state() {
     // Stage perimeter data only; no slice data.
     arena.set_perimeter(make_perimeter_ir(0, 4, 2, 5)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Infill",
         &layer,
@@ -3045,7 +3073,7 @@ fn perimeter_postprocess_commit_preserves_distinct_region_identities() {
         .set_perimeter(make_perimeter_ir_with_ids(0, &ids, 2, 1))
         .unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::PerimetersPostProcess",
         &layer,
@@ -3101,7 +3129,7 @@ fn infill_postprocess_commit_preserves_distinct_region_identities() {
         .set_perimeter(make_perimeter_ir_with_ids(0, &ids, 1, 1))
         .unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::InfillPostProcess",
         &layer,
@@ -3147,7 +3175,7 @@ fn perimeter_postprocess_identity_preservation_deterministic() {
         arena
             .set_perimeter(make_perimeter_ir_with_ids(0, &ids, 2, 0))
             .unwrap();
-        crate::common::run_layer_and_commit(
+        crate::common::run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::PerimetersPostProcess",
             &layer,
@@ -3189,7 +3217,7 @@ fn perimeter_postprocess_identity_isolation_across_dispatches() {
         0,
     ))
     .unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::PerimetersPostProcess",
         &layer,
@@ -3207,7 +3235,7 @@ fn perimeter_postprocess_identity_isolation_across_dispatches() {
     let mut a2 = LayerArena::new();
     a2.set_perimeter(make_perimeter_ir_with_ids(0, &[("alt", 999)], 1, 0))
         .unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::PerimetersPostProcess",
         &layer,
@@ -3254,7 +3282,7 @@ fn support_postprocess_empty_bypass_when_no_slice_regions() {
         is_sync_layer: false,
     };
     let mut arena = LayerArena::new();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::SupportPostProcess",
         &layer,
@@ -3352,7 +3380,7 @@ fn slice_postprocess_commit_preserves_distinct_region_identities() {
     // Three distinct slice regions (object_id varies via make_slice_ir: obj-0..obj-2)
     arena.set_slice(make_slice_ir(0, 0.2, 3, 1)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::SlicePostProcess",
         &layer,
@@ -3419,7 +3447,7 @@ fn support_postprocess_commit_preserves_distinct_region_identities() {
     // structured diagnostics on untagged output.
     arena.set_slice(make_slice_ir(0, 0.2, 2, 1)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::SupportPostProcess",
         &layer,
@@ -3470,7 +3498,7 @@ fn slice_postprocess_identity_preservation_deterministic() {
         );
         let mut arena = LayerArena::new();
         arena.set_slice(make_slice_ir(0, 0.2, 4, 1)).unwrap();
-        crate::common::run_layer_and_commit(
+        crate::common::run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::SlicePostProcess",
             &layer,
@@ -3506,7 +3534,7 @@ fn support_postprocess_identity_isolation_across_dispatches() {
     );
     let mut a1 = LayerArena::new();
     a1.set_slice(make_slice_ir(0, 0.2, 3, 2)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::SupportPostProcess",
         &layer,
@@ -3523,7 +3551,7 @@ fn support_postprocess_identity_isolation_across_dispatches() {
     );
     let mut a2 = LayerArena::new();
     a2.set_slice(make_slice_ir(0, 0.2, 1, 1)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::SupportPostProcess",
         &layer,
@@ -3609,7 +3637,7 @@ fn slice_postprocess_downstream_propagation_preserves_per_region_shape() {
 
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 3, 1)).unwrap();
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::SlicePostProcess",
         &layer,
@@ -3627,7 +3655,7 @@ fn slice_postprocess_downstream_propagation_preserves_per_region_shape() {
         "Layer::SupportPostProcess",
         Arc::clone(&component),
     );
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::SupportPostProcess",
         &layer,
@@ -3669,7 +3697,7 @@ fn path_optimization_commit_folds_tool_changes_into_deferred_queue() {
     let mut arena = LayerArena::new();
     arena.set_perimeter(make_perimeter_ir(0, 3, 1, 0)).unwrap();
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::PathOptimization",
         &layer,
@@ -3700,24 +3728,30 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
     // executor pre-assembles ordered_entities from arena.perimeter() right
     // before PathOptimization runs, so seeding must happen in an earlier
     // stage, not inside PathOptimization itself.
+    let (seed_module, mut wasm_handles) = make_compiled_module_with(
+        "com.test.pathopt-seed",
+        "Layer::Perimeters",
+        Arc::clone(&component),
+    )
+    .into_module_and_handles();
+    let (pathopt_module, pathopt_handles) = make_compiled_module_with(
+        "com.test.pathopt-e2e",
+        "Layer::PathOptimization",
+        Arc::clone(&component),
+    )
+    .into_module_and_handles();
+    wasm_handles.extend(pathopt_handles);
+
     let plan = slicer_runtime::ExecutionPlan {
         prepass_stages: Vec::new(),
         per_layer_stages: vec![
             slicer_runtime::CompiledStage {
                 stage_id: "Layer::Perimeters".into(),
-                modules: vec![make_compiled_module_with(
-                    "com.test.pathopt-seed",
-                    "Layer::Perimeters",
-                    Arc::clone(&component),
-                )],
+                modules: vec![seed_module],
             },
             slicer_runtime::CompiledStage {
                 stage_id: "Layer::PathOptimization".into(),
-                modules: vec![make_compiled_module_with(
-                    "com.test.pathopt-e2e",
-                    "Layer::PathOptimization",
-                    Arc::clone(&component),
-                )],
+                modules: vec![pathopt_module],
             },
         ],
         layer_finalization_stage: None,
@@ -3765,7 +3799,7 @@ fn path_optimization_end_to_end_populates_layer_collection_tool_changes() {
         perim: Mutex::new(Some(make_perimeter_ir(0, 2, 1, 0))),
     };
 
-    let layers = execute_per_layer(&plan, &blackboard, &runner).expect("exec");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &wasm_handles).expect("exec");
     assert_eq!(layers.len(), 1);
     let l = &layers[0];
     assert_eq!(
@@ -3806,11 +3840,14 @@ fn path_optimization_empty_input_is_no_op() {
         prepass_stages: Vec::new(),
         per_layer_stages: vec![slicer_runtime::CompiledStage {
             stage_id: "Layer::PathOptimization".into(),
-            modules: vec![make_compiled_module_with(
-                "com.test.pathopt-empty",
-                "Layer::PathOptimization",
-                component,
-            )],
+            modules: vec![
+                make_compiled_module_with(
+                    "com.test.pathopt-empty",
+                    "Layer::PathOptimization",
+                    component,
+                )
+                .module,
+            ],
         }],
         layer_finalization_stage: None,
         postpass_stages: Vec::new(),
@@ -3826,7 +3863,8 @@ fn path_optimization_empty_input_is_no_op() {
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     seed_slice_ir(&mut blackboard, &plan);
-    let layers = execute_per_layer(&plan, &blackboard, &dispatcher).expect("exec");
+    let layers =
+        execute_per_layer(&plan, &blackboard, &dispatcher, &Default::default()).expect("exec");
     assert!(layers[0].ordered_entities.is_empty());
     assert!(layers[0].tool_changes.is_empty());
 }
@@ -3867,19 +3905,25 @@ fn path_optimization_deterministic_across_repeated_runs() {
         per_layer_stages: vec![
             slicer_runtime::CompiledStage {
                 stage_id: "Layer::Perimeters".into(),
-                modules: vec![make_compiled_module_with(
-                    "com.test.pathopt-det-seed",
-                    "Layer::Perimeters",
-                    Arc::clone(&component),
-                )],
+                modules: vec![
+                    make_compiled_module_with(
+                        "com.test.pathopt-det-seed",
+                        "Layer::Perimeters",
+                        Arc::clone(&component),
+                    )
+                    .module,
+                ],
             },
             slicer_runtime::CompiledStage {
                 stage_id: "Layer::PathOptimization".into(),
-                modules: vec![make_compiled_module_with(
-                    "com.test.pathopt-det",
-                    "Layer::PathOptimization",
-                    component,
-                )],
+                modules: vec![
+                    make_compiled_module_with(
+                        "com.test.pathopt-det",
+                        "Layer::PathOptimization",
+                        component,
+                    )
+                    .module,
+                ],
             },
         ],
         layer_finalization_stage: None,
@@ -3904,7 +3948,7 @@ fn path_optimization_deterministic_across_repeated_runs() {
             inner: &dispatcher,
             perim: Mutex::new(Some(make_perimeter_ir(0, 3, 1, 0))),
         };
-        results.push(execute_per_layer(&plan, &blackboard, &runner).unwrap());
+        results.push(execute_per_layer(&plan, &blackboard, &runner, &Default::default()).unwrap());
     }
     assert_eq!(results[0], results[1]);
     assert_eq!(results[1], results[2]);
@@ -4232,24 +4276,31 @@ fn path_optimization_end_to_end_populates_z_hops() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
+
+    let (zhop_seed_module, mut wasm_handles) = make_compiled_module_with(
+        "com.test.zhop-seed",
+        "Layer::Perimeters",
+        Arc::clone(&component),
+    )
+    .into_module_and_handles();
+    let (zhop_e2e_module, zhop_handles) = make_compiled_module_with(
+        "com.test.zhop-e2e",
+        "Layer::PathOptimization",
+        Arc::clone(&component),
+    )
+    .into_module_and_handles();
+    wasm_handles.extend(zhop_handles);
+
     let plan = slicer_runtime::ExecutionPlan {
         prepass_stages: Vec::new(),
         per_layer_stages: vec![
             slicer_runtime::CompiledStage {
                 stage_id: "Layer::Perimeters".into(),
-                modules: vec![make_compiled_module_with(
-                    "com.test.zhop-seed",
-                    "Layer::Perimeters",
-                    Arc::clone(&component),
-                )],
+                modules: vec![zhop_seed_module],
             },
             slicer_runtime::CompiledStage {
                 stage_id: "Layer::PathOptimization".into(),
-                modules: vec![make_compiled_module_with(
-                    "com.test.zhop-e2e",
-                    "Layer::PathOptimization",
-                    Arc::clone(&component),
-                )],
+                modules: vec![zhop_e2e_module],
             },
         ],
         layer_finalization_stage: None,
@@ -4297,7 +4348,7 @@ fn path_optimization_end_to_end_populates_z_hops() {
         };
         let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
         seed_slice_ir(&mut blackboard, &plan);
-        runs.push(execute_per_layer(&plan, &blackboard, &runner).expect("exec"));
+        runs.push(execute_per_layer(&plan, &blackboard, &runner, &wasm_handles).expect("exec"));
     }
     let layers = &runs[0];
     assert_eq!(layers.len(), 1);
@@ -4327,24 +4378,31 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_test_guest(&engine);
+
+    let (zhop_emit_seed_module, mut wasm_handles) = make_compiled_module_with(
+        "com.test.zhop-emit-seed",
+        "Layer::Perimeters",
+        Arc::clone(&component),
+    )
+    .into_module_and_handles();
+    let (zhop_emit_module, zhop_emit_handles) = make_compiled_module_with(
+        "com.test.zhop-emit",
+        "Layer::PathOptimization",
+        Arc::clone(&component),
+    )
+    .into_module_and_handles();
+    wasm_handles.extend(zhop_emit_handles);
+
     let plan = slicer_runtime::ExecutionPlan {
         prepass_stages: Vec::new(),
         per_layer_stages: vec![
             slicer_runtime::CompiledStage {
                 stage_id: "Layer::Perimeters".into(),
-                modules: vec![make_compiled_module_with(
-                    "com.test.zhop-emit-seed",
-                    "Layer::Perimeters",
-                    Arc::clone(&component),
-                )],
+                modules: vec![zhop_emit_seed_module],
             },
             slicer_runtime::CompiledStage {
                 stage_id: "Layer::PathOptimization".into(),
-                modules: vec![make_compiled_module_with(
-                    "com.test.zhop-emit",
-                    "Layer::PathOptimization",
-                    Arc::clone(&component),
-                )],
+                modules: vec![zhop_emit_module],
             },
         ],
         layer_finalization_stage: None,
@@ -4389,7 +4447,7 @@ fn path_optimization_end_to_end_emitter_renders_z_hops() {
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 1);
     seed_slice_ir(&mut blackboard, &plan);
-    let layers = execute_per_layer(&plan, &blackboard, &runner).expect("exec");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &wasm_handles).expect("exec");
 
     let emitter = DefaultGCodeEmitter::new("test".into());
     let gcode = emitter.emit_gcode(&layers, &blackboard).expect("emit");
@@ -4516,6 +4574,7 @@ fn layer_plan_committed_to_blackboard_after_execute_prepass() {
         "PrePass::LayerPlanning",
         Arc::clone(&component),
     );
+    let (module, wasm_handles) = module.into_module_and_handles();
 
     let plan = ExecutionPlan {
         prepass_stages: vec![CompiledStage {
@@ -4539,7 +4598,7 @@ fn layer_plan_committed_to_blackboard_after_execute_prepass() {
         .commit_surface_classification(Arc::new(SurfaceClassificationIR::default()))
         .expect("pre-seed SurfaceClassificationIR");
 
-    let result = execute_prepass(&plan, &mut blackboard, &dispatcher);
+    let result = execute_prepass(&plan, &mut blackboard, &dispatcher, &wasm_handles);
 
     assert!(
         result.is_ok(),
@@ -5030,6 +5089,7 @@ fn mesh_segmentation_commits_through_execute_prepass() {
         "PrePass::MeshSegmentation",
         component,
     );
+    let (module, wasm_handles) = module.into_module_and_handles();
     let plan = ExecutionPlan {
         prepass_stages: vec![CompiledStage {
             stage_id: "PrePass::MeshSegmentation".into(),
@@ -5043,7 +5103,7 @@ fn mesh_segmentation_commits_through_execute_prepass() {
         module_region_index: HashMap::new(),
     };
     let mut blackboard = Blackboard::new(empty_mesh_ir(), 0);
-    execute_prepass(&plan, &mut blackboard, &dispatcher).expect("prepass succeeds");
+    execute_prepass(&plan, &mut blackboard, &dispatcher, &wasm_handles).expect("prepass succeeds");
 
     let ir = blackboard
         .mesh_segmentation()
@@ -5424,7 +5484,7 @@ fn path_optimization_dispatch_emits_per_layer_marker() {
         is_sync_layer: false,
     };
 
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::PathOptimization",
         &layer,
@@ -5493,7 +5553,7 @@ fn path_optimization_dispatch_is_deterministic() {
             Arc::clone(&component),
         );
         let mut arena = LayerArena::new();
-        crate::common::run_layer_and_commit(
+        crate::common::run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::PathOptimization",
             &layer,
@@ -5552,7 +5612,7 @@ fn path_optimization_emit_layer_markers_false_suppresses_output() {
         has_nonplanar: false,
         is_sync_layer: false,
     };
-    crate::common::run_layer_and_commit(
+    crate::common::run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::PathOptimization",
         &layer,
@@ -6374,9 +6434,7 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
         )
         .unwrap(),
     );
-    let compiled = CompiledModuleBuilder::new("com.test.seam-planner", pool)
-        .wasm_component(Some(component))
-        .build();
+    let compiled = CompiledModuleBuilder::new("com.test.seam-planner").build();
 
     // Build a blackboard with a committed LayerPlanIR (SeamPlanning's required slot).
     // The seam-planner-default module may or may not produce entries depending
@@ -6396,7 +6454,13 @@ fn prepass_seam_planning_commits_seam_plan_ir() {
     let result = PrepassStageRunner::run_stage(
         &dispatcher,
         &"PrePass::SeamPlanning".to_string(),
-        &compiled.as_live(),
+        &CompiledModuleLive::new(
+            compiled.module_id(),
+            Arc::clone(&pool),
+            Some(component),
+            compiled.claims(),
+            Arc::clone(compiled.config_view()),
+        ),
         prepass_input(&blackboard),
     );
 

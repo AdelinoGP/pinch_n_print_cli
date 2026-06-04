@@ -10,6 +10,7 @@ wasmtime = { workspace = true }
 log = "0.4"
 slicer-core = { path = "../slicer-core" }
 slicer-ir = { path = "../slicer-ir" }
+slicer-scheduler = { path = "../slicer-scheduler" }
 slicer-schema = { path = "../slicer-schema" }
 slicer-sdk = { path = "../slicer-sdk" }
 

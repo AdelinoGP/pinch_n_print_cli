@@ -23,7 +23,8 @@ use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetada
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::{
     wit_host::{object_mesh_to_wit_mesh_object_view, prepass},
-    Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner, WasmEngine,
+    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive, PrepassStageRunner,
+    WasmEngine, WasmInstancePool,
 };
 use slicer_wasm_host::WasmRuntimeDispatcher;
 use std::sync::Arc;
@@ -83,10 +84,10 @@ fn make_loaded_module(id: &str, stage: &str) -> LoadedModule {
 fn make_compiled_module_with(
     id: &str,
     stage: &str,
-    component: Arc<slicer_runtime::WasmComponent>,
+    _component: Arc<slicer_runtime::WasmComponent>,
 ) -> CompiledModule {
     let loaded = make_loaded_module(id, stage);
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -98,9 +99,7 @@ fn make_compiled_module_with(
         )
         .unwrap(),
     );
-    CompiledModuleBuilder::new(id, pool)
-        .wasm_component(Some(component))
-        .build()
+    CompiledModuleBuilder::new(id).build()
 }
 
 /// Simple cube-like mesh for testing.
@@ -409,7 +408,13 @@ fn mesh_seg_empty_geometry_produces_fatal_error() {
         let result = PrepassStageRunner::run_stage(
             &dispatcher,
             &"PrePass::MeshSegmentation".to_string(),
-            &module.as_live(),
+            &CompiledModuleLive::new(
+                module.module_id(),
+                WasmInstancePool::placeholder(),
+                None,
+                module.claims(),
+                Arc::clone(module.config_view()),
+            ),
             prepass_input(&blackboard),
         );
         assert!(
@@ -433,7 +438,13 @@ fn mesh_seg_empty_geometry_produces_fatal_error() {
         let result = PrepassStageRunner::run_stage(
             &dispatcher,
             &"PrePass::MeshSegmentation".to_string(),
-            &module.as_live(),
+            &CompiledModuleLive::new(
+                module.module_id(),
+                WasmInstancePool::placeholder(),
+                None,
+                module.claims(),
+                Arc::clone(module.config_view()),
+            ),
             prepass_input(&blackboard),
         );
         assert!(

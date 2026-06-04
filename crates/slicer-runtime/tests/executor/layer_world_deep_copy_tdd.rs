@@ -13,11 +13,13 @@ use slicer_ir::{
     WallLoop, WidthProfile,
 };
 use slicer_runtime::{
-    build_wasm_instance_pool, execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder,
+    build_wasm_instance_pool, execute_per_layer, Blackboard, CompiledModuleBuilder,
     CompiledModuleLive, CompiledStage, ExecutionPlan, LayerStageError, LayerStageInput,
     LayerStageRunner, LoadedModule, LoadedModuleBuilder, WasmArtifactMetadata, WasmEngine,
     WasmRuntimeDispatcher,
 };
+
+use crate::common::TestModuleBundle;
 
 use crate::common::wasm_cache;
 
@@ -86,7 +88,7 @@ fn make_module(
     id: &str,
     stage: &str,
     component: Arc<slicer_runtime::WasmComponent>,
-) -> CompiledModule {
+) -> TestModuleBundle {
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -100,9 +102,12 @@ fn make_module(
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(id, pool)
-        .wasm_component(Some(component))
-        .build()
+    let module = CompiledModuleBuilder::new(id).build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn make_wall_loop(perimeter_index: u32, z: f32, speed_factor: f32) -> WallLoop {
@@ -225,24 +230,30 @@ fn layer_world_builder_commit_preserves_entities_tool_changes_and_z_hops() {
         .map(|region| region.walls[0].path.clone())
         .collect();
 
+    let (seed_module, mut wasm_handles) = make_module(
+        "com.test.layer-world-seed",
+        "Layer::Perimeters",
+        Arc::clone(&component),
+    )
+    .into_module_and_handles();
+    let (pathopt_module, pathopt_handles) = make_module(
+        "com.test.layer-world-pathopt",
+        "Layer::PathOptimization",
+        component,
+    )
+    .into_module_and_handles();
+    wasm_handles.extend(pathopt_handles);
+
     let plan = ExecutionPlan {
         prepass_stages: Vec::new(),
         per_layer_stages: vec![
             CompiledStage {
                 stage_id: "Layer::Perimeters".to_string(),
-                modules: vec![make_module(
-                    "com.test.layer-world-seed",
-                    "Layer::Perimeters",
-                    Arc::clone(&component),
-                )],
+                modules: vec![seed_module],
             },
             CompiledStage {
                 stage_id: "Layer::PathOptimization".to_string(),
-                modules: vec![make_module(
-                    "com.test.layer-world-pathopt",
-                    "Layer::PathOptimization",
-                    component,
-                )],
+                modules: vec![pathopt_module],
             },
         ],
         layer_finalization_stage: None,
@@ -264,7 +275,8 @@ fn layer_world_builder_commit_preserves_entities_tool_changes_and_z_hops() {
         perimeter: Mutex::new(Some(seeded_perimeter)),
     };
 
-    let layers = execute_per_layer(&plan, &blackboard, &runner).expect("execute per-layer plan");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &wasm_handles)
+        .expect("execute per-layer plan");
     assert_eq!(layers.len(), 1);
     let layer = &layers[0];
 

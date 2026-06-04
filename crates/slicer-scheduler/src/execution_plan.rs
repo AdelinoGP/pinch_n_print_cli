@@ -3,22 +3,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use std::path::PathBuf;
-
 use slicer_ir::{
     ActiveRegion, ConfigKey, ConfigValue, ConfigView, GlobalLayer, ModuleId, RegionKey, RegionPlan,
     StageId,
 };
 
-use crate::dag::build_intra_stage_dag;
 use crate::manifest::DiagnosticLevel;
-use crate::manifest::{load_modules_from_roots, LoadDiagnostic, LoadError, LoadedModule};
-use crate::topology::topological_sort;
-use crate::validation::SchedulerError;
-use slicer_wasm_host::{
-    build_wasm_instance_pool, CompiledModuleLive, InstancePoolError, WasmArtifactMetadata,
-    WasmComponent, WasmEngine, WasmInstancePool,
-};
+use crate::manifest::{LoadDiagnostic, LoadedModule};
 
 /// Canonical scheduler stage ordering for the live host path
 /// (docs/04 §Fixed Stage Order). Modules discovered by
@@ -106,60 +97,6 @@ fn source_key_matches_declared(declared_key: &str, candidate: &str) -> bool {
     }
 }
 
-/// Runtime bindings for one loaded module, minus its `ConfigView`.
-///
-/// Used by [`build_live_execution_plan`] to build per-module bindings
-/// whose `Arc<ConfigView>` is ALWAYS synthesised through
-/// [`bind_module_config_view`] — modules can't supply a hand-rolled
-/// `ConfigView` on this path, so the declared-read invariant is upheld
-/// by construction.
-#[derive(Debug, Clone)]
-pub struct LiveModuleBinding {
-    /// Loaded manifest/module metadata.
-    pub module: LoadedModule,
-    /// Planned WASM instance pool for the module.
-    pub instance_pool: Arc<WasmInstancePool>,
-    /// Compiled WASM component for runtime instantiation (optional for
-    /// fixtures that don't exercise dispatch).
-    pub wasm_component: Option<Arc<WasmComponent>>,
-}
-
-/// Build the immutable `ExecutionPlan` used by the live host/runtime path.
-///
-/// For every `LiveModuleBinding`, the per-module `Arc<ConfigView>` is
-/// synthesised via [`bind_module_config_view`] against `config_source`.
-/// This is the ONLY public helper allowed to assemble live bindings; any
-/// caller that bypasses it and hand-rolls a `ConfigView` still has to go
-/// through [`build_execution_plan`], where the declared-read guardrail
-/// (`ExecutionPlanError::UndeclaredConfigKey`) fails closed.
-pub fn build_live_execution_plan(
-    sorted_stages: Vec<SortedStageModules>,
-    modules: Vec<LiveModuleBinding>,
-    config_source: &HashMap<ConfigKey, ConfigValue>,
-    global_layers: Arc<Vec<GlobalLayer>>,
-    region_plans: Arc<HashMap<RegionKey, RegionPlan>>,
-) -> Result<ExecutionPlan, ExecutionPlanError> {
-    let module_bindings: Vec<ExecutionModuleBinding> = modules
-        .into_iter()
-        .map(|b| {
-            let config_view = bind_module_config_view(&b.module, config_source);
-            ExecutionModuleBinding {
-                module: b.module,
-                instance_pool: b.instance_pool,
-                config_view,
-                wasm_component: b.wasm_component,
-            }
-        })
-        .collect();
-
-    build_execution_plan(&ExecutionPlanRequest {
-        sorted_stages,
-        module_bindings,
-        global_layers,
-        region_plans,
-    })
-}
-
 /// Structured failure parsing a user-facing JSON config source.
 #[derive(Debug, Clone)]
 pub enum ConfigSourceParseError {
@@ -224,187 +161,6 @@ pub fn parse_cli_config_source(
         out.insert(key, value);
     }
     Ok(out)
-}
-
-/// Aggregated output of [`load_live_modules_for_plan`] ready to feed into
-/// [`build_live_execution_plan`].
-#[derive(Debug)]
-pub struct LiveModuleLoadOutput {
-    /// Per-module runtime bindings (one per discovered module, in the
-    /// deterministic order produced by manifest discovery).
-    pub bindings: Vec<LiveModuleBinding>,
-    /// Canonical per-stage module order (topologically sorted within
-    /// each stage, stages emitted in `STAGE_ORDER`).
-    pub sorted_stages: Vec<SortedStageModules>,
-    /// Non-fatal discovery diagnostics surfaced by `load_modules_from_roots`.
-    pub diagnostics: Vec<LoadDiagnostic>,
-    /// The shared [`WasmEngine`] used to compile all module components.
-    ///
-    /// Callers that need to instantiate compiled components at runtime
-    /// (e.g. [`WasmRuntimeDispatcher`]) must use this same engine; creating
-    /// a second engine would produce a different `wasmtime::Engine` instance
-    /// and `wasmtime::Store::new` would reject components compiled by a
-    /// different engine.
-    pub engine: Arc<WasmEngine>,
-}
-
-/// Structured failure for live module loading on the production path.
-#[derive(Debug)]
-pub enum LiveModuleLoadError {
-    /// Manifest discovery/ingestion failed fatally.
-    Load(LoadError),
-    /// A stage's intra-stage DAG could not be built.
-    Dag(SchedulerError),
-    /// A stage's module set could not be topologically sorted (cycle).
-    Cycle {
-        /// Stage that carried the unresolved cycle.
-        stage_id: StageId,
-        /// Remaining module IDs that could not be ordered.
-        unsorted: Vec<ModuleId>,
-    },
-    /// WASM instance pool planning rejected a module.
-    InstancePool(InstancePoolError),
-}
-
-impl std::fmt::Display for LiveModuleLoadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Load(e) => write!(f, "module discovery failed: {e:?}"),
-            Self::Dag(e) => write!(f, "intra-stage DAG construction failed: {e:?}"),
-            Self::Cycle { stage_id, unsorted } => write!(
-                f,
-                "stage '{stage_id}' contains a dependency cycle; unsorted modules: {unsorted:?}"
-            ),
-            Self::InstancePool(e) => write!(f, "instance pool planning failed: {e:?}"),
-        }
-    }
-}
-
-impl std::error::Error for LiveModuleLoadError {}
-
-impl From<LoadError> for LiveModuleLoadError {
-    fn from(e: LoadError) -> Self {
-        Self::Load(e)
-    }
-}
-impl From<SchedulerError> for LiveModuleLoadError {
-    fn from(e: SchedulerError) -> Self {
-        Self::Dag(e)
-    }
-}
-impl From<InstancePoolError> for LiveModuleLoadError {
-    fn from(e: InstancePoolError) -> Self {
-        Self::InstancePool(e)
-    }
-}
-impl From<SchedulerError> for Box<LiveModuleLoadError> {
-    fn from(e: SchedulerError) -> Self {
-        Box::new(LiveModuleLoadError::Dag(e))
-    }
-}
-impl From<LoadError> for Box<LiveModuleLoadError> {
-    fn from(e: LoadError) -> Self {
-        Box::new(LiveModuleLoadError::Load(e))
-    }
-}
-
-/// Discover all modules under `search_roots`, plan their WASM instance
-/// pools, and produce canonical `STAGE_ORDER`-sorted bindings ready to
-/// feed [`build_live_execution_plan`].
-///
-/// This is the live production plan/build entry point. It deliberately
-/// does NOT build per-module `ConfigView`s here — that happens inside
-/// `build_live_execution_plan`, which routes every view through
-/// [`bind_module_config_view`], so this loader cannot accidentally leak
-/// undeclared config keys.
-///
-/// `host_parallelism` controls the pool size for `layer-parallel-safe`
-/// modules; other modules use a serialised pool of size 1 per
-/// `build_wasm_instance_pool`.
-///
-/// Each discovered module's `.wasm` file is compiled via a shared
-/// [`WasmEngine`] and attached to `LiveModuleBinding.wasm_component`.
-/// Modules flagged by manifest ingestion as `placeholder_wasm = true`,
-/// or whose binary fails to read/compile as a component-model artifact,
-/// get `wasm_component = None` plus a structured `LoadDiagnostic` on
-/// the returned output. The loader never aborts on a single bad module
-/// binary — that matches the docs/04 recoverability contract where
-/// dispatch-time handles missing components with a typed error.
-pub fn load_live_modules_for_plan(
-    search_roots: &[PathBuf],
-    host_parallelism: usize,
-) -> Result<LiveModuleLoadOutput, Box<LiveModuleLoadError>> {
-    let mut report = load_modules_from_roots(search_roots)?;
-
-    // Claim-uniqueness enforcement (docs/04 §Global claim conflicts;
-    // docs/10 §Glossary: "Exactly one holder per (layer, object, region,
-    // claim)"). When two modules in the same stage declare the same
-    // `claims.holds` entry (e.g. classic-perimeters + arachne-perimeters
-    // both holding `perimeter-generator`), both would attempt to
-    // `arena.set_perimeter` and the second fails with
-    // `LayerArenaError::SlotAlreadyOccupied`. Here we keep the single
-    // alphabetically-first module per (stage, claim) and drop the rest
-    // with an Info diagnostic. Tests that intentionally load multiple
-    // same-claim modules should either pick one via file layout or use
-    // synthetic modules that declare no `holds`.
-    let filtered_modules = dedup_same_claim_modules(&mut report.modules, &mut report.diagnostics);
-    report.modules = filtered_modules;
-
-    // Build per-stage topological orderings in canonical STAGE_ORDER.
-    let module_producers: Vec<&dyn crate::dag::Producer> = report
-        .modules
-        .iter()
-        .map(|m| m as &dyn crate::dag::Producer)
-        .collect();
-    let mut sorted_stages = Vec::new();
-    for stage in STAGE_ORDER {
-        let stage_id = (*stage).to_string();
-        let nodes = build_intra_stage_dag(stage_id.clone(), &module_producers)
-            .map_err(|e| -> Box<LiveModuleLoadError> { Box::new(LiveModuleLoadError::Dag(*e)) })?;
-        if nodes.is_empty() {
-            continue;
-        }
-        let module_ids =
-            topological_sort(&nodes).map_err(|unsorted| LiveModuleLoadError::Cycle {
-                stage_id: stage_id.clone(),
-                unsorted,
-            })?;
-        sorted_stages.push(SortedStageModules {
-            stage_id,
-            module_ids,
-        });
-    }
-
-    // Build per-module runtime bindings, compiling each module's .wasm
-    // into a reusable `WasmComponent` via a single shared engine.
-    let engine = Arc::new(WasmEngine::new());
-    let mut diagnostics = report.diagnostics;
-    let mut bindings = Vec::with_capacity(report.modules.len());
-    for module in report.modules {
-        let pool = build_wasm_instance_pool(
-            &module.id,
-            &module.stage,
-            module.layer_parallel_safe,
-            host_parallelism,
-            WasmArtifactMetadata::default(),
-        )
-        .map_err(|e| -> Box<LiveModuleLoadError> {
-            Box::new(LiveModuleLoadError::InstancePool(e))
-        })?;
-        let wasm_component = compile_module_component(engine.as_ref(), &module, &mut diagnostics);
-        bindings.push(LiveModuleBinding {
-            module,
-            instance_pool: Arc::new(pool),
-            wasm_component,
-        });
-    }
-
-    Ok(LiveModuleLoadOutput {
-        bindings,
-        sorted_stages,
-        diagnostics,
-        engine,
-    })
 }
 
 /// Returns true when `key` is satisfied by some entry in `declared`,
@@ -486,63 +242,6 @@ fn dedup_same_claim_modules(
     }
 
     kept
-}
-
-/// Compile one module's `.wasm` into a `WasmComponent`, or push a
-/// structured `LoadDiagnostic` and return `None` for the well-defined
-/// skip cases (placeholder binary, read failure, or non-component
-/// compile failure). Dispatch-time will surface a typed error if a
-/// `None` component is actually needed.
-fn compile_module_component(
-    engine: &WasmEngine,
-    module: &LoadedModule,
-    diagnostics: &mut Vec<LoadDiagnostic>,
-) -> Option<Arc<WasmComponent>> {
-    if module.placeholder_wasm {
-        diagnostics.push(LoadDiagnostic {
-            level: DiagnosticLevel::Warning,
-            path: module.wasm_path.clone(),
-            field: Some(String::from("wasm_path")),
-            message: format!(
-                "module '{id}' uses a placeholder .wasm binary; \
-                 skipping component compilation (dispatch of this module will fail fatally)",
-                id = module.id
-            ),
-        });
-        return None;
-    }
-
-    let bytes = match std::fs::read(&module.wasm_path) {
-        Ok(b) => b,
-        Err(e) => {
-            diagnostics.push(LoadDiagnostic {
-                level: DiagnosticLevel::Warning,
-                path: module.wasm_path.clone(),
-                field: Some(String::from("wasm_path")),
-                message: format!(
-                    "failed to read .wasm for module '{id}': {e}",
-                    id = module.id
-                ),
-            });
-            return None;
-        }
-    };
-
-    match engine.compile_component(&bytes) {
-        Ok(component) => Some(Arc::new(component)),
-        Err(e) => {
-            diagnostics.push(LoadDiagnostic {
-                level: DiagnosticLevel::Warning,
-                path: module.wasm_path.clone(),
-                field: Some(String::from("wasm_path")),
-                message: format!(
-                    "failed to compile component for module '{id}': {e}",
-                    id = module.id
-                ),
-            });
-            None
-        }
-    }
 }
 
 fn json_to_config_value(raw: &serde_json::Value) -> Option<ConfigValue> {
@@ -646,23 +345,23 @@ pub struct CompiledStage {
     /// Canonical scheduler stage identifier.
     pub stage_id: StageId,
     /// Topologically sorted module invocations for this stage.
-    pub modules: Vec<CompiledModule>,
+    pub modules: Vec<CompiledModuleStatic>,
 }
 
 /// One loaded module bound to immutable runtime execution metadata.
 ///
-/// Construction goes through [`CompiledModuleBuilder`]: pass the two
-/// required identity fields (`module_id`, `instance_pool`) to
+/// Construction goes through [`CompiledModuleBuilder`]: pass the module id to
 /// [`CompiledModuleBuilder::new`], then chain setters for the optional
 /// fields and call [`CompiledModuleBuilder::build`]. Field reads from
 /// outside the crate go through the `pub fn` accessor methods declared
 /// below.
+///
+/// Wasmtime handles (`WasmInstancePool`, `WasmComponent`) are NOT stored here;
+/// they live in `slicer-wasm-host::LiveModuleBinding` on the live path.
 #[derive(Debug, Clone)]
 pub struct CompiledModuleStatic {
     /// Reverse-domain module identifier.
     pub(crate) module_id: ModuleId,
-    /// Bound instance pool selected during startup planning.
-    pub(crate) instance_pool: Arc<WasmInstancePool>,
     /// Frozen IR read access mask derived from the manifest.
     pub(crate) ir_read_mask: IrAccessMask,
     /// Frozen IR write access mask derived from the manifest.
@@ -673,9 +372,6 @@ pub struct CompiledModuleStatic {
     /// fill-role resolver (`validation::resolve_held_claims`) to compute the
     /// per-call effective held set for `Layer::Infill`.
     pub(crate) claims: Vec<String>,
-    /// Compiled WASM component for runtime instantiation.
-    /// `None` only during test fixtures that don't exercise real WASM dispatch.
-    pub(crate) wasm_component: Option<Arc<WasmComponent>>,
     /// Module IDs this module explicitly depends on (manifest
     /// `requires_modules`). Carried through to runtime so
     /// `compute_serial_edges_from_compiled` can emit
@@ -683,13 +379,9 @@ pub struct CompiledModuleStatic {
     pub(crate) requires_modules: Vec<ModuleId>,
 }
 
-/// Transitional alias: external callers that reference `CompiledModule` keep
-/// compiling through P83. P85 deletes this alias.
-pub type CompiledModule = CompiledModuleStatic;
-
 impl CompiledModuleStatic {
     /// Reverse-domain module identifier.
-    pub fn module_id(&self) -> &str {
+    pub fn module_id(&self) -> &ModuleId {
         &self.module_id
     }
 
@@ -717,50 +409,34 @@ impl CompiledModuleStatic {
     pub fn requires_modules(&self) -> &[ModuleId] {
         &self.requires_modules
     }
-
-    /// Construct a short-lived `CompiledModuleLive<'_>` borrow from this static module.
-    ///
-    /// Convenience for test call sites and executor helpers that need to pass the new
-    /// slicer-wasm-host trait boundary from a `CompiledModuleStatic` reference.
-    pub fn as_live(&self) -> CompiledModuleLive<'_> {
-        CompiledModuleLive::new(
-            &self.module_id,
-            Arc::clone(&self.instance_pool),
-            self.wasm_component.clone(),
-            &self.claims,
-            Arc::clone(&self.config_view),
-        )
-    }
 }
 
-/// Builder for [`CompiledModule`]. Required identity fields
-/// (`module_id`, `instance_pool`) are positional arguments to
-/// [`CompiledModuleBuilder::new`]; the remaining fields default to
+/// Builder for [`CompiledModuleStatic`]. The module id is the only positional
+/// argument to [`CompiledModuleBuilder::new`]; the remaining fields default to
 /// empty/`None` and are set via chained `Self`-consuming setters.
+///
+/// Wasmtime handles (`WasmInstancePool`, `WasmComponent`) are NOT part of this
+/// builder; they are carried separately in `slicer-wasm-host::LiveModuleBinding`.
 #[must_use = "CompiledModuleBuilder must be finalized with .build()"]
 #[derive(Debug, Clone)]
 pub struct CompiledModuleBuilder {
     module_id: ModuleId,
-    instance_pool: Arc<WasmInstancePool>,
     ir_read_mask: IrAccessMask,
     ir_write_mask: IrAccessMask,
     config_view: Arc<ConfigView>,
     claims: Vec<String>,
-    wasm_component: Option<Arc<WasmComponent>>,
     requires_modules: Vec<ModuleId>,
 }
 
 impl CompiledModuleBuilder {
-    /// Start a new builder for the given module identifier and instance pool.
-    pub fn new(module_id: impl Into<ModuleId>, instance_pool: Arc<WasmInstancePool>) -> Self {
+    /// Start a new builder for the given module identifier.
+    pub fn new(module_id: impl Into<ModuleId>) -> Self {
         Self {
             module_id: module_id.into(),
-            instance_pool,
             ir_read_mask: IrAccessMask::default(),
             ir_write_mask: IrAccessMask::default(),
             config_view: Arc::new(ConfigView::default()),
             claims: Vec::new(),
-            wasm_component: None,
             requires_modules: Vec::new(),
         }
     }
@@ -789,12 +465,6 @@ impl CompiledModuleBuilder {
         self
     }
 
-    /// Attach the compiled WASM component (or `None` for non-WASM fixtures).
-    pub fn wasm_component(mut self, component: Option<Arc<WasmComponent>>) -> Self {
-        self.wasm_component = component;
-        self
-    }
-
     /// Set the manifest-declared required peer modules.
     pub fn requires_modules(mut self, requires_modules: Vec<ModuleId>) -> Self {
         self.requires_modules = requires_modules;
@@ -805,12 +475,10 @@ impl CompiledModuleBuilder {
     pub fn build(self) -> CompiledModuleStatic {
         CompiledModuleStatic {
             module_id: self.module_id,
-            instance_pool: self.instance_pool,
             ir_read_mask: self.ir_read_mask,
             ir_write_mask: self.ir_write_mask,
             config_view: self.config_view,
             claims: self.claims,
-            wasm_component: self.wasm_component,
             requires_modules: self.requires_modules,
         }
     }
@@ -832,17 +500,16 @@ pub struct SortedStageModules {
     pub module_ids: Vec<ModuleId>,
 }
 
-/// One loaded module plus its runtime bindings.
+/// One loaded module plus its config binding.
+///
+/// Wasmtime handles (`WasmInstancePool`, `WasmComponent`) are NOT stored here;
+/// they live in `slicer-wasm-host::LiveModuleBinding` on the live path.
 #[derive(Debug, Clone)]
 pub struct ExecutionModuleBinding {
     /// Loaded manifest/module metadata.
     pub module: LoadedModule,
-    /// Planned WASM instance pool for the module.
-    pub instance_pool: Arc<WasmInstancePool>,
     /// Frozen config view bound for runtime execution.
     pub config_view: Arc<ConfigView>,
-    /// Compiled WASM component for runtime instantiation.
-    pub wasm_component: Option<Arc<WasmComponent>>,
 }
 
 /// Immutable planning input assembled after validation and module loading.
@@ -1041,9 +708,8 @@ pub fn build_execution_plan(
                 });
             }
 
-            modules.push(CompiledModule {
+            modules.push(CompiledModuleStatic {
                 module_id: binding.module.id.clone(),
-                instance_pool: Arc::clone(&binding.instance_pool),
                 ir_read_mask: IrAccessMask {
                     paths: binding.module.ir_reads.clone(),
                 },
@@ -1052,7 +718,6 @@ pub fn build_execution_plan(
                 },
                 config_view: Arc::clone(&binding.config_view),
                 claims: binding.module.claims.clone(),
-                wasm_component: binding.wasm_component.clone(),
                 requires_modules: binding.module.requires_modules.clone(),
             });
         }
@@ -1145,7 +810,7 @@ impl ExecutionPlan {
     pub fn resolve_active_regions(
         &self,
         layer: &GlobalLayer,
-        module: &CompiledModule,
+        module: &CompiledModuleStatic,
     ) -> &[ActiveRegion] {
         self.module_region_index
             .get(&(layer.index, module.module_id.clone()))

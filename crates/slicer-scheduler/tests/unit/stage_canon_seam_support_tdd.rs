@@ -14,12 +14,17 @@
 use std::path::PathBuf;
 
 use slicer_ir::SemVer;
-use slicer_runtime::{
+use slicer_scheduler::{
     validate_startup_dag, DagValidationPass, DagValidationRequest, SchedulerError,
 };
 
-fn module(id: &str, stage: &str, wit_world: &str, writes: &[&str]) -> slicer_runtime::LoadedModule {
-    slicer_runtime::manifest::LoadedModuleBuilder::new(
+fn module(
+    id: &str,
+    stage: &str,
+    wit_world: &str,
+    writes: &[&str],
+) -> slicer_scheduler::LoadedModule {
+    slicer_scheduler::manifest::LoadedModuleBuilder::new(
         id.to_string(),
         SemVer {
             major: 1,
@@ -51,7 +56,7 @@ fn module(id: &str, stage: &str, wit_world: &str, writes: &[&str]) -> slicer_run
 }
 
 fn unknown_stage_errors(
-    report: &slicer_runtime::validation::DagValidationReport,
+    report: &slicer_scheduler::validation::DagValidationReport,
 ) -> Vec<&SchedulerError> {
     report
         .errors

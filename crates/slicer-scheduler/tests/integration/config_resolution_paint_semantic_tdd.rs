@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use slicer_ir::{ConfigValue, PaintSemantic, ResolvedConfig};
-use slicer_runtime::{
+use slicer_scheduler::{
     resolve_per_paint_semantic_configs, ConfigBoundsIndex, ConfigResolutionError,
 };
 

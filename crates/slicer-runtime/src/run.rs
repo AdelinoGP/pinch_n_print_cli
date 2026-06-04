@@ -16,9 +16,7 @@ use crate::config_resolution::{
     ConfigBoundsIndex,
 };
 use crate::dag::Producer;
-use crate::execution_plan::{
-    build_live_execution_plan, load_live_modules_for_plan, parse_cli_config_source,
-};
+use crate::execution_plan::parse_cli_config_source;
 use crate::gcode_emit::{DefaultGCodeEmitter, DefaultGCodeSerializer};
 #[cfg(feature = "report")]
 use crate::instrumentation::CompositeInstrumentation;
@@ -36,6 +34,7 @@ use crate::progress_instrumentation::ProgressPipelineInstrumentation;
 use crate::report::{allocator as report_alloc, Collector};
 use crate::validation::{validate_startup_dag, DagValidationPass, StageDag};
 use slicer_wasm_host::WasmRuntimeDispatcher;
+use slicer_wasm_host::{build_live_execution_plan, load_live_modules_for_plan};
 
 /// Validated runtime options derived from CLI arguments.
 ///
@@ -361,6 +360,24 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
     validate_support_layer_heights(&resolved_configs_map)
         .map_err(|e| SliceRunError(format!("{e}")))?;
 
+    // Build wasm_handles side-table before consuming bindings.
+    let wasm_handles: std::collections::HashMap<
+        slicer_ir::ModuleId,
+        (
+            Arc<slicer_wasm_host::WasmInstancePool>,
+            Option<Arc<slicer_wasm_host::WasmComponent>>,
+        ),
+    > = loaded
+        .bindings
+        .iter()
+        .map(|b| {
+            (
+                b.module.id().to_string(),
+                (Arc::clone(&b.instance_pool), b.wasm_component.clone()),
+            )
+        })
+        .collect();
+
     let plan = build_live_execution_plan(
         loaded.sorted_stages,
         loaded.bindings,
@@ -393,6 +410,7 @@ pub fn run_slice(opts: SliceRunOptions) -> Result<SliceOutcome, SliceRunError> {
         resolved_configs: Arc::new(resolved_configs_map),
         default_resolved_config: Arc::new(default_resolved_config),
         bounds: Arc::new(config_bounds),
+        wasm_handles,
     };
 
     // Run the pipeline through the 4-way instrumentation fork.

@@ -448,8 +448,8 @@ fn execute_region_mapping_inner(
                 .modules
                 .iter()
                 .map(|m| ModuleInvocation {
-                    module_id: m.module_id.clone(),
-                    config_view: m.config_view.as_ref().clone(),
+                    module_id: m.module_id().to_owned(),
+                    config_view: m.config_view().as_ref().clone(),
                 })
                 .collect::<Vec<_>>();
             (stage.stage_id.clone(), invocations)

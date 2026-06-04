@@ -17,7 +17,9 @@ use slicer_ir::{
     LayerStageCommitData, ModuleId, PaintRegionIR, PaintSemantic, PerimeterIR, PrintEntity,
     RegionKey, RegionMapIR, StageId, SupportIR, WallFeatureFlags,
 };
-use slicer_wasm_host::{CompiledModuleLive, LayerStageInput, LayerStageRunner};
+use slicer_wasm_host::{
+    CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmComponent, WasmInstancePool,
+};
 
 use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
 use crate::progress_events::ProgressEvent;
@@ -138,9 +140,15 @@ pub fn execute_per_layer(
     plan: &ExecutionPlan,
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<Vec<LayerCollectionIR>, LayerExecutionError> {
-    let (layers, _audits) =
-        execute_per_layer_with_events(plan, blackboard, runner, &NoopLayerProgressSink)?;
+    let (layers, _audits) = execute_per_layer_with_events(
+        plan,
+        blackboard,
+        runner,
+        &NoopLayerProgressSink,
+        wasm_handles,
+    )?;
     Ok(layers)
 }
 
@@ -155,8 +163,16 @@ pub fn execute_per_layer_with_events(
     blackboard: &Blackboard,
     runner: &(dyn LayerStageRunner + Sync),
     sink: &(dyn LayerProgressSink + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
-    execute_per_layer_with_instrumentation(plan, blackboard, runner, sink, &NoopInstrumentation)
+    execute_per_layer_with_instrumentation(
+        plan,
+        blackboard,
+        runner,
+        sink,
+        &NoopInstrumentation,
+        wasm_handles,
+    )
 }
 
 /// Like [`execute_per_layer_with_events`] but additionally records timing,
@@ -169,6 +185,7 @@ pub fn execute_per_layer_with_instrumentation(
     runner: &(dyn LayerStageRunner + Sync),
     sink: &(dyn LayerProgressSink + Sync),
     instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(Vec<LayerCollectionIR>, Vec<ModuleAccessAudit>), LayerExecutionError> {
     let global_layers = &plan.global_layers;
     let required_semantics = blackboard
@@ -189,6 +206,7 @@ pub fn execute_per_layer_with_instrumentation(
                     instrumentation,
                     &required_semantics,
                     layer,
+                    wasm_handles,
                 )
             })
             .collect();
@@ -246,6 +264,7 @@ fn execute_single_layer(
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     required_semantics: &[PaintSemantic],
     layer: &GlobalLayer,
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
     instrumentation.on_layer_start(layer.index, layer.z);
     let result = execute_single_layer_inner(
@@ -256,6 +275,7 @@ fn execute_single_layer(
         instrumentation,
         required_semantics,
         layer,
+        wasm_handles,
     );
     instrumentation.on_layer_end(layer.index);
     result
@@ -269,6 +289,7 @@ fn execute_single_layer_inner(
     instrumentation: &(dyn PipelineInstrumentation + Sync),
     required_semantics: &[PaintSemantic],
     layer: &GlobalLayer,
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(LayerCollectionIR, Vec<ModuleAccessAudit>), LayerExecutionError> {
     let mut audits = Vec::new();
 
@@ -333,16 +354,20 @@ fn execute_single_layer_inner(
         instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
         // Execute modules in topological order within each stage
         for module in &stage.modules {
-            instrumentation.on_module_start(&stage.stage_id, Some(layer.index), &module.module_id);
+            instrumentation.on_module_start(&stage.stage_id, Some(layer.index), module.module_id());
 
             // Build the IR-typed borrow structs for the new slicer-wasm-host trait boundary.
             // CompiledModuleLive borrows from CompiledModule for the duration of this call.
+            let (instance_pool, wasm_component) = wasm_handles
+                .get(module.module_id().as_str())
+                .map(|(p, c)| (Arc::clone(p), c.clone()))
+                .unwrap_or_else(|| (WasmInstancePool::placeholder(), None));
             let live_module = CompiledModuleLive::new(
-                &module.module_id,
-                Arc::clone(&module.instance_pool),
-                module.wasm_component.clone(),
-                &module.claims,
-                Arc::clone(&module.config_view),
+                module.module_id(),
+                instance_pool,
+                wasm_component,
+                module.claims(),
+                Arc::clone(module.config_view()),
             );
             let input = LayerStageInput {
                 mesh: Arc::clone(blackboard.mesh()),
@@ -364,7 +389,7 @@ fn execute_single_layer_inner(
             instrumentation.on_module_end(
                 &stage.stage_id,
                 Some(layer.index),
-                &module.module_id,
+                module.module_id(),
                 wasm_before,
                 wasm_after,
             );
@@ -375,7 +400,7 @@ fn execute_single_layer_inner(
                     return Err(LayerExecutionError::FatalLayer {
                         layer_index: layer.index,
                         stage_id: stage.stage_id.clone(),
-                        module_id: module.module_id.clone(),
+                        module_id: module.module_id().to_owned(),
                         message: e.to_string(),
                     });
                 }
@@ -396,7 +421,7 @@ fn execute_single_layer_inner(
                         return Err(LayerExecutionError::FatalLayer {
                             layer_index: layer.index,
                             stage_id: stage.stage_id.clone(),
-                            module_id: module.module_id.clone(),
+                            module_id: module.module_id().to_owned(),
                             message,
                         });
                     }
@@ -406,7 +431,7 @@ fn execute_single_layer_inner(
             // Commit the IR-typed output data to the arena.
             if let Err(e) = commit_layer_outputs(
                 &stage.stage_id,
-                &module.module_id,
+                module.module_id(),
                 layer.index,
                 commit,
                 &mut arena,
@@ -416,7 +441,7 @@ fn execute_single_layer_inner(
                 return Err(LayerExecutionError::FatalLayer {
                     layer_index: layer.index,
                     stage_id: stage.stage_id.clone(),
-                    module_id: module.module_id.clone(),
+                    module_id: module.module_id().to_owned(),
                     message: e.to_string(),
                 });
             }
@@ -455,7 +480,7 @@ fn execute_single_layer_inner(
             let runtime_reads = runner.last_runtime_reads();
             if !writes.is_empty() || !runtime_reads.is_empty() {
                 audits.push(ModuleAccessAudit {
-                    module_id: module.module_id.clone(),
+                    module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: writes,
                 });

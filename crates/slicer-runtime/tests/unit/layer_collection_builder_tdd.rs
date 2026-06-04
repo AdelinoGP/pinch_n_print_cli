@@ -8,7 +8,7 @@
 
 #![allow(missing_docs)]
 
-use crate::common::seed::seed_slice_ir;
+use crate::common::{seed::seed_slice_ir, TestModuleBundle};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -461,7 +461,7 @@ fn make_module(
     id: &str,
     stage: &str,
     component: Arc<slicer_runtime::WasmComponent>,
-) -> CompiledModule {
+) -> TestModuleBundle {
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -475,9 +475,12 @@ fn make_module(
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(id, pool)
-        .wasm_component(Some(component))
-        .build()
+    let module = CompiledModuleBuilder::new(id).build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn make_wall_loop_at(perimeter_index: u32, x: f32) -> WallLoop {
@@ -603,24 +606,50 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
 
     let seeded_perimeter = make_three_region_perimeter(0);
 
+    let bundle_perimeter = make_module(
+        "com.test.multi-read-seed",
+        "Layer::Perimeters",
+        Arc::clone(&component),
+    );
+    let bundle_pathopt = make_module(
+        "com.test.multi-read-pathopt",
+        "Layer::PathOptimization",
+        component,
+    );
+
+    // Build wasm_handles map so execute_per_layer uses real pool/component for dispatch.
+    let mut wasm_handles: HashMap<
+        String,
+        (
+            Arc<slicer_runtime::WasmInstancePool>,
+            Option<Arc<slicer_runtime::WasmComponent>>,
+        ),
+    > = HashMap::new();
+    wasm_handles.insert(
+        bundle_perimeter.module.module_id().to_string(),
+        (
+            Arc::clone(&bundle_perimeter.pool),
+            bundle_perimeter.component.clone(),
+        ),
+    );
+    wasm_handles.insert(
+        bundle_pathopt.module.module_id().to_string(),
+        (
+            Arc::clone(&bundle_pathopt.pool),
+            bundle_pathopt.component.clone(),
+        ),
+    );
+
     let plan = ExecutionPlan {
         prepass_stages: Vec::new(),
         per_layer_stages: vec![
             CompiledStage {
                 stage_id: "Layer::Perimeters".to_string(),
-                modules: vec![make_module(
-                    "com.test.multi-read-seed",
-                    "Layer::Perimeters",
-                    Arc::clone(&component),
-                )],
+                modules: vec![bundle_perimeter.module],
             },
             CompiledStage {
                 stage_id: "Layer::PathOptimization".to_string(),
-                modules: vec![make_module(
-                    "com.test.multi-read-pathopt",
-                    "Layer::PathOptimization",
-                    component,
-                )],
+                modules: vec![bundle_pathopt.module],
             },
         ],
         layer_finalization_stage: None,
@@ -642,7 +671,8 @@ fn macro_drain_invokes_host_get_ordered_entities_exactly_once() {
         perimeter: std::sync::Mutex::new(Some(seeded_perimeter)),
     };
 
-    let layers = execute_per_layer(&plan, &blackboard, &runner).expect("execute per-layer plan");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &wasm_handles)
+        .expect("execute per-layer plan");
     assert_eq!(
         layers.len(),
         1,

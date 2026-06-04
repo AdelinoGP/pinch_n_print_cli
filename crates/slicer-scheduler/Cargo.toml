@@ -1,0 +1,36 @@
+[package]
+name = "slicer-scheduler"
+version = "0.1.0"
+edition = "2021"
+authors = ["ModularSlicer Team"]
+
+[dependencies]
+slicer-ir = { path = "../slicer-ir" }
+slicer-schema = { path = "../slicer-schema" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+log = "0.4"
+directories = "6"
+
+[dev-dependencies]
+tempfile = "3"
+serde_json = "1.0"
+
+# Unique test binary names so they don't collide with slicer-runtime's
+# `contract`/`integration`/`unit` buckets in target/debug/deps/ during a
+# workspace test run.
+[[test]]
+name = "scheduler_contract"
+path = "tests/contract/main.rs"
+
+[[test]]
+name = "scheduler_integration"
+path = "tests/integration/main.rs"
+
+[[test]]
+name = "scheduler_unit"
+path = "tests/unit/main.rs"
+
+[lints]
+workspace = true

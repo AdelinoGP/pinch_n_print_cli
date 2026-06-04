@@ -186,12 +186,28 @@ fn full_postpass_pipeline_preserves_orca_emission_contract() {
     let mut runner = NoOpRunner;
 
     // Run postpass twice and confirm deterministic output
-    let (text1, _audits1) =
-        execute_postpass(&plan, &layer_irs, &bb, &emitter, &serializer, &mut runner).unwrap();
+    let (text1, _audits1) = execute_postpass(
+        &plan,
+        &layer_irs,
+        &bb,
+        &emitter,
+        &serializer,
+        &mut runner,
+        &Default::default(),
+    )
+    .unwrap();
 
     let mut runner2 = NoOpRunner;
-    let (text2, _audits2) =
-        execute_postpass(&plan, &layer_irs, &bb, &emitter, &serializer, &mut runner2).unwrap();
+    let (text2, _audits2) = execute_postpass(
+        &plan,
+        &layer_irs,
+        &bb,
+        &emitter,
+        &serializer,
+        &mut runner2,
+        &Default::default(),
+    )
+    .unwrap();
 
     // Output must be byte-for-byte identical across runs (determinism check)
     assert_eq!(

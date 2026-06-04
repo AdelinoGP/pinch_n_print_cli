@@ -74,7 +74,7 @@ fn prepass_executor_locks_down_stage_order_full_commit_set_and_shared_mesh_input
         Arc::as_ptr(&mesh) as usize,
     );
 
-    let _audits = execute_prepass(&plan, &mut blackboard, &runner)
+    let _audits = execute_prepass(&plan, &mut blackboard, &runner, &Default::default())
         .expect("prepass executor should run fixed stage order and commit each output once");
 
     assert_eq!(
@@ -122,7 +122,7 @@ fn prepass_executor_surfaces_duplicate_commit_as_a_deterministic_blackboard_erro
     );
 
     assert_eq!(
-        execute_prepass(&plan, &mut blackboard, &runner),
+        execute_prepass(&plan, &mut blackboard, &runner, &Default::default()),
         Err(PrepassExecutionError::Blackboard {
             stage_id: String::from("PrePass::MeshAnalysis"),
             module_id: String::from("com.example.mesh-analysis.b"),
@@ -157,7 +157,7 @@ fn prepass_executor_rejects_missing_required_prepass_before_running_dependent_st
     );
 
     assert_eq!(
-        execute_prepass(&plan, &mut blackboard, &runner),
+        execute_prepass(&plan, &mut blackboard, &runner, &Default::default()),
         Err(PrepassExecutionError::MissingRequiredPrepass {
             stage_id: String::from("PrePass::PaintSegmentation"),
             slot: BlackboardPrepassSlot::SurfaceClassification,
@@ -197,7 +197,7 @@ fn prepass_executor_aborts_on_fatal_module_failure_without_running_later_stages(
     );
 
     assert_eq!(
-        execute_prepass(&plan, &mut blackboard, &runner),
+        execute_prepass(&plan, &mut blackboard, &runner, &Default::default()),
         Err(PrepassExecutionError::FatalModule {
             stage_id: String::from("PrePass::MeshAnalysis"),
             module_id: String::from("com.example.mesh-analysis"),
@@ -299,7 +299,7 @@ fn compiled_stage(stage_id: &str, module_ids: &[&str]) -> CompiledStage {
 
 fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded_module = loaded_module(module_id, stage_id);
-    let instance_pool = Arc::new(
+    let _instance_pool = Arc::new(
         build_wasm_instance_pool(
             loaded_module.id(),
             loaded_module.stage(),
@@ -314,26 +314,21 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
 
     let binding = ExecutionModuleBinding {
         module: loaded_module,
-        instance_pool,
         config_view: Arc::new(ConfigView::from_map(HashMap::from([(
             String::from("fixture.enabled"),
             ConfigValue::Bool(true),
         )]))),
-        wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(
-        binding.module.id().to_string(),
-        Arc::clone(&binding.instance_pool),
-    )
-    .ir_read_mask(IrAccessMask {
-        paths: binding.module.ir_reads().to_vec(),
-    })
-    .ir_write_mask(IrAccessMask {
-        paths: binding.module.ir_writes().to_vec(),
-    })
-    .config_view(Arc::clone(&binding.config_view))
-    .build()
+    CompiledModuleBuilder::new(binding.module.id().to_string())
+        .ir_read_mask(IrAccessMask {
+            paths: binding.module.ir_reads().to_vec(),
+        })
+        .ir_write_mask(IrAccessMask {
+            paths: binding.module.ir_writes().to_vec(),
+        })
+        .config_view(Arc::clone(&binding.config_view))
+        .build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {

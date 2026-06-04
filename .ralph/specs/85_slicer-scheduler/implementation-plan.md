@@ -106,6 +106,37 @@
 
 ---
 
+## Step 3.5 — Relocate the live-loader cluster to `slicer-wasm-host`; strip wasmtime fields from `CompiledModuleStatic`/`CompiledModuleBuilder`/`ExecutionModuleBinding`; rewire callsites
+
+**Objective.** Complete the Static/Live field migration P83 started at the type level but didn't finish at the field level. Six "live loader" symbols (`LiveModuleBinding`, `build_live_execution_plan`, `LiveModuleLoadOutput`, `LiveModuleLoadError`, `load_live_modules_for_plan`, `compile_module_component`) move from the just-moved `slicer-scheduler/src/execution_plan.rs` into a new `crates/slicer-wasm-host/src/execution_plan_live.rs`. The two wasmtime fields (`instance_pool: Arc<WasmInstancePool>`, `wasm_component: Option<Arc<WasmComponent>>`) are stripped from `CompiledModuleStatic`, `CompiledModuleBuilder`, and `ExecutionModuleBinding` and moved to `CompiledModuleLive<'s>`. Every callsite in `slicer-runtime` that read those fields off Static now reads them off Live.
+
+**Precondition.** Step 3 complete (nine files moved verbatim to scheduler; runtime build is expected to fail).
+
+**Postcondition.** `cargo build -p slicer-scheduler` green. `cargo build -p slicer-wasm-host` green. `cargo build --workspace` may still fail because runtime callsites haven't been rewired yet — that gets resolved in Step 5. `slicer-scheduler/Cargo.toml` does NOT contain `slicer-wasm-host` (AC-N1 holds). `slicer-scheduler/src/execution_plan.rs` contains zero `use slicer_wasm_host::` lines and zero `Arc<Wasm*>` field declarations.
+
+**Files allowed to read.** `crates/slicer-scheduler/src/execution_plan.rs` (find the six live-cluster symbols by line range — implementer's diagnostic surfaced them at lines 117, 135, 232, 253, 333, 496, plus fields on `CompiledModuleStatic` L661, `CompiledModuleBuilder` L739, `ExecutionModuleBinding` L834). `crates/slicer-wasm-host/src/binding.rs` (current `CompiledModuleLive<'s>` shape).
+**Files allowed to edit.**
+1. `crates/slicer-wasm-host/src/execution_plan_live.rs` — CREATE. Move the six live-cluster symbols verbatim from `slicer-scheduler/src/execution_plan.rs`, adjusting their imports (the `use slicer_wasm_host::*` line becomes intra-crate `use crate::*` imports).
+2. `crates/slicer-wasm-host/src/binding.rs` (or wherever `CompiledModuleLive<'s>` lives) — extend `CompiledModuleLive<'s>` with the two wasmtime fields (`instance_pool: Arc<WasmInstancePool>`, `wasm_component: Option<Arc<WasmComponent>>`). Add the matching `pub fn instance_pool(&self)` / `pub fn wasm_component(&self)` accessor methods.
+3. `crates/slicer-wasm-host/src/lib.rs` — add `pub mod execution_plan_live;` and re-export the cluster surface.
+4. `crates/slicer-scheduler/src/execution_plan.rs` — delete the six relocated symbols. Strip `instance_pool` and `wasm_component` fields from `CompiledModuleStatic`, `CompiledModuleBuilder`, and `ExecutionModuleBinding`. Delete the corresponding accessor methods on `CompiledModuleStatic` (`pub fn instance_pool`, `pub fn wasm_component`, `pub fn as_live`). Delete the `use slicer_wasm_host::*` import line. The remaining file should be a wasmtime-free planning data structure module.
+5. `crates/slicer-runtime/src/{layer_executor,pipeline,prepass,postpass,layer_finalization}.rs` (and any other runtime file the build error surfaces) — rewire `compiled_module.instance_pool()` → `live_binding.instance_pool()` and analogous for `wasm_component()`. The runtime constructs `CompiledModuleLive` per tick from `(static_module, instance_pool, wasm_component)` via a constructor on the Live side; the previous `as_live()` on Static is replaced by `CompiledModuleLive::new(static_module, instance_pool, wasm_component)` at the runtime callsite.
+6. **REVERT** any `slicer-wasm-host = { path = "../slicer-wasm-host" }` line that the auto-response Step 3 added to `crates/slicer-scheduler/Cargo.toml`. AC-N1 forbids it; the proper resolution is the field migration here, not the back-edge dep.
+
+**Expected sub-agent dispatches.**
+- Dispatch: `cargo build -p slicer-scheduler`. Return FACT pass/fail. Must pass — scheduler is now genuinely wasmtime-free.
+- Dispatch: `cargo build -p slicer-wasm-host`. Return FACT pass/fail. Must pass — wasm-host owns the live cluster + extended Live binding.
+- Dispatch: `cargo build --workspace 2>&1 | grep -cE '^error\[E0599\]' | head -1`. Return FACT integer (count of "method not found on Static" errors — these are the remaining callsite rewires for Step 5 to absorb, OR a sign that this step missed some).
+- Dispatch: `! grep -qE '^slicer-wasm-host *=' crates/slicer-scheduler/Cargo.toml && ! rg -q 'use slicer_wasm_host::' crates/slicer-scheduler/src/`. Return FACT pass/fail.
+
+**Context cost: M.**
+
+**Narrow verification.** First two dispatches pass; fourth dispatch passes. Third dispatch's integer is small (≤ ~20) — those are the callsite rewires Step 5 finishes. If it's much higher, this step missed a wholesale rewrite that should land here, not in Step 5.
+
+**Falsifying check / exit condition.** If `cargo build -p slicer-scheduler` still has `use slicer_wasm_host` imports, the live-cluster move was incomplete — re-grep `crates/slicer-scheduler/src/execution_plan.rs` for `slicer_wasm_host::` and relocate the missed symbol. If `cargo build -p slicer-wasm-host` fails on a missing borrow lifetime, the `CompiledModuleLive<'s>` field extension didn't compose with the existing borrow shape — surface the trait/lifetime details before continuing.
+
+---
+
 ## Step 4 — Split `instrumentation.rs`; move `CompiledModuleStatic`; delete the type alias
 
 **Objective.** Two key structural changes:
@@ -269,6 +300,7 @@ After this step, `slicer-scheduler` builds standalone; `slicer-runtime` does not
 | 1 Enumerate consumers | S |
 | 2 Crate scaffold | S |
 | 3 Verbatim move (9 files) | M |
+| 3.5 Live-cluster relocation + wasmtime-field strip + callsite rewire | M |
 | 4 Instrumentation split + CompiledModule alias delete | M |
 | 5 Runtime + wasm-host + pnp-cli rewire | M |
 | 6 Test migration | M |
@@ -276,7 +308,7 @@ After this step, `slicer-scheduler` builds standalone; `slicer-runtime` does not
 | 8 Workspace test gate | M |
 | 9 SHA parity (g-code + dag stages + dag claims) | S |
 
-Aggregate: **L overall but no single step is L.** Total step count: 10.
+Aggregate: **L overall but no single step is L.** Total step count: 11 (Step 3.5 added mid-flight after P83's incomplete Static/Live field migration surfaced during Step 4 execution — recorded in design.md §Risks).
 
 ## Packet Completion Gate
 

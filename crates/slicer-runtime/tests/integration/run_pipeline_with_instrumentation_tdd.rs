@@ -110,7 +110,7 @@ fn make_dummy_module_with_masks(
     .min_ir_schema(semver(1, 0, 0))
     .max_ir_schema(semver(2, 0, 0))
     .build();
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -122,7 +122,7 @@ fn make_dummy_module_with_masks(
         )
         .expect("fixture module should build a pool"),
     );
-    CompiledModuleBuilder::new(module_id, pool)
+    CompiledModuleBuilder::new(module_id)
         .ir_read_mask(ir_read_mask)
         .ir_write_mask(ir_write_mask)
         .build()
@@ -243,6 +243,7 @@ fn run_with_noop_instrumentation_succeeds_and_collects_nothing() {
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline_with_instrumentation(
@@ -315,6 +316,7 @@ fn run_with_collector_records_phase_and_layer_brackets() {
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     // `Arc<Collector>` implements `PipelineInstrumentation` via the inner
@@ -494,6 +496,7 @@ fn record_edges_fires_for_every_stage_at_plan_freeze() {
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline_with_instrumentation(
@@ -644,6 +647,7 @@ fn prepass_builtins_emit_one_stage_end_each_in_declared_order() {
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let recorder = StageEndRecorder::new();

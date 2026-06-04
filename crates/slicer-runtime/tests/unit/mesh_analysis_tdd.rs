@@ -60,8 +60,13 @@ fn mesh_analysis_builtin_runs_on_real_prepass_path_and_commits_surface_classific
         "precondition: no surface classification yet"
     );
 
-    execute_prepass_with_builtins(&plan, &mut blackboard, &UnreachableRunner)
-        .expect("prepass with builtins should succeed");
+    execute_prepass_with_builtins(
+        &plan,
+        &mut blackboard,
+        &UnreachableRunner,
+        &Default::default(),
+    )
+    .expect("prepass with builtins should succeed");
 
     let sc = blackboard
         .surface_classification()
@@ -193,8 +198,13 @@ fn mesh_analysis_builtin_surfaces_invalid_mesh_as_prepass_error() {
     let mut blackboard = Blackboard::new(Arc::new(mesh), 0);
     let plan = empty_plan();
 
-    let err = execute_prepass_with_builtins(&plan, &mut blackboard, &UnreachableRunner)
-        .expect_err("must surface mesh analysis failure");
+    let err = execute_prepass_with_builtins(
+        &plan,
+        &mut blackboard,
+        &UnreachableRunner,
+        &Default::default(),
+    )
+    .expect_err("must surface mesh analysis failure");
 
     match err {
         PrepassExecutionError::MeshAnalysis {

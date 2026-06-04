@@ -16,7 +16,7 @@ use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::{
     execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
     CompiledStage, ExecutionModuleBinding, ExecutionPlan, LayerStageError, LayerStageInput,
-    LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmRuntimeDispatcher,
+    LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmInstancePool, WasmRuntimeDispatcher,
 };
 
 const PATH_OPT_WASM: &str = concat!(
@@ -152,21 +152,20 @@ fn mixed_tool_layer_emits_deterministic_tool_change_sequence() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
-            .wasm_component(Some(path_opt_component))
-            .build(),
-    );
+    let path_opt_module =
+        Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let runner = LiveDispatcherWithLayerCollection::with_module(
         layer_collection,
         Arc::new(dispatcher),
         path_opt_module,
+        path_opt_pool,
+        path_opt_component,
     );
 
-    let layers =
-        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &Default::default())
+        .expect("per-layer execution must succeed");
 
     // Assert: entities grouped by tool in ascending order.
     // region_id encodes tool_index (0, 1, 2 â†’ ascending).
@@ -269,21 +268,20 @@ fn single_tool_layer_emits_no_synthetic_tool_changes() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
-            .wasm_component(Some(path_opt_component))
-            .build(),
-    );
+    let path_opt_module =
+        Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let runner = LiveDispatcherWithLayerCollection::with_module(
         layer_collection,
         Arc::new(dispatcher),
         path_opt_module,
+        path_opt_pool,
+        path_opt_component,
     );
 
-    let layers =
-        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &Default::default())
+        .expect("per-layer execution must succeed");
 
     // Single-tool: no tool_change boundaries should be emitted.
     assert!(
@@ -358,21 +356,20 @@ fn canonical_or_single_tool_sequences_emit_no_redundant_tool_changes() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
-            .wasm_component(Some(path_opt_component))
-            .build(),
-    );
+    let path_opt_module =
+        Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let runner = LiveDispatcherWithLayerCollection::with_module(
         layer_collection,
         Arc::new(dispatcher),
         path_opt_module,
+        path_opt_pool,
+        path_opt_component,
     );
 
-    let layers =
-        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &Default::default())
+        .expect("per-layer execution must succeed");
 
     // Canonical order: tool_changes should reflect exactly one real boundary
     // (tool0â†’tool1 after entity index 1), no redundant changes.
@@ -404,6 +401,10 @@ struct LiveDispatcherWithLayerCollection {
     dispatcher: Arc<WasmRuntimeDispatcher>,
     /// Stored CompiledModule with the real wasm_component for path-optimization.
     path_opt_module: Arc<CompiledModule>,
+    /// Real instance pool for path-optimization dispatch.
+    path_opt_pool: Arc<WasmInstancePool>,
+    /// Real compiled component for path-optimization dispatch.
+    path_opt_component: Arc<slicer_runtime::WasmComponent>,
 }
 
 impl LiveDispatcherWithLayerCollection {
@@ -411,11 +412,15 @@ impl LiveDispatcherWithLayerCollection {
         layer_collection: LayerCollectionIR,
         dispatcher: Arc<WasmRuntimeDispatcher>,
         path_opt_module: Arc<CompiledModule>,
+        path_opt_pool: Arc<WasmInstancePool>,
+        path_opt_component: Arc<slicer_runtime::WasmComponent>,
     ) -> Self {
         Self {
             layer_collection,
             dispatcher,
             path_opt_module,
+            path_opt_pool,
+            path_opt_component,
         }
     }
 }
@@ -436,9 +441,14 @@ impl LayerStageRunner for LiveDispatcherWithLayerCollection {
                 ..Default::default()
             });
         }
-        // Delegate PathOptimization to the live WASM dispatcher.
-        // input.layer_collection is already populated from the arena (committed above).
-        let live = self.path_opt_module.as_live();
+        // Delegate PathOptimization to the live WASM dispatcher with real pool/component.
+        let live = CompiledModuleLive::new(
+            self.path_opt_module.module_id(),
+            Arc::clone(&self.path_opt_pool),
+            Some(Arc::clone(&self.path_opt_component)),
+            self.path_opt_module.claims(),
+            Arc::clone(self.path_opt_module.config_view()),
+        );
         self.dispatcher.run_stage(stage_id, layer, &live, input)
     }
 }
@@ -606,7 +616,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     })
     .layer_parallel_safe(true)
     .build();
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -620,11 +630,9 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     );
     let binding = ExecutionModuleBinding {
         module: loaded,
-        instance_pool: Arc::clone(&pool),
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-        wasm_component: None,
     };
-    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&pool))
+    CompiledModuleBuilder::new(binding.module.id().to_string())
         .config_view(Arc::clone(&binding.config_view))
         .build()
 }

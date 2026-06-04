@@ -215,7 +215,8 @@ fn per_layer_executor_stages_host_built_in_slice_on_real_path() {
     // rely on the fact that execute_single_layer drained the SliceIR into
     // a LayerCollectionIR fallback (empty). Instead, check the produced
     // layer IR has the right global_layer_index and z.
-    let layer_irs = execute_per_layer(&plan, &blackboard, &runner).expect("ok");
+    let layer_irs =
+        execute_per_layer(&plan, &blackboard, &runner, &Default::default()).expect("ok");
     assert_eq!(layer_irs.len(), 1);
     assert_eq!(layer_irs[0].global_layer_index, 0);
     assert!((layer_irs[0].z - 0.25).abs() < 1e-6);
@@ -254,8 +255,8 @@ fn per_layer_executor_produces_deterministic_slice_across_runs() {
             .unwrap();
     assert_eq!(slice_a, slice_b, "repeated slices must be byte-identical");
 
-    let a = execute_per_layer(&plan1, &bb1, &Noop).unwrap();
-    let b = execute_per_layer(&plan2, &bb2, &Noop).unwrap();
+    let a = execute_per_layer(&plan1, &bb1, &Noop, &Default::default()).unwrap();
+    let b = execute_per_layer(&plan2, &bb2, &Noop, &Default::default()).unwrap();
     assert_eq!(a, b, "layer-loop output must be deterministic");
 }
 

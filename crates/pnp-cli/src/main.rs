@@ -14,10 +14,11 @@ mod helpers_cmd;
 use std::path::PathBuf;
 
 use clap::{ArgGroup, Parser, Subcommand};
-use slicer_runtime::{
-    assemble_search_roots, build_config_schema_json,
-    dag_cli::{run_dag_claims, run_dag_depends, run_dag_stage, run_dag_stages},
-    load_modules_from_roots, runtime_builtins, LoadedModule, Producer, SliceRunOptions,
+use slicer_runtime::{runtime_builtins, SliceRunOptions};
+use slicer_scheduler::dag_cli::{run_dag_claims, run_dag_depends, run_dag_stage, run_dag_stages};
+use slicer_scheduler::{
+    assemble_search_roots, build_config_schema_json, load_modules_from_roots, LoadedModule,
+    Producer,
 };
 
 // ---------------------------------------------------------------------------

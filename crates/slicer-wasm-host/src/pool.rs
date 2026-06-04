@@ -41,6 +41,19 @@ pub struct WasmInstancePool {
 }
 
 impl WasmInstancePool {
+    /// Returns a serialized, single-slot placeholder pool.
+    ///
+    /// Used by executor call sites when `wasm_handles` does not contain an entry
+    /// for a module (e.g. in-process test pipelines that don't exercise real WASM
+    /// dispatch — those test runners never access the pool).
+    pub fn placeholder() -> Arc<Self> {
+        Arc::new(Self {
+            mode: InstancePoolMode::Serialized,
+            size: 1,
+            slots: Arc::new(SlotAvailability::new(1)),
+        })
+    }
+
     /// Returns the effective scheduling mode for this pool.
     pub fn mode(&self) -> InstancePoolMode {
         self.mode

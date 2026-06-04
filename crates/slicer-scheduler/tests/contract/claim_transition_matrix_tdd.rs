@@ -25,7 +25,7 @@
 //! required behavior and expose the gap.
 
 use slicer_ir::SemVer;
-use slicer_runtime::{
+use slicer_scheduler::{
     build_intra_stage_dag, validate_startup_dag, ClaimHolder, ConflictScope, DagValidationRequest,
     LoadedModule, LoadedModuleBuilder, Producer, SchedulerError, StageDag,
 };
@@ -119,7 +119,10 @@ fn request_with_per_layer_transition(
     }
 }
 
-fn report_has_transition_error(report: &slicer_runtime::DagValidationReport, claim: &str) -> bool {
+fn report_has_transition_error(
+    report: &slicer_scheduler::DagValidationReport,
+    claim: &str,
+) -> bool {
     report.errors.iter().any(|d| match &d.detail {
         // Either a new dedicated variant...
         //   SchedulerError::ClaimTransitionViolation { claim: c, .. } => c == claim,

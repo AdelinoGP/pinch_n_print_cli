@@ -347,6 +347,80 @@ pub fn postpass_input(blackboard: &Blackboard) -> PostpassStageInput<'_> {
     }
 }
 
+/// Test-only bundle that carries the `CompiledModule` together with the wasm-host
+/// handles (`pool`, `component`) that are no longer stored inside the module itself
+/// (post-P85 field migration). Use `as_live()` to get a `CompiledModuleLive<'_>`.
+#[allow(dead_code)]
+pub struct TestModuleBundle {
+    pub module: slicer_runtime::CompiledModule,
+    pub pool: Arc<slicer_wasm_host::WasmInstancePool>,
+    pub component: Option<Arc<slicer_wasm_host::WasmComponent>>,
+}
+
+impl TestModuleBundle {
+    #[allow(dead_code)]
+    pub fn as_live(&self) -> slicer_wasm_host::CompiledModuleLive<'_> {
+        slicer_wasm_host::CompiledModuleLive::new(
+            self.module.module_id(),
+            Arc::clone(&self.pool),
+            self.component.clone(),
+            self.module.claims(),
+            Arc::clone(self.module.config_view()),
+        )
+    }
+
+    /// Consume the bundle and return the inner `CompiledModule` plus the
+    /// matching `wasm_handles` entry. Useful when building an ExecutionPlan
+    /// that needs both the module (to put into a CompiledStage) and a
+    /// `wasm_handles` map keyed by module_id (for execute_prepass).
+    #[allow(dead_code)]
+    pub fn into_module_and_handles(
+        self,
+    ) -> (
+        slicer_runtime::CompiledModule,
+        HashMap<
+            String,
+            (
+                Arc<slicer_wasm_host::WasmInstancePool>,
+                Option<Arc<slicer_wasm_host::WasmComponent>>,
+            ),
+        >,
+    ) {
+        let id = self.module.module_id().to_string();
+        let mut handles = HashMap::new();
+        handles.insert(id, (self.pool, self.component));
+        (self.module, handles)
+    }
+}
+
+/// Real-wasm variant of `run_layer_and_commit` that uses the bundle's actual
+/// `pool` and `component` (not the placeholder). dispatch_tdd needs this to
+/// drive real guest execution.
+#[allow(dead_code)]
+pub fn run_layer_and_commit_with_bundle(
+    dispatcher: &slicer_wasm_host::WasmRuntimeDispatcher,
+    stage_id: &str,
+    layer: &slicer_ir::GlobalLayer,
+    bundle: &TestModuleBundle,
+    blackboard: &Blackboard,
+    arena: &mut slicer_runtime::LayerArena,
+) -> Result<(), slicer_ir::LayerStageError> {
+    use slicer_wasm_host::LayerStageRunner;
+    let live = bundle.as_live();
+    let input = layer_input(blackboard, arena);
+    let commit_data =
+        LayerStageRunner::run_stage(dispatcher, &stage_id.to_string(), layer, &live, input)?;
+    let seam_plan_arc = blackboard.seam_plan().cloned();
+    slicer_runtime::commit_layer_outputs_for_test(
+        stage_id,
+        bundle.module.module_id(),
+        layer.index,
+        commit_data,
+        arena,
+        seam_plan_arc.as_deref(),
+    )
+}
+
 /// Convenience: dispatch a Layer stage AND commit the resulting LayerStageCommitData
 /// to the arena in one call — bridges the orchestration split so tests that previously
 /// expected `run_stage` to mutate `arena` continue to work via this single helper.
@@ -360,7 +434,13 @@ pub fn run_layer_and_commit(
     arena: &mut slicer_runtime::LayerArena,
 ) -> Result<(), slicer_ir::LayerStageError> {
     use slicer_wasm_host::LayerStageRunner;
-    let live = module.as_live();
+    let live = slicer_wasm_host::CompiledModuleLive::new(
+        module.module_id(),
+        slicer_wasm_host::WasmInstancePool::placeholder(),
+        None,
+        module.claims(),
+        Arc::clone(module.config_view()),
+    );
     let input = layer_input(blackboard, arena);
     let commit_data =
         LayerStageRunner::run_stage(dispatcher, &stage_id.to_string(), layer, &live, input)?;

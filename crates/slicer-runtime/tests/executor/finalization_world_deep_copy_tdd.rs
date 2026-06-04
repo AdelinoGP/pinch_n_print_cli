@@ -9,12 +9,12 @@ use slicer_ir::{
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, FinalizationStageRunner, LoadedModule,
+    Blackboard, CompiledModuleBuilder, CompiledModuleLive, FinalizationStageRunner, LoadedModule,
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 use witness::{SdkFinalizationLayerWitness, SdkFinalizationLayerWitness1};
 
-use crate::common::{finalization_input, wasm_cache};
+use crate::common::{finalization_input, wasm_cache, TestModuleBundle};
 
 const FINALIZATION_GUEST_COMPONENT: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -77,7 +77,7 @@ fn make_loaded_module(id: &str) -> LoadedModule {
     .build()
 }
 
-fn make_module(id: &str, component: Arc<slicer_runtime::WasmComponent>) -> CompiledModule {
+fn make_module(id: &str, component: Arc<slicer_runtime::WasmComponent>) -> TestModuleBundle {
     let loaded = make_loaded_module(id);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -91,9 +91,12 @@ fn make_module(id: &str, component: Arc<slicer_runtime::WasmComponent>) -> Compi
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(id, pool)
-        .wasm_component(Some(component))
-        .build()
+    let module = CompiledModuleBuilder::new(id).build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn witness_entity(layer: &LayerCollectionIR) -> &PrintEntity {
@@ -161,7 +164,7 @@ fn finalization_world_deep_copy_preserves_entities_and_z_hops() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine);
-    let module = make_module("com.test.finalization-world-deep-copy", component);
+    let bundle = make_module("com.test.finalization-world-deep-copy", component);
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let stage = "PostPass::LayerFinalization".to_string();
 
@@ -188,7 +191,13 @@ fn finalization_world_deep_copy_preserves_entities_and_z_hops() {
     FinalizationStageRunner::run_stage(
         &dispatcher,
         &stage,
-        &module.as_live(),
+        &CompiledModuleLive::new(
+            bundle.module.module_id(),
+            Arc::clone(&bundle.pool),
+            bundle.component.clone(),
+            bundle.module.claims(),
+            Arc::clone(bundle.module.config_view()),
+        ),
         finalization_input(&blackboard),
         &mut layers,
     )

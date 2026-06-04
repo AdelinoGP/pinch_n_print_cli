@@ -1,4 +1,4 @@
-//! TDD scaffold for packet 41 â€” AC-5, NEG-3, AC-7.
+//! TDD scaffold for packet 41 â€" AC-5, NEG-3, AC-7.
 //!
 //! AC-5: A guest calling `modify_entity(layer_index, 1, SetSpeedFactor(0.5))`
 //!       round-trips through WIT and mutates the host-side IR `speed_factor`
@@ -8,7 +8,7 @@
 //!        a diagnostic containing both the literal strings "entity_id" and "99",
 //!        and the layer's entities remain unmodified.
 //!
-//! AC-7: Code-shape assertion â€” the macro drain-back iterates `merge_ops` at
+//! AC-7: Code-shape assertion â€" the macro drain-back iterates `merge_ops` at
 //!       least once in `crates/slicer-macros/src/lib.rs`.
 //!
 //! All three tests are EXPECTED TO FAIL until Steps 2/4/5 land the real
@@ -25,18 +25,18 @@ use slicer_ir::{
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, FinalizationStageRunner, LoadedModule,
+    Blackboard, CompiledModuleBuilder, CompiledModuleLive, FinalizationStageRunner, LoadedModule,
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 
-use crate::common::{finalization_input, wasm_cache};
+use crate::common::{finalization_input, wasm_cache, TestModuleBundle};
 
 const MUTATION_GUEST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../slicer-wasm-host/test-guests/finalization-mutation-roundtrip-guest.component.wasm"
 );
 
-// â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -96,7 +96,7 @@ fn make_loaded_module(id: &str) -> LoadedModule {
     .build()
 }
 
-fn make_module(id: &str, component: Arc<slicer_runtime::WasmComponent>) -> CompiledModule {
+fn make_module(id: &str, component: Arc<slicer_runtime::WasmComponent>) -> TestModuleBundle {
     make_module_with_config(id, component, ConfigView::new())
 }
 
@@ -104,7 +104,7 @@ fn make_module_with_config(
     id: &str,
     component: Arc<slicer_runtime::WasmComponent>,
     config: ConfigView,
-) -> CompiledModule {
+) -> TestModuleBundle {
     let loaded = make_loaded_module(id);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -118,10 +118,14 @@ fn make_module_with_config(
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(id, pool)
+    let module = CompiledModuleBuilder::new(id)
         .config_view(Arc::new(config))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn load_guest(engine: &WasmEngine) -> Arc<slicer_runtime::WasmComponent> {
@@ -189,7 +193,7 @@ fn make_layer(index: u32, z: f32, entities: Vec<PrintEntity>) -> LayerCollection
     }
 }
 
-// â”€â”€ tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ tests â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 /// AC-5: guest calls `modify_entity(layer_index, entity_id=1, SetSpeedFactor(0.5))`;
 /// after dispatch the host IR must have speed_factor == 0.5 on entity_id 1.
@@ -201,7 +205,7 @@ fn modify_entity_round_trips_through_wit() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine);
-    let module = make_module("com.test.finalization-mutation-roundtrip", component);
+    let bundle = make_module("com.test.finalization-mutation-roundtrip", component);
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let stage = "PostPass::LayerFinalization".to_string();
 
@@ -211,7 +215,13 @@ fn modify_entity_round_trips_through_wit() {
     dispatcher
         .run_stage(
             &stage,
-            &module.as_live(),
+            &CompiledModuleLive::new(
+                bundle.module.module_id(),
+                Arc::clone(&bundle.pool),
+                bundle.component.clone(),
+                bundle.module.claims(),
+                Arc::clone(bundle.module.config_view()),
+            ),
             finalization_input(&blackboard),
             &mut layers,
         )
@@ -246,18 +256,24 @@ fn modify_entity_unknown_id_round_trips_error() {
         m.insert("target_entity_id".to_string(), ConfigValue::Int(99));
         ConfigView::from_map(m)
     };
-    let module =
+    let bundle =
         make_module_with_config("com.test.finalization-mutation-unknown", component, config);
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let stage = "PostPass::LayerFinalization".to_string();
 
-    // Fixture has entity_id=1 only; guest targets entity_id=99 â€” not found.
+    // Fixture has entity_id=1 only; guest targets entity_id=99 â€" not found.
     let mut layers = vec![make_layer(0, 0.2, vec![entity_with_id(1, 0, 0.2, 1.0)])];
 
     // Host's apply_to() must surface a FatalModule error containing "entity_id" and "99".
     let run_result = dispatcher.run_stage(
         &stage,
-        &module.as_live(),
+        &CompiledModuleLive::new(
+            bundle.module.module_id(),
+            Arc::clone(&bundle.pool),
+            bundle.component.clone(),
+            bundle.module.claims(),
+            Arc::clone(bundle.module.config_view()),
+        ),
         finalization_input(&blackboard),
         &mut layers,
     );

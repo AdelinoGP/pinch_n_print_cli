@@ -3,7 +3,7 @@
 //! Verifies that `WasmRuntimeDispatcher::run_stage` for
 //! `PostPass::LayerFinalization` batch-prepends finalization entity pushes
 //! from `push-entity-to-layer` before the original model entities in each
-//! target layer â€” matching the legacy `SkirtBrim::process()` ordering where
+//! target layer â€" matching the legacy `SkirtBrim::process()` ordering where
 //! skirt/brim entities precede model paths.
 //!
 //! Tests use the pre-built `sdk-finalization-guest.component.wasm` which
@@ -23,11 +23,11 @@ use slicer_ir::{
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, FinalizationStageRunner, LoadedModule,
+    Blackboard, CompiledModuleBuilder, CompiledModuleLive, FinalizationStageRunner, LoadedModule,
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 
-use crate::common::{finalization_input, wasm_cache};
+use crate::common::{finalization_input, wasm_cache, TestModuleBundle};
 
 const SDK_FINALIZATION_GUEST: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -112,7 +112,7 @@ fn make_loaded_module(id: &str) -> LoadedModule {
     .build()
 }
 
-fn make_module(id: &str, component: Arc<slicer_runtime::WasmComponent>) -> CompiledModule {
+fn make_module(id: &str, component: Arc<slicer_runtime::WasmComponent>) -> TestModuleBundle {
     let loaded = make_loaded_module(id);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -126,9 +126,12 @@ fn make_module(id: &str, component: Arc<slicer_runtime::WasmComponent>) -> Compi
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(id, pool)
-        .wasm_component(Some(component))
-        .build()
+    let module = CompiledModuleBuilder::new(id).build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
@@ -199,7 +202,7 @@ fn make_module_with_config(
     id: &str,
     component: Arc<slicer_runtime::WasmComponent>,
     config: ConfigView,
-) -> CompiledModule {
+) -> TestModuleBundle {
     let loaded = make_loaded_module(id);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -213,10 +216,14 @@ fn make_module_with_config(
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(id, pool)
+    let module = CompiledModuleBuilder::new(id)
         .config_view(Arc::new(config))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn make_layer_with_tool_change(index: u32, z: f32) -> LayerCollectionIR {
@@ -250,7 +257,7 @@ fn live_finalization_dispatch_merges_skirt_brim_entity_pushes() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine);
-    let module = make_module("com.test.finalization-prepend-witness", component);
+    let bundle = make_module("com.test.finalization-prepend-witness", component);
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let stage = "PostPass::LayerFinalization".to_string();
 
@@ -273,7 +280,13 @@ fn live_finalization_dispatch_merges_skirt_brim_entity_pushes() {
     dispatcher
         .run_stage(
             &stage,
-            &module.as_live(),
+            &CompiledModuleLive::new(
+                bundle.module.module_id(),
+                Arc::clone(&bundle.pool),
+                bundle.component.clone(),
+                bundle.module.claims(),
+                Arc::clone(bundle.module.config_view()),
+            ),
             finalization_input(&blackboard),
             &mut layers,
         )
@@ -312,7 +325,7 @@ fn live_finalization_dispatch_merges_skirt_brim_entity_pushes() {
 /// Uses the real `wipe-tower.wasm` artifact with `wipe_tower_enabled=true` and
 /// a layer containing a `ToolChange`. After dispatch the layer must contain at
 /// least one `ExtrusionRole::WipeTower` entity, proving that `run_finalization()`
-/// â€” not the legacy `process()` path â€” is the source of those entities.
+/// â€" not the legacy `process()` path â€" is the source of those entities.
 #[test]
 fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
     let engine = wasm_cache::shared_engine();
@@ -329,11 +342,11 @@ fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
     config_map.insert("line_width".to_string(), ConfigValue::Float(0.4));
     let config = ConfigView::from_map(config_map);
 
-    let module = make_module_with_config("com.core.wipe-tower", component, config);
+    let bundle = make_module_with_config("com.core.wipe-tower", component, config);
     let blackboard = Blackboard::new(empty_mesh_ir(), 0);
     let stage = "PostPass::LayerFinalization".to_string();
 
-    // One layer with a model entity and one ToolChange â€” must trigger WipeTower output.
+    // One layer with a model entity and one ToolChange â€" must trigger WipeTower output.
     let mut layers = vec![make_layer_with_tool_change(0, 0.2)];
 
     assert_eq!(
@@ -349,7 +362,13 @@ fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
     dispatcher
         .run_stage(
             &stage,
-            &module.as_live(),
+            &CompiledModuleLive::new(
+                bundle.module.module_id(),
+                Arc::clone(&bundle.pool),
+                bundle.component.clone(),
+                bundle.module.claims(),
+                Arc::clone(bundle.module.config_view()),
+            ),
             finalization_input(&blackboard),
             &mut layers,
         )
@@ -365,7 +384,7 @@ fn live_finalization_dispatch_merges_wipe_tower_entity_pushes() {
         "layer must contain at least one WipeTower entity after live finalization dispatch"
     );
 
-    // Model entity must still be present â€” finalization appends/prepends, not replaces.
+    // Model entity must still be present â€" finalization appends/prepends, not replaces.
     let has_outer_wall = layers[0]
         .ordered_entities
         .iter()

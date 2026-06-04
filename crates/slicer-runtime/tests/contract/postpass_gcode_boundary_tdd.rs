@@ -10,8 +10,9 @@ use slicer_ir::{
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, LoadedModule, LoadedModuleBuilder,
-    PostpassOutput, PostpassStageRunner, WasmRuntimeDispatcher,
+    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive, LoadedModule,
+    LoadedModuleBuilder, PostpassOutput, PostpassStageRunner, WasmInstancePool,
+    WasmRuntimeDispatcher,
 };
 
 use crate::common::{postpass_input, wasm_cache};
@@ -59,11 +60,11 @@ fn make_loaded_module(id: &str) -> LoadedModule {
 
 fn make_module_with_config(
     module_id: &str,
-    component: Arc<slicer_runtime::WasmComponent>,
+    _component: Arc<slicer_runtime::WasmComponent>,
     config: ConfigView,
 ) -> CompiledModule {
     let loaded = make_loaded_module(module_id);
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -75,9 +76,8 @@ fn make_module_with_config(
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(module_id, pool)
+    CompiledModuleBuilder::new(module_id)
         .config_view(Arc::new(config))
-        .wasm_component(Some(component))
         .build()
 }
 
@@ -185,7 +185,13 @@ fn postpass_gcode_boundary_carries_all_payload_variants_into_guest() {
 
     let result = dispatcher.run_gcode_postprocess(
         &StageId::from("PostPass::GCodePostProcess"),
-        &module.as_live(),
+        &CompiledModuleLive::new(
+            module.module_id(),
+            WasmInstancePool::placeholder(),
+            None,
+            module.claims(),
+            Arc::clone(module.config_view()),
+        ),
         postpass_input(&blackboard),
         &mut gcode_ir.commands,
     );

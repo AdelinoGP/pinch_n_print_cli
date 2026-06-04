@@ -61,6 +61,7 @@ fn postpass_executor_runs_gcode_postprocess_before_text_postprocess() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
 
     // Must succeed (or fail on todo! for red phase)
@@ -124,6 +125,7 @@ fn postpass_executor_runs_gcode_postprocess_modules_sequentially() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -169,6 +171,7 @@ fn postpass_executor_runs_text_postprocess_modules_sequentially() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -213,6 +216,7 @@ fn postpass_executor_receives_immutable_layer_irs() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -245,6 +249,7 @@ fn postpass_executor_calls_emitter_first() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -278,6 +283,7 @@ fn postpass_executor_serializes_directly_when_no_text_postprocess() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -313,6 +319,7 @@ fn postpass_executor_returns_text_from_last_text_postprocess() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
     assert!(result.is_ok(), "postpass should succeed, got {:?}", result);
 
@@ -347,6 +354,7 @@ fn postpass_executor_aborts_on_fatal_gcode_postprocess_error() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
 
     assert!(
@@ -396,6 +404,7 @@ fn postpass_executor_aborts_on_fatal_text_postprocess_error() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
 
     assert!(
@@ -439,6 +448,7 @@ fn postpass_executor_continues_after_nonfatal_gcode_postprocess_error() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
     assert!(
         result.is_ok(),
@@ -482,6 +492,7 @@ fn postpass_executor_continues_after_nonfatal_text_postprocess_error() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
     assert!(
         result.is_ok(),
@@ -518,6 +529,7 @@ fn postpass_executor_propagates_emitter_error() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
 
     assert!(
@@ -551,6 +563,7 @@ fn postpass_executor_handles_empty_stages() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
     assert!(
         result.is_ok(),
@@ -587,6 +600,7 @@ fn postpass_executor_allows_gcode_ir_mutation() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
     assert!(result.is_ok(), "should succeed, got {:?}", result);
 
@@ -621,6 +635,7 @@ fn postpass_executor_propagates_serializer_error() {
         &emitter,
         &serializer,
         &mut runner,
+        &Default::default(),
     );
 
     assert!(
@@ -658,7 +673,7 @@ fn compiled_stage(stage_id: &str, module_ids: &[&str]) -> CompiledStage {
 
 fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded_module = loaded_module(module_id, stage_id);
-    let instance_pool = Arc::new(
+    let _instance_pool = Arc::new(
         build_wasm_instance_pool(
             loaded_module.id(),
             loaded_module.stage(),
@@ -673,17 +688,12 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
 
     let binding = ExecutionModuleBinding {
         module: loaded_module,
-        instance_pool,
         config_view: Arc::new(ConfigView::new()),
-        wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(
-        binding.module.id().to_string(),
-        Arc::clone(&binding.instance_pool),
-    )
-    .config_view(Arc::clone(&binding.config_view))
-    .build()
+    CompiledModuleBuilder::new(binding.module.id().to_string())
+        .config_view(Arc::clone(&binding.config_view))
+        .build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {

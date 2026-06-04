@@ -10,11 +10,11 @@ use slicer_ir::{
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, LoadedModule, LoadedModuleBuilder,
-    PostpassOutput, PostpassStageRunner, WasmRuntimeDispatcher,
+    Blackboard, CompiledModuleBuilder, LoadedModule, LoadedModuleBuilder, PostpassOutput,
+    PostpassStageRunner, WasmRuntimeDispatcher,
 };
 
-use crate::common::{postpass_input, wasm_cache};
+use crate::common::{postpass_input, wasm_cache, TestModuleBundle};
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -61,7 +61,7 @@ fn make_module_with_config(
     module_id: &str,
     component: Arc<slicer_runtime::WasmComponent>,
     config: ConfigView,
-) -> CompiledModule {
+) -> TestModuleBundle {
     let loaded = make_loaded_module(module_id);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -75,10 +75,14 @@ fn make_module_with_config(
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(module_id, pool)
+    let module = CompiledModuleBuilder::new(module_id)
         .config_view(Arc::new(config))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn make_gcode_ir(commands: Vec<GCodeCommand>) -> GCodeIR {

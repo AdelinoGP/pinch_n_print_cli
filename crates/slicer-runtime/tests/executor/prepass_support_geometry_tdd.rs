@@ -18,7 +18,7 @@
 //! The "LIVE WASM dispatch" tests load `support-planner.wasm`, instantiate
 //! it through wasmtime via `WasmRuntimeDispatcher::run_stage`, and verify the
 //! `SupportPlanIR` committed to the Blackboard. They do not call any
-//! `support_planner` Rust trait method directly â€” every code path crosses
+//! `support_planner` Rust trait method directly â€" every code path crosses
 //! the WIT boundary.
 
 #![allow(missing_docs)]
@@ -42,9 +42,11 @@ use slicer_runtime::{
     WasmRuntimeDispatcher,
 };
 
+use crate::common::TestModuleBundle;
+
 use crate::common::wasm_cache;
 
-// â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Fixtures â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -117,7 +119,7 @@ fn overhang_plate_mesh() -> MeshIR {
     }
 }
 
-/// Construct a mesh containing only a flat cube â€” every overhanging facet
+/// Construct a mesh containing only a flat cube â€" every overhanging facet
 /// sits on the build plate and is excluded by the planner's layer-0
 /// short-circuit. Result: empty plan.
 fn flat_cube_mesh() -> MeshIR {
@@ -214,7 +216,7 @@ fn loaded_support_planner_module(id: &str, wasm_path: PathBuf) -> LoadedModule {
     .build()
 }
 
-fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
+fn compile_support_planner(engine: &Arc<WasmEngine>) -> TestModuleBundle {
     let wasm_path = support_planner_wasm();
     let bytes = std::fs::read(&wasm_path).unwrap_or_else(|_| {
         panic!(
@@ -241,10 +243,14 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         )
         .expect("instance pool must build"),
     );
-    CompiledModuleBuilder::new(loaded.id().to_string(), pool)
+    let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(ConfigView::from_map(default_planner_config_map())))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn default_planner_config_map() -> HashMap<String, ConfigValue> {
@@ -266,7 +272,7 @@ fn default_planner_config_map() -> HashMap<String, ConfigValue> {
     map
 }
 
-fn execution_plan_with_support_geometry(module: CompiledModule) -> ExecutionPlan {
+fn execution_plan_with_support_geometry(module: slicer_runtime::CompiledModule) -> ExecutionPlan {
     ExecutionPlan {
         prepass_stages: vec![CompiledStage {
             stage_id: "PrePass::SupportGeometry".to_string(),
@@ -362,11 +368,12 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
 fn run_live_support_geometry(mesh: MeshIR) -> Arc<SupportPlanIR> {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let module = compile_support_planner(&engine);
+    let bundle = compile_support_planner(&engine);
+    let (module, wasm_handles) = bundle.into_module_and_handles();
     let plan = execution_plan_with_support_geometry(module);
 
     let mut blackboard = blackboard_with_layer_plan(mesh);
-    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher)
+    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher, &wasm_handles)
         .expect("execute_prepass_with_builtins must succeed");
 
     Arc::clone(
@@ -376,7 +383,7 @@ fn run_live_support_geometry(mesh: MeshIR) -> Arc<SupportPlanIR> {
     )
 }
 
-// â”€â”€ Acceptance: positive overhang fixture produces branches (LIVE WASM) â”€â”€
+// â"€â"€ Acceptance: positive overhang fixture produces branches (LIVE WASM) â"€â"€
 
 #[test]
 fn support_planner_produces_branches_for_overhang_fixture() {
@@ -408,7 +415,7 @@ fn support_planner_produces_branches_for_overhang_fixture() {
     }
 }
 
-// â”€â”€ Acceptance: determinism across repeated runs (LIVE WASM) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Acceptance: determinism across repeated runs (LIVE WASM) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 #[test]
 fn support_planner_is_deterministic_across_runs() {
@@ -443,7 +450,7 @@ fn support_planner_is_deterministic_across_runs() {
     }
 }
 
-// â”€â”€ Negative: empty overhangs (LIVE WASM) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Negative: empty overhangs (LIVE WASM) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 #[test]
 fn support_planner_emits_empty_plan_when_no_overhangs() {
@@ -455,7 +462,7 @@ fn support_planner_emits_empty_plan_when_no_overhangs() {
     );
 }
 
-// â”€â”€ Negative: missing LayerPlanIR prerequisite â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Negative: missing LayerPlanIR prerequisite â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 #[test]
 fn prepass_support_geometry_fails_without_layer_plan() {
@@ -475,7 +482,7 @@ fn prepass_support_geometry_fails_without_layer_plan() {
 
     let runner = NullRunner;
 
-    let err = execute_prepass(&plan, &mut blackboard, &runner).unwrap_err();
+    let err = execute_prepass(&plan, &mut blackboard, &runner, &Default::default()).unwrap_err();
     match err {
         PrepassExecutionError::MissingRequiredPrepass { stage_id, slot } => {
             assert_eq!(stage_id, "PrePass::SupportGeometry");
@@ -491,7 +498,7 @@ fn prepass_support_geometry_fails_without_layer_plan() {
     }
 }
 
-// â”€â”€ Negative: claim dedup for two `support-planner` holders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Negative: claim dedup for two `support-planner` holders â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 #[test]
 fn support_planner_claim_dedup() {
@@ -533,7 +540,7 @@ fn support_planner_claim_dedup() {
     );
 }
 
-// â”€â”€ Anti-regression: blackboard commit path carries SupportPlanIR â”€â”€â”€â”€â”€â”€
+// â"€â"€ Anti-regression: blackboard commit path carries SupportPlanIR â"€â"€â"€â"€â"€â"€
 
 #[test]
 fn blackboard_accepts_and_returns_support_plan_ir() {
@@ -588,7 +595,7 @@ fn layer_plan_committed_plus_support_geometry_proceeds() {
     )]);
 
     let runner = EmptyPlanRunner;
-    let _ = execute_prepass(&plan, &mut blackboard, &runner)
+    let _ = execute_prepass(&plan, &mut blackboard, &runner, &Default::default())
         .expect("execute_prepass must succeed when LayerPlanIR is present");
     assert!(
         blackboard.support_plan().is_some(),
@@ -596,7 +603,7 @@ fn layer_plan_committed_plus_support_geometry_proceeds() {
     );
 }
 
-// â”€â”€ Native (no-WASM) host fixtures used by negative tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Native (no-WASM) host fixtures used by negative tests â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 fn minimal_mesh_fixture() -> MeshIR {
     MeshIR {
@@ -668,7 +675,7 @@ fn compiled_native_module(stage_id: &str, module_id: &str) -> CompiledModule {
     .min_ir_schema(semver(1, 0, 0))
     .max_ir_schema(semver(2, 0, 0))
     .build();
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -680,7 +687,7 @@ fn compiled_native_module(stage_id: &str, module_id: &str) -> CompiledModule {
         )
         .expect("fixture instance pool must build"),
     );
-    CompiledModuleBuilder::new(loaded.id().to_string(), pool).build()
+    CompiledModuleBuilder::new(loaded.id().to_string()).build()
 }
 
 #[derive(Default)]
@@ -715,7 +722,7 @@ impl PrepassStageRunner for EmptyPlanRunner {
     }
 }
 
-// â”€â”€ AC: host built-in commits SupportGeometryIR before guest runs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ AC: host built-in commits SupportGeometryIR before guest runs â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 /// Verifies that in a `PrePass::SupportGeometry` stage with one guest module,
 /// the host built-in commits `SupportGeometryIR` strictly before the guest's
@@ -769,11 +776,12 @@ fn host_builtin_runs_before_guest() {
     };
 
     // Compile the real support-planner guest module.
-    let module = compile_support_planner(&engine);
+    let bundle = compile_support_planner(&engine);
+    let (module, wasm_handles) = bundle.into_module_and_handles();
     let plan = execution_plan_with_support_geometry(module);
     let mut blackboard = blackboard_with_layer_plan(overhang_plate_mesh());
 
-    execute_prepass_with_builtins(&plan, &mut blackboard, &spy)
+    execute_prepass_with_builtins(&plan, &mut blackboard, &spy, &wasm_handles)
         .expect("execute_prepass_with_builtins must succeed");
 
     // Assert 1: spy observed SupportGeometryIR committed before the guest ran.

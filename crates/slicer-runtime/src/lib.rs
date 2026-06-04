@@ -7,17 +7,11 @@
 pub mod blackboard;
 /// Builtin pipeline step producers.
 pub mod builtins;
-pub mod config_resolution;
-pub mod dag;
-pub mod dag_cli;
 pub mod diagnose;
-pub mod execution_plan;
 pub mod gcode_emit;
 pub mod instrumentation;
 pub mod layer_executor;
 pub mod layer_finalization;
-pub mod manifest;
-pub mod module_search_path;
 pub mod negative_part_subtract;
 pub mod pipeline;
 pub mod postpass;
@@ -30,9 +24,21 @@ pub mod report;
 pub mod run;
 pub mod slice_postprocess;
 pub mod slice_postprocess_prepass;
-pub mod stage_order;
-pub mod topology;
-pub mod validation;
+
+// Modules moved to slicer-scheduler — re-exported here for backward compatibility.
+// kept: transitional shim for downstream consumers (slicer-runtime tests, benches,
+// and external callers) that previously imported these module paths from
+// `slicer_runtime::*`. A follow-up packet may delete these once consumers migrate
+// to `slicer_scheduler::*` directly. See ADR-0007 for the Static/Live split rationale.
+pub use slicer_scheduler::config_resolution;
+pub use slicer_scheduler::dag;
+pub use slicer_scheduler::dag_cli;
+pub use slicer_scheduler::execution_plan;
+pub use slicer_scheduler::manifest;
+pub use slicer_scheduler::module_search_path;
+pub use slicer_scheduler::stage_order;
+pub use slicer_scheduler::topology;
+pub use slicer_scheduler::validation;
 
 pub use blackboard::{Blackboard, DeferredRetract, DeferredTravelMove, LayerArena};
 pub use config_resolution::{
@@ -107,13 +113,19 @@ pub use dag_cli::{
     DependsOut, GlobalEdgeOut, ModuleOut, StageEdgeOut, StageOut, StageSummary, StagesOut,
 };
 pub use execution_plan::{
-    bind_module_config_view, build_execution_plan, build_live_execution_plan,
-    dedup_same_claim_modules_for_test, load_live_modules_for_plan, parse_cli_config_source,
-    CompiledModule, CompiledModuleBuilder, CompiledModuleStatic, CompiledStage,
+    bind_module_config_view, build_execution_plan, dedup_same_claim_modules_for_test,
+    parse_cli_config_source, CompiledModuleBuilder, CompiledModuleStatic, CompiledStage,
     ConfigSourceParseError, ExecutionModuleBinding, ExecutionPlan, ExecutionPlanError,
-    ExecutionPlanRequest, IrAccessMask, LiveModuleBinding, LiveModuleLoadError,
-    LiveModuleLoadOutput, SortedStageModules, DEFAULT_REGION_MAP_CAP, MAX_LAYER_INDEX, STAGE_ORDER,
+    ExecutionPlanRequest, IrAccessMask, SortedStageModules, DEFAULT_REGION_MAP_CAP,
+    MAX_LAYER_INDEX, STAGE_ORDER,
 };
+// Live-path symbols moved to slicer-wasm-host (Step 3.5).
+pub use slicer_wasm_host::{
+    build_live_execution_plan, load_live_modules_for_plan, LiveModuleBinding, LiveModuleLoadError,
+    LiveModuleLoadOutput,
+};
+// CompiledModule alias (transitional compat: was deleted by Step 3.5, use CompiledModuleStatic directly).
+pub use execution_plan::CompiledModuleStatic as CompiledModule;
 pub use gcode_emit::{
     serialize_thumbnail_block, tolerance_for_role, DefaultGCodeEmitter, DefaultGCodeSerializer,
     ThumbnailAwareSerializer,

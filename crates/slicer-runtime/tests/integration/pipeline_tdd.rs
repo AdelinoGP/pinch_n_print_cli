@@ -218,7 +218,7 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
     .min_ir_schema(semver(1, 0, 0))
     .max_ir_schema(semver(2, 0, 0))
     .build();
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -230,7 +230,7 @@ fn make_dummy_module(stage_id: &str, module_id: &str) -> CompiledModule {
         )
         .expect("fixture module should build a pool"),
     );
-    CompiledModuleBuilder::new(module_id, pool).build()
+    CompiledModuleBuilder::new(module_id).build()
 }
 
 // ---------- Test 1: empty modules produces empty gcode ----------
@@ -243,6 +243,7 @@ fn run_pipeline_empty_modules() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -279,6 +280,7 @@ fn run_pipeline_returns_gcode_string() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let output = run_pipeline(config).unwrap();
@@ -331,6 +333,7 @@ fn run_pipeline_propagates_prepass_error() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -388,6 +391,7 @@ fn run_pipeline_propagates_layer_error() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -428,6 +432,7 @@ fn run_pipeline_propagates_postpass_error() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -537,6 +542,7 @@ fn run_pipeline_calls_stages_in_order() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -600,6 +606,7 @@ fn run_pipeline_propagates_finalization_error() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -681,6 +688,7 @@ fn run_pipeline_with_layers_produces_output() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let output = run_pipeline(config).unwrap();
@@ -758,6 +766,7 @@ fn run_pipeline_prepass_layer_plan_promotes_global_layers() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -832,6 +841,7 @@ fn prepass_audits_live_path() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -949,6 +959,7 @@ fn layer_audits_live_path() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1046,6 +1057,7 @@ fn access_audits_live_path() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");
@@ -1206,6 +1218,7 @@ fn access_audits_live_path_read_performing() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let output = run_pipeline(config).expect("pipeline must succeed");

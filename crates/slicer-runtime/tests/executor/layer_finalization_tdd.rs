@@ -44,8 +44,14 @@ fn finalization_executor_locks_down_stage_order_and_passes_mut_layers() {
         layer_collection_fixture(1, 0.4),
     ];
 
-    execute_layer_finalization(&plan, &blackboard, &runner, &mut layers)
-        .expect("finalization should run and succeed");
+    execute_layer_finalization(
+        &plan,
+        &blackboard,
+        &runner,
+        &mut layers,
+        &Default::default(),
+    )
+    .expect("finalization should run and succeed");
 
     assert_eq!(
         runner.observed_module_ids(),
@@ -74,8 +80,14 @@ fn finalization_executor_enforces_pool_size_of_1() {
     );
 
     let mut layers = Vec::new();
-    execute_layer_finalization(&plan, &blackboard, &runner, &mut layers)
-        .expect("finalization should run and succeed");
+    execute_layer_finalization(
+        &plan,
+        &blackboard,
+        &runner,
+        &mut layers,
+        &Default::default(),
+    )
+    .expect("finalization should run and succeed");
 }
 
 #[test]
@@ -106,7 +118,13 @@ fn finalization_executor_rejects_non_monotonic_layers() {
         layer_collection_fixture(1, 0.4),
     ];
 
-    let result = execute_layer_finalization(&plan, &blackboard, &BadRunner, &mut layers);
+    let result = execute_layer_finalization(
+        &plan,
+        &blackboard,
+        &BadRunner,
+        &mut layers,
+        &Default::default(),
+    );
     assert!(
         matches!(result, Err(FinalizationError::Validation { .. })),
         "expected validation error, got {:?}",
@@ -139,7 +157,13 @@ fn finalization_executor_rejects_duplicate_layer_indices() {
 
     let mut layers = vec![layer_collection_fixture(0, 0.2)];
 
-    let result = execute_layer_finalization(&plan, &blackboard, &DuplicateRunner, &mut layers);
+    let result = execute_layer_finalization(
+        &plan,
+        &blackboard,
+        &DuplicateRunner,
+        &mut layers,
+        &Default::default(),
+    );
     assert!(
         matches!(result, Err(FinalizationError::Validation { .. })),
         "expected validation error, got {:?}",
@@ -169,7 +193,13 @@ fn finalization_executor_handles_fatal_error() {
     );
 
     let mut layers = Vec::new();
-    let result = execute_layer_finalization(&plan, &blackboard, &runner, &mut layers);
+    let result = execute_layer_finalization(
+        &plan,
+        &blackboard,
+        &runner,
+        &mut layers,
+        &Default::default(),
+    );
     assert_eq!(
         result,
         Err(FinalizationError::FatalModule {
@@ -206,8 +236,14 @@ fn finalization_executor_handles_non_fatal_error() {
     );
 
     let mut layers = vec![layer_collection_fixture(0, 0.2)];
-    execute_layer_finalization(&plan, &blackboard, &runner, &mut layers)
-        .expect("should continue after non-fatal error");
+    execute_layer_finalization(
+        &plan,
+        &blackboard,
+        &runner,
+        &mut layers,
+        &Default::default(),
+    )
+    .expect("should continue after non-fatal error");
 
     assert_eq!(runner.observed_module_ids().len(), 2);
 }
@@ -292,7 +328,7 @@ fn compiled_stage(stage_id: &str, module_ids: &[&str]) -> CompiledStage {
 
 fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded_module = loaded_module(module_id, stage_id);
-    let instance_pool = Arc::new(
+    let _instance_pool = Arc::new(
         build_wasm_instance_pool(
             loaded_module.id(),
             loaded_module.stage(),
@@ -307,16 +343,10 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
 
     let binding = ExecutionModuleBinding {
         module: loaded_module,
-        instance_pool,
         config_view: Arc::new(ConfigView::new()),
-        wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(
-        binding.module.id().to_string(),
-        Arc::clone(&binding.instance_pool),
-    )
-    .build()
+    CompiledModuleBuilder::new(binding.module.id().to_string()).build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {

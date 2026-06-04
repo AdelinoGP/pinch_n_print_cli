@@ -16,7 +16,7 @@ use slicer_runtime::manifest::LoadedModuleBuilder;
 use slicer_runtime::{
     execute_per_layer, Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive,
     CompiledStage, ExecutionModuleBinding, ExecutionPlan, LayerStageError, LayerStageInput,
-    LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmRuntimeDispatcher,
+    LayerStageRunner, WasmArtifactMetadata, WasmEngine, WasmInstancePool, WasmRuntimeDispatcher,
 };
 
 const PATH_OPT_WASM: &str = concat!(
@@ -130,18 +130,20 @@ fn same_object_nearest_neighbor_ordering_is_applied_before_path_optimization() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
-            .wasm_component(Some(path_opt_component))
-            .build(),
-    );
+    let path_opt_module =
+        Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let runner =
-        LiveDispatcherWithInfill::with_module(infill, Arc::new(dispatcher), path_opt_module);
+    let runner = LiveDispatcherWithInfill::with_module(
+        infill,
+        Arc::new(dispatcher),
+        path_opt_module,
+        path_opt_pool,
+        path_opt_component,
+    );
 
-    let layers =
-        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &Default::default())
+        .expect("per-layer execution must succeed");
 
     let xs: Vec<f32> = layers[0]
         .ordered_entities
@@ -189,19 +191,27 @@ struct LiveDispatcherWithInfill {
     /// Used instead of the stage module when calling dispatcher.run_stage,
     /// because the stage module has wasm_component: None.
     path_opt_module: Arc<CompiledModule>,
+    /// Real instance pool for path-optimization dispatch.
+    path_opt_pool: Arc<WasmInstancePool>,
+    /// Real compiled component for path-optimization dispatch.
+    path_opt_component: Arc<slicer_runtime::WasmComponent>,
 }
 
 impl LiveDispatcherWithInfill {
-    /// Create a LiveDispatcherWithInfill with the real path-optimization CompiledModule.
+    /// Create a LiveDispatcherWithInfill with the real path-optimization CompiledModule and pool/component.
     fn with_module(
         infill: InfillIR,
         dispatcher: Arc<WasmRuntimeDispatcher>,
         path_opt_module: Arc<CompiledModule>,
+        path_opt_pool: Arc<WasmInstancePool>,
+        path_opt_component: Arc<slicer_runtime::WasmComponent>,
     ) -> Self {
         Self {
             infill,
             dispatcher,
             path_opt_module,
+            path_opt_pool,
+            path_opt_component,
         }
     }
 }
@@ -221,9 +231,14 @@ impl LayerStageRunner for LiveDispatcherWithInfill {
             });
         }
         // Delegate PathOptimization to the live WASM dispatcher.
-        // Pass self.path_opt_module (which has the real wasm_component) instead of
-        // the stage module (which has wasm_component: None due to compiled_module()).
-        let live = self.path_opt_module.as_live();
+        // Pass self.path_opt_module with real pool/component so the guest actually runs.
+        let live = CompiledModuleLive::new(
+            self.path_opt_module.module_id(),
+            Arc::clone(&self.path_opt_pool),
+            Some(Arc::clone(&self.path_opt_component)),
+            self.path_opt_module.claims(),
+            Arc::clone(self.path_opt_module.config_view()),
+        );
         self.dispatcher.run_stage(stage_id, layer, &live, input)
     }
 }
@@ -315,18 +330,20 @@ fn cross_object_ordering_resequences_entities_by_travel_cost() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
-            .wasm_component(Some(path_opt_component))
-            .build(),
-    );
+    let path_opt_module =
+        Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let runner =
-        LiveDispatcherWithInfill::with_module(infill, Arc::new(dispatcher), path_opt_module);
+    let runner = LiveDispatcherWithInfill::with_module(
+        infill,
+        Arc::new(dispatcher),
+        path_opt_module,
+        path_opt_pool,
+        path_opt_component,
+    );
 
-    let layers =
-        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &Default::default())
+        .expect("per-layer execution must succeed");
 
     let xs: Vec<f32> = layers[0]
         .ordered_entities
@@ -417,18 +434,20 @@ fn bridge_sensitive_entities_are_prioritized_ahead_of_generic_infill() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
-            .wasm_component(Some(path_opt_component))
-            .build(),
-    );
+    let path_opt_module =
+        Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let runner =
-        LiveDispatcherWithInfill::with_module(infill, Arc::new(dispatcher), path_opt_module);
+    let runner = LiveDispatcherWithInfill::with_module(
+        infill,
+        Arc::new(dispatcher),
+        path_opt_module,
+        path_opt_pool,
+        path_opt_component,
+    );
 
-    let layers =
-        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &Default::default())
+        .expect("per-layer execution must succeed");
 
     // Packet-61 unified all four infill variants
     // (BottomSolidInfill | TopSolidInfill | SparseInfill | BridgeInfill) into
@@ -523,20 +542,20 @@ fn path_ordering_is_deterministic_across_repeated_runs() {
             )
             .expect("fixture pool"),
         );
-        let path_opt_module = Arc::new(
-            CompiledModuleBuilder::new(
-                path_opt_loaded.id().to_string(),
-                Arc::clone(&path_opt_pool),
-            )
-            .wasm_component(Some(path_opt_component))
-            .build(),
-        );
+        let path_opt_module =
+            Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
 
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-        let runner =
-            LiveDispatcherWithInfill::with_module(infill, Arc::new(dispatcher), path_opt_module);
+        let runner = LiveDispatcherWithInfill::with_module(
+            infill,
+            Arc::new(dispatcher),
+            path_opt_module,
+            path_opt_pool,
+            path_opt_component,
+        );
 
-        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed")
+        execute_per_layer(&plan, &blackboard, &runner, &Default::default())
+            .expect("per-layer execution must succeed")
     }
 
     let layers1 = run();
@@ -621,18 +640,20 @@ fn single_or_already_optimal_sequence_is_left_unchanged() {
         )
         .expect("fixture pool"),
     );
-    let path_opt_module = Arc::new(
-        CompiledModuleBuilder::new(path_opt_loaded.id().to_string(), Arc::clone(&path_opt_pool))
-            .wasm_component(Some(path_opt_component))
-            .build(),
-    );
+    let path_opt_module =
+        Arc::new(CompiledModuleBuilder::new(path_opt_loaded.id().to_string()).build());
 
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let runner =
-        LiveDispatcherWithInfill::with_module(infill, Arc::new(dispatcher), path_opt_module);
+    let runner = LiveDispatcherWithInfill::with_module(
+        infill,
+        Arc::new(dispatcher),
+        path_opt_module,
+        path_opt_pool,
+        path_opt_component,
+    );
 
-    let layers =
-        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &Default::default())
+        .expect("per-layer execution must succeed");
 
     let xs: Vec<f32> = layers[0]
         .ordered_entities
@@ -687,8 +708,8 @@ fn no_module_proposal_leaves_raw_assembled_order() {
     // without ever calling set_entity_order.
     let runner = NoProposalStubRunner { infill };
 
-    let layers =
-        execute_per_layer(&plan, &blackboard, &runner).expect("per-layer execution must succeed");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &Default::default())
+        .expect("per-layer execution must succeed");
 
     let xs: Vec<f32> = layers[0]
         .ordered_entities
@@ -864,7 +885,7 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     })
     .layer_parallel_safe(true)
     .build();
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -878,11 +899,9 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     );
     let binding = ExecutionModuleBinding {
         module: loaded,
-        instance_pool: Arc::clone(&pool),
         config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-        wasm_component: None,
     };
-    CompiledModuleBuilder::new(binding.module.id().to_string(), Arc::clone(&pool))
+    CompiledModuleBuilder::new(binding.module.id().to_string())
         .config_view(Arc::clone(&binding.config_view))
         .build()
 }

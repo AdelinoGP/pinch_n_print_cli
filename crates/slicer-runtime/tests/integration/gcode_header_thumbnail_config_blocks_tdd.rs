@@ -164,6 +164,7 @@ fn slice_to_gcode(thumbnail_path: Option<&str>) -> Result<String, String> {
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
@@ -442,6 +443,7 @@ fn config_block_includes_user_passed() {
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)
@@ -643,6 +645,7 @@ fn rejects_missing_thumbnail_file() {
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink);
@@ -676,6 +679,7 @@ fn rejects_non_png_thumbnail() {
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink);
@@ -710,6 +714,7 @@ fn empty_config_view_still_emits_sentinels() {
         resolved_configs: Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let output = run_pipeline_with_raw_config(config, &raw, &NoopLayerProgressSink)

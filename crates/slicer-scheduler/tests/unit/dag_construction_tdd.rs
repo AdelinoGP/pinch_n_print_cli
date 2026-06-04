@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use slicer_ir::SemVer;
-use slicer_runtime::{
+use slicer_scheduler::{
     build_intra_stage_dag, LoadedModule, LoadedModuleBuilder, ModuleNode, Producer,
 };
 

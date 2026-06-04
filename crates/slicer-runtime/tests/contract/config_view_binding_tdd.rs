@@ -244,7 +244,7 @@ use slicer_runtime::{
 };
 
 fn plan_request_for(module: &LoadedModule, config_view: Arc<ConfigView>) -> ExecutionPlanRequest {
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             module.id(),
             module.stage(),
@@ -263,9 +263,7 @@ fn plan_request_for(module: &LoadedModule, config_view: Arc<ConfigView>) -> Exec
         }],
         module_bindings: vec![ExecutionModuleBinding {
             module: module.clone(),
-            instance_pool: pool,
             config_view,
-            wasm_component: None,
         }],
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(std::collections::HashMap::<RegionKey, RegionPlan>::new()),

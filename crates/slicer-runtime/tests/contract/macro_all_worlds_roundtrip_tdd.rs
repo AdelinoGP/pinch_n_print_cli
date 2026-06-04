@@ -34,14 +34,13 @@ use slicer_runtime::wit_host::{
     BUILTIN_EXTRUSION_ROLE_SKIRT_TAG,
 };
 use slicer_runtime::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, FinalizationOutput, FinalizationStageRunner,
-    LoadedModule, LoadedModuleBuilder, PrepassStageOutput, PrepassStageRunner,
-    WasmRuntimeDispatcher,
+    Blackboard, CompiledModuleBuilder, FinalizationOutput, FinalizationStageRunner, LoadedModule,
+    LoadedModuleBuilder, PrepassStageOutput, PrepassStageRunner, WasmRuntimeDispatcher,
 };
 use witness::{SdkInfillWitness, SdkInfillWitnessPoint1};
 
 use crate::common::wasm_cache;
-use crate::common::{finalization_input, layer_input, prepass_input};
+use crate::common::{finalization_input, layer_input, prepass_input, TestModuleBundle};
 
 fn semver(major: u32, minor: u32, patch: u32) -> slicer_ir::SemVer {
     slicer_ir::SemVer {
@@ -99,7 +98,7 @@ fn make_module(
     wit_world: &str,
     component: Arc<slicer_runtime::WasmComponent>,
     config: ConfigView,
-) -> CompiledModule {
+) -> TestModuleBundle {
     let loaded = make_loaded_module(module_id, stage_id, wit_world);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -113,10 +112,14 @@ fn make_module(
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(module_id, pool)
+    let module = CompiledModuleBuilder::new(module_id)
         .config_view(Arc::new(config))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn intentional_error_config(code: i64) -> ConfigView {

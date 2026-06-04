@@ -238,6 +238,7 @@ fn paint_semantic_override_propagates_through_full_prepass() {
         &default_resolved,
         &raw_config,
         &bounds,
+        &Default::default(),
     )
     .expect("execute_prepass_with_builtins_configured must succeed");
 

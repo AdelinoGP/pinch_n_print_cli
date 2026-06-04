@@ -64,6 +64,27 @@ Default to the narrowest test that proves the change:
 
 When a packet does require it, dispatch it to a sub-agent with a `FACT pass/fail` return — never absorb the full output. See `.claude/skills/swarm/SKILL.md` and `.claude/skills/spec-review/SKILL.md` for the dispatch contract.
 
+### Test output must always tee to `target/test-output.log`
+
+The Bash tool truncates long console output. Re-running a multi-minute test suite just to re-read its summary is the single most expensive agent mistake on this repo. **Every `cargo test` / `cargo nextest` invocation MUST redirect combined output to `target/test-output.log`:**
+
+```bash
+mkdir -p target && cargo test -p <crate> --test <file> 2>&1 | tee target/test-output.log
+```
+
+(PowerShell: `cargo test ... 2>&1 | Tee-Object -FilePath target/test-output.log`.)
+
+When inspecting results, you MUST read the file — never re-run the tests to see more output. Use the dedicated tools, not raw shell:
+
+- Summary lines: `Grep` for `^test result` in `target/test-output.log`.
+- Failures: `Grep` for `FAILED|panicked at|---- .* stdout ----` with `-C 5` in `target/test-output.log`.
+- Specific test: `Grep` for the test name in `target/test-output.log`, then `Read` the surrounding lines.
+- Full drill-down: `Read target/test-output.log` with `offset`/`limit`.
+
+**Prohibited:** re-invoking `cargo test` because the previous run's stdout was truncated, claimed to "only show doc-tests", or "needs the full picture". The full picture is already on disk — read it. The log is overwritten on each run, so capture findings before launching the next run.
+
+`target/test-output.log` is gitignored via the existing `/target` rule; no additional ignore entry is needed.
+
 ## Coordinate System Hazard
 
 **1 unit = 100 nm (10⁻⁴ mm)**, NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` / `mm_to_units()`. Full porting checklist in `docs/08_coordinate_system.md`.

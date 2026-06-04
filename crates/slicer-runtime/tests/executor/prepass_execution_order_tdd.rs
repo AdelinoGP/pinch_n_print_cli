@@ -153,7 +153,7 @@ fn compiled_stub_module(stage_id: &str, module_id: &str) -> CompiledModule {
     .min_ir_schema(semver(1, 0, 0))
     .max_ir_schema(semver(2, 0, 0))
     .build();
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -165,7 +165,7 @@ fn compiled_stub_module(stage_id: &str, module_id: &str) -> CompiledModule {
         )
         .expect("fixture pool must build"),
     );
-    CompiledModuleBuilder::new(loaded.id().to_string(), pool).build()
+    CompiledModuleBuilder::new(loaded.id().to_string()).build()
 }
 
 /// A stub runner that returns an empty `SupportPlanIR` for any stage call,
@@ -232,7 +232,8 @@ fn tree_support_plan_succeeds_without_layer_planning_stage() {
     };
 
     let runner = TreeSupportStubRunner;
-    let result = slicer_runtime::execute_prepass(&plan, &mut blackboard, &runner);
+    let result =
+        slicer_runtime::execute_prepass(&plan, &mut blackboard, &runner, &Default::default());
 
     // Must not fail with a LayerPlan-related prerequisite error.
     if let Err(PrepassExecutionError::MissingRequiredPrepass { ref slot, .. }) = result {

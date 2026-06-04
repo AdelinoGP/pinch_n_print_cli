@@ -58,8 +58,9 @@ fn transformed_model_world_z_through_layer_plan() {
         Arc::as_ptr(&mesh) as usize,
     );
 
-    let _audits = execute_prepass_with_builtins(&plan, &mut blackboard, &runner)
-        .expect("prepass should complete without error");
+    let _audits =
+        execute_prepass_with_builtins(&plan, &mut blackboard, &runner, &Default::default())
+            .expect("prepass should complete without error");
 
     let layer_plan = blackboard
         .layer_plan()
@@ -110,8 +111,9 @@ fn identity_transform_world_z_matches_object_local() {
         Arc::as_ptr(&mesh) as usize,
     );
 
-    let _audits = execute_prepass_with_builtins(&plan, &mut blackboard, &runner)
-        .expect("prepass should complete without error");
+    let _audits =
+        execute_prepass_with_builtins(&plan, &mut blackboard, &runner, &Default::default())
+            .expect("prepass should complete without error");
 
     let layer_plan = blackboard
         .layer_plan()
@@ -145,8 +147,9 @@ fn translated_model_world_z_offset_correctly() {
         Arc::as_ptr(&mesh) as usize,
     );
 
-    let _audits = execute_prepass_with_builtins(&plan, &mut blackboard, &runner)
-        .expect("prepass should complete without error");
+    let _audits =
+        execute_prepass_with_builtins(&plan, &mut blackboard, &runner, &Default::default())
+            .expect("prepass should complete without error");
 
     let layer_plan = blackboard
         .layer_plan()
@@ -240,7 +243,7 @@ fn execution_plan_fixture() -> ExecutionPlan {
 
 fn compiled_layer_planning_module() -> CompiledModule {
     let loaded = loaded_layer_planning_module();
-    let instance_pool = Arc::new(
+    let _instance_pool = Arc::new(
         slicer_runtime::build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -255,26 +258,21 @@ fn compiled_layer_planning_module() -> CompiledModule {
 
     let binding = ExecutionModuleBinding {
         module: loaded,
-        instance_pool,
         config_view: Arc::new(ConfigView::from_map(HashMap::from([(
             String::from("fixture.enabled"),
             ConfigValue::Bool(true),
         )]))),
-        wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(
-        binding.module.id().to_string(),
-        Arc::clone(&binding.instance_pool),
-    )
-    .ir_read_mask(IrAccessMask {
-        paths: binding.module.ir_reads().to_vec(),
-    })
-    .ir_write_mask(IrAccessMask {
-        paths: binding.module.ir_writes().to_vec(),
-    })
-    .config_view(Arc::clone(&binding.config_view))
-    .build()
+    CompiledModuleBuilder::new(binding.module.id().to_string())
+        .ir_read_mask(IrAccessMask {
+            paths: binding.module.ir_reads().to_vec(),
+        })
+        .ir_write_mask(IrAccessMask {
+            paths: binding.module.ir_writes().to_vec(),
+        })
+        .config_view(Arc::clone(&binding.config_view))
+        .build()
 }
 
 fn loaded_layer_planning_module() -> slicer_runtime::LoadedModule {

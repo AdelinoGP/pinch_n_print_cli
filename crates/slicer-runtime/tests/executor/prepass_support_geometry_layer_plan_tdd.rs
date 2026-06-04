@@ -24,7 +24,7 @@ use slicer_runtime::{
     LoadedModuleBuilder, PrepassExecutionError, WasmEngine, WasmRuntimeDispatcher,
 };
 
-use crate::common::wasm_cache;
+use crate::common::{wasm_cache, TestModuleBundle};
 
 // â”€â”€ Fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -276,7 +276,7 @@ fn loaded_support_planner_module(id: &str, wasm_path: std::path::PathBuf) -> Loa
     .build()
 }
 
-fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
+fn compile_support_planner(engine: &Arc<WasmEngine>) -> TestModuleBundle {
     let wasm_path = support_planner_wasm();
     let bytes = std::fs::read(&wasm_path).unwrap_or_else(|_| {
         panic!(
@@ -303,10 +303,14 @@ fn compile_support_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         )
         .expect("instance pool must build"),
     );
-    CompiledModuleBuilder::new(loaded.id().to_string(), pool)
+    let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(ConfigView::from_map(default_planner_config_map())))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn execution_plan_with_support_geometry(module: CompiledModule) -> ExecutionPlan {
@@ -356,11 +360,12 @@ fn run_prepass(
 ) -> Arc<SupportPlanIR> {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let module = compile_support_planner(&engine);
+    let bundle = compile_support_planner(&engine);
+    let (module, wasm_handles) = bundle.into_module_and_handles();
     let plan = execution_plan_with_support_geometry(module);
 
     let mut blackboard = blackboard_with_layer_plan_and_region_map(mesh, layer_plan, region_map);
-    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher)
+    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher, &wasm_handles)
         .expect("execute_prepass_with_builtins must succeed");
 
     Arc::clone(
@@ -381,18 +386,21 @@ fn run_prepass_for_layer_plan_only(
 ) -> Result<SupportPlanIR, PrepassExecutionError> {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let module = compile_support_planner(&engine);
+    let bundle = compile_support_planner(&engine);
+    let (module, wasm_handles) = bundle.into_module_and_handles();
     let plan = execution_plan_with_support_geometry(module);
 
     let mut blackboard = blackboard_with_layer_plan_no_region_map(mesh, layer_plan);
-    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher).map(|_audits| {
-        // The support planner should have committed SupportPlanIR.
-        let support_plan = blackboard
-            .support_plan()
-            .expect("SupportPlanIR must be committed after successful run");
-        // Clone the Arc contents to satisfy the return type.
-        (**support_plan).clone()
-    })
+    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher, &wasm_handles).map(
+        |_audits| {
+            // The support planner should have committed SupportPlanIR.
+            let support_plan = blackboard
+                .support_plan()
+                .expect("SupportPlanIR must be committed after successful run");
+            // Clone the Arc contents to satisfy the return type.
+            (**support_plan).clone()
+        },
+    )
 }
 
 // â”€â”€ AC-7: variable-layer-height walk (positive, WILL FAIL) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

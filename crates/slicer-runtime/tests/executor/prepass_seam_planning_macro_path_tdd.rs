@@ -35,7 +35,7 @@ use slicer_runtime::{
     LoadedModuleBuilder, WasmEngine, WasmRuntimeDispatcher,
 };
 
-use crate::common::wasm_cache;
+use crate::common::{wasm_cache, TestModuleBundle};
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -162,7 +162,7 @@ fn loaded_seam_planner(wasm_path: std::path::PathBuf) -> LoadedModule {
     .build()
 }
 
-fn compile_seam_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
+fn compile_seam_planner(engine: &Arc<WasmEngine>) -> TestModuleBundle {
     let wasm_path = seam_planner_wasm();
     let bytes = std::fs::read(&wasm_path).unwrap_or_else(|_| {
         panic!(
@@ -194,17 +194,22 @@ fn compile_seam_planner(engine: &Arc<WasmEngine>) -> CompiledModule {
         "seam_mode".to_string(),
         ConfigValue::String("nearest".to_string()),
     );
-    CompiledModuleBuilder::new(loaded.id().to_string(), pool)
+    let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(ConfigView::from_map(config_map)))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 #[test]
 fn seam_planner_default_live_dispatch_emits_seam_plan_entries() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
-    let module = compile_seam_planner(&engine);
+    let bundle = compile_seam_planner(&engine);
+    let (module, wasm_handles) = bundle.into_module_and_handles();
     let plan = ExecutionPlan {
         prepass_stages: vec![CompiledStage {
             stage_id: "PrePass::SeamPlanning".to_string(),
@@ -229,7 +234,7 @@ fn seam_planner_default_live_dispatch_emits_seam_plan_entries() {
         }))
         .expect("commit_layer_plan must succeed");
 
-    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher)
+    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher, &wasm_handles)
         .expect("execute_prepass_with_builtins must succeed for seam planning");
 
     let seam_plan = blackboard

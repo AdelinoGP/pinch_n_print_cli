@@ -121,7 +121,7 @@ fn compiled_stage(stage_id: &str, module_ids: &[&str]) -> CompiledStage {
 
 fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded = loaded_module(module_id, stage_id);
-    let instance_pool = Arc::new(
+    let _instance_pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -135,21 +135,16 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     );
     let binding = ExecutionModuleBinding {
         module: loaded,
-        instance_pool,
         config_view: Arc::new(ConfigView::new()),
-        wasm_component: None,
     };
-    CompiledModuleBuilder::new(
-        binding.module.id().to_string(),
-        Arc::clone(&binding.instance_pool),
-    )
-    .ir_read_mask(IrAccessMask {
-        paths: binding.module.ir_reads().to_vec(),
-    })
-    .ir_write_mask(IrAccessMask {
-        paths: binding.module.ir_writes().to_vec(),
-    })
-    .build()
+    CompiledModuleBuilder::new(binding.module.id().to_string())
+        .ir_read_mask(IrAccessMask {
+            paths: binding.module.ir_reads().to_vec(),
+        })
+        .ir_write_mask(IrAccessMask {
+            paths: binding.module.ir_writes().to_vec(),
+        })
+        .build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
@@ -325,7 +320,7 @@ fn translated_object_z_floor_world_z_anchor() {
         Arc::as_ptr(&mesh) as usize,
     );
 
-    let _audits = execute_prepass(&plan, &mut blackboard, &runner)
+    let _audits = execute_prepass(&plan, &mut blackboard, &runner, &Default::default())
         .expect("prepass executor should run fixed stage order and commit each output once");
 
     // Verify stage order

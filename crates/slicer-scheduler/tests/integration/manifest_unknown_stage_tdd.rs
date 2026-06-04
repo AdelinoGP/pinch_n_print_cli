@@ -18,7 +18,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use slicer_runtime::{load_module_from_paths, LoadErrorKind};
+use slicer_scheduler::{load_module_from_paths, LoadErrorKind};
 use tempfile::TempDir;
 
 // Obfuscated as concat! so the strict workspace-wide rg sweep for the

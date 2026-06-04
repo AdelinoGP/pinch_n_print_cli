@@ -15,7 +15,7 @@
 
 use std::collections::HashSet;
 
-use slicer_runtime::execution_plan::STAGE_ORDER;
+use slicer_scheduler::execution_plan::STAGE_ORDER;
 use slicer_schema::VALID_STAGES;
 
 /// Stages produced exclusively by host built-in producers (or host-internal

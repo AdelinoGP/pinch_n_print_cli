@@ -1,6 +1,6 @@
 //! Red tests for TASK-023 topological sorting.
 
-use slicer_runtime::{topological_sort, ModuleNode};
+use slicer_scheduler::{topological_sort, ModuleNode};
 
 // TASK-023 contract notes:
 // - Explicit cycle reporting avoids silently dropping work from cyclic graphs.
@@ -140,8 +140,8 @@ fn disconnected_components_follow_kahn_queue_ordering_deterministically() {
 }
 
 fn node(module_id: &str, edges_to: &[&str]) -> ModuleNode {
-    use slicer_runtime::instrumentation::EdgeReason;
-    use slicer_runtime::EdgeTo;
+    use slicer_scheduler::instrumentation::EdgeReason;
+    use slicer_scheduler::EdgeTo;
     ModuleNode {
         module_id: module_id.to_string(),
         ir_reads: Vec::new(),

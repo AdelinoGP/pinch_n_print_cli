@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use slicer_ir::SemVer;
-use slicer_runtime::{
+use slicer_scheduler::{
     load_module_from_paths, load_modules_from_roots, DiagnosticLevel, LoadErrorKind, LoadedModule,
 };
 use tempfile::TempDir;

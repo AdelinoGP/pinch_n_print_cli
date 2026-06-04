@@ -8,10 +8,8 @@
 #[path = "../common/mod.rs"]
 mod common;
 
-mod claim_transition_matrix_tdd;
 mod config_view_binding_tdd;
 mod config_view_encapsulation_source_tdd;
-mod core_module_ir_access_contract_tdd;
 mod dispatch_tdd;
 mod guest_fixture_freshness_tdd;
 mod macro_all_worlds_roundtrip_tdd;
@@ -19,12 +17,10 @@ mod macro_mesh_segmentation_output_roundtrip_tdd;
 mod macro_paint_region_roundtrip_tdd;
 mod macro_paint_segmentation_output_roundtrip_tdd;
 mod macro_postpass_text_roundtrip_tdd;
-mod module_manifest_tdd;
 mod paint_region_transport_widening_tdd;
 mod postpass_gcode_boundary_tdd;
 mod postpass_gcode_command_preservation_tdd;
 mod postpass_gcode_emit_contract_tdd;
 mod postpass_gcode_empty_list_tdd;
-mod stage_list_consistency_tdd;
 mod wit_drift_detection_tdd;
 mod wit_single_source_tdd;

@@ -5,8 +5,14 @@
 //! receive mutable access to the entire vector of LayerCollectionIR objects,
 //! allowing them to insert synthetic layers or modify existing ones.
 
-use slicer_ir::{FinalizationError, LayerCollectionIR};
-use slicer_wasm_host::{CompiledModuleLive, FinalizationStageInput, FinalizationStageRunner};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use slicer_ir::{FinalizationError, LayerCollectionIR, ModuleId};
+use slicer_wasm_host::{
+    CompiledModuleLive, FinalizationStageInput, FinalizationStageRunner, WasmComponent,
+    WasmInstancePool,
+};
 
 use crate::{Blackboard, ExecutionPlan};
 
@@ -29,16 +35,21 @@ pub fn execute_layer_finalization(
     blackboard: &Blackboard,
     runner: &dyn FinalizationStageRunner,
     layers: &mut Vec<LayerCollectionIR>,
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(), FinalizationError> {
     if let Some(stage) = &plan.layer_finalization_stage {
         for module in &stage.modules {
             // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
+            let (instance_pool, wasm_component) = wasm_handles
+                .get(module.module_id().as_str())
+                .map(|(p, c)| (Arc::clone(p), c.clone()))
+                .unwrap_or_else(|| (WasmInstancePool::placeholder(), None));
             let live_module = CompiledModuleLive::new(
-                &module.module_id,
-                std::sync::Arc::clone(&module.instance_pool),
-                module.wasm_component.clone(),
-                &module.claims,
-                std::sync::Arc::clone(&module.config_view),
+                module.module_id(),
+                instance_pool,
+                wasm_component,
+                module.claims(),
+                Arc::clone(module.config_view()),
             );
             let input = FinalizationStageInput {
                 mesh: std::sync::Arc::clone(blackboard.mesh()),

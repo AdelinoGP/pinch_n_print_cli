@@ -404,9 +404,7 @@ fn live_plan_build_still_rejects_handrolled_undeclared_view_via_guardrail() {
         sorted_stages: out.sorted_stages,
         module_bindings: vec![ExecutionModuleBinding {
             module: binding_src.module,
-            instance_pool: binding_src.instance_pool,
             config_view: Arc::new(ConfigView::from_map(leaky)),
-            wasm_component: binding_src.wasm_component,
         }],
         global_layers: Arc::new(Vec::new()),
         region_plans: Arc::new(HashMap::<RegionKey, RegionPlan>::new()),

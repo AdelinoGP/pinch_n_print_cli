@@ -5,15 +5,19 @@
 //! zero-cost; a real implementation (e.g. `slicer_report::Collector`) records
 //! timing, memory, and DAG metadata for the HTML slicer report.
 //!
-//! This module also owns the report-domain types (`Phase`, `TierKind`,
-//! `EdgeReason`, `SerialEdge`) and a helper that derives in-stage serial-edge
-//! reasons from a stage's `LoadedModule` list without disturbing `dag.rs`.
+//! Planning-side types (`EdgeReason`, `SerialEdge`,
+//! `compute_serial_edges_for_stage`) now live in
+//! `slicer_scheduler::instrumentation` and are re-exported here for
+//! backward compatibility.
 
-use serde::Serialize;
 use slicer_ir::{ModuleId, StageId};
+use slicer_scheduler::execution_plan::CompiledModuleStatic;
 
-use crate::execution_plan::CompiledModule;
-use crate::manifest::LoadedModule;
+// Re-export planning-side types so slicer_runtime::instrumentation::* paths
+// kept by external callers and the runtime lib.rs re-exports keep compiling.
+pub use slicer_scheduler::instrumentation::{
+    compute_serial_edges_for_stage, EdgeReason, SerialEdge,
+};
 
 /// Top-level execution phase. Layers are reported separately within
 /// `Phase::PerLayer`.
@@ -38,56 +42,24 @@ pub enum TierKind {
     PostPass,
 }
 
-/// Reason a serial edge exists between two modules in the same stage.
+/// Runtime-equivalent of `slicer_scheduler::instrumentation::compute_serial_edges_for_stage`
+/// that works on the frozen [`CompiledModuleStatic`] view available inside `ExecutionPlan`.
 ///
-/// Only the variants that the actual DAG builder emits are represented —
-/// claim conflicts block plan validation entirely (they never appear in a
-/// runnable plan), and `layer_parallel_safe = false` constrains parallelism
-/// *across layers* rather than between modules in a stage.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum EdgeReason {
-    /// The `from` module writes an IR path that the `to` module reads.
-    IrWriteRead {
-        /// The shared IR path (e.g. `"PerimeterIR.regions.walls"`).
-        writer_path: String,
-    },
-    /// The `to` module's manifest lists the `from` module in `requires_modules`.
-    ExplicitRequires,
-}
-
-/// One serial edge between two modules in the same stage.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SerialEdge {
-    /// Upstream module — runs first.
-    pub from: ModuleId,
-    /// Downstream module — runs after `from`.
-    pub to: ModuleId,
-    /// Why the scheduler placed `from` before `to`.
-    pub reason: EdgeReason,
-}
-
-/// Compute every in-stage serial edge for a single stage's modules.
-///
-/// Returns one `SerialEdge` per (writer, reader, reason) tuple — so a pair
-/// connected by both an IR write/read overlap and an `ExplicitRequires` will
-/// appear twice (once per reason). Callers that want a per-pair grouping can
-/// fold by `(from, to)` themselves.
-///
-/// Order is deterministic: edges are sorted by `(from, to, reason_tag)`.
-pub fn compute_serial_edges_for_stage(modules: &[LoadedModule]) -> Vec<SerialEdge> {
+/// Emits both `IrWriteRead` (overlapping write/read paths) and
+/// `ExplicitRequires` (manifest `requires_modules`) reasons, matching the
+/// `LoadedModule`-side helper's coverage.
+pub fn compute_serial_edges_from_compiled(modules: &[CompiledModuleStatic]) -> Vec<SerialEdge> {
     let mut edges: Vec<SerialEdge> = Vec::new();
-
     for writer in modules {
         for reader in modules {
-            if writer.id == reader.id {
+            if writer.module_id() == reader.module_id() {
                 continue;
             }
-            for written_path in &writer.ir_writes {
-                if reader.ir_reads.contains(written_path) {
+            for written_path in &writer.ir_write_mask().paths {
+                if reader.ir_read_mask().paths.contains(written_path) {
                     edges.push(SerialEdge {
-                        from: writer.id.clone(),
-                        to: reader.id.clone(),
+                        from: writer.module_id().to_string(),
+                        to: reader.module_id().to_string(),
                         reason: EdgeReason::IrWriteRead {
                             writer_path: written_path.clone(),
                         },
@@ -96,19 +68,17 @@ pub fn compute_serial_edges_for_stage(modules: &[LoadedModule]) -> Vec<SerialEdg
             }
         }
     }
-
     for module in modules {
-        for required in &module.requires_modules {
-            if modules.iter().any(|m| &m.id == required) {
+        for required in module.requires_modules() {
+            if modules.iter().any(|m| m.module_id() == required.as_str()) {
                 edges.push(SerialEdge {
                     from: required.clone(),
-                    to: module.id.clone(),
+                    to: module.module_id().to_string(),
                     reason: EdgeReason::ExplicitRequires,
                 });
             }
         }
     }
-
     edges.sort_by(|a, b| {
         a.from
             .cmp(&b.from)
@@ -130,59 +100,6 @@ fn reason_tag(r: &EdgeReason) -> u8 {
         EdgeReason::IrWriteRead { .. } => 0,
         EdgeReason::ExplicitRequires => 1,
     }
-}
-
-/// Runtime-equivalent of [`compute_serial_edges_for_stage`] that works on the
-/// frozen [`CompiledModule`] view available inside `ExecutionPlan`.
-///
-/// Emits both `IrWriteRead` (overlapping write/read paths) and
-/// `ExplicitRequires` (manifest `requires_modules`) reasons, matching the
-/// `LoadedModule`-side helper's coverage.
-pub fn compute_serial_edges_from_compiled(modules: &[CompiledModule]) -> Vec<SerialEdge> {
-    let mut edges: Vec<SerialEdge> = Vec::new();
-    for writer in modules {
-        for reader in modules {
-            if writer.module_id == reader.module_id {
-                continue;
-            }
-            for written_path in &writer.ir_write_mask.paths {
-                if reader.ir_read_mask.paths.contains(written_path) {
-                    edges.push(SerialEdge {
-                        from: writer.module_id.clone(),
-                        to: reader.module_id.clone(),
-                        reason: EdgeReason::IrWriteRead {
-                            writer_path: written_path.clone(),
-                        },
-                    });
-                }
-            }
-        }
-    }
-    for module in modules {
-        for required in &module.requires_modules {
-            if modules.iter().any(|m| &m.module_id == required) {
-                edges.push(SerialEdge {
-                    from: required.clone(),
-                    to: module.module_id.clone(),
-                    reason: EdgeReason::ExplicitRequires,
-                });
-            }
-        }
-    }
-    edges.sort_by(|a, b| {
-        a.from
-            .cmp(&b.from)
-            .then_with(|| a.to.cmp(&b.to))
-            .then_with(|| reason_tag(&a.reason).cmp(&reason_tag(&b.reason)))
-            .then_with(|| match (&a.reason, &b.reason) {
-                (
-                    EdgeReason::IrWriteRead { writer_path: ap },
-                    EdgeReason::IrWriteRead { writer_path: bp },
-                ) => ap.cmp(bp),
-                _ => std::cmp::Ordering::Equal,
-            })
-    });
-    edges
 }
 
 /// Bracket-shaped instrumentation surface called by the scheduler.
@@ -668,165 +585,6 @@ mod guard_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manifest::LoadedModuleBuilder;
-    use slicer_ir::SemVer;
-    use std::path::PathBuf;
-
-    fn module(
-        id: &str,
-        ir_reads: &[&str],
-        ir_writes: &[&str],
-        requires_modules: &[&str],
-    ) -> LoadedModule {
-        LoadedModuleBuilder::new(
-            id,
-            SemVer {
-                major: 1,
-                minor: 0,
-                patch: 0,
-            },
-            "Layer::Perimeters",
-            "slicer:world-layer@1.0.0",
-            PathBuf::from(format!("fixtures/{id}.wasm")),
-        )
-        .ir_reads(ir_reads.iter().map(|s| s.to_string()).collect())
-        .ir_writes(ir_writes.iter().map(|s| s.to_string()).collect())
-        .requires_modules(requires_modules.iter().map(|s| s.to_string()).collect())
-        .min_host_version(SemVer {
-            major: 0,
-            minor: 1,
-            patch: 0,
-        })
-        .min_ir_schema(SemVer {
-            major: 1,
-            minor: 0,
-            patch: 0,
-        })
-        .max_ir_schema(SemVer {
-            major: 2,
-            minor: 0,
-            patch: 0,
-        })
-        .layer_parallel_safe(true)
-        .build()
-    }
-
-    #[test]
-    fn ir_write_read_overlap_emits_edge_with_path() {
-        let modules = vec![
-            module("a", &[], &["PerimeterIR.regions.walls"], &[]),
-            module("b", &["PerimeterIR.regions.walls"], &[], &[]),
-        ];
-        let edges = compute_serial_edges_for_stage(&modules);
-        assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0].from, "a");
-        assert_eq!(edges[0].to, "b");
-        match &edges[0].reason {
-            EdgeReason::IrWriteRead { writer_path } => {
-                assert_eq!(writer_path, "PerimeterIR.regions.walls");
-            }
-            other => panic!("expected IrWriteRead, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn explicit_requires_emits_edge_with_explicit_reason() {
-        let modules = vec![module("a", &[], &[], &[]), module("b", &[], &[], &["a"])];
-        let edges = compute_serial_edges_for_stage(&modules);
-        assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0].from, "a");
-        assert_eq!(edges[0].to, "b");
-        assert_eq!(edges[0].reason, EdgeReason::ExplicitRequires);
-    }
-
-    #[test]
-    fn dual_reason_pair_emits_two_edges() {
-        let modules = vec![
-            module("a", &[], &["P"], &[]),
-            module("b", &["P"], &[], &["a"]),
-        ];
-        let edges = compute_serial_edges_for_stage(&modules);
-        assert_eq!(edges.len(), 2, "expected one edge per reason");
-        assert!(edges.iter().any(|e| matches!(
-            (&e.from[..], &e.to[..], &e.reason),
-            ("a", "b", EdgeReason::IrWriteRead { .. })
-        )));
-        assert!(edges.iter().any(|e| matches!(
-            (&e.from[..], &e.to[..], &e.reason),
-            ("a", "b", EdgeReason::ExplicitRequires)
-        )));
-    }
-
-    #[test]
-    fn requires_pointing_at_missing_module_is_dropped() {
-        let modules = vec![module("b", &[], &[], &["does-not-exist"])];
-        let edges = compute_serial_edges_for_stage(&modules);
-        assert!(edges.is_empty());
-    }
-
-    fn compiled_module(
-        id: &str,
-        ir_reads: &[&str],
-        ir_writes: &[&str],
-        requires_modules: &[&str],
-    ) -> CompiledModule {
-        use crate::execution_plan::IrAccessMask;
-        use slicer_wasm_host::pool::{build_wasm_instance_pool, WasmArtifactMetadata};
-        use std::sync::Arc;
-        let loaded = module(id, ir_reads, ir_writes, requires_modules);
-        let pool = Arc::new(
-            build_wasm_instance_pool(
-                &loaded.id,
-                &loaded.stage,
-                loaded.layer_parallel_safe,
-                1,
-                WasmArtifactMetadata {
-                    uses_shared_memory: false,
-                },
-            )
-            .expect("pool should build for synthetic fixture"),
-        );
-        crate::execution_plan::CompiledModuleBuilder::new(id.to_string(), pool)
-            .ir_read_mask(IrAccessMask {
-                paths: ir_reads.iter().map(|s| s.to_string()).collect(),
-            })
-            .ir_write_mask(IrAccessMask {
-                paths: ir_writes.iter().map(|s| s.to_string()).collect(),
-            })
-            .requires_modules(requires_modules.iter().map(|s| s.to_string()).collect())
-            .build()
-    }
-
-    #[test]
-    fn compiled_explicit_requires_emits_explicit_reason() {
-        let modules = vec![
-            compiled_module("a", &[], &[], &[]),
-            compiled_module("b", &[], &[], &["a"]),
-        ];
-        let edges = compute_serial_edges_from_compiled(&modules);
-        assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0].from, "a");
-        assert_eq!(edges[0].to, "b");
-        assert_eq!(edges[0].reason, EdgeReason::ExplicitRequires);
-    }
-
-    #[test]
-    fn compiled_dual_reason_pair_emits_two_edges() {
-        let modules = vec![
-            compiled_module("a", &[], &["P"], &[]),
-            compiled_module("b", &["P"], &[], &["a"]),
-        ];
-        let edges = compute_serial_edges_from_compiled(&modules);
-        assert_eq!(edges.len(), 2);
-        assert!(edges.iter().any(|e| matches!(
-            (&e.from[..], &e.to[..], &e.reason),
-            ("a", "b", EdgeReason::IrWriteRead { .. })
-        )));
-        assert!(edges.iter().any(|e| matches!(
-            (&e.from[..], &e.to[..], &e.reason),
-            ("a", "b", EdgeReason::ExplicitRequires)
-        )));
-    }
 
     #[test]
     fn noop_instrumentation_compiles_and_runs() {

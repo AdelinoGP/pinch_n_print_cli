@@ -8,7 +8,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 use std::sync::Arc;
 
-use slicer_ir::{ConfigKey, ConfigValue, LayerCollectionIR, MeshIR, ResolvedConfig};
+use slicer_ir::{ConfigKey, ConfigValue, LayerCollectionIR, MeshIR, ModuleId, ResolvedConfig};
+use slicer_wasm_host::{WasmComponent, WasmInstancePool};
 
 /// Default for the `thumbnail_path` host config key when the user does not set
 /// it. The empty string is the "no embedded thumbnail" sentinel (an absent or
@@ -68,6 +69,12 @@ pub struct PipelineConfig {
     /// Defaults to [`ConfigBoundsIndex::empty`] for pipeline call sites that
     /// don't load modules (in-process tests).
     pub bounds: Arc<ConfigBoundsIndex>,
+    /// Per-module wasmtime handles sourced from `LiveModuleLoadOutput.bindings`.
+    ///
+    /// Keyed by `ModuleId`. Executors look up this map to construct a
+    /// `CompiledModuleLive` for each module they dispatch. An empty map is valid
+    /// for in-process test pipelines that don't exercise real WASM dispatch.
+    pub wasm_handles: HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 }
 
 /// Output produced by a successful pipeline run.
@@ -165,6 +172,7 @@ pub fn run_pipeline_with_events(
         resolved_configs,
         default_resolved_config,
         bounds,
+        wasm_handles,
     } = config;
 
     // Step 1: Create blackboard with the loaded mesh. Layer count is not known
@@ -193,6 +201,7 @@ pub fn run_pipeline_with_events(
         &default_resolved_config,
         &empty_raw,
         &bounds,
+        &wasm_handles,
     )?;
 
     // Step 2b: Promote the LayerPlanIR committed by prepass into the execution
@@ -204,8 +213,13 @@ pub fn run_pipeline_with_events(
     }
 
     // Step 3: Execute per-layer stages in parallel via rayon
-    let (mut layer_irs, layer_audits) =
-        execute_per_layer_with_events(&plan, &blackboard, runners.layer.as_ref(), sink)?;
+    let (mut layer_irs, layer_audits) = execute_per_layer_with_events(
+        &plan,
+        &blackboard,
+        runners.layer.as_ref(),
+        sink,
+        &wasm_handles,
+    )?;
 
     // Step 4: Execute layer finalization (if present)
     execute_layer_finalization(
@@ -213,6 +227,7 @@ pub fn run_pipeline_with_events(
         &blackboard,
         runners.finalization.as_ref(),
         &mut layer_irs,
+        &wasm_handles,
     )?;
 
     // Step 5: Execute postpass (emit + serialize gcode)
@@ -223,6 +238,7 @@ pub fn run_pipeline_with_events(
         runners.emitter.as_ref(),
         runners.serializer.as_ref(),
         runners.postpass.as_mut(),
+        &wasm_handles,
     )?;
 
     Ok(PipelineOutput {
@@ -291,6 +307,7 @@ fn run_pipeline_core(
         resolved_configs,
         default_resolved_config,
         bounds,
+        wasm_handles,
     } = config;
 
     // Plan-freeze: emit one `record_edges` call per stage so the report has
@@ -325,6 +342,7 @@ fn run_pipeline_core(
         raw_config_source,
         &bounds,
         instrumentation,
+        &wasm_handles,
     );
     instrumentation.on_phase_end(Phase::PrePass);
     let prepass_audits = prepass_audits?;
@@ -340,6 +358,7 @@ fn run_pipeline_core(
         runners.layer.as_ref(),
         sink,
         instrumentation,
+        &wasm_handles,
     );
     instrumentation.on_phase_end(Phase::PerLayer);
     let (mut layer_irs, layer_audits) = per_layer_result?;
@@ -358,6 +377,7 @@ fn run_pipeline_core(
             &blackboard,
             runners.finalization.as_ref(),
             &mut layer_irs,
+            &wasm_handles,
         );
         if let Some(fin_stage) = plan.layer_finalization_stage.as_ref() {
             instrumentation.on_stage_end(&fin_stage.stage_id, None);
@@ -372,6 +392,7 @@ fn run_pipeline_core(
             &default_resolved_config,
             &layer_irs,
             instrumentation,
+            &wasm_handles,
         )
     })();
     instrumentation.on_phase_end(Phase::PostPass);
@@ -400,6 +421,7 @@ fn run_postpass_with_thumbnail(
     default_resolved_config: &ResolvedConfig,
     layer_irs: &[LayerCollectionIR],
     instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PipelineError> {
     // Extract and validate thumbnail bytes from raw_config before serialization.
     // If thumbnail_path is non-empty, read the file and check PNG magic; fail fast on error.
@@ -449,6 +471,7 @@ fn run_postpass_with_thumbnail(
         runners.serializer.as_ref(),
         runners.postpass.as_mut(),
         instrumentation,
+        wasm_handles,
     )
     .map_err(PipelineError::from)
 }

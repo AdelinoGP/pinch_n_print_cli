@@ -24,7 +24,9 @@ use crate::{Blackboard, BlackboardError, BlackboardPrepassSlot, ExecutionPlan};
 use slicer_core::algos::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};
 use slicer_core::algos::paint_segmentation::PaintSegmentationError;
 use slicer_core::algos::support_geometry::SupportGeometryBuiltinError;
-use slicer_wasm_host::{CompiledModuleLive, PrepassStageInput, PrepassStageRunner};
+use slicer_wasm_host::{
+    CompiledModuleLive, PrepassStageInput, PrepassStageRunner, WasmComponent, WasmInstancePool,
+};
 
 // PrepassStageRunner trait is now defined in slicer-wasm-host::traits and re-exported
 // from slicer_runtime via the transitional re-exports block in lib.rs (P83 Step 4c+4d).
@@ -171,8 +173,15 @@ pub fn execute_prepass(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
-    execute_prepass_with_instrumentation(plan, blackboard, runner, &NoopInstrumentation)
+    execute_prepass_with_instrumentation(
+        plan,
+        blackboard,
+        runner,
+        &NoopInstrumentation,
+        wasm_handles,
+    )
 }
 
 /// Instrumented variant of [`execute_prepass`] that brackets each stage and
@@ -183,6 +192,7 @@ pub fn execute_prepass_with_instrumentation(
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
     instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     let mut audits = Vec::new();
 
@@ -191,14 +201,18 @@ pub fn execute_prepass_with_instrumentation(
 
         instrumentation.on_stage_start(&stage.stage_id, None);
         for module in &stage.modules {
-            instrumentation.on_module_start(&stage.stage_id, None, &module.module_id);
+            instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
             // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
+            let (instance_pool, wasm_component) = wasm_handles
+                .get(module.module_id().as_str())
+                .map(|(p, c)| (Arc::clone(p), c.clone()))
+                .unwrap_or_else(|| (WasmInstancePool::placeholder(), None));
             let live_module = CompiledModuleLive::new(
-                &module.module_id,
-                std::sync::Arc::clone(&module.instance_pool),
-                module.wasm_component.clone(),
-                &module.claims,
-                std::sync::Arc::clone(&module.config_view),
+                module.module_id(),
+                instance_pool,
+                wasm_component,
+                module.claims(),
+                Arc::clone(module.config_view()),
             );
             let input = PrepassStageInput {
                 mesh: std::sync::Arc::clone(blackboard.mesh()),
@@ -208,7 +222,7 @@ pub fn execute_prepass_with_instrumentation(
                 _phantom: std::marker::PhantomData,
             };
             let run_result = runner.run_stage(&stage.stage_id, &live_module, input);
-            instrumentation.on_module_end(&stage.stage_id, None, &module.module_id, 0, 0);
+            instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
             // Map PrepassRunnerError → PrepassExecutionError via the From impl.
             let output = match run_result {
                 Ok(o) => o,
@@ -223,7 +237,7 @@ pub fn execute_prepass_with_instrumentation(
             let ir_path = ir_path_for_prepass_output(&output);
 
             if let Err(e) =
-                commit_stage_output(&stage.stage_id, &module.module_id, blackboard, output)
+                commit_stage_output(&stage.stage_id, module.module_id(), blackboard, output)
             {
                 instrumentation.on_stage_end(&stage.stage_id, None);
                 return Err(e);
@@ -235,14 +249,14 @@ pub fn execute_prepass_with_instrumentation(
             // no IR output still have their reads audited).
             if let Some(ir_path) = ir_path {
                 audits.push(ModuleAccessAudit {
-                    module_id: module.module_id.clone(),
+                    module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: vec![ir_path],
                 });
             } else if !runtime_reads.is_empty() {
                 // Module performed reads but produced no output — still record audit.
                 audits.push(ModuleAccessAudit {
-                    module_id: module.module_id.clone(),
+                    module_id: module.module_id().to_owned(),
                     runtime_reads,
                     runtime_writes: Vec::new(),
                 });
@@ -295,6 +309,7 @@ pub fn execute_prepass_with_builtins(
     plan: &ExecutionPlan,
     blackboard: &mut Blackboard,
     runner: &dyn PrepassStageRunner,
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     let empty_resolved: BTreeMap<String, ResolvedConfig> = BTreeMap::new();
     let default_resolved = ResolvedConfig::default();
@@ -308,6 +323,7 @@ pub fn execute_prepass_with_builtins(
         &default_resolved,
         &empty_raw,
         &empty_bounds,
+        wasm_handles,
     )
 }
 
@@ -324,6 +340,7 @@ pub fn execute_prepass_with_builtins_configured(
     default_resolved_config: &ResolvedConfig,
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     bounds: &crate::ConfigBoundsIndex,
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     execute_prepass_with_builtins_configured_instr(
         plan,
@@ -334,6 +351,7 @@ pub fn execute_prepass_with_builtins_configured(
         raw_config_source,
         bounds,
         &NoopInstrumentation,
+        wasm_handles,
     )
 }
 
@@ -349,6 +367,7 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
     raw_config_source: &HashMap<ConfigKey, ConfigValue>,
     bounds: &crate::ConfigBoundsIndex,
     instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<Vec<ModuleAccessAudit>, PrepassExecutionError> {
     run_builtin_stage(
         blackboard,
@@ -438,8 +457,13 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             prepass_stages: early_stages.into_iter().cloned().collect(),
             ..plan.clone()
         };
-        audits =
-            execute_prepass_with_instrumentation(&early_plan, blackboard, runner, instrumentation)?;
+        audits = execute_prepass_with_instrumentation(
+            &early_plan,
+            blackboard,
+            runner,
+            instrumentation,
+            wasm_handles,
+        )?;
     }
     // Host built-in fallback for PrePass::PaintSegmentation: if no WASM module
     // committed paint regions during phase-1, run the host built-in so that
@@ -571,8 +595,13 @@ pub(crate) fn execute_prepass_with_builtins_configured_instr(
             prepass_stages: late_stages.into_iter().cloned().collect(),
             ..plan.clone()
         };
-        let late_audits =
-            execute_prepass_with_instrumentation(&late_plan, blackboard, runner, instrumentation)?;
+        let late_audits = execute_prepass_with_instrumentation(
+            &late_plan,
+            blackboard,
+            runner,
+            instrumentation,
+            wasm_handles,
+        )?;
         audits.extend(late_audits);
     }
     Ok(audits)

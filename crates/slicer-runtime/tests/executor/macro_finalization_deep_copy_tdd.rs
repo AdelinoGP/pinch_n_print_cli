@@ -32,7 +32,7 @@ use slicer_runtime::{
 };
 use witness::SdkFinalizationLayerWitness;
 
-use crate::common::{finalization_input, wasm_cache};
+use crate::common::{finalization_input, wasm_cache, TestModuleBundle};
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -97,7 +97,7 @@ fn make_module(
     id: &str,
     component: Arc<slicer_runtime::WasmComponent>,
     config: ConfigView,
-) -> CompiledModule {
+) -> TestModuleBundle {
     let loaded = make_loaded(id);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -111,10 +111,14 @@ fn make_module(
         )
         .expect("build instance pool"),
     );
-    CompiledModuleBuilder::new(id, pool)
+    let module = CompiledModuleBuilder::new(id)
         .config_view(Arc::new(config))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 /// Build a small layer fixture with known `entity_count` and tool changes.
@@ -168,7 +172,7 @@ fn finalization_deep_copy_in_and_drain_back_out_round_trip() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine, "sdk-finalization-guest");
 
-    let module = make_module(
+    let bundle = make_module(
         "com.test.sdk-finalization-deep",
         component,
         ConfigView::new(),
@@ -189,7 +193,7 @@ fn finalization_deep_copy_in_and_drain_back_out_round_trip() {
     FinalizationStageRunner::run_stage(
         &dispatcher,
         &stage,
-        &module.as_live(),
+        &bundle.as_live(),
         finalization_input(&bb),
         &mut layers,
     )
@@ -236,7 +240,7 @@ fn finalization_drain_back_creates_synthetic_layer_when_config_requests() {
 
     let mut fields: HashMap<String, ConfigValue> = HashMap::new();
     fields.insert("synthetic_layer_z".into(), ConfigValue::Float(7.5));
-    let module = make_module(
+    let bundle = make_module(
         "com.test.sdk-finalization-synth",
         component,
         ConfigView::from_map(fields),
@@ -248,7 +252,7 @@ fn finalization_drain_back_creates_synthetic_layer_when_config_requests() {
     FinalizationStageRunner::run_stage(
         &dispatcher,
         &stage,
-        &module.as_live(),
+        &bundle.as_live(),
         finalization_input(&bb),
         &mut layers,
     )
@@ -276,7 +280,7 @@ fn finalization_deep_copy_round_trip_is_deterministic_across_repeated_runs() {
     let engine = wasm_cache::shared_engine();
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
     let component = load_guest(&engine, "sdk-finalization-guest");
-    let module = make_module(
+    let bundle = make_module(
         "com.test.sdk-finalization-det",
         component,
         ConfigView::new(),
@@ -289,7 +293,7 @@ fn finalization_deep_copy_round_trip_is_deterministic_across_repeated_runs() {
         FinalizationStageRunner::run_stage(
             &dispatcher,
             &stage,
-            &module.as_live(),
+            &bundle.as_live(),
             finalization_input(&bb),
             &mut layers,
         )

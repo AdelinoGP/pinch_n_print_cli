@@ -26,7 +26,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use slicer_ir::SemVer;
-use slicer_runtime::{load_module_from_paths, LoadedModule, LoadedModuleBuilder};
+use slicer_scheduler::{load_module_from_paths, LoadedModule, LoadedModuleBuilder};
 
 // â”€â”€ Stage â†’ required (reads, writes) contract from docs/01 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 //
@@ -348,7 +348,7 @@ fn seam_planner_default_declares_prepass_contract_roots() {
 // AC-6: fallback when stage not instrumented â†’ coarse fallback without panic
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-use slicer_runtime::validation::{validate_startup_dag, DagValidationRequest, ModuleAccessAudit};
+use slicer_scheduler::validation::{validate_startup_dag, DagValidationRequest, ModuleAccessAudit};
 
 fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
     SemVer {
@@ -417,7 +417,7 @@ fn seam_placer_narrow_manifest_write_validates() {
         .filter(|d| {
             matches!(
                 d.detail,
-                slicer_runtime::SchedulerError::UndeclaredAccess { .. }
+                slicer_scheduler::SchedulerError::UndeclaredAccess { .. }
             )
         })
         .collect();
@@ -473,8 +473,8 @@ fn coarse_write_rejected_against_narrow_manifest() {
     let undeclared_errors: Vec<_> = report
         .errors
         .iter()
-        .filter(|d| matches!(&d.detail, slicer_runtime::SchedulerError::UndeclaredAccess { module, access, path }
-            if module == "com.core.perimeter-gen" && *access == slicer_runtime::AccessKind::Write && *path == "PerimeterIR"))
+        .filter(|d| matches!(&d.detail, slicer_scheduler::SchedulerError::UndeclaredAccess { module, access, path }
+            if module == "com.core.perimeter-gen" && *access == slicer_scheduler::AccessKind::Write && *path == "PerimeterIR"))
         .collect();
 
     assert!(
@@ -528,7 +528,7 @@ fn perimeter_narrow_write_audit() {
         .filter(|d| {
             matches!(
                 d.detail,
-                slicer_runtime::SchedulerError::UndeclaredAccess { .. }
+                slicer_scheduler::SchedulerError::UndeclaredAccess { .. }
             )
         })
         .collect();

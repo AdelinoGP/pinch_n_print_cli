@@ -50,7 +50,7 @@ fn make_dummy_compiled_module(stage_id: &str, module_id: &str) -> CompiledModule
     .min_ir_schema(semver(1, 0, 0))
     .max_ir_schema(semver(2, 0, 0))
     .build();
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -62,7 +62,7 @@ fn make_dummy_compiled_module(stage_id: &str, module_id: &str) -> CompiledModule
         )
         .expect("fixture module should build a pool"),
     );
-    CompiledModuleBuilder::new(module_id, pool).build()
+    CompiledModuleBuilder::new(module_id).build()
 }
 
 fn empty_mesh_ir() -> Arc<MeshIR> {
@@ -295,7 +295,7 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
         .iter()
         .map(|m| {
             let parallelism = if m.layer_parallel_safe() { 4 } else { 1 };
-            let pool = Arc::new(
+            let _pool = Arc::new(
                 build_wasm_instance_pool(
                     m.id(),
                     m.stage(),
@@ -309,9 +309,7 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
             );
             ExecutionModuleBinding {
                 module: m.clone(),
-                instance_pool: pool,
                 config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-                wasm_component: None,
             }
         })
         .collect();
@@ -368,7 +366,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
 
     // Build a minimal plan with the loaded module
     let m = &report.modules[0];
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             m.id(),
             m.stage(),
@@ -380,7 +378,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
         )
         .unwrap(),
     );
-    let compiled_module = CompiledModuleBuilder::new(m.id().to_string(), pool)
+    let compiled_module = CompiledModuleBuilder::new(m.id().to_string())
         .ir_read_mask(IrAccessMask {
             paths: m.ir_reads().to_vec(),
         })
@@ -446,6 +444,7 @@ fn manifest_driven_pipeline_runs_to_completion() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(slicer_ir::ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
 
     let result = run_pipeline(config);
@@ -633,7 +632,7 @@ fn core_modules_build_a_multi_tier_execution_plan() {
         .modules
         .iter()
         .map(|m| {
-            let pool = Arc::new(
+            let _pool = Arc::new(
                 build_wasm_instance_pool(
                     m.id(),
                     m.stage(),
@@ -647,9 +646,7 @@ fn core_modules_build_a_multi_tier_execution_plan() {
             );
             ExecutionModuleBinding {
                 module: m.clone(),
-                instance_pool: pool,
                 config_view: Arc::new(ConfigView::from_map(HashMap::new())),
-                wasm_component: None,
             }
         })
         .collect();

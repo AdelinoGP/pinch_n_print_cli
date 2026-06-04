@@ -23,7 +23,7 @@ use slicer_runtime::{
     LoadedModuleBuilder, PrepassExecutionError, WasmEngine, WasmRuntimeDispatcher,
 };
 
-use crate::common::wasm_cache;
+use crate::common::{wasm_cache, TestModuleBundle};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -173,7 +173,7 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
 fn compile_support_planner_with_config(
     _engine: &Arc<WasmEngine>,
     config: HashMap<String, ConfigValue>,
-) -> CompiledModule {
+) -> TestModuleBundle {
     let wasm_path = support_planner_wasm();
     let component = wasm_cache::compiled_component_at(&wasm_path);
     let loaded = LoadedModuleBuilder::new(
@@ -207,10 +207,14 @@ fn compile_support_planner_with_config(
         )
         .expect("instance pool must build"),
     );
-    CompiledModuleBuilder::new(loaded.id().to_string(), pool)
+    let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(ConfigView::from_map(config)))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn execution_plan_with_support_geometry(module: CompiledModule) -> ExecutionPlan {
@@ -260,11 +264,12 @@ fn raft_layers_config_is_honored() {
     let mut config = base_config(true);
     config.insert("support_raft_layers".to_string(), ConfigValue::Int(2));
 
-    let module = compile_support_planner_with_config(&engine, config);
+    let bundle = compile_support_planner_with_config(&engine, config);
+    let (module, wasm_handles) = bundle.into_module_and_handles();
     let plan = execution_plan_with_support_geometry(module);
     let mut blackboard = blackboard_with_layer_plan(overhang_plate_mesh());
 
-    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher)
+    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher, &wasm_handles)
         .expect("execute_prepass_with_builtins must succeed");
 
     let support_plan = blackboard
@@ -302,11 +307,12 @@ fn support_disabled_emits_no_plan() {
 
     let config = base_config(false); // support_enabled = false
 
-    let module = compile_support_planner_with_config(&engine, config);
+    let bundle = compile_support_planner_with_config(&engine, config);
+    let (module, wasm_handles) = bundle.into_module_and_handles();
     let plan = execution_plan_with_support_geometry(module);
     let mut blackboard = blackboard_with_layer_plan(overhang_plate_mesh());
 
-    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher)
+    execute_prepass_with_builtins(&plan, &mut blackboard, &dispatcher, &wasm_handles)
         .expect("execute_prepass_with_builtins must succeed");
 
     let support_plan = blackboard
@@ -336,7 +342,8 @@ fn planner_fatal_surfaces_as_dispatch_error() {
     let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
 
     let config = base_config(true);
-    let module = compile_support_planner_with_config(&engine, config);
+    let bundle = compile_support_planner_with_config(&engine, config);
+    let (module, wasm_handles) = bundle.into_module_and_handles();
     let plan = execution_plan_with_support_geometry(module);
 
     // Build a blackboard whose LayerPlanIR has zero global_layers — the
@@ -360,7 +367,7 @@ fn planner_fatal_surfaces_as_dispatch_error() {
     bb.commit_region_map(Arc::new(RegionMapIR::default()))
         .expect("commit_region_map must succeed");
 
-    let result = execute_prepass_with_builtins(&plan, &mut bb, &dispatcher);
+    let result = execute_prepass_with_builtins(&plan, &mut bb, &dispatcher, &wasm_handles);
 
     match result {
         Err(PrepassExecutionError::FatalModule { module_id, .. }) => {

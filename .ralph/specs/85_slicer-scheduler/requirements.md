@@ -32,11 +32,15 @@ The fix is one new crate (`slicer-scheduler`), one type-move-completion (`Compil
 - **Split `instrumentation.rs` (842 LOC) between scheduler and runtime**:
   - **Move to `slicer-scheduler/src/instrumentation.rs`**: `compute_serial_edges_for_stage` (input: `&[LoadedModule]` — planning data), `EdgeReason` enum, `SerialEdge` struct.
   - **Keep in `slicer-runtime/src/instrumentation.rs`**: `pub trait PipelineInstrumentation`, `Phase`, `TierKind`, `compute_serial_edges_from_compiled` (input: `&[CompiledModuleLive<'_>]` — runtime data; this stays because it's called from the executor's bracket hooks).
-- **Complete the `CompiledModule` split** (begun in P83):
-  - Move `pub struct CompiledModuleStatic` from `crates/slicer-runtime/src/execution_plan.rs` into `crates/slicer-scheduler/src/execution_plan.rs`.
+- **Complete the `CompiledModule` Static/Live split** (begun but not finished in P83 — the structural premise of this packet):
+  - **Strip the wasmtime fields from `CompiledModuleStatic`, `CompiledModuleBuilder`, and `ExecutionModuleBinding`.** P83 renamed `CompiledModule → CompiledModuleStatic` and added `CompiledModuleLive<'s>` as a borrowing wrapper, but **left the wasmtime payload on the Static side** (`instance_pool: Arc<WasmInstancePool>`, `wasm_component: Option<Arc<WasmComponent>>`). P85 finishes the split: these two fields move to the Live side. After P85, `CompiledModuleStatic` carries only manifest-static data (no `Arc<Wasm*>` anywhere).
+  - **Relocate the live-loader cluster from `crates/slicer-runtime/src/execution_plan.rs` to `crates/slicer-wasm-host/src/execution_plan_live.rs`** (new file). The six symbols: `LiveModuleBinding`, `build_live_execution_plan`, `LiveModuleLoadOutput`, `LiveModuleLoadError`, `load_live_modules_for_plan`, `compile_module_component`. These all consume wasmtime types and produce `CompiledModuleLive<'_>` bindings; they belong on the wasm-host side of the split.
+  - **Extend `CompiledModuleLive<'s>` to own the wasmtime payload.** Methods that today read `&Arc<WasmInstancePool>` and `Option<&Arc<WasmComponent>>` off `CompiledModuleStatic` become methods on `CompiledModuleLive` instead. The borrow shape becomes: `CompiledModuleLive<'s> { static_module: &'s CompiledModuleStatic, instance_pool: Arc<WasmInstancePool>, wasm_component: Option<Arc<WasmComponent>> }` (or the equivalent post-design shape — implementer chooses the exact field layout).
+  - Move the (now-clean) `pub struct CompiledModuleStatic` from `crates/slicer-runtime/src/execution_plan.rs` into `crates/slicer-scheduler/src/execution_plan.rs`.
   - Delete the transitional `pub type CompiledModule = CompiledModuleStatic;` alias that P83 added.
-  - Update `crates/slicer-wasm-host/src/binding.rs` (or wherever `CompiledModuleLive<'s>` lives): change the borrow type from `&'s slicer_runtime::CompiledModuleStatic` to `&'s slicer_scheduler::CompiledModuleStatic`.
-  - Add `slicer-scheduler = { path = "../slicer-scheduler" }` to `crates/slicer-wasm-host/Cargo.toml`.
+  - Update the `CompiledModuleLive<'s>` borrow target so it references `&'s slicer_scheduler::CompiledModuleStatic`.
+  - Add `slicer-scheduler = { path = "../slicer-scheduler" }` to `crates/slicer-wasm-host/Cargo.toml` (one-way edge; AC-N1 still forbids the reverse).
+  - **Rewire callsites** in `slicer-runtime` (layer executor, pipeline, prepass/postpass orchestrators) and `pnp-cli` (if any `dag` subcommand calls `instance_pool()` on Static — investigation surfaced none, but the rewire pass verifies). Every former `compiled_module.instance_pool()` / `compiled_module.wasm_component()` callsite becomes `live_binding.instance_pool()` / `live_binding.wasm_component()` — the runtime constructs the Live binding per tick from Static + the loaded engine artifacts.
 - Update `crates/slicer-runtime/src/lib.rs`:
   - Drop the nine `pub mod ...;` declarations (manifest, config_resolution, dag, validation, execution_plan, topology, stage_order, module_search_path, dag_cli).
   - Drop the matching `pub use ...;` blocks for those modules.
@@ -90,11 +94,13 @@ The acceptance contract is enumerated in `packet.spec.md` (AC-1..AC-11, AC-N1..A
 | AC-7 | `! grep -qE '^pub mod (manifest\|config_resolution\|dag\|validation\|execution_plan\|topology\|stage_order\|module_search_path\|dag_cli);' crates/slicer-runtime/src/lib.rs` | FACT pass/fail |
 | AC-8 | `grep -qE '^slicer-scheduler *=' crates/slicer-runtime/Cargo.toml` | FACT pass/fail |
 | AC-9 | `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p85.gcode && sha256sum /tmp/benchy-p85.gcode` | SNIPPET (SHA) |
-| AC-10 | `cargo run --bin pnp_cli --release -- dag stages --module-dir modules/core-modules > /tmp/p85-dag-stages.txt && sha256sum /tmp/p85-dag-stages.txt` (post must match Step 0 baseline) | SNIPPET (SHA) per command |
+| AC-10 | `for cmd in stages claims; do cargo run --bin pnp_cli --release -- dag $cmd --module-dir modules/core-modules > /tmp/p85-dag-$cmd-1.txt && cargo run --bin pnp_cli --release -- dag $cmd --module-dir modules/core-modules > /tmp/p85-dag-$cmd-2.txt && diff -q /tmp/p85-dag-$cmd-1.txt /tmp/p85-dag-$cmd-2.txt \|\| exit 1; done` (consecutive runs must produce identical output — determinism test, NOT baseline parity) | FACT pass/fail |
 | AC-11 | `cargo test --workspace` | FACT pass/fail + duration + count |
 | AC-N1 | `! grep -qE '^slicer-(runtime\|wasm-host) *=' crates/slicer-scheduler/Cargo.toml` | FACT pass/fail |
 | AC-N2 | `! cargo tree -p slicer-scheduler 2>&1 \| grep -qE '\bwasmtime\b'` | FACT pass/fail |
 | AC-N3 | `! ls crates/slicer-runtime/src/{manifest,dag,validation,execution_plan}.rs 2>/dev/null \| grep -q .` | FACT pass/fail |
+| AC-N4 | `for line in $(grep -nE '^pub use slicer_scheduler::' crates/slicer-runtime/src/lib.rs \| cut -d: -f1); do next=$((line+1)); sed -n "${next}p" crates/slicer-runtime/src/lib.rs \| grep -qE '^// kept:' \|\| exit 1; done` | FACT pass/fail |
+| AC-N5 | `[ -d crates/slicer-scheduler/tests ] && [ $(cargo test -p slicer-scheduler 2>&1 \| grep -oE 'test result: ok\. [0-9]+ passed' \| awk '{sum += $4} END {print sum+0}') -ge 18 ] && ! rg -e 'use slicer_(wasm_host\|runtime)::' crates/slicer-scheduler/tests/` | FACT pass/fail + count |
 | gate-1 | `cargo build --workspace` | FACT pass/fail |
 | gate-2 | `cargo clippy --workspace --all-targets -- -D warnings` | FACT pass/fail |
 | gate-3 | `cargo xtask build-guests --check` | FACT pass/fail |

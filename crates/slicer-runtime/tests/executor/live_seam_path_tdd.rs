@@ -287,7 +287,8 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     use slicer_runtime::instance_pool::build_wasm_instance_pool;
     use slicer_runtime::manifest::LoadedModuleBuilder;
     use slicer_runtime::{
-        Blackboard, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmRuntimeDispatcher,
+        Blackboard, CompiledModuleBuilder, CompiledModuleLive, LayerArena, LayerStageRunner,
+        WasmInstancePool, WasmRuntimeDispatcher,
     };
     use std::sync::Arc;
 
@@ -308,7 +309,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
             wasm_path.display()
         )
     });
-    let component = Arc::new(
+    let _component = Arc::new(
         engine
             .compile_component(&bytes)
             .expect("path-optimization-default.wasm must compile"),
@@ -344,7 +345,7 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
     })
     .layer_parallel_safe(true)
     .build();
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -356,11 +357,10 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         )
         .expect("instance pool must build"),
     );
-    let module = CompiledModuleBuilder::new(loaded.id().to_string(), pool)
+    let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(
             std::collections::HashMap::new(),
         )))
-        .wasm_component(Some(component))
         .build();
 
     // Build PerimeterIR with resolved_seam set on one wall loop.
@@ -495,7 +495,13 @@ fn path_optimization_stays_comment_only_after_seam_resolution() {
         &dispatcher,
         &"Layer::PathOptimization".to_string(),
         &layer,
-        &module.as_live(),
+        &CompiledModuleLive::new(
+            module.module_id(),
+            WasmInstancePool::placeholder(),
+            None,
+            module.claims(),
+            Arc::clone(module.config_view()),
+        ),
         layer_input(&blackboard, &arena),
     )
     .expect("PathOptimization dispatch must succeed");
@@ -788,7 +794,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
             wasm_path.display()
         )
     });
-    let component = Arc::new(
+    let _component = Arc::new(
         engine
             .compile_component(&bytes)
             .expect("seam-placer.wasm must compile"),
@@ -828,7 +834,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
     })
     .layer_parallel_safe(true)
     .build();
-    let pool = Arc::new(
+    let _pool = Arc::new(
         build_wasm_instance_pool(
             loaded.id(),
             loaded.stage(),
@@ -840,11 +846,10 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
         )
         .expect("instance pool must build"),
     );
-    let module = CompiledModuleBuilder::new(loaded.id().to_string(), pool)
+    let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(
             std::collections::HashMap::new(),
         )))
-        .wasm_component(Some(component))
         .build();
 
     let layer_z = 0.2;

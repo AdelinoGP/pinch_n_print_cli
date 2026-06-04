@@ -2,6 +2,7 @@
 members = [
     "crates/pnp-cli",
     "crates/slicer-runtime",
+    "crates/slicer-scheduler",
     "crates/slicer-core",
     "crates/slicer-ir",
     "crates/slicer-macros",

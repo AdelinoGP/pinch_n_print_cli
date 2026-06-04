@@ -321,7 +321,8 @@ fn paint_annotation_is_invoked_on_real_per_layer_path_and_warnings_reach_sink() 
 
     let sink = VecSink(Mutex::new(Vec::new()));
     let (layer_irs, _layer_audits) =
-        execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink).expect("ok");
+        execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink, &Default::default())
+            .expect("ok");
     assert_eq!(layer_irs.len(), 1);
 
     let events = sink.0.lock().unwrap().clone();
@@ -372,9 +373,11 @@ fn paint_annotation_degraded_fallback_is_deterministic_across_repeated_runs() {
     let sink_a = VecSink(Mutex::new(Vec::new()));
     let sink_b = VecSink(Mutex::new(Vec::new()));
     let (_layer_irs_a, _audits_a) =
-        execute_per_layer_with_events(&plan1, &bb1, &NoopRunner, &sink_a).unwrap();
+        execute_per_layer_with_events(&plan1, &bb1, &NoopRunner, &sink_a, &Default::default())
+            .unwrap();
     let (_layer_irs_b, _audits_b) =
-        execute_per_layer_with_events(&plan2, &bb2, &NoopRunner, &sink_b).unwrap();
+        execute_per_layer_with_events(&plan2, &bb2, &NoopRunner, &sink_b, &Default::default())
+            .unwrap();
 
     let a = sink_a.0.lock().unwrap().clone();
     let b = sink_b.0.lock().unwrap().clone();
@@ -403,7 +406,7 @@ fn paint_annotation_missing_required_semantic_surfaces_typed_fatal_error() {
     bb.commit_paint_regions(ir, rtree).unwrap();
 
     let sink = VecSink(Mutex::new(Vec::new()));
-    let err = execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink)
+    let err = execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink, &Default::default())
         .expect_err("layer 0 must fail because Material is required but absent");
     match err {
         LayerExecutionError::PaintAnnotation {
@@ -432,7 +435,7 @@ fn paint_annotation_no_op_when_no_paint_regions_committed() {
     seed_slice_ir(&mut bb, &plan);
 
     let sink = VecSink(Mutex::new(Vec::new()));
-    execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink).expect("ok");
+    execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink, &Default::default()).expect("ok");
     assert!(sink.0.lock().unwrap().is_empty());
 }
 
@@ -551,7 +554,7 @@ fn runtime_sink_forwards_paint_warning_to_both_jsonl_emitter_and_slice_event_col
     let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
     let sink = RuntimeProgressSink::new(emitter, Arc::clone(&collector));
 
-    execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink).expect("ok");
+    execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink, &Default::default()).expect("ok");
 
     // Collector side: degraded=true and exactly one non-fatal entry.
     let c = collector.lock().unwrap();
@@ -599,7 +602,7 @@ fn runtime_sink_jsonl_output_is_byte_identical_across_repeated_runs() {
         let (raw, emitter) = capture_emitter();
         let collector = Arc::new(Mutex::new(SliceEventCollector::new()));
         let sink = RuntimeProgressSink::new(emitter, collector);
-        execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink).unwrap();
+        execute_per_layer_with_events(&plan, &bb, &NoopRunner, &sink, &Default::default()).unwrap();
         let bytes = raw.writer.lock().unwrap().clone();
         bytes
     };
@@ -644,6 +647,7 @@ fn run_pipeline_with_events_on_empty_plan_emits_no_spurious_events() {
         resolved_configs: std::sync::Arc::new(std::collections::BTreeMap::new()),
         default_resolved_config: std::sync::Arc::new(ResolvedConfig::default()),
         bounds: std::sync::Arc::new(slicer_runtime::ConfigBoundsIndex::empty()),
+        wasm_handles: Default::default(),
     };
     run_pipeline_with_events(config, &sink).expect("empty pipeline must succeed");
 
@@ -702,7 +706,8 @@ fn empty_plan_with_no_layers_does_not_trigger_prepass_error() {
     };
     let mut bb = Blackboard::new(Arc::clone(&mesh), 0);
 
-    let result = execute_prepass_with_builtins(&plan, &mut bb, &NoopPrepassRunner);
+    let result =
+        execute_prepass_with_builtins(&plan, &mut bb, &NoopPrepassRunner, &Default::default());
     assert!(
         result.is_ok(),
         "prepass must complete without error when no layer plan exists"

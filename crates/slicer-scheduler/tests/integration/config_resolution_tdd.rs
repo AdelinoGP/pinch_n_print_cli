@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use slicer_ir::ConfigValue;
-use slicer_runtime::{
+use slicer_scheduler::{
     resolve_global_config, resolve_per_object_configs, ConfigBoundsIndex, ConfigResolutionError,
 };
 

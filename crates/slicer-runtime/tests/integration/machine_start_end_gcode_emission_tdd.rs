@@ -197,6 +197,23 @@ fn slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> String {
     // 7. Construct the pipeline config with the real WASM dispatcher for all stages.
     let engine = Arc::clone(&loaded.engine);
 
+    let wasm_handles: std::collections::HashMap<
+        String,
+        (
+            Arc<slicer_wasm_host::WasmInstancePool>,
+            Option<Arc<slicer_wasm_host::WasmComponent>>,
+        ),
+    > = loaded
+        .bindings
+        .iter()
+        .map(|b| {
+            (
+                b.module.id().to_string(),
+                (Arc::clone(&b.instance_pool), b.wasm_component.clone()),
+            )
+        })
+        .collect();
+
     let config = PipelineConfig {
         mesh_ir,
         plan,
@@ -214,6 +231,7 @@ fn slice_with_raw(raw: HashMap<ConfigKey, ConfigValue>) -> String {
         resolved_configs: Arc::new(resolved_configs_map),
         default_resolved_config: Arc::new(default_resolved),
         bounds: Arc::new(config_bounds),
+        wasm_handles,
     };
 
     // 8. Run the pipeline. pipeline_source drives CONFIG_BLOCK generation.

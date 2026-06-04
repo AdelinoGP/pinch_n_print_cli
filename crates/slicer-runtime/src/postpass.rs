@@ -11,8 +11,13 @@
 //!
 //! Reference: docs/04_host_scheduler.md lines 778-810
 
-use slicer_ir::{GCodeIR, LayerCollectionIR, PostpassError, PostpassOutput};
-use slicer_wasm_host::{CompiledModuleLive, PostpassStageInput, PostpassStageRunner};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use slicer_ir::{GCodeIR, LayerCollectionIR, ModuleId, PostpassError, PostpassOutput};
+use slicer_wasm_host::{
+    CompiledModuleLive, PostpassStageInput, PostpassStageRunner, WasmComponent, WasmInstancePool,
+};
 
 use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
 use crate::{Blackboard, ExecutionPlan, ModuleAccessAudit};
@@ -77,6 +82,7 @@ pub fn execute_postpass(
     emitter: &dyn GCodeEmitter,
     serializer: &dyn GCodeSerializer,
     runner: &mut dyn PostpassStageRunner,
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
     execute_postpass_with_instrumentation(
         plan,
@@ -86,6 +92,7 @@ pub fn execute_postpass(
         serializer,
         runner,
         &NoopInstrumentation,
+        wasm_handles,
     )
 }
 
@@ -100,6 +107,7 @@ pub fn execute_postpass_with_instrumentation(
     serializer: &dyn GCodeSerializer,
     runner: &mut dyn PostpassStageRunner,
     instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(String, Vec<ModuleAccessAudit>), PostpassError> {
     // Step 1a: Reconcile finalization-aware travel moves before emission.
     // This adjusts travel_moves to route through Skirt/Brim and WipeTower
@@ -129,14 +137,18 @@ pub fn execute_postpass_with_instrumentation(
         if stage.stage_id.contains("GCodePostProcess") {
             instrumentation.on_stage_start(&stage.stage_id, None);
             for module in &stage.modules {
-                instrumentation.on_module_start(&stage.stage_id, None, &module.module_id);
+                instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
                 // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
+                let (instance_pool, wasm_component) = wasm_handles
+                    .get(module.module_id().as_str())
+                    .map(|(p, c)| (Arc::clone(p), c.clone()))
+                    .unwrap_or_else(|| (WasmInstancePool::placeholder(), None));
                 let live_module = CompiledModuleLive::new(
-                    &module.module_id,
-                    std::sync::Arc::clone(&module.instance_pool),
-                    module.wasm_component.clone(),
-                    &module.claims,
-                    std::sync::Arc::clone(&module.config_view),
+                    module.module_id(),
+                    instance_pool,
+                    wasm_component,
+                    module.claims(),
+                    Arc::clone(module.config_view()),
                 );
                 let input = PostpassStageInput {
                     mesh: std::sync::Arc::clone(blackboard.mesh()),
@@ -148,7 +160,7 @@ pub fn execute_postpass_with_instrumentation(
                     input,
                     &mut gcode_ir.commands,
                 );
-                instrumentation.on_module_end(&stage.stage_id, None, &module.module_id, 0, 0);
+                instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
                 let result = match res {
                     Ok(r) => r,
                     Err(e) => {
@@ -163,7 +175,7 @@ pub fn execute_postpass_with_instrumentation(
                         let runtime_reads = runner.take_runtime_reads();
                         let reads = runtime_reads.into_iter().flatten().collect();
                         audits.push(ModuleAccessAudit {
-                            module_id: module.module_id.clone(),
+                            module_id: module.module_id().to_owned(),
                             runtime_reads: reads,
                             runtime_writes: vec![String::from("GCodeIR")],
                         });
@@ -216,20 +228,24 @@ pub fn execute_postpass_with_instrumentation(
     for stage in text_postprocess_stages {
         instrumentation.on_stage_start(&stage.stage_id, None);
         for module in &stage.modules {
-            instrumentation.on_module_start(&stage.stage_id, None, &module.module_id);
+            instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
+            let (instance_pool, wasm_component) = wasm_handles
+                .get(module.module_id().as_str())
+                .map(|(p, c)| (Arc::clone(p), c.clone()))
+                .unwrap_or_else(|| (WasmInstancePool::placeholder(), None));
             let live_module = CompiledModuleLive::new(
-                &module.module_id,
-                std::sync::Arc::clone(&module.instance_pool),
-                module.wasm_component.clone(),
-                &module.claims,
-                std::sync::Arc::clone(&module.config_view),
+                module.module_id(),
+                instance_pool,
+                wasm_component,
+                module.claims(),
+                Arc::clone(module.config_view()),
             );
             let input = PostpassStageInput {
                 mesh: std::sync::Arc::clone(blackboard.mesh()),
                 _phantom: std::marker::PhantomData,
             };
             let res = runner.run_text_postprocess(&stage.stage_id, &live_module, input, text);
-            instrumentation.on_module_end(&stage.stage_id, None, &module.module_id, 0, 0);
+            instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
             let result = match res {
                 Ok(r) => r,
                 Err(e) => {
@@ -245,7 +261,7 @@ pub fn execute_postpass_with_instrumentation(
                     let runtime_reads = runner.take_runtime_reads();
                     let reads = runtime_reads.into_iter().flatten().collect();
                     audits.push(ModuleAccessAudit {
-                        module_id: module.module_id.clone(),
+                        module_id: module.module_id().to_owned(),
                         runtime_reads: reads,
                         runtime_writes: vec![String::from("GCodeIR")],
                     });

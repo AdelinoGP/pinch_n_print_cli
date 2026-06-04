@@ -8,6 +8,7 @@
 
 pub mod binding;
 pub mod dispatch;
+pub mod execution_plan_live;
 pub mod host;
 pub mod instance;
 pub mod pool;
@@ -36,3 +37,8 @@ pub use traits::{
 };
 
 pub use dispatch::{DispatchError, DispatchPhase, WasmRuntimeDispatcher};
+
+pub use execution_plan_live::{
+    build_live_execution_plan, load_live_modules_for_plan, LiveModuleBinding, LiveModuleLoadError,
+    LiveModuleLoadOutput,
+};

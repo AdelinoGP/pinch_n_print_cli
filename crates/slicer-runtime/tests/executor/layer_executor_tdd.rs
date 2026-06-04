@@ -59,7 +59,7 @@ fn layer_executor_processes_layers_in_parallel_with_deterministic_stage_ordering
         .with_default_success();
 
     // Act
-    let result = execute_per_layer(&plan, &blackboard, &runner);
+    let result = execute_per_layer(&plan, &blackboard, &runner, &Default::default());
 
     // Assert: Execution should succeed
     let layer_outputs = result.expect("per-layer executor should produce outputs for all layers");
@@ -117,7 +117,7 @@ fn layer_executor_runs_modules_in_topological_order_within_each_stage() {
         .with_default_success();
 
     // Act
-    let result = execute_per_layer(&plan, &blackboard, &runner);
+    let result = execute_per_layer(&plan, &blackboard, &runner, &Default::default());
 
     // Assert
     result.expect("per-layer executor should succeed with topological module ordering");
@@ -161,7 +161,7 @@ fn layer_executor_provides_isolated_layer_arena_per_layer() {
     let runner = ArenaIsolationRunner::new();
 
     // Act
-    let result = execute_per_layer(&plan, &blackboard, &runner);
+    let result = execute_per_layer(&plan, &blackboard, &runner, &Default::default());
 
     // Assert
     result.expect("per-layer executor should succeed with isolated arenas");
@@ -204,7 +204,7 @@ fn layer_executor_commits_layer_outputs_to_blackboard_slots() {
     let runner = ScriptedRunner::new().with_default_success();
 
     // Act
-    let result = execute_per_layer(&plan, &blackboard, &runner);
+    let result = execute_per_layer(&plan, &blackboard, &runner, &Default::default());
 
     // Assert: Should return Vec<LayerCollectionIR> with correct layer indices
     let layer_outputs = result.expect("per-layer executor should produce write-once slot outputs");
@@ -247,7 +247,7 @@ fn layer_executor_propagates_fatal_module_error_and_aborts_layer() {
         .with_default_success();
 
     // Act
-    let result = execute_per_layer(&plan, &blackboard, &runner);
+    let result = execute_per_layer(&plan, &blackboard, &runner, &Default::default());
 
     // Assert: Should return FatalLayer error
     assert_eq!(
@@ -285,7 +285,7 @@ fn layer_executor_continues_on_non_fatal_module_error() {
         .with_default_success();
 
     // Act
-    let result = execute_per_layer(&plan, &blackboard, &runner);
+    let result = execute_per_layer(&plan, &blackboard, &runner, &Default::default());
 
     // Assert: Should succeed despite non-fatal errors
     let layer_outputs = result.expect("per-layer executor should continue on non-fatal errors");
@@ -326,7 +326,7 @@ fn layer_executor_drains_all_layer_outputs_after_parallel_completion() {
     let runner = ScriptedRunner::new().with_default_success();
 
     // Act
-    let result = execute_per_layer(&plan, &blackboard, &runner);
+    let result = execute_per_layer(&plan, &blackboard, &runner, &Default::default());
 
     // Assert: Should return Vec with all 5 layers in correct order
     let layer_outputs = result.expect("per-layer executor should drain all outputs");
@@ -549,7 +549,7 @@ fn compiled_stage(stage_id: &str, module_ids: &[&str]) -> CompiledStage {
 
 fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
     let loaded_module = loaded_module(module_id, stage_id);
-    let instance_pool = Arc::new(
+    let _instance_pool = Arc::new(
         build_wasm_instance_pool(
             loaded_module.id(),
             loaded_module.stage(),
@@ -564,26 +564,21 @@ fn compiled_module(stage_id: &str, module_id: &str) -> CompiledModule {
 
     let binding = ExecutionModuleBinding {
         module: loaded_module,
-        instance_pool,
         config_view: Arc::new(ConfigView::from_map(HashMap::from([(
             String::from("fixture.enabled"),
             ConfigValue::Bool(true),
         )]))),
-        wasm_component: None,
     };
 
-    CompiledModuleBuilder::new(
-        binding.module.id().to_string(),
-        Arc::clone(&binding.instance_pool),
-    )
-    .ir_read_mask(IrAccessMask {
-        paths: binding.module.ir_reads().to_vec(),
-    })
-    .ir_write_mask(IrAccessMask {
-        paths: binding.module.ir_writes().to_vec(),
-    })
-    .config_view(Arc::clone(&binding.config_view))
-    .build()
+    CompiledModuleBuilder::new(binding.module.id().to_string())
+        .ir_read_mask(IrAccessMask {
+            paths: binding.module.ir_reads().to_vec(),
+        })
+        .ir_write_mask(IrAccessMask {
+            paths: binding.module.ir_writes().to_vec(),
+        })
+        .config_view(Arc::clone(&binding.config_view))
+        .build()
 }
 
 fn loaded_module(id: &str, stage: &str) -> slicer_runtime::LoadedModule {
@@ -857,7 +852,8 @@ fn ordered_entities_assembled_with_preserved_region_identity() {
         Some(support_ir_simple()),
     );
 
-    let layers = execute_per_layer(&plan, &blackboard, &runner).expect("layer exec");
+    let layers =
+        execute_per_layer(&plan, &blackboard, &runner, &Default::default()).expect("layer exec");
     assert_eq!(layers.len(), 1);
     let l = &layers[0];
     // 2 walls + (1 sparse + 1 solid) + 1 sparse + 1 support + 1 interface = 7
@@ -898,7 +894,8 @@ fn ordered_entities_empty_when_arena_has_no_committed_content() {
     );
     seed_slice_ir(&mut blackboard, &plan);
     let runner = StagingRunner::new(None, None, None);
-    let layers = execute_per_layer(&plan, &blackboard, &runner).expect("layer exec");
+    let layers =
+        execute_per_layer(&plan, &blackboard, &runner, &Default::default()).expect("layer exec");
     assert_eq!(layers.len(), 1);
     assert!(
         layers[0].ordered_entities.is_empty(),
@@ -927,7 +924,8 @@ fn ordered_entities_assembly_is_deterministic_across_repeated_runs() {
             Some(infill_ir_two_regions()),
             Some(support_ir_simple()),
         );
-        let layers = execute_per_layer(&plan, &blackboard, &runner).expect("layer exec");
+        let layers = execute_per_layer(&plan, &blackboard, &runner, &Default::default())
+            .expect("layer exec");
         results.push(layers);
     }
     assert_eq!(results[0], results[1]);
@@ -1024,7 +1022,7 @@ fn catchup_metadata_remains_stable_across_all_per_layer_stages() {
 
     // RecordingRunner captures the active_regions surface at each stage call.
     let runner = CatchupMetadataRecordingRunner::new();
-    let result = execute_per_layer(&plan, &blackboard, &runner);
+    let result = execute_per_layer(&plan, &blackboard, &runner, &Default::default());
     if let Err(e) = &result {
         panic!("execution failed: {e:?}");
     }
@@ -1362,7 +1360,8 @@ fn paint_annotation_runs_when_stage_present_with_no_modules() {
     let sink = VecSink(Mutex::new(Vec::new()));
     let runner = ScriptedRunner::new().with_default_success();
     let (layer_irs, _audits) =
-        execute_per_layer_with_events(&plan, &bb, &runner, &sink).expect("per-layer exec ok");
+        execute_per_layer_with_events(&plan, &bb, &runner, &sink, &Default::default())
+            .expect("per-layer exec ok");
     assert_eq!(layer_irs.len(), 1);
 
     let events = sink.0.lock().unwrap().clone();
@@ -1413,7 +1412,7 @@ fn paint_annotation_stage_is_always_in_plan_before_perimeters() {
     .layer_parallel_safe(true)
     .build();
 
-    let instance_pool = Arc::new(
+    let _instance_pool = Arc::new(
         build_wasm_instance_pool(
             module.id(),
             module.stage(),
@@ -1428,9 +1427,7 @@ fn paint_annotation_stage_is_always_in_plan_before_perimeters() {
 
     let binding = ExecutionModuleBinding {
         module,
-        instance_pool,
         config_view: Arc::new(ConfigView::default()),
-        wasm_component: None,
     };
 
     let sorted_stages = vec![SortedStageModules {
@@ -1633,7 +1630,8 @@ fn extruder_synthetic_t0_t1_emission() {
         None,
     );
 
-    let layers = execute_per_layer(&plan, &blackboard, &runner).expect("per-layer exec");
+    let layers = execute_per_layer(&plan, &blackboard, &runner, &Default::default())
+        .expect("per-layer exec");
     assert_eq!(layers.len(), 1, "exactly one layer");
     let l = &layers[0];
 

@@ -8,10 +8,9 @@ use slicer_ir::{
     ActiveRegion, ConfigValue, ConfigView, GlobalLayer, RegionKey, RegionPlan, ResolvedConfig,
     SemVer,
 };
-use slicer_runtime::{
-    build_execution_plan, build_wasm_instance_pool, CompiledModule, ConfigFieldEntry,
-    ExecutionModuleBinding, ExecutionPlanRequest, LoadedModuleBuilder, SortedStageModules,
-    WasmArtifactMetadata,
+use slicer_scheduler::{
+    build_execution_plan, CompiledModuleStatic, ConfigFieldEntry, ExecutionModuleBinding,
+    ExecutionPlanRequest, LoadedModuleBuilder, SortedStageModules,
 };
 
 #[test]
@@ -161,7 +160,7 @@ fn freezes_sorted_stage_buckets_runtime_bindings_and_shared_ir_ownership() {
 }
 
 fn assert_module(
-    compiled: &CompiledModule,
+    compiled: &CompiledModuleStatic,
     expected: &ExecutionModuleBinding,
     expected_reads: &[&str],
     expected_writes: &[&str],
@@ -169,17 +168,13 @@ fn assert_module(
     assert_eq!(compiled.module_id(), expected.module.id());
     assert_eq!(compiled.ir_read_mask().paths, strings(expected_reads));
     assert_eq!(compiled.ir_write_mask().paths, strings(expected_writes));
-    assert!(Arc::ptr_eq(
-        &compiled.as_live().instance_pool,
-        &expected.instance_pool
-    ));
     assert!(Arc::ptr_eq(compiled.config_view(), &expected.config_view));
 }
 
 fn bound_module(
-    module: slicer_runtime::LoadedModule,
+    module: slicer_scheduler::LoadedModule,
     config_view: ConfigView,
-    host_parallelism: usize,
+    _host_parallelism: usize,
 ) -> ExecutionModuleBinding {
     // Ensure the module's declared `[config.schema]` covers every key the
     // fixture-built `ConfigView` exposes, so the plan-build declared-read
@@ -210,24 +205,9 @@ fn bound_module(
     .config_schema(schema)
     .build();
 
-    let instance_pool = Arc::new(
-        build_wasm_instance_pool(
-            module.id(),
-            module.stage(),
-            module.layer_parallel_safe(),
-            host_parallelism,
-            WasmArtifactMetadata {
-                uses_shared_memory: false,
-            },
-        )
-        .expect("fixture module should build a pool"),
-    );
-
     ExecutionModuleBinding {
         module,
-        instance_pool,
         config_view: Arc::new(config_view),
-        wasm_component: None,
     }
 }
 
@@ -254,7 +234,7 @@ fn loaded_module(
     ir_writes: &[&str],
     layer_parallel_safe: bool,
     wit_world: &str,
-) -> slicer_runtime::LoadedModule {
+) -> slicer_scheduler::LoadedModule {
     LoadedModuleBuilder::new(
         id,
         semver(1, 0, 0),
@@ -287,7 +267,7 @@ fn semver(major: u32, minor: u32, patch: u32) -> SemVer {
 
 #[test]
 fn layer_index_at_budget_boundary_is_rejected() {
-    use slicer_runtime::{ExecutionPlanError, MAX_LAYER_INDEX};
+    use slicer_scheduler::{ExecutionPlanError, MAX_LAYER_INDEX};
 
     let request = ExecutionPlanRequest {
         sorted_stages: Vec::new(),
@@ -318,7 +298,7 @@ fn layer_index_at_budget_boundary_is_rejected() {
 
 #[test]
 fn layer_index_just_below_budget_is_accepted() {
-    use slicer_runtime::MAX_LAYER_INDEX;
+    use slicer_scheduler::MAX_LAYER_INDEX;
 
     let request = ExecutionPlanRequest {
         sorted_stages: Vec::new(),
@@ -356,7 +336,7 @@ fn layer_index_zero_is_accepted() {
 
 #[test]
 fn error_display_includes_layer_budget_remediation() {
-    use slicer_runtime::ExecutionPlanError;
+    use slicer_scheduler::ExecutionPlanError;
 
     let err = ExecutionPlanError::LayerIndexBudgetExceeded {
         layer_index: 200_000,
@@ -375,7 +355,7 @@ fn error_display_includes_layer_budget_remediation() {
 
 #[test]
 fn region_map_exceeding_cap_is_rejected() {
-    use slicer_runtime::{ExecutionPlanError, DEFAULT_REGION_MAP_CAP};
+    use slicer_scheduler::{ExecutionPlanError, DEFAULT_REGION_MAP_CAP};
 
     let mut entries = HashMap::new();
     for i in 0..=DEFAULT_REGION_MAP_CAP {
@@ -413,7 +393,7 @@ fn region_map_exceeding_cap_is_rejected() {
 
 #[test]
 fn region_map_at_cap_is_accepted() {
-    use slicer_runtime::DEFAULT_REGION_MAP_CAP;
+    use slicer_scheduler::DEFAULT_REGION_MAP_CAP;
 
     let mut entries = HashMap::new();
     for i in 0..DEFAULT_REGION_MAP_CAP {
@@ -443,7 +423,7 @@ fn region_map_at_cap_is_accepted() {
 
 #[test]
 fn error_display_includes_region_map_remediation() {
-    use slicer_runtime::ExecutionPlanError;
+    use slicer_scheduler::ExecutionPlanError;
 
     let err = ExecutionPlanError::RegionMapCapExceeded {
         entry_count: 2000,
@@ -523,7 +503,7 @@ fn plan_construction_is_deterministic_across_repeated_calls() {
 
 #[test]
 fn layer_index_u32_max_is_rejected_with_budget_error() {
-    use slicer_runtime::{ExecutionPlanError, MAX_LAYER_INDEX};
+    use slicer_scheduler::{ExecutionPlanError, MAX_LAYER_INDEX};
 
     let request = ExecutionPlanRequest {
         sorted_stages: Vec::new(),
@@ -554,7 +534,7 @@ fn layer_index_u32_max_is_rejected_with_budget_error() {
 fn layer_budget_check_preempts_module_binding_errors() {
     // Resource-bound failures must fire before coupling/binding failures so the
     // operator gets the actionable budget diagnostic per docs/12 Â§Resource Bounds.
-    use slicer_runtime::{ExecutionPlanError, MAX_LAYER_INDEX};
+    use slicer_scheduler::{ExecutionPlanError, MAX_LAYER_INDEX};
 
     let request = ExecutionPlanRequest {
         // Reference an unbound module â€” would normally surface MissingModuleBinding.
@@ -578,7 +558,7 @@ fn layer_budget_check_preempts_module_binding_errors() {
 
 #[test]
 fn layer_budget_reports_first_offending_layer_deterministically() {
-    use slicer_runtime::{ExecutionPlanError, MAX_LAYER_INDEX};
+    use slicer_scheduler::{ExecutionPlanError, MAX_LAYER_INDEX};
 
     let request = ExecutionPlanRequest {
         sorted_stages: Vec::new(),
@@ -624,7 +604,7 @@ fn layer_budget_reports_first_offending_layer_deterministically() {
 
 #[test]
 fn region_map_cap_reports_exact_computed_entry_count() {
-    use slicer_runtime::{ExecutionPlanError, DEFAULT_REGION_MAP_CAP};
+    use slicer_scheduler::{ExecutionPlanError, DEFAULT_REGION_MAP_CAP};
 
     let mut entries = HashMap::new();
     let overflow = DEFAULT_REGION_MAP_CAP + 7;
@@ -660,7 +640,7 @@ fn region_map_cap_reports_exact_computed_entry_count() {
 
 #[test]
 fn duplicate_module_binding_rejected_with_stable_diagnostic() {
-    use slicer_runtime::ExecutionPlanError;
+    use slicer_scheduler::ExecutionPlanError;
 
     let mk_binding = || {
         bound_module(
@@ -888,7 +868,7 @@ fn active_region(object_id: &str, region_id: u64) -> ActiveRegion {
 
 #[test]
 fn prepass_seam_planning_stage_orders_between_layer_planning_and_paint_segmentation() {
-    use slicer_runtime::STAGE_ORDER;
+    use slicer_scheduler::STAGE_ORDER;
 
     // Find the indices of the three relevant stages in the canonical order.
     let seam_idx = STAGE_ORDER

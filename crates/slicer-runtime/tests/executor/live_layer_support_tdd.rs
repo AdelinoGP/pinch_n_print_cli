@@ -370,7 +370,7 @@ fn blocker_overrides_needs_support_true_at_commit_level() {
 //  WasmRuntimeDispatcher::dispatch_layer_call, asserts real SupportIR output)
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-use crate::common::layer_input;
+use crate::common::{layer_input, run_layer_and_commit_with_bundle, TestModuleBundle};
 use slicer_ir::{
     BoundingBox3, ExPolygon, GlobalLayer, LayerPaintMap, PaintRegionIR, PaintSemantic, PaintValue,
     Point2, Polygon, SemanticRegion, SliceIR, SlicedRegion,
@@ -378,8 +378,8 @@ use slicer_ir::{
 use slicer_runtime::instance_pool::build_wasm_instance_pool;
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
 use slicer_runtime::{
-    Blackboard, CompiledModule, CompiledModuleBuilder, LayerArena, LayerStageRunner, WasmEngine,
-    WasmRuntimeDispatcher,
+    Blackboard, CompiledModule, CompiledModuleBuilder, CompiledModuleLive, LayerArena,
+    LayerStageRunner, WasmEngine, WasmInstancePool, WasmRuntimeDispatcher,
 };
 use std::sync::Arc;
 
@@ -403,13 +403,13 @@ fn traditional_support_wasm_path() -> std::path::PathBuf {
         .join("modules/core-modules/traditional-support/traditional-support.wasm")
 }
 
-/// Build a CompiledModule for a given LoadedModule with the WASM bytes at wasm_path.
+/// Build a TestModuleBundle for a given LoadedModule with the WASM bytes at wasm_path.
 /// Configures support_enabled=true so modules actually emit paths.
 fn compile_support_module(
     engine: &Arc<WasmEngine>,
     loaded: LoadedModule,
     wasm_path: &std::path::Path,
-) -> CompiledModule {
+) -> TestModuleBundle {
     let bytes = std::fs::read(wasm_path).unwrap_or_else(|_| {
         panic!(
             "support module not found at {}. Build with: \
@@ -444,10 +444,14 @@ fn compile_support_module(
         "support_density".to_string(),
         slicer_ir::ConfigValue::Float(20.0),
     );
-    CompiledModuleBuilder::new(loaded.id().to_string(), pool)
+    let module = CompiledModuleBuilder::new(loaded.id().to_string())
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(config_map)))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn make_slice_ir(layer_index: u32, z: f32, region_count: usize) -> SliceIR {
@@ -533,7 +537,7 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
     .layer_parallel_safe(true)
     .build();
 
-    let module = compile_support_module(&engine, loaded, &tree_support_wasm_path());
+    let bundle = compile_support_module(&engine, loaded, &tree_support_wasm_path());
 
     let blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
@@ -565,11 +569,11 @@ fn tree_support_live_dispatch_produces_non_empty_support_ir() {
     arena
         .set_slice(make_slice_ir(layer_index, layer_z, 1))
         .unwrap();
-    crate::common::run_layer_and_commit(
+    run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Support",
         &layer,
-        &module,
+        &bundle,
         &blackboard,
         &mut arena,
     )
@@ -637,7 +641,7 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
     .layer_parallel_safe(true)
     .build();
 
-    let module = compile_support_module(&engine, loaded, &traditional_support_wasm_path());
+    let bundle = compile_support_module(&engine, loaded, &traditional_support_wasm_path());
 
     let blackboard = Blackboard::new(
         Arc::new(slicer_ir::MeshIR {
@@ -669,11 +673,11 @@ fn traditional_support_live_dispatch_produces_non_empty_support_ir() {
     arena
         .set_slice(make_slice_ir(layer_index, layer_z, 1))
         .unwrap();
-    crate::common::run_layer_and_commit(
+    run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Support",
         &layer,
-        &module,
+        &bundle,
         &blackboard,
         &mut arena,
     )
@@ -741,7 +745,7 @@ fn support_deterministic_across_repeated_runs() {
     .layer_parallel_safe(true)
     .build();
 
-    let module = compile_support_module(&engine, loaded, &tree_support_wasm_path());
+    let bundle = compile_support_module(&engine, loaded, &tree_support_wasm_path());
 
     let blackboard = || {
         Blackboard::new(
@@ -770,7 +774,7 @@ fn support_deterministic_across_repeated_runs() {
         is_sync_layer: false,
     };
 
-    let run_dispatch = |module: &CompiledModule, bb: &Blackboard, layer: &GlobalLayer| {
+    let run_dispatch = |bb: &Blackboard, layer: &GlobalLayer| {
         let mut arena = LayerArena::new();
         // Layer::Support requires a staged SliceIR (pushed via push_slice_regions).
         arena
@@ -780,13 +784,13 @@ fn support_deterministic_across_repeated_runs() {
             &dispatcher,
             &"Layer::Support".to_string(),
             layer,
-            &module.as_live(),
+            &bundle.as_live(),
             layer_input(bb, &arena),
         )
         .expect("support dispatch must succeed");
         commit_layer_outputs_for_test(
             "Layer::Support",
-            module.module_id(),
+            bundle.module.module_id(),
             layer.index,
             commit_data,
             &mut arena,
@@ -800,8 +804,8 @@ fn support_deterministic_across_repeated_runs() {
             .clone()
     };
 
-    let first = run_dispatch(&module, &blackboard(), &layer);
-    let second = run_dispatch(&module, &blackboard(), &layer);
+    let first = run_dispatch(&blackboard(), &layer);
+    let second = run_dispatch(&blackboard(), &layer);
 
     assert_eq!(
         first.len(),
@@ -914,12 +918,16 @@ fn support_enforcer_blocker_paint_precedence() {
         )
         .expect("instance pool must build"),
     );
-    let module = CompiledModuleBuilder::new("com.test.support", pool)
+    let module_inner = CompiledModuleBuilder::new("com.test.support")
         .config_view(Arc::new(slicer_ir::ConfigView::from_map(
             std::collections::HashMap::new(),
         )))
-        .wasm_component(Some(component))
         .build();
+    let bundle = TestModuleBundle {
+        module: module_inner,
+        pool,
+        component: Some(component),
+    };
 
     // Build PaintRegionIR: layer 0, 1 enforcer region, 1 blocker region
     // (paint_order: enforcer=0, blocker=1 â€” enforcer has precedence)
@@ -1016,11 +1024,11 @@ fn support_enforcer_blocker_paint_precedence() {
 
     let mut arena = LayerArena::new();
     arena.set_slice(make_slice_ir(0, 0.2, 1)).unwrap();
-    crate::common::run_layer_and_commit(
+    run_layer_and_commit_with_bundle(
         &dispatcher,
         "Layer::Support",
         &layer,
-        &module,
+        &bundle,
         &blackboard,
         &mut arena,
     )
@@ -1068,7 +1076,7 @@ fn support_enforcer_blocker_paint_precedence() {
 mod planner_consuming_tier {
     use std::sync::Arc;
 
-    use crate::common::wasm_cache;
+    use crate::common::{run_layer_and_commit_with_bundle, wasm_cache, TestModuleBundle};
     use slicer_ir::{
         BoundingBox3, ConfigValue, ConfigView, ExPolygon, ExtrusionPath3D, ExtrusionRole,
         GlobalLayer, MeshIR, Point2, Point3, Point3WithWidth, Polygon, SemVer, SlicedRegion,
@@ -1132,7 +1140,7 @@ mod planner_consuming_tier {
         engine: &Arc<WasmEngine>,
         loaded: LoadedModule,
         wasm_path: &std::path::Path,
-    ) -> CompiledModule {
+    ) -> TestModuleBundle {
         let bytes = std::fs::read(wasm_path).expect("wasm artifact must exist");
         let component = Arc::new(
             engine
@@ -1154,10 +1162,14 @@ mod planner_consuming_tier {
         let mut config_map = std::collections::HashMap::new();
         config_map.insert("support_enabled".to_string(), ConfigValue::Bool(true));
         config_map.insert("support_density".to_string(), ConfigValue::Float(20.0));
-        CompiledModuleBuilder::new(loaded.id().to_string(), pool)
+        let module = CompiledModuleBuilder::new(loaded.id().to_string())
             .config_view(Arc::new(ConfigView::from_map(config_map)))
-            .wasm_component(Some(component))
-            .build()
+            .build();
+        TestModuleBundle {
+            module,
+            pool,
+            component: Some(component),
+        }
     }
 
     fn make_slice_ir(layer_index: u32, z: f32) -> slicer_ir::SliceIR {
@@ -1228,7 +1240,7 @@ mod planner_consuming_tier {
         let engine = wasm_cache::shared_engine();
         let dispatcher = WasmRuntimeDispatcher::new(Arc::clone(&engine));
         let loaded = loaded_support_module(manifest_id, wasm_path.clone(), manifest_reads);
-        let module = compile_module(&engine, loaded, &wasm_path);
+        let bundle = compile_module(&engine, loaded, &wasm_path);
 
         let blackboard = empty_blackboard_with_support_plan(plan);
 
@@ -1246,11 +1258,11 @@ mod planner_consuming_tier {
         arena
             .set_slice(make_slice_ir(layer_index, layer_z))
             .unwrap();
-        crate::common::run_layer_and_commit(
+        run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::Support",
             &layer,
-            &module,
+            &bundle,
             &blackboard,
             &mut arena,
         )
@@ -1532,7 +1544,7 @@ mod planner_consuming_tier {
                 "SupportPlanIR",
             ],
         );
-        let module = compile_module(&engine, loaded, &wasm_path);
+        let bundle = compile_module(&engine, loaded, &wasm_path);
 
         let blackboard = empty_blackboard_with_support_plan(Some(Arc::clone(&plan)));
 
@@ -1546,11 +1558,11 @@ mod planner_consuming_tier {
 
         let mut arena = LayerArena::new();
         arena.set_slice(slice_ir).unwrap();
-        crate::common::run_layer_and_commit(
+        run_layer_and_commit_with_bundle(
             &dispatcher,
             "Layer::Support",
             &layer,
-            &module,
+            &bundle,
             &blackboard,
             &mut arena,
         )

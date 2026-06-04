@@ -16,10 +16,10 @@ use slicer_ir::{
 };
 use slicer_runtime::instance_pool::{build_wasm_instance_pool, WasmArtifactMetadata};
 use slicer_runtime::manifest::{LoadedModule, LoadedModuleBuilder};
-use slicer_runtime::{Blackboard, CompiledModule, CompiledModuleBuilder, PrepassStageRunner};
+use slicer_runtime::{Blackboard, CompiledModuleBuilder, PrepassStageRunner};
 use slicer_wasm_host::WasmRuntimeDispatcher;
 
-use crate::common::{prepass_input, wasm_cache};
+use crate::common::{prepass_input, wasm_cache, TestModuleBundle};
 
 // â"€â"€ Path to the sdk-prepass-guest component â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
@@ -125,7 +125,7 @@ fn make_compiled_module_with_config(
     stage: &str,
     component: Arc<slicer_runtime::WasmComponent>,
     config: ConfigView,
-) -> CompiledModule {
+) -> TestModuleBundle {
     let loaded = make_loaded_module(id, stage);
     let pool = Arc::new(
         build_wasm_instance_pool(
@@ -139,10 +139,14 @@ fn make_compiled_module_with_config(
         )
         .unwrap(),
     );
-    CompiledModuleBuilder::new(id, pool)
+    let module = CompiledModuleBuilder::new(id)
         .config_view(Arc::new(config))
-        .wasm_component(Some(component))
-        .build()
+        .build();
+    TestModuleBundle {
+        module,
+        pool,
+        component: Some(component),
+    }
 }
 
 fn load_sdk_prepass_guest() -> Option<Arc<slicer_runtime::WasmComponent>> {

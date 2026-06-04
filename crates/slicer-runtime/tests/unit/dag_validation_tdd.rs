@@ -272,7 +272,7 @@ fn write_conflict_orderable_is_true_when_read_establishes_dag_edge() {
 fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
     use crate::common::postpass_input;
     use slicer_runtime::instance_pool::build_wasm_instance_pool;
-    use slicer_runtime::PostpassStageRunner;
+    use slicer_runtime::{CompiledModuleLive, PostpassStageRunner, WasmInstancePool};
     use slicer_wasm_host::WasmRuntimeDispatcher;
     use std::sync::Arc;
 
@@ -322,7 +322,7 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
             .max_ir_schema(semver(2, 0, 0))
             .build();
             // Build pool via the proper factory function.
-            let instance_pool = Arc::new(
+            let _instance_pool = Arc::new(
                 build_wasm_instance_pool(
                     dummy_module.id(),
                     dummy_module.stage(),
@@ -335,8 +335,7 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
 
             // Build a minimal CompiledModule for dispatch call.
             let compiled =
-                slicer_runtime::CompiledModuleBuilder::new(module_id.to_string(), instance_pool)
-                    .build();
+                slicer_runtime::CompiledModuleBuilder::new(module_id.to_string()).build();
 
             // Build minimal MeshIR and Blackboard for dispatch call.
             let mesh_ir = slicer_ir::MeshIR::default();
@@ -350,7 +349,13 @@ fn validates_undeclared_runtime_access_and_cross_stage_dependency_rules() {
             let mut gcode_ir = gcode_ir;
             let _ = dispatcher.run_gcode_postprocess(
                 &stage.to_string(),
-                &compiled.as_live(),
+                &CompiledModuleLive::new(
+                    compiled.module_id(),
+                    WasmInstancePool::placeholder(),
+                    None,
+                    compiled.claims(),
+                    Arc::clone(compiled.config_view()),
+                ),
                 postpass_input(&blackboard),
                 &mut gcode_ir.commands,
             );
