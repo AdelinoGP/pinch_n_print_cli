@@ -16,23 +16,31 @@ This is the final packet in the deepening batch; the workspace test gate at clos
 
 ## In Scope
 
-- Create `modules/core-modules/overhang-classifier-default/` with the standard core-module layout (mirror `modules/core-modules/finalization-default/` or any existing FinalizationModule-implementing core-module — confirm via dispatch #1):
-  - `Cargo.toml` declaring `slicer-sdk` (with the appropriate feature flag for guest builds), `slicer-ir`, `slicer-core`. NO `slicer-runtime`, `slicer-wasm-host`, `slicer-scheduler`, `slicer-gcode`, `slicer-model-io`, `wasmtime`. Workspace inheritance for `wit-bindgen` and any other guest-side dep.
-  - `module.toml` (or `manifest.toml` — match existing module convention) declaring the stage entry: `stage = "PostPass::LayerFinalization"`, `trait = "FinalizationModule"`, `world = "slicer:world-finalization@1.0.0"`. The manifest's config-keys section declares reads of `overhang_1_4_speed`, `overhang_2_4_speed`, `overhang_3_4_speed`, `overhang_4_4_speed` (key names exactly as in `slicer-ir::FeedrateConfig`).
-  - `src/lib.rs` with the `#[slicer_module]` impl. Body:
-    1. Read the four overhang-speed fields via `config_view.get_float(...)` (or the SDK's typed `config_view.feedrate()` if available).
-    2. Short-circuit when all four are 0.0 (preserves the pre-P84 `crates/slicer-runtime/src/overhang_classifier.rs:46-52` AC-2 baseline).
-    3. For each `layer_index` ≥ 1, iterate `layer.ordered_entities()` filtered to wall roles (`ExtrusionRole::WallOuter`, `WallInner`, `OverhangPerimeter`, etc.). For each wall entity:
-       - Compute signed distance to the previous layer's wall geometry using `slicer_core::aabb_lines_2d::LinesDistancer2D` (the primitive `overhang_classifier`'s kernel already uses).
-       - Classify into Q1–Q4 per the quartile convention documented in the pre-P84 `overhang_classifier.rs:8-15` doc-comment.
-       - If quartile != Q4 (i.e., the entity has some overhang): compute `factor = overhang_<q>_4_speed / base_speed_for_role(role, &feedrate_config)`. Call `output.modify_entity(layer_index, entity.entity_id, EntityMutation::SetSpeedFactor(factor))`.
-       - If quartile == Q4 (fully supported): emit nothing — the default speed factor of 1.0 already applies.
-  - `tests/` with at least one `#[module_test]` test (per the post-P78 SDK convention) constructing a two-layer fixture and asserting the second layer's wall entity received `SetSpeedFactor(< 1.0)`.
-- Delete the direct `slicer_core::classify_layers(...)` call from `crates/slicer-gcode/src/emit.rs` (or its equivalent post-P86 location). Delete the surrounding `use slicer_core::classify_layers;` line. The deletion is mechanical — the emit path's downstream logic (`resolve_feedrate` consuming `set-speed-factor`) is unchanged.
-- Add `overhang-classifier-default` to the workspace `Cargo.toml`'s `members` list (if xtask discovers modules by `members`; otherwise add to xtask's explicit module list — confirm via dispatch #2).
+- Create `modules/core-modules/overhang-classifier-default/` with the standard core-module layout (mirror `modules/core-modules/seam-planner-default/` or any other of the 20 existing core-modules — confirm via dispatch #1; note **no `finalization-default/` exists** in the workspace):
+  - `Cargo.toml` declaring `slicer-sdk`, `slicer-schema`, `slicer-ir` as path deps plus the wasm32-only `wit-bindgen` workspace dep. **MUST NOT** depend on `slicer-core`, `slicer-runtime`, `slicer-wasm-host`, `slicer-scheduler`, `slicer-gcode`, `slicer-model-io`, or `wasmtime` — the `host-algos` feature gate on `slicer-core` would contaminate the guest dep tree (P84 lesson).
+  - `overhang-classifier-default.toml` (match the existing `<module-name>.toml` manifest filename convention) declaring `stage = "PostPass::LayerFinalization"`, `trait = "FinalizationModule"`, `world = "slicer:world-finalization@1.0.0"`. Config-keys section declares reads of `overhang_1_4_speed`, `overhang_2_4_speed`, `overhang_3_4_speed`, `overhang_4_4_speed` (key names exactly as in `slicer-ir::FeedrateConfig`).
+  - **`src/` containing the COMPLETE relocated algorithm** (the user's central catch — no `slicer_core::*` imports anywhere under guest src):
+    - `src/lib.rs` with the `#[slicer_module]` impl `FinalizationModule`. Body shape:
+      1. Read the four overhang-speed fields via `config_view.get_float(...)` (or the SDK's typed accessor).
+      2. Short-circuit when all four are 0.0 (preserves the pre-P84 byte-identical baseline for unconfigured printers).
+      3. For each `layer_index` ≥ 1, iterate the per-layer entity stream filtered to wall roles. For each wall entity: compute signed distance to the previous layer's wall geometry via the relocated `LinesDistancer2D` primitive (in `src/lines_distancer.rs`), classify into Q1–Q4 via the relocated `classify_layers` kernel (in `src/classify.rs`), compute `factor = overhang_<q>_4_speed / base_speed_for_role(role, &feedrate_config)` for non-Q4 entities, and call `output.modify_entity(layer_index, entity.entity_id, EntityMutation::SetSpeedFactor(factor))`. Q4 (fully supported) entities emit nothing (default factor 1.0 applies).
+    - `src/classify.rs` — relocate the verbatim 319 LOC of `crates/slicer-core/src/algos/overhang_classifier.rs` (the `classify_layers` algorithm and its private helpers). Adjust imports: instead of `use crate::aabb_lines_2d::LinesDistancer2D`, use `use crate::lines_distancer::LinesDistancer2D`. The `slicer_ir::FeedrateConfig` and `slicer_ir::{ExtrusionRole, LayerCollectionIR}` imports stay (slicer-ir IS a guest dep).
+    - `src/lines_distancer.rs` — relocate the `LinesDistancer2D` primitive (currently `crates/slicer-core/src/aabb_lines_2d.rs`). If it pulls in any `slicer-core`-only helper, audit and copy that too — the guest must be `slicer_core::*`-free.
+  - `tests/basic_tdd.rs` with `#[module_test]` (per the post-P78 SDK convention) — at minimum subsumes the invariants from the P84 golden `crates/slicer-core/tests/algo_overhang_classifier_tdd.rs` (which is being deleted in Step 5.5).
+- **Delete the slicer-core kernel and its host-side shims** (Step 5.5):
+  - `crates/slicer-core/src/algos/overhang_classifier.rs` — DELETE.
+  - `crates/slicer-core/tests/algo_overhang_classifier_tdd.rs` — DELETE.
+  - `crates/slicer-core/src/algos/mod.rs` — drop the `pub mod overhang_classifier;` declaration and any re-export naming `classify_layers`.
+  - `crates/slicer-runtime/src/lib.rs:192`'s `pub use slicer_core::algos::overhang_classifier::classify_layers;` — DELETE (P84-era compat shim).
+  - `crates/slicer-core/src/aabb_lines_2d.rs` — DELETE if no other slicer-core algo consumes `LinesDistancer2D` (Step 5.5 dispatch verifies; if it has consumers, keep with a note).
+- **Delete the direct call AND the obsolete branch from `crates/slicer-gcode/src/emit.rs`**:
+  - Delete `use slicer_core::classify_layers;` at L21 and the `classify_layers(&mut layers, &feedrate_config);` call at L226.
+  - Delete the `overhang_quartile`-indexed feedrate-lookup branch in `resolve_feedrate` (L106-123 — the `overhang_<q>_4_speed` table indexed by quartile). The multiplicative `set-speed-factor` consumption path (already used by existing finalization-implementing modules — Step 1 dispatch #4 confirms) handles all factoring.
+  - If `feedrate_config: FeedrateConfig` field becomes entirely unused, drop it from the struct and any constructor params.
+- Add `modules/core-modules/overhang-classifier-default` to the workspace `Cargo.toml`'s `members` list (if xtask discovers modules by `members`; otherwise update xtask's explicit module list — confirm via dispatch #2).
 - Run `cargo xtask build-guests` to produce the new `.wasm` artifact. After successful build, `--check` reports clean.
-- Capture the AC-7 SHA post-packet. If byte-identical to P87 baseline, document. If LSB-shifted, document the shifted SHA AND the F-word diff scope as the rationale (set-speed-factor multiplicative rounding vs direct overhang-speed lookup).
-- Workspace test gate: `cargo test --workspace` green; closes the deepening batch.
+- Capture the AC-7 SHA post-packet. If byte-identical to P87 baseline (`89a329ad…`), document. If LSB-shifted, document the shifted SHA AND the F-word diff scope as the rationale (set-speed-factor multiplicative rounding vs direct overhang-speed lookup).
+- Workspace test gate: `cargo test --features slicer-core/host-algos --features slicer-sdk/test --no-fail-fast --workspace` green; closes the deepening batch.
 
 ## Out of Scope
 
@@ -65,18 +73,19 @@ The acceptance contract is enumerated in `packet.spec.md` (AC-1..AC-9, AC-N1..AC
 
 | ID | Command | Delegation hint |
 |---|---|---|
-| AC-1 | `test -d modules/core-modules/overhang-classifier-default && test -f modules/core-modules/overhang-classifier-default/Cargo.toml && (test -f modules/core-modules/overhang-classifier-default/module.toml \|\| test -f modules/core-modules/overhang-classifier-default/manifest.toml)` | FACT pass/fail |
-| AC-2 | `grep -qE 'impl.*FinalizationModule' modules/core-modules/overhang-classifier-default/src/lib.rs && grep -qE 'overhang_(1\|2\|3\|4)_4_speed' modules/core-modules/overhang-classifier-default/src/lib.rs` | FACT pass/fail |
-| AC-3 | `! rg -q 'classify_layers\s*\(' crates/slicer-gcode/src/` | FACT pass/fail |
+| AC-1 | `test -d modules/core-modules/overhang-classifier-default && test -f modules/core-modules/overhang-classifier-default/Cargo.toml && test -f modules/core-modules/overhang-classifier-default/overhang-classifier-default.toml && test -f modules/core-modules/overhang-classifier-default/src/lib.rs && test -d modules/core-modules/overhang-classifier-default/wit-guest && grep -qE '^slicer-sdk *=' modules/core-modules/overhang-classifier-default/Cargo.toml && ! grep -qE '^slicer-(core|runtime|wasm-host|scheduler|gcode|model-io) *=' modules/core-modules/overhang-classifier-default/Cargo.toml` | FACT pass/fail |
+| AC-2 | `grep -qE 'impl.*FinalizationModule' modules/core-modules/overhang-classifier-default/src/lib.rs && grep -qE 'overhang_(1|2|3|4)_4_speed' modules/core-modules/overhang-classifier-default/src/lib.rs && ! rg -q 'slicer_core::' modules/core-modules/overhang-classifier-default/src/ && grep -rqE 'fn classify_layers\|LinesDistancer2D' modules/core-modules/overhang-classifier-default/src/` | FACT pass/fail |
+| AC-3 | `! rg -q 'classify_layers' crates/slicer-gcode/src/ && ! rg -q 'overhang_quartile' crates/slicer-gcode/src/` | FACT pass/fail |
+| AC-3.5 | `test ! -f crates/slicer-core/src/algos/overhang_classifier.rs && ! grep -qE 'overhang_classifier' crates/slicer-core/src/algos/mod.rs && ! grep -qE 'slicer_core::algos::overhang_classifier::classify_layers' crates/slicer-runtime/src/lib.rs && test ! -f crates/slicer-core/tests/algo_overhang_classifier_tdd.rs` | FACT pass/fail |
 | AC-4 | `cargo xtask build-guests && cargo xtask build-guests --check` | FACT pass/fail |
-| AC-5 | `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p88.gcode --instrument-stderr 2> /tmp/p88-stderr.log && grep -qE 'overhang-classifier-default\|overhang_classifier_default' /tmp/p88-stderr.log` | FACT pass/fail |
-| AC-6 | (Manual ceremony — temp module dir without overhang module; slice succeeds; SHA logged) | (not CI) |
-| AC-7 | `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p88.gcode && sha256sum /tmp/benchy-p88.gcode` (compare to P87 baseline; document outcome) | SNIPPET (SHA + verdict) |
+| AC-5 | `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p88.gcode --instrument-stderr 2> /tmp/p88-stderr.log && grep -qE 'overhang-classifier-default|overhang_classifier_default' /tmp/p88-stderr.log` | FACT pass/fail |
+| AC-6 | (Manual ceremony — temp module dir without overhang module via `--no-default-module-paths`; slice succeeds; SHA logged) | (not CI) |
+| AC-7 | `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p88.gcode && sha256sum /tmp/benchy-p88.gcode` (compare to P87 baseline `89a329ad…`; document byte-identical OR LSB-shift) | SNIPPET (SHA + verdict) |
 | AC-8 | `cargo test -p overhang-classifier-default` | FACT pass/fail + count |
-| AC-9 | `cargo test --workspace` | FACT pass/fail + duration + count |
+| AC-9 | `cargo test --features slicer-core/host-algos --features slicer-sdk/test --no-fail-fast --workspace` (flags mandatory per P85 closure) | FACT pass/fail + duration + count |
 | AC-N1 | `! rg -q 'classify_layers' crates/slicer-gcode/src/` | FACT pass/fail |
-| AC-N2 | `! rg -q 'OVERHANG_CLASSIFICATION_PRODUCER\|OverhangClassificationProducer' crates/slicer-runtime/src/ && [ $(grep -cE '_PRODUCER as &dyn Producer' crates/slicer-runtime/src/lib.rs) -eq 8 ]` | FACT pass/fail |
-| AC-N3 | `git diff --name-only HEAD -- crates/slicer-schema/wit/ \| wc -l \| grep -qE '^0$'` | FACT pass/fail |
+| AC-N2 | `! rg -q 'OVERHANG_CLASSIFICATION_PRODUCER|OverhangClassificationProducer' crates/slicer-runtime/src/ && [ $(grep -cE '_PRODUCER as &dyn Producer' crates/slicer-runtime/src/lib.rs) -eq 8 ]` | FACT pass/fail |
+| AC-N3 | `git diff --name-only HEAD -- crates/slicer-schema/wit/ \| wc -l \| grep -qE '^0$'` (run BEFORE the closure commit, so HEAD is still pre-P88) | FACT pass/fail |
 | gate-1 | `cargo build --workspace` | FACT pass/fail |
 | gate-2 | `cargo clippy --workspace --all-targets -- -D warnings` | FACT pass/fail |
 | gate-3 | `cargo xtask build-guests --check` | FACT pass/fail |

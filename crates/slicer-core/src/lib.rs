@@ -4,7 +4,6 @@
 #![warn(unused_imports)]
 #![warn(unused_must_use)]
 
-pub mod aabb_lines_2d;
 pub mod aabb_tree;
 /// Pure algorithm modules (available only with the `host-algos` feature).
 #[cfg(feature = "host-algos")]

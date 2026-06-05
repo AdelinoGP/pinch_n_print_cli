@@ -1,0 +1,79 @@
+[module]
+id           = "com.core.overhang-classifier-default"
+version      = "0.1.0"
+display-name = "Overhang Classifier Default"
+description  = "Core overhang classification module — applies speed-factor mutations to wall entities on overhangs"
+author       = "modular-slicer"
+license      = "MIT"
+wit-world    = "slicer:world-finalization@1.0.0"
+
+[stage]
+id = "PostPass::LayerFinalization"
+
+[ir-access]
+reads  = ["LayerCollectionIR"]
+writes = ["LayerCollectionIR"]
+
+[claims]
+holds    = []
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "4.0.0"
+
+[config.schema]
+[config.schema.overhang_1_4_speed]
+type    = "float"
+default = 0.0
+display = "Overhang 1/4 Speed"
+group   = "Speed"
+
+[config.schema.overhang_2_4_speed]
+type    = "float"
+default = 0.0
+display = "Overhang 2/4 Speed"
+group   = "Speed"
+
+[config.schema.overhang_3_4_speed]
+type    = "float"
+default = 0.0
+display = "Overhang 3/4 Speed"
+group   = "Speed"
+
+[config.schema.overhang_4_4_speed]
+type    = "float"
+default = 0.0
+display = "Overhang 4/4 Speed"
+group   = "Speed"
+
+[config.schema.outer_wall_speed]
+type    = "float"
+default = 60.0
+display = "Outer Wall Speed"
+group   = "Speed"
+
+[config.schema.inner_wall_speed]
+type    = "float"
+default = 60.0
+display = "Inner Wall Speed"
+group   = "Speed"
+
+[config.schema.thin_wall_speed]
+type    = "float"
+default = 30.0
+display = "Thin Wall Speed"
+group   = "Speed"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+estimated-ms-per-layer = 10
+layer-parallel-safe    = false

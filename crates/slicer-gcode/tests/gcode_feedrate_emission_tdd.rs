@@ -478,7 +478,7 @@ fn filament_ironing_overrides_global_ironing() {
 
     let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
     let resolved = emitter
-        .resolve_feedrate(&ExtrusionRole::Ironing, 1.0, None)
+        .resolve_feedrate(&ExtrusionRole::Ironing, 1.0)
         .unwrap();
     assert_eq!(resolved, 40.0 * 60.0);
 }
@@ -492,7 +492,7 @@ fn wipe_speed_resolves_correctly() {
 
     let emitter = DefaultGCodeEmitter::new_with_config("1.0".to_string(), config);
     let resolved = emitter
-        .resolve_feedrate(&ExtrusionRole::Custom("Wipe".to_string()), 1.0, None)
+        .resolve_feedrate(&ExtrusionRole::Custom("Wipe".to_string()), 1.0)
         .unwrap();
     assert_eq!(resolved, 96.0 * 60.0);
 }

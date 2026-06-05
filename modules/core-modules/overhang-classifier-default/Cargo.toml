@@ -1,0 +1,20 @@
+[package]
+name = "overhang-classifier-default"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description = "Core overhang classification module — applies speed-factor mutations to wall entities on overhangs"
+
+[dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk" }
+slicer-schema = { path = "../../../crates/slicer-schema" }
+slicer-ir = { path = "../../../crates/slicer-ir" }
+
+[dev-dependencies]
+slicer-sdk = { path = "../../../crates/slicer-sdk", features = ["test"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wit-bindgen.workspace = true
+
+[lints]
+workspace = true

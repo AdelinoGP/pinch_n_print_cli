@@ -14,7 +14,11 @@ use slicer_ir::{
 // ---- helpers ----------------------------------------------------------------
 
 fn sv(major: u32, minor: u32, patch: u32) -> SemVer {
-    SemVer { major, minor, patch }
+    SemVer {
+        major,
+        minor,
+        patch,
+    }
 }
 
 fn make_layer_plan() -> LayerPlanIR {
@@ -50,7 +54,6 @@ fn make_layer_plan() -> LayerPlanIR {
     }
     plan
 }
-
 
 fn no_objects() -> Vec<ObjectMesh> {
     Vec::new()
@@ -115,10 +118,26 @@ fn region_map_keys_are_correct() {
 
     // Spot-check a few expected keys
     let expected_keys = [
-        RegionKey { global_layer_index: 0, object_id: "obj_a".to_string(), region_id: 0 },
-        RegionKey { global_layer_index: 0, object_id: "obj_a".to_string(), region_id: 1 },
-        RegionKey { global_layer_index: 1, object_id: "obj_b".to_string(), region_id: 0 },
-        RegionKey { global_layer_index: 1, object_id: "obj_b".to_string(), region_id: 1 },
+        RegionKey {
+            global_layer_index: 0,
+            object_id: "obj_a".to_string(),
+            region_id: 0,
+        },
+        RegionKey {
+            global_layer_index: 0,
+            object_id: "obj_a".to_string(),
+            region_id: 1,
+        },
+        RegionKey {
+            global_layer_index: 1,
+            object_id: "obj_b".to_string(),
+            region_id: 0,
+        },
+        RegionKey {
+            global_layer_index: 1,
+            object_id: "obj_b".to_string(),
+            region_id: 1,
+        },
     ];
     for key in &expected_keys {
         assert!(
@@ -141,11 +160,12 @@ fn region_map_cap_exceeded_returns_error() {
     let objects = no_objects();
 
     // Cap of 3 is below the 8 entries we have
-    let result =
-        execute_region_mapping_with_cap(&plan, &projection, None, &configs, &objects, 3);
+    let result = execute_region_mapping_with_cap(&plan, &projection, None, &configs, &objects, 3);
 
     match result {
-        Err(RegionMappingError::CapExceeded { entry_count, cap, .. }) => {
+        Err(RegionMappingError::CapExceeded {
+            entry_count, cap, ..
+        }) => {
             assert_eq!(entry_count, 8);
             assert_eq!(cap, 3);
         }
@@ -174,5 +194,8 @@ fn empty_layer_plan_produces_empty_map() {
     )
     .unwrap();
 
-    assert!(region_map.entries.is_empty(), "expected no entries for empty plan");
+    assert!(
+        region_map.entries.is_empty(),
+        "expected no entries for empty plan"
+    );
 }

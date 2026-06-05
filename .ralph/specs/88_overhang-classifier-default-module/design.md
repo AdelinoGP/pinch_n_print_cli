@@ -4,30 +4,44 @@
 
 ```
 modules/core-modules/overhang-classifier-default/
-├── Cargo.toml          deps: slicer-sdk, slicer-ir, slicer-core
-├── module.toml         stage = "PostPass::LayerFinalization", trait = "FinalizationModule"
-├── src/lib.rs          #[slicer_module] impl FinalizationModule { ... }
-└── tests/
-    └── basic_tdd.rs    #[module_test] two-layer fixture
+├── Cargo.toml          deps: slicer-sdk, slicer-schema, slicer-ir  (NO slicer-core)
+├── overhang-classifier-default.toml   stage = "PostPass::LayerFinalization", trait = "FinalizationModule"
+├── src/
+│   ├── lib.rs          #[slicer_module] impl FinalizationModule { ... }
+│   ├── classify.rs     ← RELOCATED from crates/slicer-core/src/algos/overhang_classifier.rs (~319 LOC)
+│   └── lines_distancer.rs   ← RELOCATED from crates/slicer-core/src/aabb_lines_2d.rs (LinesDistancer2D)
+├── tests/
+│   └── basic_tdd.rs    #[module_test] two-layer fixture (subsumes the P84 golden)
+└── wit-guest/          per-guest WIT shim (per ADR-0003)
+
+DELETIONS IN HOST CRATES:
+- crates/slicer-core/src/algos/overhang_classifier.rs       (relocated to guest)
+- crates/slicer-core/tests/algo_overhang_classifier_tdd.rs  (P84 golden; invariants live in guest tests)
+- crates/slicer-core/src/algos/mod.rs                        (drop the `pub mod overhang_classifier;`)
+- crates/slicer-runtime/src/lib.rs:192                       (drop P84 compat shim re-export)
+- crates/slicer-core/src/aabb_lines_2d.rs                    (conditional — delete if no other consumer)
 
 EMIT PATH AFTER P88:
 slicer-gcode/src/emit.rs::DefaultGCodeEmitter::emit_gcode
-  ├── (deleted): slicer_core::classify_layers(&mut layers, &feedrate)
-  └── (kept):    layers contain entities; each entity carries optional speed_factor
-                 from prior FinalizationModule mutations. resolve_feedrate reads it.
+  ├── (deleted): slicer_core::classify_layers(&mut layers, &feedrate) at L226
+  ├── (deleted): use slicer_core::classify_layers at L21
+  ├── (deleted): resolve_feedrate's overhang_quartile branch at L106-123
+  └── (kept):    multiplicative speed-factor application path — existing finalization-implementing
+                 modules already drive this; overhang now flows through the same mechanism.
 
 EXECUTION FLOW:
-host scheduler → finalization-default (existing) → overhang-classifier-default (new)
-              → both modules call output.modify_entity → entities accumulate factors
-              → gcode_emit serializes with speed_factor applied
+host scheduler → all FinalizationModule core-modules (claim-ordered) → entities accumulate
+                 mutations → gcode_emit serializes with cumulative speed_factor applied
 ```
+
+**Template module for guest shape**: any of the 20 existing modules in `modules/core-modules/` (e.g., `seam-planner-default/` verified to follow the standard layout: `Cargo.toml` with `slicer-sdk`/`slicer-schema`/`slicer-ir` deps + wasm32-only `wit-bindgen`; `<name>.toml` manifest; `src/`; `wit-guest/`; `<name>.wasm` artifact). **There is no `modules/core-modules/finalization-default/`** — prior packet drafts cited it as a "template"; that directory does not exist. Step 1 dispatch #1 surfaces a real existing FinalizationModule-implementing module.
 
 OrcaSlicer comparison surface: NONE NEW. The parity baseline (AC-2 short-circuit on zero overhang speeds, the strict-`>` quartile threshold convention) is preserved verbatim inside `slicer_core::classify_layers` (moved in P84). The module's job is to call the kernel and translate its output to `set-speed-factor` mutations.
 
 ## Architecture Constraints
 
-- ADR-0001 / 0002 / 0003 / 0004 / 0005 / 0006 untouched.
-- ADR-0007 (drafted at P88 close) — overhang annotation as a `FinalizationModule`; no new stage; module-absent ⇒ no annotation.
+- ADR-0001 / 0002 / 0003 (preserved); ADR-0005 / 0006 (P83 — runner traits + export_for_stage_id); ADR-0008 (P85 — CompiledModule Static/Live split) preserved. ADR-0004 (Test support in slicer-sdk, P77) unrelated to this packet's surface.
+- ADR-0008 (drafted at P88 close) — overhang annotation as a `FinalizationModule`; no new stage; module-absent ⇒ no annotation; guest owns the complete algorithm (no `slicer-core` dep) to prevent the `host-algos` feature gate from contaminating the guest dep tree.
 - No WIT file is edited. AC-N3 verifies via `git diff`.
 - The new module's manifest claims the same world (`slicer:world-finalization@1.0.0`) as `finalization-default`. Both run in the same stage; ordering is per the DAG's claim-based topology (no two modules claim the same role, so they run sequentially in declared order).
 
@@ -113,7 +127,7 @@ The 8 files in the table above, plus the conditional xtask file from dispatch #2
 
 ## Locked Assumptions and Invariants
 
-- ADR-0007 (drafted at close): overhang is a FinalizationModule; no new stage; no host fallback.
+- ADR-0008 (drafted at close): overhang is a FinalizationModule; no new stage; no host fallback.
 - No WIT contract change (AC-N3).
 - 8 builtins in `runtime_builtins()` (unchanged).
 - Default `pnp_cli slice --module-dir modules/core-modules` invocations include the new module; behavior matches the documented batch baseline (byte-identical or AC-7-documented LSB shift).
@@ -136,4 +150,4 @@ The 8 files in the table above, plus the conditional xtask file from dispatch #2
 
 `None — change is reversible by deleting the new module dir and reverting the gcode_emit one-line deletion. The AC-7 SHA-shift documentation, if needed, is the only artifact that survives a rollback.`
 
-One ADR planned at close — **ADR-0007** — overhang annotation as `FinalizationModule`, no new stage, no host fallback.
+One ADR planned at close — **ADR-0008** — overhang annotation as `FinalizationModule`, no new stage, no host fallback.

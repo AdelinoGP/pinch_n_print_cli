@@ -109,8 +109,6 @@ pub use slice_ir::{
 
     RegionId,
     RegionKey,
-    // Region map types
-    DEFAULT_REGION_MAP_CAP,
     RegionMapIR,
     RegionPlan,
     RetractMode,
@@ -152,6 +150,8 @@ pub use slice_ir::{
     WallLoop,
     WidthProfile,
     ZHop,
+    // Region map types
+    DEFAULT_REGION_MAP_CAP,
 };
 
 pub use slice_ir::{

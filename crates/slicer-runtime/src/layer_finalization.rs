@@ -14,6 +14,7 @@ use slicer_wasm_host::{
     WasmInstancePool,
 };
 
+use crate::instrumentation::{NoopInstrumentation, PipelineInstrumentation};
 use crate::{Blackboard, ExecutionPlan};
 
 // FinalizationStageRunner trait is now defined in slicer-wasm-host::traits and re-exported
@@ -37,8 +38,29 @@ pub fn execute_layer_finalization(
     layers: &mut Vec<LayerCollectionIR>,
     wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
 ) -> Result<(), FinalizationError> {
+    execute_layer_finalization_with_instrumentation(
+        plan,
+        blackboard,
+        runner,
+        layers,
+        &NoopInstrumentation,
+        wasm_handles,
+    )
+}
+
+/// Instrumented variant of [`execute_layer_finalization`] that brackets
+/// each finalization module via `instrumentation`.
+pub fn execute_layer_finalization_with_instrumentation(
+    plan: &ExecutionPlan,
+    blackboard: &Blackboard,
+    runner: &dyn FinalizationStageRunner,
+    layers: &mut Vec<LayerCollectionIR>,
+    instrumentation: &(dyn PipelineInstrumentation + Sync),
+    wasm_handles: &HashMap<ModuleId, (Arc<WasmInstancePool>, Option<Arc<WasmComponent>>)>,
+) -> Result<(), FinalizationError> {
     if let Some(stage) = &plan.layer_finalization_stage {
         for module in &stage.modules {
+            instrumentation.on_module_start(&stage.stage_id, None, module.module_id());
             // Build IR-typed borrow structs for the new slicer-wasm-host trait boundary.
             let (instance_pool, wasm_component) = wasm_handles
                 .get(module.module_id().as_str())
@@ -55,7 +77,9 @@ pub fn execute_layer_finalization(
                 mesh: std::sync::Arc::clone(blackboard.mesh()),
                 _phantom: std::marker::PhantomData,
             };
-            runner.run_stage(&stage.stage_id, &live_module, input, layers)?;
+            let res = runner.run_stage(&stage.stage_id, &live_module, input, layers);
+            instrumentation.on_module_end(&stage.stage_id, None, module.module_id(), 0, 0);
+            res?;
 
             // Validate that the layer indices remain strictly monotonic
             for window in layers.windows(2) {

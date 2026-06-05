@@ -139,7 +139,10 @@ pub use layer_executor::{
     execute_per_layer, execute_per_layer_with_events, execute_per_layer_with_instrumentation,
     ir_path_for_layer_stage, LayerExecutionError, LayerProgressSink, NoopLayerProgressSink,
 };
-pub use layer_finalization::{execute_layer_finalization, FinalizationOutputBuilder};
+pub use layer_finalization::{
+    execute_layer_finalization, execute_layer_finalization_with_instrumentation,
+    FinalizationOutputBuilder,
+};
 pub use manifest::{
     build_config_schema_json, load_module_from_paths, load_modules_from_roots, ConfigFieldEntry,
     ConfigSchema, DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport,
@@ -189,7 +192,6 @@ pub use slicer_core::algos::mesh_analysis::{
 pub use slicer_core::algos::mesh_segmentation::{
     execute_mesh_segmentation, DegenerateStrokeReason, MeshSegmentationError,
 };
-pub use slicer_core::algos::overhang_classifier::classify_layers;
 pub use slicer_core::algos::paint_segmentation::{
     execute_paint_segmentation, PaintSegmentationError,
 };

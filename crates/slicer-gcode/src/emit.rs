@@ -102,34 +102,8 @@ impl DefaultGCodeEmitter {
         self
     }
 
-    /// Resolves the feedrate (in mm/min) for a given extrusion role, speed factor multiplier,
-    /// and optional overhang quartile.
-    pub fn resolve_feedrate(
-        &self,
-        role: &ExtrusionRole,
-        speed_factor: f32,
-        overhang_quartile: Option<u8>,
-    ) -> Option<f32> {
-        // Overhang speed dispatch for wall-family roles
-        if let Some(q) = overhang_quartile {
-            if matches!(
-                role,
-                ExtrusionRole::OuterWall | ExtrusionRole::InnerWall | ExtrusionRole::ThinWall
-            ) {
-                let speed = match q {
-                    1 => self.feedrate_config.overhang_1_4_speed,
-                    2 => self.feedrate_config.overhang_2_4_speed,
-                    3 => self.feedrate_config.overhang_3_4_speed,
-                    4 => self.feedrate_config.overhang_4_4_speed,
-                    _ => 0.0,
-                };
-                if speed > 0.0 {
-                    let clamped = speed_factor.clamp(0.05, 5.0);
-                    return Some(speed * 60.0 * clamped);
-                }
-            }
-        }
-
+    /// Resolves the feedrate (in mm/min) for a given extrusion role and speed factor multiplier.
+    pub fn resolve_feedrate(&self, role: &ExtrusionRole, speed_factor: f32) -> Option<f32> {
         let base_speed = match role {
             ExtrusionRole::OuterWall => self.feedrate_config.outer_wall_speed,
             ExtrusionRole::InnerWall => self.feedrate_config.inner_wall_speed,
@@ -223,10 +197,6 @@ impl GCodeEmitter for DefaultGCodeEmitter {
         // clusters in ascending tool order (H1: module state doesn't survive
         // across calls), so the host performs the rotation post-dispatch.
         apply_cross_layer_tool_rotation(&mut owned_layers);
-        slicer_core::algos::overhang_classifier::classify_layers(
-            &mut owned_layers,
-            &self.feedrate_config,
-        );
         let layer_irs: &[LayerCollectionIR] = &owned_layers;
 
         let layer_count = layer_irs.len() as u32;
@@ -440,11 +410,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         } else {
                             None
                         },
-                        f: self.resolve_feedrate(
-                            role,
-                            entity.path.speed_factor,
-                            point.overhang_quartile,
-                        ),
+                        f: self.resolve_feedrate(role, entity.path.speed_factor),
                         role: role.clone(),
                     });
 
@@ -476,11 +442,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         y: None,
                         z: Some(hop_z),
                         e: None,
-                        f: self.resolve_feedrate(
-                            &ExtrusionRole::Custom("Travel".to_string()),
-                            1.0,
-                            None,
-                        ),
+                        f: self.resolve_feedrate(&ExtrusionRole::Custom("Travel".to_string()), 1.0),
                         role: ExtrusionRole::Custom("Travel".to_string()),
                     });
                 }
@@ -501,7 +463,6 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                                 self.resolve_feedrate(
                                     &ExtrusionRole::Custom("Travel".to_string()),
                                     1.0,
-                                    None,
                                 )
                             }),
                             role: ExtrusionRole::Custom("Travel".to_string()),
@@ -585,11 +546,7 @@ impl GCodeEmitter for DefaultGCodeEmitter {
                         y: None,
                         z: Some(layer_z),
                         e: None,
-                        f: self.resolve_feedrate(
-                            &ExtrusionRole::Custom("Travel".to_string()),
-                            1.0,
-                            None,
-                        ),
+                        f: self.resolve_feedrate(&ExtrusionRole::Custom("Travel".to_string()), 1.0),
                         role: ExtrusionRole::Custom("Travel".to_string()),
                     });
                     let _ = zh;

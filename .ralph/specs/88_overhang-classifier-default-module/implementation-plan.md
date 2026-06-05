@@ -5,7 +5,7 @@
 - Each step ends with a falsifying check that gates green before the next step starts.
 - Large existing files (`finalization-default/src/lib.rs` if > 200 LOC; `overhang_classifier.rs` from P84) are NEVER loaded in full. Line-range reads only.
 - P86 and P87 MUST be closed (Step 0 verifies).
-- This is the FINAL checkpoint packet of the deepening batch; `cargo test --workspace` runs at close.
+- This is the FINAL checkpoint packet of the deepening batch; `cargo test --features slicer-core/host-algos --features slicer-sdk/test --no-fail-fast --workspace` runs at close.
 - The new module under `modules/core-modules/` is in CLAUDE.md's guest-staleness path list — Step 5 rebuilds guests; Step 6 confirms `--check` clean.
 
 ---
@@ -14,7 +14,7 @@
 
 **Objective.** Confirm `slicer-gcode/src/emit.rs` calls `slicer_core::classify_layers` (will be deleted) and `slicer-core/src/algos/region_mapping.rs` exists. Capture g-code SHA.
 
-**Precondition.** P86 and P87 are both `superseded`. Working tree clean.
+**Precondition.** P86 and P87 are both `implemented`. Working tree clean. Carried-forward g-code SHA is `89a329ad3a4c1b7febca839edfca8b6302e562d8d2a390ee144252fd54e65a2b` per the P81→P87 byte-identical streak.
 
 **Postcondition.** Two log entries: prereq-state verification + baseline SHA from P87 closure.
 
@@ -24,7 +24,7 @@
 **Expected sub-agent dispatches.**
 - Dispatch: `grep -rqE 'slicer_core::classify_layers' crates/slicer-gcode/src/ && test -f crates/slicer-core/src/algos/region_mapping.rs`. Return FACT pass/fail.
 - Dispatch: `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/p88-baseline.gcode && sha256sum /tmp/p88-baseline.gcode`. Return FACT `<hex>`.
-- Dispatch: pre-packet workspace test count. `cargo test --workspace 2>&1 | tail -5`. Return SNIPPET.
+- Dispatch: pre-packet workspace test count. `cargo test --features slicer-core/host-algos --features slicer-sdk/test --no-fail-fast --workspace 2>&1 | tail -5`. Return SNIPPET.
 
 **Context cost: S.**
 
@@ -165,26 +165,60 @@ The test:
 
 ---
 
-## Step 5 — Delete the direct `classify_layers` call from `slicer-gcode/src/emit.rs`
+## Step 5 — Delete `classify_layers` from `slicer-gcode/src/emit.rs`; remove obsolete `overhang_quartile` resolve_feedrate branch
 
-**Objective.** The seam is cut: g-code emission no longer drives overhang annotation; the module is the sole annotator.
+**Objective.** The seam is cut: g-code emission no longer drives overhang annotation; the module is the sole annotator. The dead overhang-quartile feedrate-lookup branch in `resolve_feedrate` is deleted (CLAUDE.md: "no dead code").
 
 **Precondition.** Step 4 green.
 
-**Postcondition.** `crates/slicer-gcode/src/emit.rs` no longer contains `classify_layers(...)` or `use slicer_core::classify_layers;`. Workspace still builds.
+**Postcondition.** `crates/slicer-gcode/src/emit.rs` no longer contains `classify_layers(...)`, `use slicer_core::classify_layers;`, or any branch in `resolve_feedrate` that reads `overhang_quartile`. The multiplicative `set-speed-factor` consumption path (already used by existing finalization-implementing modules — Step 1 dispatch #4 confirmed) handles all entity feedrate factoring. Workspace still builds.
 
-**Files allowed to read.** `crates/slicer-gcode/src/emit.rs` — only the lines around the `classify_layers` call.
+**Files allowed to read.** `crates/slicer-gcode/src/emit.rs` — the `classify_layers` call site (currently L226), the `resolve_feedrate` function (currently L106-123), the `overhang_quartile` field reads (currently L114, L120-123, L446, L875).
 **Files allowed to edit.**
-1. `crates/slicer-gcode/src/emit.rs` — delete the import line and the call site. If `feedrate_config` is now unused in `emit_gcode`, also remove it from the call chain (or leave the parameter as a `_feedrate_config` placeholder per Rust's unused-variable convention).
+1. `crates/slicer-gcode/src/emit.rs` — delete the import and call site (L21, L226); delete the `overhang_quartile`-indexed feedrate-lookup branch in `resolve_feedrate` (L106-123 — keep the multiplicative speed-factor application path); update the `feedrate_config: FeedrateConfig` field reads: the four `overhang_*_4_speed` fields become unused; either drop them from the struct OR document the remaining base-speed reads. If `feedrate_config` becomes entirely unused, drop the struct field and any constructor params that referenced it.
 
 **Expected sub-agent dispatch.**
 - Dispatch: `cargo build --workspace`. Return FACT pass/fail.
 
+**Context cost: M.** (Bigger than the prior framing because resolve_feedrate cleanup is real work, not a one-line deletion.)
+
+**Narrow verification.** Build green. `! rg -q 'classify_layers' crates/slicer-gcode/src/` AND `! rg -q 'overhang_quartile' crates/slicer-gcode/src/`.
+
+**Falsifying check / exit condition.** Build fails on unused field → drop the field. Build fails on a downstream consumer expecting `overhang_quartile` annotations → that consumer needs to be migrated to the `set-speed-factor` path (likely a test fixture; surface and fix). If a fixture genuinely cannot be migrated (the test exercises the pre-P88 path), it gets DELETED — the pre-P88 path is gone.
+
+---
+
+## Step 5.5 — Delete the slicer-core kernel and its compat shims (the user's central catch)
+
+**Objective.** Now that the guest owns the complete algorithm, slicer-core's `overhang_classifier` module and its P84-era compat shims are dead. Delete them.
+
+**Precondition.** Step 5 green (slicer-gcode no longer imports from slicer-core's overhang module).
+
+**Postcondition.**
+- `crates/slicer-core/src/algos/overhang_classifier.rs` deleted.
+- `crates/slicer-core/src/aabb_lines_2d.rs` either (a) deleted if no other slicer-core algo consumes it, OR (b) kept with a comment noting which algo consumes it. Step 5.5 dispatch verifies.
+- `crates/slicer-core/src/algos/mod.rs` no longer declares `pub mod overhang_classifier;` and no longer re-exports `classify_layers`.
+- `crates/slicer-core/tests/algo_overhang_classifier_tdd.rs` deleted (the P84 golden — its invariants live on in the guest's tests per AC-8).
+- `crates/slicer-runtime/src/lib.rs:192`'s `pub use slicer_core::algos::overhang_classifier::classify_layers;` deleted.
+
+**Files allowed to read.** `crates/slicer-core/src/algos/mod.rs` (grep for overhang_classifier references); `crates/slicer-core/src/lib.rs` (grep for aabb_lines_2d consumers); `crates/slicer-runtime/src/lib.rs:185-200`.
+**Files allowed to edit.**
+1. Delete `crates/slicer-core/src/algos/overhang_classifier.rs`.
+2. Delete `crates/slicer-core/tests/algo_overhang_classifier_tdd.rs`.
+3. Edit `crates/slicer-core/src/algos/mod.rs` — drop the `pub mod overhang_classifier;` line and any `pub use` re-export naming `classify_layers`.
+4. Edit `crates/slicer-runtime/src/lib.rs` — drop the L192 `pub use slicer_core::algos::overhang_classifier::classify_layers;` line.
+5. Conditionally delete `crates/slicer-core/src/aabb_lines_2d.rs` IF dispatch confirms no remaining consumer.
+
+**Expected sub-agent dispatches.**
+- Dispatch: `rg -l 'aabb_lines_2d\|LinesDistancer2D' crates/slicer-core/src/`. Return LOCATIONS — determines whether aabb_lines_2d.rs has other consumers in slicer-core after the deletion.
+- Dispatch: `cargo build --workspace`. Return FACT pass/fail.
+- Dispatch: `cargo clippy --workspace --all-targets -- -D warnings`. Return FACT pass/fail.
+
 **Context cost: S.**
 
-**Narrow verification.** Build green. `! rg -q 'classify_layers' crates/slicer-gcode/src/`.
+**Narrow verification.** Build + clippy green; the AC-3.5 grep passes.
 
-**Falsifying check / exit condition.** Build fails on unused `feedrate_config` → suppress with `_` prefix OR refactor the param list. Pick the smaller change.
+**Falsifying check / exit condition.** Build fails on a consumer of `slicer_core::algos::overhang_classifier::*` we missed → grep workspace-wide for the symbol; rewire or surface.
 
 ---
 
@@ -235,7 +269,7 @@ The test:
 
 ## Step 8 — Workspace test gate (final batch checkpoint)
 
-**Objective.** `cargo test --workspace` green; the deepening batch's final ceremony.
+**Objective.** `cargo test --features slicer-core/host-algos --features slicer-sdk/test --no-fail-fast --workspace` green; the deepening batch's final ceremony.
 
 **Precondition.** Step 7 green.
 
@@ -245,7 +279,7 @@ The test:
 **Files allowed to edit.** None.
 
 **Expected sub-agent dispatch.**
-- Dispatch: `cargo test --workspace 2>&1 | tail -5`. Return SNIPPET. Then FACT pass/fail + count + duration.
+- Dispatch: `cargo test --features slicer-core/host-algos --features slicer-sdk/test --no-fail-fast --workspace 2>&1 | tail -5`. Return SNIPPET. Then FACT pass/fail + count + duration.
 
 **Context cost: M.**
 
@@ -255,23 +289,23 @@ The test:
 
 ---
 
-## Step 9 — Draft ADR-0007 + acceptance ceremony
+## Step 9 — Draft ADR-0008 + acceptance ceremony
 
 **Objective.** ADR drafted; status flip.
 
 **Precondition.** Step 8 green.
 
-**Postcondition.** `docs/adr/0007-overhang-as-finalization-module.md` exists with the rationale. Packet ready to flip to `superseded`.
+**Postcondition.** `docs/adr/0008-overhang-as-finalization-module.md` exists with the rationale. Packet ready to flip to `implemented`.
 
 **Files allowed to read.** None.
 **Files allowed to edit.**
-1. `docs/adr/0007-overhang-as-finalization-module.md` — CREATE.
+1. `docs/adr/0008-overhang-as-finalization-module.md` — CREATE.
 
 The ADR records:
-- Decision: overhang annotation is implemented by a `FinalizationModule` core-module; no new stage; no host fallback.
-- Why: Q3+Q6 grilling resolved that the existing `world-finalization::run-finalization` provides the seam; adding a stage = WIT contract change = unnecessary scope.
-- Consequences: users opt out by curating their module dir; the AC-7 LSB-precision shift is the price of routing through `set-speed-factor`.
-- Future architecture reviewers should not re-suggest a dedicated stage.
+- Decision: overhang annotation is implemented by a `FinalizationModule` core-module owning the complete algorithm (relocated from `slicer-core`); no new stage; no host fallback.
+- Why: Q3+Q6 grilling resolved that the existing `world-finalization::run-finalization` provides the seam; adding a stage = WIT contract change = unnecessary scope. The guest owns the complete algorithm (no `slicer-core` dep) because the `host-algos` feature gate on slicer-core would contaminate the guest dep tree (P84 lesson).
+- Consequences: users opt out by curating their module dir; the AC-7 LSB-precision shift is the price of routing through `set-speed-factor`. Future overhang-classifier authors implement from scratch (or by forking the default).
+- Future architecture reviewers should not re-suggest a dedicated stage and should not propose re-locating the algorithm back to slicer-core.
 
 **Expected sub-agent dispatch.**
 - (None — ADR drafting is implementer-side.)
@@ -295,7 +329,7 @@ The ADR records:
 | 6 Guest --check + AC-5 | S |
 | 7 AC-7 SHA verdict + AC-6 ceremony | S |
 | 8 Workspace test gate | M |
-| 9 ADR-0007 | S |
+| 9 ADR-0008 | S |
 
 Aggregate: **M.** No L step. Total step count: 10.
 
@@ -306,16 +340,16 @@ Final batch checkpoint — workspace tests run.
 1. `cargo build --workspace` — green.
 2. `cargo clippy --workspace --all-targets -- -D warnings` — green.
 3. `cargo xtask build-guests` (rebuild) green, then `cargo xtask build-guests --check` clean.
-4. `cargo test --workspace` — green; count delta within ±10 vs Step 0 baseline.
+4. `cargo test --features slicer-core/host-algos --features slicer-sdk/test --no-fail-fast --workspace` — green; count delta within ±10 vs Step 0 baseline.
 5. AC-5 default invocation loads the new module (stderr log confirms).
 6. AC-7 SHA verdict documented (byte-identical OR F-word-only shift).
 7. AC-6 alternate SHA captured (different from default — confirms user opt-out works).
-8. ADR-0007 committed.
+8. ADR-0008 committed.
 
 ## Acceptance Ceremony
 
 - All 9 ACs (AC-1 .. AC-9) and 3 negative cases (AC-N1, AC-N2, AC-N3) gate green per the inline verification commands in `packet.spec.md`.
-- ADR-0007 (`docs/adr/0007-overhang-as-finalization-module.md`) committed.
+- ADR-0008 (`docs/adr/0007-overhang-as-finalization-module.md`) committed.
 - Implementation log records: Step 0 baseline SHA, Step 7 post-packet SHA, AC-7 verdict (byte-identical or LSB-shift), Step 7 AC-6 alt-SHA, Step 8 workspace test count + duration.
-- `status: draft` → `status: superseded` after gate green AND ADR in place AND user confirms closure.
-- **Batch closure**: P88's superseded flip closes the architecture-deepening batch (P81–P88). The deviation log entry from P81 (workspace tests at checkpoints only) is the audit trail for the batch.
+- `status: draft` → `status: implemented` after gate green AND ADR in place AND user confirms closure. (`superseded` is reserved for packets replaced by a later spec.)
+- **Batch closure**: P88's `implemented` flip closes the architecture-deepening batch (P81–P88). The deviation log entry from P81 (workspace tests at checkpoints only) is the audit trail for the batch.

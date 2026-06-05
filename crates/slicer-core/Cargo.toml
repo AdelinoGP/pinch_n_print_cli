@@ -31,10 +31,6 @@ name = "algo_mesh_segmentation_tdd"
 required-features = ["host-algos"]
 
 [[test]]
-name = "algo_overhang_classifier_tdd"
-required-features = ["host-algos"]
-
-[[test]]
 name = "algo_paint_segmentation_tdd"
 required-features = ["host-algos"]
 

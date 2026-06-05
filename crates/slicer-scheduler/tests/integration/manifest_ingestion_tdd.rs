@@ -601,12 +601,11 @@ fn core_modules_directory_is_discoverable_and_all_load() {
     let report = load_modules_from_roots(&[core_modules_root])
         .expect("all core module manifests should load without errors");
 
-    // We expect exactly 22 core modules as of 2026-05-20 (machine-gcode-emit
-    // landed alongside packet 64).
+    // We expect exactly 21 core modules as of 2026-06-05 (overhang-classifier-default).
     assert_eq!(
         report.modules.len(),
-        20,
-        "expected 20 core modules, got {}: {:?}",
+        21,
+        "expected 21 core modules, got {}: {:?}",
         report.modules.len(),
         report.modules.iter().map(|m| m.id()).collect::<Vec<_>>()
     );
@@ -830,6 +829,7 @@ fn core_modules_all_have_placeholder_wasm_flag_set() {
         "com.core.skirt-brim",
         "com.core.top-surface-ironing",
         "com.core.wipe-tower",
+        "com.core.overhang-classifier-default",
     ];
 
     for module in &report.modules {

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 88
 task_ids: [TASK-238]
 requires: [86, 87]
@@ -10,7 +10,7 @@ backlog_source: docs/07_implementation_status.md
 
 ## Goal
 
-Ship `modules/core-modules/overhang-classifier-default/` — a guest WASM module implementing the existing `FinalizationModule` trait — that walks the layer collection, calls `slicer_core::classify_layers` (the kernel moved in P84), and emits per-wall-entity `modify-entity(entity_id, set-speed-factor(factor))` mutations through the `finalization-output-builder` already defined in `world-finalization@1.0.0`; delete `slicer_gcode`'s direct `slicer_core::classify_layers` call (added in P84 / P86) so overhang annotation becomes the module's exclusive responsibility; with the module shipped under the workspace's standard core-modules path, default `pnp_cli slice --module-dir modules/core-modules` invocations preserve current behavior, while users who curate a custom module dir without this module get NO overhang annotation (the explicit Q6-resolution from the deepening-plan grilling).
+Ship `modules/core-modules/overhang-classifier-default/` — a guest WASM module implementing the existing `FinalizationModule` trait — that **owns the complete overhang-classification logic** (the 319-LOC `classify_layers` algorithm relocated from `slicer-core/src/algos/overhang_classifier.rs` plus the `LinesDistancer2D` primitive it consumes and any other helpers it pulls from `slicer-core`'s internals) and emits per-wall-entity `modify-entity(entity_id, set-speed-factor(factor))` mutations through the `finalization-output-builder` already defined in `world-finalization@1.0.0`; delete `slicer-gcode`'s direct `classify_layers` call site, delete `slicer-runtime/src/lib.rs:192`'s P84-era `pub use slicer_core::algos::overhang_classifier::classify_layers;` re-export, delete `crates/slicer-core/src/algos/overhang_classifier.rs` and the P84 golden test at `crates/slicer-core/tests/algo_overhang_classifier_tdd.rs` (or migrate the golden into the guest's tests); the guest is self-contained — no `slicer-core` dep — preventing the `host-algos` feature gate from contaminating the guest dep tree. Default `pnp_cli slice --module-dir modules/core-modules` invocations preserve current behavior modulo a possible LSB-precision shift in feedrate decimals per AC-7; users who curate a custom module dir without this module get NO overhang annotation (the explicit Q6-resolution from the deepening-plan grilling).
 
 ## Scope Boundaries
 
@@ -25,29 +25,37 @@ This packet completes the deepening batch by turning overhang classification int
 
 ## Acceptance Criteria
 
-### AC-1 — `modules/core-modules/overhang-classifier-default/` exists with a manifest declaring `PostPass::LayerFinalization`
+### AC-1 — `modules/core-modules/overhang-classifier-default/` exists with manifest declaring `PostPass::LayerFinalization`; module Cargo.toml does NOT depend on `slicer-core`
 
 **Given** the new module,
 **When** the workspace is inspected,
-**Then** `test -d modules/core-modules/overhang-classifier-default && test -f modules/core-modules/overhang-classifier-default/Cargo.toml && test -f modules/core-modules/overhang-classifier-default/module.toml` (or whatever the manifest filename is — match the existing 20 modules' convention). The manifest declares a stage entry mapping the trait method `run_finalization` to the `slicer:world-finalization@1.0.0` world. The Cargo.toml declares `slicer-sdk` (with the `module` feature or whatever the SDK exposes for guest builds), `slicer-ir`, `slicer-core` (for `classify_layers`).
+**Then** `modules/core-modules/overhang-classifier-default/` exists with `Cargo.toml`, `overhang-classifier-default.toml` (manifest — match the existing modules' `<name>.toml` convention verified at `seam-planner-default/` and 19 others), `src/lib.rs`, and `wit-guest/` directory. The Cargo.toml declares `slicer-sdk`, `slicer-schema`, `slicer-ir` as path deps plus the wasm32-only `wit-bindgen` workspace dep (mirroring the verified pattern at `modules/core-modules/seam-planner-default/Cargo.toml`). It does **NOT** depend on `slicer-core`, `slicer-runtime`, `slicer-wasm-host`, `slicer-scheduler`, `slicer-gcode`, `slicer-model-io`, or `wasmtime` — the guest must be self-contained because `slicer-core`'s `host-algos` feature gate would otherwise contaminate the guest dep tree (P84 lesson).
 
-| `test -d modules/core-modules/overhang-classifier-default && test -f modules/core-modules/overhang-classifier-default/Cargo.toml && (test -f modules/core-modules/overhang-classifier-default/module.toml || test -f modules/core-modules/overhang-classifier-default/manifest.toml) && grep -qE '^slicer-sdk *=' modules/core-modules/overhang-classifier-default/Cargo.toml`
+| `test -d modules/core-modules/overhang-classifier-default && test -f modules/core-modules/overhang-classifier-default/Cargo.toml && test -f modules/core-modules/overhang-classifier-default/overhang-classifier-default.toml && test -f modules/core-modules/overhang-classifier-default/src/lib.rs && test -d modules/core-modules/overhang-classifier-default/wit-guest && grep -qE '^slicer-sdk *=' modules/core-modules/overhang-classifier-default/Cargo.toml && ! grep -qE '^slicer-(core|runtime|wasm-host|scheduler|gcode|model-io) *=' modules/core-modules/overhang-classifier-default/Cargo.toml`
 
-### AC-2 — Module source uses `#[slicer_module]` and implements `FinalizationModule::run_finalization` reading `FeedrateConfig` from `config-view`
+### AC-2 — Module owns the complete overhang-classification logic in `src/`; no import from `slicer_core::algos::overhang_classifier`; reads `FeedrateConfig` from `config-view`
 
-**Given** the SDK-shaped guest pattern (`crates/slicer-sdk/src/`),
-**When** `modules/core-modules/overhang-classifier-default/src/lib.rs` is read,
-**Then** it contains a `#[slicer_module]` attribute on a struct that implements `FinalizationModule`. The `run_finalization` body reads each of the four overhang-speed fields from `config-view` (`overhang_1_4_speed`, `overhang_2_4_speed`, `overhang_3_4_speed`, `overhang_4_4_speed` — exact key names per `slicer-ir::FeedrateConfig`'s field names), short-circuits when all four are 0.0 (preserving the AC-2 baseline from `crates/slicer-runtime/src/overhang_classifier.rs` pre-P84), iterates `layers.ordered_entities()`, calls `slicer_core::classify_layers` (or the per-layer variant) to compute quartiles, then calls `output.modify_entity(layer_index, entity_id, EntityMutation::SetSpeedFactor(factor))` for each wall entity in a non-Q4 quartile.
+**Given** the self-contained-guest invariant,
+**When** `modules/core-modules/overhang-classifier-default/src/` is read,
+**Then** it contains a `#[slicer_module]` attribute on a struct that implements `FinalizationModule`. The complete `classify_layers` algorithm (~319 LOC relocated from `crates/slicer-core/src/algos/overhang_classifier.rs`) lives inside the guest's `src/` tree, along with the `LinesDistancer2D` primitive (currently `crates/slicer-core/src/aabb_lines_2d.rs`) and any other helpers the kernel transitively depends on. No source file under the guest imports from `slicer_core::*` (zero references). The `run_finalization` body reads the four overhang-speed fields from `config-view` (`overhang_1_4_speed`, `overhang_2_4_speed`, `overhang_3_4_speed`, `overhang_4_4_speed` — exact key names per `slicer-ir::FeedrateConfig`'s field names), short-circuits when all four are 0.0 (preserving the pre-P84 byte-identical baseline for unconfigured printers), iterates the per-layer entity stream, runs the internal classification kernel, then calls `output.modify_entity(layer_index, entity_id, EntityMutation::SetSpeedFactor(factor))` for each wall entity in a non-Q4 quartile.
 
-| `grep -qE '#\[slicer_module\]\|slicer_sdk::slicer_module' modules/core-modules/overhang-classifier-default/src/lib.rs && grep -qE 'impl.*FinalizationModule' modules/core-modules/overhang-classifier-default/src/lib.rs && grep -qE 'overhang_(1\|2\|3\|4)_4_speed' modules/core-modules/overhang-classifier-default/src/lib.rs && grep -qE 'slicer_core::classify_layers\|slicer_core::algos::overhang_classifier' modules/core-modules/overhang-classifier-default/src/lib.rs && grep -qE 'SetSpeedFactor\|modify_entity' modules/core-modules/overhang-classifier-default/src/lib.rs`
+| `grep -qE '#\[slicer_module\]|slicer_sdk::slicer_module' modules/core-modules/overhang-classifier-default/src/lib.rs && grep -qE 'impl.*FinalizationModule' modules/core-modules/overhang-classifier-default/src/lib.rs && grep -qE 'overhang_(1|2|3|4)_4_speed' modules/core-modules/overhang-classifier-default/src/lib.rs && ! rg -q 'slicer_core::' modules/core-modules/overhang-classifier-default/src/ && grep -rqE 'fn classify_layers|LinesDistancer2D' modules/core-modules/overhang-classifier-default/src/ && grep -qE 'SetSpeedFactor|modify_entity' modules/core-modules/overhang-classifier-default/src/lib.rs`
 
-### AC-3 — `slicer-gcode`'s direct `classify_layers` call is deleted; emit path consumes `set-speed-factor` annotations only
+### AC-3 — All references to `classify_layers` and the obsolete overhang-quartile feedrate-lookup branch are removed from `slicer-gcode/src/`
 
 **Given** the seam,
 **When** `crates/slicer-gcode/src/` is grepped,
-**Then** no source file contains `classify_layers(` (the direct kernel call from P84/P86 is removed). The emit path still reads speed factors off the entity stream — that path is unchanged from pre-P86 (the existing `finalization-default` module already exercises `set-speed-factor` for non-overhang reasons; overhang now flows through the same mechanism).
+**Then** (a) no source file contains the call `classify_layers(`, (b) no source file contains the import `use slicer_core::.*classify_layers`, (c) `resolve_feedrate` (at `emit.rs:106-123` pre-P88) no longer branches on `overhang_quartile: Option<u8>` because the guest emits `set-speed-factor` mutations directly — the obsolete table-lookup branch (`overhang_1_4_speed` through `overhang_4_4_speed` indexed by quartile) is removed. The multiplicative path that applies `speed * factor` from existing `set-speed-factor` mutations is preserved (it's what the existing finalization-implementing modules already use — Step 1 dispatch #4 confirms). The change deletes dead code, not preserves it.
 
-| `! rg -q 'classify_layers\s*\(' crates/slicer-gcode/src/`
+| `! rg -q 'classify_layers' crates/slicer-gcode/src/ && ! rg -q 'overhang_quartile' crates/slicer-gcode/src/`
+
+### AC-3.5 — `slicer-core/src/algos/overhang_classifier.rs` and its mod declaration are GONE; `slicer-runtime/src/lib.rs:192`'s P84 re-export shim is GONE
+
+**Given** the move into the guest,
+**When** the workspace is grepped,
+**Then** `crates/slicer-core/src/algos/overhang_classifier.rs` does NOT exist; `crates/slicer-core/src/algos/mod.rs` does NOT declare `pub mod overhang_classifier;` and does NOT re-export `classify_layers`; `crates/slicer-runtime/src/lib.rs` does NOT contain `pub use slicer_core::algos::overhang_classifier::classify_layers` (the L192 P84-era compat shim). The P84 golden test `crates/slicer-core/tests/algo_overhang_classifier_tdd.rs` is either DELETED or MIGRATED into `modules/core-modules/overhang-classifier-default/tests/` (preferred — the test's invariants are still valuable, just at the guest layer).
+
+| `test ! -f crates/slicer-core/src/algos/overhang_classifier.rs && ! grep -qE 'overhang_classifier' crates/slicer-core/src/algos/mod.rs && ! grep -qE 'slicer_core::algos::overhang_classifier::classify_layers' crates/slicer-runtime/src/lib.rs && test ! -f crates/slicer-core/tests/algo_overhang_classifier_tdd.rs`
 
 ### AC-4 — `cargo xtask build-guests --check` is clean after rebuild; new guest `.wasm` artifact exists
 
@@ -63,7 +71,7 @@ This packet completes the deepening batch by turning overhang classification int
 **When** `pnp_cli slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p88.gcode --report /tmp/p88-report.html` runs (and the report feature is enabled — default per P82),
 **Then** the slicer report HTML (or the structured progress events emitted on stderr with `--instrument-stderr`) shows the `overhang-classifier-default` module loaded and producing at least one `modify-entity` mutation on a fixture with known overhang geometry (benchy has overhangs at the bow and stern). The implementation log records the mutation count.
 
-| `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p88.gcode --instrument-stderr 2> /tmp/p88-stderr.log && grep -qE 'overhang-classifier-default\|overhang_classifier_default' /tmp/p88-stderr.log`
+| `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p88.gcode --instrument-stderr 2> /tmp/p88-stderr.log && grep -qE 'overhang-classifier-default|overhang_classifier_default' /tmp/p88-stderr.log`
 
 ### AC-6 — Custom invocation without the module (`--module-dir <empty>`) succeeds without crashing; no overhang annotation present
 
@@ -91,13 +99,13 @@ This packet completes the deepening batch by turning overhang classification int
 
 | `cargo test -p overhang-classifier-default`
 
-### AC-9 — Workspace test gate passes (final checkpoint)
+### AC-9 — Workspace test gate passes with full feature flag set (final checkpoint)
 
-**Given** the deepening-batch policy (P83, P85, P88 are the three checkpoint packets),
-**When** `cargo test --workspace` runs (dispatched to a sub-agent that returns FACT pass/fail per CLAUDE.md §Test Discipline),
-**Then** the full suite passes with zero regressions vs the P85 baseline count. The count delta vs P85 should reflect: (a) tests added in P86's `slicer-gcode` golden test, P87's `slicer-core` region-mapping test, P88's `overhang-classifier-default` module test; (b) tests migrated between crates per P84/P86/P87. Net new tests ≥ 3 (one per AC-8-style golden in P86/P87/P88).
+**Given** the deepening-batch policy (P83, P85, P88 are the three checkpoint packets) AND the P85 lesson that bare `cargo test --workspace` silently masks regressions via fail-fast + feature-gated test target skip,
+**When** `cargo test --features slicer-core/host-algos --features slicer-sdk/test --no-fail-fast --workspace` runs (dispatched to a sub-agent that returns FACT pass/fail per CLAUDE.md §Test Discipline),
+**Then** the full suite passes with zero regressions vs the Step 0 baseline (which captures the post-P87 count, ≈ 2067 from P85's corrected baseline plus P86's slicer-gcode golden test +1 plus P87's region_mapping tests +4 ≈ 2072). The count delta is non-negative; the only expected subtraction is the P84 golden `crates/slicer-core/tests/algo_overhang_classifier_tdd.rs` (-4 to -8 tests) if it's deleted rather than migrated into the guest. Net delta documented in the implementation log.
 
-| `cargo test --workspace`
+| `cargo test --features slicer-core/host-algos --features slicer-sdk/test --no-fail-fast --workspace`
 
 ## Negative Test Cases
 
@@ -115,7 +123,7 @@ This packet completes the deepening batch by turning overhang classification int
 **When** the runtime is inspected,
 **Then** no `OVERHANG_CLASSIFICATION_PRODUCER` static appears anywhere under `crates/slicer-runtime/src/` (would indicate a regression to a host-fallback shape). The `runtime_builtins()` count stays at 8 (unchanged from P84/P87).
 
-| `! rg -q 'OVERHANG_CLASSIFICATION_PRODUCER\|OverhangClassificationProducer' crates/slicer-runtime/src/ && [ $(grep -cE '_PRODUCER as &dyn Producer' crates/slicer-runtime/src/lib.rs) -eq 8 ]`
+| `! rg -q 'OVERHANG_CLASSIFICATION_PRODUCER|OverhangClassificationProducer' crates/slicer-runtime/src/ && [ $(grep -cE '_PRODUCER as &dyn Producer' crates/slicer-runtime/src/lib.rs) -eq 8 ]`
 
 ### AC-N3 — No WIT file under `crates/slicer-schema/wit/` was edited
 
@@ -130,7 +138,7 @@ This packet completes the deepening batch by turning overhang classification int
 1. `cargo build --workspace`
 2. `cargo clippy --workspace --all-targets -- -D warnings`
 3. `cargo xtask build-guests` (rebuild) then `cargo xtask build-guests --check` (clean — new guest registered)
-4. `cargo test --workspace` (final checkpoint gate — dispatched to sub-agent)
+4. `cargo test --features slicer-core/host-algos --features slicer-sdk/test --no-fail-fast --workspace` (final checkpoint gate — dispatched to sub-agent; flags mandatory per P85 closure)
 5. `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p88.gcode` (succeeds; SHA documented per AC-7)
 
 Full per-AC matrix lives in `requirements.md`.
@@ -147,7 +155,7 @@ Full per-AC matrix lives in `requirements.md`.
 
 One ADR planned at packet close:
 
-- **ADR-0007 — Overhang annotation is a `FinalizationModule`, not a new stage.** Records: (a) why no new stage / WIT export was added (the existing `world-finalization::run-finalization` already provides the seam); (b) why no host fallback exists (the module ships in `modules/core-modules/`, so default invocations include it; users opt out by curating their module dir); (c) the byte-identical-or-LSB-shift trade-off documented in AC-7. Future architecture reviewers will likely ask why we didn't add a `PostPass::OverhangAnnotation` stage — this ADR explains.
+- **ADR-0008 — Overhang annotation is a `FinalizationModule`, not a new stage.** Records: (a) why no new stage / WIT export was added (the existing `world-finalization::run-finalization` already provides the seam); (b) why no host fallback exists (the module ships in `modules/core-modules/`, so default invocations include it; users opt out by curating their module dir); (c) the byte-identical-or-LSB-shift trade-off documented in AC-7. Future architecture reviewers will likely ask why we didn't add a `PostPass::OverhangAnnotation` stage — this ADR explains.
 
 `docs/15_config_keys_reference.md` may grow a note that the four `overhang_*_4_speed` keys are now consumed by `overhang-classifier-default` rather than by the host's emit path. Deferred to the deepening-batch doc-sweep packet.
 
@@ -165,3 +173,12 @@ This packet was generated against the context_discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Deviations
+
+- [AC-2 / design.md] — Specified: classify_layers operates on `&mut [LayerCollectionIR]` (in-place) | Implemented: operates on `&[LayerCollectionView]` (read-only), returns `HashMap`, mutations via `output.modify_entity()` | Reason: Guest receives `LayerCollectionView` from WIT boundary; SDK `FinalizationOutputBuilder` is the mutation channel.
+- [AC-2 / requirements.md] — Specified: module reads only 4 overhang config keys | Implemented: reads 7 keys (4 overhang + 3 base wall speeds) | Reason: `factor = overhang_speed / base_speed` requires per-role base speed lookup. Note: this introduces config-key duplication — both the guest module and `slicer-gcode::resolve_feedrate` now read `outer_wall_speed`/`inner_wall_speed`/`thin_wall_speed` for different purposes (factor computation vs. base-line feedrate). Functionally correct; flagged for future config-consumption audit.
+- [design.md manifest] — Specified: config schema declares 4 keys | Implemented: declares 7 keys + `overridable-per-region` + `overridable-per-layer` sections | Reason: Manifest loader requires the two overridable sections; module needs base speeds.
+- [AC-5] — Specified: module name appears in `--instrument-stderr` | Implemented: required adding `execute_layer_finalization_with_instrumentation` to `slicer-runtime` | Reason: Original `execute_layer_finalization` lacked per-module instrumentation events.
+- [AC-6] — Specified: SHA differs from default invocation | Implemented: SHA is byte-identical with default config | Reason: Default config has all overhang speeds at 0.0 → short-circuit → no mutations emitted with or without module. Verified behavioral difference with non-zero config: default SHA `7D3AF220…` vs no-overhang SHA `A9C9DEC0…`.
+- [AC-9] — Specified: test count delta within ±10 of 2072 | Implemented: 2051 (delta -21) | Reason: `overhang_speed_tdd.rs` deletion (6 tests) + P84 golden deletion (~15 tests) + 1 new test.

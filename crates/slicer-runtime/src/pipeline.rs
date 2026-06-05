@@ -21,7 +21,8 @@ pub const DEFAULT_THUMBNAIL_PATH: &str = "";
 use slicer_gcode::{resolved_config_to_map, ThumbnailAwareSerializer};
 
 use crate::{
-    compute_serial_edges_from_compiled, execute_layer_finalization, execute_per_layer_with_events,
+    compute_serial_edges_from_compiled, execute_layer_finalization,
+    execute_layer_finalization_with_instrumentation, execute_per_layer_with_events,
     execute_per_layer_with_instrumentation, execute_postpass,
     prepass::execute_prepass_with_builtins_configured, Blackboard, ConfigBoundsIndex,
     ExecutionPlan, FinalizationError, FinalizationStageRunner, GCodeEmitter, GCodeSerializer,
@@ -368,16 +369,17 @@ fn run_pipeline_core(
     let post_result = (|| -> Result<(String, Vec<ModuleAccessAudit>), PipelineError> {
         // Bracket layer finalization as a synthetic stage so the report's
         // per-stage table accounts for time spent in the finalization tier.
-        // Individual finalization modules are not bracketed (that path uses
-        // FinalizationStageRunner, a separate trait).
+        // Individual finalization modules are now bracketed via the
+        // instrumented variant (matching the postpass pattern).
         if let Some(fin_stage) = plan.layer_finalization_stage.as_ref() {
             instrumentation.on_stage_start(&fin_stage.stage_id, None);
         }
-        let fin_result = execute_layer_finalization(
+        let fin_result = execute_layer_finalization_with_instrumentation(
             &plan,
             &blackboard,
             runners.finalization.as_ref(),
             &mut layer_irs,
+            instrumentation,
             &wasm_handles,
         );
         if let Some(fin_stage) = plan.layer_finalization_stage.as_ref() {
