@@ -582,20 +582,7 @@ fn loaded_module(stage: &str, module_id: &str, config: ConfigView) -> slicer_run
             key.clone(),
             slicer_runtime::ConfigFieldEntry {
                 field_type: "float".to_string(),
-                default: None,
-                min: None,
-                max: None,
-                step: None,
-                display: None,
-                description: None,
-                group: None,
-                unit: None,
-                advanced: false,
-                values: None,
-                max_length: None,
-                min_list_length: None,
-                max_list_length: None,
-                validate: None,
+                ..Default::default()
             },
         );
     }

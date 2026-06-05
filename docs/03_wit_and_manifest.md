@@ -1435,6 +1435,32 @@ IR path format:
 | `"float-list"`  | List of floats             | `min`, `max`, `min-length`, `max-length` |
 | `"string-list"` | List of strings            | `min-length`, `max-length`   |
 
+### Common per-field keys (apply to every type)
+
+| Key       | Type             | Purpose                                                          |
+|-----------|------------------|------------------------------------------------------------------|
+| `display` | string           | UI label shown next to the field.                                |
+| `description` | string       | UI tooltip / help text.                                          |
+| `group`   | string           | UI grouping hint (becomes a section header in the settings tab). |
+| `advanced` | bool            | Hidden by default; revealed only in advanced view.               |
+| `validate` | string          | Single-field validation expression. See § Validation Expression Language. |
+| `tags`    | array of strings | UI taxonomy tags for sub-tab filtering and search (free-form). Emitted as `[]` when absent. |
+
+#### Tag conventions
+
+Tags are free-form strings; the host does not validate them. Module authors
+should follow these conventions so the studio's filters and search behave
+consistently across modules:
+
+- **Difficulty:** `"basic"`, `"advanced"`, `"experimental"`.
+- **Area:** `"walls"`, `"infill"`, `"support"`, `"cooling"`, `"top-bottom"`,
+  `"adhesion"`, `"seam"`, `"speed"`, `"travel"`, `"quality"`.
+- **Mode flags:** `"multi-material"`, `"tree-support"`, `"ironing"`.
+
+Do not namespace tags (e.g. write `"walls"`, not `"area:walls"`). The studio
+matches bare strings against its taxonomy; namespacing only adds parsing
+burden for no semantic gain.
+
 ### Numeric Bounds Enforcement
 
 `min` and `max` on numeric fields (`int`, `float`, `int-list`, `float-list`)

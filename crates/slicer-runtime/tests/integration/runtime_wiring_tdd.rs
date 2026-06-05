@@ -513,8 +513,13 @@ type = "float"
 default = 0.15
 min = 0.05
 max = 0.95
+step = 0.05
 display = "Infill Density"
+description = "Fraction of solid coverage"
 group = "Pattern"
+unit = "ratio"
+advanced = true
+tags = ["infill", "advanced"]
 
 [config.schema.pattern]
 type = "enum"
@@ -554,13 +559,48 @@ layer-parallel-safe = true
     let keys: Vec<&str> = fields.iter().map(|f| f["key"].as_str().unwrap()).collect();
     assert!(keys.contains(&"density"));
     assert!(keys.contains(&"pattern"));
+
+    // Round-trip per-field keys added in the wire-shape backfill: every field
+    // emits the full key set, with TOML values surfacing on the wire.
+    let density = fields
+        .iter()
+        .find(|f| f["key"] == "density")
+        .expect("density field must exist");
+    assert_eq!(density["step"], 0.05);
+    assert_eq!(density["description"], "Fraction of solid coverage");
+    assert_eq!(density["unit"], "ratio");
+    assert_eq!(density["advanced"], true);
+    assert_eq!(density["tags"], serde_json::json!(["infill", "advanced"]));
+
+    let pattern = fields
+        .iter()
+        .find(|f| f["key"] == "pattern")
+        .expect("pattern field must exist");
+    // Untagged fields emit [] (never null, never absent).
+    assert!(pattern["tags"].is_array());
+    assert_eq!(pattern["tags"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        pattern["values"],
+        serde_json::json!(["rectilinear", "gyroid"]),
+        "enum values must round-trip from TOML into the JSON wire"
+    );
+    // Optional keys absent in TOML emit as JSON null.
+    assert!(pattern["unit"].is_null());
+    assert!(pattern["description"].is_null());
+    assert_eq!(pattern["advanced"], false);
 }
 
 #[test]
 fn config_schema_json_matches_documented_shape() {
     // Per docs/01_system_architecture.md, the response shape is:
-    // {"schema": [{"module": "...", "fields": [{"key": "...", "type": "..."}]}]}
+    // {"schema_version": "1.0.0",
+    //  "schema": [{"module": "...", "fields": [{"key": "...", "type": "..."}]}]}
     let json = build_config_schema_json(&[]);
+    assert_eq!(
+        json["schema_version"].as_str(),
+        Some("1.0.0"),
+        "top-level schema_version must equal the wire-format constant '1.0.0'"
+    );
     assert!(
         json.get("schema").is_some(),
         "response must have 'schema' key"

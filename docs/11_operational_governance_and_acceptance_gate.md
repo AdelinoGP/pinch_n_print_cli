@@ -60,6 +60,26 @@ Compatibility decisions must use all four dimensions:
 - Expected IR range vs host IR version
 - First blocking symbol/path causing incompatibility
 
+### CLI output wire contracts
+
+JSON emitted by `pnp_cli` subcommands for external consumers (e.g. the
+`pinch_n_print_studio` frontend) carries a top-level `schema_version` string
+that follows the same bumping rules as the IR/WIT/manifest dimensions above:
+additive fields → minor; rename / remove / type change / semantic shift →
+major; clarifications → patch. Format is semver
+`"<major>.<minor>.<patch>"`; consumers gate on the major component only.
+
+Active wire-version constants:
+
+- `CONFIG_SCHEMA_WIRE_VERSION` in `crates/slicer-scheduler/src/manifest.rs` —
+  versions the JSON emitted by `pnp_cli module config-schema`.
+- `PROGRESS_EVENT_SCHEMA_VERSION` in `crates/slicer-runtime/src/progress_events.rs` —
+  versions the JSONL stream emitted by `pnp_cli slice --instrument-stderr`.
+
+The two constants are independent: each tracks the wire surface of its own
+emitter. Adding a new key to either JSON shape bumps only the relevant
+constant's minor.
+
 ---
 
 ## 3) Architecture Acceptance Gate (Release Blocking)

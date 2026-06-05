@@ -7,6 +7,12 @@ use std::path::{Path, PathBuf};
 use slicer_ir::{ModuleId, SemVer, StageId};
 use toml::Value;
 
+/// Wire-format version for the JSON emitted by [`build_config_schema_json`] and
+/// consumed by `pnp_cli module config-schema`. Semver `"<major>.<minor>.<patch>"`;
+/// consumers (e.g. `pinch_n_print_studio`) gate on the major. See
+/// `docs/11_operational_governance_and_acceptance_gate.md` for bumping rules.
+pub const CONFIG_SCHEMA_WIRE_VERSION: &str = "1.0.0";
+
 /// Helper for serde skip_serializing_if on bool.
 fn is_false(b: &bool) -> bool {
     !*b
@@ -389,6 +395,10 @@ pub struct ConfigFieldEntry {
     /// Single-field validation expression.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub validate: Option<String>,
+    /// UI taxonomy tags for sub-tab filtering and search. Free-form strings;
+    /// see `docs/03_wit_and_manifest.md` for conventions. Empty by default.
+    #[serde(default)]
+    pub tags: Vec<String>,
 }
 
 /// Full config schema for a module, holding all field entries.
@@ -851,6 +861,15 @@ fn parse_config_field_entry(
         .get("max_list_length")
         .and_then(|v| v.as_integer().map(|i| i as usize));
     let validate = get_string_opt(table, "validate");
+    let tags = table
+        .get("tags")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
 
     Ok(ConfigFieldEntry {
         field_type,
@@ -868,6 +887,7 @@ fn parse_config_field_entry(
         min_list_length,
         max_list_length,
         validate,
+        tags,
     })
 }
 
@@ -1037,16 +1057,27 @@ fn known_stage_ids() -> &'static [&'static str] {
 /// Per `docs/01_system_architecture.md`, the config-schema query response
 /// format is:
 /// ```jsonc
-/// {"schema": [
-///   {
-///     "module": "com.community.tpms-infill",
-///     "fields": [
-///       {"key": "pattern", "type": "enum", "values": [...],
-///        "default": "...", "display": "...", "group": "..."}
-///     ]
-///   }
-/// ]}
+/// {
+///   "schema_version": "1.0.0",
+///   "schema": [
+///     {
+///       "module": "com.community.tpms-infill",
+///       "fields": [
+///         {"key": "pattern", "type": "enum", "values": [...],
+///          "default": "...", "display": "...", "group": "...",
+///          "step": null, "description": null, "unit": null,
+///          "advanced": false, "max_length": null,
+///          "min_list_length": null, "max_list_length": null,
+///          "validate": null, "tags": []}
+///       ]
+///     }
+///   ]
+/// }
 /// ```
+///
+/// Every per-field key is always present: `Option<T>::None` → JSON `null`;
+/// `bool` → JSON `true`/`false`; `Vec<T>` → JSON array (`[]` when empty).
+/// The top-level `schema_version` is [`CONFIG_SCHEMA_WIRE_VERSION`].
 pub fn build_config_schema_json(modules: &[LoadedModule]) -> serde_json::Value {
     let schema_entries: Vec<serde_json::Value> = modules
         .iter()
@@ -1063,8 +1094,18 @@ pub fn build_config_schema_json(modules: &[LoadedModule]) -> serde_json::Value {
                         "default": entry.default,
                         "min": entry.min,
                         "max": entry.max,
+                        "step": entry.step,
                         "display": entry.display,
+                        "description": entry.description,
                         "group": entry.group,
+                        "unit": entry.unit,
+                        "advanced": entry.advanced,
+                        "values": entry.values,
+                        "max_length": entry.max_length,
+                        "min_list_length": entry.min_list_length,
+                        "max_list_length": entry.max_list_length,
+                        "validate": entry.validate,
+                        "tags": entry.tags,
                     })
                 })
                 .collect();
@@ -1075,15 +1116,20 @@ pub fn build_config_schema_json(modules: &[LoadedModule]) -> serde_json::Value {
         })
         .collect();
 
-    serde_json::json!({ "schema": schema_entries })
+    serde_json::json!({
+        "schema_version": CONFIG_SCHEMA_WIRE_VERSION,
+        "schema": schema_entries,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        effective_parallel_safety, parse_semver, ConfigSchema, DiagnosticLevel, LoadedModuleBuilder,
+        build_config_schema_json, effective_parallel_safety, parse_semver, ConfigFieldEntry,
+        ConfigSchema, DiagnosticLevel, LoadedModuleBuilder, CONFIG_SCHEMA_WIRE_VERSION,
     };
     use slicer_ir::SemVer;
+    use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
 
     #[test]
@@ -1164,5 +1210,132 @@ mod tests {
         assert_eq!(module.claims, vec!["perimeter-generator".to_string()]);
         assert_eq!(module.requires_modules, vec!["com.test.helper".to_string()]);
         assert!(module.layer_parallel_safe);
+    }
+
+    fn synthetic_module(id: &str, schema: ConfigSchema) -> super::LoadedModule {
+        LoadedModuleBuilder::new(
+            id,
+            SemVer {
+                major: 1,
+                minor: 0,
+                patch: 0,
+            },
+            "Layer::Infill",
+            "slicer:world-layer@1.0.0",
+            PathBuf::from("fixtures/synth.wasm"),
+        )
+        .config_schema(schema)
+        .build()
+    }
+
+    #[test]
+    fn build_config_schema_json_emits_top_level_schema_version() {
+        let json = build_config_schema_json(&[]);
+        assert_eq!(
+            json["schema_version"].as_str(),
+            Some(CONFIG_SCHEMA_WIRE_VERSION),
+            "top-level schema_version must equal CONFIG_SCHEMA_WIRE_VERSION"
+        );
+        assert_eq!(CONFIG_SCHEMA_WIRE_VERSION, "1.0.0");
+        assert!(
+            json["schema"].is_array(),
+            "top-level 'schema' must always be an array"
+        );
+    }
+
+    #[test]
+    fn build_config_schema_json_emits_all_per_field_keys() {
+        let mut entries = BTreeMap::new();
+        entries.insert(
+            "density".to_string(),
+            ConfigFieldEntry {
+                field_type: "float".to_string(),
+                default: Some("0.15".to_string()),
+                min: Some(0.0),
+                max: Some(1.0),
+                step: Some(0.05),
+                display: Some("Density".to_string()),
+                description: Some("Fraction of solid coverage".to_string()),
+                group: Some("Pattern".to_string()),
+                unit: Some("ratio".to_string()),
+                advanced: true,
+                values: None,
+                max_length: None,
+                min_list_length: None,
+                max_list_length: None,
+                validate: Some("density <= 1.0".to_string()),
+                tags: vec!["infill".to_string(), "advanced".to_string()],
+            },
+        );
+        let module = synthetic_module("com.test.allkeys", ConfigSchema { entries });
+        let json = build_config_schema_json(&[module]);
+
+        let field = &json["schema"][0]["fields"][0];
+        for key in [
+            "key",
+            "type",
+            "default",
+            "min",
+            "max",
+            "step",
+            "display",
+            "description",
+            "group",
+            "unit",
+            "advanced",
+            "values",
+            "max_length",
+            "min_list_length",
+            "max_list_length",
+            "validate",
+            "tags",
+        ] {
+            assert!(
+                field.get(key).is_some(),
+                "per-field JSON must always include '{key}'"
+            );
+        }
+
+        assert_eq!(field["key"], "density");
+        assert_eq!(field["type"], "float");
+        assert_eq!(field["unit"], "ratio");
+        assert_eq!(field["advanced"], true);
+        assert_eq!(field["step"], 0.05);
+        assert_eq!(field["description"], "Fraction of solid coverage");
+        assert_eq!(field["validate"], "density <= 1.0");
+        assert!(field["values"].is_null());
+        assert!(field["max_length"].is_null());
+        assert_eq!(field["tags"], serde_json::json!(["infill", "advanced"]));
+    }
+
+    #[test]
+    fn build_config_schema_json_emits_empty_tags_array_when_absent() {
+        let mut entries = BTreeMap::new();
+        entries.insert(
+            "wall_count".to_string(),
+            ConfigFieldEntry {
+                field_type: "int".to_string(),
+                default: Some("3".to_string()),
+                ..Default::default()
+            },
+        );
+        let module = synthetic_module("com.test.notags", ConfigSchema { entries });
+        let json = build_config_schema_json(&[module]);
+
+        let field = &json["schema"][0]["fields"][0];
+        assert!(field["tags"].is_array(), "tags must always be an array");
+        assert_eq!(
+            field["tags"].as_array().unwrap().len(),
+            0,
+            "absent tags must serialize as [], never null"
+        );
+        assert!(
+            !field["tags"].is_null(),
+            "tags must never be null even when empty"
+        );
+
+        assert!(field["unit"].is_null());
+        assert!(field["description"].is_null());
+        assert_eq!(field["advanced"], false);
     }
 }
