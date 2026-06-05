@@ -27,7 +27,8 @@ max-ir-schema     = "4.0.0"
 
 [config.schema]
 [config.schema.seam_mode]
-type    = "string"
+type    = "enum"
+values  = ["nearest", "rear", "random"]
 default = "nearest"
 display = "Seam Mode"
 group   = "Seam"
