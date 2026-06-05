@@ -1,56 +1,35 @@
-//! Host-built-in `PrePass::RegionMapping` stage (TASK-106).
+//! Pure region-mapping kernel — IR-only, no scheduler or runtime deps.
 //!
-//! Compiles a [`RegionMapIR`] from the committed [`LayerPlanIR`] and the
-//! already-assembled `ExecutionPlan` so per-layer execution can resolve
-//! active modules / configs by O(1) lookup (docs/04_host_scheduler.md
-//! §"RegionMapIR Compilation", IR 5 in docs/02_ir_schemas.md).
+//! Compiles a [`RegionMapIR`] from a committed [`LayerPlanIR`] and a
+//! [`RegionMappingPlanProjection`] that supplies the precomputed
+//! `(StageId, Vec<ModuleInvocation>)` pairs the slicer-runtime wrapper has
+//! already extracted from the scheduler's plan.
 //!
-//! Scope for this step: produce one `RegionPlan` per `(layer, region)`
-//! pair, snapshotting the region's `ResolvedConfig` and listing the
-//! topo-sorted module invocations the scheduler has already bound (with
-//! their per-module `ConfigView`). Claim resolution and per-region
-//! config-based module disabling are left to later scheduler work —
-//! those are higher-level rewrites of the active-modules list, not of
-//! the region-map shape.
+//! Scope: produce one `RegionPlan` per `(layer, region)` pair, snapshotting
+//! the region's `ResolvedConfig` and listing the topo-sorted module
+//! invocations. See docs/04_host_scheduler.md §"RegionMapIR Compilation"
+//! and IR 5 in docs/02_ir_schemas.md.
 
 use std::collections::{BTreeMap, HashMap};
-use std::sync::{Arc, OnceLock};
 
 use slicer_ir::{
     ConfigValue, LayerPlanIR, ModifierVolume, ModuleInvocation, ObjectMesh, PaintRegionIR,
-    PaintSemantic, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, SemVer, StageId,
+    PaintSemantic, RegionKey, RegionMapIR, RegionPlan, ResolvedConfig, StageId,
 };
 
-use crate::config_resolution::paint_semantic_namespace_key;
-use crate::dag::BuiltinProducer;
-use crate::execution_plan::DEFAULT_REGION_MAP_CAP;
-use crate::{CompiledStage, ExecutionPlan};
+/// Default cap on `RegionMapIR` entry count per docs/04_host_scheduler.md.
+pub use slicer_ir::DEFAULT_REGION_MAP_CAP;
 
-/// `BuiltinProducer` for the host-side `PrePass::RegionMapping` step.
-pub static REGION_MAPPING_PRODUCER: BuiltinProducer = BuiltinProducer {
-    id: "host:region_mapping",
-    stage: "PrePass::RegionMapping",
-    ir_writes: &["RegionMapIR"],
-    ir_reads: &[],
-    claims_holds: &[],
-    claims_requires: &[],
-    requires_modules: &[],
-    min_ir_schema: SemVer {
-        major: 1,
-        minor: 0,
-        patch: 0,
-    },
-    max_ir_schema: SemVer {
-        major: 4,
-        minor: 0,
-        patch: 0,
-    },
-    _cache_ir_writes: OnceLock::new(),
-    _cache_ir_reads: OnceLock::new(),
-    _cache_claims_holds: OnceLock::new(),
-    _cache_claims_requires: OnceLock::new(),
-    _cache_requires_modules: OnceLock::new(),
-};
+/// Borrow projection of the scheduler plan fields consumed by the
+/// region-mapping kernel. The slicer-runtime wrapper precomputes this
+/// from the scheduler's `per_layer_stages` and `postpass_stages` fields
+/// so the kernel remains IR-only and `slicer-core` does not acquire a
+/// `slicer-scheduler` dep.
+pub struct RegionMappingPlanProjection<'a> {
+    /// Precomputed `(stage_id, module_invocations)` pairs, chaining
+    /// `per_layer_stages` then `postpass_stages` in that order.
+    pub stage_invocations: &'a [(StageId, Vec<ModuleInvocation>)],
+}
 
 /// Top contributing module/object for overflow diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -282,6 +261,21 @@ fn stamp_modifier_config_deltas(
     result
 }
 
+/// Serialize a `PaintSemantic` to its namespace key string for sort ordering.
+///
+/// Built-in variants serialize as `material`/`fuzzy_skin`/`support_enforcer`/
+/// `support_blocker`; `Custom(s)` serializes as the raw `s`.
+/// Inlined here to avoid a `slicer-scheduler` dep in `slicer-core`.
+fn paint_semantic_namespace_key(s: &PaintSemantic) -> String {
+    match s {
+        PaintSemantic::Material => "material".to_string(),
+        PaintSemantic::FuzzySkin => "fuzzy_skin".to_string(),
+        PaintSemantic::SupportEnforcer => "support_enforcer".to_string(),
+        PaintSemantic::SupportBlocker => "support_blocker".to_string(),
+        PaintSemantic::Custom(name) => name.clone(),
+    }
+}
+
 /// Compute overlapping paint semantics for a region at a given layer.
 ///
 /// Returns semantics sorted ascending by `paint_semantic_namespace_key`
@@ -335,14 +329,14 @@ fn overlapping_semantics_for_region(
 /// output is bit-identical to the pre-packet path (invariant 9).
 pub fn execute_region_mapping(
     layer_plan: &LayerPlanIR,
-    plan: &ExecutionPlan,
+    projection: &RegionMappingPlanProjection<'_>,
     paint_regions: Option<&PaintRegionIR>,
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
     objects: &[ObjectMesh],
 ) -> Result<RegionMapIR, RegionMappingError> {
     execute_region_mapping_with_cap(
         layer_plan,
-        plan,
+        projection,
         paint_regions,
         paint_semantic_configs,
         objects,
@@ -364,7 +358,7 @@ pub fn execute_region_mapping(
 /// global → per-object → modifier → paint precedence chain.
 pub fn execute_region_mapping_with_cap(
     layer_plan: &LayerPlanIR,
-    plan: &ExecutionPlan,
+    projection: &RegionMappingPlanProjection<'_>,
     paint_regions: Option<&PaintRegionIR>,
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
     objects: &[ObjectMesh],
@@ -372,7 +366,7 @@ pub fn execute_region_mapping_with_cap(
 ) -> Result<RegionMapIR, RegionMappingError> {
     execute_region_mapping_inner(
         layer_plan,
-        plan,
+        projection,
         paint_regions,
         paint_semantic_configs,
         objects,
@@ -381,9 +375,15 @@ pub fn execute_region_mapping_with_cap(
     )
 }
 
-fn execute_region_mapping_inner(
+/// Low-level kernel for region-map compilation.
+///
+/// Made `pub` so the slicer-runtime wrapper can call it directly with a host
+/// config authority (`host_config = Some(...)`) without duplicating the logic.
+/// (Minor deviation from AC-1's "private helpers" wording — recorded in
+/// packet deviations.)
+pub fn execute_region_mapping_inner(
     layer_plan: &LayerPlanIR,
-    plan: &ExecutionPlan,
+    projection: &RegionMappingPlanProjection<'_>,
     paint_regions: Option<&PaintRegionIR>,
     paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
     objects: &[ObjectMesh],
@@ -437,24 +437,11 @@ fn execute_region_mapping_inner(
     // --- Precompute per-stage ModuleInvocation lists ------------------
     // These lists are identical across every region in this step
     // (we are not yet applying per-region config disables / claim
-    // resolution). Computing them once outside the region loop keeps the
-    // inner loop O(regions) instead of O(regions * stages).
-    let stage_invocations: Vec<(StageId, Vec<ModuleInvocation>)> = plan
-        .per_layer_stages
-        .iter()
-        .chain(plan.postpass_stages.iter())
-        .map(|stage: &CompiledStage| {
-            let invocations = stage
-                .modules
-                .iter()
-                .map(|m| ModuleInvocation {
-                    module_id: m.module_id().to_owned(),
-                    config_view: m.config_view().as_ref().clone(),
-                })
-                .collect::<Vec<_>>();
-            (stage.stage_id.clone(), invocations)
-        })
-        .collect();
+    // resolution). The wrapper has already extracted them from the
+    // scheduler plan into the projection — clone to a local
+    // Vec to preserve the rest of the kernel body verbatim.
+    let stage_invocations: Vec<(StageId, Vec<ModuleInvocation>)> =
+        projection.stage_invocations.to_vec();
 
     // --- Build entries ------------------------------------------------
     let mut entries: HashMap<RegionKey, RegionPlan> = HashMap::with_capacity(entry_count);
@@ -543,86 +530,3 @@ fn execute_region_mapping_inner(
         ..Default::default()
     })
 }
-
-/// Commit the built-in region map into the blackboard (idempotent — if a
-/// caller has already committed a map, the function is a no-op).
-///
-/// `resolved_configs` is a per-object map keyed by `object_id` that supplies
-/// the authoritative [`ResolvedConfig`] for each object.  When an object has
-/// no entry in the map, `default_resolved_config` is used as the fallback.
-/// The host (not the module-emitted `region.resolved_config`) is now the
-/// stamping authority for `RegionPlan.config`.
-///
-/// `paint_semantic_configs` is a map of per-paint-semantic resolved configs for
-/// overlay.  Pass an empty `BTreeMap` to preserve the pre-packet bit-identical
-/// output for the no-paint path.
-pub fn commit_region_mapping_builtin(
-    plan: &ExecutionPlan,
-    blackboard: &mut crate::Blackboard,
-    resolved_configs: &BTreeMap<String, ResolvedConfig>,
-    default_resolved_config: &ResolvedConfig,
-    paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>,
-) -> Result<(), RegionMappingBuiltinError> {
-    if blackboard.region_map().is_some() {
-        return Ok(());
-    }
-    let Some(layer_plan) = blackboard.layer_plan().cloned() else {
-        return Err(RegionMappingBuiltinError::MissingLayerPlan);
-    };
-    // Clone the mesh Arc to satisfy the borrow checker — `blackboard` is
-    // `&mut`, so we need an owned handle to its `objects` slice for the
-    // duration of the inner builder call below.
-    let mesh_arc = Arc::clone(blackboard.mesh());
-    let paint_regions = blackboard.paint_regions().map(|arc| arc.as_ref());
-    // The host is the stamping authority for `RegionPlan.config`: pass the
-    // per-object map + default into the inner builder so each region's base
-    // config, modifier deltas, and paint overlays are computed in one pass
-    // (packet 76, 1a — replaces the prior post-hoc re-stamp loop that threw
-    // away the inner builder's already-correct config).
-    let ir = execute_region_mapping_inner(
-        layer_plan.as_ref(),
-        plan,
-        paint_regions,
-        paint_semantic_configs,
-        &mesh_arc.objects,
-        Some((resolved_configs, default_resolved_config)),
-        DEFAULT_REGION_MAP_CAP,
-    )
-    .map_err(RegionMappingBuiltinError::Mapping)?;
-
-    blackboard
-        .commit_region_map(Arc::new(ir))
-        .map_err(|source| RegionMappingBuiltinError::Blackboard { source })?;
-    Ok(())
-}
-
-/// Wrapper error used when the built-in runs on the real prepass path.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RegionMappingBuiltinError {
-    /// No `LayerPlanIR` committed to the blackboard yet.
-    MissingLayerPlan,
-    /// Region mapping itself failed.
-    Mapping(RegionMappingError),
-    /// Blackboard commit failed (e.g. duplicate commit).
-    Blackboard {
-        /// Underlying blackboard failure.
-        source: crate::BlackboardError,
-    },
-}
-
-impl std::fmt::Display for RegionMappingBuiltinError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::MissingLayerPlan => write!(
-                f,
-                "built-in PrePass::RegionMapping requires a committed LayerPlanIR"
-            ),
-            Self::Mapping(e) => write!(f, "built-in PrePass::RegionMapping failed: {e}"),
-            Self::Blackboard { source } => {
-                write!(f, "built-in PrePass::RegionMapping commit failed: {source}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for RegionMappingBuiltinError {}

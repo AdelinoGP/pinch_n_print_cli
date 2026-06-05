@@ -1129,6 +1129,9 @@ pub struct RegionPlan {
     pub paint_overrides: BTreeMap<PaintSemantic, ResolvedConfig>,
 }
 
+/// Default cap on `RegionMapIR` entry count per docs/04_host_scheduler.md.
+pub const DEFAULT_REGION_MAP_CAP: usize = 1_000;
+
 /// Region map IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegionMapIR {

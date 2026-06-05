@@ -25,16 +25,18 @@ Outcomes:
       pub region_plans: &'a std::collections::HashMap<slicer_ir::RegionKey, slicer_ir::RegionPlan>,
   }
   ```
-  Exact field set determined by dispatch #1 (whatever `execute_region_mapping_inner` reads today). Either a struct or a tuple is acceptable; whichever the implementer chooses, it lives in `slicer-core` and does NOT import any scheduler / runtime / wasm-host type.
-- Move the algorithm body (currently `execute_region_mapping_inner` + helpers) from `crates/slicer-runtime/src/region_mapping.rs` into `crates/slicer-core/src/algos/region_mapping.rs` (matching the P84 `algos/` subtree layout). Public entry: `pub fn execute_region_mapping(layer_plan: &LayerPlanIR, projection: &RegionMappingPlanProjection<'_>, paint_regions: Option<&PaintRegionIR>, paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>, objects: &[ObjectMesh]) -> Result<RegionMapIR, RegionMappingError>`.
+  **Verified field shapes** (from `crates/slicer-scheduler/src/execution_plan.rs:286-289`): `region_plans: Arc<HashMap<RegionKey, RegionPlan>>` (note the `Arc` indirection) and `module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegion>>` (bare). The projection's `&'a HashMap<...>` shape for `region_plans` is intentional — the wrapper does the Arc deref via `&*plan.region_plans` (or `plan.region_plans.as_ref()`). Step 1 dispatch #1 confirms whether `execute_region_mapping_inner` reads anything beyond these two fields; if so, extend the projection.
+- Move the algorithm body from `crates/slicer-runtime/src/region_mapping.rs` into `crates/slicer-core/src/algos/region_mapping.rs` (matching the P84 `algos/` subtree layout — 6 algos already present at L1-L6 of `crates/slicer-core/src/algos/`). **Verified surface to move**: `pub fn execute_region_mapping` (L336, simple delegator passing `DEFAULT_REGION_MAP_CAP`), `pub fn execute_region_mapping_with_cap` (L365, the actual kernel taking a `usize` cap), `fn execute_region_mapping_inner` (L384, private helper), the `DEFAULT_REGION_MAP_CAP` constant (used by the simple wrapper), `pub enum RegionMappingError` (L68), and any private helpers reachable from the kernel. **Replace** `plan: &ExecutionPlan` with `projection: &RegionMappingPlanProjection<'_>` on every public sig. Other parameters preserved: `layer_plan: &LayerPlanIR`, `paint_regions: Option<&PaintRegionIR>`, `paint_semantic_configs: &BTreeMap<PaintSemantic, ResolvedConfig>`, `objects: &[ObjectMesh]`, plus `cap: usize` on the `_with_cap` variant. Return type unchanged: `Result<RegionMapIR, RegionMappingError>`.
 - Move `RegionMappingError` and any other error/helper types the kernel uses into `slicer-core/src/algos/region_mapping.rs` (if they don't reference runtime types).
 - Create `crates/slicer-runtime/src/builtins/region_mapping_producer.rs`:
-  - Declares `pub static REGION_MAPPING_PRODUCER: BuiltinProducer = ...` with identical metadata as before P87.
-  - The wrapper body (≤ 100 LOC):
-    1. Receives `&ExecutionPlan` from the host scheduler.
-    2. Builds a `RegionMappingPlanProjection` from `plan.module_region_index` and `plan.region_plans` (zero copy — just borrows).
-    3. Calls `slicer_core::algos::region_mapping::execute_region_mapping(layer_plan, &projection, paint_regions, configs, objects)`.
-    4. Commits the returned `RegionMapIR` via `Blackboard::replace_region_map_ir` (or whatever `commit_region_mapping_builtin` does today). Per ADR-0001, commit stays in-stage in the wrapper.
+  - Declares `pub static REGION_MAPPING_PRODUCER: BuiltinProducer = ...` with identical metadata as before P87 (currently L30 of `region_mapping.rs`).
+  - **Relocates `commit_region_mapping_builtin`** (currently L559 of `region_mapping.rs`, ~70 LOC body, takes `&ExecutionPlan`). This is the runtime glue — stays in the wrapper per ADR-0001. The body of `commit_region_mapping_builtin` is what does the `Blackboard` commit; do NOT split it into a separate function in slicer-core.
+  - The wrapper file LOC ≤ 150 (commit body ~70 + producer static ~20 + projection unpack + imports + headroom). AC-2's 120 ceiling was tight; relaxed to 150.
+  - Wrapper body shape:
+    1. Receives `&ExecutionPlan` from the host scheduler (signature of `commit_region_mapping_builtin` is preserved).
+    2. Builds a `RegionMappingPlanProjection { module_region_index: &plan.module_region_index, region_plans: &*plan.region_plans }` — the `Arc` deref on `region_plans` is essential (zero copy, just borrows).
+    3. Calls `slicer_core::algos::region_mapping::execute_region_mapping_with_cap(layer_plan, &projection, paint_regions, configs, objects, DEFAULT_REGION_MAP_CAP)` (or `execute_region_mapping` if cap-default suffices).
+    4. Commits the returned `RegionMapIR` via the existing `Blackboard` method (verified via Step 1 dispatch #3).
 - Update `crates/slicer-runtime/src/builtins/mod.rs` to declare `pub mod region_mapping_producer;` + re-export `REGION_MAPPING_PRODUCER`.
 - Update `crates/slicer-runtime/src/lib.rs`:
   - Drop `pub mod region_mapping;`.
@@ -74,14 +76,15 @@ The acceptance contract is enumerated in `packet.spec.md` (AC-1..AC-9, AC-N1..AC
 | AC-1 | `test ! -f crates/slicer-runtime/src/region_mapping.rs && find crates/slicer-core/src -name 'region_mapping*' -type f \| head -1 \| grep -q .` | FACT pass/fail |
 | AC-2 | `grep -qE 'pub static REGION_MAPPING_PRODUCER' crates/slicer-runtime/src/builtins/region_mapping_producer.rs && [ $(wc -l < crates/slicer-runtime/src/builtins/region_mapping_producer.rs) -le 120 ]` | FACT pass/fail |
 | AC-3 | `! grep -qE '^pub mod region_mapping;' crates/slicer-runtime/src/lib.rs && grep -qE 'REGION_MAPPING_PRODUCER' crates/slicer-runtime/src/lib.rs` | FACT pass/fail |
-| AC-4 | `grep -E 'pub fn execute_region_mapping' crates/slicer-core/src/algos/region_mapping.rs \| head -1 \| grep -qE 'LayerPlanIR' && ! grep -qE 'ExecutionPlan\|CompiledStage\|CompiledModuleStatic\|Blackboard' crates/slicer-core/src/algos/region_mapping.rs` | FACT pass/fail |
+| AC-4 | `grep -A 8 -E 'pub fn execute_region_mapping\b' crates/slicer-core/src/algos/region_mapping.rs \| head -9 \| grep -qE 'LayerPlanIR' && ! grep -qE '\b(ExecutionPlan\|CompiledStage\|CompiledModuleStatic\|Blackboard)\b' crates/slicer-core/src/algos/region_mapping.rs` | FACT pass/fail |
 | AC-5 | `[ $(grep -cE '_PRODUCER as &dyn Producer' crates/slicer-runtime/src/lib.rs) -eq 8 ]` | FACT pass/fail |
-| AC-6 | `! grep -qE '^slicer-(scheduler\|runtime\|wasm-host) *=' crates/slicer-core/Cargo.toml` | FACT pass/fail |
-| AC-7 | `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p87.gcode && sha256sum /tmp/benchy-p87.gcode` | SNIPPET (SHA) |
-| AC-8 | `cargo test -p slicer-core` | FACT pass/fail + count |
-| AC-9 | `cargo test -p slicer-core -p slicer-runtime -p pnp-cli` | FACT pass/fail + counts |
-| AC-N1 | `! rg -e '\b(ExecutionPlan\|CompiledStage\|CompiledModuleStatic\|Blackboard\|BuiltinProducer)\b' crates/slicer-core/src/` | FACT empty/non-empty |
-| AC-N2 | `! cargo tree -p slicer-core 2>&1 \| grep -qE '\b(slicer-scheduler\|slicer-wasm-host)\b'` | FACT pass/fail |
+| AC-6 | `! grep -qE '^slicer-(scheduler|runtime|wasm-host) *=' crates/slicer-core/Cargo.toml` | FACT pass/fail |
+| AC-7 | `cargo run --bin pnp_cli --release -- slice --model resources/benchy.stl --module-dir modules/core-modules --output /tmp/benchy-p87.gcode && sha256sum /tmp/benchy-p87.gcode` (must equal carried-forward baseline `89a329ad3a4c1b7febca839edfca8b6302e562d8d2a390ee144252fd54e65a2b`) | SNIPPET (SHA) |
+| AC-8 | `cargo test -p slicer-core` (slicer-core needs `--features host-algos` if algos test targets gate on it — verify per Step 6's test layout) | FACT pass/fail + count |
+| AC-9 | `cargo test --features slicer-core/host-algos --features slicer-sdk/test -p slicer-core -p slicer-runtime -p pnp-cli` (flags mandatory per P85 closure — bare form masks regressions) | FACT pass/fail + counts |
+| AC-N1 | `! rg -e 'use [^;]*\b(ExecutionPlan\|CompiledStage\|CompiledModuleStatic\|Blackboard\|BuiltinProducer)\b' crates/slicer-core/src/ && ! rg -e ': *&(mut )?(ExecutionPlan\|CompiledStage\|CompiledModuleStatic\|Blackboard\|BuiltinProducer)\b' crates/slicer-core/src/` | FACT pass/fail |
+| AC-N2 | `! cargo tree -p slicer-core 2>&1 \| grep -qE '\b(slicer-scheduler|slicer-wasm-host)\b'` | FACT pass/fail |
+| AC-N3 | `for line in $(grep -nE '^pub use slicer_core::algos::region_mapping::' crates/slicer-runtime/src/lib.rs \| cut -d: -f1); do prev=$((line-1)); next=$((line+1)); (sed -n "${prev}p" crates/slicer-runtime/src/lib.rs \| grep -qE '^// kept:') \|\| (sed -n "${next}p" crates/slicer-runtime/src/lib.rs \| grep -qE '^// kept:') \|\| exit 1; done` | FACT pass/fail |
 | gate-1 | `cargo build --workspace` | FACT pass/fail |
 | gate-2 | `cargo clippy --workspace --all-targets -- -D warnings` | FACT pass/fail |
 | gate-3 | `cargo xtask build-guests --check` | FACT pass/fail |

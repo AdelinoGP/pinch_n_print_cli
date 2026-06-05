@@ -46,5 +46,9 @@ required-features = ["host-algos"]
 name = "algo_support_geometry_tdd"
 required-features = ["host-algos"]
 
+[[test]]
+name = "algo_region_mapping_tdd"
+required-features = ["host-algos"]
+
 [lints]
 workspace = true

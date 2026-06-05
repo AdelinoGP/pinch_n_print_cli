@@ -110,6 +110,7 @@ pub use slice_ir::{
     RegionId,
     RegionKey,
     // Region map types
+    DEFAULT_REGION_MAP_CAP,
     RegionMapIR,
     RegionPlan,
     RetractMode,

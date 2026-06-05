@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_core::algos::paint_segmentation::execute_paint_segmentation;
+use slicer_core::algos::region_mapping::RegionMappingPlanProjection;
 use slicer_core::slice_mesh_ex;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigDelta, ConfigValue, ExPolygon, FacetClass, GlobalLayer,
@@ -165,6 +166,26 @@ fn empty_execution_plan() -> ExecutionPlan {
     build_execution_plan(&req).expect("empty execution plan should build")
 }
 
+fn plan_stage_invocations(
+    plan: &ExecutionPlan,
+) -> Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> {
+    plan.per_layer_stages
+        .iter()
+        .chain(plan.postpass_stages.iter())
+        .map(|stage| {
+            let invocations = stage
+                .modules
+                .iter()
+                .map(|m| slicer_ir::ModuleInvocation {
+                    module_id: m.module_id().to_owned(),
+                    config_view: m.config_view().as_ref().clone(),
+                })
+                .collect::<Vec<_>>();
+            (stage.stage_id.clone(), invocations)
+        })
+        .collect()
+}
+
 fn region_map_for_fixture(name: &str) -> Option<RegionMapIR> {
     let path = fixture(name);
     if skip_if_missing(&path) {
@@ -184,10 +205,14 @@ fn region_map_for_fixture(name: &str) -> Option<RegionMapIR> {
     )
     .expect("execute_paint_segmentation must succeed");
     let plan = empty_execution_plan();
+    let si = plan_stage_invocations(&plan);
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
     let empty_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
     let result = execute_region_mapping_with_cap(
         &lp,
-        &plan,
+        &projection,
         Some(&paint_result),
         &empty_semantic_configs,
         &objects,
@@ -1138,10 +1163,14 @@ fn region_map_for_synthetic_objects(objects: Vec<ObjectMesh>, object_id: &str) -
         execute_paint_segmentation(Arc::new(mesh_ir), Arc::new(sc), Arc::new(lp.clone()), true)
             .expect("execute_paint_segmentation must succeed");
     let plan = empty_execution_plan();
+    let si = plan_stage_invocations(&plan);
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
     let empty_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
     execute_region_mapping_with_cap(
         &lp,
-        &plan,
+        &projection,
         Some(&paint_result),
         &empty_semantic_configs,
         &object_meshes,

@@ -580,9 +580,28 @@ fn support_enforcer_flows_through_paint_overrides() {
     );
 
     let plan = empty_execution_plan();
+    let si: Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> = plan
+        .per_layer_stages
+        .iter()
+        .chain(plan.postpass_stages.iter())
+        .map(|stage| {
+            let invocations = stage
+                .modules
+                .iter()
+                .map(|m| slicer_ir::ModuleInvocation {
+                    module_id: m.module_id().to_owned(),
+                    config_view: m.config_view().as_ref().clone(),
+                })
+                .collect::<Vec<_>>();
+            (stage.stage_id.clone(), invocations)
+        })
+        .collect();
+    let projection = slicer_core::algos::region_mapping::RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
     let region_map = slicer_runtime::execute_region_mapping(
         &layer_plan,
-        &plan,
+        &projection,
         Some(&whole_layer_paint),
         &paint_semantic_configs,
         &[],

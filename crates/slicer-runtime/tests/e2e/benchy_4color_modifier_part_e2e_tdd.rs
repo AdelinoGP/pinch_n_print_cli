@@ -511,10 +511,30 @@ fn empty_modifier_volume_stamps_no_regions() {
     // Run region mapping on a minimal plan covering Z = 10.0 mm.
     let layer_plan = single_region_layer_plan(0, 10.0);
     let plan = ExecutionPlan::default();
+    let si: Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> = plan
+        .per_layer_stages
+        .iter()
+        .chain(plan.postpass_stages.iter())
+        .map(|stage| {
+            let invocations = stage
+                .modules
+                .iter()
+                .map(|m| slicer_ir::ModuleInvocation {
+                    module_id: m.module_id().to_owned(),
+                    config_view: m.config_view().as_ref().clone(),
+                })
+                .collect::<Vec<_>>();
+            (stage.stage_id.clone(), invocations)
+        })
+        .collect();
+    let projection = slicer_core::algos::region_mapping::RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
     let paint_semantic_configs = BTreeMap::new();
 
-    let region_map = execute_region_mapping(&layer_plan, &plan, None, &paint_semantic_configs, &[])
-        .expect("execute_region_mapping must succeed with empty modifier volumes");
+    let region_map =
+        execute_region_mapping(&layer_plan, &projection, None, &paint_semantic_configs, &[])
+            .expect("execute_region_mapping must succeed with empty modifier volumes");
 
     // No modifier volumes â†’ no modifier-derived keys in any region.
     let stamped_count = region_map

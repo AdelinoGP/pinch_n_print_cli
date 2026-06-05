@@ -9,13 +9,15 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
+use slicer_core::algos::region_mapping::RegionMappingPlanProjection;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, GlobalLayer, IndexedTriangleSet, LayerPaintMap, LayerPlanIR,
     MeshIR, ObjectConfig, ObjectMesh, PaintRegionIR, PaintSemantic, PaintValue, Point3, RegionKey,
     ResolvedConfig, SemVer, SemanticRegion, Transform3d,
 };
 use slicer_runtime::{
-    build_execution_plan, execute_region_mapping, ExecutionPlanRequest, SortedStageModules,
+    build_execution_plan, execute_region_mapping, ExecutionPlan, ExecutionPlanRequest,
+    SortedStageModules,
 };
 
 // ---------------------------------------------------------------------------
@@ -169,10 +171,14 @@ fn region_overlap_applies_override() {
     );
 
     let plan = empty_execution_plan();
+    let si = plan_stage_invocations(&plan);
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
 
     let rm = execute_region_mapping(
         &layer_plan,
-        &plan,
+        &projection,
         Some(&paint_regions),
         &paint_semantic_configs,
         &[],
@@ -222,10 +228,14 @@ fn no_overlap_keeps_object_config() {
     let paint_semantic_configs: BTreeMap<PaintSemantic, ResolvedConfig> = BTreeMap::new();
 
     let plan = empty_execution_plan();
+    let si = plan_stage_invocations(&plan);
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
 
     let rm = execute_region_mapping(
         &layer_plan,
-        &plan,
+        &projection,
         Some(&paint_regions),
         &paint_semantic_configs,
         &[],
@@ -319,6 +329,10 @@ fn overlap_precedence_is_deterministic() {
     );
 
     let plan = empty_execution_plan();
+    let si = plan_stage_invocations(&plan);
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
 
     let assert_result = |rm: &slicer_ir::RegionMapIR| {
         let key = RegionKey {
@@ -348,7 +362,7 @@ fn overlap_precedence_is_deterministic() {
 
     let rm1 = execute_region_mapping(
         &layer_plan,
-        &plan,
+        &projection,
         Some(&paint_regions),
         &paint_semantic_configs,
         &[],
@@ -358,7 +372,7 @@ fn overlap_precedence_is_deterministic() {
 
     let rm2 = execute_region_mapping(
         &layer_plan,
-        &plan,
+        &projection,
         Some(&paint_regions),
         &paint_semantic_configs,
         &[],
@@ -367,4 +381,24 @@ fn overlap_precedence_is_deterministic() {
     assert_result(&rm2);
 
     assert_eq!(rm1, rm2, "output must be bit-identical across two runs");
+}
+
+fn plan_stage_invocations(
+    plan: &ExecutionPlan,
+) -> Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> {
+    plan.per_layer_stages
+        .iter()
+        .chain(plan.postpass_stages.iter())
+        .map(|stage| {
+            let invocations = stage
+                .modules
+                .iter()
+                .map(|m| slicer_ir::ModuleInvocation {
+                    module_id: m.module_id().to_owned(),
+                    config_view: m.config_view().as_ref().clone(),
+                })
+                .collect::<Vec<_>>();
+            (stage.stage_id.clone(), invocations)
+        })
+        .collect()
 }

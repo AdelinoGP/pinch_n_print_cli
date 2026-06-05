@@ -14,11 +14,13 @@ use slicer_ir::{
     ConfigKey, ConfigValue, ModuleId, PaintRegionIR, PaintSemantic, ResolvedConfig, StageId,
 };
 
+use crate::builtins::region_mapping_producer::{
+    commit_region_mapping_builtin, RegionMappingBuiltinError,
+};
 use crate::config_resolution::resolve_per_paint_semantic_configs;
 use crate::instrumentation::{
     NoopInstrumentation, PipelineInstrumentation, StageInstrumentationGuard,
 };
-use crate::region_mapping::{commit_region_mapping_builtin, RegionMappingBuiltinError};
 use crate::validation::ModuleAccessAudit;
 use crate::{Blackboard, BlackboardError, BlackboardPrepassSlot, ExecutionPlan};
 use slicer_core::algos::mesh_analysis::{execute_mesh_analysis, MeshAnalysisError};

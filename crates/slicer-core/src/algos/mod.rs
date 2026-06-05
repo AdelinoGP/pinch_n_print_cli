@@ -8,5 +8,7 @@ pub mod overhang_classifier;
 pub mod paint_segmentation;
 /// Pre-pass slicing routines.
 pub mod prepass_slice;
+/// Pure region-mapping kernel (IR-only; no scheduler/runtime deps).
+pub mod region_mapping;
 /// Support geometry computation.
 pub mod support_geometry;

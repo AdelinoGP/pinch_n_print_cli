@@ -17,7 +17,6 @@ pub mod postpass;
 pub mod prepass;
 pub mod progress_events;
 pub mod progress_instrumentation;
-pub mod region_mapping;
 #[cfg(feature = "report")]
 pub mod report;
 pub mod run;
@@ -65,8 +64,8 @@ pub fn runtime_builtins() -> Vec<&'static dyn Producer> {
     use crate::builtins::mesh_analysis_producer::{MESH_ANALYSIS_PRODUCER, MESH_PRODUCER};
     use crate::builtins::paint_segmentation_producer::PAINT_SEGMENTATION_PRODUCER;
     use crate::builtins::prepass_slice_producer::{SHELL_CLASSIFICATION_PRODUCER, SLICE_PRODUCER};
+    use crate::builtins::region_mapping_producer::REGION_MAPPING_PRODUCER;
     use crate::builtins::support_geometry_producer::SUPPORT_GEOMETRY_PRODUCER;
-    use crate::region_mapping::REGION_MAPPING_PRODUCER;
 
     vec![
         &MESH_PRODUCER as &dyn Producer,
@@ -124,6 +123,9 @@ pub use slicer_wasm_host::{
     LiveModuleLoadOutput,
 };
 // CompiledModule alias (transitional compat: was deleted by Step 3.5, use CompiledModuleStatic directly).
+pub use crate::builtins::region_mapping_producer::{
+    commit_region_mapping_builtin, RegionMappingBuiltinError,
+};
 pub use execution_plan::CompiledModuleStatic as CompiledModule;
 pub use instrumentation::{
     compute_serial_edges_for_stage, compute_serial_edges_from_compiled, CompositeInstrumentation,
@@ -150,10 +152,6 @@ pub use prepass::{
     PrepassExecutionError,
 };
 pub use progress_instrumentation::ProgressPipelineInstrumentation;
-pub use region_mapping::{
-    commit_region_mapping_builtin, execute_region_mapping, execute_region_mapping_with_cap,
-    RegionMappingBuiltinError, RegionMappingError, TopContributor,
-};
 pub use run::{run_slice, SliceOutcome, SliceRunError, SliceRunOptions};
 pub use slice_postprocess::{
     execute_slice_postprocess_paint_annotation, paint_annotation_warning_to_progress_event,
@@ -164,6 +162,12 @@ pub use slice_postprocess::{
 pub use slice_postprocess_prepass::{
     commit_shell_classification_builtin, ShellClassificationError,
 };
+// kept: consumed by crates/slicer-runtime/tests/e2e/threemf_subtypes_synthetic_e2e_tdd.rs:602
+pub use slicer_core::algos::region_mapping::execute_region_mapping;
+// kept: consumed by crates/slicer-runtime/tests/e2e/threemf_fixture_e2e_tdd.rs, crates/slicer-runtime/tests/integration/region_mapping_tdd.rs
+pub use slicer_core::algos::region_mapping::execute_region_mapping_with_cap;
+// kept: consumed by crates/slicer-runtime/tests/integration/region_mapping_tdd.rs
+pub use slicer_core::algos::region_mapping::RegionMappingError;
 pub use slicer_core::{
     FacetAnnotationRecord, FacetClassRecord, MeshAnalysisAuxiliary, PrepassStageOutput,
     SurfaceGroupRecord,

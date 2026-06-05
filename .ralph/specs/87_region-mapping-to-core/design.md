@@ -28,25 +28,31 @@ AFTER (in slicer-core):
 
 WRAPPER (in slicer-runtime/src/builtins/region_mapping_producer.rs):
   pub static REGION_MAPPING_PRODUCER: BuiltinProducer = ...;
-  fn run(bb: &mut Blackboard, plan: &ExecutionPlan, ...) -> Result<(), _> {
+  // The relocated commit_region_mapping_builtin body (currently L559 of region_mapping.rs):
+  pub fn commit_region_mapping_builtin(bb: &mut Blackboard, plan: &ExecutionPlan, ...) -> Result<(), _> {
+      // NOTE: region_plans is Arc<HashMap<...>> (slicer-scheduler/src/execution_plan.rs:286).
+      // module_region_index is a bare HashMap (L289). The Arc deref is `&*plan.region_plans`
+      // (or `plan.region_plans.as_ref()`).
       let projection = RegionMappingPlanProjection {
           module_region_index: &plan.module_region_index,
-          region_plans:        &plan.region_plans,
+          region_plans:        &*plan.region_plans,
       };
-      let region_map = slicer_core::algos::region_mapping::execute_region_mapping(
-          &bb.layer_plan(), &projection, bb.paint_regions(), &bb.paint_semantic_configs(), &bb.objects()
+      let region_map = slicer_core::algos::region_mapping::execute_region_mapping_with_cap(
+          &bb.layer_plan(), &projection, bb.paint_regions(), &bb.paint_semantic_configs(), &bb.objects(), DEFAULT_REGION_MAP_CAP
       )?;
       bb.replace_region_map_ir(region_map);   // ADR-0001: commit in-stage
       Ok(())
   }
 ```
 
+**Verified facts (Step 1 dispatches in implementation-plan):** `execute_region_mapping` (L336, simple delegator) → calls `execute_region_mapping_with_cap` (L365, actual kernel) → calls `execute_region_mapping_inner` (L384, private helper). The `DEFAULT_REGION_MAP_CAP` constant lives near the kernel and moves with it. `ExecutionPlan` fields: `region_plans: Arc<HashMap<RegionKey, RegionPlan>>` (L286 — note the **Arc indirection**), `module_region_index: HashMap<(u32, ModuleId), Vec<ActiveRegion>>` (L289). The projection struct's `region_plans: &'a HashMap<...>` matches the kernel's needs; the wrapper does the Arc deref.
+
 OrcaSlicer comparison surface: none.
 
 ## Architecture Constraints
 
-- ADR-0001 preserved: the wrapper holds the `BuiltinProducer` impl + the `Blackboard::replace_*` commit.
-- ADR-0002 / 0003 / 0004 / 0005 / 0006 untouched.
+- ADR-0001 preserved: the wrapper holds the `BuiltinProducer` impl + the `Blackboard::replace_*` commit (the relocated `commit_region_mapping_builtin` body, currently L559 of `region_mapping.rs`, ~70 LOC).
+- ADR-0002 / 0003 (preserved); ADR-0005 / 0006 (P83 — runner traits + export_for_stage_id); ADR-0007 (P85 — CompiledModule Static/Live split with HashMap-keyed pairing). ADR-0004 (Test support in slicer-sdk, P77) is unrelated to this packet's surface.
 - `slicer-core` MUST NOT gain a `slicer-scheduler` dep. The `RegionMappingPlanProjection` type is the decoupling artifact.
 - The exact field set on `RegionMappingPlanProjection` is determined by what `execute_region_mapping_inner` actually reads from `&ExecutionPlan` — dispatch #1 enumerates the reads. Two reads expected (`module_region_index`, `region_plans`) per the deep-dive; if more surface, add them to the projection.
 
@@ -69,7 +75,7 @@ Rejected alternatives:
 
 | File | Action | Notes |
 |---|---|---|
-| `crates/slicer-core/src/algos/region_mapping.rs` | **CREATE (from move)** | Holds: `RegionMappingPlanProjection<'a>` struct, `pub fn execute_region_mapping`, `RegionMappingError` enum, any private helpers used only by the kernel. ~410 LOC. |
+| `crates/slicer-core/src/algos/region_mapping.rs` | **CREATE (from move)** | Holds: `RegionMappingPlanProjection<'a>` struct, BOTH `pub fn execute_region_mapping` (the cap-default delegator at current L336) AND `pub fn execute_region_mapping_with_cap` (the actual kernel at current L365), `execute_region_mapping_inner` (private, L384), `DEFAULT_REGION_MAP_CAP` constant, `RegionMappingError` enum (L68), any private helpers used only by the kernel. Estimated LOC: ~470 (file is 628 total minus the wrapper-side ~150 LOC = `commit_region_mapping_builtin` ~70 LOC at L559 + producer static ~20 LOC at L30 + projection-unpack glue + imports). Confirm actual count post-move. |
 | `crates/slicer-core/src/algos/mod.rs` | **EDIT** | Add `pub mod region_mapping;` + selective `pub use region_mapping::{execute_region_mapping, RegionMappingPlanProjection, RegionMappingError};`. |
 | `crates/slicer-core/tests/algo_region_mapping_tdd.rs` | **CREATE** | Per-AC-8: two-object two-region fixture, asserts `RegionMapIR` shape. |
 | `crates/slicer-runtime/src/region_mapping.rs` | **DELETE** | Entire file. |

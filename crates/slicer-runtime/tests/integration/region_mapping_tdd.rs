@@ -21,6 +21,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use slicer_core::algos::region_mapping::RegionMappingPlanProjection;
 use slicer_ir::{
     ActiveRegion, BoundingBox3, ConfigView, GlobalLayer, IndexedTriangleSet, LayerPlanIR, MeshIR,
     ObjectConfig, ObjectMesh, Point3, RegionKey, ResolvedConfig, SemVer, Transform3d,
@@ -160,10 +161,14 @@ fn region_mapping_cap_exceeded_is_structured_fatal() {
         object_participation: HashMap::new(),
     };
     let plan = empty_execution_plan();
+    let si = plan_stage_invocations(&plan);
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
 
     let err = execute_region_mapping_with_cap(
         &layer_plan,
-        &plan,
+        &projection,
         None,
         &std::collections::BTreeMap::new(),
         &[],
@@ -212,10 +217,14 @@ fn region_mapping_cap_exceeded_surfaces_top_contributors_and_remediation() {
         object_participation: HashMap::new(),
     };
     let plan = empty_execution_plan();
+    let si = plan_stage_invocations(&plan);
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
 
     let err = execute_region_mapping_with_cap(
         &layer_plan,
-        &plan,
+        &projection,
         None,
         &std::collections::BTreeMap::new(),
         &[],
@@ -272,11 +281,15 @@ fn region_mapping_at_cap_is_accepted() {
         object_participation: HashMap::new(),
     };
     let plan = empty_execution_plan();
+    let si = plan_stage_invocations(&plan);
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
 
     // Exactly 2 entries against a cap of 2 must succeed (not error).
     execute_region_mapping_with_cap(
         &layer_plan,
-        &plan,
+        &projection,
         None,
         &std::collections::BTreeMap::new(),
         &[],
@@ -303,10 +316,14 @@ fn region_mapping_duplicate_region_key_is_structured_fatal() {
         object_participation: HashMap::new(),
     };
     let plan = empty_execution_plan();
+    let si = plan_stage_invocations(&plan);
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
 
     let err = execute_region_mapping(
         &layer_plan,
-        &plan,
+        &projection,
         None,
         &std::collections::BTreeMap::new(),
         &[],
@@ -368,10 +385,15 @@ fn region_mapping_builtin_commit_failure_surfaces_via_prepass_error() {
         .expect("seed layer plan");
     // Manually commit a region map first so the built-in becomes a no-op;
     // then verify it was not overwritten. (Idempotency contract.)
+    let ep = empty_execution_plan();
+    let si_ep = plan_stage_invocations(&ep);
+    let proj_ep = RegionMappingPlanProjection {
+        stage_invocations: &si_ep,
+    };
     let preexisting = Arc::new(
         execute_region_mapping(
             &layer_plan,
-            &empty_execution_plan(),
+            &proj_ep,
             None,
             &std::collections::BTreeMap::new(),
             &[],
@@ -397,11 +419,15 @@ fn region_mapping_builtin_commit_failure_surfaces_via_prepass_error() {
 fn region_mapping_is_deterministic_for_same_input() {
     let layer_plan = plan_two_layers_two_regions();
     let plan = empty_execution_plan();
+    let si = plan_stage_invocations(&plan);
+    let projection = RegionMappingPlanProjection {
+        stage_invocations: &si,
+    };
 
     let empty_map = std::collections::BTreeMap::new();
-    let a = execute_region_mapping(&layer_plan, &plan, None, &empty_map, &[]).unwrap();
-    let b = execute_region_mapping(&layer_plan, &plan, None, &empty_map, &[]).unwrap();
-    let c = execute_region_mapping(&layer_plan, &plan, None, &empty_map, &[]).unwrap();
+    let a = execute_region_mapping(&layer_plan, &projection, None, &empty_map, &[]).unwrap();
+    let b = execute_region_mapping(&layer_plan, &projection, None, &empty_map, &[]).unwrap();
+    let c = execute_region_mapping(&layer_plan, &projection, None, &empty_map, &[]).unwrap();
 
     assert_eq!(a, b);
     assert_eq!(b, c);
@@ -625,4 +651,24 @@ fn expect_region_mapping_builtin_error(e: &PrepassExecutionError) -> &RegionMapp
         PrepassExecutionError::RegionMapping { source } => source,
         other => panic!("expected RegionMapping, got {other:?}"),
     }
+}
+
+fn plan_stage_invocations(
+    plan: &ExecutionPlan,
+) -> Vec<(slicer_ir::StageId, Vec<slicer_ir::ModuleInvocation>)> {
+    plan.per_layer_stages
+        .iter()
+        .chain(plan.postpass_stages.iter())
+        .map(|stage| {
+            let invocations = stage
+                .modules
+                .iter()
+                .map(|m| slicer_ir::ModuleInvocation {
+                    module_id: m.module_id().to_owned(),
+                    config_view: m.config_view().as_ref().clone(),
+                })
+                .collect::<Vec<_>>();
+            (stage.stage_id.clone(), invocations)
+        })
+        .collect()
 }

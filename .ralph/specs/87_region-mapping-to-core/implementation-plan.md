@@ -14,7 +14,7 @@
 
 **Objective.** Confirm `ExecutionPlan` and `CompiledModuleStatic` are in `slicer-scheduler` (not `slicer-runtime`). Capture g-code SHA baseline.
 
-**Precondition.** P85 is `superseded`. Working tree clean.
+**Precondition.** P85 is `implemented` (and P86 is `implemented`; the carried-forward g-code SHA is `89a329ad3a4c1b7febca839edfca8b6302e562d8d2a390ee144252fd54e65a2b`, byte-identical across P81→P86). Working tree clean.
 
 **Postcondition.** Two log entries: P85-state verification + baseline SHA.
 
@@ -130,18 +130,20 @@
 
 **Precondition.** Step 4 complete.
 
-**Postcondition.** `cargo build --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test -p slicer-core -p slicer-runtime -p pnp-cli` all green.
+**Postcondition.** `cargo build --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --features slicer-core/host-algos --features slicer-sdk/test -p slicer-core -p slicer-runtime -p pnp-cli` all green. AC-N3 holds (every surviving `pub use slicer_core::algos::region_mapping::` re-export carries a `// kept:` annotation; dead re-exports deleted).
+
+**Test-import stability rule (P84/P85/P86 pattern).** `--all-targets` compiles test binaries. Until Step 6 relocates them, runtime tests referencing `slicer_runtime::execute_region_mapping` (or `_with_cap`, or `RegionMappingError`) must still resolve. Retain the necessary `pub use slicer_core::algos::region_mapping::{...};` re-exports as flat top-level lines (NEVER brace-form `pub mod region_mapping { pub use slicer_core::algos::region_mapping::*; }` — forbidden by AC-3 word boundary). Step 6 prunes dead re-exports, annotating survivors with `// kept:`.
 
 **Files allowed to read.** `crates/slicer-runtime/src/lib.rs`. Test files from dispatch #2.
 **Files allowed to edit.**
-1. `crates/slicer-runtime/src/lib.rs` — drop `pub mod region_mapping;`, drop/rewrite the re-exports, update `runtime_builtins()` to reference `builtins::region_mapping_producer::REGION_MAPPING_PRODUCER`.
+1. `crates/slicer-runtime/src/lib.rs` — drop `pub mod region_mapping;`, add flat `pub use slicer_core::algos::region_mapping::{...};` re-exports per Step 1 dispatch #2's consumer list (these become transitional; Step 6 prunes them), update `runtime_builtins()` to reference `builtins::region_mapping_producer::REGION_MAPPING_PRODUCER`.
 2. Test files from dispatch #2 — move or rewire imports.
 3. `crates/slicer-runtime/tests/{integration,executor}/main.rs` aggregators — drop `mod` declarations for moved tests.
 
 **Expected sub-agent dispatches.**
 - Dispatch: `cargo build --workspace`. Return FACT pass/fail.
 - Dispatch: `cargo clippy --workspace --all-targets -- -D warnings`. Return FACT pass/fail.
-- Dispatch: `cargo test -p slicer-core -p slicer-runtime -p pnp-cli`. Return FACT pass/fail + counts.
+- Dispatch: `cargo test --features slicer-core/host-algos --features slicer-sdk/test -p slicer-core -p slicer-runtime -p pnp-cli`. Return FACT pass/fail + counts. (Flags mandatory per P85 closure.)
 
 **Context cost: M.**
 
@@ -159,14 +161,15 @@
 
 **Postcondition.** `cargo test -p slicer-core --test algo_region_mapping_tdd` (or equivalent name) passes.
 
-**Files allowed to read.** None.
+**Files allowed to read.** Output of `cargo build --workspace 2>&1 | grep -E '^error\[E04(32|33)\]'` after each pruning round to find live consumers.
 **Files allowed to edit.**
 1. `crates/slicer-core/tests/algo_region_mapping_tdd.rs` — CREATE.
+2. `crates/slicer-runtime/src/lib.rs` — **prune dead re-exports** (P85/P86 closure-cleanup rule, codified by AC-N3). For each transitional `pub use slicer_core::algos::region_mapping::X;` line added in Step 5, run `rg 'slicer_runtime::X\b' crates/ docs/`. Zero hits → delete the re-export. Hits → keep the line and add a `// kept: consumed by <file>` comment immediately above OR below the line so AC-N3's grep passes. Re-run `cargo build --workspace --all-targets` after each prune to confirm nothing broke.
 
 The test:
 - Constructs a small `LayerPlanIR` with 2 layers, 2 objects, 2 regions each.
-- Builds a `RegionMappingPlanProjection` from manually-populated `HashMap`s.
-- Calls `execute_region_mapping(&layer_plan, &projection, None, &configs, &objects)`.
+- Builds a `RegionMappingPlanProjection` from manually-populated `HashMap`s (matching the projection struct's shape).
+- Calls `execute_region_mapping_with_cap(&layer_plan, &projection, None, &configs, &objects, DEFAULT_REGION_MAP_CAP)` — or the simpler `execute_region_mapping(...)` delegator.
 - Asserts the returned `RegionMapIR` has the expected per-(layer, object, region) shape.
 - Imports zero `slicer_runtime::*` and zero `slicer_scheduler::*` types.
 
@@ -221,7 +224,7 @@ Aggregate: **M.** No L step. Total step count: 8.
 1. `cargo build --workspace` — green.
 2. `cargo clippy --workspace --all-targets -- -D warnings` — green.
 3. `cargo xtask build-guests --check` — clean.
-4. `cargo test -p slicer-core -p slicer-runtime -p pnp-cli` — green.
+4. `cargo test --features slicer-core/host-algos --features slicer-sdk/test -p slicer-core -p slicer-runtime -p pnp-cli` — green.
 5. AC-7 post-packet SHA = Step 0 baseline.
 
 ## Acceptance Ceremony
@@ -229,4 +232,4 @@ Aggregate: **M.** No L step. Total step count: 8.
 - All 9 ACs and 2 negative cases gate green.
 - No ADR follow-up.
 - Implementation log records: Step 0 baseline SHA, Step 7 post-packet SHA, final `RegionMappingPlanProjection` field set, list of moved tests.
-- `status: draft` → `status: superseded` after gate green AND user confirms closure.
+- `status: draft` → `status: implemented` after gate green AND user confirms closure. (`superseded` is reserved for packets replaced by a later spec.)

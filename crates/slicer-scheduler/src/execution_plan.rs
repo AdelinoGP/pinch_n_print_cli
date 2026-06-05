@@ -530,7 +530,7 @@ pub struct ExecutionPlanRequest {
 pub const MAX_LAYER_INDEX: u32 = 100_000;
 
 /// Default cap on `RegionMapIR` entry count per docs/04_host_scheduler.md.
-pub const DEFAULT_REGION_MAP_CAP: usize = 1_000;
+pub use slicer_ir::DEFAULT_REGION_MAP_CAP;
 
 /// Structured planning failure for immutable execution-plan assembly.
 #[derive(Debug, Clone, PartialEq, Eq)]
