@@ -2,8 +2,8 @@
 
 ## Controlling Code Paths
 
-- Primary code paths: test sources only — `crates/slicer-runtime/tests/e2e/benchy_end_to_end_tdd.rs` (renamed), the 4 known non-test reference sites, and a single `mod` declaration in the harness file. No production source under `crates/*/src/` is modified.
-- Neighboring tests or fixtures: `resources/cube_4color.3mf` and related cube fixtures (out of scope here — packet 89's territory) demonstrate the engineered-fixture pattern this packet follows for STL meshes.
+- Primary code paths: test sources only — `crates/slicer-runtime/tests/e2e/benchy_end_to_end_tdd.rs` (renamed), the 5 known reference sites (4 in `crates/`, 1 in `modules/core-modules/support-planner/`), and the harness `mod` declaration at `crates/slicer-runtime/tests/e2e/main.rs:12`. No production source under `crates/*/src/` or `modules/core-modules/*/src/` is modified.
+- Neighboring tests or fixtures: `resources/cube_4color.3mf` and related cube fixtures (out of scope here — packet 89's territory, now `status: implemented`) demonstrate the engineered-fixture pattern this packet follows for STL meshes.
 - OrcaSlicer comparison surface: none.
 
 ## Architecture Constraints
@@ -19,11 +19,13 @@
 - Exact functions, traits, manifests, tests, or fixtures expected to change:
   - **Authored binary**: `resources/regression_wedge.stl`.
   - **Renamed test file**: `crates/slicer-runtime/tests/e2e/benchy_end_to_end_tdd.rs` → `slice_end_to_end_tdd.rs`; function-prefix sweep `benchy_*` → `slice_*` / `wedge_*` per the test classification.
-  - **mod declaration**: `crates/slicer-runtime/tests/e2e.rs` — rename `mod benchy_end_to_end_tdd;` → `mod slice_end_to_end_tdd;`.
+  - **mod declaration**: `crates/slicer-runtime/tests/e2e/main.rs:12` — rewrite `mod benchy_end_to_end_tdd;` → `mod slice_end_to_end_tdd;`.
   - **Reference site 1**: `crates/slicer-runtime/tests/common/slicer_cache.rs:135` (the cache-key construction or doc-comment naming benchy.stl).
-  - **Reference site 2**: `crates/slicer-model-io/tests/stl_roundtrip_tdd.rs:15-17` (the round-trip test's input STL path).
+  - **Reference site 2**: `crates/slicer-model-io/tests/stl_roundtrip_tdd.rs:1,15-17` (the round-trip test's input STL path; line 1 is the file-level doc-comment).
   - **Reference site 3**: `crates/slicer-runtime/tests/integration/live_module_loading_tdd.rs:332` (the live-module-loading integration test's input STL).
   - **Reference site 4**: `crates/pnp-cli/tests/slice_instrumentation_fork_tdd.rs:32` (the CLI instrumentation fork test's input STL).
+  - **Reference site 5**: `modules/core-modules/support-planner/tests/orca_parity_tdd.rs` (Orca-parity test — line resolved by Step 4 dispatch).
+  - **Closure log** (created): `.ralph/specs/90_regression-wedge-stl-swap/closure-log.md` carrying `PRE_ASSERT_COUNT=…`, `WEDGE_SHA256=…`, `WALL_CLOCK_BEFORE=…`, `WALL_CLOCK_AFTER=…`, authoring procedure, and per-test assertion-diff.
   - **Deleted binary**: `resources/benchy.stl`.
 - Rejected alternatives that were considered and why they were not chosen:
   - **Keep benchy.stl as a `#[ignore]` real-world regression mesh**: introduces residual surface area — every future test author has to decide whether to opt back into the slow fixture. Rejected.
@@ -35,11 +37,13 @@
 - `resources/regression_wedge.stl` — CREATE — role: replacement engineered mesh; expected change: new binary, ≤ 50 KB.
 - `resources/benchy.stl` — DELETE.
 - `crates/slicer-runtime/tests/e2e/benchy_end_to_end_tdd.rs` → `slice_end_to_end_tdd.rs` — role: 42 e2e tests; expected change: rename + function-prefix sweep + fixture-path swap.
-- `crates/slicer-runtime/tests/e2e.rs` — role: harness mod declarations; expected change: single `mod` rename.
+- `crates/slicer-runtime/tests/e2e/main.rs` — role: harness mod declarations (`mod benchy_end_to_end_tdd;` is on line 12); expected change: single `mod` rename on line 12.
 - `crates/slicer-runtime/tests/common/slicer_cache.rs` — role: cache module that references benchy.stl at line 135; expected change: one-line swap.
-- `crates/slicer-model-io/tests/stl_roundtrip_tdd.rs` — role: STL round-trip test; expected change: input-path swap on lines 15-17.
+- `crates/slicer-model-io/tests/stl_roundtrip_tdd.rs` — role: STL round-trip test; expected change: input-path swap on lines 1, 15-17.
 - `crates/slicer-runtime/tests/integration/live_module_loading_tdd.rs` — role: live-module-loading integration test; expected change: one-line swap at line 332.
 - `crates/pnp-cli/tests/slice_instrumentation_fork_tdd.rs` — role: CLI fork test; expected change: one-line swap at line 32.
+- `modules/core-modules/support-planner/tests/orca_parity_tdd.rs` — role: support-planner Orca-parity test; expected change: one-line swap (line resolved by Step 4 dispatch).
+- `.ralph/specs/90_regression-wedge-stl-swap/closure-log.md` — CREATE — role: machine-readable record of `PRE_ASSERT_COUNT`, `WEDGE_SHA256`, `WALL_CLOCK_BEFORE`/`AFTER`, authoring procedure, and assertion-diff. Consumed by AC-N1, AC-N2, AC-7.
 
 Above the "≤ 3" target because this is a sweeping migration, but each file change is small in delta. The per-step plan in `implementation-plan.md` keeps each step to ≤ 3 files.
 
@@ -92,5 +96,7 @@ Above the "≤ 3" target because this is a sweeping migration, but each file cha
 
 ## Open Questions
 
-- `[FWD]` — Is OpenSCAD (or another parametric CAD tool) available in the implementer's environment for wedge authoring? If not, the wedge may need to be authored externally and the STL imported as a one-shot artifact. Either is acceptable; the procedure is documented in the closure log regardless. Resolvable mid-flight.
-- `[FWD]` — Are the 4 reference sites' line numbers (135, 15-17, 332, 32) still accurate at implementation time? They were captured from the roadmap; the implementer's first dispatch (residual-reference inventory via `rg`) confirms current line numbers and supersedes the cited numbers if the files have drifted.
+_All scope-affecting open questions resolved at packet refinement time. Remaining flexibility is implementation-detail and explicitly approved here:_
+
+- **Wedge authoring tool**: any deterministic procedure is acceptable (parametric OpenSCAD script, Rust `slicer-helpers` harness emitting binary STL, hand-authored mesh from CAD export). The closure log MUST record the chosen tool, parameters, and reproduction steps. If the chosen tool produces non-deterministic bytes across runs (rare for binary STL but possible if the tool injects timestamps), pin the canonical SHA-256 in the closure log and document the non-determinism explicitly.
+- **Reference-site line numbers**: verified at refinement time — `slicer_cache.rs:135`, `stl_roundtrip_tdd.rs:1,15-17`, `live_module_loading_tdd.rs:332`, `slice_instrumentation_fork_tdd.rs:32` all current. Modules/-site (`support-planner/tests/orca_parity_tdd.rs`) line resolves at Step 4 via a single dispatch.

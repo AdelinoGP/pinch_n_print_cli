@@ -132,7 +132,7 @@ pub fn pnp_cli_bin() -> PathBuf {
 }
 
 pub fn fixture_stl() -> PathBuf {
-    repo_root().join("resources/benchy.stl")
+    repo_root().join("resources/regression_wedge.stl")
 }
 
 pub fn core_modules_dir() -> PathBuf {

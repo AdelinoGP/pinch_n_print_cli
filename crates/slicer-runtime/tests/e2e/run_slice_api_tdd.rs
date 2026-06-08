@@ -1,4 +1,4 @@
-//! AC-3: run_slice() returns Ok(SliceOutcome) with non-empty gcode_text against benchy.stl.
+//! AC-3: run_slice() returns Ok(SliceOutcome) with non-empty gcode_text against regression_wedge.stl.
 //!
 //! Also asserts that run.rs (the library entry point) no longer contains
 //! the `_stale_build_plan` mod (formerly checked against the now-deleted
@@ -21,15 +21,15 @@ fn workspace_root() -> PathBuf {
 }
 
 #[test]
-fn run_slice_against_benchy_returns_nonempty_gcode() {
+fn run_slice_against_wedge_returns_nonempty_gcode() {
     let root = workspace_root();
 
-    let model = root.join("resources").join("benchy.stl");
+    let model = root.join("resources").join("regression_wedge.stl");
     let module_dir = root.join("modules").join("core-modules");
 
     assert!(
         model.exists(),
-        "benchy.stl must exist at {}: run from the workspace root or ensure resources/ is present",
+        "regression_wedge.stl must exist at {}: run from the workspace root or ensure resources/ is present",
         model.display()
     );
     assert!(
@@ -53,7 +53,7 @@ fn run_slice_against_benchy_returns_nonempty_gcode() {
         instrument_stderr: false,
     };
 
-    let outcome = run_slice(opts).expect("run_slice must succeed against benchy + core-modules");
+    let outcome = run_slice(opts).expect("run_slice must succeed against wedge + core-modules");
 
     assert!(
         !outcome.gcode_text.is_empty(),

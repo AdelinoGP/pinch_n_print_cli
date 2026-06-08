@@ -10,7 +10,14 @@
 
 ## Problem Statement
 
-`resources/benchy.stl` is the canonical real-mesh end-to-end test fixture for `crates/slicer-runtime`. It is consumed by 42 tests in `crates/slicer-runtime/tests/e2e/benchy_end_to_end_tdd.rs` plus 4 reference sites in `crates/slicer-runtime/tests/common/slicer_cache.rs`, `crates/slicer-model-io/tests/stl_roundtrip_tdd.rs`, `crates/slicer-runtime/tests/integration/live_module_loading_tdd.rs`, and `crates/pnp-cli/tests/slice_instrumentation_fork_tdd.rs`. The fixture is 11 MB on disk and roughly 200,000 triangles. It produces three problems:
+`resources/benchy.stl` is the canonical real-mesh end-to-end test fixture for `crates/slicer-runtime`. It is consumed by **42** `#[test]` functions in `crates/slicer-runtime/tests/e2e/benchy_end_to_end_tdd.rs` (declared as `mod benchy_end_to_end_tdd;` at `crates/slicer-runtime/tests/e2e/main.rs:12`) plus **5 reference sites** in:
+- `crates/slicer-runtime/tests/common/slicer_cache.rs:135`
+- `crates/slicer-model-io/tests/stl_roundtrip_tdd.rs:1,15-17` (the line-1 reference is a doc-comment)
+- `crates/slicer-runtime/tests/integration/live_module_loading_tdd.rs:332`
+- `crates/pnp-cli/tests/slice_instrumentation_fork_tdd.rs:32`
+- `modules/core-modules/support-planner/tests/orca_parity_tdd.rs` (line resolved at Step 4)
+
+The fixture is **11,289,384 bytes** (≈ 10.77 MB) on disk and roughly 200,000 triangles. It produces three problems:
 
 1. **Wall-clock dominance.** Slicing benchy through the full pipeline takes single-digit seconds even on warm caches; cold-cache cost is multi-second per `cached_run` cache key. With 29 distinct cache keys across the e2e bucket, cold-bench wall time crosses several minutes.
 2. **Unprincipled assertion surface.** The roadmap audit classifies the 42 tests into 22 CLI-SHAPE (assert exit 0 + output written + byte-identical across runs — any real STL works), 17 SHAPE-DEPENDENT (assert markers like `;TYPE:Top surface`, `;TYPE:Bridge`, `;TYPE:Ironing`, retract-pair counts, layer count > 100 — needs a real-shape mesh), and 3 STRUCTURAL (fixture-independent). The 17 SHAPE-DEPENDENT tests assert that benchy's accidental geometry produces these markers; they would assert the same against any mesh deliberately engineered to have a top surface, a bridge, and an ironable top.
@@ -29,12 +36,13 @@ This packet retires benchy.stl by authoring `regression_wedge.stl` — a small, 
 - Author `resources/regression_wedge.stl` deterministically (≤ 50 KB; engineered feature inventory above).
 - Rename `crates/slicer-runtime/tests/e2e/benchy_end_to_end_tdd.rs` → `crates/slicer-runtime/tests/e2e/slice_end_to_end_tdd.rs`.
 - Function-prefix sweep: `benchy_*` → `slice_*` for CLI-SHAPE tests; `benchy_*` → `wedge_*` for SHAPE-DEPENDENT tests where the assertion targets a wedge feature. STRUCTURAL tests use whichever prefix reads more naturally.
-- Update the mod-declaration file `crates/slicer-runtime/tests/e2e.rs` (or equivalent harness file) to declare the renamed module.
-- Update the 4 known non-test references: `crates/slicer-runtime/tests/common/slicer_cache.rs:135`, `crates/slicer-model-io/tests/stl_roundtrip_tdd.rs:15-17`, `crates/slicer-runtime/tests/integration/live_module_loading_tdd.rs:332`, `crates/pnp-cli/tests/slice_instrumentation_fork_tdd.rs:32`.
-- Sweep for residual `benchy\.stl` substrings under `crates/`, `modules/`, `docs/`, `.ralph/`.
+- Update the harness file `crates/slicer-runtime/tests/e2e/main.rs` line 12 (`mod benchy_end_to_end_tdd;` → `mod slice_end_to_end_tdd;`).
+- Update the 5 known non-test references: `crates/slicer-runtime/tests/common/slicer_cache.rs:135`, `crates/slicer-model-io/tests/stl_roundtrip_tdd.rs:15-17`, `crates/slicer-runtime/tests/integration/live_module_loading_tdd.rs:332`, `crates/pnp-cli/tests/slice_instrumentation_fork_tdd.rs:32`, and `modules/core-modules/support-planner/tests/orca_parity_tdd.rs` (line resolved at Step 4).
+- Sweep for residual `benchy\.stl` substrings under **live code paths only** (`crates/` + `modules/`). Historical mentions in `docs/specs/paint-pipeline-orca-parity-roadmap.md`, in `docs/07_implementation_status.md`'s closed-task notes, and in completed/draft packet folders under `.ralph/specs/**` (other than this packet) are project history and remain in place.
 - Delete `resources/benchy.stl`.
-- Document the authoring procedure for `regression_wedge.stl` in the closure log (source, byte SHA-256, regeneration instructions).
+- Document the authoring procedure for `regression_wedge.stl` in the closure log (source, byte SHA-256, regeneration instructions, pre-migration assertion count, before/after wall-clock).
 - Measure and record before/after wall-clock for `cargo test -p slicer-runtime` (cold cache).
+- Capture the closure log at `.ralph/specs/90_regression-wedge-stl-swap/closure-log.md` (tracked file) so the AC-N1, AC-N2, AC-7, and AC-8 gates can `grep` the recorded values rather than relying on a non-tracked notes file.
 
 ## Out of Scope
 
@@ -67,6 +75,8 @@ Files to inspect for this packet:
 
 ## Verification Commands
 
+All commands execute via the **Bash tool** per `CLAUDE.md` §"Environment". Cargo is platform-portable; the wrapper idioms are not.
+
 | Command | Purpose | Return format hint |
 | --- | --- | --- |
 | `cargo check --workspace --all-targets` | Workspace compiles after migrations | FACT pass/fail |
@@ -75,9 +85,12 @@ Files to inspect for this packet:
 | `cargo test -p slicer-model-io --test stl_roundtrip_tdd 2>&1 \| tee target/test-output.log` | AC-6 — STL round-trip test passes | FACT pass/fail |
 | `cargo test -p slicer-runtime --test integration live_module_loading 2>&1 \| tee target/test-output.log` | AC-6 — live module loading test passes | FACT pass/fail |
 | `cargo test -p pnp-cli --test slice_instrumentation_fork_tdd 2>&1 \| tee target/test-output.log` | AC-6 — CLI instrumentation test passes | FACT pass/fail |
-| `rg -n --glob '!.ralph/specs/90_regression-wedge-stl-swap/**' 'benchy\.stl' crates/ modules/ docs/ .ralph/ ; test $? -eq 1` | AC-3 — zero residual references | FACT pass/fail |
+| `cargo test -p <support-planner-pkg> --test orca_parity_tdd 2>&1 \| tee target/test-output.log` | AC-6 — modules/ reference site swap (`<support-planner-pkg>` resolved in Step 4 via `Cargo.toml` lookup) | FACT pass/fail |
+| `! rg -n 'benchy\.stl' crates/ modules/` | AC-3 — zero live-code residual references | FACT pass/fail |
 | `test ! -f resources/benchy.stl && test -f resources/regression_wedge.stl && [ $(wc -c < resources/regression_wedge.stl) -le 51200 ]` | AC-1, AC-2 — files in correct state | FACT pass/fail |
-| `cargo clean -p slicer-runtime && time cargo test -p slicer-runtime 2>&1 \| tee target/test-output.log` | AC-7 — wall-clock measurement | FACT with elapsed time; record in closure log |
+| `cargo clean -p slicer-runtime && START=$(date +%s) && cargo test -p slicer-runtime 2>&1 \| tee target/test-output.log && END=$(date +%s) && echo "ELAPSED_SECONDS=$((END-START))"` | AC-7 — cold-cache wall-clock | FACT with elapsed seconds; record in closure log |
+| `POST=$(rg -c --no-filename '^\s*assert(_eq\|_ne)?!' crates/slicer-runtime/tests/e2e/slice_end_to_end_tdd.rs \| head -n1) && PRE=$(grep -E '^PRE_ASSERT_COUNT=' .ralph/specs/90_regression-wedge-stl-swap/closure-log.md \| cut -d= -f2) && [ "$POST" -ge "$PRE" ]` | AC-N1 — assertion count not silently weakened | FACT pass/fail |
+| `EXPECTED=$(grep -E '^WEDGE_SHA256=' .ralph/specs/90_regression-wedge-stl-swap/closure-log.md \| cut -d= -f2) && ACTUAL=$(sha256sum resources/regression_wedge.stl \| cut -d' ' -f1) && [ "$EXPECTED" = "$ACTUAL" ]` | AC-N2 — shipped file matches pinned SHA-256 | FACT pass/fail |
 
 ## Step Completion Expectations
 

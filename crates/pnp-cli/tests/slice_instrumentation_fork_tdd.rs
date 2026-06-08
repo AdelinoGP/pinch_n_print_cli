@@ -29,7 +29,9 @@ fn workspace_root() -> PathBuf {
 }
 
 fn benchy_path() -> PathBuf {
-    workspace_root().join("resources").join("benchy.stl")
+    workspace_root()
+        .join("resources")
+        .join("regression_wedge.stl")
 }
 
 fn module_dir() -> PathBuf {

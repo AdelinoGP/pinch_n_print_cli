@@ -5,9 +5,9 @@
 //! bracket sequence â€” no real WASM, no real mesh. This isolates the
 //! orchestration cost of the report stack from any pipeline noise.
 //!
-//! TODO (v2): plumb in a real `run_pipeline` against `resources/benchy.stl`
+//! TODO (v2): plumb in a real `run_pipeline` against `resources/regression_wedge.stl`
 //! and `modules/core-modules/` (requires `cargo xtask build-guests`
-//! to have run). The setup mirrors `crates/slicer-runtime/tests/benchy_end_to_end_tdd.rs`
+//! to have run). The setup mirrors `crates/slicer-runtime/tests/e2e/slice_end_to_end_tdd.rs`
 //! â€” extract its `noop_runners()`-equivalent into a shared dev module and
 //! reuse here. See plan B.A4.
 

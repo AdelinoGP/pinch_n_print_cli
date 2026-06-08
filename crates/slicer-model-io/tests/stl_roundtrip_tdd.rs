@@ -1,4 +1,4 @@
-//! AC-7 — STL load round-trip: benchy.stl loads to non-empty MeshIR.
+//! AC-7 — STL load round-trip: regression_wedge.stl loads to non-empty MeshIR.
 
 use std::path::PathBuf;
 
@@ -12,9 +12,15 @@ fn workspace_root() -> PathBuf {
 
 #[test]
 fn benchy_stl_loads_with_nonempty_triangles() {
-    let path = workspace_root().join("resources").join("benchy.stl");
-    assert!(path.exists(), "benchy.stl must exist at {}", path.display());
-    let mesh = slicer_model_io::load_model(&path).expect("benchy.stl must load");
+    let path = workspace_root()
+        .join("resources")
+        .join("regression_wedge.stl");
+    assert!(
+        path.exists(),
+        "regression_wedge.stl must exist at {}",
+        path.display()
+    );
+    let mesh = slicer_model_io::load_model(&path).expect("regression_wedge.stl must load");
     assert!(
         !mesh.objects.is_empty(),
         "MeshIR must have at least one object"

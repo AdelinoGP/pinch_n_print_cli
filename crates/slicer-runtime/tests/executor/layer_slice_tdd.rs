@@ -275,28 +275,32 @@ fn per_layer_executor_produces_deterministic_slice_across_runs() {
 /// slice stage has regressed into the pre-fix state (the pipeline would
 /// silently emit empty G-code with no diagnostic).
 #[test]
-fn layer_slice_builtin_produces_real_polygons_for_benchy_mesh() {
+fn layer_slice_builtin_produces_real_polygons_for_wedge_mesh() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .canonicalize()
         .expect("repo root")
-        .join("resources/benchy.stl");
+        .join("resources/regression_wedge.stl");
     if !path.exists() {
         // Fixture not present in this environment â€” skip silently so the
         // rest of the suite keeps running. The live-path binary test
-        // `benchy_e2e_real_pipeline_produces_gcode` covers the same
+        // `slice_e2e_real_pipeline_produces_gcode` covers the same
         // fixture presence check.
         return;
     }
 
-    let mesh = slicer_model_io::load_model(&path).expect("load 3dbenchy STL");
-    assert_eq!(mesh.objects.len(), 1, "benchy STL must load as one object");
+    let mesh = slicer_model_io::load_model(&path).expect("load regression wedge STL");
+    assert_eq!(mesh.objects.len(), 1, "wedge STL must load as one object");
     let object_id = mesh.objects[0].id.clone();
 
-    // Slice at representative Zs: close to bottom, mid-hull, and higher.
-    // The Benchy mesh occupies roughly z âˆˆ [0, 48]; these Zs all intersect
-    // real hull geometry and must produce at least one closed contour.
+    // Slice at representative Zs: base, frustum, body.
+    // The wedge mesh occupies z âˆˆ [0, 40]; these Zs all intersect
+    // real geometry and must produce at least one closed contour.
+    // The wedge's cross-sections are axis-aligned rectangles (4 points
+    // for base/body, more if the slice intersects the through-hole or
+    // cantilever), so the assertion floor is calibrated to "valid
+    // rectangular contour" rather than benchy's curved-hull ~20 points.
     for z in [0.2_f32, 1.0, 5.0, 10.0] {
         let layer = GlobalLayer {
             index: 0,
@@ -326,8 +330,8 @@ fn layer_slice_builtin_produces_real_polygons_for_benchy_mesh() {
         );
         let total_points: usize = region.polygons.iter().map(|p| p.contour.points.len()).sum();
         assert!(
-            total_points >= 20,
-            "expected a real hull contour at z={z} (>= 20 points), got {total_points}"
+            total_points >= 4,
+            "expected at least a valid rectangular contour at z={z} (>= 4 points), got {total_points}"
         );
     }
 }
@@ -337,17 +341,17 @@ fn layer_slice_builtin_produces_real_polygons_for_benchy_mesh() {
 /// reproducibility here is a prerequisite for cross-run determinism of
 /// the full G-code output.
 #[test]
-fn layer_slice_builtin_is_deterministic_for_benchy_mesh() {
+fn layer_slice_builtin_is_deterministic_for_wedge_mesh() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
         .canonicalize()
         .expect("repo root")
-        .join("resources/benchy.stl");
+        .join("resources/regression_wedge.stl");
     if !path.exists() {
         return;
     }
-    let mesh = slicer_model_io::load_model(&path).expect("load benchy");
+    let mesh = slicer_model_io::load_model(&path).expect("load wedge");
     let object_id = mesh.objects[0].id.clone();
     let layer = GlobalLayer {
         index: 7,

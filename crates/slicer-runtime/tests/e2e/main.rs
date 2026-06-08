@@ -9,12 +9,12 @@
 mod common;
 
 mod acceptance_gate_gaps_tdd;
-mod benchy_end_to_end_tdd;
 mod cube_4color_modifier_part_e2e_tdd;
 mod cube_painted_e2e_tdd;
 mod cube_painted_overrides_e2e_tdd;
 mod run_slice_api_tdd;
 mod scenario_traces_tdd;
+mod slice_end_to_end_tdd;
 mod slicer_report_html_tdd;
 mod slicing_precision_integration_tdd;
 mod slicing_promotion_e2e_dispatch_regression_tdd;

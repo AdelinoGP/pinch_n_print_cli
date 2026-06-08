@@ -271,7 +271,7 @@ fn wall_count_scales_max_move_distance() {
 /// determinism and stability across runs but do **not** prove parity with
 /// OrcaSlicer's reference output. A follow-up TASK in `docs/07` tracks
 /// replacing these with real OrcaSlicer reference data extracted from
-/// `resources/test_models/benchy.stl` + `resources/test_config/benchy-tree-support.json`.
+/// `resources/test_models/regression_wedge.stl` + `resources/test_config/benchy-tree-support.json`.
 ///
 /// To regenerate the goldens after an intentional algorithm change, set
 /// `SUPPORT_PLANNER_REGEN_GOLDEN=1`. The test then writes fresh goldens and
@@ -338,7 +338,7 @@ fn benchy_orca_parity_within_tolerance() {
 
     // Header lines for self-captured goldens (skipped when parsing).
     let header = "# Source: ModularSlicer self-capture (synthetic overhang fixture, packet 31b)\n\
-                  # Replace with real OrcaSlicer reference data for benchy.stl before promoting to status: implemented.\n\
+                  # Replace with real OrcaSlicer reference data for regression_wedge.stl before promoting to status: implemented.\n\
                   # Tracked by: docs/07 follow-up to packet 31b_support-planner-algorithmic-parity.\n";
 
     if regen {

@@ -329,7 +329,7 @@ fn live_plan_is_deterministic_across_repeated_loads() {
 #[test]
 fn live_plan_preserves_seeded_planner_object_height_keys_for_real_core_modules() {
     let repo = repo_root();
-    let model = repo.join("resources/benchy.stl");
+    let model = repo.join("resources/regression_wedge.stl");
     let core_modules = repo.join("modules/core-modules");
 
     let mesh_ir = load_model(&model).expect("load real Benchy fixture");
