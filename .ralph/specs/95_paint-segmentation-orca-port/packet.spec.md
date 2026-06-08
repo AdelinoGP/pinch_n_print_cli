@@ -10,7 +10,20 @@ context_cost_estimate: M
 
 ## Goal
 
-Replace the broken paint-segmentation kernel (`crates/slicer-core/src/algos/paint_segmentation.rs:298-362` — projects facets' XY shadows onto every layer, drops Z, no slice-plane intersection, no Voronoi, no top/bottom propagation, no width limiting) and the obsolete `execute_slice_postprocess_paint_annotation` driver at `crates/slicer-runtime/src/slice_postprocess.rs:302` with the OrcaSlicer-parity Phases 1, 2, 3, 4, 6, 7 from `docs/specs/orca-paint-segmentation-parity.md` — running POST-`host:slice` (D1; between `host:shell_classification` and `host:support_geometry`), reading `SliceIR` directly (not `MeshIR`'s top-of-prepass slot), computing per-semantic Voronoi-based contour colorization with EdgeGrid spatial cell indexing and `triangle_z_intersection` slice-plane math (Phases 2-3), `boostvoronoi`-backed `MMU_Graph` construction with `remove_multiple_edges_in_vertices` / `remove_nodes_with_one_arc` pruning + `extract_colored_segments` leftmost-arc walk with `Option<usize>` repair sentinel (Phase 4; H561-H567 hazards), `slice_mesh_slabs` top/bottom propagation (Phase 6), per-semantic outputs composed into variant-chain ExPolygon maps via `intersection_ex` / `difference_ex` (Phase 7; D5 geometric composition) — and inlining the resulting per-variant polygons into the existing `SliceIR.regions[*]` via `Blackboard::replace_slice_ir` (D8); declaring `[[region_split]]` on the `material` and `fuzzy_skin` core paint semantics in the manifest of a NEW core module `paint-segmentation-default` (or in the host's effective manifest if the kernel stays a host built-in — to be decided in design); deleting `PaintRegionIR`, `LayerPaintMap`, `SemanticRegion`, the `Blackboard::paint_regions()` + `commit_paint_regions` + `PaintRegionRTreeEntry/Index` + `point_in_paint_region` (`crates/slicer-core/src/paint_region.rs:22-93`); turning the per-layer `run_paint_annotation` at `crates/slicer-runtime/src/layer_executor.rs:494-528` into a no-op or deleting it; preserving the modifier-volume sub-pipeline routing to `segment_annotations[SupportEnforcer/Blocker]` per D14; making all 12 RED cube_4color tests + all 12 RED cube_fuzzy_painted tests GREEN. This is the largest, riskiest packet in the roadmap; it ships 17 sub-steps as a single coherent slice because the IR contract switch (delete PaintRegionIR + inline into SliceIR + change driver position) cannot be partially landed.
+Replace the broken paint-segmentation kernel with the OrcaSlicer-parity Phases 1, 2, 3, 4, 6, 7 pipeline — repositioned to run between `host:shell_classification` and `host:support_geometry`, committed into `SliceIR.regions[*]` via `Blackboard::replace_slice_ir`, with `PaintRegionIR` / `LayerPaintMap` / `SemanticRegion` and their host-side rtree deleted and the modifier-volume sub-pipeline preserved — turning all 12 RED `cube_4color_paint_tdd` + 12 RED `cube_fuzzy_painted_tdd` tests GREEN.
+
+### Solution Shape
+
+- **Broken kernel removed**: `crates/slicer-core/src/algos/paint_segmentation.rs:298-362` (projects facets' XY shadows onto every layer, drops Z, no slice-plane intersection, no Voronoi, no top/bottom propagation) and `execute_slice_postprocess_paint_annotation` at `crates/slicer-runtime/src/slice_postprocess.rs:302` are deleted.
+- **New module structure**: `crates/slicer-core/src/algos/paint_segmentation/` with one file per phase + helpers (see `design.md` §Code Change Surface).
+- **Driver position D1**: runs POST-`host:slice`, between `host:shell_classification` and `host:support_geometry`; reads `SliceIR` directly (not `MeshIR`); writes via `Blackboard::replace_slice_ir` (D8).
+- **Phase 2-3**: EdgeGrid spatial cell indexing + `triangle_z_intersection` slice-plane math.
+- **Phase 4**: `boostvoronoi`-backed `MMU_Graph` construction + `remove_multiple_edges_in_vertices` / `remove_nodes_with_one_arc` pruning + `extract_colored_segments` leftmost-arc walk with `Option<usize>` repair sentinel (H561-H567 hazards encoded per spec §8).
+- **Phase 6**: `slice_mesh_slabs` top/bottom propagation.
+- **Phase 7**: per-semantic outputs composed into variant-chain ExPolygon maps via `intersection_ex` / `difference_ex` (D5 geometric composition).
+- **Modifier-volume preserved** (D14): `SupportEnforcer` / `SupportBlocker` route to `SlicedRegion.segment_annotations` on the BASE variant — NOT region-split.
+- **Deleted surface**: `PaintRegionIR`, `LayerPaintMap`, `SemanticRegion`, `crates/slicer-core/src/paint_region.rs` (rtree + `point_in_paint_region`), `Blackboard::paint_regions()` + `commit_paint_regions`, `PaintRegionRTreeEntry`/`Index`; `run_paint_annotation` at `layer_executor.rs:494-528` is no-op or removed.
+- **17 sub-steps land as one packet**: the IR-contract switch (delete `PaintRegionIR` + inline into `SliceIR` + change driver position) cannot be partially landed — any intermediate state leaves the workspace uncompilable or with two parallel paint pipelines.
 
 ## Scope Boundaries
 
@@ -20,7 +33,7 @@ This packet replaces the entire paint-segmentation kernel with the OrcaSlicer-pa
 
 - Depends on: P91 (IR scaffolding), P92 (manifest + dispatch), P93 (RegionMapping cross-product), P94 (mesh-segmentation wiring) all `implemented`. Without P94, sub-facet strokes leak into the paint-segmentation input and the kernel can't assume facet_values is authoritative.
 - Unblocks: P4 (96, Phase 5 width-limiting) reads the kernel's per-variant polygons. P5a (97, WASM mesh-segmentation deletion) can land in parallel with this packet but typically after.
-- Activation blockers: P91, P92, P93, P94 all `implemented`. Confirmation that `boostvoronoi` crate API supports line-segment sites, `vertex.color()` metadata, and infinite-edge clipping via `is_primary()` / `twin()` — verified in sub-step 7 (P3-S7) as the first non-helper work.
+- Activation blockers: P91, P92, P93, P94 all `implemented`. `boostvoronoi 0.12.1` API surface (canonical source <https://codeberg.org/eadf/boostvoronoi_rs>; Rust port of Boost 1.76.0 `polygon::voronoi`) is pre-confirmed via docs.rs: line-segment sites, `Vertex::get_color`, `Edge::is_primary`, `Edge::twin -> Result<EdgeIndex, BvError>` all present. Sub-step 7 still verifies the one remaining open question — **deterministic vertex emission order across runs** — which is `[FWD]` (resolvable mid-flight with a sort-pass fallback; not a packet-redesign blocker). API-naming hazards (`get_color` not `color()`; `twin` returns `Result`) recorded as Architecture Constraints in `design.md`.
 
 ## Acceptance Criteria
 
@@ -104,19 +117,19 @@ This packet replaces the entire paint-segmentation kernel with the OrcaSlicer-pa
 
 | `cargo test -p slicer-core paint_segmentation::top_bottom 2>&1 | tee target/test-output.log`
 
-### AC-11 — Sub-step 12: Phase 7 variant-chain composition produces ExPolygon-per-variant-chain map via geometric composition (D5)
+### AC-11 — Sub-step 12: Phase 7 variant-chain composition produces `BTreeMap<Vec<(String, PaintValue)>, Vec<ExPolygon>>` via geometric composition (D5)
 
 **Given** per-semantic outputs from Phase 4 + Phase 6,
 **When** Phase 7 composes,
-**Then** the resulting map keyed by `Vec<(String, PaintValue)>` carries the disjoint ExPolygon set for each variant chain — base chain (unpainted area) = total contour minus union of all painted variants; each painted chain = intersection_ex of its constituent semantic outputs minus union_ex of overlapping higher-priority chains.
+**Then** the resulting `BTreeMap<Vec<(String, PaintValue)>, Vec<ExPolygon>>` (semantic-name + PaintValue pairs, key order deterministic via `BTreeMap`) satisfies all of: (a) the base chain (empty `Vec` key, i.e. unpainted area) equals total contour minus `union_ex` of all painted variants; (b) each painted chain equals `intersection_ex` of its constituent semantic outputs minus `union_ex` of overlapping higher-priority chains; (c) for any two distinct variant chains in the map, their `Vec<ExPolygon>` sets have empty `intersection_ex` (disjointness invariant).
 
 | `cargo test -p slicer-core paint_segmentation::compose_variants 2>&1 | tee target/test-output.log`
 
-### AC-12 — Sub-step 13: `execute_paint_segmentation_v2` driver produces `Arc<Vec<SliceIR>>` with per-variant SlicedRegion entries
+### AC-12 — Sub-step 13: `execute_paint_segmentation_v2` driver produces `Arc<Vec<SliceIR>>` with per-variant `SlicedRegion` fields populated
 
 **Given** the new driver,
 **When** it runs against the post-slice Blackboard for `cube_4color.3mf`,
-**Then** the output `SliceIR` carries one `SlicedRegion` per (base region, variant chain) cross-product element, with `polygons` populated per Phase 7's composition.
+**Then** the output `Arc<Vec<SliceIR>>` (one `SliceIR` per layer) carries one `SlicedRegion` per (base region, variant chain) cross-product element with all of: (a) `SlicedRegion.variant_chain` set to the corresponding `Vec<(String, PaintValue)>` key from Phase 7's composition; (b) `SlicedRegion.polygons` set to the disjoint `Vec<ExPolygon>` from Phase 7 for that chain; (c) `SlicedRegion.segment_annotations` populated with modifier-volume `PaintSemantic::SupportEnforcer` / `PaintSemantic::SupportBlocker` annotations on the BASE variant chain only (per D14, never on painted chains); (d) per-layer `SlicedRegion` count equals `|base_regions| × |variant_chains_for_layer|` from `RegionMapIR`.
 
 | `cargo test -p slicer-core paint_segmentation::driver_v2 2>&1 | tee target/test-output.log`
 
@@ -172,9 +185,9 @@ This packet replaces the entire paint-segmentation kernel with the OrcaSlicer-pa
 
 **Given** unpainted geometry,
 **When** `pnp_cli slice` runs,
-**Then** g-code is byte-identical to the post-P94 baseline (paint-segmentation short-circuits on no-paint-data input).
+**Then** g-code is byte-identical to the post-P94 baseline captured in Step 0 (recorded as `P94_BASELINE_SHA=<hex>` in `.ralph/specs/95_paint-segmentation-orca-port/closure-log.md`); paint-segmentation short-circuits on no-paint-data input. The comparison shell command exits 0 only on match.
 
-| `cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output /tmp/p95-wedge.gcode && sha256sum /tmp/p95-wedge.gcode`
+| `mkdir -p target && cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output target/p95-wedge-post.gcode && test "$(sha256sum target/p95-wedge-post.gcode | awk '{print $1}')" = "$(grep -oE 'P94_BASELINE_SHA=[a-f0-9]+' .ralph/specs/95_paint-segmentation-orca-port/closure-log.md | head -1 | cut -d= -f2)"`
 
 ### AC-20 — `cargo test --workspace` passes (final gate; PRTK packet)
 
@@ -186,6 +199,10 @@ This packet replaces the entire paint-segmentation kernel with the OrcaSlicer-pa
 
 ### AC-21 — Guest WASM `--check` clean
 
+**Given** the new files added under `crates/slicer-core/`, `crates/slicer-runtime/`, and `crates/slicer-ir/` (all guest-WASM inputs per `CLAUDE.md` §"Guest WASM Staleness"),
+**When** `cargo xtask build-guests` runs then `cargo xtask build-guests --check`,
+**Then** the freshness check reports no `STALE:` entries.
+
 | `cargo xtask build-guests && cargo xtask build-guests --check`
 
 ## Negative Test Cases
@@ -194,11 +211,11 @@ This packet replaces the entire paint-segmentation kernel with the OrcaSlicer-pa
 
 | `! rg -q 'PaintRegionIR|point_in_paint_region|commit_paint_regions' crates/`
 
-### AC-N2 — Paint-segmentation short-circuits on no-paint-data input (no kernel work performed)
+### AC-N2 — Paint-segmentation short-circuits on no-paint-data input (no kernel work performed; observable via existing instrumentation)
 
 **Given** an unpainted mesh,
-**When** the driver runs,
-**Then** the driver detects `aggregated_region_split.is_empty() OR all_objects_have_empty_paint_data` and emits a "PaintSegmentation skipped" structured event; `replace_slice_ir` is NOT called.
+**When** the `host:paint_segmentation` driver runs,
+**Then** all of: (a) `Blackboard::replace_slice_ir` is NOT called for the paint-segmentation slot; (b) a `ProgressEventType::StageStart` event with `stage == "host:paint_segmentation"` is emitted, immediately followed by `ProgressEventType::StageComplete` for the same `stage` with `elapsed_ms == 0`; (c) zero `ProgressEventType::ModuleStart` events appear between those two stage events; (d) the short-circuit condition fired matches one of `aggregated_region_split.is_empty()` or `all_objects_have_empty_paint_data` (asserted via the test fixture's instrumentation hook). No new `ProgressEventType::StageSkipped` variant is introduced in this packet — see `design.md` §Locked Assumptions.
 
 | `cargo test -p slicer-runtime --test executor paint_segmentation_skip_when_no_paint_or_no_opted_in_semantic 2>&1 | tee target/test-output.log`
 
@@ -212,15 +229,12 @@ This packet replaces the entire paint-segmentation kernel with the OrcaSlicer-pa
 
 ## Verification (gate commands only)
 
+These are the closure gates the packet review runs. The full per-AC matrix lives in `requirements.md`; per-sub-step crosswalk in `task-map.md`.
+
 1. `cargo check --workspace --all-targets`
 2. `cargo clippy --workspace --all-targets -- -D warnings`
-3. `cargo test -p slicer-core paint_segmentation 2>&1 | tee target/test-output.log` (per-sub-step kernel tests)
-4. `cargo test -p slicer-runtime --test executor cube_4color_paint_tdd 2>&1 | tee target/test-output.log` (AC-17)
-5. `cargo test -p slicer-runtime --test executor cube_fuzzy_painted_tdd 2>&1 | tee target/test-output.log` (AC-18)
-6. `cargo xtask build-guests && cargo xtask build-guests --check`
-7. `cargo test --workspace 2>&1 | tee target/test-output.log` (AC-20 — workspace final gate)
-
-Full per-AC matrix lives in `requirements.md`. Per-sub-step crosswalk in `task-map.md`.
+3. `cargo test --workspace 2>&1 | tee target/test-output.log` (AC-20 — workspace final gate; dispatched per `CLAUDE.md` §Test Discipline; subsumes AC-1..AC-19 + AC-N1..AC-N3 since the per-sub-step tests, cube `_tdd.rs` buckets, and short-circuit test all live in the workspace)
+4. `cargo xtask build-guests && cargo xtask build-guests --check` (AC-21 — guest WASM staleness gate; the packet edits multiple guest-WASM input paths per `CLAUDE.md`)
 
 ## Authoritative Docs
 
@@ -232,12 +246,24 @@ Full per-AC matrix lives in `requirements.md`. Per-sub-step crosswalk in `task-m
 
 ## Doc Impact Statement
 
-A list of specific doc sections that this packet modifies / removes:
+Code surface deltas this packet ships (P5c/99 carries the doc-text edits that follow these code deltas):
 
-- New module `crates/slicer-core/src/algos/paint_segmentation/` — doc-commented at every public symbol — `rg -q 'execute_paint_segmentation_v2' crates/slicer-core/src/algos/paint_segmentation/`.
-- `crates/slicer-ir/src/slice_ir.rs` — PaintRegionIR / LayerPaintMap / SemanticRegion type declarations REMOVED — `! rg -q 'PaintRegionIR' crates/slicer-ir/src/`.
+Added:
+- `crates/slicer-core/src/algos/paint_segmentation/` — new module directory; every public symbol doc-commented. Verify: `rg -q 'execute_paint_segmentation_v2' crates/slicer-core/src/algos/paint_segmentation/`.
+- `crates/slicer-core/src/triangle_mesh_slicer.rs::slice_mesh_slabs` — new public helper (sub-step 10).
+- `crates/slicer-core/src/polygon_ops.rs` — 9 new public helpers (sub-step 0; see AC-1).
+- `crates/slicer-core/Cargo.toml` — `boostvoronoi` dep added (sub-step 7).
+- `crates/slicer-runtime/src/prepass.rs` — `PrePass::PaintSegmentation` stage inserted between `ShellClassification` and `SupportGeometry`.
 
-`docs/01`, `docs/02`, `docs/04`, `docs/07` updates are deferred to P5c (99). `docs/specs/orca-paint-segmentation-parity.md` flips `Status:` from `awaiting Slice Rework` to `implemented` in P5c.
+Removed:
+- `crates/slicer-ir/src/slice_ir.rs` — `PaintRegionIR`, `LayerPaintMap`, `SemanticRegion` type declarations. Verify: `! rg -q 'pub struct PaintRegionIR|pub struct LayerPaintMap|pub struct SemanticRegion' crates/slicer-ir/`.
+- `crates/slicer-core/src/paint_region.rs` — entire file (host-side rtree + `point_in_paint_region`). Verify: `test ! -f crates/slicer-core/src/paint_region.rs`.
+- `crates/slicer-core/src/lib.rs` — `pub mod paint_region;` declaration.
+- `crates/slicer-runtime/src/blackboard.rs` — `paint_regions()` accessor, `commit_paint_regions()` method, `PaintRegionRTreeIndex` field. Verify: `! rg -q 'fn paint_regions|fn commit_paint_regions|PaintRegionRTreeIndex' crates/slicer-runtime/src/blackboard.rs`.
+- `crates/slicer-runtime/src/slice_postprocess.rs` — rtree field at line 24 and `execute_slice_postprocess_paint_annotation` shim at line 302 (no-op or fully removed per AC-16).
+- `crates/slicer-runtime/src/layer_executor.rs:494-528` — `run_paint_annotation` body (no-op or fully removed per AC-16).
+
+Out of scope this packet: `docs/01_system_architecture.md`, `docs/02_ir_schemas.md`, `docs/04_host_scheduler.md`, `docs/07_implementation_status.md` text edits are deferred to P5c (99). `docs/specs/orca-paint-segmentation-parity.md` flips `Status:` from `awaiting Slice Rework` to `implemented` in P5c.
 
 <!-- snippet: orca-delegation -->
 ## OrcaSlicer Reference Obligations

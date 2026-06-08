@@ -15,7 +15,8 @@
 - Coordinate units: **1 unit = 100 nm** (10⁻⁴ mm), NOT 1 nm like OrcaSlicer. Divide OrcaSlicer constants by 100. Use `Point2::from_mm(x, y)` or `mm_to_units()` at every mm↔unit boundary. Full porting checklist in `docs/08_coordinate_system.md`.
 
 - Phase-isolation invariant: each phase's output type is documented and unit-tested in isolation. Phase 3 outputs `Vec<PaintedLine>`; Phase 4 outputs `Vec<ColoredSegment>`; Phase 6 outputs per-semantic ExPolygon maps; Phase 7 outputs the final variant-chain map. Mixing phase outputs across kernel functions is forbidden.
-- H561 invariant: `vertex.color()` is dual-use in boostvoronoi (winding-tag AND graph metadata). Use typed-state wrappers `VoronoiVertex` (boost-emitted) and `GraphVertex` (post-pruning) to prevent silent mix.
+- H561 invariant: the boostvoronoi color slot is dual-use (winding-tag AND graph metadata). The Rust crate exposes it as `Vertex::get_color() -> ColorType` / `Vertex::set_color(ColorType) -> ColorType` / `Vertex::or_color(ColorType) -> ColorType` (matching `Edge::get_color`/`set_color`/`or_color`) — note `get_color`, NOT `color()` as in the OrcaSlicer C++ source. Use typed-state wrappers `VoronoiVertex` (boost-emitted) and `GraphVertex` (post-pruning) to prevent silent mix; never read `get_color()` on a `GraphVertex`-tagged value.
+- Boostvoronoi-`twin` invariant: `Edge::twin()` returns `Result<EdgeIndex, BvError>` (not a bare pointer like the C++ source). Every twin-walk in the kernel MUST `?`-propagate the `BvError` — never `.unwrap()` or `.expect()` on `twin()` in non-test code, since a graph-construction error here corrupts every downstream Phase 4d/4e/4f walk and the H567 explicit-index-tracking invariant assumes the walk completed without error.
 - H562 invariant: repair sentinel for `extract_colored_segments` is `Option<usize>::None`, never `usize::MAX`. `usize::MAX` is a valid graph node index in extreme cases; using it as a sentinel is the OrcaSlicer-port bug we explicitly avoid.
 - H565 invariant: do NOT replicate the OrcaSlicer bug of hardcoding extruder 0's nozzle. Read each extruder's own nozzle from `config-view`.
 - H566 invariant: degree-bounded dedup uses `HashSet<EdgeKey>` with `debug_assert!(degree <= 20)` (graph degrees are bounded by triangle adjacency in practice).
@@ -23,6 +24,7 @@
 - Driver-position invariant: paint-segmentation runs AFTER `host:slice` (consumes `SliceIR`) and AFTER `host:shell_classification` (consumes surface classification). Writes via `replace_slice_ir` — the same blackboard contract `host:mesh_segmentation` follows for its slot.
 - D14 invariant: modifier-volume support (`SupportEnforcer` / `SupportBlocker`) routes to `segment_annotations`, NOT region-split. This is critical — modifier-volume support is a per-contour-point property, not a variant axis.
 - D15 invariant: per-variant polygons may be empty (no geometric coverage) but the entry still exists in `RegionMapIR` (placed by P1c). This packet just populates the polygons.
+- **Empty-polygon ownership (handed off from P93 refinement)**: `RegionPlan` entries arriving from P93's `RegionMapIR` may carry empty per-variant polygons unconditionally (P93 follows D15 by emit-without-gating). P95 has the polygons in hand via `replace_slice_ir` and owns the empty-polygon gate. **Decision deferred to sub-step 13 (the integrating driver)**: the integrator chooses whether to filter empty-polygon entries when emitting `SlicedRegion`s, OR to leave them as no-ops downstream. The packet-level acceptance does not pre-bind that choice.
 
 ## Code Change Surface
 
@@ -57,6 +59,7 @@ Per the sub-step list above. The full per-sub-step file list lives in `task-map.
 - `docs/08_coordinate_system.md` — coordinate constants.
 - `crates/slicer-core/src/algos/paint_segmentation.rs` (the old broken file) — read briefly during sub-step 16's deletion to confirm consumers; the modifier-volume sub-pipeline lives at lines 374-417 and is salvaged into `modifier_volumes.rs`.
 - `crates/slicer-core/src/paint_region.rs` — read briefly during sub-step 16 to confirm no surprising consumers.
+- `boostvoronoi` crate (crates.io name `boostvoronoi`, current v0.12.1) — Rust port of Boost 1.76.0 `polygon::voronoi` (Fortune's algorithm; line-segment sites supported per upstream README). Canonical source + README: <https://codeberg.org/eadf/boostvoronoi_rs>. Pre-confirmed APIs (no spike needed): `Vertex::get_color/set_color/or_color`, `Edge::is_primary/is_secondary/twin/next/prev/vertex0/cell/is_linear/is_curved/get_color/set_color/or_color`, `ColorType` alias — see <https://docs.rs/boostvoronoi/0.12.1/boostvoronoi/prelude/struct.Vertex.html> and `.../struct.Edge.html`. Delegate any further docs fetch via WebFetch SUMMARY (≤ 200 words); do NOT clone the repo into the workspace.
 
 ## Out-of-Bounds Files
 
@@ -90,6 +93,7 @@ Per the sub-step list above. The full per-sub-step file list lives in `task-map.
 - **Driver position D1**: paint-segmentation runs POST-`host:slice`, between `host:shell_classification` and `host:support_geometry`. The DAG validator (via `required_slots` table) enforces.
 - **Modifier-volume routing D14**: SupportEnforcer / SupportBlocker volumes route to `segment_annotations`, NOT to a region-split. Spec §7 + roadmap D14.
 - **`PaintRegionIR` and related types deleted**: no transitional shim remains.
+- **Short-circuit telemetry pattern**: when the driver short-circuits on no-paint-data input, it emits `ProgressEventType::StageStart` then immediately `ProgressEventType::StageComplete` with `elapsed_ms == 0` and zero intervening `ProgressEventType::ModuleStart` events. No new `ProgressEventType::StageSkipped` variant is added — that schema change is deferred. Workspace today has no `StageSkipped` (per `docs/09_progress_events.md` + `crates/slicer-runtime/src/progress_events.rs::ProgressEventType`); reuse the existing channel.
 
 ## Risks and Tradeoffs
 
@@ -108,6 +112,6 @@ Per the sub-step list above. The full per-sub-step file list lives in `task-map.
 
 ## Open Questions
 
-- `[BLOCK]` — Does `boostvoronoi` crate (current version) support all four required API features (line-segment sites, vertex.color metadata, infinite-edge clipping via is_primary/twin, deterministic vertex ordering)? Sub-step 7 spike resolves; if NO, the packet's design changes to accommodate the chosen fallback (spade or cxx-bridge). Resolution recorded in the closure log + roadmap deviation log.
+- `[FWD]` — Does `boostvoronoi 0.12.1` emit Voronoi vertices in a deterministic order across re-runs of the same input? Spec §6 + roadmap require deterministic output to keep g-code SHA stable (AC-19, AC-N3). The crate documents no explicit ordering guarantee; the spike at sub-step 7 must include a "construct twice, compare vertex sequence" check. If non-deterministic, the kernel adds a post-construction sort pass keyed on `(x, y, get_id())` before any downstream phase reads vertices. Failure mode is bounded (sort) — not a packet-redesign blocker; resolvable mid-flight at Step 5. ~~Previously [BLOCK] on `vertex.color()` and edge `is_primary()`/`twin()` accessors — RESOLVED: confirmed via docs.rs (`Vertex::get_color`, `Edge::is_primary`, `Edge::twin -> Result<EdgeIndex, BvError>`). API-naming + Result-twin hazards recorded in Architecture Constraints (H561 / boostvoronoi-twin invariants).~~
 - `[FWD]` — The exact line number of the existing `paint_segmentation_producer` invocation in `prepass.rs` may have drifted between roadmap-write and now (P94 wiring may have shifted neighbors). Sub-step 15 dispatch confirms.
 - `[FWD]` — Where does `paint_segmentation_producer.rs`'s `MESH_SEGMENTATION_PRODUCER`-pattern constant live and what stage_id does it currently claim? After the new driver wires in at the new position, the old constant either retargets to the new stage or is deleted.

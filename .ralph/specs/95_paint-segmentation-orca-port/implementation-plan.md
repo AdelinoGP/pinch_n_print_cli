@@ -9,17 +9,21 @@
 
 ## Steps
 
-### Step 0: Capture pre-packet baselines
+### Step 0: Capture pre-packet baselines into closure-log.md
 
 - Task IDs: `TASK-245`
-- Objective: regression-guard SHAs.
+- Objective: regression-guard SHAs. Both SHAs are written to `.ralph/specs/95_paint-segmentation-orca-port/closure-log.md` as `P94_BASELINE_SHA=<hex>` (wedge) and `P94_CUBE_BASELINE_SHA=<hex>` (cube) so AC-19's shell command and Step 15's determinism check can read them back.
 - Precondition: P94 closed.
-- Postcondition: 2 SHAs recorded (wedge + cube).
+- Postcondition: 2 SHAs recorded in `closure-log.md`.
+- Files allowed to edit:
+  - `.ralph/specs/95_paint-segmentation-orca-port/closure-log.md` (CREATE or append).
 - Expected dispatches:
-  - "Run `cargo run ... regression_wedge.stl ... && sha256sum`; return FACT".
-  - "Run `cargo run ... cube_4color.3mf ... && sha256sum`; return FACT".
+  - "Run `mkdir -p target && cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output target/p95-wedge-baseline.gcode && sha256sum target/p95-wedge-baseline.gcode | awk '{print $1}'`; return FACT (single sha256, hex only)".
+  - "Run `cargo run --bin pnp_cli --release -- slice --model resources/cube_4color.3mf --module-dir modules/core-modules --output target/p95-cube-baseline.gcode && sha256sum target/p95-cube-baseline.gcode | awk '{print $1}'`; return FACT (single sha256, hex only)".
+  - Then write `P94_BASELINE_SHA=<wedge_hash>` and `P94_CUBE_BASELINE_SHA=<cube_hash>` as separate lines in `closure-log.md` (delegated edit).
 - Context cost: `S`.
-- Exit condition: SHAs recorded.
+- Verification: `grep -q 'P94_BASELINE_SHA=[a-f0-9]\{64\}' .ralph/specs/95_paint-segmentation-orca-port/closure-log.md && grep -q 'P94_CUBE_BASELINE_SHA=[a-f0-9]\{64\}' .ralph/specs/95_paint-segmentation-orca-port/closure-log.md` exits 0.
+- Exit condition: closure-log.md carries both baseline SHAs.
 
 ### Step 1: Polygon helpers (sub-step 0)
 
@@ -85,14 +89,14 @@
 - Precondition: Step 4 green.
 - Postcondition: `boostvoronoi` dep added; spike confirms all 4 API features; `MMU_Graph` builds on synthetic input.
 - Files allowed to read:
-  - boostvoronoi crate docs (via `cargo doc` if needed) — delegate via the API spike dispatch.
+  - boostvoronoi crate docs (via `cargo doc` if needed) and the canonical source <https://codeberg.org/eadf/boostvoronoi_rs> (current v0.12.1; Rust port of Boost 1.76.0 `polygon::voronoi`) — delegate via the API spike dispatch.
 - Files allowed to edit (≤ 3):
   - `crates/slicer-core/Cargo.toml`.
   - `crates/slicer-core/src/algos/paint_segmentation/voronoi_graph.rs` (NEW).
 - Expected dispatches:
-  - "Spike: add boostvoronoi to `slicer-core/Cargo.toml`, write a tiny synthetic test (4 line segments forming a square) that constructs a Voronoi, dumps each vertex.coord, vertex.color, edge.is_primary, edge.twin status. Return SUMMARY ≤ 200 words on whether all four features are usable as the spec assumes. If any fails, name the failure" — purpose: AC-6 + risk gate.
+  - "Spike: add `boostvoronoi = \"0.12\"` to `slicer-core/Cargo.toml`, build the `MMU_Graph` skeleton (no kernel logic yet) on a synthetic 4-line-segment square input, and verify the **only remaining open API question**: construct the diagram TWICE from byte-identical input and compare the emitted `Vertex` sequence (by `(get_id(), x(), y())`). Return FACT: (a) does the vertex sequence match exactly across both runs? (b) if not, what is the divergence shape (different indices? same indices, different coords? reordered?). API references already confirmed via docs.rs — see `design.md` §Read-Only Context (Vertex::get_color/Edge::is_primary/Edge::twin all present); no spike needed for those. If determinism fails, add a sort pass keyed on `(x, y, get_id())` immediately after construction in `voronoi_graph.rs` and re-run the determinism check." — purpose: AC-6 + the one remaining `[FWD]` open question.
 - Context cost: `M`.
-- Exit condition: AC-6 satisfied. If risk gate FAILS, escalate before continuing — packet design changes.
+- Exit condition: AC-6 satisfied. The line-segment-site / `Vertex::get_color` / `Edge::is_primary` / `Edge::twin` API surface is pre-confirmed via docs.rs — those four are NO LONGER risk-gate failure modes. **The one remaining failure mode is non-deterministic vertex emission order**: if the construct-twice comparison diverges, ADD the `(x, y, get_id())` sort pass inside `voronoi_graph.rs` immediately after construction and re-run the determinism check before proceeding to Step 6. Sort-pass fallback is in-packet (no design change); only a *third* unforeseen API mismatch from the spike (none currently expected) would HALT and force the user-facing fallback choice (spade + custom wrapper, or cxx-bridge to OrcaSlicer's `boost::polygon::voronoi`).
 
 ### Step 6: Voronoi pruning (sub-step 8) + `extract_colored_segments` (sub-step 9)
 
@@ -218,10 +222,12 @@
 
 - Task IDs: `TASK-245`
 - Objective: AC-19, AC-N2, AC-N3.
+- Files allowed to read:
+  - `.ralph/specs/95_paint-segmentation-orca-port/closure-log.md` — to retrieve `P94_BASELINE_SHA=<hex>` for the AC-19 comparison.
 - Expected dispatches:
-  - Wedge SHA capture + compare to Step 0 baseline.
-  - Painted determinism check (run cube_4color twice, diff).
-  - Run `paint_segmentation_skip_when_no_paint` test.
+  - "Run the AC-19 baseline-compare shell command (see `packet.spec.md` AC-19): `mkdir -p target && cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output target/p95-wedge-post.gcode && test \"$(sha256sum target/p95-wedge-post.gcode | awk '{print $1}')\" = \"$(grep -oE 'P94_BASELINE_SHA=[a-f0-9]+' .ralph/specs/95_paint-segmentation-orca-port/closure-log.md | head -1 | cut -d= -f2)\"`; return FACT exit code".
+  - Painted determinism check (run cube_4color twice, diff) per AC-N3's verification command.
+  - Run `paint_segmentation_skip_when_no_paint_or_no_opted_in_semantic` test for AC-N2.
 - Context cost: `S`.
 - Exit condition: AC-19, AC-N2, AC-N3 satisfied.
 
