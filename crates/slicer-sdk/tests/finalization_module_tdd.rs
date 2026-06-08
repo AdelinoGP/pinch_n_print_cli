@@ -108,6 +108,7 @@ fn test_04_finalization_output_builder_push_entity() {
         global_layer_index: 0,
         object_id: "obj-1".to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
     };
 
     let result = builder.push_entity_to_layer(0, path, region_key);

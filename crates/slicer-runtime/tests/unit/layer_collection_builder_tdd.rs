@@ -64,6 +64,7 @@ fn entity_with_points(points: Vec<Point3WithWidth>, original_idx: u32) -> PrintE
             global_layer_index: 0,
             object_id: "obj".to_string(),
             region_id: 0,
+            variant_chain: Vec::new(),
         },
         topo_order: original_idx,
     }
@@ -265,6 +266,7 @@ fn entity_with_points_and_role(
             global_layer_index: 0,
             object_id: "obj".to_string(),
             region_id: 0,
+            variant_chain: Vec::new(),
         },
         topo_order: original_idx,
     }

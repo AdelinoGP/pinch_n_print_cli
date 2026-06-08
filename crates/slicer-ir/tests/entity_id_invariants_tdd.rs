@@ -36,6 +36,7 @@ fn region_key() -> RegionKey {
         global_layer_index: 0,
         object_id: ObjectId::from("test-object"),
         region_id: 1u64,
+        variant_chain: Vec::new(),
     }
 }
 

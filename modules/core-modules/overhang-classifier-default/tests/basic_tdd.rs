@@ -68,6 +68,7 @@ fn wall_square(
             global_layer_index: layer_index,
             object_id: "obj-0".to_string(),
             region_id: 0,
+            variant_chain: Vec::new(),
         },
         topo_order,
     )

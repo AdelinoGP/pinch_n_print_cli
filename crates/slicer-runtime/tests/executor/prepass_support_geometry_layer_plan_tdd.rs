@@ -200,6 +200,7 @@ fn simple_region_map(object_id: &str, num_layers: u32) -> RegionMapIR {
                 global_layer_index: layer_idx,
                 object_id: object_id.to_string(),
                 region_id: 0,
+                variant_chain: Vec::new(),
             },
             RegionPlan::default(),
         );
@@ -218,6 +219,7 @@ fn multi_region_map() -> RegionMapIR {
             global_layer_index: 5,
             object_id: "obj-multi".to_string(),
             region_id: 7,
+            variant_chain: Vec::new(),
         },
         RegionPlan::default(),
     );
@@ -226,6 +228,7 @@ fn multi_region_map() -> RegionMapIR {
             global_layer_index: 5,
             object_id: "obj-multi".to_string(),
             region_id: 42,
+            variant_chain: Vec::new(),
         },
         RegionPlan::default(),
     );
@@ -548,6 +551,7 @@ fn host_projector_orders_region_segmentation_deterministically() {
             global_layer_index: 2,
             object_id: "z-obj".to_string(),
             region_id: 99,
+            variant_chain: Vec::new(),
         },
         RegionPlan::default(),
     );
@@ -556,6 +560,7 @@ fn host_projector_orders_region_segmentation_deterministically() {
             global_layer_index: 0,
             object_id: "a-obj".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         },
         RegionPlan::default(),
     );
@@ -564,6 +569,7 @@ fn host_projector_orders_region_segmentation_deterministically() {
             global_layer_index: 0,
             object_id: "a-obj".to_string(),
             region_id: 5,
+            variant_chain: Vec::new(),
         },
         RegionPlan::default(),
     );
@@ -572,6 +578,7 @@ fn host_projector_orders_region_segmentation_deterministically() {
             global_layer_index: 1,
             object_id: "m-obj".to_string(),
             region_id: 3,
+            variant_chain: Vec::new(),
         },
         RegionPlan::default(),
     );

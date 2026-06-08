@@ -43,6 +43,7 @@ fn builder_with_two_entities_and_one_tool_change_preserves_every_field() {
         global_layer_index: 3,
         object_id: "obj-x".to_string(),
         region_id: 11,
+        variant_chain: Vec::new(),
     };
     let entity_a = print_entity(
         1,

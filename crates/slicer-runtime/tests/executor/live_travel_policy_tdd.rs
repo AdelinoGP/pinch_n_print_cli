@@ -371,6 +371,7 @@ fn z_hop_anchor_aligns_with_retract_anchor_when_entities_present() {
             global_layer_index: 0,
             object_id: String::new(),
             region_id: 0,
+            variant_chain: Vec::new(),
         },
         topo_order: 0,
     };

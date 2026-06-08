@@ -470,6 +470,7 @@ fn region_map_fixture() -> RegionMapIR {
                 global_layer_index: 0,
                 object_id: String::from("cube"),
                 region_id: 7,
+                variant_chain: Vec::new(),
             },
             RegionPlan {
                 stage_modules: HashMap::from([(

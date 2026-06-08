@@ -9,7 +9,6 @@
 //!
 //! Coordinate system: 1 unit = 100 nm; use `Point2::from_mm` for fixtures.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use slicer_ir::{
@@ -113,29 +112,28 @@ fn make_plan(n_layers: u32, layer_height: f32, object_id: &str) -> LayerPlanIR {
 }
 
 fn make_region_map(plan: &LayerPlanIR, top_layers: u32, bottom_layers: u32) -> RegionMapIR {
-    let mut entries = HashMap::new();
+    let mut region_map = RegionMapIR::default();
     for gl in &plan.global_layers {
         for active in &gl.active_regions {
             let mut config = active.resolved_config.clone();
             config.top_shell_layers = top_layers;
             config.bottom_shell_layers = bottom_layers;
-            entries.insert(
+            let config_id = region_map.intern_config(config);
+            region_map.entries.insert(
                 RegionKey {
                     global_layer_index: gl.index,
                     object_id: active.object_id.clone(),
                     region_id: active.region_id,
+                    variant_chain: Vec::new(),
                 },
                 RegionPlan {
-                    config,
+                    config: config_id,
                     ..Default::default()
                 },
             );
         }
     }
-    RegionMapIR {
-        entries,
-        ..Default::default()
-    }
+    region_map
 }
 
 fn seeded_blackboard(mesh: MeshIR, plan: LayerPlanIR, region_map: RegionMapIR) -> Blackboard {

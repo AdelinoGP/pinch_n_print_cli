@@ -289,6 +289,7 @@ fn region_map_fixture() -> RegionMapIR {
                 global_layer_index: 0,
                 object_id: String::from("cube"),
                 region_id: 0,
+                variant_chain: Vec::new(),
             },
             RegionPlan {
                 stage_modules: HashMap::from([(
@@ -345,6 +346,7 @@ fn layer_collection_fixture(global_layer_index: u32, z: f32) -> LayerCollectionI
                 global_layer_index,
                 object_id: String::from("cube"),
                 region_id: 0,
+                variant_chain: Vec::new(),
             },
             topo_order: 0,
         }],
@@ -397,6 +399,7 @@ fn seam_plan_blackboard_slot_is_write_once() {
                 global_layer_index: 0,
                 object_id: "cube".to_string(),
                 region_id: 1,
+                variant_chain: Vec::new(),
             },
             chosen_candidate: seam_position,
             ..Default::default()

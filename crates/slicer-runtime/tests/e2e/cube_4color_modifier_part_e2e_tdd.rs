@@ -273,7 +273,7 @@ fn modifier_projections_annotate_contour_points() {
 
     // Build a synthetic SliceIR at the same Z using the modifier's own
     // ExPolygon projection as the region polygon â€” its contour points
-    // are on the modifier boundary, so boundary_paint annotation works.
+    // are on the modifier boundary, so segment_annotations annotation works.
     let region_polygon = modifier_projections[0].clone();
 
     let slice_ir = SliceIR {
@@ -286,7 +286,8 @@ fn modifier_projections_annotate_contour_points() {
             infill_areas: vec![region_polygon],
             nonplanar_surface: None,
             effective_layer_height: 0.2,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
             top_shell_index: None,
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
@@ -320,7 +321,7 @@ fn modifier_projections_annotate_contour_points() {
         .slice_ir
         .regions
         .iter()
-        .flat_map(|r| r.boundary_paint.get(&PaintSemantic::FuzzySkin))
+        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::FuzzySkin))
         .flatten()
         .flatten()
         .filter(|pv| matches!(pv, Some(PaintValue::Flag(true))))
@@ -352,7 +353,8 @@ fn modifier_projections_annotate_contour_points() {
             infill_areas: vec![below_region_polygon],
             nonplanar_surface: None,
             effective_layer_height: 0.2,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
             top_shell_index: None,
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
@@ -381,7 +383,7 @@ fn modifier_projections_annotate_contour_points() {
         .slice_ir
         .regions
         .iter()
-        .flat_map(|r| r.boundary_paint.get(&PaintSemantic::FuzzySkin))
+        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::FuzzySkin))
         .flatten()
         .flatten()
         .filter(|pv| matches!(pv, Some(PaintValue::Flag(true))))
@@ -440,7 +442,8 @@ fn modifier_projection_z_band_restriction() {
                 infill_areas: vec![poly],
                 nonplanar_surface: None,
                 effective_layer_height: 0.2,
-                boundary_paint: HashMap::new(),
+                segment_annotations: HashMap::new(),
+                variant_chain: Vec::new(),
                 top_shell_index: None,
                 bottom_shell_index: None,
                 top_solid_fill: Vec::new(),
@@ -489,7 +492,7 @@ fn modifier_projection_z_band_restriction() {
             .slice_ir
             .regions
             .iter()
-            .flat_map(|r| r.boundary_paint.get(&PaintSemantic::FuzzySkin))
+            .flat_map(|r| r.segment_annotations.get(&PaintSemantic::FuzzySkin))
             .flatten()
             .flatten()
             .filter(|pv| matches!(pv, Some(PaintValue::Flag(true))))
@@ -563,8 +566,8 @@ fn empty_modifier_volume_stamps_no_regions() {
     // No modifier volumes â†’ no modifier-derived keys in any region.
     let stamped_count = region_map
         .entries
-        .values()
-        .filter(|rp| rp.config.extensions.contains_key("fuzzy_skin.apply_to_all"))
+        .keys()
+        .filter(|key| region_map.config_for(key).extensions.contains_key("fuzzy_skin.apply_to_all"))
         .count();
 
     assert_eq!(
@@ -592,7 +595,7 @@ fn empty_modifier_volume_stamps_no_regions() {
 ///     paint data reached the IR but with a wrong semantic label.
 /// Failure mode 3: `STAGE=per_layer_paint_annotation` â€” `execute_slice_postprocess_
 ///     paint_annotation` produced zero contour points with `Material/ToolIndex`
-///     boundary_paint. The PaintRegionIR has correct semantics, but the annotation
+///     segment_annotations. The PaintRegionIR has correct semantics, but the annotation
 ///     step did not project them onto SlicedRegion contour points. This could be
 ///     a bounding-box mismatch, polygon emptiness, or semantic routing bug.
 #[test]
@@ -748,7 +751,8 @@ fn cube_4color_full_pipeline_paint_diagnostic() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: 0.2,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
             top_shell_index: None,
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
@@ -770,12 +774,12 @@ fn cube_4color_full_pipeline_paint_diagnostic() {
         })
         .expect("execute_slice_postprocess_paint_annotation must succeed");
 
-    // CHECK 3: boundary_paint has at least one contour point with Material/ToolIndex
+    // CHECK 3: segment_annotations has at least one contour point with Material/ToolIndex
     let material_tool_count: usize = annotation_result
         .slice_ir
         .regions
         .iter()
-        .flat_map(|r| r.boundary_paint.get(&PaintSemantic::Material))
+        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::Material))
         .flatten()
         .flatten()
         .filter(|pv| matches!(pv, Some(PaintValue::ToolIndex(_))))
@@ -785,7 +789,7 @@ fn cube_4color_full_pipeline_paint_diagnostic() {
         .slice_ir
         .regions
         .iter()
-        .flat_map(|r| r.boundary_paint.get(&PaintSemantic::Material))
+        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::Material))
         .flatten()
         .flatten()
         .filter_map(|pv| match pv {
@@ -795,15 +799,15 @@ fn cube_4color_full_pipeline_paint_diagnostic() {
         .collect();
 
     eprintln!(
-        "DIAGNOSTIC: boundary_paint Material tool indices on layer Z={test_z} = {:?}",
+        "DIAGNOSTIC: segment_annotations Material tool indices on layer Z={test_z} = {:?}",
         boundary_tool_vals
     );
-    eprintln!("DIAGNOSTIC: boundary_paint Material contour point count = {material_tool_count}");
+    eprintln!("DIAGNOSTIC: segment_annotations Material contour point count = {material_tool_count}");
 
     assert!(
         material_tool_count > 0,
         "STAGE=per_layer_paint_annotation â€” zero contour points have \
-         PaintSemantic::Material / PaintValue::ToolIndex(...) in boundary_paint. \
+         PaintSemantic::Material / PaintValue::ToolIndex(...) in segment_annotations. \
          PaintRegionIR contains {material_region_count} Material regions with \
          tool indices {paint_tool_indices:?}, but execute_slice_postprocess_paint_annotation \
          did not project them onto SlicedRegion contour points. Possible causes: \

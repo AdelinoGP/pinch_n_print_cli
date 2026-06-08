@@ -257,6 +257,7 @@ impl WipeTower {
             global_layer_index,
             object_id: "__wipe_tower__".to_string(),
             region_id: 0,
+            variant_chain: Vec::new(),
         };
 
         let mut pairs: Vec<(ExtrusionPath3D, RegionKey)> = Vec::new();
@@ -594,6 +595,7 @@ mod tests {
                     global_layer_index: 0,
                     object_id: "cube".to_string(),
                     region_id: 0,
+                    variant_chain: Vec::new(),
                 },
                 topo_order: 0,
             }],

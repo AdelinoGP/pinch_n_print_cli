@@ -122,21 +122,25 @@ fn region_map_keys_are_correct() {
             global_layer_index: 0,
             object_id: "obj_a".to_string(),
             region_id: 0,
+            variant_chain: Vec::new(),
         },
         RegionKey {
             global_layer_index: 0,
             object_id: "obj_a".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         },
         RegionKey {
             global_layer_index: 1,
             object_id: "obj_b".to_string(),
             region_id: 0,
+            variant_chain: Vec::new(),
         },
         RegionKey {
             global_layer_index: 1,
             object_id: "obj_b".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         },
     ];
     for key in &expected_keys {

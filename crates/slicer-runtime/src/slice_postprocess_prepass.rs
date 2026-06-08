@@ -343,9 +343,10 @@ fn resolve_opening_radius(
             global_layer_index: first_idx as u32,
             object_id: object_id.clone(),
             region_id,
+            variant_chain: Vec::new(),
         };
-        if let Some(plan) = region_map.entries.get(&key) {
-            let lw = plan.config.line_width;
+        if region_map.entries.contains_key(&key) {
+            let lw = region_map.config_for(&key).line_width;
             if lw > 0.0 {
                 return lw * 0.5;
             }
@@ -385,11 +386,12 @@ fn resolve_shell_counts(
             global_layer_index: first_idx as u32,
             object_id: object_id.clone(),
             region_id,
+            variant_chain: Vec::new(),
         };
-        if let Some(plan) = region_map.entries.get(&key) {
-            let k_top: u8 = plan.config.top_shell_layers.try_into().unwrap_or(u8::MAX);
-            let k_bot: u8 = plan
-                .config
+        if region_map.entries.contains_key(&key) {
+            let resolved = region_map.config_for(&key);
+            let k_top: u8 = resolved.top_shell_layers.try_into().unwrap_or(u8::MAX);
+            let k_bot: u8 = resolved
                 .bottom_shell_layers
                 .try_into()
                 .unwrap_or(u8::MAX);

@@ -28,6 +28,7 @@ fn region_key() -> RegionKey {
         global_layer_index: 0,
         object_id: ObjectId::from("test"),
         region_id: 0u64, // 0 = default tool to avoid spurious ToolChange commands
+        variant_chain: Vec::new(),
     }
 }
 

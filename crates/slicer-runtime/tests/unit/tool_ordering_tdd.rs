@@ -73,6 +73,7 @@ fn entity_with_tool(
             // Tool index is propagated through region_id at assembly time
             // via the host's per-region ActiveRegion.tool_index.
             region_id: tool_index as u64,
+            variant_chain: Vec::new(),
         },
         topo_order: original_idx,
     }

@@ -1,5 +1,5 @@
 ---
-status: draft
+status: implemented
 packet: 91
 task_ids: [TASK-241]
 backlog_source: docs/specs/paint-pipeline-orca-parity-roadmap.md
@@ -182,3 +182,11 @@ This packet was generated against the context_discipline preamble shared by `spe
 - stop reading at 60% context and hand off at 85%
 
 Aggregate context cost above is the sum of per-step costs in `implementation-plan.md`. If any single step is rated L, the packet must be split before activation.
+
+## Deviations
+
+Recorded at packet closure (spec-review SHIP verdict, AC-10 byte-identical g-code preserved, AC-11 workspace tests green excluding 12 pre-existing paint-pipeline TDD reds).
+
+- **DEV-91-1 [AC-5 — SliceIR schema bump magnitude]** — Specified: `SliceIR` `1.0.0 → 2.0.0` | Implemented: `SliceIR` `3.0.0 → 4.0.0` | Reason: packet was authored assuming a `1.0.0` baseline; the actual pre-packet value was `3.0.0` (bumped by an earlier packet not recorded in this packet's history). Setting back to `2.0.0` would be a semver-illegal major downgrade. User-approved bump to `4.0.0` (next major) preserves semver semantics. `RegionMapIR` bump (`1.1.0 → 2.0.0`) is unaffected and matches the spec literally. AC-5's `rg 'major:\s*2\b' | rg SliceIR` grep no longer matches; intent (breaking-change major bump) is fully met.
+- **DEV-91-2 [Design §"BuiltinProducer admission" + module manifests]** — Specified: `max_ir_schema` "stays at `4.0.0` (no change)" | Implemented: `max_ir_schema` bumped `4.0.0 → 5.0.0` in three Rust producers (`prepass_slice_producer.rs` SLICE_PRODUCER + SHELL_CLASSIFICATION_PRODUCER, `region_mapping_producer.rs` REGION_MAPPING_PRODUCER) and in 21 module-manifest TOMLs under `modules/core-modules/*/*.toml` | Reason: consequence of DEV-91-1. With `SliceIR` now at `4.0.0` and the admission validator using exclusive upper-bound semantics (`host_schema < max_ir_schema`), a max of `4.0.0` rejects the new IR. Bumping to `5.0.0` is the only runtime-correct fix and preserves the spec's "headroom for future bumps" invariant. The TOML bump was not in the explicit file list of `design.md`'s Code Change Surface but was required by the admission constraint; discovered when the AC-10 slice command failed validation pre-fix.
+- **DEV-91-3 [AC-2 — `RegionMapIR::default()` configs Vec]** — Specified: `configs: Vec<ResolvedConfig>` with empty `Vec::new()` default; `intern_config` populates as needed | Implemented: `RegionMapIR::default()` pre-seeds `configs[0] = ResolvedConfig::default()` (1-entry Vec) so `ConfigId::default()` (= `ConfigId(0)`) is always a valid interner index | Reason: caught by `prepass_support_geometry_tdd` (4 tests panicked at `slice_ir.rs:1238` with `index out of bounds: the len is 0 but the index is 0` during the `cargo test --workspace` ceremony). Several existing test fixtures construct `RegionPlan { config: ConfigId::default(), ... }` without first calling `intern_config`; pre-seeding makes those constructions valid without requiring per-site fixes and matches the packet's own design intent of "a single-entry `configs` Vec on every `RegionMapIR`" / "ConfigId(0) pointing at the first/only interner entry" (`packet.spec.md` Scope Boundaries §line 17). Production code (`region_mapping.rs:517`) uses `intern_config` which dedupes — no behavior change for real flows; the AC-10 byte-identical g-code hash is preserved. Two regression tests landed in `crates/slicer-ir/tests/ir_tests.rs` (`region_map_default_has_seeded_config_at_index_zero`, `config_for_works_on_default_region_map_with_default_config_id`) to lock the invariant.

@@ -14,7 +14,7 @@ use slicer_runtime::{
 };
 
 #[test]
-fn slice_postprocess_paint_annotation_keeps_boundary_paint_present_but_empty_when_no_paint_applies()
+fn slice_postprocess_paint_annotation_keeps_segment_annotations_present_but_empty_when_no_paint_applies()
 {
     let result =
         execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
@@ -32,7 +32,7 @@ fn slice_postprocess_paint_annotation_keeps_boundary_paint_present_but_empty_whe
             paint_region_rtree: None,
         })
         .expect(
-            "regions/layers without paint must still keep boundary_paint present as an empty map",
+            "regions/layers without paint must still keep segment_annotations present as an empty map",
         );
 
     assert_eq!(
@@ -72,9 +72,9 @@ fn slice_postprocess_paint_annotation_writes_semantic_entries_parallel_to_each_f
         .expect("annotation should write one contour-parallel entry per polygon for each semantic");
 
     let region = &result.slice_ir.regions[0];
-    assert_eq!(region.boundary_paint.len(), 2);
+    assert_eq!(region.segment_annotations.len(), 2);
     assert_eq!(
-        region.boundary_paint[&PaintSemantic::Material],
+        region.segment_annotations[&PaintSemantic::Material],
         vec![
             vec![
                 Some(PaintValue::ToolIndex(2)),
@@ -91,7 +91,7 @@ fn slice_postprocess_paint_annotation_writes_semantic_entries_parallel_to_each_f
         ]
     );
     assert_eq!(
-        region.boundary_paint[&PaintSemantic::FuzzySkin],
+        region.segment_annotations[&PaintSemantic::FuzzySkin],
         vec![
             vec![
                 Some(PaintValue::Flag(true)),
@@ -110,7 +110,7 @@ fn slice_postprocess_paint_annotation_writes_semantic_entries_parallel_to_each_f
 }
 
 #[test]
-fn slice_postprocess_paint_annotation_rejects_stale_boundary_paint_after_polygon_point_edits() {
+fn slice_postprocess_paint_annotation_rejects_stale_segment_annotations_after_polygon_point_edits() {
     let mut stale_region = region_fixture(
         "edited-object",
         4,
@@ -122,7 +122,7 @@ fn slice_postprocess_paint_annotation_rejects_stale_boundary_paint_after_polygon
             (0.0, 10.0),
         ])],
     );
-    stale_region.boundary_paint.insert(
+    stale_region.segment_annotations.insert(
         PaintSemantic::Material,
         vec![vec![Some(PaintValue::ToolIndex(1)); 4]],
     );
@@ -136,7 +136,7 @@ fn slice_postprocess_paint_annotation_rejects_stale_boundary_paint_after_polygon
             paint_region_rtree: None,
         }),
         Err(
-            SlicePostProcessPaintAnnotationError::BoundaryPaintCardinalityMismatch {
+            SlicePostProcessPaintAnnotationError::SegmentAnnotationsCardinalityMismatch {
                 code: 502,
                 global_layer_index: 5,
                 object_id: String::from("edited-object"),
@@ -260,21 +260,21 @@ fn slice_postprocess_paint_annotation_defaults_unresolved_points_and_marks_degra
             },
         ]
     );
-    assert_eq!(region.boundary_paint[&PaintSemantic::Material][0].len(), 4);
+    assert_eq!(region.segment_annotations[&PaintSemantic::Material][0].len(), 4);
     assert_eq!(
-        region.boundary_paint[&PaintSemantic::Material][0][2],
+        region.segment_annotations[&PaintSemantic::Material][0][2],
         Some(PaintValue::ToolIndex(0))
     );
     assert_eq!(
-        region.boundary_paint[&PaintSemantic::FuzzySkin][0][2],
+        region.segment_annotations[&PaintSemantic::FuzzySkin][0][2],
         Some(PaintValue::Flag(false))
     );
     assert_eq!(
-        region.boundary_paint[&PaintSemantic::SupportEnforcer][0][2],
+        region.segment_annotations[&PaintSemantic::SupportEnforcer][0][2],
         Some(PaintValue::Flag(false))
     );
     assert_eq!(
-        region.boundary_paint[&PaintSemantic::SupportBlocker][0][2],
+        region.segment_annotations[&PaintSemantic::SupportBlocker][0][2],
         Some(PaintValue::Flag(false))
     );
 }
@@ -323,7 +323,8 @@ fn region_fixture(object_id: &str, region_id: u64, polygons: Vec<ExPolygon>) -> 
         infill_areas: Vec::new(),
         nonplanar_surface: None,
         effective_layer_height: 0.2,
-        boundary_paint: HashMap::new(),
+        segment_annotations: HashMap::new(),
+        variant_chain: Vec::new(),
         top_shell_index: None,
         bottom_shell_index: None,
         top_solid_fill: Vec::new(),
@@ -795,7 +796,7 @@ fn paint_annotation_does_not_warn_for_points_outside_grid_quantization_window() 
     // The point is outside all paint regions; it should receive the
     // region-level default value (the only painted region's value) silently.
     let region = &result.slice_ir.regions[0];
-    let material = &region.boundary_paint[&PaintSemantic::Material][0];
+    let material = &region.segment_annotations[&PaintSemantic::Material][0];
     assert_eq!(material[2], Some(PaintValue::ToolIndex(3)));
 }
 

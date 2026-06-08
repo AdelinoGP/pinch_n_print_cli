@@ -23,7 +23,7 @@ incompatible-with = []
 requires          = []
 min-host-version  = "0.1.0"
 min-ir-schema     = "1.0.0"
-max-ir-schema     = "4.0.0"
+max-ir-schema     = "5.0.0"
 
 [config.schema]
 # Emit one `; path-optimization layer <n> regions=<count> entities=<e>`

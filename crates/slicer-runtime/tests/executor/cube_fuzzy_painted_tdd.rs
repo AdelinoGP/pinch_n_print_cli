@@ -145,24 +145,24 @@ fn is_on_back_face(p: Point2, fb: &FaceBounds) -> bool {
     (p.y - fb.y_max).abs() < EPSILON
 }
 
-/// Count FuzzySkin Flag(true) entries across boundary_paint contour points.
+/// Count FuzzySkin Flag(true) entries across segment_annotations contour points.
 fn count_fuzzy_flag_true(slice_ir: &SliceIR) -> usize {
     slice_ir
         .regions
         .iter()
-        .flat_map(|r| r.boundary_paint.get(&PaintSemantic::FuzzySkin))
+        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::FuzzySkin))
         .flatten()
         .flatten()
         .filter(|pv| matches!(pv, Some(PaintValue::Flag(true))))
         .count()
 }
 
-/// Count FuzzySkin None entries across boundary_paint contour points.
+/// Count FuzzySkin None entries across segment_annotations contour points.
 fn count_fuzzy_none(slice_ir: &SliceIR) -> usize {
     slice_ir
         .regions
         .iter()
-        .flat_map(|r| r.boundary_paint.get(&PaintSemantic::FuzzySkin))
+        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::FuzzySkin))
         .flatten()
         .flatten()
         .filter(|pv| pv.is_none())
@@ -208,7 +208,7 @@ fn cube_fuzzy_painted_full_pipeline_no_panic() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -328,7 +328,7 @@ fn cube_fuzzy_painted_front_face_fully_fuzzy() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -351,7 +351,7 @@ fn cube_fuzzy_painted_front_face_fully_fuzzy() {
     let polygons = &annotation.slice_ir.regions[0].polygons;
     let mut front_paint_values: Vec<PaintValue> = Vec::new();
     if let Some(fuzzy_paint) = annotation.slice_ir.regions[0]
-        .boundary_paint
+        .segment_annotations
         .get(&PaintSemantic::FuzzySkin)
     {
         for (poly_idx, poly_paint) in fuzzy_paint.iter().enumerate() {
@@ -436,7 +436,7 @@ fn cube_fuzzy_painted_back_face_half_half_requires_vertical_face_projection() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -460,7 +460,7 @@ fn cube_fuzzy_painted_back_face_half_half_requires_vertical_face_projection() {
     let mut back_true = 0usize;
     let mut back_none = 0usize;
     if let Some(fuzzy_paint) = annotation.slice_ir.regions[0]
-        .boundary_paint
+        .segment_annotations
         .get(&PaintSemantic::FuzzySkin)
     {
         for (poly_idx, poly_paint) in fuzzy_paint.iter().enumerate() {
@@ -532,7 +532,7 @@ fn cube_fuzzy_painted_left_face_unpainted_requires_vertical_face_projection() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -556,7 +556,7 @@ fn cube_fuzzy_painted_left_face_unpainted_requires_vertical_face_projection() {
     let mut left_true = 0usize;
     let mut left_none = 0usize;
     if let Some(fuzzy_paint) = annotation.slice_ir.regions[0]
-        .boundary_paint
+        .segment_annotations
         .get(&PaintSemantic::FuzzySkin)
     {
         for (poly_idx, poly_paint) in fuzzy_paint.iter().enumerate() {
@@ -627,7 +627,7 @@ fn cube_fuzzy_painted_bottom_face_unpainted_requires_vertical_face_projection() 
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -668,7 +668,7 @@ fn cube_fuzzy_painted_bottom_face_unpainted_requires_vertical_face_projection() 
 /// cube_fuzzyPainted has no Material paint → requesting Material semantics
 /// must produce a fatal error.
 #[test]
-fn cube_fuzzy_painted_no_material_in_boundary_paint() {
+fn cube_fuzzy_painted_no_material_in_segment_annotations() {
     let mesh = load_cube_fuzzy_painted();
     let object_id = mesh.objects[0].id.clone();
     let object_mesh = mesh.objects[0].mesh.clone();
@@ -696,7 +696,7 @@ fn cube_fuzzy_painted_no_material_in_boundary_paint() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -780,7 +780,7 @@ fn cube_fuzzy_painted_modifier_overlay_on_unpainted_face() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -810,7 +810,7 @@ fn cube_fuzzy_painted_modifier_overlay_on_unpainted_face() {
     let polygons = &annotation.slice_ir.regions[0].polygons;
     let mut left_true = 0usize;
     if let Some(fuzzy_paint) = annotation.slice_ir.regions[0]
-        .boundary_paint
+        .segment_annotations
         .get(&PaintSemantic::FuzzySkin)
     {
         for (poly_idx, poly_paint) in fuzzy_paint.iter().enumerate() {
@@ -884,7 +884,7 @@ fn cube_fuzzy_painted_right_face_circle_requires_fuzzy_strokes() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -908,7 +908,7 @@ fn cube_fuzzy_painted_right_face_circle_requires_fuzzy_strokes() {
     let mut right_true = 0usize;
     let mut right_none = 0usize;
     if let Some(fuzzy_paint) = annotation.slice_ir.regions[0]
-        .boundary_paint
+        .segment_annotations
         .get(&PaintSemantic::FuzzySkin)
     {
         for (poly_idx, poly_paint) in fuzzy_paint.iter().enumerate() {
@@ -984,7 +984,7 @@ fn cube_fuzzy_painted_top_face_circle_requires_fuzzy_strokes() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -1007,7 +1007,7 @@ fn cube_fuzzy_painted_top_face_circle_requires_fuzzy_strokes() {
     let mut top_true = 0usize;
     let mut top_none = 0usize;
     if let Some(fuzzy_paint) = annotation.slice_ir.regions[0]
-        .boundary_paint
+        .segment_annotations
         .get(&PaintSemantic::FuzzySkin)
     {
         for (poly_idx, poly_paint) in fuzzy_paint.iter().enumerate() {

@@ -1,6 +1,6 @@
-//! TDD red tests for TASK-093: classic-perimeters boundary_paint propagation.
+//! TDD red tests for TASK-093: classic-perimeters segment_annotations propagation.
 //!
-//! Tests verify that classic-perimeters reads boundary_paint from SliceRegionView
+//! Tests verify that classic-perimeters reads segment_annotations from SliceRegionView
 //! and propagates Material->tool_index, FuzzySkin->fuzzy_skin into WallFeatureFlags
 //! for outer wall points, and detects MaterialBoundary on adjacent material changes.
 
@@ -33,7 +33,7 @@ fn config_2_walls() -> ConfigView {
 
 #[test]
 fn unpainted_region_produces_default_flags() {
-    // A region with no boundary_paint should produce default feature flags
+    // A region with no segment_annotations should produce default feature flags
     // (tool_index=None, fuzzy_skin=false) on all points.
     let config = config_1_wall();
     let module = ClassicPerimeters::on_print_start(&config).unwrap();
@@ -69,7 +69,7 @@ fn unpainted_region_produces_default_flags() {
 
 #[test]
 fn material_paint_sets_tool_index_on_outer_wall() {
-    // When boundary_paint has Material semantic with ToolIndex values,
+    // When segment_annotations has Material semantic with ToolIndex values,
     // outer wall feature_flags.tool_index should be set accordingly.
     let config = config_1_wall();
     let module = ClassicPerimeters::on_print_start(&config).unwrap();
@@ -81,8 +81,8 @@ fn material_paint_sets_tool_index_on_outer_wall() {
 
     // All points painted with Material ToolIndex(2)
     let material_paint = vec![vec![Some(PaintValue::ToolIndex(2)); num_points]];
-    let mut boundary_paint = HashMap::new();
-    boundary_paint.insert(PaintSemantic::Material, material_paint);
+    let mut segment_annotations = HashMap::new();
+    segment_annotations.insert(PaintSemantic::Material, material_paint);
 
     let mut region = SliceRegionView::default();
     region.set_object_id("obj-1".to_string());
@@ -92,7 +92,7 @@ fn material_paint_sets_tool_index_on_outer_wall() {
     region.set_effective_layer_height(0.2);
     region.set_z(0.2);
     region.set_has_nonplanar(false);
-    region.set_boundary_paint(boundary_paint);
+    region.set_segment_annotations(segment_annotations);
 
     module
         .run_perimeters(0, &[region], &paint, &mut output, &config)
@@ -118,7 +118,7 @@ fn material_paint_sets_tool_index_on_outer_wall() {
 
 #[test]
 fn fuzzy_skin_paint_sets_flag_on_outer_wall() {
-    // When boundary_paint has FuzzySkin semantic with Flag(true) values,
+    // When segment_annotations has FuzzySkin semantic with Flag(true) values,
     // outer wall feature_flags.fuzzy_skin should be true.
     let config = config_1_wall();
     let module = ClassicPerimeters::on_print_start(&config).unwrap();
@@ -129,8 +129,8 @@ fn fuzzy_skin_paint_sets_flag_on_outer_wall() {
     let num_points = poly.contour.points.len();
 
     let fuzzy_paint = vec![vec![Some(PaintValue::Flag(true)); num_points]];
-    let mut boundary_paint = HashMap::new();
-    boundary_paint.insert(PaintSemantic::FuzzySkin, fuzzy_paint);
+    let mut segment_annotations = HashMap::new();
+    segment_annotations.insert(PaintSemantic::FuzzySkin, fuzzy_paint);
 
     let mut region = SliceRegionView::default();
     region.set_object_id("obj-1".to_string());
@@ -140,7 +140,7 @@ fn fuzzy_skin_paint_sets_flag_on_outer_wall() {
     region.set_effective_layer_height(0.2);
     region.set_z(0.2);
     region.set_has_nonplanar(false);
-    region.set_boundary_paint(boundary_paint);
+    region.set_segment_annotations(segment_annotations);
 
     module
         .run_perimeters(0, &[region], &paint, &mut output, &config)
@@ -163,7 +163,7 @@ fn fuzzy_skin_paint_sets_flag_on_outer_wall() {
 #[test]
 fn inner_walls_get_no_paint_propagation() {
     // Inner walls (perimeter_index > 0) should NOT get paint propagation,
-    // even when boundary_paint is present. Only outer walls get it.
+    // even when segment_annotations is present. Only outer walls get it.
     let config = config_2_walls();
     let module = ClassicPerimeters::on_print_start(&config).unwrap();
     let paint = PaintRegionLayerView::new(0);
@@ -173,8 +173,8 @@ fn inner_walls_get_no_paint_propagation() {
     let num_points = poly.contour.points.len();
 
     let material_paint = vec![vec![Some(PaintValue::ToolIndex(3)); num_points]];
-    let mut boundary_paint = HashMap::new();
-    boundary_paint.insert(PaintSemantic::Material, material_paint);
+    let mut segment_annotations = HashMap::new();
+    segment_annotations.insert(PaintSemantic::Material, material_paint);
 
     let mut region = SliceRegionView::default();
     region.set_object_id("obj-1".to_string());
@@ -184,7 +184,7 @@ fn inner_walls_get_no_paint_propagation() {
     region.set_effective_layer_height(0.2);
     region.set_z(0.2);
     region.set_has_nonplanar(false);
-    region.set_boundary_paint(boundary_paint);
+    region.set_segment_annotations(segment_annotations);
 
     module
         .run_perimeters(0, &[region], &paint, &mut output, &config)
@@ -227,8 +227,8 @@ fn adjacent_material_change_sets_material_boundary() {
         Some(PaintValue::ToolIndex(2)),
         Some(PaintValue::ToolIndex(2)),
     ]];
-    let mut boundary_paint = HashMap::new();
-    boundary_paint.insert(PaintSemantic::Material, material_paint);
+    let mut segment_annotations = HashMap::new();
+    segment_annotations.insert(PaintSemantic::Material, material_paint);
 
     let mut region = SliceRegionView::default();
     region.set_object_id("obj-1".to_string());
@@ -238,7 +238,7 @@ fn adjacent_material_change_sets_material_boundary() {
     region.set_effective_layer_height(0.2);
     region.set_z(0.2);
     region.set_has_nonplanar(false);
-    region.set_boundary_paint(boundary_paint);
+    region.set_segment_annotations(segment_annotations);
 
     module
         .run_perimeters(0, &[region], &paint, &mut output, &config)
@@ -276,8 +276,8 @@ fn mixed_painted_unpainted_preserves_none_as_default() {
         Some(PaintValue::ToolIndex(1)),
         None,
     ]];
-    let mut boundary_paint = HashMap::new();
-    boundary_paint.insert(PaintSemantic::Material, material_paint);
+    let mut segment_annotations = HashMap::new();
+    segment_annotations.insert(PaintSemantic::Material, material_paint);
 
     let mut region = SliceRegionView::default();
     region.set_object_id("obj-1".to_string());
@@ -287,7 +287,7 @@ fn mixed_painted_unpainted_preserves_none_as_default() {
     region.set_effective_layer_height(0.2);
     region.set_z(0.2);
     region.set_has_nonplanar(false);
-    region.set_boundary_paint(boundary_paint);
+    region.set_segment_annotations(segment_annotations);
 
     module
         .run_perimeters(0, &[region], &paint, &mut output, &config)

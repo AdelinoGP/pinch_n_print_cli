@@ -480,6 +480,7 @@ mod tests {
                 global_layer_index: 0,
                 object_id: "test".to_string(),
                 region_id: 0,
+                variant_chain: Vec::new(),
             },
             role,
             start_point: Point3WithWidth {

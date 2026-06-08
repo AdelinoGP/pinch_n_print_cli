@@ -25,6 +25,7 @@ fn dummy_entity(z: f32, index: u32) -> PrintEntity {
             global_layer_index: index,
             object_id: "obj1".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         },
         0,
     )

@@ -42,6 +42,7 @@ fn make_entity(id: u64, x: f32, y: f32, role: ExtrusionRole, tool: u32) -> Print
             global_layer_index: 0,
             object_id: ObjectId::from("cube"),
             region_id: tool as u64,
+            variant_chain: Vec::new(),
         },
         topo_order: 0,
     }
@@ -71,6 +72,7 @@ fn make_wipe_entity(id: u64, purge_len_mm: f32, tool: u32) -> PrintEntity {
             global_layer_index: 0,
             object_id: ObjectId::from("cube"),
             region_id: tool as u64,
+            variant_chain: Vec::new(),
         },
         topo_order: 0,
     }

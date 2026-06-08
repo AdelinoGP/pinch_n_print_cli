@@ -276,13 +276,14 @@ fn paint_semantic_override_propagates_through_full_prepass() {
         global_layer_index: 0,
         object_id: object_id.to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
     };
-    let rp = rm
+    let _rp = rm
         .entries
         .get(&key)
         .expect("RegionPlan for the painted region must exist");
     assert_eq!(
-        rp.config.wall_count, 5,
+        rm.config_for(&key).wall_count, 5,
         "RegionPlan.config.wall_count must resolve to 5 via paint-semantic overlay; \
          pre-fix it stayed at the baseline 2 because PaintRegionIR wasn't yet committed \
          when region-mapping ran"

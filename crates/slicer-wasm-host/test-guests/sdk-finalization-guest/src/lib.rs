@@ -90,6 +90,7 @@ impl FinalizationModule for SdkFinalizationModule {
                         global_layer_index: layer.layer_index(),
                         object_id: "__task109_fin_witness__".into(),
                         region_id: 109,
+                        variant_chain: Vec::new(),
                     },
                 )
                 .map_err(|e| ModuleError::fatal(1, e))?;

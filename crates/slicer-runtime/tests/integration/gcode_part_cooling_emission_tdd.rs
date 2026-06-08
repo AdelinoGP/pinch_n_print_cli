@@ -46,6 +46,7 @@ fn region_key_fixture(layer_index: u32) -> RegionKey {
         global_layer_index: layer_index,
         object_id: "test-object".to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
     }
 }
 

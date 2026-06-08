@@ -944,6 +944,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 global_layer_index: 5,
                 object_id: "obj-A".to_string(),
                 region_id: 1,
+                variant_chain: Vec::new(),
             },
             role: ExtrusionRole::OuterWall,
             start_point: Point3WithWidth {
@@ -970,6 +971,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 global_layer_index: 5,
                 object_id: "obj-A".to_string(),
                 region_id: 1,
+                variant_chain: Vec::new(),
             },
             role: ExtrusionRole::SparseInfill,
             start_point: Point3WithWidth {
@@ -996,6 +998,7 @@ fn layer_collection_builder_get_ordered_entities_reads_local_cache() {
                 global_layer_index: 5,
                 object_id: "obj-B".to_string(),
                 region_id: 2,
+                variant_chain: Vec::new(),
             },
             role: ExtrusionRole::TopSolidInfill,
             start_point: Point3WithWidth {

@@ -20,6 +20,7 @@ fn print_entity_round_trip_preserves_inputs() {
         global_layer_index: 7,
         object_id: "obj-1".to_string(),
         region_id: 42,
+        variant_chain: Vec::new(),
     };
     let points = vec![
         sample_point(0.0, 0.0, 0.2, 0.4),

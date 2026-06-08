@@ -188,6 +188,7 @@ fn region_overlap_applies_override() {
         global_layer_index: 5,
         object_id: "obj-a".to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
     };
     let rp = rm
         .entries
@@ -199,7 +200,7 @@ fn region_overlap_applies_override() {
         "paint_overrides must contain fuzzy_skin"
     );
     assert_eq!(
-        rp.config.wall_count, 5,
+        rm.config_for(&key).wall_count, 5,
         "effective config.wall_count must be 5 from paint override"
     );
 }
@@ -245,6 +246,7 @@ fn no_overlap_keeps_object_config() {
         global_layer_index: 0,
         object_id: "obj-b".to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
     };
     let rp = rm
         .entries
@@ -255,7 +257,7 @@ fn no_overlap_keeps_object_config() {
         "paint_overrides must be empty when no overlap"
     );
     assert_eq!(
-        rp.config,
+        *rm.config_for(&key),
         ResolvedConfig::default(),
         "config must equal per-object config when no paint overlay"
     );
@@ -339,6 +341,7 @@ fn overlap_precedence_is_deterministic() {
             global_layer_index: 0,
             object_id: "obj-c".to_string(),
             region_id: 0,
+            variant_chain: Vec::new(),
         };
         let rp = rm
             .entries
@@ -355,8 +358,8 @@ fn overlap_precedence_is_deterministic() {
             "paint_overrides must contain zzz_last"
         );
         assert_eq!(
-            rp.config.wall_count, 9,
-            "zzz_last (lexicographically last) must win â†’ wall_count=9"
+            rm.config_for(&key).wall_count, 9,
+            "zzz_last (lexicographically last) must win -> wall_count=9"
         );
     };
 

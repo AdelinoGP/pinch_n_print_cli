@@ -167,13 +167,15 @@ fn commit_stamps_per_object_resolved_config() {
         global_layer_index: 0,
         object_id: "obj-A".to_string(),
         region_id: 1,
+        variant_chain: Vec::new(),
     };
-    let rp_a = rm
-        .entries
-        .get(&key_a)
-        .expect("entry for obj-A must be present");
+    assert!(
+        rm.entries.contains_key(&key_a),
+        "entry for obj-A must be present"
+    );
+    let resolved_a = rm.config_for(&key_a);
     assert_eq!(
-        rp_a.config.top_shell_layers, 5,
+        resolved_a.top_shell_layers, 5,
         "obj-A region plan must have top_shell_layers=5 from per-object config"
     );
 
@@ -182,13 +184,15 @@ fn commit_stamps_per_object_resolved_config() {
         global_layer_index: 0,
         object_id: "obj-B".to_string(),
         region_id: 1,
+        variant_chain: Vec::new(),
     };
-    let rp_b = rm
-        .entries
-        .get(&key_b)
-        .expect("entry for obj-B must be present");
+    assert!(
+        rm.entries.contains_key(&key_b),
+        "entry for obj-B must be present"
+    );
+    let resolved_b = rm.config_for(&key_b);
     assert_eq!(
-        rp_b.config.top_shell_layers, 3,
+        resolved_b.top_shell_layers, 3,
         "obj-B region plan must have top_shell_layers=3 from per-object config"
     );
 }

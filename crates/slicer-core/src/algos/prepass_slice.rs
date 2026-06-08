@@ -243,11 +243,12 @@ pub fn execute_prepass_slice_single_layer(
                 object_id: active.object_id.clone(),
             })?;
 
-        let resolved_plan = if let Some(rm) = region_map {
+        let slice_closing_radius_mm = if let Some(rm) = region_map {
             let key = RegionKey {
                 global_layer_index: layer.index,
                 object_id: active.object_id.clone(),
                 region_id: active.region_id,
+                variant_chain: Vec::new(),
             };
             let entry = rm.entries.get(&key);
             if entry.is_none() {
@@ -267,13 +268,9 @@ pub fn execute_prepass_slice_single_layer(
                     layer.index, active.object_id, active.region_id,
                 );
             }
-            entry
+            entry.map_or(0.0_f32, |_| rm.config_for(&key).slice_closing_radius)
         } else {
-            None
-        };
-        let slice_closing_radius_mm = match resolved_plan {
-            Some(plan) => plan.config.slice_closing_radius,
-            None => 0.0_f32,
+            0.0_f32
         };
 
         let mut sliced = slice_mesh_ex(&object.mesh, &[layer.z]);
@@ -336,7 +333,8 @@ pub fn execute_prepass_slice_single_layer(
             infill_areas: polygons,
             nonplanar_surface: None,
             effective_layer_height: active.effective_layer_height,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
             top_shell_index: None,
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),

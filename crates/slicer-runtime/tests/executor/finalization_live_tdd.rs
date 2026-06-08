@@ -164,6 +164,7 @@ fn model_entity(layer_index: u32, z: f32) -> PrintEntity {
             global_layer_index: layer_index,
             object_id: "obj1".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         },
         topo_order: 0,
     }

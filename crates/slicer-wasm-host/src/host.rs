@@ -135,7 +135,7 @@ pub struct SliceRegionData {
     /// Whether this region has non-planar surfaces.
     pub has_nonplanar: bool,
     /// Boundary paint data.
-    pub boundary_paint: Vec<layer::slicer::ir_handles::ir_handles::BoundaryPaintEntry>,
+    pub segment_annotations: Vec<layer::slicer::ir_handles::ir_handles::SegmentAnnotationsEntry>,
     /// True when this region is support-eligible (from SurfaceClassificationIR).
     pub needs_support: bool,
     /// Minimum top-shell depth (0 = exposed) from PrePass::ShellClassification.
@@ -265,7 +265,7 @@ pub use layer::slicer::config::config_types::ConfigValue;
 /// `RetractMode` end-to-end across the guest→host boundary.
 pub use layer::slicer::ir_handles::ir_handles::RetractMode as WitRetractMode;
 pub use layer::slicer::ir_handles::ir_handles::{
-    BoundaryPaintEntry, BoundaryPaintPolygon, GcodeMoveCmd, HostPerimeterOutputBuilder,
+    SegmentAnnotationsEntry, SegmentAnnotationsPolygon, GcodeMoveCmd, HostPerimeterOutputBuilder,
     PaintSemantic, PaintValue, RegionKey, SeamPosition, SemanticRegion, WallFeatureFlag,
     WallLoopType, WallLoopView,
 };
@@ -2223,14 +2223,14 @@ pub fn sliced_region_to_data(
     z: f32,
     held_claims: Vec<String>,
 ) -> SliceRegionData {
-    let boundary_paint: Vec<BoundaryPaintEntry> = region
-        .boundary_paint
+    let segment_annotations: Vec<SegmentAnnotationsEntry> = region
+        .segment_annotations
         .iter()
-        .map(|(semantic, poly_values)| BoundaryPaintEntry {
+        .map(|(semantic, poly_values)| SegmentAnnotationsEntry {
             semantic: ir_to_wit_paint_semantic(semantic),
             polygons: poly_values
                 .iter()
-                .map(|point_values| BoundaryPaintPolygon {
+                .map(|point_values| SegmentAnnotationsPolygon {
                     values: point_values
                         .iter()
                         .map(|opt| opt.as_ref().map(ir_to_wit_paint_value))
@@ -2248,7 +2248,7 @@ pub fn sliced_region_to_data(
         effective_layer_height: region.effective_layer_height,
         z,
         has_nonplanar: region.nonplanar_surface.is_some(),
-        boundary_paint,
+        segment_annotations,
         needs_support: true,
         top_shell_index: region.top_shell_index,
         bottom_shell_index: region.bottom_shell_index,
@@ -2329,7 +2329,7 @@ mod region_origin_tests {
                 effective_layer_height: 0.2,
                 z: 0.2,
                 has_nonplanar: false,
-                boundary_paint: Vec::new(),
+                segment_annotations: Vec::new(),
                 needs_support: true,
                 top_shell_index: None,
                 bottom_shell_index: None,
@@ -2673,12 +2673,12 @@ impl ir::HostSliceRegionView for HostExecutionContext {
         self.runtime_reads.push(String::from("SliceIR"));
         Ok(self.table.get(&self_)?.has_nonplanar)
     }
-    fn boundary_paint(
+    fn segment_annotations(
         &mut self,
         self_: Resource<SliceRegionData>,
-    ) -> wasmtime::Result<Vec<BoundaryPaintEntry>> {
+    ) -> wasmtime::Result<Vec<SegmentAnnotationsEntry>> {
         self.runtime_reads.push(String::from("SliceIR"));
-        Ok(self.table.get(&self_)?.boundary_paint.clone())
+        Ok(self.table.get(&self_)?.segment_annotations.clone())
     }
     fn needs_support(&mut self, self_: Resource<SliceRegionData>) -> wasmtime::Result<bool> {
         self.runtime_reads.push(String::from("SliceIR"));
@@ -3933,6 +3933,7 @@ mod finalization_impls {
                 global_layer_index: region_key.layer_index,
                 object_id: region_key.object_id,
                 region_id,
+                variant_chain: Vec::new(),
             };
             data.pushes.push(FinalizationBuilderPush::EntityToLayer {
                 layer_index,
@@ -3964,6 +3965,7 @@ mod finalization_impls {
                 global_layer_index: region_key.layer_index,
                 object_id: region_key.object_id,
                 region_id,
+                variant_chain: Vec::new(),
             };
             data.pushes
                 .push(FinalizationBuilderPush::EntityToLayerWithPriority {
@@ -4070,6 +4072,7 @@ mod finalization_impls {
                 global_layer_index: region_key.layer_index,
                 object_id: region_key.object_id,
                 region_id,
+                variant_chain: Vec::new(),
             };
             data.pushes.push(FinalizationBuilderPush::InsertEntityAt {
                 layer_index,

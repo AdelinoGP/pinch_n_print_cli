@@ -142,6 +142,7 @@ fn layer_ir(
                 global_layer_index,
                 object_id: "obj".into(),
                 region_id: 0,
+                variant_chain: Vec::new(),
             },
             topo_order: i as u32,
         });

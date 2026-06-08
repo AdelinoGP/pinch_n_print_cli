@@ -53,6 +53,7 @@ fn region_key_fixture() -> RegionKey {
         // would trigger the cross-layer tool reset in gcode_emit at the
         // very first entity, inflating command counts in fixture-based tests.
         region_id: 0u64,
+        variant_chain: Vec::new(),
     }
 }
 
@@ -1376,6 +1377,7 @@ fn entity_with_region_id(id: u64) -> PrintEntity {
             global_layer_index: 0,
             object_id: ObjectId::from("test-object"),
             region_id: id,
+            variant_chain: Vec::new(),
         },
         topo_order: 0,
     }

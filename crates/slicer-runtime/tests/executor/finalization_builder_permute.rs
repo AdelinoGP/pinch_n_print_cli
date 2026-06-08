@@ -39,6 +39,7 @@ fn region_key(layer: u32) -> RegionKey {
         global_layer_index: layer,
         object_id: "obj".to_string(),
         region_id: 1,
+        variant_chain: Vec::new(),
     }
 }
 

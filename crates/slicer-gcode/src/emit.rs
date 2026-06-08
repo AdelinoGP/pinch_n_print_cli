@@ -839,6 +839,7 @@ mod tests {
                 global_layer_index: layer,
                 object_id: "obj".to_string(),
                 region_id: tool as u64,
+                variant_chain: Vec::new(),
             },
             topo_order: 0,
         }

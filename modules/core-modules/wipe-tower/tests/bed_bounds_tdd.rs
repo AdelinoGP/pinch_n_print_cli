@@ -58,6 +58,7 @@ fn layer_with_tool_change() -> slicer_ir::LayerCollectionIR {
             global_layer_index: 0,
             object_id: "cube".to_string(),
             region_id: 0,
+            variant_chain: Vec::new(),
         },
         0,
     );

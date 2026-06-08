@@ -11,7 +11,6 @@
 
 #![allow(missing_docs)]
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
@@ -108,29 +107,28 @@ fn build_fixture(n_objects: usize, n_layers: usize) -> Blackboard {
     };
     bb.commit_layer_plan(Arc::new(plan)).unwrap();
 
-    let mut entries = HashMap::new();
+    let mut region_map = RegionMapIR::default();
     for layer in &global_layers {
         for active in &layer.active_regions {
             let mut config = active.resolved_config.clone();
             config.top_shell_layers = 2;
             config.bottom_shell_layers = 2;
-            entries.insert(
+            let config_id = region_map.intern_config(config);
+            region_map.entries.insert(
                 RegionKey {
                     global_layer_index: layer.index,
                     object_id: active.object_id.clone(),
                     region_id: active.region_id,
+                    variant_chain: Vec::new(),
                 },
                 RegionPlan {
-                    config,
+                    config: config_id,
                     ..Default::default()
                 },
             );
         }
     }
-    bb.commit_region_map(Arc::new(RegionMapIR {
-        entries,
-        ..Default::default()
-    }))
+    bb.commit_region_map(Arc::new(region_map))
     .unwrap();
 
     // Build a SliceIR per global layer. Each object's region carries the

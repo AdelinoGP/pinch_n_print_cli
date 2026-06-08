@@ -1542,13 +1542,14 @@ fn perim_ir_two_regions_for_objects(
     p
 }
 
-fn region_plan_with_extruder(extruder: i64) -> RegionPlan {
+fn region_plan_with_extruder(extruder: i64, region_map: &mut RegionMapIR) -> RegionPlan {
     let mut config = ResolvedConfig::default();
     config
         .extensions
         .insert("extruder".into(), ConfigValue::Int(extruder));
+    let config_id = region_map.intern_config(config);
     RegionPlan {
-        config,
+        config: config_id,
         stage_modules: HashMap::new(),
         paint_overrides: std::collections::BTreeMap::new(),
     }
@@ -1595,28 +1596,28 @@ fn extruder_synthetic_t0_t1_emission() {
     };
 
     // Build a RegionMapIR keyed on the same (layer, object, region) tuples and
-    // commit it to the blackboard. Region A â†’ extruder=0, Region B â†’ extruder=1.
-    let mut entries: HashMap<RegionKey, RegionPlan> = HashMap::new();
-    entries.insert(
+    // commit it to the blackboard. Region A -> extruder=0, Region B -> extruder=1.
+    let mut region_map = RegionMapIR::default();
+    let plan_a = region_plan_with_extruder(0, &mut region_map);
+    region_map.entries.insert(
         RegionKey {
             global_layer_index: 0,
             object_id: "obj-A".into(),
             region_id: 1,
+            variant_chain: Vec::new(),
         },
-        region_plan_with_extruder(0),
+        plan_a,
     );
-    entries.insert(
+    let plan_b = region_plan_with_extruder(1, &mut region_map);
+    region_map.entries.insert(
         RegionKey {
             global_layer_index: 0,
             object_id: "obj-B".into(),
             region_id: 2,
+            variant_chain: Vec::new(),
         },
-        region_plan_with_extruder(1),
+        plan_b,
     );
-    let region_map = RegionMapIR {
-        entries,
-        ..Default::default()
-    };
 
     let mut blackboard = Blackboard::new(Arc::clone(&mesh), 1);
     blackboard

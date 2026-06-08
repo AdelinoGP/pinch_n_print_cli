@@ -2292,7 +2292,8 @@ fn make_slice_ir(
             infill_areas: Vec::new(),
             nonplanar_surface: None,
             effective_layer_height: 0.2,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
             top_shell_index: None,
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
@@ -4187,6 +4188,7 @@ fn path_optimization_z_hop_normalizes_to_global_anchor_with_entities() {
             global_layer_index: 0,
             object_id: String::new(),
             region_id: 0,
+            variant_chain: Vec::new(),
         },
         topo_order: 0,
     };
@@ -6342,6 +6344,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
                     global_layer_index: 0,
                     object_id: "obj-A".to_string(),
                     region_id: 1,
+                    variant_chain: Vec::new(),
                 },
                 chosen_candidate: seam_position.clone(),
                 ..Default::default()
@@ -6351,6 +6354,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
                     global_layer_index: 0,
                     object_id: "obj-B".to_string(),
                     region_id: 2,
+                    variant_chain: Vec::new(),
                 },
                 chosen_candidate: seam_position.clone(),
                 ..Default::default()
@@ -6374,6 +6378,7 @@ fn seam_plan_ir_rejects_duplicate_region_keys() {
                 global_layer_index: 0,
                 object_id: "obj-A".to_string(),
                 region_id: 1, // duplicate of above
+                variant_chain: Vec::new(),
             },
             chosen_candidate: seam_position,
             ..Default::default()

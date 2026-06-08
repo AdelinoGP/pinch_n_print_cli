@@ -311,11 +311,13 @@ fn region_key_hash_and_eq_are_deterministic_across_construction_orders() {
         global_layer_index: 7,
         object_id: "obj".to_string(),
         region_id: 11,
+        variant_chain: Vec::new(),
     };
     let b = RegionKey {
         global_layer_index: 7,
         object_id: "obj".to_string(),
         region_id: 11,
+        variant_chain: Vec::new(),
     };
     assert_eq!(a, b);
     let mut map = HashMap::new();
@@ -329,6 +331,7 @@ fn region_key_distinguishes_layer_object_and_region_components() {
         global_layer_index: 1,
         object_id: "x".to_string(),
         region_id: 2,
+        variant_chain: Vec::new(),
     };
     assert_ne!(
         base,

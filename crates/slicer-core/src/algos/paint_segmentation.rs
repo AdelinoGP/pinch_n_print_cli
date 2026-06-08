@@ -101,26 +101,6 @@ pub struct PaintFacetEntry {
     pub polygons: Vec<ExPolygon>,
 }
 
-/// Hashable wrapper for `PaintValue` so it can be used as a HashMap key.
-#[derive(Clone, Hash, Eq, PartialEq)]
-enum HashablePaintValue {
-    Flag(bool),
-    Scalar(u32),
-    ToolIndex(u32),
-    Custom(String),
-}
-
-impl From<&PaintValue> for HashablePaintValue {
-    fn from(v: &PaintValue) -> Self {
-        match v {
-            PaintValue::Flag(b) => HashablePaintValue::Flag(*b),
-            PaintValue::Scalar(f) => HashablePaintValue::Scalar(f.to_bits()),
-            PaintValue::ToolIndex(n) => HashablePaintValue::ToolIndex(*n),
-            PaintValue::Custom(s) => HashablePaintValue::Custom(s.clone()),
-        }
-    }
-}
-
 /// Group facet entries by `(layer_index, object_id, PaintSemantic, PaintValue)`,
 /// union polygons per group, compute AABB, and build a sorted `PaintRegionIR`.
 pub fn group_and_union_paint_regions(
@@ -128,7 +108,7 @@ pub fn group_and_union_paint_regions(
     union_paint_regions_at_harvest: bool,
 ) -> PaintRegionIR {
     let mut groups: HashMap<
-        (u32, String, PaintSemantic, HashablePaintValue),
+        (u32, String, PaintSemantic, PaintValue),
         Vec<(u64, Vec<ExPolygon>)>,
     > = HashMap::new();
 
@@ -137,7 +117,7 @@ pub fn group_and_union_paint_regions(
             entry.layer_index,
             entry.object_id.clone(),
             entry.semantic.clone(),
-            HashablePaintValue::from(&entry.value),
+            entry.value.clone(),
         );
         groups
             .entry(key)
@@ -151,14 +131,7 @@ pub fn group_and_union_paint_regions(
     let results: Vec<(u32, PaintSemantic, SemanticRegion)> = group_vec
         .into_par_iter()
         .map(
-            |((layer_index, object_id, semantic, hashable_value), group_entries)| {
-                let value = match hashable_value {
-                    HashablePaintValue::Flag(b) => PaintValue::Flag(b),
-                    HashablePaintValue::Scalar(bits) => PaintValue::Scalar(f32::from_bits(bits)),
-                    HashablePaintValue::ToolIndex(n) => PaintValue::ToolIndex(n),
-                    HashablePaintValue::Custom(s) => PaintValue::Custom(s),
-                };
-
+            |((layer_index, object_id, semantic, value), group_entries)| {
                 let all_polygons: Vec<ExPolygon> = group_entries
                     .iter()
                     .flat_map(|(_, polys)| polys.clone())
@@ -271,7 +244,7 @@ pub fn execute_paint_segmentation(
         .collect::<HashMap<_, _>>();
 
     let mut entry_accumulator: HashMap<
-        (u32, String, PaintSemantic, HashablePaintValue, u64),
+        (u32, String, PaintSemantic, PaintValue, u64),
         PaintFacetEntry,
     > = HashMap::new();
 
@@ -318,13 +291,12 @@ pub fn execute_paint_segmentation(
 
                 for object_layer in participating_layers {
                     if matches!(layer.semantic, PaintSemantic::Custom(_)) {
-                        let conflict_value = HashablePaintValue::from(value);
                         for ((l, oid, sem, hv, po), existing) in entry_accumulator.iter() {
                             if *l == object_layer.global_layer_index
                                 && *oid == object.id
                                 && *sem == layer.semantic
                                 && *po == paint_order as u64
-                                && *hv != conflict_value
+                                && *hv != *value
                                 && existing
                                     .polygons
                                     .iter()
@@ -344,7 +316,7 @@ pub fn execute_paint_segmentation(
                         object_layer.global_layer_index,
                         object.id.clone(),
                         layer.semantic.clone(),
-                        HashablePaintValue::from(value),
+                        value.clone(),
                         paint_order as u64,
                     );
                     entry_accumulator

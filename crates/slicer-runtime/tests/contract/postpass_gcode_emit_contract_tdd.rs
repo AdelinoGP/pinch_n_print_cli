@@ -61,6 +61,7 @@ fn region_key_fixture() -> slicer_ir::RegionKey {
         global_layer_index: 0,
         object_id: slicer_ir::ObjectId::from("test-object"),
         region_id: 1u64,
+        variant_chain: Vec::new(),
     }
 }
 

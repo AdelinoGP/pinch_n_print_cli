@@ -440,7 +440,7 @@ fn generate_fixture_json() -> String {
             "holes": []
         }],
         "has_nonplanar": false,
-        "boundary_paint": []
+        "segment_annotations": []
     })
     .to_string()
 }

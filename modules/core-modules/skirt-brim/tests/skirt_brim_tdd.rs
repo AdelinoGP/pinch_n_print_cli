@@ -27,6 +27,7 @@ fn make_entity_at(x: f32, y: f32, z: f32) -> PrintEntity {
             global_layer_index: 0,
             object_id: "obj1".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         },
         0,
     )

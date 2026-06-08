@@ -1051,6 +1051,7 @@ fn build_finalization_world_glue(self_ty: &syn::Type) -> TokenStream2 {
                                     global_layer_index: entity.region_key.layer_index,
                                     object_id: entity.region_key.object_id,
                                     region_id,
+                                    variant_chain: Vec::new(),
                                 },
                                 topo_order: entity.topo_order,
                             });
@@ -1960,8 +1961,8 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                 Polygon as WitPolygon,
             };
             use self::slicer::ir_handles::ir_handles::{
-                BoundaryPaintEntry as WitBoundaryPaintEntry,
-                BoundaryPaintPolygon as WitBoundaryPaintPolygon,
+                SegmentAnnotationsEntry as WitSegmentAnnotationsEntry,
+                SegmentAnnotationsPolygon as WitSegmentAnnotationsPolygon,
                 GcodeMoveCmd as WitGcodeMoveCmd,
                 OrderedEntityView as WitOrderedEntityView,
                 PaintSemantic as WitPaintSemantic, PaintValue as WitPaintValue,
@@ -2083,8 +2084,8 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     ::slicer_ir::PaintValue::Custom(_) => unreachable!("PaintValue::Custom rides on the paint-region transport (paint-value-input variant); it cannot appear in the boundary-paint read path"),
                 }
             }
-            fn __slicer_boundary_paint_to_ir(
-                entries: &[WitBoundaryPaintEntry],
+            fn __slicer_segment_annotations_to_ir(
+                entries: &[WitSegmentAnnotationsEntry],
             ) -> ::std::collections::HashMap<
                 ::slicer_ir::PaintSemantic,
                 ::std::vec::Vec<::std::vec::Vec<::core::option::Option<::slicer_ir::PaintValue>>>,
@@ -2095,7 +2096,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     let polygons: ::std::vec::Vec<_> = e
                         .polygons
                         .iter()
-                        .map(|poly: &WitBoundaryPaintPolygon| -> ::std::vec::Vec<::core::option::Option<::slicer_ir::PaintValue>> {
+                        .map(|poly: &WitSegmentAnnotationsPolygon| -> ::std::vec::Vec<::core::option::Option<::slicer_ir::PaintValue>> {
                             poly.values
                                 .iter()
                                 .map(|opt| opt.as_ref().map(__slicer_wit_paintvalue_to_ir))
@@ -2116,7 +2117,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         r.polygons().iter().map(__slicer_wit_expolygon_to_ir).collect();
                     let infill: ::std::vec::Vec<::slicer_ir::ExPolygon> =
                         r.infill_areas().iter().map(__slicer_wit_expolygon_to_ir).collect();
-                    let boundary_paint = __slicer_boundary_paint_to_ir(&r.boundary_paint());
+                    let segment_annotations = __slicer_segment_annotations_to_ir(&r.segment_annotations());
                     // `region_id` arrives as a string over WIT; the SDK view
                     // stores a `u64` (RegionId). Parse with a stable fallback
                     // when the string is non-numeric.
@@ -2132,7 +2133,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                     sdk_view.set_effective_layer_height(r.effective_layer_height());
                     sdk_view.set_z(r.z());
                     sdk_view.set_has_nonplanar(r.has_nonplanar());
-                    sdk_view.set_boundary_paint(boundary_paint);
+                    sdk_view.set_segment_annotations(segment_annotations);
                     sdk_view.set_top_shell_index(r.top_shell_index());
                     sdk_view.set_bottom_shell_index(r.bottom_shell_index());
                     let top_fill: ::std::vec::Vec<::slicer_ir::ExPolygon> =
@@ -2490,7 +2491,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                         *path_idx, *vertex_idx, *z,
                     );
                 }
-                // `boundary_paint_updates` has no corresponding WIT method on
+                // `segment_annotations_updates` has no corresponding WIT method on
                 // `slice-postprocess-builder` (docs/03 wit/world-layer.wit);
                 // the documented write path is via `perimeter-output-builder`
                 // in later stages. Nothing to drain here.
@@ -2587,6 +2588,7 @@ fn build_layer_world_glue(self_ty: &syn::Type, detected_stage: &str) -> TokenStr
                             global_layer_index: e.region_key.layer_index as u32,
                             object_id: e.region_key.object_id,
                             region_id: e.region_key.region_id.parse().unwrap_or(0),
+                            variant_chain: Vec::new(),
                         },
                         role: __slicer_wit_role_to_ir(&e.role),
                         start_point: __slicer_wit_point3w_to_ir(&e.start_point),

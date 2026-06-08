@@ -14,7 +14,7 @@
 //! host-side resolver in `slicer-runtime::config_resolution` is a thin loop over
 //! `apply_cli_key`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::slice_ir::{ConfigValue, InfillType, SupportType, WallGenerator};
 
@@ -397,18 +397,18 @@ macro_rules! __drc {
         /// Field set is declared via [`declare_resolved_config!`]; see that
         /// macro and the invocation in `crates/slicer-ir/src/resolved_config.rs`
         /// for the single source of truth.
-        #[derive(Debug, Clone, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+        #[derive(Debug, Clone, ::serde::Serialize, ::serde::Deserialize)]
         pub struct ResolvedConfig {
             $($sf)*
             /// Overflow bucket for unknown module configs.
-            pub extensions: ::std::collections::HashMap<String, $crate::ConfigValue>,
+            pub extensions: ::std::collections::BTreeMap<String, $crate::ConfigValue>,
         }
 
         impl ::core::default::Default for ResolvedConfig {
             fn default() -> Self {
                 Self {
                     $($df)*
-                    extensions: ::std::collections::HashMap::new(),
+                    extensions: ::std::collections::BTreeMap::new(),
                 }
             }
         }
@@ -669,5 +669,112 @@ declare_resolved_config! {
 // reviewer doesn't think they're unused.
 #[allow(dead_code)]
 const _: fn() = || {
-    let _: HashMap<String, ConfigValue> = HashMap::new();
+    let _: BTreeMap<String, ConfigValue> = BTreeMap::new();
+    let _: HashMap<String, ConfigValue> = HashMap::new(); // to_config_map still returns HashMap
 };
+
+impl PartialEq for ResolvedConfig {
+    fn eq(&self, other: &Self) -> bool {
+        // f32 fields compared via to_bits() so that Eq and Hash are consistent.
+        self.layer_height.to_bits() == other.layer_height.to_bits()
+            && self.line_width.to_bits() == other.line_width.to_bits()
+            && self.first_layer_height.to_bits() == other.first_layer_height.to_bits()
+            && self.first_layer_line_width.to_bits() == other.first_layer_line_width.to_bits()
+            && self.wall_count == other.wall_count
+            && self.outer_wall_speed.to_bits() == other.outer_wall_speed.to_bits()
+            && self.inner_wall_speed.to_bits() == other.inner_wall_speed.to_bits()
+            && self.wall_generator == other.wall_generator
+            && self.arachne_min_feature_size.map(|f| f.to_bits())
+                == other.arachne_min_feature_size.map(|f| f.to_bits())
+            && self.infill_type == other.infill_type
+            && self.infill_density.to_bits() == other.infill_density.to_bits()
+            && self.infill_angle.to_bits() == other.infill_angle.to_bits()
+            && self.infill_speed.to_bits() == other.infill_speed.to_bits()
+            && self.solid_infill_speed.to_bits() == other.solid_infill_speed.to_bits()
+            && self.top_shell_layers == other.top_shell_layers
+            && self.bottom_shell_layers == other.bottom_shell_layers
+            && self.top_fill_holder == other.top_fill_holder
+            && self.bottom_fill_holder == other.bottom_fill_holder
+            && self.bridge_fill_holder == other.bridge_fill_holder
+            && self.sparse_fill_holder == other.sparse_fill_holder
+            && self.gcode_resolution.to_bits() == other.gcode_resolution.to_bits()
+            && self.infill_resolution.to_bits() == other.infill_resolution.to_bits()
+            && self.support_resolution.to_bits() == other.support_resolution.to_bits()
+            && self.min_segment_length.to_bits() == other.min_segment_length.to_bits()
+            && self.gcode_xy_decimals == other.gcode_xy_decimals
+            && self.perimeter_arc_tolerance.to_bits() == other.perimeter_arc_tolerance.to_bits()
+            && self.slice_closing_radius.to_bits() == other.slice_closing_radius.to_bits()
+            && self.support_enabled == other.support_enabled
+            && self.support_type == other.support_type
+            && self.support_overhang_angle.to_bits() == other.support_overhang_angle.to_bits()
+            && self.support_layer_height_mm.to_bits() == other.support_layer_height_mm.to_bits()
+            && self.nonplanar_max_angle_deg.map(|f| f.to_bits())
+                == other.nonplanar_max_angle_deg.map(|f| f.to_bits())
+            && self.nonplanar_shell_count == other.nonplanar_shell_count
+            && self.nonplanar_amplitude.map(|f| f.to_bits())
+                == other.nonplanar_amplitude.map(|f| f.to_bits())
+            && self.smoothificator_target_height.map(|f| f.to_bits())
+                == other.smoothificator_target_height.map(|f| f.to_bits())
+            && self.smoothificator_adaptive == other.smoothificator_adaptive
+            && self.bed_shape.len() == other.bed_shape.len()
+            && self.bed_shape.iter().zip(other.bed_shape.iter()).all(|(a, b)| a.to_bits() == b.to_bits())
+            && self.retract_length.to_bits() == other.retract_length.to_bits()
+            && self.wipe_tower_enabled == other.wipe_tower_enabled
+            && self.extensions == other.extensions
+    }
+}
+
+impl Eq for ResolvedConfig {}
+
+/// # Hash consistency note
+///
+/// Hash is consistent within one process; not portable across architectures
+/// with differing NaN bit patterns. f32/f64 fields are hashed via `to_bits()`
+/// so that `a == b → hash(a) == hash(b)` holds.
+impl std::hash::Hash for ResolvedConfig {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.layer_height.to_bits().hash(state);
+        self.line_width.to_bits().hash(state);
+        self.first_layer_height.to_bits().hash(state);
+        self.first_layer_line_width.to_bits().hash(state);
+        self.wall_count.hash(state);
+        self.outer_wall_speed.to_bits().hash(state);
+        self.inner_wall_speed.to_bits().hash(state);
+        self.wall_generator.hash(state);
+        self.arachne_min_feature_size.map(|f| f.to_bits()).hash(state);
+        self.infill_type.hash(state);
+        self.infill_density.to_bits().hash(state);
+        self.infill_angle.to_bits().hash(state);
+        self.infill_speed.to_bits().hash(state);
+        self.solid_infill_speed.to_bits().hash(state);
+        self.top_shell_layers.hash(state);
+        self.bottom_shell_layers.hash(state);
+        self.top_fill_holder.hash(state);
+        self.bottom_fill_holder.hash(state);
+        self.bridge_fill_holder.hash(state);
+        self.sparse_fill_holder.hash(state);
+        self.gcode_resolution.to_bits().hash(state);
+        self.infill_resolution.to_bits().hash(state);
+        self.support_resolution.to_bits().hash(state);
+        self.min_segment_length.to_bits().hash(state);
+        self.gcode_xy_decimals.hash(state);
+        self.perimeter_arc_tolerance.to_bits().hash(state);
+        self.slice_closing_radius.to_bits().hash(state);
+        self.support_enabled.hash(state);
+        self.support_type.hash(state);
+        self.support_overhang_angle.to_bits().hash(state);
+        self.support_layer_height_mm.to_bits().hash(state);
+        self.nonplanar_max_angle_deg.map(|f| f.to_bits()).hash(state);
+        self.nonplanar_shell_count.hash(state);
+        self.nonplanar_amplitude.map(|f| f.to_bits()).hash(state);
+        self.smoothificator_target_height.map(|f| f.to_bits()).hash(state);
+        self.smoothificator_adaptive.hash(state);
+        self.bed_shape.len().hash(state);
+        for f in &self.bed_shape {
+            f.to_bits().hash(state);
+        }
+        self.retract_length.to_bits().hash(state);
+        self.wipe_tower_enabled.hash(state);
+        self.extensions.hash(state);
+    }
+}

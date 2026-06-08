@@ -290,7 +290,8 @@ fn negative_part_subtracts_via_full_pipeline() {
             infill_areas: vec![],
             nonplanar_surface: None,
             effective_layer_height: 0.2,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
             top_shell_index: None,
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
@@ -631,7 +632,8 @@ fn model_without_negative_skips_subtract() {
             infill_areas: vec![],
             nonplanar_surface: None,
             effective_layer_height: 0.2,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
             top_shell_index: None,
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
@@ -857,9 +859,9 @@ fn negative_part_stamps_extruder_into_extensions() {
         return;
     };
 
-    let stamped = region_map.entries.values().any(|plan| {
+    let stamped = region_map.entries.keys().any(|key| {
         matches!(
-            plan.config.extensions.get("extruder"),
+            region_map.config_for(key).extensions.get("extruder"),
             Some(ConfigValue::Int(0))
         )
     });
@@ -902,9 +904,9 @@ fn modifier_part_stamps_fuzzy_skin_into_extensions() {
 
     let region_map = region_map_for_synthetic_objects(vec![object], "synthetic-obj");
 
-    let stamped = region_map.entries.values().any(|plan| {
+    let stamped = region_map.entries.keys().any(|key| {
         matches!(
-            plan.config.extensions.get("fuzzy_skin"),
+            region_map.config_for(key).extensions.get("fuzzy_skin"),
             Some(ConfigValue::String(s)) if s == "external"
         )
     });
@@ -946,9 +948,9 @@ fn modifier_part_stamps_extruder_into_extensions() {
 
     let region_map = region_map_for_synthetic_objects(vec![object], "synthetic-obj");
 
-    let stamped = region_map.entries.values().any(|plan| {
+    let stamped = region_map.entries.keys().any(|key| {
         matches!(
-            plan.config.extensions.get("extruder"),
+            region_map.config_for(key).extensions.get("extruder"),
             Some(ConfigValue::Int(0))
         )
     });
@@ -979,8 +981,8 @@ fn support_enforcer_config_delta_not_stamped() {
 
     let leaked = region_map
         .entries
-        .values()
-        .any(|plan| plan.config.extensions.contains_key("extruder"));
+        .keys()
+        .any(|key| region_map.config_for(key).extensions.contains_key("extruder"));
 
     assert!(
         !leaked,
@@ -1008,8 +1010,8 @@ fn support_blocker_config_delta_not_stamped() {
 
     let leaked = region_map
         .entries
-        .values()
-        .any(|plan| plan.config.extensions.contains_key("extruder"));
+        .keys()
+        .any(|key| region_map.config_for(key).extensions.contains_key("extruder"));
 
     assert!(
         !leaked,
@@ -1269,10 +1271,10 @@ fn config_delta_extruder_stamped_into_extensions() {
         return;
     };
 
-    let stamped = region_map.entries.iter().any(|(key, plan)| {
+    let stamped = region_map.entries.keys().any(|key| {
         stamped_parent_ids.contains(&key.object_id)
             && matches!(
-                plan.config.extensions.get("extruder"),
+                region_map.config_for(key).extensions.get("extruder"),
                 Some(ConfigValue::Int(0))
             )
     });
@@ -1313,13 +1315,14 @@ fn config_delta_non_extruder_key_survives() {
 
     let region_map = region_map_for_synthetic_objects(vec![object], "synthetic-obj");
 
-    let both_present = region_map.entries.values().any(|plan| {
+    let both_present = region_map.entries.keys().any(|key| {
+        let cfg = region_map.config_for(key);
         let has_extruder = matches!(
-            plan.config.extensions.get("extruder"),
+            cfg.extensions.get("extruder"),
             Some(ConfigValue::Int(0))
         );
         let has_fuzzy = matches!(
-            plan.config.extensions.get("fuzzy_skin"),
+            cfg.extensions.get("fuzzy_skin"),
             Some(ConfigValue::String(s)) if s == "external"
         );
         has_extruder && has_fuzzy
@@ -1425,7 +1428,8 @@ fn negative_part_extruder_does_not_affect_subtract() {
             infill_areas: vec![],
             nonplanar_surface: None,
             effective_layer_height: 0.2,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
             top_shell_index: None,
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
@@ -1475,25 +1479,26 @@ fn subtype_only_modifier_stamps_no_extensions() {
 
     let region_map = region_map_for_synthetic_objects(vec![object], "synthetic-obj");
 
-    for (key, plan) in &region_map.entries {
+    for key in region_map.entries.keys() {
+        let cfg = region_map.config_for(key);
         assert!(
-            !plan.config.extensions.contains_key("subtype"),
-            "AC-N1: RegionPlan at {key:?} must not carry a stamped \"subtype\" key â€” \
+            !cfg.extensions.contains_key("subtype"),
+            "AC-N1: RegionPlan at {key:?} must not carry a stamped \"subtype\" key - \
              stamp_modifier_config_deltas excludes the subtype key. \
              Found extensions={:?}",
-            plan.config.extensions
+            cfg.extensions
         );
         assert!(
-            !plan.config.extensions.contains_key("extruder"),
+            !cfg.extensions.contains_key("extruder"),
             "AC-N1: RegionPlan at {key:?} must not carry an \"extruder\" key when the \
              modifier's config_delta contains only \"subtype\". Found extensions={:?}",
-            plan.config.extensions
+            cfg.extensions
         );
         assert!(
-            !plan.config.extensions.contains_key("fuzzy_skin"),
+            !cfg.extensions.contains_key("fuzzy_skin"),
             "AC-N1: RegionPlan at {key:?} must not carry a \"fuzzy_skin\" key when the \
              modifier's config_delta contains only \"subtype\". Found extensions={:?}",
-            plan.config.extensions
+            cfg.extensions
         );
     }
 }
@@ -1537,14 +1542,15 @@ fn conflicting_extruder_modifier_priority_wins() {
         "region map must contain at least one RegionPlan entry"
     );
 
-    for (key, plan) in &region_map.entries {
+    for key in region_map.entries.keys() {
+        let cfg = region_map.config_for(key);
         assert_eq!(
-            plan.config.extensions.get("extruder"),
+            cfg.extensions.get("extruder"),
             Some(&ConfigValue::Int(1)),
             "AC-N2: RegionPlan at {key:?} must carry extruder=Int(1) (modifier B wins \
              because its higher priority writes last via overlay_resolved). \
              Found extensions={:?}",
-            plan.config.extensions
+            cfg.extensions
         );
     }
 }

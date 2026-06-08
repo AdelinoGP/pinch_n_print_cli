@@ -179,10 +179,12 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `SliceIR`. Single source of truth — production constructors
-/// must use this constant, not literal `SemVer { ... }` values.
+/// Schema version for `SliceIR`. Bumped to 4.0.0 by packet 91 — breaking
+/// field changes: `SlicedRegion.segment_annotations` renamed to `segment_annotations`,
+/// `SlicedRegion.variant_chain` added. Prior bump to 3.0.0 was made by an
+/// earlier packet; this packet's rename layers a new breaking change.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 3,
+    major: 4,
     minor: 0,
     patch: 0,
 };
@@ -243,11 +245,12 @@ pub const CURRENT_MESH_SEGMENTATION_IR_SCHEMA_VERSION: SemVer = SemVer {
     patch: 0,
 };
 
-/// Schema version for `RegionMapIR`. Bumped to 1.1.0 by packet 51 — additive
-/// `paint_overrides` field on `RegionPlan`.
+/// Schema version for `RegionMapIR`. Bumped to 2.0.0 by packet 91 — breaking
+/// field changes: `RegionPlan.config` is now a `ConfigId` (interner index),
+/// `configs` Vec added to `RegionMapIR`, `RegionKey.variant_chain` added.
 pub const CURRENT_REGION_MAP_IR_SCHEMA_VERSION: SemVer = SemVer {
-    major: 1,
-    minor: 1,
+    major: 2,
+    minor: 0,
     patch: 0,
 };
 
@@ -318,7 +321,7 @@ pub enum PaintSemantic {
 }
 
 /// Paint value types
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PaintValue {
     /// Boolean flag
     Flag(bool),
@@ -329,6 +332,32 @@ pub enum PaintValue {
     /// Community-defined or module-defined string value.
     /// Used when none of the typed variants is appropriate.
     Custom(String),
+}
+
+impl PartialEq for PaintValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Flag(a), Self::Flag(b)) => a == b,
+            (Self::Scalar(a), Self::Scalar(b)) => a.to_bits() == b.to_bits(),
+            (Self::ToolIndex(a), Self::ToolIndex(b)) => a == b,
+            (Self::Custom(a), Self::Custom(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for PaintValue {}
+
+impl std::hash::Hash for PaintValue {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+        match self {
+            Self::Flag(b) => b.hash(state),
+            Self::Scalar(f) => f.to_bits().hash(state),
+            Self::ToolIndex(n) => n.hash(state),
+            Self::Custom(s) => s.hash(state),
+        }
+    }
 }
 
 /// Paint stroke (3D triangles defining painted region)
@@ -572,7 +601,7 @@ impl Default for SurfaceClassificationIR {
 pub type ConfigKey = String;
 
 /// Config value type
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ConfigValue {
     /// Boolean value
     Bool(bool),
@@ -584,6 +613,34 @@ pub enum ConfigValue {
     String(String),
     /// List of config values
     List(Vec<ConfigValue>),
+}
+
+impl PartialEq for ConfigValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            (Self::Int(a), Self::Int(b)) => a == b,
+            (Self::Float(a), Self::Float(b)) => a.to_bits() == b.to_bits(),
+            (Self::String(a), Self::String(b)) => a == b,
+            (Self::List(a), Self::List(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl Eq for ConfigValue {}
+
+impl std::hash::Hash for ConfigValue {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+        match self {
+            Self::Bool(b) => b.hash(state),
+            Self::Int(i) => i.hash(state),
+            Self::Float(f) => f.to_bits().hash(state),
+            Self::String(s) => s.hash(state),
+            Self::List(v) => v.hash(state),
+        }
+    }
 }
 
 /// Config view (pre-filtered for specific module).
@@ -1107,6 +1164,11 @@ pub struct RegionKey {
     pub object_id: ObjectId,
     /// Region ID
     pub region_id: RegionId,
+    /// Ordered (paint_semantic_name, value) pairs identifying this region's paint variant.
+    /// Empty for the legacy single-variant flow; populated by P1c (packet 93) when
+    /// RegionMapping cross-product lands.
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
 }
 
 /// Module invocation
@@ -1121,8 +1183,9 @@ pub struct ModuleInvocation {
 /// Region plan
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct RegionPlan {
-    /// Resolved config for the region
-    pub config: ResolvedConfig,
+    /// Interned config index into `RegionMapIR.configs`.
+    /// Resolve via `RegionMapIR::config_for(&key)`.
+    pub config: ConfigId,
     /// Module invocations per stage
     pub stage_modules: HashMap<StageId, Vec<ModuleInvocation>>,
     /// Per-paint-semantic config overrides (empty when no paint overrides apply)
@@ -1132,6 +1195,13 @@ pub struct RegionPlan {
 /// Default cap on `RegionMapIR` entry count per docs/04_host_scheduler.md.
 pub const DEFAULT_REGION_MAP_CAP: usize = 1_000;
 
+/// Stable index into `RegionMapIR.configs`. Introduced in P1a (packet 91) so
+/// duplicated `ResolvedConfig` payloads across painted-variant `RegionPlan`s
+/// can intern to a single instance. Stable within one `RegionMapIR` only —
+/// not portable across IRs.
+#[derive(Copy, Clone, Debug, Default, Hash, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ConfigId(pub u32);
+
 /// Region map IR
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegionMapIR {
@@ -1139,6 +1209,11 @@ pub struct RegionMapIR {
     pub schema_version: SemVer,
     /// Region plans keyed by region key
     pub entries: HashMap<RegionKey, RegionPlan>,
+    /// Interned `ResolvedConfig` pool. Each `RegionPlan.config` is an index into
+    /// this Vec. Use `RegionMapIR::intern_config` to add entries and
+    /// `RegionMapIR::config_for` to resolve them.
+    #[serde(default)]
+    pub configs: Vec<ResolvedConfig>,
 }
 
 impl Default for RegionMapIR {
@@ -1146,6 +1221,36 @@ impl Default for RegionMapIR {
         Self {
             schema_version: CURRENT_REGION_MAP_IR_SCHEMA_VERSION,
             entries: HashMap::new(),
+            // Pre-seed configs[0] with a default ResolvedConfig so ConfigId(0)
+            // (i.e. ConfigId::default()) is always a valid interner index —
+            // matches the packet 91 design invariant: legacy single-config flows
+            // see a one-entry configs Vec; intern_config dedupes new configs in.
+            configs: vec![ResolvedConfig::default()],
+        }
+    }
+}
+
+impl RegionMapIR {
+    /// Resolves a `RegionKey` to its `ResolvedConfig` via the interner.
+    /// Panics if the key is unknown or the ConfigId is out of bounds —
+    /// both are construction invariants the interner upholds.
+    pub fn config_for(&self, key: &RegionKey) -> &ResolvedConfig {
+        let plan = self
+            .entries
+            .get(key)
+            .expect("RegionKey not present in RegionMapIR.entries");
+        &self.configs[plan.config.0 as usize]
+    }
+
+    /// Interns a `ResolvedConfig`, returning the existing `ConfigId` if an
+    /// equal config is already present (linear scan — bounded by distinct
+    /// configs per print job; revisit if profiling shows hot).
+    pub fn intern_config(&mut self, rc: ResolvedConfig) -> ConfigId {
+        if let Some(i) = self.configs.iter().position(|c| c == &rc) {
+            ConfigId(i as u32)
+        } else {
+            self.configs.push(rc);
+            ConfigId((self.configs.len() - 1) as u32)
         }
     }
 }
@@ -1185,8 +1290,14 @@ pub struct SlicedRegion {
     pub nonplanar_surface: Option<SurfaceGroupId>,
     /// Effective layer height
     pub effective_layer_height: f32,
-    /// Paint region membership for points on polygon contour boundaries
-    pub boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    /// Per-segment paint annotations, populated only for paint semantics NOT declared `[[region_split]]` in a module manifest.
+    /// Semantics that ARE region-split surface through SlicedRegion.variant_chain instead (see P1a/P1c).
+    #[serde(default)]
+    pub segment_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    /// Ordered (paint_semantic_name, value) pairs identifying this region's variant.
+    /// Empty in the legacy single-variant flow; populated by P1c (93).
+    #[serde(default)]
+    pub variant_chain: Vec<(String, PaintValue)>,
     /// Minimum depth (in layers, 0 = exposed) within the top shell zone. `None` outside any top shell.
     #[serde(default)]
     pub top_shell_index: Option<u8>,
@@ -1239,7 +1350,7 @@ impl Default for SliceIR {
 // ============================================================================
 
 /// Wall generator type
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum WallGenerator {
     /// Classic wall generator
     #[default]
@@ -1249,7 +1360,7 @@ pub enum WallGenerator {
 }
 
 /// Infill type
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InfillType {
     /// Grid infill
     #[default]
@@ -1269,7 +1380,7 @@ pub enum InfillType {
 }
 
 /// Support type
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SupportType {
     /// Traditional support generation
     #[default]

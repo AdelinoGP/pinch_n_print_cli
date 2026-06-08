@@ -744,7 +744,7 @@ pub fn build_execution_plan(
 
     // Always-on host built-in: Layer::PaintRegionAnnotation must appear in the
     // per-layer plan even when no WASM module claims it, so the host annotator
-    // runs before downstream stages (Perimeters, Infill, etc.) need boundary_paint.
+    // runs before downstream stages (Perimeters, Infill, etc.) need segment_annotations.
     let paint_stage_id = "Layer::PaintRegionAnnotation".to_string();
     if !per_layer_stages
         .iter()

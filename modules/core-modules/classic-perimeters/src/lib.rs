@@ -157,9 +157,9 @@ impl LayerModule for ClassicPerimeters {
                     }
                     let num_points = points.len();
 
-                    // Propagate boundary_paint into feature flags for outer walls only
+                    // Propagate segment_annotations into feature flags for outer walls only
                     let (feature_flags, boundary_type) = if is_outer {
-                        build_outer_wall_flags(num_points, poly_idx, region.boundary_paint())
+                        build_outer_wall_flags(num_points, poly_idx, region.segment_annotations())
                     } else {
                         (
                             vec![default_feature_flags(); num_points],
@@ -210,26 +210,26 @@ impl LayerModule for ClassicPerimeters {
     }
 }
 
-/// Build feature flags for outer wall points by propagating boundary_paint.
+/// Build feature flags for outer wall points by propagating segment_annotations.
 ///
-/// Reads Material and FuzzySkin semantics from `boundary_paint` for the given
+/// Reads Material and FuzzySkin semantics from `segment_annotations` for the given
 /// polygon index. Sets `tool_index` from Material ToolIndex values, `fuzzy_skin`
 /// from FuzzySkin Flag values. Detects adjacent material changes and returns
 /// `WallBoundaryType::MaterialBoundary` when different tool indices are adjacent.
 fn build_outer_wall_flags(
     num_points: usize,
     poly_idx: usize,
-    boundary_paint: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    segment_annotations: &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
 ) -> (Vec<WallFeatureFlags>, WallBoundaryType) {
     let mut flags = vec![default_feature_flags(); num_points];
 
     // Extract per-point Material paint values for this polygon
-    let material_values: Option<&Vec<Option<PaintValue>>> = boundary_paint
+    let material_values: Option<&Vec<Option<PaintValue>>> = segment_annotations
         .get(&PaintSemantic::Material)
         .and_then(|per_poly| per_poly.get(poly_idx));
 
     // Extract per-point FuzzySkin paint values for this polygon
-    let fuzzy_values: Option<&Vec<Option<PaintValue>>> = boundary_paint
+    let fuzzy_values: Option<&Vec<Option<PaintValue>>> = segment_annotations
         .get(&PaintSemantic::FuzzySkin)
         .and_then(|per_poly| per_poly.get(poly_idx));
 

@@ -344,6 +344,7 @@ fn blackboard_with_layer_plan(mesh: MeshIR) -> Blackboard {
                     global_layer_index: i,
                     object_id: obj.id.clone(),
                     region_id: 0,
+                    variant_chain: Vec::new(),
                 },
                 RegionPlan::default(),
             );

@@ -79,7 +79,7 @@ pub enum LayerExecutionError {
         source: LayerSliceError,
     },
     /// The host-built-in paint-annotation step failed with a structured
-    /// fatal error (missing paint region data, stale boundary_paint
+    /// fatal error (missing paint region data, stale segment_annotations
     /// cardinality, or a deterministic custom-semantic conflict).
     PaintAnnotation {
         /// Layer that failed.
@@ -777,13 +777,18 @@ pub(crate) fn assemble_ordered_entities(
                 global_layer_index,
                 object_id: region.object_id.clone(),
                 region_id: region.region_id,
+                variant_chain: Vec::new(),
             };
             let modifier_tool: Option<u64> = region_map
-                .and_then(|rm| rm.entries.get(&base_key))
-                .and_then(|rp| rp.config.extensions.get("extruder"))
-                .and_then(|v| match v {
-                    ConfigValue::Int(n) if *n >= 0 => Some(*n as u64),
-                    _ => None,
+                .and_then(|rm| {
+                    if rm.entries.contains_key(&base_key) {
+                        rm.config_for(&base_key).extensions.get("extruder").and_then(|v| match v {
+                            ConfigValue::Int(n) if *n >= 0 => Some(*n as u64),
+                            _ => None,
+                        })
+                    } else {
+                        None
+                    }
                 });
             for wl in &region.walls {
                 let paint_tool = dominant_tool_index(&wl.feature_flags);
@@ -792,6 +797,7 @@ pub(crate) fn assemble_ordered_entities(
                     global_layer_index,
                     object_id: region.object_id.clone(),
                     region_id: resolved_tool,
+                    variant_chain: Vec::new(),
                 };
                 let role = wl.path.role.clone();
                 push(wl.path.clone(), role, entity_key, &mut out);
@@ -805,6 +811,7 @@ pub(crate) fn assemble_ordered_entities(
                 global_layer_index,
                 object_id: region.object_id.clone(),
                 region_id: region.region_id,
+                variant_chain: Vec::new(),
             };
             for path in &region.sparse_infill {
                 push(path.clone(), path.role.clone(), key.clone(), &mut out);
@@ -826,6 +833,7 @@ pub(crate) fn assemble_ordered_entities(
             global_layer_index,
             object_id: String::new(),
             region_id: 0,
+            variant_chain: Vec::new(),
         };
         for path in &sup.support_paths {
             push(path.clone(), path.role.clone(), key.clone(), &mut out);

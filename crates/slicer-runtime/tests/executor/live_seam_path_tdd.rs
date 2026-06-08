@@ -943,6 +943,7 @@ fn seam_plan_ir_is_injected_into_wall_postprocess_region_view() {
                 global_layer_index: layer_index,
                 object_id: object_id.clone(),
                 region_id,
+                variant_chain: Vec::new(),
             },
             chosen_candidate: SeamPosition {
                 point: Point3WithWidth {

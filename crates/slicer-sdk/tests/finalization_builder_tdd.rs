@@ -58,6 +58,7 @@ fn make_region_key() -> RegionKey {
         global_layer_index: 0,
         object_id: "obj-1".to_string(),
         region_id: 0,
+        variant_chain: Vec::new(),
     }
 }
 

@@ -152,29 +152,28 @@ fn layer_plan() -> LayerPlanIR {
 }
 
 fn region_map_with_shell_counts(plan: &LayerPlanIR, top: u32, bot: u32) -> RegionMapIR {
-    let mut entries = HashMap::new();
+    let mut region_map = RegionMapIR::default();
     for gl in &plan.global_layers {
         for active in &gl.active_regions {
             let mut config = active.resolved_config.clone();
             config.top_shell_layers = top;
             config.bottom_shell_layers = bot;
-            entries.insert(
+            let config_id = region_map.intern_config(config);
+            region_map.entries.insert(
                 RegionKey {
                     global_layer_index: gl.index,
                     object_id: active.object_id.clone(),
                     region_id: active.region_id,
+                    variant_chain: Vec::new(),
                 },
                 RegionPlan {
-                    config,
+                    config: config_id,
                     ..Default::default()
                 },
             );
         }
     }
-    RegionMapIR {
-        entries,
-        ..Default::default()
-    }
+    region_map
 }
 
 fn ironing_default_config() -> ConfigView {

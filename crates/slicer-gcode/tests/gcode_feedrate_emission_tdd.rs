@@ -59,6 +59,7 @@ fn per_role_speed_resolves_to_f_token() {
                 region_id: *entity_id,
                 global_layer_index: 0,
                 object_id: "obj".to_string(),
+                variant_chain: Vec::new(),
             },
             topo_order: *entity_id as u32,
         });
@@ -154,6 +155,7 @@ fn speed_factor_modulates_role_speed() {
             region_id: 0,
             global_layer_index: 0,
             object_id: "obj".to_string(),
+            variant_chain: Vec::new(),
         },
         topo_order: 0,
     });
@@ -204,6 +206,7 @@ fn module_supplied_f_wins() {
             region_id: 0,
             global_layer_index: 0,
             object_id: "obj".to_string(),
+            variant_chain: Vec::new(),
         },
         topo_order: 0,
     });
@@ -278,6 +281,7 @@ fn distinct_feedrates_present() {
             region_id: 0,
             global_layer_index: 0,
             object_id: "obj".to_string(),
+            variant_chain: Vec::new(),
         },
         topo_order: 0,
     });
@@ -311,6 +315,7 @@ fn distinct_feedrates_present() {
             region_id: 0,
             global_layer_index: 0,
             object_id: "obj".to_string(),
+            variant_chain: Vec::new(),
         },
         topo_order: 1,
     });
@@ -381,6 +386,7 @@ fn f_token_within_200_lines() {
             region_id: 0,
             global_layer_index: 0,
             object_id: "obj".to_string(),
+            variant_chain: Vec::new(),
         },
         topo_order: 0,
     });

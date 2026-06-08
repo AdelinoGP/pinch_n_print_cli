@@ -162,7 +162,7 @@ fn modules_without_dependencies_remain_as_isolated_nodes() {
             "com.example.annotator",
             &stage,
             &["SliceIR.regions"],
-            &["SliceIR.regions.boundary_paint"],
+            &["SliceIR.regions.segment_annotations"],
             &[],
         ),
         loaded_module("com.example.noop", &stage, &[], &[], &[]),

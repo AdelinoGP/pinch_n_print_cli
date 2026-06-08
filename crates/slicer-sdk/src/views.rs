@@ -24,7 +24,7 @@ pub struct SliceRegionView {
     effective_layer_height: f32,
     z: f32,
     has_nonplanar: bool,
-    boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+    segment_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
     /// SurfaceClassificationIR-derived eligibility flag. Surfaces the documented
     /// `needs_support` signal from docs/02_ir_schemas.md into the support stage
     /// so generators can apply the default eligibility rules from
@@ -62,7 +62,7 @@ impl Default for SliceRegionView {
             effective_layer_height: 0.0,
             z: 0.0,
             has_nonplanar: false,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             // `needs_support: true` matches the pre-TASK-200e `new()` default
             // (see docs/02_ir_schemas.md §IR 2). Test fixtures that predate
             // the SurfaceClassificationIR wiring observe the prior
@@ -125,11 +125,11 @@ impl SliceRegionView {
 
     /// Override the boundary paint map (host-only, for testing).
     #[doc(hidden)]
-    pub fn set_boundary_paint(
+    pub fn set_segment_annotations(
         &mut self,
-        boundary_paint: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
+        segment_annotations: HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>,
     ) {
-        self.boundary_paint = boundary_paint;
+        self.segment_annotations = segment_annotations;
     }
 
     /// Override the `needs_support` eligibility flag (host-only, for testing).
@@ -290,8 +290,8 @@ impl SliceRegionView {
     /// Per-semantic, per-polygon, per-point paint values annotated by
     /// the paint-region-annotator (SlicePostProcess stage). Empty map
     /// if no paint data applies to this region.
-    pub fn boundary_paint(&self) -> &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> {
-        &self.boundary_paint
+    pub fn segment_annotations(&self) -> &HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>> {
+        &self.segment_annotations
     }
 
     /// Returns the per-layer expanded bridge polygons.

@@ -145,12 +145,12 @@ fn is_on_back_face(p: Point2, fb: &FaceBounds) -> bool {
     (p.y - fb.y_max).abs() < EPSILON
 }
 
-/// Collect all unique Material ToolIndex values across boundary_paint contour points.
+/// Collect all unique Material ToolIndex values across segment_annotations contour points.
 fn unique_material_tool_indices(slice_ir: &SliceIR) -> std::collections::HashSet<u32> {
     slice_ir
         .regions
         .iter()
-        .flat_map(|r| r.boundary_paint.get(&PaintSemantic::Material))
+        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::Material))
         .flatten()
         .flatten()
         .filter_map(|pv| match pv {
@@ -199,7 +199,7 @@ fn cube_4color_full_pipeline_no_panic() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -287,7 +287,7 @@ fn cube_4color_all_50_layers_have_layer_map_entries() {
     }
 }
 
-/// At Z=12.5mm, boundary_paint Material is non-empty and carries ToolIndex values.
+/// At Z=12.5mm, segment_annotations Material is non-empty and carries ToolIndex values.
 #[test]
 fn cube_4color_mid_layer_has_material_paint() {
     let mesh = load_cube_4color();
@@ -321,7 +321,7 @@ fn cube_4color_mid_layer_has_material_paint() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -344,7 +344,7 @@ fn cube_4color_mid_layer_has_material_paint() {
         .slice_ir
         .regions
         .iter()
-        .flat_map(|r| r.boundary_paint.get(&PaintSemantic::Material))
+        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::Material))
         .flatten()
         .flatten()
         .filter(|pv| matches!(pv, Some(PaintValue::ToolIndex(_))))
@@ -394,7 +394,7 @@ fn cube_4color_fuzzy_without_data_is_error() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -424,7 +424,7 @@ fn cube_4color_fuzzy_without_data_is_error() {
 
 /// Top face (Z≈24.9mm): two triangles — ToolIndex 0 (orange) and ToolIndex 3 (red).
 ///
-/// When facet-paint regions correctly cover contour points, boundary_paint
+/// When facet-paint regions correctly cover contour points, segment_annotations
 /// at Z=24.9mm should have both ToolIndex 0 and ToolIndex 3. Today: only
 /// ToolIndex 0 appears because the ToolIndex 3 triangle's projected region
 /// does not overlap any contour points. Uncovered points fall back to
@@ -467,7 +467,7 @@ fn cube_4color_top_face_two_tool_indices_requires_projection_coverage() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -501,7 +501,7 @@ fn cube_4color_top_face_two_tool_indices_requires_projection_coverage() {
 
 /// Bottom face (Z≈0.1mm): half ToolIndex 2 (blue) / half unpainted (two triangles).
 ///
-/// At Z=0.1mm, boundary_paint Material should show BOTH ToolIndex 2 (from the
+/// At Z=0.1mm, segment_annotations Material should show BOTH ToolIndex 2 (from the
 /// painted triangle) AND None (from the unpainted triangle). Today: only
 /// ToolIndex 2 or ToolIndex 0 appears; unpainted triangle's contour points
 /// may receive a fallback instead of None.
@@ -542,7 +542,7 @@ fn cube_4color_bottom_face_painted_and_unpainted_requires_projection_coverage() 
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -567,7 +567,7 @@ fn cube_4color_bottom_face_painted_and_unpainted_requires_projection_coverage() 
         .slice_ir
         .regions
         .iter()
-        .flat_map(|r| r.boundary_paint.get(&PaintSemantic::Material))
+        .flat_map(|r| r.segment_annotations.get(&PaintSemantic::Material))
         .flatten()
         .flatten()
         .filter(|pv| pv.is_none())
@@ -625,7 +625,7 @@ fn cube_4color_top_face_per_point_variation() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -647,7 +647,7 @@ fn cube_4color_top_face_per_point_variation() {
     let polygons = &annotation.slice_ir.regions[0].polygons;
     let mut all_tool_indices: Vec<u32> = Vec::new();
     if let Some(material_paint) = annotation.slice_ir.regions[0]
-        .boundary_paint
+        .segment_annotations
         .get(&PaintSemantic::Material)
     {
         for (poly_idx, poly_paint) in material_paint.iter().enumerate() {
@@ -742,7 +742,7 @@ fn cube_4color_front_face_banded_by_z_requires_subfacet_strokes() {
                 infill_areas: sliced_polys,
                 nonplanar_surface: None,
                 effective_layer_height: LAYER_HEIGHT_MM,
-                boundary_paint: HashMap::new(),
+                segment_annotations: HashMap::new(),
                 is_bridge: false,
                 bridge_areas: vec![],
                 bridge_orientation_deg: 0.0,
@@ -764,7 +764,7 @@ fn cube_4color_front_face_banded_by_z_requires_subfacet_strokes() {
         let polygons = &annotation.slice_ir.regions[0].polygons;
         let mut z_front_indices = Vec::new();
         if let Some(material_paint) = annotation.slice_ir.regions[0]
-            .boundary_paint
+            .segment_annotations
             .get(&PaintSemantic::Material)
         {
             for (poly_idx, poly_paint) in material_paint.iter().enumerate() {
@@ -846,7 +846,7 @@ fn cube_4color_left_face_circles_produce_per_point_variation() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -869,7 +869,7 @@ fn cube_4color_left_face_circles_produce_per_point_variation() {
     let polygons = &annotation.slice_ir.regions[0].polygons;
     let mut left_tool_indices: Vec<u32> = Vec::new();
     if let Some(material_paint) = annotation.slice_ir.regions[0]
-        .boundary_paint
+        .segment_annotations
         .get(&PaintSemantic::Material)
     {
         for (poly_idx, poly_paint) in material_paint.iter().enumerate() {
@@ -957,7 +957,7 @@ fn cube_4color_right_face_uniform_requires_vertical_face_projection() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -980,7 +980,7 @@ fn cube_4color_right_face_uniform_requires_vertical_face_projection() {
     let polygons = &annotation.slice_ir.regions[0].polygons;
     let mut right_tool_indices: Vec<u32> = Vec::new();
     if let Some(material_paint) = annotation.slice_ir.regions[0]
-        .boundary_paint
+        .segment_annotations
         .get(&PaintSemantic::Material)
     {
         for (poly_idx, poly_paint) in material_paint.iter().enumerate() {
@@ -1053,7 +1053,7 @@ fn cube_4color_back_face_uniform_requires_vertical_face_projection() {
             infill_areas: sliced_polys,
             nonplanar_surface: None,
             effective_layer_height: LAYER_HEIGHT_MM,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
             is_bridge: false,
             bridge_areas: vec![],
             bridge_orientation_deg: 0.0,
@@ -1076,7 +1076,7 @@ fn cube_4color_back_face_uniform_requires_vertical_face_projection() {
     let polygons = &annotation.slice_ir.regions[0].polygons;
     let mut back_tool_indices: Vec<u32> = Vec::new();
     if let Some(material_paint) = annotation.slice_ir.regions[0]
-        .boundary_paint
+        .segment_annotations
         .get(&PaintSemantic::Material)
     {
         for (poly_idx, poly_paint) in material_paint.iter().enumerate() {

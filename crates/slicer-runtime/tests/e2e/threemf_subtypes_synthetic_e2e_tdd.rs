@@ -107,7 +107,8 @@ fn slice_ir_with_polygon(z_mm: f32, polygon: ExPolygon) -> SliceIR {
             infill_areas: vec![],
             nonplanar_surface: None,
             effective_layer_height: 0.2,
-            boundary_paint: HashMap::new(),
+            segment_annotations: HashMap::new(),
+            variant_chain: Vec::new(),
             top_shell_index: None,
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
@@ -612,11 +613,13 @@ fn support_enforcer_flows_through_paint_overrides() {
         global_layer_index: 0,
         object_id: String::from("obj-abc"),
         region_id: 0,
+        variant_chain: Vec::new(),
     };
     let region_plan = region_map
         .entries
         .get(&key)
         .expect("RegionMapIR must contain an entry for obj-abc at layer 0");
+    let region_config = region_map.config_for(&key);
 
     assert!(
         region_plan
@@ -625,11 +628,11 @@ fn support_enforcer_flows_through_paint_overrides() {
         "RegionPlan.paint_overrides must record the SupportEnforcer overlay"
     );
     assert_ne!(
-        region_plan.config.support_overhang_angle, default_overhang,
+        region_config.support_overhang_angle, default_overhang,
         "overlay must produce a support_overhang_angle that differs from the default ({default_overhang})"
     );
     assert_eq!(
-        region_plan.config.support_overhang_angle, overridden_overhang,
+        region_config.support_overhang_angle, overridden_overhang,
         "RegionPlan.config.support_overhang_angle must equal the overlay value ({overridden_overhang})"
     );
 }

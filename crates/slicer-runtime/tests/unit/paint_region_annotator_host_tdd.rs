@@ -81,7 +81,7 @@ fn make_region(obj: &str, region_id: u64, polygons: Vec<ExPolygon>) -> SlicedReg
 }
 
 #[test]
-fn empty_paint_regions_produce_no_boundary_paint_updates() {
+fn empty_paint_regions_produce_no_segment_annotations_updates() {
     let slice_ir = make_slice_ir(vec![make_region(
         "obj1",
         0,
@@ -99,11 +99,11 @@ fn empty_paint_regions_produce_no_boundary_paint_updates() {
         })
         .unwrap();
 
-    assert!(result.slice_ir.regions[0].boundary_paint.is_empty());
+    assert!(result.slice_ir.regions[0].segment_annotations.is_empty());
 }
 
 #[test]
-fn boundary_paint_lengths_match_contour_point_counts() {
+fn segment_annotations_lengths_match_contour_point_counts() {
     let poly = square_polygon(0, 0, 10_000);
     let point_count = poly.contour.points.len();
     let slice_ir = make_slice_ir(vec![make_region("obj1", 0, vec![poly])]);
@@ -137,7 +137,7 @@ fn boundary_paint_lengths_match_contour_point_counts() {
         })
         .unwrap();
 
-    let bp = &result.slice_ir.regions[0].boundary_paint;
+    let bp = &result.slice_ir.regions[0].segment_annotations;
     let material_bp = bp.get(&PaintSemantic::Material).unwrap();
     assert_eq!(material_bp.len(), 1);
     assert_eq!(material_bp[0].len(), point_count);
@@ -147,7 +147,7 @@ fn boundary_paint_lengths_match_contour_point_counts() {
 }
 
 #[test]
-fn multiple_polygons_per_region_each_get_boundary_paint() {
+fn multiple_polygons_per_region_each_get_segment_annotations() {
     let poly1 = square_polygon(0, 0, 10_000);
     let poly2 = square_polygon(50_000, 0, 20_000);
     let slice_ir = make_slice_ir(vec![make_region("obj1", 0, vec![poly1, poly2])]);
@@ -181,7 +181,7 @@ fn multiple_polygons_per_region_each_get_boundary_paint() {
         })
         .unwrap();
 
-    let bp = &result.slice_ir.regions[0].boundary_paint;
+    let bp = &result.slice_ir.regions[0].segment_annotations;
     let fuzzy_bp = bp.get(&PaintSemantic::FuzzySkin).unwrap();
     assert_eq!(fuzzy_bp.len(), 2);
     assert_eq!(fuzzy_bp[0].len(), 4);
@@ -234,7 +234,7 @@ fn multiple_semantics_handled_independently() {
         })
         .unwrap();
 
-    let bp = &result.slice_ir.regions[0].boundary_paint;
+    let bp = &result.slice_ir.regions[0].segment_annotations;
     assert!(bp.contains_key(&PaintSemantic::Material));
     assert!(bp.contains_key(&PaintSemantic::FuzzySkin));
 
@@ -252,7 +252,7 @@ fn multiple_semantics_handled_independently() {
 }
 
 #[test]
-fn multiple_regions_each_get_boundary_paint() {
+fn multiple_regions_each_get_segment_annotations() {
     let poly = square_polygon(0, 0, 10_000);
     let slice_ir = make_slice_ir(vec![
         make_region("obj1", 0, vec![poly.clone()]),
@@ -290,7 +290,7 @@ fn multiple_regions_each_get_boundary_paint() {
 
     assert_eq!(result.slice_ir.regions.len(), 2);
     for region in &result.slice_ir.regions {
-        assert!(region.boundary_paint.contains_key(&PaintSemantic::Material));
+        assert!(region.segment_annotations.contains_key(&PaintSemantic::Material));
     }
 }
 
@@ -337,7 +337,7 @@ fn highest_paint_order_wins_for_overlapping_region() {
         })
         .unwrap();
 
-    let bp = &result.slice_ir.regions[0].boundary_paint;
+    let bp = &result.slice_ir.regions[0].segment_annotations;
     let mat_bp = bp.get(&PaintSemantic::Material).unwrap();
     for entry in &mat_bp[0] {
         assert_eq!(entry, &Some(PaintValue::ToolIndex(5)));
@@ -345,7 +345,7 @@ fn highest_paint_order_wins_for_overlapping_region() {
 }
 
 #[test]
-fn region_with_no_polygons_produces_empty_boundary_paint() {
+fn region_with_no_polygons_produces_empty_segment_annotations() {
     let slice_ir = make_slice_ir(vec![make_region("obj1", 0, vec![])]);
     let paint_regions = Arc::new(PaintRegionIR {
         per_layer: HashMap::from([(
@@ -377,7 +377,7 @@ fn region_with_no_polygons_produces_empty_boundary_paint() {
         })
         .unwrap();
 
-    let bp = &result.slice_ir.regions[0].boundary_paint;
+    let bp = &result.slice_ir.regions[0].segment_annotations;
     let mat_bp = bp.get(&PaintSemantic::Material).unwrap();
     assert!(mat_bp.is_empty());
 }

@@ -134,6 +134,7 @@ fn make_entity(
             global_layer_index: layer_index,
             object_id: format!("obj-{layer_index}"),
             region_id: layer_index as u64 + 10,
+            variant_chain: Vec::new(),
         },
         topo_order,
     }

@@ -120,6 +120,7 @@ fn region_mapping_builtin_runs_after_user_layer_planning_and_is_visible_to_downs
         global_layer_index: 0,
         object_id: "cube".to_string(),
         region_id: 1,
+        variant_chain: Vec::new(),
     };
     let rp = rm.entries.get(&k).expect("expected region plan present");
     // Downstream consumer can resolve active modules for the Perimeters stage.
@@ -133,7 +134,7 @@ fn region_mapping_builtin_runs_after_user_layer_planning_and_is_visible_to_downs
 
     // The resolved config snapshot round-trips.
     assert_eq!(
-        rp.config.layer_height, 0.2,
+        rm.config_for(&k).layer_height, 0.2,
         "resolved_config.layer_height should be preserved"
     );
 }

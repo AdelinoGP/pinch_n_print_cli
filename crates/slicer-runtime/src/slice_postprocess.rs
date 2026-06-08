@@ -31,7 +31,7 @@ pub struct SlicePostProcessPaintAnnotationRequest {
 /// Output of the built-in paint annotation finalization step.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SlicePostProcessPaintAnnotationResult {
-    /// Slice IR with `boundary_paint` rewritten for all regions.
+    /// Slice IR with `segment_annotations` rewritten for all regions.
     pub slice_ir: SliceIR,
     /// True when non-fatal fallback behavior was required.
     pub degraded: bool,
@@ -91,7 +91,7 @@ pub enum SlicePostProcessPaintAnnotationError {
         semantic: PaintSemantic,
     },
     /// Existing boundary paint no longer matches final contour cardinality.
-    BoundaryPaintCardinalityMismatch {
+    SegmentAnnotationsCardinalityMismatch {
         /// Stable fatal code.
         code: u16,
         /// Layer being annotated.
@@ -298,7 +298,7 @@ pub fn paint_annotation_warnings_to_progress_events(
         .collect()
 }
 
-/// Annotate one final `SliceIR` layer with contour-parallel `boundary_paint`.
+/// Annotate one final `SliceIR` layer with contour-parallel `segment_annotations`.
 pub fn execute_slice_postprocess_paint_annotation(
     request: SlicePostProcessPaintAnnotationRequest,
 ) -> Result<SlicePostProcessPaintAnnotationResult, SlicePostProcessPaintAnnotationError> {
@@ -345,8 +345,8 @@ pub fn execute_slice_postprocess_paint_annotation(
         for (semantic_index, semantic) in required_semantics.iter().enumerate() {
             let semantic_regions = semantic_regions_cache[semantic_index];
 
-            // Check for stale cardinality if boundary_paint already exists for this semantic
-            if let Some(existing) = region.boundary_paint.get(semantic) {
+            // Check for stale cardinality if segment_annotations already exists for this semantic
+            if let Some(existing) = region.segment_annotations.get(semantic) {
                 for (polygon_index, polygon_paint) in existing.iter().enumerate() {
                     if polygon_index >= region.polygons.len() {
                         continue;
@@ -355,7 +355,7 @@ pub fn execute_slice_postprocess_paint_annotation(
                     let actual_points = polygon_paint.len();
                     if actual_points != expected_points {
                         return Err(
-                            SlicePostProcessPaintAnnotationError::BoundaryPaintCardinalityMismatch {
+                            SlicePostProcessPaintAnnotationError::SegmentAnnotationsCardinalityMismatch {
                                 code: 502,
                                 global_layer_index: layer_index,
                                 object_id: region.object_id.clone(),
@@ -370,7 +370,7 @@ pub fn execute_slice_postprocess_paint_annotation(
                 }
             }
 
-            // Build boundary_paint for this semantic via flattened point par_chunks(32)
+            // Build segment_annotations for this semantic via flattened point par_chunks(32)
             let object_id = region.object_id.clone();
             let region_id = region.region_id;
 
@@ -480,7 +480,7 @@ pub fn execute_slice_postprocess_paint_annotation(
             }
 
             region
-                .boundary_paint
+                .segment_annotations
                 .insert(semantic.clone(), semantic_paint);
         }
 
@@ -490,7 +490,7 @@ pub fn execute_slice_postprocess_paint_annotation(
         if required_semantics.contains(&PaintSemantic::FuzzySkin)
             && !modifier_projections.is_empty()
         {
-            if let Some(existing) = region.boundary_paint.get_mut(&PaintSemantic::FuzzySkin) {
+            if let Some(existing) = region.segment_annotations.get_mut(&PaintSemantic::FuzzySkin) {
                 for (polygon_index, polygon_paint) in existing.iter_mut().enumerate() {
                     if polygon_index >= region.polygons.len() {
                         continue;
@@ -528,7 +528,7 @@ pub fn execute_slice_postprocess_paint_annotation(
                     semantic_paint.push(point_paint);
                 }
                 region
-                    .boundary_paint
+                    .segment_annotations
                     .insert(PaintSemantic::FuzzySkin, semantic_paint);
             }
         }

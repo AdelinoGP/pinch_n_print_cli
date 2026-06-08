@@ -1578,6 +1578,7 @@ fn harvest_seam_plan_ir_from(
             global_layer_index: entry.global_layer_index,
             object_id: entry.object_id.clone(),
             region_id,
+            variant_chain: Vec::new(),
         };
 
         let is_duplicate = seen.contains_key(&region_key);
@@ -1969,10 +1970,10 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
             .as_deref()
             .and_then(|map| {
                 map.entries
-                    .iter()
-                    .find(|(key, _)| key.global_layer_index == layer.index)
-                    .map(|(_, plan)| {
-                        let region_map = resolved_config_to_map(&plan.config);
+                    .keys()
+                    .find(|key| key.global_layer_index == layer.index)
+                    .map(|key| {
+                        let region_map = resolved_config_to_map(map.config_for(key));
                         let declared_keys = module.config_view.keys();
                         slicer_ir::ConfigView::from_declared(
                             &region_map,
@@ -2001,12 +2002,18 @@ impl LayerStageRunner for WasmRuntimeDispatcher {
                             global_layer_index: layer.index,
                             object_id: region.object_id.clone(),
                             region_id: region.region_id,
+                            variant_chain: Vec::new(),
                         };
                         let config = input
                             .region_map
                             .as_deref()
-                            .and_then(|map| map.entries.get(&region_key))
-                            .map(|plan| plan.config.clone())
+                            .and_then(|map| {
+                                if map.entries.contains_key(&region_key) {
+                                    Some(map.config_for(&region_key).clone())
+                                } else {
+                                    None
+                                }
+                            })
                             .unwrap_or_default();
                         let top = config.top_fill_holder.as_str();
                         let bottom = config.bottom_fill_holder.as_str();
@@ -2331,6 +2338,7 @@ fn deconstruct_layer_ctx(
                         global_layer_index: layer_index,
                         object_id: wit_key.object_id.clone(),
                         region_id,
+                        variant_chain: Vec::new(),
                     };
                     let ir_polys: Vec<slicer_ir::ExPolygon> = polys
                         .iter()
@@ -2369,6 +2377,7 @@ fn deconstruct_layer_ctx(
                         global_layer_index: layer_index,
                         object_id: wit_key.object_id.clone(),
                         region_id,
+                        variant_chain: Vec::new(),
                     };
                     Some((ir_key, *path_idx, *vertex_idx, *z))
                 })
@@ -2602,6 +2611,7 @@ fn apply_finalization_pushes(
                         global_layer_index: new_index,
                         object_id: String::new(),
                         region_id: 0,
+                        variant_chain: Vec::new(),
                     },
                     topo_order: i as u32,
                 }

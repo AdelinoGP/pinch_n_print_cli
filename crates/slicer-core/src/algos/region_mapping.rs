@@ -444,13 +444,14 @@ pub fn execute_region_mapping_inner(
         projection.stage_invocations.to_vec();
 
     // --- Build entries ------------------------------------------------
-    let mut entries: HashMap<RegionKey, RegionPlan> = HashMap::with_capacity(entry_count);
+    let mut region_map_out = RegionMapIR::default();
     for layer in &layer_plan.global_layers {
         for region in &layer.active_regions {
             let key = RegionKey {
                 global_layer_index: layer.index,
                 object_id: region.object_id.clone(),
                 region_id: region.region_id,
+                variant_chain: Vec::new(),
             };
 
             let mut stage_modules: HashMap<StageId, Vec<ModuleInvocation>> =
@@ -513,20 +514,18 @@ pub fn execute_region_mapping_inner(
                 (modifier_stamped_base, BTreeMap::new())
             };
 
+            let config_id = region_map_out.intern_config(effective_config);
             let plan_entry = RegionPlan {
-                config: effective_config,
+                config: config_id,
                 stage_modules,
                 paint_overrides,
             };
 
-            if entries.insert(key.clone(), plan_entry).is_some() {
+            if region_map_out.entries.insert(key.clone(), plan_entry).is_some() {
                 return Err(RegionMappingError::DuplicateRegionKey { key });
             }
         }
     }
 
-    Ok(RegionMapIR {
-        entries,
-        ..Default::default()
-    })
+    Ok(region_map_out)
 }

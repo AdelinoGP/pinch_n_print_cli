@@ -31,7 +31,7 @@ pub static REGION_MAPPING_PRODUCER: BuiltinProducer = BuiltinProducer {
         patch: 0,
     },
     max_ir_schema: SemVer {
-        major: 4,
+        major: 5,
         minor: 0,
         patch: 0,
     },

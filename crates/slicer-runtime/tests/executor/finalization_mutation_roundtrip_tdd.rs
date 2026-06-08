@@ -174,6 +174,7 @@ fn entity_with_id(entity_id: u64, layer_index: u32, z: f32, speed_factor: f32) -
             global_layer_index: layer_index,
             object_id: "obj1".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         },
         topo_order: 0,
     }

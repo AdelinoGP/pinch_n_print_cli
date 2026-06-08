@@ -403,11 +403,12 @@ mod tests {
     fn test_region_map_ir() {
         let map = RegionMapIR {
             schema_version: SemVer {
-                major: 1,
+                major: 2,
                 minor: 0,
                 patch: 0,
             },
             entries: std::collections::HashMap::new(),
+            configs: Vec::new(),
         };
 
         test_serde_roundtrip!(map);
@@ -419,6 +420,7 @@ mod tests {
             global_layer_index: 0,
             object_id: "obj-1".to_string(),
             region_id: 1,
+            variant_chain: Vec::new(),
         };
 
         test_serde_roundtrip!(key);
@@ -449,7 +451,8 @@ mod tests {
             infill_areas: vec![],
             nonplanar_surface: None,
             effective_layer_height: 0.2,
-            boundary_paint: std::collections::HashMap::new(),
+            segment_annotations: std::collections::HashMap::new(),
+            variant_chain: Vec::new(),
             top_shell_index: None,
             bottom_shell_index: None,
             top_solid_fill: Vec::new(),
@@ -462,11 +465,9 @@ mod tests {
         test_serde_roundtrip!(region);
     }
 
-    /// Packet bridge: schema 3.0.0 introduces `top_shell_index` /
-    /// `bottom_shell_index` (Option<u8>) plus `top_solid_fill` /
-    /// `bottom_solid_fill` (Vec<ExPolygon>) replacing the prior
-    /// `is_top_surface` / `is_bottom_surface` bool fields. Round-trip the
-    /// populated form to lock in serde stability.
+    /// Packet bridge: schema 2.0.0 introduces `segment_annotations` (renamed
+    /// from `segment_annotations`) and `variant_chain` on `SlicedRegion`. Round-trip
+    /// the populated form to lock in serde stability.
     #[test]
     fn test_sliced_region_shell_classification_roundtrip() {
         let square = ExPolygon {
@@ -487,7 +488,8 @@ mod tests {
             infill_areas: vec![square.clone()],
             nonplanar_surface: None,
             effective_layer_height: 0.2,
-            boundary_paint: std::collections::HashMap::new(),
+            segment_annotations: std::collections::HashMap::new(),
+            variant_chain: Vec::new(),
             top_shell_index: Some(0),
             bottom_shell_index: Some(2),
             top_solid_fill: vec![square.clone()],
@@ -667,7 +669,7 @@ fn slice_ir_schema_version_is_one_one_zero() {
 ///
 /// Asserts that:
 ///   (a) CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION == SemVer { 1, 1, 0 }
-///   (b) CURRENT_SLICE_IR_SCHEMA_VERSION == SemVer { 1, 2, 0 }
+///   (b) CURRENT_SLICE_IR_SCHEMA_VERSION == SemVer { 4, 0, 0 }
 ///   (c) SurfaceClassificationIR::default().schema_version == CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION
 ///   (d) SliceIR::default().schema_version == CURRENT_SLICE_IR_SCHEMA_VERSION
 #[test]
@@ -683,15 +685,15 @@ fn bridge_detector_schema_versions_are_constant_sourced() {
         "CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION must be (1, 1, 0)"
     );
 
-    // (b)
+    // (b) — bumped to 4.0.0 by packet 91 (paint-pipeline-schema-scaffolding)
     assert_eq!(
         slicer_ir::CURRENT_SLICE_IR_SCHEMA_VERSION,
         slicer_ir::SemVer {
-            major: 3,
+            major: 4,
             minor: 0,
             patch: 0
         },
-        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (3, 0, 0)"
+        "CURRENT_SLICE_IR_SCHEMA_VERSION must be (4, 0, 0)"
     );
 
     // (c)
@@ -779,5 +781,51 @@ fn chunk2_ir_schema_versions_are_default_sourced() {
         GCodeIR::default().schema_version,
         slicer_ir::CURRENT_GCODE_IR_SCHEMA_VERSION,
         "GCodeIR::default().schema_version must equal CURRENT_GCODE_IR_SCHEMA_VERSION"
+    );
+}
+
+// Regression: packet 91 DEV-91-3. A freshly-defaulted RegionMapIR must seed
+// configs[0] with a default ResolvedConfig so ConfigId::default() (= ConfigId(0))
+// is always a valid interner index. Without the seed, config_for(&key) panics
+// with `index out of bounds: the len is 0 but the index is 0` on any caller
+// that constructs a RegionPlan with ConfigId::default() and indexes through it
+// (caught originally by prepass_support_geometry_tdd::host_builtin_runs_before_guest).
+#[test]
+fn region_map_default_has_seeded_config_at_index_zero() {
+    let rm = RegionMapIR::default();
+    assert_eq!(
+        rm.configs.len(),
+        1,
+        "RegionMapIR::default() must seed configs[0] with ResolvedConfig::default()"
+    );
+    assert_eq!(
+        rm.configs[0],
+        ResolvedConfig::default(),
+        "configs[0] must equal ResolvedConfig::default() so ConfigId(0) resolves to defaults"
+    );
+}
+
+#[test]
+fn config_for_works_on_default_region_map_with_default_config_id() {
+    use std::collections::{BTreeMap, HashMap};
+    let mut rm = RegionMapIR::default();
+    let key = RegionKey {
+        global_layer_index: 0,
+        object_id: "obj-test".to_string(),
+        region_id: 1,
+        variant_chain: Vec::new(),
+    };
+    let plan = RegionPlan {
+        config: ConfigId::default(),
+        stage_modules: HashMap::new(),
+        paint_overrides: BTreeMap::new(),
+    };
+    rm.entries.insert(key.clone(), plan);
+    // Must not panic; must return a reference to the default-seeded config.
+    let resolved = rm.config_for(&key);
+    assert_eq!(
+        resolved,
+        &ResolvedConfig::default(),
+        "config_for(&key) on a default RegionMapIR with ConfigId::default() must return ResolvedConfig::default()"
     );
 }

@@ -324,7 +324,7 @@ fn manifest_driven_plan_has_correct_stage_buckets() {
 
     // `build_execution_plan` auto-injects an always-on
     // `Layer::PaintRegionAnnotation` stage so the host annotator can run
-    // before downstream stages need `boundary_paint` (packet-64). Filter
+    // before downstream stages need `segment_annotations` (packet-64). Filter
     // it out when validating the user-declared per-layer pipeline shape.
     let user_stage_ids: Vec<&str> = plan
         .per_layer_stages

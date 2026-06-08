@@ -1307,6 +1307,7 @@ impl FinalizationOutputBuilder {
                                     global_layer_index,
                                     object_id: String::new(),
                                     region_id: 0,
+                                    variant_chain: Vec::new(),
                                 },
                                 topo_order: topo_order as u32,
                             }

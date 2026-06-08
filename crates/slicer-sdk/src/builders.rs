@@ -12,7 +12,7 @@ use slicer_ir::{
 };
 
 /// Boundary paint map for a region: semantic -> per-polygon -> per-point paint values.
-pub type BoundaryPaintMap = HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>;
+pub type SegmentAnnotationsMap = HashMap<PaintSemantic, Vec<Vec<Option<PaintValue>>>>;
 
 /// Builder for infill output.
 ///
@@ -291,7 +291,7 @@ impl std::fmt::Debug for SupportOutputBuilder {
 pub struct SlicePostprocessBuilder {
     polygon_updates: Vec<(RegionKey, Vec<ExPolygon>)>,
     path_z_updates: Vec<(RegionKey, u32, u32, f32)>,
-    boundary_paint_updates: Vec<(RegionKey, BoundaryPaintMap)>,
+    segment_annotations_updates: Vec<(RegionKey, SegmentAnnotationsMap)>,
 }
 
 impl SlicePostprocessBuilder {
@@ -300,7 +300,7 @@ impl SlicePostprocessBuilder {
         Self {
             polygon_updates: Vec::new(),
             path_z_updates: Vec::new(),
-            boundary_paint_updates: Vec::new(),
+            segment_annotations_updates: Vec::new(),
         }
     }
 
@@ -324,24 +324,24 @@ impl SlicePostprocessBuilder {
 
     /// Set boundary paint for a region.
     ///
-    /// The boundary_paint map is keyed by `PaintSemantic`. For each semantic,
+    /// The segment_annotations map is keyed by `PaintSemantic`. For each semantic,
     /// the outer Vec has one entry per polygon in the region's `polygons`,
     /// and the inner Vec has one entry per contour point in that polygon's
     /// outer contour. Each entry is `Some(PaintValue)` if the point is inside
     /// a painted region, or `None` if unpainted.
-    pub fn set_boundary_paint(
+    pub fn set_segment_annotations(
         &mut self,
         region: RegionKey,
-        boundary_paint: BoundaryPaintMap,
+        segment_annotations: SegmentAnnotationsMap,
     ) -> Result<(), String> {
-        self.boundary_paint_updates.push((region, boundary_paint));
+        self.segment_annotations_updates.push((region, segment_annotations));
         Ok(())
     }
 
     /// Get all boundary paint updates (for testing).
     #[doc(hidden)]
-    pub fn boundary_paint_updates(&self) -> &[(RegionKey, BoundaryPaintMap)] {
-        &self.boundary_paint_updates
+    pub fn segment_annotations_updates(&self) -> &[(RegionKey, SegmentAnnotationsMap)] {
+        &self.segment_annotations_updates
     }
 
     /// Get all polygon updates (for testing and macro drain-back).
@@ -368,7 +368,7 @@ impl std::fmt::Debug for SlicePostprocessBuilder {
         f.debug_struct("SlicePostprocessBuilder")
             .field("polygon_updates", &self.polygon_updates.len())
             .field("path_z_updates", &self.path_z_updates.len())
-            .field("boundary_paint_updates", &self.boundary_paint_updates.len())
+            .field("segment_annotations_updates", &self.segment_annotations_updates.len())
             .finish()
     }
 }

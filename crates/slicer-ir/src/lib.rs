@@ -35,6 +35,7 @@ pub use slice_ir::{
     ConfigDelta,
 
     // Config types
+    ConfigId,
     ConfigKey,
     ConfigValue,
     ConfigView,

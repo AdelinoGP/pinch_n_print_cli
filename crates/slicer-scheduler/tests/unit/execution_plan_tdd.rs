@@ -5,8 +5,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use slicer_ir::{
-    ActiveRegion, ConfigValue, ConfigView, GlobalLayer, RegionKey, RegionPlan, ResolvedConfig,
-    SemVer,
+    ActiveRegion, ConfigId, ConfigValue, ConfigView, GlobalLayer, RegionKey, RegionPlan,
+    ResolvedConfig, SemVer,
 };
 use slicer_scheduler::{
     build_execution_plan, CompiledModuleStatic, ConfigFieldEntry, ExecutionModuleBinding,
@@ -27,9 +27,10 @@ fn freezes_sorted_stage_buckets_runtime_bindings_and_shared_ir_ownership() {
             global_layer_index: 0,
             object_id: String::from("cube"),
             region_id: 7,
+            variant_chain: Vec::new(),
         },
         RegionPlan {
-            config: ResolvedConfig::default(),
+            config: ConfigId::default(),
             stage_modules: HashMap::new(),
             paint_overrides: BTreeMap::new(),
         },
@@ -117,7 +118,7 @@ fn freezes_sorted_stage_buckets_runtime_bindings_and_shared_ir_ownership() {
 
     // `build_execution_plan` auto-injects an empty `Layer::PaintRegionAnnotation`
     // stage so the host annotator runs before downstream stages need
-    // boundary_paint (packet-64). Skip past it when locating the user-facing
+    // segment_annotations (packet-64). Skip past it when locating the user-facing
     // stage under test.
     let perimeters_stage = plan
         .per_layer_stages
@@ -364,9 +365,10 @@ fn region_map_exceeding_cap_is_rejected() {
                 global_layer_index: (i / 10) as u32,
                 object_id: format!("obj-{}", i % 3),
                 region_id: i as u64,
+                variant_chain: Vec::new(),
             },
             RegionPlan {
-                config: ResolvedConfig::default(),
+                config: ConfigId::default(),
                 stage_modules: HashMap::new(),
                 paint_overrides: BTreeMap::new(),
             },
@@ -402,9 +404,10 @@ fn region_map_at_cap_is_accepted() {
                 global_layer_index: (i / 10) as u32,
                 object_id: format!("obj-{}", i % 3),
                 region_id: i as u64,
+                variant_chain: Vec::new(),
             },
             RegionPlan {
-                config: ResolvedConfig::default(),
+                config: ConfigId::default(),
                 stage_modules: HashMap::new(),
                 paint_overrides: BTreeMap::new(),
             },
@@ -614,9 +617,10 @@ fn region_map_cap_reports_exact_computed_entry_count() {
                 global_layer_index: 0,
                 object_id: format!("obj-{i}"),
                 region_id: i as u64,
+                variant_chain: Vec::new(),
             },
             RegionPlan {
-                config: ResolvedConfig::default(),
+                config: ConfigId::default(),
                 stage_modules: HashMap::new(),
                 paint_overrides: BTreeMap::new(),
             },
@@ -702,9 +706,10 @@ fn resolve_active_regions_uses_precomputed_index() {
                 global_layer_index: 0,
                 object_id: "cube".into(),
                 region_id: 1,
+                variant_chain: Vec::new(),
             },
             RegionPlan {
-                config: ResolvedConfig::default(),
+                config: ConfigId::default(),
                 stage_modules: HashMap::new(),
                 paint_overrides: BTreeMap::new(),
             },
@@ -714,9 +719,10 @@ fn resolve_active_regions_uses_precomputed_index() {
                 global_layer_index: 0,
                 object_id: "cube".into(),
                 region_id: 2,
+                variant_chain: Vec::new(),
             },
             RegionPlan {
-                config: ResolvedConfig::default(),
+                config: ConfigId::default(),
                 stage_modules: HashMap::new(),
                 paint_overrides: BTreeMap::new(),
             },
@@ -726,9 +732,10 @@ fn resolve_active_regions_uses_precomputed_index() {
                 global_layer_index: 1,
                 object_id: "cube".into(),
                 region_id: 1,
+                variant_chain: Vec::new(),
             },
             RegionPlan {
-                config: ResolvedConfig::default(),
+                config: ConfigId::default(),
                 stage_modules: HashMap::new(),
                 paint_overrides: BTreeMap::new(),
             },

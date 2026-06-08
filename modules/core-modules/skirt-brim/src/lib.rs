@@ -191,6 +191,7 @@ impl SkirtBrim {
                 global_layer_index,
                 object_id: "__skirt__".to_string(),
                 region_id: 0,
+                variant_chain: Vec::new(),
             };
 
             pairs.push((path, region_key));
@@ -227,6 +228,7 @@ impl SkirtBrim {
                 global_layer_index,
                 object_id: "__brim__".to_string(),
                 region_id: 0,
+                variant_chain: Vec::new(),
             };
 
             pairs.push((path, region_key));

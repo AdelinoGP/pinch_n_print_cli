@@ -18,8 +18,8 @@ interface ir-handles {
     enum wall-loop-type { outer, inner, thin-wall, nonplanar-shell }
     variant paint-semantic { material, fuzzy-skin, support-enforcer, support-blocker, custom(string) }
     variant paint-value { flag(bool), scalar(f32), tool-index(u32) }
-    record boundary-paint-polygon { values: list<option<paint-value>> }
-    record boundary-paint-entry { semantic: paint-semantic, polygons: list<boundary-paint-polygon> }
+    record segment-annotations-polygon { values: list<option<paint-value>> }
+    record segment-annotations-entry { semantic: paint-semantic, polygons: list<segment-annotations-polygon> }
 
     resource slice-region-view {
         object-id: func() -> object-id;
@@ -29,7 +29,7 @@ interface ir-handles {
         effective-layer-height: func() -> f32;
         z: func() -> f32;
         has-nonplanar: func() -> bool;
-        boundary-paint: func() -> list<boundary-paint-entry>;
+        segment-annotations: func() -> list<segment-annotations-entry>;
         needs-support: func() -> bool;
         top-shell-index: func() -> option<u8>;
         bottom-shell-index: func() -> option<u8>;
