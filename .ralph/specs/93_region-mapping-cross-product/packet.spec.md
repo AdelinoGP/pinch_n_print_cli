@@ -10,25 +10,25 @@ context_cost_estimate: M
 
 ## Goal
 
-Rewrite the RegionMapping kernel in `crates/slicer-core/src/algos/region_mapping.rs` to expand each `ActiveRegion` into N variant entries — one per element of the canonical cross-product of paint values present on that object across all opted-in region-split semantics (D2 + D5 + D15). The expansion uses `aggregated_region_split_semantics` (P1b's BTreeMap) as the registry of opted-in semantics, scans each object's `paint_data.layers[*].facet_values` once to discover the distinct `PaintValue`s present per semantic per object, then for each `(layer, ActiveRegion)` emits one `RegionPlan` keyed by `(global_layer_index, object_id, region_id, variant_chain)` for every element of `enumerate_canonical_chains(variants, &canonical_order)` — including the empty (base) chain. Each `RegionPlan.config` is set via the P1a interner (`region_map.intern_config(...)`) so a 16-color object's 16 variants don't replicate full ResolvedConfigs. Per-variant polygons stay empty in this packet — they are populated by paint-segmentation in P3 via `replace_slice_ir`. The `DEFAULT_REGION_MAP_CAP` constant is raised to 750_000 (with the existing top-contributor-diagnostic message updated to surface the worst object on overflow). The previously-broken `overlapping_semantics_for_region` at `region_mapping.rs:286-319` (the hardcoded `return true` that stamped every paint semantic onto every region regardless of object) is replaced with the per-object cross-product expansion — a region's variant entries are now bounded by what that specific object's paint actually carries. Five GREEN cube_4color tests assert the new shape; seven RED cube_4color tests stay RED (they assert on variant polygons, which P3 fills).
+Add cross-product expansion of `RegionMapIR.entries` keyed by `(layer × ActiveRegion × variant_chain)`, populating `RegionKey.variant_chain` from the per-object cross-product of paint values present in `aggregated_region_split` (D2 + D5 + D15). Migrate the existing per-region config-overlay flow at `region_mapping.rs:494` to derive overlays from the chain instead of from `overlapping_semantics_for_region`'s layer-wide semantic stamping; that function and its call site are deleted, with the new chain-derived path's empty-chain case standing in for the empty-aggregation fallback.
 
 ## Scope Boundaries
 
-This packet rewrites the RegionMapping kernel and the producer wrapper to thread `aggregated_region_split` from the scheduler into the kernel. It does NOT change paint-segmentation, mesh-segmentation, or any module's manifest. With no core module declaring `[[region_split]]` yet (still P3's job), `aggregated_region_split` is empty by default — and the cross-product collapses to the empty chain for every region, leaving every `RegionMapIR.entries` shape identical to pre-packet. Cube test fixtures (P0a authored) carry painted facets, but they only opt-in to region-splitting once a paint-aware module declares the relevant semantics in its manifest. To exercise the cross-product in this packet's tests, synthetic manifests (from P1b's fixture directory) declaring `material` are loaded for the cube tests; production behavior is unchanged. Full in/out-of-scope lists in `requirements.md`.
+This packet extends `execute_region_mapping_inner` with the cross-product loop, updates the producer wrapper to thread `aggregated_region_split` from the scheduler into the kernel, and deletes `overlapping_semantics_for_region` along with its call site at line 494 (subsumed by the chain-derived overlay path). The existing `stamp_modifier_config_deltas` (line 217) and `overlay_resolved` (line 110) helpers are preserved and composed with the new chain dimension. No paint-segmentation, no mesh-segmentation, no module-manifest changes. Empty-polygon `RegionPlan` filtering is **out of scope** — P95 owns it (polygons live on `SlicedRegion`, populated by paint-segmentation). With no production module declaring `[[region_split]]` yet (P95's job), `aggregated_region_split` is empty by default and the cross-product collapses to the empty chain only, preserving production behavior. Full in/out-of-scope lists in `requirements.md`.
 
 ## Prerequisites and Blockers
 
-- Depends on: packet 91 (P1a — schema scaffolding) and packet 92 (P1b — manifest + dispatch) must be `implemented`. P1c reads `aggregated_region_split` (P1b) and writes via the P1a `intern_config`/`config_for` accessors.
-- Unblocks: P2 (94, mesh-segmentation wiring) is independent of this packet but recommended to land after P1c so the prepass driver shape stabilises. P3 (95, paint-segmentation port) depends on P1c (fills variant polygons via `replace_slice_ir` into the entries P1c emits).
-- Activation blockers: P91 and P92 both `implemented`.
+- Depends on: packet 91 (schema scaffolding) `implemented` and packet 92 (manifest + dispatch) `implemented`. P93 reads `aggregated_region_split` (P92) and interns configs via the P91 helper.
+- Unblocks: P95 (paint-segmentation port) fills per-variant polygons via `replace_slice_ir` into the entries P93 emits, and owns the empty-polygon filter decision (deferred from this packet).
+- Activation blockers: P91 and P92 both `implemented`. No internal blockers — `AUDIT.md`'s three findings were resolved in the refinement pass that produced this packet (§Audit 1: additive framing; §Audit 2: empty-polygon filter deferred to P95; §Audit 3: AC-9 rescoped to net-new kernel tests, AC-10 dropped).
 
 ## Acceptance Criteria
 
-### AC-1 — `RegionMapping` kernel reads `aggregated_region_split` from the scheduler and threads it through
+### AC-1 — `execute_region_mapping_inner` reads `aggregated_region_split` from the scheduler
 
-**Given** the kernel rewrite,
-**When** `crates/slicer-core/src/algos/region_mapping.rs` is inspected,
-**Then** the kernel's public entry point accepts (or reads from a context object) the `aggregated_region_split: &BTreeMap<String, AggregatedRegionSplitEntry>` produced by `slicer-scheduler::region_split::aggregate_region_splits`. The kernel does NOT hardcode a list of opted-in semantics; the registry is the authoritative source.
+**Given** the kernel extension,
+**When** `execute_region_mapping_inner` at `crates/slicer-core/src/algos/region_mapping.rs:384` is inspected,
+**Then** its signature (or a context object it consumes) carries `aggregated_region_split: &BTreeMap<String, AggregatedRegionSplitEntry>` produced by `slicer-scheduler::region_split::aggregate_region_splits`. The kernel does NOT hardcode a list of opted-in semantics; the registry is the authoritative source.
 
 | `rg -q 'aggregated_region_split|AggregatedRegionSplitEntry' crates/slicer-core/src/algos/region_mapping.rs && cargo check -p slicer-core 2>&1 | tee target/test-output.log`
 
@@ -72,54 +72,57 @@ This packet rewrites the RegionMapping kernel and the producer wrapper to thread
 
 | `cargo test -p slicer-runtime --test executor cube_4color_paint_region_map_empty_polygons 2>&1 | tee target/test-output.log`
 
-### AC-7 — `overlapping_semantics_for_region`'s `return true` bug is removed
+### AC-7 — `overlapping_semantics_for_region` and its call site at line 494 are DELETED
 
-**Given** the broken implementation at `region_mapping.rs:286-319`,
-**When** the file is grepped,
-**Then** the function either no longer exists OR has been replaced with a per-object lookup that returns the actual cross-product variants for the asking region's object_id. No `return true` remains as a paint-overlap shortcut.
+**Given** that the chain-derived overlay path subsumes the existing layer-wide overlay derivation,
+**When** `crates/slicer-core/src/algos/region_mapping.rs` is inspected after this packet,
+**Then** the function `overlapping_semantics_for_region` no longer exists in the file, and its call site at line 494 (the `let semantics = overlapping_semantics_for_region(...)` line) is gone — the chain-derived overlay path is the only remaining path that produces `effective_config` / `paint_overrides` on each `RegionPlan`.
 
-| `! rg -nE 'fn overlapping_semantics_for_region[^}]*\n[^}]*return true' crates/slicer-core/src/algos/region_mapping.rs`
+| `! rg -q 'overlapping_semantics_for_region' crates/slicer-core/src/algos/region_mapping.rs && cargo test -p slicer-core region_mapping_chain_derived_overlay 2>&1 | tee target/test-output.log`
 
-### AC-8 — `DEFAULT_REGION_MAP_CAP` raised to 750_000 with overflow diagnostic
+### AC-7b — Empty-aggregation overlay equivalence
 
-**Given** the increased cardinality of `RegionMapIR.entries` under cross-product,
-**When** `crates/slicer-ir/src/slice_ir.rs` (or wherever the constant lives) is inspected,
-**Then** `DEFAULT_REGION_MAP_CAP` is `750_000`; the overflow diagnostic message (already a top-contributor surface) names the worst-contributing object_id in the structured-event output on overflow.
+**Given** `aggregated_region_split.is_empty()` (the production default until P95 declares a `[[region_split]]` semantic),
+**When** the chain-derived overlay path runs with the only chain being `[]` (the empty chain),
+**Then** the resulting `ResolvedConfig` per `RegionPlan` matches the `ResolvedConfig` that the deleted layer-wide `overlapping_semantics_for_region`-driven path produced for the same input pre-packet. The byte-identical g-code check in AC-10 (formerly AC-11) is the integration-level verification of this equivalence; a kernel-level unit test asserts the per-region `ConfigId` interner produces the same `ResolvedConfig` content.
 
-| `rg -q 'DEFAULT_REGION_MAP_CAP\s*[:=]\s*750_000' crates/slicer-ir/src/ && cargo test -p slicer-runtime region_map_cap_overflow_diagnostic 2>&1 | tee target/test-output.log`
+| `cargo test -p slicer-core region_mapping_chain_derived_overlay_matches_layer_wide_overlay_when_aggregation_empty 2>&1 | tee target/test-output.log`
 
-### AC-9 — 5 GREEN cube_4color RED-tests turn GREEN: variant_chain assertions
+### AC-8 — `DEFAULT_REGION_MAP_CAP` raised from 1_000 to 750_000 with overflow diagnostic
 
-**Given** the 5 cube_4color tests that assert on `RegionMapIR.entries` containing specific variant_chain shapes (from cherry-pick 5c272ef's RED suite),
-**When** the migrated kernel runs against `cube_4color.3mf` with a synthetic manifest declaring `[[region_split]] semantic = "material"`,
-**Then** all 5 tests pass. Specifically (per the cube_4color authoring convention face +X = ToolIndex 1, face -X = ToolIndex 2, face +Y = ToolIndex 3, face -Y = ToolIndex 4):
-- A test asserts that `RegionMapIR.entries` contains a key with `variant_chain = [("material", ToolIndex(1))]`.
-- Same for ToolIndex 2, 3, 4.
-- A test asserts the base region (empty variant_chain) entry also exists.
+**Given** that today's constant at `crates/slicer-ir/src/slice_ir.rs:1196` is `pub const DEFAULT_REGION_MAP_CAP: usize = 1_000` and cross-product expansion can multiply entry counts by `∏(1 + K_i)` per region,
+**When** the constant location is inspected after this packet,
+**Then** the value is `750_000`, the doc-comment explains the 750× headroom rationale (16-color × 1000-layer × 16-region × 3-modifier scenes), and the overflow diagnostic names the worst-contributing `object_id` in the structured-event output.
 
-| `cargo test -p slicer-runtime --test executor cube_4color_paint_tdd 2>&1 | tee target/test-output.log | grep -E '^test result' | head -1`
+| `rg -q 'DEFAULT_REGION_MAP_CAP\s*[:=]\s*750_000' crates/slicer-ir/src/slice_ir.rs && cargo test -p slicer-runtime region_map_cap_overflow_diagnostic 2>&1 | tee target/test-output.log`
 
-### AC-10 — 7 RED cube_4color tests stay RED: variant-polygon assertions
+### AC-9 — Net-new kernel unit tests assert variant_chain shape against synthetic input
 
-**Given** the 7 cube_4color tests that assert on per-variant polygon coverage (P3 territory),
-**When** the test bucket runs after this packet,
-**Then** these 7 tests are still RED (FAILED). Their failure assertions update to reference variant polygons (P3 will populate); the test names and intent are preserved. Acceptable failure: `cargo test ... 2>&1 | grep "test result"` reports a non-zero failed count corresponding to these 7 tests.
+**Given** six net-new kernel unit tests under `crates/slicer-core/tests/algo_region_mapping_tdd.rs` that drive `execute_region_mapping_inner` with a synthetic mesh + synthetic `BTreeMap<String, AggregatedRegionSplitEntry>`,
+**When** `cargo test -p slicer-core region_mapping` runs,
+**Then** all six tests pass with exact `variant_chain` shape assertions on `RegionMapIR.entries`:
+- `region_mapping_emits_empty_chain_for_unpainted_object` — object with no `paint_data` and any non-empty aggregation produces exactly one chain `[]` per `(layer, ActiveRegion)`.
+- `region_mapping_emits_n_plus_1_chains_for_single_semantic_n_distinct_values` — object with `material` carrying `{ToolIndex(1), ToolIndex(2), ToolIndex(3)}` produces exactly 4 chains: `[]`, `[material:1]`, `[material:2]`, `[material:3]` per `(layer, ActiveRegion)`.
+- `region_mapping_two_semantics_produces_cross_product_cardinality` — object with `material` × `fuzzy_skin` produces `∏(1 + K_i)` chains per `(layer, ActiveRegion)`; exact key set is enumerated and asserted.
+- `region_mapping_chains_ordered_by_aggregated_region_split_canonical_order` — given two semantics whose BTreeMap order differs from their declaration order, each chain's `(semantic, value)` pairs appear in BTreeMap iteration order.
+- `region_mapping_two_objects_with_disjoint_paint_emit_per_object_chains` — object A carries only `material`; object B carries only `fuzzy_skin`. Object A's `RegionPlan` entries have no `fuzzy_skin` element in any chain; symmetrically for object B.
+- `region_mapping_chain_derived_overlay_matches_layer_wide_overlay_when_aggregation_empty` — paired positive assertion for AC-7b: empty-chain config equals what the deleted layer-wide path produced pre-packet.
 
-Manual check — the test bucket's pass-count is documented in the closure log: 5 passing + 7 failing (or whatever distribution P0a's cube authoring produces).
+Cube_4color tests (`cube_4color_paint_tdd.rs`) remain P95's acceptance concern and are not gated by this packet.
 
-| `cargo test -p slicer-runtime --test executor cube_4color_paint_tdd 2>&1 | tee target/test-output.log | grep -qE 'test result: (FAILED|ok)\.'`
+| `cargo test -p slicer-core region_mapping 2>&1 | tee target/test-output.log`
 
-### AC-11 — Behavior preservation when `aggregated_region_split` is empty
+### AC-10 — Behavior preservation when `aggregated_region_split` is empty
 
-**Given** that no production module declares `[[region_split]]` in this packet (P3's job),
+**Given** that no production module declares `[[region_split]]` in this packet (P95's job),
 **When** the default production `pnp_cli slice` runs on `resources/regression_wedge.stl`,
-**Then** the produced g-code is byte-identical to the post-P92 baseline; `RegionMapIR.entries` cardinality is unchanged vs pre-packet (the cross-product collapses to the empty chain only).
+**Then** the produced g-code is byte-identical to the post-P92 baseline captured in Step 0 (recorded as `P92_BASELINE_SHA=<hex>` in `.ralph/specs/93_region-mapping-cross-product/closure-log.md`); `RegionMapIR.entries` cardinality is unchanged vs pre-packet (the cross-product collapses to the empty chain only). This is the integration-level verification of AC-7b's overlay equivalence. The comparison shell command exits 0 only on match.
 
-| `cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output /tmp/p93-wedge.gcode && sha256sum /tmp/p93-wedge.gcode`
+| `mkdir -p target && cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output target/p93-wedge-post.gcode && test "$(sha256sum target/p93-wedge-post.gcode | awk '{print $1}')" = "$(grep -oE 'P92_BASELINE_SHA=[a-f0-9]+' .ralph/specs/93_region-mapping-cross-product/closure-log.md | head -1 | cut -d= -f2)"`
 
-### AC-12 — Guest WASM rebuild clean
+### AC-11 — Guest WASM rebuild clean
 
-**Given** the IR-aware kernel rewrite,
+**Given** the IR-aware kernel extension,
 **When** `cargo xtask build-guests && cargo xtask build-guests --check` runs,
 **Then** `--check` reports zero `STALE:` entries.
 
@@ -155,8 +158,8 @@ Manual check — the test bucket's pass-count is documented in the closure log: 
 
 1. `cargo check --workspace --all-targets`
 2. `cargo clippy --workspace --all-targets -- -D warnings`
-3. `cargo test -p slicer-core region_mapping 2>&1 | tee target/test-output.log` (the kernel-level tests)
-4. `cargo test -p slicer-runtime --test executor cube_4color_paint_tdd 2>&1 | tee target/test-output.log` (5 GREEN + 7 RED expected)
+3. `cargo test -p slicer-core region_mapping 2>&1 | tee target/test-output.log` (the kernel-level tests, including the six AC-9 net-new tests and AC-7b's overlay-equivalence test)
+4. `cargo run --bin pnp_cli --release -- slice --model resources/regression_wedge.stl --module-dir modules/core-modules --output /tmp/p93-wedge.gcode && sha256sum /tmp/p93-wedge.gcode` (AC-10 byte-identical g-code)
 5. `cargo xtask build-guests && cargo xtask build-guests --check`
 
 Full per-AC matrix lives in `requirements.md`.
@@ -164,9 +167,9 @@ Full per-AC matrix lives in `requirements.md`.
 ## Authoritative Docs
 
 - `docs/specs/paint-pipeline-orca-parity-roadmap.md` §"P1c — RegionMapping cross-product expansion" (~140 lines; read directly).
-- `docs/02_ir_schemas.md` — sections describing `RegionMapIR`, `RegionPlan`, `RegionKey` (post-P1a shape; range-read).
+- `docs/02_ir_schemas.md` — sections describing `RegionMapIR`, `RegionPlan`, `RegionKey` (post-P91 shape; range-read).
 - `docs/04_host_scheduler.md` §"RegionMapping" stage if it exists (range-read).
-- `crates/slicer-core/src/algos/region_mapping.rs` — primary edit site; read in full as needed (likely > 300 lines, range-read by symbol).
+- `crates/slicer-core/src/algos/region_mapping.rs` — primary edit site (535 lines; range-read by symbol: `execute_region_mapping_inner` line 384, `overlay_resolved` line 110, `stamp_modifier_config_deltas` line 217, `overlapping_semantics_for_region` line 286).
 
 ## Doc Impact Statement
 
