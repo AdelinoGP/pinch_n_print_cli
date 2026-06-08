@@ -2,6 +2,7 @@
 
 P91_BASELINE_SHA=e60fca7fb4ea67fd54a402c2d352ae7719f82389a4ac4669b497922c9301f674
 P92_POST_SHA=e60fca7fb4ea67fd54a402c2d352ae7719f82389a4ac4669b497922c9301f674
+AC_11_CHECK=clean@6c872f3  # cargo xtask build-guests --check exited 0 with no STALE entries after both commits landed (post-Commit B HEAD). Audit corroborated W6's transcript; rebuild required first because intermediate cargo test runs (audit pass) had invalidated guest fingerprints.
 
 ## Per-validator test names (Step 4)
 - region_split_manifest_basic (AC-1)
