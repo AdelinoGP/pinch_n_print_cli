@@ -22,6 +22,7 @@ mod prepass_paint_semantic_override_ordering_tdd;
 mod progress_events_tdd;
 mod region_mapping_paint_semantic_tdd;
 mod region_mapping_tdd;
+mod region_split_dispatch_filter;
 mod run_pipeline_with_instrumentation_tdd;
 mod runtime_wiring_tdd;
 mod support_geometry_config_normalization_tdd;

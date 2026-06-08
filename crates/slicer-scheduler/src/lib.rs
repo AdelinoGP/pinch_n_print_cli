@@ -14,6 +14,7 @@ pub mod execution_plan;
 pub mod instrumentation;
 pub mod manifest;
 pub mod module_search_path;
+pub mod region_split;
 pub mod stage_order;
 pub mod topology;
 pub mod validation;
@@ -46,7 +47,7 @@ pub use instrumentation::{compute_serial_edges_for_stage, EdgeReason, SerialEdge
 pub use manifest::{
     build_config_schema_json, load_module_from_paths, load_modules_from_roots, ConfigFieldEntry,
     ConfigSchema, DiagnosticLevel, LoadDiagnostic, LoadError, LoadErrorKind, LoadModulesReport,
-    LoadedModule, LoadedModuleBuilder,
+    LoadedModule, LoadedModuleBuilder, RegionSplitDeclaration, RegionSplitValueType,
 };
 pub use module_search_path::{assemble_search_roots, SLICER_MODULE_PATH_ENV};
 pub use topology::topological_sort;

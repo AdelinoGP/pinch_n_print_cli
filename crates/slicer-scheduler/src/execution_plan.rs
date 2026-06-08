@@ -377,6 +377,10 @@ pub struct CompiledModuleStatic {
     /// `compute_serial_edges_from_compiled` can emit
     /// `EdgeReason::ExplicitRequires` rows alongside `IrWriteRead`.
     pub(crate) requires_modules: Vec<ModuleId>,
+    /// Pre-computed set of region-split semantic names declared by this module.
+    /// Empty for paint-transparent modules (the common case). Used by the
+    /// per-layer host dispatch filter in `layer_executor.rs` (packet 92).
+    pub(crate) region_split_semantics: std::collections::HashSet<String>,
 }
 
 impl CompiledModuleStatic {
@@ -409,6 +413,12 @@ impl CompiledModuleStatic {
     pub fn requires_modules(&self) -> &[ModuleId] {
         &self.requires_modules
     }
+
+    /// Pre-computed set of declared region-split semantic names.
+    /// Empty for paint-transparent modules (the common case).
+    pub fn region_split_semantics(&self) -> &std::collections::HashSet<String> {
+        &self.region_split_semantics
+    }
 }
 
 /// Builder for [`CompiledModuleStatic`]. The module id is the only positional
@@ -426,6 +436,7 @@ pub struct CompiledModuleBuilder {
     config_view: Arc<ConfigView>,
     claims: Vec<String>,
     requires_modules: Vec<ModuleId>,
+    region_split_semantics: std::collections::HashSet<String>,
 }
 
 impl CompiledModuleBuilder {
@@ -438,6 +449,7 @@ impl CompiledModuleBuilder {
             config_view: Arc::new(ConfigView::default()),
             claims: Vec::new(),
             requires_modules: Vec::new(),
+            region_split_semantics: std::collections::HashSet::new(),
         }
     }
 
@@ -471,6 +483,12 @@ impl CompiledModuleBuilder {
         self
     }
 
+    /// Set the pre-computed region-split semantic name set.
+    pub fn region_split_semantics(mut self, semantics: std::collections::HashSet<String>) -> Self {
+        self.region_split_semantics = semantics;
+        self
+    }
+
     /// Finalize into a [`CompiledModuleStatic`].
     pub fn build(self) -> CompiledModuleStatic {
         CompiledModuleStatic {
@@ -480,6 +498,7 @@ impl CompiledModuleBuilder {
             config_view: self.config_view,
             claims: self.claims,
             requires_modules: self.requires_modules,
+            region_split_semantics: self.region_split_semantics,
         }
     }
 }
@@ -719,6 +738,7 @@ pub fn build_execution_plan(
                 config_view: Arc::clone(&binding.config_view),
                 claims: binding.module.claims.clone(),
                 requires_modules: binding.module.requires_modules.clone(),
+                region_split_semantics: binding.module.region_split_semantics.clone(),
             });
         }
 

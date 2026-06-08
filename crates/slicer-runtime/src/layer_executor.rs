@@ -15,7 +15,7 @@ use slicer_core::slice_mesh_ex;
 use slicer_ir::{
     ConfigValue, ExPolygon, GlobalLayer, InfillIR, LayerCollectionIR, LayerEntityIdGen,
     LayerStageCommitData, ModuleId, PaintRegionIR, PaintSemantic, PerimeterIR, PrintEntity,
-    RegionKey, RegionMapIR, StageId, SupportIR, WallFeatureFlags,
+    RegionKey, RegionMapIR, SliceIR, StageId, SupportIR, WallFeatureFlags,
 };
 use slicer_wasm_host::{
     CompiledModuleLive, LayerStageInput, LayerStageRunner, WasmComponent, WasmInstancePool,
@@ -354,6 +354,15 @@ fn execute_single_layer_inner(
         instrumentation.on_stage_start(&stage.stage_id, Some(layer.index));
         // Execute modules in topological order within each stage
         for module in &stage.modules {
+            // Per-layer host filter (packet 92): skip this module on this layer
+            // if it declares [[region_split]] semantics and no region's
+            // variant_chain matches any of them. The `continue` is placed
+            // BEFORE on_module_start so the skipped module is truly absent
+            // from the instrumentation and audit log.
+            if !module_invocation_allowed_on_layer(module.region_split_semantics(), arena.slice()) {
+                continue;
+            }
+
             instrumentation.on_module_start(&stage.stage_id, Some(layer.index), module.module_id());
 
             // Build the IR-typed borrow structs for the new slicer-wasm-host trait boundary.
@@ -1302,6 +1311,36 @@ fn merge_infill_ir(existing: &mut InfillIR, incoming: InfillIR) {
             None => existing.regions.push(new_region),
         }
     }
+}
+
+/// Per-layer host dispatch filter (packet 92).
+///
+/// Returns `true` iff the module either:
+/// - declares NO `[[region_split]]` semantics (paint-transparent default), OR
+/// - at least one region on the layer has a `variant_chain` entry whose
+///   semantic name is in `declared`.
+///
+/// Filter granularity is per-(module × layer); per-region filtering is
+/// module-internal. `slice` is `None` only when the layer executor bypasses
+/// the PrePass::Slice builtin (unusual; conservatively allows invocation).
+pub fn module_invocation_allowed_on_layer(
+    declared: &std::collections::HashSet<String>,
+    slice: Option<&SliceIR>,
+) -> bool {
+    // Paint-transparent: no region-split declarations → always invoke.
+    if declared.is_empty() {
+        return true;
+    }
+    // No SliceIR available: conservatively allow.
+    let Some(slice_ir) = slice else {
+        return true;
+    };
+    slice_ir.regions.iter().any(|region| {
+        region
+            .variant_chain
+            .iter()
+            .any(|(semantic, _value)| declared.contains(semantic))
+    })
 }
 
 #[cfg(test)]

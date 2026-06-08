@@ -1,0 +1,40 @@
+[module]
+id           = "com.test.region-split-scalar"
+version      = "0.1.0"
+display-name = "Region Split Scalar"
+description  = "Fixture: region_split with forbidden value_type = scalar"
+author       = "test"
+license      = "MIT"
+wit-world    = "slicer:world-layer@1.0.0"
+
+[stage]
+id = "Layer::Infill"
+
+[ir-access]
+reads  = []
+writes = []
+
+[claims]
+holds    = []
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "5.0.0"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+layer-parallel-safe = true
+
+[[region_split]]
+semantic   = "material"
+priority   = 100
+value_type = "scalar"

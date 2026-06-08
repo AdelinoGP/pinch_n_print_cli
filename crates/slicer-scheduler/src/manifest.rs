@@ -1,5 +1,11 @@
 //! Manifest ingestion contracts for the host scheduler.
 
+// `LoadError` carries structured diagnostic fields (PathBuf, String payload, enum
+// with named fields) which intentionally exceed the 128-byte threshold.  The large
+// size is an acceptable trade-off for rich diagnostics at the boundary; boxing would
+// complicate call-sites without real performance benefit.
+#![allow(clippy::result_large_err)]
+
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -16,6 +22,32 @@ pub const CONFIG_SCHEMA_WIRE_VERSION: &str = "1.0.0";
 /// Helper for serde skip_serializing_if on bool.
 fn is_false(b: &bool) -> bool {
     !*b
+}
+
+/// One declared region-split semantic a module cares about. Parsed from
+/// a top-level `[[region_split]]` TOML array entry. See packet 92.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+pub struct RegionSplitDeclaration {
+    /// The semantic name (e.g. `"material"`, `"fuzzy_skin"`).
+    pub semantic: String,
+    /// Dispatch priority; lower value = higher priority.
+    pub priority: u32,
+    /// Value-domain this semantic operates on.
+    pub value_type: RegionSplitValueType,
+}
+
+/// Value-domain a region-split semantic operates on. `scalar` is
+/// architecturally forbidden (D13); the parser rejects it explicitly via
+/// `LoadErrorKind::ScalarValueTypeNotAllowedInRegionSplit`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RegionSplitValueType {
+    /// Boolean flag (split on/off regions).
+    Flag,
+    /// Tool/extruder index.
+    ToolIndex,
+    /// Arbitrary string label defined by the module.
+    CustomString,
 }
 
 /// Runtime module record produced by manifest ingestion.
@@ -69,6 +101,13 @@ pub struct LoadedModule {
     /// runtime dispatch will skip them with a diagnostic rather than
     /// attempting component compilation.
     pub(crate) placeholder_wasm: bool,
+    /// Region-split semantics this module declares (top-level `[[region_split]]`
+    /// TOML entries). Empty for paint-transparent modules; the host-filtered
+    /// dispatch guard in `layer_executor.rs` uses this list. See packet 92.
+    pub region_splits: Vec<RegionSplitDeclaration>,
+    /// Pre-computed lookup set built from `region_splits` at load-time.
+    /// O(1) membership probe for the per-layer dispatch filter.
+    pub region_split_semantics: std::collections::HashSet<String>,
 }
 
 impl LoadedModule {
@@ -172,6 +211,17 @@ impl LoadedModule {
     pub fn placeholder_wasm(&self) -> bool {
         self.placeholder_wasm
     }
+
+    /// Region-split declarations parsed from the manifest `[[region_split]]`
+    /// array. Empty for paint-transparent modules.
+    pub fn region_splits(&self) -> &[RegionSplitDeclaration] {
+        &self.region_splits
+    }
+
+    /// Pre-computed set of declared region-split semantic names.
+    pub fn region_split_semantics(&self) -> &std::collections::HashSet<String> {
+        &self.region_split_semantics
+    }
 }
 
 /// Builder for [`LoadedModule`]. Required identity fields
@@ -203,6 +253,8 @@ pub struct LoadedModuleBuilder {
     overridable_per_layer: Vec<String>,
     layer_parallel_safe: bool,
     placeholder_wasm: bool,
+    region_splits: Vec<RegionSplitDeclaration>,
+    region_split_semantics: std::collections::HashSet<String>,
 }
 
 impl LoadedModuleBuilder {
@@ -234,6 +286,8 @@ impl LoadedModuleBuilder {
             overridable_per_layer: Vec::new(),
             layer_parallel_safe: false,
             placeholder_wasm: false,
+            region_splits: Vec::new(),
+            region_split_semantics: std::collections::HashSet::new(),
         }
     }
 
@@ -321,6 +375,17 @@ impl LoadedModuleBuilder {
         self
     }
 
+    /// Set region-split declarations and the pre-computed semantic lookup set.
+    pub fn region_splits(
+        mut self,
+        splits: Vec<RegionSplitDeclaration>,
+        semantics: std::collections::HashSet<String>,
+    ) -> Self {
+        self.region_splits = splits;
+        self.region_split_semantics = semantics;
+        self
+    }
+
     /// Finalize into a [`LoadedModule`].
     pub fn build(self) -> LoadedModule {
         LoadedModule {
@@ -343,6 +408,8 @@ impl LoadedModuleBuilder {
             layer_parallel_safe: self.layer_parallel_safe,
             wasm_path: self.wasm_path,
             placeholder_wasm: self.placeholder_wasm,
+            region_splits: self.region_splits,
+            region_split_semantics: self.region_split_semantics,
         }
     }
 }
@@ -460,6 +527,42 @@ pub enum LoadErrorKind {
     MissingWasm,
     /// The manifest violates a semantic ingestion rule.
     Validation,
+    /// Two `[[region_split]]` entries in the same manifest declared the same `semantic`.
+    /// Carries both source line numbers if the parser can recover them.
+    DuplicateRegionSplitSemantic {
+        /// The duplicated semantic name.
+        semantic: String,
+        /// Line of the first declaration, if recoverable.
+        first_line: Option<usize>,
+        /// Line of the second (duplicate) declaration, if recoverable.
+        second_line: Option<usize>,
+    },
+    /// `[[region_split]]` declared `value_type = "scalar"`. Architecturally
+    /// forbidden (D13); see packet 92.
+    ScalarValueTypeNotAllowedInRegionSplit {
+        /// The offending semantic name.
+        semantic: String,
+    },
+    /// A community semantic (not in `CORE_REGION_SPLIT_PRIORITIES`) was declared
+    /// at a priority below `COMMUNITY_PRIORITY_FLOOR` (1000).
+    CommunityPriorityBelowFloor {
+        /// The offending semantic name.
+        semantic: String,
+        /// The priority value supplied in the manifest.
+        given_priority: u32,
+        /// The minimum allowed priority for community semantics.
+        floor: u32,
+    },
+    /// A core semantic was declared at a priority other than its registered
+    /// value in `CORE_REGION_SPLIT_PRIORITIES`.
+    CorePriorityMismatch {
+        /// The offending semantic name.
+        semantic: String,
+        /// The priority value supplied in the manifest.
+        given_priority: u32,
+        /// The expected priority for this core semantic.
+        expected_priority: u32,
+    },
 }
 
 /// Result of scanning one or more module roots.
@@ -560,6 +663,10 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
     );
 
     let config_schema = read_config_schema(&root, manifest_path)?;
+    let region_splits = parse_region_splits(&root, manifest_path)?;
+    validate_region_splits(&region_splits, manifest_path)?;
+    let region_split_semantics: std::collections::HashSet<String> =
+        region_splits.iter().map(|d| d.semantic.clone()).collect();
     let placeholder_wasm = is_placeholder_wasm(wasm_path);
     if placeholder_wasm {
         diagnostics.push(LoadDiagnostic {
@@ -639,6 +746,7 @@ fn ingest_manifest(manifest_path: &Path, wasm_path: &Path) -> Result<IngestedMan
     )?)
     .layer_parallel_safe(layer_parallel_safe)
     .placeholder_wasm(placeholder_wasm)
+    .region_splits(region_splits, region_split_semantics)
     .build();
 
     Ok(IngestedManifest {
@@ -767,6 +875,154 @@ fn effective_parallel_safety(
     } else {
         declared
     }
+}
+
+/// Parses the optional top-level `[[region_split]]` TOML array into a
+/// `Vec<RegionSplitDeclaration>`. Returns an empty vec when the key is absent.
+/// Pre-checks for `value_type = "scalar"` before strict deserialization so
+/// that the specific `ScalarValueTypeNotAllowedInRegionSplit` error is returned
+/// instead of the generic `Schema` error that `toml-serde` would produce.
+fn parse_region_splits(
+    root: &Value,
+    manifest_path: &Path,
+) -> Result<Vec<RegionSplitDeclaration>, LoadError> {
+    let Some(array) = root.get("region_split") else {
+        return Ok(Vec::new());
+    };
+
+    let array = array.as_array().ok_or_else(|| LoadError {
+        path: manifest_path.to_path_buf(),
+        field: Some("region_split".to_string()),
+        kind: LoadErrorKind::Schema,
+        message: "`region_split` must be a TOML array of tables".to_string(),
+    })?;
+
+    // Pre-scan for `value_type = "scalar"` before strict deserialization.
+    // If found, surface the specific architectural-rejection error variant
+    // rather than the generic Schema error toml-serde would produce.
+    for (idx, entry) in array.iter().enumerate() {
+        if let Some(table) = entry.as_table() {
+            if let Some(vt) = table.get("value_type").and_then(|v| v.as_str()) {
+                if vt == "scalar" {
+                    let semantic = table
+                        .get("semantic")
+                        .and_then(|s| s.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    return Err(LoadError {
+                        path: manifest_path.to_path_buf(),
+                        field: Some(format!("region_split[{idx}].value_type")),
+                        kind: LoadErrorKind::ScalarValueTypeNotAllowedInRegionSplit { semantic },
+                        message: "value_type = \"scalar\" is architecturally forbidden (D13); \
+                                  use \"flag\", \"tool_index\", or \"custom_string\" instead"
+                            .to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    let mut result = Vec::with_capacity(array.len());
+    for (idx, entry) in array.iter().enumerate() {
+        let decl: RegionSplitDeclaration =
+            entry
+                .clone()
+                .try_into()
+                .map_err(|e: toml::de::Error| LoadError {
+                    path: manifest_path.to_path_buf(),
+                    field: Some(format!("region_split[{idx}]")),
+                    kind: LoadErrorKind::Schema,
+                    message: format!("failed to deserialize region_split entry: {e}"),
+                })?;
+        result.push(decl);
+    }
+    Ok(result)
+}
+
+/// Validates a parsed `Vec<RegionSplitDeclaration>` against the architectural
+/// rules defined in packet 92:
+/// 1. No two entries may share the same `semantic` (duplicate check).
+/// 2. Community semantics (not in `CORE_REGION_SPLIT_PRIORITIES`) must have
+///    `priority >= COMMUNITY_PRIORITY_FLOOR`.
+/// 3. Core semantics must have the exact priority registered in
+///    `CORE_REGION_SPLIT_PRIORITIES`.
+///
+/// Note: scalar `value_type` rejection is handled in [`parse_region_splits`]
+/// before deserialization.
+fn validate_region_splits(
+    splits: &[RegionSplitDeclaration],
+    manifest_path: &Path,
+) -> Result<(), LoadError> {
+    // --- 1. Duplicate semantic check ---
+    let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for (idx, decl) in splits.iter().enumerate() {
+        if let Some(_prev_idx) = seen.insert(decl.semantic.as_str(), idx) {
+            return Err(LoadError {
+                path: manifest_path.to_path_buf(),
+                field: Some("region_split".to_string()),
+                kind: LoadErrorKind::DuplicateRegionSplitSemantic {
+                    semantic: decl.semantic.clone(),
+                    first_line: None,
+                    second_line: None,
+                },
+                message: format!(
+                    "duplicate region_split semantic '{}': each semantic may only appear once per manifest",
+                    decl.semantic
+                ),
+            });
+        }
+    }
+
+    // --- 2 & 3. Priority checks (community floor + core mismatch) ---
+    for decl in splits {
+        let core_priority = slicer_schema::CORE_REGION_SPLIT_PRIORITIES
+            .iter()
+            .find(|(name, _)| *name == decl.semantic.as_str())
+            .map(|(_, p)| *p);
+
+        match core_priority {
+            Some(expected) => {
+                // Core semantic: priority must exactly match the registered value.
+                if decl.priority != expected {
+                    return Err(LoadError {
+                        path: manifest_path.to_path_buf(),
+                        field: Some("region_split".to_string()),
+                        kind: LoadErrorKind::CorePriorityMismatch {
+                            semantic: decl.semantic.clone(),
+                            given_priority: decl.priority,
+                            expected_priority: expected,
+                        },
+                        message: format!(
+                            "core semantic '{}' must have priority {}, but {} was declared",
+                            decl.semantic, expected, decl.priority
+                        ),
+                    });
+                }
+            }
+            None => {
+                // Community semantic: priority must be >= floor.
+                if decl.priority < slicer_schema::COMMUNITY_PRIORITY_FLOOR {
+                    return Err(LoadError {
+                        path: manifest_path.to_path_buf(),
+                        field: Some("region_split".to_string()),
+                        kind: LoadErrorKind::CommunityPriorityBelowFloor {
+                            semantic: decl.semantic.clone(),
+                            given_priority: decl.priority,
+                            floor: slicer_schema::COMMUNITY_PRIORITY_FLOOR,
+                        },
+                        message: format!(
+                            "community semantic '{}' priority {} is below the minimum floor of {}",
+                            decl.semantic,
+                            decl.priority,
+                            slicer_schema::COMMUNITY_PRIORITY_FLOOR
+                        ),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn read_config_schema(root: &Value, manifest_path: &Path) -> Result<ConfigSchema, LoadError> {

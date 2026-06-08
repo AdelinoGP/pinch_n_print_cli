@@ -32,5 +32,13 @@ path = "tests/integration/main.rs"
 name = "scheduler_unit"
 path = "tests/unit/main.rs"
 
+[[test]]
+name = "region_split_manifest_tdd"
+path = "tests/region_split_manifest_tdd.rs"
+
+[[test]]
+name = "region_split_aggregation_tdd"
+path = "tests/region_split_aggregation_tdd.rs"
+
 [lints]
 workspace = true

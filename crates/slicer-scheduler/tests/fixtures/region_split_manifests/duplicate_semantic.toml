@@ -1,0 +1,45 @@
+[module]
+id           = "com.test.region-split-duplicate"
+version      = "0.1.0"
+display-name = "Region Split Duplicate Semantic"
+description  = "Fixture: two region_split entries with the same semantic"
+author       = "test"
+license      = "MIT"
+wit-world    = "slicer:world-layer@1.0.0"
+
+[stage]
+id = "Layer::Infill"
+
+[ir-access]
+reads  = []
+writes = []
+
+[claims]
+holds    = []
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "5.0.0"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+layer-parallel-safe = true
+
+[[region_split]]
+semantic   = "material"
+priority   = 100
+value_type = "tool_index"
+
+[[region_split]]
+semantic   = "material"
+priority   = 100
+value_type = "flag"

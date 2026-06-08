@@ -222,6 +222,25 @@ pub const WORLD_LIFECYCLE_EXPORTS: &[(&str, &[&str])] = &[
     ),
 ];
 
+// region: region-split priorities
+
+/// Core region-split semantic priorities. Each entry is `(semantic_name,
+/// priority)`. Priority defines the canonical `variant_chain` order
+/// (BTreeMap-sorted by `(priority, name)`). Core semantics are NOT
+/// user-overridable; a module manifest declaring a core semantic with a
+/// different priority is rejected with `LoadErrorKind::CorePriorityMismatch`
+/// at manifest-load time. See packet 92.
+pub const CORE_REGION_SPLIT_PRIORITIES: &[(&str, u32)] = &[("material", 100), ("fuzzy_skin", 200)];
+
+/// Minimum priority for a community-defined region-split semantic (any
+/// semantic name NOT in `CORE_REGION_SPLIT_PRIORITIES`). Below-floor
+/// declarations are rejected with `LoadErrorKind::CommunityPriorityBelowFloor`.
+/// The floor is a contract guard against priority squatting; changes require
+/// a code edit, not a config override. See packet 92.
+pub const COMMUNITY_PRIORITY_FLOOR: u32 = 1000;
+
+// endregion: region-split priorities
+
 /// Look up a [`StageSpec`] by its canonical scheduler stage id, e.g.
 /// `"Layer::Infill"`.
 #[must_use]

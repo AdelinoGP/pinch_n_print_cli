@@ -1,0 +1,40 @@
+[module]
+id           = "com.test.region-split-community-floor"
+version      = "0.1.0"
+display-name = "Region Split Community Below Floor"
+description  = "Fixture: community semantic with priority below COMMUNITY_PRIORITY_FLOOR"
+author       = "test"
+license      = "MIT"
+wit-world    = "slicer:world-layer@1.0.0"
+
+[stage]
+id = "Layer::Infill"
+
+[ir-access]
+reads  = []
+writes = []
+
+[claims]
+holds    = []
+requires = []
+
+[compatibility]
+incompatible-with = []
+requires          = []
+min-host-version  = "0.1.0"
+min-ir-schema     = "1.0.0"
+max-ir-schema     = "5.0.0"
+
+[config.overridable-per-region]
+keys = []
+
+[config.overridable-per-layer]
+keys = []
+
+[hints]
+layer-parallel-safe = true
+
+[[region_split]]
+semantic   = "com.example.foo"
+priority   = 250
+value_type = "flag"
