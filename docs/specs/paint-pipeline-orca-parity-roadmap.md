@@ -396,6 +396,8 @@ cargo test -p slicer-runtime --test integration 2>&1 | tee target/test-output.lo
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
+**Descoped at P92 refinement audit (2026-06-08)**: the "universal empty-polygon dispatch guard" originally planned alongside the host filter was REMOVED from P92. The codebase's per-(module × layer) dispatch leaves no per-region host invocation site at which the guard could fire (per-region iteration is module-internal). The guard is **owned by P95** (paint-segmentation port), which has the polygons in hand via `replace_slice_ir` — resolved during the P93 refinement pass (Audit 2). P93 keeps D15 unconditional emission: the cross-product kernel cannot predict polygon emptiness from `ActiveRegion` alone, so the empty-polygon check belongs at P95's paint-segmentation output boundary, not at P93's `RegionMapIR.entries` emission. P92's filter scope is per-(module × layer) only; per-(module × layer × region) is deferred to a candidate follow-up if P95 closure shows it's needed.
+
 ---
 
 ### P1c — RegionMapping cross-product expansion (D2, D3, D5, D6, D10, D15)
