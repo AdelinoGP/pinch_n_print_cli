@@ -567,7 +567,12 @@ fn empty_modifier_volume_stamps_no_regions() {
     let stamped_count = region_map
         .entries
         .keys()
-        .filter(|key| region_map.config_for(key).extensions.contains_key("fuzzy_skin.apply_to_all"))
+        .filter(|key| {
+            region_map
+                .config_for(key)
+                .extensions
+                .contains_key("fuzzy_skin.apply_to_all")
+        })
         .count();
 
     assert_eq!(
@@ -802,7 +807,9 @@ fn cube_4color_full_pipeline_paint_diagnostic() {
         "DIAGNOSTIC: segment_annotations Material tool indices on layer Z={test_z} = {:?}",
         boundary_tool_vals
     );
-    eprintln!("DIAGNOSTIC: segment_annotations Material contour point count = {material_tool_count}");
+    eprintln!(
+        "DIAGNOSTIC: segment_annotations Material contour point count = {material_tool_count}"
+    );
 
     assert!(
         material_tool_count > 0,

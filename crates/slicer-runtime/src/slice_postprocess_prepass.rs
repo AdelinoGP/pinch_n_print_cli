@@ -391,10 +391,7 @@ fn resolve_shell_counts(
         if region_map.entries.contains_key(&key) {
             let resolved = region_map.config_for(&key);
             let k_top: u8 = resolved.top_shell_layers.try_into().unwrap_or(u8::MAX);
-            let k_bot: u8 = resolved
-                .bottom_shell_layers
-                .try_into()
-                .unwrap_or(u8::MAX);
+            let k_bot: u8 = resolved.bottom_shell_layers.try_into().unwrap_or(u8::MAX);
             return (k_top, k_bot);
         }
     }

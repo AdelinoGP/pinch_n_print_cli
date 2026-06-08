@@ -200,7 +200,8 @@ fn region_overlap_applies_override() {
         "paint_overrides must contain fuzzy_skin"
     );
     assert_eq!(
-        rm.config_for(&key).wall_count, 5,
+        rm.config_for(&key).wall_count,
+        5,
         "effective config.wall_count must be 5 from paint override"
     );
 }
@@ -358,7 +359,8 @@ fn overlap_precedence_is_deterministic() {
             "paint_overrides must contain zzz_last"
         );
         assert_eq!(
-            rm.config_for(&key).wall_count, 9,
+            rm.config_for(&key).wall_count,
+            9,
             "zzz_last (lexicographically last) must win -> wall_count=9"
         );
     };

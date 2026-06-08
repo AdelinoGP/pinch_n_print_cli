@@ -521,7 +521,11 @@ pub fn execute_region_mapping_inner(
                 paint_overrides,
             };
 
-            if region_map_out.entries.insert(key.clone(), plan_entry).is_some() {
+            if region_map_out
+                .entries
+                .insert(key.clone(), plan_entry)
+                .is_some()
+            {
                 return Err(RegionMappingError::DuplicateRegionKey { key });
             }
         }

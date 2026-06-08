@@ -979,10 +979,12 @@ fn support_enforcer_config_delta_not_stamped() {
         return;
     };
 
-    let leaked = region_map
-        .entries
-        .keys()
-        .any(|key| region_map.config_for(key).extensions.contains_key("extruder"));
+    let leaked = region_map.entries.keys().any(|key| {
+        region_map
+            .config_for(key)
+            .extensions
+            .contains_key("extruder")
+    });
 
     assert!(
         !leaked,
@@ -1008,10 +1010,12 @@ fn support_blocker_config_delta_not_stamped() {
         return;
     };
 
-    let leaked = region_map
-        .entries
-        .keys()
-        .any(|key| region_map.config_for(key).extensions.contains_key("extruder"));
+    let leaked = region_map.entries.keys().any(|key| {
+        region_map
+            .config_for(key)
+            .extensions
+            .contains_key("extruder")
+    });
 
     assert!(
         !leaked,
@@ -1317,10 +1321,7 @@ fn config_delta_non_extruder_key_survives() {
 
     let both_present = region_map.entries.keys().any(|key| {
         let cfg = region_map.config_for(key);
-        let has_extruder = matches!(
-            cfg.extensions.get("extruder"),
-            Some(ConfigValue::Int(0))
-        );
+        let has_extruder = matches!(cfg.extensions.get("extruder"), Some(ConfigValue::Int(0)));
         let has_fuzzy = matches!(
             cfg.extensions.get("fuzzy_skin"),
             Some(ConfigValue::String(s)) if s == "external"

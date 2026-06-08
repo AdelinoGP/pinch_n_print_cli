@@ -717,7 +717,11 @@ impl PartialEq for ResolvedConfig {
                 == other.smoothificator_target_height.map(|f| f.to_bits())
             && self.smoothificator_adaptive == other.smoothificator_adaptive
             && self.bed_shape.len() == other.bed_shape.len()
-            && self.bed_shape.iter().zip(other.bed_shape.iter()).all(|(a, b)| a.to_bits() == b.to_bits())
+            && self
+                .bed_shape
+                .iter()
+                .zip(other.bed_shape.iter())
+                .all(|(a, b)| a.to_bits() == b.to_bits())
             && self.retract_length.to_bits() == other.retract_length.to_bits()
             && self.wipe_tower_enabled == other.wipe_tower_enabled
             && self.extensions == other.extensions
@@ -741,7 +745,9 @@ impl std::hash::Hash for ResolvedConfig {
         self.outer_wall_speed.to_bits().hash(state);
         self.inner_wall_speed.to_bits().hash(state);
         self.wall_generator.hash(state);
-        self.arachne_min_feature_size.map(|f| f.to_bits()).hash(state);
+        self.arachne_min_feature_size
+            .map(|f| f.to_bits())
+            .hash(state);
         self.infill_type.hash(state);
         self.infill_density.to_bits().hash(state);
         self.infill_angle.to_bits().hash(state);
@@ -764,10 +770,14 @@ impl std::hash::Hash for ResolvedConfig {
         self.support_type.hash(state);
         self.support_overhang_angle.to_bits().hash(state);
         self.support_layer_height_mm.to_bits().hash(state);
-        self.nonplanar_max_angle_deg.map(|f| f.to_bits()).hash(state);
+        self.nonplanar_max_angle_deg
+            .map(|f| f.to_bits())
+            .hash(state);
         self.nonplanar_shell_count.hash(state);
         self.nonplanar_amplitude.map(|f| f.to_bits()).hash(state);
-        self.smoothificator_target_height.map(|f| f.to_bits()).hash(state);
+        self.smoothificator_target_height
+            .map(|f| f.to_bits())
+            .hash(state);
         self.smoothificator_adaptive.hash(state);
         self.bed_shape.len().hash(state);
         for f in &self.bed_shape {

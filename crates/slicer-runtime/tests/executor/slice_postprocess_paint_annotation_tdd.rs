@@ -14,10 +14,10 @@ use slicer_runtime::{
 };
 
 #[test]
-fn slice_postprocess_paint_annotation_keeps_segment_annotations_present_but_empty_when_no_paint_applies()
-{
-    let result =
-        execute_slice_postprocess_paint_annotation(SlicePostProcessPaintAnnotationRequest {
+fn slice_postprocess_paint_annotation_keeps_segment_annotations_present_but_empty_when_no_paint_applies(
+) {
+    let result = execute_slice_postprocess_paint_annotation(
+        SlicePostProcessPaintAnnotationRequest {
             slice_ir: slice_fixture(
                 7,
                 vec![region_fixture(
@@ -30,10 +30,11 @@ fn slice_postprocess_paint_annotation_keeps_segment_annotations_present_but_empt
             required_semantics: Vec::new(),
             modifier_projections: vec![],
             paint_region_rtree: None,
-        })
-        .expect(
-            "regions/layers without paint must still keep segment_annotations present as an empty map",
-        );
+        },
+    )
+    .expect(
+        "regions/layers without paint must still keep segment_annotations present as an empty map",
+    );
 
     assert_eq!(
         result,
@@ -110,7 +111,8 @@ fn slice_postprocess_paint_annotation_writes_semantic_entries_parallel_to_each_f
 }
 
 #[test]
-fn slice_postprocess_paint_annotation_rejects_stale_segment_annotations_after_polygon_point_edits() {
+fn slice_postprocess_paint_annotation_rejects_stale_segment_annotations_after_polygon_point_edits()
+{
     let mut stale_region = region_fixture(
         "edited-object",
         4,
@@ -260,7 +262,10 @@ fn slice_postprocess_paint_annotation_defaults_unresolved_points_and_marks_degra
             },
         ]
     );
-    assert_eq!(region.segment_annotations[&PaintSemantic::Material][0].len(), 4);
+    assert_eq!(
+        region.segment_annotations[&PaintSemantic::Material][0].len(),
+        4
+    );
     assert_eq!(
         region.segment_annotations[&PaintSemantic::Material][0][2],
         Some(PaintValue::ToolIndex(0))

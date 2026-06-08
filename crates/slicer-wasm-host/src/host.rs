@@ -265,8 +265,8 @@ pub use layer::slicer::config::config_types::ConfigValue;
 /// `RetractMode` end-to-end across the guest→host boundary.
 pub use layer::slicer::ir_handles::ir_handles::RetractMode as WitRetractMode;
 pub use layer::slicer::ir_handles::ir_handles::{
-    SegmentAnnotationsEntry, SegmentAnnotationsPolygon, GcodeMoveCmd, HostPerimeterOutputBuilder,
-    PaintSemantic, PaintValue, RegionKey, SeamPosition, SemanticRegion, WallFeatureFlag,
+    GcodeMoveCmd, HostPerimeterOutputBuilder, PaintSemantic, PaintValue, RegionKey, SeamPosition,
+    SegmentAnnotationsEntry, SegmentAnnotationsPolygon, SemanticRegion, WallFeatureFlag,
     WallLoopType, WallLoopView,
 };
 pub use layer::slicer::types::geometry::{

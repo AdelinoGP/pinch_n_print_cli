@@ -290,7 +290,9 @@ fn multiple_regions_each_get_segment_annotations() {
 
     assert_eq!(result.slice_ir.regions.len(), 2);
     for region in &result.slice_ir.regions {
-        assert!(region.segment_annotations.contains_key(&PaintSemantic::Material));
+        assert!(region
+            .segment_annotations
+            .contains_key(&PaintSemantic::Material));
     }
 }
 

@@ -134,7 +134,8 @@ fn region_mapping_builtin_runs_after_user_layer_planning_and_is_visible_to_downs
 
     // The resolved config snapshot round-trips.
     assert_eq!(
-        rm.config_for(&k).layer_height, 0.2,
+        rm.config_for(&k).layer_height,
+        0.2,
         "resolved_config.layer_height should be preserved"
     );
 }

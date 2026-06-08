@@ -180,7 +180,7 @@ pub const CURRENT_SURFACE_CLASSIFICATION_SCHEMA_VERSION: SemVer = SemVer {
 };
 
 /// Schema version for `SliceIR`. Bumped to 4.0.0 by packet 91 — breaking
-/// field changes: `SlicedRegion.segment_annotations` renamed to `segment_annotations`,
+/// field changes: `SlicedRegion.boundary_paint` renamed to `segment_annotations`,
 /// `SlicedRegion.variant_chain` added. Prior bump to 3.0.0 was made by an
 /// earlier packet; this packet's rename layers a new breaking change.
 pub const CURRENT_SLICE_IR_SCHEMA_VERSION: SemVer = SemVer {

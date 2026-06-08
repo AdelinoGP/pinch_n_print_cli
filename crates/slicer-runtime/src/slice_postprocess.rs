@@ -490,7 +490,10 @@ pub fn execute_slice_postprocess_paint_annotation(
         if required_semantics.contains(&PaintSemantic::FuzzySkin)
             && !modifier_projections.is_empty()
         {
-            if let Some(existing) = region.segment_annotations.get_mut(&PaintSemantic::FuzzySkin) {
+            if let Some(existing) = region
+                .segment_annotations
+                .get_mut(&PaintSemantic::FuzzySkin)
+            {
                 for (polygon_index, polygon_paint) in existing.iter_mut().enumerate() {
                     if polygon_index >= region.polygons.len() {
                         continue;

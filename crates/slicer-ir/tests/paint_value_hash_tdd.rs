@@ -41,7 +41,11 @@ fn paint_value_hash_custom_consistent() {
 fn paint_value_hash_scalar_equals_self() {
     let v = PaintValue::Scalar(2.5);
     assert_eq!(v, v.clone(), "Scalar must equal itself via PartialEq");
-    assert_eq!(hash_of(&v), hash_of(&v.clone()), "hash must match equal values");
+    assert_eq!(
+        hash_of(&v),
+        hash_of(&v.clone()),
+        "hash must match equal values"
+    );
 }
 
 #[test]

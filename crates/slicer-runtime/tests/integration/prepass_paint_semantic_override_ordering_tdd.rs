@@ -283,7 +283,8 @@ fn paint_semantic_override_propagates_through_full_prepass() {
         .get(&key)
         .expect("RegionPlan for the painted region must exist");
     assert_eq!(
-        rm.config_for(&key).wall_count, 5,
+        rm.config_for(&key).wall_count,
+        5,
         "RegionPlan.config.wall_count must resolve to 5 via paint-semantic overlay; \
          pre-fix it stayed at the baseline 2 because PaintRegionIR wasn't yet committed \
          when region-mapping ran"

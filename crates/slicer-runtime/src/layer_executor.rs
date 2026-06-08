@@ -779,17 +779,19 @@ pub(crate) fn assemble_ordered_entities(
                 region_id: region.region_id,
                 variant_chain: Vec::new(),
             };
-            let modifier_tool: Option<u64> = region_map
-                .and_then(|rm| {
-                    if rm.entries.contains_key(&base_key) {
-                        rm.config_for(&base_key).extensions.get("extruder").and_then(|v| match v {
+            let modifier_tool: Option<u64> = region_map.and_then(|rm| {
+                if rm.entries.contains_key(&base_key) {
+                    rm.config_for(&base_key)
+                        .extensions
+                        .get("extruder")
+                        .and_then(|v| match v {
                             ConfigValue::Int(n) if *n >= 0 => Some(*n as u64),
                             _ => None,
                         })
-                    } else {
-                        None
-                    }
-                });
+                } else {
+                    None
+                }
+            });
             for wl in &region.walls {
                 let paint_tool = dominant_tool_index(&wl.feature_flags);
                 let resolved_tool = paint_tool.or(modifier_tool).unwrap_or(region.region_id);

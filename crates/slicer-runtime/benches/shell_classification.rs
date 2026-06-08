@@ -128,8 +128,7 @@ fn build_fixture(n_objects: usize, n_layers: usize) -> Blackboard {
             );
         }
     }
-    bb.commit_region_map(Arc::new(region_map))
-    .unwrap();
+    bb.commit_region_map(Arc::new(region_map)).unwrap();
 
     // Build a SliceIR per global layer. Each object's region carries the
     // same 20Ã—20 square at that layer's index (shifted in X per object).

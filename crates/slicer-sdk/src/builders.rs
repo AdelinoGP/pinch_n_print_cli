@@ -334,7 +334,8 @@ impl SlicePostprocessBuilder {
         region: RegionKey,
         segment_annotations: SegmentAnnotationsMap,
     ) -> Result<(), String> {
-        self.segment_annotations_updates.push((region, segment_annotations));
+        self.segment_annotations_updates
+            .push((region, segment_annotations));
         Ok(())
     }
 
@@ -368,7 +369,10 @@ impl std::fmt::Debug for SlicePostprocessBuilder {
         f.debug_struct("SlicePostprocessBuilder")
             .field("polygon_updates", &self.polygon_updates.len())
             .field("path_z_updates", &self.path_z_updates.len())
-            .field("segment_annotations_updates", &self.segment_annotations_updates.len())
+            .field(
+                "segment_annotations_updates",
+                &self.segment_annotations_updates.len(),
+            )
             .finish()
     }
 }

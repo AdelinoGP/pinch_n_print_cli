@@ -107,10 +107,8 @@ pub fn group_and_union_paint_regions(
     entries: Vec<PaintFacetEntry>,
     union_paint_regions_at_harvest: bool,
 ) -> PaintRegionIR {
-    let mut groups: HashMap<
-        (u32, String, PaintSemantic, PaintValue),
-        Vec<(u64, Vec<ExPolygon>)>,
-    > = HashMap::new();
+    let mut groups: HashMap<(u32, String, PaintSemantic, PaintValue), Vec<(u64, Vec<ExPolygon>)>> =
+        HashMap::new();
 
     for entry in entries {
         let key = (
